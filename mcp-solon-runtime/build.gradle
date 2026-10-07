@@ -2,4 +2,18 @@ description = 'Adapter: MCP Streamable HTTP über Solon (Strang H). Einziges Mod
 
 dependencies {
     api project(':mcp-runtime-api')
+
+    // Solon 3.10.1 (Java 8, Bytecode <= 52): App/HTTP-Server, JDK-HttpServer-Boot, MCP-Server und -Client.
+    // implementation: kein Solon-Typ sickert über den Klassenpfad zu Konsumenten durch.
+    implementation libs.solon
+    implementation libs.solon.boot.jdkhttp
+    implementation libs.solon.ai.mcp
+
+    testImplementation testFixtures(project(':mcp-runtime-api'))
+}
+
+tasks.named('test') {
+    // Solon ist prozessglobal und lässt sich in einer JVM nicht zuverlässig stoppen und neu starten.
+    // Jede Testklasse bekommt deshalb ihre eigene JVM; so darf ein Test den Server endgültig stoppen.
+    forkEvery = 1
 }
