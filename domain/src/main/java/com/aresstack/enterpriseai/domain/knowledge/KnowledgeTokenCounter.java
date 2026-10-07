@@ -21,8 +21,9 @@ public interface KnowledgeTokenCounter {
     String id();
 
     /**
-     * Zählt jede Folge aus Buchstaben/Ziffern (Unicode, also auch Umlaute und ß) als ein Token und jedes
-     * sonstige sichtbare Zeichen (Satzzeichen, Symbole) als je ein Token; Leerraum zählt nicht.
+     * Zählt jede Folge aus Buchstaben/Ziffern/kombinierenden Zeichen und Unterstrichen (Unicode, also auch
+     * Umlaute und ß) als ein Token und jedes sonstige sichtbare Zeichen (Satzzeichen, Symbole, Emoji) als je ein
+     * Token; Leerraum zählt nicht. Zeichenklassen nach dem festen Vertrag des Chunkers, unabhängig vom JDK.
      */
     static KnowledgeTokenCounter wordsAndSymbols() {
         return new WordAndSymbolTokenCounter();

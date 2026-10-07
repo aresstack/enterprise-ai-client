@@ -17,6 +17,7 @@ import com.aresstack.enterpriseai.domain.chat.archfixture.FakeChatValue;
 import com.aresstack.enterpriseai.domain.embedding.archfixture.FakeVector;
 import com.aresstack.enterpriseai.domain.embedding.archfixture.VectorUsingChat;
 import com.aresstack.enterpriseai.domain.knowledge.archfixture.ChunkUsingChat;
+import com.aresstack.enterpriseai.domain.knowledge.archfixture.ChunkUsingJdkCharacterData;
 import com.aresstack.enterpriseai.domain.knowledge.archfixture.FakeChunk;
 import com.aresstack.enterpriseai.embedding.api.archfixture.FakeEmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.archfixture.boundary.PortUsingKnowledge;
@@ -121,6 +122,13 @@ public class ExistingRulesDetectViolationsTest {
     public void knowledgeModelUsingChatIsDetected() {
         ExistingRuleProbe.assertRuleFails(KnowledgeBoundaryTest.class, "domainKnowledgeIsSelfContained",
                 ProductionClasses.of(ChunkUsingChat.class, FakeChatValue.class), "ChunkUsingChat");
+    }
+
+    @Test
+    public void knowledgeModelUsingJdkCharacterDataIsDetected() {
+        ExistingRuleProbe.assertRuleFails(KnowledgeBoundaryTest.class,
+                "domainKnowledgeClassifiesCharactersOnlyThroughUnicodeClasses",
+                ProductionClasses.of(ChunkUsingJdkCharacterData.class), "ChunkUsingJdkCharacterData");
     }
 
     @Test

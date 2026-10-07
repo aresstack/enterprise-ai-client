@@ -56,6 +56,18 @@ public class SentenceSplitterTest {
     }
 
     @Test
+    public void sentenceStartsFollowTheFixedCaseTableNotTheJdk() {
+        assertEquals(Arrays.asList("Ǆemal kam.", "ǅemal ging.", "Ωμέγα endet.", "Яблоко fällt.", "Ạ ok."),
+                splitter.split("Ǆemal kam. ǅemal ging. Ωμέγα endet. Яблоко fällt. Ạ ok."));
+        assertEquals(Arrays.asList("Deseret 𐐀 ist alt.", "𐐀 beginnt."),
+                splitter.split("Deseret 𐐀 ist alt. 𐐀 beginnt."));
+        // Schriften ohne Groß-/Kleinschreibung beginnen keinen Satz; Emoji und Symbole auch nicht.
+        assertEquals(Collections.singletonList("Ende. 漢字 folgt. אבג folgt. 👋 folgt. → folgt."),
+                splitter.split("Ende. 漢字 folgt. אבג folgt. 👋 folgt. → folgt."));
+        assertEquals(Collections.singletonList("Siehe ٣. Punkt."), splitter.split("Siehe ٣. Punkt."));
+    }
+
+    @Test
     public void blankInputYieldsNoSentences() {
         assertEquals(Collections.<String>emptyList(), splitter.split("   "));
         assertEquals(Collections.<String>emptyList(), splitter.split(null));
