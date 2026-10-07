@@ -135,6 +135,10 @@ Konsequenzen:
 - Falls anders entschieden wird: Der Konstruktor `LoadKnowledgeDocumentUseCase(catalog)` ohne Index (Quellen
   entscheiden per `UNSUPPORTED`) ist erhalten; das Entfernen in `indexSource` ist heute immer aktiv und hätte
   einen Schalter zu bekommen.
+- Abweichung auf `main` (Stand AP23): Die Composition Root verwendet für die Wissenswerkzeuge noch genau diesen
+  Konstruktor ohne Index, sodass `get_knowledge_document` in der laufenden Anwendung bisher nicht auf den Index
+  beschränkt ist. Skip und Prune bei der Indexierung sind davon nicht betroffen. Details und Status:
+  [Einschränkungen](einschraenkungen.md#abweichungen-auf-main).
 
 ## Konfigurationsschlüssel
 

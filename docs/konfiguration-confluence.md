@@ -22,9 +22,11 @@ source.confluence.searchSpaceKeys=DEV
 source.confluence.connectTimeoutMillis=15000
 source.confluence.readTimeoutMillis=60000
 source.confluence.allowInsecureHttp=false
-# Optional mTLS: Alias im Windows-Zertifikatsspeicher (Windows-MY) ...
+# Optional mTLS, Variante 1: Zertifikat aus dem Windows-Zertifikatsspeicher (Windows-MY); nur der Alias
 #source.confluence.clientCertificate.alias=mein-client-zertifikat
-# ... oder PKCS12-Datei; das Passwort liegt in KeePass
+# Optional mTLS, Variante 2: PKCS12-Datei; der Alias ist auch hier Pflicht und bezeichnet den Schlüsseleintrag
+# in der Datei, das Passwort liegt in KeePass
+#source.confluence.clientCertificate.alias=mein-client-zertifikat
 #source.confluence.clientCertificate.keyStoreFile=/pfad/zu/client.p12
 #source.confluence.clientCertificate.keyStorePasswordRef=keepass:Client-Zertifikat
 ```
@@ -39,8 +41,8 @@ source.confluence.allowInsecureHttp=false
 | `includeAttachments` | Anhänge als Ressourcen aufnehmen (nur Text: `text/*`, JSON, XML; PDF und Office → `UNSUPPORTED`). |
 | `searchSpaceKeys` | Spaces für `search` (CQL `type=page AND text ~ "…"`, optional `space in (…)`). |
 | `allowInsecureHttp` | `ConfluenceConfig.build()` lehnt Zugangsdaten über `http` ab; nur mit `true` (Entwicklung) erlaubt. |
-| `clientCertificate.alias` | mTLS mit dem Zertifikat aus dem Windows-Zertifikatsspeicher (Windows-MY), nur unter Windows. |
-| `clientCertificate.keyStoreFile`, `keyStorePasswordRef` | mTLS mit einer PKCS12-Datei; das Passwort wird erst beim ersten Verbindungsaufbau über KeePass geholt (`ClientCertificateFactory.deferred`), nie beim Start. |
+| `clientCertificate.alias` | Pflicht, sobald ein Client-Zertifikat konfiguriert ist; `AppConfigLoader` lehnt `keyStoreFile` oder `keyStorePasswordRef` ohne Alias ab. Ohne `keyStoreFile`: Alias des Zertifikats im Windows-Zertifikatsspeicher (Windows-MY), nur unter Windows. Mit `keyStoreFile`: Alias des Schlüsseleintrags in der PKCS12-Datei. |
+| `clientCertificate.keyStoreFile`, `keyStorePasswordRef` | mTLS mit einer PKCS12-Datei (zusätzlich zum Alias); das Passwort wird erst beim ersten Verbindungsaufbau über KeePass geholt (`ClientCertificateFactory.deferred`), nie beim Start. `keyStorePasswordRef` ohne `keyStoreFile` ist ein Konfigurationsfehler. |
 
 ## Verhalten
 

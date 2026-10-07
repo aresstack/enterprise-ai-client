@@ -41,6 +41,15 @@ echtes KeePass getestet. Alle Tests laufen gegen lokale Fakes (siehe [Testanleit
 - **Kein Logging-Framework**: Außerhalb des Demo-Agenten gibt es keine Konsolenausgabe; Fehler landen in
   `java.util.logging` der Anwendung bzw. in der Oberfläche.
 
+## Abweichungen auf main
+
+- **`get_knowledge_document` ist in der Anwendung noch nicht indexgeführt.** `CompositionRoot` (app-swing, AP23)
+  baut den `LoadKnowledgeDocumentUseCase` mit dem Konstruktor ohne Index, obwohl die indexgeführte Variante
+  (AP20, PR #32) in `application` vorhanden und getestet ist. Folge: Ein Agent kann über eine gültige
+  Ressourcen-ID auch Dokumente außerhalb des konfigurierten Crawl-Scopes lesen, sofern die Quelle sie liefert.
+  Kein Kompositionstest deckt das ab. Die Korrektur gehört in die Composition Root (eine Zeile plus Test) und
+  ist als Nebenbefund an den Koordinator gemeldet; AP26 ändert keinen Java-Code.
+
 ## Übergangsklassen
 
 `domain.DomainModule` und `application.ApplicationModule` sind Modul-Anker aus AP1 ohne Verwendung in

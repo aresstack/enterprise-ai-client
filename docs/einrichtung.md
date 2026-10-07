@@ -47,9 +47,9 @@ registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
 | Lucene-Index und Vektoren | `<Anwendungsverzeichnis>/index/` (Schlüssel `knowledge.indexDirectory`) |
 | KeePassRPC-Pairing-Schlüssel | `<Anwendungsverzeichnis>/keepassrpc-pairing.key` (Schlüssel `security.keepass.pairingKeyFile`) |
 
-Beim ersten Start ohne Datei legt die Anwendung die kommentierte Vorlage
-`enterprise-ai-client.example.properties` dort ab, erklärt das in einem Dialog und beendet sich mit Exit-Code 2.
-Die Vorlage liegt im Repository unter
+Beim ersten Start ohne Datei schreibt die Anwendung den Inhalt der kommentierten Vorlage als
+`enterprise-ai-client.properties` an genau diesen Pfad, erklärt das in einem Dialog und beendet sich mit
+Exit-Code 2. Die Datei muss dann nur noch ausgefüllt werden. Die Vorlage selbst liegt im Repository unter
 `app-swing/src/main/resources/com/aresstack/enterpriseai/app/config/enterprise-ai-client.example.properties`
 und beschreibt jeden Schlüssel. Pflicht sind:
 

@@ -75,6 +75,15 @@ konfigurierten Scope aufgebaut hat. Ein Dokument ist erst nach Indexierung lesba
 Seite wird erst nach `refresh_knowledge_source` sichtbar. Hintergrund und Konsequenzen:
 [RAG-Datenfluss](rag-datenfluss.md#der-index-führt).
 
+**Abweichung auf `main` (Stand AP23):** Die Composition Root (`app.composition.CompositionRoot`) baut den
+`LoadKnowledgeDocumentUseCase` derzeit noch mit dem Konstruktor ohne Index (`new
+LoadKnowledgeDocumentUseCase(ports.sources())`). In der laufenden Anwendung liefert `get_knowledge_document`
+deshalb jedes Dokument, das eine konfigurierte Quelle unter der angegebenen ID findet, auch außerhalb des
+indexierten Korpus; die indexgeführte Variante greift bisher nur in `application` und seinen Tests. Die
+Korrektur ist eine Zeile in der Composition Root (`ports.index()` und `ports.embeddingSpace()` übergeben) plus
+ein Kompositionstest; sie ist als Nebenbefund an den Koordinator gemeldet (siehe
+[Einschränkungen](einschraenkungen.md#abweichungen-auf-main)).
+
 Parameter sind flach (`source_ids` als kommagetrennte Zeichenkette), weil der MCP-Port keine Array-Typen kennt.
 
 ## Lebenszyklus in der Anwendung
