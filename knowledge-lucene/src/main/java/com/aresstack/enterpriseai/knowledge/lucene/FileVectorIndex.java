@@ -44,7 +44,7 @@ import java.util.Map;
 final class FileVectorIndex {
 
     private static final int MAGIC = 0x45414956; // "EAIV"
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
     private static final String SUFFIX = ".vec";
 
     private final Path root;
@@ -59,29 +59,33 @@ final class FileVectorIndex {
         final String chunkId;
         final KnowledgeResourceId resourceId;
         final KnowledgeSourceId sourceId;
+        final String stamp;
         final EmbeddingVector vector;
 
-        VectorEntry(String chunkId, KnowledgeResourceId resourceId, KnowledgeSourceId sourceId,
+        VectorEntry(String chunkId, KnowledgeResourceId resourceId, KnowledgeSourceId sourceId, String stamp,
                     EmbeddingVector vector) {
             this.chunkId = chunkId;
             this.resourceId = resourceId;
             this.sourceId = sourceId;
+            this.stamp = stamp;
             this.vector = vector;
         }
 
         static VectorEntry of(KnowledgeIndexEntry entry) {
             return new VectorEntry(entry.chunkId().value(), entry.resource().id(), entry.resource().sourceId(),
-                    entry.embedding());
+                    EntryStamp.of(entry.resource(), entry.chunk()), entry.embedding());
         }
     }
 
-    /** Ein Treffer: Chunk-ID und Cosine-Score. */
+    /** Ein Treffer: Chunk-ID, Stempel des eingebetteten Inhalts und Cosine-Score. */
     static final class ScoredChunk {
         final String chunkId;
+        final String stamp;
         final double score;
 
-        ScoredChunk(String chunkId, double score) {
+        ScoredChunk(String chunkId, String stamp, double score) {
             this.chunkId = chunkId;
+            this.stamp = stamp;
             this.score = score;
         }
     }
@@ -114,7 +118,8 @@ final class FileVectorIndex {
         for (VectorEntry entry : load(query.space()).values()) {
             if (query.accepts(entry.sourceId)) {
                 // cosineSimilarity verweigert Vektoren einer anderen Embedding-Welt (zweite Sicherung neben der Datei).
-                hits.add(new ScoredChunk(entry.chunkId, query.vector().cosineSimilarity(entry.vector)));
+                hits.add(new ScoredChunk(entry.chunkId, entry.stamp,
+                        query.vector().cosineSimilarity(entry.vector)));
             }
         }
         Collections.sort(hits, new Comparator<ScoredChunk>() {
@@ -182,15 +187,20 @@ final class FileVectorIndex {
                                 + " gehört zu einer anderen Embedding-Welt: " + stored);
                     }
                     int count = in.readInt();
+                    if (count < 0) {
+                        throw new KnowledgeIndexException("Vektordatei ist beschädigt (Anzahl " + count + "): "
+                                + file.getFileName());
+                    }
                     for (int i = 0; i < count; i++) {
                         String chunkId = in.readUTF();
                         KnowledgeResourceId resourceId = KnowledgeChunkId.parse(chunkId).resourceId();
                         KnowledgeSourceId sourceId = KnowledgeSourceId.of(in.readUTF());
+                        String stamp = in.readUTF();
                         float[] values = new float[space.dimension()];
                         for (int d = 0; d < values.length; d++) {
                             values[d] = in.readFloat();
                         }
-                        namespace.put(chunkId, new VectorEntry(chunkId, resourceId, sourceId,
+                        namespace.put(chunkId, new VectorEntry(chunkId, resourceId, sourceId, stamp,
                                 EmbeddingVector.of(space, values)));
                     }
                 } finally {
@@ -229,6 +239,7 @@ final class FileVectorIndex {
             for (VectorEntry entry : namespace.values()) {
                 out.writeUTF(entry.chunkId);
                 out.writeUTF(entry.sourceId.value());
+                out.writeUTF(entry.stamp);
                 for (int d = 0; d < entry.vector.dimension(); d++) {
                     out.writeFloat(entry.vector.valueAt(d));
                 }

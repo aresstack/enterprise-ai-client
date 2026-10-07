@@ -29,9 +29,11 @@ import java.util.Map;
  * </pre>
  *
  * <p>Ressource und Chunk eines Eintrags liegen einmal als gespeicherte Lucene-Felder vor; semantische Treffer
- * werden dort per Chunk-ID nachgeladen. Schreibreihenfolge: erst Vektoren, dann Text. Bricht der Prozess
- * dazwischen ab, fehlen semantische Treffer ohne Textdokument (sie werden übersprungen), bis der nächste Upsert
- * oder {@link #rebuild} die Hälften wieder angleicht.
+ * werden dort per Chunk-ID nachgeladen. Schreibreihenfolge: erst Vektoren, dann Text. Jeder Vektor trägt einen
+ * Stempel (SHA-256 über Text, Überschriften und Revision des eingebetteten Chunks); ein semantischer Treffer zählt
+ * nur, wenn das Textdokument denselben Stempel ergibt. Bricht der Prozess zwischen beiden Schreibvorgängen ab,
+ * werden die betroffenen Vektoren daher übersprungen, nie mit einer anderen Revision gepaart, bis der nächste
+ * Upsert oder {@link #rebuild} die Hälften wieder angleicht.
  *
  * <p>Konfiguration ist nur das Verzeichnis (per Konstruktor, keine globalen Settings). Alle Operationen sind
  * synchronisiert; eine Instanz je Verzeichnis und Prozess. Nach {@link #close()} werfen Operationen
@@ -106,7 +108,9 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
         List<KnowledgeSearchHit> hits = new ArrayList<KnowledgeSearchHit>();
         for (FileVectorIndex.ScoredChunk chunk : scored) {
             LuceneDocuments.Stored document = stored.get(chunk.chunkId);
-            if (document != null) {
+            // Nur Paare derselben Revision: Ein Vektor, dessen Text (noch) nicht oder in anderer Fassung im
+            // Textindex liegt, wird übersprungen statt fremden Text zu zitieren.
+            if (document != null && chunk.stamp.equals(EntryStamp.of(document.resource, document.chunk))) {
                 hits.add(new KnowledgeSearchHit(document.resource, document.chunk, chunk.score,
                         KnowledgeSearchMode.SEMANTIC));
             }
