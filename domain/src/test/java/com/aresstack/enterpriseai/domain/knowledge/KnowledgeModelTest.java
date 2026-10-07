@@ -187,6 +187,13 @@ public class KnowledgeModelTest {
         assertEquals("wiki:x/Seite#Anker#chunk-7", id.value());
         assertEquals(id, KnowledgeChunkId.parse(id.value()));
         assertEquals(resourceId, KnowledgeChunkId.parse(id.value()).resourceId());
+        KnowledgeChunkId largest = KnowledgeChunkId.of(resourceId, Integer.MAX_VALUE);
+        assertEquals(largest, KnowledgeChunkId.parse(largest.value()));
+        assertRejected(new Runnable() {
+            public void run() {
+                KnowledgeChunkId.parse("wiki:x#chunk-2147483648");
+            }
+        });
         for (final String invalid : new String[]{"wiki:x", "#chunk-1", "wiki:x#chunk-", "wiki:x#chunk-01",
                 "wiki:x#chunk--1", null}) {
             assertRejected(new Runnable() {

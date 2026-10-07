@@ -62,6 +62,15 @@ public final class KnowledgeChunker {
         return policy;
     }
 
+    /**
+     * Beschreibt alles, was die Chunks bestimmt: Algorithmus, Policy und Token-Zähler, z. B.
+     * {@code chunker-v1;maxTokens=350;overlapSentences=1;counter=words-and-symbols-v1}. Ändert er sich, müssen
+     * bestehende Ressourcen neu gechunkt werden.
+     */
+    public String fingerprint() {
+        return policy.fingerprint() + ";counter=" + tokenCounter.id();
+    }
+
     /** Chunks in Dokumentreihenfolge mit lückenlosen Ordinalzahlen ab 0; leer bei leerem Dokument. */
     public List<KnowledgeChunk> chunk(KnowledgeDocument document) {
         if (document == null) {
@@ -237,6 +246,9 @@ public final class KnowledgeChunker {
                 if (trimmed.isEmpty()) {
                     flushParagraph();
                 } else {
+                    if (!paragraph.isEmpty() && !isList(paragraph) && LIST_ITEM.matcher(line).matches()) {
+                        flushParagraph(); // Liste direkt nach Fließtext ohne Leerzeile beginnt einen eigenen Block
+                    }
                     paragraph.add(line);
                 }
             }

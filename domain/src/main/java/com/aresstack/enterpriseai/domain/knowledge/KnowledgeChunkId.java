@@ -36,8 +36,9 @@ public final class KnowledgeChunkId {
             throw new IllegalArgumentException("Ungültige Chunk-ID: " + KnowledgeSourceId.quote(value));
         }
         String ordinal = value.substring(separator + SEPARATOR.length());
-        if (ordinal.isEmpty() || ordinal.length() > 9 || !ordinal.matches("[0-9]+")
-                || ordinal.length() > 1 && ordinal.charAt(0) == '0') {
+        if (ordinal.isEmpty() || ordinal.length() > 10 || !ordinal.matches("[0-9]+")
+                || ordinal.length() > 1 && ordinal.charAt(0) == '0'
+                || Long.parseLong(ordinal) > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("Ungültige Chunk-ID: " + KnowledgeSourceId.quote(value));
         }
         return of(KnowledgeResourceId.of(value.substring(0, separator)), Integer.parseInt(ordinal));

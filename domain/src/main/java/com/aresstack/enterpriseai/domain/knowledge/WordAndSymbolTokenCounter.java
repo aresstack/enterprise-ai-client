@@ -4,6 +4,11 @@ package com.aresstack.enterpriseai.domain.knowledge;
 final class WordAndSymbolTokenCounter implements KnowledgeTokenCounter {
 
     @Override
+    public String id() {
+        return "words-and-symbols-v1";
+    }
+
+    @Override
     public int count(String text) {
         if (text == null) {
             return 0;

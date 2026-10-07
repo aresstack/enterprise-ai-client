@@ -4,8 +4,8 @@ package com.aresstack.enterpriseai.domain.knowledge;
  * Konfiguration des {@link KnowledgeChunker}: Token-Budget je Chunk und Overlap in ganzen Sätzen.
  *
  * <p>Defaults (350 Tokens, 1 Satz Overlap) und Overlap-Semantik übernommen aus aresstack/corenth
- * {@code LexicalChunkingConfig}. {@link #fingerprint()} beschreibt die Konfiguration als Text; ändert er sich,
- * sind bestehende Chunks nicht mehr vergleichbar und die Ressourcen müssen neu gechunkt werden.
+ * {@code LexicalChunkingConfig}. {@link #fingerprint()} beschreibt die Konfiguration als Text; ob bestehende
+ * Chunks noch passen, entscheidet {@link KnowledgeChunker#fingerprint()}, das zusätzlich den Token-Zähler enthält.
  */
 public final class KnowledgeChunkingPolicy {
 

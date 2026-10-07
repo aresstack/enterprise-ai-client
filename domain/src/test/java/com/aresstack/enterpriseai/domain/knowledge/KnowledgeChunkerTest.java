@@ -203,6 +203,32 @@ public class KnowledgeChunkerTest {
     }
 
     @Test
+    public void listDirectlyAfterTextWithoutBlankLineStartsItsOwnBlock() {
+        List<KnowledgeChunk> chunks = chunk("Schritte:\n- Eins\n- Zwei", 100, 1);
+
+        assertEquals("Schritte:\n\n- Eins\n- Zwei", chunks.get(0).text());
+    }
+
+    @Test
+    public void chunkerFingerprintIncludesPolicyAndCounter() {
+        assertEquals("chunker-v1;maxTokens=350;overlapSentences=1;counter=words-and-symbols-v1",
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()).fingerprint());
+        KnowledgeTokenCounter characters = new KnowledgeTokenCounter() {
+            @Override
+            public int count(String text) {
+                return text.length();
+            }
+
+            @Override
+            public String id() {
+                return "characters-v1";
+            }
+        };
+        assertEquals("chunker-v1;maxTokens=350;overlapSentences=1;counter=characters-v1",
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults(), characters).fingerprint());
+    }
+
+    @Test
     public void codeBlocksAreNeverSplitIntoSentences() {
         String text = "Beispiel:\n\n```java\nString s = \"a. B\";\n\nreturn s.trim();\n```\n\nDanach Text.";
         List<KnowledgeChunk> chunks = chunk(text, 100, 0);
