@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.acp.api.AcpConnectionState;
 import com.aresstack.enterpriseai.acp.api.AcpException;
 import com.aresstack.enterpriseai.acp.api.AcpSession;
 import com.aresstack.enterpriseai.acp.api.AcpSessionState;
+import com.aresstack.enterpriseai.acp.api.AgentProcessHandle;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -256,9 +257,16 @@ public final class AgentService {
         }
     }
 
+    /**
+     * Ein Agent, der zwischen zwei Aufträgen endet, ändert den Verbindungszustand im Adapter erst beim nächsten
+     * Request; deshalb zählt auch der Prozess selbst, damit der nächste Auftrag gleich einen neuen startet.
+     */
     private void refreshStatus() {
-        if (status == AgentStatus.READY && connection != null
-                && connection.getState() != AcpConnectionState.READY) {
+        if (status != AgentStatus.READY || connection == null) {
+            return;
+        }
+        AgentProcessHandle process = connection.getProcess();
+        if (connection.getState() != AcpConnectionState.READY || (process != null && !process.isAlive())) {
             status = AgentStatus.FAILED;
         }
     }

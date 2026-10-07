@@ -10,6 +10,8 @@ import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
 import com.aresstack.enterpriseai.acp.api.AgentProcessHandle;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointDefinition;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointHandle;
+import com.aresstack.enterpriseai.mcp.api.McpServerRegistry;
+import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
 import com.aresstack.enterpriseai.mcp.api.McpToolClient;
 import com.aresstack.enterpriseai.mcp.api.McpToolClientFactory;
 import com.aresstack.enterpriseai.mcp.api.testkit.InProcessMcpServerRegistry;
@@ -130,6 +132,61 @@ public class AcpAgentLauncherTest {
         }
         AcpEndpointDescriptor endpoint = AgentMcpEnvironment.read(connector.spec.getEnv());
         assertNull("token invalid after failed start", registry.endpointUrl(handleOf(endpoint)));
+    }
+
+    @Test
+    public void failingToolUpdateReleasesTheEndpoint() {
+        final java.util.List<McpEndpointHandle> registered = new java.util.ArrayList<McpEndpointHandle>();
+        McpServerRegistry rejecting = new McpServerRegistry() {
+            @Override
+            public McpEndpointHandle registerEndpoint(McpEndpointDefinition definition) {
+                McpEndpointHandle handle = registry.registerEndpoint(definition);
+                registered.add(handle);
+                return handle;
+            }
+
+            @Override
+            public void updateTools(McpEndpointHandle handle, java.util.Collection<McpToolContribution> tools) {
+                throw new IllegalStateException("tool update rejected");
+            }
+
+            @Override
+            public void unregisterEndpoint(McpEndpointHandle handle) {
+                registry.unregisterEndpoint(handle);
+            }
+
+            @Override
+            public String endpointUrl(McpEndpointHandle handle) {
+                return registry.endpointUrl(handle);
+            }
+
+            @Override
+            public java.util.List<String> toolNames(McpEndpointHandle handle) {
+                return registry.toolNames(handle);
+            }
+
+            @Override
+            public Map<String, String> toolCatalog(McpEndpointHandle handle) {
+                return registry.toolCatalog(handle);
+            }
+
+            @Override
+            public void shutdown() {
+                registry.shutdown();
+            }
+        };
+        RecordingConnector connector = new RecordingConnector();
+        AcpAgentLauncher launcher = new AcpAgentLauncher(connector, BASE, rejecting, ENDPOINT,
+                Collections.singletonList(McpTestTools.ping()));
+        try {
+            launcher.launch();
+            fail();
+        } catch (AcpException expected) {
+            assertEquals(AcpException.Phase.SPAWN, expected.getPhase());
+        }
+        assertNull("no agent without its tools", connector.spec);
+        assertEquals(1, registered.size());
+        assertNull("endpoint released after the failed tool update", registry.endpointUrl(registered.get(0)));
     }
 
     @Test

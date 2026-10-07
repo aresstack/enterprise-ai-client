@@ -47,6 +47,8 @@ final class FakeAgentLauncher implements AgentLauncher {
     final class FakeConnection implements AcpConnection {
         final AcpStates.Connection state = new AcpStates.Connection();
         final List<FakeSession> sessions = new CopyOnWriteArrayList<FakeSession>();
+        /** Prozess still beendet, Zustand noch READY (wie SolonAcpAgentConnector bei einem untätigen Agenten). */
+        volatile boolean exitedWhileIdle;
 
         FakeConnection() {
             state.to(AcpConnectionState.INITIALIZING);
@@ -63,7 +65,7 @@ final class FakeAgentLauncher implements AgentLauncher {
             return new AgentProcessHandle() {
                 @Override
                 public boolean isAlive() {
-                    return state.get() == AcpConnectionState.READY;
+                    return !exitedWhileIdle && state.get() == AcpConnectionState.READY;
                 }
 
                 @Override

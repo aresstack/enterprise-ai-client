@@ -96,8 +96,14 @@ public final class AcpAgentLauncher implements AgentLauncher {
             // z. B. Registry schon heruntergefahren; die Ursache trägt keinen Token
             throw new AcpException(AcpException.Phase.SPAWN, "MCP endpoint for the agent is not available", e);
         }
-        registry.updateTools(handle, tools);
-        String url = registry.endpointUrl(handle);
+        String url;
+        try {
+            registry.updateTools(handle, tools);
+            url = registry.endpointUrl(handle);
+        } catch (RuntimeException e) {
+            release(handle);
+            throw new AcpException(AcpException.Phase.SPAWN, "MCP tools for the agent could not be provided", e);
+        }
         if (url == null) {
             release(handle);
             throw new AcpException(AcpException.Phase.SPAWN, "MCP endpoint for the agent is not available", null);

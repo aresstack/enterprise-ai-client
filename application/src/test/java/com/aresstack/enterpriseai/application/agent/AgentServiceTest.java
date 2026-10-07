@@ -239,6 +239,24 @@ public class AgentServiceTest {
     }
 
     @Test
+    public void agentThatExitedWhileIdleIsReplacedBeforeTheNextPrompt() {
+        AgentService service = new AgentService(launcher, DIRECT);
+        service.send("x", new RecordingAgentListener());
+        launcher.lastPrompt().complete();
+
+        launcher.connections.get(0).exitedWhileIdle = true;
+        assertEquals(AgentStatus.FAILED, service.status());
+
+        RecordingAgentListener next = new RecordingAgentListener();
+        service.send("y", next);
+        assertEquals("next prompt starts a fresh agent instead of hitting the dead one",
+                2, launcher.connections.size());
+        assertTrue(launcher.connections.get(0).isClosed());
+        launcher.lastPrompt().complete();
+        assertEquals(Collections.singletonList("completed"), next.events);
+    }
+
+    @Test
     public void agentErrorIsReportedWithoutItsTechnicalDetail() {
         AgentService service = new AgentService(launcher, DIRECT);
         RecordingAgentListener listener = new RecordingAgentListener();
