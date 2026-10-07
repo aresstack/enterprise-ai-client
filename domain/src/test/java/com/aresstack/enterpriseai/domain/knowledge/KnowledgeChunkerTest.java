@@ -287,6 +287,42 @@ public class KnowledgeChunkerTest {
     }
 
     @Test
+    public void separatorsCountAgainstTheBudgetForCustomCounters() {
+        KnowledgeTokenCounter characters = new KnowledgeTokenCounter() {
+            @Override
+            public int count(String text) {
+                return text.length();
+            }
+        };
+        List<KnowledgeChunk> chunks = new KnowledgeChunker(KnowledgeChunkingPolicy.of(14, 0), characters)
+                .chunk(KnowledgeDocument.of(RESOURCE, "Abcdef. Ghijkl.\n\n# Kopf\nAbcdefg."));
+
+        for (KnowledgeChunk chunk : chunks) {
+            assertTrue("Budget inkl. Trenner und Überschrift: " + chunk, chunk.tokenCount() <= 14);
+            assertEquals(characters.count(chunk.textWithHeading()), chunk.tokenCount());
+        }
+        assertEquals(Arrays.asList("Abcdef.", "Ghijkl.", "Abcdefg."),
+                Arrays.asList(chunks.get(0).text(), chunks.get(1).text(), chunks.get(2).text()));
+    }
+
+    @Test
+    public void oversizedHeadingsAreShortenedToHalfTheBudget() {
+        String text = "# Sehr langer Oberbegriff mit vielen Woertern\n"
+                + "## Unterkapitel mit ebenfalls langem Titel hier\n"
+                + "Inhalt.";
+        List<KnowledgeChunk> chunks = chunk(text, 10, 0);
+
+        assertEquals(1, chunks.size());
+        assertEquals("äußere Überschrift entfällt, innere wird gekürzt",
+                Collections.singletonList("Unterkapitel mit ebenfalls langem Titel"), chunks.get(0).headingPath());
+        assertEquals("Inhalt.", chunks.get(0).text());
+        assertTrue(chunks.get(0).tokenCount() <= 10);
+
+        List<KnowledgeChunk> nested = chunk("# A\n## Langer Unterabschnitt mit Titel\nText hier.", 10, 0);
+        assertEquals(Collections.singletonList("Langer Unterabschnitt mit Titel"), nested.get(0).headingPath());
+    }
+
+    @Test
     public void policyValidatesAndDescribesItself() {
         assertEquals("chunker-v1;maxTokens=350;overlapSentences=1", KnowledgeChunkingPolicy.defaults().fingerprint());
         try {

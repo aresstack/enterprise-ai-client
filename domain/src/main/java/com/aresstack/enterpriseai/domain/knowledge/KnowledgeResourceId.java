@@ -51,6 +51,9 @@ public final class KnowledgeResourceId {
 
     /** Baut eine ID aus Schema und schemaspezifischem Teil, z. B. {@code of("wiki", "intranet/Hauptseite")}. */
     public static KnowledgeResourceId of(String scheme, String schemeSpecificPart) {
+        if (scheme == null || schemeSpecificPart == null) {
+            throw invalid(scheme + ":" + schemeSpecificPart, "Schema und schemaspezifischer Teil sind Pflicht");
+        }
         return of(scheme + ":" + schemeSpecificPart);
     }
 
