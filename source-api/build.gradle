@@ -1,5 +1,12 @@
 description = 'Generischer Knowledge-Source-Port (Strang E).'
 
+// Test-Fixtures: InMemoryKnowledgeSource (Fake-Quelle für Use-Case-Tests, z. B. AP10) und
+// KnowledgeSourceContractTest (gemeinsame Vertragstests für alle Source-Adapter).
+// Nutzung: testImplementation testFixtures(project(':source-api'))
+apply plugin: 'java-test-fixtures'
+
 dependencies {
     api project(':domain')
+
+    testFixturesApi libs.junit
 }
