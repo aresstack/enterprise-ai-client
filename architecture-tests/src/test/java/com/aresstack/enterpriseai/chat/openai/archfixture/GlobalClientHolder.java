@@ -7,10 +7,14 @@ public final class GlobalClientHolder {
 
     static String lastModel;
 
+    public static final java.util.Map<String, String> MODELS = new java.util.HashMap<String, String>();
+
+    private static final java.util.List<String> PRIVATE_DEFAULTS = java.util.Collections.singletonList("default");
+
     private GlobalClientHolder() {
     }
 
     public void remember(String model) {
-        lastModel = model;
+        lastModel = model + PRIVATE_DEFAULTS.size();
     }
 }

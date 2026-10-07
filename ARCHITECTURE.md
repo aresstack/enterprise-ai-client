@@ -128,10 +128,11 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 |---|---|
 | `BuildModelTest.everyGradleModuleIsRegistered` | jedes Gradle-Modul ist in `ModuleRegistry` eingetragen |
 | `BuildModelTest.everyRegisteredModuleExists` | Registry und `settings.gradle` stimmen überein |
-| `BuildModelTest.declaredProjectDependenciesFollowTheAllowedDirection` | `project(...)`-Abhängigkeiten in `api`/`implementation`/`compileOnly`/`runtimeOnly` |
+| `BuildModelTest.declaredProjectDependenciesFollowTheAllowedDirection` | `project(...)`-Abhängigkeiten in `api`/`implementation`/`compileOnly`/`runtimeOnly`/`annotationProcessor` |
 | `BuildModelTest.coreModulesDeclareNoExternalLibraries` | kein Framework in domain/application/`*-api` deklariert |
+| `BuildModelTest.confinedLibrariesAreDeclaredOnlyInTheirModules` | begrenzte Bibliotheken (Tabelle oben) auch ohne Klassenreferenz, z. B. `runtimeOnly`, nur im erlaubten Modul |
 | `BuildModelTest.everyModuleHasClassesOnlyInItsOwnBasePackage` | Klasse ↔ Modul eindeutig, kein Modul leer |
-| `ClassBoundaryTest.*` | Modulmatrix auf Klassenebene, Kern-Positivliste, AP24-Technologietabelle für den Kern, Technologiegrenzen, keine Singletons / kein nicht-finales `static`, `main` nur in app-swing und acp-demo-agent |
+| `ClassBoundaryTest.*` | Modulmatrix auf Klassenebene, Kern-Positivliste, AP24-Technologietabelle für den Kern, Technologiegrenzen, keine Singletons / kein nicht-finales `static` / keine nicht-privaten `static final` Arrays, Collections, Maps, Atomics oder StringBuilder, `main` nur in app-swing und acp-demo-agent |
 | `ModuleRegistryTest.*` | die Registry selbst: keine Zyklen, Schichtung, AP24-Verbotskanten bleiben verboten, Pakete disjunkt |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 

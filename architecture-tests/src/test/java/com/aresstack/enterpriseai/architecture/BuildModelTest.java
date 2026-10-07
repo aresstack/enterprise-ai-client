@@ -46,6 +46,12 @@ public class BuildModelTest {
     }
 
     @Test
+    public void confinedLibrariesAreDeclaredOnlyInTheirModules() {
+        Violations.assertNone("Begrenzte Bibliothek außerhalb ihres Moduls deklariert",
+                BuildModelRules.confinedLibrariesOutsideTheirModules(model));
+    }
+
+    @Test
     public void everyModuleHasClassesOnlyInItsOwnBasePackage() {
         List<String> violations = new ArrayList<String>();
         for (String moduleName : model.scannedModules()) {

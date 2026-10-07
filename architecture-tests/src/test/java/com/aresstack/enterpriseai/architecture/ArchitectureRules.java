@@ -196,8 +196,22 @@ final class ArchitectureRules {
         };
     }
 
+    /**
+     * Typen, deren Instanzen veränderlich sind, auch wenn das Feld final ist. Private Konstanten dieser
+     * Typen (z. B. eine unveränderliche Stoppwortliste) bleiben erlaubt; nicht-private gelten als globaler
+     * Zustand, weil jeder Aufrufer sie ändern kann.
+     */
+    private static boolean isMutableType(JavaClass type) {
+        return type.isArray()
+                || type.isAssignableTo(java.util.Collection.class)
+                || type.isAssignableTo(java.util.Map.class)
+                || type.getPackageName().equals("java.util.concurrent.atomic")
+                || type.isAssignableTo(StringBuilder.class)
+                || type.isAssignableTo(StringBuffer.class);
+    }
+
     private static ArchCondition<JavaClass> notHoldGlobalState() {
-        return new ArchCondition<JavaClass>("keine Singleton-Instanz und kein nicht-finales statisches Feld halten") {
+        return new ArchCondition<JavaClass>("keine Singleton-Instanz, kein nicht-finales statisches Feld und kein öffentlich veränderliches statisches Objekt halten") {
             @Override
             public void check(JavaClass javaClass, ConditionEvents events) {
                 for (JavaField field : javaClass.getFields()) {
@@ -212,6 +226,9 @@ final class ArchitectureRules {
                     } else if (!javaClass.isEnum() && field.getRawType().equals(javaClass)) {
                         events.add(SimpleConditionEvent.violated(field,
                                 field.getFullName() + " hält eine statische Instanz der eigenen Klasse (Singleton)"));
+                    } else if (!field.getModifiers().contains(JavaModifier.PRIVATE) && isMutableType(field.getRawType())) {
+                        events.add(SimpleConditionEvent.violated(field,
+                                field.getFullName() + " veröffentlicht ein veränderliches Objekt statisch (globaler Zustand)"));
                     }
                 }
             }

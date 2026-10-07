@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.architecture;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
 
 /**
@@ -61,6 +62,25 @@ final class BuildModelRules {
             for (String library : model.externalDependenciesOf(module)) {
                 violations.add(module + " -> " + library + ": " + registry.module(module).kind()
                         + "-Module dürfen keine externen Bibliotheken deklarieren");
+            }
+        }
+        return violations;
+    }
+
+    /**
+     * Begrenzte Bibliotheken (Lucene, ACP SDK, Solon, Solon MCP, JWBF, KeePassRPC-Transport) dürfen auch
+     * ohne Klassenreferenz, etwa als {@code runtimeOnly}, nur in ihren erlaubten Modulen deklariert werden.
+     */
+    static List<String> confinedLibrariesOutsideTheirModules(BuildModel model) {
+        List<String> violations = new ArrayList<String>();
+        for (String module : new TreeSet<String>(model.scannedModules())) {
+            for (String library : model.externalDependenciesOf(module)) {
+                for (Map.Entry<Technology, List<String>> entry : ArchitectureRules.confinedTechnologies().entrySet()) {
+                    if (entry.getKey().matchesGradleCoordinate(library) && !entry.getValue().contains(module)) {
+                        violations.add(module + " -> " + library + ": " + entry.getKey().label()
+                                + " ist auf " + entry.getValue() + " begrenzt");
+                    }
+                }
             }
         }
         return violations;

@@ -43,6 +43,35 @@ enum Technology {
         return label;
     }
 
+    /** Präfixe der Gradle-Koordinaten {@code group:name}, an denen die Bibliothek im Build erkannt wird. */
+    String[] gradleCoordinatePrefixes() {
+        switch (this) {
+            case LUCENE:
+                return new String[] {"org.apache.lucene:"};
+            case SOLON:
+                return new String[] {"org.noear:solon"};
+            case ACP_SDK:
+                return new String[] {"org.noear:acp-sdk", "io.projectreactor:"};
+            case MCP_SDK:
+                return new String[] {"org.noear:solon-ai-mcp", "io.modelcontextprotocol"};
+            case KEEPASS:
+                return new String[] {"org.java-websocket:"};
+            case JWBF:
+                return new String[] {"net.sourceforge:jwbf"};
+            default:
+                return new String[0];
+        }
+    }
+
+    boolean matchesGradleCoordinate(String coordinate) {
+        for (String prefix : gradleCoordinatePrefixes()) {
+            if (coordinate.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     boolean hasLibrary() {
         return libraryPackages.length > 0;
     }

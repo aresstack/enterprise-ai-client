@@ -65,6 +65,8 @@ public class RulesDetectViolationsTest {
         assertEquals(violations.toString(), 1, violations.size());
         assertTrue(violations.get(0), violations.get(0).contains("INSTANCE"));
         assertTrue(violations.get(0), violations.get(0).contains("lastModel"));
+        assertTrue(violations.get(0), violations.get(0).contains("MODELS"));
+        assertFalse(violations.get(0), violations.get(0).contains("PRIVATE_DEFAULTS"));
     }
 
     @Test
@@ -97,8 +99,13 @@ public class RulesDetectViolationsTest {
         projectDependencies.put("chat-api", set("domain", "chat-openai"));
         Map<String, Set<String>> externalDependencies = new HashMap<String, Set<String>>();
         externalDependencies.put("domain", set("org.apache.lucene:lucene-core"));
+        externalDependencies.put("chat-openai", set("com.google.code.gson:gson", "org.apache.lucene:lucene-core"));
+        externalDependencies.put("knowledge-lucene", set("org.apache.lucene:lucene-core"));
+        externalDependencies.put("mcp-solon-runtime", set("org.noear:solon", "org.noear:solon-ai-mcp"));
+        externalDependencies.put("acp-solon-client", set("org.noear:acp-sdk", "org.noear:solon-ai-mcp"));
         Map<String, List<File>> classDirectories = new HashMap<String, List<File>>();
-        for (String module : Arrays.asList("application", "chat-api", "domain")) {
+        for (String module : Arrays.asList("application", "chat-api", "domain", "chat-openai", "knowledge-lucene",
+                "mcp-solon-runtime", "acp-solon-client")) {
             classDirectories.put(module, Collections.<File>emptyList());
         }
         BuildModel model = new BuildModel(registry.names(), projectDependencies, externalDependencies,
@@ -112,6 +119,15 @@ public class RulesDetectViolationsTest {
         List<String> externalViolations = BuildModelRules.externalLibrariesInCore(model, registry);
         assertEquals(externalViolations.toString(), 1, externalViolations.size());
         assertTrue(externalViolations.get(0), externalViolations.get(0).contains("domain -> org.apache.lucene"));
+
+        List<String> confinementViolations = BuildModelRules.confinedLibrariesOutsideTheirModules(model);
+        assertEquals(confinementViolations.toString(), 3, confinementViolations.size());
+        assertTrue(confinementViolations.toString(),
+                confinementViolations.toString().contains("chat-openai -> org.apache.lucene:lucene-core"));
+        assertTrue(confinementViolations.toString(),
+                confinementViolations.toString().contains("domain -> org.apache.lucene:lucene-core"));
+        assertTrue(confinementViolations.toString(),
+                confinementViolations.toString().contains("acp-solon-client -> org.noear:solon-ai-mcp"));
     }
 
     private static JavaClasses importClasses(Class<?>... classes) {

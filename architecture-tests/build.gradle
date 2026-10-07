@@ -10,9 +10,10 @@ description = 'Ausführbare Architekturregeln (AP1/AP24): Modulregistrierung, Ab
 def scannedProjects = rootProject.subprojects.findAll { it != project }.sort { it.name }
 scannedProjects.each { evaluationDependsOn(it.path) }
 
-// Nur Produktionskonfigurationen zählen für die Abhängigkeitsrichtung; Testabhängigkeiten
-// (z. B. junit, Testfixtures) bleiben außen vor.
-def productionConfigurations = ['api', 'implementation', 'compileOnly', 'compileOnlyApi', 'runtimeOnly']
+// Nur Produktionskonfigurationen zählen für die Abhängigkeitsrichtung (inklusive Annotation-Prozessoren,
+// die beim Kompilieren des Produktionscodes laufen); Testabhängigkeiten (z. B. junit) bleiben außen vor.
+def productionConfigurations = ['api', 'implementation', 'compileOnly', 'compileOnlyApi', 'runtimeOnly',
+                                'annotationProcessor']
 
 def buildModel = new TreeMap<String, String>()
 buildModel.put('modules', rootProject.subprojects.collect { it.name }.sort().join(','))
