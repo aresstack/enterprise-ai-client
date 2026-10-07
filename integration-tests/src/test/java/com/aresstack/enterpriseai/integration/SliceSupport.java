@@ -282,19 +282,31 @@ final class SliceSupport {
         }
     }
 
+    /**
+     * Schlägt die Prüfung fehl, enthält {@code haystack} das Secret; die Fehlermeldung darf es deshalb nicht
+     * wiederholen (sie landet in der JUnit- und CI-Ausgabe). Genannt werden nur Nummer, Länge und Position des
+     * Secrets sowie ein Auszug, in dem alle geprüften Secrets geschwärzt sind.
+     */
     static void assertNoSecret(String haystack, String... secrets) {
         if (haystack == null) {
             return;
         }
-        for (String secret : secrets) {
-            if (secret != null && !secret.isEmpty()) {
-                assertFalse("Secret darf hier nicht auftauchen: " + describe(haystack),
-                        haystack.contains(secret));
+        for (int i = 0; i < secrets.length; i++) {
+            String secret = secrets[i];
+            if (secret != null && !secret.isEmpty() && haystack.contains(secret)) {
+                fail("Secret Nr. " + (i + 1) + " (Länge " + secret.length() + ") taucht an Position "
+                        + haystack.indexOf(secret) + " auf: " + describeRedacted(haystack, secrets));
             }
         }
     }
 
-    private static String describe(String haystack) {
-        return haystack.length() > 120 ? haystack.substring(0, 120) + "…" : haystack;
+    private static String describeRedacted(String haystack, String... secrets) {
+        String redacted = haystack;
+        for (String secret : secrets) {
+            if (secret != null && !secret.isEmpty()) {
+                redacted = redacted.replace(secret, "«geschwärzt»");
+            }
+        }
+        return redacted.length() > 120 ? redacted.substring(0, 120) + "…" : redacted;
     }
 }

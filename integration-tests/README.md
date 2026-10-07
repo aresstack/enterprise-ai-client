@@ -74,6 +74,7 @@ export ENTERPRISE_AI_LIVE_API_KEY='…'
 ```
 
 Proxys: die Adapter nutzen `java.net`-Verbindungen; ein Unternehmensproxy wird über die üblichen
-JVM-Properties (`-Dhttps.proxyHost=… -Dhttps.proxyPort=…`) wirksam, die `liveTest` ebenfalls durchreicht,
-sofern sie mit `live.` beginnen – andernfalls über `JAVA_TOOL_OPTIONS`. Nichts davon ist gegen die echte
-Enterprise-API, ein echtes Wiki, Confluence oder KeePass gelaufen (UNVERIFIED, siehe Bericht AP25).
+JVM-Properties wirksam. `liveTest` reicht neben `-Dlive.*` auch `-Dhttp.proxyHost`, `-Dhttp.proxyPort`,
+`-Dhttps.proxyHost`, `-Dhttps.proxyPort` und `-Dhttp.nonProxyHosts` an die Test-JVM durch; alternativ
+wirkt `JAVA_TOOL_OPTIONS` auf alle JVMs. Nichts davon ist gegen die echte Enterprise-API, ein echtes Wiki,
+Confluence oder KeePass gelaufen (UNVERIFIED, siehe Bericht AP25).

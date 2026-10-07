@@ -29,7 +29,9 @@ public final class FakeMediaWikiServer implements AutoCloseable {
 
     public FakeMediaWikiServer(FakeMediaWikiTransport wiki) throws IOException {
         this.wiki = wiki;
-        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        // Explizit 127.0.0.1 statt getLoopbackAddress(): Letzteres liefert bei preferIPv6Addresses ::1, die
+        // Basis-URL nennt aber immer 127.0.0.1 (Bind- und Advertise-Adresse müssen übereinstimmen).
+        server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
         server.createContext("/w/api.php", new HttpHandler() {
             @Override
             public void handle(HttpExchange exchange) throws IOException {

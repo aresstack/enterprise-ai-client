@@ -173,7 +173,7 @@ public class SliceAChatTest {
         assertEquals("Fehler im KI-Dienst. (Status 500)", answer.getFailureMessage());
         assertNoSecretInTranscript(model, TOKEN);
         for (ChatMessage message : root.chatService().conversation(view.conversation()).messages()) {
-            assertFalse(message.content(), message.content().contains(TOKEN));
+            SliceSupport.assertNoSecret(message.content(), TOKEN);
         }
     }
 }
