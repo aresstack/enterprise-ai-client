@@ -37,6 +37,8 @@ final class MediaWikiClient {
     private final MediaWikiCredentialsProvider credentialsProvider;
     private final Object loginLock = new Object();
     private volatile boolean loggedIn;
+    /** Zählt erfolgreiche Logins; nur unter {@code loginLock} geändert. */
+    private volatile long sessionGeneration;
 
     MediaWikiClient(MediaWikiSiteConfig site, MediaWikiTransport transport,
                     MediaWikiCredentialsProvider credentialsProvider) {
@@ -95,6 +97,7 @@ final class MediaWikiClient {
     /** Lesender Aufruf; bei abgelaufener Sitzung genau ein erneuter Login. */
     private String read(String query) throws KnowledgeSourceException {
         ensureLoggedIn();
+        long generation = sessionGeneration;
         try {
             return checked(query);
         } catch (KnowledgeSourceException e) {
@@ -102,7 +105,7 @@ final class MediaWikiClient {
                 throw e;
             }
             LOG.fine("[MediaWiki] access denied for " + site.siteKey() + ", logging in again");
-            loggedIn = false;
+            invalidateSession(generation);
             ensureLoggedIn();
             return checked(query);
         }
@@ -146,6 +149,18 @@ final class MediaWikiClient {
 
     // ── Login ───────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Verwirft die Sitzung nur, wenn seit dem fehlgeschlagenen Aufruf kein anderer Thread neu angemeldet hat;
+     * sonst nutzt der erneute Versuch die frische Sitzung.
+     */
+    private void invalidateSession(long observedGeneration) {
+        synchronized (loginLock) {
+            if (sessionGeneration == observedGeneration) {
+                loggedIn = false;
+            }
+        }
+    }
+
     private void ensureLoggedIn() throws KnowledgeSourceException {
         if (!site.requiresLogin() || loggedIn) {
             return;
@@ -165,11 +180,13 @@ final class MediaWikiClient {
                 // Wie MainframeMate: ohne Anmeldedaten anonym weiterlesen; verweigert das Wiki den Zugriff,
                 // meldet der lesende Aufruf ACCESS_DENIED.
                 LOG.warning("[MediaWiki] " + site.siteKey() + " requires login but no credentials were provided");
+                sessionGeneration++;
                 loggedIn = true;
                 return;
             }
             try {
                 login(credentials);
+                sessionGeneration++;
                 loggedIn = true;
             } finally {
                 credentials.clear();

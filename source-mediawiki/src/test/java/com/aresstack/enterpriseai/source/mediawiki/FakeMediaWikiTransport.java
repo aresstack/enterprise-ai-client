@@ -25,6 +25,8 @@ final class FakeMediaWikiTransport implements MediaWikiTransport {
     String requiredPassword;
     boolean sessionValid;
     int logins;
+    /** Läuft einmal, bevor eine Leseanfrage wegen fehlender Sitzung abgelehnt wird. */
+    Runnable beforeFirstDenial;
 
     Page page(String title, String html, long pageId, long revId, String... links) {
         Page page = new Page(title, html, pageId, revId, links);
@@ -61,6 +63,11 @@ final class FakeMediaWikiTransport implements MediaWikiTransport {
             return ok("{\"clientlogin\":{\"status\":\"FAIL\",\"message\":\"nope\"}}");
         }
         if (requiredUser != null && !sessionValid) {
+            Runnable hook = beforeFirstDenial;
+            beforeFirstDenial = null;
+            if (hook != null) {
+                hook.run();
+            }
             return ok("{\"error\":{\"code\":\"readapidenied\",\"info\":\"You need read permission.\"}}");
         }
         if ("parse".equals(action)) {

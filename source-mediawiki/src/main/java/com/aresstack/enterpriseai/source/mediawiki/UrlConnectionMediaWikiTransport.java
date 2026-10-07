@@ -73,10 +73,12 @@ final class UrlConnectionMediaWikiTransport implements MediaWikiTransport {
                 storeCookies(conn);
                 String location = conn.getHeaderField("Location");
                 if (isRedirect(status) && location != null && !location.isEmpty()) {
-                    currentUrl = resolve(currentUrl, location);
+                    String target = resolve(currentUrl, location);
                     if (status == HttpURLConnection.HTTP_SEE_OTHER) {
                         body = null;
                     }
+                    checkRedirect(currentUrl, target, body != null);
+                    currentUrl = target;
                     drain(conn, status);
                     continue;
                 }
@@ -141,6 +143,33 @@ final class UrlConnectionMediaWikiTransport implements MediaWikiTransport {
     private static boolean isRedirect(int status) {
         return status == HttpURLConnection.HTTP_MOVED_PERM || status == HttpURLConnection.HTTP_MOVED_TEMP
                 || status == HttpURLConnection.HTTP_SEE_OTHER || status == 307 || status == 308;
+    }
+
+    /**
+     * Keine Weiterleitung von HTTPS auf HTTP; Formulardaten (Login mit Passwort) nur an denselben Origin.
+     */
+    static void checkRedirect(String current, String target, boolean carriesForm) throws IOException {
+        URI from = toUri(current);
+        URI to = toUri(target);
+        if ("https".equalsIgnoreCase(from.getScheme()) && !"https".equalsIgnoreCase(to.getScheme())) {
+            throw new IOException("redirect from HTTPS to " + to.getScheme() + " refused");
+        }
+        if (carriesForm && !sameOrigin(from, to)) {
+            throw new IOException("redirect of form data to another origin refused");
+        }
+    }
+
+    private static boolean sameOrigin(URI a, URI b) {
+        return a.getScheme() != null && a.getScheme().equalsIgnoreCase(b.getScheme())
+                && a.getHost() != null && a.getHost().equalsIgnoreCase(b.getHost())
+                && effectivePort(a) == effectivePort(b);
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() >= 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 
     private static String resolve(String current, String location) throws IOException {

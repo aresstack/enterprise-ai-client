@@ -21,6 +21,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Echte HTTP-Grenze gegen einen lokalen JDK-HttpServer: Cookies, Redirects, UTF-8, Fehlerstatus. */
 public class UrlConnectionMediaWikiTransportTest {
@@ -40,7 +41,11 @@ public class UrlConnectionMediaWikiTransportTest {
                 String body = read(exchange.getRequestBody());
                 bodiesSeen.add(body);
                 String query = exchange.getRequestURI().getRawQuery();
-                if ("POST".equals(exchange.getRequestMethod())) {
+                if ("POST".equals(exchange.getRequestMethod()) && body.contains("bounce=1")) {
+                    exchange.getResponseHeaders().add("Location",
+                            "http://localhost:" + server.getAddress().getPort() + "/w/api.php");
+                    respond(exchange, 307, "");
+                } else if ("POST".equals(exchange.getRequestMethod())) {
                     exchange.getResponseHeaders().add("Set-Cookie", "wikiSession=abc; Path=/");
                     respond(exchange, 200, "{\"ok\":\"ä\"}");
                 } else if (query != null && query.contains("moved")) {
@@ -112,5 +117,38 @@ public class UrlConnectionMediaWikiTransportTest {
             buffer.write(chunk, 0, n);
         }
         return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    @Test
+    public void refusesToForwardFormDataToAnotherOrigin() {
+        try {
+            transport.postForm("bounce=1&lgpassword=geheim");
+            fail("expected IOException");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("another origin"));
+        }
+        assertEquals(1, bodiesSeen.size());
+    }
+
+    @Test
+    public void redirectRules() throws IOException {
+        UrlConnectionMediaWikiTransport.checkRedirect("https://wiki.example/w/api.php",
+                "https://WIKI.example:443/w/index.php", true);
+        UrlConnectionMediaWikiTransport.checkRedirect("http://wiki.example/w/api.php",
+                "https://other.example/w/api.php", false);
+        try {
+            UrlConnectionMediaWikiTransport.checkRedirect("https://wiki.example/w/api.php",
+                    "http://wiki.example/w/api.php", false);
+            fail("downgrade must be refused");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("HTTPS"));
+        }
+        try {
+            UrlConnectionMediaWikiTransport.checkRedirect("https://wiki.example/w/api.php",
+                    "https://wiki.example:8443/w/api.php", true);
+            fail("other port is another origin");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("another origin"));
+        }
     }
 }

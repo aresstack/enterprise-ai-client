@@ -125,6 +125,44 @@ public class MediaWikiClientTest {
     }
 
     @Test
+    public void staleDenialDoesNotDiscardSessionRenewedByAnotherThread() throws Exception {
+        wiki.requiredUser = "bot";
+        wiki.requiredPassword = "pw";
+        wiki.page("A", "<p>x</p>", 1, 1);
+        final MediaWikiClient client = loggedInClient("bot", "pw");
+        client.parse("A");
+        wiki.sessionValid = false;
+        final Exception[] other = new Exception[1];
+        // Während Thread 1 noch auf seine Ablehnung wartet, meldet Thread 2 die Sitzung neu an.
+        wiki.beforeFirstDenial = new Runnable() {
+            @Override
+            public void run() {
+                Thread second = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            client.parse("A");
+                        } catch (Exception e) {
+                            other[0] = e;
+                        }
+                    }
+                });
+                second.start();
+                try {
+                    second.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        };
+
+        client.parse("A");
+
+        assertEquals(null, other[0]);
+        assertEquals(2, wiki.logins);
+    }
+
+    @Test
     public void wrongPasswordIsAccessDeniedWithoutSecretInMessage() {
         wiki.requiredUser = "bot";
         wiki.requiredPassword = "richtig";
