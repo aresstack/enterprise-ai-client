@@ -54,6 +54,20 @@ public final class SpeechBubblePanel extends JPanel
     private final JTextArea textArea;
     private int maximumBubbleWidth;
 
+    // Spiegel des Textes mit inkrementellen Messungen: Streaming hängt Deltas an, und die Messung je Layout
+    // darf dann nicht mit der Textlänge wachsen. Vollständige Zeilen (vor dem letzten Zeilenumbruch) werden
+    // beim Abschluss der Zeile einmal vermessen; nur die letzte Zeile wird nach jeder Änderung neu vermessen.
+    private final StringBuilder content = new StringBuilder();
+    private int lastLineStart;                 // Index hinter dem letzten '\n'
+    private int completedLinesWidth;           // breiteste vollständige Zeile in Pixeln
+    private int lastLineWidth;                 // Breite der letzten Zeile, gültig für lastLineWidthForLength
+    private int lastLineWidthForLength = -1;
+    private int wrapWidth = -1;                // Breite, für die die Umbruchschätzung gilt
+    private int wrapCompletedLines;            // umgebrochene Zeilen aller vollständigen Absätze
+    private int wrapCompletedUpTo;             // Index, bis zu dem wrapCompletedLines gilt
+    private int wrapLastLines;                 // umgebrochene Zeilen des letzten Absatzes
+    private int wrapLastForLength = -1;
+
     public SpeechBubblePanel(BubbleSide side,
                              Color bubbleColor,
                              Color textColor,
@@ -75,6 +89,7 @@ public final class SpeechBubblePanel extends JPanel
         this.headerLabel = createHeaderLabel(header);
         this.headerRow = new JPanel();
         this.textArea = createTextArea(text);
+        resetContent(normalize(text));
         buildUi();
     }
 
@@ -87,15 +102,23 @@ public final class SpeechBubblePanel extends JPanel
     }
 
     public void setText(String text) {
-        textArea.setText(normalize(text));
+        String value = normalize(text);
+        textArea.setText(value);
+        resetContent(value);
         refreshLayout();
     }
 
+    /**
+     * Hängt ein Streaming-Delta an. Der Aufwand hängt nur von der Länge des Deltas und der letzten Zeile ab,
+     * nicht vom gesamten Text: das Dokument wird ergänzt statt ersetzt, und die Messungen für Breite und
+     * Umbruch werden fortgeschrieben.
+     */
     public void appendText(String delta) {
         if (delta == null || delta.length() == 0) {
             return;
         }
         textArea.append(delta);
+        appendContent(delta);
         refreshLayout();
     }
 
@@ -240,12 +263,76 @@ public final class SpeechBubblePanel extends JPanel
     /** Greedy word-wrap line count from font metrics — independent of the Swing view state. */
     private int estimateWrappedTextHeight(int innerWidth) {
         FontMetrics metrics = textArea.getFontMetrics(textArea.getFont());
-        int lineHeight = metrics.getHeight();
-        int lines = 0;
-        for (String paragraph : textArea.getText().split("\n", -1)) {
-            lines += countWrappedLines(paragraph, metrics, innerWidth);
+        return Math.max(1, wrappedLineCount(innerWidth, metrics)) * metrics.getHeight();
+    }
+
+    /**
+     * Umgebrochene Zeilen des ganzen Textes bei {@code width}: vollständige Absätze aus dem Cache (bei neuer
+     * Breite einmal neu gezählt), der letzte Absatz nur, wenn sich der Text seit der letzten Zählung änderte.
+     */
+    private int wrappedLineCount(int width, FontMetrics metrics) {
+        if (width != wrapWidth || wrapCompletedUpTo != lastLineStart) {
+            wrapWidth = width;
+            wrapCompletedLines = 0;
+            int start = 0;
+            while (start < lastLineStart) {
+                int end = content.indexOf("\n", start);
+                wrapCompletedLines += countWrappedLines(content.substring(start, end), metrics, width);
+                start = end + 1;
+            }
+            wrapCompletedUpTo = lastLineStart;
+            wrapLastForLength = -1;
         }
-        return Math.max(1, lines) * lineHeight;
+        if (wrapLastForLength != content.length()) {
+            wrapLastLines = countWrappedLines(content.substring(lastLineStart), metrics, width);
+            wrapLastForLength = content.length();
+        }
+        return wrapCompletedLines + wrapLastLines;
+    }
+
+    /** Setzt den Spiegeltext neu und vermisst die vollständigen Zeilen einmal. */
+    private void resetContent(String value) {
+        content.setLength(0);
+        content.append(value);
+        lastLineStart = value.lastIndexOf('\n') + 1;
+        completedLinesWidth = 0;
+        FontMetrics metrics = textArea.getFontMetrics(textArea.getFont());
+        int start = 0;
+        while (start < lastLineStart) {
+            int end = value.indexOf('\n', start);
+            completedLinesWidth = Math.max(completedLinesWidth, metrics.stringWidth(value.substring(start, end)));
+            start = end + 1;
+        }
+        lastLineWidthForLength = -1;
+        wrapWidth = -1;
+    }
+
+    /** Schreibt den Spiegeltext fort; jede im Delta abgeschlossene Zeile wird genau einmal vermessen. */
+    private void appendContent(String delta) {
+        int offset = content.length();
+        content.append(delta);
+        FontMetrics metrics = textArea.getFontMetrics(textArea.getFont());
+        for (int i = delta.indexOf('\n'); i >= 0; i = delta.indexOf('\n', i + 1)) {
+            int lineEnd = offset + i;
+            String line = content.substring(lastLineStart, lineEnd);
+            completedLinesWidth = Math.max(completedLinesWidth, metrics.stringWidth(line));
+            if (wrapWidth >= 0 && wrapCompletedUpTo == lastLineStart) {
+                wrapCompletedLines += countWrappedLines(line, metrics, wrapWidth);
+                wrapCompletedUpTo = lineEnd + 1;
+            }
+            lastLineStart = lineEnd + 1;
+        }
+        lastLineWidthForLength = -1;
+        wrapLastForLength = -1;
+    }
+
+    /** Breite der letzten (unvollständigen) Zeile, neu vermessen nur nach einer Textänderung. */
+    private int currentLastLineWidth(FontMetrics metrics) {
+        if (lastLineWidthForLength != content.length()) {
+            lastLineWidth = metrics.stringWidth(content.substring(lastLineStart));
+            lastLineWidthForLength = content.length();
+        }
+        return lastLineWidth;
     }
 
     private static int countWrappedLines(String paragraph, FontMetrics metrics, int width) {
@@ -373,11 +460,7 @@ public final class SpeechBubblePanel extends JPanel
 
     private int calculateNaturalTextWidth() {
         FontMetrics textMetrics = textArea.getFontMetrics(textArea.getFont());
-        int maximum = 72;
-        String[] lines = textArea.getText().split("\\n", -1);
-        for (int index = 0; index < lines.length; index++) {
-            maximum = Math.max(maximum, textMetrics.stringWidth(lines[index]) + 8);
-        }
+        int maximum = Math.max(72, Math.max(completedLinesWidth, currentLastLineWidth(textMetrics)) + 8);
         if (headerLabel.isVisible()) {
             FontMetrics headerMetrics = headerLabel.getFontMetrics(headerLabel.getFont());
             int headerWidth = headerMetrics.stringWidth(headerLabel.getText())

@@ -181,6 +181,33 @@ Der normale Chat bleibt unverändert; RAG legt sich von außen darum. Einstiegsp
   `ChatService.sendWithContext` als System-Anteil nur für diesen Turn, in der Historie bleibt nur die
   Nutzerfrage. Quellen stehen in `RagChatTurn.sources()`.
 
+## RAG in der Shell (AP22)
+
+Die Chat-Shell bleibt ohne Port- und Adaptertypen (`ComicUiBoundaryTest`); RAG erreicht sie nur über
+Bindings in `app.chat`, die AP23 in der Composition Root verdrahtet.
+
+- `app.chat.RagChatBinding` ersetzt `ChatServiceBinding` als `ChatShellActions`: RAG aus = `RagChatUseCase`
+  mit `RagOptions.disabled()` (exakt der bisherige Weg); RAG an = Suche auf dem Arbeits-Executor, solange zeigt
+  die leere Antwortblase eine Aktivität ("Wissen wird gesucht …"); danach hängen die Quellen als
+  `app.ui.chat.SourceReference` (Nummer, Titel, Überschrift, Ort, Stand, Score, Ränge) an der Antwort, Warnungen
+  und ein Ausfall der Suche werden eine eigene Hinweis-Blase (`TranscriptEntry.Author.NOTICE`). Stop während
+  der Suche wird gemerkt und bricht den Turn ab, sobald er existiert; die Nutzerfrage bleibt in der Historie.
+- `app.chat.KnowledgeIndexingBinding` treibt `IndexKnowledgeUseCase` auf dem Arbeits-Executor und meldet
+  Fortschritt, Ergebnis und Abbruch an `app.ui.chat.KnowledgeStatusModel`; die Statuszeile
+  (`KnowledgeStatusBar`) im Chat-Reiter zeigt den Text und einen Abbrechen-Knopf, der
+  `IndexingListener.isCancelled()` bedient.
+- Oberfläche: `SourceListPanel` (einklappbare Quellenliste unter der Antwort, Ort unverändert und ohne
+  Zugangsdaten), Hinweis-Blase links in der Aktivitätsfarbe, Fehler des KI-Dienstes wie bisher. Modelle
+  (`ChatShellModel`, `KnowledgeStatusModel`) bleiben ohne Swing.
+- Streaming: `ChatTranscriptPanel` bündelt Deltas (höchstens eine Blasen-Aktualisierung je 30 ms, Abschluss,
+  Abbruch, Fehler und Quellen sofort) und hängt Text an, statt ihn neu zu setzen; `SpeechBubblePanel`
+  (comic-controls) schreibt seine Breiten- und Umbruchmessung je Zeile fort. Die Zeit je Delta wächst damit
+  nicht mit der Textlänge (`ChatTranscriptStreamingTest`: 20.000 Deltas).
+- Pflichttest `app.chat.RagShellIntegrationTest`: Shell → Bindings → Use Cases → echte Adapter
+  `OpenAiCompatibleChatAdapter`/`OpenAiCompatibleEmbeddingAdapter` gegen lokale Fake-HTTP-Server für
+  `/chat/completions` und `/embeddings` (`app.chat.fakeapi`) → `LuceneKnowledgeIndex` im temporären
+  Verzeichnis, `InMemoryKnowledgeSource` als Quelle. Lokaler Start: `./gradlew :app-swing:runRagDemo`.
+
 ## Build-Konventionen
 
 - **Java 8**: `sourceCompatibility`/`targetCompatibility` 1.8; auf JDK 9+ zusätzlich `javac --release 8`,
