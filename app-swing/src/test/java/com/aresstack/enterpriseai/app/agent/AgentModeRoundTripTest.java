@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.app.ui.agent.ModalShellPanel;
 import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
+import com.aresstack.enterpriseai.app.ui.chat.ChatShellModelListener;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.application.agent.AgentExchange;
@@ -42,8 +43,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
@@ -67,6 +70,8 @@ import static org.junit.Assume.assumeTrue;
  * Klasse stoppt den gemeinsamen Server am Ende.
  */
 public class AgentModeRoundTripTest {
+
+    private static final long TIMEOUT_SECONDS = 60L;
 
     private final ComicPalette comic = ComicPalette.defaultPalette();
     private final BubblePalette bubbles = BubblePalette.windowsPhoneInspired();
@@ -206,23 +211,43 @@ public class AgentModeRoundTripTest {
         }
         assertEquals(1, agentService.transcript().size());
 
-        // 4. Stop im Agent-Modus: der Agent bestätigt den Abbruch, Prozess und Session bleiben.
+        // 4. Stop im Agent-Modus: der Agent bestätigt den Abbruch, Prozess und Session bleiben. Stop wird direkt
+        // auf dem EDT ausgelöst, sobald der erste Chunk sichtbar ist; der Testthread wartet nur auf dem Latch.
+        final CountDownLatch stopped = new CountDownLatch(1);
+        final ChatShellModelListener stopOnFirstChunk = new ChatShellModelListener() {
+            @Override
+            public void entryAdded(TranscriptEntry entry) {
+            }
+
+            @Override
+            public void entryUpdated(TranscriptEntry entry) {
+                if (stopped.getCount() > 0 && entry.getText().contains("chunk 1 for 'slow burn'")) {
+                    stopped.countDown();
+                    shell.agentBinding().stopRequested();
+                }
+            }
+
+            @Override
+            public void stateChanged() {
+            }
+        };
         onEdt(new Callable<Void>() {
             @Override
             public Void call() {
+                shell.agentModel.addListener(stopOnFirstChunk);
                 shell.agentBinding().sendRequested("slow burn", false);
                 return null;
             }
         });
-        awaitText(shell.agentModel, "chunk 1 for 'slow burn'");
+        assertTrue("first chunk of the slow prompt never arrived", stopped.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
+        awaitIdle(shell.agentModel);
         onEdt(new Callable<Void>() {
             @Override
             public Void call() {
-                shell.agentBinding().stopRequested();
+                shell.agentModel.removeListener(stopOnFirstChunk);
                 return null;
             }
         });
-        awaitIdle(shell.agentModel);
         agentEntries = entries(shell.agentModel);
         assertEquals(TranscriptEntry.State.CANCELLED, agentEntries.get(3).getState());
 
@@ -329,34 +354,46 @@ public class AgentModeRoundTripTest {
         });
     }
 
+    /**
+     * Wartet außerhalb des EDT, bis das Model nicht mehr streamt. Ein Listener auf dem EDT setzt den Latch; der
+     * Testthread blockiert nur im {@code await} mit Frist. Kein {@code invokeAndWait} in der Warteschleife: Ist
+     * der EDT unter Last voll, würde das Warten dort die Frist aushebeln und der Test hinge statt zu scheitern.
+     */
     private static void awaitIdle(final ChatShellModel model) throws Exception {
-        await(new Callable<Boolean>() {
+        final CountDownLatch idle = new CountDownLatch(1);
+        final ChatShellModelListener listener = new ChatShellModelListener() {
             @Override
-            public Boolean call() {
-                return !model.isStreaming();
+            public void entryAdded(TranscriptEntry entry) {
+            }
+
+            @Override
+            public void entryUpdated(TranscriptEntry entry) {
+            }
+
+            @Override
+            public void stateChanged() {
+                if (!model.isStreaming()) {
+                    idle.countDown();
+                }
+            }
+        };
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                model.addListener(listener);
+                if (!model.isStreaming()) {
+                    idle.countDown(); // schon fertig, bevor der Listener dran war
+                }
             }
         });
-    }
-
-    private static void awaitText(final ChatShellModel model, final String fragment) throws Exception {
-        await(new Callable<Boolean>() {
+        boolean reached = idle.await(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        SwingUtilities.invokeLater(new Runnable() {
             @Override
-            public Boolean call() {
-                List<TranscriptEntry> all = model.getEntries();
-                return !all.isEmpty() && all.get(all.size() - 1).getText().contains(fragment);
+            public void run() {
+                model.removeListener(listener);
             }
         });
-    }
-
-    private static void await(Callable<Boolean> condition) throws Exception {
-        long deadline = System.currentTimeMillis() + 60000L;
-        while (System.currentTimeMillis() < deadline) {
-            if (onEdt(condition)) {
-                return;
-            }
-            Thread.sleep(20L);
-        }
-        fail("condition not reached in time");
+        assertTrue("model still streaming after " + TIMEOUT_SECONDS + " s", reached);
     }
 
     private static <T> T onEdt(final Callable<T> callable) throws Exception {
