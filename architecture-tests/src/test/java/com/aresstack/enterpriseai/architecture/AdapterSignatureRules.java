@@ -21,7 +21,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 /**
  * Technische DTOs und Bibliothekstypen bleiben im Adapter (Auftrag: "technische DTOs bleiben im jeweiligen
  * Adapter"; ARCHITECTURE.md: Fremdbibliotheken mit {@code implementation}, nicht {@code api}). Für jedes
- * Adaptermodul gilt deshalb: Öffentliche Klassen zeigen in Supertypen, öffentlichen/geschützten Feldern,
+ * Adaptermodul gilt deshalb: Öffentliche Klassen zeigen in Supertypen (samt Typargumenten), öffentlichen/geschützten Feldern,
  * Konstruktoren und Methoden (Parameter, Rückgabe, Typargumente, Arrays, Exceptions) keinen Typ einer
  * Fremdbibliothek oder des HTTP-Transports. Verallgemeinert {@code SourceBoundaryTest} auf alle Adapter.
  */
@@ -84,11 +84,16 @@ final class AdapterSignatureRules {
         return new ArchCondition<JavaClass>("keine Bibliotheks- oder Transporttypen in öffentlichen Signaturen zeigen") {
             @Override
             public void check(JavaClass javaClass, ConditionEvents events) {
-                if (javaClass.getRawSuperclass().isPresent()) {
-                    report(events, javaClass, javaClass.getName() + " extends", javaClass.getRawSuperclass().get());
+                // Generische Supertypen mitsamt Typargumenten: "implements Port<LibraryType>" zählt ebenfalls.
+                if (javaClass.getSuperclass().isPresent()) {
+                    for (JavaClass type : javaClass.getSuperclass().get().getAllInvolvedRawTypes()) {
+                        report(events, javaClass, javaClass.getName() + " extends", type);
+                    }
                 }
-                for (JavaClass implemented : javaClass.getRawInterfaces()) {
-                    report(events, javaClass, javaClass.getName() + " implements", implemented);
+                for (JavaType implemented : javaClass.getInterfaces()) {
+                    for (JavaClass type : implemented.getAllInvolvedRawTypes()) {
+                        report(events, javaClass, javaClass.getName() + " implements", type);
+                    }
                 }
                 for (JavaCodeUnit unit : javaClass.getCodeUnits()) {
                     if (!isVisible(unit.getModifiers()) || unit.getName().startsWith("lambda$")) {

@@ -75,8 +75,14 @@ rootProject.subprojects.each { subproject ->
             compileTasks.collect { name, target -> "${name}=${target}" }.join(','))
 }
 buildModel.put('rootDir', rootProject.projectDir.absolutePath)
-buildModel.put('ownTestClassDirectories',
-        sourceSets.test.output.classesDirs.files.collect { it.absolutePath }.sort().join(File.pathSeparator))
+// AP24: kompilierte Testklassen jedes Moduls (auch dieses), damit Java8CompatibilityTest alle Klassendateien sieht.
+rootProject.subprojects.each { subproject ->
+    def test = subproject.sourceSets.findByName('test')
+    if (test != null) {
+        buildModel.put("testClassDirectories.${subproject.name}".toString(),
+                test.output.classesDirs.files.collect { it.absolutePath }.sort().join(File.pathSeparator))
+    }
+}
 
 def buildModelFile = layout.buildDirectory.file('architecture/build-model.properties')
 
@@ -102,11 +108,14 @@ def projectsWithTestFixtures = scannedProjects.findAll { it.sourceSets.findByNam
 tasks.named('test') {
     dependsOn writeBuildModel
     dependsOn scannedProjects.collect { it.tasks.named('classes') }
-    // AP24: Testfixtures werden auf Java-8-Bytecode geprüft und dürfen von Produktionsklassen nicht referenziert werden.
+    // AP24: Testfixtures werden auf Java-8-Bytecode geprüft und dürfen von Produktionsklassen nicht referenziert werden;
+    // die Testklassen aller Module werden ebenfalls auf Java-8-Bytecode geprüft.
     dependsOn projectsWithTestFixtures.collect { it.tasks.named('testFixturesClasses') }
+    dependsOn scannedProjects.collect { it.tasks.named('testClasses') }
     inputs.file(buildModelFile)
     inputs.files(scannedProjects.collect { it.sourceSets.main.output.classesDirs })
     inputs.files(projectsWithTestFixtures.collect { it.sourceSets.testFixtures.output.classesDirs })
+    inputs.files(scannedProjects.collect { it.sourceSets.test.output.classesDirs })
     inputs.file(rootProject.file('settings.gradle'))
     systemProperty 'enterpriseai.architecture.buildModel', buildModelFile.get().asFile.absolutePath
 }

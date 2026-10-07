@@ -18,16 +18,23 @@ import java.util.regex.Pattern;
  */
 final class SettingsGradleRules {
 
-    private static final Pattern INCLUDE = Pattern.compile("^\\s*include\\s*\\(?\\s*['\"]:?([^'\"]+)['\"]", Pattern.MULTILINE);
+    /** Eine include-Zeile (nicht includeBuild); Gruppe 1 ist die komplette Argumentliste bis zum Zeilenende. */
+    private static final Pattern INCLUDE_LINE = Pattern.compile("^\\s*include\\b\\s*\\(?(.*)$", Pattern.MULTILINE);
+    /** Jedes String-Literal der Argumentliste, mit oder ohne führenden Doppelpunkt. */
+    private static final Pattern QUOTED = Pattern.compile("['\"]:?([^'\"]+)['\"]");
 
     private SettingsGradleRules() {
     }
 
     static Set<String> includes(String settingsText) {
         Set<String> includes = new LinkedHashSet<String>();
-        Matcher matcher = INCLUDE.matcher(settingsText);
-        while (matcher.find()) {
-            includes.add(matcher.group(1).trim());
+        Matcher line = INCLUDE_LINE.matcher(settingsText);
+        while (line.find()) {
+            String arguments = line.group(1).replaceFirst("//.*$", "");
+            Matcher quoted = QUOTED.matcher(arguments);
+            while (quoted.find()) {
+                includes.add(quoted.group(1).trim());
+            }
         }
         return includes;
     }

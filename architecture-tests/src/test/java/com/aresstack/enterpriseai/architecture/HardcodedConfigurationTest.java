@@ -29,8 +29,9 @@ public class HardcodedConfigurationTest {
     @Test
     public void hardcodedEndpointModelKeyAndBindAllAreDetected() {
         List<String> findings = HardcodedConfigurationRules.findings(ClassFileInfo.read(HardcodedEndpoint.class));
-        assertEquals(findings.toString(), 4, findings.size());
+        assertEquals(findings.toString(), 5, findings.size());
         assertTrue(findings.toString(), findings.toString().contains("api.openai.com"));
+        assertTrue(findings.toString(), findings.toString().contains("[2001:db8::1]"));
         assertTrue(findings.toString(), findings.toString().contains("gpt-oss-120b"));
         assertTrue(findings.toString(), findings.toString().contains("API-Key"));
         assertTrue(findings.toString(), findings.toString().contains("0.0.0.0"));
@@ -40,6 +41,7 @@ public class HardcodedConfigurationTest {
     public void loopbackUrlsPass() {
         ClassFileInfo info = ClassFileInfo.read(LoopbackOnly.class);
         assertTrue(info.stringConstants().toString(), info.stringConstants().toString().contains("127.0.0.1"));
+        assertTrue(info.stringConstants().toString(), info.stringConstants().toString().contains("[::1]"));
         Violations.assertNone("Loopback ist erlaubt", HardcodedConfigurationRules.findings(info));
     }
 }

@@ -9,13 +9,14 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
  * Auftrag: vollständige Java-8-Kompatibilität. Jeder Kompilierschritt erbt {@code --release 8} (bzw. Target 1.8
- * auf JDK 8) und jede erzeugte Klassendatei (Produktion, Testfixtures, dieses Modul) ist Java-8-Bytecode.
+ * auf JDK 8) und jede erzeugte Klassendatei (Produktion, Testfixtures, Tests aller Module) ist Java-8-Bytecode.
  */
 public class Java8CompatibilityTest {
 
@@ -38,7 +39,11 @@ public class Java8CompatibilityTest {
         for (String module : extension.modulesWithTestFixtures()) {
             directories.addAll(extension.testFixtureClassDirectoriesOf(module));
         }
-        directories.addAll(extension.ownTestClassDirectories());
+        Set<String> modulesWithTests = extension.modulesWithTests();
+        assertTrue("Testklassen aller Module erwartet: " + modulesWithTests, modulesWithTests.containsAll(extension.modules()));
+        for (String module : modulesWithTests) {
+            directories.addAll(extension.testClassDirectoriesOf(module));
+        }
         List<File> classFiles = ClassFileInfo.classFilesUnder(directories);
         assertTrue("zu wenige Klassendateien: " + classFiles.size(), classFiles.size() > 200);
         Violations.assertNone("Bytecode über Java 8", Java8CompatibilityRules.bytecodeViolations(classFiles));

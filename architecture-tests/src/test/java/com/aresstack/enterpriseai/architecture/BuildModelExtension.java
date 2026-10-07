@@ -67,20 +67,29 @@ final class BuildModelExtension {
         return new File(value.trim());
     }
 
-    /** Kompilierte Testklassen von architecture-tests selbst. */
-    List<File> ownTestClassDirectories() {
-        return existingDirectories(list("ownTestClassDirectories", File.pathSeparator));
+    /** Module mit einem {@code test}-Source-Set (inklusive architecture-tests). */
+    Set<String> modulesWithTests() {
+        return modulesWithPrefix("testClassDirectories.");
+    }
+
+    /** Kompilierte Testklassen eines Moduls (nur vorhandene Verzeichnisse). */
+    List<File> testClassDirectoriesOf(String module) {
+        return existingDirectories(list("testClassDirectories." + module, File.pathSeparator));
+    }
+
+    private Set<String> modulesWithPrefix(String prefix) {
+        Set<String> result = new TreeSet<String>();
+        for (String name : properties.stringPropertyNames()) {
+            if (name.startsWith(prefix)) {
+                result.add(name.substring(prefix.length()));
+            }
+        }
+        return result;
     }
 
     /** Module mit einem {@code testFixtures}-Source-Set. */
     Set<String> modulesWithTestFixtures() {
-        Set<String> result = new TreeSet<String>();
-        for (String name : properties.stringPropertyNames()) {
-            if (name.startsWith("testFixtureClassDirectories.")) {
-                result.add(name.substring("testFixtureClassDirectories.".length()));
-            }
-        }
-        return result;
+        return modulesWithPrefix("testFixtureClassDirectories.");
     }
 
     List<File> testFixtureClassDirectoriesOf(String module) {

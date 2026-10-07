@@ -7,6 +7,10 @@ public final class HardcodedEndpoint {
         return "https://api.openai.com/v1/chat/completions";
     }
 
+    public String ipv6Endpoint() {
+        return "http://[2001:db8::1]/v1/embeddings";
+    }
+
     public String model() {
         return "openai/gpt-oss-120b";
     }

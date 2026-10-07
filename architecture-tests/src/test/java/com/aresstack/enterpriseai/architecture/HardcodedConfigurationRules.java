@@ -14,7 +14,8 @@ import java.util.regex.Pattern;
  */
 final class HardcodedConfigurationRules {
 
-    private static final Pattern URL = Pattern.compile("https?://([^/\\s:\"'?#]+)");
+    /** Host als Gruppe 1: entweder eine IPv6-Adresse in eckigen Klammern oder alles bis Port, Pfad oder Query. */
+    private static final Pattern URL = Pattern.compile("https?://(\\[[0-9a-fA-F:.]+]|[^/\\s:\"'?#\\[]+)");
     private static final Pattern MODEL_NAME = Pattern.compile(
             "(?i)(gpt-oss|e5-base-sts|text-embedding-|gpt-4|gpt-3\\.5|claude-\\d|llama-?\\d|mistral-)");
     private static final Pattern API_KEY = Pattern.compile("(?i)(sk-[A-Za-z0-9]{20,}|Bearer\\s+[A-Za-z0-9._~+/=-]{16,})");

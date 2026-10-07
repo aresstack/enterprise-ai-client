@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.acp.solon.archfixture.signature.ConnectorExpos
 import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterExtendingLibrary;
 import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterHidingJson;
 import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterLeakingConnection;
+import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterParameterizingPort;
 import com.aresstack.enterpriseai.knowledge.lucene.archfixture.signature.IndexExposingLucene;
 import com.aresstack.enterpriseai.mcp.solon.archfixture.signature.RuntimeExposingSolon;
 import com.aresstack.enterpriseai.security.keepassrpc.archfixture.signature.AdapterExposingWebSocket;
@@ -43,7 +44,7 @@ public class AdapterSignatureTest {
                 Collections.singletonList(AdapterSignatureRules.publicAdapterApiExposesNoLibraryTypes(REGISTRY)),
                 ProductionClasses.of(AdapterExposingWebSocket.class, RuntimeExposingSolon.class,
                         ConnectorExposingReactor.class, IndexExposingLucene.class, AdapterExtendingLibrary.class,
-                        AdapterLeakingConnection.class));
+                        AdapterLeakingConnection.class, AdapterParameterizingPort.class));
         assertEquals(violations.toString(), 1, violations.size());
         String report = violations.get(0);
         assertTrue(report, report.contains("AdapterExposingWebSocket.socket()"));
@@ -52,6 +53,7 @@ public class AdapterSignatureTest {
         assertTrue(report, report.contains("IndexExposingLucene.<init>("));
         assertTrue(report, report.contains("AdapterExtendingLibrary extends"));
         assertTrue(report, report.contains("AdapterLeakingConnection.connection()"));
+        assertTrue(report, report.contains("AdapterParameterizingPort implements zeigt com.google.gson.archstub.GsonStub"));
     }
 
     @Test
