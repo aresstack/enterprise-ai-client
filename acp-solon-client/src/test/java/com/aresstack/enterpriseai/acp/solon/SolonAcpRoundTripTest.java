@@ -88,7 +88,7 @@ public class SolonAcpRoundTripTest {
         return file.isFile();
     }
 
-    private static final class Collecting implements AcpUpdateListener {
+    private static class Collecting implements AcpUpdateListener {
         final List<AcpUpdate> updates = new CopyOnWriteArrayList<AcpUpdate>();
         final AtomicReference<AcpPromptState> terminal = new AtomicReference<AcpPromptState>();
         final CountDownLatch terminated = new CountDownLatch(1);
@@ -408,6 +408,45 @@ public class SolonAcpRoundTripTest {
                 }
                 assertEquals("round " + round, expected, texts);
             }
+        } finally {
+            connection.close();
+        }
+    }
+
+    @Test
+    public void listenerMayBlockAndCallBackIntoAcpWithoutStallingTheReader() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        final AcpConnection connection = connector.connect(spec());
+        try {
+            final AtomicReference<String> nestedSession = new AtomicReference<String>();
+            final AtomicReference<String> callbackThread = new AtomicReference<String>();
+            Collecting listener = new Collecting() {
+                @Override
+                public void onUpdate(AcpUpdate update) {
+                    if (nestedSession.get() == null) {
+                        callbackThread.set(Thread.currentThread().getName());
+                        try {
+                            // A synchronous ACP request from inside a callback: needs a free reader.
+                            nestedSession.set(connection.newSession().getSessionId());
+                        } catch (AcpException ex) {
+                            nestedSession.set("failed: " + ex.getMessage());
+                        }
+                    }
+                    super.onUpdate(update);
+                }
+            };
+            connection.newSession().prompt("count 5", listener);
+            assertTrue(listener.terminated.await(60, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.COMPLETED, listener.terminal.get());
+            assertTrue(nestedSession.get(), nestedSession.get().startsWith("demo-session-"));
+            assertEquals("acp-callbacks", callbackThread.get());
+            java.util.List<String> texts = new java.util.ArrayList<String>();
+            for (AcpUpdate u : listener.updates) {
+                if (u.getKind() == AcpUpdate.Kind.MESSAGE) {
+                    texts.add(u.getText());
+                }
+            }
+            assertEquals(Arrays.asList("#1", "#2", "#3", "#4", "#5"), texts);
         } finally {
             connection.close();
         }

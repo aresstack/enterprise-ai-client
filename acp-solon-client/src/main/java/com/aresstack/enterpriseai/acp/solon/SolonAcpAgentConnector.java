@@ -46,9 +46,8 @@ import java.util.function.Consumer;
  * (guarded {@link AcpStates.Connection}), the logical session ({@link AcpStates.Session}) and each prompt run
  * (a {@link PromptDispatcher} with monotonic sequences and exactly one terminal). STDERR is drained by the
  * SDK reader into a BOUNDED ring buffer plus an optional host log consumer — never unbounded, never mixed
- * with the ACP STDOUT stream. Updates are delivered on the transport's reader thread in wire order, the
- * terminal on a private daemon prompt thread; the dispatcher serializes both. Never a UI thread, and a
- * listener must not block (it would stall the reader).</p>
+ * with the ACP STDOUT stream. Updates and terminals reach listeners on one callback thread per connection,
+ * in wire order and with the terminal last; never on the protocol reader and never on a UI thread.</p>
  */
 public final class SolonAcpAgentConnector implements AcpAgentConnector {
 
@@ -84,6 +83,17 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                 new ConcurrentHashMap<String, PromptDispatcher>();
         private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "acp-prompt");
+            t.setDaemon(true);
+            return t;
+        });
+        /**
+         * The neutral callback executor: one thread per connection, FIFO. The reader enqueues updates in
+         * wire order, the prompt thread enqueues the terminal after the response, which the reader only
+         * sees after every preceding update; so the terminal always follows the updates of its turn.
+         * Listeners never run on the protocol reader and may block or call back into ACP.
+         */
+        private final ExecutorService callbacks = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "acp-callbacks");
             t.setDaemon(true);
             return t;
         });
@@ -159,19 +169,39 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
         private void route(Object params) {
             Map<?, ?> notification = params instanceof Map ? (Map<?, ?>) params : null;
             Object sessionId = notification == null ? null : notification.get("sessionId");
-            PromptDispatcher dispatcher = sessionId == null ? null : activePromptBySession.get(sessionId.toString());
+            final PromptDispatcher dispatcher =
+                    sessionId == null ? null : activePromptBySession.get(sessionId.toString());
             if (dispatcher == null) {
                 return; // no active prompt (late/unknown) → drop, never crash the reader
             }
             Object update = notification.get("update");
             Object kind = update instanceof Map ? ((Map<?, ?>) update).get("sessionUpdate") : null;
+            final AcpUpdate.Kind mapped;
+            final String text;
             if (AGENT_MESSAGE_CHUNK.equals(kind)) {
-                dispatcher.update(AcpUpdate.Kind.MESSAGE, textOf(((Map<?, ?>) update).get("content")));
+                mapped = AcpUpdate.Kind.MESSAGE;
+                text = textOf(((Map<?, ?>) update).get("content"));
             } else if (AGENT_THOUGHT_CHUNK.equals(kind)) {
-                dispatcher.update(AcpUpdate.Kind.THOUGHT, textOf(((Map<?, ?>) update).get("content")));
+                mapped = AcpUpdate.Kind.THOUGHT;
+                text = textOf(((Map<?, ?>) update).get("content"));
             } else {
                 // Unknown/custom update kinds are tolerated and surfaced generically, never fatal.
-                dispatcher.update(AcpUpdate.Kind.OTHER, String.valueOf(update));
+                mapped = AcpUpdate.Kind.OTHER;
+                text = String.valueOf(update);
+            }
+            deliver(new Runnable() {
+                public void run() {
+                    dispatcher.update(mapped, text);
+                }
+            });
+        }
+
+        /** Runs a listener-facing step on the callback thread; after close() directly (it is then a no-op). */
+        void deliver(Runnable step) {
+            try {
+                callbacks.execute(step);
+            } catch (RejectedExecutionException closed) {
+                step.run();
             }
         }
 
@@ -264,6 +294,7 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                 }
             }
             executor.shutdownNow();
+            callbacks.shutdownNow();
             // Queued prompts dropped by shutdownNow() never reach their finally block: give every prompt
             // still registered its single terminal so no consumer waits forever.
             for (Map.Entry<String, PromptDispatcher> active : activePromptBySession.entrySet()) {
@@ -311,25 +342,6 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
             return state.get();
         }
 
-        /**
-         * Bounded drain before a terminal (see the prompt runnable): a 50ms grace for updates the reader
-         * has not routed yet when the response lands, then wait until no update arrived for 100ms —
-         * capped at 1s so a terminal is never delayed noticeably even under a continuous stream.
-         */
-        private void awaitUpdateQuiescence(PromptDispatcher dispatcher) {
-            final long quietWindowNanos = TimeUnit.MILLISECONDS.toNanos(100);
-            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-            try {
-                Thread.sleep(50);
-                while (System.nanoTime() < deadlineNanos
-                        && dispatcher.nanosSinceLastUpdate() < quietWindowNanos) {
-                    Thread.sleep(10);
-                }
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt(); // never block a terminal on interruption
-            }
-        }
-
         public PromptHandle prompt(String text, AcpUpdateListener listener) {
             final String promptId = UUID.randomUUID().toString();
             final PromptDispatcher dispatcher = new PromptDispatcher(sessionId, promptId, listener);
@@ -363,16 +375,16 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                         AcpPromptState terminal = response != null
                                 && response.stopReason() == AcpSchema.StopReason.CANCELLED
                                 ? AcpPromptState.CANCELLED : AcpPromptState.COMPLETED;
-                        // Every update precedes the response ON THE WIRE, but notifications are delivered
-                        // on the transport reader thread while the response unblocks THIS thread — on a
-                        // slow machine the response overtakes the tail of the update stream, and marking
-                        // terminal right away would DROP those real updates (the dispatcher's late-update
-                        // guard cannot tell them from stragglers): the final chunks of a turn were lost.
-                        // Drain first: a short unconditional grace for not-yet-routed updates, then wait
-                        // until the stream is quiet — bounded, so the terminal is never delayed noticeably.
-                        awaitUpdateQuiescence(dispatcher);
-                        dispatcher.terminal(terminal, String.valueOf(
-                                response == null ? "" : response.stopReason()));
+                        // Every update precedes the response on the wire and the reader handles both in
+                        // order, so all updates of this turn are already queued on the callback thread:
+                        // queue the terminal behind them instead of guessing with a drain.
+                        final AcpPromptState outcome = terminal;
+                        final String detail = String.valueOf(response == null ? "" : response.stopReason());
+                        connection.deliver(new Runnable() {
+                            public void run() {
+                                dispatcher.terminal(outcome, detail);
+                            }
+                        });
                     } catch (RuntimeException ex) {
                         // The prompt FAILS either way. The connection is marked FAILED only when the agent
                         // process is gone (death, broken pipe); a request timeout or an agent-side error
@@ -382,7 +394,12 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                             connection.state.to(AcpConnectionState.FAILED);
                             connection.processAlive = false;
                         }
-                        dispatcher.terminal(AcpPromptState.FAILED, "prompt failed: " + ex.getMessage());
+                        final String detail = "prompt failed: " + ex.getMessage();
+                        connection.deliver(new Runnable() {
+                            public void run() {
+                                dispatcher.terminal(AcpPromptState.FAILED, detail);
+                            }
+                        });
                     } finally {
                         connection.activePromptBySession.remove(sessionId, dispatcher);
                     }
