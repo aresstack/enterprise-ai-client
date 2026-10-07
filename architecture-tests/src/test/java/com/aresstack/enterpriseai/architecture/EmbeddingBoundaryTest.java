@@ -70,15 +70,16 @@ public class EmbeddingBoundaryTest {
         Violations.assertNone("embedding.openai", Violations.of(Arrays.asList(rule), productionClasses));
     }
 
-    /** Gson ist ein Implementierungsdetail des Adapters und taucht in keiner öffentlichen Signatur auf. */
+    /**
+     * Gson ist ein Implementierungsdetail des Adapters: Die öffentlichen Einstiegsklassen hängen überhaupt nicht
+     * von Gson ab, damit kann kein Gson-Typ in einer öffentlichen Signatur (Parameter, Rückgabe, Feld, Generics)
+     * auftauchen. Gson nutzen nur die paketinternen Wire-Klassen.
+     */
     @Test
     public void embeddingOpenAiLeaksNoJsonTypes() {
-        ArchRule rule = com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods()
-                .that().areDeclaredInClassesThat().resideInAPackage(EMBEDDING_OPENAI)
-                .and().arePublic()
-                .should().haveRawReturnType(
-                        com.tngtech.archunit.base.DescribedPredicate.not(
-                                com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage("com.google.gson..")))
+        ArchRule rule = com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses()
+                .that().resideInAPackage(EMBEDDING_OPENAI).and().arePublic()
+                .should().dependOnClassesThat().resideInAPackage("com.google.gson..")
                 .allowEmptyShould(true);
         Violations.assertNone("embedding.openai JSON", Violations.of(Arrays.asList(rule), productionClasses));
     }

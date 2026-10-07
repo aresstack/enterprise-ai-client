@@ -3,7 +3,8 @@
  * (Strang C, AP6).
  *
  * <p>Öffentlich sind nur {@link com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter},
- * seine Konfiguration und {@link com.aresstack.enterpriseai.embedding.openai.EmbeddingInputMode}. HTTP, JSON
+ * seine Konfiguration, {@link com.aresstack.enterpriseai.embedding.openai.EmbeddingInputMode} und
+ * {@link com.aresstack.enterpriseai.embedding.openai.BearerTokenSource}. HTTP, JSON
  * (Gson) und Wire-DTOs bleiben paketintern; nach außen gehen nur Typen aus {@code embedding-api} und
  * {@code domain.embedding}.
  *
