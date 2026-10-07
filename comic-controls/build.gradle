@@ -1,1 +1,5 @@
 description = 'Neutrale Swing/Java2D-Comic-Bibliothek (Strang B): Paletten, Painter, Borders, Controls. Keine Projektabhängigkeiten.'
+
+tasks.withType(Test).configureEach {
+    systemProperty 'java.awt.headless', 'true'
+}

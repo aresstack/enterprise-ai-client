@@ -123,4 +123,37 @@ public class EmbeddingModelIdentityTest {
         assertFalse(a.isSameWorldAs(b));
         assertFalse(b.isSameWorldAs(a));
     }
+
+    @Test
+    public void rejectsUnpairedSurrogatesThatWouldCollideInUtf8() {
+        // "?" und "\uD800" würden beide als "?" kodiert und denselben Fingerprint ergeben.
+        EmbeddingModelIdentity.of("m", 1).withAttribute("a", "?");
+        for (String malformed : new String[] {"\uD800", "\uDC00", "x\uD800", "\uDC00\uD800"}) {
+            try {
+                EmbeddingModelIdentity.of("m", 1).withAttribute("a", malformed);
+                fail("unpaired surrogate in value must be rejected");
+            } catch (IllegalArgumentException expected) {
+                // ok
+            }
+            try {
+                EmbeddingModelIdentity.of("m" + malformed, 1);
+                fail("unpaired surrogate in model id must be rejected");
+            } catch (IllegalArgumentException expected) {
+                // ok
+            }
+            try {
+                EmbeddingModelIdentity.of("m", 1).withAttribute("k" + malformed, "v");
+                fail("unpaired surrogate in key must be rejected");
+            } catch (IllegalArgumentException expected) {
+                // ok
+            }
+        }
+    }
+
+    @Test
+    public void acceptsValidSurrogatePairs() {
+        EmbeddingModelIdentity a = EmbeddingModelIdentity.of("m\uD83D\uDE00", 1).withAttribute("emoji", "\uD83D\uDE00");
+        EmbeddingModelIdentity b = EmbeddingModelIdentity.of("m\uD83D\uDE01", 1).withAttribute("emoji", "\uD83D\uDE00");
+        assertDifferentWorld(a, b);
+    }
 }

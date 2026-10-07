@@ -1,5 +1,9 @@
-description = 'Adapter: OpenAI-kompatibler /embeddings-Client (Strang C).'
+description = 'Adapter: OpenAI-kompatibler /embeddings-Client der internen Enterprise-API (Strang C).'
 
 dependencies {
     api project(':embedding-api')
+
+    implementation libs.gson
+
+    testImplementation testFixtures(project(':embedding-api'))
 }
