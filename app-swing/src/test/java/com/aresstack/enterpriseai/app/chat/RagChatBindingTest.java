@@ -47,6 +47,8 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -555,6 +557,16 @@ public class RagChatBindingTest {
         public void rebuild(Collection<KnowledgeIndexEntry> entries) {
             delegate.rebuild(entries);
         }
+
+        @Override
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+            return delegate.resourceIds(space, sourceId);
+        }
+
+        @Override
+        public Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+            return delegate.revisionOf(space, resourceId);
+        }
     }
 
     /** Beide Suchpfade fallen aus (z. B. beschädigtes Indexverzeichnis). */
@@ -592,6 +604,16 @@ public class RagChatBindingTest {
 
         @Override
         public void rebuild(Collection<KnowledgeIndexEntry> entries) {
+            throw new KnowledgeIndexException("index unavailable");
+        }
+
+        @Override
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+            throw new KnowledgeIndexException("index unavailable");
+        }
+
+        @Override
+        public Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
             throw new KnowledgeIndexException("index unavailable");
         }
     }
