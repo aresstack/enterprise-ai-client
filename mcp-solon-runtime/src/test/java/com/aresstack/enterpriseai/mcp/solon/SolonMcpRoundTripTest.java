@@ -46,7 +46,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -229,12 +229,12 @@ public class SolonMcpRoundTripTest {
         runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo()));
         McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(10), Duration.ofSeconds(10))
                 .connect(runtime.endpointUrl(handle), null);
-        // Je Aufruf genau ein nebenläufiges Update (Semaphore-Handschlag). Ein frei drehender Updater erzeugte
-        // zehntausende tools/list_changed, auf die der SDK-Client jeweils mit tools/list antwortet; auf
+        // Je Aufruf genau ein nebenläufiges Update, beide starten am selben Rendezvous. Ein frei drehender Updater
+        // erzeugte zehntausende tools/list_changed, auf die der SDK-Client jeweils mit tools/list antwortet; auf
         // langsamen Runnern brach der Server unter dieser Last mit SocketException ab, was mit der geprüften
         // Eigenschaft (unveränderte Tools bleiben während Updates aufrufbar) nichts zu tun hat.
         final int calls = 50;
-        final Semaphore updateAllowed = new Semaphore(0);
+        final CyclicBarrier rendezvous = new CyclicBarrier(2);
         final AtomicReference<Throwable> updaterFailure = new AtomicReference<Throwable>();
         Thread updater = new Thread(new Runnable() {
             @Override
@@ -242,7 +242,7 @@ public class SolonMcpRoundTripTest {
                 try {
                     boolean withEcho = false;
                     for (int i = 0; i < calls; i++) {
-                        updateAllowed.acquire();
+                        rendezvous.await(10, TimeUnit.SECONDS);
                         runtime.updateTools(handle, withEcho
                                 ? Arrays.asList(McpTestTools.ping(), McpTestTools.echo())
                                 : Collections.singletonList(McpTestTools.ping()));
@@ -254,12 +254,23 @@ public class SolonMcpRoundTripTest {
             }
         });
         updater.start();
+        boolean allCallsDone = false;
         try {
             for (int i = 0; i < calls; i++) {
-                updateAllowed.release();
+                try {
+                    rendezvous.await(10, TimeUnit.SECONDS);
+                } catch (Exception barrierBroken) {
+                    Throwable cause = updaterFailure.get();
+                    throw new AssertionError("updater stopped early", cause != null ? cause : barrierBroken);
+                }
                 assertEquals("pong", client.callTool("ping", new HashMap<String, Object>()));
             }
+            allCallsDone = true;
         } finally {
+            if (!allCallsDone) {
+                // Bricht ein Aufruf ab, wartet der Updater sonst ewig am Rendezvous.
+                updater.interrupt();
+            }
             updater.join(TimeUnit.SECONDS.toMillis(30));
             client.close();
         }
