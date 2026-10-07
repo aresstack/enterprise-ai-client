@@ -195,7 +195,7 @@ final class MediaWikiClient {
     }
 
     private void login(MediaWikiCredentials credentials) throws KnowledgeSourceException {
-        LOG.info("[MediaWiki] login to " + site.siteKey() + " as '" + credentials.username() + "'");
+        LOG.info("[MediaWiki] login to " + site.siteKey());
         transport.resetSession();
         String password = new String(credentials.password());
 
@@ -244,13 +244,9 @@ final class MediaWikiClient {
     }
 
     private JsonObject loginPost(String body) throws KnowledgeSourceException {
-        String response = postRaw(body);
-        try {
-            return MediaWikiResponses.parseObject(response);
-        } catch (KnowledgeSourceException e) {
-            // API-Fehler beim Login sind immer Zugriffsfehler; die Meldung enthält keinen Request-Körper.
-            throw new KnowledgeSourceException(Kind.ACCESS_DENIED, e.getMessage());
-        }
+        // Fehlerart des Parsers bleibt erhalten (z. B. readonly/maxlag = UNAVAILABLE); die Meldung enthält
+        // keinen Request-Körper.
+        return MediaWikiResponses.parseObject(postRaw(body));
     }
 
     private String postRaw(String body) throws KnowledgeSourceException {

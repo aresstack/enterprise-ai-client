@@ -5,6 +5,7 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaModifier;
+import com.tngtech.archunit.core.domain.JavaType;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
@@ -70,9 +71,15 @@ public class SourceBoundaryTest {
 
     @Test
     public void ruleDetectsALeakingSignature() {
-        JavaClasses fixture = new ClassFileImporter().importClasses(LeakingFixture.class);
+        assertDetected(LeakingFixture.class);
+        assertDetected(GenericLeakingFixture.class);
+        assertDetected(ArrayLeakingFixture.class);
+    }
+
+    private static void assertDetected(Class<?> fixtureClass) {
+        JavaClasses fixture = new ClassFileImporter().importClasses(fixtureClass);
         if (!classes().should(notExposeProtocolTypes()).evaluate(fixture).hasViolation()) {
-            throw new AssertionError("Regel erkennt java.net.HttpURLConnection in öffentlicher Signatur nicht");
+            throw new AssertionError("Regel erkennt Protokolltyp in " + fixtureClass.getSimpleName() + " nicht");
         }
     }
 
@@ -92,8 +99,12 @@ public class SourceBoundaryTest {
                     if (!isVisible(unit.getModifiers()) || unit.getName().startsWith("lambda$")) {
                         continue;
                     }
-                    List<JavaClass> types = new ArrayList<JavaClass>(unit.getRawParameterTypes());
-                    types.add(unit.getRawReturnType());
+                    // Alle beteiligten Rohtypen: auch Typargumente (List<JsonObject>) und Array-Komponenten.
+                    List<JavaClass> types = new ArrayList<JavaClass>();
+                    for (JavaType parameter : unit.getParameterTypes()) {
+                        types.addAll(parameter.getAllInvolvedRawTypes());
+                    }
+                    types.addAll(unit.getReturnType().getAllInvolvedRawTypes());
                     types.addAll(unit.getExceptionTypes());
                     for (JavaClass type : types) {
                         report(events, javaClass, unit.getFullName(), type);
@@ -101,7 +112,9 @@ public class SourceBoundaryTest {
                 }
                 for (JavaField field : javaClass.getFields()) {
                     if (isVisible(field.getModifiers())) {
-                        report(events, javaClass, field.getFullName(), field.getRawType());
+                        for (JavaClass type : field.getType().getAllInvolvedRawTypes()) {
+                            report(events, javaClass, field.getFullName(), type);
+                        }
                     }
                 }
             }
@@ -126,6 +139,21 @@ public class SourceBoundaryTest {
 
         public java.net.HttpURLConnection connection() {
             return null;
+        }
+    }
+
+    /** Protokolltyp nur als Typargument. */
+    public static final class GenericLeakingFixture {
+
+        public java.util.List<java.net.HttpURLConnection> connections() {
+            return null;
+        }
+    }
+
+    /** Protokolltyp nur als Array-Komponente eines Parameters. */
+    public static final class ArrayLeakingFixture {
+
+        public void use(java.net.CookieManager[] managers) {
         }
     }
 }

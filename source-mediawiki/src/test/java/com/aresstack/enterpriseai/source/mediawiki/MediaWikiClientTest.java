@@ -163,6 +163,20 @@ public class MediaWikiClientTest {
     }
 
     @Test
+    public void transientApiErrorDuringLoginStaysUnavailable() {
+        wiki.requiredUser = "bot";
+        wiki.requiredPassword = "pw";
+        wiki.readOnly = true;
+        wiki.page("A", "<p>x</p>", 1, 1);
+        try {
+            loggedInClient("bot", "pw").parse("A");
+            fail("expected exception");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(Kind.UNAVAILABLE, e.kind());
+        }
+    }
+
+    @Test
     public void wrongPasswordIsAccessDeniedWithoutSecretInMessage() {
         wiki.requiredUser = "bot";
         wiki.requiredPassword = "richtig";

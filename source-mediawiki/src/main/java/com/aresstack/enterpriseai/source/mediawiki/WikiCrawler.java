@@ -72,7 +72,8 @@ final class WikiCrawler {
         try {
             return client.outgoingLinks(title);
         } catch (KnowledgeSourceException e) {
-            if (e.kind() == Kind.ACCESS_DENIED) {
+            // Zugriff verweigert oder Wiki nicht erreichbar betrifft die ganze Quelle: Crawl abbrechen.
+            if (e.kind() == Kind.ACCESS_DENIED || e.kind() == Kind.UNAVAILABLE) {
                 throw e;
             }
             LOG.log(Level.WARNING, "[MediaWiki] failed to load links of " + title + ": " + e.getMessage());

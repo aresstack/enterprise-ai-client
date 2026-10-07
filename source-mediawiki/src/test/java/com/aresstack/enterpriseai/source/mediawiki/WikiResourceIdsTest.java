@@ -38,6 +38,23 @@ public class WikiResourceIdsTest {
         assertNull(WikiResourceIds.titleOf("w", "wiki:w/"));
         assertNull(WikiResourceIds.titleOf("w", "wiki:w/%ZZ"));
         assertNull(WikiResourceIds.titleOf("w", "wiki:w/%4"));
+        assertNull(WikiResourceIds.titleOf("w", "wiki:w/%FF"));
+        assertNull(WikiResourceIds.titleOf("w", "wiki:w/%C3"));
         assertNull(WikiResourceIds.titleOf("w", null));
+    }
+
+    @Test
+    public void siteConfigRejectsUrlsThatCannotTakeTheApiPath() {
+        String[] invalid = {"https://wiki.example/w?x=1", "https://wiki.example/w#top", "https:wiki", "https:///w"};
+        for (String url : invalid) {
+            try {
+                MediaWikiSiteConfig.builder("w", url).build();
+                throw new AssertionError("accepted " + url);
+            } catch (IllegalArgumentException expected) {
+                // erwartet
+            }
+        }
+        assertEquals("https://wiki.example/w/api.php",
+                MediaWikiSiteConfig.builder("w", "https://wiki.example/w/").build().apiEndpoint());
     }
 }

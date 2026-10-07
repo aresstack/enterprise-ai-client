@@ -1,6 +1,9 @@
 package com.aresstack.enterpriseai.source.mediawiki;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -83,6 +86,15 @@ final class WikiResourceIds {
                 return null;
             }
         }
-        return new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+        try {
+            // Ungültiges UTF-8 ablehnen statt durch U+FFFD zu ersetzen, sonst fallen verschiedene IDs zusammen.
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes.toByteArray()))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            return null;
+        }
     }
 }

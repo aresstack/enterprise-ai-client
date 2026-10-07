@@ -117,6 +117,12 @@ public final class MediaWikiSiteConfig {
             if (!"http".equals(scheme) && !"https".equals(scheme)) {
                 throw new IllegalArgumentException("apiUrl must be an http(s) URL: " + apiUrl);
             }
+            if (uri.isOpaque() || uri.getHost() == null) {
+                throw new IllegalArgumentException("apiUrl must be a hierarchical URL with host: " + apiUrl);
+            }
+            if (uri.getRawQuery() != null || uri.getRawFragment() != null) {
+                throw new IllegalArgumentException("apiUrl must not contain query or fragment");
+            }
             if (uri.getRawUserInfo() != null) {
                 throw new IllegalArgumentException("apiUrl must not contain user info");
             }

@@ -62,6 +62,17 @@ public class WikiCrawlerTest {
     }
 
     @Test
+    public void unavailableWikiStopsTheCrawl() {
+        wiki.unavailableLinksFor.add("A");
+        try {
+            crawler.crawl(list("Start"), 3, 100);
+            fail();
+        } catch (KnowledgeSourceException e) {
+            assertEquals(Kind.UNAVAILABLE, e.kind());
+        }
+    }
+
+    @Test
     public void accessDeniedStopsTheCrawl() {
         wiki.requiredUser = "u";
         try {

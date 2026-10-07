@@ -18,6 +18,8 @@ final class FakeMediaWikiTransport implements MediaWikiTransport {
     final Map<String, String> redirects = new LinkedHashMap<String, String>();
     final List<Map<String, String>> requests = new ArrayList<Map<String, String>>();
     final List<String> failLinksFor = new ArrayList<String>();
+    boolean readOnly;
+    final List<String> unavailableLinksFor = new ArrayList<String>();
     int linkPageSize = 500;
     int sessionResets;
 
@@ -53,6 +55,9 @@ final class FakeMediaWikiTransport implements MediaWikiTransport {
     private Response handle(Map<String, String> p) throws IOException {
         requests.add(p);
         String action = p.get("action");
+        if (readOnly && ("login".equals(action) || "tokens".equals(p.get("meta")))) {
+            return ok("{\"error\":{\"code\":\"readonly\",\"info\":\"The wiki is in read-only mode.\"}}");
+        }
         if ("login".equals(action)) {
             return login(p);
         }
@@ -153,6 +158,9 @@ final class FakeMediaWikiTransport implements MediaWikiTransport {
     private String links(String title, String cont) {
         Page page = resolve(title);
         if (failLinksFor.contains(title)) {
+            return "{\"error\":{\"code\":\"badcontinue\",\"info\":\"broken\"}}";
+        }
+        if (unavailableLinksFor.contains(title)) {
             return "{\"error\":{\"code\":\"internal_api_error_DBQueryError\",\"info\":\"db\"}}";
         }
         if (page == null) {
