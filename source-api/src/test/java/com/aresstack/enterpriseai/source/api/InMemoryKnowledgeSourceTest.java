@@ -61,6 +61,14 @@ public class InMemoryKnowledgeSourceTest {
     }
 
     @Test
+    public void searchIsCaseInsensitiveWithUnicodeThatChangesLengthWhenLowercased() throws Exception {
+        InMemoryKnowledgeSource unicode = new InMemoryKnowledgeSource("u").add("k", "Titel", "İİİİ Treffer hier");
+        List<SourceSearchHit> hits = unicode.search(SourceQuery.of("treffer"));
+        assertEquals(1, hits.size());
+        assertTrue(hits.get(0).snippet().contains("Treffer"));
+    }
+
+    @Test
     public void updateChangesRevisionAndContentHash() throws Exception {
         KnowledgeDocument before = source.load(source.idOf("y"));
         source.update("y", "Neuer Text");

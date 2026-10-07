@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -165,20 +164,29 @@ public final class InMemoryKnowledgeSource implements SearchableKnowledgeSource 
     @Override
     public synchronized List<SourceSearchHit> search(SourceQuery query) throws KnowledgeSourceException {
         calls.add("search:" + query.text());
-        String needle = query.text().toLowerCase(Locale.ROOT);
         List<SourceSearchHit> hits = new ArrayList<SourceSearchHit>();
         for (Entry entry : entries.values()) {
             if (hits.size() >= query.limit()) {
                 break;
             }
-            int at = entry.text.toLowerCase(Locale.ROOT).indexOf(needle);
-            if (at >= 0 || entry.title.toLowerCase(Locale.ROOT).contains(needle)) {
+            int at = indexOfIgnoreCase(entry.text, query.text());
+            if (at >= 0 || indexOfIgnoreCase(entry.title, query.text()) >= 0) {
                 String snippet = at < 0 ? "" : entry.text.substring(Math.max(0, at - 20),
-                        Math.min(entry.text.length(), at + needle.length() + 20));
+                        Math.min(entry.text.length(), at + query.text().length() + 20));
                 hits.add(new SourceSearchHit(idOf(entry.key), entry.title, snippet));
             }
         }
         return hits;
+    }
+
+    /** Fundstelle im Originaltext (Indizes bleiben gültig, anders als nach {@code toLowerCase}). */
+    private static int indexOfIgnoreCase(String text, String needle) {
+        for (int i = 0; i + needle.length() <= text.length(); i++) {
+            if (text.regionMatches(true, i, needle, 0, needle.length())) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** Kindressourcen (über {@link #addChild}) zählen wie Links, analog zu Confluence-Kindseiten. */

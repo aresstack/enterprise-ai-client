@@ -40,7 +40,7 @@ public class KnowledgeSourceException extends Exception {
         ACCESS_DENIED,
         /** Die Quelle hat eine unerwartete oder fehlerhafte Antwort geliefert. */
         INVALID_RESPONSE,
-        /** Die Anfrage passt nicht zu dieser Quelle (z. B. fremde Source-ID, unbekannte Ressource). */
+        /** Die ID gehört nicht zu dieser Quelle (fremde Quelle oder unbekanntes ID-Format); eine fehlende Ressource dieser Quelle ist {@link #NOT_FOUND}. */
         UNSUPPORTED
     }
 }
