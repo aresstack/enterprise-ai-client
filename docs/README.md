@@ -18,6 +18,7 @@ ARCHITECTURE.md.
 | [ACP](acp.md) | Agent Client Protocol: Agent-Modus, Module, Lebenszyklus, Demo-Agent |
 | [MCP](mcp.md) | Model Context Protocol: Endpoints, Tokens, Wissenswerkzeuge, Sicherheitsregeln |
 | [Tests](tests.md) | Testanleitung: Befehle, Fakes und Fixtures, umgebungsabhängige Tests, CI |
+| [Live-Verifikation](live-verifikation.md) | Lauf gegen die echten Dienste in sieben Stufen: Voraussetzungen, Kommandos, Rückmeldung, Ergebnisprotokoll |
 | [Herkunft](herkunft.md) | Was aus askai-java8, MainframeMate und corenth übernommen wurde und was neu ist |
 | [Einschränkungen](einschraenkungen.md) | Bekannte Grenzen, UNVERIFIED-Punkte und offene Arbeiten |
 

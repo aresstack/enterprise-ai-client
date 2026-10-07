@@ -1,16 +1,19 @@
 # Bekannte Einschränkungen und Verifikationsstand
 
 Diese Seite nennt ehrlich, was nicht geprüft ist (UNVERIFIED), welche Grenzen bewusst gesetzt sind und was
-als Restarbeit offen bleibt. Stand: `main` nach AP25, 2026-10-07.
+als Restarbeit offen bleibt. Stand: `main` nach AP26 und Vorbereitung der Live-Verifikation, 2026-10-07.
 
 ## Nichts gegen echte Systeme getestet
 
 Kein Arbeitspaket hat gegen die echte Enterprise-API, ein echtes MediaWiki, ein echtes Confluence oder ein
 echtes KeePass getestet. Alle Tests des normalen Builds laufen gegen lokale Fakes (siehe
-[Testanleitung](tests.md)). AP25 hat mit `./gradlew :integration-tests:liveTest` einen Lauf gegen echte Dienste
-vorbereitet (fünf Testklassen mit sechs Testfällen, Parameter in `integration-tests/README.md`); er ist von
-niemandem ausgeführt worden.
-Seine Array-Probe für `/embeddings` würde die offene Frage an Strang C beantworten.
+[Testanleitung](tests.md)). Der Lauf gegen echte Dienste ist als [Live-Verifikation](live-verifikation.md) in
+sieben Stufen vorbereitet (`./gradlew :integration-tests:liveTest -Dlive.stage=N`, sechs Testklassen mit elf
+Testfällen): 1 Chat, 2 Embeddings mit einem Text, 3 Embeddings mit Array-Eingabe, 4 tatsächliche
+Embedding-Dimension, 5 MediaWiki, 6 KeePassRPC, 7 Confluence über KeePass. Der Auftraggeber führt die Stufen
+nacheinander aus; das Ergebnisprotokoll dort hält fest, welche Stufe gelaufen ist. Bis dahin gilt jede Zeile
+der folgenden Tabelle unverändert; nach jedem echten Ergebnis wird nur die tatsächlich verifizierte
+Fähigkeit aus der Spalte UNVERIFIED gestrichen.
 
 | Bereich | Was belegt ist | Was UNVERIFIED ist |
 |---|---|---|
@@ -18,7 +21,7 @@ Seine Array-Probe für `/embeddings` würde die offene Frage an Strang C beantwo
 | Embeddings (`/embeddings`) | OpenAPI-Dokumentation; Adapter gegen Fake-Server. | **Der gesamte Endpunkt ist am realen Backend nicht getestet.** Array-Input nur hinter `embedding.inputMode=ARRAY_UNVERIFIED`; `encoding_format`, `dimensions`, `user`, `usage` werden nicht gesendet und nicht vorausgesetzt; Dimension von `danielheinz/e5-base-sts-en-de` vermutlich 768. |
 | MediaWiki | Action-API-Abfragen aus MainframeMate, Fake-Transport, lokaler HTTP-Server. | Login-Varianten, Single Sign-on, Proxy, echtes Firmen-Wiki. |
 | Confluence | REST-Endpunkte aus MainframeMate, `FakeConfluence`, lokaler HTTP-Server. | Echte Data-Center-Instanz, Bearer/PAT, Windows-MY (nur unter Windows prüfbar), PKCS12 ohne echte Gegenstelle. |
-| KeePassRPC | Protokoll und Kryptografie aus MainframeMate, `FakeKeePassRpcServer`. | Handschlag mit einem echten KeePassRPC-Plugin, Pairing über den Swing-Dialog; `KeePassRpcRealServerIT` und `LiveKeePassIT` sind vorbereitet, aber von niemandem ausgeführt. |
+| KeePassRPC | Protokoll und Kryptografie aus MainframeMate, `FakeKeePassRpcServer`. | Handschlag mit einem echten KeePassRPC-Plugin, Pairing über den Swing-Dialog; `KeePassRpcRealServerIT` und `LiveKeePassIT` (Stufe 6, pairt über den Dialog der Anwendung) sind vorbereitet, aber von niemandem ausgeführt. |
 | Proxy | `ProxyPolicy` mit Modi System/keiner/manuell. | Proxy-Authentifizierung wird nicht unterstützt; Verhalten hinter dem Firmen-Proxy ungeprüft. |
 | JDK 8 | CI baut und testet auf Temurin 8 und 21. | Lokale Entwicklung fand überwiegend auf neueren JDKs statt. |
 
@@ -70,8 +73,10 @@ braucht.
 
 ## Offene Fragen an den Auftraggeber
 
-- `/embeddings` mit Array-Input real testen; Ergebnis entscheidet über den Standard von `embedding.inputMode`.
-- Embedding-Dimension von `danielheinz/e5-base-sts-en-de` bestätigen (vermutlich 768).
+- `/embeddings` mit Array-Input real testen (Stufe 3 der Live-Verifikation); Ergebnis entscheidet über den
+  Standard von `embedding.inputMode`.
+- Embedding-Dimension von `danielheinz/e5-base-sts-en-de` erfassen (Stufe 4; 768 ist nur eine Vermutung und
+  wird laut Auftraggeber nicht vor dem echten Lauf festgeschrieben).
 - Entscheidungskarte "Index führt" (empfohlen und umgesetzt) bestätigen; bei anderer Wahl Rückbau in AP20.
 
 ## Restarbeit (optional)

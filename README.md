@@ -95,6 +95,7 @@ Code. Die vollständigen Regeln prüft `./gradlew :architecture-tests:test`.
 | Agent-Modus über ACP | [docs/acp.md](docs/acp.md) |
 | Wissenswerkzeuge über MCP | [docs/mcp.md](docs/mcp.md) |
 | Tests, Fixtures, umgebungsabhängige Läufe, CI | [docs/tests.md](docs/tests.md) |
+| Live-Verifikation gegen die echten Dienste in sieben Stufen | [docs/live-verifikation.md](docs/live-verifikation.md) |
 | Herkunft aus askai-java8, MainframeMate, corenth | [docs/herkunft.md](docs/herkunft.md) |
 | Bekannte Einschränkungen und UNVERIFIED-Punkte | [docs/einschraenkungen.md](docs/einschraenkungen.md) |
 

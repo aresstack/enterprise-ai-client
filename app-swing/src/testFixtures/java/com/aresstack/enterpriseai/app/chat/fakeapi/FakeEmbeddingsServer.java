@@ -41,10 +41,12 @@ public final class FakeEmbeddingsServer implements AutoCloseable {
     public static final class Recorded {
         private final String authorization;
         private final List<String> inputs;
+        private final String encodingFormat;
 
-        Recorded(String authorization, List<String> inputs) {
+        Recorded(String authorization, List<String> inputs, String encodingFormat) {
             this.authorization = authorization;
             this.inputs = Collections.unmodifiableList(new ArrayList<String>(inputs));
+            this.encodingFormat = encodingFormat;
         }
 
         public String authorization() {
@@ -53,6 +55,11 @@ public final class FakeEmbeddingsServer implements AutoCloseable {
 
         public List<String> inputs() {
             return inputs;
+        }
+
+        /** @return das Feld {@code encoding_format} der Anfrage oder {@code null}, wenn es fehlt */
+        public String encodingFormat() {
+            return encodingFormat;
         }
     }
 
@@ -191,7 +198,9 @@ public final class FakeEmbeddingsServer implements AutoCloseable {
         } else if (input != null && !input.isJsonNull()) {
             inputs.add(input.getAsString());
         }
-        requests.add(new Recorded(exchange.getRequestHeaders().getFirst("Authorization"), inputs));
+        JsonElement encodingFormat = body.get("encoding_format");
+        requests.add(new Recorded(exchange.getRequestHeaders().getFirst("Authorization"), inputs,
+                encodingFormat != null && encodingFormat.isJsonPrimitive() ? encodingFormat.getAsString() : null));
         CountDownLatch current = gate;
         if (current != null) {
             try {
