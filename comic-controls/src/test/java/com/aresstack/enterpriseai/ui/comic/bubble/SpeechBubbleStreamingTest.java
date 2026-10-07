@@ -48,6 +48,34 @@ public class SpeechBubbleStreamingTest {
         });
     }
 
+    /** Ein langer Absatz ohne Zeilenumbruch, in Stücken, die Wörter zerschneiden. */
+    @Test
+    public void appendedSingleParagraphMeasuresLikeTextSetAtOnce() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                StringBuilder paragraph = new StringBuilder();
+                for (int i = 0; i < 400; i++) {
+                    paragraph.append(i % 7 == 0 ? "Donaudampfschifffahrt" : "Wort").append(i).append(' ');
+                }
+                String full = paragraph.toString().trim();
+                SpeechBubblePanel streamed = new SpeechBubblePanel(BubbleSide.LEFT, Color.BLUE, Color.WHITE,
+                        "Assistent", "");
+                int[] widths = {140, 420, 900};
+                int cut = 7;
+                for (int from = 0, piece = 0; from < full.length(); from += cut, piece++) {
+                    streamed.appendText(full.substring(from, Math.min(full.length(), from + cut)));
+                    streamed.preferredHeightForWidth(widths[piece % widths.length]);
+                    streamed.preferredWidthWithin(widths[(piece + 1) % widths.length]);
+                    if (piece % 50 == 0) {
+                        assertSameMeasures(full.substring(0, Math.min(full.length(), from + cut)), streamed, widths);
+                    }
+                }
+                assertSameMeasures(full, streamed, widths);
+            }
+        });
+    }
+
     private static void assertSameMeasures(String text, SpeechBubblePanel streamed, int[] widths) {
         SpeechBubblePanel fresh = new SpeechBubblePanel(BubbleSide.LEFT, Color.BLUE, Color.WHITE, "Assistent",
                 text);

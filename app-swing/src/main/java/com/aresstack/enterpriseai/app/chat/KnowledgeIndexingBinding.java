@@ -30,6 +30,7 @@ import java.util.function.LongSupplier;
  */
 public final class KnowledgeIndexingBinding {
 
+    static final String START_FAILED = "Indexierung konnte nicht gestartet werden.";
     static final String DISCOVERY_FAILED = "Indexierung fehlgeschlagen: Die Quelle konnte nicht gelesen werden.";
 
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("HH:mm");
@@ -84,22 +85,30 @@ public final class KnowledgeIndexingBinding {
         }
         running = true;
         status.started("Indexierung von " + source.sourceId().value() + " …");
-        workExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                final IndexingReport report = indexing.indexSource(source, scope, new ProgressListener());
-                uiExecutor.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        running = false;
-                        status.finished(summary(report, clock.getAsLong()));
-                        if (onDone != null) {
-                            onDone.accept(report);
+        try {
+            workExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    final IndexingReport report = indexing.indexSource(source, scope, new ProgressListener());
+                    uiExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            running = false;
+                            status.finished(summary(report, clock.getAsLong()));
+                            if (onDone != null) {
+                                onDone.accept(report);
+                            }
                         }
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            // Der Arbeits-Executor nimmt nichts mehr an (z. B. beim Beenden): Statuszeile und Zustand zurücksetzen,
+            // damit kein Lauf als aktiv gilt, den niemand beenden kann; der Fehler bleibt beim Aufrufer.
+            running = false;
+            status.finished(START_FAILED);
+            throw rejected;
+        }
         return true;
     }
 

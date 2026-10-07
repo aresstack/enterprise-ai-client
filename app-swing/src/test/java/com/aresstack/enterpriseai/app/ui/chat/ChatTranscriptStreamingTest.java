@@ -28,6 +28,16 @@ public class ChatTranscriptStreamingTest {
 
     @Test
     public void twentyThousandDeltasArriveBundledAndInBoundedTime() throws Exception {
+        stream(true);
+    }
+
+    /** Ohne Zeilenumbrüche bleibt alles ein Absatz: die Messung darf trotzdem nicht mit der Länge wachsen. */
+    @Test
+    public void twentyThousandDeltasWithoutNewlinesStayBounded() throws Exception {
+        stream(false);
+    }
+
+    private void stream(final boolean withNewlines) throws Exception {
         final ChatShellModel model = new ChatShellModel(() -> 0L);
         final AtomicReference<ChatShellPanel> shell = new AtomicReference<ChatShellPanel>();
         final AtomicReference<TranscriptEntry> answer = new AtomicReference<TranscriptEntry>();
@@ -46,7 +56,7 @@ public class ChatTranscriptStreamingTest {
         long start = System.nanoTime();
         for (int i = 0; i < DELTAS; i++) {
             // Wörter mit gelegentlichem Absatz, wie ein echter Stream: jedes Delta ein eigenes UI-Ereignis.
-            final String delta = "Wort" + i + (i % 40 == 39 ? "\n" : " ");
+            final String delta = "Wort" + i + (withNewlines && i % 40 == 39 ? "\n" : " ");
             expected.append(delta);
             SwingUtilities.invokeLater(new Runnable() {
                 @Override

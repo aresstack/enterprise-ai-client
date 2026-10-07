@@ -10,6 +10,10 @@ import com.aresstack.enterpriseai.application.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.application.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
+import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
+import com.aresstack.enterpriseai.chat.api.ChatTask;
+import com.aresstack.enterpriseai.domain.chat.ChatRequest;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.chat.ChatMessage;
 import com.aresstack.enterpriseai.domain.chat.ChatResponse;
@@ -45,7 +49,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static com.aresstack.enterpriseai.app.chat.UiTestSupport.EDT;
@@ -291,6 +297,107 @@ public class RagChatBindingTest {
                 Instant.parse("2026-10-01T10:30:00Z"), "7")));
     }
 
+    @Test
+    public void lateSourcesOfAFastAnswerLeaveTheNextRetrievalUntouched() throws Exception {
+        // Regression (Copilot-Finding): Antwort A ist fertig, bevor attach(A) den UI-Thread erreicht; Frage B
+        // sucht schon. attach(A) darf den Suchzustand von B nicht löschen, sonst geht ein Stop während B verloren.
+        indexAll();
+        final ManualExecutor ui = new ManualExecutor();
+        final ManualExecutor work = new ManualExecutor();
+        final CompletionAwaitingPort gate = new CompletionAwaitingPort(port);
+        ChatService gatedChat = new ChatService(gate);
+        ChatConversationId id = gatedChat.openConversation("Antworte knapp.");
+        RagChatUseCase rag = new RagChatUseCase(gatedChat,
+                new RetrieveKnowledgeUseCase(index, embeddings, space, null), new PromptContextAssembler(null));
+        final ChatShellModel model = new ChatShellModel(() -> 0L);
+        RagChatBinding binding = new RagChatBinding(rag, id, model, ui, work, UTC);
+
+        port.enqueueAnswer("Schnell.");
+        gate.awaitCompletionOnNextStream();
+        binding.sendRequested("Frage A", true);
+        work.runAll(); // Suche A und Turn A; der Fake ist fertig, bevor send() zurückkehrt
+        ui.runWhile(new Callable<Boolean>() {
+            @Override
+            public Boolean call() {
+                return model.getEntries().get(1).getState() == TranscriptEntry.State.STREAMING;
+            }
+        });
+        List<TranscriptEntry> entries = model.getEntries();
+        assertEquals(TranscriptEntry.State.COMPLETE, entries.get(1).getState());
+        assertFalse("Quellen von A sind noch unterwegs", entries.get(1).hasSources());
+        assertEquals("attach(A) wartet noch auf dem UI-Thread", 1, ui.pending());
+
+        port.enqueueHanging("Langsam");
+        binding.sendRequested("Frage B", true); // B beginnt die Suche
+        ui.runAll();                             // attach(A): Quellen an A, Zustand von B unberührt
+        entries = model.getEntries();
+        assertEquals(4, entries.size());
+        assertTrue("späte Quellen landen an der fertigen Antwort", entries.get(1).hasSources());
+        assertEquals(TranscriptEntry.State.STREAMING, entries.get(3).getState());
+
+        binding.stopRequested(); // während der Suche von B
+        work.runAll();           // Suche B und Turn B (hängt)
+        ui.runAll();             // attach(B) löst den Stop ein
+        ui.runUntil("Antwort B abgebrochen", new Callable<Boolean>() {
+            @Override
+            public Boolean call() {
+                return model.getEntries().get(3).getState() != TranscriptEntry.State.STREAMING;
+            }
+        });
+        entries = model.getEntries();
+        assertEquals(TranscriptEntry.State.CANCELLED, entries.get(3).getState());
+        assertTrue(entries.get(3).hasSources());
+        assertTrue(model.canSend("Nochmal"));
+    }
+
+    @Test
+    public void rejectedWorkExecutorFailsTheAnswerInsteadOfLeavingItOpen() throws Exception {
+        indexAll();
+        Executor rejecting = new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                throw new RejectedExecutionException("shut down");
+            }
+        };
+        final ChatShellModel model = new ChatShellModel(() -> 0L);
+        final RagChatBinding binding = new RagChatBinding(new RagChatUseCase(chat,
+                new RetrieveKnowledgeUseCase(index, embeddings, space, null), new PromptContextAssembler(null)),
+                conversation, model, EDT, rejecting, UTC);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                binding.sendRequested("Frage", true);
+                List<TranscriptEntry> entries = model.getEntries();
+                assertEquals(2, entries.size());
+                assertEquals(TranscriptEntry.State.FAILED, entries.get(1).getState());
+                assertEquals(RagChatBinding.SEND_REJECTED, entries.get(1).getFailureMessage());
+                assertTrue("die Shell ist wieder frei", model.canSend("Nochmal"));
+                binding.stopRequested(); // nichts mehr abzubrechen, kein Fehler
+            }
+        });
+        assertFalse(chat.isBusy(conversation));
+    }
+
+    @Test
+    public void failedSemanticPathWithoutKeywordHitsNamesBothInTheNotice() throws Exception {
+        // Leerer Index: der Volltext findet nichts, die Embeddings fallen aus – beides muss im Hinweis stehen.
+        port.enqueueAnswer("Ohne Kontext.");
+        final Fixture fixture = fixture(index, new FailingEmbeddings(embeddings));
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+        List<TranscriptEntry> entries = entries(fixture.model);
+        assertEquals(3, entries.size());
+        assertFalse(entries.get(1).hasSources());
+        assertEquals(TranscriptEntry.Author.NOTICE, entries.get(2).getAuthor());
+        assertEquals(RagChatBinding.SEMANTIC_PATH_FAILED_NOTICE + " " + RagChatBinding.NO_SOURCES_NOTICE,
+                entries.get(2).getText());
+    }
+
     private void indexAll() {
         new IndexKnowledgeUseCase(index, embeddings, space, new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()))
                 .indexSource(source, SourceScope.of("urlaub", "kuendigung"), null);
@@ -314,6 +421,73 @@ public class RagChatBindingTest {
 
         Fixture(RagChatUseCase rag) {
             binding = new RagChatBinding(rag, conversation, model, EDT, workers, UTC);
+        }
+    }
+
+    /**
+     * Lässt {@code stream()} auf Wunsch erst zurückkehren, wenn der Fake die Antwort abgeschlossen hat: so liegt
+     * der Abschluss vor den Quellen auf dem UI-Thread, wie bei einem Backend, das schneller ist als der Umweg.
+     */
+    private static final class CompletionAwaitingPort implements ChatCompletionPort {
+        private final ChatCompletionPort delegate;
+        private volatile boolean awaitNext;
+
+        CompletionAwaitingPort(ChatCompletionPort delegate) {
+            this.delegate = delegate;
+        }
+
+        void awaitCompletionOnNextStream() {
+            awaitNext = true;
+        }
+
+        @Override
+        public ChatResponse complete(ChatRequest request) {
+            return delegate.complete(request);
+        }
+
+        @Override
+        public ChatTask stream(ChatRequest request, final ChatStreamListener listener) {
+            if (!awaitNext) {
+                return delegate.stream(request, listener);
+            }
+            awaitNext = false;
+            final CountDownLatch finished = new CountDownLatch(1);
+            ChatTask task = delegate.stream(request, new ChatStreamListener() {
+                @Override
+                public void onStart() {
+                    listener.onStart();
+                }
+
+                @Override
+                public void onDelta(String text) {
+                    listener.onDelta(text);
+                }
+
+                @Override
+                public void onComplete(ChatResponse response) {
+                    listener.onComplete(response);
+                    finished.countDown();
+                }
+
+                @Override
+                public void onError(ChatCompletionException error) {
+                    listener.onError(error);
+                    finished.countDown();
+                }
+
+                @Override
+                public void onCancelled() {
+                    listener.onCancelled();
+                    finished.countDown();
+                }
+            });
+            try {
+                assertTrue("Fake-Antwort abgeschlossen",
+                        finished.await(UiTestSupport.TIMEOUT_MILLIS, TimeUnit.MILLISECONDS));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return task;
         }
     }
 

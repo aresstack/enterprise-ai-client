@@ -201,8 +201,12 @@ Bindings in `app.chat`, die AP23 in der Composition Root verdrahtet.
   (`ChatShellModel`, `KnowledgeStatusModel`) bleiben ohne Swing.
 - Streaming: `ChatTranscriptPanel` bündelt Deltas (höchstens eine Blasen-Aktualisierung je 30 ms, Abschluss,
   Abbruch, Fehler und Quellen sofort) und hängt Text an, statt ihn neu zu setzen; `SpeechBubblePanel`
-  (comic-controls) schreibt seine Breiten- und Umbruchmessung je Zeile fort. Die Zeit je Delta wächst damit
-  nicht mit der Textlänge (`ChatTranscriptStreamingTest`: 20.000 Deltas).
+  (comic-controls) schreibt seine Breiten- und Umbruchmessung über `StreamingTextMeasure` je abgeschlossenem
+  Wort und je Zeile fort, auch ohne Zeilenumbrüche. Die Zeit je Delta wächst damit nicht mit der Textlänge
+  (`ChatTranscriptStreamingTest`: 20.000 Deltas mit und ohne Zeilenumbrüche, `StreamingTextMeasureTest`).
+- Suche und Abbruchwunsch gehören zur jeweiligen Anfrage (`RagChatBinding.Request`); späte Quellen einer schon
+  fertigen Antwort stören die nächste Suche nicht. Lehnt der Arbeits-Executor einen Auftrag ab, wird die
+  Antwort als gescheitert geschlossen bzw. die Statuszeile zurückgesetzt, damit nichts offen bleibt.
 - Pflichttest `app.chat.RagShellIntegrationTest`: Shell → Bindings → Use Cases → echte Adapter
   `OpenAiCompatibleChatAdapter`/`OpenAiCompatibleEmbeddingAdapter` gegen lokale Fake-HTTP-Server für
   `/chat/completions` und `/embeddings` (`app.chat.fakeapi`) → `LuceneKnowledgeIndex` im temporären

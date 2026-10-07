@@ -44,6 +44,10 @@ import java.util.concurrent.Executor;
  *       die Nutzerfrage bleibt dabei in der Historie (AP2-Regel), die Antwortblase endet als abgebrochen.</li>
  * </ul>
  *
+ * <p>Suche und Abbruchwunsch gehören zur jeweiligen Anfrage ({@code Request}): beendet ein schnelles Backend
+ * eine Antwort, bevor ihre Quellen den UI-Thread erreichen, kann die nächste Frage schon suchen; die späten
+ * Quellen landen dann noch an der fertigen Antwort, ohne den Zustand der laufenden Anfrage anzufassen.
+ *
  * <p>Alle Model-Änderungen laufen über {@code uiExecutor} (in der Anwendung {@code SwingUtilities::invokeLater});
  * {@code sendRequested} und {@code stopRequested} müssen auf dem UI-Thread gerufen werden. In Verlauf, Quellen
  * und Hinweisen stehen nur Titel, Orte (laut Domänenregel ohne Zugangsdaten), Stände und Scores, nie Tokens oder
@@ -58,9 +62,9 @@ public final class RagChatBinding implements ChatShellActions {
     static final String NO_SOURCES_NOTICE =
             "Keine passenden Abschnitte in der Wissensbasis gefunden. Die Antwort entstand ohne Kontext.";
     static final String KEYWORD_PATH_FAILED_NOTICE =
-            "Die Volltextsuche ist ausgefallen. Die Quellen stammen nur aus der semantischen Suche.";
+            "Die Volltextsuche ist ausgefallen; es wurde nur semantisch gesucht.";
     static final String SEMANTIC_PATH_FAILED_NOTICE =
-            "Die semantische Suche ist ausgefallen. Die Quellen stammen nur aus der Volltextsuche.";
+            "Die semantische Suche ist ausgefallen; es wurde nur im Volltext gesucht.";
 
     private static final DateTimeFormatter REVISION_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -71,8 +75,7 @@ public final class RagChatBinding implements ChatShellActions {
     private final Executor workExecutor;
     private final ZoneId zone;
     private ChatTurn runningTurn;
-    private boolean retrieving;
-    private boolean cancelRequested;
+    private Request retrieving; // die Anfrage, deren Suche gerade läuft (nur UI-Thread)
 
     /**
      * @param uiExecutor   führt Model-Änderungen auf dem UI-Thread aus
@@ -111,35 +114,38 @@ public final class RagChatBinding implements ChatShellActions {
             startWithoutRetrieval(text, listener);
             return;
         }
+        final Request request = new Request(answer, listener);
         model.setAssistantActivity(RETRIEVING_ACTIVITY);
-        retrieving = true;
-        cancelRequested = false;
-        workExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                final RagChatTurn turn;
-                try {
-                    turn = rag.send(conversationId, text, RagOptions.enabled(), listener);
-                } catch (final RuntimeException rejected) {
-                    // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
+        retrieving = request;
+        try {
+            workExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    final RagChatTurn turn;
+                    try {
+                        turn = rag.send(conversationId, text, RagOptions.enabled(), listener);
+                    } catch (final RuntimeException rejected) {
+                        // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
+                        uiExecutor.execute(new Runnable() {
+                            @Override
+                            public void run() {
+                                reject(request);
+                            }
+                        });
+                        return;
+                    }
                     uiExecutor.execute(new Runnable() {
                         @Override
                         public void run() {
-                            retrieving = false;
-                            listener.closed = true;
-                            model.failAssistantMessage(SEND_REJECTED);
+                            attach(request, turn);
                         }
                     });
-                    return;
                 }
-                uiExecutor.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        attach(turn, answer, listener);
-                    }
-                });
-            }
-        });
+            });
+        } catch (RuntimeException rejected) {
+            // Der Arbeits-Executor nimmt nichts mehr an (z. B. beim Beenden): die Antwort darf nicht offen bleiben.
+            reject(request);
+        }
     }
 
     /** Muss auf dem UI-Thread gerufen werden. */
@@ -148,8 +154,8 @@ public final class RagChatBinding implements ChatShellActions {
         ChatTurn turn = runningTurn;
         if (turn != null) {
             turn.cancel();
-        } else if (retrieving) {
-            cancelRequested = true;
+        } else if (retrieving != null) {
+            retrieving.cancelRequested = true;
         }
     }
 
@@ -166,28 +172,44 @@ public final class RagChatBinding implements ChatShellActions {
         }
     }
 
+    /** Die Anfrage kam nie zu einem Turn (UI-Thread): Suche beenden, Antwort als gescheitert schließen. */
+    private void reject(Request request) {
+        if (retrieving == request) {
+            retrieving = null;
+        }
+        request.listener.closed = true;
+        model.failAssistantMessage(SEND_REJECTED);
+    }
+
     /** Der RAG-Turn steht (UI-Thread): Quellen und Hinweise anbringen, Abbruchwunsch einlösen. */
-    private void attach(RagChatTurn ragTurn, TranscriptEntry answer, TurnListener listener) {
-        retrieving = false;
+    private void attach(Request request, RagChatTurn ragTurn) {
         ChatTurn turn = ragTurn.turn();
-        if (!answer.hasSources()) {
-            model.attachSources(answer, describe(ragTurn.sources()));
+        if (!request.answer.hasSources()) {
+            model.attachSources(request.answer, describe(ragTurn.sources()));
         }
         String notice = notice(ragTurn);
         if (notice != null) {
             model.addNotice(notice);
         }
-        if (cancelRequested) {
-            cancelRequested = false;
+        if (retrieving != request) {
+            // Die Antwort war schon fertig, bevor ihre Quellen ankamen; inzwischen sucht die nächste Anfrage.
+            return;
+        }
+        retrieving = null;
+        if (request.cancelRequested) {
             turn.cancel();
             return;
         }
-        if (!turn.isDone() && !listener.closed) {
+        if (!turn.isDone() && !request.listener.closed) {
             runningTurn = turn;
         }
     }
 
-    /** Der Hinweis zu einem RAG-Turn oder {@code null}, wenn alles normal lief. */
+    /**
+     * Der Hinweis zu einem RAG-Turn oder {@code null}, wenn alles normal lief. Ein ausgefallener Suchpfad wird
+     * auch dann genannt, wenn der andere nichts fand: so bleibt eine unvollständige Suche von einer vollständigen
+     * ohne Treffer unterscheidbar.
+     */
     static String notice(RagChatTurn turn) {
         if (turn.retrievalFailed()) {
             return RETRIEVAL_FAILED_NOTICE;
@@ -199,16 +221,19 @@ public final class RagChatBinding implements ChatShellActions {
         if (failed.contains(RetrievalPath.KEYWORD) && failed.contains(RetrievalPath.SEMANTIC)) {
             return RETRIEVAL_FAILED_NOTICE;
         }
-        if (turn.sources().isEmpty()) {
-            return NO_SOURCES_NOTICE;
-        }
+        StringBuilder notice = new StringBuilder();
         if (failed.contains(RetrievalPath.KEYWORD)) {
-            return KEYWORD_PATH_FAILED_NOTICE;
+            notice.append(KEYWORD_PATH_FAILED_NOTICE);
+        } else if (failed.contains(RetrievalPath.SEMANTIC)) {
+            notice.append(SEMANTIC_PATH_FAILED_NOTICE);
         }
-        if (failed.contains(RetrievalPath.SEMANTIC)) {
-            return SEMANTIC_PATH_FAILED_NOTICE;
+        if (turn.sources().isEmpty()) {
+            if (notice.length() > 0) {
+                notice.append(' ');
+            }
+            notice.append(NO_SOURCES_NOTICE);
         }
-        return null;
+        return notice.length() == 0 ? null : notice.toString();
     }
 
     /** Übersetzt die Quellen des Use Case in Anzeigewerte der Shell. */
@@ -247,6 +272,18 @@ public final class RagChatBinding implements ChatShellActions {
             text.append(REVISION_TIME.format(revision.modifiedAt().get().atZone(zone)));
         }
         return text.toString();
+    }
+
+    /** Eine Nachricht mit Suche: ihre Antwortblase, ihr Listener und ein während der Suche geäußerter Stop. */
+    private static final class Request {
+        final TranscriptEntry answer;
+        final TurnListener listener;
+        boolean cancelRequested;
+
+        Request(TranscriptEntry answer, TurnListener listener) {
+            this.answer = answer;
+            this.listener = listener;
+        }
     }
 
     /** Leitet Callbacks eines Turns auf den UI-Thread; nach dem Abschluss wird nichts mehr weitergereicht. */

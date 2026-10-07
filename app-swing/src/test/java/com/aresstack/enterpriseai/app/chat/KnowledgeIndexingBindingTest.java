@@ -24,7 +24,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -35,6 +37,7 @@ import static com.aresstack.enterpriseai.app.chat.UiTestSupport.onEdt;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** AP22: Indexierungsfortschritt in der Statuszeile, Abbruch über die Statuszeile, Zusammenfassung danach. */
 public class KnowledgeIndexingBindingTest {
@@ -149,6 +152,36 @@ public class KnowledgeIndexingBindingTest {
         });
         awaitFinished();
         assertEquals(KnowledgeIndexingBinding.DISCOVERY_FAILED, status.getText());
+    }
+
+    @Test
+    public void rejectedExecutorRestoresTheIdleStateAndPropagates() throws Exception {
+        // Regression (Copilot-Finding): nimmt der Arbeits-Executor nichts an, darf kein Lauf als aktiv gelten.
+        final Executor rejecting = new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                throw new RejectedExecutionException("shut down");
+            }
+        };
+        final IndexKnowledgeUseCase indexing = new IndexKnowledgeUseCase(index, embeddings, space,
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+        final KnowledgeIndexingBinding binding = new KnowledgeIndexingBinding(indexing, status, EDT, rejecting,
+                () -> NOW, ZoneOffset.UTC);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    binding.indexSource(source, SourceScope.of("urlaub"), null);
+                    fail("RejectedExecutionException erwartet");
+                } catch (RejectedExecutionException expected) {
+                    // der Aufrufer erfährt es, die Oberfläche bleibt konsistent
+                }
+                assertFalse(binding.isRunning());
+                assertFalse(status.isRunning());
+                assertFalse(status.isCancelRequested());
+                assertEquals(KnowledgeIndexingBinding.START_FAILED, status.getText());
+            }
+        });
     }
 
     private KnowledgeIndexingBinding binding(EmbeddingPort embeddingPort) throws Exception {
