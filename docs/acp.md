@@ -117,7 +117,9 @@ Prozessende wird erst beim nächsten Request oder Request-Timeout erkannt (Stand
 streamt gedrosselt, bis abgebrochen wird (20 ms je Nachricht, höchstens 500), `crash` beendet die JVM mitten im
 Turn, `count N` liefert nummerierte Stücke, `hang` schweigt drei Sekunden. Der Demo-Agent **ruft selbst keine
 MCP-Werkzeuge auf**; belegt ist damit die Verdrahtung, nicht ein Werkzeugaufruf. Den Nachweis, dass ein Agent
-die Wissenswerkzeuge über MCP nutzt, erbringt AP25 (Slice G) mit einem eigenen Testagenten.
+die Wissenswerkzeuge über MCP nutzt, erbringt `SliceGAgentMcpTest` in `integration-tests` mit dem Testagenten
+`KnowledgeDemoAgentMain` (Testcode, eigener Kindprozess, Endpoint aus `ENTERPRISE_AI_MCP_*`, MCP nur über
+`McpToolClientFactory`/`SolonMcpToolClientFactory`); siehe [Tests](tests.md#vertical-slice-tests-ag-integration-tests).
 
 Bauen: `./gradlew :acp-demo-agent:demoAgentJar` → `acp-demo-agent/build/libs/acp-demo-agent-all.jar`. Die
 Roundtrip-Tests starten dieses Jar auf derselben JVM wie der Build (unter JDK 8 also als echter
