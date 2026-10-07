@@ -34,6 +34,14 @@ echtes KeePass) stehen in der [Testanleitung](tests.md).
 ./gradlew :app-swing:run -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis
 ```
 
+Ohne Gradle, mit dem fertigen Fat Jar (siehe [Fat Jar, Version und Releases](#fat-jar-version-und-releases)):
+
+```bash
+java -jar enterprise-ai-client-<version>.jar
+java -Denterpriseai.config=/pfad/zur/datei.properties -jar enterprise-ai-client-<version>.jar
+java -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis -jar enterprise-ai-client-<version>.jar
+```
+
 Einstiegspunkt ist `com.aresstack.enterpriseai.app.EnterpriseAiClientMain` (Modul `app-swing`). Ablauf beim
 Start: Konfiguration laden, Proxy-Regel installieren, Adapter bauen, Graphen komponieren, Shutdown-Hook
 registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
@@ -122,6 +130,52 @@ In der RAG-Demo simuliert "fehler" im Text einen HTTP 500, "langsam" lässt die 
 gedrückt wird; `--args="--screenshot datei.png"` schreibt die Shell ohne Fenster als PNG. In der Agent-Demo
 lässt "slow" im Auftrag den Agenten streamen, bis Stop gedrückt wird.
 
+## Fat Jar, Version und Releases
+
+### Fat Jar bauen
+
+```bash
+./gradlew :app-swing:fatJar            # app-swing/build/libs/enterprise-ai-client-<version>-SNAPSHOT.jar
+./gradlew :app-swing:verifyFatJar      # Manifest, Vollständigkeit, ServiceLoader-Dateien, Hauptklasse ladbar
+./gradlew :app-swing:smokeStartFatJar  # headless starten ohne Konfiguration: Vorlage angelegt, Exit-Code 2
+./gradlew build                        # enthält alle drei (fatJar über assemble, die Prüfungen über check)
+```
+
+Das Fat Jar enthält `app-swing` und alle Laufzeitabhängigkeiten (eigene Module, Lucene, Solon, Jackson, Gson,
+jsoup, Java-WebSocket, ACP-SDK). Es entsteht ohne Zusatz-Plugin aus einer eigenen Jar-Task in
+`gradle/fat-jar.gradle` (eingebunden von `app-swing/build.gradle`), damit der Build auf JDK 8 wie auf JDK 21
+läuft. Dabei gilt:
+
+- `META-INF/services/*` aller Jars werden zusammengeführt. Das ist nötig, weil Jackson `JsonFactory` und
+  `ObjectCodec` in zwei Jars registriert und Lucene seine Codecs, das MCP-SDK seinen JSON-Mapper über
+  `ServiceLoader` findet; `verifyFatJar` prüft, dass jeder Eintrag der Einzeljars im zusammengeführten Jar steht.
+- Signaturdateien, `INDEX.LIST` und `module-info.class` fremder Jars bleiben draußen; `Multi-Release: true`
+  lässt JDK 9+ die `META-INF/versions`-Klassen von Lucene, Jackson und Reactor wie bei den Einzeljars nutzen.
+- Das Manifest trägt `Main-Class`, `Implementation-Title`, `Implementation-Version`, `Implementation-Vendor-Id`
+  und `Git-Commit` (aus `-PbuildCommit=<sha>`, sonst `git rev-parse HEAD`, sonst `unknown`). Anzeigen:
+  `unzip -p enterprise-ai-client-<version>.jar META-INF/MANIFEST.MF`.
+- Das Jar wird reproduzierbar geschrieben (feste Zeitstempel, feste Reihenfolge).
+
+### Version
+
+Die Versionsnummer steht als `version=MAJOR.MINOR.PATCH` in `gradle.properties`. Lokal und auf allen Branches
+außer `main` baut Gradle `<version>-SNAPSHOT`; mit `-Prelease=true` entfällt das Suffix (so baut die CI auf
+`main`). Vor einem Release wird nur diese Zeile erhöht und gemergt.
+
+### Releases und Snapshots (CI)
+
+`.github/workflows/release.yml` läuft bei jedem Push auf jeden Branch, baut mit JDK 8 (`./gradlew build`, also
+inklusive aller Tests und der Fat-Jar-Prüfungen) und veröffentlicht nur ein grün gebautes Jar:
+
+| Push auf | Version | Veröffentlichung |
+|---|---|---|
+| `main` | `<version>` | Tag `v<version>` und GitHub-Release `enterprise-ai-client <version>` mit dem Jar und generierten Release-Notes, sofern das Tag noch nicht existiert. Existiert es (Version nicht erhöht), gibt es kein Release, nur das Workflow-Artefakt und eine Warnung im Lauf. |
+| anderer Branch | `<version>-SNAPSHOT` | Pre-Release `Snapshot <branch> (<version>-SNAPSHOT)` unter dem Tag `snapshot-<branch>` (Sonderzeichen außer `. _ -` werden zu `-`). Jeder Push verschiebt das Tag auf den neuen Commit und ersetzt das Jar; der Link `releases/tag/snapshot-<branch>` bleibt gleich. Wird der Branch gelöscht, entfernt der Workflow Pre-Release und Tag. |
+
+In beiden Fällen liegt das Jar zusätzlich als Workflow-Artefakt `enterprise-ai-client-<version>` am Lauf. Der
+Workflow verwendet nur `GITHUB_TOKEN` (`contents: write`); Tags und Releases, die er anlegt, lösen keine
+weiteren Läufe aus. Snapshots sind zum Ausprobieren gedacht, nicht für den produktiven Einsatz.
+
 ## IDE
 
 Das Projekt ist ein normales Gradle-Multiprojekt und lässt sich in IntelliJ IDEA oder Eclipse über
@@ -138,4 +192,7 @@ Das Projekt ist ein normales Gradle-Multiprojekt und lässt sich in IntelliJ IDE
 ## Continuous Integration
 
 `.github/workflows/build.yml` baut bei jedem Push auf `main` und jedem Pull Request mit `./gradlew build` auf
-JDK 8 und JDK 21 (`fail-fast: false`, Gradle-Cache). Beide Läufe müssen grün sein, bevor gemergt wird.
+JDK 8 und JDK 21 (`fail-fast: false`, Gradle-Cache); seit dem Fat Jar umfasst das auch `fatJar`, `verifyFatJar`
+und `smokeStartFatJar`. Beide Läufe müssen grün sein, bevor gemergt wird. `.github/workflows/release.yml`
+baut bei jedem Push auf jeden Branch das Fat Jar mit JDK 8 und veröffentlicht es als Release (`main`) oder
+rollierenden Snapshot (siehe [Releases und Snapshots](#releases-und-snapshots-ci)).

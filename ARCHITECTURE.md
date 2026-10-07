@@ -395,7 +395,9 @@ Regeln, die daraus folgen:
   sind); ArchUnit 1.4.1 (Kernbibliothek, wie corenth) nur in `architecture-tests`. Unit-Tests ohne laufende
   externe Dienste; echte Protokollgrenzen über lokale Fake-Server. Lightweight-Swing-Tests laufen headless;
   displayabhängige Tests nutzen `Assume`.
-- **CI**: `.github/workflows/build.yml` baut mit JDK 8 und JDK 21.
+- **CI**: `.github/workflows/build.yml` baut mit JDK 8 und JDK 21. `.github/workflows/release.yml` baut das
+  Fat Jar von `app-swing` (`gradle/fat-jar.gradle`, Version aus `gradle.properties`) und veröffentlicht es:
+  auf `main` als Release `v<version>`, auf anderen Branches als rollierenden Snapshot (docs/einrichtung.md).
 
 ## Zusammenarbeit der Stränge
 

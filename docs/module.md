@@ -83,7 +83,9 @@ Modulmatrix unberücksichtigt.
 
 Versionen stehen zentral in `gradle/libs.versions.toml`; aktiviert wird eine Bibliothek nur im `build.gradle`
 des Moduls, das sie braucht, und immer mit `implementation` (nie `api`), damit kein Bibliothekstyp über den
-Klassenpfad nach außen sickert.
+Klassenpfad nach außen sickert. Die Versionsnummer der Anwendung selbst steht in `gradle.properties`; das Fat Jar
+von `app-swing` (`gradle/fat-jar.gradle`) bündelt alle hier genannten Laufzeitbibliotheken außer den reinen
+Testbibliotheken, siehe [Einrichtung](einrichtung.md#fat-jar-version-und-releases).
 
 | Bibliothek | Version | Module |
 |---|---|---|
