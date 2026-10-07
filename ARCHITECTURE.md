@@ -136,7 +136,7 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `ModuleRegistryTest.*` | die Registry selbst: keine Zyklen, Schichtung, AP24-Verbotskanten bleiben verboten, Pakete disjunkt |
 | `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `application.agent`, `application.mcp`, `app.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `app.ui.agent` ist reine Oberfläche |
 | `RagBoundaryTest.*` | AP10: `application.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `application.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
-| `McpKnowledgeToolsBoundaryTest.*` | AP20: `application.mcp` sieht nur die Use-Case-Pakete `application.rag` und `application.knowledge`, Knowledge-Domain, Source-Port (Fehlerarten) und den MCP-Port-Vertrag; Index- und Embedding-Port nur über Use Cases; kein Adapter, kein Chat, kein ACP, kein Security-Typ; Use Cases und Chat-Pfad kennen die Werkzeuge nicht |
+| `McpKnowledgeToolsBoundaryTest.*` | AP20: `application.mcp` sieht nur die Use-Case-Pakete `application.rag` und `application.knowledge`, Knowledge-Domain, aus `source.api` allein `KnowledgeSourceException` (Fehlerart) und den MCP-Port-Vertrag; Index-, Embedding- und Quell-Port (samt `SourceScope`) nur über Use Cases; kein Adapter, kein Chat, kein ACP, kein Security-Typ; Use Cases und Chat-Pfad kennen die Werkzeuge nicht |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 
 ### Neues Modul aufnehmen (z. B. `source-sharepoint`, `source-files`)
@@ -188,11 +188,11 @@ Die Wissensfunktionen stehen einem Agenten über MCP zur Verfügung, ausschließ
 
 ```
 MCP-Client → McpServerRegistry (mcp-solon-runtime) → McpToolContribution (application.mcp)
-          → RetrieveKnowledgeUseCase / LoadKnowledgeDocumentUseCase / IndexKnowledgeUseCase
+          → RetrieveKnowledgeUseCase / LoadKnowledgeDocumentUseCase / RefreshKnowledgeSourceUseCase
           → KnowledgeIndexPort / EmbeddingPort / KnowledgeSourcePort → Adapter
 ```
 
-- `application.mcp.KnowledgeMcpTools(retrieval, documents, indexing, settings)` liefert drei Contributions:
+- `application.mcp.KnowledgeMcpTools(retrieval, documents, refresh, settings)` liefert drei Contributions:
   `search_knowledge` (`query`, optional `max_results`, `source_ids` als kommagetrennte Quell-IDs; hybride Suche,
   je Treffer Titel, Überschrift, Dokument- und Chunk-ID, Quelle, Ort, Stand, RRF- und Rohscores, Textausschnitt),
   `get_knowledge_document` (`id`, optional `source_id`; vollständiger Text aus der Quelle, nicht aus dem Index) und
@@ -200,11 +200,20 @@ MCP-Client → McpServerRegistry (mcp-solon-runtime) → McpToolContribution (ap
   des `IndexingReport` mit Fehlern je Stufe). Parameter sind flach (`McpToolParameter`), weil der MCP-Port keine
   Array-Typen kennt.
 - Ergebnisse sind strukturierter Text; Fehler sind `McpToolResult.error` mit knapper Meldung ohne Stacktrace,
-  Zugangsdaten oder Token. `KnowledgeToolSettings` begrenzt Antwortgröße (Default 20.000 Zeichen, Überschreitung
-  wird gekürzt und gekennzeichnet), Snippetlänge, Standard-Trefferzahl und die Zahl aufgezählter Fehler.
+  Zugangsdaten oder Token. Meldungen der Port-Ausnahmen (`KnowledgeIndexException`, `KnowledgeSourceException`,
+  `RetrievalWarning`) gelangen nie in eine Werkzeugantwort: Sie sind für Log und Anzeige gedacht und können
+  Infrastrukturdaten wie Indexpfade nennen; die Antwort nennt nur Suchpfad bzw. Indexierungsstufe.
+  `KnowledgeToolSettings` begrenzt Antwortgröße (Default 20.000 Zeichen, Überschreitung wird gekürzt und
+  gekennzeichnet), Snippetlänge, Standard-Trefferzahl und die Zahl aufgezählter Fehler.
 - Quellen: `application.knowledge.KnowledgeSourceCatalog` aus `KnowledgeSourceRegistration` (Port + `SourceScope`),
-  von der Composition Root befüllt; `LoadKnowledgeDocumentUseCase` fragt die Quellen in Katalogreihenfolge und
-  überspringt, was eine Quelle als fremde ID (`UNSUPPORTED`) ablehnt.
+  von der Composition Root befüllt. Die Werkzeuge kennen daraus nur die Quell-IDs; Port und Scope nehmen allein die
+  Use Cases in die Hand: `LoadKnowledgeDocumentUseCase` fragt die Quellen in Katalogreihenfolge und überspringt,
+  was eine Quelle als fremde ID (`UNSUPPORTED`) ablehnt; `RefreshKnowledgeSourceUseCase(indexing, catalog)`
+  indexiert eine Quelle anhand ihrer ID in ihrem konfigurierten Scope neu.
+- Bekannte Grenze (Entscheidung offen): Die Werkzeuge prüfen nicht, ob ein Dokument im konfigurierten Scope liegt
+  oder indexiert ist (`get_knowledge_document` lädt jede ID, die die Quelle akzeptiert), und eine Aktualisierung
+  entfernt keine Ressourcen, die die Discovery nicht mehr liefert. Beides bräuchte am `KnowledgeIndexPort` eine
+  Abfrage der indexierten Ressourcen je Quelle (Contract-Commit, Strang D).
 - Lebenszyklus: Die Composition Root registriert `contributions()` mit `McpServerRegistry.updateTools` am Endpoint
   des Agenten (AP21) und ruft beim Abmelden `KnowledgeMcpTools.shutdown()`; eine laufende Aktualisierung bricht
   dann zwischen zwei Ressourcen ab, neue werden abgewiesen. Je Quelle läuft höchstens eine Aktualisierung.

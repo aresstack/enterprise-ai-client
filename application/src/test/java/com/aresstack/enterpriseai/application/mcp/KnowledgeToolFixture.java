@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
+import com.aresstack.enterpriseai.application.knowledge.RefreshKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.application.rag.RetrievalSettings;
 import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
@@ -63,6 +64,7 @@ final class KnowledgeToolFixture {
     final IndexKnowledgeUseCase indexing;
     final RetrieveKnowledgeUseCase retrieval;
     final LoadKnowledgeDocumentUseCase documents;
+    final RefreshKnowledgeSourceUseCase refresh;
     final KnowledgeToolSettings settings;
     final KnowledgeMcpTools tools;
 
@@ -88,8 +90,9 @@ final class KnowledgeToolFixture {
                 new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
         this.retrieval = new RetrieveKnowledgeUseCase(index, embeddings, space, retrievalSettings);
         this.documents = new LoadKnowledgeDocumentUseCase(catalog);
+        this.refresh = new RefreshKnowledgeSourceUseCase(indexing, catalog);
         this.settings = settings;
-        this.tools = new KnowledgeMcpTools(retrieval, documents, indexing, settings);
+        this.tools = new KnowledgeMcpTools(retrieval, documents, refresh, settings);
     }
 
     /** Indexiert beide Quellen vollständig. */
@@ -150,12 +153,14 @@ final class KnowledgeToolFixture {
         return KnowledgeSourceId.of(value);
     }
 
-    /** Leitet an einen Index weiter und lässt auf Wunsch einen Suchpfad ausfallen. */
+    /** Leitet an einen Index weiter und lässt auf Wunsch einen Suchpfad oder das Schreiben ausfallen. */
     static final class FailingIndex implements KnowledgeIndexPort {
 
         private final KnowledgeIndexPort delegate;
         volatile boolean failKeyword;
         volatile boolean failSemantic;
+        /** Meldung, mit der {@link #replace} scheitert; {@code null} für normales Verhalten. */
+        volatile String failReplaceWith;
 
         FailingIndex(KnowledgeIndexPort delegate) {
             this.delegate = delegate;
@@ -169,6 +174,9 @@ final class KnowledgeToolFixture {
         @Override
         public void replace(EmbeddingModelIdentity space, KnowledgeResourceId resourceId,
                             Collection<KnowledgeIndexEntry> entries) {
+            if (failReplaceWith != null) {
+                throw new KnowledgeIndexException(failReplaceWith);
+            }
             delegate.replace(space, resourceId, entries);
         }
 

@@ -1,12 +1,11 @@
 package com.aresstack.enterpriseai.application.mcp;
 
-import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.application.knowledge.IndexingListener;
 import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.application.knowledge.IndexingStage;
 import com.aresstack.enterpriseai.application.knowledge.IndexingStatus;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
-import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.application.knowledge.RefreshKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.application.knowledge.ResourceIndexingOutcome;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.mcp.api.McpToolCall;
@@ -14,14 +13,19 @@ import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
 import com.aresstack.enterpriseai.mcp.api.McpToolHandler;
 import com.aresstack.enterpriseai.mcp.api.McpToolParameter;
 import com.aresstack.enterpriseai.mcp.api.McpToolResult;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 
 import java.util.HashSet;
 import java.util.Set;
 
 /**
  * {@code refresh_knowledge_source}: indexiert eine konfigurierte Quelle in ihrem {@code SourceScope} neu, synchron
- * im Handler über {@link IndexKnowledgeUseCase}, und fasst den {@link IndexingReport} zusammen (gefunden,
+ * im Handler über {@link RefreshKnowledgeSourceUseCase}, und fasst den {@link IndexingReport} zusammen (gefunden,
  * indexiert, leer, entfernt, Duplikate, Fehler je Stufe, einzelne Fehler bis zu einer Höchstzahl).
+ *
+ * <p>Die Meldungen der Port-Ausnahmen aus dem Bericht erscheinen nicht in der Antwort: Sie sind für Log und Anzeige
+ * gedacht, nicht für das Modell, und können Infrastrukturdaten nennen (etwa Indexpfade des Lucene-Adapters). Die
+ * Antwort nennt je gescheiterter Ressource nur die Stufe.
  *
  * <p>Je Quelle läuft höchstens eine Aktualisierung gleichzeitig; ein zweiter Aufruf wird abgewiesen. Nach
  * {@link KnowledgeMcpTools#shutdown()} bricht ein laufender Lauf zwischen zwei Ressourcen ab (bereits indexierte
@@ -32,9 +36,7 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
     static final String NAME = "refresh_knowledge_source";
     static final String PARAM_SOURCE_ID = "source_id";
 
-    private static final int MESSAGE_CHARS = 300;
-
-    private final IndexKnowledgeUseCase indexing;
+    private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeSourceCatalog catalog;
     private final KnowledgeToolSettings settings;
     private final ShutdownSignal shutdown;
@@ -45,10 +47,10 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
         boolean isShutdown();
     }
 
-    RefreshKnowledgeSourceTool(IndexKnowledgeUseCase indexing, KnowledgeSourceCatalog catalog,
-                               KnowledgeToolSettings settings, ShutdownSignal shutdown) {
-        this.indexing = indexing;
-        this.catalog = catalog;
+    RefreshKnowledgeSourceTool(RefreshKnowledgeSourceUseCase refresh, KnowledgeToolSettings settings,
+                               ShutdownSignal shutdown) {
+        this.refresh = refresh;
+        this.catalog = refresh.catalog();
         this.settings = settings;
         this.shutdown = shutdown;
     }
@@ -75,10 +77,8 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
         } catch (IllegalArgumentException invalid) {
             return McpToolResult.error("Ungültige Quell-ID. Konfigurierte Quellen: " + knownSources() + ".");
         }
-        KnowledgeSourceRegistration registration = catalog.find(sourceId);
-        if (registration == null) {
-            return McpToolResult.error("Unbekannte Quelle '" + sourceId.value() + "'. Konfigurierte Quellen: "
-                    + knownSources() + ".");
+        if (!catalog.contains(sourceId)) {
+            return McpToolResult.error(unknownSource(sourceId));
         }
         if (shutdown.isShutdown()) {
             return McpToolResult.error("Die Wissenswerkzeuge wurden beendet; keine Aktualisierung mehr möglich.");
@@ -88,15 +88,18 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
         }
         IndexingReport report;
         try {
-            report = indexing.indexSource(registration.port(), registration.scope(), new IndexingListener() {
+            report = refresh.refresh(sourceId, new IndexingListener() {
                 @Override
                 public boolean isCancelled() {
                     return shutdown.isShutdown();
                 }
             });
+        } catch (KnowledgeSourceException e) {
+            return McpToolResult.error(e.kind() == KnowledgeSourceException.Kind.NOT_FOUND
+                    ? unknownSource(sourceId) : failed(sourceId));
         } catch (RuntimeException e) {
             // Meldung bewusst ohne Details: sie könnte Infrastrukturdaten enthalten.
-            return McpToolResult.error("Aktualisierung der Quelle '" + sourceId.value() + "' fehlgeschlagen.");
+            return McpToolResult.error(failed(sourceId));
         } finally {
             release(sourceId);
         }
@@ -129,9 +132,6 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
                     .append(", Index: ").append(countFailed(report, IndexingStage.INDEXING)).append(')');
         }
         out.append('\n');
-        if (report.discoveryFailed()) {
-            out.append("Discovery: ").append(ToolText.oneLine(report.discoveryFailure(), MESSAGE_CHARS)).append('\n');
-        }
         int listed = 0;
         for (ResourceIndexingOutcome outcome : report.outcomes()) {
             if (outcome.status() != IndexingStatus.FAILED) {
@@ -141,8 +141,8 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
                 out.append("  … ").append(failed - listed).append(" weitere Fehler\n");
                 break;
             }
-            out.append("  - ").append(outcome.resourceId().value()).append(" [").append(outcome.stage()).append("]: ")
-                    .append(ToolText.oneLine(outcome.message(), MESSAGE_CHARS)).append('\n');
+            out.append("  - ").append(outcome.resourceId().value()).append(": ").append(describe(outcome.stage()))
+                    .append('\n');
             listed++;
         }
         return ToolText.truncate(out.toString().trim(), settings.maxResponseChars());
@@ -150,12 +150,29 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
 
     private static String status(IndexingReport report, int failed) {
         if (report.discoveryFailed()) {
-            return "Discovery fehlgeschlagen, nichts verarbeitet";
+            return "Discovery fehlgeschlagen (Quelle nicht erreichbar oder Zugriff verweigert), nichts verarbeitet";
         }
         if (report.isCancelled()) {
             return "abgebrochen (Werkzeuge beendet), bereits indexierte Dokumente bleiben";
         }
         return failed > 0 ? "abgeschlossen mit Fehlern" : "vollständig";
+    }
+
+    /** Nur die Stufe, nie die Meldung der Port-Ausnahme (siehe Klassenkommentar). */
+    private static String describe(IndexingStage stage) {
+        if (stage == null) {
+            return "fehlgeschlagen";
+        }
+        switch (stage) {
+            case LOADING:
+                return "Laden aus der Quelle fehlgeschlagen";
+            case EMBEDDING:
+                return "Embedding fehlgeschlagen";
+            case INDEXING:
+                return "Schreiben in den Index fehlgeschlagen";
+            default:
+                return "fehlgeschlagen";
+        }
     }
 
     private static int countFailed(IndexingReport report, IndexingStage stage) {
@@ -166,6 +183,14 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
             }
         }
         return n;
+    }
+
+    private String unknownSource(KnowledgeSourceId sourceId) {
+        return "Unbekannte Quelle '" + sourceId.value() + "'. Konfigurierte Quellen: " + knownSources() + ".";
+    }
+
+    private static String failed(KnowledgeSourceId sourceId) {
+        return "Aktualisierung der Quelle '" + sourceId.value() + "' fehlgeschlagen.";
     }
 
     private String knownSources() {

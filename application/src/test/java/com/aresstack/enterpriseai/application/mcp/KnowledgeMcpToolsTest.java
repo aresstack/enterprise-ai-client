@@ -33,7 +33,7 @@ public class KnowledgeMcpToolsTest {
     @Test
     public void nullSettingsMeanDefaults() {
         KnowledgeToolFixture f = new KnowledgeToolFixture();
-        KnowledgeMcpTools tools = new KnowledgeMcpTools(f.retrieval, f.documents, f.indexing, null);
+        KnowledgeMcpTools tools = new KnowledgeMcpTools(f.retrieval, f.documents, f.refresh, null);
         assertEquals(KnowledgeToolSettings.DEFAULT_MAX_RESPONSE_CHARS, tools.settings().maxResponseChars());
     }
 
@@ -41,22 +41,22 @@ public class KnowledgeMcpToolsTest {
     public void missingUseCasesAreRejected() {
         KnowledgeToolFixture f = new KnowledgeToolFixture();
         try {
-            new KnowledgeMcpTools(null, f.documents, f.indexing, null);
+            new KnowledgeMcpTools(null, f.documents, f.refresh, null);
             throw new AssertionError("retrieval fehlt");
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains("retrieval"));
         }
         try {
-            new KnowledgeMcpTools(f.retrieval, null, f.indexing, null);
+            new KnowledgeMcpTools(f.retrieval, null, f.refresh, null);
             throw new AssertionError("documents fehlt");
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains("documents"));
         }
         try {
             new KnowledgeMcpTools(f.retrieval, f.documents, null, null);
-            throw new AssertionError("indexing fehlt");
+            throw new AssertionError("refresh fehlt");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("indexing"));
+            assertTrue(expected.getMessage().contains("refresh"));
         }
     }
 

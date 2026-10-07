@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.application.mcp;
 
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.rag.KnowledgeRetrievalException;
+import com.aresstack.enterpriseai.application.rag.RetrievalPath;
 import com.aresstack.enterpriseai.application.rag.RetrievalResult;
 import com.aresstack.enterpriseai.application.rag.RetrievalWarning;
 import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
@@ -21,6 +22,10 @@ import java.util.List;
  * {@code search_knowledge}: hybride Suche (Volltext + semantisch, Reciprocal Rank Fusion) über
  * {@link RetrieveKnowledgeUseCase}. Liefert je Treffer Titel, Überschrift, IDs, Quelle, Ort, Stand, Scores und
  * einen Textausschnitt; Treffer, die nicht mehr in die Antwortgröße passen, werden weggelassen und gezählt.
+ *
+ * <p>Fällt ein Suchpfad aus, nennt die Antwort nur den Pfad, nie die Meldung der {@link RetrievalWarning}: Sie
+ * stammt aus den Port-Ausnahmen, die für Log und Anzeige gedacht sind und Infrastrukturdaten (etwa Indexpfade)
+ * nennen können.
  */
 final class SearchKnowledgeTool implements McpToolHandler {
 
@@ -81,11 +86,17 @@ final class SearchKnowledgeTool implements McpToolHandler {
         try {
             result = retrieval.retrieve(query.trim(), sources);
         } catch (KnowledgeRetrievalException e) {
-            StringBuilder message = new StringBuilder("Wissenssuche nicht möglich, alle Suchpfade sind ausgefallen.");
+            // Nur die ausgefallenen Pfade, nie die Port-Meldungen (siehe Klassenkommentar).
+            StringBuilder message = new StringBuilder("Wissenssuche nicht möglich, alle Suchpfade sind ausgefallen");
+            String separator = " (";
             for (RetrievalWarning warning : e.warnings()) {
-                message.append(' ').append(ToolText.oneLine(warning.message(), 300));
+                message.append(separator).append(pathName(warning.path()));
+                separator = ", ";
             }
-            return McpToolResult.error(message.toString());
+            if (!e.warnings().isEmpty()) {
+                message.append(')');
+            }
+            return McpToolResult.error(message.append('.').toString());
         } catch (RuntimeException e) {
             // Meldung bewusst ohne Details: sie könnte Anfrage- oder Infrastrukturdaten enthalten.
             return McpToolResult.error("Wissenssuche fehlgeschlagen.");
@@ -133,8 +144,8 @@ final class SearchKnowledgeTool implements McpToolHandler {
             out.append("Quellen: ").append(ToolText.join(sources)).append('\n');
         }
         for (RetrievalWarning warning : result.warnings()) {
-            out.append("Hinweis (").append(warning.path()).append("): nur ein Suchpfad hat geliefert – ")
-                    .append(ToolText.oneLine(warning.message(), 300)).append('\n');
+            out.append("Hinweis: Suchpfad ").append(pathName(warning.path()))
+                    .append(" ausgefallen, die Treffer stammen nur aus dem anderen Pfad.\n");
         }
         if (shown == 0) {
             out.append("Keine Treffer.");
@@ -190,6 +201,17 @@ final class SearchKnowledgeTool implements McpToolHandler {
         block.append(")\n");
         block.append("Text:\n").append(ToolText.snippet(hit.chunk().text(), settings.snippetChars())).append('\n');
         return block.toString();
+    }
+
+    private static String pathName(RetrievalPath path) {
+        switch (path) {
+            case KEYWORD:
+                return "Volltext";
+            case SEMANTIC:
+                return "Semantik";
+            default:
+                return path.name();
+        }
     }
 
     private String knownSources() {

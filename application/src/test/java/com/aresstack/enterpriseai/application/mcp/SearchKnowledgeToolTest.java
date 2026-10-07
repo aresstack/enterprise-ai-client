@@ -109,8 +109,9 @@ public class SearchKnowledgeToolTest {
 
         String text = f.ok(TOOL, "query", "openjdk", "max_results", 1);
 
-        assertTrue(text, text.contains("Hinweis (SEMANTIC): nur ein Suchpfad hat geliefert – "));
-        assertTrue(text, text.contains("Vektorindex nicht lesbar"));
+        assertTrue(text, text.contains(
+                "Hinweis: Suchpfad Semantik ausgefallen, die Treffer stammen nur aus dem anderen Pfad.\n"));
+        assertFalse("die Port-Meldung bleibt dem Modell verborgen", text.contains("Vektorindex nicht lesbar"));
         assertTrue(text, text.contains("[1] Java installieren"));
         assertFalse(text, text.contains("Semantik #"));
     }
@@ -123,10 +124,9 @@ public class SearchKnowledgeToolTest {
 
         String text = f.error(TOOL, "query", "openjdk");
 
-        assertTrue(text, text.startsWith("Wissenssuche nicht möglich, alle Suchpfade sind ausgefallen."));
-        assertTrue(text, text.contains("Volltextindex beschädigt"));
-        assertFalse(text, text.contains("Exception"));
-        assertFalse(text, text.contains("\n\tat "));
+        assertEquals("Wissenssuche nicht möglich, alle Suchpfade sind ausgefallen (Volltext, Semantik).", text);
+        assertFalse("die Port-Meldungen bleiben dem Modell verborgen", text.contains("Volltextindex beschädigt"));
+        assertFalse(text, text.contains("Vektorindex nicht lesbar"));
     }
 
     @Test

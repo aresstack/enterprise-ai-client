@@ -85,7 +85,8 @@ public class RefreshKnowledgeSourceToolTest {
         assertTrue(text, text.contains("Leer: 1\n"));
         assertTrue(text, text.contains("Entfernt: 1\n"));
         assertTrue(text, text.contains("Fehler: 1 (Laden: 1, Embedding: 0, Index: 0)\n"));
-        assertTrue(text, text.contains("  - memory:flaky/A [LOADING]: UNAVAILABLE: simulated UNAVAILABLE for A"));
+        assertTrue(text, text.contains("  - memory:flaky/A: Laden aus der Quelle fehlgeschlagen"));
+        assertFalse("die Port-Meldung bleibt dem Modell verborgen", text.contains("simulated"));
         assertEquals("entfernt und leer räumen den Index, der Fehler lässt den alten Stand stehen",
                 1, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "Alpha", 5)).size());
         assertEquals(0, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "Beta", 5)).size());
@@ -106,8 +107,8 @@ public class RefreshKnowledgeSourceToolTest {
 
         assertTrue(text, text.contains("Indexiert: 1 (Chunks: 1)\n"));
         assertTrue(text, text.contains("Fehler: 2 (Laden: 2, Embedding: 0, Index: 0)\n"));
-        assertTrue(text, text.contains("  - memory:flaky/A [LOADING]: ACCESS_DENIED"));
-        assertFalse(text, text.contains("memory:flaky/B [LOADING]"));
+        assertTrue(text, text.contains("  - memory:flaky/A: Laden aus der Quelle fehlgeschlagen"));
+        assertFalse(text, text.contains("memory:flaky/B"));
         assertTrue(text, text.endsWith("  … 1 weitere Fehler"));
     }
 
@@ -118,10 +119,25 @@ public class RefreshKnowledgeSourceToolTest {
 
         String text = f.ok(TOOL, "source_id", "wiki");
 
-        assertTrue(text, text.contains("Status: Discovery fehlgeschlagen, nichts verarbeitet\n"));
+        assertTrue(text, text.contains(
+                "Status: Discovery fehlgeschlagen (Quelle nicht erreichbar oder Zugriff verweigert), nichts verarbeitet\n"));
         assertTrue(text, text.contains("Gefunden: 0\n"));
-        assertTrue(text, text.contains("Fehler: 0\n"));
-        assertTrue(text, text.contains("Discovery: UNAVAILABLE: simulated failure for Java"));
+        assertTrue(text, text.endsWith("Fehler: 0"));
+        assertFalse("die Port-Meldung bleibt dem Modell verborgen", text.contains("simulated"));
+    }
+
+    @Test
+    public void indexFailuresNameTheStageButNotTheIndexMessage() {
+        KnowledgeToolFixture f = new KnowledgeToolFixture();
+        f.index.failReplaceWith = "Indexverzeichnis kann nicht gelesen werden: /var/lib/eai/index/text/abc";
+
+        String text = f.ok(TOOL, "source_id", "docs");
+
+        assertTrue(text, text.contains("Status: abgeschlossen mit Fehlern\n"));
+        assertTrue(text, text.contains("Fehler: 1 (Laden: 0, Embedding: 0, Index: 1)\n"));
+        assertTrue(text, text.endsWith("  - memory:docs/Urlaub: Schreiben in den Index fehlgeschlagen"));
+        assertFalse("Indexpfade bleiben dem Modell verborgen", text.contains("/var/lib"));
+        assertFalse(text, text.contains("Indexverzeichnis"));
     }
 
     @Test
