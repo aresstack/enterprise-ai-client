@@ -2,10 +2,13 @@ package com.aresstack.enterpriseai.knowledge.api;
 
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Neutraler Port für die durchsuchbare Projektion der Wissensbasis: Volltext- und semantische Suche hinter einer
@@ -48,6 +51,22 @@ public interface KnowledgeIndexPort {
 
     /** Exakte Cosine-Suche in dem Namespace des Anfragevektors. */
     List<KnowledgeSearchHit> semanticSearch(KnowledgeSemanticQuery query);
+
+    /**
+     * Ressourcen einer Quelle, von denen im Namespace {@code space} mindestens ein Chunk liegt – die Grundlage, um
+     * verschwundene Seiten aus dem Index zu entfernen oder zu prüfen, ob ein Dokument indexiert ist. Unveränderliche
+     * Menge; leer für unbekannte Namespaces oder Quellen. Spiegelt {@link #replace}, {@link #remove} und
+     * {@link #removeSource} sofort wider.
+     */
+    Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId);
+
+    /**
+     * Die im Namespace {@code space} gespeicherte Revision einer Ressource, damit ein Index-Lauf unveränderte
+     * Ressourcen überspringen kann. Leer, wenn kein Chunk der Ressource im Namespace liegt – oder wenn ihre Chunks
+     * verschiedene Revisionen tragen (nur über teilweise {@link #index}-Aufrufe möglich); dann gilt die Ressource
+     * als nicht sauber indexiert und ist neu zu indexieren.
+     */
+    Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId);
 
     /** Entfernt alle Chunks der Ressource aus allen Namespaces. */
     void remove(KnowledgeResourceId resourceId);

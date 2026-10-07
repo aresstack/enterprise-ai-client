@@ -22,11 +22,11 @@ import com.aresstack.enterpriseai.embedding.api.archfixture.FakeEmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.archfixture.boundary.PortUsingKnowledge;
 import com.aresstack.enterpriseai.embedding.openai.archfixture.PublicWireDto;
 import com.aresstack.enterpriseai.embedding.openai.archfixture.signature.AdapterExposingGson;
-import com.aresstack.enterpriseai.knowledge.api.archfixture.FakeIndexPort;
+import com.aresstack.enterpriseai.knowledge.api.archfixture.FakeKnowledgeIndexPort;
 import com.aresstack.enterpriseai.knowledge.api.archfixture.boundary.PortUsingSource;
 import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneAdapter;
 import com.aresstack.enterpriseai.mcp.api.archfixture.FakeMcpRegistry;
-import com.aresstack.enterpriseai.source.api.archfixture.FakeSourcePort;
+import com.aresstack.enterpriseai.source.api.archfixture.FakeKnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.archfixture.PortKnowingAdapter;
 import com.aresstack.enterpriseai.source.mediawiki.archfixture.FakeWikiAdapter;
 import org.junit.Test;
@@ -74,7 +74,7 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void chatUseCaseUsingTheIndexIsDetected() {
         ExistingRuleProbe.assertRuleFails(ChatBoundaryTest.class, "chatUseCaseSeesOnlyChatPortAndModel",
-                ProductionClasses.of(ChatUseCaseUsingIndex.class, FakeIndexPort.class), "ChatUseCaseUsingIndex");
+                ProductionClasses.of(ChatUseCaseUsingIndex.class, FakeKnowledgeIndexPort.class), "ChatUseCaseUsingIndex");
     }
 
     @Test
@@ -126,7 +126,7 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void indexPortUsingSourcePortIsDetected() {
         ExistingRuleProbe.assertRuleFails(KnowledgeBoundaryTest.class, "knowledgeApiSeesOnlyKnowledgeAndEmbeddingValues",
-                ProductionClasses.of(PortUsingSource.class, FakeSourcePort.class), "PortUsingSource");
+                ProductionClasses.of(PortUsingSource.class, FakeKnowledgeSourcePort.class), "PortUsingSource");
     }
 
     @Test
@@ -146,7 +146,7 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void ragUsingTheSourcePortIsDetected() {
         ExistingRuleProbe.assertRuleFails(RagBoundaryTest.class, "ragUseCasesSeeOnlyChatUseCaseAndKnowledgePorts",
-                ProductionClasses.of(RagUsingSource.class, FakeSourcePort.class), "RagUsingSource");
+                ProductionClasses.of(RagUsingSource.class, FakeKnowledgeSourcePort.class), "RagUsingSource");
     }
 
     @Test
@@ -158,7 +158,7 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void chatPathUsingRagIsDetected() {
         ExistingRuleProbe.assertRuleFails(RagBoundaryTest.class, "plainChatPathDoesNotKnowRag",
-                ProductionClasses.of(ChatUseCaseUsingIndex.class, FakeIndexPort.class), "ChatUseCaseUsingIndex");
+                ProductionClasses.of(ChatUseCaseUsingIndex.class, FakeKnowledgeIndexPort.class), "ChatUseCaseUsingIndex");
     }
 
     // ---- SourceBoundaryTest (Strang E) ----

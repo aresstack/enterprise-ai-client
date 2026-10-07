@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.knowledge.api.testing;
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexPort;
@@ -17,9 +18,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Vollständige, nicht persistente {@link KnowledgeIndexPort}-Implementierung für Tests von Konsumenten (RAG,
@@ -112,6 +116,48 @@ public final class InMemoryKnowledgeIndex implements KnowledgeIndexPort {
             }
         }
         return top(hits, query.maxResults());
+    }
+
+    @Override
+    public synchronized Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space,
+                                                             KnowledgeSourceId sourceId) {
+        if (space == null || sourceId == null) {
+            throw new IllegalArgumentException("space und sourceId sind Pflicht");
+        }
+        Set<KnowledgeResourceId> ids = new LinkedHashSet<KnowledgeResourceId>();
+        Map<KnowledgeChunkId, KnowledgeIndexEntry> namespace = namespaces.get(space.fingerprint());
+        if (namespace != null) {
+            for (KnowledgeIndexEntry entry : namespace.values()) {
+                if (entry.resource().sourceId().equals(sourceId)) {
+                    ids.add(entry.resource().id());
+                }
+            }
+        }
+        return Collections.unmodifiableSet(ids);
+    }
+
+    @Override
+    public synchronized Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space,
+                                                               KnowledgeResourceId resourceId) {
+        if (space == null || resourceId == null) {
+            throw new IllegalArgumentException("space und resourceId sind Pflicht");
+        }
+        Map<KnowledgeChunkId, KnowledgeIndexEntry> namespace = namespaces.get(space.fingerprint());
+        if (namespace == null) {
+            return Optional.empty();
+        }
+        KnowledgeRevision revision = null;
+        for (KnowledgeIndexEntry entry : namespace.values()) {
+            if (!entry.resource().id().equals(resourceId)) {
+                continue;
+            }
+            if (revision == null) {
+                revision = entry.resource().revision();
+            } else if (!revision.equals(entry.resource().revision())) {
+                return Optional.empty(); // uneinheitlich indexiert → neu indexieren
+            }
+        }
+        return Optional.ofNullable(revision);
     }
 
     @Override

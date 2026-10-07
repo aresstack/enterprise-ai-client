@@ -98,19 +98,21 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         ragToggle.setVisible(visible);
     }
 
-    PlaceholderTextArea editor() {
+    /** Das Eingabefeld (für Tests, Demo und Composition Root, z. B. um den Fokus zu setzen). */
+    public PlaceholderTextArea editor() {
         return editor;
     }
 
-    ComicButton sendButton() {
+    public ComicButton sendButton() {
         return sendButton;
     }
 
-    ComicButton stopButton() {
+    public ComicButton stopButton() {
         return stopButton;
     }
 
-    ComicToggleButton ragToggle() {
+    /** Der RAG-Schalter; sein Zustand liegt im {@link ChatShellModel}. */
+    public ComicToggleButton ragToggle() {
         return ragToggle;
     }
 

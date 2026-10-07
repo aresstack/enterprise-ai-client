@@ -1,7 +1,9 @@
 package com.aresstack.enterpriseai.knowledge.api.archfixture;
 
-/** Steht für den Index-Port als Ziel von Gegenbeispielen. */
-public interface FakeIndexPort {
+/** Steht in den Selbsttests von McpKnowledgeToolsBoundaryTest für den Index-Port (knowledge-api). */
+public final class FakeIndexPort {
 
-    void index(String id, String text);
+    public int search(String query) {
+        return query.length();
+    }
 }

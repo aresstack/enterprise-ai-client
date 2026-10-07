@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.knowledge.api.KnowledgeKeywordQuery;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeSearchHit;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeSemanticQuery;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 
 import java.util.ArrayList;
@@ -21,6 +22,8 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /** Test-Doubles für die RAG-Tests: skriptbarer Embedding-Port und ein Index, der zählt oder ausfällt. */
 final class RagTestData {
@@ -121,6 +124,16 @@ final class RagTestData {
                 throw new KnowledgeIndexException("Vektorindex nicht lesbar");
             }
             return delegate.semanticSearch(query);
+        }
+
+        @Override
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+            return delegate.resourceIds(space, sourceId);
+        }
+
+        @Override
+        public Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+            return delegate.revisionOf(space, resourceId);
         }
 
         @Override

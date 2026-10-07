@@ -134,8 +134,9 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `BuildModelTest.everyModuleHasClassesOnlyInItsOwnBasePackage` | Klasse ↔ Modul eindeutig, kein Modul leer |
 | `ClassBoundaryTest.*` | Modulmatrix auf Klassenebene, Kern-Positivliste, AP24-Technologietabelle für den Kern, Technologiegrenzen, keine Singletons / kein nicht-finales `static` / keine nicht-privaten `static final` Arrays, Collections, Maps, Atomics oder StringBuilder, `main` nur in app-swing und acp-demo-agent |
 | `ModuleRegistryTest.*` | die Registry selbst: keine Zyklen, Schichtung, AP24-Verbotskanten bleiben verboten, Pakete disjunkt |
-| `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `application.agent`, `app.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `app.ui.agent` ist reine Oberfläche |
+| `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `application.agent`, `application.mcp`, `app.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `app.ui.agent` ist reine Oberfläche |
 | `RagBoundaryTest.*` | AP10: `application.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `application.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
+| `McpKnowledgeToolsBoundaryTest.*` | AP20: `application.mcp` sieht nur die Use-Case-Pakete `application.rag` und `application.knowledge`, Knowledge-Domain, aus `source.api` allein `KnowledgeSourceException` (Fehlerart) und den MCP-Port-Vertrag; Index-, Embedding- und Quell-Port (samt `SourceScope`) nur über Use Cases; kein Adapter, kein Chat, kein ACP, kein Security-Typ; Use Cases und Chat-Pfad kennen die Werkzeuge nicht |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 | `CoreNamingTest.*` | Nachtrag 1/19: keine Provider-Namen (OpenAI, Ollama, Claude, llama.cpp ...) und keine Multi-Provider-Abstraktion in Klassennamen oder Enum-Konstanten des Kerns |
 | `TestCodeIsolationTest.*` | Produktionscode kennt weder JUnit/ArchUnit/Mockito noch Testfixture-Klassen oder Testpakete (`testing`, `testkit`, `fake`); keine `testFixtures(...)` in einer Produktionskonfiguration |
@@ -197,6 +198,73 @@ Der normale Chat bleibt unverändert; RAG legt sich von außen darum. Einstiegsp
   `ChatService.sendWithContext` als System-Anteil nur für diesen Turn, in der Historie bleibt nur die
   Nutzerfrage. Quellen stehen in `RagChatTurn.sources()`.
 
+## MCP-Wissenswerkzeuge (AP20)
+
+Die Wissensfunktionen stehen einem Agenten über MCP zur Verfügung, ausschließlich über Application-Use-Cases:
+
+```
+MCP-Client → McpServerRegistry (mcp-solon-runtime) → McpToolContribution (application.mcp)
+          → RetrieveKnowledgeUseCase / LoadKnowledgeDocumentUseCase / RefreshKnowledgeSourceUseCase
+          → KnowledgeIndexPort / EmbeddingPort / KnowledgeSourcePort → Adapter
+```
+
+- `application.mcp.KnowledgeMcpTools(retrieval, documents, refresh, settings)` liefert drei Contributions:
+  `search_knowledge` (`query`, optional `max_results`, `source_ids` als kommagetrennte Quell-IDs; hybride Suche,
+  je Treffer Titel, Überschrift, Dokument- und Chunk-ID, Quelle, Ort, Stand, RRF- und Rohscores, Textausschnitt),
+  `get_knowledge_document` (`id`, optional `source_id`; vollständiger Text aus der Quelle, nicht aus dem Index) und
+  `refresh_knowledge_source` (`source_id`; synchrone Neuindexierung im `SourceScope` der Quelle, Zusammenfassung
+  des `IndexingReport` mit Fehlern je Stufe). Parameter sind flach (`McpToolParameter`), weil der MCP-Port keine
+  Array-Typen kennt.
+- Ergebnisse sind strukturierter Text; Fehler sind `McpToolResult.error` mit knapper Meldung ohne Stacktrace,
+  Zugangsdaten oder Token. Meldungen der Port-Ausnahmen (`KnowledgeIndexException`, `KnowledgeSourceException`,
+  `RetrievalWarning`) gelangen nie in eine Werkzeugantwort: Sie sind für Log und Anzeige gedacht und können
+  Infrastrukturdaten wie Indexpfade nennen; die Antwort nennt nur Suchpfad bzw. Indexierungsstufe.
+  `KnowledgeToolSettings` begrenzt Antwortgröße (Default 20.000 Zeichen, Überschreitung wird gekürzt und
+  gekennzeichnet), Snippetlänge, Standard-Trefferzahl und die Zahl aufgezählter Fehler.
+- Quellen: `application.knowledge.KnowledgeSourceCatalog` aus `KnowledgeSourceRegistration` (Port + `SourceScope`),
+  von der Composition Root befüllt. Die Werkzeuge kennen daraus nur die Quell-IDs; Port und Scope nehmen allein die
+  Use Cases in die Hand: `LoadKnowledgeDocumentUseCase` fragt die Quellen in Katalogreihenfolge und überspringt,
+  was eine Quelle als fremde ID (`UNSUPPORTED`) ablehnt; `RefreshKnowledgeSourceUseCase(indexing, catalog)`
+  indexiert eine Quelle anhand ihrer ID in ihrem konfigurierten Scope neu.
+- Bekannte Grenze (Entscheidung offen): Die Werkzeuge prüfen nicht, ob ein Dokument im konfigurierten Scope liegt
+  oder indexiert ist (`get_knowledge_document` lädt jede ID, die die Quelle akzeptiert), und eine Aktualisierung
+  entfernt keine Ressourcen, die die Discovery nicht mehr liefert. Beides bräuchte am `KnowledgeIndexPort` eine
+  Abfrage der indexierten Ressourcen je Quelle (Contract-Commit, Strang D).
+- Lebenszyklus: Die Composition Root registriert `contributions()` mit `McpServerRegistry.updateTools` am Endpoint
+  des Agenten (AP21) und ruft beim Abmelden `KnowledgeMcpTools.shutdown()`; eine laufende Aktualisierung bricht
+  dann zwischen zwei Ressourcen ab, neue werden abgewiesen. Je Quelle läuft höchstens eine Aktualisierung.
+
+## RAG in der Shell (AP22)
+
+Die Chat-Shell bleibt ohne Port- und Adaptertypen (`ComicUiBoundaryTest`); RAG erreicht sie nur über
+Bindings in `app.chat`, die AP23 in der Composition Root verdrahtet.
+
+- `app.chat.RagChatBinding` ersetzt `ChatServiceBinding` als `ChatShellActions`: RAG aus = `RagChatUseCase`
+  mit `RagOptions.disabled()` (exakt der bisherige Weg); RAG an = Suche auf dem Arbeits-Executor, solange zeigt
+  die leere Antwortblase eine Aktivität ("Wissen wird gesucht …"); danach hängen die Quellen als
+  `app.ui.chat.SourceReference` (Nummer, Titel, Überschrift, Ort, Stand, Score, Ränge) an der Antwort, Warnungen
+  und ein Ausfall der Suche werden eine eigene Hinweis-Blase (`TranscriptEntry.Author.NOTICE`). Stop während
+  der Suche wird gemerkt und bricht den Turn ab, sobald er existiert; die Nutzerfrage bleibt in der Historie.
+- `app.chat.KnowledgeIndexingBinding` treibt `IndexKnowledgeUseCase` auf dem Arbeits-Executor und meldet
+  Fortschritt, Ergebnis und Abbruch an `app.ui.chat.KnowledgeStatusModel`; die Statuszeile
+  (`KnowledgeStatusBar`) im Chat-Reiter zeigt den Text und einen Abbrechen-Knopf, der
+  `IndexingListener.isCancelled()` bedient.
+- Oberfläche: `SourceListPanel` (einklappbare Quellenliste unter der Antwort, Ort unverändert und ohne
+  Zugangsdaten), Hinweis-Blase links in der Aktivitätsfarbe, Fehler des KI-Dienstes wie bisher. Modelle
+  (`ChatShellModel`, `KnowledgeStatusModel`) bleiben ohne Swing.
+- Streaming: `ChatTranscriptPanel` bündelt Deltas (höchstens eine Blasen-Aktualisierung je 30 ms, Abschluss,
+  Abbruch, Fehler und Quellen sofort) und hängt Text an, statt ihn neu zu setzen; `SpeechBubblePanel`
+  (comic-controls) schreibt seine Breiten- und Umbruchmessung über `StreamingTextMeasure` je abgeschlossenem
+  Wort und je Zeile fort, auch ohne Zeilenumbrüche. Die Zeit je Delta wächst damit nicht mit der Textlänge
+  (`ChatTranscriptStreamingTest`: 20.000 Deltas mit und ohne Zeilenumbrüche, `StreamingTextMeasureTest`).
+- Suche und Abbruchwunsch gehören zur jeweiligen Anfrage (`RagChatBinding.Request`); späte Quellen einer schon
+  fertigen Antwort stören die nächste Suche nicht. Lehnt der Arbeits-Executor einen Auftrag ab, wird die
+  Antwort als gescheitert geschlossen bzw. die Statuszeile zurückgesetzt, damit nichts offen bleibt.
+- Pflichttest `app.chat.RagShellIntegrationTest`: Shell → Bindings → Use Cases → echte Adapter
+  `OpenAiCompatibleChatAdapter`/`OpenAiCompatibleEmbeddingAdapter` gegen lokale Fake-HTTP-Server für
+  `/chat/completions` und `/embeddings` (`app.chat.fakeapi`) → `LuceneKnowledgeIndex` im temporären
+  Verzeichnis, `InMemoryKnowledgeSource` als Quelle. Lokaler Start: `./gradlew :app-swing:runRagDemo`.
+
 ## Build-Konventionen
 
 - **Java 8**: `sourceCompatibility`/`targetCompatibility` 1.8; auf JDK 9+ zusätzlich `javac --release 8`,
@@ -251,3 +319,5 @@ Regeln:
 | Architekturtest-Modul mit expliziter Modulliste, die neue Module erzwingt; ArchUnit 1.4.1; Klassenverzeichnisse per Systemeigenschaft | aresstack/corenth (`architecture-tests`), hier in eine Java-Registry plus Gradle-Build-Modell überführt und um Gradle-Abhängigkeitsprüfungen und Selbsttests erweitert |
 | Modulschnitt `acp-client-api` / `acp-solon-client` / `acp-demo-agent`, `mcp-runtime-api` / `mcp-solon-runtime`, `comic-controls`; JUnit 4.13.2; Versionen acp-sdk/solon 3.10.1, Lucene 8.11.3, slf4j-nop | Miguel0888/askai-java8 |
 | Versionen Gson 2.10.1, OkHttp 4.9.3, jsoup 1.17.2, JWBF 3.1.1, Java-WebSocket 1.5.2 | Miguel0888/MainframeMate (`app`, `wiki-integration`) |
+| MCP-Werkzeugkatalog als Fabrik von `McpToolContribution`s mit Fehlern als Ergebnis statt Exception und Auflösung des Ziels vor dem Aufruf (`application.mcp`) | Miguel0888/askai-java8 (`ResearchBotDirectoryTools`, `ResearchBotSessionTools`) |
+| Parameter `query`/`maxResults`/`sources`, Snippet-Grenze und Gesamtgrenze 20.000 Zeichen der Wissenswerkzeuge | Miguel0888/MainframeMate (`SearchIndexTool`, `ReadChunksTool`) |

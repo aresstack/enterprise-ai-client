@@ -1,7 +1,9 @@
 package com.aresstack.enterpriseai.source.api.archfixture;
 
-/** Steht für den Source-Port als Ziel von Gegenbeispielen. */
-public interface FakeSourcePort {
+/** Steht in den Selbsttests von McpKnowledgeToolsBoundaryTest für den Quell-Port bzw. seinen Scope (source-api). */
+public final class FakeSourcePort {
 
-    String load(String id);
+    public int discover(String scope) {
+        return scope.length();
+    }
 }
