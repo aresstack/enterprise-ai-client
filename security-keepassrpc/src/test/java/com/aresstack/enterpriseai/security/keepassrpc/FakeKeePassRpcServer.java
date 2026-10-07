@@ -43,6 +43,12 @@ final class FakeKeePassRpcServer extends WebSocketServer {
     volatile String pairingPassword = "S3cr3tPairingCode";
     /** FindLogins findet nichts (Eintrag ohne passende URL), nur GetAllEntries liefert ihn. */
     volatile boolean findLoginsEmpty;
+    /** Fehlverhalten für Negativtests. */
+    volatile boolean omitM2;
+    volatile boolean omitSr;
+    volatile boolean sendSignalBeforeEachReply;
+    volatile boolean resultNotArray;
+    volatile boolean messageFieldIsObject;
 
     FakeKeePassRpcServer() {
         super(new InetSocketAddress("127.0.0.1", 0));
@@ -122,6 +128,16 @@ final class FakeKeePassRpcServer extends WebSocketServer {
         } else if ("setup".equals(protocol) && request.has("key")) {
             connection.send(kcr(state, request.getAsJsonObject("key")));
         } else if ("jsonrpc".equals(protocol) && state.sessionKey != null) {
+            if (sendSignalBeforeEachReply) {
+                // Wie KeePassRPC-Signale (z. B. "Datenbank geöffnet"): JSON-RPC ohne passende ID.
+                JsonObject signal = new JsonObject();
+                signal.addProperty("jsonrpc", "2.0");
+                signal.addProperty("method", "KPRPCListener");
+                JsonArray params = new JsonArray();
+                params.add(3);
+                signal.add("params", params);
+                connection.send(seal(state, signal));
+            }
             connection.send(rpc(state, request.getAsJsonObject("jsonrpc")));
         } else {
             connection.send("{\"protocol\":\"error\",\"error\":{\"code\":\"UNEXPECTED\"}}");
@@ -162,8 +178,10 @@ final class FakeKeePassRpcServer extends WebSocketServer {
         reply.addProperty("protocol", "setup");
         JsonObject content = new JsonObject();
         content.addProperty("stage", "proofToClient");
-        content.addProperty("M2", KeePassRpcCrypto.hex(KeePassRpcCrypto.sha256(
-                KeePassRpcCrypto.utf8(state.aHex + expectedM + sHex))));
+        if (!omitM2) {
+            content.addProperty("M2", KeePassRpcCrypto.hex(KeePassRpcCrypto.sha256(
+                    KeePassRpcCrypto.utf8(state.aHex + expectedM + sHex))));
+        }
         reply.add("srp", content);
         return gson.toJson(reply);
     }
@@ -192,7 +210,9 @@ final class FakeKeePassRpcServer extends WebSocketServer {
         JsonObject reply = new JsonObject();
         reply.addProperty("protocol", "setup");
         JsonObject content = new JsonObject();
-        content.addProperty("sr", KeePassRpcCrypto.challengeResponse("0", stored.toCharArray(), state.sc, cc));
+        if (!omitSr) {
+            content.addProperty("sr", KeePassRpcCrypto.challengeResponse("0", stored.toCharArray(), state.sc, cc));
+        }
         reply.add("key", content);
         return gson.toJson(reply);
     }
@@ -226,8 +246,23 @@ final class FakeKeePassRpcServer extends WebSocketServer {
             }
             JsonObject response = new JsonObject();
             response.addProperty("jsonrpc", "2.0");
-            response.add("result", result);
+            if (resultNotArray) {
+                response.add("result", new JsonObject());
+            } else {
+                response.add("result", result);
+            }
             response.add("id", call.get("id"));
+            if (messageFieldIsObject) {
+                return "{\"protocol\":\"jsonrpc\",\"jsonrpc\":{\"message\":{},\"iv\":\"AA==\",\"hmac\":\"AA==\"}}";
+            }
+            return seal(state, response);
+        } catch (KeePassRpcException e) {
+            return "{\"protocol\":\"error\",\"error\":{\"code\":\"DECRYPT\"}}";
+        }
+    }
+
+    private String seal(ConnectionState state, JsonObject response) {
+        try {
             KeePassRpcCrypto.Sealed sealed = KeePassRpcCrypto.encrypt(state.sessionKey.toCharArray(),
                     gson.toJson(response).getBytes(StandardCharsets.UTF_8), random);
             Base64.Encoder encoder = Base64.getEncoder();

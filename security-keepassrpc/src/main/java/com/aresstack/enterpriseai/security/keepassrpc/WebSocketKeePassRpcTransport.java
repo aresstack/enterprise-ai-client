@@ -47,10 +47,12 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
             identify.addProperty("I", config.clientId());
             identify.addProperty("A", srp.aHex());
             identify.addProperty("securityLevel", SECURITY_LEVEL);
-            JsonObject challenge = parse(channel.exchange(setup("srp", identify), "SRP identifyToServer"));
+            JsonObject challenge = setupExchange(channel, setup("srp", identify), "SRP identifyToServer");
             rejectError(challenge, "SRP identifyToServer");
             JsonObject serverSrp = object(challenge, "srp");
-            if (serverSrp == null || !serverSrp.has("s") || !serverSrp.has("B")) {
+            String salt = string(serverSrp, "s");
+            String b = string(serverSrp, "B");
+            if (salt == null || b == null) {
                 throw protocol("unerwartete SRP-Antwort (kein s/B)");
             }
 
@@ -60,7 +62,7 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
             }
             KeePassRpcCrypto.Proof proof;
             try {
-                proof = srp.prove(serverSrp.get("s").getAsString(), serverSrp.get("B").getAsString(), password);
+                proof = srp.prove(salt, b, password);
             } finally {
                 Arrays.fill(password, '\0');
             }
@@ -73,13 +75,14 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
             proofToServer.addProperty("stage", "proofToServer");
             proofToServer.addProperty("M", proof.mHex());
             proofToServer.addProperty("securityLevel", SECURITY_LEVEL);
-            JsonObject verify = parse(channel.exchange(setup("srp", proofToServer), "SRP proofToServer"));
+            JsonObject verify = setupExchange(channel, setup("srp", proofToServer), "SRP proofToServer");
             rejectError(verify, "SRP proofToServer");
-            JsonObject verifySrp = object(verify, "srp");
-            if (verifySrp != null && verifySrp.has("M2")
-                    && !verifySrp.get("M2").getAsString().equalsIgnoreCase(proof.expectedM2())) {
+            // M2 ist Pflicht (wie im Go-Client gkp): ohne Server-Beweis wäre der Schlüssel mit einem
+            // beliebigen Gegenüber ausgehandelt.
+            String m2 = string(object(verify, "srp"), "M2");
+            if (m2 == null || !m2.equalsIgnoreCase(proof.expectedM2())) {
                 throw new KeePassRpcException(KeePassRpcException.Kind.AUTH_FAILED,
-                        "Server-Beweis M2 stimmt nicht; Pairing verworfen");
+                        "Server-Beweis M2 fehlt oder stimmt nicht; Pairing verworfen");
             }
             return proof.sessionKey();
         }
@@ -103,26 +106,25 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
         JsonObject identify = new JsonObject();
         identify.addProperty("username", config.clientId());
         identify.addProperty("securityLevel", SECURITY_LEVEL);
-        JsonObject challenge = parse(channel.exchange(setup("key", identify), "KCR identify"));
+        JsonObject challenge = setupExchange(channel, setup("key", identify), "KCR identify");
         rejectError(challenge, "KCR identify");
-        JsonObject serverKey = object(challenge, "key");
-        if (serverKey == null || !serverKey.has("sc")) {
+        String sc = string(object(challenge, "key"), "sc");
+        if (sc == null) {
             throw protocol("unerwartete KCR-Antwort (kein key.sc)");
         }
-        String sc = serverKey.get("sc").getAsString();
         String cc = KeePassRpcCrypto.newClientChallenge(random);
 
         JsonObject response = new JsonObject();
         response.addProperty("cc", cc);
         response.addProperty("cr", KeePassRpcCrypto.challengeResponse("1", sessionKey, sc, cc));
         response.addProperty("securityLevel", SECURITY_LEVEL);
-        JsonObject verify = parse(channel.exchange(setup("key", response), "KCR proof"));
+        JsonObject verify = setupExchange(channel, setup("key", response), "KCR proof");
         rejectError(verify, "KCR proof");
-        JsonObject verifyKey = object(verify, "key");
-        if (verifyKey != null && verifyKey.has("sr")
-                && !verifyKey.get("sr").getAsString().equalsIgnoreCase(
-                        KeePassRpcCrypto.challengeResponse("0", sessionKey, sc, cc))) {
-            throw new KeePassRpcException(KeePassRpcException.Kind.AUTH_FAILED, "Server-Antwort sr stimmt nicht");
+        // sr ist Pflicht: erst damit beweist der Server, dass er den Pairing-Schlüssel kennt.
+        String sr = string(object(verify, "key"), "sr");
+        if (sr == null || !sr.equalsIgnoreCase(KeePassRpcCrypto.challengeResponse("0", sessionKey, sc, cc))) {
+            throw new KeePassRpcException(KeePassRpcException.Kind.AUTH_FAILED,
+                    "Server-Antwort sr fehlt oder stimmt nicht");
         }
     }
 
@@ -142,6 +144,23 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
         return gson.toJson(message);
     }
 
+    /**
+     * Sendet eine Setup-Nachricht und liefert die nächste Setup- oder Fehlerantwort; dazwischen eintreffende
+     * Nachrichten anderer Protokolle (Signale) werden übersprungen.
+     */
+    private static JsonObject setupExchange(KeePassRpcChannel channel, String message, String step)
+            throws KeePassRpcException {
+        long deadline = channel.newDeadline();
+        channel.send(message, step);
+        while (true) {
+            JsonObject reply = parse(channel.receive(step, deadline));
+            String protocol = string(reply, "protocol");
+            if (protocol == null || "setup".equals(protocol) || "error".equals(protocol)) {
+                return reply;
+            }
+        }
+    }
+
     /** Fehler im Setup-Protokoll bedeuten: Pairing bzw. Schlüssel abgelehnt. */
     private static void rejectError(JsonObject message, String step) throws KeePassRpcException {
         if (message.has("error") && !message.get("error").isJsonNull()) {
@@ -154,11 +173,12 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
     private static String errorCode(JsonElement error) {
         if (error.isJsonObject()) {
             JsonObject object = error.getAsJsonObject();
-            if (object.has("code")) {
-                return "Code " + object.get("code").getAsString();
+            String code = string(object, "code");
+            if (code != null) {
+                return "Code " + code;
             }
         }
-        return error.isJsonPrimitive() ? error.getAsString() : "Fehlerobjekt";
+        return error.isJsonPrimitive() && error.getAsJsonPrimitive().isString() ? error.getAsString() : "Fehlerobjekt";
     }
 
     static JsonObject parse(String json) throws KeePassRpcException {
@@ -174,8 +194,15 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
     }
 
     private static JsonObject object(JsonObject parent, String name) {
-        JsonElement element = parent.get(name);
+        JsonElement element = parent == null ? null : parent.get(name);
         return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+    }
+
+    /** Feldwert, wenn er ein JSON-String (oder eine Zahl) ist, sonst {@code null}; wirft nie. */
+    static String string(JsonObject parent, String name) {
+        JsonElement element = parent == null ? null : parent.get(name);
+        return element != null && element.isJsonPrimitive() && !element.getAsJsonPrimitive().isBoolean()
+                ? element.getAsString() : null;
     }
 
     private static KeePassRpcException protocol(String message) {
@@ -223,15 +250,38 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
             return KeePassRpcEntries.exactTitleMatch(call("GetAllEntries", new JsonArray()), title);
         }
 
-        private JsonElement call(String method, JsonArray params) throws KeePassRpcException {
+        private JsonArray call(String method, JsonArray params) throws KeePassRpcException {
+            int id = ids.getAndIncrement();
+            long deadline = channel.newDeadline();
+            channel.send(gson.toJson(wrapper(rpc(method, params, id))), method);
+            while (true) {
+                JsonObject response = decryptReply(parse(channel.receive(method, deadline)), method);
+                if (response == null || !Integer.toString(id).equals(string(response, "id"))) {
+                    continue; // Signal oder Antwort auf eine frühere Anfrage: nicht unsere Antwort
+                }
+                if (response.has("error") && !response.get("error").isJsonNull()) {
+                    throw protocol("KeePassRPC-Fehler bei " + method + " (" + errorCode(response.get("error")) + ")");
+                }
+                JsonElement result = response.get("result");
+                if (result == null || !result.isJsonArray()) {
+                    throw protocol("Antwort auf " + method + " ohne Ergebnisliste");
+                }
+                return result.getAsJsonArray();
+            }
+        }
+
+        private JsonObject rpc(String method, JsonArray params, int id) {
             JsonObject rpc = new JsonObject();
             rpc.addProperty("jsonrpc", "2.0");
             rpc.addProperty("method", method);
             rpc.add("params", params);
-            rpc.addProperty("id", ids.getAndIncrement());
-            KeePassRpcCrypto.Sealed sealed = KeePassRpcCrypto.encrypt(sessionKey,
-                    gson.toJson(rpc).getBytes(StandardCharsets.UTF_8), random);
+            rpc.addProperty("id", id);
+            return rpc;
+        }
 
+        private JsonObject wrapper(JsonObject rpc) throws KeePassRpcException {
+            byte[] plaintext = gson.toJson(rpc).getBytes(StandardCharsets.UTF_8);
+            KeePassRpcCrypto.Sealed sealed = KeePassRpcCrypto.encrypt(sessionKey, plaintext, random);
             JsonObject container = new JsonObject();
             Base64.Encoder base64 = Base64.getEncoder();
             container.addProperty("message", base64.encodeToString(sealed.ciphertext));
@@ -241,37 +291,39 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
             wrapper.addProperty("protocol", "jsonrpc");
             wrapper.addProperty("version", PROTOCOL_VERSION);
             wrapper.add("jsonrpc", container);
+            return wrapper;
+        }
 
-            JsonObject reply = parse(channel.exchange(gson.toJson(wrapper), method));
-            if (reply.has("protocol") && "error".equals(reply.get("protocol").getAsString())) {
+        /** Entschlüsselter JSON-RPC-Inhalt einer Nachricht oder {@code null} für Nachrichten anderer Protokolle. */
+        private JsonObject decryptReply(JsonObject reply, String method) throws KeePassRpcException {
+            String protocol = string(reply, "protocol");
+            if ("error".equals(protocol)) {
                 throw protocol("KeePassRPC meldet Fehler bei " + method
                         + (reply.has("error") ? " (" + errorCode(reply.get("error")) + ")" : ""));
             }
+            if (!"jsonrpc".equals(protocol)) {
+                return null;
+            }
             JsonObject encrypted = object(reply, "jsonrpc");
-            if (encrypted == null || !encrypted.has("message") || !encrypted.has("iv") || !encrypted.has("hmac")) {
+            String message = string(encrypted, "message");
+            String iv = string(encrypted, "iv");
+            String hmac = string(encrypted, "hmac");
+            if (message == null || iv == null || hmac == null) {
                 throw protocol("unverschlüsselte oder unvollständige Antwort auf " + method);
             }
             byte[] plaintext;
             try {
                 Base64.Decoder decoder = Base64.getDecoder();
                 plaintext = KeePassRpcCrypto.decrypt(sessionKey, new KeePassRpcCrypto.Sealed(
-                        decoder.decode(encrypted.get("message").getAsString()),
-                        decoder.decode(encrypted.get("iv").getAsString()),
-                        decoder.decode(encrypted.get("hmac").getAsString())));
+                        decoder.decode(message), decoder.decode(iv), decoder.decode(hmac)));
             } catch (IllegalArgumentException e) {
                 throw protocol("ungültiges Base64 in der Antwort auf " + method);
             }
-            JsonObject response;
             try {
-                response = parse(new String(plaintext, StandardCharsets.UTF_8));
+                return parse(new String(plaintext, StandardCharsets.UTF_8));
             } finally {
                 Arrays.fill(plaintext, (byte) 0);
             }
-            if (response.has("error") && !response.get("error").isJsonNull()) {
-                throw protocol("KeePassRPC-Fehler bei " + method + " (" + errorCode(response.get("error")) + ")");
-            }
-            JsonElement result = response.get("result");
-            return result == null ? new JsonArray() : result;
         }
 
         @Override

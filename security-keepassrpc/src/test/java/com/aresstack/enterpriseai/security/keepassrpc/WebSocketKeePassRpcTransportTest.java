@@ -208,4 +208,86 @@ public class WebSocketKeePassRpcTransportTest {
             assertTrue(e.getMessage(), e.getMessage().contains("Gibt es nicht"));
         }
     }
+
+    @Test
+    public void pairingWithoutServerProofM2IsRejected() throws Exception {
+        server.omitM2 = true;
+        try {
+            new WebSocketKeePassRpcTransport(config).pair(name -> server.pairingPassword.toCharArray());
+            fail("Pairing ohne M2 darf keinen Schlüssel liefern");
+        } catch (KeePassRpcException e) {
+            assertEquals(KeePassRpcException.Kind.AUTH_FAILED, e.kind());
+        }
+    }
+
+    @Test
+    public void loginWithoutServerProofSrIsRejected() throws Exception {
+        WebSocketKeePassRpcTransport transport = new WebSocketKeePassRpcTransport(config);
+        char[] key = transport.pair(name -> server.pairingPassword.toCharArray());
+        server.omitSr = true;
+        try {
+            transport.open(key).close();
+            fail("Login ohne sr darf keine Sitzung liefern");
+        } catch (KeePassRpcException e) {
+            assertEquals(KeePassRpcException.Kind.AUTH_FAILED, e.kind());
+        }
+    }
+
+    @Test
+    public void signalsBetweenRequestAndReplyAreSkipped() throws Exception {
+        server.sendSignalBeforeEachReply = true;
+        WebSocketKeePassRpcTransport transport = new WebSocketKeePassRpcTransport(config);
+        char[] key = transport.pair(name -> server.pairingPassword.toCharArray());
+        try (KeePassRpcTransport.Session session = transport.open(key)) {
+            assertEquals("alice", session.findEntryByTitle("Confluence Prod").userName());
+            assertEquals("bob", session.findEntryByTitle("Wiki").userName());
+        }
+    }
+
+    @Test
+    public void resultWithoutListIsAProtocolErrorNotAMissingEntry() throws Exception {
+        assertLookupFailsWithProtocolError(() -> server.resultNotArray = true);
+    }
+
+    @Test
+    public void malformedFieldTypesAreProtocolErrors() throws Exception {
+        assertLookupFailsWithProtocolError(() -> server.messageFieldIsObject = true);
+    }
+
+    private void assertLookupFailsWithProtocolError(Runnable misbehave) throws Exception {
+        WebSocketKeePassRpcTransport transport = new WebSocketKeePassRpcTransport(config);
+        char[] key = transport.pair(name -> server.pairingPassword.toCharArray());
+        misbehave.run();
+        try (KeePassRpcTransport.Session session = transport.open(key)) {
+            session.findEntryByTitle("Confluence Prod");
+            fail();
+        } catch (KeePassRpcException e) {
+            assertEquals(KeePassRpcException.Kind.PROTOCOL, e.kind());
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void silentEndpointTimesOutWithoutHanging() throws Exception {
+        try (ServerSocket silent = new ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) {
+            Thread acceptor = new Thread(() -> {
+                try {
+                    silent.accept(); // nimmt an, antwortet nie (auch nicht auf den WebSocket-Handshake)
+                } catch (java.io.IOException ignored) {
+                    // Test beendet
+                }
+            });
+            acceptor.setDaemon(true);
+            acceptor.start();
+            KeePassRpcConfig silentConfig = KeePassRpcConfig.builder().port(silent.getLocalPort()).timeoutMillis(1000).build();
+            long start = System.nanoTime();
+            try {
+                new WebSocketKeePassRpcTransport(silentConfig).open(new char[64]);
+                fail();
+            } catch (KeePassRpcException e) {
+                assertEquals(KeePassRpcException.Kind.NOT_AVAILABLE, e.kind());
+            }
+            assertTrue("Abbruch muss durch das Timeout begrenzt sein",
+                    System.nanoTime() - start < java.util.concurrent.TimeUnit.SECONDS.toNanos(5));
+        }
+    }
 }

@@ -6,13 +6,14 @@ import org.java_websocket.handshake.ServerHandshake;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
- * Eine WebSocket-Verbindung zu KeePassRPC mit synchronem Anfrage/Antwort-Muster (KeePassRPC beantwortet jede
- * Nachricht mit genau einer). Nachrichteninhalte werden nie geloggt: nach dem Login sind sie verschlüsselt,
+ * Eine WebSocket-Verbindung zu KeePassRPC: Nachrichten senden und eingehende der Reihe nach mit Frist
+ * empfangen; die Zuordnung von Antworten zu Anfragen macht {@link WebSocketKeePassRpcTransport}. Nachrichteninhalte werden nie geloggt: nach dem Login sind sie verschlüsselt,
  * davor enthalten sie Pairing-Werte.
  */
 final class KeePassRpcChannel implements AutoCloseable {
@@ -20,7 +21,10 @@ final class KeePassRpcChannel implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger(KeePassRpcChannel.class.getName());
 
     private final KeePassRpcConfig config;
+    private static final int CLOSE_ABNORMAL = 1006;
+
     private final BlockingQueue<Object> inbox = new LinkedBlockingQueue<Object>();
+    private final CountDownLatch closed = new CountDownLatch(1);
     private final WebSocketClient socket;
 
     private KeePassRpcChannel(KeePassRpcConfig config, URI uri) {
@@ -39,6 +43,7 @@ final class KeePassRpcChannel implements AutoCloseable {
             @Override
             public void onClose(int code, String reason, boolean remote) {
                 inbox.add(new Closed(code, remote));
+                closed.countDown();
             }
 
             @Override
@@ -80,18 +85,29 @@ final class KeePassRpcChannel implements AutoCloseable {
         return channel;
     }
 
-    /** Sendet eine Nachricht und wartet auf die nächste Antwort. */
-    String exchange(String message, String step) throws KeePassRpcException {
-        inbox.clear();
+    /** Frist für die Antwort auf eine jetzt gesendete Nachricht (System.nanoTime-basiert). */
+    long newDeadline() {
+        return System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.timeoutMillis());
+    }
+
+    void send(String message, String step) throws KeePassRpcException {
         try {
             socket.send(message);
         } catch (RuntimeException e) {
             throw new KeePassRpcException(KeePassRpcException.Kind.NOT_AVAILABLE,
                     "Senden fehlgeschlagen bei " + step + " (Verbindung geschlossen)", e);
         }
+    }
+
+    /**
+     * Nächste eingehende Nachricht bis zur Frist. Welche Nachricht die Antwort ist, entscheidet der Aufrufer
+     * (KeePassRPC kann zwischendurch Signale senden, z. B. "Datenbank geöffnet").
+     */
+    String receive(String step, long deadlineNanos) throws KeePassRpcException {
         Object reply;
         try {
-            reply = inbox.poll(config.timeoutMillis(), TimeUnit.MILLISECONDS);
+            long remaining = deadlineNanos - System.nanoTime();
+            reply = remaining <= 0 ? inbox.poll() : inbox.poll(remaining, TimeUnit.NANOSECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new KeePassRpcException(KeePassRpcException.Kind.NOT_AVAILABLE, "unterbrochen bei " + step, e);
@@ -115,12 +131,20 @@ final class KeePassRpcChannel implements AutoCloseable {
         return socket.isOpen();
     }
 
+    /**
+     * Schließt höchstens {@code timeoutMillis} lang geordnet (Close-Handshake) und bricht die Verbindung danach
+     * hart ab, damit ein hängender Server oder ein noch laufender Verbindungsaufbau den Aufrufer nicht blockiert.
+     */
     @Override
     public void close() {
         try {
-            socket.closeBlocking();
+            socket.close();
+            if (!closed.await(config.timeoutMillis(), TimeUnit.MILLISECONDS)) {
+                socket.closeConnection(CLOSE_ABNORMAL, "Timeout beim Schließen");
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            socket.closeConnection(CLOSE_ABNORMAL, "unterbrochen");
         } catch (RuntimeException ignored) {
             // Schließen ist best effort.
         }

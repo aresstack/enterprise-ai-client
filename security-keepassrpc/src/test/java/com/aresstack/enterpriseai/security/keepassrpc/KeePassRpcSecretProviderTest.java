@@ -132,6 +132,36 @@ public class KeePassRpcSecretProviderTest {
         transport.pairingResult = NEW_KEY;
         assertReason(Reason.ACCESS_DENIED, "keepass:Confluence");
         assertEquals(1, pairingPrompts.size());
+        assertNull("nachweislich ungültiger Schlüssel darf nicht gespeichert bleiben", store.load());
+    }
+
+    @Test
+    public void newKeyIsWipedWhenStoringItFails() {
+        IllegalStateException failure = new IllegalStateException("Platte voll");
+        KeePassRpcSecretProvider failingStore = new KeePassRpcSecretProvider(transport, new KeePassPairingKeyStore() {
+            @Override
+            public char[] load() {
+                return null;
+            }
+
+            @Override
+            public void save(char[] key) {
+                throw failure;
+            }
+
+            @Override
+            public void clear() {
+            }
+        }, name -> "einmal".toCharArray());
+        try {
+            failingStore.resolve(SecretRef.of("Confluence"));
+            fail();
+        } catch (IllegalStateException e) {
+            assertEquals(failure, e);
+        } catch (SecretUnavailableException e) {
+            fail(e.getMessage());
+        }
+        assertArrayEquals(new char[64], transport.lastPairedKey);
     }
 
     @Test
@@ -181,6 +211,7 @@ public class KeePassRpcSecretProviderTest {
         KeePassRpcException openFailure;
         KeePassRpcException lookupFailure;
         int closedSessions;
+        char[] lastPairedKey;
 
         @Override
         public char[] pair(KeePassPairingCallback callback) throws KeePassRpcException {
@@ -188,7 +219,8 @@ public class KeePassRpcSecretProviderTest {
                 throw pairingFailure;
             }
             char[] answer = callback.requestPairingPassword("Test");
-            return answer == null ? null : pairingResult.toCharArray();
+            lastPairedKey = answer == null ? null : pairingResult.toCharArray();
+            return lastPairedKey;
         }
 
         @Override

@@ -81,10 +81,12 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
                 try {
                     return lookup(ref, title, key);
                 } catch (KeePassRpcException retry) {
-                    throw retry.kind() == KeePassRpcException.Kind.AUTH_FAILED
-                            ? new SecretUnavailableException(Reason.ACCESS_DENIED, ref,
-                                    "KeePassRPC lehnt auch das neue Pairing ab", retry)
-                            : unavailable(ref, retry);
+                    if (retry.kind() != KeePassRpcException.Kind.AUTH_FAILED) {
+                        throw unavailable(ref, retry);
+                    }
+                    keyStore.clear(); // nachweislich ungültig: beim nächsten Mal gleich neu pairen
+                    throw new SecretUnavailableException(Reason.ACCESS_DENIED, ref,
+                            "KeePassRPC lehnt auch das neue Pairing ab", retry);
                 }
             }
         } finally {
@@ -118,7 +120,12 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
         if (key == null || key.length == 0) {
             throw new SecretUnavailableException(Reason.CANCELLED, ref, "KeePassRPC-Pairing abgebrochen");
         }
-        keyStore.save(key);
+        try {
+            keyStore.save(key);
+        } catch (RuntimeException e) {
+            wipe(key);
+            throw e;
+        }
         LOG.info("KeePassRPC-Pairing erfolgreich");
         return key;
     }
