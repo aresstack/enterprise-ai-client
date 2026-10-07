@@ -34,7 +34,8 @@ public final class InProcessMcpToolClientFactory implements McpToolClientFactory
         if (slash <= 0 || slash == rest.length() - 1) {
             throw new IllegalArgumentException("malformed in-process MCP endpoint URL");
         }
-        return new Client(registry, rest.substring(0, slash), rest.substring(slash + 1));
+        return new Client(registry, InProcessMcpServerRegistry.decode(rest.substring(0, slash)),
+                rest.substring(slash + 1));
     }
 
     private static final class Client implements McpToolClient {
@@ -51,14 +52,21 @@ public final class InProcessMcpToolClientFactory implements McpToolClientFactory
 
         @Override
         public Map<String, String> listTools() throws McpToolCallException {
-            ensureReachable();
-            return registry.listTools(endpointId, token);
+            ensureOpen();
+            Map<String, String> tools = registry.catalogOrNull(endpointId, token);
+            if (tools == null) {
+                throw unavailable();
+            }
+            return tools;
         }
 
         @Override
         public String callTool(String toolName, Map<String, Object> arguments) throws McpToolCallException {
-            ensureReachable();
-            McpToolResult result = registry.invoke(endpointId, token, new McpToolCall(toolName, arguments));
+            ensureOpen();
+            McpToolResult result = registry.dispatch(endpointId, token, new McpToolCall(toolName, arguments));
+            if (result == null) {
+                throw unavailable();
+            }
             if (result.isError()) {
                 throw new McpToolCallException(result.getText(), false);
             }
@@ -70,13 +78,14 @@ public final class InProcessMcpToolClientFactory implements McpToolClientFactory
             closed = true;
         }
 
-        private void ensureReachable() throws McpToolCallException {
+        private void ensureOpen() throws McpToolCallException {
             if (closed) {
                 throw new McpToolCallException("MCP client is closed", true);
             }
-            if (!registry.isAuthorized(endpointId, token)) {
-                throw new McpToolCallException("MCP endpoint not available", true);
-            }
+        }
+
+        private static McpToolCallException unavailable() {
+            return new McpToolCallException("MCP endpoint not available", true);
         }
     }
 }

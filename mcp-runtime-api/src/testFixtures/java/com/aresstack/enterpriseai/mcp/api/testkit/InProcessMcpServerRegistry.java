@@ -21,11 +21,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Transportfreie Referenzimplementierung von {@link McpServerRegistry}: Endpoints, Tokens und Tool-Mengen
  * leben in der JVM, Aufrufe werden direkt dispatcht. Kein MCP-Protokoll (kein Wire-Format); dient dazu,
  * Tool-Logik (z. B. AP20) ohne Netzwerk zu testen. Clients bekommt man über
- * {@link InProcessMcpToolClientFactory}; Endpoint-URLs haben die Form {@code inprocess://<id>/<token>}.
+ * {@link InProcessMcpToolClientFactory}; Endpoint-URLs haben die Form {@code inprocess://<url-kodierte id>/<token>}.
  *
  * <p>Herkunft: askai-java8 {@code InProcessMcpServerRegistry}; Zufallsquelle per Konstruktor statt statisch.
  */
 public final class InProcessMcpServerRegistry implements McpServerRegistry {
+
+    /** Generische Meldung, wenn ein Handler eine Exception wirft. */
+    public static final String TOOL_FAILED = "Tool failed.";
 
     /** URL-Schema der InProcess-Endpoints. */
     public static final String SCHEME = "inprocess://";
@@ -93,7 +96,7 @@ public final class InProcessMcpServerRegistry implements McpServerRegistry {
     @Override
     public String endpointUrl(McpEndpointHandle handle) {
         Endpoint endpoint = authorized(handle);
-        return endpoint == null ? null : SCHEME + endpoint.definition.getEndpointId() + "/" + endpoint.token;
+        return endpoint == null ? null : SCHEME + encode(endpoint.definition.getEndpointId()) + "/" + endpoint.token;
     }
 
     @Override
@@ -138,7 +141,37 @@ public final class InProcessMcpServerRegistry implements McpServerRegistry {
 
     /** Aktuelle Tools als Name → Beschreibung; leer bei falschem Token oder unbekanntem Endpoint. */
     public Map<String, String> listTools(String endpointId, String token) {
-        return toolCatalog(new McpEndpointHandle(endpointId, token));
+        Map<String, String> tools = catalogOrNull(endpointId, token);
+        return tools == null ? new LinkedHashMap<String, String>() : tools;
+    }
+
+    /** Katalog in einem Schritt mit der Autorisierung; {@code null}, wenn der Endpoint nicht erreichbar ist. */
+    Map<String, String> catalogOrNull(String endpointId, String token) {
+        Endpoint endpoint = lookup(endpointId, token);
+        if (endpoint == null) {
+            return null;
+        }
+        Map<String, String> catalog = new LinkedHashMap<String, String>();
+        for (McpToolContribution tool : endpoint.tools.values()) {
+            catalog.put(tool.getName(), tool.getDescription());
+        }
+        return catalog;
+    }
+
+    static String encode(String endpointId) {
+        try {
+            return java.net.URLEncoder.encode(endpointId, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    static String decode(String encodedEndpointId) {
+        try {
+            return java.net.URLDecoder.decode(encodedEndpointId, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     /**
@@ -146,9 +179,18 @@ public final class InProcessMcpServerRegistry implements McpServerRegistry {
      * Fehler-Ergebnis (kein Throw); eine Exception des Handlers wird ebenfalls zum Fehler-Ergebnis.
      */
     public McpToolResult invoke(String endpointId, String token, McpToolCall call) {
+        McpToolResult result = dispatch(endpointId, token, call);
+        return result == null ? McpToolResult.error("Unknown endpoint or invalid token.") : result;
+    }
+
+    /**
+     * Wie {@link #invoke(String, String, McpToolCall)}, aber Autorisierung und Aufruf in einem Schritt:
+     * {@code null}, wenn der Endpoint nicht (mehr) erreichbar ist.
+     */
+    McpToolResult dispatch(String endpointId, String token, McpToolCall call) {
         Endpoint endpoint = lookup(endpointId, token);
         if (endpoint == null) {
-            return McpToolResult.error("Unknown endpoint or invalid token.");
+            return null;
         }
         McpToolContribution tool = endpoint.tools.get(call.getToolName());
         if (tool == null) {
@@ -158,7 +200,8 @@ public final class InProcessMcpServerRegistry implements McpServerRegistry {
             McpToolResult result = tool.getHandler().invoke(call);
             return result == null ? McpToolResult.error("Tool returned no result.") : result;
         } catch (RuntimeException ex) {
-            return McpToolResult.error("Tool failed: " + ex.getMessage());
+            // Generisch: die Meldung kann Anfragedaten oder Secrets enthalten.
+            return McpToolResult.error(TOOL_FAILED);
         }
     }
 

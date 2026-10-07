@@ -153,15 +153,23 @@ public abstract class McpServerRegistryContractTest {
         McpToolContribution exploding = McpToolContribution.of("explode", "throws", new McpToolHandler() {
             @Override
             public McpToolResult invoke(McpToolCall call) {
-                throw new IllegalStateException("boom");
+                throw new IllegalStateException("boom with secret details");
             }
         });
         McpEndpointHandle handle = register("contract.throw", exploding, McpTestTools.ping());
         McpToolClient client = connect(handle);
 
-        assertToolFailure(client, "explode");
+        McpToolCallException failure = assertToolFailure(client, "explode");
+        assertFalse("handler exception details must not reach the client: " + failure.getMessage(),
+                failure.getMessage().contains("secret details"));
         assertEquals("endpoint keeps serving after a handler failure",
                 "pong", client.callTool("ping", Collections.<String, Object>emptyMap()));
+    }
+
+    @Test
+    public void endpointIdsWithUrlReservedCharactersStillWork() throws Exception {
+        McpEndpointHandle handle = register("knowledge/session#1?x=y &z", McpTestTools.ping());
+        assertEquals("pong", connect(handle).callTool("ping", Collections.<String, Object>emptyMap()));
     }
 
     @Test
@@ -271,8 +279,10 @@ public abstract class McpServerRegistryContractTest {
         } catch (McpToolCallException expected) {
             assertTrue("must be reported as unavailable endpoint: " + expected.getMessage(),
                     expected.isEndpointUnavailable());
-            assertFalse("exception must not reveal the token",
-                    String.valueOf(expected.getMessage()).contains(token));
+            for (Throwable cause = expected; cause != null; cause = cause.getCause()) {
+                assertFalse("exception chain must not reveal the token: " + cause,
+                        String.valueOf(cause.getMessage()).contains(token) || String.valueOf(cause).contains(token));
+            }
         }
     }
 }

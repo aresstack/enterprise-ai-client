@@ -77,6 +77,16 @@ public class McpValueTypesTest {
                 McpToolContribution.of("t", "d", null);
             }
         });
+        for (final String invalid : new String[] {"with space", "ümlaut", "semi;colon", repeat('a', 129)}) {
+            assertRejected(new Runnable() {
+                @Override
+                public void run() {
+                    McpToolContribution.of(invalid, "d", NOOP);
+                }
+            });
+        }
+        assertEquals(repeat('a', 128), McpToolContribution.of(repeat('a', 128), "d", NOOP).getName());
+        assertEquals("search_knowledge.v-2", McpToolContribution.of("search_knowledge.v-2", "d", NOOP).getName());
         assertRejected(new Runnable() {
             @Override
             public void run() {
@@ -151,6 +161,14 @@ public class McpValueTypesTest {
     public void toolCallExceptionKeepsItsCategory() {
         assertTrue(new McpToolCallException("down", true).isEndpointUnavailable());
         assertFalse(new McpToolCallException("tool", false, new IllegalStateException()).isEndpointUnavailable());
+    }
+
+    private static String repeat(char c, int count) {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            text.append(c);
+        }
+        return text.toString();
     }
 
     private static void assertRejected(Runnable action) {
