@@ -2,4 +2,9 @@ description = 'Adapter: Lucene-BM25 plus exakte Cosine-Suche (Strang D). Einzige
 
 dependencies {
     api project(':knowledge-api')
+    implementation libs.lucene.core
+
+    // Vertragstest und Testdaten des Ports; deterministischer Embedding-Fake für den Vertical-Slice-Test (AP9).
+    testImplementation testFixtures(project(':knowledge-api'))
+    testImplementation testFixtures(project(':embedding-api'))
 }
