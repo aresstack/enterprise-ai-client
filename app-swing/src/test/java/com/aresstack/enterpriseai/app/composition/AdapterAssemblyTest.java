@@ -1,0 +1,220 @@
+package com.aresstack.enterpriseai.app.composition;
+
+import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppConfigLoader;
+import com.aresstack.enterpriseai.app.net.ProxyPolicy;
+import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
+import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
+import com.aresstack.enterpriseai.application.knowledge.IndexingStage;
+import com.aresstack.enterpriseai.application.knowledge.IndexingStatus;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.application.knowledge.ResourceIndexingOutcome;
+import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
+import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
+import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
+import com.aresstack.enterpriseai.knowledge.api.testing.InMemoryKnowledgeIndex;
+import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
+import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
+import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
+import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.SourceScope;
+import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
+import com.aresstack.enterpriseai.source.confluence.ConfluenceKnowledgeSource;
+import com.aresstack.enterpriseai.source.mediawiki.MediaWikiKnowledgeSource;
+import org.junit.After;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+
+import javax.swing.SwingUtilities;
+import java.io.StringReader;
+import java.net.ProxySelector;
+import java.util.Arrays;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+/**
+ * Die echten Adapter entstehen aus der Beispielkonfiguration ohne Netzwerkzugriff und lassen sich mit dem Graphen
+ * komponieren und wieder schließen. Agent-Modus bleibt hier aus (Solon ist prozessglobal; siehe Roundtrip-Test).
+ */
+public class AdapterAssemblyTest {
+
+    @Rule
+    public TemporaryFolder temp = new TemporaryFolder();
+
+    private final ProxySelector originalSelector = ProxySelector.getDefault();
+
+    private static final KeePassPairingCallback NO_PAIRING = new KeePassPairingCallback() {
+        @Override
+        public char[] requestPairingPassword(String clientDisplayName) {
+            return null;
+        }
+    };
+
+    /** Führt sofort im aufrufenden Thread aus (kein EDT nötig). */
+    private static final class DirectExecutor implements java.util.concurrent.Executor {
+        @Override
+        public void execute(Runnable command) {
+            command.run();
+        }
+    }
+
+    @After
+    public void restoreSelector() {
+        ProxySelector.setDefault(originalSelector);
+    }
+
+    private Properties exampleProperties(boolean keePassEnabled) throws Exception {
+        Properties p = new Properties();
+        p.load(new StringReader(AppConfigLoader.exampleConfiguration()));
+        p.setProperty("knowledge.indexDirectory", temp.getRoot().toPath().resolve("index").toString());
+        p.setProperty("knowledge.indexOnStartup", "false");
+        p.setProperty("security.keepass.enabled", String.valueOf(keePassEnabled));
+        p.setProperty("security.keepass.pairingKeyStore", "memory");
+        p.setProperty("network.proxy.mode", "MANUAL");
+        p.setProperty("network.proxy.host", "proxy.intern.example");
+        p.setProperty("network.proxy.port", "3128");
+        return p;
+    }
+
+    private AppConfig exampleConfig(boolean keePassEnabled) throws Exception {
+        return AppConfigLoader.fromProperties(exampleProperties(keePassEnabled));
+    }
+
+    @Test
+    public void exampleConfigurationYieldsRealAdaptersWithoutTouchingTheNetwork() throws Exception {
+        AppConfig config = exampleConfig(true);
+        ProxyPolicy proxy = new ProxyPolicy(config.network());
+        ApplicationPorts ports = AdapterAssembly.create(config, proxy, NO_PAIRING, new InMemoryPairingKeyStore());
+        try {
+            assertTrue(ports.chat() instanceof OpenAiCompatibleChatAdapter);
+            assertTrue(ports.embeddings() instanceof OpenAiCompatibleEmbeddingAdapter);
+            assertEquals(768, ports.embeddingSpace().dimension());
+            assertTrue(ports.index() instanceof LuceneKnowledgeIndex);
+            assertTrue(ports.secrets() instanceof KeePassRpcSecretProvider);
+            assertEquals(Arrays.asList(KnowledgeSourceId.of("wiki"), KnowledgeSourceId.of("confluence")),
+                    new java.util.ArrayList<KnowledgeSourceId>(ports.sources().ids()));
+            assertTrue(ports.sources().find(KnowledgeSourceId.of("wiki")).port() instanceof MediaWikiKnowledgeSource);
+            assertTrue(ports.sources().find(KnowledgeSourceId.of("confluence")).port()
+                    instanceof ConfluenceKnowledgeSource);
+            assertFalse("Agent-Modus ist in der Beispielkonfiguration aus", ports.hasAgent());
+            assertEquals(Arrays.asList("knowledge-index"), ports.resourceNames());
+            assertFalse(ports.toString().toLowerCase().contains("password"));
+        } finally {
+            ports.close();
+            ports.close();
+        }
+    }
+
+    @Test
+    public void withoutKeePassTheAppComposesAndReportsMissingSecrets() throws Exception {
+        AppConfig config = exampleConfig(false);
+        ProxyPolicy proxy = new ProxyPolicy(config.network());
+        ApplicationPorts ports = AdapterAssembly.create(config, proxy, null, null);
+        CompositionRoot root = CompositionRoot.compose(config, ports, new DirectExecutor(),
+                System::currentTimeMillis, null);
+        try {
+            assertTrue(ports.secrets() instanceof UnavailableSecretProvider);
+            assertTrue(StartupNotices.of(config).get(0).contains("KeePassRPC ist deaktiviert"));
+            assertFalse(root.hasAgent());
+            assertNull(root.agentService());
+            try {
+                ports.embeddings().embed(Arrays.asList("Probe"));
+                fail("expected EmbeddingException");
+            } catch (EmbeddingException e) {
+                assertEquals("fehlendes Secret ist ein Authentifizierungsfehler des Ports, kein Absturz",
+                        EmbeddingFailureKind.AUTHENTICATION, e.kind());
+            }
+        } finally {
+            root.shutdown().run();
+        }
+        assertEquals(Arrays.asList("cancel-chat-turns", "end-agent-mode", "stop-indexing", "close-ports",
+                "stop-executors"), root.shutdown().executedSteps());
+    }
+
+    @Test
+    public void confluenceClientCertificateWithoutKeePassDoesNotAbortStartup() throws Exception {
+        Properties p = exampleProperties(false);
+        p.setProperty("source.confluence.clientCertificate.alias", "client");
+        p.setProperty("source.confluence.clientCertificate.keyStoreFile",
+                temp.newFile("client.p12").getAbsolutePath());
+        p.setProperty("source.confluence.clientCertificate.keyStorePasswordRef", "Client-Zertifikat");
+        AppConfig config = AppConfigLoader.fromProperties(p);
+
+        ApplicationPorts ports = AdapterAssembly.create(config, new ProxyPolicy(config.network()), null, null);
+        try {
+            KnowledgeSourcePort confluence = ports.sources().find(KnowledgeSourceId.of("confluence")).port();
+            assertTrue(confluence instanceof ConfluenceKnowledgeSource);
+            try {
+                confluence.discover(SourceScope.of("space:DEV"));
+                fail("expected KnowledgeSourceException");
+            } catch (KnowledgeSourceException e) {
+                assertTrue("je Anfrage gemeldet, nicht beim Start: " + e.kind(),
+                        e.kind() == KnowledgeSourceException.Kind.ACCESS_DENIED
+                                || e.kind() == KnowledgeSourceException.Kind.UNAVAILABLE);
+            }
+        } finally {
+            ports.close();
+        }
+    }
+
+    @Test
+    public void startupIndexingWithoutKeePassFinishesWithAuthenticationFailuresInsteadOfHanging()
+            throws Exception {
+        Properties p = exampleProperties(false);
+        p.setProperty("knowledge.indexOnStartup", "true");
+        AppConfig config = AppConfigLoader.fromProperties(p);
+        UnavailableSecretProvider secrets = new UnavailableSecretProvider("Test ohne KeePass");
+        OpenAiCompatibleEmbeddingAdapter embeddings = AdapterAssembly.embeddings(config.embedding(), secrets,
+                new ProxyPolicy(config.network()));
+        InMemoryKnowledgeSource wiki = new InMemoryKnowledgeSource("wiki")
+                .add("Urlaub", "Urlaubsregelung", "Urlaub wird im Portal beantragt.")
+                .add("Reisen", "Reisekosten", "Reisekosten werden über das Formular RK-1 abgerechnet.");
+        ApplicationPorts ports = ApplicationPorts.builder()
+                .chat(new FakeChatCompletionPort(0L))
+                .embeddings(embeddings, embeddings.modelIdentity())
+                .index(new InMemoryKnowledgeIndex())
+                .sources(new KnowledgeSourceCatalog(Arrays.asList(
+                        new KnowledgeSourceRegistration(wiki, SourceScope.of("Urlaub", "Reisen")))))
+                .secrets(secrets)
+                .build();
+        final CompositionRoot root = CompositionRoot.compose(config, ports, SwingUtilities::invokeLater,
+                System::currentTimeMillis, null);
+        try {
+            root.startBackgroundWork();
+            assertTrue("Indexierung muss ohne Secret abschließen statt als laufend hängen zu bleiben",
+                    root.startupIndexing().awaitTermination(10, TimeUnit.SECONDS));
+            IndexingReport report = root.startupIndexing().reports().get(0);
+            assertEquals(2, report.discovered());
+            assertEquals(2, report.count(IndexingStatus.FAILED));
+            for (ResourceIndexingOutcome outcome : report.outcomes()) {
+                assertEquals(IndexingStage.EMBEDDING, outcome.stage());
+                assertTrue(outcome.message(), outcome.message().startsWith("AUTHENTICATION"));
+            }
+            final AtomicReference<String> status = new AtomicReference<String>();
+            SwingUtilities.invokeAndWait(new Runnable() {
+                @Override
+                public void run() {
+                    status.set(root.knowledgeStatus().getText());
+                }
+            });
+            assertTrue(status.get(), status.get().contains("2 fehlgeschlagen"));
+            assertFalse(root.knowledgeStatus().isRunning());
+        } finally {
+            root.shutdown().run();
+        }
+    }
+}

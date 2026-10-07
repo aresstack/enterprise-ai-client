@@ -34,7 +34,8 @@ import static org.junit.Assert.assertTrue;
  * </ul>
  *
  * AP20 (MCP-Wissenswerkzeuge in {@code application.mcp}) ist in {@link #ACP_MCP_ALLOWED} eingetragen; seine
- * eigenen Grenzen prüft {@link McpKnowledgeToolsBoundaryTest}.
+ * eigenen Grenzen prüft {@link McpKnowledgeToolsBoundaryTest}. AP23 verdrahtet ACP und MCP in
+ * {@code app.composition} (neben {@code app.agent} und der Composition-Root-Klasse im Paket {@code app}).
  */
 public class AgentModeBoundaryTest {
 
@@ -49,7 +50,7 @@ public class AgentModeBoundaryTest {
     /** Wo ACP-/MCP-Typen außerhalb ihrer eigenen Module vorkommen dürfen. */
     private static final String[] ACP_MCP_ALLOWED = {
             ROOT + ".acp..", ROOT + ".mcp..", ROOT + ".application.agent..", ROOT + ".application.mcp..",
-            ROOT + ".app.agent..", ROOT + ".app"};
+            ROOT + ".app.agent..", ROOT + ".app.composition..", ROOT + ".app"};
 
     private static JavaClasses productionClasses;
 
