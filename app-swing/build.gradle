@@ -20,11 +20,28 @@ dependencies {
 
     // Strang A: skriptbarer Fake-ChatCompletionPort für UI-Tests und die Demo.
     testImplementation testFixtures(project(':chat-api'))
+    // AP21: Test-Tools (ping, echo) für den MCP-Endpoint des Agenten.
+    testImplementation testFixtures(project(':mcp-runtime-api'))
 }
+
+// AP21: Der Agent-Modus-Roundtrip startet den Demo-Agenten als echten Kindprozess (java -jar). Wie in
+// acp-solon-client keine Projektabhängigkeit auf acp-demo-agent, nur das gebaute Jar als Testeingabe.
+def demoAgentJar = rootProject.file('acp-demo-agent/build/libs/acp-demo-agent-all.jar')
 
 tasks.withType(Test).configureEach {
     // Swing-Tests laufen ohne Display (CI); Fenster werden nur in der Demo erzeugt.
     systemProperty 'java.awt.headless', 'true'
+}
+
+tasks.named('test') {
+    dependsOn ':acp-demo-agent:demoAgentJar'
+    inputs.file(demoAgentJar).withPropertyName('demoAgentJar')
+    systemProperty 'acp.demo.agent.jar', demoAgentJar.absolutePath
+    systemProperty 'acp.agent.java.home', System.getProperty('java.home')
+    // Im Gradle-Build darf der Agent-Roundtrip nicht still übersprungen werden.
+    systemProperty 'acp.roundtrip.required', 'true'
+    // Solon (MCP-Endpoint des Agenten) ist prozessglobal: jede Testklasse in eigener JVM.
+    forkEvery = 1
 }
 
 tasks.register('runChatDemo', JavaExec) {
@@ -32,4 +49,13 @@ tasks.register('runChatDemo', JavaExec) {
     description = 'Startet die Comic-Chat-Shell (AP4) mit einem Fake-Backend, ohne Server.'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.aresstack.enterpriseai.app.chat.ChatShellDemo'
+}
+
+tasks.register('runAgentDemo', JavaExec) {
+    group = 'application'
+    description = 'Startet die Shell mit Chat (Fake-Backend) und Agent-Modus (Demo-Agent über ACP, AP21).'
+    dependsOn ':acp-demo-agent:demoAgentJar'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.app.agent.AgentShellDemo'
+    systemProperty 'acp.demo.agent.jar', demoAgentJar.absolutePath
 }

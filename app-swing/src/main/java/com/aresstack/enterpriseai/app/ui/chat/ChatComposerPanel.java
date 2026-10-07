@@ -90,6 +90,14 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         actions.sendRequested(draft.trim(), model.isRagEnabled());
     }
 
+    /**
+     * Blendet den RAG-Schalter aus, z. B. in der Agent-Ansicht (AP21), wo der Agent seinen Kontext selbst
+     * beschafft. Der Zustand im Model bleibt unberührt.
+     */
+    public void setRagToggleVisible(boolean visible) {
+        ragToggle.setVisible(visible);
+    }
+
     PlaceholderTextArea editor() {
         return editor;
     }
