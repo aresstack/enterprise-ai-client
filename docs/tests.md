@@ -90,8 +90,9 @@ Alle Fakes binden an `127.0.0.1`. Der Demo-Agent (`acp-demo-agent-all.jar`) und 
 
 ## Vertical-Slice-Tests A–G (`integration-tests`)
 
-Das Modul `integration-tests` (AP25) enthält nur Testcode, sieht alle Module einschließlich `app-swing` und
-alle Testfixtures und beweist Ende-zu-Ende, dass die Slices des Auftrags zusammenspielen. Es läuft im normalen
+Das Modul `integration-tests` (AP25) enthält außer der Ankerklasse `IntegrationTestsModule` (für das Build-Modell
+der Architekturtests) nur Testcode, sieht alle Module einschließlich `app-swing` und alle Testfixtures und beweist
+Ende-zu-Ende, dass die Slices des Auftrags zusammenspielen. Es läuft im normalen
 Build gegen lokale Fakes. Vollständige Zuordnung, Entscheidungen und Live-Parameter:
 [integration-tests/README.md](../integration-tests/README.md).
 
@@ -106,8 +107,11 @@ Build gegen lokale Fakes. Vollständige Zuordnung, Entscheidungen und Live-Param
 | G – Agent + MCP | `SliceGAgentMcpTest` | Shell im Agent-Modus, ACP, Solon-MCP-Server, Lucene, Testagent `KnowledgeDemoAgentMain` als Kindprozess | `FakeChatCompletionPort`, `InMemoryKnowledgeSource`, `DeterministicEmbeddingPort` |
 | A–D aus Konfiguration | `ConfiguredApplicationSliceTest` | `AdapterAssembly` aus Properties, Startindexierung, RAG-Frage über die Shell | alle Fakes, Secrets nur aus Fake-KeePass |
 
-Jeder Slice prüft außerdem, dass Token und Passwörter weder in Sprechblasen, Transkripten, Berichten,
-Ausnahmen, `toString()` noch im mitgelesenen STDERR der Agentenprozesse auftauchen. Die älteren Tests der
+Die Slices mit Secret prüfen außerdem, dass Token und Passwörter an den Stellen nicht auftauchen, die der jeweilige
+Slice erzeugt (`SliceSupport.assertNoSecret`): Sprechblasen und Transkript (A, G, Konfiguration), Indexierungs-
+berichte und Ergebnisse (B, C, D), `toString()` von Quelle, Ports und Konfiguration (D, Konfiguration),
+Fehlermeldungen (A, B, C, D, F, G), der an das Modell gesendete Systemkontext (Konfiguration) und das
+mitgelesene STDERR des Testagenten (G). Slice E hat kein Secret und prüft nur die Trennung von STDOUT und STDERR. Die älteren Tests der
 Stränge bleiben die Spezifikation der Details (`KnowledgeVerticalSliceTest`, `SolonAcpRoundTripTest`,
 `SolonMcpRoundTripTest`, `KnowledgeMcpToolsRoundTripTest`, `AgentModeRoundTripTest`, `RagShellIntegrationTest`,
 `ApplicationCompositionTest`).

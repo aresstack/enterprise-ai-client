@@ -41,7 +41,7 @@ Produktionsabhängigkeiten auf andere Module; alles andere ist verboten und wird
 | `comic-controls` | UI_LIBRARY | `ui.comic` | nichts | Abhängigkeitsfreie Swing/Java2D-Bibliothek im Comic-Stil aus askai-java8: `theme` (`ComicPalette`, `ComicTheme`), `paint` (`ComicImpactPainter`), `border` (`ComicBorder`), `control` (`ComicButton`, `ComicToggleButton`, `ComicSectionPanel`, `ComicScrollPane`, `ComicScrollBarUI`, `PlaceholderTextArea`), `bubble` (`SpeechBubblePanel`, `BubbleMessageRow`, `BubblePalette`, `StreamingTextMeasure`). |
 | `app-swing` | COMPOSITION_ROOT | `app` | alles außer acp-demo-agent, architecture-tests und integration-tests | Einziger Ort, an dem Konfiguration gelesen und Adapter gebaut werden. `EnterpriseAiClientMain`; `app.config` (Snapshots und `AppConfigLoader`, `AppPaths`); `app.composition` (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`, `ShutdownSequence`, `StartupNotices`); `app.security` (Brücken zum Security-Port: `SecretBackedTokenSource`, `SecretBackedBearerTokenSource`, `SecretBackedMediaWikiCredentialsProvider`, `FilePairingKeyStore`, `SwingPairingCallback`, `ClientCertificateFactory`, `UnavailableSecretProvider`); `app.net` (`ProxyPolicy`); `app.chat` (`RagChatBinding`, `KnowledgeIndexingBinding`, `ChatServiceBinding`); `app.agent` (`AcpAgentLauncher`, `AgentMcpEnvironment`, `AgentModeAssembly`, `AgentServiceBinding`); `app.knowledge` (`StartupIndexing`); `app.ui.chat` (Shell: `ChatShellPanel`, `ChatShellModel`, `ChatTranscriptPanel`, `ChatComposerPanel`, `SourceListPanel`, `KnowledgeStatusBar`, `ChatWindow`); `app.ui.agent` (`ModalShellPanel`, `ModeSwitchBar`); `app.ui.security` (`KeePassPairingDialog`). |
 | `architecture-tests` | ARCHITECTURE_TESTS | `architecture` (nur Tests) | liest kompilierte Klassen aller Module | `ModuleRegistry`, Regelklassen (`*Rules`), Tests je Regelgruppe, Gegenbeispiele unter `<Modulpaket>.archfixture..`, Bibliotheks-Stubs unter `<lib>.archstub`. Regel-Liste: [Architektur](architektur.md#regeln). |
-| `integration-tests` | INTEGRATION_TESTS | `integration` (Produktion nur die Anker-Klasse `IntegrationTestsModule`) | Test-Klassenpfad sieht alle Module und alle Testfixtures; keine Produktionsabhängigkeit, von niemandem referenziert | Vertical-Slice-Tests A–G (`SliceAChatTest` … `SliceGAgentMcpTest`, `ConfiguredApplicationSliceTest`) gegen lokale Fakes, `SliceSupport`, Testagent `agent.KnowledgeDemoAgentMain`; Source-Set `liveTest` mit `Live*IT` gegen echte Dienste (Task `liveTest`, standardmäßig aus). Anleitung: [integration-tests/README.md](../integration-tests/README.md), [Tests](tests.md#vertical-slice-tests-ag-integration-tests). |
+| `integration-tests` | INTEGRATION_TESTS | `integration` (Produktion nur die Anker-Klasse `IntegrationTestsModule`) | Test-Klassenpfad sieht alle Module und alle Testfixtures; keine Produktionsabhängigkeit, von niemandem referenziert | Vertical-Slice-Tests A–G (`SliceAChatTest` … `SliceGAgentMcpTest`, `ConfiguredApplicationSliceTest`) gegen lokale Fakes, `SliceSupport`, Testagent `agent.KnowledgeDemoAgentMain`; Source-Set `liveTest` mit `Live*IT` gegen echte Dienste (Task `liveTest`, standardmäßig aus). Anleitung: [integration-tests/README.md](../integration-tests/README.md), [Tests](tests.md#vertical-slice-tests-ag-integration-tests). | nur im Test: Gson, Java-WebSocket, acp-sdk, slf4j-nop (Runtime) |
 
 ## Abweichungen von der Modulliste des Auftrags
 
@@ -90,12 +90,12 @@ Klassenpfad nach außen sickert.
 | JUnit | 4.13.2 | alle Tests |
 | ArchUnit | 1.4.1 | architecture-tests |
 | Lucene (core, analyzers-common, queryparser) | 8.11.3 | knowledge-lucene |
-| org.noear acp-sdk | 3.10.1 | acp-solon-client, acp-demo-agent |
+| org.noear acp-sdk | 3.10.1 | acp-solon-client, acp-demo-agent; integration-tests nur im Test (Testagent) |
 | org.noear solon, solon-boot-jdkhttp, solon-ai-mcp | 3.10.1 | mcp-solon-runtime |
-| Gson | 2.10.1 | chat-openai, embedding-openai, source-mediawiki, source-confluence, security-keepassrpc; app-swing nur im Test |
+| Gson | 2.10.1 | chat-openai, embedding-openai, source-mediawiki, source-confluence, security-keepassrpc; app-swing und integration-tests nur im Test |
 | jsoup | 1.17.2 | source-mediawiki, source-confluence |
-| Java-WebSocket | 1.5.2 | security-keepassrpc |
-| slf4j-nop | 2.0.17 | acp-demo-agent (runtime), security-keepassrpc (Test-Runtime) |
+| Java-WebSocket | 1.5.2 | security-keepassrpc; integration-tests nur im Test (Typ von `FakeKeePassRpcServer`) |
+| slf4j-nop | 2.0.17 | acp-demo-agent (runtime), security-keepassrpc und integration-tests (Test-Runtime) |
 
 Deklariert, aber in keinem Modul aktiviert: JWBF 3.1.1 und OkHttp 4.9.3 (der MediaWiki-Adapter spricht die
 Action-API ohne JWBF, HTTP läuft überall über `HttpURLConnection` aus dem JDK).

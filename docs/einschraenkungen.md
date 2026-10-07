@@ -1,14 +1,15 @@
 # Bekannte Einschränkungen und Verifikationsstand
 
 Diese Seite nennt ehrlich, was nicht geprüft ist (UNVERIFIED), welche Grenzen bewusst gesetzt sind und was
-als Restarbeit offen bleibt. Stand: `main` nach AP23 und AP24, 2026-10-07.
+als Restarbeit offen bleibt. Stand: `main` nach AP25, 2026-10-07.
 
 ## Nichts gegen echte Systeme getestet
 
 Kein Arbeitspaket hat gegen die echte Enterprise-API, ein echtes MediaWiki, ein echtes Confluence oder ein
 echtes KeePass getestet. Alle Tests des normalen Builds laufen gegen lokale Fakes (siehe
 [Testanleitung](tests.md)). AP25 hat mit `./gradlew :integration-tests:liveTest` einen Lauf gegen echte Dienste
-vorbereitet (fünf Tests, Parameter in `integration-tests/README.md`); er ist von niemandem ausgeführt worden.
+vorbereitet (fünf Testklassen mit sechs Testfällen, Parameter in `integration-tests/README.md`); er ist von
+niemandem ausgeführt worden.
 Seine Array-Probe für `/embeddings` würde die offene Frage an Strang C beantworten.
 
 | Bereich | Was belegt ist | Was UNVERIFIED ist |
