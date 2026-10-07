@@ -10,3 +10,8 @@ dependencies {
     api project(':acp-client-api')
     api project(':mcp-runtime-api')
 }
+
+dependencies {
+    // Strang A: Fake-Chat-Port für die Tests des Chat-Use-Cases.
+    testImplementation testFixtures(project(':chat-api'))
+}
