@@ -1,0 +1,80 @@
+package com.aresstack.enterpriseai.app.config;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * Der vollständige, unveränderliche Konfigurations-Snapshot der Anwendung. Enthält keine Secrets, nur
+ * {@link com.aresstack.enterpriseai.domain.security.SecretRef}-Verweise; {@link #toString()} ist deshalb loggbar.
+ */
+public final class AppConfig {
+
+    private final String windowTitle;
+    private final ChatConfig chat;
+    private final EmbeddingConfig embedding;
+    private final KnowledgeConfig knowledge;
+    private final List<SourceConfig> sources;
+    private final KeePassConfig keePass;
+    private final NetworkConfig network;
+    private final AgentConfig agent;
+    private final List<String> warnings;
+
+    AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
+              List<SourceConfig> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
+              List<String> warnings) {
+        this.windowTitle = windowTitle;
+        this.chat = chat;
+        this.embedding = embedding;
+        this.knowledge = knowledge;
+        this.sources = Collections.unmodifiableList(new ArrayList<SourceConfig>(sources));
+        this.keePass = keePass;
+        this.network = network;
+        this.agent = agent;
+        this.warnings = Collections.unmodifiableList(new ArrayList<String>(warnings));
+    }
+
+    public String windowTitle() {
+        return windowTitle;
+    }
+
+    public ChatConfig chat() {
+        return chat;
+    }
+
+    public EmbeddingConfig embedding() {
+        return embedding;
+    }
+
+    public KnowledgeConfig knowledge() {
+        return knowledge;
+    }
+
+    /** Wissensquellen in Konfigurationsreihenfolge. */
+    public List<SourceConfig> sources() {
+        return sources;
+    }
+
+    public KeePassConfig keePass() {
+        return keePass;
+    }
+
+    public NetworkConfig network() {
+        return network;
+    }
+
+    public AgentConfig agent() {
+        return agent;
+    }
+
+    /** Hinweise aus dem Laden (unbekannte Schlüssel, fehlendes KeePass trotz SecretRefs); keine Fehler. */
+    public List<String> warnings() {
+        return warnings;
+    }
+
+    @Override
+    public String toString() {
+        return "AppConfig[" + chat + ", " + embedding + ", " + knowledge + ", sources=" + sources + ", " + keePass
+                + ", " + network + ", " + agent + "]";
+    }
+}

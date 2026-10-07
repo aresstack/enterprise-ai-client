@@ -97,8 +97,9 @@ askai-java8 übernommenen Verträge sind bewusst eigenständig.
 - **app-swing**: Swing-Oberfläche und die einzige Composition Root (`EnterpriseAiClientMain`). Nur hier werden
   Konfiguration gelesen, Adapter instanziiert und per Konstruktor verdrahtet.
 - **Secrets**: `SecretRef` (loggbar) darf durch Use Cases laufen, Secret-Material nicht. Klartext nur im
-  Security-Adapter und im konsumierenden Adapter (z. B. Confluence), so kurzlebig wie möglich; nie in Logs,
-  Exceptions, `toString()`, Chat-Historie oder Indizes.
+  Security-Adapter, im konsumierenden Adapter (z. B. Confluence) und in den Brücken `app.security` der
+  Composition Root (API-Key je Anfrage, Wiki-Login), so kurzlebig wie möglich; nie in Logs, Exceptions,
+  `toString()`, Chat-Historie oder Indizes.
 
 ## Technologiegrenzen
 
@@ -137,6 +138,8 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `application.agent`, `application.mcp`, `app.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `app.ui.agent` ist reine Oberfläche |
 | `RagBoundaryTest.*` | AP10: `application.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `application.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
 | `McpKnowledgeToolsBoundaryTest.*` | AP20: `application.mcp` sieht nur die Use-Case-Pakete `application.rag` und `application.knowledge`, Knowledge-Domain, aus `source.api` allein `KnowledgeSourceException` (Fehlerart) und den MCP-Port-Vertrag; Index-, Embedding- und Quell-Port (samt `SourceScope`) nur über Use Cases; kein Adapter, kein Chat, kein ACP, kein Security-Typ; Use Cases und Chat-Pfad kennen die Werkzeuge nicht |
+| `CompositionRootBoundaryTest.*` | AP23: Konstruktoren von Adaptern (Klassen eines Adaptermoduls, die einen Port implementieren) werden außerhalb der Adaptermodule nur in `app.composition` aufgerufen; Wert- und Konfigurationstypen der Adaptermodule bleiben überall baubar |
+| `SecretBoundaryTest.*` | AP13/AP23: Secret-Material nur in `security-api`, `security-keepassrpc`, `source-confluence` und, paketgenau, in `app.security` (Brücken der Composition Root); nie in Feldern |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 
 ### Neues Modul aufnehmen (z. B. `source-sharepoint`, `source-files`)
@@ -249,6 +252,71 @@ Bindings in `app.chat`, die AP23 in der Composition Root verdrahtet.
   `/chat/completions` und `/embeddings` (`app.chat.fakeapi`) → `LuceneKnowledgeIndex` im temporären
   Verzeichnis, `InMemoryKnowledgeSource` als Quelle. Lokaler Start: `./gradlew :app-swing:runRagDemo`.
 
+## Composition Root und Konfiguration (AP23)
+
+`app-swing` ist die einzige Composition Root. `EnterpriseAiClientMain` lädt die Konfiguration, installiert die
+Proxy-Regel, baut die Adapter, komponiert den Graphen, registriert den Shutdown-Hook und zeigt das Fenster.
+
+```
+enterprise-ai-client.properties ──AppConfigLoader──▶ AppConfig (Snapshots, ohne Secrets)
+        │                                              │
+        ▼                                              ▼
+ProxyPolicy (JVM-ProxySelector)        AdapterAssembly ──▶ ApplicationPorts (Chat, Embedding, Index, Quellen,
+                                                            SecretProvider, AgentBackend, Schließreihenfolge)
+                                                            │
+                                       CompositionRoot ◀────┘  Use Cases (AP2/AP10/AP20), Bindings (AP22),
+                                            │                  AgentService mit AcpAgentLauncher (AP21),
+                                            │                  StartupIndexing, ShutdownSequence
+                                       ShellAssembly ──▶ ChatShellPanel + RagChatBinding, Agent-Ansicht, JFrame
+```
+
+- **Pakete**: `app.config` (Snapshots `AppConfig`, `ChatConfig`, `EmbeddingConfig`, `KnowledgeConfig`,
+  `SourceConfig`, `KeePassConfig`, `NetworkConfig`, `AgentConfig`; `AppConfigLoader`, `AppPaths`), `app.net`
+  (`ProxyPolicy`), `app.security` (Brücken zum Security-Port, `FilePairingKeyStore`, `SwingPairingCallback`),
+  `app.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `app.knowledge` (`StartupIndexing`),
+  `app.composition` (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`,
+  `ShutdownSequence`, `StartupNotices`).
+- **Konfiguration**: eine Properties-Datei im Benutzerverzeichnis (`~/.enterprise-ai-client/` bzw.
+  `%APPDATA%`, überschreibbar mit `-Denterpriseai.home` und `-Denterpriseai.config`), eingebaute Defaults
+  (AP10-Retrieval/Kontext, Adapter-Timeouts), Fehlermeldungen nennen Schlüssel und Erwartung, nie den Wert;
+  unbekannte Schlüssel werden als Warnung gemeldet. Fehlt die Datei, legt die Anwendung die kommentierte
+  Vorlage `enterprise-ai-client.example.properties` ab und erklärt das. Modellnamen, Dimension (e5-base
+  vermutlich 768, UNVERIFIED), Proxy und Quellen sind reine Konfiguration.
+- **Secrets**: in der Datei stehen nur `SecretRef`s (Titel des KeePass-Eintrags): `chat.apiKeyRef`,
+  `embedding.apiKeyRef`, `source.<id>.credentialRef`, `…clientCertificate.keyStorePasswordRef`.
+  `SecretBackedTokenSource` (Chat) und `SecretBackedBearerTokenSource` (Embedding) lösen den API-Key je Anfrage
+  mit `SecretProvider.withSecret` auf; das Material lebt nur für den Aufruf, kein Feld hält es. Der
+  `SecretProvider` ist `KeePassRpcSecretProvider`; sein Pairing-Callback öffnet modal den Comic-Dialog
+  (`SwingPairingCallback` → `KeePassPairingDialog`, headless = Abbruch), der Pairing-Schlüssel liegt in
+  `keepassrpc-pairing.key` im Benutzerverzeichnis (`FilePairingKeyStore`, Rechte nur für den Besitzer, atomar
+  ersetzt, beim Verwerfen überschrieben); `security.keepass.pairingKeyStore=memory` behält den Schlüssel nur im
+  Prozess. Ohne KeePass (`security.keepass.enabled=false`) startet die Anwendung mit einem
+  `UnavailableSecretProvider`, zeigt beim Start, dass Secrets fehlen, und jede Anfrage scheitert mit einem
+  Authentifizierungsfehler. Bekannte Grenze: der Chat-Adapter verlangt den Token als `String`, der sich nicht
+  überschreiben lässt; jede Anfrage holt den Key neu über KeePassRPC (kein Cache erlaubt).
+- **Netz**: `ProxyPolicy` (SYSTEM/NONE/MANUAL mit Ausnahmen, Loopback nie über Proxy) als JVM-`ProxySelector`
+  für Chat- und MediaWiki-Adapter (`HttpURLConnection`) und als expliziter `Proxy` für Embedding- und
+  Confluence-Adapter; Confluence zusätzlich mit Timeouts und optionalem Client-Zertifikat (Windows-MY per Alias
+  oder PKCS12 mit Passwort über `SecretRef`, `ClientCertificateFactory`). Kein gemeinsamer Transport.
+- **Agent-Modus**: `AgentBackend` (ACP-Connector, Startbeschreibung, `SolonMcpServerRuntime`, Endpoint-
+  Definition) nur bei `agent.enabled=true`; `CompositionRoot` baut `AcpAgentLauncher` mit den Contributions
+  von `KnowledgeMcpTools` (AP20) und `AgentService`. Der MCP-Token entsteht allein im Launcher je
+  Agentenprozess und wird nie geloggt. `KnowledgeToolSettings` kommen aus `agent.tools.*`.
+- **Shutdown** (`ShutdownSequence`, idempotent, Fenster-Schließen und JVM-Shutdown-Hook): laufende Chat-Turns
+  abbrechen → Agent-Modus beenden (`KnowledgeMcpTools.shutdown()`, `AgentService.close()`, Endpoint abgemeldet)
+  → Startindexierung abbrechen und abwarten → Ports schließen (`SolonMcpServerRuntime.shutdown()` +
+  `stopSharedServer()`, dann `LuceneKnowledgeIndex.close()`) → Executor stoppen.
+- **Indexierung**: `knowledge.indexOnStartup=true` indexiert alle konfigurierten Quellen nacheinander über die
+  `KnowledgeIndexingBinding` (AP22), sichtbar in der Statuszeile mit Abbrechen-Knopf; Berichte ins Log.
+- **Tests**: `ApplicationCompositionTest` baut den ganzen Graphen headless mit Fakes (Chat, Embedding, Index,
+  Quelle, In-Process-MCP-Registry, Fake-ACP-Connector) und prüft Indexierung, Chat- und RAG-Roundtrip durch die
+  Shell, Agent-Werkzeuge und Shutdown-Reihenfolge; `AdapterAssemblyTest` baut die echten Adapter aus der
+  Beispielkonfiguration ohne Netz; dazu `AppConfigLoaderTest`, `FilePairingKeyStoreTest`,
+  `SecretBackedTokenSourcesTest`, `ProxyPolicyTest`, `ShutdownSequenceTest`, `StartupIndexingTest`.
+  Architekturregel `CompositionRootBoundaryTest`.
+- **Start**: `./gradlew :app-swing:run` (optional `-Denterpriseai.config=<Datei>`); Demos mit Fakes:
+  `runChatDemo`, `runRagDemo`, `runAgentDemo`.
+
 ## Build-Konventionen
 
 - **Java 8**: `sourceCompatibility`/`targetCompatibility` 1.8; auf JDK 9+ zusätzlich `javac --release 8`,
@@ -305,3 +373,6 @@ Regeln:
 | Versionen Gson 2.10.1, OkHttp 4.9.3, jsoup 1.17.2, JWBF 3.1.1, Java-WebSocket 1.5.2 | Miguel0888/MainframeMate (`app`, `wiki-integration`) |
 | MCP-Werkzeugkatalog als Fabrik von `McpToolContribution`s mit Fehlern als Ergebnis statt Exception und Auflösung des Ziels vor dem Aufruf (`application.mcp`) | Miguel0888/askai-java8 (`ResearchBotDirectoryTools`, `ResearchBotSessionTools`) |
 | Parameter `query`/`maxResults`/`sources`, Snippet-Grenze und Gesamtgrenze 20.000 Zeichen der Wissenswerkzeuge | Miguel0888/MainframeMate (`SearchIndexTool`, `ReadChunksTool`) |
+| Konfiguration als Properties-Datei im Benutzerverzeichnis mit Pfad-Override per System-Property, unveränderliche Snapshots, Proxy-Modi System/keiner/manuell (`app.config`, `app.net`) | Miguel0888/askai-java8 (`AppConfigurationRepository`, `AskAiPaths`, `ProxyConfiguration`) |
+| Settings-Schlüssel für Proxy, Timeouts, mTLS (Windows-MY-Alias), KeePassRPC-Verdrahtung mit Pairing-Dialog und Zugangsdaten je Aufruf (`app.security`, `app.ui.security`) | Miguel0888/MainframeMate (`Settings`, `KeePassProvider`, `KeePassRpcPairingDialog`, `MvsBrowser`-Proxy) |
+| Composition Root als einziger Ort für Adapterkonstruktoren, Secret-Material verlässt den Aufruf nicht (`app.composition`, `CompositionRootBoundaryTest`) | aresstack/corenth (Composition Root, `adyton`) |

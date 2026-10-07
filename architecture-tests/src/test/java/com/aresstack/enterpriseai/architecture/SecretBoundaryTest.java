@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.architecture;
 
+import com.aresstack.enterpriseai.app.chat.archfixture.secret.ChatBindingTouchingSecret;
+import com.aresstack.enterpriseai.app.security.archfixture.secret.BridgeUsingSecretBriefly;
 import com.aresstack.enterpriseai.application.archfixture.secret.UseCaseTouchingSecret;
 import com.aresstack.enterpriseai.knowledge.lucene.archfixture.secret.IndexStoringSecret;
 import com.aresstack.enterpriseai.security.api.archfixture.secret.FakeSecretMaterial;
@@ -70,6 +72,29 @@ public class SecretBoundaryTest {
                 "knowledge-api", "knowledge-lucene", "mcp-runtime-api", "mcp-solon-runtime"}) {
             assertTrue(forbidden, !SecretBoundaryRules.modulesAllowedToUseSecretMaterial().contains(forbidden));
         }
+    }
+
+    @Test
+    public void allowedPackagesLieInTheCompositionRootOnly() {
+        for (String pkg : SecretBoundaryRules.packagesAllowedToUseSecretMaterial()) {
+            assertTrue(pkg, pkg.startsWith(ModuleRegistry.ROOT_PACKAGE + ".app.security"));
+        }
+    }
+
+    @Test
+    public void chatBindingInTheCompositionRootReferencingSecretMaterialIsDetected() {
+        List<String> violations = Violations.of(Collections.singletonList(
+                SecretBoundaryRules.secretMaterialOnlyInAllowedModules(REGISTRY, FAKE_SECRET_MATERIAL)),
+                importClasses(ChatBindingTouchingSecret.class, FakeSecretMaterial.class));
+        assertEquals(violations.toString(), 1, violations.size());
+        assertTrue(violations.get(0), violations.get(0).contains("ChatBindingTouchingSecret"));
+    }
+
+    @Test
+    public void securityBridgeInTheCompositionRootUsingSecretMaterialBrieflyPasses() {
+        Violations.assertNone("app.security darf Secret-Material je Aufruf lesen (AP23)",
+                Violations.of(SecretBoundaryRules.all(REGISTRY, FAKE_SECRET_MATERIAL),
+                        importClasses(BridgeUsingSecretBriefly.class, FakeSecretMaterial.class)));
     }
 
     @Test

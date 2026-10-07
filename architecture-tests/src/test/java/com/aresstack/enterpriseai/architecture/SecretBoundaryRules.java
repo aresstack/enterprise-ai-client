@@ -37,6 +37,16 @@ final class SecretBoundaryRules {
         return Collections.unmodifiableList(Arrays.asList("security-api", "security-keepassrpc", "source-confluence"));
     }
 
+    /**
+     * Pakete außerhalb dieser Module, die Secret-Material sehen dürfen (AP23): die Brücken der Composition Root in
+     * {@code app.security}, die den API-Key des Chat-/Embedding-Adapters und die Wiki-Anmeldung je Aufruf über
+     * {@code SecretProvider.withSecret} holen. Paketgenau, damit Konfiguration, Shell, Bindings und der Rest von
+     * {@code app-swing} gesperrt bleiben; die Feldregel gilt auch hier.
+     */
+    static List<String> packagesAllowedToUseSecretMaterial() {
+        return Collections.singletonList(ModuleRegistry.ROOT_PACKAGE + ".app.security..");
+    }
+
     private SecretBoundaryRules() {
     }
 
@@ -50,9 +60,10 @@ final class SecretBoundaryRules {
         }
         return noClasses()
                 .that().resideInAnyPackage(forbidden.toArray(new String[0]))
+                .and().resideOutsideOfPackages(packagesAllowedToUseSecretMaterial().toArray(new String[0]))
                 .should().dependOnClassesThat().haveFullyQualifiedName(secretMaterialType)
                 .because("Secret-Material darf Domain, Application, UI und Knowledge nie erreichen; sie tragen "
-                        + "nur den SecretRef (AP13)")
+                        + "nur den SecretRef (AP13); in app-swing sieht es allein app.security (AP23)")
                 .allowEmptyShould(true);
     }
 

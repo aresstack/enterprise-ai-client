@@ -1,0 +1,199 @@
+package com.aresstack.enterpriseai.app.composition;
+
+import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
+import com.aresstack.enterpriseai.acp.solon.SolonAcpAgentConnector;
+import com.aresstack.enterpriseai.app.config.AgentConfig;
+import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.ChatConfig;
+import com.aresstack.enterpriseai.app.config.ConfluenceSourceConfig;
+import com.aresstack.enterpriseai.app.config.EmbeddingConfig;
+import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.config.MediaWikiSourceConfig;
+import com.aresstack.enterpriseai.app.config.SourceConfig;
+import com.aresstack.enterpriseai.app.net.ProxyPolicy;
+import com.aresstack.enterpriseai.app.security.ClientCertificateFactory;
+import com.aresstack.enterpriseai.app.security.FilePairingKeyStore;
+import com.aresstack.enterpriseai.app.security.SecretBackedBearerTokenSource;
+import com.aresstack.enterpriseai.app.security.SecretBackedMediaWikiCredentialsProvider;
+import com.aresstack.enterpriseai.app.security.SecretBackedTokenSource;
+import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
+import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatConfig;
+import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
+import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
+import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
+import com.aresstack.enterpriseai.mcp.api.McpEndpointDefinition;
+import com.aresstack.enterpriseai.mcp.solon.SolonMcpServerRuntime;
+import com.aresstack.enterpriseai.security.api.SecretProvider;
+import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
+import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
+import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
+import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
+import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
+import com.aresstack.enterpriseai.source.confluence.ConfluenceKnowledgeSource;
+import com.aresstack.enterpriseai.source.confluence.UrlConnectionConfluenceTransport;
+import com.aresstack.enterpriseai.source.mediawiki.MediaWikiCredentialsProvider;
+import com.aresstack.enterpriseai.source.mediawiki.MediaWikiKnowledgeSource;
+
+import javax.net.ssl.SSLSocketFactory;
+import java.io.Closeable;
+import java.io.IOException;
+import java.security.GeneralSecurityException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+/**
+ * Baut die echten Adapter aus der Konfiguration: der einzige Ort, an dem Adapterkonstruktoren aufgerufen werden.
+ * Kein Netzwerkzugriff beim Bauen; Verbindungen entstehen erst bei der ersten Anfrage. Secrets werden nie
+ * gelesen, nur als {@code SecretRef} an die Brücken in {@code app.security} weitergereicht.
+ *
+ * <p>Nahtstelle "ohne KeePass": Ist KeePassRPC deaktiviert, bekommt jeder Adapter einen
+ * {@link UnavailableSecretProvider}; die Anwendung startet, und jede Anfrage, die ein Secret braucht,
+ * scheitert mit einer verständlichen Meldung.
+ */
+public final class AdapterAssembly {
+
+    private static final Logger LOG = Logger.getLogger(AdapterAssembly.class.getName());
+
+    private AdapterAssembly() {
+    }
+
+    /**
+     * Produktiv: Pairing-Dialog aus dem Callback, Pairing-Schlüssel in der konfigurierten Datei
+     * ({@code security.keepass.pairingKeyStore=file}) oder nur im Speicher ({@code memory}: nach jedem Start
+     * erneut pairen).
+     */
+    public static ApplicationPorts create(AppConfig config, ProxyPolicy proxy, KeePassPairingCallback pairing) {
+        KeePassConfig keePass = config.keePass();
+        KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
+                ? new InMemoryPairingKeyStore()
+                : new FilePairingKeyStore(keePass.pairingKeyFile());
+        return create(config, proxy, pairing, keyStore);
+    }
+
+    /** Mit eigener Schlüsselablage (Tests: {@code InMemoryPairingKeyStore}). */
+    public static ApplicationPorts create(AppConfig config, ProxyPolicy proxy, KeePassPairingCallback pairing,
+                                          KeePassPairingKeyStore keyStore) {
+        if (config == null || proxy == null) {
+            throw new IllegalArgumentException("config and proxy must not be null");
+        }
+        SecretProvider secrets = secrets(config.keePass(), pairing, keyStore);
+        ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
+
+        ports.chat(chat(config.chat(), secrets));
+        OpenAiCompatibleEmbeddingAdapter embeddings = embeddings(config.embedding(), secrets, proxy);
+        ports.embeddings(embeddings, embeddings.modelIdentity());
+
+        List<KnowledgeSourceRegistration> registrations = new ArrayList<KnowledgeSourceRegistration>();
+        for (SourceConfig source : config.sources()) {
+            registrations.add(new KnowledgeSourceRegistration(source(source, secrets, proxy), source.scope()));
+        }
+        ports.sources(new KnowledgeSourceCatalog(registrations));
+
+        if (config.agent().enabled()) {
+            final SolonMcpServerRuntime mcp = new SolonMcpServerRuntime();
+            ports.agent(agent(config.agent(), mcp));
+            // Reihenfolge beim Beenden: erst der MCP-Server (Endpoints weg, Token ungültig), dann der Index.
+            ports.closing("mcp-server", new Closeable() {
+                @Override
+                public void close() {
+                    mcp.shutdown();
+                    SolonMcpServerRuntime.stopSharedServer();
+                }
+            });
+        }
+
+        final LuceneKnowledgeIndex index = new LuceneKnowledgeIndex(config.knowledge().indexDirectory());
+        ports.index(index);
+        ports.closing("knowledge-index", index);
+        return ports.build();
+    }
+
+    static SecretProvider secrets(KeePassConfig keePass, KeePassPairingCallback pairing,
+                                  KeePassPairingKeyStore keyStore) {
+        if (!keePass.enabled()) {
+            return new UnavailableSecretProvider(
+                    "KeePassRPC ist deaktiviert (security.keepass.enabled=false); Secrets können nicht gelesen werden");
+        }
+        if (pairing == null || keyStore == null) {
+            throw new IllegalArgumentException("pairing callback and key store are required when KeePass is enabled");
+        }
+        return new KeePassRpcSecretProvider(keePass.rpc(), keyStore, pairing);
+    }
+
+    static OpenAiCompatibleChatAdapter chat(ChatConfig chat, SecretProvider secrets) {
+        OpenAiCompatibleChatConfig adapterConfig = OpenAiCompatibleChatConfig.builder(chat.baseUrl(), chat.model())
+                .bearerToken(new SecretBackedTokenSource(secrets, chat.apiKeyRef()))
+                .connectTimeoutMillis(chat.connectTimeoutMillis())
+                .readTimeoutMillis(chat.readTimeoutMillis())
+                .developerRolePolicy(chat.developerRolePolicy())
+                .build();
+        return new OpenAiCompatibleChatAdapter(adapterConfig);
+    }
+
+    static OpenAiCompatibleEmbeddingAdapter embeddings(EmbeddingConfig embedding, SecretProvider secrets,
+                                                       ProxyPolicy proxy) {
+        OpenAiCompatibleEmbeddingConfiguration adapterConfig = OpenAiCompatibleEmbeddingConfiguration
+                .builder(embedding.baseUrl().toString(), embedding.model(), embedding.dimension())
+                .inputMode(embedding.inputMode())
+                .maxBatchSize(embedding.maxBatchSize())
+                .connectTimeoutMillis(embedding.connectTimeoutMillis())
+                .readTimeoutMillis(embedding.readTimeoutMillis())
+                .proxy(proxy.proxyFor(embedding.baseUrl()))
+                .build();
+        return new OpenAiCompatibleEmbeddingAdapter(adapterConfig,
+                new SecretBackedBearerTokenSource(secrets, embedding.apiKeyRef()));
+    }
+
+    static com.aresstack.enterpriseai.source.api.KnowledgeSourcePort source(SourceConfig source,
+                                                                              SecretProvider secrets,
+                                                                              ProxyPolicy proxy) {
+        if (source instanceof MediaWikiSourceConfig) {
+            MediaWikiSourceConfig wiki = (MediaWikiSourceConfig) source;
+            MediaWikiCredentialsProvider credentials = wiki.credentialRef() == null
+                    ? MediaWikiCredentialsProvider.anonymous()
+                    : new SecretBackedMediaWikiCredentialsProvider(secrets, wiki.credentialRef());
+            return new MediaWikiKnowledgeSource(wiki.sourceId(), wiki.site(), credentials);
+        }
+        if (source instanceof ConfluenceSourceConfig) {
+            ConfluenceSourceConfig confluence = (ConfluenceSourceConfig) source;
+            UrlConnectionConfluenceTransport.Builder transport = UrlConnectionConfluenceTransport.builder()
+                    .proxy(proxy.proxyFor(confluence.confluence().baseUrl()))
+                    .connectTimeoutMillis(confluence.connectTimeoutMillis())
+                    .readTimeoutMillis(confluence.readTimeoutMillis());
+            if (confluence.clientCertificate() != null) {
+                transport.sslSocketFactory(clientCertificate(confluence, secrets));
+            }
+            return new ConfluenceKnowledgeSource(confluence.sourceId(), confluence.confluence(), transport.build(),
+                    secrets);
+        }
+        throw new IllegalArgumentException("unsupported source type: " + source.type());
+    }
+
+    private static SSLSocketFactory clientCertificate(ConfluenceSourceConfig confluence, SecretProvider secrets) {
+        try {
+            return ClientCertificateFactory.create(confluence.clientCertificate(), secrets);
+        } catch (GeneralSecurityException | IOException | SecretUnavailableException e) {
+            // Beim Start kein harter Fehler: Die Quelle meldet dann ACCESS_DENIED/UNAVAILABLE je Anfrage.
+            throw new IllegalStateException("Client-Zertifikat für Quelle " + confluence.sourceId().value()
+                    + " nicht nutzbar: " + e.getClass().getSimpleName(), e);
+        }
+    }
+
+    static AgentBackend agent(AgentConfig agent, SolonMcpServerRuntime mcp) {
+        Consumer<String> hostLog = new Consumer<String>() {
+            @Override
+            public void accept(String line) {
+                LOG.log(Level.FINE, "agent: " + line);
+            }
+        };
+        return new AgentBackend(new SolonAcpAgentConnector(agent.requestTimeout(), hostLog),
+                new AgentLaunchSpec(agent.command(), agent.args(), null), mcp,
+                new McpEndpointDefinition(agent.mcpEndpointId(), agent.mcpDisplayName()));
+    }
+}

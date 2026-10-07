@@ -22,12 +22,23 @@ dependencies {
     testImplementation testFixtures(project(':chat-api'))
     // AP21: Test-Tools (ping, echo) für den MCP-Endpoint des Agenten.
     testImplementation testFixtures(project(':mcp-runtime-api'))
-    // AP22: Fakes für Embedding-Port, Wissensindex und Quelle in den RAG-Tests der Shell.
+    // AP22: Fakes für Embedding-Port, Wissensindex und Quelle in den RAG-Tests der Shell; AP23 nutzt sie im
+    // Kompositionstest (headless gegen Fakes statt Adapter).
     testImplementation testFixtures(project(':embedding-api'))
     testImplementation testFixtures(project(':knowledge-api'))
     testImplementation testFixtures(project(':source-api'))
     // AP22: Die Fake-HTTP-Server des Integrationstests (/chat/completions, /embeddings) lesen und schreiben JSON.
     testImplementation libs.gson
+}
+
+// AP23: Start der echten Anwendung (Composition Root). Konfigurationsdatei und Benutzerverzeichnis lassen sich
+// durchreichen: ./gradlew :app-swing:run -Denterpriseai.config=/pfad/zur/datei.properties
+tasks.named('run') {
+    ['enterpriseai.config', 'enterpriseai.home'].each { key ->
+        if (System.getProperty(key) != null) {
+            systemProperty key, System.getProperty(key)
+        }
+    }
 }
 
 // AP21: Der Agent-Modus-Roundtrip startet den Demo-Agenten als echten Kindprozess (java -jar). Wie in
