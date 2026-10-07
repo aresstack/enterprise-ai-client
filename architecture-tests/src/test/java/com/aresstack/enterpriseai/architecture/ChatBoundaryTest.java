@@ -64,8 +64,8 @@ public class ChatBoundaryTest {
     @Test
     public void openAiAdapterExposesOnlyItsEntryTypes() {
         assertRule(classes().that().resideInAPackage(CHAT_OPENAI).and().arePublic().and().areTopLevelClasses()
-                .should().haveSimpleNameStartingWith("OpenAiCompatibleChatAdapter")
-                .orShould().haveSimpleNameStartingWith("OpenAiCompatibleChatConfig")
+                .should().haveSimpleName("OpenAiCompatibleChatAdapter")
+                .orShould().haveSimpleName("OpenAiCompatibleChatConfig")
                 .orShould().haveSimpleName("DeveloperRolePolicy")
                 .because("JSON-DTOs, SSE-Parser und HTTP-Transport bleiben paketintern im Adapter"));
     }

@@ -386,6 +386,11 @@ public class OpenAiCompatibleChatAdapterTest {
         }
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void configRejectsBaseUrlWithoutHost() {
+        OpenAiCompatibleChatConfig.builder(URI.create("http:/v1"), "m");
+    }
+
     private void assertStatus(int status, ChatErrorKind expected) {
         server.respond(status, "application/json", "{\"error\":{\"message\":\"nope\"}}");
         try {
@@ -408,11 +413,6 @@ public class OpenAiCompatibleChatAdapterTest {
     }
 
     private static OpenAiCompatibleChatConfig.TokenSource token() {
-        return new OpenAiCompatibleChatConfig.TokenSource() {
-            @Override
-            public String token() {
-                return TOKEN;
-            }
-        };
+        return OpenAiCompatibleChatConfig.TokenSource.fixed(TOKEN);
     }
 }

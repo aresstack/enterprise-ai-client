@@ -11,9 +11,28 @@ import java.net.URI;
  */
 public final class OpenAiCompatibleChatConfig {
 
-    /** Liefert das Bearer-Token je Anfrage; {@code null} oder leer bedeutet "ohne Authorization-Header". */
+    /**
+     * Liefert das Bearer-Token je Anfrage; {@code null} oder leer bedeutet "ohne Authorization-Header".
+     * Die Composition Root implementiert sie über den Security-Port (z. B. {@code SecretProvider}), damit dieser
+     * Adapter security-api nicht kennen muss und der Klartext nur für die Dauer einer Anfrage existiert.
+     */
     public interface TokenSource {
         String token();
+
+        /** Fester Token, z. B. für Tests oder lokale Konfiguration. */
+        static TokenSource fixed(final String token) {
+            return new TokenSource() {
+                @Override
+                public String token() {
+                    return token;
+                }
+
+                @Override
+                public String toString() {
+                    return "TokenSource[fixed, ***]";
+                }
+            };
+        }
     }
 
     private final URI baseUrl;
@@ -93,6 +112,9 @@ public final class OpenAiCompatibleChatConfig {
             if (baseUrl == null || baseUrl.getScheme() == null
                     || !("http".equalsIgnoreCase(baseUrl.getScheme()) || "https".equalsIgnoreCase(baseUrl.getScheme()))) {
                 throw new IllegalArgumentException("baseUrl must be an absolute http(s) URI");
+            }
+            if (baseUrl.getHost() == null || baseUrl.getHost().isEmpty()) {
+                throw new IllegalArgumentException("baseUrl must name a host");
             }
             if (baseUrl.getUserInfo() != null) {
                 throw new IllegalArgumentException("baseUrl must not contain user info; use the token source");
