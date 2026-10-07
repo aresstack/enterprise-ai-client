@@ -64,7 +64,7 @@ public final class KnowledgeChunker {
 
     /**
      * Beschreibt alles, was die Chunks bestimmt: Algorithmus, Policy und Token-Zähler, z. B.
-     * {@code chunker-v1;maxTokens=350;overlapSentences=1;counter=words-and-symbols-v1}. Ändert er sich, müssen
+     * {@code chunker-v2;maxTokens=350;overlapSentences=1;counter=words-and-symbols-v2}. Ändert er sich, müssen
      * bestehende Ressourcen neu gechunkt werden.
      */
     public String fingerprint() {
@@ -367,7 +367,7 @@ public final class KnowledgeChunker {
 
     private static String rtrim(String line) {
         int end = line.length();
-        while (end > 0 && Character.isWhitespace(line.charAt(end - 1))) {
+        while (end > 0 && KnowledgeText.isSpace(line.charAt(end - 1))) {
             end--;
         }
         return line.substring(0, end);

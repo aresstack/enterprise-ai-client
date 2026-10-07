@@ -185,6 +185,8 @@ public class KnowledgeModelTest {
         assertTrue(KnowledgeDocument.of(resource, null).isBlank());
         assertTrue(KnowledgeDocument.of(resource, "\u00A0\u202F").isBlank());
         assertEquals("a b\nc", KnowledgeDocument.of(resource, "a\u00A0b\u2028c").text());
+        assertEquals("a\nb\nc d", KnowledgeDocument.of(resource, "a\u0085b\u2029c\u3000d").text());
+        assertEquals("a\tb\u000Bc", KnowledgeDocument.of(resource, "a\tb\u000Bc").text());
     }
 
     @Test

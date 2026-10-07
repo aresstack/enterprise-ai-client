@@ -22,12 +22,12 @@ Testberichte liegen je Modul unter `<modul>/build/reports/tests/test/index.html`
 
 ## Testumfang je Modul
 
-Zahlen aus einem vollständigen lokalen Lauf auf JDK 21 (2026-10-07, Stand nach AP26 und Vorbereitung der
-Live-Verifikation): 1050 Tests, 0 Fehler, 2 übersprungen.
+Zahlen aus einem vollständigen lokalen Lauf auf JDK 21 (2026-10-07, Stand nach AP26, Unicode-Vertrag und
+Vorbereitung der Live-Verifikation): 1068 Tests, 0 Fehler, 2 übersprungen.
 
 | Modul | Tests | Schwerpunkt |
 |---|---|---|
-| `domain` | 84 | Chat-Modelle, Embedding-Identität und Vektoren, Chunker, Ressourcen-IDs, Revision |
+| `domain` | 100 | Chat-Modelle, Embedding-Identität und Vektoren, Chunker, Zeichenklassen-Vertrag `UnicodeClasses` (Tabelle per Hash eingefroren, gleiche Erwartungswerte auf JDK 8 und 21), Ressourcen-IDs, Revision |
 | `application` | 189 | `ChatService` (Historie, Abbruch, Fehler), Indexierung (Report, Skip, Prune), Retrieval (RRF, Degradation), Kontextaufbau, `RagChatUseCase`, `AgentService`, MCP-Werkzeuge (Roundtrip über In-Process-Registry), Vertragstests gegen die Fixtures |
 | `chat-openai` | 42 | `OpenAiCompatibleChatAdapter` gegen einen lokalen Fake-HTTP-Server: Request-Form, Rollenregel, SSE-Normalisierung, Fehler- und Abbruchfälle |
 | `embedding-api` | 16 | Port-Vertragstest gegen `DeterministicEmbeddingPort` |
@@ -45,7 +45,7 @@ Live-Verifikation): 1050 Tests, 0 Fehler, 2 übersprungen.
 | `mcp-solon-runtime` | 29 | derselbe Vertragstest gegen den Solon-Server, Roundtrip `ping`/`echo`, falscher Token → 404, Shutdown |
 | `comic-controls` | 10 | Zeichnen und Zustände der Comic-Komponenten (headless) |
 | `app-swing` | 116 (1 übersprungen) | `ChatShellModel`, Bindings, Konfigurationslader, `ProxyPolicy`, `ApplicationCompositionTest` (headless Komposition mit Fakes, darunter `knowledgeToolsReadOnlyIndexedDocuments`), `RagShellIntegrationTest` (echte Adapter gegen Fake-HTTP-Server und Lucene-Temp-Index), `AgentModeRoundTripTest` (Demo-Agent), Pairing-Dialog |
-| `architecture-tests` | 151 | Registry-Konsistenz, Schichtregeln, Bytecode 52, verbotene Importe, Konstantenpool, Secret-Grenze, RAG- und Agent-Grenzen; Gegenbeispiele unter `*.archfixture` |
+| `architecture-tests` | 153 | Registry-Konsistenz, Schichtregeln, Bytecode 52, verbotene Importe, Konstantenpool, Secret-Grenze, RAG- und Agent-Grenzen, JDK-Zeichenklassen-Verbot in `domain.knowledge`; Gegenbeispiele unter `*.archfixture` |
 | `integration-tests` | 32 | Vertical-Slice-Tests A–G und Konfigurations-Slice gegen lokale Fakes, Parser-Test des Testagenten, `EmbeddingEndpointProbeTest` (Roh-Probe der Live-Verifikation gegen `FakeEmbeddingsServer`); eigene JVM je Klasse (siehe unten) |
 | `acp-demo-agent` | 0 | Testfixture-Prozess, wird von anderen Modulen gestartet |
 

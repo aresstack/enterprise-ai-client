@@ -1,13 +1,19 @@
 package com.aresstack.enterpriseai.architecture;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaCall;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaModifier;
+import com.tngtech.archunit.core.domain.properties.HasName;
+import com.tngtech.archunit.core.domain.properties.HasOwner;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.File;
+import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -47,6 +53,32 @@ public class KnowledgeBoundaryTest {
                         "java.time..")
                 .allowEmptyShould(true);
         Violations.assertNone("domain.knowledge", Violations.of(Arrays.asList(rule), productionClasses));
+    }
+
+    /**
+     * Zeichenklassen (Buchstabe, Ziffer, Leerraum, Groß-/Kleinschreibung ...) kommen in domain.knowledge nur aus
+     * dem festen, versionierten Vertrag {@code UnicodeClasses}; die Unicode-Daten des laufenden JDK
+     * ({@code Character.isLetter}, {@code getType}, {@code UnicodeBlock}, {@code BreakIterator} ...) sind tabu,
+     * damit Chunks, Tokenzahlen und Satzgrenzen auf JDK 8 und JDK 21 identisch sind.
+     */
+    @Test
+    public void domainKnowledgeClassifiesCharactersOnlyThroughUnicodeClasses() {
+        DescribedPredicate<JavaCall<?>> jdkCharacterData = JavaCall.Predicates.target(HasName.Predicates.nameMatching(
+                        "is(Letter|Digit|LetterOrDigit|Alphabetic|Ideographic|Whitespace|SpaceChar|UpperCase|LowerCase"
+                                + "|TitleCase|Defined|Mirrored|UnicodeIdentifier.*|JavaIdentifier.*|JavaLetter.*)"
+                                + "|getType|getNumericValue|digit|to(Upper|Lower|Title)Case"))
+                .and(JavaCall.Predicates.target(HasOwner.Predicates.With.owner(
+                        JavaClass.Predicates.type(Character.class))))
+                .as("Character.is*/getType/to*Case(..)");
+        ArchRule rule = noClasses().that().resideInAPackage(DOMAIN_KNOWLEDGE)
+                .and().doNotHaveSimpleName("UnicodeClasses")
+                .should().callMethodWhere(jdkCharacterData)
+                .orShould().dependOnClassesThat().belongToAnyOf(BreakIterator.class, Character.UnicodeBlock.class,
+                        Character.UnicodeScript.class)
+                .because("Zeichenklassen kommen nur aus UnicodeClasses, nicht aus den Unicode-Daten des JDK")
+                .allowEmptyShould(true);
+        Violations.assertNone("JDK-Zeichenklassen in domain.knowledge",
+                Violations.of(Arrays.asList(rule), productionClasses));
     }
 
     /** Der Index-Port sieht nur Wissens- und Embedding-Wertobjekte und das JDK; kein Lucene, kein Dateisystem. */

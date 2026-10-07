@@ -225,10 +225,10 @@ public class KnowledgeChunkerTest {
 
     @Test
     public void chunkerFingerprintIncludesPolicyAndCounter() {
-        assertEquals("chunker-v1;maxTokens=350;overlapSentences=1;counter=words-and-symbols-v1",
+        assertEquals("chunker-v2;maxTokens=350;overlapSentences=1;counter=words-and-symbols-v2",
                 new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()).fingerprint());
         KnowledgeTokenCounter characters = new CharacterCounter();
-        assertEquals("chunker-v1;maxTokens=350;overlapSentences=1;counter=characters-v1",
+        assertEquals("chunker-v2;maxTokens=350;overlapSentences=1;counter=characters-v1",
                 new KnowledgeChunker(KnowledgeChunkingPolicy.defaults(), characters).fingerprint());
     }
 
@@ -357,7 +357,7 @@ public class KnowledgeChunkerTest {
 
     @Test
     public void policyValidatesAndDescribesItself() {
-        assertEquals("chunker-v1;maxTokens=350;overlapSentences=1", KnowledgeChunkingPolicy.defaults().fingerprint());
+        assertEquals("chunker-v2;maxTokens=350;overlapSentences=1", KnowledgeChunkingPolicy.defaults().fingerprint());
         try {
             KnowledgeChunkingPolicy.of(KnowledgeChunkingPolicy.MIN_MAX_TOKENS - 1, 0);
             fail();
