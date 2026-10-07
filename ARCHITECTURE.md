@@ -176,9 +176,12 @@ Der normale Chat bleibt unverändert; RAG legt sich von außen darum. Einstiegsp
   Discovery-Revision der gespeicherten (`KnowledgeIndexPort.revisionOf`) gleicht, wird übersprungen
   (`UNCHANGED`, weder geladen noch vektorisiert; unbekannte Revision gilt als verändert). Am Ende eines
   vollständigen `indexSource`-Laufs werden Ressourcen der Quelle, die der Index noch kennt
-  (`KnowledgeIndexPort.resourceIds`), die Discovery aber nicht mehr geliefert hat, entfernt (`PRUNED`); ein
-  abgebrochener Lauf oder eine gescheiterte Discovery entfernt nichts, eine leere gelungene Discovery räumt die
-  Quelle leer. `indexResources` überspringt und entfernt nichts.
+  (`KnowledgeIndexPort.resourceIds`), die Discovery aber nicht mehr geliefert hat, aus dem eigenen Namespace
+  entfernt (`PRUNED`, leeres `replace`; andere Embedding-Welten bleiben unberührt); ein abgebrochener Lauf (auch
+  ein Abbruch während der Bereinigung) oder eine gescheiterte Discovery entfernt nichts weiter, eine leere
+  gelungene Discovery räumt die Quelle leer. `indexResources` überspringt nichts und bereinigt nicht anhand der
+  Discovery; wie bisher entfernt es nur die Chunks einer genannten Ressource, die beim Laden `NOT_FOUND` meldet
+  oder leer ist.
 - `application.rag.RetrieveKnowledgeUseCase`: Volltext und Cosine im Namespace der konfigurierten
   `EmbeddingModelIdentity`, Fusion per Reciprocal Rank Fusion (`RetrievalSettings`); fällt ein Pfad aus, liefert
   der andere mit Warnung.

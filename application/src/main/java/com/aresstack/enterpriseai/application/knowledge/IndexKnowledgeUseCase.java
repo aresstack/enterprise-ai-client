@@ -25,7 +25,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,9 +50,11 @@ import java.util.Set;
  *   <li>Verschwunden heißt entfernt: Am Ende eines vollständigen {@link #indexSource}-Laufs (nicht abgebrochen,
  *       Discovery gelungen) werden die Ressourcen der Quelle, die {@link KnowledgeIndexPort#resourceIds} noch
  *       kennt, die Discovery aber nicht mehr geliefert hat und die in diesem Lauf nicht berührt wurden, aus dem
- *       Index entfernt ({@link IndexingStatus#PRUNED}). Eine leere, aber gelungene Discovery räumt die Quelle
- *       damit leer. Scheitert die Abfrage der indexierten Ressourcen, meldet der Bericht
- *       {@link IndexingReport#pruneFailed()} und nichts wird entfernt.</li>
+ *       eigenen Namespace entfernt ({@link IndexingStatus#PRUNED}; leeres {@link KnowledgeIndexPort#replace},
+ *       andere Embedding-Welten bleiben unberührt). Eine leere, aber gelungene Discovery räumt die Quelle damit
+ *       leer. Scheitert die Abfrage der indexierten Ressourcen, meldet der Bericht
+ *       {@link IndexingReport#pruneFailed()} und nichts wird entfernt. Ein Abbruch nach der letzten Ressource
+ *       oder während der Bereinigung beendet sie; der Bericht ist dann abgebrochen.</li>
  *   <li>Weiterleitungen: Trägt das geladene Dokument eine andere ID als angefragt, wird unter der Ziel-ID
  *       indexiert und die angefragte ID erst danach aus dem Index entfernt; ein Ziel wird je Lauf nur einmal
  *       erfolgreich indexiert, ein gescheiterter Versuch wird bei der nächsten Weiterleitung wiederholt.</li>
@@ -63,8 +64,10 @@ import java.util.Set;
  *       {@code embeddingBatchSize} Texten.</li>
  * </ul>
  *
- * <p>{@link #indexResources} indexiert die genannten Ressourcen immer neu und entfernt nichts; es kennt keine
- * Discovery-Revision und keinen vollständigen Stand der Quelle.
+ * <p>{@link #indexResources} indexiert die genannten Ressourcen immer neu (kein Überspringen, es kennt keine
+ * Discovery-Revision) und bereinigt nicht anhand der Discovery (es kennt keinen vollständigen Stand der Quelle).
+ * Wie bisher entfernt es die Chunks einer genannten Ressource, die beim Laden {@code NOT_FOUND} meldet oder leer
+ * ist.
  *
  * <p>Blockiert für den ganzen Lauf; Aufrufer aus der Oberfläche starten ihn auf einem eigenen Thread und brechen
  * über {@link IndexingListener#isCancelled()} ab. Zustandslos und threadsicher, soweit die Ports es sind.
@@ -181,11 +184,31 @@ public final class IndexKnowledgeUseCase {
         }
         String pruneFailure = null;
         if (prune && !cancelled) {
-            Set<KnowledgeResourceId> touched = new HashSet<KnowledgeResourceId>(ids);
-            for (ResourceIndexingOutcome outcome : outcomes) {
-                touched.add(outcome.resourceId());
+            if (listener.isCancelled()) {
+                cancelled = true; // Abbruch nach der letzten Ressource: nichts mehr entfernen
+            } else {
+                Set<KnowledgeResourceId> touched = new HashSet<KnowledgeResourceId>(ids);
+                for (ResourceIndexingOutcome outcome : outcomes) {
+                    touched.add(outcome.resourceId());
+                }
+                List<KnowledgeResourceId> stale;
+                try {
+                    stale = staleResources(source.sourceId(), touched);
+                } catch (KnowledgeIndexException e) {
+                    stale = Collections.emptyList();
+                    pruneFailure = e.getMessage() == null ? "Abfrage der indexierten Ressourcen fehlgeschlagen"
+                            : e.getMessage();
+                }
+                for (KnowledgeResourceId id : stale) {
+                    if (listener.isCancelled()) {
+                        cancelled = true;
+                        break;
+                    }
+                    ResourceIndexingOutcome outcome = pruneOne(id);
+                    outcomes.add(outcome);
+                    listener.onResource(outcome);
+                }
             }
-            pruneFailure = prune(source.sourceId(), touched, outcomes, listener);
         }
         return new IndexingReport(source.sourceId(), discovered, outcomes, cancelled, null, pruneFailure);
     }
@@ -205,34 +228,32 @@ public final class IndexKnowledgeUseCase {
     }
 
     /**
-     * Entfernt die indexierten Ressourcen der Quelle, die dieser Lauf nicht berührt hat (weder entdeckt noch als
-     * Weiterleitungsziel geladen).
+     * Die im eigenen Namespace indexierten Ressourcen der Quelle, die dieser Lauf nicht berührt hat (weder entdeckt
+     * noch als Weiterleitungsziel geladen), in Indexreihenfolge.
      *
-     * @return Meldung, wenn die Abfrage der indexierten Ressourcen scheitert; sonst {@code null}
+     * @throws KnowledgeIndexException wenn der Index die Abfrage nicht beantworten kann
      */
-    private String prune(KnowledgeSourceId sourceId, Set<KnowledgeResourceId> touched,
-                         List<ResourceIndexingOutcome> outcomes, IndexingListener listener) {
-        Set<KnowledgeResourceId> indexed;
+    private List<KnowledgeResourceId> staleResources(KnowledgeSourceId sourceId, Set<KnowledgeResourceId> touched) {
+        List<KnowledgeResourceId> stale = new ArrayList<KnowledgeResourceId>();
+        for (KnowledgeResourceId id : index.resourceIds(space, sourceId)) {
+            if (!touched.contains(id)) {
+                stale.add(id);
+            }
+        }
+        return stale;
+    }
+
+    /**
+     * Entfernt die Chunks der Ressource nur aus dem eigenen Namespace (leeres {@code replace}); eine andere
+     * Embedding-Welt, die dieselbe Ressource hält, bereinigt sich in ihrem eigenen Lauf.
+     */
+    private ResourceIndexingOutcome pruneOne(KnowledgeResourceId id) {
         try {
-            indexed = new LinkedHashSet<KnowledgeResourceId>(index.resourceIds(space, sourceId));
+            index.replace(space, id, Collections.<KnowledgeIndexEntry>emptyList());
+            return ResourceIndexingOutcome.done(id, "", IndexingStatus.PRUNED, 0);
         } catch (KnowledgeIndexException e) {
-            return e.getMessage() == null ? "Abfrage der indexierten Ressourcen fehlgeschlagen" : e.getMessage();
+            return ResourceIndexingOutcome.failed(id, "", IndexingStage.INDEXING, e.getMessage());
         }
-        for (KnowledgeResourceId id : indexed) {
-            if (touched.contains(id)) {
-                continue;
-            }
-            ResourceIndexingOutcome outcome;
-            try {
-                index.remove(id);
-                outcome = ResourceIndexingOutcome.done(id, "", IndexingStatus.PRUNED, 0);
-            } catch (KnowledgeIndexException e) {
-                outcome = ResourceIndexingOutcome.failed(id, "", IndexingStage.INDEXING, e.getMessage());
-            }
-            outcomes.add(outcome);
-            listener.onResource(outcome);
-        }
-        return null;
     }
 
     private ResourceIndexingOutcome indexOne(KnowledgeSourcePort source, KnowledgeResourceId requested,

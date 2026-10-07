@@ -432,6 +432,84 @@ public class IndexKnowledgeUseCaseTest {
     }
 
     @Test
+    public void pruneRemovesOnlyFromItsOwnNamespace() {
+        DeterministicEmbeddingPort otherEmbeddings = DeterministicEmbeddingPort.withDimension(8);
+        EmbeddingModelIdentity otherSpace = otherEmbeddings.modelIdentity();
+        IndexKnowledgeUseCase otherWorld = new IndexKnowledgeUseCase(index, otherEmbeddings, otherSpace,
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+        useCase.indexSource(wiki, ALL, null);
+        otherWorld.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, null);
+
+        assertEquals(1, report.count(IndexingStatus.PRUNED));
+        assertFalse(index.resourceIds(space, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+        assertTrue("die andere Embedding-Welt behält ihre Kopie, bis ihr eigener Lauf sie bereinigt",
+                index.resourceIds(otherSpace, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+        assertEquals(1, otherWorld.indexSource(wiki, ALL, null).count(IndexingStatus.PRUNED));
+        assertFalse(index.resourceIds(otherSpace, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+    }
+
+    @Test
+    public void cancellationAfterTheLastResourceSkipsPruning() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, new IndexingListener() {
+            private int seen;
+
+            @Override
+            public void onDiscovered(List<KnowledgeResource> resources) {
+            }
+
+            @Override
+            public void onResource(ResourceIndexingOutcome outcome) {
+                seen++;
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return seen >= 2; // erst nach der letzten entdeckten Ressource
+            }
+        });
+
+        assertTrue(report.isCancelled());
+        assertEquals(2, report.outcomes().size());
+        assertEquals(0, report.count(IndexingStatus.PRUNED));
+        assertEquals(1, keyword("entkalkt").size());
+    }
+
+    @Test
+    public void cancellationDuringPruningStopsAfterTheCurrentResource() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Drucker");
+        wiki.remove("Kaffee");
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, new IndexingListener() {
+            private boolean pruned;
+
+            @Override
+            public void onDiscovered(List<KnowledgeResource> resources) {
+            }
+
+            @Override
+            public void onResource(ResourceIndexingOutcome outcome) {
+                pruned |= outcome.status() == IndexingStatus.PRUNED;
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return pruned;
+            }
+        });
+
+        assertTrue(report.isCancelled());
+        assertEquals(1, report.count(IndexingStatus.PRUNED));
+        assertEquals("eine verschwundene Seite bleibt bis zum nächsten Lauf", 2, index.size());
+    }
+
+    @Test
     public void emptyButSuccessfulDiscoveryPrunesTheWholeSource() {
         useCase.indexSource(wiki, ALL, null);
 
@@ -444,7 +522,7 @@ public class IndexKnowledgeUseCaseTest {
     }
 
     @Test
-    public void indexResourcesNeitherSkipsNorPrunes() {
+    public void indexResourcesNeitherSkipsNorPrunesByDiscovery() {
         useCase.indexSource(wiki, ALL, null);
         wiki.remove("Kaffee");
 
@@ -453,6 +531,11 @@ public class IndexKnowledgeUseCaseTest {
         assertEquals(IndexingStatus.INDEXED, report.outcomes().get(0).status());
         assertEquals(1, report.outcomes().size());
         assertEquals("verschwundene Seite bleibt, bis indexSource läuft", 1, keyword("entkalkt").size());
+
+        // Wie bisher: eine genannte Ressource, die beim Laden NOT_FOUND meldet, verliert ihre Chunks.
+        report = useCase.indexResources(wiki, Collections.singletonList(wiki.idOf("Kaffee")), null);
+        assertEquals(IndexingStatus.REMOVED, report.outcomes().get(0).status());
+        assertTrue(keyword("entkalkt").isEmpty());
     }
 
     @Test
