@@ -19,12 +19,13 @@ public final class EmbeddingInputs {
             throw new IllegalArgumentException("texts must not be null");
         }
         List<String> copy = new ArrayList<String>(texts.size());
-        for (int i = 0; i < texts.size(); i++) {
-            String text = texts.get(i);
+        int i = 0;
+        for (String text : texts) {
             if (text == null) {
                 throw new IllegalArgumentException("text " + i + " must not be null");
             }
             copy.add(text);
+            i++;
         }
         return Collections.unmodifiableList(copy);
     }

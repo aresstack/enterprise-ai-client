@@ -1,1 +1,11 @@
 description = 'Frameworkfreie MCP-Runtime-Verträge (Strang H). Keine Solon-/MCP-SDK-Typen.'
+
+// Test-Fixtures (InProcess-Registry, InProcess-Client, Test-Tools, abstrakte Vertragstests) sind für die
+// Tests anderer Module gedacht (mcp-solon-runtime, später AP20/AP21):
+//   testImplementation testFixtures(project(':mcp-runtime-api'))
+// Sie sind kein Produktionscode und damit nicht Teil des Ports.
+apply plugin: 'java-test-fixtures'
+
+dependencies {
+    testFixturesApi libs.junit
+}
