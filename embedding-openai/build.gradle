@@ -1,0 +1,5 @@
+description = 'Adapter: OpenAI-kompatibler /embeddings-Client (Strang C).'
+
+dependencies {
+    api project(':embedding-api')
+}

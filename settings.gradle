@@ -1,0 +1,52 @@
+// Modulschnitt und Abhängigkeitsrichtung: siehe ARCHITECTURE.md.
+// Ein neues Modul muss zusätzlich in architecture-tests (ModuleRegistry) registriert werden,
+// sonst wird BuildModelTest.everyGradleModuleIsRegistered rot.
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'enterprise-ai-client'
+
+// Kern
+include 'domain'
+include 'application'
+
+// Strang A – Chat
+include 'chat-api'
+include 'chat-openai'
+
+// Strang C – Embedding
+include 'embedding-api'
+include 'embedding-openai'
+
+// Strang D – Knowledge-Index
+include 'knowledge-api'
+include 'knowledge-lucene'
+
+// Strang E – Knowledge Sources (Strang F: source-confluence)
+include 'source-api'
+include 'source-mediawiki'
+include 'source-confluence'
+
+// Strang F – Security
+include 'security-api'
+include 'security-keepassrpc'
+
+// Strang G – ACP
+include 'acp-client-api'
+include 'acp-solon-client'
+include 'acp-demo-agent'
+
+// Strang H – MCP
+include 'mcp-runtime-api'
+include 'mcp-solon-runtime'
+
+// Strang B – Swing-Comic-UI und Composition Root
+include 'comic-controls'
+include 'app-swing'
+
+// AP24 – ausführbare Architekturregeln
+include 'architecture-tests'

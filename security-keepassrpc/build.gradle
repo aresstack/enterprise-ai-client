@@ -1,0 +1,5 @@
+description = 'Adapter: KeePassRPC hinter dem Security-Port (Strang F).'
+
+dependencies {
+    api project(':security-api')
+}

@@ -1,0 +1,20 @@
+apply plugin: 'application'
+
+description = 'Swing-Desktop-Anwendung und einzige Composition Root (Strang B, AP23).'
+
+application {
+    mainClass = 'com.aresstack.enterpriseai.app.EnterpriseAiClientMain'
+}
+
+dependencies {
+    implementation project(':application')
+    implementation project(':comic-controls')
+    implementation project(':chat-openai')
+    implementation project(':embedding-openai')
+    implementation project(':knowledge-lucene')
+    implementation project(':source-mediawiki')
+    implementation project(':source-confluence')
+    implementation project(':security-keepassrpc')
+    implementation project(':acp-solon-client')
+    implementation project(':mcp-solon-runtime')
+}
