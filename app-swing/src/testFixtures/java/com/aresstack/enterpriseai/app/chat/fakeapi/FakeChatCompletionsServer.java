@@ -101,7 +101,9 @@ public final class FakeChatCompletionsServer implements AutoCloseable {
     private final java.util.concurrent.atomic.AtomicInteger expectedRequests = new java.util.concurrent.atomic.AtomicInteger();
 
     public FakeChatCompletionsServer() throws IOException {
-        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        // Explizit 127.0.0.1 statt getLoopbackAddress(): Letzteres liefert bei preferIPv6Addresses ::1, die
+        // Basis-URL nennt aber immer 127.0.0.1 (Bind- und Advertise-Adresse müssen übereinstimmen).
+        server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
         server.createContext("/v1/chat/completions", new HttpHandler() {
             @Override
             public void handle(HttpExchange exchange) throws IOException {

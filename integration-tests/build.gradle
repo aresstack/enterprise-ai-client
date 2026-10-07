@@ -1,0 +1,120 @@
+description = 'AP25: Integrations- und Vertical-Slice-Tests A–G über alle Module gegen lokale Fakes; getrennter Lauf gegen echte Dienste (liveTest, standardmäßig aus).'
+
+// Dieses Modul hat außer der Anker-Klasse keinen Produktionscode. Alle Abhängigkeiten sind Testabhängigkeiten;
+// das Build-Modell der Architekturtests zählt nur Produktionskonfigurationen, deshalb bleibt die Registry-Zeile
+// von integration-tests ohne erlaubte Abhängigkeiten (Rolle INTEGRATION_TESTS, von niemandem referenziert).
+
+dependencies {
+    // Kern und Ports
+    testImplementation project(':domain')
+    testImplementation project(':application')
+    testImplementation project(':chat-api')
+    testImplementation project(':embedding-api')
+    testImplementation project(':knowledge-api')
+    testImplementation project(':source-api')
+    testImplementation project(':security-api')
+    testImplementation project(':acp-client-api')
+    testImplementation project(':mcp-runtime-api')
+    // Adapter (Instanziierung in den Slices spielt die Rolle der Composition Root nach bzw. nutzt AdapterAssembly)
+    testImplementation project(':chat-openai')
+    testImplementation project(':embedding-openai')
+    testImplementation project(':knowledge-lucene')
+    testImplementation project(':source-mediawiki')
+    testImplementation project(':source-confluence')
+    testImplementation project(':security-keepassrpc')
+    testImplementation project(':acp-solon-client')
+    testImplementation project(':mcp-solon-runtime')
+    // Oberfläche und Composition Root
+    testImplementation project(':comic-controls')
+    testImplementation project(':app-swing')
+
+    // Testfixtures der Stränge: Fake-Ports, In-Memory-Index und -Quelle, MCP-Test-Tools, Fake-HTTP-Server
+    // (/chat/completions, /embeddings), Fake-MediaWiki, Fake-Confluence, Fake-KeePassRPC.
+    testImplementation testFixtures(project(':chat-api'))
+    testImplementation testFixtures(project(':embedding-api'))
+    testImplementation testFixtures(project(':knowledge-api'))
+    testImplementation testFixtures(project(':source-api'))
+    testImplementation testFixtures(project(':mcp-runtime-api'))
+    testImplementation testFixtures(project(':app-swing'))
+    testImplementation testFixtures(project(':source-mediawiki'))
+    testImplementation testFixtures(project(':source-confluence'))
+    testImplementation testFixtures(project(':security-keepassrpc'))
+
+    // Die aufgezeichneten Anfragen der Fake-HTTP-Server sind Gson-Objekte.
+    testImplementation libs.gson
+    // FakeKeePassRpcServer (Fixture aus security-keepassrpc) erweitert WebSocketServer; der Typ muss zum
+    // Kompilieren der Slices sichtbar sein.
+    testImplementation libs.java.websocket
+    // Slice G: der wissensnutzende Testagent ist selbst ein ACP-Agent (Agentenseite des SDK wie acp-demo-agent);
+    // MCP spricht er ausschließlich über den Port McpToolClientFactory und den Adapter SolonMcpToolClientFactory.
+    testImplementation libs.acp.sdk
+    // STDOUT des Agentenprozesses gehört ACP; SLF4J ruhig stellen.
+    testRuntimeOnly libs.slf4j.nop
+}
+
+// Slice E/G: der Demo-Agent aus acp-demo-agent läuft als echter Kindprozess (java -jar). Wie in app-swing keine
+// Projektabhängigkeit auf acp-demo-agent, nur das gebaute Jar als Testeingabe.
+def demoAgentJar = rootProject.file('acp-demo-agent/build/libs/acp-demo-agent-all.jar')
+
+tasks.withType(Test).configureEach {
+    // Swing-Tests laufen ohne Display (CI).
+    systemProperty 'java.awt.headless', 'true'
+}
+
+tasks.named('test') {
+    dependsOn ':acp-demo-agent:demoAgentJar'
+    inputs.file(demoAgentJar).withPropertyName('demoAgentJar')
+    systemProperty 'acp.demo.agent.jar', demoAgentJar.absolutePath
+    // Agentenprozesse laufen auf derselben JVM wie der Build (unter JDK 8 also echte Java-8-Kindprozesse).
+    systemProperty 'acp.agent.java.home', System.getProperty('java.home')
+    // Im Gradle-Build dürfen die Prozess-Roundtrips nicht still übersprungen werden.
+    systemProperty 'acp.roundtrip.required', 'true'
+    // Slice G: der Testagent KnowledgeDemoAgentMain startet als Kindprozess auf dem Test-Klassenpfad dieses Moduls
+    // (zur Laufzeit aufgelöst, damit die Konfiguration nicht alle Artefakte vorab auflöst).
+    jvmArgumentProviders.add({
+        ['-Dintegration.agent.classpath=' + sourceSets.test.runtimeClasspath.asPath]
+    } as CommandLineArgumentProvider)
+    // Solon (MCP-Server der Slices F und G) ist prozessglobal: jede Testklasse in eigener JVM.
+    forkEvery = 1
+}
+
+// Getrennter Lauf gegen echte Dienste (Enterprise-API, MediaWiki, Confluence, KeePass). Nicht Teil von `check`,
+// aber `check` kompiliert ihn mit, damit er nicht veraltet. Start und Parameter: siehe README.md dieses Moduls.
+sourceSets {
+    liveTest {
+        java.srcDir 'src/liveTest/java'
+        compileClasspath += sourceSets.main.output + sourceSets.test.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+    }
+}
+
+configurations {
+    liveTestImplementation.extendsFrom testImplementation
+    liveTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+tasks.register('liveTest', Test) {
+    group = 'verification'
+    description = 'Integrationstests gegen echte Dienste (standardmäßig aus; Parameter -Dlive.* und Umgebungsvariablen, siehe README.md).'
+    testClassesDirs = sourceSets.liveTest.output.classesDirs
+    classpath = sourceSets.liveTest.runtimeClasspath
+    // Alle -Dlive.* des Aufrufs und die üblichen Proxy-Properties an die Test-JVM durchreichen (sie läuft getrennt
+    // vom Gradle-Prozess); Secrets kommen aus Umgebungsvariablen, nie als Property.
+    def forwardedProperties = ['http.proxyHost', 'http.proxyPort', 'https.proxyHost', 'https.proxyPort',
+                               'http.nonProxyHosts']
+    System.properties.each { key, value ->
+        String name = key.toString()
+        if (name.startsWith('live.') || forwardedProperties.contains(name)) {
+            systemProperty name, value.toString()
+        }
+    }
+    outputs.upToDateWhen { false }
+    testLogging {
+        events = ['passed', 'failed', 'skipped']
+        showStandardStreams = true
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('compileLiveTestJava')
+}

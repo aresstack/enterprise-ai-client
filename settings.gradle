@@ -50,3 +50,6 @@ include 'app-swing'
 
 // AP24 – ausführbare Architekturregeln
 include 'architecture-tests'
+
+// AP25 – Integrations- und Vertical-Slice-Tests A–G (nur Testcode, getrennter Live-Lauf)
+include 'integration-tests'

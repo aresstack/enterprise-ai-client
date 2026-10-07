@@ -1,10 +1,15 @@
 description = 'Adapter: Confluence als Knowledge Source (Strang F). Credentials nur über security-api.'
 
+// AP25: Fake-Confluence (FakeConfluence, REST-Antworten) und ihr HTTP-Wrapper (FakeConfluenceServer) als
+// Testfixtures für integration-tests; die Tests dieses Moduls sehen sie weiterhin.
+apply plugin: 'java-test-fixtures'
+
 dependencies {
     api project(':source-api')
     api project(':security-api')
     implementation libs.gson
     implementation libs.jsoup
 
+    testFixturesImplementation libs.gson
     testImplementation testFixtures(project(':source-api'))
 }

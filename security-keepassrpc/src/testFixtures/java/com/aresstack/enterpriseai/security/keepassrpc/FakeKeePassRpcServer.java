@@ -33,7 +33,7 @@ import static com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcCrypto.N;
  * JSON-RPC ({@code FindLogins}, {@code GetAllEntries}) nach der KeePassRPC-Protokollbeschreibung. Prüft wie das
  * Original den Origin-Header.
  */
-final class FakeKeePassRpcServer extends WebSocketServer {
+public final class FakeKeePassRpcServer extends WebSocketServer {
 
     private static final long FLUSH_DEADLINE_NANOS = TimeUnit.SECONDS.toNanos(10);
 
@@ -65,12 +65,12 @@ final class FakeKeePassRpcServer extends WebSocketServer {
     volatile boolean resultNotArray;
     volatile boolean messageFieldIsObject;
 
-    FakeKeePassRpcServer() {
+    public FakeKeePassRpcServer() {
         super(new InetSocketAddress("127.0.0.1", 0));
         setReuseAddr(true);
     }
 
-    FakeKeePassRpcServer startAndWait() throws InterruptedException {
+    public FakeKeePassRpcServer startAndWait() throws InterruptedException {
         start();
         if (!started.await(10, TimeUnit.SECONDS)) {
             throw new IllegalStateException("Fake-Server nicht gestartet");
@@ -78,11 +78,12 @@ final class FakeKeePassRpcServer extends WebSocketServer {
         return this;
     }
 
-    int boundPort() {
+    public int boundPort() {
         return getPort();
     }
 
-    void addEntry(String title, String userName, String password, boolean asFormFields) {
+    /** Legt einen Eintrag an; {@code asFormFields}: Zugangsdaten als Formularfelder statt als Standardfelder. */
+    public void addEntry(String title, String userName, String password, boolean asFormFields) {
         JsonObject entry = new JsonObject();
         entry.addProperty("title", title);
         entry.addProperty("uniqueID", Integer.toHexString(title.hashCode()));
@@ -101,7 +102,7 @@ final class FakeKeePassRpcServer extends WebSocketServer {
     }
 
     /** Simuliert "Pairing in KeePass widerrufen". */
-    void revokeAllPairings() {
+    public void revokeAllPairings() {
         pairedKeys.clear();
     }
 
@@ -109,7 +110,12 @@ final class FakeKeePassRpcServer extends WebSocketServer {
         return pairedKeys.get(clientId);
     }
 
-    List<String> receivedMessages() {
+    /** Das Einmal-Passwort, das KeePass beim Pairing anzeigen würde (für den Pairing-Callback im Test). */
+    public String pairingPassword() {
+        return pairingPassword;
+    }
+
+    public List<String> receivedMessages() {
         synchronized (receivedMessages) {
             return new ArrayList<String>(receivedMessages);
         }

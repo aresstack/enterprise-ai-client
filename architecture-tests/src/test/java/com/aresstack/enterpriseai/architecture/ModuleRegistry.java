@@ -69,6 +69,7 @@ final class ModuleRegistry {
                         "comic-controls")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
+                .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")
                 .build();
     }
 

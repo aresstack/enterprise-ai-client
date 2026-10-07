@@ -18,9 +18,10 @@ import java.util.Map;
  * In-Memory-Confluence hinter {@link ConfluenceHttpTransport}: beantwortet die REST-Endpunkte, die der Adapter
  * benutzt, mit JSON in der Form von Confluence Data Center und protokolliert alle Requests.
  */
-final class FakeConfluence implements ConfluenceHttpTransport {
+public final class FakeConfluence implements ConfluenceHttpTransport {
 
-    static final URI BASE = URI.create("https://confluence.example.org/wiki");
+    /** Basis-URL, die der Fake bedient; {@link FakeConfluenceServer} bildet echte HTTP-Anfragen darauf ab. */
+    public static final URI BASE = URI.create("https://confluence.example.org/wiki");
 
     final Map<String, FakePage> pages = new LinkedHashMap<String, FakePage>();
     final Map<String, String> spaceHomepages = new LinkedHashMap<String, String>();
@@ -36,18 +37,18 @@ final class FakeConfluence implements ConfluenceHttpTransport {
     /** Liefert statt des echten Folgelinks einen Link außerhalb der REST-API. */
     String nextLinkOverride;
 
-    FakePage page(String id, String title, String spaceKey, String html) {
+    public FakePage page(String id, String title, String spaceKey, String html) {
         FakePage page = new FakePage(id, title, spaceKey, html);
         pages.put(id, page);
         return page;
     }
 
-    void child(String parentId, String childId) {
+    public void child(String parentId, String childId) {
         pages.get(parentId).children.add(childId);
         pages.get(childId).parentId = parentId;
     }
 
-    FakeAttachment attachment(String id, String pageId, String title, String mediaType, String content) {
+    public FakeAttachment attachment(String id, String pageId, String title, String mediaType, String content) {
         FakeAttachment attachment = new FakeAttachment(id, pageId, title, mediaType,
                 content.getBytes(StandardCharsets.UTF_8));
         attachments.put(id, attachment);
@@ -55,7 +56,27 @@ final class FakeConfluence implements ConfluenceHttpTransport {
         return attachment;
     }
 
-    int requestCount(String pathPart) {
+    /** Startseite eines Bereichs ({@code /rest/api/space/<key>} liefert sie als {@code homepage}). */
+    public void homepage(String spaceKey, String pageId) {
+        spaceHomepages.put(spaceKey, pageId);
+    }
+
+    /** Ergebnis-IDs der nächsten CQL-Suche. */
+    public void searchResults(String... pageIds) {
+        Collections.addAll(searchResults, pageIds);
+    }
+
+    /** Kopie aller bisher gesehenen Anfrage-URIs. */
+    public List<URI> requests() {
+        return new ArrayList<URI>(requests);
+    }
+
+    /** Kopie der Header aller bisher gesehenen Anfragen, in Reihenfolge der Anfragen. */
+    public List<Map<String, String>> requestHeaders() {
+        return new ArrayList<Map<String, String>>(requestHeaders);
+    }
+
+    public int requestCount(String pathPart) {
         int count = 0;
         for (URI uri : requests) {
             if (uri.toString().contains(pathPart)) {
@@ -274,7 +295,7 @@ final class FakeConfluence implements ConfluenceHttpTransport {
         }
     }
 
-    static final class FakePage {
+    public static final class FakePage {
         final String id;
         final String title;
         final String spaceKey;
@@ -299,7 +320,7 @@ final class FakeConfluence implements ConfluenceHttpTransport {
         }
     }
 
-    static final class FakeAttachment {
+    public static final class FakeAttachment {
         final String id;
         final String pageId;
         final String title;

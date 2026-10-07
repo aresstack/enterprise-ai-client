@@ -69,6 +69,7 @@ Moduls liegen nur dort (geprüft).
 | `comic-controls` | UI_LIBRARY | `ui.comic` | – | B (AP4) |
 | `app-swing` | COMPOSITION_ROOT | `app` | alles außer acp-demo-agent und architecture-tests | B (AP4, AP22), AP23 |
 | `architecture-tests` | ARCHITECTURE_TESTS | `architecture` (nur Tests) | – (liest kompilierte Klassen) | AP24 |
+| `integration-tests` | INTEGRATION_TESTS | `integration` (Produktion nur Anker-Klasse) | – (Testklassenpfad sieht alle Module und Testfixtures) | AP25 |
 
 Abweichungen von der Modulliste des Auftrags, beide ohne Aufweichung der fachlichen Grenzen:
 
@@ -351,6 +352,33 @@ ProxyPolicy (JVM-ProxySelector)        AdapterAssembly ──▶ ApplicationPort
 - **Start**: `./gradlew :app-swing:run` (optional `-Denterpriseai.config=<Datei>`); Demos mit Fakes:
   `runChatDemo`, `runRagDemo`, `runAgentDemo`.
 
+## Integrations- und Vertical-Slice-Tests (AP25)
+
+`integration-tests` ist das zweite Modul ohne Produktionscode (Rolle `INTEGRATION_TESTS`, von keinem Modul
+referenziert). Sein Test-Klassenpfad sieht alle Module einschließlich `app-swing` sowie die Testfixtures der
+Stränge; damit prüft es die Slices A–G des Auftrags Ende-zu-Ende gegen lokale Fakes auf `127.0.0.1`
+(Fake-`/chat/completions` und `/embeddings`, Fake-MediaWiki und -Confluence hinter JDK-HttpServern,
+Fake-KeePassRPC über WebSocket, Demo-Agent als Kindprozess, Solon-MCP-Server). Zuordnung Slice → Test,
+Entscheidungen und der getrennte Lauf gegen echte Dienste (`liveTest`, standardmäßig aus) stehen in
+[integration-tests/README.md](integration-tests/README.md).
+
+Regeln, die daraus folgen:
+
+- **Fakes der Stränge liegen in `src/testFixtures`** ihres Moduls (`java-test-fixtures`), unverändert im
+  Paket, `public`. Produktionscode sieht Testfixtures weiterhin nicht (AP24); ein Modul-`test` darf sie
+  weiter paketprivat nutzen, weil Fixtures auf dem eigenen Test-Klassenpfad liegen.
+- **Slice G braucht keinen MCP im Demo-Agenten.** `acp-demo-agent` bleibt ohne Projektabhängigkeiten; der
+  wissensnutzende Testagent `KnowledgeDemoAgentMain` ist Testcode von `integration-tests` und startet als
+  Kindprozess über ein Pathing-Jar auf dem Test-Klassenpfad. Er erfährt den Endpoint über
+  `ENTERPRISE_AI_MCP_*` (AP21) und spricht MCP nur über `McpToolClientFactory` und `SolonMcpToolClientFactory`.
+  Die Übergabe des MCP-Servers per ACP `session/new` bleibt optionale Restarbeit (Contract-Änderung in
+  `acp-client-api` und `acp-solon-client`).
+- **Solon ist prozessglobal**: `forkEvery 1` für das Modul, `SolonMcpServerRuntime.stopSharedServer()` in
+  `@AfterClass` jeder Klasse mit MCP-Server.
+- **Sicherheitsregeln gelten in Tests**: Token und Passwörter werden in Sprechblasen, Transkripten,
+  Berichten, Ausnahmen, `toString()` und im mitgelesenen STDERR der Agentenprozesse gesucht und dürfen dort
+  nicht vorkommen; MCP-Endpoints liegen nur auf `127.0.0.1`.
+
 ## Build-Konventionen
 
 - **Java 8**: `sourceCompatibility`/`targetCompatibility` 1.8; auf JDK 9+ zusätzlich `javac --release 8`,
@@ -383,7 +411,7 @@ ProxyPolicy (JVM-ProxySelector)        AdapterAssembly ──▶ ApplicationPort
 | H | mcp-runtime-api, mcp-solon-runtime | AP18 → AP19 |
 
 Danach: AP10 (application, braucht A + C + D), AP20 (application + MCP), AP21 (A + G + H), AP22 (A + B +
-AP10), AP23 (app-swing), AP24 wächst mit jedem Modul, AP25, AP26.
+AP10), AP23 (app-swing), AP24 wächst mit jedem Modul, AP25 (integration-tests), AP26.
 
 Regeln:
 

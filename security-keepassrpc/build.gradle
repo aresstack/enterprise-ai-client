@@ -1,9 +1,15 @@
 description = 'Adapter: KeePassRPC hinter dem Security-Port (Strang F).'
 
+// AP25: der Fake-KeePassRPC-Server (SRP-Pairing, verschlüsseltes JSON-RPC) als Testfixture für integration-tests;
+// die Tests dieses Moduls sehen ihn weiterhin (gleiches Paket, nutzt die paketinterne KeePassRpcCrypto).
+apply plugin: 'java-test-fixtures'
+
 dependencies {
     api project(':security-api')
     implementation libs.java.websocket
     implementation libs.gson
+    testFixturesImplementation libs.java.websocket
+    testFixturesImplementation libs.gson
     testRuntimeOnly libs.slf4j.nop
 }
 

@@ -130,6 +130,7 @@ public class ModuleRegistryTest {
             case UI_LIBRARY:
             case TEST_FIXTURE:
             case ARCHITECTURE_TESTS:
+            case INTEGRATION_TESTS:
                 return EnumSet.noneOf(ModuleKind.class);
             case PORT:
                 return EnumSet.of(ModuleKind.DOMAIN);

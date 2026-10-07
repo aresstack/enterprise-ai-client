@@ -68,7 +68,9 @@ public final class FakeEmbeddingsServer implements AutoCloseable {
             throw new IllegalArgumentException("dimension must be at least 8");
         }
         this.dimension = dimension;
-        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        // Explizit 127.0.0.1 statt getLoopbackAddress(): Letzteres liefert bei preferIPv6Addresses ::1, die
+        // Basis-URL nennt aber immer 127.0.0.1 (Bind- und Advertise-Adresse müssen übereinstimmen).
+        server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
         server.createContext("/v1/embeddings", new HttpHandler() {
             @Override
             public void handle(HttpExchange exchange) throws IOException {

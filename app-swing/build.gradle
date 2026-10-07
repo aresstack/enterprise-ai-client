@@ -1,4 +1,7 @@
 apply plugin: 'application'
+// AP25: Die Fake-HTTP-Server des RAG-Integrationstests (/chat/completions, /embeddings) liegen als Testfixtures
+// vor, damit integration-tests sie wiederverwendet: testImplementation testFixtures(project(':app-swing')).
+apply plugin: 'java-test-fixtures'
 
 description = 'Swing-Desktop-Anwendung und einzige Composition Root (Strang B, AP23).'
 
@@ -27,7 +30,9 @@ dependencies {
     testImplementation testFixtures(project(':embedding-api'))
     testImplementation testFixtures(project(':knowledge-api'))
     testImplementation testFixtures(project(':source-api'))
-    // AP22: Die Fake-HTTP-Server des Integrationstests (/chat/completions, /embeddings) lesen und schreiben JSON.
+    // AP22: Die Fake-HTTP-Server des Integrationstests (/chat/completions, /embeddings) lesen und schreiben JSON;
+    // seit AP25 als Testfixtures (app.chat.fakeapi), die Tests dieses Moduls sehen sie weiterhin.
+    testFixturesImplementation libs.gson
     testImplementation libs.gson
 }
 
