@@ -112,19 +112,26 @@ public class UnicodeClassesTest {
     }
 
     /**
-     * Auf den seit Unicode 3.0 unveränderten Bereichen Latein, Griechisch, Kyrillisch und Latein/Griechisch
-     * erweitert stimmt der Vertrag mit den Groß-/Titelbuchstaben des JDK überein; dort darf kein JDK anders
-     * entscheiden, der Vergleich schützt also nur die Tabelle vor Tippfehlern.
+     * Auf Latein, Griechisch, Kyrillisch und deren Erweiterungen stimmt der Vertrag für jeden Codepunkt, den das
+     * laufende JDK kennt, mit dessen Groß-/Titelbuchstaben überein. Codepunkte, die das JDK noch nicht kennt
+     * (JDK 8 hat Unicode 6.2, z. B. ohne U+037F oder U+052E), werden ausgelassen: Der Vertrag entscheidet dort
+     * allein. Der Vergleich schützt also nur die Tabelle vor Tippfehlern, nicht umgekehrt.
      */
     @Test
-    public void upperCaseAgreesWithTheJdkOnStableRanges() {
+    public void upperCaseAgreesWithTheJdkOnTheCodePointsItKnows() {
         int[][] ranges = {{0x41, 0x24F}, {0x370, 0x3FF}, {0x400, 0x52F}, {0x1E00, 0x1FFF}};
+        int compared = 0;
         for (int[] range : ranges) {
             for (int cp = range[0]; cp <= range[1]; cp++) {
+                if (!Character.isDefined(cp)) {
+                    continue;
+                }
                 assertEquals("U+" + Integer.toHexString(cp), Character.isUpperCase(cp) || Character.isTitleCase(cp),
                         UnicodeClasses.isUpperCase(cp));
+                compared++;
             }
         }
+        assertTrue("verglichene Codepunkte: " + compared, compared > 1000);
     }
 
     @Test
