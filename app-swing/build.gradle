@@ -18,3 +18,15 @@ dependencies {
     implementation project(':acp-solon-client')
     implementation project(':mcp-solon-runtime')
 }
+
+tasks.withType(Test).configureEach {
+    // Swing-Tests laufen ohne Display (CI); Fenster werden nur in der Demo erzeugt.
+    systemProperty 'java.awt.headless', 'true'
+}
+
+tasks.register('runChatDemo', JavaExec) {
+    group = 'application'
+    description = 'Startet die Comic-Chat-Shell (AP4) mit einem Fake-Backend, ohne Server.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.app.ui.chat.ChatShellDemo'
+}
