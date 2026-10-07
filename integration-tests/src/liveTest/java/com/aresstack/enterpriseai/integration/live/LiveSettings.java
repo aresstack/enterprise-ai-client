@@ -22,7 +22,7 @@ final class LiveSettings {
 
     static final String API_KEY_ENV = "ENTERPRISE_AI_LIVE_API_KEY";
     static final String WIKI_PASSWORD_ENV = "ENTERPRISE_AI_LIVE_WIKI_PASSWORD";
-    static final String KEEPASS_PAIRING_ENV = "ENTERPRISE_AI_LIVE_KEEPASS_PAIRING";
+    static final String TRUSTSTORE_PASSWORD_ENV = "ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD";
 
     /** Parameter mit Adressen; ihre Hostnamen werden in Fehlermeldungen durch {@code <host>} ersetzt. */
     private static final String[] ADDRESS_PROPERTIES = {"live.chat.baseUrl", "live.embedding.baseUrl",
@@ -31,6 +31,17 @@ final class LiveSettings {
     /** Ein Testkörper, der Exceptions werfen darf (für {@link #withoutSecretLeak}). */
     interface Body {
         void run() throws Exception;
+    }
+
+    static {
+        // Das Passwort eines eigenen Truststores kommt aus der Umgebung und wird erst hier, in der Test-JVM, zur
+        // System-Property: nie auf einer Kommandozeile (ps, Gradle --info) und nie in JAVA_TOOL_OPTIONS (stderr).
+        // JSSE liest die Property beim ersten TLS-Verbindungsaufbau, der nach dieser Initialisierung liegt.
+        String trustStorePassword = System.getenv(TRUSTSTORE_PASSWORD_ENV);
+        if (trustStorePassword != null && !trustStorePassword.isEmpty()
+                && System.getProperty("javax.net.ssl.trustStorePassword") == null) {
+            System.setProperty("javax.net.ssl.trustStorePassword", trustStorePassword);
+        }
     }
 
     private LiveSettings() {

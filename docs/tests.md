@@ -82,8 +82,11 @@ Alle Fakes binden an `127.0.0.1`. Der Demo-Agent (`acp-demo-agent-all.jar`) und 
   `:acp-demo-agent:demoAgentJar` und setzen `acp.demo.agent.jar`; mit `acp.roundtrip.required=true` dürfen
   die Roundtrip-Tests nicht übersprungen werden. In einer IDE ohne diese Properties werden sie übersprungen;
   dann vorher `./gradlew :acp-demo-agent:demoAgentJar` bauen und die Properties setzen.
-- **Headless**: Alle Swing-Tests laufen headless. `SwingPairingCallbackTest.promptRunsOnTheEventDispatchThreadWhenADisplayExists`
-  wird ohne Display übersprungen (einer der zwei Skips).
+- **Headless**: Alle Swing-Tests des normalen Builds laufen headless (`java.awt.headless=true`).
+  `SwingPairingCallbackTest.promptRunsOnTheEventDispatchThreadWhenADisplayExists` wird ohne Display übersprungen
+  (einer der zwei Skips). Einzige Ausnahme ist der Task `liveTest`: Stufe 6 pairt über den Swing-Dialog der
+  Anwendung, dort entscheidet das JDK (ohne Display headless, der Test überspringt sich), `-Dlive.headless=true|false`
+  überstimmt das.
 - **Zeitabhängige Tests** (Streaming-Bündelung, Abbruch während `slow`) arbeiten mit Latches außerhalb des
   Event-Dispatch-Threads; unter Last gab es zwei Flaky-Fixes (PR #23 Handshake per Semaphore, PR #26 Latches
   und gedrosselter Demo-Agent). Ein hängender Lauf in `app-swing` über fünf Minuten ist abzubrechen und neu zu
@@ -121,7 +124,7 @@ Stränge bleiben die Spezifikation der Details (`KnowledgeVerticalSliceTest`, `S
 
 | Lauf | Aktivierung | Was er prüft |
 |---|---|---|
-| `./gradlew :integration-tests:liveTest -Dlive.stage=N` (Source-Set `liveTest`, nicht Teil von `check`; `check` kompiliert ihn nur) | Stufe 1–7 über `-Dlive.stage` (auch `1-4` oder `2,3`; ohne Angabe alle), Adressen und Namen als `-Dlive.*`, Secrets nur aus Umgebungsvariablen (`ENTERPRISE_AI_LIVE_API_KEY`, `ENTERPRISE_AI_LIVE_WIKI_PASSWORD`); fehlende Parameter → Test übersprungen; Ausgabe nur als `[live] Stufe N:`-Zeilen ohne Secrets | Stufe 1 `LiveChatCompletionsIT` (echte `/chat/completions`, mit und ohne Streaming), 2 `LiveEmbeddingsIT.singleInput…` (Adapter), 3 `LiveEmbeddingsIT.arrayInput…` (Array-Probe und Adapter `ARRAY_UNVERIFIED`), 4 `LiveEmbeddingDimensionIT` (tatsächliche Dimension), 5 `LiveMediaWikiIT`, 6 `LiveKeePassIT` (Pairing über den Dialog der Anwendung, nicht headless), 7 `LiveConfluenceKeePassIT`; Anleitung je Stufe in [Live-Verifikation](live-verifikation.md), Parameter in [integration-tests/README.md](../integration-tests/README.md); Stufen 1–5 auch als manuell gestarteter GitHub-Actions-Workflow „Live-Verifikation“ (`workflow_dispatch`, Secrets und Variablen nur als Namen im Workflow) |
+| `./gradlew :integration-tests:liveTest -Dlive.stage=N` (Source-Set `liveTest`, nicht Teil von `check`; `check` kompiliert ihn nur) | Stufe 1–7 über `-Dlive.stage` (auch `1-4` oder `2,3`; ohne Angabe alle), Adressen und Namen als `-Dlive.*`, Secrets nur aus Umgebungsvariablen (`ENTERPRISE_AI_LIVE_API_KEY`, `ENTERPRISE_AI_LIVE_WIKI_PASSWORD`); fehlende Parameter → Test übersprungen; Ausgabe nur als `[live] Stufe N:`-Zeilen ohne Secrets | Stufe 1 `LiveChatCompletionsIT` (echte `/chat/completions`, mit und ohne Streaming), 2 `LiveEmbeddingsIT.singleInput…` (Adapter), 3 `LiveEmbeddingsIT.arrayInput…` (Array-Probe und Adapter `ARRAY_UNVERIFIED`), 4 `LiveEmbeddingDimensionIT` (tatsächliche Dimension), 5 `LiveMediaWikiIT`, 6 `LiveKeePassIT` (Pairing über den Dialog der Anwendung, braucht ein Display), 7 `LiveConfluenceKeePassIT`; Anleitung je Stufe in [Live-Verifikation](live-verifikation.md), Parameter in [integration-tests/README.md](../integration-tests/README.md); Stufen 1–5 auch als manuell gestarteter GitHub-Actions-Workflow „Live-Verifikation“ (`workflow_dispatch`, Secrets und Variablen nur als Namen im Workflow) |
 | `KeePassRpcRealServerIT` (`security-keepassrpc`) | `-Dkeepassrpc.it=true -Dkeepassrpc.it.entry=<Titel>`, optional `keepassrpc.it.keyFile`, `host`, `port`, `origin` | Pairing und Lesen eines Eintrags aus einem echten, entsperrten KeePass mit KeePassRPC; gibt nur aus, ob Felder nicht leer sind |
 
 `liveTest` reicht neben `-Dlive.*` die üblichen Proxy-Properties (`http(s).proxyHost`, `http(s).proxyPort`,

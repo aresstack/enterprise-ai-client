@@ -47,7 +47,7 @@ on:
         default: 'ubuntu-latest'
         options: ['ubuntu-latest', 'self-hosted']
       embedding_dimension:
-        description: 'Stufe 4: erwartete embedding.dimension prüfen (leer = aus der ersten Antwort übernehmen)'
+        description: 'Erwartete embedding.dimension für die Stufen 2 bis 4 (leer = aus der ersten Antwort übernehmen)'
         type: string
         required: false
         default: ''

@@ -455,5 +455,6 @@ Kurzfassung; die ausführliche Tabelle je Arbeitspaket mit den Änderungen gegen
 | [docs/rag-datenfluss.md](docs/rag-datenfluss.md) | Indexierung, Retrieval, Kontext, „Der Index führt“ |
 | [docs/acp.md](docs/acp.md), [docs/mcp.md](docs/mcp.md) | Agent-Modus und Wissenswerkzeuge |
 | [docs/tests.md](docs/tests.md) | Testanleitung |
+| [docs/live-verifikation.md](docs/live-verifikation.md) | Live-Verifikation gegen echte Dienste in sieben Stufen (`liveTest`, `-Dlive.stage`, GitHub-Actions-Workflow), Ergebnisprotokoll |
 | [docs/herkunft.md](docs/herkunft.md) | Herkunftstabelle |
 | [docs/einschraenkungen.md](docs/einschraenkungen.md) | Bekannte Einschränkungen, UNVERIFIED, Restarbeit |

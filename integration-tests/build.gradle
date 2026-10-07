@@ -58,8 +58,16 @@ def demoAgentJar = rootProject.file('acp-demo-agent/build/libs/acp-demo-agent-al
 
 tasks.withType(Test).configureEach {
     // Swing-Tests laufen ohne Display (CI). Nur der Live-Lauf darf ein Display nutzen: Stufe 6 pairt mit einem
-    // echten KeePass über den Swing-Dialog der Anwendung (-Dlive.headless=true erzwingt auch dort headless).
-    systemProperty 'java.awt.headless', name == 'liveTest' ? System.getProperty('live.headless', 'false') : 'true'
+    // echten KeePass über den Swing-Dialog der Anwendung. Dort entscheidet das JDK selbst (ohne Display headless,
+    // der Test überspringt sich dann per Assume); -Dlive.headless=true|false überstimmt das.
+    if (name == 'liveTest') {
+        String liveHeadless = System.getProperty('live.headless')
+        if (liveHeadless != null && !liveHeadless.trim().isEmpty()) {
+            systemProperty 'java.awt.headless', liveHeadless.trim()
+        }
+    } else {
+        systemProperty 'java.awt.headless', 'true'
+    }
 }
 
 tasks.named('test') {
@@ -146,9 +154,9 @@ tasks.register('liveTest', Test) {
     testClassesDirs = sourceSets.liveTest.output.classesDirs
     classpath = sourceSets.liveTest.runtimeClasspath
     // Alle -Dlive.* des Aufrufs, die üblichen Proxy-Properties und der Truststore an die Test-JVM durchreichen (sie
-    // läuft getrennt vom Gradle-Prozess); Secrets kommen aus Umgebungsvariablen, nie als Property: das Passwort
-    // eines Truststores aus ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD (nicht von der Kommandozeile, nicht über
-    // JAVA_TOOL_OPTIONS, das jede JVM samt Wert auf stderr ausgibt).
+    // läuft getrennt vom Gradle-Prozess); Secrets kommen aus Umgebungsvariablen, nie als Property. Das Passwort
+    // eines Truststores liest LiveSettings in der Test-JVM aus ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD (nicht von
+    // der Kommandozeile, nicht über JAVA_TOOL_OPTIONS, das jede JVM samt Wert auf stderr ausgibt).
     def forwardedProperties = ['http.proxyHost', 'http.proxyPort', 'https.proxyHost', 'https.proxyPort',
                                'http.nonProxyHosts', 'javax.net.ssl.trustStore', 'javax.net.ssl.trustStoreType']
     System.properties.each { key, value ->
@@ -156,10 +164,6 @@ tasks.register('liveTest', Test) {
         if (name.startsWith('live.') || forwardedProperties.contains(name)) {
             systemProperty name, value.toString()
         }
-    }
-    String trustStorePassword = System.getenv('ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD')
-    if (trustStorePassword != null && !trustStorePassword.isEmpty()) {
-        systemProperty 'javax.net.ssl.trustStorePassword', trustStorePassword
     }
     // Stufenauswahl: -Dlive.stage (oder -Plive.stage). Ohne Angabe laufen alle Live-Tests; fehlende Parameter
     // überspringen den einzelnen Test (Assume), er wird nie rot.
