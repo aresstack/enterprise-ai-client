@@ -1,5 +1,11 @@
-description = 'Adapter: MediaWiki als Knowledge Source (Strang E). Einziges Modul mit JWBF.'
+description = 'Adapter: MediaWiki als Knowledge Source (Strang E). MediaWiki-Action-API, JSON und HTML bleiben in diesem Modul.'
 
 dependencies {
     api project(':source-api')
+
+    // Adapter-intern: JSON der Action-API und HTML-Bereinigung (wie MainframeMate wiki-integration).
+    implementation libs.gson
+    implementation libs.jsoup
+
+    testImplementation testFixtures(project(':source-api'))
 }
