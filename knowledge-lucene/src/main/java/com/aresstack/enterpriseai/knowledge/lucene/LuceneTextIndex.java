@@ -16,12 +16,17 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.CollectionTerminatedException;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.ScoreMode;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermInSetQuery;
@@ -182,7 +187,7 @@ final class LuceneTextIndex {
     Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
         final Set<KnowledgeResourceId> ids = new LinkedHashSet<KnowledgeResourceId>();
         forEachDocument(space, new TermQuery(new Term(LuceneDocuments.SOURCE_ID, sourceId.value())),
-                new DocumentVisitor() {
+                Collections.singleton(LuceneDocuments.RESOURCE_ID), new DocumentVisitor() {
                     @Override
                     public boolean visit(Document doc) {
                         ids.add(KnowledgeResourceId.of(doc.get(LuceneDocuments.RESOURCE_ID)));
@@ -197,7 +202,7 @@ final class LuceneTextIndex {
         final KnowledgeRevision[] found = new KnowledgeRevision[1];
         final boolean[] consistent = {true};
         forEachDocument(space, new TermQuery(new Term(LuceneDocuments.RESOURCE_ID, resourceId.value())),
-                new DocumentVisitor() {
+                LuceneDocuments.revisionFields(), new DocumentVisitor() {
                     @Override
                     public boolean visit(Document doc) {
                         KnowledgeRevision revision = LuceneDocuments.revisionOf(doc);
@@ -231,8 +236,12 @@ final class LuceneTextIndex {
         boolean visit(Document doc);
     }
 
-    /** Besucht jedes Dokument des Namespaces, das {@code query} trifft; nichts, wenn der Index fehlt. */
-    private void forEachDocument(EmbeddingModelIdentity space, Query query, DocumentVisitor visitor) {
+    /**
+     * Besucht jedes Dokument des Namespaces, das {@code query} trifft, ohne Scoring und mit nur den genannten
+     * gespeicherten Feldern (kein Laden von Text und Metadaten); nichts, wenn der Index fehlt.
+     */
+    private void forEachDocument(EmbeddingModelIdentity space, Query query, final Set<String> fields,
+                                 final DocumentVisitor visitor) {
         Path path = directoryOf(space);
         if (!Files.isDirectory(path)) {
             return;
@@ -245,13 +254,26 @@ final class LuceneTextIndex {
                 }
                 DirectoryReader reader = DirectoryReader.open(directory);
                 try {
-                    IndexSearcher searcher = new IndexSearcher(reader);
-                    TopDocs top = searcher.search(query, Math.max(1, reader.numDocs()));
-                    for (ScoreDoc scoreDoc : top.scoreDocs) {
-                        if (!visitor.visit(searcher.doc(scoreDoc.doc))) {
-                            return;
+                    new IndexSearcher(reader).search(query, new SimpleCollector() {
+                        private LeafReader leaf;
+
+                        @Override
+                        protected void doSetNextReader(LeafReaderContext context) {
+                            leaf = context.reader();
                         }
-                    }
+
+                        @Override
+                        public void collect(int doc) throws IOException {
+                            if (!visitor.visit(leaf.document(doc, fields))) {
+                                throw new CollectionTerminatedException();
+                            }
+                        }
+
+                        @Override
+                        public ScoreMode scoreMode() {
+                            return ScoreMode.COMPLETE_NO_SCORES;
+                        }
+                    });
                 } finally {
                     reader.close();
                 }

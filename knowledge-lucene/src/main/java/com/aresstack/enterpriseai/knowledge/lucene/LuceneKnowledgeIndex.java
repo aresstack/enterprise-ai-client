@@ -34,7 +34,7 @@ import java.util.Set;
  * <p>Ressource und Chunk eines Eintrags liegen einmal als gespeicherte Lucene-Felder vor; semantische Treffer
  * werden dort per Chunk-ID nachgeladen, und {@link #resourceIds}/{@link #revisionOf} lesen dort (der Textindex
  * ist die Bestandsliste; Vektoren ohne passenden Text zählen nicht als indexiert).
- * Schreibreihenfolge: erst Vektoren, dann Text. Jeder Vektor trägt einen
+ * Schreibreihenfolge: erst Vektoren, dann Text; gelöscht wird umgekehrt. Jeder Vektor trägt einen
  * Stempel (SHA-256 über Text, Überschriften und Revision des eingebetteten Chunks); ein semantischer Treffer zählt
  * nur, wenn das Textdokument denselben Stempel ergibt. Scheitert das Text-Schreiben mit einer Exception, wird der
  * Vektorstand zurückgesetzt. Bricht der Prozess selbst zwischen beiden Schreibvorgängen ab,
@@ -190,8 +190,11 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
         if (resourceId == null) {
             throw new IllegalArgumentException("resourceId fehlt");
         }
-        vectors.removeWhere(resourceId, null);
+        // Löschen in umgekehrter Schreibreihenfolge: erst Text, dann Vektoren. Bricht der Prozess dazwischen ab,
+        // bleiben nur Vektoren ohne Text übrig, die weder Treffer noch Revision liefern und beim nächsten
+        // replace/rebuild verschwinden; der umgekehrte Fall (Text ohne Vektoren) würde eine Revision melden.
         text.removeWhere(resourceId, null);
+        vectors.removeWhere(resourceId, null);
     }
 
     @Override
@@ -200,8 +203,8 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
         if (sourceId == null) {
             throw new IllegalArgumentException("sourceId fehlt");
         }
-        vectors.removeWhere(null, sourceId);
         text.removeWhere(null, sourceId);
+        vectors.removeWhere(null, sourceId);
     }
 
     @Override

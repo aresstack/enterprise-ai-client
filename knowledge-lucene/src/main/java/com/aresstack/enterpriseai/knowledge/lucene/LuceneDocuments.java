@@ -21,9 +21,12 @@ import org.apache.lucene.util.BytesRef;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Abbildung zwischen {@link KnowledgeIndexEntry} und Lucene-{@link Document}. Ressource und Chunk werden
@@ -125,6 +128,11 @@ final class LuceneDocuments {
         } catch (RuntimeException ex) {
             throw new KnowledgeIndexException("Gespeicherter Indexeintrag ist beschädigt: " + doc.get(CHUNK_ID), ex);
         }
+    }
+
+    /** Gespeicherte Felder, aus denen {@link #revisionOf(Document)} liest (für Teil-Laden eines Dokuments). */
+    static Set<String> revisionFields() {
+        return new HashSet<String>(Arrays.asList(MODIFIED_AT, VERSION));
     }
 
     /** Revision aus den gespeicherten Feldern; Dokumente ohne Felder gelten als {@link KnowledgeRevision#unknown()}. */
