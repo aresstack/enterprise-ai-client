@@ -3,4 +3,8 @@ description = 'Adapter: Confluence als Knowledge Source (Strang F). Credentials 
 dependencies {
     api project(':source-api')
     api project(':security-api')
+    implementation libs.gson
+    implementation libs.jsoup
+
+    testImplementation testFixtures(project(':source-api'))
 }

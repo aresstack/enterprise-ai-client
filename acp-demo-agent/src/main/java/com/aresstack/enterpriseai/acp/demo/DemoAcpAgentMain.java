@@ -18,7 +18,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * External Java-8 demo ACP agent (STDIO transport). STDOUT carries ONLY the ACP protocol; every log line
  * goes to STDERR. On a prompt it streams a thought + several message chunks, then ends the turn; a prompt
- * containing "slow" spins until cancelled (cancel support). Unknown custom notifications are tolerated by
+ * containing "slow" keeps streaming at a throttled pace until cancelled, for at most about ten seconds (cancel
+ * support without flooding the host). Unknown custom notifications are tolerated by
  * the SDK dispatcher and simply not handled here — they must never kill the process.
  *
  * <p>Test hooks (only for the adapter round-trip test): a prompt containing "crash" halts the JVM mid-turn
@@ -31,6 +32,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @AcpAgent(name = "enterprise-ai-demo-agent", version = "0.1")
 public final class DemoAcpAgentMain {
+
+    /** Upper bound of "slow" messages: 500 x 20 ms = about 10 s, long enough for every cancel test. */
+    private static final int SLOW_MAX_MESSAGES = 500;
+    private static final long SLOW_PAUSE_MILLIS = 20L;
 
     /** Environment variable naming a file the agent creates when its JVM exits. */
     public static final String EXIT_MARKER_ENV = "ACP_DEMO_EXIT_MARKER";
@@ -115,10 +120,14 @@ public final class DemoAcpAgentMain {
             ctx.sendMessage("chunk " + i + " for '" + text + "'");
         }
         if (text.contains("slow")) {
-            // Spin (bounded) until cancel arrives, so cancel-during-streaming is testable without sleeps.
-            for (int i = 0; i < 1_000_000 && !cancelled.get(); i++) {
+            // Throttled stream until cancel arrives: a few dozen updates per second for at most ~10 s. Flooding
+            // (formerly up to 1,000,000 messages as fast as possible) saturated the host's UI thread under load.
+            for (int i = 0; i < SLOW_MAX_MESSAGES && !cancelled.get(); i++) {
                 ctx.sendMessage("slow " + i);
-                if (i > 3 && cancelled.get()) {
+                try {
+                    Thread.sleep(SLOW_PAUSE_MILLIS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
                     break;
                 }
             }

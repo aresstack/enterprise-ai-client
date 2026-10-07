@@ -46,7 +46,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.junit.Assert.assertEquals;
@@ -223,33 +225,69 @@ public class SolonMcpRoundTripTest {
 
     @Test
     public void unchangedToolsStayCallableWhileTheToolSetIsUpdated() throws Exception {
+        // Handschlag über den Tool-Handler selbst: Der laufende ping-Aufruf meldet seinen Start und wartet, bis der
+        // Updater genau ein Update ausgeführt hat. So läuft jedes Update nachweislich während eines Aufrufs. Ein frei
+        // drehender Updater erzeugte zehntausende tools/list_changed, auf die der SDK-Client jeweils mit tools/list
+        // antwortet; auf langsamen Runnern brach der Server unter dieser Last mit SocketException ab.
+        final int calls = 50;
+        final Semaphore callStarted = new Semaphore(0);
+        final Semaphore updateDone = new Semaphore(0);
+        final McpToolContribution ping = McpToolContribution.of("ping", "Liveness check; returns \"pong\".",
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        callStarted.release();
+                        try {
+                            if (!updateDone.tryAcquire(10, TimeUnit.SECONDS)) {
+                                return McpToolResult.error("no update happened during this call");
+                            }
+                        } catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
+                            return McpToolResult.error("interrupted");
+                        }
+                        return McpToolResult.ok("pong");
+                    }
+                });
         final McpEndpointHandle handle = runtime.registerEndpoint(new McpEndpointDefinition("busy", "Busy"));
-        runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo()));
+        runtime.updateTools(handle, Arrays.asList(ping, McpTestTools.echo()));
         McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(10), Duration.ofSeconds(10))
                 .connect(runtime.endpointUrl(handle), null);
-        final java.util.concurrent.atomic.AtomicBoolean running = new java.util.concurrent.atomic.AtomicBoolean(true);
+        final AtomicReference<Throwable> updaterFailure = new AtomicReference<Throwable>();
         Thread updater = new Thread(new Runnable() {
             @Override
             public void run() {
-                boolean withEcho = false;
-                while (running.get()) {
-                    runtime.updateTools(handle, withEcho
-                            ? Arrays.asList(McpTestTools.ping(), McpTestTools.echo())
-                            : Collections.singletonList(McpTestTools.ping()));
-                    withEcho = !withEcho;
+                try {
+                    boolean withEcho = false;
+                    for (int i = 0; i < calls; i++) {
+                        callStarted.acquire();
+                        runtime.updateTools(handle, withEcho
+                                ? Arrays.asList(ping, McpTestTools.echo())
+                                : Collections.singletonList(ping));
+                        withEcho = !withEcho;
+                        updateDone.release();
+                    }
+                } catch (Throwable t) {
+                    updaterFailure.set(t);
                 }
             }
         });
         updater.start();
+        boolean allCallsDone = false;
         try {
-            for (int i = 0; i < 200; i++) {
+            for (int i = 0; i < calls; i++) {
                 assertEquals("pong", client.callTool("ping", new HashMap<String, Object>()));
             }
+            allCallsDone = true;
         } finally {
-            running.set(false);
-            updater.join();
+            if (!allCallsDone) {
+                // Bricht ein Aufruf ab, wartet der Updater sonst ewig auf den nächsten Aufrufstart.
+                updater.interrupt();
+            }
+            updater.join(TimeUnit.SECONDS.toMillis(30));
             client.close();
         }
+        assertFalse("updater still running", updater.isAlive());
+        assertEquals(null, updaterFailure.get());
     }
 
     @Test
