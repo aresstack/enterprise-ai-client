@@ -186,7 +186,9 @@ public final class SpeechBubblePanel extends JPanel
         int contentWidth = Math.max(72, Math.min(contentMaximumWidth, naturalWidth));
         int headerWidth = headerLabel.isVisible() ? headerBlockSize().width : 0;
         int width = Math.max(contentWidth, headerWidth) + (HORIZONTAL_PADDING * 2) + TAIL_WIDTH;
-        return Math.max(MINIMUM_WIDTH, Math.min(allowed, width));
+        int preferred = Math.max(MINIMUM_WIDTH, Math.min(allowed, width));
+        // The contract is "never exceeding limit": below the comfortable minimum the caller's limit still wins.
+        return limit > 0 ? Math.min(limit, preferred) : preferred;
     }
 
     @Override

@@ -33,16 +33,22 @@ final class BubbleRowGeometry {
     }
 
     /**
-     * The width the row will ACTUALLY be laid out at — its own whenever it has one. Measuring against the
-     * parent instead reports a height for a different width than the layout then uses, and the last lines
-     * of a long message fall out of the bubble.
+     * The width the row will ACTUALLY be laid out at. Rows always fill their transcript's inner width, so the
+     * parent's inner width is the authoritative answer as soon as the parent has one: during a resize the
+     * parent already has its new width while the row still carries the old one, and measuring the row's own
+     * width would hand the layout a height for the wrong width (the bubble is then clipped until the next
+     * validation). Before the parent is laid out the row's own width, then a fixed guess, stand in.
      */
     static int rowWidth(Container row) {
-        if (row.getWidth() > 0) {
-            return row.getWidth();
+        Container parent = row.getParent();
+        if (parent != null && parent.getWidth() > 0) {
+            java.awt.Insets insets = parent.getInsets();
+            int inner = parent.getWidth() - insets.left - insets.right;
+            if (inner > 0) {
+                return inner;
+            }
         }
-        return row.getParent() != null && row.getParent().getWidth() > 0
-                ? row.getParent().getWidth() : UNKNOWN_ROW_WIDTH;
+        return row.getWidth() > 0 ? row.getWidth() : UNKNOWN_ROW_WIDTH;
     }
 
     /** The most a bubble may take in a row of this width. */

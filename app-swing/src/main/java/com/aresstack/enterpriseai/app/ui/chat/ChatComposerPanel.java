@@ -130,6 +130,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         sendButton.setToolTipText("Senden (Enter)");
         stopButton.setToolTipText("Antwort abbrechen");
         editor.setToolTipText("Enter: senden · Umschalt+Enter: neue Zeile");
+        // Der Platzhalter ist nur gemalt; Screenreader brauchen einen echten Namen.
+        editor.getAccessibleContext().setAccessibleName("Nachricht");
+        editor.getAccessibleContext().setAccessibleDescription("Enter sendet, Umschalt+Enter fügt eine neue Zeile ein");
         editor.setForeground(palette.getInk());
         editor.setCaretColor(palette.getInk());
 

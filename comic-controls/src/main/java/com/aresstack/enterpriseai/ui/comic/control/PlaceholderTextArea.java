@@ -16,7 +16,8 @@ import java.awt.RenderingHints;
  */
 public class PlaceholderTextArea extends JTextArea {
 
-    private static final Color PLACEHOLDER = new Color(0x9AA0A6);
+    /** Muted, but readable on the white composer plate (about 5:1, WCAG AA for normal text). */
+    private static final Color PLACEHOLDER = new Color(0x6B6F76);
 
     private String placeholder;
 
