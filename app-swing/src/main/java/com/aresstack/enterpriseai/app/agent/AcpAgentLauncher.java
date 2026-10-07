@@ -100,6 +100,10 @@ public final class AcpAgentLauncher implements AgentLauncher {
         try {
             registry.updateTools(handle, tools);
             url = registry.endpointUrl(handle);
+            if (url != null) {
+                AgentMcpEnvironment.put(env, new AcpEndpointDescriptor(handle.getEndpointId(), url,
+                        McpToolClientFactory.STREAMABLE_HTTP, handle.getToken()));
+            }
         } catch (RuntimeException e) {
             release(handle);
             throw new AcpException(AcpException.Phase.SPAWN, "MCP tools for the agent could not be provided", e);
@@ -108,8 +112,6 @@ public final class AcpAgentLauncher implements AgentLauncher {
             release(handle);
             throw new AcpException(AcpException.Phase.SPAWN, "MCP endpoint for the agent is not available", null);
         }
-        AgentMcpEnvironment.put(env, new AcpEndpointDescriptor(handle.getEndpointId(), url,
-                McpToolClientFactory.STREAMABLE_HTTP, handle.getToken()));
         return handle;
     }
 

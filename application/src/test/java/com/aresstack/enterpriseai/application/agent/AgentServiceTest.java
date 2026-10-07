@@ -257,6 +257,24 @@ public class AgentServiceTest {
     }
 
     @Test
+    public void promptRejectedByTheAdapterFailsTheTurnAndFreesTheAgentMode() {
+        launcher.promptFailure = new IllegalStateException("executor shut down");
+        AgentService service = new AgentService(launcher, DIRECT);
+        RecordingAgentListener listener = new RecordingAgentListener();
+        AgentTurn turn = service.send("x", listener);
+
+        assertEquals(Collections.singletonList("failed:PROMPT_FAILED"), listener.events);
+        assertEquals(AgentTurnState.FAILED, turn.state());
+        assertFalse(service.isBusy());
+
+        launcher.promptFailure = null;
+        RecordingAgentListener next = new RecordingAgentListener();
+        service.send("y", next);
+        launcher.lastPrompt().complete();
+        assertEquals(Collections.singletonList("completed"), next.events);
+    }
+
+    @Test
     public void agentErrorIsReportedWithoutItsTechnicalDetail() {
         AgentService service = new AgentService(launcher, DIRECT);
         RecordingAgentListener listener = new RecordingAgentListener();

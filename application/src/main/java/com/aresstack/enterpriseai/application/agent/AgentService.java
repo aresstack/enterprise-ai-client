@@ -157,8 +157,10 @@ public final class AgentService {
         if (turn != null) {
             turn.cancel();
         }
-        closeQuietly(openSession);
+        // Erst die Verbindung: Sie beendet jeden laufenden oder wartenden Prompt mit einem Terminal. Eine zuerst
+        // geschlossene Session könnte den Prompt-Dispatcher des Adapters vorher abmelden.
         closeQuietly(openConnection);
+        closeQuietly(openSession);
     }
 
     private void start(AgentTurn turn) {

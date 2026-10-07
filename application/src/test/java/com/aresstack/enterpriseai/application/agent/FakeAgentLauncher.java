@@ -28,6 +28,7 @@ final class FakeAgentLauncher implements AgentLauncher {
     final List<FakePrompt> prompts = new CopyOnWriteArrayList<FakePrompt>();
     volatile AcpException launchFailure;
     volatile AcpException sessionFailure;
+    volatile RuntimeException promptFailure;
     private final AtomicInteger sessionIds = new AtomicInteger();
 
     @Override
@@ -133,6 +134,9 @@ final class FakeAgentLauncher implements AgentLauncher {
 
         @Override
         public PromptHandle prompt(String text, AcpUpdateListener listener) {
+            if (promptFailure != null) {
+                throw promptFailure;
+            }
             FakePrompt prompt = new FakePrompt(this, text,
                     new PromptDispatcher(id, "prompt-" + (prompts.size() + 1), listener));
             prompts.add(prompt);

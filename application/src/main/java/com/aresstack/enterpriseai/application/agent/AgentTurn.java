@@ -64,7 +64,14 @@ public final class AgentTurn {
         if (state.isTerminal()) {
             return;
         }
-        handle = session.prompt(prompt, new AcpListener());
+        try {
+            handle = session.prompt(prompt, new AcpListener());
+        } catch (RuntimeException e) {
+            // Der Adapter hat den Prompt nicht angenommen; ohne Terminal bliebe der Agent-Modus belegt.
+            if (!state.isTerminal()) {
+                finish(AgentTurnState.FAILED, AgentFailure.PROMPT_FAILED);
+            }
+        }
     }
 
     /** Start oder Session-Anlage sind gescheitert, bevor der Auftrag den Agenten erreicht hat. */
