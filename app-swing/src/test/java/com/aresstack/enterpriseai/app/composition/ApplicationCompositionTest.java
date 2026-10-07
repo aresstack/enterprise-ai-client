@@ -3,14 +3,18 @@ package com.aresstack.enterpriseai.app.composition;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeDocumentNotIndexedException;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.application.rag.RetrievalResult;
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.knowledge.api.testing.InMemoryKnowledgeIndex;
+import com.aresstack.enterpriseai.mcp.api.McpToolCall;
 import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
+import com.aresstack.enterpriseai.mcp.api.McpToolResult;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
@@ -49,7 +53,9 @@ public class ApplicationCompositionTest {
     private final InMemoryKnowledgeIndex index = new InMemoryKnowledgeIndex();
     private final InMemoryKnowledgeSource wiki = new InMemoryKnowledgeSource("wiki")
             .add("Urlaub", "Urlaubsregelung", "Urlaub wird im Portal beantragt. Resturlaub verfällt am 31. März.")
-            .add("Reisen", "Reisekosten", "Reisekosten werden über das Formular RK-1 abgerechnet.");
+            .add("Reisen", "Reisekosten", "Reisekosten werden über das Formular RK-1 abgerechnet.")
+            // Kennt die Quelle, liegt aber außerhalb des Crawl-Umfangs (kein Startpunkt, nicht verlinkt):
+            .add("Geheim", "Interner Entwurf", "Entwurfstext, der nicht in der Wissensbasis landet.");
     private final AtomicBoolean indexClosed = new AtomicBoolean();
     private final FakeAgentBackend agent = new FakeAgentBackend();
 
@@ -186,6 +192,44 @@ public class ApplicationCompositionTest {
         });
         assertNotNull(view.get().agent());
         assertNotNull(view.get().modalShell().agentShell());
+    }
+
+    @Test
+    public void knowledgeToolsReadOnlyIndexedDocuments() throws Exception {
+        CompositionRoot root = compose(false);
+        root.startBackgroundWork();
+        assertTrue(root.startupIndexing().awaitTermination(10, TimeUnit.SECONDS));
+        assertTrue("Komposition nutzt die indexgeführte Variante aus #32", root.documents().isIndexGated());
+
+        KnowledgeResourceId hidden = wiki.idOf("Geheim");
+        assertEquals("die Quelle selbst kennt die Seite", "Interner Entwurf", wiki.load(hidden).resource().title());
+        try {
+            root.documents().load(hidden);
+            assertTrue("nicht indexiertes Dokument darf nicht geladen werden", false);
+        } catch (KnowledgeDocumentNotIndexedException expected) {
+            assertEquals(hidden, expected.resourceId());
+        }
+
+        McpToolResult refused = invokeTool(root, KnowledgeMcpTools.GET_KNOWLEDGE_DOCUMENT, hidden.value());
+        assertTrue(refused.getText(), refused.isError());
+        assertTrue(refused.getText(), refused.getText().contains("nicht in der Wissensbasis indexiert"));
+        assertFalse("kein Inhalt eines nicht indexierten Dokuments", refused.getText().contains("Entwurfstext"));
+
+        McpToolResult indexed = invokeTool(root, KnowledgeMcpTools.GET_KNOWLEDGE_DOCUMENT,
+                wiki.idOf("Urlaub").value());
+        assertFalse(indexed.getText(), indexed.isError());
+        assertTrue(indexed.getText(), indexed.getText().contains("Resturlaub"));
+        root.shutdown().run();
+    }
+
+    private static McpToolResult invokeTool(CompositionRoot root, String toolName, String id) {
+        for (McpToolContribution tool : root.knowledgeTools().contributions()) {
+            if (tool.getName().equals(toolName)) {
+                return tool.getHandler().invoke(new McpToolCall(toolName,
+                        java.util.Collections.<String, Object>singletonMap("id", id)));
+            }
+        }
+        throw new AssertionError("Werkzeug nicht registriert: " + toolName);
     }
 
     @Test

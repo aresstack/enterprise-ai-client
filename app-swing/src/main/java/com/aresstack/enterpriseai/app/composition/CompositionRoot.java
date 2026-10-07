@@ -85,7 +85,9 @@ public final class CompositionRoot {
         this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler);
         this.indexing = new IndexKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpace(),
                 new KnowledgeChunker(knowledge.chunking()), knowledge.embeddingBatchSize());
-        this.documents = new LoadKnowledgeDocumentUseCase(ports.sources());
+        // Der Index führt (AP20-Folge #32): get_knowledge_document liefert nur Dokumente, die im konfigurierten
+        // Namespace indexiert sind; der Agent sieht ausschließlich den freigegebenen Korpus.
+        this.documents = new LoadKnowledgeDocumentUseCase(ports.sources(), ports.index(), ports.embeddingSpace());
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
         this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, refresh, config.agent().toolSettings());
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
