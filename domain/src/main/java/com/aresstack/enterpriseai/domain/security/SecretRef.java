@@ -19,21 +19,21 @@ public final class SecretRef {
     }
 
     /**
-     * @param id nicht leerer Bezeichner ohne Steuerzeichen; führende und folgende Leerzeichen werden entfernt
+     * @param id nicht leerer Bezeichner ohne Steuerzeichen (auch nicht am Rand); Leerzeichen am Rand werden entfernt
      * @throws IllegalArgumentException bei {@code null}, leerem Wert oder Steuerzeichen
      */
     public static SecretRef of(String id) {
         if (id == null) {
             throw new IllegalArgumentException("SecretRef-ID darf nicht null sein");
         }
+        for (int i = 0; i < id.length(); i++) {
+            if (Character.isISOControl(id.charAt(i))) {
+                throw new IllegalArgumentException("SecretRef-ID darf keine Steuerzeichen enthalten");
+            }
+        }
         String trimmed = id.trim();
         if (trimmed.isEmpty()) {
             throw new IllegalArgumentException("SecretRef-ID darf nicht leer sein");
-        }
-        for (int i = 0; i < trimmed.length(); i++) {
-            if (Character.isISOControl(trimmed.charAt(i))) {
-                throw new IllegalArgumentException("SecretRef-ID darf keine Steuerzeichen enthalten");
-            }
         }
         return new SecretRef(trimmed);
     }

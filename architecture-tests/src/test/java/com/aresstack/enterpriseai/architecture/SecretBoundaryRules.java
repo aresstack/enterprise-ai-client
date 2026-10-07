@@ -1,6 +1,11 @@
 package com.aresstack.enterpriseai.architecture;
 
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaField;
+import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -22,26 +27,20 @@ final class SecretBoundaryRules {
     static final String SECRET_MATERIAL = "com.aresstack.enterpriseai.security.api.SecretMaterial";
 
     /**
-     * Module, die Secret-Material sehen dürfen: der Port selbst, der Security-Adapter und Adapter, die sich bei
-     * einem externen System authentifizieren. Jedes andere, auch jedes neu registrierte Modul, ist gesperrt;
-     * eine Erweiterung ist eine bewusste Architekturentscheidung (ARCHITECTURE.md).
+     * Module, die Secret-Material sehen dürfen: der Port selbst, der Security-Adapter und Adapter, die sich mit
+     * Credentials aus dem Security-Port bei einem externen System anmelden. Das sind genau die Module, die laut
+     * {@link ModuleRegistry} {@code security-api} sehen dürfen, ohne Kern zu sein. Jedes andere, auch jedes neu
+     * registrierte Modul, ist gesperrt; eine Erweiterung (z. B. API-Key des Chat-Adapters über einen
+     * {@code SecretRef}) ist eine bewusste Architekturentscheidung: Registry, ARCHITECTURE.md und diese Liste.
      */
     static List<String> modulesAllowedToUseSecretMaterial() {
-        return Collections.unmodifiableList(Arrays.asList(
-                "security-api", "security-keepassrpc",
-                "source-confluence", "source-mediawiki",
-                "chat-openai", "embedding-openai"));
-    }
-
-    /** Module, in denen Secret-Material ein Feld sein darf (nur der Port-Typ selbst). */
-    static List<String> modulesAllowedToStoreSecretMaterial() {
-        return Collections.singletonList("security-api");
+        return Collections.unmodifiableList(Arrays.asList("security-api", "security-keepassrpc", "source-confluence"));
     }
 
     private SecretBoundaryRules() {
     }
 
-    /** Domain, Application, UI, Knowledge, ACP, MCP und alle übrigen Ports referenzieren Secret-Material nicht. */
+    /** Domain, Application, UI, Knowledge, ACP, MCP und alle übrigen Module referenzieren Secret-Material nicht. */
     static ArchRule secretMaterialOnlyInAllowedModules(ModuleRegistry registry, String secretMaterialType) {
         List<String> forbidden = new ArrayList<String>();
         for (ArchitectureModule module : registry.modules()) {
@@ -57,16 +56,14 @@ final class SecretBoundaryRules {
                 .allowEmptyShould(true);
     }
 
-    /** Secret-Material ist kurzlebig: kein Feld dieses Typs außerhalb des Port-Typs selbst. */
-    static ArchRule secretMaterialIsNeverStoredInFields(ModuleRegistry registry, String secretMaterialType) {
-        List<String> allowed = new ArrayList<String>();
-        for (String module : modulesAllowedToStoreSecretMaterial()) {
-            allowed.add(registry.module(module).packagePattern());
-        }
+    /**
+     * Secret-Material ist kurzlebig: Kein Feld in irgendeinem Modul hält es, weder direkt noch als Array oder
+     * Typargument ({@code List<SecretMaterial>}, {@code Map<String, SecretMaterial>}, {@code SecretMaterial[]}).
+     */
+    static ArchRule secretMaterialIsNeverStoredInFields(String secretMaterialType) {
         return fields()
-                .that().haveRawType(secretMaterialType)
-                .and().areDeclaredInClassesThat().resideInAPackage(ModuleRegistry.ROOT_PACKAGE + "..")
-                .should().beDeclaredInClassesThat().resideInAnyPackage(allowed.toArray(new String[0]))
+                .that().areDeclaredInClassesThat().resideInAPackage(ModuleRegistry.ROOT_PACKAGE + "..")
+                .should(notInvolveType(secretMaterialType))
                 .because("Secret-Material wird nur für die Dauer eines Aufrufs gehalten (SecretProvider.withSecret), "
                         + "nie in Feldern, Caches oder Indizes")
                 .allowEmptyShould(true);
@@ -75,6 +72,21 @@ final class SecretBoundaryRules {
     static List<ArchRule> all(ModuleRegistry registry, String secretMaterialType) {
         return Arrays.asList(
                 secretMaterialOnlyInAllowedModules(registry, secretMaterialType),
-                secretMaterialIsNeverStoredInFields(registry, secretMaterialType));
+                secretMaterialIsNeverStoredInFields(secretMaterialType));
+    }
+
+    private static ArchCondition<JavaField> notInvolveType(final String typeName) {
+        return new ArchCondition<JavaField>("not hold " + typeName + " (directly, as array or type argument)") {
+            @Override
+            public void check(JavaField field, ConditionEvents events) {
+                for (JavaClass involved : field.getType().getAllInvolvedRawTypes()) {
+                    if (involved.getName().equals(typeName)) {
+                        events.add(SimpleConditionEvent.violated(field,
+                                field.getFullName() + " hält " + typeName + " (" + field.getType().getName() + ")"));
+                        return;
+                    }
+                }
+            }
+        };
     }
 }

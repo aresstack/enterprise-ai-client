@@ -38,4 +38,14 @@ public class SecretRefTest {
     public void rejectsControlCharactersSoLogLinesCannotBeForged() {
         SecretRef.of("wiki\nFAKE LOG LINE");
     }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsControlCharactersAtTheEnd() {
+        SecretRef.of("wiki\n");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsLeadingTab() {
+        SecretRef.of("\twiki");
+    }
 }

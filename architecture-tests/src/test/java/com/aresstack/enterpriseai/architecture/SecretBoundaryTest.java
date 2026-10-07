@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.architecture;
 import com.aresstack.enterpriseai.application.archfixture.secret.UseCaseTouchingSecret;
 import com.aresstack.enterpriseai.knowledge.lucene.archfixture.secret.IndexStoringSecret;
 import com.aresstack.enterpriseai.security.api.archfixture.secret.FakeSecretMaterial;
+import com.aresstack.enterpriseai.security.api.archfixture.secret.PortCachingSecret;
 import com.aresstack.enterpriseai.source.confluence.archfixture.secret.AdapterStoringSecret;
 import com.aresstack.enterpriseai.source.confluence.archfixture.secret.AdapterUsingSecretBriefly;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -55,16 +56,15 @@ public class SecretBoundaryTest {
     public void secretMaterialIsNeverStored() {
         Violations.assertNone("Secret-Material in Feldern",
                 Violations.of(Collections.singletonList(SecretBoundaryRules.secretMaterialIsNeverStoredInFields(
-                        REGISTRY, SecretBoundaryRules.SECRET_MATERIAL)), productionClasses));
+                        SecretBoundaryRules.SECRET_MATERIAL)), productionClasses));
     }
 
     @Test
-    public void allowedModulesAreRegistered() {
+    public void allowedModulesAreRegisteredAndMaySeeTheSecurityPort() {
         for (String module : SecretBoundaryRules.modulesAllowedToUseSecretMaterial()) {
             assertTrue(module, REGISTRY.contains(module));
-        }
-        for (String module : SecretBoundaryRules.modulesAllowedToStoreSecretMaterial()) {
-            assertTrue(module, SecretBoundaryRules.modulesAllowedToUseSecretMaterial().contains(module));
+            assertTrue(module + " darf security-api laut Registry nicht sehen", module.equals("security-api")
+                    || REGISTRY.module(module).allowedDependencies().contains("security-api"));
         }
         for (String forbidden : new String[] {"domain", "application", "app-swing", "comic-controls",
                 "knowledge-api", "knowledge-lucene", "mcp-runtime-api", "mcp-solon-runtime"}) {
@@ -89,11 +89,21 @@ public class SecretBoundaryTest {
     }
 
     @Test
-    public void adapterStoringSecretMaterialInAFieldIsDetected() {
+    public void adapterStoringSecretMaterialDirectlyInCollectionsOrArraysIsDetected() {
         List<String> violations = Violations.of(SecretBoundaryRules.all(REGISTRY, FAKE_SECRET_MATERIAL),
                 importClasses(AdapterStoringSecret.class, FakeSecretMaterial.class));
         assertEquals(violations.toString(), 1, violations.size());
-        assertTrue(violations.get(0), violations.get(0).contains("cachedLogin"));
+        for (String field : new String[] {"cachedLogin", "cachedList", "cachedBySpace", "cachedArray"}) {
+            assertTrue(field + " nicht erkannt: " + violations.get(0), violations.get(0).contains(field));
+        }
+    }
+
+    @Test
+    public void cacheInsideTheSecurityPortIsDetected() {
+        List<String> violations = Violations.of(SecretBoundaryRules.all(REGISTRY, FAKE_SECRET_MATERIAL),
+                importClasses(PortCachingSecret.class, FakeSecretMaterial.class));
+        assertEquals(violations.toString(), 1, violations.size());
+        assertTrue(violations.get(0), violations.get(0).contains("last"));
     }
 
     @Test
