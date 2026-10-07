@@ -1,0 +1,119 @@
+# Live-Verifikation gegen die echten Dienste (Stufen 1 bis 5), manuell gestartet: Actions → "Live-Verifikation"
+# → "Run workflow". Zugangsdaten und Adressen kommen ausschließlich aus Secrets und Variablen des Repositorys
+# oder der Organisation (Namen unten); nichts davon steht im Repository. Stufen 6 und 7 (KeePassRPC, Confluence
+# über KeePass) brauchen ein laufendes KeePass und laufen nur auf einem Arbeitsplatzrechner, siehe
+# docs/live-verifikation.md.
+#
+# Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   ENTERPRISE_AI_LIVE_API_KEY             API-Key der Enterprise-API (Pflicht für Stufen 1 bis 4)
+#   ENTERPRISE_AI_LIVE_CHAT_BASE_URL       Base-URL der Enterprise-API, z. B. https://ki.intern.example/v1
+#   ENTERPRISE_AI_LIVE_EMBEDDING_BASE_URL  nur, wenn /embeddings eine andere Base-URL hat (optional)
+#   ENTERPRISE_AI_LIVE_WIKI_API_URL        MediaWiki-Basis, z. B. https://wiki.intern.example/w (Stufe 5)
+#   ENTERPRISE_AI_LIVE_WIKI_USER           Wiki-Benutzer (optional, sonst anonym)
+#   ENTERPRISE_AI_LIVE_WIKI_PASSWORD       Wiki-Passwort (nur zusammen mit dem Benutzer)
+# Variablen (Settings → Secrets and variables → Actions → Variables):
+#   ENTERPRISE_AI_LIVE_CHAT_MODEL          Chat-Modell (Stufe 1)
+#   ENTERPRISE_AI_LIVE_EMBEDDING_MODEL     Embedding-Modell (Stufen 2 bis 4)
+#   ENTERPRISE_AI_LIVE_WIKI_START_POINT    Seitentitel als Startpunkt im Wiki (Stufe 5)
+#
+# Das Job-Log ist der Bericht: Die Zeilen "[live] Stufe N:" nennen weder Key noch Hostnamen. GitHub maskiert
+# die Werte der Secrets, zusätzlich maskiert der erste Schritt die Hostnamen der Base-URLs (add-mask), damit
+# auch Transportfehler des JDK keinen Host zeigen. Testberichte werden nicht als Artefakt abgelegt.
+#
+# Voraussetzung: Die Dienste müssen vom Runner aus erreichbar sein. GitHub-gehostete Runner erreichen nur das
+# Internet; liegt die Enterprise-API im Firmennetz, braucht es dort einen Self-hosted Runner (Eingabe "runner").
+
+name: Live-Verifikation
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Stufe: 1 Chat, 2 Embeddings ein Text, 3 Embeddings Array, 4 Dimension, 1-4 alle vier, 5 MediaWiki'
+        type: choice
+        required: true
+        default: '1'
+        options: ['1', '2', '3', '4', '1-4', '5']
+      java:
+        description: 'JDK des Laufs (8 ist die Zielplattform)'
+        type: choice
+        required: true
+        default: '8'
+        options: ['8', '21']
+      runner:
+        description: 'Runner: ubuntu-latest (GitHub-gehostet) oder self-hosted (im Firmennetz registriert)'
+        type: choice
+        required: true
+        default: 'ubuntu-latest'
+        options: ['ubuntu-latest', 'self-hosted']
+      embedding_dimension:
+        description: 'Stufe 4: erwartete embedding.dimension prüfen (leer = aus der ersten Antwort übernehmen)'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-verification
+  cancel-in-progress: false
+
+jobs:
+  live:
+    name: 'Stufe ${{ inputs.stage }} auf JDK ${{ inputs.java }}'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ inputs.java }} (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java }}
+          cache: gradle
+
+      - name: Hostnamen der Base-URLs im Log maskieren
+        shell: bash
+        env:
+          URLS: ${{ secrets.ENTERPRISE_AI_LIVE_CHAT_BASE_URL }} ${{ secrets.ENTERPRISE_AI_LIVE_EMBEDDING_BASE_URL }} ${{ secrets.ENTERPRISE_AI_LIVE_WIKI_API_URL }}
+        run: |
+          set -euo pipefail
+          for url in $URLS; do
+            host=$(printf '%s' "$url" | sed -E 's,^[A-Za-z][A-Za-z0-9+.-]*://,,; s,^[^@]*@,,; s,[/:?#].*$,,')
+            if [ -n "$host" ]; then
+              echo "::add-mask::$host"
+            fi
+          done
+
+      - name: Live-Verifikation, Stufe ${{ inputs.stage }}
+        shell: bash
+        env:
+          ENTERPRISE_AI_LIVE_API_KEY: ${{ secrets.ENTERPRISE_AI_LIVE_API_KEY }}
+          ENTERPRISE_AI_LIVE_WIKI_PASSWORD: ${{ secrets.ENTERPRISE_AI_LIVE_WIKI_PASSWORD }}
+          CHAT_BASE_URL: ${{ secrets.ENTERPRISE_AI_LIVE_CHAT_BASE_URL }}
+          EMBEDDING_BASE_URL: ${{ secrets.ENTERPRISE_AI_LIVE_EMBEDDING_BASE_URL }}
+          WIKI_API_URL: ${{ secrets.ENTERPRISE_AI_LIVE_WIKI_API_URL }}
+          WIKI_USER: ${{ secrets.ENTERPRISE_AI_LIVE_WIKI_USER }}
+          CHAT_MODEL: ${{ vars.ENTERPRISE_AI_LIVE_CHAT_MODEL }}
+          EMBEDDING_MODEL: ${{ vars.ENTERPRISE_AI_LIVE_EMBEDDING_MODEL }}
+          WIKI_START_POINT: ${{ vars.ENTERPRISE_AI_LIVE_WIKI_START_POINT }}
+          STAGE: ${{ inputs.stage }}
+          EMBEDDING_DIMENSION: ${{ inputs.embedding_dimension }}
+        run: |
+          # Kein set -x: Die Kommandozeile mit den Parametern darf nicht im Log stehen.
+          set -euo pipefail
+          yesno() { [ -n "$1" ] && echo ja || echo nein; }
+          echo "Hinterlegt: API-Key $(yesno "$ENTERPRISE_AI_LIVE_API_KEY"), Chat-URL $(yesno "$CHAT_BASE_URL"), Chat-Modell $(yesno "$CHAT_MODEL"), Embedding-URL $(yesno "$EMBEDDING_BASE_URL"), Embedding-Modell $(yesno "$EMBEDDING_MODEL"), Wiki-URL $(yesno "$WIKI_API_URL"), Wiki-Startpunkt $(yesno "$WIKI_START_POINT"), Wiki-Benutzer $(yesno "$WIKI_USER")"
+          args=("-Dlive.stage=$STAGE" "-Dlive.headless=true")
+          [ -n "$CHAT_BASE_URL" ]       && args+=("-Dlive.chat.baseUrl=$CHAT_BASE_URL")
+          [ -n "$CHAT_MODEL" ]          && args+=("-Dlive.chat.model=$CHAT_MODEL")
+          [ -n "$EMBEDDING_BASE_URL" ]  && args+=("-Dlive.embedding.baseUrl=$EMBEDDING_BASE_URL")
+          [ -n "$EMBEDDING_MODEL" ]     && args+=("-Dlive.embedding.model=$EMBEDDING_MODEL")
+          [ -n "$EMBEDDING_DIMENSION" ] && args+=("-Dlive.embedding.dimension=$EMBEDDING_DIMENSION")
+          [ -n "$WIKI_API_URL" ]        && args+=("-Dlive.wiki.apiUrl=$WIKI_API_URL")
+          [ -n "$WIKI_START_POINT" ]    && args+=("-Dlive.wiki.startPoint=$WIKI_START_POINT")
+          [ -n "$WIKI_USER" ]           && args+=("-Dlive.wiki.user=$WIKI_USER")
+          ./gradlew :integration-tests:liveTest "${args[@]}" --no-daemon --console=plain

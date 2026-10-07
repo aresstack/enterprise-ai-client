@@ -1,6 +1,6 @@
 # Testanleitung
 
-Stand: `main` nach AP26 und Vorbereitung der Live-Verifikation (Modul `integration-tests`). Alle Tests sind JUnit 4; der normale Build braucht weder ein
+Stand: `main` nach AP26, Unicode-Vertrag und Vorbereitung der Live-Verifikation (Modul `integration-tests`). Alle Tests sind JUnit 4; der normale Build braucht weder ein
 echtes Backend noch ein echtes Wiki, Confluence oder KeePass. Läufe gegen echte Dienste sind getrennt und
 standardmäßig aus (unten). Der Build ist auf JDK 8 und JDK 21 grün (CI); lokal reicht ein JDK 8 oder neuer.
 
@@ -120,7 +120,7 @@ Stränge bleiben die Spezifikation der Details (`KnowledgeVerticalSliceTest`, `S
 
 | Lauf | Aktivierung | Was er prüft |
 |---|---|---|
-| `./gradlew :integration-tests:liveTest -Dlive.stage=N` (Source-Set `liveTest`, nicht Teil von `check`; `check` kompiliert ihn nur) | Stufe 1–7 über `-Dlive.stage` (auch `1-4` oder `2,3`; ohne Angabe alle), Adressen und Namen als `-Dlive.*`, Secrets nur aus Umgebungsvariablen (`ENTERPRISE_AI_LIVE_API_KEY`, `ENTERPRISE_AI_LIVE_WIKI_PASSWORD`); fehlende Parameter → Test übersprungen; Ausgabe nur als `[live] Stufe N:`-Zeilen ohne Secrets | Stufe 1 `LiveChatCompletionsIT` (echte `/chat/completions`, mit und ohne Streaming), 2 `LiveEmbeddingsIT.singleInput…` (Adapter), 3 `LiveEmbeddingsIT.arrayInput…` (Array-Probe und Adapter `ARRAY_UNVERIFIED`), 4 `LiveEmbeddingDimensionIT` (tatsächliche Dimension), 5 `LiveMediaWikiIT`, 6 `LiveKeePassIT` (Pairing über den Dialog der Anwendung, nicht headless), 7 `LiveConfluenceKeePassIT`; Anleitung je Stufe in [Live-Verifikation](live-verifikation.md), Parameter in [integration-tests/README.md](../integration-tests/README.md) |
+| `./gradlew :integration-tests:liveTest -Dlive.stage=N` (Source-Set `liveTest`, nicht Teil von `check`; `check` kompiliert ihn nur) | Stufe 1–7 über `-Dlive.stage` (auch `1-4` oder `2,3`; ohne Angabe alle), Adressen und Namen als `-Dlive.*`, Secrets nur aus Umgebungsvariablen (`ENTERPRISE_AI_LIVE_API_KEY`, `ENTERPRISE_AI_LIVE_WIKI_PASSWORD`); fehlende Parameter → Test übersprungen; Ausgabe nur als `[live] Stufe N:`-Zeilen ohne Secrets | Stufe 1 `LiveChatCompletionsIT` (echte `/chat/completions`, mit und ohne Streaming), 2 `LiveEmbeddingsIT.singleInput…` (Adapter), 3 `LiveEmbeddingsIT.arrayInput…` (Array-Probe und Adapter `ARRAY_UNVERIFIED`), 4 `LiveEmbeddingDimensionIT` (tatsächliche Dimension), 5 `LiveMediaWikiIT`, 6 `LiveKeePassIT` (Pairing über den Dialog der Anwendung, nicht headless), 7 `LiveConfluenceKeePassIT`; Anleitung je Stufe in [Live-Verifikation](live-verifikation.md), Parameter in [integration-tests/README.md](../integration-tests/README.md); Stufen 1–5 auch als manuell gestarteter GitHub-Actions-Workflow „Live-Verifikation“ (`workflow_dispatch`, Secrets und Variablen nur als Namen im Workflow) |
 | `KeePassRpcRealServerIT` (`security-keepassrpc`) | `-Dkeepassrpc.it=true -Dkeepassrpc.it.entry=<Titel>`, optional `keepassrpc.it.keyFile`, `host`, `port`, `origin` | Pairing und Lesen eines Eintrags aus einem echten, entsperrten KeePass mit KeePassRPC; gibt nur aus, ob Felder nicht leer sind |
 
 `liveTest` reicht neben `-Dlive.*` die üblichen Proxy-Properties (`http(s).proxyHost`, `http(s).proxyPort`,

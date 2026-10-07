@@ -52,6 +52,8 @@ AP22 `RagShellIntegrationTest` (A + RAG ohne Composition Root), AP23 `Applicatio
 ## Live-Lauf gegen echte Dienste (standardmäßig aus, UNVERIFIED)
 
 Der Task `liveTest` (Source-Set `src/liveTest/java`) ist nicht Teil von `check`; `check` kompiliert ihn nur.
+Die Stufen 1 bis 5 lassen sich auch über den GitHub-Actions-Workflow „Live-Verifikation“ (`workflow_dispatch`,
+Secrets und Variablen nur als Namen) starten, siehe [docs/live-verifikation.md](../docs/live-verifikation.md).
 Er ist in sieben Stufen gegliedert (Reihenfolge des Auftraggebers), die `-Dlive.stage` auswählt: eine Stufe
 (`-Dlive.stage=3`), eine Liste (`-Dlive.stage=2,3`) oder ein Bereich (`-Dlive.stage=1-4`); ohne Angabe laufen
 alle. Jeder Test wird übersprungen (nicht rot), wenn seine Parameter fehlen. Adressen und Namen kommen als

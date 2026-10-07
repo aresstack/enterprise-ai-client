@@ -4,8 +4,9 @@ Alle 26 Arbeitspakete sind gegen lokale Fakes getestet; gegen die echte Enterpri
 KeePass oder Confluence ist bis zur Live-Verifikation nichts gelaufen (UNVERIFIED, siehe
 [Einschränkungen](einschraenkungen.md)). Diese Seite ist die Anleitung für den Lauf gegen die echten Dienste in
 sieben Stufen, in der Reihenfolge des Auftraggebers, eine Stufe nach der anderen. Jede Stufe ist ein eigener
-Aufruf von `./gradlew :integration-tests:liveTest`; was zurückgemeldet wird, steht je Stufe unter
-„Rückmeldung“. Nach jedem echten Ergebnis wird die UNVERIFIED-Markierung nur für genau die geprüfte Fähigkeit
+Aufruf von `./gradlew :integration-tests:liveTest` (lokal oder, für die Stufen 1 bis 5, über den manuell
+gestarteten GitHub-Actions-Workflow „Live-Verifikation“, siehe unten); was zurückgemeldet wird, steht je
+Stufe unter „Rückmeldung“. Nach jedem echten Ergebnis wird die UNVERIFIED-Markierung nur für genau die geprüfte Fähigkeit
 entfernt und [Tests](tests.md) sowie [Einschränkungen](einschraenkungen.md) werden nachgeführt; das
 [Ergebnisprotokoll](#ergebnisprotokoll) unten hält den Stand fest.
 
@@ -59,6 +60,40 @@ entsperrtes KeePass mit KeePassRPC-Plugin auf demselben Rechner; 7 zusätzlich e
 
 Ein `SKIPPED` mit „Live-Test übersprungen: -Dlive.… fehlt“ heißt: Parameter vergessen, nicht: Dienst
 fehlerhaft.
+
+## Lauf über GitHub Actions (Stufen 1 bis 5)
+
+Der Workflow **Live-Verifikation** (`.github/workflows/live-verification.yml`) läuft nur auf Knopfdruck:
+GitHub → Actions → „Live-Verifikation“ → „Run workflow“, Stufe wählen (`1`, `2`, `3`, `4`, `1-4` oder `5`),
+JDK (Standard 8) und Runner. Er ruft genau das Kommando dieser Anleitung mit `-Dlive.headless=true` auf; die
+Parameter kommen aus Secrets und Variablen, die nur der Repository- oder Organisationsinhaber hinterlegt
+(Settings → Secrets and variables → Actions). Der Workflow kennt nur die Namen:
+
+| Name | Art | Stufe | Inhalt |
+|---|---|---|---|
+| `ENTERPRISE_AI_LIVE_API_KEY` | Secret | 1–4 | API-Key der Enterprise-API |
+| `ENTERPRISE_AI_LIVE_CHAT_BASE_URL` | Secret | 1–4 | Base-URL der Enterprise-API (wird zu `-Dlive.chat.baseUrl`) |
+| `ENTERPRISE_AI_LIVE_EMBEDDING_BASE_URL` | Secret | 2–4 | nur, wenn `/embeddings` eine andere Base-URL hat |
+| `ENTERPRISE_AI_LIVE_CHAT_MODEL` | Variable | 1 | Chat-Modell (`-Dlive.chat.model`) |
+| `ENTERPRISE_AI_LIVE_EMBEDDING_MODEL` | Variable | 2–4 | Embedding-Modell (`-Dlive.embedding.model`) |
+| `ENTERPRISE_AI_LIVE_WIKI_API_URL` | Secret | 5 | MediaWiki-Basis (`-Dlive.wiki.apiUrl`) |
+| `ENTERPRISE_AI_LIVE_WIKI_START_POINT` | Variable | 5 | Seitentitel als Startpunkt |
+| `ENTERPRISE_AI_LIVE_WIKI_USER`, `ENTERPRISE_AI_LIVE_WIKI_PASSWORD` | Secret | 5 | Wiki-Login, optional (ohne Benutzer anonym) |
+
+Die Base-URLs sind Secrets, damit GitHub ihre Werte im Log maskiert; ein Schritt des Workflows maskiert
+zusätzlich die Hostnamen, sodass auch Transportfehler des JDK keinen Host zeigen. Die Eingabe
+`embedding_dimension` prüft in Stufe 4 eine erwartete Dimension (leer: aus der ersten Antwort übernehmen).
+
+- Rückmeldung ist das Job-Log des Schritts „Live-Verifikation, Stufe N“: die `[live] Stufe N:`-Zeilen und die
+  Gradle-Zusammenfassung je Test. Testberichte werden bewusst nicht als Artefakt abgelegt.
+- Die erste Zeile des Schritts („Hinterlegt: …“) sagt je Name nur `ja` oder `nein`; ein `SKIPPED` ohne
+  `ja` an der passenden Stelle heißt: Secret oder Variable fehlt.
+- Voraussetzung: Der Runner muss die Dienste erreichen. GitHub-gehostete Runner (`ubuntu-latest`) kommen nur
+  ins Internet. Liegt die Enterprise-API oder das Wiki im Firmennetz, braucht es dort einen Self-hosted Runner
+  (Eingabe `runner` = `self-hosted`, mit JDK oder Internetzugang für Temurin) oder die Stufen laufen auf einem
+  Arbeitsplatzrechner nach dieser Anleitung.
+- Stufen 6 und 7 (KeePassRPC, Confluence über KeePass) gibt es im Workflow nicht: Sie brauchen ein laufendes,
+  entsperrtes KeePass und den Pairing-Dialog und laufen nur auf einem Arbeitsplatzrechner.
 
 ## Stufe 1 – Enterprise `/chat/completions`
 
