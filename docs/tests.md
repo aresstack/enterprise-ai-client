@@ -47,9 +47,11 @@ Zahlen aus einem vollständigen lokalen Lauf auf JDK 21 (2026-10-07): 1017 Tests
 
 ## Fixtures und Vertragstests
 
-Jedes Port-Modul liefert über `java-test-fixtures` eine In-Memory-Referenz und einen abstrakten Vertragstest,
-den jeder Adapter erbt. Produktionscode darf diese Pakete (`testing`, `testkit`, `fake`, `archfixture`) nicht
-kennen (`TestCodeIsolationTest`).
+Fünf Port-Module liefern über `java-test-fixtures` Testhilfen: vier davon eine In-Memory-Referenz plus einen
+abstrakten Vertragstest, den jeder Adapter erbt; `chat-api` nur einen Fake-Port ohne Vertragstest.
+`security-api` und `acp-client-api` haben keine Fixtures (ihre Adapter werden gegen `FakeKeePassRpcServer` bzw.
+den Demo-Agenten getestet). Produktionscode darf die Fixture-Pakete (`testing`, `testkit`, `fake`,
+`archfixture`) nicht kennen (`TestCodeIsolationTest`).
 
 | Modul | Fixture | Vertragstest |
 |---|---|---|

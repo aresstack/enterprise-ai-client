@@ -101,7 +101,8 @@ Fehler wirft der Adapter `EmbeddingException`; es gibt keine Teilergebnisse und 
 ## Netzwerk (`network.*`)
 
 ```properties
-network.proxy.mode=SYSTEM          # SYSTEM (JVM-Proxy-Properties), NONE, MANUAL
+# SYSTEM (JVM-Proxy-Properties), NONE oder MANUAL
+network.proxy.mode=SYSTEM
 #network.proxy.host=proxy.intern.example
 #network.proxy.port=8080
 network.proxy.nonProxyHosts=*.intern.example

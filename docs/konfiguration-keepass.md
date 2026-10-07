@@ -22,7 +22,8 @@ security.keepass.origin=chrome-extension://enterpriseaiclient
 security.keepass.clientId=EnterpriseAiClient
 security.keepass.clientDisplayName=Enterprise AI Client
 security.keepass.timeoutMillis=15000
-security.keepass.pairingKeyStore=file        # file (Standard) oder memory
+# file (Standard) oder memory
+security.keepass.pairingKeyStore=file
 #security.keepass.pairingKeyFile=/pfad/zu/keepassrpc-pairing.key
 ```
 

@@ -76,11 +76,12 @@ sequenceDiagram
     UI->>B: sendRequested(text, RAG an)
     B->>R: send(conversation, text, RagOptions.enabled(), listener)
     R->>K: retrieve(text)
-    par Volltext
-        K->>I: searchKeyword(space, query)
-    and Semantik
+    opt Volltext aktiviert
+        K->>I: keywordSearch(space, query)
+    end
+    opt Semantik aktiviert
         K->>E: embed([text])
-        K->>I: searchSemantic(vector)
+        K->>I: semanticSearch(vector)
     end
     K-->>R: RetrievalResult (RRF-fusioniert, Warnungen)
     R->>A: assemble(hits)
@@ -93,8 +94,9 @@ sequenceDiagram
     B-->>UI: Antwort streamen, Quellen anhängen, Hinweise
 ```
 
-- **Hybride Suche** (`RetrieveKnowledgeUseCase`): Volltext (BM25) und Cosine im Namespace der konfigurierten
-  `EmbeddingModelIdentity`, je `retrieval.keywordCandidates`/`semanticCandidates` (Standard 20) Kandidaten,
+- **Hybride Suche** (`RetrieveKnowledgeUseCase`): nacheinander Volltext (BM25) und dann Cosine (Embedding der
+  Frage, dann Vektorsuche) im Namespace der konfigurierten `EmbeddingModelIdentity`, beides synchron auf dem
+  aufrufenden Arbeits-Thread, je `retrieval.keywordCandidates`/`semanticCandidates` (Standard 20) Kandidaten,
   Fusion per **Reciprocal Rank Fusion** mit `retrieval.rankConstant` (Standard 60) und Gewichten
   (`keywordWeight`, `semanticWeight`, Standard 1.0), Dedupe je Chunk-ID, höchstens `retrieval.maxResults`
   (Standard 10). RRF ersetzt die lineare Score-Normalisierung aus MainframeMate, weil BM25- und Cosine-Scores
@@ -135,10 +137,6 @@ Konsequenzen:
 - Falls anders entschieden wird: Der Konstruktor `LoadKnowledgeDocumentUseCase(catalog)` ohne Index (Quellen
   entscheiden per `UNSUPPORTED`) ist erhalten; das Entfernen in `indexSource` ist heute immer aktiv und hätte
   einen Schalter zu bekommen.
-- Abweichung auf `main` (Stand AP23): Die Composition Root verwendet für die Wissenswerkzeuge noch genau diesen
-  Konstruktor ohne Index, sodass `get_knowledge_document` in der laufenden Anwendung bisher nicht auf den Index
-  beschränkt ist. Skip und Prune bei der Indexierung sind davon nicht betroffen. Details und Status:
-  [Einschränkungen](einschraenkungen.md#abweichungen-auf-main).
 
 ## Konfigurationsschlüssel
 

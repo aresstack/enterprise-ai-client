@@ -56,6 +56,7 @@ flowchart TB
     app --> application
     app --> chatO & embO & lucene & wiki & conf & keepass & acpS & mcpS
     application --> chatA & embA & knowA & srcA & secA & acpA & mcpA
+    application --> domain
     chatO --> chatA
     embO --> embA
     lucene --> knowA

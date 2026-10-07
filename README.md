@@ -39,8 +39,9 @@ Voraussetzung: ein JDK 8 oder neuer (kompiliert wird immer für Java 8; die CI b
    (zum Ausprobieren der Demo-Agent aus `./gradlew :acp-demo-agent:demoAgentJar`). Der Reiter „Agent“ startet
    den Prozess; er erhält die Wissenswerkzeuge über einen MCP-Endpoint, der nur für diesen Prozess gilt.
 
-Demos ohne Backend (Fake-Ports, kein KeePass): `./gradlew :app-swing:runChatDemo`, `:app-swing:runRagDemo`,
-`:app-swing:runAgentDemo`.
+Demos ohne Enterprise-API und ohne KeePass: `./gradlew :app-swing:runChatDemo` (Chat gegen einen Fake-Port),
+`:app-swing:runRagDemo` (echte Chat- und Embedding-Adapter gegen lokale Fake-HTTP-Server, Lucene-Index im
+Temp-Verzeichnis), `:app-swing:runAgentDemo` (Chat gegen Fake-Port plus Demo-Agent als Kindprozess).
 
 ## Abhängigkeitsrichtung
 
@@ -48,14 +49,19 @@ Demos ohne Backend (Fake-Ports, kein KeePass): `./gradlew :app-swing:runChatDemo
 app-swing  ──►  comic-controls
    │
    ├──►  application  ──►  chat-api, embedding-api, knowledge-api, source-api,
-   │                        security-api, acp-client-api, mcp-runtime-api  ──►  domain
-   │
-   └──►  Adapter  ──►  genau ihr Port-Modul (und domain)
-          chat-openai, embedding-openai, knowledge-lucene, source-mediawiki,
-          source-confluence, security-keepassrpc, acp-solon-client, mcp-solon-runtime
+   │          │             security-api, acp-client-api, mcp-runtime-api
+   │          └────────────────────────────────────────────────────────────►  domain
+   │                                                                            ▲
+   └──►  Adapter  ──►  ihr Port-Modul  ─────────────────────────────────────────┘
+          chat-openai → chat-api            source-mediawiki  → source-api
+          embedding-openai → embedding-api  source-confluence → source-api + security-api
+          knowledge-lucene → knowledge-api  security-keepassrpc → security-api
+          acp-solon-client → acp-client-api mcp-solon-runtime → mcp-runtime-api
 
-Pfeile zeigen "darf verwenden". domain kennt niemanden; Ports kennen nur domain; application kennt nur Ports;
-Adapter kennen ihren Port und ihre Bibliothek; app-swing ist der einzige Ort, an dem Adapter konstruiert werden.
+Pfeile zeigen "darf verwenden". domain kennt niemanden. Die Ports chat-, embedding-, knowledge-, source- und
+security-api kennen nur domain; acp-client-api und mcp-runtime-api sind eigenständig. application kennt domain
+und alle Ports. Ein Adapter kennt seinen Port, domain und seine Bibliothek; source-confluence zusätzlich
+security-api. app-swing ist der einzige Ort, an dem Adapter konstruiert werden.
 ```
 
 Swing nur in `app-swing` und `comic-controls`; Bibliotheken nur in ihrem Adapter; kein Logging-Framework, keine
