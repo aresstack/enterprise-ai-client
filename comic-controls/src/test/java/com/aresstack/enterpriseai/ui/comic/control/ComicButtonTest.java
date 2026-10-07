@@ -52,7 +52,41 @@ public class ComicButtonTest {
         });
     }
 
-    private static BufferedImage render(ComicButton button) {
+    @Test
+    public void keyboardFocusIsVisibleOnButtonsAndToggles() throws Exception {
+        onEdt(new Runnable() {
+            public void run() {
+                java.awt.Color blue = ComicPalette.defaultPalette().getNavigationBlue();
+                ComicButton unfocused = new ComicButton("Senden");
+                unfocused.setSize(100, 30);
+                assertFalse("no ring without focus", containsColorLike(render(unfocused), blue));
+
+                ComicButton focused = new ComicButton("Senden") {
+                    private static final long serialVersionUID = 1L;
+
+                    @Override
+                    public boolean isFocusOwner() {
+                        return true;
+                    }
+                };
+                focused.setSize(100, 30);
+                assertTrue("focused button shows the blue ring", containsColorLike(render(focused), blue));
+
+                ComicToggleButton toggle = new ComicToggleButton("RAG") {
+                    private static final long serialVersionUID = 1L;
+
+                    @Override
+                    public boolean isFocusOwner() {
+                        return true;
+                    }
+                };
+                toggle.setSize(80, 30);
+                assertTrue("focused toggle shows the blue ring", containsColorLike(render(toggle), blue));
+            }
+        });
+    }
+
+    private static BufferedImage render(javax.swing.AbstractButton button) {
         BufferedImage image = new BufferedImage(button.getWidth(), button.getHeight(),
                 BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = image.createGraphics();

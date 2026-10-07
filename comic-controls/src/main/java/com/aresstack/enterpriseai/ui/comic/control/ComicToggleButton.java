@@ -56,10 +56,24 @@ public class ComicToggleButton extends JToggleButton {
             g2.setColor(isEnabled() ? palette.getInk() : palette.getInk().brighter().brighter());
             g2.setStroke(new BasicStroke(OUTLINE_WIDTH));
             g2.draw(plate);
+            if (isEnabled() && isFocusOwner()) {
+                paintFocusRing(g2);
+            }
         } finally {
             g2.dispose();
         }
         super.paintComponent(g);
+    }
+
+    /**
+     * The look and feel's focus painting is off (it would draw a rectangle across the comic plate), so the
+     * keyboard focus gets its own cue: a dashed ring just inside the ink contour (blue, white on the selected blue plate).
+     */
+    private void paintFocusRing(Graphics2D g2) {
+        g2.setColor(isSelected() ? Color.WHITE : palette.getNavigationBlue()); // stays visible on the blue plate
+        g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f,
+                new float[] {3f, 2f}, 0f));
+        g2.draw(new RoundRectangle2D.Float(4f, 4f, getWidth() - 8f, getHeight() - 8f, ARC - 4, ARC - 4));
     }
 
     private Color plateFill() {
