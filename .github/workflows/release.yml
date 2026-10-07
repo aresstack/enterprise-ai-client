@@ -1,6 +1,6 @@
 # Fat Jar der Swing-Anwendung bauen, prüfen und veröffentlichen.
 #
-#   main              -> Release-Version <version> aus gradle.properties: Tag v<version> plus GitHub-Release mit
+#   main              -> Release-Version <projectVersion> aus gradle.properties: Tag v<version> plus GitHub-Release mit
 #                        dem Jar, sofern das Tag noch nicht existiert (sonst nur Workflow-Artefakt und Warnung).
 #   alle anderen      -> rollierender Snapshot <version>-SNAPSHOT: je Branch ein Pre-Release unter dem Tag
 #   Branches             snapshot-<branch>, dessen Tag und Jar jeder Push ersetzt; zusätzlich Workflow-Artefakt.
@@ -8,25 +8,30 @@
 #
 # Der Build läuft mit JDK 8 (Zielplattform) und umfasst alle Tests sowie verifyFatJar und smokeStartFatJar
 # (gradle/fat-jar.gradle); veröffentlicht wird nur ein grün gebautes Jar. build.yml bleibt der Pull-Request-Check
-# auf JDK 8 und 21. Es wird ausschließlich GITHUB_TOKEN mit contents: write verwendet; Tag- und Release-Vorgänge
-# mit diesem Token lösen keine weiteren Workflow-Läufe aus.
+# auf JDK 8 und 21. Wie in den anderen aresstack-Repositories (corenth, keepassrpc-java) laufen Releases über die
+# gh-CLI mit GITHUB_TOKEN (contents: write), ohne Organisations-Secrets; Tag- und Release-Vorgänge mit diesem Token
+# lösen keine weiteren Workflow-Läufe aus. Der Workflow greift für jeden Branch, auf dem diese Datei liegt.
 name: release
 
 on:
   push:
     branches: ['**']
   delete:
+  workflow_dispatch:
 
 jobs:
   jar:
     name: Fat Jar bauen und veröffentlichen
-    if: github.event_name == 'push'
+    if: github.event_name != 'delete'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     concurrency:
+      # Auf Branches ersetzt ein neuer Push den laufenden Snapshot-Lauf; auf main werden Läufe nacheinander
+      # abgearbeitet, damit kein Release halb fertig abgebrochen wird.
       group: release-${{ github.ref }}
-      cancel-in-progress: false
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -41,10 +46,12 @@ jobs:
 
       - name: Version und Art des Builds bestimmen
         id: version
+        shell: bash
         run: |
-          base="$(sed -n 's/^version=//p' gradle.properties | tr -d '[:space:]')"
+          set -euo pipefail
+          base="$(sed -n 's/^projectVersion=//p' gradle.properties | tr -d '[:space:]')"
           if ! printf '%s' "$base" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error file=gradle.properties::version muss MAJOR.MINOR.PATCH sein, ist aber '$base'"
+            echo "::error file=gradle.properties::projectVersion muss MAJOR.MINOR.PATCH sein, ist aber '$base'"
             exit 1
           fi
           if [ "$GITHUB_REF_NAME" = "main" ]; then
@@ -66,13 +73,16 @@ jobs:
           echo "Version $version, Tag $tag"
 
       - name: Bauen, testen und Fat Jar prüfen
+        shell: bash
         run: >
           ./gradlew build --no-daemon --warning-mode all
           -Prelease=${{ steps.version.outputs.release }}
           -PbuildCommit=${{ github.sha }}
 
       - name: Manifest des Fat Jars anzeigen
+        shell: bash
         run: |
+          set -euo pipefail
           unzip -p "${{ steps.version.outputs.jar }}" META-INF/MANIFEST.MF
           ls -l "${{ steps.version.outputs.jar }}"
 
@@ -89,7 +99,9 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
           JAR: ${{ steps.version.outputs.jar }}
+        shell: bash
         run: |
+          set -euo pipefail
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "::warning title=Kein Release angelegt::Tag $TAG existiert bereits. Die Version in gradle.properties wurde nicht erhöht; das Jar liegt nur als Workflow-Artefakt vor."
             {
@@ -125,7 +137,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           JAR: ${{ steps.version.outputs.jar }}
           BRANCH: ${{ github.ref_name }}
+        shell: bash
         run: |
+          set -euo pipefail
           # Tag auf den aktuellen Commit setzen (neu oder verschoben).
           git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
           notes="$(mktemp)"
@@ -140,7 +154,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             # Alte Assets entfernen (auch solche mit anderem Dateinamen nach einem Versionswechsel).
             gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r asset; do
-              [ -n "$asset" ] && gh release delete-asset "$TAG" "$asset" --yes
+              [ -n "$asset" ] && gh release delete-asset "$TAG" "$asset" --yes || true
             done
             gh release upload "$TAG" "$JAR"
             gh release edit "$TAG" --prerelease --title "$title" --notes-file "$notes"
@@ -157,6 +171,7 @@ jobs:
     name: Snapshot eines gelöschten Branches entfernen
     if: github.event_name == 'delete' && github.event.ref_type == 'branch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     concurrency:
@@ -168,7 +183,9 @@ jobs:
       BRANCH: ${{ github.event.ref }}
     steps:
       - name: Pre-Release und Tag löschen
+        shell: bash
         run: |
+          set -euo pipefail
           tag="snapshot-$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release delete "$tag" --cleanup-tag --yes

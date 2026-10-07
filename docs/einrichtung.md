@@ -158,23 +158,27 @@ läuft. Dabei gilt:
 
 ### Version
 
-Die Versionsnummer steht als `version=MAJOR.MINOR.PATCH` in `gradle.properties`. Lokal und auf allen Branches
-außer `main` baut Gradle `<version>-SNAPSHOT`; mit `-Prelease=true` entfällt das Suffix (so baut die CI auf
-`main`). Vor einem Release wird nur diese Zeile erhöht und gemergt.
+Die Versionsnummer steht als `projectVersion=MAJOR.MINOR.PATCH` in `gradle.properties` (Schlüsselname wie in
+den anderen aresstack-Repositories; `-PprojectVersion=…` überschreibt sie). Lokal und auf allen Branches außer
+`main` baut Gradle `<version>-SNAPSHOT`; mit `-Prelease=true` entfällt das Suffix (so baut die CI auf `main`).
+Vor einem Release wird nur diese Zeile erhöht und gemergt.
 
 ### Releases und Snapshots (CI)
 
-`.github/workflows/release.yml` läuft bei jedem Push auf jeden Branch, baut mit JDK 8 (`./gradlew build`, also
-inklusive aller Tests und der Fat-Jar-Prüfungen) und veröffentlicht nur ein grün gebautes Jar:
+`.github/workflows/release.yml` läuft bei jedem Push auf jeden Branch, auf dem die Datei liegt (und manuell über
+`workflow_dispatch`), baut mit JDK 8 (`./gradlew build`, also inklusive aller Tests und der Fat-Jar-Prüfungen)
+und veröffentlicht nur ein grün gebautes Jar:
 
 | Push auf | Version | Veröffentlichung |
 |---|---|---|
 | `main` | `<version>` | Tag `v<version>` und GitHub-Release `enterprise-ai-client <version>` mit dem Jar und generierten Release-Notes, sofern das Tag noch nicht existiert. Existiert es (Version nicht erhöht), gibt es kein Release, nur das Workflow-Artefakt und eine Warnung im Lauf. |
 | anderer Branch | `<version>-SNAPSHOT` | Pre-Release `Snapshot <branch> (<version>-SNAPSHOT)` unter dem Tag `snapshot-<branch>` (Sonderzeichen außer `. _ -` werden zu `-`). Jeder Push verschiebt das Tag auf den neuen Commit und ersetzt das Jar; der Link `releases/tag/snapshot-<branch>` bleibt gleich. Wird der Branch gelöscht, entfernt der Workflow Pre-Release und Tag. |
 
-In beiden Fällen liegt das Jar zusätzlich als Workflow-Artefakt `enterprise-ai-client-<version>` am Lauf. Der
-Workflow verwendet nur `GITHUB_TOKEN` (`contents: write`); Tags und Releases, die er anlegt, lösen keine
-weiteren Läufe aus. Snapshots sind zum Ausprobieren gedacht, nicht für den produktiven Einsatz.
+In beiden Fällen liegt das Jar zusätzlich als Workflow-Artefakt `enterprise-ai-client-<version>` am Lauf. Wie
+die anderen aresstack-Repositories (corenth, keepassrpc-java) veröffentlicht der Workflow über die `gh`-CLI nur
+mit `GITHUB_TOKEN` (`contents: write`) und ohne Organisations-Secrets; Tags und Releases, die er anlegt, lösen
+keine weiteren Läufe aus. Auf Branches bricht ein neuer Push einen noch laufenden Snapshot-Lauf ab, auf `main`
+laufen die Läufe nacheinander. Snapshots sind zum Ausprobieren gedacht, nicht für den produktiven Einsatz.
 
 ## IDE
 
