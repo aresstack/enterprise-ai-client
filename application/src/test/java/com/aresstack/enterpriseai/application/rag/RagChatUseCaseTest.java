@@ -175,6 +175,52 @@ public class RagChatUseCaseTest {
     }
 
     @Test
+    public void secondRagSendDuringRetrievalIsRejected() throws Exception {
+        final java.util.concurrent.CountDownLatch inRetrieval = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        com.aresstack.enterpriseai.embedding.api.EmbeddingPort blocking =
+                new com.aresstack.enterpriseai.embedding.api.EmbeddingPort() {
+                    @Override
+                    public com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity modelIdentity() {
+                        return SPACE_3D;
+                    }
+
+                    @Override
+                    public com.aresstack.enterpriseai.embedding.api.EmbeddingBatch embed(List<String> texts) {
+                        inRetrieval.countDown();
+                        try {
+                            release.await();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        return embeddings.embed(texts);
+                    }
+                };
+        final RagChatUseCase slow = new RagChatUseCase(chat,
+                new RetrieveKnowledgeUseCase(index, blocking, SPACE_3D, null), null);
+        final ChatConversationId id = chat.openConversation();
+        final RecordingListener first = new RecordingListener();
+        Thread sender = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                slow.send(id, QUESTION, RagOptions.enabled(), first);
+            }
+        });
+        sender.start();
+        assertTrue(inRetrieval.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        try {
+            slow.send(id, QUESTION, RagOptions.enabled(), new RecordingListener());
+            fail("IllegalStateException erwartet");
+        } catch (IllegalStateException expected) {
+            assertEquals("nur ein Retrieval", 1, index.keywordSearches);
+        } finally {
+            release.countDown();
+        }
+        sender.join(5000);
+        assertEquals("completed", first.await().outcome());
+    }
+
+    @Test
     public void cancelWorksOnARagTurn() throws Exception {
         ChatConversationId id = chat.openConversation();
         chatPort.enqueueHanging("Teil");

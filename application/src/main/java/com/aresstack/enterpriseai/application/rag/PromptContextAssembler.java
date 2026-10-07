@@ -139,8 +139,9 @@ public final class PromptContextAssembler {
         return oneLine(b.toString());
     }
 
+    /** Für Kopfzeilen: einzeilig und ohne Rahmenmarker (Titel, Überschriften und Revision kommen aus der Quelle). */
     private static String oneLine(String text) {
-        return text.replace('\r', ' ').replace('\n', ' ').trim();
+        return neutralizeMarkers(text.replace('\r', ' ').replace('\n', ' ').trim());
     }
 
     /** Ein Chunk darf den Rahmen nicht vorzeitig schließen oder einen neuen öffnen. */

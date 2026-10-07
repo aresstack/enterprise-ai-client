@@ -7,7 +7,9 @@ import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.chat.ChatOptions;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Use Case "Chatten mit Wissen" (RAG): legt vor einen normalen Chat-Turn optional Retrieval und Kontextaufbau.
@@ -34,6 +36,8 @@ public final class RagChatUseCase {
     private final ChatService chat;
     private final RetrieveKnowledgeUseCase retrieval;
     private final PromptContextAssembler assembler;
+    /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
+    private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
 
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler) {
         if (chat == null || retrieval == null) {
@@ -56,7 +60,9 @@ public final class RagChatUseCase {
     /**
      * @param rag     RAG an/aus und Quellenfilter; {@code null} heißt aus
      * @param options wie bei {@link ChatService#send(ChatConversationId, String, ChatOptions, ChatTurnListener)}
-     * @throws IllegalStateException    wenn in der Konversation schon ein Turn läuft (geprüft vor dem Retrieval)
+     * @throws IllegalStateException    wenn in der Konversation schon ein Turn oder ein RAG-Retrieval läuft
+     *                                  (geprüft vor dem Retrieval; ein gleichzeitiger normaler {@code send} während
+     *                                  des Retrievals lässt diesen Aufruf erst beim Start des Turns scheitern)
      * @throws IllegalArgumentException bei leerem Text oder unbekannter Konversation
      */
     public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
@@ -72,9 +78,22 @@ public final class RagChatUseCase {
             return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
                     false);
         }
-        if (chat.isBusy(id)) {
-            throw new IllegalStateException("conversation " + id + " is busy");
+        synchronized (retrieving) {
+            if (chat.isBusy(id) || !retrieving.add(id)) {
+                throw new IllegalStateException("conversation " + id + " is busy");
+            }
         }
+        try {
+            return sendWithRetrieval(id, userText, rag, options, listener);
+        } finally {
+            synchronized (retrieving) {
+                retrieving.remove(id);
+            }
+        }
+    }
+
+    private RagChatTurn sendWithRetrieval(ChatConversationId id, String userText, RagOptions rag,
+                                          ChatOptions options, ChatTurnListener listener) {
         PromptContext context;
         List<RetrievalWarning> warnings;
         boolean failed = false;
