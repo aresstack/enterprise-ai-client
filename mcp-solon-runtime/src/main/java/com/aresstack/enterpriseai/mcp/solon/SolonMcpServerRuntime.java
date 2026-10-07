@@ -147,24 +147,50 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
             return;
         }
         synchronized (registration) {
-            // Alte Menge entfernen, neue hinzufügen; der Provider meldet jede Änderung als tools/list_changed.
-            List<String> existing = new ArrayList<String>();
-            for (FunctionTool tool : registration.provider.getTools()) {
-                existing.add(tool.name());
+            Map<String, McpToolContribution> wanted = new LinkedHashMap<String, McpToolContribution>();
+            if (tools != null) {
+                for (McpToolContribution tool : tools) {
+                    wanted.put(tool.getName(), tool);
+                }
             }
-            for (String name : existing) {
+            if (!keepsRelativeOrder(registration, wanted)) {
+                // Neue Reihenfolge der bleibenden Tools: nur durch Neuaufbau herstellbar (kurze Lücke).
+                for (FunctionTool tool : new ArrayList<FunctionTool>(registration.provider.getTools())) {
+                    registration.provider.removeTool(tool.name());
+                }
+            }
+            // Erst neue bzw. geänderte Tools setzen, dann nur die überzähligen entfernen: Laufende Aufrufe sehen
+            // unveränderte Tools nie als unbekannt. Der Provider meldet jede Änderung als tools/list_changed.
+            for (McpToolContribution tool : wanted.values()) {
+                registration.provider.addTool(toFunctionTool(tool)); // ersetzt ein gleichnamiges Tool
+            }
+            List<String> obsolete = new ArrayList<String>();
+            for (FunctionTool tool : registration.provider.getTools()) {
+                if (!wanted.containsKey(tool.name())) {
+                    obsolete.add(tool.name());
+                }
+            }
+            for (String name : obsolete) {
                 registration.provider.removeTool(name);
             }
-            if (tools != null) {
-                Map<String, McpToolContribution> unique = new LinkedHashMap<String, McpToolContribution>();
-                for (McpToolContribution tool : tools) {
-                    unique.put(tool.getName(), tool);
-                }
-                for (McpToolContribution tool : unique.values()) {
-                    registration.provider.addTool(toFunctionTool(tool));
-                }
+        }
+    }
+
+    /** Stehen die bleibenden Tools in derselben relativen Reihenfolge wie bisher? */
+    private static boolean keepsRelativeOrder(Registration registration, Map<String, McpToolContribution> wanted) {
+        List<String> current = new ArrayList<String>();
+        for (FunctionTool tool : registration.provider.getTools()) {
+            if (wanted.containsKey(tool.name())) {
+                current.add(tool.name());
             }
         }
+        List<String> target = new ArrayList<String>();
+        for (String name : wanted.keySet()) {
+            if (current.contains(name)) {
+                target.add(name);
+            }
+        }
+        return current.equals(target);
     }
 
     @Override
@@ -262,11 +288,9 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
     }
 
     static FunctionTool toFunctionTool(final McpToolContribution tool) {
-        FunctionToolDesc description = new FunctionToolDesc(tool.getName()).description(tool.getDescription());
-        for (McpToolParameter parameter : tool.getParameters()) {
-            description.paramAdd(parameter.getName(), javaType(parameter), parameter.isRequired(),
-                    parameterDescription(parameter));
-        }
+        FunctionToolDesc description = new FunctionToolDesc(tool.getName())
+                .description(tool.getDescription())
+                .inputSchema(inputSchema(tool));
         description.doHandle(new ToolHandler() {
             @Override
             public Object handle(Map<String, Object> arguments) {
@@ -290,29 +314,82 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
         return description;
     }
 
-    private static Class<?> javaType(McpToolParameter parameter) {
+    /**
+     * JSON Schema der Tool-Parameter: Typ je Parameter, {@code enum} mit den erlaubten Werten,
+     * {@code required}-Liste. Selbst gebaut, weil Solons Parameter-API keine Enum-Werte kennt.
+     */
+    static String inputSchema(McpToolContribution tool) {
+        StringBuilder json = new StringBuilder("{\"type\":\"object\",\"properties\":{");
+        List<String> required = new ArrayList<String>();
+        boolean first = true;
+        for (McpToolParameter parameter : tool.getParameters()) {
+            json.append(first ? "" : ",").append(quote(parameter.getName())).append(":{\"type\":")
+                    .append(quote(jsonType(parameter)));
+            if (!parameter.getDescription().isEmpty()) {
+                json.append(",\"description\":").append(quote(parameter.getDescription()));
+            }
+            if (!parameter.getEnumValues().isEmpty()) {
+                json.append(",\"enum\":[");
+                for (int i = 0; i < parameter.getEnumValues().size(); i++) {
+                    json.append(i == 0 ? "" : ",").append(quote(parameter.getEnumValues().get(i)));
+                }
+                json.append(']');
+            }
+            json.append('}');
+            if (parameter.isRequired()) {
+                required.add(parameter.getName());
+            }
+            first = false;
+        }
+        json.append("},\"required\":[");
+        for (int i = 0; i < required.size(); i++) {
+            json.append(i == 0 ? "" : ",").append(quote(required.get(i)));
+        }
+        return json.append("]}").toString();
+    }
+
+    private static String jsonType(McpToolParameter parameter) {
         switch (parameter.getType()) {
             case INTEGER:
-                return Long.class;
+                return "integer";
             case BOOLEAN:
-                return Boolean.class;
+                return "boolean";
             case STRING:
             case ENUM:
             default:
-                return String.class;
+                return "string";
         }
     }
 
-    private static String parameterDescription(McpToolParameter parameter) {
-        if (parameter.getEnumValues().isEmpty()) {
-            return parameter.getDescription();
+    private static String quote(String text) {
+        StringBuilder quoted = new StringBuilder(text.length() + 2).append('"');
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            switch (c) {
+                case '"':
+                    quoted.append("\\\"");
+                    break;
+                case '\\':
+                    quoted.append("\\\\");
+                    break;
+                case '\n':
+                    quoted.append("\\n");
+                    break;
+                case '\r':
+                    quoted.append("\\r");
+                    break;
+                case '\t':
+                    quoted.append("\\t");
+                    break;
+                default:
+                    if (c < 0x20) {
+                        quoted.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        quoted.append(c);
+                    }
+            }
         }
-        StringBuilder text = new StringBuilder(parameter.getDescription());
-        text.append(text.length() == 0 ? "" : " ").append("One of: ");
-        for (int i = 0; i < parameter.getEnumValues().size(); i++) {
-            text.append(i == 0 ? "" : ", ").append(parameter.getEnumValues().get(i));
-        }
-        return text.toString();
+        return quoted.append('"').toString();
     }
 
     /** Ersetzt jedes nicht pfadsichere Zeichen, damit IDs die Endpoint-URL nie verfälschen. */

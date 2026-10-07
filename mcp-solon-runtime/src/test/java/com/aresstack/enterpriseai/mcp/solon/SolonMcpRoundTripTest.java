@@ -3,7 +3,12 @@ package com.aresstack.enterpriseai.mcp.solon;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointDefinition;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointHandle;
 import com.aresstack.enterpriseai.mcp.api.McpToolCallException;
+import com.aresstack.enterpriseai.mcp.api.McpToolCall;
 import com.aresstack.enterpriseai.mcp.api.McpToolClient;
+import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
+import com.aresstack.enterpriseai.mcp.api.McpToolHandler;
+import com.aresstack.enterpriseai.mcp.api.McpToolParameter;
+import com.aresstack.enterpriseai.mcp.api.McpToolResult;
 import com.aresstack.enterpriseai.mcp.api.testkit.McpTestTools;
 
 import io.modelcontextprotocol.spec.McpSchema;
@@ -192,6 +197,69 @@ public class SolonMcpRoundTripTest {
         } finally {
             neutral.close();
         }
+    }
+
+    @Test
+    public void clientSeesEnumValuesAndRequiredFieldsInTheToolSchema() {
+        McpEndpointHandle handle = runtime.registerEndpoint(new McpEndpointDefinition("schema", "Schema"));
+        runtime.updateTools(handle, Collections.singletonList(McpToolContribution.of("search", "Suche",
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        return McpToolResult.ok(call.getString("mode"));
+                    }
+                },
+                McpToolParameter.enumeration("mode", true, "Modus", Arrays.asList("keyword", "semantic")))));
+        McpClientProvider client = client(runtime.endpointUrl(handle), null);
+
+        McpSchema.JsonSchema schema = client.getClient().listTools().block().tools().get(0).inputSchema();
+        assertEquals(Collections.singletonList("mode"), schema.required());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mode = (Map<String, Object>) schema.properties().get("mode");
+        assertEquals(Arrays.asList("keyword", "semantic"), mode.get("enum"));
+        assertEquals("semantic", text(client.callToolRequest("search",
+                Collections.<String, Object>singletonMap("mode", "semantic"))));
+    }
+
+    @Test
+    public void unchangedToolsStayCallableWhileTheToolSetIsUpdated() throws Exception {
+        final McpEndpointHandle handle = runtime.registerEndpoint(new McpEndpointDefinition("busy", "Busy"));
+        runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo()));
+        McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(10), Duration.ofSeconds(10))
+                .connect(runtime.endpointUrl(handle), null);
+        final java.util.concurrent.atomic.AtomicBoolean running = new java.util.concurrent.atomic.AtomicBoolean(true);
+        Thread updater = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                boolean withEcho = false;
+                while (running.get()) {
+                    runtime.updateTools(handle, withEcho
+                            ? Arrays.asList(McpTestTools.ping(), McpTestTools.echo())
+                            : Collections.singletonList(McpTestTools.ping()));
+                    withEcho = !withEcho;
+                }
+            }
+        });
+        updater.start();
+        try {
+            for (int i = 0; i < 50; i++) {
+                assertEquals("pong", client.callTool("ping", new HashMap<String, Object>()));
+            }
+        } finally {
+            running.set(false);
+            updater.join();
+            client.close();
+        }
+    }
+
+    @Test
+    public void reorderedToolSetKeepsTheRequestedOrder() {
+        McpEndpointHandle handle = runtime.registerEndpoint(new McpEndpointDefinition("order", "Order"));
+        runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo(), McpTestTools.add()));
+        runtime.updateTools(handle, Arrays.asList(McpTestTools.add(), McpTestTools.ping()));
+        assertEquals(Arrays.asList("add", "ping"), runtime.toolNames(handle));
+        runtime.updateTools(handle, Arrays.asList(McpTestTools.add(), McpTestTools.echo(), McpTestTools.ping()));
+        assertEquals(Arrays.asList("add", "ping", "echo"), runtime.toolNames(handle));
     }
 
     @Test

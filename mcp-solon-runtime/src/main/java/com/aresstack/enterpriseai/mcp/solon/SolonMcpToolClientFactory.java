@@ -7,12 +7,12 @@ import com.aresstack.enterpriseai.mcp.api.McpToolClientFactory;
 import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
 
-import org.noear.solon.ai.chat.tool.FunctionTool;
 import org.noear.solon.ai.mcp.client.McpClientProvider;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 /**
  * {@link McpToolClientFactory} über den echten Solon-MCP-Client (Streamable HTTP).
@@ -22,8 +22,12 @@ import java.util.Map;
  * für einen falschen oder ungültig gewordenen Token) gilt als nicht erreichbarer Endpoint. Die URL trägt den
  * Token und wird weder geloggt noch in Exception-Meldungen übernommen.
  *
+ * <p>{@code tools/call} und {@code tools/list} laufen direkt über den asynchronen SDK-Client (siehe
+ * {@link PublisherAwait}): genau ein Versuch je Tool-Aufruf und keine SDK-Logzeilen mit URL oder Tool-Text.
+ *
  * <p>Herkunft: askai-java8 {@code SolonMcpToolClientFactory}; geändert: strukturierte Fehlerabbildung über
- * {@code CallToolResult.isError()} statt Textpräfixen, {@code listTools()}, Bereinigung von Meldungen.
+ * {@code CallToolResult.isError()} statt Textpräfixen, kein automatischer Wiederholversuch, {@code listTools()},
+ * Bereinigung von Meldungen.
  */
 public final class SolonMcpToolClientFactory implements McpToolClientFactory {
 
@@ -57,7 +61,7 @@ public final class SolonMcpToolClientFactory implements McpToolClientFactory {
                 .initializationTimeout(initializationTimeout)
                 .requestTimeout(requestTimeout)
                 .build();
-        return new SolonMcpToolClient(client, url);
+        return new SolonMcpToolClient(client, url, requestTimeout);
     }
 
     /** JSON-RPC "Invalid params": so meldet der MCP-Server ein unbekanntes Tool oder ungültige Argumente. */
@@ -85,11 +89,14 @@ public final class SolonMcpToolClientFactory implements McpToolClientFactory {
 
         private final McpClientProvider client;
         private final String url;
+        private final Duration requestTimeout;
         private volatile boolean closed;
 
-        private SolonMcpToolClient(McpClientProvider client, String url) {
+        private SolonMcpToolClient(McpClientProvider client, String url, Duration requestTimeout) {
             this.client = client;
             this.url = url;
+            // Das SDK erzwingt requestTimeout selbst; die eigene Wartezeit ist nur das Sicherheitsnetz darüber.
+            this.requestTimeout = requestTimeout.plusSeconds(5);
         }
 
         @Override
@@ -97,9 +104,16 @@ public final class SolonMcpToolClientFactory implements McpToolClientFactory {
             ensureOpen();
             try {
                 Map<String, String> tools = new LinkedHashMap<String, String>();
-                for (FunctionTool tool : client.getTools()) {
-                    tools.put(tool.name(), tool.description());
-                }
+                String cursor = null;
+                do {
+                    McpSchema.ListToolsResult page = await(client.getClient().listTools(cursor));
+                    if (page.tools() != null) {
+                        for (McpSchema.Tool tool : page.tools()) {
+                            tools.put(tool.name(), tool.description() == null ? "" : tool.description());
+                        }
+                    }
+                    cursor = page.nextCursor();
+                } while (cursor != null && !cursor.isEmpty());
                 return tools;
             } catch (RuntimeException ex) {
                 throw translate(ex);
@@ -111,8 +125,9 @@ public final class SolonMcpToolClientFactory implements McpToolClientFactory {
             ensureOpen();
             McpSchema.CallToolResult result;
             try {
-                result = client.callToolRequest(toolName,
-                        arguments == null ? new LinkedHashMap<String, Object>() : arguments);
+                // Genau ein Versuch: kein executeWithRetry, damit ein Handler mit Seiteneffekten nie doppelt läuft.
+                result = await(client.getClient().callTool(new McpSchema.CallToolRequest(toolName,
+                        arguments == null ? new LinkedHashMap<String, Object>() : arguments)));
             } catch (RuntimeException ex) {
                 throw translate(ex);
             }
@@ -133,6 +148,21 @@ public final class SolonMcpToolClientFactory implements McpToolClientFactory {
                 client.close();
             } catch (RuntimeException ignored) {
                 // best effort
+            }
+        }
+
+        private <T> T await(org.reactivestreams.Publisher<T> publisher) {
+            try {
+                T value = PublisherAwait.first(publisher, requestTimeout);
+                if (value == null) {
+                    throw new IllegalStateException("MCP endpoint sent no response");
+                }
+                return value;
+            } catch (TimeoutException ex) {
+                throw new IllegalStateException("MCP request timed out", ex);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while waiting for MCP endpoint", ex);
             }
         }
 
