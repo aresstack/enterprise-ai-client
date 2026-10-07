@@ -134,6 +134,7 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `BuildModelTest.everyModuleHasClassesOnlyInItsOwnBasePackage` | Klasse ↔ Modul eindeutig, kein Modul leer |
 | `ClassBoundaryTest.*` | Modulmatrix auf Klassenebene, Kern-Positivliste, AP24-Technologietabelle für den Kern, Technologiegrenzen, keine Singletons / kein nicht-finales `static` / keine nicht-privaten `static final` Arrays, Collections, Maps, Atomics oder StringBuilder, `main` nur in app-swing und acp-demo-agent |
 | `ModuleRegistryTest.*` | die Registry selbst: keine Zyklen, Schichtung, AP24-Verbotskanten bleiben verboten, Pakete disjunkt |
+| `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `application.agent`, `app.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `app.ui.agent` ist reine Oberfläche |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 
 ### Neues Modul aufnehmen (z. B. `source-sharepoint`, `source-files`)
@@ -148,6 +149,20 @@ Ohne Schritt 2 wird `everyGradleModuleIsRegistered` rot.
 
 Die Modul-Anker-Klassen (`*Module.java`) halten leere Module kompilierbar und scanbar. Sie dürfen gelöscht
 werden, sobald das Modul eigene Produktionsklassen in seinem Basispaket hat.
+
+## Agent-Modus (AP21)
+
+Der normale Chat (UI → `ChatService` → `ChatCompletionPort`) läuft vollständig ohne ACP und MCP. Der
+Agent-Modus ist ein getrennter Zusatz: UI → `AgentService` (`application.agent`) → ACP-Port → Agent-Prozess.
+
+- `AgentService` hält Prozess, ACP-Verbindung und eine Session, höchstens einen Auftrag gleichzeitig, und ein
+  eigenes Transkript. Gestartet wird über `AgentLauncher`, den die Composition Root implementiert
+  (`app.agent.AcpAgentLauncher`); Endpoint-Tokens und Launch-Umgebung laufen nie durch den Use Case.
+- MCP für den Agenten: je Agentenprozess ein frisch registrierter Endpoint (neuer Token), übergeben als
+  Umgebungsvariablen `ENTERPRISE_AI_MCP_*` (`app.agent.AgentMcpEnvironment`); beim Schließen von Verbindung
+  oder Agent-Modus wird er abgemeldet.
+- Oberfläche: `app.ui.agent.ModalShellPanel` mit Reitern Chat/Agent; jede Karte ist eine eigene
+  `ChatShellPanel` mit eigenem Model. Die Agent-Karte baut `app.agent.AgentModeAssembly`.
 
 ## Build-Konventionen
 
