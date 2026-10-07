@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.architecture;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.BeforeClass;
@@ -65,6 +66,21 @@ public class KnowledgeBoundaryTest {
                 .should().dependOnClassesThat().resideInAPackage("org.apache.lucene..")
                 .allowEmptyShould(true);
         Violations.assertNone("Lucene außerhalb von knowledge-lucene",
+                Violations.of(Arrays.asList(rule), productionClasses));
+    }
+
+    /**
+     * Von knowledge-lucene ist nur der Port-Adapter selbst öffentlich; Text-/Vektorindex und Lucene-Abbildung
+     * bleiben paketintern, damit keine Adaptertypen das Modul verlassen.
+     */
+    @Test
+    public void knowledgeLuceneExposesOnlyTheAdapter() {
+        ArchRule rule = classes().that().resideInAPackage(KNOWLEDGE_LUCENE)
+                .and().haveModifier(JavaModifier.PUBLIC)
+                .and().areTopLevelClasses()
+                .should().haveSimpleName("LuceneKnowledgeIndex")
+                .allowEmptyShould(true);
+        Violations.assertNone("öffentliche Typen in knowledge-lucene",
                 Violations.of(Arrays.asList(rule), productionClasses));
     }
 }
