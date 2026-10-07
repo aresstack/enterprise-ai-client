@@ -2,9 +2,19 @@
 // Modulspezifische Abhängigkeiten stehen ausschließlich im build.gradle des jeweiligen Moduls;
 // externe Versionen sind zentral in gradle/libs.versions.toml deklariert.
 
+// Version: projectVersion (MAJOR.MINOR.PATCH) aus gradle.properties. Ohne -Prelease=true entsteht die
+// Snapshot-Version <projectVersion>-SNAPSHOT; die CI setzt die Eigenschaft nur für Builds auf main
+// (.github/workflows/release.yml). -PbuildCommit=<sha> trägt den Commit ins Manifest des Fat Jars ein
+// (gradle/fat-jar.gradle).
+def baseVersion = (rootProject.findProperty('projectVersion') ?: '').toString().trim()
+if (!(baseVersion ==~ /\d+\.\d+\.\d+/)) {
+    throw new GradleException("projectVersion in gradle.properties muss MAJOR.MINOR.PATCH sein, ist aber '${baseVersion}'")
+}
+def releaseBuild = 'true' == (rootProject.findProperty('release') ?: 'false').toString().trim()
+
 allprojects {
     group = 'com.aresstack.enterpriseai'
-    version = '0.1.0-SNAPSHOT'
+    version = releaseBuild ? baseVersion : baseVersion + '-SNAPSHOT'
 }
 
 subprojects {

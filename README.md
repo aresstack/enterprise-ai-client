@@ -13,9 +13,20 @@ verdrahtet, die Architekturregeln laufen als Tests. Verbindliche Architekturgrun
 
 Voraussetzung: ein JDK 8 oder neuer (kompiliert wird immer für Java 8; die CI baut mit JDK 8 und 21).
 
+**Fertiges Jar**: Unter [Releases](https://github.com/aresstack/enterprise-ai-client/releases) liegt zu jeder
+Release-Version (`v<version>`, aus `main`) und zu jedem seither gepushten Branch (Pre-Release `snapshot-<branch>-<hash>`,
+bei jedem Push ersetzt) das lauffähige Fat Jar `enterprise-ai-client-<version>.jar`. Start ohne Gradle:
+
 ```bash
-./gradlew build                 # alle Module, alle Tests inklusive Architektur- und Slice-Tests
+java -jar enterprise-ai-client-<version>.jar
+```
+
+**Aus dem Quellcode**:
+
+```bash
+./gradlew build                 # alle Module, alle Tests inklusive Architektur- und Slice-Tests; baut und prüft auch das Fat Jar
 ./gradlew :app-swing:run        # Anwendung starten
+./gradlew :app-swing:fatJar     # nur das Fat Jar: app-swing/build/libs/enterprise-ai-client-<version>-SNAPSHOT.jar
 ```
 
 1. **Bauen**: `./gradlew build`. Ohne Netzwerk zu Maven Central schlägt der erste Lauf fehl; einfach
@@ -25,8 +36,9 @@ Voraussetzung: ein JDK 8 oder neuer (kompiliert wird immer für Java 8; die CI b
    und beendet sich. Pflicht sind Basis-URL und Modell des Chat-Dienstes, Modell und Dimension der
    Embeddings sowie der Titel des KeePass-Eintrags mit dem API-Key. Secrets stehen nie in der Datei; sie kommen
    zur Laufzeit aus KeePass (Plugin KeePassRPC). Alternativ: `-Denterpriseai.config=/pfad/zur/datei`.
-3. **Starten**: `./gradlew :app-swing:run`. Ohne erreichbares KeePass startet die Anwendung trotzdem und meldet,
-   welche Secrets fehlen; Anfragen scheitern dann mit einem Authentifizierungsfehler.
+3. **Starten**: `./gradlew :app-swing:run` oder `java -jar enterprise-ai-client-<version>.jar`. Ohne erreichbares
+   KeePass startet die Anwendung trotzdem und meldet, welche Secrets fehlen; Anfragen scheitern dann mit einem
+   Authentifizierungsfehler.
 4. **Chatten**: Frage eintippen, Senden. Antworten streamen, ein Turn lässt sich abbrechen; der System-Prompt
    kommt aus `chat.systemPrompt`.
 5. **Quelle indexieren**: Eine Quelle unter `sources` und `source.<id>.*` eintragen (MediaWiki oder
@@ -72,7 +84,7 @@ Code. Die vollständigen Regeln prüft `./gradlew :architecture-tests:test`.
 
 | Thema | Seite |
 |---|---|
-| Bauen, erster Start, Konfigurationsdatei, IDE | [docs/einrichtung.md](docs/einrichtung.md) |
+| Bauen, erster Start, Konfigurationsdatei, IDE, Fat Jar und Releases | [docs/einrichtung.md](docs/einrichtung.md) |
 | Module, Pakete, Bibliotheken, Testfixtures | [docs/module.md](docs/module.md) |
 | Schichten, Modulgraph, Laufzeitsicht, Regeln | [docs/architektur.md](docs/architektur.md) |
 | Chat- und Embedding-Endpunkt, Proxy, beobachtetes Serververhalten | [docs/konfiguration-api.md](docs/konfiguration-api.md) |
