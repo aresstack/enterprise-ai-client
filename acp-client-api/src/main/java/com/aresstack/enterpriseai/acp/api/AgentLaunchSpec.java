@@ -10,7 +10,7 @@ import java.util.Map;
  * How to spawn the external agent process (command, args, env). Immutable.
  *
  * <p>Environment values may carry credentials (e.g. an MCP endpoint token), so {@link #toString()} lists
- * only the variable names, never their values.</p>
+ * only the variable names, never their values; URLs inside arguments are shown without their path.</p>
  */
 public final class AgentLaunchSpec {
 
@@ -35,6 +35,10 @@ public final class AgentLaunchSpec {
 
     @Override
     public String toString() {
-        return "AgentLaunchSpec{command=" + command + ", args=" + args + ", envKeys=" + env.keySet() + "}";
+        List<String> shown = new ArrayList<String>(args.size());
+        for (String arg : args) {
+            shown.add(Redaction.argument(arg));
+        }
+        return "AgentLaunchSpec{command=" + command + ", args=" + shown + ", envKeys=" + env.keySet() + "}";
     }
 }
