@@ -46,7 +46,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.junit.Assert.assertEquals;
@@ -227,29 +229,42 @@ public class SolonMcpRoundTripTest {
         runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo()));
         McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(10), Duration.ofSeconds(10))
                 .connect(runtime.endpointUrl(handle), null);
-        final java.util.concurrent.atomic.AtomicBoolean running = new java.util.concurrent.atomic.AtomicBoolean(true);
+        // Je Aufruf genau ein nebenläufiges Update (Semaphore-Handschlag). Ein frei drehender Updater erzeugte
+        // zehntausende tools/list_changed, auf die der SDK-Client jeweils mit tools/list antwortet; auf
+        // langsamen Runnern brach der Server unter dieser Last mit SocketException ab, was mit der geprüften
+        // Eigenschaft (unveränderte Tools bleiben während Updates aufrufbar) nichts zu tun hat.
+        final int calls = 50;
+        final Semaphore updateAllowed = new Semaphore(0);
+        final AtomicReference<Throwable> updaterFailure = new AtomicReference<Throwable>();
         Thread updater = new Thread(new Runnable() {
             @Override
             public void run() {
-                boolean withEcho = false;
-                while (running.get()) {
-                    runtime.updateTools(handle, withEcho
-                            ? Arrays.asList(McpTestTools.ping(), McpTestTools.echo())
-                            : Collections.singletonList(McpTestTools.ping()));
-                    withEcho = !withEcho;
+                try {
+                    boolean withEcho = false;
+                    for (int i = 0; i < calls; i++) {
+                        updateAllowed.acquire();
+                        runtime.updateTools(handle, withEcho
+                                ? Arrays.asList(McpTestTools.ping(), McpTestTools.echo())
+                                : Collections.singletonList(McpTestTools.ping()));
+                        withEcho = !withEcho;
+                    }
+                } catch (Throwable t) {
+                    updaterFailure.set(t);
                 }
             }
         });
         updater.start();
         try {
-            for (int i = 0; i < 200; i++) {
+            for (int i = 0; i < calls; i++) {
+                updateAllowed.release();
                 assertEquals("pong", client.callTool("ping", new HashMap<String, Object>()));
             }
         } finally {
-            running.set(false);
-            updater.join();
+            updater.join(TimeUnit.SECONDS.toMillis(30));
             client.close();
         }
+        assertFalse("updater still running", updater.isAlive());
+        assertEquals(null, updaterFailure.get());
     }
 
     @Test
