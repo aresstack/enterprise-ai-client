@@ -356,4 +356,60 @@ public class SolonAcpRoundTripTest {
         }
         assertFalse(connection.getProcess().isAlive());
     }
+
+    @Test
+    public void failureMessagesNeverCarryEndpointUrlsOrTokens() {
+        String token = "tKn-launch-secret-42";
+        String url = "http://127.0.0.1:43210/mcp/knowledge/" + token;
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(5), null);
+        java.util.List<AgentLaunchSpec> failing = Arrays.asList(
+                // spawn failure: the program does not exist
+                new AgentLaunchSpec(new File(tmp.getRoot(), "no-such-agent").getAbsolutePath(),
+                        Arrays.asList("--mcp=" + url), Collections.singletonMap("MCP_URL", url)),
+                // initialize failure: a real process that is no ACP agent
+                new AgentLaunchSpec(javaBin, Arrays.asList("-version", "--mcp=" + url),
+                        Collections.singletonMap("MCP_URL", url)));
+        for (AgentLaunchSpec spec : failing) {
+            try {
+                connector.connect(spec).close();
+                fail("connect must fail for " + spec);
+            } catch (AcpException expected) {
+                for (Throwable t = expected; t != null; t = t.getCause()) {
+                    String message = String.valueOf(t.getMessage());
+                    assertFalse(message, message.contains(token));
+                    assertFalse(message, message.contains("/mcp/"));
+                }
+            }
+            assertFalse(spec.toString().contains(token));
+        }
+    }
+
+    @Test
+    public void messageChunksArriveInWireOrder() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            AcpSession session = connection.newSession();
+            for (int round = 0; round < 5; round++) {
+                int n = 300;
+                Collecting listener = new Collecting();
+                session.prompt("count " + n, listener);
+                assertTrue(listener.terminated.await(30, TimeUnit.SECONDS));
+                assertEquals(AcpPromptState.COMPLETED, listener.terminal.get());
+                java.util.List<String> texts = new java.util.ArrayList<String>();
+                for (AcpUpdate u : listener.updates) {
+                    if (u.getKind() == AcpUpdate.Kind.MESSAGE) {
+                        texts.add(u.getText());
+                    }
+                }
+                java.util.List<String> expected = new java.util.ArrayList<String>();
+                for (int i = 1; i <= n; i++) {
+                    expected.add("#" + i);
+                }
+                assertEquals("round " + round, expected, texts);
+            }
+        } finally {
+            connection.close();
+        }
+    }
 }

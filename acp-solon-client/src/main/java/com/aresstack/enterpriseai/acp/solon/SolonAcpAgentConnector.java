@@ -4,6 +4,7 @@ import com.agentclientprotocol.sdk.client.AcpClient;
 import com.agentclientprotocol.sdk.client.AcpSyncClient;
 import com.agentclientprotocol.sdk.client.transport.AgentParameters;
 import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
+import com.agentclientprotocol.sdk.spec.AcpClientSession;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import com.aresstack.enterpriseai.acp.api.AcpAgentConnector;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
@@ -19,6 +20,8 @@ import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
 import com.aresstack.enterpriseai.acp.api.AgentProcessHandle;
 import com.aresstack.enterpriseai.acp.api.PromptDispatcher;
 import com.aresstack.enterpriseai.acp.api.PromptHandle;
+
+import reactor.core.publisher.Mono;
 
 import java.lang.reflect.Field;
 import java.time.Duration;
@@ -43,11 +46,16 @@ import java.util.function.Consumer;
  * (guarded {@link AcpStates.Connection}), the logical session ({@link AcpStates.Session}) and each prompt run
  * (a {@link PromptDispatcher} with monotonic sequences and exactly one terminal). STDERR is drained by the
  * SDK reader into a BOUNDED ring buffer plus an optional host log consumer — never unbounded, never mixed
- * with the ACP STDOUT stream. All callbacks run on a private daemon executor, never a UI thread.</p>
+ * with the ACP STDOUT stream. Updates are delivered on the transport's reader thread in wire order, the
+ * terminal on a private daemon prompt thread; the dispatcher serializes both. Never a UI thread, and a
+ * listener must not block (it would stall the reader).</p>
  */
 public final class SolonAcpAgentConnector implements AcpAgentConnector {
 
     private static final int STDERR_RING_LIMIT = 200;
+    private static final String SESSION_UPDATE = "session/update";
+    private static final String AGENT_MESSAGE_CHUNK = "agent_message_chunk";
+    private static final String AGENT_THOUGHT_CHUNK = "agent_thought_chunk";
     /** Upper bound on a connection close: a graceful transport shutdown must never wedge the caller. */
     private static final long CLOSE_TIMEOUT_MILLIS = 2500L;
 
@@ -120,9 +128,13 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                 state.to(AcpConnectionState.INITIALIZING);
                 client = AcpClient.sync(transport)
                         .requestTimeout(requestTimeout)
-                        .sessionUpdateConsumer(new Consumer<AcpSchema.SessionNotification>() {
-                            public void accept(AcpSchema.SessionNotification n) {
-                                route(n);
+                        // NOT sessionUpdateConsumer(): the SDK runs each sync consumer call on its own
+                        // elastic thread, so chunks can overtake each other. A raw notification handler
+                        // runs inline on the transport's single reader thread, in wire order.
+                        .notificationHandler(SESSION_UPDATE, new AcpClientSession.NotificationHandler() {
+                            public Mono<Void> handle(Object params) {
+                                route(params);
+                                return Mono.empty();
                             }
                         })
                         .build();
@@ -137,26 +149,38 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
             }
         }
 
-        /** Routes a streamed SessionNotification to the session's active prompt dispatcher. */
-        private void route(AcpSchema.SessionNotification notification) {
-            PromptDispatcher dispatcher = activePromptBySession.get(notification.sessionId());
+        /**
+         * Routes one {@code session/update} notification to the session's active prompt dispatcher. Runs on
+         * the transport reader thread, so updates reach the dispatcher in wire order; the dispatcher's
+         * delivery lock keeps that order against the terminal. The params arrive as the decoded JSON map
+         * ({@code {sessionId, update: {sessionUpdate, content: {type, text}}}}); anything unexpected is
+         * surfaced as OTHER and never kills the reader.
+         */
+        private void route(Object params) {
+            Map<?, ?> notification = params instanceof Map ? (Map<?, ?>) params : null;
+            Object sessionId = notification == null ? null : notification.get("sessionId");
+            PromptDispatcher dispatcher = sessionId == null ? null : activePromptBySession.get(sessionId.toString());
             if (dispatcher == null) {
                 return; // no active prompt (late/unknown) → drop, never crash the reader
             }
-            AcpSchema.SessionUpdate update = notification.update();
-            if (update instanceof AcpSchema.AgentMessageChunk) {
-                dispatcher.update(AcpUpdate.Kind.MESSAGE, textOf(((AcpSchema.AgentMessageChunk) update).content()));
-            } else if (update instanceof AcpSchema.AgentThoughtChunk) {
-                dispatcher.update(AcpUpdate.Kind.THOUGHT, textOf(((AcpSchema.AgentThoughtChunk) update).content()));
+            Object update = notification.get("update");
+            Object kind = update instanceof Map ? ((Map<?, ?>) update).get("sessionUpdate") : null;
+            if (AGENT_MESSAGE_CHUNK.equals(kind)) {
+                dispatcher.update(AcpUpdate.Kind.MESSAGE, textOf(((Map<?, ?>) update).get("content")));
+            } else if (AGENT_THOUGHT_CHUNK.equals(kind)) {
+                dispatcher.update(AcpUpdate.Kind.THOUGHT, textOf(((Map<?, ?>) update).get("content")));
             } else {
                 // Unknown/custom update kinds are tolerated and surfaced generically, never fatal.
                 dispatcher.update(AcpUpdate.Kind.OTHER, String.valueOf(update));
             }
         }
 
-        private String textOf(AcpSchema.ContentBlock block) {
-            return block instanceof AcpSchema.TextContent
-                    ? ((AcpSchema.TextContent) block).text() : String.valueOf(block);
+        private String textOf(Object content) {
+            if (content instanceof Map && "text".equals(((Map<?, ?>) content).get("type"))) {
+                Object text = ((Map<?, ?>) content).get("text");
+                return text == null ? "" : text.toString();
+            }
+            return String.valueOf(content);
         }
 
         public AcpConnectionState getState() {
