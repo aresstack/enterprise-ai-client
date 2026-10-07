@@ -23,10 +23,12 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Echter MCP-Streamable-HTTP-Server über Solon hinter dem Port {@link McpServerRegistry}.
@@ -158,11 +160,23 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
                 for (FunctionTool tool : new ArrayList<FunctionTool>(registration.provider.getTools())) {
                     registration.provider.removeTool(tool.name());
                 }
+                registration.installed.clear();
             }
-            // Erst neue bzw. geänderte Tools setzen, dann nur die überzähligen entfernen: Laufende Aufrufe sehen
-            // unveränderte Tools nie als unbekannt. Der Provider meldet jede Änderung als tools/list_changed.
+            // Das MCP-SDK ersetzt ein Tool durch Entfernen und Neuanlegen. Bleiben Beschreibung und Schema gleich,
+            // wird deshalb nur der Handler getauscht: laufende Aufrufe sehen unveränderte Tools nie als unbekannt.
+            // Erst neue bzw. geänderte Tools setzen, dann die überzähligen entfernen; der Provider meldet jede
+            // Änderung am Katalog als tools/list_changed.
             for (McpToolContribution tool : wanted.values()) {
-                registration.provider.addTool(toFunctionTool(tool)); // ersetzt ein gleichnamiges Tool
+                String signature = tool.getDescription() + '\n' + inputSchema(tool);
+                InstalledTool installed = registration.installed.get(tool.getName());
+                if (installed != null && installed.signature.equals(signature)) {
+                    installed.current.set(tool);
+                } else {
+                    InstalledTool fresh = new InstalledTool(signature, tool);
+                    registration.provider.addTool(toFunctionTool(tool.getName(), tool.getDescription(),
+                            inputSchema(tool), fresh.current));
+                    registration.installed.put(tool.getName(), fresh);
+                }
             }
             List<String> obsolete = new ArrayList<String>();
             for (FunctionTool tool : registration.provider.getTools()) {
@@ -172,6 +186,7 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
             }
             for (String name : obsolete) {
                 registration.provider.removeTool(name);
+                registration.installed.remove(name);
             }
         }
     }
@@ -287,16 +302,17 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
         }
     }
 
-    static FunctionTool toFunctionTool(final McpToolContribution tool) {
-        FunctionToolDesc description = new FunctionToolDesc(tool.getName())
-                .description(tool.getDescription())
-                .inputSchema(inputSchema(tool));
-        description.doHandle(new ToolHandler() {
+    private static FunctionTool toFunctionTool(final String name, String description, String inputSchema,
+                                               final AtomicReference<McpToolContribution> current) {
+        FunctionToolDesc tool = new FunctionToolDesc(name)
+                .description(description)
+                .inputSchema(inputSchema);
+        tool.doHandle(new ToolHandler() {
             @Override
             public Object handle(Map<String, Object> arguments) {
                 McpToolResult result;
                 try {
-                    result = tool.getHandler().invoke(new McpToolCall(tool.getName(), arguments));
+                    result = current.get().getHandler().invoke(new McpToolCall(name, arguments));
                 } catch (RuntimeException ex) {
                     // Generisch: die Meldung kann Anfragedaten oder Secrets enthalten.
                     result = McpToolResult.error("Tool failed.");
@@ -311,7 +327,7 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
                         .build();
             }
         });
-        return description;
+        return tool;
     }
 
     /**
@@ -438,11 +454,24 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
         private final McpServerEndpointProvider provider;
         private final String token;
         private final String path;
+        /** Installierte Tools je Name; nur unter dem Monitor der Registrierung verändert. */
+        private final Map<String, InstalledTool> installed = new HashMap<String, InstalledTool>();
 
         private Registration(McpServerEndpointProvider provider, String token, String path) {
             this.provider = provider;
             this.token = token;
             this.path = path;
+        }
+    }
+
+    /** Ein beim Provider angelegtes Tool: Signatur (Beschreibung + Schema) und austauschbarer Handler. */
+    private static final class InstalledTool {
+        private final String signature;
+        private final AtomicReference<McpToolContribution> current;
+
+        private InstalledTool(String signature, McpToolContribution tool) {
+            this.signature = signature;
+            this.current = new AtomicReference<McpToolContribution>(tool);
         }
     }
 }

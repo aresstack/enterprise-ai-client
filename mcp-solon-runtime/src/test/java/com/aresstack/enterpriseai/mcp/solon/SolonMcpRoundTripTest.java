@@ -242,7 +242,7 @@ public class SolonMcpRoundTripTest {
         });
         updater.start();
         try {
-            for (int i = 0; i < 50; i++) {
+            for (int i = 0; i < 200; i++) {
                 assertEquals("pong", client.callTool("ping", new HashMap<String, Object>()));
             }
         } finally {
@@ -250,6 +250,23 @@ public class SolonMcpRoundTripTest {
             updater.join();
             client.close();
         }
+    }
+
+    @Test
+    public void unchangedToolsAreNotReinstalledOnUpdate() throws Exception {
+        McpEndpointHandle handle = runtime.registerEndpoint(new McpEndpointDefinition("stable", "Stable"));
+        runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo()));
+        LinkedBlockingQueue<List<String>> changes = new LinkedBlockingQueue<List<String>>();
+        McpClientProvider client = client(runtime.endpointUrl(handle), changes);
+        assertEquals(Arrays.asList("ping", "echo"), names(client));
+
+        // Neue Instanzen mit gleicher Beschreibung und gleichem Schema: das SDK ersetzt durch Entfernen und
+        // Neuanlegen, das wäre eine Lücke. Erwartet: kein Eingriff in den Katalog, also kein tools/list_changed.
+        runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo()));
+        runtime.updateTools(handle, Collections.singletonList(McpTestTools.ping()));
+
+        assertEquals(Collections.singletonList("ping"), changes.poll(10, TimeUnit.SECONDS));
+        assertEquals(null, changes.poll(1, TimeUnit.SECONDS));
     }
 
     @Test
