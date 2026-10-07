@@ -244,6 +244,52 @@ public class OpenAiCompatibleChatAdapterTest {
     }
 
     @Test
+    public void tokenEchoedInAnInBandErrorEventIsRedacted() throws Exception {
+        server.respond(200, "text/event-stream", data("{\"error\":{\"message\":\"bad key " + TOKEN + "\"}}"));
+        RecordingStreamListener listener = new RecordingStreamListener();
+        adapter.stream(request("x"), listener);
+        listener.awaitTerminal();
+        assertEquals(ChatErrorKind.PROVIDER_ERROR, listener.error.kind());
+        assertFalse(listener.error.getMessage(), listener.error.getMessage().contains(TOKEN));
+
+        server.respond(200, "application/json", "{\"error\":{\"message\":\"bad key " + TOKEN + "\"}}");
+        try {
+            adapter.complete(request("x"));
+            fail();
+        } catch (ChatCompletionException e) {
+            assertFalse(e.getMessage(), e.getMessage().contains(TOKEN));
+        }
+    }
+
+    @Test
+    public void failingTokenSourceEndsTheStreamWithAnAuthenticationError() throws Exception {
+        OpenAiCompatibleChatAdapter broken = new OpenAiCompatibleChatAdapter(
+                OpenAiCompatibleChatConfig.builder(server.baseUrl(), "m").bearerToken(
+                        new OpenAiCompatibleChatConfig.TokenSource() {
+                            @Override
+                            public String token() {
+                                throw new IllegalStateException("store locked: " + TOKEN);
+                            }
+                        }).build());
+        RecordingStreamListener listener = new RecordingStreamListener();
+        ChatTask task = broken.stream(request("x"), listener);
+        listener.awaitTerminal();
+
+        assertEquals(Collections.singletonList("error"), listener.events());
+        assertEquals(ChatErrorKind.AUTHENTICATION, listener.error.kind());
+        assertFalse(listener.error.getMessage().contains(TOKEN));
+        assertNull(listener.error.getCause());
+        assertTrue(task.isDone());
+        assertEquals(0, server.requestCount());
+        try {
+            broken.complete(request("x"));
+            fail();
+        } catch (ChatCompletionException e) {
+            assertEquals(ChatErrorKind.AUTHENTICATION, e.kind());
+        }
+    }
+
+    @Test
     public void cancelDuringStreamingEndsWithCancelledAndNothingElse() throws Exception {
         server.respond(200, "text/event-stream", deltaChunk("\"Teil\"", "null")).hangAfterParts();
 

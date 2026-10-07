@@ -33,6 +33,16 @@ final class OpenAiErrors {
         return ChatErrorKind.INVALID_REQUEST;
     }
 
+    /** Gleicher Fehler mit redigierter Meldung, z. B. für Fehlerobjekte, die mit HTTP 200 kommen. */
+    static ChatCompletionException redacted(ChatCompletionException error, String token) {
+        String message = error.getMessage();
+        String clean = redact(message, token);
+        if (clean == null || clean.equals(message)) {
+            return error;
+        }
+        return new ChatCompletionException(error.kind(), error.statusCode(), clean, error.getCause());
+    }
+
     /** Entfernt das Token, falls ein Server es zurückspiegelt. */
     static String redact(String text, String token) {
         if (text == null || token == null || token.isEmpty()) {

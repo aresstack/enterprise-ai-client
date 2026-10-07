@@ -80,6 +80,8 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
                 throw OpenAiErrors.forStatus(status, readError(connection), token);
             }
             return parser.parseCompletion(readAll(connection.getInputStream()));
+        } catch (ChatCompletionException e) {
+            throw OpenAiErrors.redacted(e, token);
         } catch (IOException e) {
             throw transport(e);
         } finally {
@@ -120,9 +122,10 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
             task.cancelled();
             return;
         }
-        String token = token();
+        String token = null;
         HttpURLConnection connection = null;
         try {
+            token = token();
             // Kein "Accept: text/event-stream": der getestete Server lehnt es ab. Streaming steuert nur der Body.
             connection = open("*/*", token);
             if (!task.attach(connection)) {
@@ -152,7 +155,7 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
             if (task.isCancelRequested()) {
                 task.cancelled();
             } else {
-                task.fail(e);
+                task.fail(OpenAiErrors.redacted(e, token));
             }
         } catch (IOException e) {
             if (task.isCancelRequested()) {
@@ -278,12 +281,20 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
         }
     }
 
+    /** Holt das Token; ein Fehler der Quelle (z. B. Credential-Store nicht erreichbar) wird zum Port-Fehler. */
     private String token() {
         OpenAiCompatibleChatConfig.TokenSource source = config.tokenSource();
         if (source == null) {
             return null;
         }
-        String token = source.token();
+        String token;
+        try {
+            token = source.token();
+        } catch (RuntimeException e) {
+            // Ursache bewusst nicht anhängen: ihre Meldung könnte Secret-Material enthalten.
+            throw new ChatCompletionException(ChatErrorKind.AUTHENTICATION,
+                    "token source failed: " + e.getClass().getSimpleName());
+        }
         return token == null || token.trim().isEmpty() ? null : token.trim();
     }
 
