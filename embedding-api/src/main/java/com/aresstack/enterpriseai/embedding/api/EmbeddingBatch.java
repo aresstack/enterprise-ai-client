@@ -41,8 +41,8 @@ public final class EmbeddingBatch {
                     "embedding count " + vectors.size() + " does not match input count " + expectedCount);
         }
         List<EmbeddingVector> copy = new ArrayList<EmbeddingVector>(vectors.size());
-        for (int i = 0; i < vectors.size(); i++) {
-            EmbeddingVector vector = vectors.get(i);
+        int i = 0;
+        for (EmbeddingVector vector : vectors) {
             if (vector == null) {
                 throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE, "vector " + i + " is missing");
             }
@@ -51,6 +51,7 @@ public final class EmbeddingBatch {
                         "vector " + i + " belongs to " + vector.identity() + ", expected " + identity);
             }
             copy.add(vector);
+            i++;
         }
         return new EmbeddingBatch(identity, Collections.unmodifiableList(copy));
     }

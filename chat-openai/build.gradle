@@ -2,4 +2,6 @@ description = 'Adapter: OpenAI-kompatibler /chat/completions-Client (Strang A).'
 
 dependencies {
     api project(':chat-api')
+    // JSON-Mapping bleibt im Adapter (implementation, nicht api), wie in MainframeMate (CloudChatManager).
+    implementation libs.gson
 }
