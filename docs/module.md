@@ -39,8 +39,9 @@ Produktionsabhängigkeiten auf andere Module; alles andere ist verboten und wird
 | Modul | Rolle | Paket | darf sehen | Inhalt |
 |---|---|---|---|---|
 | `comic-controls` | UI_LIBRARY | `ui.comic` | nichts | Abhängigkeitsfreie Swing/Java2D-Bibliothek im Comic-Stil aus askai-java8: `theme` (`ComicPalette`, `ComicTheme`), `paint` (`ComicImpactPainter`), `border` (`ComicBorder`), `control` (`ComicButton`, `ComicToggleButton`, `ComicSectionPanel`, `ComicScrollPane`, `ComicScrollBarUI`, `PlaceholderTextArea`), `bubble` (`SpeechBubblePanel`, `BubbleMessageRow`, `BubblePalette`, `StreamingTextMeasure`). |
-| `app-swing` | COMPOSITION_ROOT | `app` | alles außer acp-demo-agent und architecture-tests | Einziger Ort, an dem Konfiguration gelesen und Adapter gebaut werden. `EnterpriseAiClientMain`; `app.config` (Snapshots und `AppConfigLoader`, `AppPaths`); `app.composition` (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`, `ShutdownSequence`, `StartupNotices`); `app.security` (Brücken zum Security-Port: `SecretBackedTokenSource`, `SecretBackedBearerTokenSource`, `SecretBackedMediaWikiCredentialsProvider`, `FilePairingKeyStore`, `SwingPairingCallback`, `ClientCertificateFactory`, `UnavailableSecretProvider`); `app.net` (`ProxyPolicy`); `app.chat` (`RagChatBinding`, `KnowledgeIndexingBinding`, `ChatServiceBinding`); `app.agent` (`AcpAgentLauncher`, `AgentMcpEnvironment`, `AgentModeAssembly`, `AgentServiceBinding`); `app.knowledge` (`StartupIndexing`); `app.ui.chat` (Shell: `ChatShellPanel`, `ChatShellModel`, `ChatTranscriptPanel`, `ChatComposerPanel`, `SourceListPanel`, `KnowledgeStatusBar`, `ChatWindow`); `app.ui.agent` (`ModalShellPanel`, `ModeSwitchBar`); `app.ui.security` (`KeePassPairingDialog`). |
+| `app-swing` | COMPOSITION_ROOT | `app` | alles außer acp-demo-agent, architecture-tests und integration-tests | Einziger Ort, an dem Konfiguration gelesen und Adapter gebaut werden. `EnterpriseAiClientMain`; `app.config` (Snapshots und `AppConfigLoader`, `AppPaths`); `app.composition` (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`, `ShutdownSequence`, `StartupNotices`); `app.security` (Brücken zum Security-Port: `SecretBackedTokenSource`, `SecretBackedBearerTokenSource`, `SecretBackedMediaWikiCredentialsProvider`, `FilePairingKeyStore`, `SwingPairingCallback`, `ClientCertificateFactory`, `UnavailableSecretProvider`); `app.net` (`ProxyPolicy`); `app.chat` (`RagChatBinding`, `KnowledgeIndexingBinding`, `ChatServiceBinding`); `app.agent` (`AcpAgentLauncher`, `AgentMcpEnvironment`, `AgentModeAssembly`, `AgentServiceBinding`); `app.knowledge` (`StartupIndexing`); `app.ui.chat` (Shell: `ChatShellPanel`, `ChatShellModel`, `ChatTranscriptPanel`, `ChatComposerPanel`, `SourceListPanel`, `KnowledgeStatusBar`, `ChatWindow`); `app.ui.agent` (`ModalShellPanel`, `ModeSwitchBar`); `app.ui.security` (`KeePassPairingDialog`). |
 | `architecture-tests` | ARCHITECTURE_TESTS | `architecture` (nur Tests) | liest kompilierte Klassen aller Module | `ModuleRegistry`, Regelklassen (`*Rules`), Tests je Regelgruppe, Gegenbeispiele unter `<Modulpaket>.archfixture..`, Bibliotheks-Stubs unter `<lib>.archstub`. Regel-Liste: [Architektur](architektur.md#regeln). |
+| `integration-tests` | INTEGRATION_TESTS | `integration` (Produktion nur die Anker-Klasse `IntegrationTestsModule`) | Test-Klassenpfad sieht alle Module und alle Testfixtures; keine Produktionsabhängigkeit, von niemandem referenziert | Vertical-Slice-Tests A–G (`SliceAChatTest` … `SliceGAgentMcpTest`, `ConfiguredApplicationSliceTest`) gegen lokale Fakes, `SliceSupport`, Testagent `agent.KnowledgeDemoAgentMain`; Source-Set `liveTest` mit `Live*IT` gegen echte Dienste (Task `liveTest`, standardmäßig aus). Anleitung: [integration-tests/README.md](../integration-tests/README.md), [Tests](tests.md#vertical-slice-tests-ag-integration-tests). |
 
 ## Abweichungen von der Modulliste des Auftrags
 
@@ -52,14 +53,19 @@ Zwei zusätzliche Module, beide ohne Aufweichung der fachlichen Grenzen (Begrün
 - `comic-controls`: Die generischen Comic-Komponenten bleiben eine eigenständige Bibliothek; die Chat-Shell
   selbst lebt in `app-swing`.
 
+Dazu kommen zwei Module ohne Produktionscode: `architecture-tests` (AP24) und `integration-tests` (AP25). Beide
+stehen in `settings.gradle` und in der `ModuleRegistry`, werden von keinem Modul referenziert und erweitern die
+fachlichen Grenzen nicht.
+
 `acp-client-api` und `mcp-runtime-api` dürfen `domain` sehen, deklarieren die Abhängigkeit aber nicht: Die aus
 askai-java8 übernommenen Verträge sind bewusst eigenständig.
 
 ## Testfixtures
 
-Fixtures liegen im Source-Set `testFixtures` eines Port-Moduls und werden mit
+Fixtures liegen im Source-Set `testFixtures` eines Moduls und werden mit
 `testImplementation testFixtures(project(':<modul>'))` eingebunden. Produktionscode darf sie nicht sehen
-(`TestCodeIsolationTest`).
+(`TestCodeIsolationTest`); `testFixturesImplementation` ist keine Produktionsabhängigkeit und bleibt in der
+Modulmatrix unberücksichtigt.
 
 | Fixture | Modul | Zweck |
 |---|---|---|
@@ -68,6 +74,10 @@ Fixtures liegen im Source-Set `testFixtures` eines Port-Moduls und werden mit
 | `InMemoryKnowledgeIndex`, `KnowledgeIndexPortContractTest`, `KnowledgeIndexTestData` | knowledge-api | Index im Speicher (TF-IDF plus Cosine); Vertragstest, den `LuceneKnowledgeIndex` erbt |
 | `InMemoryKnowledgeSource`, `KnowledgeSourceContractTest` | source-api | Fake-Quelle mit `update`/`remove`; Vertragstest, den MediaWiki- und Confluence-Adapter erben |
 | `InProcessMcpServerRegistry`, `InProcessMcpToolClientFactory`, `McpTestTools`, `McpServerRegistryContractTest` | mcp-runtime-api | MCP ohne Netzwerk; Vertragstest, den `SolonMcpServerRuntime` erbt |
+| `FakeChatCompletionsServer`, `FakeEmbeddingsServer` | app-swing | lokale Fake-Enterprise-API (`/chat/completions` mit SSE, `/embeddings`) auf 127.0.0.1 für Shell-, Kompositions- und Slice-Tests (seit AP25 Fixture) |
+| `FakeMediaWikiTransport`, `FakeMediaWikiServer` | source-mediawiki | Fake-Wiki als Transport-Double und als HTTP-Server mit Login und Sitzungs-Cookie |
+| `FakeConfluence`, `FakeConfluenceServer` | source-confluence | Fake-Confluence als Modell und als HTTP-Server für den echten `UrlConnectionConfluenceTransport` |
+| `FakeKeePassRpcServer` | security-keepassrpc | Fake-KeePassRPC über WebSocket mit SRP-Pairing und verschlüsseltem JSON-RPC |
 
 ## Externe Bibliotheken
 

@@ -6,7 +6,10 @@ als Restarbeit offen bleibt. Stand: `main` nach AP23 und AP24, 2026-10-07.
 ## Nichts gegen echte Systeme getestet
 
 Kein Arbeitspaket hat gegen die echte Enterprise-API, ein echtes MediaWiki, ein echtes Confluence oder ein
-echtes KeePass getestet. Alle Tests laufen gegen lokale Fakes (siehe [Testanleitung](tests.md)).
+echtes KeePass getestet. Alle Tests des normalen Builds laufen gegen lokale Fakes (siehe
+[Testanleitung](tests.md)). AP25 hat mit `./gradlew :integration-tests:liveTest` einen Lauf gegen echte Dienste
+vorbereitet (fünf Tests, Parameter in `integration-tests/README.md`); er ist von niemandem ausgeführt worden.
+Seine Array-Probe für `/embeddings` würde die offene Frage an Strang C beantworten.
 
 | Bereich | Was belegt ist | Was UNVERIFIED ist |
 |---|---|---|
@@ -14,7 +17,7 @@ echtes KeePass getestet. Alle Tests laufen gegen lokale Fakes (siehe [Testanleit
 | Embeddings (`/embeddings`) | OpenAPI-Dokumentation; Adapter gegen Fake-Server. | **Der gesamte Endpunkt ist am realen Backend nicht getestet.** Array-Input nur hinter `embedding.inputMode=ARRAY_UNVERIFIED`; `encoding_format`, `dimensions`, `user`, `usage` werden nicht gesendet und nicht vorausgesetzt; Dimension von `danielheinz/e5-base-sts-en-de` vermutlich 768. |
 | MediaWiki | Action-API-Abfragen aus MainframeMate, Fake-Transport, lokaler HTTP-Server. | Login-Varianten, Single Sign-on, Proxy, echtes Firmen-Wiki. |
 | Confluence | REST-Endpunkte aus MainframeMate, `FakeConfluence`, lokaler HTTP-Server. | Echte Data-Center-Instanz, Bearer/PAT, Windows-MY (nur unter Windows prüfbar), PKCS12 ohne echte Gegenstelle. |
-| KeePassRPC | Protokoll und Kryptografie aus MainframeMate, `FakeKeePassRpcServer`. | Handschlag mit einem echten KeePassRPC-Plugin, Pairing über den Swing-Dialog; `KeePassRpcRealServerIT` ist vorbereitet, aber von niemandem ausgeführt. |
+| KeePassRPC | Protokoll und Kryptografie aus MainframeMate, `FakeKeePassRpcServer`. | Handschlag mit einem echten KeePassRPC-Plugin, Pairing über den Swing-Dialog; `KeePassRpcRealServerIT` und `LiveKeePassIT` sind vorbereitet, aber von niemandem ausgeführt. |
 | Proxy | `ProxyPolicy` mit Modi System/keiner/manuell. | Proxy-Authentifizierung wird nicht unterstützt; Verhalten hinter dem Firmen-Proxy ungeprüft. |
 | JDK 8 | CI baut und testet auf Temurin 8 und 21. | Lokale Entwicklung fand überwiegend auf neueren JDKs statt. |
 
@@ -26,9 +29,14 @@ echtes KeePass getestet. Alle Tests laufen gegen lokale Fakes (siehe [Testanleit
 - **MCP-Endpoint per Umgebung**: Der Agentenprozess erhält Endpoint-ID, URL, Transport und Token über
   `ENTERPRISE_AI_MCP_*`, nicht über ACP `session/new` (dort geht eine leere `mcpServers`-Liste). Eine Übergabe
   über ACP wäre eine Vertragsänderung in `acp-client-api` und `acp-solon-client`.
-- **Slice G**: Der Demo-Agent ruft selbst keine MCP-Werkzeuge auf; die Verdrahtung ist belegt, der echte
-  Werkzeugaufruf durch einen Agenten wird in AP25 mit einem Testagenten im Testcode von `integration-tests`
-  nachgewiesen, nicht mit dem Demo-Agenten.
+- **Slice G**: Der Demo-Agent ruft selbst keine MCP-Werkzeuge auf. Den echten Werkzeugaufruf durch einen Agenten
+  beweist `SliceGAgentMcpTest` mit dem Testagenten `KnowledgeDemoAgentMain` (Testcode von `integration-tests`,
+  eigener Kindprozess, Endpoint aus `ENTERPRISE_AI_MCP_*`). Der Testagent beantwortet nur `search_knowledge` und
+  ist kein Sprachmodell; belegt ist die Kette, nicht die Qualität einer Agentenantwort.
+- **Slice-Tests**: Die Fake-Embeddings hashen Texte; Rangfolgen des Semantikpfads sind in den Tests nicht
+  fachlich aussagekräftig. Die Fake-Server nutzen den JDK-HttpServer ohne TLS; Proxy und mTLS werden nur in
+  Unit-Tests von `app-swing` geprüft. Der Start des Testagenten über ein Pathing-Jar ist unter Windows
+  ungetestet (CI ist Ubuntu).
 - **Secrets**: Der Chat-Adapter nimmt den Token als `String`, der bis zur Garbage Collection lebt; eine
   `char[]`-Variante wäre eine Vertragsänderung. Kein Cache für Secrets, also ein KeePassRPC-Aufruf je Anfrage.
 - **RAG**: Token-Budget ist eine Schätzung ohne Modell-Tokenizer; Overlap-Chunks können doppelt zitiert werden;

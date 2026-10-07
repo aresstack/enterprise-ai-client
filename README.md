@@ -14,7 +14,7 @@ verdrahtet, die Architekturregeln laufen als Tests. Verbindliche Architekturgrun
 Voraussetzung: ein JDK 8 oder neuer (kompiliert wird immer für Java 8; die CI baut mit JDK 8 und 21).
 
 ```bash
-./gradlew build                 # alle Module, alle Tests inklusive Architekturtests
+./gradlew build                 # alle Module, alle Tests inklusive Architektur- und Slice-Tests
 ./gradlew :app-swing:run        # Anwendung starten
 ```
 
