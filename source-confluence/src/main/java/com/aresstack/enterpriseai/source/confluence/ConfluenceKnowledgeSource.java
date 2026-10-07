@@ -163,12 +163,13 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 continue;
             }
             found.put(node.resource.id(), node.resource);
-            if (node.pageId == null || node.depth >= scope.maxDepth()) {
+            int remaining = scope.maxResources() - found.size(); // nur so viele Kinder holen, wie noch Platz ist
+            if (node.pageId == null || node.depth >= scope.maxDepth() || remaining <= 0) {
                 continue;
             }
             List<KnowledgeResource> children;
             try {
-                children = childrenOf(session, node.pageId, scope.maxResources());
+                children = childrenOf(session, node.pageId, remaining);
             } catch (KnowledgeSourceException e) {
                 if (e.kind() == Kind.NOT_FOUND) {
                     continue; // Seite zwischenzeitlich gelöscht: überspringen, wie im Port beschrieben
@@ -209,10 +210,8 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
             children.add(pageResource(child, pageId));
         }
         if (config.includeAttachments() && children.size() < max) {
-            for (Attachment attachment : client.attachments(session, pageId, max - children.size())) {
-                if (isIndexable(attachment)) {
-                    children.add(attachmentResource(attachment));
-                }
+            for (Attachment attachment : client.attachments(session, pageId, max - children.size(), this::isIndexable)) {
+                children.add(attachmentResource(attachment));
             }
         }
         return new ArrayList<KnowledgeResource>(children);

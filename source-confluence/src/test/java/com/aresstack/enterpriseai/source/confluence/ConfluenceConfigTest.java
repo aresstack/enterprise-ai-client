@@ -41,6 +41,19 @@ public class ConfluenceConfigTest {
     }
 
     @Test
+    public void credentialsOverPlainHttpNeedAnExplicitOptIn() {
+        try {
+            ConfluenceConfig.builder(URI.create("http://host")).credentialRef(SecretRef.of("keepass:c")).build();
+            fail();
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("https"));
+        }
+        assertTrue(ConfluenceConfig.builder(URI.create("http://host")).credentialRef(SecretRef.of("keepass:c"))
+                .allowInsecureHttp(true).build().allowInsecureHttp());
+        assertNull(ConfluenceConfig.builder(URI.create("http://host")).build().credentialRef());
+    }
+
+    @Test
     public void toStringShowsTheRefButNoSecret() {
         String text = ConfluenceConfig.builder(URI.create("https://host"))
                 .credentialRef(SecretRef.of("keepass:confluence")).build().toString();

@@ -134,6 +134,41 @@ public class ConfluenceKnowledgeSourceTest {
     }
 
     @Test
+    public void discoveredResourcesCarryLabelsWithoutLoadingTheBody() throws Exception {
+        List<KnowledgeResource> resources = source().discover(SourceScope.builder().startPoint("DEV").build());
+        assertEquals("howto,java", resources.get(0).metadata().get("confluence.labels").get());
+        assertEquals(0, confluence.requestCount("body.view"));
+    }
+
+    @Test
+    public void compactTimezoneOffsetsOfDataCenterAreParsed() throws Exception {
+        confluence.pages.get("100").when = "2014-03-10T23:16:50.757+1100";
+        KnowledgeResource start = source().discover(SourceScope.of("100")).get(0);
+        assertEquals(Instant.parse("2014-03-10T12:16:50.757Z"), start.revision().modifiedAt().get());
+    }
+
+    @Test
+    public void exhaustedBudgetSkipsChildRequests() throws Exception {
+        List<KnowledgeResource> resources = source().discover(
+                SourceScope.builder().startPoint("100").maxDepth(5).maxResources(1).build());
+        assertEquals(Collections.singletonList(page("100")), ids(resources));
+        assertEquals(0, confluence.requestCount("/child/"));
+    }
+
+    @Test
+    public void unsupportedAttachmentsDoNotConsumeTheBudget() throws Exception {
+        confluence.page("300", "Nur Anhänge", "DEV", "<p>x</p>");
+        confluence.attachment("att910", "300", "bild.png", "image/png", "PNG");
+        confluence.attachment("att911", "300", "readme.md", "text/markdown", "# Hallo");
+        config.includeAttachments(true);
+
+        List<KnowledgeResource> resources = source().discover(
+                SourceScope.builder().startPoint("300").maxDepth(1).maxResources(2).build());
+
+        assertEquals(Arrays.asList(page("300"), attachment("att911")), ids(resources));
+    }
+
+    @Test
     public void pagingFollowsNextLinks() throws Exception {
         for (int i = 0; i < 5; i++) {
             confluence.page("20" + i, "Seite " + i, "DEV", "<p>x</p>");
@@ -142,6 +177,24 @@ public class ConfluenceKnowledgeSourceTest {
         List<SourceLink> links = source().discoverLinks(page("102"));
         assertEquals(5, links.size());
         assertEquals(5, confluence.requestCount("/child/page"));
+        assertTrue(confluence.requests.get(confluence.requests.size() - 1).toString(), confluence.requests.get(
+                confluence.requests.size() - 1).toString().endsWith("/child/page?expand=version,space,metadata.labels&start=4&limit=1"));
+    }
+
+    @Test
+    public void nextLinksOutsideTheRestApiAreInvalidResponses() {
+        confluence.page("201", "Seite", "DEV", "<p>x</p>");
+        confluence.page("202", "Seite", "DEV", "<p>x</p>");
+        confluence.child("102", "201");
+        confluence.child("102", "202");
+        confluence.nextLinkOverride = "https://elsewhere.invalid/rest/api/content/102/child/page";
+        assertKind(Kind.INVALID_RESPONSE, () -> source().discoverLinks(page("102")));
+    }
+
+    @Test
+    public void listResponsesWithoutResultsAreInvalidResponses() {
+        confluence.forcedResponse = new ConfluenceHttpResponse(200, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
+        assertKind(Kind.INVALID_RESPONSE, () -> source().search(new SourceQuery("x", 5)));
     }
 
     // --- load ---------------------------------------------------------------------------------------------
@@ -214,6 +267,15 @@ public class ConfluenceKnowledgeSourceTest {
         assertEquals(2, hits.size());
         assertEquals(page("101"), hits.get(0).resourceId());
         assertEquals("Kapitel 1", hits.get(0).title());
+    }
+
+    @Test
+    public void searchPagesUntilTheRequestedLimit() throws Exception {
+        confluence.searchResults.addAll(Arrays.asList("100", "101", "102", "103"));
+
+        assertEquals(3, source().search(new SourceQuery("x", 3)).size());
+        assertEquals(3, confluence.requestCount("/content/search"));
+        assertEquals(4, source().search(new SourceQuery("x", 10)).size());
     }
 
     // --- Anmeldung ----------------------------------------------------------------------------------------

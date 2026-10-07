@@ -14,12 +14,17 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Confluence-Data-Center-REST-Aufrufe (paketintern). Endpunkte und Felder aus MainframeMate
@@ -32,6 +37,11 @@ import java.util.Map;
 final class ConfluenceRestClient {
 
     private static final String PAGE_EXPAND = "body.view,version,space,ancestors,metadata.labels";
+    /** Felder für Seiten ohne Inhalt (Startpunkte, Kindseiten, Suchtreffer); Labels sind nicht Standard. */
+    private static final String LIST_EXPAND = "version,space,metadata.labels";
+    /** Confluence Data Center liefert Zeitstempel auch mit kompaktem Offset ({@code +1100}), kein ISO-8601. */
+    private static final DateTimeFormatter COMPACT_OFFSET =
+            DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss[.SSS]XX", Locale.ROOT);
 
     private final ConfluenceConfig config;
     private final ConfluenceHttpTransport transport;
@@ -61,7 +71,7 @@ final class ConfluenceRestClient {
      * @throws KnowledgeSourceException {@code NOT_FOUND}, wenn die Seite nicht existiert oder keine Seite ist
      */
     Page page(Session session, String contentId, boolean withBody) throws KnowledgeSourceException {
-        String expand = withBody ? PAGE_EXPAND : "version,space,ancestors";
+        String expand = withBody ? PAGE_EXPAND : LIST_EXPAND + ",ancestors";
         JsonObject json = getJson(session, "/rest/api/content/" + contentId + "?expand=" + expand, "Seite");
         if (!"page".equals(string(json, "type"))) {
             throw new KnowledgeSourceException(Kind.NOT_FOUND, "Inhalt " + contentId + " ist keine Seite");
@@ -71,22 +81,29 @@ final class ConfluenceRestClient {
 
     /** Direkte Kindseiten in Confluence-Reihenfolge, höchstens {@code max}. */
     List<Page> children(Session session, String contentId, int max) throws KnowledgeSourceException {
-        List<Page> pages = new ArrayList<Page>();
-        for (JsonObject json : paged(session, "/rest/api/content/" + contentId + "/child/page?expand=version,space",
-                "Kindseiten", max)) {
-            pages.add(toPage(json));
-        }
-        return pages;
+        return paged(session, "/rest/api/content/" + contentId + "/child/page?expand=" + LIST_EXPAND, "Kindseiten",
+                max, new Item<Page>() {
+                    @Override
+                    public Page map(JsonObject json) throws KnowledgeSourceException {
+                        return toPage(json);
+                    }
+                });
     }
 
-    /** Anhänge einer Seite, höchstens {@code max}. */
-    List<Attachment> attachments(Session session, String contentId, int max) throws KnowledgeSourceException {
-        List<Attachment> attachments = new ArrayList<Attachment>();
-        for (JsonObject json : paged(session,
-                "/rest/api/content/" + contentId + "/child/attachment?expand=version,container", "Anhänge", max)) {
-            attachments.add(toAttachment(json, contentId));
-        }
-        return attachments;
+    /**
+     * Anhänge einer Seite, die {@code accept} bestehen, höchstens {@code max}; es wird so lange geblättert, bis
+     * {@code max} passende Anhänge beisammen sind, damit unpassende keinen Platz im Budget verbrauchen.
+     */
+    List<Attachment> attachments(Session session, final String contentId, int max, final Predicate<Attachment> accept)
+            throws KnowledgeSourceException {
+        return paged(session, "/rest/api/content/" + contentId + "/child/attachment?expand=version,container",
+                "Anhänge", max, new Item<Attachment>() {
+                    @Override
+                    public Attachment map(JsonObject json) throws KnowledgeSourceException {
+                        Attachment attachment = toAttachment(json, contentId);
+                        return accept.test(attachment) ? attachment : null;
+                    }
+                });
     }
 
     /** Ein Anhang; {@code NOT_FOUND}, wenn es ihn nicht gibt. */
@@ -112,37 +129,64 @@ final class ConfluenceRestClient {
         return response.body();
     }
 
-    /** CQL-Suche über {@code /rest/api/content/search}, höchstens {@code limit} Treffer. */
+    /** CQL-Suche über {@code /rest/api/content/search}, blättert bis {@code limit} Seiten-Treffer. */
     List<Page> search(Session session, String cql, int limit) throws KnowledgeSourceException {
-        List<Page> pages = new ArrayList<Page>();
-        JsonObject json = getJson(session, "/rest/api/content/search?cql=" + query(cql) + "&limit=" + limit
-                + "&expand=version,space", "Suche");
-        for (JsonObject result : results(json)) {
-            if ("page".equals(string(result, "type")) && pages.size() < limit) {
-                pages.add(toPage(result));
-            }
-        }
-        return pages;
+        return paged(session, "/rest/api/content/search?cql=" + query(cql) + "&expand=" + LIST_EXPAND, "Suche", limit,
+                new Item<Page>() {
+                    @Override
+                    public Page map(JsonObject json) throws KnowledgeSourceException {
+                        return "page".equals(string(json, "type")) ? toPage(json) : null;
+                    }
+                });
     }
 
     // --- HTTP ---------------------------------------------------------------------------------------------
 
-    private List<JsonObject> paged(Session session, String path, String what, int max)
+    /** Wandelt ein Listenelement um; {@code null} heißt: zählt nicht und wird übersprungen. */
+    private interface Item<T> {
+        T map(JsonObject json) throws KnowledgeSourceException;
+    }
+
+    /**
+     * Blättert über einen Listen-Endpunkt, bis {@code max} verwendbare Elemente beisammen sind oder Confluence
+     * keinen {@code _links.next} mehr liefert. Nur der erste Aufruf setzt {@code start}/{@code limit}; danach
+     * wird der gelieferte relative Folgelink unverändert verfolgt (Data Center: relativ zum Kontextpfad, also
+     * unter {@code /rest/api/}). Ein Link außerhalb davon oder ein sich wiederholender Link ist
+     * {@code INVALID_RESPONSE}.
+     */
+    private <T> List<T> paged(Session session, String path, String what, int max, Item<T> item)
             throws KnowledgeSourceException {
-        List<JsonObject> all = new ArrayList<JsonObject>();
-        int start = 0;
-        while (all.size() < max) {
-            int limit = Math.min(config.pageSize(), max - all.size());
-            JsonObject json = getJson(session, path + "&start=" + start + "&limit=" + limit, what);
-            List<JsonObject> results = results(json);
-            all.addAll(results.subList(0, Math.min(results.size(), max - all.size())));
-            JsonObject links = object(json, "_links");
-            if (results.isEmpty() || links == null || string(links, "next") == null) {
-                break;
+        List<T> all = new ArrayList<T>();
+        Set<String> visited = new HashSet<String>();
+        String next = path + "&start=0&limit=" + Math.min(config.pageSize(), max);
+        while (all.size() < max && next != null) {
+            if (!visited.add(next)) {
+                throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": Folgelink wiederholt sich");
             }
-            start += results.size();
+            JsonObject json = getJson(session, next, what);
+            for (JsonObject result : results(json, what)) {
+                T mapped = item.map(result);
+                if (mapped != null) {
+                    all.add(mapped);
+                    if (all.size() >= max) {
+                        break;
+                    }
+                }
+            }
+            next = nextLink(json, what);
         }
         return all;
+    }
+
+    private static String nextLink(JsonObject json, String what) throws KnowledgeSourceException {
+        String next = string(object(json, "_links"), "next");
+        if (next == null) {
+            return null;
+        }
+        if (!next.startsWith("/rest/api/")) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": Folgelink außerhalb der REST-API");
+        }
+        return next;
     }
 
     private JsonObject getJson(Session session, String path, String what) throws KnowledgeSourceException {
@@ -217,9 +261,10 @@ final class ConfluenceRestClient {
         }
         List<String> labels = new ArrayList<String>();
         JsonObject labelPage = object(object(json, "metadata"), "labels");
-        for (JsonObject label : labelPage == null ? Collections.<JsonObject>emptyList() : results(labelPage)) {
-            if (string(label, "name") != null) {
-                labels.add(string(label, "name"));
+        JsonArray labelArray = array(labelPage, "results"); // optional, fehlt ohne expand=metadata.labels
+        for (JsonElement label : labelArray == null ? new JsonArray() : labelArray) {
+            if (label.isJsonObject() && string(label.getAsJsonObject(), "name") != null) {
+                labels.add(string(label.getAsJsonObject(), "name"));
             }
         }
         JsonObject links = object(json, "_links");
@@ -258,10 +303,11 @@ final class ConfluenceRestClient {
                 links == null ? null : string(links, "download"), links == null ? null : string(links, "webui"));
     }
 
-    private static List<JsonObject> results(JsonObject json) {
+    /** {@code results} eines Listen-Endpunkts; fehlt es, ist die Antwort fehlerhaft, nicht leer. */
+    private static List<JsonObject> results(JsonObject json, String what) throws KnowledgeSourceException {
         JsonArray array = array(json, "results");
         if (array == null) {
-            return Collections.emptyList();
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": Liste ohne results");
         }
         List<JsonObject> list = new ArrayList<JsonObject>();
         for (JsonElement element : array) {
@@ -300,8 +346,12 @@ final class ConfluenceRestClient {
         }
         try {
             return OffsetDateTime.parse(value).toInstant();
-        } catch (DateTimeParseException e) {
-            return null;
+        } catch (DateTimeParseException iso) {
+            try {
+                return OffsetDateTime.parse(value, COMPACT_OFFSET).toInstant();
+            } catch (DateTimeParseException compact) {
+                return null;
+            }
         }
     }
 

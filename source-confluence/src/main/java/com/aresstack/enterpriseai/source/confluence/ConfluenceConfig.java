@@ -25,8 +25,15 @@ public final class ConfluenceConfig {
     private final int maxAttachmentBytes;
     private final int maxResponseBytes;
     private final List<String> searchSpaceKeys;
+    private final boolean allowInsecureHttp;
 
     private ConfluenceConfig(Builder builder) {
+        if (builder.credentialRef != null && !builder.allowInsecureHttp
+                && !"https".equals(builder.baseUrl.getScheme())) {
+            throw new IllegalArgumentException(
+                    "Zugangsdaten werden nur über https gesendet; für Entwicklung allowInsecureHttp(true) setzen");
+        }
+        this.allowInsecureHttp = builder.allowInsecureHttp;
         this.baseUrl = builder.baseUrl;
         this.credentialRef = builder.credentialRef;
         this.pageSize = builder.pageSize;
@@ -75,6 +82,11 @@ public final class ConfluenceConfig {
         return searchSpaceKeys;
     }
 
+    /** {@code true}, wenn Zugangsdaten ausdrücklich auch über unverschlüsseltes http gesendet werden dürfen. */
+    public boolean allowInsecureHttp() {
+        return allowInsecureHttp;
+    }
+
     @Override
     public String toString() {
         return "ConfluenceConfig[" + baseUrl + ", credentials=" + (credentialRef == null ? "keine" : credentialRef)
@@ -91,6 +103,7 @@ public final class ConfluenceConfig {
         private int maxAttachmentBytes = 5 * 1024 * 1024;
         private int maxResponseBytes = 20 * 1024 * 1024;
         private final List<String> searchSpaceKeys = new ArrayList<String>();
+        private boolean allowInsecureHttp;
 
         private Builder(URI baseUrl) {
             this.baseUrl = normalize(baseUrl);
@@ -98,6 +111,16 @@ public final class ConfluenceConfig {
 
         public Builder credentialRef(SecretRef value) {
             this.credentialRef = value;
+            return this;
+        }
+
+        /**
+         * Nur für Entwicklung: erlaubt {@link #credentialRef(SecretRef)} zusammen mit einer http-Basis-URL.
+         * Ohne diesen Schalter lehnt {@link #build()} die Kombination ab, weil Basic-Passwort oder Token sonst im
+         * Klartext über die Leitung gingen.
+         */
+        public Builder allowInsecureHttp(boolean value) {
+            this.allowInsecureHttp = value;
             return this;
         }
 

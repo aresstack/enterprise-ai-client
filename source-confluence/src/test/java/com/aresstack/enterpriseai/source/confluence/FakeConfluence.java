@@ -33,6 +33,8 @@ final class FakeConfluence implements ConfluenceHttpTransport {
     /** Erzwingt eine feste Antwort für alle Requests (Fehlerfälle). */
     ConfluenceHttpResponse forcedResponse;
     IOException forcedFailure;
+    /** Liefert statt des echten Folgelinks einen Link außerhalb der REST-API. */
+    String nextLinkOverride;
 
     FakePage page(String id, String title, String spaceKey, String html) {
         FakePage page = new FakePage(id, title, spaceKey, html);
@@ -95,19 +97,18 @@ final class FakeConfluence implements ConfluenceHttpTransport {
         }
         if (path.equals("/rest/api/content/search")) {
             lastCql = query.get("cql");
+            int start = Integer.parseInt(query.getOrDefault("start", "0"));
             int limit = Integer.parseInt(query.get("limit"));
             JsonArray results = new JsonArray();
-            for (String id : searchResults) {
-                if (results.size() < limit) {
-                    results.add(pageJson(pages.get(id), false));
-                }
+            for (int i = start; i < searchResults.size() && results.size() < limit; i++) {
+                results.add(pageJson(pages.get(searchResults.get(i)), query.get("expand")));
             }
-            return json(page(results, false));
+            return json(page(results, nextLink(uri, start + results.size(), searchResults.size())));
         }
         if (path.startsWith("/rest/api/content/") && parts.length == 5) {
             String id = parts[4];
             if (pages.containsKey(id)) {
-                return json(pageJson(pages.get(id), query.getOrDefault("expand", "").contains("body.view")));
+                return json(pageJson(pages.get(id), query.get("expand")));
             }
             if (attachments.containsKey(id)) {
                 return json(attachmentJson(attachments.get(id)));
@@ -124,10 +125,10 @@ final class FakeConfluence implements ConfluenceHttpTransport {
             int limit = Integer.parseInt(query.get("limit"));
             JsonArray results = new JsonArray();
             for (int i = start; i < ids.size() && results.size() < limit; i++) {
-                results.add("page".equals(parts[6]) ? pageJson(pages.get(ids.get(i)), false)
+                results.add("page".equals(parts[6]) ? pageJson(pages.get(ids.get(i)), query.get("expand"))
                         : attachmentJson(attachments.get(ids.get(i))));
             }
-            return json(page(results, start + results.size() < ids.size()));
+            return json(page(results, nextLink(uri, start + results.size(), ids.size())));
         }
         if (path.startsWith("/download/attachments/")) {
             for (FakeAttachment attachment : attachments.values()) {
@@ -142,19 +143,33 @@ final class FakeConfluence implements ConfluenceHttpTransport {
         return notFound();
     }
 
-    private static JsonObject page(JsonArray results, boolean hasNext) {
+    /** Folgelink wie Confluence Data Center: relativ zum Kontextpfad, Query unverändert bis auf {@code start}. */
+    private String nextLink(URI uri, int nextStart, int total) {
+        if (nextStart >= total) {
+            return null;
+        }
+        if (nextLinkOverride != null) {
+            return nextLinkOverride;
+        }
+        return uri.getRawPath().substring(BASE.getPath().length()) + "?"
+                + uri.getRawQuery().replaceAll("start=\\d+", "start=" + nextStart);
+    }
+
+    private static JsonObject page(JsonArray results, String next) {
         JsonObject page = new JsonObject();
         page.add("results", results);
         page.addProperty("size", results.size());
         JsonObject links = new JsonObject();
-        if (hasNext) {
-            links.addProperty("next", "/rest/api/next");
+        if (next != null) {
+            links.addProperty("next", next);
         }
         page.add("_links", links);
         return page;
     }
 
-    private JsonObject pageJson(FakePage page, boolean withBody) {
+    private JsonObject pageJson(FakePage page, String expand) {
+        boolean withBody = expand != null && expand.contains("body.view");
+        boolean withLabels = expand != null && expand.contains("metadata.labels");
         JsonObject json = new JsonObject();
         json.addProperty("id", page.id);
         json.addProperty("type", "page");
@@ -165,7 +180,7 @@ final class FakeConfluence implements ConfluenceHttpTransport {
         json.add("space", space);
         JsonObject version = new JsonObject();
         version.addProperty("number", page.version);
-        version.addProperty("when", "2026-10-01T08:15:00.000+02:00");
+        version.addProperty("when", page.when);
         json.add("version", version);
         JsonArray ancestors = new JsonArray();
         if (page.parentId != null) {
@@ -181,6 +196,8 @@ final class FakeConfluence implements ConfluenceHttpTransport {
             JsonObject body = new JsonObject();
             body.add("view", view);
             json.add("body", body);
+        }
+        if (withLabels) {
             JsonArray labels = new JsonArray();
             for (String name : page.labels) {
                 JsonObject label = new JsonObject();
@@ -267,6 +284,7 @@ final class FakeConfluence implements ConfluenceHttpTransport {
         final List<String> labels = new ArrayList<String>();
         String parentId;
         int version = 3;
+        String when = "2026-10-01T08:15:00.000+02:00";
 
         FakePage(String id, String title, String spaceKey, String html) {
             this.id = id;
