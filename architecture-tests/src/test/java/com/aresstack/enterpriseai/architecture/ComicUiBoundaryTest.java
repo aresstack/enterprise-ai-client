@@ -27,8 +27,8 @@ import static org.junit.Assert.assertTrue;
  *
  * <ul>
  *   <li>Die Oberfläche ({@code app.ui..}) erreicht Fachlogik nur über {@code application}: keine Adapter und
- *       keine Ports direkt, kein HTTP. Adapter instanziiert ausschließlich die Composition Root außerhalb von
- *       {@code app.ui}.</li>
+ *       keine Ports direkt, kein HTTP. Die Anbindung an Use Cases ({@code app.chat}) und die Composition Root
+ *       liegen außerhalb von {@code app.ui}.</li>
  *   <li>{@code comic-controls} bleibt eine eigenständige Swing/Java2D-Bibliothek: nur JDK und eigene Typen.</li>
  * </ul>
  *

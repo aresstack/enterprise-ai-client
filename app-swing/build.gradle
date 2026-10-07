@@ -17,6 +17,9 @@ dependencies {
     implementation project(':security-keepassrpc')
     implementation project(':acp-solon-client')
     implementation project(':mcp-solon-runtime')
+
+    // Strang A: skriptbarer Fake-ChatCompletionPort für UI-Tests und die Demo.
+    testImplementation testFixtures(project(':chat-api'))
 }
 
 tasks.withType(Test).configureEach {
@@ -28,5 +31,5 @@ tasks.register('runChatDemo', JavaExec) {
     group = 'application'
     description = 'Startet die Comic-Chat-Shell (AP4) mit einem Fake-Backend, ohne Server.'
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.aresstack.enterpriseai.app.ui.chat.ChatShellDemo'
+    mainClass = 'com.aresstack.enterpriseai.app.chat.ChatShellDemo'
 }
