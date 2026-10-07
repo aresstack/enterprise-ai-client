@@ -1,11 +1,15 @@
 package com.aresstack.enterpriseai.domain.knowledge;
 
-/** Siehe {@link KnowledgeTokenCounter#wordsAndSymbols()}. Ohne Regex, um lange Texte linear zu zählen. */
+/**
+ * Siehe {@link KnowledgeTokenCounter#wordsAndSymbols()}. Ohne Regex, um lange Texte linear zu zählen; Zeichenklassen
+ * aus {@link UnicodeClasses}, damit die Zählung auf jedem JDK gleich ausfällt. Der Unterstrich bleibt wie bisher
+ * Wortbestandteil (Bezeichner wie {@code max_tokens}).
+ */
 final class WordAndSymbolTokenCounter implements KnowledgeTokenCounter {
 
     @Override
     public String id() {
-        return "words-and-symbols-v1";
+        return "words-and-symbols-v2";
     }
 
     @Override
@@ -18,14 +22,14 @@ final class WordAndSymbolTokenCounter implements KnowledgeTokenCounter {
         for (int i = 0; i < text.length(); ) {
             int codePoint = text.codePointAt(i);
             i += Character.charCount(codePoint);
-            if (Character.isLetterOrDigit(codePoint) || isWordJoiner(codePoint)) {
+            if (codePoint == '_' || UnicodeClasses.isWordPart(codePoint)) {
                 if (!inWord) {
                     tokens++;
                     inWord = true;
                 }
             } else {
                 inWord = false;
-                if (!Character.isWhitespace(codePoint) && !Character.isSpaceChar(codePoint)) {
+                if (!UnicodeClasses.isSpace(codePoint)) {
                     tokens++;
                 }
             }
@@ -33,10 +37,4 @@ final class WordAndSymbolTokenCounter implements KnowledgeTokenCounter {
         return tokens;
     }
 
-    /** Unterstrich und kombinierende Zeichen (z. B. nicht normalisierte Umlaute) gehören zum Wort. */
-    private static boolean isWordJoiner(int codePoint) {
-        int type = Character.getType(codePoint);
-        return codePoint == '_' || type == Character.NON_SPACING_MARK || type == Character.COMBINING_SPACING_MARK
-                || type == Character.ENCLOSING_MARK;
-    }
 }

@@ -14,8 +14,11 @@ public final class KnowledgeChunkingPolicy {
     /** Kleinstes sinnvolles Budget; darunter zerfallen selbst kurze Sätze in Wortstücke. */
     public static final int MIN_MAX_TOKENS = 8;
 
-    /** Version des Chunking-Algorithmus; bei Verhaltensänderungen des Chunkers erhöhen. */
-    static final int ALGORITHM_VERSION = 1;
+    /**
+     * Version des Chunking-Algorithmus; bei Verhaltensänderungen des Chunkers erhöhen, auch bei einer neuen
+     * {@link UnicodeClasses#VERSION}. 2 seit der JDK-unabhängigen Zeichenklassifizierung.
+     */
+    static final int ALGORITHM_VERSION = 2;
 
     private final int maxTokens;
     private final int overlapSentences;
@@ -52,7 +55,7 @@ public final class KnowledgeChunkingPolicy {
         return overlapSentences;
     }
 
-    /** Z. B. {@code chunker-v1;maxTokens=350;overlapSentences=1}. */
+    /** Z. B. {@code chunker-v2;maxTokens=350;overlapSentences=1}. */
     public String fingerprint() {
         return "chunker-v" + ALGORITHM_VERSION + ";maxTokens=" + maxTokens + ";overlapSentences=" + overlapSentences;
     }
