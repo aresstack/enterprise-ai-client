@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.knowledge.lucene;
 
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexException;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeKeywordQuery;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeSearchHit;
@@ -143,6 +144,28 @@ public class LuceneKnowledgeIndexTest {
                 reopened.semanticSearch(KnowledgeSemanticQuery.of(vector(SPACE_3D, 1, 0, 0), 5));
         assertEquals(1, hits.size());
         assertEquals("neuer Text", hits.get(0).chunk().text());
+        reopened.close();
+    }
+
+    @Test
+    public void interruptedRemovalLeavesNoRevisionBehind() throws Exception {
+        Path root = folder.newFolder("index").toPath();
+        KnowledgeResource a = resource("wiki:x/A", "wiki").toBuilder().revision(KnowledgeRevision.version("1"))
+                .build();
+        LuceneKnowledgeIndex index = new LuceneKnowledgeIndex(root);
+        index.index(Collections.singletonList(entry(a, 0, "eins", vector(SPACE_3D, 1, 0, 0))));
+        index.close();
+        // Abbruch eines remove() nach dem ersten Schritt nachstellen: Text ist weg, Vektoren noch da.
+        new LuceneTextIndex(root.resolve("text")).removeWhere(a.id(), null);
+
+        LuceneKnowledgeIndex reopened = new LuceneKnowledgeIndex(root);
+        assertEquals(1, reopened.vectorCount(SPACE_3D));
+        assertFalse("ohne Text gilt die Ressource als nicht indexiert",
+                reopened.revisionOf(SPACE_3D, a.id()).isPresent());
+        assertTrue(reopened.resourceIds(SPACE_3D, a.sourceId()).isEmpty());
+        assertTrue(reopened.semanticSearch(KnowledgeSemanticQuery.of(vector(SPACE_3D, 1, 0, 0), 5)).isEmpty());
+        reopened.replace(SPACE_3D, a.id(), Collections.<KnowledgeIndexEntry>emptyList());
+        assertEquals("replace räumt die verwaisten Vektoren ab", 0, reopened.vectorCount(SPACE_3D));
         reopened.close();
     }
 

@@ -2,6 +2,8 @@ package com.aresstack.enterpriseai.knowledge.api.testing;
 
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingWorldMismatchException;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexPort;
@@ -13,10 +15,14 @@ import com.aresstack.enterpriseai.knowledge.api.KnowledgeSemanticQuery;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 import static com.aresstack.enterpriseai.knowledge.api.testing.KnowledgeIndexTestData.OTHER_SPACE_3D;
 import static com.aresstack.enterpriseai.knowledge.api.testing.KnowledgeIndexTestData.SPACE_2D;
@@ -27,6 +33,7 @@ import static com.aresstack.enterpriseai.knowledge.api.testing.KnowledgeIndexTes
 import static com.aresstack.enterpriseai.knowledge.api.testing.KnowledgeIndexTestData.richResource;
 import static com.aresstack.enterpriseai.knowledge.api.testing.KnowledgeIndexTestData.vector;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -284,6 +291,98 @@ public abstract class KnowledgeIndexPortContractTest {
 
         index.removeSource(KnowledgeSourceId.of("wiki"));
         assertEquals(Collections.singletonList("confluence:dc/page/1#chunk-0"), keyword("gemeinsam"));
+    }
+
+    @Test
+    public void resourceIdsListIndexedResourcesOfOneSourceInOneNamespace() {
+        KnowledgeResource a = resource("wiki:x/A", "wiki");
+        KnowledgeResource b = resource("wiki:x/B", "wiki");
+        KnowledgeResource c = resource("confluence:dc/1", "confluence");
+        index.index(Arrays.asList(
+                entry(a, 0, "eins", vector(SPACE_3D, 1, 0, 0)),
+                entry(a, 1, "zwei", vector(SPACE_3D, 0, 1, 0)),
+                entry(b, 0, "drei", vector(SPACE_3D, 0, 0, 1)),
+                entry(c, 0, "vier", vector(SPACE_3D, 1, 1, 0)),
+                entry(b, 0, "drei andere Welt", vector(OTHER_SPACE_3D, 0, 0, 1))));
+
+        assertEquals(resourceIds("wiki:x/A", "wiki:x/B"),
+                written().resourceIds(SPACE_3D, KnowledgeSourceId.of("wiki")));
+        assertEquals(resourceIds("confluence:dc/1"),
+                written().resourceIds(SPACE_3D, KnowledgeSourceId.of("confluence")));
+        assertEquals(resourceIds("wiki:x/B"), written().resourceIds(OTHER_SPACE_3D, KnowledgeSourceId.of("wiki")));
+        assertEquals(resourceIds(), written().resourceIds(SPACE_2D, KnowledgeSourceId.of("wiki")));
+        assertEquals(resourceIds(), written().resourceIds(SPACE_3D, KnowledgeSourceId.of("unbekannt")));
+        try {
+            written().resourceIds(SPACE_3D, KnowledgeSourceId.of("wiki")).clear();
+            fail("unveränderlich erwartet");
+        } catch (UnsupportedOperationException expected) {
+            // erwartet
+        }
+    }
+
+    @Test
+    public void resourceIdsFollowReplaceAndRemove() {
+        KnowledgeResource a = resource("wiki:x/A", "wiki");
+        KnowledgeResource b = resource("wiki:x/B", "wiki");
+        KnowledgeSourceId wiki = KnowledgeSourceId.of("wiki");
+        index.index(Arrays.asList(
+                entry(a, 0, "eins", vector(SPACE_3D, 1, 0, 0)),
+                entry(b, 0, "zwei", vector(SPACE_3D, 0, 1, 0))));
+
+        written().replace(SPACE_3D, a.id(), Collections.<KnowledgeIndexEntry>emptyList());
+        assertEquals("replace mit leerer Liste entfernt die Ressource", resourceIds("wiki:x/B"),
+                written().resourceIds(SPACE_3D, wiki));
+        written().replace(SPACE_3D, a.id(), Collections.singletonList(entry(a, 0, "neu", vector(SPACE_3D, 1, 0, 0))));
+        assertEquals(resourceIds("wiki:x/A", "wiki:x/B"), written().resourceIds(SPACE_3D, wiki));
+        written().remove(b.id());
+        assertEquals(resourceIds("wiki:x/A"), written().resourceIds(SPACE_3D, wiki));
+        written().removeSource(wiki);
+        assertEquals(resourceIds(), written().resourceIds(SPACE_3D, wiki));
+    }
+
+    @Test
+    public void revisionOfReportsTheStoredRevisionPerNamespace() {
+        KnowledgeResource v1 = resource("wiki:x/A", "wiki").toBuilder()
+                .revision(KnowledgeRevision.of(Instant.parse("2026-10-01T08:30:00Z"), "1")).build();
+        KnowledgeResource v2 = v1.toBuilder().revision(KnowledgeRevision.version("2")).build();
+        KnowledgeResource unknown = resource("wiki:x/B", "wiki");
+        index.index(Arrays.asList(
+                entry(v1, 0, "eins", vector(SPACE_3D, 1, 0, 0)),
+                entry(v1, 1, "zwei", vector(SPACE_3D, 0, 1, 0)),
+                entry(unknown, 0, "ohne Revision", vector(SPACE_3D, 0, 0, 1))));
+
+        assertEquals(Optional.of(v1.revision()), written().revisionOf(SPACE_3D, v1.id()));
+        assertEquals("unbekannte Revision ist trotzdem indexiert", Optional.of(KnowledgeRevision.unknown()),
+                written().revisionOf(SPACE_3D, unknown.id()));
+        assertEquals(Optional.empty(), written().revisionOf(OTHER_SPACE_3D, v1.id()));
+        assertEquals(Optional.empty(), written().revisionOf(SPACE_3D, KnowledgeResourceId.of("wiki:x/fehlt")));
+
+        written().replace(SPACE_3D, v2.id(),
+                Collections.singletonList(entry(v2, 0, "eins neu", vector(SPACE_3D, 1, 0, 0))));
+        assertEquals(Optional.of(KnowledgeRevision.version("2")), written().revisionOf(SPACE_3D, v2.id()));
+        written().remove(v2.id());
+        assertFalse(written().revisionOf(SPACE_3D, v2.id()).isPresent());
+    }
+
+    @Test
+    public void revisionOfIsEmptyWhenChunksDisagree() {
+        KnowledgeResource v1 = resource("wiki:x/A", "wiki").toBuilder()
+                .revision(KnowledgeRevision.version("1")).build();
+        KnowledgeResource v2 = v1.toBuilder().revision(KnowledgeRevision.version("2")).build();
+        index.index(Arrays.asList(
+                entry(v1, 0, "eins", vector(SPACE_3D, 1, 0, 0)),
+                entry(v2, 1, "zwei", vector(SPACE_3D, 0, 1, 0))));
+
+        assertEquals("gemischte Revisionen gelten als nicht sauber indexiert", Optional.empty(),
+                written().revisionOf(SPACE_3D, v1.id()));
+    }
+
+    private static Set<KnowledgeResourceId> resourceIds(String... values) {
+        Set<KnowledgeResourceId> ids = new HashSet<KnowledgeResourceId>();
+        for (String value : values) {
+            ids.add(KnowledgeResourceId.of(value));
+        }
+        return ids;
     }
 
     @Test

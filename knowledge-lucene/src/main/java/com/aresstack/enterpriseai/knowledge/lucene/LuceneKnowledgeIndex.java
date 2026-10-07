@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.knowledge.lucene;
 
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexPort;
@@ -17,6 +18,8 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Produktiver {@link KnowledgeIndexPort}: persistenter Lucene-BM25-Index ({@link LuceneTextIndex}) für die
@@ -29,7 +32,9 @@ import java.util.Map;
  * </pre>
  *
  * <p>Ressource und Chunk eines Eintrags liegen einmal als gespeicherte Lucene-Felder vor; semantische Treffer
- * werden dort per Chunk-ID nachgeladen. Schreibreihenfolge: erst Vektoren, dann Text. Jeder Vektor trägt einen
+ * werden dort per Chunk-ID nachgeladen, und {@link #resourceIds}/{@link #revisionOf} lesen dort (der Textindex
+ * ist die Bestandsliste; Vektoren ohne passenden Text zählen nicht als indexiert).
+ * Schreibreihenfolge: erst Vektoren, dann Text; gelöscht wird umgekehrt. Jeder Vektor trägt einen
  * Stempel (SHA-256 über Text, Überschriften und Revision des eingebetteten Chunks); ein semantischer Treffer zählt
  * nur, wenn das Textdokument denselben Stempel ergibt. Scheitert das Text-Schreiben mit einer Exception, wird der
  * Vektorstand zurückgesetzt. Bricht der Prozess selbst zwischen beiden Schreibvorgängen ab,
@@ -160,13 +165,36 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
     }
 
     @Override
+    public synchronized Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space,
+                                                             KnowledgeSourceId sourceId) {
+        requireOpen();
+        if (space == null || sourceId == null) {
+            throw new IllegalArgumentException("space und sourceId sind Pflicht");
+        }
+        return text.resourceIds(space, sourceId);
+    }
+
+    @Override
+    public synchronized Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space,
+                                                               KnowledgeResourceId resourceId) {
+        requireOpen();
+        if (space == null || resourceId == null) {
+            throw new IllegalArgumentException("space und resourceId sind Pflicht");
+        }
+        return text.revisionOf(space, resourceId);
+    }
+
+    @Override
     public synchronized void remove(KnowledgeResourceId resourceId) {
         requireOpen();
         if (resourceId == null) {
             throw new IllegalArgumentException("resourceId fehlt");
         }
-        vectors.removeWhere(resourceId, null);
+        // Löschen in umgekehrter Schreibreihenfolge: erst Text, dann Vektoren. Bricht der Prozess dazwischen ab,
+        // bleiben nur Vektoren ohne Text übrig, die weder Treffer noch Revision liefern und beim nächsten
+        // replace/rebuild verschwinden; der umgekehrte Fall (Text ohne Vektoren) würde eine Revision melden.
         text.removeWhere(resourceId, null);
+        vectors.removeWhere(resourceId, null);
     }
 
     @Override
@@ -175,8 +203,8 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
         if (sourceId == null) {
             throw new IllegalArgumentException("sourceId fehlt");
         }
-        vectors.removeWhere(null, sourceId);
         text.removeWhere(null, sourceId);
+        vectors.removeWhere(null, sourceId);
     }
 
     @Override
