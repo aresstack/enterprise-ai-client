@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.domain.knowledge;
 /**
  * Leerraum-Regeln des Knowledge-Modells. {@link String#trim()} kennt nur Zeichen bis U+0020; hier zählen auch
  * Unicode-Leerzeichen wie das geschützte Leerzeichen (U+00A0), das bei HTML-Extraktion häufig übrig bleibt.
+ * Welche Codepunkte Leerraum sind, legt {@link UnicodeClasses} fest, nicht das laufende JDK.
  */
 final class KnowledgeText {
 
@@ -10,7 +11,7 @@ final class KnowledgeText {
     }
 
     static boolean isSpace(int codePoint) {
-        return Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint);
+        return UnicodeClasses.isSpace(codePoint);
     }
 
     static boolean isBlank(String text) {
@@ -33,17 +34,17 @@ final class KnowledgeText {
     }
 
     /**
-     * Ersetzt Unicode-Leerzeichen durch {@code ' '} und Zeilen-/Absatztrenner (U+2028/U+2029) durch {@code '\n'};
-     * Tabulator und Zeilenumbruch bleiben.
+     * Ersetzt Unicode-Leerzeichen durch {@code ' '} und Zeilen-/Absatztrenner (U+0085, U+2028, U+2029) durch
+     * {@code '\n'}; ASCII-Leerraum (Tabulator, Zeilenumbruch ...) bleibt.
      */
     static String unifySpaces(String text) {
         StringBuilder unified = null;
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
             char replacement = c;
-            if (c == ' ' || c == ' ') {
+            if (c == '\u0085' || c == ' ' || c == ' ') {
                 replacement = '\n';
-            } else if (c != ' ' && Character.isSpaceChar(c)) {
+            } else if (c >= 0x80 && isSpace(c)) {
                 replacement = ' ';
             }
             if (replacement != c && unified == null) {

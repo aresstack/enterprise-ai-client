@@ -24,9 +24,18 @@ Seine Array-Probe für `/embeddings` würde die offene Frage an Strang C beantwo
 
 ## Bewusste Grenzen
 
-- **Unicode im Chunker**: Satz- und Tokengrenzen nutzen die Zeichenklassen des laufenden JDK. Chunks sollen
-  unter JDK 8 und neueren JDKs identisch sein; eine eigene Zeichentabelle gibt es nicht. Die Frage an Angelo,
-  ob eine feste Tabelle gewünscht ist, ist offen.
+- **Unicode im Chunker**: Satz- und Tokengrenzen nutzen seit `chunker-v2` den festen, versionierten
+  Zeichenklassen-Vertrag `UnicodeClasses` (`unicode-classes-v1`, `domain.knowledge`) statt der Unicode-Daten
+  des laufenden JDK; `UnicodeClassesTest` friert die vollständige Tabelle über einen Hash ein und läuft in der CI
+  auf JDK 8 und 21 mit denselben Erwartungswerten, `KnowledgeBoundaryTest` verbietet `Character.isLetter`,
+  `getType`, `BreakIterator` u. ä. außerhalb von `UnicodeClasses`. Der Vertrag ist bewusst klein: fein aufgelöst
+  sind ASCII, Latein, Griechisch, Kyrillisch, kombinierende Zeichen, Interpunktion, Symbole, Emoji, CJK-Satzzeichen
+  und Voll-/Halbbreitformen; alle anderen Schriften gelten blockweise als Buchstaben (ihre Satzzeichen und Ziffern
+  werden nicht erkannt), Ziffern sind nur ASCII und Vollbreite, Großbuchstaben werden nur für Latein, Griechisch,
+  Kyrillisch, Deseret, Osage und Adlam erkannt. Bestehende Indizes bleiben lesbar, die Chunks ändern sich aber bei
+  Texten mit Zeichen außerhalb von ASCII/Latein nur im Detail; die Index-Revision bleibt gleich, eine Neuindexierung
+  ist optional. Restabhängigkeit vom JDK: die NFC-Normalisierung in `KnowledgeDocument` (`java.text.Normalizer`)
+  für Zeichen, die erst nach Unicode 6 (JDK 8) hinzukamen.
 - **MCP-Endpoint per Umgebung**: Der Agentenprozess erhält Endpoint-ID, URL, Transport und Token über
   `ENTERPRISE_AI_MCP_*`, nicht über ACP `session/new` (dort geht eine leere `mcpServers`-Liste). Eine Übergabe
   über ACP wäre eine Vertragsänderung in `acp-client-api` und `acp-solon-client`.
@@ -63,7 +72,6 @@ braucht.
 
 - `/embeddings` mit Array-Input real testen; Ergebnis entscheidet über den Standard von `embedding.inputMode`.
 - Embedding-Dimension von `danielheinz/e5-base-sts-en-de` bestätigen (vermutlich 768).
-- Feste Unicode-Zeichentabelle im Chunker gewünscht?
 - Entscheidungskarte "Index führt" (empfohlen und umgesetzt) bestätigen; bei anderer Wahl Rückbau in AP20.
 
 ## Restarbeit (optional)

@@ -16,8 +16,9 @@ import java.util.Set;
  * nach bekannten Abkürzungen ({@code z. B.}, {@code bzw.}, {@code Dr.} ...), einzelnen Buchstaben (Initialen)
  * und reinen Zahlen (Ordinalzahlen wie {@code 1. Januar}).
  *
- * <p>Bewusst nicht {@code java.text.BreakIterator}: dessen Regeln unterscheiden sich zwischen JDK-Versionen,
- * die Chunks sollen aber unter JDK 8 und neueren JDKs identisch sein. Prinzip übernommen aus askai-java8
+ * <p>Bewusst nicht {@code java.text.BreakIterator} und keine {@code Character}-Klassen: deren Regeln und
+ * Unicode-Daten unterscheiden sich zwischen JDK-Versionen, die Chunks sollen aber unter JDK 8 und neueren JDKs
+ * identisch sein; Buchstaben, Ziffern und Großbuchstaben kommen aus {@link UnicodeClasses}. Prinzip übernommen aus askai-java8
  * {@code RegexSentenceSegmenter}, um Abkürzungen, Ordinalzahlen und Unicode erweitert.
  */
 final class SentenceSplitter {
@@ -89,7 +90,7 @@ final class SentenceSplitter {
     }
 
     private static boolean isSentenceStart(int codePoint) {
-        return Character.isUpperCase(codePoint) || Character.isTitleCase(codePoint) || Character.isDigit(codePoint)
+        return UnicodeClasses.isUpperCase(codePoint) || UnicodeClasses.isDigit(codePoint)
                 || codePoint == '"' || codePoint == '\'' || codePoint == '(' || codePoint == '['
                 || codePoint == '„' || codePoint == '“' || codePoint == '»' || codePoint == '«';
     }
@@ -107,7 +108,7 @@ final class SentenceSplitter {
         if (word.isEmpty()) {
             return false;
         }
-        if (word.codePointCount(0, word.length()) == 1 && Character.isLetter(word.codePointAt(0))) {
+        if (word.codePointCount(0, word.length()) == 1 && UnicodeClasses.isLetter(word.codePointAt(0))) {
             return true; // Initiale oder Teil von "z. B."
         }
         if (isAllDigits(word)) {
@@ -123,7 +124,7 @@ final class SentenceSplitter {
 
     private static boolean isAllDigits(String word) {
         for (int i = 0; i < word.length(); i++) {
-            if (!Character.isDigit(word.charAt(i))) {
+            if (!UnicodeClasses.isDigit(word.charAt(i))) {
                 return false;
             }
         }
