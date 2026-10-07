@@ -9,6 +9,11 @@ application {
     mainClass = 'com.aresstack.enterpriseai.app.EnterpriseAiClientMain'
 }
 
+// Fat Jar mit Manifest (java -jar), Prüfung und Smoke-Start: Tasks fatJar, verifyFatJar, smokeStartFatJar
+// (hängen an assemble bzw. check). Versionsnummer in gradle.properties, Release-Workflow in
+// .github/workflows/release.yml; Erläuterung in docs/einrichtung.md.
+apply from: rootProject.file('gradle/fat-jar.gradle')
+
 dependencies {
     implementation project(':application')
     implementation project(':comic-controls')

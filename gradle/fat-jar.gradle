@@ -1,0 +1,286 @@
+// Fat Jar der Swing-Anwendung: alle Laufzeitabhängigkeiten in einem lauffähigen Jar mit Manifest
+// (java -jar enterprise-ai-client-<version>.jar). Eingebunden von app-swing/build.gradle (apply from).
+//
+// Bewusst eine eigene Jar-Task statt eines Plugins: sie läuft mit Gradle 8.14.3 auf JDK 8 und JDK 21
+// gleichermaßen, wie das Demo-Agent-Jar in acp-demo-agent. Gegenüber einfachem Zusammenkopieren:
+//  - META-INF/services/* werden zusammengeführt (ServiceLoader). Jackson registriert JsonFactory und
+//    ObjectCodec in zwei Jars, Lucene seine Codecs, das MCP-SDK seinen JSON-Mapper; mit
+//    DuplicatesStrategy.EXCLUDE käme je Datei nur der erste Eintrag ins Jar.
+//  - Signaturdateien und INDEX.LIST fremder Jars bleiben draußen (für das zusammengesetzte Jar ungültig).
+//  - module-info.class bleibt draußen (mehrere Bibliotheken liefern eine; Java 8 ignoriert sie ohnehin).
+//  - Multi-Release: true, damit JDK 9+ die META-INF/versions-Klassen von Lucene, Jackson, Reactor usw. wie
+//    bei den Einzeljars verwendet; Java 8 ignoriert den Abschnitt.
+// verifyFatJar prüft Manifest, Vollständigkeit und Ladbarkeit der Hauptklasse; smokeStartFatJar startet das
+// Jar headless ohne Konfiguration (erwartet: Vorlage angelegt, Exit-Code 2). Beide hängen an check,
+// fatJar an assemble: ./gradlew build baut und prüft das Fat Jar auf jeder CI-Plattform.
+
+def fatJarBaseName = 'enterprise-ai-client'
+def fatJarMainClass = application.mainClass.get()
+def fatJarVersion = project.version.toString()
+def fatJarVendorId = project.group.toString()
+// Zur Konfigurationszeit aufgelöst, damit die Task-Aktionen unten nicht auf das Projekt zugreifen.
+def ownOutput = sourceSets.main.output
+def ownResourcesDir = sourceSets.main.output.resourcesDir
+def runtimeJars = configurations.runtimeClasspath.filter { it.name.endsWith('.jar') }
+def mergedServicesDir = layout.buildDirectory.dir('fat-jar/services')
+def smokeHomeDir = layout.buildDirectory.dir('fat-jar/smoke-home')
+
+def servicesPrefix = 'META-INF/services/'
+
+// Einträge fremder Jars, die nicht ins Fat Jar gehören (siehe Kopf der Datei).
+def excludedFromFatJar = { String name ->
+    name == 'META-INF/MANIFEST.MF' || name == 'META-INF/INDEX.LIST' ||
+            name ==~ /META-INF\/[^\/]+\.(SF|DSA|RSA|EC)/ ||
+            name.endsWith('module-info.class')
+}
+
+// Provider-Zeilen einer ServiceLoader-Datei ohne Kommentare und Leerzeilen.
+def serviceProviders = { String text ->
+    text.readLines().collect { it.replaceFirst('#.*$', '').trim() }.findAll { !it.isEmpty() }
+}
+
+// Commit für das Manifest: -PbuildCommit (CI: github.sha), sonst git im Arbeitsverzeichnis, sonst 'unknown'.
+def resolveGitCommit = {
+    String explicit = providers.gradleProperty('buildCommit').getOrNull()
+    if (explicit != null && !explicit.trim().isEmpty()) {
+        return explicit.trim()
+    }
+    try {
+        String head = providers.exec {
+            commandLine 'git', 'rev-parse', 'HEAD'
+            ignoreExitValue = true
+        }.standardOutput.asText.get().trim()
+        return head.isEmpty() ? 'unknown' : head
+    } catch (Exception ignored) {
+        return 'unknown'
+    }
+}
+def gitCommit = providers.provider { resolveGitCommit() }
+
+def mergeFatJarServices = tasks.register('mergeFatJarServices') {
+    group = 'build'
+    description = 'Führt META-INF/services/* aus Modul und Laufzeitabhängigkeiten für das Fat Jar zusammen.'
+    inputs.files(runtimeJars).withPropertyName('runtimeJars')
+    inputs.files(ownOutput).withPropertyName('ownOutput')
+    outputs.dir(mergedServicesDir)
+    doLast {
+        Map<String, Set<String>> implementationsByService = new TreeMap<String, Set<String>>()
+        def register = { String service, String text ->
+            Set<String> implementations = implementationsByService.get(service)
+            if (implementations == null) {
+                implementations = new LinkedHashSet<String>()
+                implementationsByService.put(service, implementations)
+            }
+            implementations.addAll(serviceProviders(text))
+        }
+        // Eigene Ressourcen zuerst, damit ein Eintrag des Moduls vor Bibliothekseinträgen steht.
+        File ownServices = new File(ownResourcesDir, servicesPrefix)
+        if (ownServices.isDirectory()) {
+            ownServices.listFiles().findAll { it.isFile() }.sort { it.name }.each { File file ->
+                register(file.name, file.getText('UTF-8'))
+            }
+        }
+        runtimeJars.files.each { File jar ->
+            new java.util.zip.ZipFile(jar).withCloseable { zip ->
+                Collections.list(zip.entries()).each { entry ->
+                    String name = entry.name
+                    if (!entry.directory && name.startsWith(servicesPrefix)
+                            && name.indexOf('/', servicesPrefix.length()) < 0) {
+                        zip.getInputStream(entry).withCloseable { input ->
+                            register(name.substring(servicesPrefix.length()), input.getText('UTF-8'))
+                        }
+                    }
+                }
+            }
+        }
+        File root = mergedServicesDir.get().asFile
+        root.deleteDir()
+        File target = new File(root, servicesPrefix)
+        target.mkdirs()
+        implementationsByService.each { String service, Set<String> implementations ->
+            new File(target, service).setText(implementations.join('\n') + '\n', 'UTF-8')
+        }
+    }
+}
+
+def fatJar = tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = 'Lauffähiges Fat Jar der Anwendung mit allen Laufzeitabhängigkeiten (java -jar).'
+    dependsOn configurations.runtimeClasspath, mergeFatJarServices
+    archiveBaseName = fatJarBaseName
+    // Kein Klassifizierer: die Datei heißt enterprise-ai-client-<version>.jar.
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    inputs.property('gitCommit', gitCommit)
+    manifest {
+        attributes(
+                'Main-Class': fatJarMainClass,
+                'Implementation-Title': fatJarBaseName,
+                'Implementation-Version': fatJarVersion,
+                'Implementation-Vendor-Id': fatJarVendorId,
+                'Multi-Release': 'true')
+    }
+    doFirst {
+        manifest.attributes('Git-Commit': gitCommit.get())
+    }
+    // Zusammengeführte ServiceLoader-Dateien vor allen anderen Quellen: bei Duplikaten gewinnt die erste.
+    from mergedServicesDir
+    from ownOutput
+    from({ runtimeJars.collect { zipTree(it) } }) {
+        exclude 'META-INF/MANIFEST.MF', 'META-INF/INDEX.LIST'
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/*.EC'
+        exclude servicesPrefix + '**'
+        exclude '**/module-info.class'
+    }
+}
+
+def verifyFatJar = tasks.register('verifyFatJar') {
+    group = 'verification'
+    description = 'Prüft Manifest, Vollständigkeit (Klassen, Ressourcen, ServiceLoader-Dateien) und Ladbarkeit der Hauptklasse des Fat Jars.'
+    dependsOn fatJar
+    inputs.file(fatJar.flatMap { it.archiveFile }).withPropertyName('fatJar')
+    inputs.files(runtimeJars).withPropertyName('runtimeJars')
+    doLast {
+        File jarFile = fatJar.get().archiveFile.get().asFile
+        List<String> problems = []
+        Set<String> entries = new HashSet<String>()
+        Map<String, Set<String>> expectedServices = new TreeMap<String, Set<String>>()
+        new java.util.jar.JarFile(jarFile).withCloseable { jar ->
+            def attributes = jar.manifest == null ? null : jar.manifest.mainAttributes
+            if (attributes == null) {
+                problems << 'Manifest fehlt'
+            } else {
+                ['Main-Class'            : fatJarMainClass,
+                 'Implementation-Title'  : fatJarBaseName,
+                 'Implementation-Version': fatJarVersion,
+                 'Multi-Release'         : 'true'].each { String key, String expected ->
+                    String actual = attributes.getValue(key)
+                    if (actual != expected) {
+                        problems << "Manifest-Attribut ${key}: erwartet '${expected}', gefunden '${actual}'"
+                    }
+                }
+                String commit = attributes.getValue('Git-Commit')
+                if (commit == null || !(commit ==~ /[0-9a-f]{7,40}|unknown/)) {
+                    problems << "Manifest-Attribut Git-Commit fehlt oder ist kein Commit: '${commit}'"
+                }
+            }
+            Collections.list(jar.entries()).each { entry ->
+                if (entry.directory) {
+                    return
+                }
+                entries.add(entry.name)
+                if (entry.name ==~ /META-INF\/[^\/]+\.(SF|DSA|RSA|EC)/ || entry.name == 'META-INF/INDEX.LIST'
+                        || entry.name.endsWith('module-info.class')) {
+                    problems << "Unerwünschter Eintrag im Fat Jar: ${entry.name}"
+                }
+            }
+
+            // Vollständigkeit: jeder Eintrag der eigenen Klassen und aller Laufzeit-Jars ist im Fat Jar.
+            ownOutput.files.findAll { it.isDirectory() }.each { File dir ->
+                dir.eachFileRecurse(groovy.io.FileType.FILES) { File file ->
+                    String name = dir.toPath().relativize(file.toPath()).toString().replace(File.separatorChar, '/' as char)
+                    if (!excludedFromFatJar(name) && !name.startsWith(servicesPrefix) && !entries.contains(name)) {
+                        problems << "Eintrag ${name} (app-swing) fehlt im Fat Jar"
+                    }
+                }
+            }
+            runtimeJars.files.each { File dependency ->
+                new java.util.zip.ZipFile(dependency).withCloseable { zip ->
+                    Collections.list(zip.entries()).each { entry ->
+                        String name = entry.name
+                        if (entry.directory || excludedFromFatJar(name)) {
+                            return
+                        }
+                        if (name.startsWith(servicesPrefix)) {
+                            if (name.indexOf('/', servicesPrefix.length()) < 0) {
+                                Set<String> expected = expectedServices.get(name)
+                                if (expected == null) {
+                                    expected = new LinkedHashSet<String>()
+                                    expectedServices.put(name, expected)
+                                }
+                                zip.getInputStream(entry).withCloseable { input ->
+                                    expected.addAll(serviceProviders(input.getText('UTF-8')))
+                                }
+                            }
+                        } else if (!entries.contains(name)) {
+                            problems << "Eintrag ${name} aus ${dependency.name} fehlt im Fat Jar"
+                        }
+                    }
+                }
+            }
+            expectedServices.each { String service, Set<String> expected ->
+                def entry = jar.getJarEntry(service)
+                if (entry == null) {
+                    problems << "ServiceLoader-Datei ${service} fehlt im Fat Jar"
+                    return
+                }
+                Set<String> actual = new HashSet<String>()
+                jar.getInputStream(entry).withCloseable { input -> actual.addAll(serviceProviders(input.getText('UTF-8'))) }
+                expected.findAll { !actual.contains(it) }.each { String implementation ->
+                    problems << "ServiceLoader-Eintrag ${implementation} fehlt in ${service}"
+                }
+            }
+        }
+
+        // Hauptklasse aus dem Jar allein laden (ohne Initialisierung, kein Swing-Start). Elternlader wie bei
+        // java -jar: Extension-Loader (JDK 8) bzw. Platform-Loader (JDK 9+), nicht der Klassenpfad des Builds.
+        URLClassLoader loader = new URLClassLoader([jarFile.toURI().toURL()] as URL[],
+                ClassLoader.systemClassLoader.parent)
+        try {
+            Class<?> mainClass = Class.forName(fatJarMainClass, false, loader)
+            mainClass.getMethod('main', String[].class)
+            mainClass.getDeclaredMethods()
+        } catch (Throwable t) {
+            problems << "Hauptklasse ${fatJarMainClass} nicht aus dem Fat Jar ladbar: ${t}"
+        } finally {
+            loader.close()
+        }
+
+        if (!problems.isEmpty()) {
+            throw new GradleException("Fat Jar ${jarFile.name} fehlerhaft:\n - " + problems.join('\n - '))
+        }
+        logger.lifecycle("Fat Jar geprüft: ${jarFile.name} (${entries.size()} Einträge, " +
+                "${expectedServices.size()} ServiceLoader-Dateien)")
+    }
+}
+
+def smokeStartFatJar = tasks.register('smokeStartFatJar', Exec) {
+    group = 'verification'
+    description = 'Startet das Fat Jar headless ohne Konfiguration: erwartet die angelegte Vorlage und Exit-Code 2.'
+    dependsOn fatJar
+    inputs.file(fatJar.flatMap { it.archiveFile }).withPropertyName('fatJar')
+    outputs.dir(smokeHomeDir)
+    executable = new File(System.getProperty('java.home'), 'bin/java').absolutePath
+    ignoreExitValue = true
+    def stderr = new ByteArrayOutputStream()
+    errorOutput = stderr
+    standardOutput = new ByteArrayOutputStream()
+    doFirst {
+        File home = smokeHomeDir.get().asFile
+        home.deleteDir()
+        home.mkdirs()
+        args = ['-Djava.awt.headless=true', "-Denterpriseai.home=${home.absolutePath}".toString(),
+                '-jar', fatJar.get().archiveFile.get().asFile.absolutePath]
+    }
+    doLast {
+        File home = smokeHomeDir.get().asFile
+        File template = new File(home, 'enterprise-ai-client.properties')
+        int exitValue = executionResult.get().exitValue
+        List<String> problems = []
+        if (exitValue != 2) {
+            problems << "Exit-Code ${exitValue} statt 2 (Konfiguration fehlt)"
+        }
+        if (!template.isFile() || template.length() == 0) {
+            problems << "Vorlage ${template.name} wurde nicht angelegt"
+        }
+        if (!problems.isEmpty()) {
+            throw new GradleException("Fat Jar startet nicht wie erwartet:\n - " + problems.join('\n - ')
+                    + "\nAusgabe des Prozesses:\n" + stderr.toString('UTF-8'))
+        }
+        logger.lifecycle("Fat Jar gestartet (headless, ohne Konfiguration): Vorlage angelegt, Exit-Code 2")
+    }
+}
+
+tasks.named('assemble') { dependsOn fatJar }
+tasks.named('check') { dependsOn verifyFatJar, smokeStartFatJar }

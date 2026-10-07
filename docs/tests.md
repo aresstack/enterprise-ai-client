@@ -15,6 +15,7 @@ standardmäßig aus (unten). Der Build ist auf JDK 8 und JDK 21 grün (CI); loka
 ./gradlew :integration-tests:test                     # Vertical-Slice-Tests A–G gegen lokale Fakes (Teil von build)
 ./gradlew :integration-tests:liveTest -Dlive.…        # gegen echte Dienste, standardmäßig aus (siehe unten)
 ./gradlew build --no-daemon --warning-mode all        # wie die CI
+./gradlew :app-swing:verifyFatJar :app-swing:smokeStartFatJar   # Fat-Jar-Prüfungen (Teil von check, siehe unten)
 ```
 
 Testberichte liegen je Modul unter `<modul>/build/reports/tests/test/index.html`; die XML-Ergebnisse unter
@@ -145,3 +146,19 @@ starten die Shell mit Fake-Ports (siehe [Einrichtung](einrichtung.md#demos-ohne-
 `.github/workflows/build.yml` führt `./gradlew build --no-daemon --warning-mode all` auf JDK 8 und JDK 21 aus
 (Temurin). Pull Requests werden erst gemergt, wenn beide Läufe grün sind; vor dem Merge wird `main`
 eingemergt, besonders nach Vertragsänderungen oder neuen Architekturregeln.
+
+`build` baut seit dem Fat Jar auch `enterprise-ai-client-<version>.jar` (`:app-swing:fatJar`, an `assemble`) und
+prüft es über `check` mit zwei Tasks aus `gradle/fat-jar.gradle`, die keine JUnit-Tests sind und deshalb nicht in
+den Testzahlen oben erscheinen:
+
+- `verifyFatJar`: Manifest-Attribute (`Main-Class`, `Implementation-Version`, `Git-Commit`, `Multi-Release`),
+  keine Signaturdateien oder `module-info.class`, jeder Eintrag jedes Laufzeit-Jars ist enthalten, jede
+  `META-INF/services`-Datei enthält die Einträge aller Einzeljars, und die Hauptklasse lässt sich aus dem Jar
+  allein (ohne Klassenpfad des Builds, ohne Initialisierung) laden.
+- `smokeStartFatJar`: startet das Jar in einer eigenen headless JVM mit leerem Anwendungsverzeichnis und erwartet
+  das Verhalten des ersten Starts: Vorlage `enterprise-ai-client.properties` angelegt, Exit-Code 2. Es wird kein
+  Fenster und kein Server gestartet.
+
+`.github/workflows/release.yml` baut bei jedem Push auf jeden Branch mit JDK 8 (`./gradlew build`, also mit allen
+Tests) und veröffentlicht das Jar als Release (`main`, Tag `v<version>`) oder als rollierenden Snapshot des
+Branches (Pre-Release `snapshot-<branch>`); Einzelheiten in [Einrichtung](einrichtung.md#fat-jar-version-und-releases).
