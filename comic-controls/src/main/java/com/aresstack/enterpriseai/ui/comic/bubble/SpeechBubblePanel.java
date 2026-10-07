@@ -54,6 +54,10 @@ public final class SpeechBubblePanel extends JPanel
     private final JTextArea textArea;
     private int maximumBubbleWidth;
 
+    // Fortgeschriebene Messung des Textes (Breite, Umbruch): Streaming hängt Deltas an, und die Messung je
+    // Layout darf dann nicht mit der Textlänge wachsen.
+    private final StreamingTextMeasure measure;
+
     public SpeechBubblePanel(BubbleSide side,
                              Color bubbleColor,
                              Color textColor,
@@ -75,6 +79,8 @@ public final class SpeechBubblePanel extends JPanel
         this.headerLabel = createHeaderLabel(header);
         this.headerRow = new JPanel();
         this.textArea = createTextArea(text);
+        this.measure = new StreamingTextMeasure(textArea.getFontMetrics(textArea.getFont()));
+        measure.set(normalize(text));
         buildUi();
     }
 
@@ -87,15 +93,23 @@ public final class SpeechBubblePanel extends JPanel
     }
 
     public void setText(String text) {
-        textArea.setText(normalize(text));
+        String value = normalize(text);
+        textArea.setText(value);
+        measure.set(value);
         refreshLayout();
     }
 
+    /**
+     * Hängt ein Streaming-Delta an. Der Aufwand hängt von der Länge des Deltas und des letzten, noch
+     * unvollständigen Wortes ab, nicht vom gesamten Text: das Dokument wird ergänzt statt ersetzt, und die
+     * Messungen für Breite und Umbruch werden fortgeschrieben ({@link StreamingTextMeasure}).
+     */
     public void appendText(String delta) {
         if (delta == null || delta.length() == 0) {
             return;
         }
         textArea.append(delta);
+        measure.append(delta);
         refreshLayout();
     }
 
@@ -240,36 +254,7 @@ public final class SpeechBubblePanel extends JPanel
     /** Greedy word-wrap line count from font metrics — independent of the Swing view state. */
     private int estimateWrappedTextHeight(int innerWidth) {
         FontMetrics metrics = textArea.getFontMetrics(textArea.getFont());
-        int lineHeight = metrics.getHeight();
-        int lines = 0;
-        for (String paragraph : textArea.getText().split("\n", -1)) {
-            lines += countWrappedLines(paragraph, metrics, innerWidth);
-        }
-        return Math.max(1, lines) * lineHeight;
-    }
-
-    private static int countWrappedLines(String paragraph, FontMetrics metrics, int width) {
-        if (paragraph.isEmpty()) {
-            return 1;
-        }
-        int lines = 1;
-        int currentWidth = 0;
-        int spaceWidth = metrics.charWidth(' ');
-        for (String word : paragraph.split(" ")) {
-            int wordWidth = metrics.stringWidth(word);
-            if (currentWidth > 0 && currentWidth + spaceWidth + wordWidth > width) {
-                lines++;
-                currentWidth = 0;
-            }
-            if (wordWidth > width) {
-                // Overlong words wrap mid-word across additional lines.
-                lines += wordWidth / Math.max(1, width);
-                currentWidth = wordWidth % Math.max(1, width);
-            } else {
-                currentWidth += (currentWidth > 0 ? spaceWidth : 0) + wordWidth;
-            }
-        }
-        return lines;
+        return Math.max(1, measure.wrappedLines(innerWidth)) * metrics.getHeight();
     }
 
     @Override
@@ -372,12 +357,7 @@ public final class SpeechBubblePanel extends JPanel
     }
 
     private int calculateNaturalTextWidth() {
-        FontMetrics textMetrics = textArea.getFontMetrics(textArea.getFont());
-        int maximum = 72;
-        String[] lines = textArea.getText().split("\\n", -1);
-        for (int index = 0; index < lines.length; index++) {
-            maximum = Math.max(maximum, textMetrics.stringWidth(lines[index]) + 8);
-        }
+        int maximum = Math.max(72, measure.naturalWidth() + 8);
         if (headerLabel.isVisible()) {
             FontMetrics headerMetrics = headerLabel.getFontMetrics(headerLabel.getFont());
             int headerWidth = headerMetrics.stringWidth(headerLabel.getText())

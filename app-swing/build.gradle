@@ -22,6 +22,12 @@ dependencies {
     testImplementation testFixtures(project(':chat-api'))
     // AP21: Test-Tools (ping, echo) für den MCP-Endpoint des Agenten.
     testImplementation testFixtures(project(':mcp-runtime-api'))
+    // AP22: Fakes für Embedding-Port, Wissensindex und Quelle in den RAG-Tests der Shell.
+    testImplementation testFixtures(project(':embedding-api'))
+    testImplementation testFixtures(project(':knowledge-api'))
+    testImplementation testFixtures(project(':source-api'))
+    // AP22: Die Fake-HTTP-Server des Integrationstests (/chat/completions, /embeddings) lesen und schreiben JSON.
+    testImplementation libs.gson
 }
 
 // AP21: Der Agent-Modus-Roundtrip startet den Demo-Agenten als echten Kindprozess (java -jar). Wie in
@@ -49,6 +55,13 @@ tasks.register('runChatDemo', JavaExec) {
     description = 'Startet die Comic-Chat-Shell (AP4) mit einem Fake-Backend, ohne Server.'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.aresstack.enterpriseai.app.chat.ChatShellDemo'
+}
+
+tasks.register('runRagDemo', JavaExec) {
+    group = 'application'
+    description = 'Startet die Chat-Shell mit RAG (AP22) gegen Fake-Backends: Fake-Chat, deterministische Embeddings, In-Memory-Index.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.app.chat.RagShellDemo'
 }
 
 tasks.register('runAgentDemo', JavaExec) {

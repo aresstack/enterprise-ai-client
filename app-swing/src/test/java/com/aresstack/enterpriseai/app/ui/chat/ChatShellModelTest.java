@@ -183,6 +183,87 @@ public class ChatShellModelTest {
         assertFalse(entry.toString().contains("geheim"));
     }
 
+    @Test
+    public void sourcesAttachToAnAnswerOnceInAnyState() {
+        model.addUserMessage("Frage");
+        TranscriptEntry answer = model.beginAssistantMessage();
+        SourceReference source = new SourceReference(1, "Urlaub", "Regeln", "wiki:intern/Urlaub", "Version 3", 0.03,
+                1, 2);
+        events.clear();
+
+        model.attachSources(answer, java.util.Collections.<SourceReference>emptyList());
+        assertTrue("leere Liste ändert nichts", events.isEmpty());
+        assertFalse(answer.hasSources());
+
+        model.attachSources(answer, java.util.Collections.singletonList(source));
+        assertEquals(java.util.Collections.singletonList("updated:STREAMING:"), events);
+        assertEquals(1, answer.getSources().size());
+        assertEquals("Urlaub", answer.getSources().get(0).getTitle());
+        expectIllegalState(new Runnable() {
+            @Override
+            public void run() {
+                model.attachSources(model.getEntries().get(1), java.util.Collections.singletonList(
+                        new SourceReference(2, "Noch eine", "", "x", "", 0.01, 0, 1)));
+            }
+        });
+
+        model.appendAssistantDelta("Antwort");
+        model.completeAssistantMessage();
+        TranscriptEntry second = model.beginAssistantMessage();
+        model.completeAssistantMessage();
+        model.attachSources(second, java.util.Collections.singletonList(source));
+        assertTrue("Quellen dürfen auch eine schon abgeschlossene Antwort erreichen", second.hasSources());
+        try {
+            model.attachSources(model.getEntries().get(0), java.util.Collections.singletonList(source));
+            fail("sources on a user message accepted");
+        } catch (IllegalArgumentException expected) {
+            // erwartet
+        }
+        try {
+            model.getEntries().get(1).getSources().clear();
+            fail("sources view is modifiable");
+        } catch (UnsupportedOperationException expected) {
+            // erwartet
+        }
+    }
+
+    @Test
+    public void noticesAreCompleteLinesEvenDuringStreaming() {
+        model.addUserMessage("Frage");
+        model.beginAssistantMessage();
+        events.clear();
+        TranscriptEntry notice = model.addNotice("Die Wissenssuche ist ausgefallen.");
+        assertEquals(TranscriptEntry.Author.NOTICE, notice.getAuthor());
+        assertEquals(TranscriptEntry.State.COMPLETE, notice.getState());
+        assertTrue("Antwort läuft weiter", model.isStreaming());
+        assertEquals(java.util.Collections.singletonList("added:NOTICE:COMPLETE"), events);
+        assertEquals(3, model.getEntries().size());
+        try {
+            model.addNotice(" ");
+            fail("blank notice accepted");
+        } catch (IllegalArgumentException expected) {
+            // erwartet
+        }
+    }
+
+    @Test
+    public void activityShowsOnlyWhileTheAnswerIsEmpty() {
+        model.beginAssistantMessage();
+        TranscriptEntry answer = model.getEntries().get(0);
+        model.setAssistantActivity("Wissen wird gesucht …");
+        assertEquals("Wissen wird gesucht …", answer.getActivity());
+        model.appendAssistantDelta("Ant");
+        assertEquals("", answer.getActivity());
+        model.setAssistantActivity("zu spät");
+        assertEquals("Text hat Vorrang", "", answer.getActivity());
+        model.completeAssistantMessage();
+
+        TranscriptEntry second = model.beginAssistantMessage();
+        model.setAssistantActivity("sucht");
+        model.cancelAssistantMessage();
+        assertEquals("", second.getActivity());
+    }
+
     private static void expectIllegalState(Runnable action) {
         try {
             action.run();

@@ -14,6 +14,10 @@ import java.util.function.LongSupplier;
  * des Streamings kann nicht gesendet, aber gestoppt werden. Ungültige Übergänge (Delta ohne laufende Antwort,
  * zweite Antwort parallel) sind Programmierfehler und werfen {@link IllegalStateException}.
  *
+ * <p>Mit RAG (AP22) bekommt die laufende Antwort ihre {@link SourceReference Quellen} angehängt, sobald das
+ * Retrieval abgeschlossen ist, also vor oder während des Streamings; Hinweise der Anwendung (ausgefallene
+ * Wissenssuche, ausgefallener Suchpfad) sind eigene {@link TranscriptEntry.Author#NOTICE Hinweiszeilen}.
+ *
  * <p>Nicht threadsicher: In der Anwendung nur auf dem Event Dispatch Thread verwenden; die Anbindung an den
  * Chat-Use-Case reicht dessen Callbacks dorthin weiter. Tests nutzen es direkt (headless).
  */
@@ -111,6 +115,59 @@ public final class ChatShellModel {
     /** Die Antwort wurde abgebrochen; bereits empfangener Text bleibt sichtbar. */
     public void cancelAssistantMessage() {
         finishStreaming(TranscriptEntry.State.CANCELLED, null);
+    }
+
+    /**
+     * Zeigt in der laufenden, noch leeren Antwort, was die Anwendung gerade tut (z. B. "Wissen wird gesucht …").
+     * Verfällt mit dem ersten Delta und beim Abschluss; leer entfernt den Text.
+     */
+    public void setAssistantActivity(String activity) {
+        TranscriptEntry entry = requireStreaming();
+        if (!entry.getText().isEmpty()) {
+            return; // Es wird schon geantwortet; der Text hat Vorrang.
+        }
+        entry.setActivity(activity);
+        fireEntryUpdated(entry);
+    }
+
+    /**
+     * Hängt einer Assistentenantwort ihre Quellen an (AP22), höchstens einmal je Antwort. Erlaubt in jedem
+     * Zustand der Antwort, weil das Retrieval seine Quellen vor dem Streaming kennt, die Antwort eines schnellen
+     * Backends aber schon abgeschlossen sein kann, wenn die Quellen auf dem UI-Thread ankommen. Eine leere Liste
+     * ist zulässig und ändert nichts.
+     *
+     * @throws IllegalArgumentException wenn {@code entry} nicht zu diesem Model gehört oder keine Antwort ist
+     * @throws IllegalStateException    wenn die Antwort schon Quellen hat
+     */
+    public void attachSources(TranscriptEntry entry, List<SourceReference> sources) {
+        if (entry == null || sources == null) {
+            throw new IllegalArgumentException("entry and sources must not be null");
+        }
+        if (!entries.contains(entry) || entry.getAuthor() != TranscriptEntry.Author.ASSISTANT) {
+            throw new IllegalArgumentException("entry is not an assistant message of this model");
+        }
+        if (entry.hasSources()) {
+            throw new IllegalStateException("the answer already has sources");
+        }
+        if (sources.isEmpty()) {
+            return;
+        }
+        entry.setSources(sources);
+        fireEntryUpdated(entry);
+    }
+
+    /**
+     * Fügt einen Hinweis der Anwendung an (eigene Zeile, sofort vollständig), z. B. dass die Wissenssuche
+     * ausgefallen ist. Darf auch während einer laufenden Antwort gerufen werden. {@code text} ist für Menschen
+     * bestimmt und enthält keine Secrets.
+     */
+    public TranscriptEntry addNotice(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            throw new IllegalArgumentException("text must not be blank");
+        }
+        TranscriptEntry entry = newEntry(TranscriptEntry.Author.NOTICE, text, TranscriptEntry.State.COMPLETE);
+        fireEntryAdded(entry);
+        return entry;
     }
 
     /** Die Antwort ist fehlgeschlagen. {@code message} ist für Menschen bestimmt und enthält keine Secrets. */
