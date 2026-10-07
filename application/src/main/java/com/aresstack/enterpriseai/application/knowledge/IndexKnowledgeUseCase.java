@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
@@ -22,8 +23,11 @@ import com.aresstack.enterpriseai.source.api.SourceScope;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -39,6 +43,18 @@ import java.util.Set;
  *   <li>Ein Fehler betrifft nur seine Ressource ({@link IndexingStatus#FAILED} mit {@link IndexingStage}); der Lauf
  *       geht weiter. Nur eine gescheiterte Discovery beendet den Lauf (im Bericht, nicht als Ausnahme).</li>
  *   <li>Meldet die Quelle eine Ressource beim Laden als {@code NOT_FOUND}, werden ihre Chunks entfernt.</li>
+ *   <li>Unverändert heißt übersprungen: Liefert die Discovery für eine Ressource dieselbe <em>bekannte</em>
+ *       Revision, die {@link KnowledgeIndexPort#revisionOf} im Namespace speichert, wird sie weder geladen noch
+ *       vektorisiert ({@link IndexingStatus#UNCHANGED}). Eine unbekannte Revision gilt als verändert; ebenso eine
+ *       Ressource, deren Chunks uneinheitlich indexiert sind.</li>
+ *   <li>Verschwunden heißt entfernt: Am Ende eines vollständigen {@link #indexSource}-Laufs (nicht abgebrochen,
+ *       Discovery gelungen) werden die Ressourcen der Quelle, die {@link KnowledgeIndexPort#resourceIds} noch
+ *       kennt, die Discovery aber nicht mehr geliefert hat und die in diesem Lauf nicht berührt wurden, aus dem
+ *       eigenen Namespace entfernt ({@link IndexingStatus#PRUNED}; leeres {@link KnowledgeIndexPort#replace},
+ *       andere Embedding-Welten bleiben unberührt). Eine leere, aber gelungene Discovery räumt die Quelle damit
+ *       leer. Scheitert die Abfrage der indexierten Ressourcen, meldet der Bericht
+ *       {@link IndexingReport#pruneFailed()} und nichts wird entfernt. Ein Abbruch nach der letzten Ressource
+ *       oder während der Bereinigung beendet sie; der Bericht ist dann abgebrochen.</li>
  *   <li>Weiterleitungen: Trägt das geladene Dokument eine andere ID als angefragt, wird unter der Ziel-ID
  *       indexiert und die angefragte ID erst danach aus dem Index entfernt; ein Ziel wird je Lauf nur einmal
  *       erfolgreich indexiert, ein gescheiterter Versuch wird bei der nächsten Weiterleitung wiederholt.</li>
@@ -48,8 +64,10 @@ import java.util.Set;
  *       {@code embeddingBatchSize} Texten.</li>
  * </ul>
  *
- * <p>Nicht enthalten: ein Überspringen unveränderter Ressourcen. Der {@link KnowledgeIndexPort} bietet keine
- * Abfrage der indexierten Revision; jeder Lauf lädt und vektorisiert deshalb alle gefundenen Ressourcen neu.
+ * <p>{@link #indexResources} indexiert die genannten Ressourcen immer neu (kein Überspringen, es kennt keine
+ * Discovery-Revision) und bereinigt nicht anhand der Discovery (es kennt keinen vollständigen Stand der Quelle).
+ * Wie bisher entfernt es die Chunks einer genannten Ressource, die beim Laden {@code NOT_FOUND} meldet oder leer
+ * ist.
  *
  * <p>Blockiert für den ganzen Lauf; Aufrufer aus der Oberfläche starten ihn auf einem eigenen Thread und brechen
  * über {@link IndexingListener#isCancelled()} ab. Zustandslos und threadsicher, soweit die Ports es sind.
@@ -113,10 +131,12 @@ public final class IndexKnowledgeUseCase {
         }
         observer.onDiscovered(Collections.unmodifiableList(new ArrayList<KnowledgeResource>(resources)));
         List<KnowledgeResourceId> ids = new ArrayList<KnowledgeResourceId>(resources.size());
+        Map<KnowledgeResourceId, KnowledgeResource> discovered = new HashMap<KnowledgeResourceId, KnowledgeResource>();
         for (KnowledgeResource resource : resources) {
             ids.add(resource.id());
+            discovered.put(resource.id(), resource);
         }
-        return run(source, ids, resources.size(), observer);
+        return run(source, ids, discovered, resources.size(), observer, true);
     }
 
     /** Indexiert einzelne, bereits bekannte Ressourcen der Quelle neu (z. B. nach einer Änderung). */
@@ -126,7 +146,8 @@ public final class IndexKnowledgeUseCase {
             throw new IllegalArgumentException("source und resourceIds sind Pflicht");
         }
         List<KnowledgeResourceId> ids = new ArrayList<KnowledgeResourceId>(resourceIds);
-        return run(source, ids, ids.size(), listener == null ? IndexingListener.none() : listener);
+        return run(source, ids, Collections.<KnowledgeResourceId, KnowledgeResource>emptyMap(), ids.size(),
+                listener == null ? IndexingListener.none() : listener, false);
     }
 
     /** Entfernt alle Chunks einer Quelle aus dem Index, z. B. wenn sie aus der Konfiguration fällt. */
@@ -134,8 +155,14 @@ public final class IndexKnowledgeUseCase {
         index.removeSource(sourceId);
     }
 
-    private IndexingReport run(KnowledgeSourcePort source, List<KnowledgeResourceId> ids, int discovered,
-                               IndexingListener listener) {
+    /**
+     * @param discoveredResources die Discovery-Sicht je ID (Revision für das Überspringen); leer bei
+     *                            {@link #indexResources}
+     * @param prune               am Ende verschwundene Ressourcen entfernen (nur nach vollständiger Discovery)
+     */
+    private IndexingReport run(KnowledgeSourcePort source, List<KnowledgeResourceId> ids,
+                               Map<KnowledgeResourceId, KnowledgeResource> discoveredResources, int discovered,
+                               IndexingListener listener, boolean prune) {
         List<ResourceIndexingOutcome> outcomes = new ArrayList<ResourceIndexingOutcome>(ids.size());
         Set<KnowledgeResourceId> done = new HashSet<KnowledgeResourceId>();
         boolean cancelled = false;
@@ -144,11 +171,89 @@ public final class IndexKnowledgeUseCase {
                 cancelled = true;
                 break;
             }
-            ResourceIndexingOutcome outcome = indexOne(source, id, done);
+            KnowledgeResource known = discoveredResources.get(id);
+            ResourceIndexingOutcome outcome;
+            if (known != null && isUnchanged(id, known.revision())) {
+                done.add(id);
+                outcome = ResourceIndexingOutcome.done(id, known.title(), IndexingStatus.UNCHANGED, 0);
+            } else {
+                outcome = indexOne(source, id, done);
+            }
             outcomes.add(outcome);
             listener.onResource(outcome);
         }
-        return new IndexingReport(source.sourceId(), discovered, outcomes, cancelled, null);
+        String pruneFailure = null;
+        if (prune && !cancelled) {
+            if (listener.isCancelled()) {
+                cancelled = true; // Abbruch nach der letzten Ressource: nichts mehr entfernen
+            } else {
+                Set<KnowledgeResourceId> touched = new HashSet<KnowledgeResourceId>(ids);
+                for (ResourceIndexingOutcome outcome : outcomes) {
+                    touched.add(outcome.resourceId());
+                }
+                List<KnowledgeResourceId> stale;
+                try {
+                    stale = staleResources(source.sourceId(), touched);
+                } catch (KnowledgeIndexException e) {
+                    stale = Collections.emptyList();
+                    pruneFailure = e.getMessage() == null ? "Abfrage der indexierten Ressourcen fehlgeschlagen"
+                            : e.getMessage();
+                }
+                for (KnowledgeResourceId id : stale) {
+                    if (listener.isCancelled()) {
+                        cancelled = true;
+                        break;
+                    }
+                    ResourceIndexingOutcome outcome = pruneOne(id);
+                    outcomes.add(outcome);
+                    listener.onResource(outcome);
+                }
+            }
+        }
+        return new IndexingReport(source.sourceId(), discovered, outcomes, cancelled, null, pruneFailure);
+    }
+
+    /** Unverändert nur bei bekannter Discovery-Revision, die der sauber gespeicherten gleicht. */
+    private boolean isUnchanged(KnowledgeResourceId id, KnowledgeRevision discovered) {
+        if (discovered == null || !discovered.isKnown()) {
+            return false;
+        }
+        try {
+            Optional<KnowledgeRevision> stored = index.revisionOf(space, id);
+            return stored.isPresent() && stored.get().equals(discovered);
+        } catch (KnowledgeIndexException e) {
+            // Die Abfrage ist nur eine Abkürzung; im Zweifel neu indexieren.
+            return false;
+        }
+    }
+
+    /**
+     * Die im eigenen Namespace indexierten Ressourcen der Quelle, die dieser Lauf nicht berührt hat (weder entdeckt
+     * noch als Weiterleitungsziel geladen), in Indexreihenfolge.
+     *
+     * @throws KnowledgeIndexException wenn der Index die Abfrage nicht beantworten kann
+     */
+    private List<KnowledgeResourceId> staleResources(KnowledgeSourceId sourceId, Set<KnowledgeResourceId> touched) {
+        List<KnowledgeResourceId> stale = new ArrayList<KnowledgeResourceId>();
+        for (KnowledgeResourceId id : index.resourceIds(space, sourceId)) {
+            if (!touched.contains(id)) {
+                stale.add(id);
+            }
+        }
+        return stale;
+    }
+
+    /**
+     * Entfernt die Chunks der Ressource nur aus dem eigenen Namespace (leeres {@code replace}); eine andere
+     * Embedding-Welt, die dieselbe Ressource hält, bereinigt sich in ihrem eigenen Lauf.
+     */
+    private ResourceIndexingOutcome pruneOne(KnowledgeResourceId id) {
+        try {
+            index.replace(space, id, Collections.<KnowledgeIndexEntry>emptyList());
+            return ResourceIndexingOutcome.done(id, "", IndexingStatus.PRUNED, 0);
+        } catch (KnowledgeIndexException e) {
+            return ResourceIndexingOutcome.failed(id, "", IndexingStage.INDEXING, e.getMessage());
+        }
     }
 
     private ResourceIndexingOutcome indexOne(KnowledgeSourcePort source, KnowledgeResourceId requested,

@@ -188,7 +188,16 @@ Der normale Chat bleibt unverändert; RAG legt sich von außen darum. Einstiegsp
 
 - `application.knowledge.IndexKnowledgeUseCase`: Quelle → discover → load → `KnowledgeChunker` → `EmbeddingPort`
   (Batches) → `KnowledgeIndexPort.replace` je Ressource. Seriell, Fehler je Ressource im `IndexingReport`,
-  Abbruch über `IndexingListener`.
+  Abbruch über `IndexingListener`. Der Index führt (AP20-Folge, Contract-Commit D): Eine Ressource, deren bekannte
+  Discovery-Revision der gespeicherten (`KnowledgeIndexPort.revisionOf`) gleicht, wird übersprungen
+  (`UNCHANGED`, weder geladen noch vektorisiert; unbekannte Revision gilt als verändert). Am Ende eines
+  vollständigen `indexSource`-Laufs werden Ressourcen der Quelle, die der Index noch kennt
+  (`KnowledgeIndexPort.resourceIds`), die Discovery aber nicht mehr geliefert hat, aus dem eigenen Namespace
+  entfernt (`PRUNED`, leeres `replace`; andere Embedding-Welten bleiben unberührt); ein abgebrochener Lauf (auch
+  ein Abbruch während der Bereinigung) oder eine gescheiterte Discovery entfernt nichts weiter, eine leere
+  gelungene Discovery räumt die Quelle leer. `indexResources` überspringt nichts und bereinigt nicht anhand der
+  Discovery; wie bisher entfernt es nur die Chunks einer genannten Ressource, die beim Laden `NOT_FOUND` meldet
+  oder leer ist.
 - `application.rag.RetrieveKnowledgeUseCase`: Volltext und Cosine im Namespace der konfigurierten
   `EmbeddingModelIdentity`, Fusion per Reciprocal Rank Fusion (`RetrievalSettings`); fällt ein Pfad aus, liefert
   der andere mit Warnung.
@@ -211,10 +220,11 @@ MCP-Client → McpServerRegistry (mcp-solon-runtime) → McpToolContribution (ap
 - `application.mcp.KnowledgeMcpTools(retrieval, documents, refresh, settings)` liefert drei Contributions:
   `search_knowledge` (`query`, optional `max_results`, `source_ids` als kommagetrennte Quell-IDs; hybride Suche,
   je Treffer Titel, Überschrift, Dokument- und Chunk-ID, Quelle, Ort, Stand, RRF- und Rohscores, Textausschnitt),
-  `get_knowledge_document` (`id`, optional `source_id`; vollständiger Text aus der Quelle, nicht aus dem Index) und
-  `refresh_knowledge_source` (`source_id`; synchrone Neuindexierung im `SourceScope` der Quelle, Zusammenfassung
-  des `IndexingReport` mit Fehlern je Stufe). Parameter sind flach (`McpToolParameter`), weil der MCP-Port keine
-  Array-Typen kennt.
+  `get_knowledge_document` (`id`, optional `source_id`; nur indexierte Dokumente, vollständiger Text frisch aus der
+  Quelle, nicht aus dem Index) und `refresh_knowledge_source` (`source_id`; synchroner Abgleich des Index mit der
+  Quelle in ihrem `SourceScope`: Neues und Geändertes indexieren, Unverändertes überspringen, Verschwundenes
+  entfernen; Zusammenfassung des `IndexingReport` mit Fehlern je Stufe). Parameter sind flach
+  (`McpToolParameter`), weil der MCP-Port keine Array-Typen kennt.
 - Ergebnisse sind strukturierter Text; Fehler sind `McpToolResult.error` mit knapper Meldung ohne Stacktrace,
   Zugangsdaten oder Token. Meldungen der Port-Ausnahmen (`KnowledgeIndexException`, `KnowledgeSourceException`,
   `RetrievalWarning`) gelangen nie in eine Werkzeugantwort: Sie sind für Log und Anzeige gedacht und können
@@ -223,13 +233,17 @@ MCP-Client → McpServerRegistry (mcp-solon-runtime) → McpToolContribution (ap
   gekennzeichnet), Snippetlänge, Standard-Trefferzahl und die Zahl aufgezählter Fehler.
 - Quellen: `application.knowledge.KnowledgeSourceCatalog` aus `KnowledgeSourceRegistration` (Port + `SourceScope`),
   von der Composition Root befüllt. Die Werkzeuge kennen daraus nur die Quell-IDs; Port und Scope nehmen allein die
-  Use Cases in die Hand: `LoadKnowledgeDocumentUseCase` fragt die Quellen in Katalogreihenfolge und überspringt,
-  was eine Quelle als fremde ID (`UNSUPPORTED`) ablehnt; `RefreshKnowledgeSourceUseCase(indexing, catalog)`
-  indexiert eine Quelle anhand ihrer ID in ihrem konfigurierten Scope neu.
-- Bekannte Grenze (Entscheidung offen): Die Werkzeuge prüfen nicht, ob ein Dokument im konfigurierten Scope liegt
-  oder indexiert ist (`get_knowledge_document` lädt jede ID, die die Quelle akzeptiert), und eine Aktualisierung
-  entfernt keine Ressourcen, die die Discovery nicht mehr liefert. Beides bräuchte am `KnowledgeIndexPort` eine
-  Abfrage der indexierten Ressourcen je Quelle (Contract-Commit, Strang D).
+  Use Cases in die Hand: `LoadKnowledgeDocumentUseCase(catalog, index, space)` lädt nur Ressourcen, die im
+  Namespace der konfigurierten Embedding-Welt indexiert sind, und zwar aus der Quelle, unter der sie indexiert
+  sind; alles andere ist `KnowledgeDocumentNotIndexedException`, ohne dass eine Quelle gefragt wird.
+  `RefreshKnowledgeSourceUseCase(indexing, catalog)` gleicht eine Quelle anhand ihrer ID in ihrem konfigurierten
+  Scope mit dem Index ab.
+- Der Index führt (Entscheidung Koordinator, empfohlene Option der Entscheidungskarte an Angelo; Codex P1/P2 aus
+  PR #24): Der Agent sieht nur den freigegebenen Korpus, also das, was `IndexKnowledgeUseCase` im konfigurierten
+  Scope indexiert hat. Der Scope selbst (Startpunkte, Tiefe, Höchstzahl) ist ohne Crawl nicht auf eine ID
+  anwendbar, der Index ist sein Abdruck. Die Composition Root verdrahtet deshalb die indexgeführte Variante; der
+  Konstruktor `LoadKnowledgeDocumentUseCase(catalog)` ohne Index (Quellen entscheiden per `UNSUPPORTED`) bleibt
+  für den Fall, dass Angelo anders entscheidet.
 - Lebenszyklus: Die Composition Root registriert `contributions()` mit `McpServerRegistry.updateTools` am Endpoint
   des Agenten (AP21) und ruft beim Abmelden `KnowledgeMcpTools.shutdown()`; eine laufende Aktualisierung bricht
   dann zwischen zwei Ressourcen ab, neue werden abgewiesen. Je Quelle läuft höchstens eine Aktualisierung.

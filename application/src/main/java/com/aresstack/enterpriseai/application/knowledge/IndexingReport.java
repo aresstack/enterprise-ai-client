@@ -14,14 +14,21 @@ public final class IndexingReport {
     private final List<ResourceIndexingOutcome> outcomes;
     private final boolean cancelled;
     private final String discoveryFailure;
+    private final String pruneFailure;
 
     IndexingReport(KnowledgeSourceId sourceId, int discovered, List<ResourceIndexingOutcome> outcomes,
                    boolean cancelled, String discoveryFailure) {
+        this(sourceId, discovered, outcomes, cancelled, discoveryFailure, null);
+    }
+
+    IndexingReport(KnowledgeSourceId sourceId, int discovered, List<ResourceIndexingOutcome> outcomes,
+                   boolean cancelled, String discoveryFailure, String pruneFailure) {
         this.sourceId = sourceId;
         this.discovered = discovered;
         this.outcomes = Collections.unmodifiableList(new ArrayList<ResourceIndexingOutcome>(outcomes));
         this.cancelled = cancelled;
         this.discoveryFailure = discoveryFailure;
+        this.pruneFailure = pruneFailure;
     }
 
     public KnowledgeSourceId sourceId() {
@@ -33,7 +40,10 @@ public final class IndexingReport {
         return discovered;
     }
 
-    /** Je verarbeitete Ressource ein Eintrag, in Verarbeitungsreihenfolge. */
+    /**
+     * Je verarbeitete Ressource ein Eintrag, in Verarbeitungsreihenfolge; am Ende die aus dem Index entfernten
+     * ({@link IndexingStatus#PRUNED}), weil die Discovery sie nicht mehr geliefert hat.
+     */
     public List<ResourceIndexingOutcome> outcomes() {
         return outcomes;
     }
@@ -71,16 +81,31 @@ public final class IndexingReport {
         return discoveryFailure == null ? "" : discoveryFailure;
     }
 
-    /** Lauf vollständig, ohne gescheiterte Ressource. */
+    /**
+     * Die Abfrage der indexierten Ressourcen am Ende des Laufs ist gescheitert; verschwundene Ressourcen wurden
+     * nicht entfernt, alles andere gilt.
+     */
+    public boolean pruneFailed() {
+        return pruneFailure != null;
+    }
+
+    /** Meldung zur gescheiterten Bereinigung oder leer. */
+    public String pruneFailure() {
+        return pruneFailure == null ? "" : pruneFailure;
+    }
+
+    /** Lauf vollständig: nicht abgebrochen, Discovery und Bereinigung gelungen, keine gescheiterte Ressource. */
     public boolean isComplete() {
-        return !cancelled && !discoveryFailed() && count(IndexingStatus.FAILED) == 0;
+        return !cancelled && !discoveryFailed() && !pruneFailed() && count(IndexingStatus.FAILED) == 0;
     }
 
     @Override
     public String toString() {
         return "IndexingReport{" + sourceId + ", discovered=" + discovered + ", indexed="
-                + count(IndexingStatus.INDEXED) + ", failed=" + count(IndexingStatus.FAILED) + ", chunks="
+                + count(IndexingStatus.INDEXED) + ", unchanged=" + count(IndexingStatus.UNCHANGED) + ", pruned="
+                + count(IndexingStatus.PRUNED) + ", failed=" + count(IndexingStatus.FAILED) + ", chunks="
                 + chunkCount() + (cancelled ? ", cancelled" : "")
-                + (discoveryFailed() ? ", discoveryFailure=" + discoveryFailure : "") + "}";
+                + (discoveryFailed() ? ", discoveryFailure=" + discoveryFailure : "")
+                + (pruneFailed() ? ", pruneFailure=" + pruneFailure : "") + "}";
     }
 }

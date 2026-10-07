@@ -6,6 +6,11 @@
  * sie kennen weder Index-, Embedding- noch Quell-Port oder -Adapter und keinen Transport. Registriert werden die
  * Contributions in der Composition Root an einem {@code McpServerRegistry}.
  *
+ * <p>Der Index führt: {@code get_knowledge_document} liest nur Dokumente, die im Wissensindex liegen (indexgeführter
+ * {@code LoadKnowledgeDocumentUseCase}), {@code refresh_knowledge_source} überspringt unveränderte Seiten und
+ * entfernt aus dem Index, was die Discovery der Quelle nicht mehr liefert. Der Agent sieht so genau den Korpus,
+ * den die Indexierung im konfigurierten Scope aufgebaut hat.
+ *
  * <p>Ergebnisse sind kurzer, strukturierter Text für das Modell; Fehler sind {@code McpToolResult.error} mit knapper,
  * geheimnisfreier Meldung (keine Stacktraces, keine URLs mit Zugangsdaten, keine Tokens). Meldungen der
  * Port-Ausnahmen gelangen nie in eine Antwort, weil sie Infrastrukturdaten wie Indexpfade nennen können; die

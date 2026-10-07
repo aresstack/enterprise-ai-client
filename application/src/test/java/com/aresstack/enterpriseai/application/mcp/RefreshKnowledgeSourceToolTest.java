@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -40,8 +41,10 @@ public class RefreshKnowledgeSourceToolTest {
                 + "Status: vollständig\n"
                 + "Gefunden: 3\n"
                 + "Indexiert: 3 (Chunks: 3)\n"
+                + "Unverändert: 0\n"
                 + "Leer: 0\n"
                 + "Entfernt: 0\n"
+                + "Verschwunden: 0\n"
                 + "Duplikate: 0\n"
                 + "Fehler: 0", text);
         assertEquals(1, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "entkalkt", 5)).size());
@@ -73,7 +76,10 @@ public class RefreshKnowledgeSourceToolTest {
         Map<String, KnowledgeSourceException.Kind> loadFailures = new HashMap<String, KnowledgeSourceException.Kind>();
         KnowledgeToolFixture f = withFlakySource(KnowledgeToolSettings.defaults(), flaky, loadFailures);
         assertTrue(f.indexing.indexSource(flaky, SourceScope.of("A", "B", "C"), null).isComplete());
+        // Alle drei geändert, sonst würden sie als unverändert übersprungen und gar nicht erst geladen.
+        flaky.update("A", "Alpha Inhalt, überarbeitet");
         flaky.update("B", "   ");
+        flaky.update("C", "Gamma Inhalt, überarbeitet");
         loadFailures.put("A", KnowledgeSourceException.Kind.UNAVAILABLE);
         loadFailures.put("C", KnowledgeSourceException.Kind.NOT_FOUND);
 
@@ -82,8 +88,10 @@ public class RefreshKnowledgeSourceToolTest {
         assertTrue(text, text.contains("Status: abgeschlossen mit Fehlern\n"));
         assertTrue(text, text.contains("Gefunden: 3\n"));
         assertTrue(text, text.contains("Indexiert: 0 (Chunks: 0)\n"));
+        assertTrue(text, text.contains("Unverändert: 0\n"));
         assertTrue(text, text.contains("Leer: 1\n"));
         assertTrue(text, text.contains("Entfernt: 1\n"));
+        assertTrue(text, text.contains("Verschwunden: 0\n"));
         assertTrue(text, text.contains("Fehler: 1 (Laden: 1, Embedding: 0, Index: 0)\n"));
         assertTrue(text, text.contains("  - memory:flaky/A: Laden aus der Quelle fehlgeschlagen"));
         assertFalse("die Port-Meldung bleibt dem Modell verborgen", text.contains("simulated"));
@@ -91,6 +99,51 @@ public class RefreshKnowledgeSourceToolTest {
                 1, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "Alpha", 5)).size());
         assertEquals(0, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "Beta", 5)).size());
         assertEquals(0, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "Gamma", 5)).size());
+    }
+
+    @Test
+    public void secondRefreshSkipsUnchangedPagesAndRemovesVanishedOnes() {
+        KnowledgeToolFixture f = new KnowledgeToolFixture().indexed();
+        int before = f.wiki.calls().size();
+        f.wiki.update("Drucker", "Drucker werden jetzt zentral per IPP verteilt.");
+        f.wiki.remove("Kaffee");
+
+        String text = f.ok(TOOL, "source_id", "wiki");
+
+        assertEquals("Quelle: wiki\n"
+                + "Status: vollständig\n"
+                + "Gefunden: 2\n"
+                + "Indexiert: 1 (Chunks: 1)\n"
+                + "Unverändert: 1\n"
+                + "Leer: 0\n"
+                + "Entfernt: 0\n"
+                + "Verschwunden: 1\n"
+                + "Duplikate: 0\n"
+                + "Fehler: 0", text);
+        List<String> calls = f.wiki.calls().subList(before, f.wiki.calls().size());
+        assertEquals("nur die geänderte Seite wird geladen", Arrays.asList("discover:[Java, Drucker, Kaffee]", "load:Drucker"),
+                calls);
+        assertEquals(1, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "IPP", 5)).size());
+        assertEquals(0, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "CUPS", 5)).size());
+        assertEquals("unverändert bleibt", 1, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "openjdk", 5)).size());
+        assertEquals("verschwunden ist weg", 0, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "entkalkt", 5)).size());
+    }
+
+    @Test
+    public void failedPruneIsReportedWithoutTheIndexMessageAndRemovesNothing() {
+        KnowledgeToolFixture f = new KnowledgeToolFixture().indexed();
+        f.wiki.remove("Kaffee");
+        f.index.failResourceIds = true;
+
+        String text = f.ok(TOOL, "source_id", "wiki");
+
+        assertTrue(text, text.contains("Status: abgeschlossen mit Fehlern\n"));
+        assertTrue(text, text.contains("Unverändert: 2\n"));
+        assertTrue(text, text.contains("Verschwunden: 0\n"));
+        assertTrue(text, text.contains("Fehler: 0\n"));
+        assertTrue(text, text.endsWith("Bereinigung: fehlgeschlagen, verschwundene Dokumente wurden nicht entfernt"));
+        assertFalse("Indexpfade bleiben dem Modell verborgen", text.contains("/var/lib"));
+        assertEquals(1, f.index.keywordSearch(KnowledgeKeywordQuery.of(f.space, "entkalkt", 5)).size());
     }
 
     @Test

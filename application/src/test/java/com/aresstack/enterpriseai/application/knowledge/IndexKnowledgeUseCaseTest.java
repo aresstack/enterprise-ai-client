@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
@@ -17,8 +18,11 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexException;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeKeywordQuery;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeSearchHit;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeSemanticQuery;
 import com.aresstack.enterpriseai.knowledge.api.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -30,10 +34,13 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -145,6 +152,7 @@ public class IndexKnowledgeUseCaseTest {
     @Test
     public void loadFailureAffectsOnlyItsResourceAndKeepsItsOldChunks() {
         useCase.indexSource(wiki, SourceScope.of("Drucker"), null);
+        wiki.update("Drucker", "Drucker werden jetzt zentral per IPP verteilt."); // sonst unverändert → übersprungen
         ScriptedSource flaky = new ScriptedSource(wiki)
                 .failLoad(wiki.idOf("Drucker"), KnowledgeSourceException.Kind.UNAVAILABLE);
 
@@ -265,6 +273,291 @@ public class IndexKnowledgeUseCaseTest {
         assertEquals(0, index.size());
     }
 
+    private static final SourceScope ALL = SourceScope.of("Java", "Drucker", "Kaffee");
+
+    @Test
+    public void secondRunSkipsUnchangedResourcesWithoutLoadingOrEmbedding() {
+        assertTrue(useCase.indexSource(wiki, ALL, null).isComplete());
+        int sourceCalls = wiki.calls().size();
+        int embeddingCalls = embeddings.calls().size();
+        final List<String> events = new ArrayList<String>();
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, new IndexingListener() {
+            @Override
+            public void onDiscovered(List<KnowledgeResource> resources) {
+            }
+
+            @Override
+            public void onResource(ResourceIndexingOutcome outcome) {
+                events.add(outcome.title() + ":" + outcome.status() + ":" + outcome.chunkCount());
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return false;
+            }
+        });
+
+        assertTrue(report.toString(), report.isComplete());
+        assertEquals(3, report.discovered());
+        assertEquals(3, report.count(IndexingStatus.UNCHANGED));
+        assertEquals(0, report.count(IndexingStatus.INDEXED));
+        assertEquals(0, report.chunkCount());
+        assertEquals(Arrays.asList("Java installieren:UNCHANGED:0", "Drucker einrichten:UNCHANGED:0",
+                "Kaffeemaschine:UNCHANGED:0"), events);
+        assertEquals("nur die Discovery, kein Laden", Collections.singletonList("discover:[Java, Drucker, Kaffee]"),
+                wiki.calls().subList(sourceCalls, wiki.calls().size()));
+        assertEquals("kein Embedding", embeddingCalls, embeddings.calls().size());
+        assertEquals("die Chunks bleiben", 3, index.size());
+        assertEquals(1, keyword("entkalkt").size());
+    }
+
+    @Test
+    public void onlyTheChangedResourceIsReloaded() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.update("Drucker", "Drucker werden jetzt zentral per IPP verteilt.");
+        int sourceCalls = wiki.calls().size();
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, null);
+
+        assertEquals(1, report.count(IndexingStatus.INDEXED));
+        assertEquals(2, report.count(IndexingStatus.UNCHANGED));
+        assertEquals(Arrays.asList("discover:[Java, Drucker, Kaffee]", "load:Drucker"),
+                wiki.calls().subList(sourceCalls, wiki.calls().size()));
+        assertTrue(keyword("CUPS").isEmpty());
+        assertEquals(1, keyword("IPP").size());
+    }
+
+    @Test
+    public void unknownRevisionOnEitherSideCountsAsChanged() {
+        // Discovery ohne Revision: jeder Lauf lädt neu, auch wenn der Index eine kennt.
+        RevisionStrippingSource noDiscoveryRevision = new RevisionStrippingSource(wiki, true, false);
+        useCase.indexSource(noDiscoveryRevision, SourceScope.of("Java"), null);
+        IndexingReport report = useCase.indexSource(noDiscoveryRevision, SourceScope.of("Java"), null);
+        assertEquals(1, report.count(IndexingStatus.INDEXED));
+        assertEquals(0, report.count(IndexingStatus.UNCHANGED));
+
+        // Index ohne Revision (Quelle liefert sie nur bei der Discovery): ebenfalls neu laden.
+        RevisionStrippingSource noLoadRevision = new RevisionStrippingSource(wiki, false, true);
+        useCase.indexSource(noLoadRevision, SourceScope.of("Kaffee"), null);
+        assertEquals(Optional.of(KnowledgeRevision.unknown()), index.revisionOf(space, wiki.idOf("Kaffee")));
+        report = useCase.indexSource(noLoadRevision, SourceScope.of("Kaffee"), null);
+        assertEquals(1, report.count(IndexingStatus.INDEXED));
+        assertEquals(0, report.count(IndexingStatus.UNCHANGED));
+    }
+
+    @Test
+    public void vanishedResourcesArePrunedAtTheEndOfIndexSource() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+        final List<String> events = new ArrayList<String>();
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, new IndexingListener() {
+            @Override
+            public void onDiscovered(List<KnowledgeResource> resources) {
+            }
+
+            @Override
+            public void onResource(ResourceIndexingOutcome outcome) {
+                events.add(outcome.resourceId().value() + ":" + outcome.status());
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return false;
+            }
+        });
+
+        assertTrue(report.toString(), report.isComplete());
+        assertEquals(2, report.discovered());
+        assertEquals(2, report.count(IndexingStatus.UNCHANGED));
+        assertEquals(1, report.count(IndexingStatus.PRUNED));
+        assertEquals(3, report.outcomes().size());
+        ResourceIndexingOutcome pruned = report.outcomes().get(2);
+        assertEquals(wiki.idOf("Kaffee"), pruned.resourceId());
+        assertEquals(IndexingStatus.PRUNED, pruned.status());
+        assertEquals("memory:wiki/Kaffee:PRUNED", events.get(2));
+        assertTrue(keyword("entkalkt").isEmpty());
+        assertEquals(2, index.size());
+    }
+
+    @Test
+    public void pruneSparesFailedResourcesAndRedirectTargets() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+        wiki.update("Drucker", "Drucker werden jetzt zentral per IPP verteilt.");
+        KnowledgeResourceId alias = KnowledgeResourceId.of("inmemory:wiki/JavaAlias");
+        ScriptedSource scripted = new ScriptedSource(wiki)
+                .failLoad(wiki.idOf("Drucker"), KnowledgeSourceException.Kind.UNAVAILABLE)
+                .redirect(alias, wiki.idOf("Java"))
+                .discoverAlso(KnowledgeResource.builder(alias, KnowledgeSourceId.of("wiki")).title("Alias").build());
+
+        // Scope ohne Java: Java wird nur als Weiterleitungsziel des Alias geladen.
+        IndexingReport report = useCase.indexSource(scripted, SourceScope.of("Drucker", "Kaffee"), null);
+
+        assertEquals(1, report.count(IndexingStatus.FAILED));
+        assertEquals("Alias → Java neu indexiert", 1, report.count(IndexingStatus.INDEXED));
+        assertEquals(1, report.count(IndexingStatus.PRUNED));
+        assertEquals("gescheiterte Ressource behält ihren alten Stand", 1, keyword("CUPS").size());
+        assertEquals("Weiterleitungsziel bleibt", 1, keyword("openjdk").size());
+        assertTrue("nur die verschwundene Seite ist weg", keyword("entkalkt").isEmpty());
+    }
+
+    @Test
+    public void cancelledRunDoesNotPrune() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, new IndexingListener() {
+            private int seen;
+
+            @Override
+            public void onDiscovered(List<KnowledgeResource> resources) {
+            }
+
+            @Override
+            public void onResource(ResourceIndexingOutcome outcome) {
+                seen++;
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return seen >= 1;
+            }
+        });
+
+        assertTrue(report.isCancelled());
+        assertEquals(0, report.count(IndexingStatus.PRUNED));
+        assertEquals("ohne vollständigen Lauf bleibt alles stehen", 1, keyword("entkalkt").size());
+    }
+
+    @Test
+    public void pruneRemovesOnlyFromItsOwnNamespace() {
+        DeterministicEmbeddingPort otherEmbeddings = DeterministicEmbeddingPort.withDimension(8);
+        EmbeddingModelIdentity otherSpace = otherEmbeddings.modelIdentity();
+        IndexKnowledgeUseCase otherWorld = new IndexKnowledgeUseCase(index, otherEmbeddings, otherSpace,
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+        useCase.indexSource(wiki, ALL, null);
+        otherWorld.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, null);
+
+        assertEquals(1, report.count(IndexingStatus.PRUNED));
+        assertFalse(index.resourceIds(space, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+        assertTrue("die andere Embedding-Welt behält ihre Kopie, bis ihr eigener Lauf sie bereinigt",
+                index.resourceIds(otherSpace, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+        assertEquals(1, otherWorld.indexSource(wiki, ALL, null).count(IndexingStatus.PRUNED));
+        assertFalse(index.resourceIds(otherSpace, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+    }
+
+    @Test
+    public void cancellationAfterTheLastResourceSkipsPruning() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, new IndexingListener() {
+            private int seen;
+
+            @Override
+            public void onDiscovered(List<KnowledgeResource> resources) {
+            }
+
+            @Override
+            public void onResource(ResourceIndexingOutcome outcome) {
+                seen++;
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return seen >= 2; // erst nach der letzten entdeckten Ressource
+            }
+        });
+
+        assertTrue(report.isCancelled());
+        assertEquals(2, report.outcomes().size());
+        assertEquals(0, report.count(IndexingStatus.PRUNED));
+        assertEquals(1, keyword("entkalkt").size());
+    }
+
+    @Test
+    public void cancellationDuringPruningStopsAfterTheCurrentResource() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Drucker");
+        wiki.remove("Kaffee");
+
+        IndexingReport report = useCase.indexSource(wiki, ALL, new IndexingListener() {
+            private boolean pruned;
+
+            @Override
+            public void onDiscovered(List<KnowledgeResource> resources) {
+            }
+
+            @Override
+            public void onResource(ResourceIndexingOutcome outcome) {
+                pruned |= outcome.status() == IndexingStatus.PRUNED;
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return pruned;
+            }
+        });
+
+        assertTrue(report.isCancelled());
+        assertEquals(1, report.count(IndexingStatus.PRUNED));
+        assertEquals("eine verschwundene Seite bleibt bis zum nächsten Lauf", 2, index.size());
+    }
+
+    @Test
+    public void emptyButSuccessfulDiscoveryPrunesTheWholeSource() {
+        useCase.indexSource(wiki, ALL, null);
+
+        IndexingReport report = useCase.indexSource(new ScriptedSource(wiki).emptyDiscovery(), ALL, null);
+
+        assertTrue(report.isComplete());
+        assertEquals(0, report.discovered());
+        assertEquals(3, report.count(IndexingStatus.PRUNED));
+        assertEquals(0, index.size());
+    }
+
+    @Test
+    public void indexResourcesNeitherSkipsNorPrunesByDiscovery() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+
+        IndexingReport report = useCase.indexResources(wiki, Collections.singletonList(wiki.idOf("Java")), null);
+
+        assertEquals(IndexingStatus.INDEXED, report.outcomes().get(0).status());
+        assertEquals(1, report.outcomes().size());
+        assertEquals("verschwundene Seite bleibt, bis indexSource läuft", 1, keyword("entkalkt").size());
+
+        // Wie bisher: eine genannte Ressource, die beim Laden NOT_FOUND meldet, verliert ihre Chunks.
+        report = useCase.indexResources(wiki, Collections.singletonList(wiki.idOf("Kaffee")), null);
+        assertEquals(IndexingStatus.REMOVED, report.outcomes().get(0).status());
+        assertTrue(keyword("entkalkt").isEmpty());
+    }
+
+    @Test
+    public void failedPruneQueryIsReportedAndRemovesNothing() {
+        useCase.indexSource(wiki, ALL, null);
+        wiki.remove("Kaffee");
+        ResourceIdsFailingIndex failing = new ResourceIdsFailingIndex(index);
+        IndexKnowledgeUseCase onFailingIndex = new IndexKnowledgeUseCase(failing, embeddings, space,
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+
+        IndexingReport report = onFailingIndex.indexSource(wiki, ALL, null);
+
+        assertTrue(report.pruneFailed());
+        assertEquals("Indexverzeichnis nicht lesbar: /var/lib/eai/index", report.pruneFailure());
+        assertFalse(report.isComplete());
+        assertEquals(0, report.count(IndexingStatus.FAILED));
+        assertEquals(2, report.count(IndexingStatus.UNCHANGED));
+        assertEquals(0, report.count(IndexingStatus.PRUNED));
+        assertEquals(1, keyword("entkalkt").size());
+        assertTrue(report.toString(), report.toString().contains("pruneFailure="));
+    }
+
     @Test
     public void removeSourceDropsAllItsChunks() {
         useCase.indexSource(wiki, SourceScope.of("Java", "Kaffee"), null);
@@ -293,9 +586,23 @@ public class IndexKnowledgeUseCaseTest {
                 new HashMap<KnowledgeResourceId, KnowledgeSourceException.Kind>();
         private final Map<KnowledgeResourceId, KnowledgeResourceId> redirects =
                 new HashMap<KnowledgeResourceId, KnowledgeResourceId>();
+        private final List<KnowledgeResource> extraDiscoveries = new ArrayList<KnowledgeResource>();
+        private boolean emptyDiscovery;
 
         ScriptedSource(KnowledgeSourcePort delegate) {
             this.delegate = delegate;
+        }
+
+        /** Die Discovery liefert zusätzlich diese Ressource (z. B. einen Alias, der auf eine Seite umleitet). */
+        ScriptedSource discoverAlso(KnowledgeResource resource) {
+            extraDiscoveries.add(resource);
+            return this;
+        }
+
+        /** Die Discovery gelingt, findet aber nichts. */
+        ScriptedSource emptyDiscovery() {
+            emptyDiscovery = true;
+            return this;
         }
 
         ScriptedSource failLoad(KnowledgeResourceId id, KnowledgeSourceException.Kind kind) {
@@ -315,7 +622,12 @@ public class IndexKnowledgeUseCaseTest {
 
         @Override
         public List<KnowledgeResource> discover(SourceScope scope) throws KnowledgeSourceException {
-            return delegate.discover(scope);
+            if (emptyDiscovery) {
+                return Collections.emptyList();
+            }
+            List<KnowledgeResource> result = new ArrayList<KnowledgeResource>(delegate.discover(scope));
+            result.addAll(extraDiscoveries);
+            return result;
         }
 
         @Override
@@ -331,6 +643,109 @@ public class IndexKnowledgeUseCaseTest {
         @Override
         public List<SourceLink> discoverLinks(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
             return delegate.discoverLinks(resourceId);
+        }
+    }
+
+    /** Liefert Ressourcen ohne Revision, wahlweise bei der Discovery oder beim Laden. */
+    private static final class RevisionStrippingSource implements KnowledgeSourcePort {
+
+        private final KnowledgeSourcePort delegate;
+        private final boolean stripDiscovery;
+        private final boolean stripLoad;
+
+        RevisionStrippingSource(KnowledgeSourcePort delegate, boolean stripDiscovery, boolean stripLoad) {
+            this.delegate = delegate;
+            this.stripDiscovery = stripDiscovery;
+            this.stripLoad = stripLoad;
+        }
+
+        private static KnowledgeResource strip(KnowledgeResource resource) {
+            return resource.toBuilder().revision(KnowledgeRevision.unknown()).build();
+        }
+
+        @Override
+        public KnowledgeSourceId sourceId() {
+            return delegate.sourceId();
+        }
+
+        @Override
+        public List<KnowledgeResource> discover(SourceScope scope) throws KnowledgeSourceException {
+            List<KnowledgeResource> resources = delegate.discover(scope);
+            if (!stripDiscovery) {
+                return resources;
+            }
+            List<KnowledgeResource> stripped = new ArrayList<KnowledgeResource>(resources.size());
+            for (KnowledgeResource resource : resources) {
+                stripped.add(strip(resource));
+            }
+            return stripped;
+        }
+
+        @Override
+        public KnowledgeDocument load(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
+            KnowledgeDocument document = delegate.load(resourceId);
+            return stripLoad ? KnowledgeDocument.of(strip(document.resource()), document.text()) : document;
+        }
+
+        @Override
+        public List<SourceLink> discoverLinks(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
+            return delegate.discoverLinks(resourceId);
+        }
+    }
+
+    /** Delegiert an einen Index, dessen Abfrage der indexierten Ressourcen scheitert (z. B. Lucene-Verzeichnis). */
+    private static final class ResourceIdsFailingIndex implements KnowledgeIndexPort {
+
+        private final KnowledgeIndexPort delegate;
+
+        ResourceIdsFailingIndex(KnowledgeIndexPort delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void index(Collection<KnowledgeIndexEntry> entries) {
+            delegate.index(entries);
+        }
+
+        @Override
+        public void replace(EmbeddingModelIdentity space, KnowledgeResourceId resourceId,
+                            Collection<KnowledgeIndexEntry> entries) {
+            delegate.replace(space, resourceId, entries);
+        }
+
+        @Override
+        public List<KnowledgeSearchHit> keywordSearch(KnowledgeKeywordQuery query) {
+            return delegate.keywordSearch(query);
+        }
+
+        @Override
+        public List<KnowledgeSearchHit> semanticSearch(KnowledgeSemanticQuery query) {
+            return delegate.semanticSearch(query);
+        }
+
+        @Override
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+            throw new KnowledgeIndexException("Indexverzeichnis nicht lesbar: /var/lib/eai/index");
+        }
+
+        @Override
+        public Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+            return delegate.revisionOf(space, resourceId);
+        }
+
+        @Override
+        public void remove(KnowledgeResourceId resourceId) {
+            delegate.remove(resourceId);
+        }
+
+        @Override
+        public void removeSource(KnowledgeSourceId sourceId) {
+            delegate.removeSource(sourceId);
+        }
+
+        @Override
+        public void rebuild(Collection<KnowledgeIndexEntry> entries) {
+            delegate.rebuild(entries);
         }
     }
 

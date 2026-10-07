@@ -21,7 +21,9 @@ import java.util.Set;
 /**
  * {@code refresh_knowledge_source}: indexiert eine konfigurierte Quelle in ihrem {@code SourceScope} neu, synchron
  * im Handler über {@link RefreshKnowledgeSourceUseCase}, und fasst den {@link IndexingReport} zusammen (gefunden,
- * indexiert, leer, entfernt, Duplikate, Fehler je Stufe, einzelne Fehler bis zu einer Höchstzahl).
+ * indexiert, unverändert übersprungen, leer, entfernt, verschwunden, Duplikate, Fehler je Stufe, einzelne Fehler
+ * bis zu einer Höchstzahl). Der Index führt: Unveränderte Seiten werden nicht neu geladen, nicht mehr gefundene
+ * Seiten verlassen den Index.
  *
  * <p>Die Meldungen der Port-Ausnahmen aus dem Bericht erscheinen nicht in der Antwort: Sie sind für Log und Anzeige
  * gedacht, nicht für das Modell, und können Infrastrukturdaten nennen (etwa Indexpfade des Lucene-Adapters). Die
@@ -57,9 +59,11 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
 
     McpToolContribution contribution() {
         return McpToolContribution.of(NAME,
-                "Lädt eine konfigurierte Wissensquelle neu und aktualisiert den Index (Discovery, Laden, Chunken, "
-                        + "Embedden). Läuft synchron und kann dauern; die Antwort fasst zusammen, wie viele Dokumente "
-                        + "indexiert, entfernt oder leer waren und welche Fehler auftraten.",
+                "Gleicht den Index mit einer konfigurierten Wissensquelle ab (Discovery, Laden, Chunken, Embedden): "
+                        + "neue und geänderte Dokumente werden indexiert, unveränderte übersprungen, nicht mehr "
+                        + "vorhandene aus dem Index entfernt. Läuft synchron und kann dauern; die Antwort fasst "
+                        + "zusammen, wie viele Dokumente indexiert, unverändert, entfernt oder leer waren und welche "
+                        + "Fehler auftraten.",
                 this,
                 McpToolParameter.string(PARAM_SOURCE_ID, true,
                         "ID der zu aktualisierenden Quelle (konfiguriert: " + knownSources() + ")"));
@@ -122,8 +126,10 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
         out.append("Gefunden: ").append(report.discovered()).append('\n');
         out.append("Indexiert: ").append(report.count(IndexingStatus.INDEXED)).append(" (Chunks: ")
                 .append(report.chunkCount()).append(")\n");
+        out.append("Unverändert: ").append(report.count(IndexingStatus.UNCHANGED)).append('\n');
         out.append("Leer: ").append(report.count(IndexingStatus.EMPTY)).append('\n');
         out.append("Entfernt: ").append(report.count(IndexingStatus.REMOVED)).append('\n');
+        out.append("Verschwunden: ").append(report.count(IndexingStatus.PRUNED)).append('\n');
         out.append("Duplikate: ").append(report.count(IndexingStatus.DUPLICATE)).append('\n');
         out.append("Fehler: ").append(failed);
         if (failed > 0) {
@@ -132,6 +138,10 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
                     .append(", Index: ").append(countFailed(report, IndexingStage.INDEXING)).append(')');
         }
         out.append('\n');
+        if (report.pruneFailed()) {
+            // Ohne die Meldung des Ports (siehe Klassenkommentar).
+            out.append("Bereinigung: fehlgeschlagen, verschwundene Dokumente wurden nicht entfernt\n");
+        }
         int listed = 0;
         for (ResourceIndexingOutcome outcome : report.outcomes()) {
             if (outcome.status() != IndexingStatus.FAILED) {
@@ -155,7 +165,7 @@ final class RefreshKnowledgeSourceTool implements McpToolHandler {
         if (report.isCancelled()) {
             return "abgebrochen (Werkzeuge beendet), bereits indexierte Dokumente bleiben";
         }
-        return failed > 0 ? "abgeschlossen mit Fehlern" : "vollständig";
+        return failed > 0 || report.pruneFailed() ? "abgeschlossen mit Fehlern" : "vollständig";
     }
 
     /** Nur die Stufe, nie die Meldung der Port-Ausnahme (siehe Klassenkommentar). */
