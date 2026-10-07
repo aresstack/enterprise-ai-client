@@ -30,7 +30,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -226,6 +228,17 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                     Thread.currentThread().interrupt();
                 }
             }
+            // The graceful close sends SIGTERM and waits; if the child is still there after the budget,
+            // force it down (bounded) instead of leaving a stuck agent behind.
+            Process p = process;
+            if (p != null && p.isAlive()) {
+                p.destroyForcibly();
+                try {
+                    p.waitFor(CLOSE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             executor.shutdownNow();
             // Queued prompts dropped by shutdownNow() never reach their finally block: give every prompt
             // still registered its single terminal so no consumer waits forever.
@@ -301,13 +314,25 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                 // without marking a healthy connection FAILED.
                 dispatcher.terminal(AcpPromptState.FAILED, "session " + state.get()
                         + " / connection " + connection.state.get() + ": prompt not sent");
-                return handleFor(promptId, dispatcher);
+                return handleFor(promptId, dispatcher, new AtomicBoolean(false));
             }
-            connection.activePromptBySession.put(sessionId, dispatcher);
+            if (!register(dispatcher)) {
+                // One prompt per session at a time: a second one would steal the first one's stream.
+                dispatcher.terminal(AcpPromptState.FAILED, "another prompt is still running on this session");
+                return handleFor(promptId, dispatcher, new AtomicBoolean(false));
+            }
+            final AtomicBoolean sent = new AtomicBoolean(false);
             final String promptText = text == null ? "" : text;
-            connection.executor.execute(new Runnable() {
+            Runnable task = new Runnable() {
                 public void run() {
                     try {
+                        // Cancelled while still queued: finish locally, never send a prompt that a cancel
+                        // notification has already overtaken.
+                        sent.set(true);
+                        if (dispatcher.getState() != AcpPromptState.RUNNING) {
+                            dispatcher.terminal(AcpPromptState.CANCELLED, "cancelled before it was sent");
+                            return;
+                        }
                         AcpSchema.PromptResponse response = connection.client.prompt(
                                 new AcpSchema.PromptRequest(sessionId, Collections.<AcpSchema.ContentBlock>
                                         singletonList(new AcpSchema.TextContent(promptText))));
@@ -325,22 +350,47 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                         dispatcher.terminal(terminal, String.valueOf(
                                 response == null ? "" : response.stopReason()));
                     } catch (RuntimeException ex) {
-                        // Process death / broken pipe / timeout during a prompt → FAILED (classified),
-                        // and the connection is marked FAILED when the transport is gone. The connection
-                        // state changes BEFORE the terminal callback, so a listener reacting to the
-                        // terminal already sees the FAILED connection.
-                        connection.state.to(AcpConnectionState.FAILED);
-                        connection.processAlive = false;
+                        // The prompt FAILS either way. The connection is marked FAILED only when the agent
+                        // process is gone (death, broken pipe); a request timeout or an agent-side error
+                        // with a live process leaves it READY for further sessions. The connection state
+                        // changes BEFORE the terminal callback, so a listener sees a consistent state.
+                        if (!connection.getProcess().isAlive()) {
+                            connection.state.to(AcpConnectionState.FAILED);
+                            connection.processAlive = false;
+                        }
                         dispatcher.terminal(AcpPromptState.FAILED, "prompt failed: " + ex.getMessage());
                     } finally {
                         connection.activePromptBySession.remove(sessionId, dispatcher);
                     }
                 }
-            });
-            return handleFor(promptId, dispatcher);
+            };
+            try {
+                connection.executor.execute(task);
+            } catch (RejectedExecutionException closedMeanwhile) {
+                connection.activePromptBySession.remove(sessionId, dispatcher);
+                dispatcher.terminal(AcpPromptState.FAILED, "connection closed: prompt not sent");
+            }
+            return handleFor(promptId, dispatcher, sent);
         }
 
-        private PromptHandle handleFor(final String promptId, final PromptDispatcher dispatcher) {
+        /** Registers the session's prompt unless a non-terminal one is still registered. */
+        private boolean register(PromptDispatcher dispatcher) {
+            while (true) {
+                PromptDispatcher existing = connection.activePromptBySession.putIfAbsent(sessionId, dispatcher);
+                if (existing == null) {
+                    return true;
+                }
+                if (!existing.getState().isTerminal()) {
+                    return false;
+                }
+                if (connection.activePromptBySession.replace(sessionId, existing, dispatcher)) {
+                    return true;
+                }
+            }
+        }
+
+        private PromptHandle handleFor(final String promptId, final PromptDispatcher dispatcher,
+                                       final AtomicBoolean sent) {
             return new PromptHandle() {
                 public String getPromptId() {
                     return promptId;
@@ -352,7 +402,16 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
 
                 public void cancel() {
                     // Idempotent; a no-op after completion. Cancelling never kills the process or session.
-                    if (dispatcher.cancelling()) {
+                    // A prompt that is still queued is finished locally by its task (nothing to cancel
+                    // remotely yet), so the notification is only sent once the prompt is on its way.
+                    if (!dispatcher.cancelling()) {
+                        return;
+                    }
+                    if (!sent.get()) {
+                        dispatcher.terminal(AcpPromptState.CANCELLED, "cancelled before it was sent");
+                        return;
+                    }
+                    {
                         try {
                             connection.client.cancel(new AcpSchema.CancelNotification(sessionId));
                         } catch (RuntimeException ignored) {

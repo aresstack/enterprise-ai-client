@@ -22,7 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the SDK dispatcher and simply not handled here — they must never kill the process.
  *
  * <p>Test hooks (only for the adapter round-trip test): a prompt containing "crash" halts the JVM mid-turn
- * (agent process death); when {@value #EXIT_MARKER_ENV} names a file, the agent writes it on JVM exit so the
+ * (agent process death), one containing "hang" stays silent for three seconds (host request timeout with a
+ * live process); when {@value #EXIT_MARKER_ENV} names a file, the agent writes it on JVM exit so the
  * host can prove the child process really terminated after shutdown.</p>
  *
  * <p>Origin: Miguel0888/askai-java8, {@code acp-demo-agent} ({@code DemoAcpAgentMain}), package and agent
@@ -84,6 +85,15 @@ public final class DemoAcpAgentMain {
         cancelled.set(false);
         String text = request.text() == null ? "" : request.text();
         System.err.println("[demo-agent] prompt: " + text);
+        if (text.contains("hang")) {
+            // Silent for a while without any update: lets the host hit its request timeout while alive.
+            try {
+                Thread.sleep(3000L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return AcpSchema.PromptResponse.endTurn();
+        }
         if (text.contains("crash")) {
             ctx.sendMessage("about to crash");
             System.err.println("[demo-agent] crashing on purpose");

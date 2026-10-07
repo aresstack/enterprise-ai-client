@@ -262,10 +262,14 @@ public class SolonAcpRoundTripTest {
         Collecting running = new Collecting();
         Collecting queued = new Collecting();
         try {
-            connection.newSession().prompt("slow burn", running);
+            // Both sessions first: the demo agent serves requests one at a time, so it cannot answer
+            // session/new while it streams the slow prompt.
+            AcpSession busySession = connection.newSession();
+            AcpSession otherSession = connection.newSession();
+            busySession.prompt("slow burn", running);
             assertTrue("no streaming started", running.firstUpdate.await(30, TimeUnit.SECONDS));
             // Same single prompt executor: this one waits behind the slow prompt.
-            connection.newSession().prompt("hello", queued);
+            otherSession.prompt("hello", queued);
         } finally {
             connection.close();
         }
@@ -274,6 +278,82 @@ public class SolonAcpRoundTripTest {
         assertEquals(1, running.terminalCount);
         assertEquals(1, queued.terminalCount);
         assertTrue(queued.terminal.get().isTerminal());
+        assertFalse(connection.getProcess().isAlive());
+    }
+
+    @Test
+    public void secondPromptOnABusySessionIsRejectedAndTheFirstKeepsItsStream() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            AcpSession session = connection.newSession();
+            Collecting first = new Collecting();
+            PromptHandle running = session.prompt("slow burn", first);
+            assertTrue(first.firstUpdate.await(30, TimeUnit.SECONDS));
+
+            Collecting second = new Collecting();
+            PromptHandle rejected = session.prompt("hello", second);
+            assertEquals(AcpPromptState.FAILED, rejected.getState());
+            assertTrue(second.updates.isEmpty());
+
+            running.cancel();
+            assertTrue(first.terminated.await(30, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.CANCELLED, first.terminal.get());
+            for (AcpUpdate u : first.updates) {
+                assertEquals(running.getPromptId(), u.getPromptId());
+            }
+
+            // The session is free again once the first prompt is terminal.
+            Collecting third = new Collecting();
+            session.prompt("hello", third);
+            assertTrue(third.terminated.await(30, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.COMPLETED, third.terminal.get());
+        } finally {
+            connection.close();
+        }
+    }
+
+    @Test
+    public void cancellingAQueuedPromptFinishesItLocally() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            AcpSession busySession = connection.newSession();
+            AcpSession otherSession = connection.newSession(); // before the agent gets busy
+            Collecting busy = new Collecting();
+            PromptHandle busyHandle = busySession.prompt("slow burn", busy);
+            assertTrue(busy.firstUpdate.await(30, TimeUnit.SECONDS));
+
+            Collecting queued = new Collecting();
+            PromptHandle queuedHandle = otherSession.prompt("hello", queued);
+            queuedHandle.cancel();
+            assertTrue("queued cancel must not wait for the busy prompt",
+                    queued.terminated.await(5, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.CANCELLED, queued.terminal.get());
+
+            busyHandle.cancel();
+            assertTrue(busy.terminated.await(30, TimeUnit.SECONDS));
+            assertTrue("queued prompt was never sent", queued.updates.isEmpty());
+            assertEquals(1, queued.terminalCount);
+        } finally {
+            connection.close();
+        }
+    }
+
+    @Test
+    public void requestTimeoutWithALiveAgentFailsOnlyThePrompt() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofMillis(1000), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            Collecting listener = new Collecting();
+            connection.newSession().prompt("hang", listener);
+            assertTrue(listener.terminated.await(30, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.FAILED, listener.terminal.get());
+            assertEquals(AcpConnectionState.READY, connection.getState());
+            assertTrue(connection.getProcess().isAlive());
+        } finally {
+            connection.close();
+        }
         assertFalse(connection.getProcess().isAlive());
     }
 }
