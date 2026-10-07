@@ -12,7 +12,7 @@ import java.util.Map;
  * Fake der {@code api.php}: eine kleine In-Memory-Wiki, die die vom Adapter genutzten Action-API-Aufrufe
  * im Format {@code formatversion=2} beantwortet. Kein Netz.
  */
-final class FakeMediaWikiTransport implements MediaWikiTransport {
+public final class FakeMediaWikiTransport implements MediaWikiTransport {
 
     final Map<String, Page> pages = new LinkedHashMap<String, Page>();
     final Map<String, String> redirects = new LinkedHashMap<String, String>();
@@ -23,14 +23,18 @@ final class FakeMediaWikiTransport implements MediaWikiTransport {
     int linkPageSize = 500;
     int sessionResets;
 
-    String requiredUser;
-    String requiredPassword;
-    boolean sessionValid;
-    int logins;
+    /** Ohne Login-Pflicht {@code null}; sonst Benutzername und Passwort, die {@code action=login} akzeptiert. */
+    public String requiredUser;
+    public String requiredPassword;
+    /** Ob die aktuelle Sitzung angemeldet ist; ein HTTP-Wrapper setzt das je Anfrage anhand seines Cookies. */
+    public boolean sessionValid;
+    /** Zahl der Login-Versuche. */
+    public int logins;
     /** Läuft einmal, bevor eine Leseanfrage wegen fehlender Sitzung abgelehnt wird. */
     Runnable beforeFirstDenial;
 
-    Page page(String title, String html, long pageId, long revId, String... links) {
+    /** Legt eine Seite an; {@code links} sind Titel verlinkter Seiten (für {@code prop=links}). */
+    public Page page(String title, String html, long pageId, long revId, String... links) {
         Page page = new Page(title, html, pageId, revId, links);
         pages.put(title, page);
         return page;

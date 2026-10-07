@@ -27,7 +27,13 @@ enum ModuleKind {
     TEST_FIXTURE,
 
     /** Dieses Modul selbst; enthält keine Produktionsklassen. */
-    ARCHITECTURE_TESTS;
+    ARCHITECTURE_TESTS,
+
+    /**
+     * Modulübergreifende Integrations- und Vertical-Slice-Tests (AP25): nur Testcode, der über den Testklassenpfad
+     * alle Module und Testfixtures sieht; keine Produktionsabhängigkeiten, von keinem Modul referenziert.
+     */
+    INTEGRATION_TESTS;
 
     /** Kernmodule dürfen weder Infrastrukturbibliotheken noch Swing/AWT kennen. */
     boolean isCore() {

@@ -1,5 +1,9 @@
 description = 'Adapter: MediaWiki als Knowledge Source (Strang E). MediaWiki-Action-API, JSON und HTML bleiben in diesem Modul.'
 
+// AP25: Fake-Wiki (FakeMediaWikiTransport) und ihr HTTP-Wrapper (FakeMediaWikiServer) als Testfixtures für
+// integration-tests; die Tests dieses Moduls sehen sie weiterhin (gleiches Paket, Transport-Naht ist paketintern).
+apply plugin: 'java-test-fixtures'
+
 dependencies {
     api project(':source-api')
 
