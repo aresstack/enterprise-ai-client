@@ -17,17 +17,30 @@ import javax.swing.Scrollable;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Der Chat-Verlauf als Sprechblasen im AskAI-Stil: Nutzer rechts (blau), Assistent links (petrol), Fehler
- * links in der Fehlerfarbe. Folgt ausschließlich dem {@link ChatShellModel}; Streaming-Deltas aktualisieren
- * die vorhandene Blase, statt neue anzulegen.
+ * links in der Fehlerfarbe, Hinweise der Anwendung links in der gelben Aktivitätsfarbe. Folgt ausschließlich dem
+ * {@link ChatShellModel}; Streaming-Deltas aktualisieren die vorhandene Blase, statt neue anzulegen.
+ *
+ * <p>Bekommt eine Antwort Quellen (AP22), erscheint direkt unter ihrer Blase eine eigene Zeile mit der
+ * ein- und ausklappbaren {@link SourceListPanel Quellenliste}.
+ *
+ * <p>Streaming-Deltas werden gebündelt: während eine Antwort läuft, wird ihre Blase höchstens einmal je
+ * {@value #FLUSH_INTERVAL_MILLIS} ms aktualisiert (das erste Delta sofort, weitere gesammelt und mit einem
+ * nachlaufenden Timer), und jede Aktualisierung hängt nur den neuen Text an, statt die Blase neu zu setzen.
+ * Damit wächst die Zeit je Delta nicht mit der Textlänge. Abschluss, Abbruch, Fehler und Quellen werden sofort
+ * angewendet; {@link #flushPendingUpdates()} wendet Gesammeltes auf Wunsch sofort an.
  *
  * <p>Zeilenlayout, Blasenbreite und Zeilenhöhe kommen unverändert aus der Comic-Bibliothek
  * ({@link BubbleMessageRow}), die Breitenführung durch den Viewport aus AskAIs {@code BubbleTranscriptPanel}.
@@ -38,21 +51,34 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     static final String ASSISTANT_HEADER = "Assistent";
     static final String CANCELLED_SUFFIX = " · abgebrochen";
     static final String FAILED_HEADER = "Fehler";
+    static final String NOTICE_HEADER = "Hinweis";
     static final String STREAMING_PLACEHOLDER = "…";
 
+    /** Höchstens eine Blasen-Aktualisierung je Intervall, solange eine Antwort streamt. */
+    static final int FLUSH_INTERVAL_MILLIS = 30;
+
     private static final int NEAR_BOTTOM_PIXELS = 48;
+    private static final long FLUSH_INTERVAL_NANOS = FLUSH_INTERVAL_MILLIS * 1_000_000L;
 
     private final ChatShellModel model;
+    private final ComicPalette comicPalette;
     private final BubblePalette bubblePalette;
     private final JPanel messageList = new WidthTrackingList();
     private final ComicScrollPane scrollPane;
-    private final Map<Long, BubbleMessageRow> rows = new HashMap<Long, BubbleMessageRow>();
+    private final Map<Long, RowState> rows = new HashMap<Long, RowState>();
+    private final Map<Long, BubbleMessageRow> sourceRows = new HashMap<Long, BubbleMessageRow>();
+    private final Map<Long, TranscriptEntry> pending = new LinkedHashMap<Long, TranscriptEntry>();
+    private final Timer flushTimer;
+    private long lastFlushNanos;
+    private boolean flushedBefore;
+    private int flushCount;
 
     public ChatTranscriptPanel(ChatShellModel model, ComicPalette comicPalette, BubblePalette bubblePalette) {
         if (model == null || comicPalette == null || bubblePalette == null) {
             throw new IllegalArgumentException("model and palettes must not be null");
         }
         this.model = model;
+        this.comicPalette = comicPalette;
         this.bubblePalette = bubblePalette;
         setLayout(new BorderLayout());
         setOpaque(true);
@@ -65,6 +91,13 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         scrollPane.getViewport().setBackground(bubblePalette.getTranscriptBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(18);
         add(scrollPane, BorderLayout.CENTER);
+        flushTimer = new Timer(FLUSH_INTERVAL_MILLIS, new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                flushPendingUpdates();
+            }
+        });
+        flushTimer.setRepeats(false);
         for (TranscriptEntry entry : model.getEntries()) {
             entryAdded(entry);
         }
@@ -73,32 +106,58 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     @Override
     public void entryAdded(TranscriptEntry entry) {
-        BubbleMessageRow row = createRow(entry);
-        rows.put(entry.getId(), row);
-        row.setAlignmentX(LEFT_ALIGNMENT);
-        messageList.add(row);
-        JComponent spacer = (JComponent) Box.createVerticalStrut(2);
-        spacer.setAlignmentX(LEFT_ALIGNMENT);
-        messageList.add(spacer);
+        flushPendingUpdates();
+        RowState state = createRow(entry);
+        rows.put(entry.getId(), state);
+        state.row.setAlignmentX(LEFT_ALIGNMENT);
+        messageList.add(state.row);
+        messageList.add(spacer());
+        if (entry.hasSources()) {
+            addSourcesRow(entry);
+        }
         refresh(true);
     }
 
     @Override
     public void entryUpdated(TranscriptEntry entry) {
-        BubbleMessageRow row = rows.get(entry.getId());
-        if (row == null) {
+        if (!rows.containsKey(entry.getId())) {
+            return;
+        }
+        pending.put(entry.getId(), entry);
+        if (entry.getState() != TranscriptEntry.State.STREAMING) {
+            flushPendingUpdates();
+            return;
+        }
+        if (flushTimer.isRunning()) {
+            return; // der nachlaufende Timer wendet das Gesammelte an
+        }
+        if (flushedBefore && System.nanoTime() - lastFlushNanos < FLUSH_INTERVAL_NANOS) {
+            flushTimer.start();
+            return;
+        }
+        flushPendingUpdates();
+    }
+
+    /** Wendet gesammelte Streaming-Aktualisierungen sofort an (UI-Thread). */
+    void flushPendingUpdates() {
+        flushTimer.stop();
+        if (pending.isEmpty()) {
             return;
         }
         boolean followBottom = isNearBottom();
-        SpeechBubblePanel bubble = (SpeechBubblePanel) row.getBubble();
-        if (entry.getState() == TranscriptEntry.State.FAILED) {
-            // Die Blasenfarbe ist unveränderlich: eine fehlgeschlagene Antwort bekommt eine neue Fehlerblase.
-            replaceRow(row, entry);
-        } else {
-            bubble.setText(displayText(entry));
-            bubble.setHeader(header(entry));
+        for (TranscriptEntry entry : pending.values()) {
+            apply(entry);
         }
+        pending.clear();
+        lastFlushNanos = System.nanoTime();
+        flushedBefore = true;
+        flushCount++;
         refresh(followBottom);
+    }
+
+    /** Wie oft Aktualisierungen angewendet wurden (für Tests: gebündelte Deltas zählen einmal). */
+    int flushCount() {
+        return flushCount;
     }
 
     @Override
@@ -108,15 +167,55 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     /** Die Blase eines Eintrags (für Tests und spätere Kontextaktionen), oder {@code null}. */
     SpeechBubblePanel bubbleFor(long entryId) {
-        BubbleMessageRow row = rows.get(entryId);
-        return row == null ? null : (SpeechBubblePanel) row.getBubble();
+        RowState state = rows.get(entryId);
+        return state == null ? null : state.bubble();
+    }
+
+    /** Bringt die Blase eines Eintrags auf seinen aktuellen Stand; Streaming-Text wird nur angehängt. */
+    private void apply(TranscriptEntry entry) {
+        RowState state = rows.get(entry.getId());
+        if (state == null) {
+            return;
+        }
+        if (entry.getState() == TranscriptEntry.State.FAILED) {
+            // Die Blasenfarbe ist unveränderlich: eine fehlgeschlagene Antwort bekommt eine neue Fehlerblase.
+            replaceRow(state, entry);
+        } else {
+            String text = displayText(entry);
+            boolean showsEntryText = !entry.getText().isEmpty();
+            if (state.showsEntryText && showsEntryText && text.length() >= state.shownLength) {
+                // Der Text eines Eintrags wächst nur durch Anhängen (TranscriptEntry.append), daher reicht der Rest.
+                state.bubble().appendText(text.substring(state.shownLength));
+            } else {
+                state.bubble().setText(text);
+            }
+            state.showsEntryText = showsEntryText;
+            state.shownLength = text.length();
+            String header = header(entry);
+            if (!header.equals(state.header)) {
+                state.bubble().setHeader(header);
+                state.header = header;
+            }
+        }
+        if (entry.hasSources() && !sourceRows.containsKey(entry.getId())) {
+            addSourcesRow(entry);
+        }
+    }
+
+    /** Die Quellenliste unter der Antwort eines Eintrags, oder {@code null}, wenn er keine Quellen hat. */
+    public SourceListPanel sourcesFor(long entryId) {
+        BubbleMessageRow row = sourceRows.get(entryId);
+        return row == null ? null : (SourceListPanel) row.getBubble();
     }
 
     static String displayText(TranscriptEntry entry) {
         String text = entry.getText();
         switch (entry.getState()) {
             case STREAMING:
-                return text.isEmpty() ? STREAMING_PLACEHOLDER : text;
+                if (!text.isEmpty()) {
+                    return text;
+                }
+                return entry.getActivity().isEmpty() ? STREAMING_PLACEHOLDER : entry.getActivity();
             case FAILED:
                 return text.isEmpty() ? entry.getFailureMessage() : text + "\n\n" + entry.getFailureMessage();
             default:
@@ -128,6 +227,9 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         if (entry.getAuthor() == TranscriptEntry.Author.USER) {
             return USER_HEADER;
         }
+        if (entry.getAuthor() == TranscriptEntry.Author.NOTICE) {
+            return NOTICE_HEADER;
+        }
         switch (entry.getState()) {
             case CANCELLED:
                 return ASSISTANT_HEADER + CANCELLED_SUFFIX;
@@ -138,13 +240,16 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         }
     }
 
-    private BubbleMessageRow createRow(TranscriptEntry entry) {
+    private RowState createRow(TranscriptEntry entry) {
         boolean user = entry.getAuthor() == TranscriptEntry.Author.USER;
         Color background;
         Color foreground;
         if (user) {
             background = bubblePalette.getUserBackground();
             foreground = bubblePalette.getUserForeground();
+        } else if (entry.getAuthor() == TranscriptEntry.Author.NOTICE) {
+            background = bubblePalette.getActivityBackground();
+            foreground = bubblePalette.getActivityForeground();
         } else if (entry.getState() == TranscriptEntry.State.FAILED) {
             background = bubblePalette.getFailureAccent();
             foreground = Color.WHITE;
@@ -152,19 +257,40 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             background = bubblePalette.getAssistantBackground();
             foreground = bubblePalette.getAssistantForeground();
         }
+        String header = header(entry);
+        String text = displayText(entry);
         SpeechBubblePanel bubble = new SpeechBubblePanel(user ? BubbleSide.RIGHT : BubbleSide.LEFT,
-                background, foreground, header(entry), displayText(entry));
+                background, foreground, header, text);
         bubble.setHeaderTimestamp(entry.getCreatedAtMillis());
-        return new BubbleMessageRow(bubble, user ? BubbleSide.RIGHT : BubbleSide.LEFT);
+        return new RowState(new BubbleMessageRow(bubble, user ? BubbleSide.RIGHT : BubbleSide.LEFT), header,
+                text.length(), !entry.getText().isEmpty());
     }
 
-    private void replaceRow(BubbleMessageRow oldRow, TranscriptEntry entry) {
-        int index = messageList.getComponentZOrder(oldRow);
-        BubbleMessageRow newRow = createRow(entry);
-        newRow.setAlignmentX(LEFT_ALIGNMENT);
+    /** Hängt die Quellenliste als eigene, links ausgerichtete Zeile direkt unter die Blase des Eintrags. */
+    private void addSourcesRow(TranscriptEntry entry) {
+        BubbleMessageRow answerRow = rows.get(entry.getId()).row;
+        SourceListPanel panel = new SourceListPanel(entry.getSources(), comicPalette, bubblePalette);
+        BubbleMessageRow row = new BubbleMessageRow(panel, BubbleSide.LEFT);
+        row.setAlignmentX(LEFT_ALIGNMENT);
+        int index = messageList.getComponentZOrder(answerRow) + 2; // hinter Blase und Abstand
+        messageList.add(row, index);
+        messageList.add(spacer(), index + 1);
+        sourceRows.put(entry.getId(), row);
+    }
+
+    private static JComponent spacer() {
+        JComponent spacer = (JComponent) Box.createVerticalStrut(2);
+        spacer.setAlignmentX(LEFT_ALIGNMENT);
+        return spacer;
+    }
+
+    private void replaceRow(RowState old, TranscriptEntry entry) {
+        int index = messageList.getComponentZOrder(old.row);
+        RowState replacement = createRow(entry);
+        replacement.row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.remove(index);
-        messageList.add(newRow, index);
-        rows.put(entry.getId(), newRow);
+        messageList.add(replacement.row, index);
+        rows.put(entry.getId(), replacement);
     }
 
     private boolean isNearBottom() {
@@ -183,6 +309,25 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
                     bar.setValue(bar.getMaximum());
                 }
             });
+        }
+    }
+
+    /** Eine Zeile des Verlaufs mit dem, was ihre Blase gerade zeigt (für das Anhängen von Deltas). */
+    private static final class RowState {
+        final BubbleMessageRow row;
+        String header;
+        int shownLength;
+        boolean showsEntryText; // Blase zeigt den Eintragstext (nicht Platzhalter oder Aktivität)
+
+        RowState(BubbleMessageRow row, String header, int shownLength, boolean showsEntryText) {
+            this.row = row;
+            this.header = header;
+            this.shownLength = shownLength;
+            this.showsEntryText = showsEntryText;
+        }
+
+        SpeechBubblePanel bubble() {
+            return (SpeechBubblePanel) row.getBubble();
         }
     }
 

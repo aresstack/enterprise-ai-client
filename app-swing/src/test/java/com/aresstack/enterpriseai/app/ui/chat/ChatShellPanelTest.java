@@ -188,6 +188,146 @@ public class ChatShellPanelTest {
                 ChatTranscriptPanel.header(answer));
     }
 
+    @Test
+    public void sourcesAppearUnderTheAnswerAndExpandOnDemand() throws Exception {
+        Edt.run(new Runnable() {
+            @Override
+            public void run() {
+                ChatShellModel model = new ChatShellModel(() -> 0L);
+                ChatShellPanel shell = new ChatShellPanel(model, new RecordingActions(), comic, bubbles);
+                shell.setSize(700, 500);
+                model.addUserMessage("Wie lange ist die Kündigungsfrist?");
+                TranscriptEntry answer = model.beginAssistantMessage();
+                model.appendAssistantDelta("Drei Monate [1].");
+                assertEquals(null, shell.transcript().sourcesFor(answer.getId()));
+
+                model.attachSources(answer, java.util.Arrays.asList(
+                        new SourceReference(1, "Kündigungsfrist", "Regeln > Fristen", "https://wiki.intern/Fristen",
+                                "Version 7, 2026-10-01 08:00", 0.0328, 1, 1),
+                        new SourceReference(2, "Urlaubsregelung", "", "memory:handbuch/urlaub", "", 0.0161, 2, 0)));
+                model.completeAssistantMessage();
+
+                SourceListPanel sources = shell.transcript().sourcesFor(answer.getId());
+                assertNotNull("Quellenliste unter der Antwort", sources);
+                assertEquals("Quellen (2)", sources.toggle().getText());
+                assertFalse("zunächst eingeklappt", sources.isExpanded());
+                assertEquals("Nutzer, Antwort, Quellen: drei Zeilen plus drei Abstände", 6, countRows(shell));
+                assertEquals("Quellen direkt unter der Antwort", 4, rowIndexOf(shell, sources));
+
+                shell.doLayout();
+                int collapsed = sources.preferredHeightForWidth(500);
+                sources.toggle().doClick();
+                assertTrue(sources.isExpanded());
+                assertTrue("aufgeklappt höher als eingeklappt", sources.preferredHeightForWidth(500) > collapsed);
+                shell.doLayout();
+                paint(shell);
+                sources.setExpanded(false);
+                assertFalse(sources.toggle().isSelected());
+
+                assertEquals("[1] Kündigungsfrist – Regeln > Fristen", SourceListPanel.titleLine(sources.getSources().get(0)));
+                assertEquals("Ort: https://wiki.intern/Fristen  ·  Stand: Version 7, 2026-10-01 08:00  ·  Score 0.033"
+                        + "  ·  Volltext #1  ·  Semantik #1", SourceListPanel.detailLine(sources.getSources().get(0)));
+                assertEquals("Ort: memory:handbuch/urlaub  ·  Score 0.016  ·  Volltext #2",
+                        SourceListPanel.detailLine(sources.getSources().get(1)));
+            }
+        });
+    }
+
+    @Test
+    public void sourcesSurviveAFailedAnswerAndShowForEarlierEntries() throws Exception {
+        Edt.run(new Runnable() {
+            @Override
+            public void run() {
+                ChatShellModel model = new ChatShellModel(() -> 0L);
+                TranscriptEntry answer = model.beginAssistantMessage();
+                model.attachSources(answer, java.util.Collections.singletonList(
+                        new SourceReference(1, "Seite", "", "memory:x", "", 0.02, 1, 0)));
+                ChatTranscriptPanel transcript = new ChatTranscriptPanel(model, comic, bubbles);
+                assertNotNull("Quellen aus der Zeit vor der Ansicht", transcript.sourcesFor(answer.getId()));
+
+                model.failAssistantMessage("Server nicht erreichbar");
+                assertNotNull("Fehlerblase ersetzt nur die Antwortzeile", transcript.sourcesFor(answer.getId()));
+                assertEquals(ChatTranscriptPanel.FAILED_HEADER, ChatTranscriptPanel.header(answer));
+            }
+        });
+    }
+
+    @Test
+    public void noticeIsItsOwnBubbleOnTheLeftAndActivityFillsTheEmptyAnswer() throws Exception {
+        Edt.run(new Runnable() {
+            @Override
+            public void run() {
+                ChatShellModel model = new ChatShellModel(() -> 0L);
+                ChatShellPanel shell = new ChatShellPanel(model, new RecordingActions(), comic, bubbles);
+                model.addUserMessage("Frage");
+                TranscriptEntry answer = model.beginAssistantMessage();
+                model.setAssistantActivity("Wissen wird gesucht …");
+                assertEquals("Wissen wird gesucht …", shell.transcript().bubbleFor(answer.getId()).getText());
+
+                TranscriptEntry notice = model.addNotice("Die Wissenssuche ist ausgefallen.");
+                SpeechBubblePanel bubble = shell.transcript().bubbleFor(notice.getId());
+                assertNotNull(bubble);
+                assertEquals(BubbleSide.LEFT, bubble.getSide());
+                assertEquals(ChatTranscriptPanel.NOTICE_HEADER, ChatTranscriptPanel.header(notice));
+                assertEquals("Die Wissenssuche ist ausgefallen.", bubble.getText());
+                assertTrue("Antwort läuft weiter", shell.composer().stopButton().isEnabled());
+
+                model.appendAssistantDelta("Antwort");
+                shell.transcript().flushPendingUpdates(); // Deltas kurz nach der Aktivität werden gebündelt
+                assertEquals("Antwort", shell.transcript().bubbleFor(answer.getId()).getText());
+                model.completeAssistantMessage();
+                shell.setSize(700, 500);
+                shell.doLayout();
+                paint(shell);
+            }
+        });
+    }
+
+    @Test
+    public void statusBarFollowsTheKnowledgeStatusModel() throws Exception {
+        Edt.run(new Runnable() {
+            @Override
+            public void run() {
+                ChatShellModel model = new ChatShellModel(() -> 0L);
+                KnowledgeStatusModel status = new KnowledgeStatusModel();
+                ChatShellPanel shell = new ChatShellPanel(model, new RecordingActions(), status, comic, bubbles);
+                KnowledgeStatusBar bar = shell.statusBar();
+                assertFalse("ohne Text unsichtbar", bar.isVisible());
+
+                status.started("Indexierung von handbuch …");
+                assertTrue(bar.isVisible());
+                assertTrue(bar.cancelButton().isVisible());
+                assertTrue(bar.cancelButton().isEnabled());
+                status.progressed("Indexierung: 1 von 3 Seiten · Urlaub");
+                assertEquals("Indexierung: 1 von 3 Seiten · Urlaub", bar.getText());
+
+                bar.cancelButton().doClick();
+                assertTrue(status.isCancelRequested());
+                assertFalse(bar.cancelButton().isEnabled());
+                assertTrue(bar.getText().endsWith(KnowledgeStatusBar.CANCELLING_SUFFIX));
+
+                status.finished("Indexierung abgebrochen: 1 von 3 Seiten indexiert (Stand 16:30)");
+                assertTrue(bar.isVisible());
+                assertFalse(bar.cancelButton().isVisible());
+                assertEquals("Indexierung abgebrochen: 1 von 3 Seiten indexiert (Stand 16:30)", bar.getText());
+                shell.setSize(700, 500);
+                shell.doLayout();
+                paint(shell);
+
+                status.show("");
+                assertFalse(bar.isVisible());
+                assertFalse("Agent-Ansicht ohne Statuszeile",
+                        new ChatShellPanel(model, new RecordingActions(), comic, bubbles).statusBar().isVisible());
+            }
+        });
+    }
+
+    private static int rowIndexOf(ChatShellPanel shell, java.awt.Component bubble) {
+        javax.swing.JScrollPane scroll = (javax.swing.JScrollPane) shell.transcript().getComponent(0);
+        java.awt.Container list = (java.awt.Container) scroll.getViewport().getView();
+        return list.getComponentZOrder(bubble.getParent());
+    }
+
     private static int countRows(ChatShellPanel shell) {
         javax.swing.JScrollPane scroll = (javax.swing.JScrollPane) shell.transcript().getComponent(0);
         return ((java.awt.Container) scroll.getViewport().getView()).getComponentCount();
