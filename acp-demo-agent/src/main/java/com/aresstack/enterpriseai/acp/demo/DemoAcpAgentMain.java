@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the SDK dispatcher and simply not handled here — they must never kill the process.
  *
  * <p>Test hooks (only for the adapter round-trip test): a prompt containing "crash" halts the JVM mid-turn
- * (agent process death), one containing "hang" stays silent for three seconds (host request timeout with a
+ * (agent process death), "count N" streams the numbered chunks #1..#N (wire order), one containing "hang" stays silent for three seconds (host request timeout with a
  * live process); when {@value #EXIT_MARKER_ENV} names a file, the agent writes it on JVM exit so the
  * host can prove the child process really terminated after shutdown.</p>
  *
@@ -85,6 +85,14 @@ public final class DemoAcpAgentMain {
         cancelled.set(false);
         String text = request.text() == null ? "" : request.text();
         System.err.println("[demo-agent] prompt: " + text);
+        if (text.startsWith("count ")) {
+            // Numbered chunks "#1".."#n" so the host can verify wire order end to end.
+            int n = Integer.parseInt(text.substring("count ".length()).trim());
+            for (int i = 1; i <= n; i++) {
+                ctx.sendMessage("#" + i);
+            }
+            return AcpSchema.PromptResponse.endTurn();
+        }
         if (text.contains("hang")) {
             // Silent for a while without any update: lets the host hit its request timeout while alive.
             try {
