@@ -28,27 +28,36 @@ import static org.junit.Assume.assumeTrue;
  *
  * <p>Pairing: KeePass zeigt das Einmal-Passwort erst an, wenn sich der Client meldet; der Test fragt es deshalb
  * mit dem Pairing-Dialog der Anwendung ab ({@code SwingPairingCallback}, braucht ein Display) und legt den
- * Pairing-Schlüssel wie die Anwendung in einer Datei ab (Standard {@code build/live/keepassrpc-pairing.key},
+ * Pairing-Schlüssel wie die Anwendung in einer Datei ab (Standard {@code build/live/keepassrpc-pairing-<clientId>.key},
  * Rechte nur für den Besitzer), damit Stufe 7 ohne neues Pairing läuft. Ohne Angabe pairt der Test unter der
  * eigenen Kennung {@value #DEFAULT_LIVE_CLIENT_ID}, weil KeePassRPC je Kennung genau einen Schlüssel kennt und
- * ein Pairing unter der Kennung der Anwendung deren Pairing ersetzen würde.
+ * ein Pairing unter der Kennung der Anwendung deren Pairing ersetzen würde. Die Schlüsseldatei trägt die Kennung
+ * im Namen, damit ein Schlüssel nie unter einer anderen Kennung als der, mit der er gepairt wurde, verwendet wird.
  */
 public class LiveKeePassIT {
 
     private static final int STAGE = 6;
-    private static final String DEFAULT_PAIRING_KEY_FILE = "build/live/keepassrpc-pairing.key";
     static final String DEFAULT_LIVE_CLIENT_ID = "EnterpriseAiClientLive";
 
+    static String clientId() {
+        String configured = LiveSettings.optional("live.keepass.clientId");
+        return configured == null ? DEFAULT_LIVE_CLIENT_ID : configured;
+    }
+
+    /** Standard: {@code build/live/keepassrpc-pairing-<clientId>.key}; {@code -Dlive.keepass.pairingKeyFile} überstimmt. */
     static Path pairingKeyFile() {
         String configured = LiveSettings.optional("live.keepass.pairingKeyFile");
-        return Paths.get(configured == null ? DEFAULT_PAIRING_KEY_FILE : configured).toAbsolutePath();
+        if (configured != null) {
+            return Paths.get(configured).toAbsolutePath();
+        }
+        String fileSafeClientId = clientId().replaceAll("[^A-Za-z0-9._-]", "_");
+        return Paths.get("build/live/keepassrpc-pairing-" + fileSafeClientId + ".key").toAbsolutePath();
     }
 
     static KeePassRpcConfig config() {
-        String clientId = LiveSettings.optional("live.keepass.clientId");
         KeePassRpcConfig.Builder config = KeePassRpcConfig.builder()
                 .port(LiveSettings.integer("live.keepass.port", KeePassRpcConfig.DEFAULT_PORT))
-                .clientId(clientId == null ? DEFAULT_LIVE_CLIENT_ID : clientId)
+                .clientId(clientId())
                 .clientDisplayName("Enterprise AI Client (Live-Verifikation)");
         if (LiveSettings.optional("live.keepass.host") != null) {
             config.host(LiveSettings.optional("live.keepass.host"));

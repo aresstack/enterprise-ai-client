@@ -95,7 +95,7 @@ Entscheidungen des Live-Laufs:
   deshalb fragt Stufe 6 es mit `SwingPairingCallback`/`KeePassPairingDialog` der Anwendung ab (der Task
   `liveTest` setzt als einziger `java.awt.headless` nicht selbst, das JDK entscheidet; `-Dlive.headless=true|false`
   überstimmt das) und legt den Schlüssel mit `FilePairingKeyStore` ab (Standard
-  `build/live/keepassrpc-pairing.key`, Rechte nur für den Besitzer), damit Stufe 7 ihn wiederverwendet. Der Test
+  `build/live/keepassrpc-pairing-<clientId>.key`, Rechte nur für den Besitzer), damit Stufe 7 ihn wiederverwendet. Der Test
   pairt unter der eigenen Kennung `EnterpriseAiClientLive`, damit er das Pairing der Anwendung
   (`EnterpriseAiClient`) nicht ersetzt. Nach der Verifikation die Datei löschen oder das Pairing in KeePass
   widerrufen.

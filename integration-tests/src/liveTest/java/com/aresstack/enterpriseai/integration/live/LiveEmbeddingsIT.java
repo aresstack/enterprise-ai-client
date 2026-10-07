@@ -23,9 +23,9 @@ import static org.junit.Assert.fail;
  * <p>Stufe 2 ({@code singleInput…}): der Adapter im Standardmodus {@code SINGLE_STRING}. Stufe 3
  * ({@code arrayInput…}): Kontrollanfrage mit einem Text, Roh-Probe mit Array-Eingabe, danach, falls der Dienst
  * Arrays in der richtigen Reihenfolge beantwortet, der Adapter im Modus {@code ARRAY_UNVERIFIED}. Das Ergebnis von
- * Stufe 3 ist ein Befund in der Ausgabe ({@code BEFUND:}-Zeile); rot wird die Stufe nur, wenn der Dienst selbst
- * nicht funktioniert (Kontrollanfrage, 401/403/429/5xx). Ob aus dem Befund ein neuer Standard wird, entscheidet
- * der Auftraggeber.
+ * Stufe 3 ist ein Befund in der Ausgabe ({@code BEFUND:}-Zeile); rot wird die Stufe, wenn der Dienst selbst nicht
+ * funktioniert (Kontrollanfrage scheitert, oder die Array-Probe endet mit etwas anderem als 200 oder einem
+ * Validierungsstatus). Ob aus dem Befund ein neuer Standard wird, entscheidet der Auftraggeber.
  */
 public class LiveEmbeddingsIT {
 
@@ -153,9 +153,13 @@ public class LiveEmbeddingsIT {
         }, LiveSettings.API_KEY_ENV);
     }
 
-    /** 4xx außer 401/403/408/429 ist ein Validierungsfehler, also "Array nicht akzeptiert" (wie der Adapter REJECTED). */
+    /**
+     * Nur ein Validierungsstatus belegt "Array-Eingabe nicht akzeptiert": 400 (Bad Request), 413 (Payload Too Large),
+     * 415 (Unsupported Media Type), 422 (Unprocessable Entity). Enger als {@code EmbeddingFailureKind.REJECTED} des
+     * Adapters, denn 402, 407, 409, 423 oder 424 wären Betriebsprobleme und kein Befund über Arrays.
+     */
     static boolean isValidationRejection(int status) {
-        return status >= 400 && status < 500 && status != 401 && status != 403 && status != 408 && status != 429;
+        return status == 400 || status == 413 || status == 415 || status == 422;
     }
 
     /** Ergebnis des Vergleichs: Reihenfolge (je Text ist der Einzelvektor gleicher Position der nächste) und Gleichheit. */

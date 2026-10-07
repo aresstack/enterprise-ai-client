@@ -140,8 +140,9 @@ gehört der Wert in die Konfiguration (`embedding.dimension`). Mit gesetztem Wer
   der Adapter, dann, nur wenn der Dienst Arrays annimmt und je Eingabe einen Eintrag liefert, der Adapter im
   Modus `ARRAY_UNVERIFIED` mit Teil-Batches von zwei Texten. Die Reihenfolge gilt als bestätigt, wenn für jeden
   Text der Einzelvektor gleicher Position der nächste ist; ob die Vektoren darüber hinaus identisch sind
-  (Cosinus ≥ 0,999), wird getrennt gemeldet. Ein 4xx außer 401/403/408/429 zählt als „abgelehnt“; 401, 403, 429
-  oder 5xx bei der Array-Probe machen die Stufe rot (Dienstproblem, kein Befund). Rückmeldung: alle
+  (Cosinus ≥ 0,999), wird getrennt gemeldet. Nur ein Validierungsstatus (400, 413, 415, 422) zählt als
+  „abgelehnt“; jeder andere Status außer 200 bei der Array-Probe macht die Stufe rot (Dienstproblem, kein
+  Befund). Rückmeldung: alle
   `[live] Stufe 3:`-Zeilen, vor allem die Zeile mit `BEFUND`. Der Befund („abgelehnt“, „angenommen, aber nicht
   verwendbar“, „Dimension uneinheitlich“, „Reihenfolge nicht bestätigt“, „Adapter liefert nicht die
   Einzelvektoren“ oder „angenommen, Reihenfolge bestätigt“) entscheidet, ob `ARRAY_UNVERIFIED` Standard werden
@@ -187,8 +188,9 @@ deshalb kann es nicht vorab übergeben werden).
 
 Ablauf: Der Test verbindet sich, KeePass zeigt das Einmal-Passwort, der Dialog „KeePass-Pairing“ öffnet sich,
 das Passwort wird eingegeben. Der Pairing-Schlüssel wird wie in der Anwendung in einer Datei mit Rechten nur
-für den Besitzer abgelegt (Standard `integration-tests/build/live/keepassrpc-pairing.key`), damit Stufe 7 ohne
-neues Pairing läuft. Der Test pairt unter der eigenen Kennung `EnterpriseAiClientLive`, weil KeePassRPC je
+für den Besitzer abgelegt (Standard `integration-tests/build/live/keepassrpc-pairing-<clientId>.key`, also
+`…-EnterpriseAiClientLive.key`; die Kennung im Dateinamen verhindert, dass ein Schlüssel unter einer anderen
+Kennung verwendet wird), damit Stufe 7 ohne neues Pairing läuft. Der Test pairt unter der eigenen Kennung `EnterpriseAiClientLive`, weil KeePassRPC je
 Kennung genau einen Schlüssel kennt und ein Pairing unter `EnterpriseAiClient` das Pairing der Anwendung ersetzen
 würde. Wer das Pairing der Anwendung mitbenutzen will, gibt `-Dlive.keepass.clientId=EnterpriseAiClient` und mit
 `-Dlive.keepass.pairingKeyFile` deren Schlüsseldatei an. Nach der Verifikation die Datei löschen oder das Pairing
