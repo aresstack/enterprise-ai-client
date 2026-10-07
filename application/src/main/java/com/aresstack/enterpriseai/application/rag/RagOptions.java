@@ -10,9 +10,6 @@ import java.util.Set;
 /** RAG-Schalter je Nachricht: aus, oder an mit optionaler Einschränkung auf Quellen. Unveränderlich. */
 public final class RagOptions {
 
-    private static final RagOptions DISABLED = new RagOptions(false, Collections.<KnowledgeSourceId>emptySet());
-    private static final RagOptions ENABLED = new RagOptions(true, Collections.<KnowledgeSourceId>emptySet());
-
     private final boolean enabled;
     private final Set<KnowledgeSourceId> sources;
 
@@ -23,12 +20,12 @@ public final class RagOptions {
 
     /** Normaler Chat ohne Retrieval. */
     public static RagOptions disabled() {
-        return DISABLED;
+        return new RagOptions(false, Collections.<KnowledgeSourceId>emptySet());
     }
 
     /** Retrieval über alle Quellen. */
     public static RagOptions enabled() {
-        return ENABLED;
+        return new RagOptions(true, Collections.<KnowledgeSourceId>emptySet());
     }
 
     /** Retrieval nur in den genannten Quellen; leer heißt alle. */

@@ -17,4 +17,5 @@ dependencies {
     // AP10: Fakes für Embedding und Wissensindex in den RAG-Tests.
     testImplementation testFixtures(project(':embedding-api'))
     testImplementation testFixtures(project(':knowledge-api'))
+    testImplementation testFixtures(project(':source-api'))
 }
