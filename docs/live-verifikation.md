@@ -45,18 +45,21 @@ entsperrtes KeePass mit KeePassRPC-Plugin auf demselben Rechner; 7 zusätzlich e
    Stufen zusammen, ohne Angabe laufen alle. Tests, denen ein Parameter fehlt, werden übersprungen (`SKIPPED`),
    nie rot.
 4. Unternehmensproxy und eigene Zertifikate: `-Dhttps.proxyHost`, `-Dhttps.proxyPort`, `-Dhttp.nonProxyHosts`,
-   `-Djavax.net.ssl.trustStore`, `-Djavax.net.ssl.trustStoreType` und `-Djavax.net.ssl.trustStorePassword` werden
-   an die Test-JVM durchgereicht; alternativ wirkt `JAVA_TOOL_OPTIONS` auf alle JVMs.
+   `-Djavax.net.ssl.trustStore` und `-Djavax.net.ssl.trustStoreType` werden an die Test-JVM durchgereicht. Braucht
+   der Truststore ein Passwort, kommt es aus der Umgebungsvariablen `ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD`
+   (nicht auf die Kommandozeile und nicht in `JAVA_TOOL_OPTIONS`: jede JVM gibt diese Variable samt Wert auf
+   stderr aus, und die Konsole ist die Rückmeldung).
 
 ### Was zurückgemeldet wird
 
 - Alle Konsolenzeilen, die mit `[live] Stufe N:` beginnen. Sie enthalten nur Status, Codes, Anzahlen und
   Messwerte; weder URL, Token, Passwort noch Antworttexte.
 - Die Gradle-Zusammenfassung je Test (`PASSED`, `SKIPPED`, `FAILED`).
-- Bei `FAILED`: Typ und Meldung der Exception (die ersten Zeilen des Stacktrace). Transportfehler des JDK können
-  Hostnamen oder Proxy-Adressen enthalten: vor dem Rückmelden schwärzen. Die Berichte unter
-  `integration-tests/build/reports/tests/liveTest/` und `build/test-results/liveTest/` enthalten dieselbe Ausgabe
-  und bleiben lokal.
+- Bei `FAILED`: Typ und Meldung der Exception (die ersten Zeilen des Stacktrace). Jeder Live-Test gibt Fehler
+  nur geschwärzt weiter: Meldungen mit einem Secret werden ersetzt, die Adressen aus `-Dlive.*` und ihre
+  Hostnamen durch `<host>`; Klassen und Stacktraces bleiben. Proxy-Adressen aus `-Dhttps.proxyHost` werden nicht
+  ersetzt: vor dem Rückmelden kurz prüfen. Die Berichte unter `integration-tests/build/reports/tests/liveTest/`
+  und `build/test-results/liveTest/` enthalten dieselbe Ausgabe und bleiben lokal.
 
 Ein `SKIPPED` mit „Live-Test übersprungen: -Dlive.… fehlt“ heißt: Parameter vergessen, nicht: Dienst
 fehlerhaft.

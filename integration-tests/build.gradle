@@ -146,15 +146,20 @@ tasks.register('liveTest', Test) {
     testClassesDirs = sourceSets.liveTest.output.classesDirs
     classpath = sourceSets.liveTest.runtimeClasspath
     // Alle -Dlive.* des Aufrufs, die üblichen Proxy-Properties und der Truststore an die Test-JVM durchreichen (sie
-    // läuft getrennt vom Gradle-Prozess); Secrets kommen aus Umgebungsvariablen, nie als Property.
+    // läuft getrennt vom Gradle-Prozess); Secrets kommen aus Umgebungsvariablen, nie als Property: das Passwort
+    // eines Truststores aus ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD (nicht von der Kommandozeile, nicht über
+    // JAVA_TOOL_OPTIONS, das jede JVM samt Wert auf stderr ausgibt).
     def forwardedProperties = ['http.proxyHost', 'http.proxyPort', 'https.proxyHost', 'https.proxyPort',
-                               'http.nonProxyHosts', 'javax.net.ssl.trustStore', 'javax.net.ssl.trustStorePassword',
-                               'javax.net.ssl.trustStoreType']
+                               'http.nonProxyHosts', 'javax.net.ssl.trustStore', 'javax.net.ssl.trustStoreType']
     System.properties.each { key, value ->
         String name = key.toString()
         if (name.startsWith('live.') || forwardedProperties.contains(name)) {
             systemProperty name, value.toString()
         }
+    }
+    String trustStorePassword = System.getenv('ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD')
+    if (trustStorePassword != null && !trustStorePassword.isEmpty()) {
+        systemProperty 'javax.net.ssl.trustStorePassword', trustStorePassword
     }
     // Stufenauswahl: -Dlive.stage (oder -Plive.stage). Ohne Angabe laufen alle Live-Tests; fehlende Parameter
     // überspringen den einzelnen Test (Assume), er wird nie rot.

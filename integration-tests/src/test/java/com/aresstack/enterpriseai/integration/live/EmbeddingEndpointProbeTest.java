@@ -58,6 +58,7 @@ public class EmbeddingEndpointProbeTest {
         assertFalse(report.usableByAdapter(2));
         assertEquals(1, server.requests().size());
         assertEquals("Bearer " + TOKEN, server.requests().get(0).authorization());
+        assertNull("ohne Angabe wird kein encoding_format gesendet", server.requests().get(0).encodingFormat());
         assertEquals(Arrays.asList("Die Kündigungsfrist beträgt drei Monate."), server.requests().get(0).inputs());
         assertTrue(report.describe(), report.describe().contains("Dimension 16"));
         assertTrue(report.describe(), report.describe().contains("usage vorhanden"));
@@ -87,6 +88,7 @@ public class EmbeddingEndpointProbeTest {
 
         assertTrue(report.describe(), report.isOk());
         assertEquals(1, server.requests().size());
+        assertEquals("float", server.requests().get(0).encodingFormat());
     }
 
     @Test
@@ -134,9 +136,34 @@ public class EmbeddingEndpointProbeTest {
 
         EmbeddingEndpointProbe.Report shuffled = EmbeddingEndpointProbe.describe(200,
                 "{\"data\":[{\"index\":1,\"embedding\":[1]},{\"index\":0,\"embedding\":[2]}]}", MODEL);
+        assertEquals(EmbeddingEndpointProbe.IndexMode.REORDERED, shuffled.indexMode());
         assertTrue(shuffled.indexEverywhere());
         assertFalse(shuffled.indexAscending());
-        assertFalse(shuffled.usableByAdapter(2));
+        assertTrue("der Adapter sortiert nach index um", shuffled.usableByAdapter(2));
+        assertEquals("Vektoren in Adapter-Reihenfolge", 2f, shuffled.vectors().get(0)[0], 0f);
+        assertEquals(1f, shuffled.vectors().get(1)[0], 0f);
+        assertTrue(shuffled.describe(), shuffled.describe().contains("Adapter sortiert um"));
+
+        EmbeddingEndpointProbe.Report mixed = EmbeddingEndpointProbe.describe(200,
+                "{\"data\":[{\"index\":0,\"embedding\":[1]},{\"embedding\":[2]}]}", MODEL);
+        assertEquals(EmbeddingEndpointProbe.IndexMode.MIXED, mixed.indexMode());
+        assertFalse(mixed.indexEverywhere());
+        assertFalse("ein Gemisch lehnt der Adapter ab", mixed.usableByAdapter(2));
+
+        EmbeddingEndpointProbe.Report duplicate = EmbeddingEndpointProbe.describe(200,
+                "{\"data\":[{\"index\":0,\"embedding\":[1]},{\"index\":0,\"embedding\":[2]}]}", MODEL);
+        assertEquals(EmbeddingEndpointProbe.IndexMode.INVALID, duplicate.indexMode());
+        assertFalse(duplicate.usableByAdapter(2));
+
+        EmbeddingEndpointProbe.Report outOfRange = EmbeddingEndpointProbe.describe(200,
+                "{\"data\":[{\"index\":0,\"embedding\":[1]},{\"index\":2,\"embedding\":[2]}]}", MODEL);
+        assertEquals(EmbeddingEndpointProbe.IndexMode.INVALID, outOfRange.indexMode());
+        assertFalse(outOfRange.usableByAdapter(2));
+
+        EmbeddingEndpointProbe.Report fractional = EmbeddingEndpointProbe.describe(200,
+                "{\"data\":[{\"index\":0.5,\"embedding\":[1]}]}", MODEL);
+        assertEquals(EmbeddingEndpointProbe.IndexMode.INVALID, fractional.indexMode());
+        assertFalse(fractional.usableByAdapter(1));
 
         EmbeddingEndpointProbe.Report uneven = EmbeddingEndpointProbe.describe(200,
                 "{\"data\":[{\"index\":0,\"embedding\":[1,2]},{\"index\":1,\"embedding\":[3]}]}", MODEL);
@@ -145,7 +172,24 @@ public class EmbeddingEndpointProbeTest {
 
         EmbeddingEndpointProbe.Report notJson = EmbeddingEndpointProbe.describe(200, "ok", MODEL);
         assertEquals(-1, notJson.dataCount());
+        assertEquals(EmbeddingEndpointProbe.IndexMode.NONE, notJson.indexMode());
         assertTrue(notJson.describe(), notJson.describe().contains("kein data-Array"));
+    }
+
+    @Test
+    public void objectFieldIsClassifiedNeverEchoed() {
+        EmbeddingEndpointProbe.Report list = EmbeddingEndpointProbe.describe(200,
+                "{\"object\":\"list\",\"data\":[{\"index\":0,\"embedding\":[1]}]}", MODEL);
+        assertTrue(list.describe(), list.describe().contains("object=list"));
+
+        EmbeddingEndpointProbe.Report reflecting = EmbeddingEndpointProbe.describe(200,
+                "{\"object\":\"Bearer " + TOKEN + " ki.intern.example\",\"data\":[]}", MODEL);
+        assertTrue(reflecting.describe(), reflecting.describe().contains("object=unerwartet"));
+        assertFalse(reflecting.describe(), reflecting.describe().contains(TOKEN));
+        assertFalse(reflecting.describe(), reflecting.describe().contains("intern.example"));
+
+        EmbeddingEndpointProbe.Report missing = EmbeddingEndpointProbe.describe(200, "{\"data\":[]}", MODEL);
+        assertTrue(missing.describe(), missing.describe().contains("object=fehlt"));
     }
 
     @Test

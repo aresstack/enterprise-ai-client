@@ -56,6 +56,27 @@ public final class EmbeddingEndpointProbe {
         NONE
     }
 
+    /**
+     * Wie die Einträge von {@code data} ihr {@code index}-Feld tragen, nach den Regeln des Adapters
+     * ({@code EmbeddingResponseParser}): Tragen alle Einträge einen gültigen Index, sortiert der Adapter danach;
+     * fehlt er überall, gilt die Listenreihenfolge; ein Gemisch, Lücken, Doppelte oder Werte außerhalb von
+     * {@code 0..n-1} lehnt er ab.
+     */
+    public enum IndexMode {
+        /** Jeder Eintrag trägt {@code index} 0..n-1 in Listenreihenfolge. */
+        ASCENDING,
+        /** Jeder Eintrag trägt einen gültigen {@code index}, aber nicht in Listenreihenfolge; der Adapter sortiert um. */
+        REORDERED,
+        /** Jeder Eintrag trägt {@code index}, aber mit Lücke, Doppeltem, Nicht-Ganzzahl oder außerhalb 0..n-1. */
+        INVALID,
+        /** Kein Eintrag trägt {@code index}; die Listenreihenfolge gilt. */
+        ABSENT,
+        /** Nur ein Teil der Einträge trägt {@code index}; der Adapter lehnt das ab. */
+        MIXED,
+        /** Kein oder leeres {@code data}-Array. */
+        NONE
+    }
+
     /** Beschreibung einer Antwort; alle Felder sind Beobachtungen, nichts davon ist ein Secret oder ein Hostname. */
     public static final class Report {
 
@@ -66,8 +87,7 @@ public final class EmbeddingEndpointProbe {
         private final String objectField;
         private final boolean modelEchoed;
         private final int dataCount;
-        private final boolean indexEverywhere;
-        private final boolean indexAscending;
+        private final IndexMode indexMode;
         private final EmbeddingShape shape;
         private final List<Integer> dimensions;
         private final boolean allFinite;
@@ -77,7 +97,7 @@ public final class EmbeddingEndpointProbe {
         private final int totalTokens;
 
         Report(int status, long bodyBytes, boolean jsonObject, String errorCode, String objectField,
-               boolean modelEchoed, int dataCount, boolean indexEverywhere, boolean indexAscending,
+               boolean modelEchoed, int dataCount, IndexMode indexMode,
                EmbeddingShape shape, List<Integer> dimensions, boolean allFinite, List<float[]> vectors,
                boolean usagePresent, int promptTokens, int totalTokens) {
             this.status = status;
@@ -87,8 +107,7 @@ public final class EmbeddingEndpointProbe {
             this.objectField = objectField;
             this.modelEchoed = modelEchoed;
             this.dataCount = dataCount;
-            this.indexEverywhere = indexEverywhere;
-            this.indexAscending = indexAscending;
+            this.indexMode = indexMode;
             this.shape = shape;
             this.dimensions = Collections.unmodifiableList(new ArrayList<Integer>(dimensions));
             this.allFinite = allFinite;
@@ -152,12 +171,18 @@ public final class EmbeddingEndpointProbe {
             return copies;
         }
 
-        public boolean indexEverywhere() {
-            return indexEverywhere;
+        public IndexMode indexMode() {
+            return indexMode;
         }
 
+        /** @return ob jeder Eintrag ein {@code index}-Feld trägt (gültig oder nicht) */
+        public boolean indexEverywhere() {
+            return indexMode == IndexMode.ASCENDING || indexMode == IndexMode.REORDERED || indexMode == IndexMode.INVALID;
+        }
+
+        /** @return ob die Indizes 0..n-1 in Listenreihenfolge sind */
         public boolean indexAscending() {
-            return indexAscending;
+            return indexMode == IndexMode.ASCENDING;
         }
 
         public boolean usagePresent() {
@@ -168,10 +193,15 @@ public final class EmbeddingEndpointProbe {
             return modelEchoed;
         }
 
-        /** @return {@code true}, wenn der Adapter diese Antwort für {@code inputCount} Eingaben annehmen würde */
+        /**
+         * @return {@code true}, wenn der Adapter diese Antwort für {@code inputCount} Eingaben annehmen würde: gleiche
+         *     Anzahl, Float-Arrays einheitlicher Dimension, alle Werte endlich und {@code index} nach seinen Regeln
+         *     (überall gültig, auch umsortiert, oder nirgends; siehe {@link IndexMode})
+         */
         public boolean usableByAdapter(int inputCount) {
             return isOk() && dataCount == inputCount && shape == EmbeddingShape.FLOAT_ARRAY && allFinite
-                    && dimension() > 0 && (!indexEverywhere || indexAscending);
+                    && dimension() > 0 && (indexMode == IndexMode.ASCENDING || indexMode == IndexMode.REORDERED
+                    || indexMode == IndexMode.ABSENT);
         }
 
         /** Lesbare Zusammenfassung für die Konsole: nur Status, Codes, Anzahlen und Zahlen. */
@@ -183,15 +213,14 @@ public final class EmbeddingEndpointProbe {
                         .append(bodyBytes).append(" Bytes)");
                 return text.toString();
             }
-            text.append(", object=").append(objectField == null ? "fehlt" : objectField);
+            text.append(", object=").append(objectField == null ? "fehlt" : objectField); // nur "list" oder "unerwartet"
             text.append(", model wie angefragt: ").append(modelEchoed ? "ja" : "nein oder fehlt");
             if (dataCount < 0) {
                 return text.append(", kein data-Array").toString();
             }
             text.append(", data: ").append(dataCount).append(dataCount == 1 ? " Eintrag" : " Einträge");
             if (dataCount > 0) {
-                text.append(", index ").append(indexEverywhere ? (indexAscending ? "vorhanden und aufsteigend"
-                        : "vorhanden, aber nicht aufsteigend") : "fehlt");
+                text.append(", index ").append(indexDescription());
                 text.append(", embedding als ").append(shapeName());
                 if (shape == EmbeddingShape.FLOAT_ARRAY) {
                     text.append(", Dimension ").append(dimension() > 0 ? String.valueOf(dimension())
@@ -203,6 +232,23 @@ public final class EmbeddingEndpointProbe {
             text.append(", usage ").append(usagePresent
                     ? "vorhanden (prompt_tokens=" + promptTokens + ", total_tokens=" + totalTokens + ")" : "fehlt");
             return text.toString();
+        }
+
+        private String indexDescription() {
+            switch (indexMode) {
+                case ASCENDING:
+                    return "vorhanden und aufsteigend";
+                case REORDERED:
+                    return "vorhanden, nicht in Listenreihenfolge (Adapter sortiert um)";
+                case INVALID:
+                    return "vorhanden, aber ungültig (Lücke, Doppeltes, keine Ganzzahl oder außerhalb 0..n-1)";
+                case ABSENT:
+                    return "fehlt (Listenreihenfolge gilt)";
+                case MIXED:
+                    return "nur bei einem Teil der Einträge (ungültig)";
+                default:
+                    return "nicht anwendbar";
+            }
         }
 
         private String shapeName() {
@@ -348,7 +394,7 @@ public final class EmbeddingEndpointProbe {
                 code = token(error);
             }
         }
-        return new Report(status, body.getBytes(UTF_8).length, root != null, code, null, false, -1, false, false,
+        return new Report(status, body.getBytes(UTF_8).length, root != null, code, null, false, -1, IndexMode.NONE,
                 EmbeddingShape.NONE, Collections.<Integer>emptyList(), false, Collections.<float[]>emptyList(),
                 false, -1, -1);
     }
@@ -357,35 +403,31 @@ public final class EmbeddingEndpointProbe {
         long bytes = body.getBytes(UTF_8).length;
         JsonObject root = parseObject(body);
         if (root == null) {
-            return new Report(status, bytes, false, null, null, false, -1, false, false, EmbeddingShape.NONE,
+            return new Report(status, bytes, false, null, null, false, -1, IndexMode.NONE, EmbeddingShape.NONE,
                     Collections.<Integer>emptyList(), false, Collections.<float[]>emptyList(), false, -1, -1);
         }
-        String objectField = root.has("object") && root.get("object").isJsonPrimitive()
-                ? root.get("object").getAsString() : null;
+        // Das object-Feld kommt vom Server und wird nur klassifiziert, nie wiedergegeben.
+        String objectField = !root.has("object") || root.get("object").isJsonNull() ? null
+                : (root.get("object").isJsonPrimitive() && "list".equals(root.get("object").getAsString())
+                        ? "list" : "unerwartet");
         boolean modelEchoed = root.has("model") && root.get("model").isJsonPrimitive()
                 && requestedModel.equals(root.get("model").getAsString());
         JsonElement dataElement = root.get("data");
         int dataCount = dataElement != null && dataElement.isJsonArray() ? dataElement.getAsJsonArray().size() : -1;
-        boolean indexEverywhere = dataCount > 0;
-        boolean indexAscending = dataCount > 0;
         EmbeddingShape shape = EmbeddingShape.NONE;
         List<Integer> dimensions = new ArrayList<Integer>();
-        List<float[]> vectors = new ArrayList<float[]>();
+        List<float[]> vectorsInListOrder = new ArrayList<float[]>();
+        List<Integer> indexes = new ArrayList<Integer>(); // je Eintrag: Index, -1 (ungültig) oder null (fehlt)
         boolean allFinite = true;
         for (int position = 0; position < Math.max(dataCount, 0); position++) {
             JsonElement entryElement = dataElement.getAsJsonArray().get(position);
             if (!entryElement.isJsonObject()) {
                 shape = EmbeddingShape.OTHER;
-                indexEverywhere = false;
+                indexes.add(null);
                 continue;
             }
             JsonObject entry = entryElement.getAsJsonObject();
-            JsonElement index = entry.get("index");
-            if (index == null || index.isJsonNull() || !index.isJsonPrimitive() || !index.getAsJsonPrimitive().isNumber()) {
-                indexEverywhere = false;
-            } else if (index.getAsDouble() != position) {
-                indexAscending = false;
-            }
+            indexes.add(indexOf(entry.get("index")));
             EmbeddingShape entryShape = shapeOf(entry.get("embedding"));
             shape = position == 0 ? entryShape : (shape == entryShape ? shape : EmbeddingShape.OTHER);
             if (entryShape == EmbeddingShape.FLOAT_ARRAY) {
@@ -398,17 +440,70 @@ public final class EmbeddingEndpointProbe {
                     }
                 }
                 dimensions.add(vector.length);
-                vectors.add(vector);
+                vectorsInListOrder.add(vector);
             }
         }
-        if (dataCount > 0 && !indexEverywhere) {
-            indexAscending = false;
-        }
+        IndexMode indexMode = indexModeOf(indexes);
+        List<float[]> vectors = indexMode == IndexMode.REORDERED && vectorsInListOrder.size() == indexes.size()
+                ? reorder(vectorsInListOrder, indexes) : vectorsInListOrder;
         boolean usagePresent = root.has("usage") && root.get("usage").isJsonObject();
         int promptTokens = usagePresent ? integer(root.getAsJsonObject("usage").get("prompt_tokens")) : -1;
         int totalTokens = usagePresent ? integer(root.getAsJsonObject("usage").get("total_tokens")) : -1;
-        return new Report(status, bytes, true, null, objectField, modelEchoed, dataCount, indexEverywhere,
-                indexAscending, shape, dimensions, allFinite, vectors, usagePresent, promptTokens, totalTokens);
+        return new Report(status, bytes, true, null, objectField, modelEchoed, dataCount, indexMode,
+                shape, dimensions, allFinite, vectors, usagePresent, promptTokens, totalTokens);
+    }
+
+    /** @return der Index des Eintrags, {@code -1} für ein ungültiges Feld (keine Ganzzahl) oder {@code null}, wenn es fehlt */
+    private static Integer indexOf(JsonElement index) {
+        if (index == null || index.isJsonNull()) {
+            return null;
+        }
+        if (!index.isJsonPrimitive() || !index.getAsJsonPrimitive().isNumber()) {
+            return Integer.valueOf(-1);
+        }
+        double value = index.getAsDouble();
+        if (value != Math.rint(value) || value < 0 || value > Integer.MAX_VALUE) {
+            return Integer.valueOf(-1);
+        }
+        return Integer.valueOf((int) value);
+    }
+
+    /** Klassifiziert die Indizes nach den Regeln des Adapters (gültig: überall, eindeutig, innerhalb 0..n-1). */
+    private static IndexMode indexModeOf(List<Integer> indexes) {
+        if (indexes.isEmpty()) {
+            return IndexMode.NONE;
+        }
+        int present = 0;
+        for (Integer index : indexes) {
+            if (index != null) {
+                present++;
+            }
+        }
+        if (present == 0) {
+            return IndexMode.ABSENT;
+        }
+        if (present < indexes.size()) {
+            return IndexMode.MIXED;
+        }
+        boolean[] seen = new boolean[indexes.size()];
+        boolean ascending = true;
+        for (int position = 0; position < indexes.size(); position++) {
+            int index = indexes.get(position).intValue();
+            if (index < 0 || index >= indexes.size() || seen[index]) {
+                return IndexMode.INVALID;
+            }
+            seen[index] = true;
+            ascending &= index == position;
+        }
+        return ascending ? IndexMode.ASCENDING : IndexMode.REORDERED;
+    }
+
+    private static List<float[]> reorder(List<float[]> vectorsInListOrder, List<Integer> indexes) {
+        float[][] ordered = new float[indexes.size()][];
+        for (int position = 0; position < indexes.size(); position++) {
+            ordered[indexes.get(position).intValue()] = vectorsInListOrder.get(position);
+        }
+        return new ArrayList<float[]>(Arrays.asList(ordered));
     }
 
     private static EmbeddingShape shapeOf(JsonElement embedding) {

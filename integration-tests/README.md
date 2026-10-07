@@ -103,7 +103,8 @@ Entscheidungen des Live-Laufs:
 
 Proxys und Zertifikate: die Adapter nutzen `java.net`-Verbindungen; ein Unternehmensproxy wird über die üblichen
 JVM-Properties wirksam. `liveTest` reicht neben `-Dlive.*` auch `-Dhttp.proxyHost`, `-Dhttp.proxyPort`,
-`-Dhttps.proxyHost`, `-Dhttps.proxyPort`, `-Dhttp.nonProxyHosts`, `-Djavax.net.ssl.trustStore`,
-`-Djavax.net.ssl.trustStoreType` und `-Djavax.net.ssl.trustStorePassword` an die Test-JVM durch; alternativ
-wirkt `JAVA_TOOL_OPTIONS` auf alle JVMs. Der Verifikationsstand je Stufe steht im Ergebnisprotokoll von
+`-Dhttps.proxyHost`, `-Dhttps.proxyPort`, `-Dhttp.nonProxyHosts`, `-Djavax.net.ssl.trustStore` und
+`-Djavax.net.ssl.trustStoreType` an die Test-JVM durch; ein Truststore-Passwort kommt aus der Umgebungsvariablen
+`ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD` (nie auf die Kommandozeile, nie in `JAVA_TOOL_OPTIONS`, das jede JVM
+samt Wert auf stderr ausgibt). Der Verifikationsstand je Stufe steht im Ergebnisprotokoll von
 [docs/live-verifikation.md](../docs/live-verifikation.md); bis dahin gilt alles als UNVERIFIED.

@@ -23,7 +23,7 @@ Testberichte liegen je Modul unter `<modul>/build/reports/tests/test/index.html`
 ## Testumfang je Modul
 
 Zahlen aus einem vollständigen lokalen Lauf auf JDK 21 (2026-10-07, Stand nach AP26, Unicode-Vertrag und
-Vorbereitung der Live-Verifikation): 1068 Tests, 0 Fehler, 2 übersprungen.
+Vorbereitung der Live-Verifikation): 1074 Tests, 0 Fehler, 2 übersprungen.
 
 | Modul | Tests | Schwerpunkt |
 |---|---|---|
@@ -46,7 +46,7 @@ Vorbereitung der Live-Verifikation): 1068 Tests, 0 Fehler, 2 übersprungen.
 | `comic-controls` | 10 | Zeichnen und Zustände der Comic-Komponenten (headless) |
 | `app-swing` | 116 (1 übersprungen) | `ChatShellModel`, Bindings, Konfigurationslader, `ProxyPolicy`, `ApplicationCompositionTest` (headless Komposition mit Fakes, darunter `knowledgeToolsReadOnlyIndexedDocuments`), `RagShellIntegrationTest` (echte Adapter gegen Fake-HTTP-Server und Lucene-Temp-Index), `AgentModeRoundTripTest` (Demo-Agent), Pairing-Dialog |
 | `architecture-tests` | 153 | Registry-Konsistenz, Schichtregeln, Bytecode 52, verbotene Importe, Konstantenpool, Secret-Grenze, RAG- und Agent-Grenzen, JDK-Zeichenklassen-Verbot in `domain.knowledge`; Gegenbeispiele unter `*.archfixture` |
-| `integration-tests` | 32 | Vertical-Slice-Tests A–G und Konfigurations-Slice gegen lokale Fakes, Parser-Test des Testagenten, `EmbeddingEndpointProbeTest` (Roh-Probe der Live-Verifikation gegen `FakeEmbeddingsServer`); eigene JVM je Klasse (siehe unten) |
+| `integration-tests` | 38 | Vertical-Slice-Tests A–G und Konfigurations-Slice gegen lokale Fakes, Parser-Test des Testagenten, `EmbeddingEndpointProbeTest` (Roh-Probe der Live-Verifikation gegen `FakeEmbeddingsServer`), `FailureRedactionTest` (Schwärzung von Secrets und Hostnamen in Fehlerketten der Live-Tests); eigene JVM je Klasse (siehe unten) |
 | `acp-demo-agent` | 0 | Testfixture-Prozess, wird von anderen Modulen gestartet |
 
 ## Fixtures und Vertragstests
@@ -124,7 +124,8 @@ Stränge bleiben die Spezifikation der Details (`KnowledgeVerticalSliceTest`, `S
 | `KeePassRpcRealServerIT` (`security-keepassrpc`) | `-Dkeepassrpc.it=true -Dkeepassrpc.it.entry=<Titel>`, optional `keepassrpc.it.keyFile`, `host`, `port`, `origin` | Pairing und Lesen eines Eintrags aus einem echten, entsperrten KeePass mit KeePassRPC; gibt nur aus, ob Felder nicht leer sind |
 
 `liveTest` reicht neben `-Dlive.*` die üblichen Proxy-Properties (`http(s).proxyHost`, `http(s).proxyPort`,
-`http.nonProxyHosts`) und den Truststore (`javax.net.ssl.trustStore*`) an die Test-JVM durch. Welche Stufen
+`http.nonProxyHosts`) und den Truststore (`javax.net.ssl.trustStore`, `javax.net.ssl.trustStoreType`; ein Passwort nur
+aus der Umgebungsvariablen `ENTERPRISE_AI_LIVE_TRUSTSTORE_PASSWORD`) an die Test-JVM durch. Welche Stufen
 bereits gegen die echte Enterprise-API, ein echtes Wiki, Confluence oder KeePass gelaufen sind, steht im
 Ergebnisprotokoll der [Live-Verifikation](live-verifikation.md); alles andere bleibt UNVERIFIED
 ([Einschränkungen](einschraenkungen.md)).

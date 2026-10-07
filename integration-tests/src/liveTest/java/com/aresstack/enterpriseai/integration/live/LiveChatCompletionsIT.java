@@ -20,8 +20,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Stufe 1 der Live-Verifikation: Slice A gegen die echte Enterprise-API ({@code /chat/completions}), Streaming
@@ -38,15 +38,30 @@ public class LiveChatCompletionsIT {
     private static OpenAiCompatibleChatAdapter adapter() {
         URI baseUrl = URI.create(LiveSettings.required("live.chat.baseUrl"));
         String model = LiveSettings.required("live.chat.model");
-        char[] apiKey = LiveSettings.secret(LiveSettings.API_KEY_ENV);
-        try {
-            return new OpenAiCompatibleChatAdapter(OpenAiCompatibleChatConfig.builder(baseUrl, model)
-                    .bearerToken(OpenAiCompatibleChatConfig.TokenSource.fixed(new String(apiKey)))
-                    .readTimeoutMillis(120000)
-                    .build());
-        } finally {
-            Arrays.fill(apiKey, '\0');
+        return new OpenAiCompatibleChatAdapter(OpenAiCompatibleChatConfig.builder(baseUrl, model)
+                .bearerToken(LiveSettings.chatApiKey())
+                .readTimeoutMillis(120000)
+                .build());
+    }
+
+    /**
+     * Einordnung eines Fehlers ohne seine Meldung: Adapter-Meldungen nennen bei Transportfehlern den Host und bei
+     * HTTP-Fehlern bis zu 300 Zeichen des Antwortkörpers, beides gehört nicht in die Rückmeldung.
+     */
+    private static String describe(ChatCompletionException error) {
+        StringBuilder text = new StringBuilder(error.kind().toString());
+        if (error.statusCode() >= 0) {
+            text.append(", HTTP ").append(error.statusCode());
         }
+        Throwable cause = error.getCause();
+        if (cause != null) {
+            text.append(", Ursache ").append(cause.getClass().getSimpleName());
+            for (Throwable deeper = cause.getCause(); deeper != null && deeper != cause; deeper = deeper.getCause()) {
+                text.append(" <- ").append(deeper.getClass().getSimpleName());
+                cause = deeper;
+            }
+        }
+        return text.toString();
     }
 
     private static String describe(ChatResponse response) {
@@ -87,7 +102,7 @@ public class LiveChatCompletionsIT {
 
                 @Override
                 public void onFailed(ChatCompletionException error) {
-                    failure.set(error.getClass().getSimpleName() + " " + error.kind() + ": " + error.getMessage());
+                    failure.set("Chat-Anfrage gescheitert: " + describe(error));
                     done.countDown();
                 }
 
@@ -98,7 +113,9 @@ public class LiveChatCompletionsIT {
                 }
             });
             assertTrue("keine Antwort innerhalb von 180 s", done.await(180, TimeUnit.SECONDS));
-            assertNull(failure.get(), failure.get());
+            if (failure.get() != null) {
+                fail(failure.get());
+            }
             String text;
             synchronized (answer) {
                 text = answer.toString().trim();
@@ -136,8 +153,7 @@ public class LiveChatCompletionsIT {
                 LiveSettings.report(STAGE, "unbekanntes Modell: KEIN Fehler, API antwortet trotzdem ("
                         + describe(response) + ")");
             } catch (ChatCompletionException error) {
-                LiveSettings.report(STAGE, "unbekanntes Modell: " + error.kind() + ", HTTP " + error.statusCode()
-                        + ", Meldung des Adapters: " + error.getMessage());
+                LiveSettings.report(STAGE, "unbekanntes Modell: Fehler, " + describe(error));
             }
         }, LiveSettings.API_KEY_ENV);
     }

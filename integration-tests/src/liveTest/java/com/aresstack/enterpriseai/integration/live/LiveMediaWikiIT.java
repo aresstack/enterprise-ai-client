@@ -101,7 +101,8 @@ public class LiveMediaWikiIT {
             }
             LiveSettings.report(STAGE, "Wiki-Volltextsuche nach dem Startseitentitel: " + hits.size() + " Treffer, Startseite "
                     + (startPageAmongHits ? "darunter" : "NICHT darunter"));
-            assertFalse("Wiki-Suche liefert keinen Treffer für den Startseitentitel", hits.isEmpty());
+            assertTrue("Wiki-Suche nach dem Startseitentitel nennt die Startseite nicht (" + hits.size() + " Treffer)",
+                    startPageAmongHits);
         }, LiveSettings.WIKI_PASSWORD_ENV);
     }
 }

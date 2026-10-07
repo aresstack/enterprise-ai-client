@@ -1,8 +1,12 @@
 package com.aresstack.enterpriseai.integration.live;
 
+import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatConfig;
 import com.aresstack.enterpriseai.embedding.openai.BearerTokenSource;
+import org.junit.AssumptionViolatedException;
 
-import static org.junit.Assert.fail;
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.Assume.assumeTrue;
 
 /**
@@ -19,6 +23,10 @@ final class LiveSettings {
     static final String API_KEY_ENV = "ENTERPRISE_AI_LIVE_API_KEY";
     static final String WIKI_PASSWORD_ENV = "ENTERPRISE_AI_LIVE_WIKI_PASSWORD";
     static final String KEEPASS_PAIRING_ENV = "ENTERPRISE_AI_LIVE_KEEPASS_PAIRING";
+
+    /** Parameter mit Adressen; ihre Hostnamen werden in Fehlermeldungen durch {@code <host>} ersetzt. */
+    private static final String[] ADDRESS_PROPERTIES = {"live.chat.baseUrl", "live.embedding.baseUrl",
+            "live.wiki.apiUrl", "live.confluence.baseUrl", "live.keepass.host"};
 
     /** Ein Testkörper, der Exceptions werfen darf (für {@link #withoutSecretLeak}). */
     interface Body {
@@ -73,6 +81,22 @@ final class LiveSettings {
         return () -> System.getenv(API_KEY_ENV).toCharArray();
     }
 
+    /** Der API-Key für den Chat-Adapter, je Request frisch aus der Umgebung gelesen (nie in einem Feld). */
+    static OpenAiCompatibleChatConfig.TokenSource chatApiKey() {
+        assumeTrue("Live-Test übersprungen: Umgebungsvariable " + API_KEY_ENV + " fehlt", hasSecret(API_KEY_ENV));
+        return new OpenAiCompatibleChatConfig.TokenSource() {
+            @Override
+            public String token() {
+                return System.getenv(API_KEY_ENV);
+            }
+
+            @Override
+            public String toString() {
+                return "TokenSource[" + API_KEY_ENV + "]";
+            }
+        };
+    }
+
     /** Base-URL für {@code /embeddings}: {@code live.embedding.baseUrl}, sonst {@code live.chat.baseUrl}. */
     static String embeddingBaseUrl() {
         String baseUrl = optional("live.embedding.baseUrl");
@@ -85,33 +109,29 @@ final class LiveSettings {
     }
 
     /**
-     * Führt den Testkörper aus und prüft bei jeder Exception (auch Assertion-Fehlern), dass ihre Meldung und die
-     * Meldungen aller Ursachen keines der Secrets enthalten; sonst wird die Exception durch eine geschwärzte
-     * ersetzt. So landet ein Secret nie in der JUnit- oder Gradle-Ausgabe, selbst wenn ein Adapter es wider
-     * Erwarten in eine Meldung schreibt.
+     * Führt den Testkörper aus und gibt jede Exception (auch Assertion-Fehler) nur geschwärzt weiter
+     * ({@link FailureRedaction}): Meldungen mit einem Secret der genannten Umgebungsvariablen werden ersetzt, die
+     * Adressen aus {@code -Dlive.*} und ihre Hostnamen durch {@code <host>}; Klassen und Stacktraces bleiben.
+     * Übersprungene Tests ({@link AssumptionViolatedException}) gehen unverändert durch.
      */
     static void withoutSecretLeak(Body body, String... environmentVariables) throws Exception {
         try {
             body.run();
+        } catch (AssumptionViolatedException skipped) {
+            throw skipped; // eigene Meldung ("Live-Test übersprungen: …"), bleibt SKIPPED
         } catch (Throwable thrown) {
+            List<String[]> secrets = new ArrayList<String[]>();
             for (String variable : environmentVariables) {
-                String secret = System.getenv(variable);
-                if (secret == null || secret.isEmpty()) {
-                    continue;
-                }
-                for (Throwable current = thrown; current != null; current = current.getCause()) {
-                    String message = current.getMessage();
-                    if (message != null && message.contains(secret)) {
-                        fail("Secret aus " + variable + " (Länge " + secret.length() + ") taucht in der Meldung einer "
-                                + current.getClass().getSimpleName() + " auf; Ursprung: "
-                                + thrown.getClass().getSimpleName() + " (Meldung geschwärzt)");
-                    }
+                String[] variants = FailureRedaction.secretVariants(variable, System.getenv(variable));
+                if (variants != null) {
+                    secrets.add(variants);
                 }
             }
-            if (thrown instanceof Exception) {
-                throw (Exception) thrown;
+            List<String> addresses = new ArrayList<String>();
+            for (String property : ADDRESS_PROPERTIES) {
+                addresses.add(optional(property));
             }
-            throw (Error) thrown;
+            throw FailureRedaction.redact(thrown, secrets, FailureRedaction.addressVariants(addresses));
         }
     }
 }
