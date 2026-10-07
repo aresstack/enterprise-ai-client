@@ -46,6 +46,16 @@ public class KnowledgeModelTest {
         assertEquals("intranet/Haupt Seite", id.schemeSpecificPart());
         assertEquals(id, KnowledgeResourceId.of("wiki:intranet/Haupt Seite"));
         assertEquals("wiki:intranet/Haupt Seite", id.toString());
+        assertRejected(new Runnable() {
+            public void run() {
+                KnowledgeResourceId.of("wiki", null);
+            }
+        });
+        assertRejected(new Runnable() {
+            public void run() {
+                KnowledgeResourceId.of(null, "x");
+            }
+        });
         for (final String invalid : new String[]{null, "", "ohne-schema", "Wiki:x", "wiki:", " wiki:x", "wiki:x ",
                 "wiki:a\nb", "1x:y"}) {
             assertRejected(new Runnable() {

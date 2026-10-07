@@ -23,8 +23,9 @@ import java.util.regex.Pattern;
  *   <li>Ein einzelner Satz über dem Budget wird an Wortgrenzen geteilt, damit kein Chunk den Embedding-Endpunkt
  *       überfordert.</li>
  * </ol>
- * Das Budget gilt für {@link KnowledgeChunk#textWithHeading()}; die Überschriftenzeile belegt dabei höchstens
- * die Hälfte des Budgets.
+ * Das Budget gilt exakt für {@link KnowledgeChunk#textWithHeading()} laut Token-Zähler (Trenner eingerechnet);
+ * überschritten wird es nur von einem einzelnen Wort, das allein größer ist. Die Überschriftenzeile belegt
+ * höchstens die Hälfte des Budgets und wird sonst gekürzt (äußere Überschriften zuerst).
  *
  * <p>Übernommen und adaptiert aus aresstack/corenth {@code NlpTextChunker} (Überschriften-Abschnitte,
  * Token-Budget, Satz-Overlap) und askai-java8 {@code PassageSegmentation} (Struktur als harte Grenze,
@@ -79,28 +80,27 @@ public final class KnowledgeChunker {
     // ------------------------------------------------------------------ packing
 
     private void chunkSection(KnowledgeResource resource, Section section, List<KnowledgeChunk> chunks) {
-        String headingLine = headingLine(section.headingPath);
-        int headingTokens = headingLine.isEmpty() ? 0 : tokenCounter.count(headingLine);
-        int budget = policy.maxTokens() - Math.min(headingTokens, policy.maxTokens() / 2);
-        List<Unit> units = fitToBudget(section.units, budget);
+        List<String> headingPath = fitHeading(section.headingPath);
+        String prefix = headingPath.isEmpty() ? "" : headingLine(headingPath) + "\n\n";
+        List<Unit> units = fitToBudget(section.units, prefix);
 
         List<Unit> previous = Collections.emptyList();
         int next = 0;
         while (next < units.size()) {
             List<Unit> current = new ArrayList<Unit>(overlapOf(previous));
-            int tokens = sum(current);
-            while (!current.isEmpty() && tokens + units.get(next).tokens > budget) {
-                tokens -= current.remove(0).tokens;
+            current.add(units.get(next++));
+            while (current.size() > 1 && !fits(prefix, current)) {
+                current.remove(0); // Overlap weicht, der neue Satz bleibt
             }
-            current.add(units.get(next));
-            tokens += units.get(next).tokens;
-            next++;
-            while (next < units.size() && tokens + units.get(next).tokens <= budget) {
+            while (next < units.size()) {
                 current.add(units.get(next));
-                tokens += units.get(next).tokens;
+                if (!fits(prefix, current)) {
+                    current.remove(current.size() - 1);
+                    break;
+                }
                 next++;
             }
-            chunks.add(toChunk(resource, chunks.size(), section.headingPath, current));
+            chunks.add(toChunk(resource, chunks.size(), headingPath, current));
             previous = current;
         }
     }
@@ -110,8 +110,12 @@ public final class KnowledgeChunker {
         return previous.subList(previous.size() - overlap, previous.size());
     }
 
-    private KnowledgeChunk toChunk(KnowledgeResource resource, int ordinal, List<String> headingPath,
-                                   List<Unit> units) {
+    /** Misst den zusammengesetzten Text samt Trennern und Überschrift, nicht die Summe der Einzelteile. */
+    private boolean fits(String prefix, List<Unit> units) {
+        return tokenCounter.count(prefix + join(units)) <= policy.maxTokens();
+    }
+
+    private static String join(List<Unit> units) {
         StringBuilder text = new StringBuilder();
         for (Unit unit : units) {
             if (text.length() > 0) {
@@ -119,50 +123,66 @@ public final class KnowledgeChunker {
             }
             text.append(unit.text);
         }
+        return text.toString();
+    }
+
+    private KnowledgeChunk toChunk(KnowledgeResource resource, int ordinal, List<String> headingPath,
+                                   List<Unit> units) {
         KnowledgeChunk draft = new KnowledgeChunk(KnowledgeChunkId.of(resource.id(), ordinal), resource.sourceId(),
-                headingPath, text.toString(), 0);
+                headingPath, join(units), 0);
         return new KnowledgeChunk(draft.id(), draft.sourceId(), headingPath, draft.text(),
                 tokenCounter.count(draft.textWithHeading()));
     }
 
+    /**
+     * Begrenzt die Überschriftenzeile auf das halbe Budget: zuerst entfallen äußere Überschriften, dann wird die
+     * innerste an Wortgrenzen gekürzt. So bleibt für den Text immer mindestens die Hälfte.
+     */
+    private List<String> fitHeading(List<String> headingPath) {
+        int limit = policy.maxTokens() / 2;
+        List<String> path = new ArrayList<String>(headingPath);
+        while (path.size() > 1 && tokenCounter.count(headingLine(path)) > limit) {
+            path.remove(0);
+        }
+        if (path.size() == 1 && tokenCounter.count(path.get(0)) > limit) {
+            String[] words = path.get(0).split("\\s+");
+            StringBuilder shortened = new StringBuilder(words[0]);
+            for (int i = 1; i < words.length
+                    && tokenCounter.count(shortened + " " + words[i]) <= limit; i++) {
+                shortened.append(' ').append(words[i]);
+            }
+            path.set(0, shortened.toString());
+        }
+        return path;
+    }
+
     /** Teilt Einheiten über dem Budget an Wortgrenzen; ein einzelnes Wort über dem Budget bleibt ganz. */
-    private List<Unit> fitToBudget(List<Unit> units, int budget) {
+    private List<Unit> fitToBudget(List<Unit> units, String prefix) {
         List<Unit> fitted = new ArrayList<Unit>();
         for (Unit unit : units) {
-            if (unit.tokens <= budget) {
+            if (tokenCounter.count(prefix + unit.text) <= policy.maxTokens()) {
                 fitted.add(unit);
                 continue;
             }
             String separator = unit.separator;
             StringBuilder piece = new StringBuilder();
-            int pieceTokens = 0;
             for (String word : unit.text.trim().split("\\s+")) {
-                int wordTokens = tokenCounter.count(word);
-                if (piece.length() > 0 && pieceTokens + wordTokens > budget) {
-                    fitted.add(new Unit(piece.toString(), separator, pieceTokens));
+                if (piece.length() > 0
+                        && tokenCounter.count(prefix + piece + " " + word) > policy.maxTokens()) {
+                    fitted.add(new Unit(piece.toString(), separator));
                     separator = SENTENCE_SEPARATOR;
                     piece.setLength(0);
-                    pieceTokens = 0;
                 }
                 if (piece.length() > 0) {
                     piece.append(' ');
                 }
                 piece.append(word);
-                pieceTokens += wordTokens;
             }
             if (piece.length() > 0) {
-                fitted.add(new Unit(piece.toString(), separator, pieceTokens));
+                fitted.add(new Unit(piece.toString(), separator));
             }
         }
         return fitted;
-    }
-
-    private static int sum(List<Unit> units) {
-        int tokens = 0;
-        for (Unit unit : units) {
-            tokens += unit.tokens;
-        }
-        return tokens;
     }
 
     private static String headingLine(List<String> headingPath) {
@@ -308,7 +328,7 @@ public final class KnowledgeChunker {
         private void add(String text, String separator) {
             String effective = blockBreakPending ? BLOCK_SEPARATOR : separator;
             blockBreakPending = false;
-            section.units.add(new Unit(text, effective, tokenCounter.count(text)));
+            section.units.add(new Unit(text, effective));
         }
     }
 
@@ -350,12 +370,10 @@ public final class KnowledgeChunker {
     private static final class Unit {
         final String text;
         final String separator;
-        final int tokens;
 
-        Unit(String text, String separator, int tokens) {
+        Unit(String text, String separator) {
             this.text = text;
             this.separator = separator;
-            this.tokens = tokens;
         }
     }
 }
