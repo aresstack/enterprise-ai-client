@@ -137,6 +137,22 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `application.agent`, `app.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `app.ui.agent` ist reine Oberfläche |
 | `RagBoundaryTest.*` | AP10: `application.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `application.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
+| `CoreNamingTest.*` | Nachtrag 1/19: keine Provider-Namen (OpenAI, Ollama, Claude, llama.cpp ...) und keine Multi-Provider-Abstraktion in Klassennamen oder Enum-Konstanten des Kerns |
+| `TestCodeIsolationTest.*` | Produktionscode kennt weder JUnit/ArchUnit/Mockito noch Testfixture-Klassen oder Testpakete (`testing`, `testkit`, `fake`); keine `testFixtures(...)` in einer Produktionskonfiguration |
+| `AdapterSignatureTest.*` | öffentliche Signaturen (Supertypen, Felder, Konstruktoren, Methoden, Typargumente) aller Adapter zeigen keine Bibliotheks- oder Transporttypen; keine Fremdbibliothek mit `api` deklariert |
+| `LoggingBoundaryTest.*` | Kern und comic-controls loggen nicht; kein Logging-Framework (Adapter höchstens `java.util.logging`); `System.out`/`System.err` und `printStackTrace` nur im Demo-Agenten |
+| `CompositionRootTest.*` | `System.getenv`, Preferences und `Properties.load` nur in app-swing und acp-demo-agent; kein `ServiceLoader`; jeder Adapter implementiert ein Interface seines Ports |
+| `UiTechnologyTest.*` | Nachtrag 3: kein JavaFX, SWT, Servlet oder Web-Framework im Produktionscode |
+| `HardcodedConfigurationTest.*` | Nachtrag 1/5/18: im Konstantenpool der Produktionsklassen keine URL mit fremdem Host, kein Modellname, kein API-Key-/Bearer-Literal, keine Bind-All-Adresse `0.0.0.0` |
+| `Java8CompatibilityTest.*` | jeder Kompilierschritt jedes Moduls (auch Tests und Testfixtures) zielt auf Java 8 (`--release 8` bzw. Target 1.8); alle Klassendateien tragen Bytecode-Major 52 |
+| `SettingsGradleTest.*` | `include`-Zeilen in `settings.gradle` ↔ `ModuleRegistry` ↔ Gradle-Build-Modell |
+| `TechnologyRulesDetectViolationsTest`, `ModuleMatrixDetectViolationsTest`, `ExistingRulesDetectViolationsTest` | Gegenbeispiele (AP24): jede Zeile der Technologietabelle, jede verbotene Modulkante und jede inline definierte Strang-Regel wird gegen ein absichtlich verstoßendes Fixture rot; Bibliotheks-Stubs mit echten Paketnamen liegen unter `src/test/java/<bibliothek>/archstub` |
+
+Gegenbeispiele liegen ausschließlich im Testcode von `architecture-tests` unter `<Modulpaket>.archfixture..`
+(z. B. `domain.archfixture.tech.LuceneInDomain`) und werden nie in die Produktionsläufe importiert. Regeln, die als
+Fabrik vorliegen (`ArchitectureRules`, `*Rules`), werden direkt auf die Fixtures angewendet; Regeln, die in einer
+Testmethode stehen, führt `ExistingRuleProbe` unverändert aus und ersetzt nur ihre Eingabe. Wer eine Regel ergänzt,
+legt ihr Gegenbeispiel daneben.
 
 ### Neues Modul aufnehmen (z. B. `source-sharepoint`, `source-files`)
 
