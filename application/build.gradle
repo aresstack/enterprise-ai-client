@@ -14,4 +14,8 @@ dependencies {
 dependencies {
     // Strang A: Fake-Chat-Port für die Tests des Chat-Use-Cases.
     testImplementation testFixtures(project(':chat-api'))
+    // AP10: Fakes für Embedding und Wissensindex in den RAG-Tests.
+    testImplementation testFixtures(project(':embedding-api'))
+    testImplementation testFixtures(project(':knowledge-api'))
+    testImplementation testFixtures(project(':source-api'))
 }

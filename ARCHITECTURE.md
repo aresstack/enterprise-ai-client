@@ -135,6 +135,7 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `ClassBoundaryTest.*` | Modulmatrix auf Klassenebene, Kern-Positivliste, AP24-Technologietabelle für den Kern, Technologiegrenzen, keine Singletons / kein nicht-finales `static` / keine nicht-privaten `static final` Arrays, Collections, Maps, Atomics oder StringBuilder, `main` nur in app-swing und acp-demo-agent |
 | `ModuleRegistryTest.*` | die Registry selbst: keine Zyklen, Schichtung, AP24-Verbotskanten bleiben verboten, Pakete disjunkt |
 | `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `application.agent`, `app.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `app.ui.agent` ist reine Oberfläche |
+| `RagBoundaryTest.*` | AP10: `application.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `application.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 
 ### Neues Modul aufnehmen (z. B. `source-sharepoint`, `source-files`)
@@ -163,6 +164,22 @@ Agent-Modus ist ein getrennter Zusatz: UI → `AgentService` (`application.agent
   oder Agent-Modus wird er abgemeldet.
 - Oberfläche: `app.ui.agent.ModalShellPanel` mit Reitern Chat/Agent; jede Karte ist eine eigene
   `ChatShellPanel` mit eigenem Model. Die Agent-Karte baut `app.agent.AgentModeAssembly`.
+
+## RAG und Indexierung (AP10)
+
+Der normale Chat bleibt unverändert; RAG legt sich von außen darum. Einstiegspunkte in `application`:
+
+- `application.knowledge.IndexKnowledgeUseCase`: Quelle → discover → load → `KnowledgeChunker` → `EmbeddingPort`
+  (Batches) → `KnowledgeIndexPort.replace` je Ressource. Seriell, Fehler je Ressource im `IndexingReport`,
+  Abbruch über `IndexingListener`.
+- `application.rag.RetrieveKnowledgeUseCase`: Volltext und Cosine im Namespace der konfigurierten
+  `EmbeddingModelIdentity`, Fusion per Reciprocal Rank Fusion (`RetrievalSettings`); fällt ein Pfad aus, liefert
+  der andere mit Warnung.
+- `application.rag.PromptContextAssembler`: nummerierter Kontextblock in Fusionsreihenfolge bis Token-Budget
+  oder Quellenzahl (`ContextSettings`).
+- `application.rag.RagChatUseCase`: RAG aus = `ChatService.send`; RAG an = Kontext über
+  `ChatService.sendWithContext` als System-Anteil nur für diesen Turn, in der Historie bleibt nur die
+  Nutzerfrage. Quellen stehen in `RagChatTurn.sources()`.
 
 ## Build-Konventionen
 
