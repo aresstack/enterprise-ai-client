@@ -51,7 +51,7 @@ final class SentenceSplitter {
                 next++;
             }
             boolean boundary = next > end && next < length && isSentenceStart(text.codePointAt(next))
-                    && !(c == '.' && end == i + 1 && isAbbreviation(text, i));
+                    && !(c == '.' && onlyClosing(text, i + 1, end) && isAbbreviation(text, i));
             if (boundary) {
                 add(sentences, text.substring(start, end));
                 start = next;
@@ -67,6 +67,16 @@ final class SentenceSplitter {
         if (!trimmed.isEmpty()) {
             sentences.add(trimmed);
         }
+    }
+
+    /** Zwischen dem Punkt und {@code end} stehen nur schließende Zeichen, kein weiteres Satzzeichen. */
+    private static boolean onlyClosing(String text, int from, int end) {
+        for (int k = from; k < end; k++) {
+            if (!isClosing(text.charAt(k))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean isTerminal(char c) {

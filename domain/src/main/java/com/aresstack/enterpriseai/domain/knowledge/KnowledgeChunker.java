@@ -145,7 +145,8 @@ public final class KnowledgeChunker {
 
     /**
      * Begrenzt die Überschriftenzeile auf das halbe Budget: zuerst entfallen äußere Überschriften, dann wird die
-     * innerste an Wortgrenzen gekürzt. So bleibt für den Text immer mindestens die Hälfte.
+     * innerste an Wortgrenzen gekürzt; passt nicht einmal ihr erstes Wort, entfällt die Überschrift. So bleibt
+     * für den Text immer mindestens die Hälfte.
      */
     private List<String> fitHeading(List<String> headingPath) {
         int limit = policy.maxTokens() / 2;
@@ -155,6 +156,9 @@ public final class KnowledgeChunker {
         }
         if (path.size() == 1 && tokenCounter.count(path.get(0)) > limit) {
             String[] words = path.get(0).split("\\s+");
+            if (tokenCounter.count(words[0]) > limit) {
+                return Collections.<String>emptyList(); // schon das erste Wort sprengt das halbe Budget
+            }
             StringBuilder shortened = new StringBuilder(words[0]);
             for (int i = 1; i < words.length
                     && tokenCounter.count(shortened + " " + words[i]) <= limit; i++) {

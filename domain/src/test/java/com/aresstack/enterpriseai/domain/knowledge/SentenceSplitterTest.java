@@ -29,6 +29,10 @@ public class SentenceSplitterTest {
                 splitter.split("Das gilt z. B. für Lucene bzw. Solr und Dr. Meier am 1. Januar."));
         assertEquals(Collections.singletonList("Siehe J. R. R. Tolkien, d.h. Mittelerde, vgl. Kap. Drei."),
                 splitter.split("Siehe J. R. R. Tolkien, d.h. Mittelerde, vgl. Kap. Drei."));
+        assertEquals(Arrays.asList("Das ist „Dr.“ Meier.", "Ende."),
+                splitter.split("Das ist „Dr.“ Meier. Ende."));
+        assertEquals(Arrays.asList("Er sagte „Ende.“", "Danach ging er."),
+                splitter.split("Er sagte „Ende.“ Danach ging er."));
     }
 
     @Test

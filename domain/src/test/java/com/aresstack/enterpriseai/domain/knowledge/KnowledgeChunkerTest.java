@@ -349,6 +349,24 @@ public class KnowledgeChunkerTest {
     }
 
     @Test
+    public void headingWhoseFirstWordExceedsHalfTheBudgetIsDropped() {
+        KnowledgeTokenCounter characters = new KnowledgeTokenCounter() {
+            @Override
+            public int count(String text) {
+                return text.length();
+            }
+        };
+        List<KnowledgeChunk> chunks = new KnowledgeChunker(KnowledgeChunkingPolicy.of(8, 0), characters)
+                .chunk(KnowledgeDocument.of(RESOURCE, "# !!!!!!!!!!!!!!!!!!!!\nBody. Text."));
+
+        assertEquals(Arrays.asList("Body.", "Text."), Arrays.asList(chunks.get(0).text(), chunks.get(1).text()));
+        for (KnowledgeChunk chunk : chunks) {
+            assertTrue("Überschrift entfällt: " + chunk, chunk.headingPath().isEmpty());
+            assertTrue(chunk.tokenCount() <= 8);
+        }
+    }
+
+    @Test
     public void policyValidatesAndDescribesItself() {
         assertEquals("chunker-v1;maxTokens=350;overlapSentences=1", KnowledgeChunkingPolicy.defaults().fingerprint());
         try {
