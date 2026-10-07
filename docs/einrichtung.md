@@ -172,7 +172,7 @@ und veröffentlicht nur ein grün gebautes Jar:
 | Push auf | Version | Veröffentlichung |
 |---|---|---|
 | `main` | `<version>` | Tag `v<version>` und GitHub-Release `enterprise-ai-client <version>` mit dem Jar und generierten Release-Notes, sofern das Tag noch nicht existiert. Existiert es (Version nicht erhöht), gibt es kein Release, nur das Workflow-Artefakt und eine Warnung im Lauf. |
-| anderer Branch | `<version>-SNAPSHOT` | Pre-Release `Snapshot <branch> (<version>-SNAPSHOT)` unter dem Tag `snapshot-<branch>` (Sonderzeichen außer `. _ -` werden zu `-`). Jeder Push verschiebt das Tag auf den neuen Commit und ersetzt das Jar; der Link `releases/tag/snapshot-<branch>` bleibt gleich. Wird der Branch gelöscht, entfernt der Workflow Pre-Release und Tag. |
+| anderer Branch | `<version>-SNAPSHOT` | Pre-Release `Snapshot <branch> (<version>-SNAPSHOT)` unter dem Tag `snapshot-<branch>-<hash>` (Sonderzeichen außer `. _ -` werden zu `-`; `<hash>` sind die ersten acht Hex-Zeichen von SHA-256 des Branchnamens, damit etwa `feature/foo` und `feature-foo` getrennte Tags haben). Jeder Push verschiebt das Tag auf den neuen Commit und ersetzt das Jar; der Link des Pre-Release bleibt gleich. Wird der Branch gelöscht, entfernt der Workflow Pre-Release und Tag; ein noch laufender Snapshot-Lauf wird vorher abgewartet. |
 
 In beiden Fällen liegt das Jar zusätzlich als Workflow-Artefakt `enterprise-ai-client-<version>` am Lauf. Wie
 die anderen aresstack-Repositories (corenth, keepassrpc-java) veröffentlicht der Workflow über die `gh`-CLI nur

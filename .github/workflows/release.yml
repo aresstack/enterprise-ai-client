@@ -3,8 +3,14 @@
 #   main              -> Release-Version <projectVersion> aus gradle.properties: Tag v<version> plus GitHub-Release mit
 #                        dem Jar, sofern das Tag noch nicht existiert (sonst nur Workflow-Artefakt und Warnung).
 #   alle anderen      -> rollierender Snapshot <version>-SNAPSHOT: je Branch ein Pre-Release unter dem Tag
-#   Branches             snapshot-<branch>, dessen Tag und Jar jeder Push ersetzt; zusätzlich Workflow-Artefakt.
+#   Branches             snapshot-<branch>-<hash>, dessen Tag und Jar jeder Push ersetzt; zusätzlich Workflow-Artefakt.
 #   Branch gelöscht   -> Pre-Release und Tag des Branches werden entfernt.
+#
+# Snapshot-Tag: Branchname mit allen Zeichen außer [A-Za-z0-9._-] als '-' plus die ersten acht Hex-Zeichen von
+# SHA-256 des unveränderten Branchnamens, damit Branches wie feature/foo und feature-foo getrennte Tags bekommen.
+# Push-Job und Cleanup-Job teilen sich je Branch die Concurrency-Gruppe release-refs/heads/<branch>: ein Cleanup
+# wartet, bis ein laufender Snapshot-Lauf fertig ist, und räumt dann auf; der Snapshot-Lauf prüft vor dem
+# Veröffentlichen zusätzlich, ob der Branch noch existiert.
 #
 # Der Build läuft mit JDK 8 (Zielplattform) und umfasst alle Tests sowie verifyFatJar und smokeStartFatJar
 # (gradle/fat-jar.gradle); veröffentlicht wird nur ein grün gebautes Jar. build.yml bleibt der Pull-Request-Check
@@ -29,7 +35,7 @@ jobs:
       contents: write
     concurrency:
       # Auf Branches ersetzt ein neuer Push den laufenden Snapshot-Lauf; auf main werden Läufe nacheinander
-      # abgearbeitet, damit kein Release halb fertig abgebrochen wird.
+      # abgearbeitet, damit kein Release halb fertig abgebrochen wird. Dieselbe Gruppe nutzt der Cleanup-Job.
       group: release-${{ github.ref }}
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     env:
@@ -61,7 +67,10 @@ jobs:
           else
             version="$base-SNAPSHOT"
             release=false
-            tag="snapshot-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+            # Gleiche Ableitung wie im Job cleanup.
+            safe="$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+            digest="$(printf '%s' "$GITHUB_REF_NAME" | sha256sum | cut -c1-8)"
+            tag="snapshot-$safe-$digest"
           fi
           {
             echo "base=$base"
@@ -140,6 +149,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Wurde der Branch inzwischen gelöscht, würde das Veröffentlichen einen verwaisten Snapshot hinterlassen.
+          if ! git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "::notice::Branch $BRANCH existiert nicht mehr; der Snapshot wird nicht veröffentlicht."
+            exit 0
+          fi
           # Tag auf den aktuellen Commit setzen (neu oder verschoben).
           git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
           notes="$(mktemp)"
@@ -175,7 +189,8 @@ jobs:
     permissions:
       contents: write
     concurrency:
-      group: release-cleanup-${{ github.event.ref }}
+      # Gleiche Gruppe wie der Push-Job dieses Branches: Cleanup wartet auf einen laufenden Snapshot-Lauf.
+      group: release-refs/heads/${{ github.event.ref }}
       cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
@@ -186,7 +201,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="snapshot-$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')"
+          # Gleiche Ableitung wie im Job jar (Schritt "Version und Art des Builds bestimmen").
+          safe="$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')"
+          digest="$(printf '%s' "$BRANCH" | sha256sum | cut -c1-8)"
+          tag="snapshot-$safe-$digest"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release delete "$tag" --cleanup-tag --yes
             echo "Pre-Release und Tag $tag entfernt."

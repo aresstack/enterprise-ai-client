@@ -14,8 +14,8 @@ verdrahtet, die Architekturregeln laufen als Tests. Verbindliche Architekturgrun
 Voraussetzung: ein JDK 8 oder neuer (kompiliert wird immer für Java 8; die CI baut mit JDK 8 und 21).
 
 **Fertiges Jar**: Unter [Releases](https://github.com/aresstack/enterprise-ai-client/releases) liegt zu jeder
-Release-Version (`v<version>`, aus `main`) und zu jedem seither gepushten Branch (Pre-Release `snapshot-<branch>`, bei jedem Push
-ersetzt) das lauffähige Fat Jar `enterprise-ai-client-<version>.jar`. Start ohne Gradle:
+Release-Version (`v<version>`, aus `main`) und zu jedem seither gepushten Branch (Pre-Release `snapshot-<branch>-<hash>`,
+bei jedem Push ersetzt) das lauffähige Fat Jar `enterprise-ai-client-<version>.jar`. Start ohne Gradle:
 
 ```bash
 java -jar enterprise-ai-client-<version>.jar
