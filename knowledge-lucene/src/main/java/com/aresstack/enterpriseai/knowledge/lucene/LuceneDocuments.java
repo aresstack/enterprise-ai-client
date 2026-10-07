@@ -103,7 +103,6 @@ final class LuceneDocuments {
         try {
             KnowledgeResourceId resourceId = KnowledgeResourceId.of(doc.get(RESOURCE_ID));
             KnowledgeSourceId sourceId = KnowledgeSourceId.of(doc.get(SOURCE_ID));
-            String modifiedAt = doc.get(MODIFIED_AT);
             String parentId = doc.get(PARENT_ID);
             String location = doc.get(LOCATION);
             List<String> metadataItems = decode(doc.get(METADATA));
@@ -114,8 +113,7 @@ final class LuceneDocuments {
             KnowledgeResource resource = KnowledgeResource.builder(resourceId, sourceId)
                     .title(doc.get(TITLE))
                     .contentType(doc.get(CONTENT_TYPE))
-                    .revision(KnowledgeRevision.of(modifiedAt == null ? null : Instant.parse(modifiedAt),
-                            doc.get(VERSION)))
+                    .revision(revisionOf(doc))
                     .parentId(parentId == null ? null : KnowledgeResourceId.of(parentId))
                     .scope(doc.get(SCOPE))
                     .location(location == null ? null : URI.create(location))
@@ -127,6 +125,12 @@ final class LuceneDocuments {
         } catch (RuntimeException ex) {
             throw new KnowledgeIndexException("Gespeicherter Indexeintrag ist beschädigt: " + doc.get(CHUNK_ID), ex);
         }
+    }
+
+    /** Revision aus den gespeicherten Feldern; Dokumente ohne Felder gelten als {@link KnowledgeRevision#unknown()}. */
+    static KnowledgeRevision revisionOf(Document doc) {
+        String modifiedAt = doc.get(MODIFIED_AT);
+        return KnowledgeRevision.of(modifiedAt == null ? null : Instant.parse(modifiedAt), doc.get(VERSION));
     }
 
     /** Liste als {@code <länge>:<wert>}-Folge; jedes Zeichen ist im Wert erlaubt. */

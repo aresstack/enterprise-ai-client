@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.knowledge.lucene;
 
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexException;
@@ -11,6 +12,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -34,10 +36,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -174,6 +178,41 @@ final class LuceneTextIndex {
         return stored;
     }
 
+    /** Ressourcen-IDs aller Dokumente einer Quelle im Namespace (aus dem gespeicherten Feld, auch bei Alt-Indizes). */
+    Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+        final Set<KnowledgeResourceId> ids = new LinkedHashSet<KnowledgeResourceId>();
+        forEachDocument(space, new TermQuery(new Term(LuceneDocuments.SOURCE_ID, sourceId.value())),
+                new DocumentVisitor() {
+                    @Override
+                    public boolean visit(Document doc) {
+                        ids.add(KnowledgeResourceId.of(doc.get(LuceneDocuments.RESOURCE_ID)));
+                        return true;
+                    }
+                });
+        return Collections.unmodifiableSet(ids);
+    }
+
+    /** Gespeicherte Revision einer Ressource; leer ohne Dokument oder bei uneinheitlichen Revisionen. */
+    Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+        final KnowledgeRevision[] found = new KnowledgeRevision[1];
+        final boolean[] consistent = {true};
+        forEachDocument(space, new TermQuery(new Term(LuceneDocuments.RESOURCE_ID, resourceId.value())),
+                new DocumentVisitor() {
+                    @Override
+                    public boolean visit(Document doc) {
+                        KnowledgeRevision revision = LuceneDocuments.revisionOf(doc);
+                        if (found[0] == null) {
+                            found[0] = revision;
+                        } else if (!found[0].equals(revision)) {
+                            consistent[0] = false;
+                            return false;
+                        }
+                        return true;
+                    }
+                });
+        return consistent[0] ? Optional.ofNullable(found[0]) : Optional.<KnowledgeRevision>empty();
+    }
+
     /** Ein Volltexttreffer. */
     static final class ScoredStored {
         final LuceneDocuments.Stored stored;
@@ -186,6 +225,43 @@ final class LuceneTextIndex {
     }
 
     // ------------------------------------------------------------------ intern
+
+    private interface DocumentVisitor {
+        /** {@code false} bricht ab. */
+        boolean visit(Document doc);
+    }
+
+    /** Besucht jedes Dokument des Namespaces, das {@code query} trifft; nichts, wenn der Index fehlt. */
+    private void forEachDocument(EmbeddingModelIdentity space, Query query, DocumentVisitor visitor) {
+        Path path = directoryOf(space);
+        if (!Files.isDirectory(path)) {
+            return;
+        }
+        try {
+            Directory directory = FSDirectory.open(path);
+            try {
+                if (!DirectoryReader.indexExists(directory)) {
+                    return;
+                }
+                DirectoryReader reader = DirectoryReader.open(directory);
+                try {
+                    IndexSearcher searcher = new IndexSearcher(reader);
+                    TopDocs top = searcher.search(query, Math.max(1, reader.numDocs()));
+                    for (ScoreDoc scoreDoc : top.scoreDocs) {
+                        if (!visitor.visit(searcher.doc(scoreDoc.doc))) {
+                            return;
+                        }
+                    }
+                } finally {
+                    reader.close();
+                }
+            } finally {
+                directory.close();
+            }
+        } catch (IOException ex) {
+            throw new KnowledgeIndexException("Indexeinträge können nicht gelesen werden", ex);
+        }
+    }
 
     private Path directoryOf(EmbeddingModelIdentity space) {
         return root.resolve(space.fingerprint());

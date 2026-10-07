@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
@@ -40,6 +41,8 @@ import java.util.Map;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Gemeinsamer Aufbau der Werkzeug-Tests: Fake-Embedding, In-Memory-Index, zwei Fake-Quellen ("wiki" mit drei
@@ -194,6 +197,16 @@ final class KnowledgeToolFixture {
                 throw new KnowledgeIndexException("Vektorindex nicht lesbar");
             }
             return delegate.semanticSearch(query);
+        }
+
+        @Override
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+            return delegate.resourceIds(space, sourceId);
+        }
+
+        @Override
+        public Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+            return delegate.revisionOf(space, resourceId);
         }
 
         @Override
