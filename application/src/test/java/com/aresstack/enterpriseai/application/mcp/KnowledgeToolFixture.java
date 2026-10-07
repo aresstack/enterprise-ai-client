@@ -47,6 +47,8 @@ import java.util.Set;
 /**
  * Gemeinsamer Aufbau der Werkzeug-Tests: Fake-Embedding, In-Memory-Index, zwei Fake-Quellen ("wiki" mit drei
  * Seiten, "docs" mit einer), die AP10-Use-Cases und die Werkzeuge. Nichts davon braucht Netzwerk oder Dateien.
+ * Frisch ist nichts indexiert ({@link #indexed()} holt das nach); {@code get_knowledge_document} liest nur
+ * indexierte Dokumente.
  */
 final class KnowledgeToolFixture {
 
@@ -92,7 +94,7 @@ final class KnowledgeToolFixture {
         this.indexing = new IndexKnowledgeUseCase(index, embeddings, space,
                 new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
         this.retrieval = new RetrieveKnowledgeUseCase(index, embeddings, space, retrievalSettings);
-        this.documents = new LoadKnowledgeDocumentUseCase(catalog);
+        this.documents = new LoadKnowledgeDocumentUseCase(catalog, index, space); // der Index führt
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, catalog);
         this.settings = settings;
         this.tools = new KnowledgeMcpTools(retrieval, documents, refresh, settings);
@@ -164,6 +166,8 @@ final class KnowledgeToolFixture {
         volatile boolean failSemantic;
         /** Meldung, mit der {@link #replace} scheitert; {@code null} für normales Verhalten. */
         volatile String failReplaceWith;
+        /** {@link #resourceIds} scheitert mit einer Meldung, die einen Indexpfad nennt. */
+        volatile boolean failResourceIds;
 
         FailingIndex(KnowledgeIndexPort delegate) {
             this.delegate = delegate;
@@ -201,6 +205,9 @@ final class KnowledgeToolFixture {
 
         @Override
         public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+            if (failResourceIds) {
+                throw new KnowledgeIndexException("Indexverzeichnis kann nicht gelesen werden: /var/lib/eai/index/text/abc");
+            }
             return delegate.resourceIds(space, sourceId);
         }
 

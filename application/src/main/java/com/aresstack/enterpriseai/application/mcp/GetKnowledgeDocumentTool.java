@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.application.mcp;
 
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeDocumentNotIndexedException;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
@@ -15,8 +16,10 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 
 /**
  * {@code get_knowledge_document}: lädt den vollständigen, aktuellen Text einer Ressource über
- * {@link LoadKnowledgeDocumentUseCase} aus ihrer Quelle. Kopf mit Titel, IDs, Quelle, Typ, Ort, Stand, Parent und
- * Bereich; der Text wird bei Überschreitung der Antwortgröße gekürzt und gekennzeichnet.
+ * {@link LoadKnowledgeDocumentUseCase} aus ihrer Quelle. Mit indexgeführtem Use Case sind nur indexierte Dokumente
+ * lesbar; eine andere ID ergibt ein Fehlerresultat mit Hinweis auf Suche und Aktualisierung. Kopf mit Titel, IDs,
+ * Quelle, Typ, Ort, Stand, Parent und Bereich; der Text wird bei Überschreitung der Antwortgröße gekürzt und
+ * gekennzeichnet.
  */
 final class GetKnowledgeDocumentTool implements McpToolHandler {
 
@@ -37,9 +40,10 @@ final class GetKnowledgeDocumentTool implements McpToolHandler {
 
     McpToolContribution contribution() {
         return McpToolContribution.of(NAME,
-                "Liest ein Dokument der Wissensbasis vollständig aus seiner Quelle: Titel, Quelle, Ort, Stand und "
-                        + "den ganzen Text (bei Überlänge gekürzt und gekennzeichnet). Die Dokument-ID stammt aus "
-                        + "einem Treffer von search_knowledge (Feld Id).",
+                "Liest ein indexiertes Dokument der Wissensbasis vollständig aus seiner Quelle: Titel, Quelle, Ort, "
+                        + "Stand und den ganzen Text (bei Überlänge gekürzt und gekennzeichnet). Die Dokument-ID stammt "
+                        + "aus einem Treffer von search_knowledge (Feld Id); nicht indexierte Dokumente sind nicht "
+                        + "lesbar.",
                 this,
                 McpToolParameter.string(PARAM_ID, true, "Dokument-ID in der Form <schema>:<id>, z. B. aus search_knowledge"),
                 McpToolParameter.string(PARAM_SOURCE_ID, false,
@@ -77,6 +81,11 @@ final class GetKnowledgeDocumentTool implements McpToolHandler {
         KnowledgeDocument document;
         try {
             document = sourceId == null ? documents.load(resourceId) : documents.load(resourceId, sourceId);
+        } catch (KnowledgeDocumentNotIndexedException e) {
+            return McpToolResult.error("Dokument '" + resourceId.value() + "' ist nicht in der Wissensbasis indexiert"
+                    + (sourceId == null ? "" : " (Quelle '" + sourceId.value() + "')")
+                    + "; lesbar sind nur indexierte Dokumente, etwa aus Treffern von search_knowledge. Liegt es im "
+                    + "Bereich einer konfigurierten Quelle, holt refresh_knowledge_source es nach.");
         } catch (KnowledgeSourceException e) {
             return McpToolResult.error(describe(e.kind(), resourceId, sourceId));
         } catch (RuntimeException e) {

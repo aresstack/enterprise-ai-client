@@ -75,7 +75,8 @@ public class KnowledgeMcpToolsRoundTripTest {
         String refresh = client.callTool("refresh_knowledge_source", KnowledgeToolFixture.arguments(
                 "source_id", "wiki"));
         assertTrue(refresh, refresh.contains("Status: vollständig\n"));
-        assertTrue(refresh, refresh.contains("Indexiert: 3 (Chunks: 3)\n"));
+        assertTrue(refresh, refresh.contains("Indexiert: 1 (Chunks: 1)\n"));
+        assertTrue(refresh, refresh.contains("Unverändert: 2\n"));
 
         String updated = client.callTool("search_knowledge", KnowledgeToolFixture.arguments(
                 "query", "sdkman", "max_results", 1, "source_ids", "wiki"));
@@ -90,7 +91,8 @@ public class KnowledgeMcpToolsRoundTripTest {
             fail("Fehler erwartet");
         } catch (McpToolCallException e) {
             assertFalse(e.isEndpointUnavailable());
-            assertEquals("Dokument 'memory:wiki/Nope' wurde nicht gefunden.", e.getMessage());
+            assertTrue(e.getMessage(), e.getMessage().startsWith(
+                    "Dokument 'memory:wiki/Nope' ist nicht in der Wissensbasis indexiert; "));
         }
         try {
             client.callTool("search_knowledge", KnowledgeToolFixture.arguments());
