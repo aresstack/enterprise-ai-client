@@ -57,8 +57,9 @@ dependencies {
 def demoAgentJar = rootProject.file('acp-demo-agent/build/libs/acp-demo-agent-all.jar')
 
 tasks.withType(Test).configureEach {
-    // Swing-Tests laufen ohne Display (CI).
-    systemProperty 'java.awt.headless', 'true'
+    // Swing-Tests laufen ohne Display (CI). Nur der Live-Lauf darf ein Display nutzen: Stufe 6 pairt mit einem
+    // echten KeePass über den Swing-Dialog der Anwendung (-Dlive.headless=true erzwingt auch dort headless).
+    systemProperty 'java.awt.headless', name == 'liveTest' ? System.getProperty('live.headless', 'false') : 'true'
 }
 
 tasks.named('test') {
@@ -79,7 +80,8 @@ tasks.named('test') {
 }
 
 // Getrennter Lauf gegen echte Dienste (Enterprise-API, MediaWiki, Confluence, KeePass). Nicht Teil von `check`,
-// aber `check` kompiliert ihn mit, damit er nicht veraltet. Start und Parameter: siehe README.md dieses Moduls.
+// aber `check` kompiliert ihn mit, damit er nicht veraltet. Start und Parameter: siehe README.md dieses Moduls
+// und docs/live-verifikation.md.
 sourceSets {
     liveTest {
         java.srcDir 'src/liveTest/java'
@@ -93,25 +95,84 @@ configurations {
     liveTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
+// Stufen der Live-Verifikation in der Reihenfolge des Auftraggebers; Auswahl mit -Dlive.stage=3, -Dlive.stage=1,2
+// oder -Dlive.stage=1-4 (ohne Angabe laufen alle Stufen). Muster sind Gradle-Testfilter (Klasse oder Klasse.Methode*).
+def liveStages = [
+    '1': ['com.aresstack.enterpriseai.integration.live.LiveChatCompletionsIT'],
+    '2': ['com.aresstack.enterpriseai.integration.live.LiveEmbeddingsIT.singleInput*'],
+    '3': ['com.aresstack.enterpriseai.integration.live.LiveEmbeddingsIT.arrayInput*'],
+    '4': ['com.aresstack.enterpriseai.integration.live.LiveEmbeddingDimensionIT'],
+    '5': ['com.aresstack.enterpriseai.integration.live.LiveMediaWikiIT'],
+    '6': ['com.aresstack.enterpriseai.integration.live.LiveKeePassIT'],
+    '7': ['com.aresstack.enterpriseai.integration.live.LiveConfluenceKeePassIT'],
+]
+
+/** "1", "1,3" oder "1-4" (auch gemischt) zu einer sortierten Liste von Stufennummern; unbekannte Stufen sind ein Fehler. */
+def parseLiveStages = { String spec ->
+    Set<String> selected = new TreeSet<String>()
+    spec.split(',').each { String part ->
+        String token = part.trim()
+        if (token.isEmpty()) {
+            return
+        }
+        def range = token =~ /^(\d+)\s*-\s*(\d+)$/
+        if (range.matches()) {
+            int from = range[0][1].toInteger()
+            int to = range[0][2].toInteger()
+            if (from > to) {
+                throw new GradleException("live.stage: ungültiger Bereich '" + token + "'")
+            }
+            (from..to).each { selected.add(it.toString()) }
+        } else if (token ==~ /^\d+$/) {
+            selected.add(token)
+        } else {
+            throw new GradleException("live.stage: '" + token + "' ist keine Stufe (erlaubt: 1-7, Liste oder Bereich)")
+        }
+    }
+    selected.each { String stage ->
+        if (!liveStages.containsKey(stage)) {
+            throw new GradleException("live.stage: Stufe " + stage + " gibt es nicht (erlaubt: 1-7)")
+        }
+    }
+    if (selected.isEmpty()) {
+        throw new GradleException("live.stage: keine Stufe angegeben (erlaubt: 1-7)")
+    }
+    return selected
+}
+
 tasks.register('liveTest', Test) {
     group = 'verification'
-    description = 'Integrationstests gegen echte Dienste (standardmäßig aus; Parameter -Dlive.* und Umgebungsvariablen, siehe README.md).'
+    description = 'Integrationstests gegen echte Dienste (standardmäßig aus; Stufen mit -Dlive.stage, Parameter -Dlive.* und Umgebungsvariablen, siehe README.md).'
     testClassesDirs = sourceSets.liveTest.output.classesDirs
     classpath = sourceSets.liveTest.runtimeClasspath
-    // Alle -Dlive.* des Aufrufs und die üblichen Proxy-Properties an die Test-JVM durchreichen (sie läuft getrennt
-    // vom Gradle-Prozess); Secrets kommen aus Umgebungsvariablen, nie als Property.
+    // Alle -Dlive.* des Aufrufs, die üblichen Proxy-Properties und der Truststore an die Test-JVM durchreichen (sie
+    // läuft getrennt vom Gradle-Prozess); Secrets kommen aus Umgebungsvariablen, nie als Property.
     def forwardedProperties = ['http.proxyHost', 'http.proxyPort', 'https.proxyHost', 'https.proxyPort',
-                               'http.nonProxyHosts']
+                               'http.nonProxyHosts', 'javax.net.ssl.trustStore', 'javax.net.ssl.trustStorePassword',
+                               'javax.net.ssl.trustStoreType']
     System.properties.each { key, value ->
         String name = key.toString()
         if (name.startsWith('live.') || forwardedProperties.contains(name)) {
             systemProperty name, value.toString()
         }
     }
+    // Stufenauswahl: -Dlive.stage (oder -Plive.stage). Ohne Angabe laufen alle Live-Tests; fehlende Parameter
+    // überspringen den einzelnen Test (Assume), er wird nie rot.
+    String stageSpec = System.getProperty('live.stage') ?: (project.findProperty('live.stage') as String)
+    if (stageSpec != null && !stageSpec.trim().isEmpty()) {
+        Set<String> stages = parseLiveStages(stageSpec)
+        stages.each { String stage ->
+            liveStages[stage].each { String pattern -> filter.includeTestsMatching(pattern) }
+        }
+        doFirst {
+            logger.lifecycle('Live-Verifikation, Stufe(n) ' + stages.join(', ') + ' von 7')
+        }
+    }
     outputs.upToDateWhen { false }
     testLogging {
         events = ['passed', 'failed', 'skipped']
         showStandardStreams = true
+        exceptionFormat = 'full'
     }
 }
 
