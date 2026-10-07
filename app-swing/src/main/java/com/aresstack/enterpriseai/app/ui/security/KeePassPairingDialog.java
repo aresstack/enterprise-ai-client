@@ -70,6 +70,7 @@ public final class KeePassPairingDialog extends JDialog {
         row.setOpaque(false);
         row.setAlignmentX(LEFT_ALIGNMENT);
         JLabel label = new JLabel("Einmal-Passwort aus KeePass:");
+        label.setLabelFor(passwordField);
         row.add(label, BorderLayout.WEST);
         passwordField.setBorder(ComicBorder.roundedBorder(palette, 4));
         row.add(passwordField, BorderLayout.CENTER);

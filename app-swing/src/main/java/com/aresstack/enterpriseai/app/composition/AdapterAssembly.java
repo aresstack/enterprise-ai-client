@@ -27,7 +27,6 @@ import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointDefinition;
 import com.aresstack.enterpriseai.mcp.solon.SolonMcpServerRuntime;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
-import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
@@ -37,10 +36,7 @@ import com.aresstack.enterpriseai.source.confluence.UrlConnectionConfluenceTrans
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiCredentialsProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiKnowledgeSource;
 
-import javax.net.ssl.SSLSocketFactory;
 import java.io.Closeable;
-import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -167,22 +163,15 @@ public final class AdapterAssembly {
                     .connectTimeoutMillis(confluence.connectTimeoutMillis())
                     .readTimeoutMillis(confluence.readTimeoutMillis());
             if (confluence.clientCertificate() != null) {
-                transport.sslSocketFactory(clientCertificate(confluence, secrets));
+                // Erst beim ersten Verbindungsaufbau geladen: Das KeyStore-Passwort wird dann je Versuch über den
+                // Security-Port geholt. Ohne erreichbaren Tresor startet die Anwendung trotzdem; die Quelle meldet
+                // je Anfrage UNAVAILABLE, bis das Zertifikat ladbar ist.
+                transport.sslSocketFactory(ClientCertificateFactory.deferred(confluence.clientCertificate(), secrets));
             }
             return new ConfluenceKnowledgeSource(confluence.sourceId(), confluence.confluence(), transport.build(),
                     secrets);
         }
         throw new IllegalArgumentException("unsupported source type: " + source.type());
-    }
-
-    private static SSLSocketFactory clientCertificate(ConfluenceSourceConfig confluence, SecretProvider secrets) {
-        try {
-            return ClientCertificateFactory.create(confluence.clientCertificate(), secrets);
-        } catch (GeneralSecurityException | IOException | SecretUnavailableException e) {
-            // Beim Start kein harter Fehler: Die Quelle meldet dann ACCESS_DENIED/UNAVAILABLE je Anfrage.
-            throw new IllegalStateException("Client-Zertifikat für Quelle " + confluence.sourceId().value()
-                    + " nicht nutzbar: " + e.getClass().getSimpleName(), e);
-        }
     }
 
     static AgentBackend agent(AgentConfig agent, SolonMcpServerRuntime mcp) {

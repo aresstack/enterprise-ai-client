@@ -36,9 +36,11 @@ import java.util.regex.Pattern;
  * Liest {@link AppConfig} aus einer Properties-Datei (UTF-8). Alle Schlüssel sind in
  * {@code enterprise-ai-client.example.properties} (Ressource dieses Pakets) dokumentiert.
  *
- * <p>Regeln: Pflicht sind nur Chat-Basis-URL und -Modell sowie Embedding-Modell und -Dimension; alles andere hat
- * Defaults (AP3/AP6/AP10/AP14). Probleme werden gesammelt und als eine {@link AppConfigException} ohne Werte
- * gemeldet. Unbekannte Schlüssel sind kein Fehler, erscheinen aber als Hinweis in {@link AppConfig#warnings()}.
+ * <p>Regeln: Pflicht sind nur Chat-Basis-URL, -Modell und -API-Key-Referenz ({@code chat.apiKeyRef}, Titel des
+ * KeePass-Eintrags) sowie Embedding-Modell und -Dimension; alles andere hat Defaults (AP3/AP6/AP10/AP14). Probleme
+ * werden gesammelt und als eine {@link AppConfigException} gemeldet, die nur Schlüssel und Erwartung nennt, nie
+ * den abgelehnten Wert (auch nicht aus verschachtelten Ausnahmen der Adapter-Konfigurationen). Unbekannte Schlüssel
+ * sind kein Fehler, erscheinen aber als Hinweis in {@link AppConfig#warnings()}.
  */
 public final class AppConfigLoader {
 
@@ -161,7 +163,7 @@ public final class AppConfigLoader {
             }
             defaults = options.build();
         } catch (IllegalArgumentException e) {
-            r.problem("chat.*", "Chat-Parameter ungültig (" + e.getMessage() + ")");
+            r.problem("chat.*", "Chat-Parameter ungültig (siehe Beispielkonfiguration)");
             defaults = ChatOptions.defaults();
         }
         if (baseUrl == null || model == null) {
@@ -229,7 +231,7 @@ public final class AppConfigLoader {
                     .minSemanticScore(r.decimal("retrieval.minSemanticScore", -1.0, -1.0, 1.0))
                     .build();
         } catch (IllegalArgumentException e) {
-            r.problem("retrieval.*", "Retrieval-Einstellung ungültig (" + e.getMessage() + ")");
+            r.problem("retrieval.*", "Retrieval-Einstellung ungültig (siehe Beispielkonfiguration)");
             retrieval = RetrievalSettings.defaults();
         }
         ContextSettings context;
@@ -243,7 +245,7 @@ public final class AppConfigLoader {
                 context = context.withInstruction(instruction);
             }
         } catch (IllegalArgumentException e) {
-            r.problem("context.*", "Kontext-Einstellung ungültig (" + e.getMessage() + ")");
+            r.problem("context.*", "Kontext-Einstellung ungültig (siehe Beispielkonfiguration)");
             context = ContextSettings.defaults();
         }
         return new KnowledgeConfig(indexDirectory, indexOnStartup, chunking, batch, retrieval, context);
@@ -300,7 +302,7 @@ public final class AppConfigLoader {
         try {
             return SourceScope.builder().startPoints(startPoints).maxDepth(maxDepth).maxResources(maxResources).build();
         } catch (IllegalArgumentException e) {
-            r.problem(prefix + "startPoints", "Crawl-Umfang ungültig (" + e.getMessage() + ")");
+            r.problem(prefix + "startPoints", "Crawl-Umfang ungültig (siehe Beispielkonfiguration)");
             return SourceScope.of("-");
         }
     }
@@ -341,7 +343,7 @@ public final class AppConfigLoader {
             r.problem(prefix + "linkNamespaces", "Namensräume müssen ganze Zahlen sein");
             return null;
         } catch (IllegalArgumentException e) {
-            r.problem(prefix + "*", "MediaWiki-Einstellung ungültig (" + e.getMessage() + ")");
+            r.problem(prefix + "*", "MediaWiki-Einstellung ungültig (siehe Beispielkonfiguration)");
             return null;
         }
     }
@@ -374,7 +376,7 @@ public final class AppConfigLoader {
             }
             return new ConfluenceSourceConfig(sourceId, scope, builder.build(), connect, read, certificate);
         } catch (IllegalArgumentException e) {
-            r.problem(prefix + "*", "Confluence-Einstellung ungültig (" + e.getMessage() + ")");
+            r.problem(prefix + "*", "Confluence-Einstellung ungültig (siehe Beispielkonfiguration)");
             return null;
         }
     }
@@ -416,7 +418,7 @@ public final class AppConfigLoader {
                             1, MAX_TIMEOUT))
                     .build();
         } catch (IllegalArgumentException e) {
-            r.problem("security.keepass.*", "KeePassRPC-Einstellung ungültig (" + e.getMessage() + ")");
+            r.problem("security.keepass.*", "KeePassRPC-Einstellung ungültig (siehe Beispielkonfiguration)");
             rpc = KeePassRpcConfig.defaults();
         }
         return new KeePassConfig(enabled, rpc, keyFile);

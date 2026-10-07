@@ -41,10 +41,15 @@ public final class SecretBackedTokenSource implements OpenAiCompatibleChatConfig
                 @Override
                 public String apply(SecretMaterial material) {
                     char[] secret = material.copySecret();
+                    char[] trimmed = null;
                     try {
-                        return new String(secret).trim();
+                        trimmed = SecretChars.trimmedCopy(secret);
+                        return new String(trimmed);
                     } finally {
                         Arrays.fill(secret, '\0');
+                        if (trimmed != null) {
+                            Arrays.fill(trimmed, '\0');
+                        }
                     }
                 }
             });

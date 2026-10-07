@@ -103,6 +103,8 @@ public class AppConfigLoaderTest {
         p.setProperty("source.wiki.type", "mediawiki");
         p.setProperty("source.wiki.apiUrl", "https://wiki.example/w/api.php");
         p.setProperty("source.wiki.maxDepth", "-7");
+        // Wird erst vom Builder der Adapter-Konfiguration abgelehnt (Großbuchstaben); dessen Meldung nennt den Wert.
+        p.setProperty("source.wiki.siteKey", "Geheimer-SiteKey");
         try {
             AppConfigLoader.fromProperties(p);
             fail("expected AppConfigException");
@@ -112,11 +114,14 @@ public class AppConfigLoaderTest {
             assertTrue(message, message.contains("embedding.dimension"));
             assertTrue(message, message.contains("chat.temperature"));
             assertTrue(message, message.contains("source.wiki.maxDepth"));
+            assertTrue(message, message.contains("source.wiki.*"));
             assertFalse(message, message.contains("geheimer-host"));
             assertFalse(message, message.contains("secret-path"));
             assertFalse(message, message.contains("siebenhundert"));
             assertFalse(message, message.contains("9.9"));
             assertFalse(message, message.contains("-7"));
+            assertFalse("verschachtelte Adapter-Meldungen dürfen den Wert nicht durchreichen: " + message,
+                    message.contains("Geheimer-SiteKey"));
         }
     }
 

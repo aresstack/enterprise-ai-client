@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.app.security;
 
 import com.aresstack.enterpriseai.domain.security.SecretRef;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiCredentials;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSiteConfig;
@@ -47,6 +49,18 @@ public class SecretBackedTokenSourcesTest {
     }
 
     @Test
+    public void bearerTokenIsTrimmedLikeTheChatTokenWithoutAStringCopy() {
+        RecordingSecretProvider secrets = new RecordingSecretProvider(null, " sk-xyz\n");
+        assertArrayEquals("sk-xyz".toCharArray(), new SecretBackedBearerTokenSource(secrets, REF).bearerToken());
+        assertEquals("sk-xyz", new SecretBackedTokenSource(secrets, REF).token());
+        assertArrayEquals("nur Rand-Whitespace wird entfernt", "a b".toCharArray(),
+                new SecretBackedBearerTokenSource(new RecordingSecretProvider(null, "\ta b "), REF).bearerToken());
+        assertEquals(0, new SecretBackedBearerTokenSource(new RecordingSecretProvider(null, "  "), REF)
+                .bearerToken().length);
+        assertTrue(secrets.allIssuedMaterialClosed());
+    }
+
+    @Test
     public void unavailableSecretBecomesUncheckedWithReasonButWithoutMaterial() {
         SecretUnavailableException cause = new SecretUnavailableException(
                 SecretUnavailableException.Reason.NOT_AVAILABLE, REF, "KeePass gesperrt");
@@ -59,11 +73,22 @@ public class SecretBackedTokenSourcesTest {
             assertEquals(REF, e.ref());
             assertTrue(SecretAccessException.describe(e.reason(), e.ref()).contains("KeePass"));
         }
+    }
+
+    @Test
+    public void unavailableEmbeddingSecretIsAnAuthenticationFailureOfTheEmbeddingPort() {
+        SecretUnavailableException cause = new SecretUnavailableException(
+                SecretUnavailableException.Reason.NOT_AVAILABLE, REF, "KeePass gesperrt");
         try {
-            new SecretBackedBearerTokenSource(secrets, REF).bearerToken();
-            fail("expected SecretAccessException");
-        } catch (SecretAccessException e) {
-            assertEquals(SecretUnavailableException.Reason.NOT_AVAILABLE, e.reason());
+            new SecretBackedBearerTokenSource(new RecordingSecretProvider(cause), REF).bearerToken();
+            fail("expected EmbeddingException");
+        } catch (EmbeddingException e) {
+            assertEquals("bleibt im Fehlerpfad des Ports, damit die Indexierung die Ressource als fehlgeschlagen"
+                    + " meldet statt abzubrechen", EmbeddingFailureKind.AUTHENTICATION, e.kind());
+            assertFalse(e.isRetryable());
+            assertTrue(e.getMessage(), e.getMessage().contains("KeePass"));
+            assertTrue(e.getMessage(), e.getMessage().contains(REF.id()));
+            assertTrue(e.getCause() instanceof SecretUnavailableException);
         }
     }
 

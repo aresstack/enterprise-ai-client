@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
+import java.util.logging.Logger;
 
 /**
  * Verbindet Ports mit Use Cases, den Bindings aus AP22 (RAG, Indexierung mit Statuszeile), dem Agent-Modus
@@ -42,6 +43,10 @@ import java.util.function.LongSupplier;
  * einmal, auch wenn Fenster-Schließen und JVM-Shutdown-Hook beide zugreifen.
  */
 public final class CompositionRoot {
+
+    private static final Logger LOG = Logger.getLogger(CompositionRoot.class.getName());
+    /** Wartezeit beim Beenden auf eine laufende Indexierung (danach wird der Index geschlossen). */
+    static final int INDEXING_SHUTDOWN_WAIT_SECONDS = 10;
 
     private final AppConfig config;
     private final ApplicationPorts ports;
@@ -248,7 +253,15 @@ public final class CompositionRoot {
             public void run() {
                 startupIndexing.cancel();
                 try {
-                    startupIndexing.awaitTermination(10, TimeUnit.SECONDS);
+                    if (!startupIndexing.awaitTermination(INDEXING_SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                        // Bewusst begrenzt, damit das Beenden nicht an einem blockierten Quell- oder
+                        // Embedding-Aufruf hängt (Abbruch greift nur zwischen zwei Ressourcen). Der Index wird
+                        // danach geschlossen; er ist vollständig synchronisiert und weist jeden weiteren
+                        // Schreibzugriff mit IllegalStateException ab, ein Schreibvorgang wird also nie halb
+                        // ausgeführt, nur der noch laufende Schritt scheitert.
+                        LOG.warning("Indexierung läuft beim Beenden noch nach " + INDEXING_SHUTDOWN_WAIT_SECONDS
+                                + " s; der Wissensindex wird geschlossen, der laufende Schritt bricht ab");
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }

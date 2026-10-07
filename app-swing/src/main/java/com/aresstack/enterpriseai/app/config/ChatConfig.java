@@ -42,7 +42,7 @@ public final class ChatConfig {
         return model;
     }
 
-    /** Verweis auf den API-Key im Security-Backend oder {@code null} für Anfragen ohne Authorization-Header. */
+    /** Verweis auf den API-Key im Security-Backend (Pflichtangabe; der Loader lehnt eine Konfiguration ohne ihn ab). */
     public SecretRef apiKeyRef() {
         return apiKeyRef;
     }

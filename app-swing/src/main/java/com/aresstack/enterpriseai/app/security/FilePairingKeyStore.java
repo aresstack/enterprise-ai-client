@@ -3,8 +3,10 @@ package com.aresstack.enterpriseai.app.security;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystems;
@@ -13,6 +15,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Set;
@@ -31,6 +34,10 @@ import java.util.logging.Logger;
 public final class FilePairingKeyStore implements KeePassPairingKeyStore {
 
     private static final Logger LOG = Logger.getLogger(FilePairingKeyStore.class.getName());
+    private static final boolean POSIX_SUPPORTED =
+            FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+    private static final Set<PosixFilePermission> OWNER_ONLY = java.util.Collections.unmodifiableSet(
+            EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
 
     private final Path file;
 
@@ -61,7 +68,7 @@ public final class FilePairingKeyStore implements KeePassPairingKeyStore {
             CharBuffer chars = StandardCharsets.UTF_8.decode(ByteBuffer.wrap(bytes));
             char[] all = new char[chars.remaining()];
             chars.get(all);
-            char[] trimmed = trim(all);
+            char[] trimmed = SecretChars.trimmedCopy(all);
             Arrays.fill(all, '\0');
             clearBuffer(chars);
             return trimmed.length == 0 ? null : trimmed;
@@ -87,8 +94,9 @@ public final class FilePairingKeyStore implements KeePassPairingKeyStore {
                 Files.createDirectories(parent);
             }
             Files.deleteIfExists(temp);
-            Files.write(temp, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            restrictToOwner(temp);
+            try (OutputStream out = createOwnerOnly(temp)) {
+                out.write(bytes);
+            }
             try {
                 Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException e) {
@@ -129,12 +137,27 @@ public final class FilePairingKeyStore implements KeePassPairingKeyStore {
         }
     }
 
+    /**
+     * Legt die Datei neu an: auf POSIX-Systemen bereits mit {@code rw-------} als Attribut der Erzeugung, sodass sie
+     * zu keinem Zeitpunkt mit weiteren Rechten existiert (die umask kann nur Rechte entfernen); sonst werden die
+     * Rechte unmittelbar nach dem Anlegen und vor dem ersten geschriebenen Byte eingeschränkt.
+     */
+    private static OutputStream createOwnerOnly(Path path) throws IOException {
+        if (POSIX_SUPPORTED) {
+            Set<StandardOpenOption> options = EnumSet.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            return Channels.newOutputStream(Files.newByteChannel(path, options,
+                    PosixFilePermissions.asFileAttribute(EnumSet.copyOf(OWNER_ONLY))));
+        }
+        OutputStream out = Files.newOutputStream(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        restrictToOwner(path);
+        return out;
+    }
+
     /** Rechte nur für den Besitzer, soweit das Dateisystem es erlaubt; schlägt nie fehl. */
     static void restrictToOwner(Path path) {
-        if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+        if (POSIX_SUPPORTED) {
             try {
-                Set<PosixFilePermission> owner = EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
-                Files.setPosixFilePermissions(path, owner);
+                Files.setPosixFilePermissions(path, EnumSet.copyOf(OWNER_ONLY));
                 return;
             } catch (IOException | UnsupportedOperationException e) {
                 LOG.log(Level.FINE, "POSIX-Rechte nicht setzbar: " + e.getClass().getSimpleName());
@@ -146,18 +169,6 @@ public final class FilePairingKeyStore implements KeePassPairingKeyStore {
         file.setWritable(false, false);
         file.setWritable(true, true);
         file.setExecutable(false, false);
-    }
-
-    private static char[] trim(char[] chars) {
-        int start = 0;
-        int end = chars.length;
-        while (start < end && Character.isWhitespace(chars[start])) {
-            start++;
-        }
-        while (end > start && Character.isWhitespace(chars[end - 1])) {
-            end--;
-        }
-        return Arrays.copyOfRange(chars, start, end);
     }
 
     private static void clearBuffer(ByteBuffer buffer) {
