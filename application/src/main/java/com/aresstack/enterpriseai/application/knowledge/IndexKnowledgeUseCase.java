@@ -40,7 +40,8 @@ import java.util.Set;
  *       geht weiter. Nur eine gescheiterte Discovery beendet den Lauf (im Bericht, nicht als Ausnahme).</li>
  *   <li>Meldet die Quelle eine Ressource beim Laden als {@code NOT_FOUND}, werden ihre Chunks entfernt.</li>
  *   <li>Weiterleitungen: Trägt das geladene Dokument eine andere ID als angefragt, wird unter der Ziel-ID
- *       indexiert und die angefragte ID aus dem Index entfernt; ein Ziel wird je Lauf nur einmal indexiert.</li>
+ *       indexiert und die angefragte ID erst danach aus dem Index entfernt; ein Ziel wird je Lauf nur einmal
+ *       erfolgreich indexiert, ein gescheiterter Versuch wird bei der nächsten Weiterleitung wiederholt.</li>
  *   <li>Embedding-Welt: Alle Vektoren landen im Namespace {@code space} aus der Konfiguration; der
  *       {@link EmbeddingPort} muss genau diese Welt liefern (geprüft beim Erzeugen).</li>
  *   <li>Embedding-Eingabe ist {@link KnowledgeChunk#textWithHeading()}, in Batches von
@@ -168,16 +169,9 @@ public final class IndexKnowledgeUseCase {
         }
         KnowledgeResource resource = document.resource();
         KnowledgeResourceId target = resource.id();
-        if (!target.equals(requested)) {
-            try {
-                index.remove(requested);
-            } catch (KnowledgeIndexException e) {
-                return ResourceIndexingOutcome.failed(target, resource.title(), IndexingStage.INDEXING,
-                        e.getMessage());
-            }
-        }
-        if (!done.add(target)) {
-            return ResourceIndexingOutcome.done(target, resource.title(), IndexingStatus.DUPLICATE, 0);
+        if (done.contains(target)) {
+            return dropAlias(requested, target, resource,
+                    ResourceIndexingOutcome.done(target, resource.title(), IndexingStatus.DUPLICATE, 0));
         }
 
         List<KnowledgeChunk> chunks = chunker.chunk(document);
@@ -210,8 +204,26 @@ public final class IndexKnowledgeUseCase {
         } catch (KnowledgeIndexException e) {
             return ResourceIndexingOutcome.failed(target, resource.title(), IndexingStage.INDEXING, e.getMessage());
         }
-        return ResourceIndexingOutcome.done(target, resource.title(),
-                entries.isEmpty() ? IndexingStatus.EMPTY : IndexingStatus.INDEXED, entries.size());
+        done.add(target);
+        return dropAlias(requested, target, resource, ResourceIndexingOutcome.done(target, resource.title(),
+                entries.isEmpty() ? IndexingStatus.EMPTY : IndexingStatus.INDEXED, entries.size()));
+    }
+
+    /**
+     * Nach einer Weiterleitung die angefragte ID aus dem Index nehmen – erst, wenn das Ziel erfolgreich indexiert
+     * ist, damit ein gescheiterter Lauf keine durchsuchbaren Daten verliert.
+     */
+    private ResourceIndexingOutcome dropAlias(KnowledgeResourceId requested, KnowledgeResourceId target,
+                                              KnowledgeResource resource, ResourceIndexingOutcome success) {
+        if (target.equals(requested)) {
+            return success;
+        }
+        try {
+            index.remove(requested);
+        } catch (KnowledgeIndexException e) {
+            return ResourceIndexingOutcome.failed(target, resource.title(), IndexingStage.INDEXING, e.getMessage());
+        }
+        return success;
     }
 
     private static String describe(KnowledgeSourceException e) {

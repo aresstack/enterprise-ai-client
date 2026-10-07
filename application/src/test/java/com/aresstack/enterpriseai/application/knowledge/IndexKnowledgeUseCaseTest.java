@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.application.knowledge;
 import com.aresstack.enterpriseai.application.rag.RetrievalResult;
 import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunk;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
@@ -14,6 +16,7 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeKeywordQuery;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeSearchHit;
 import com.aresstack.enterpriseai.knowledge.api.testing.InMemoryKnowledgeIndex;
@@ -225,6 +228,33 @@ public class IndexKnowledgeUseCaseTest {
     }
 
     @Test
+    public void failedRedirectTargetKeepsTheAliasChunksAndIsRetriedByTheNextAlias() {
+        KnowledgeResourceId alias = KnowledgeResourceId.of("inmemory:wiki/JavaAlias");
+        KnowledgeResourceId other = KnowledgeResourceId.of("inmemory:wiki/JavaOther");
+        KnowledgeResource aliasResource = KnowledgeResource.builder(alias, KnowledgeSourceId.of("wiki"))
+                .title("Alt").build();
+        index.replace(space, alias, Collections.singletonList(
+                KnowledgeIndexEntry.of(aliasResource,
+                        new KnowledgeChunk(
+                                KnowledgeChunkId.of(alias, 0),
+                                KnowledgeSourceId.of("wiki"), Collections.<String>emptyList(), "altes Wissen", 2),
+                        embeddings.vectorFor("altes Wissen"))));
+        ScriptedSource redirecting = new ScriptedSource(wiki).redirect(alias, wiki.idOf("Java"))
+                .redirect(other, wiki.idOf("Java"));
+        FlakyEmbeddingPort flaky = new FlakyEmbeddingPort(embeddings);
+        IndexKnowledgeUseCase flakyUseCase = new IndexKnowledgeUseCase(index, flaky, space,
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+
+        IndexingReport report = flakyUseCase.indexResources(redirecting, Arrays.asList(alias, other), null);
+
+        assertEquals(IndexingStatus.FAILED, report.outcomes().get(0).status());
+        assertEquals("Ziel noch nicht indexiert, also kein DUPLICATE", IndexingStatus.INDEXED,
+                report.outcomes().get(1).status());
+        assertEquals("Alias bleibt, weil sein Ziel beim ersten Versuch scheiterte", 1, keyword("altes").size());
+        assertEquals(1, keyword("openjdk").size());
+    }
+
+    @Test
     public void blankDocumentRemovesOldChunks() {
         useCase.indexSource(wiki, SourceScope.of("Kaffee"), null);
         wiki.update("Kaffee", "   ");
@@ -301,6 +331,31 @@ public class IndexKnowledgeUseCaseTest {
         @Override
         public List<SourceLink> discoverLinks(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
             return delegate.discoverLinks(resourceId);
+        }
+    }
+
+    /** Scheitert beim ersten Aufruf, danach delegiert er. */
+    private static final class FlakyEmbeddingPort implements EmbeddingPort {
+
+        private final EmbeddingPort delegate;
+        private boolean failed;
+
+        FlakyEmbeddingPort(EmbeddingPort delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public EmbeddingModelIdentity modelIdentity() {
+            return delegate.modelIdentity();
+        }
+
+        @Override
+        public EmbeddingBatch embed(List<String> texts) {
+            if (!failed) {
+                failed = true;
+                throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "kurz weg");
+            }
+            return delegate.embed(texts);
         }
     }
 
