@@ -7,6 +7,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * Ordering/terminal guard for one prompt run: assigns monotonically increasing sequence numbers, guarantees
  * exactly ONE terminal callback, drops every update arriving after the terminal (late SDK callbacks), and
  * isolates listener exceptions so the protocol reader never dies because a consumer threw.
+ *
+ * <p>Updates and the terminal may arrive on different threads (transport reader vs. prompt response). The
+ * state check, sequence allocation and listener call of {@link #update} and {@link #terminal} therefore run
+ * under one delivery lock: listeners see updates in sequence order and never an update after the
+ * terminal. {@link #cancelling()} does not take that lock, so a listener may cancel from a callback.</p>
  */
 public final class PromptDispatcher {
 
@@ -15,6 +20,7 @@ public final class PromptDispatcher {
     private final AcpUpdateListener listener;
     private final AcpStates.Prompt state = new AcpStates.Prompt();
     private final AtomicLong sequence = new AtomicLong();
+    private final Object deliveryLock = new Object();
 
     public PromptDispatcher(String sessionId, String promptId, AcpUpdateListener listener) {
         this.sessionId = sessionId;
@@ -36,17 +42,19 @@ public final class PromptDispatcher {
 
     /** @return false when dropped (already terminal). */
     public boolean update(AcpUpdate.Kind kind, String text) {
-        if (state.get().isTerminal()) {
-            return false;
+        synchronized (deliveryLock) {
+            if (state.get().isTerminal()) {
+                return false;
+            }
+            lastUpdateNanos = System.nanoTime();
+            AcpUpdate update = new AcpUpdate(sessionId, promptId, sequence.incrementAndGet(), kind, text);
+            try {
+                listener.onUpdate(update);
+            } catch (RuntimeException ignored) {
+                // a broken consumer must not kill the reader
+            }
+            return true;
         }
-        lastUpdateNanos = System.nanoTime();
-        AcpUpdate update = new AcpUpdate(sessionId, promptId, sequence.incrementAndGet(), kind, text);
-        try {
-            listener.onUpdate(update);
-        } catch (RuntimeException ignored) {
-            // a broken consumer must not kill the reader
-        }
-        return true;
     }
 
     /**
@@ -71,14 +79,16 @@ public final class PromptDispatcher {
         if (!terminalState.isTerminal()) {
             return false;
         }
-        if (!state.to(terminalState)) {
-            return false;
+        synchronized (deliveryLock) {
+            if (!state.to(terminalState)) {
+                return false;
+            }
+            try {
+                listener.onTerminal(promptId, terminalState, detail == null ? "" : detail);
+            } catch (RuntimeException ignored) {
+                // isolate consumer failures
+            }
+            return true;
         }
-        try {
-            listener.onTerminal(promptId, terminalState, detail == null ? "" : detail);
-        } catch (RuntimeException ignored) {
-            // isolate consumer failures
-        }
-        return true;
     }
 }

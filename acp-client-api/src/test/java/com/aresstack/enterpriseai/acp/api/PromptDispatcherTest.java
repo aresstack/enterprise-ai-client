@@ -138,4 +138,86 @@ public class PromptDispatcherTest {
     public void listenerIsRequired() {
         new PromptDispatcher("s1", "p1", null);
     }
+
+    /** Records a protocol violation: an update after the terminal, or a sequence out of order. */
+    private static final class StrictListener implements AcpUpdateListener {
+        final List<String> violations = Collections.synchronizedList(new ArrayList<String>());
+        private volatile boolean terminated;
+        private long lastSequence;
+
+        public void onUpdate(AcpUpdate update) {
+            if (terminated) {
+                violations.add("update " + update.getSequenceNumber() + " after terminal");
+            }
+            if (update.getSequenceNumber() <= lastSequence) {
+                violations.add("sequence " + update.getSequenceNumber() + " after " + lastSequence);
+            }
+            lastSequence = update.getSequenceNumber();
+            Thread.yield(); // widen the window between check and delivery
+        }
+
+        public void onTerminal(String promptId, AcpPromptState state, String detail) {
+            terminated = true;
+        }
+    }
+
+    @Test
+    public void concurrentUpdatesAndTerminalKeepOrderAndNothingFollowsTheTerminal() throws Exception {
+        for (int round = 0; round < 200; round++) {
+            final StrictListener listener = new StrictListener();
+            final PromptDispatcher d = new PromptDispatcher("s", "p", listener);
+            final CountDownLatch start = new CountDownLatch(1);
+            final CountDownLatch done = new CountDownLatch(4);
+            for (int t = 0; t < 3; t++) {
+                new Thread(new Runnable() {
+                    public void run() {
+                        try {
+                            start.await();
+                            for (int i = 0; i < 50; i++) {
+                                d.update(AcpUpdate.Kind.MESSAGE, "x");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        } finally {
+                            done.countDown();
+                        }
+                    }
+                }).start();
+            }
+            new Thread(new Runnable() {
+                public void run() {
+                    try {
+                        start.await();
+                        Thread.yield();
+                        d.terminal(AcpPromptState.COMPLETED, "");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        done.countDown();
+                    }
+                }
+            }).start();
+            start.countDown();
+            assertTrue(done.await(10, TimeUnit.SECONDS));
+            assertTrue(listener.violations.toString(), listener.violations.isEmpty());
+        }
+    }
+
+    @Test
+    public void listenerMayCancelFromInsideACallback() {
+        final PromptDispatcher[] holder = new PromptDispatcher[1];
+        final List<Boolean> cancelResults = new ArrayList<Boolean>();
+        holder[0] = new PromptDispatcher("s", "p", new AcpUpdateListener() {
+            public void onUpdate(AcpUpdate update) {
+                cancelResults.add(holder[0].cancelling());
+            }
+
+            public void onTerminal(String promptId, AcpPromptState state, String detail) {
+            }
+        });
+        assertTrue(holder[0].update(AcpUpdate.Kind.MESSAGE, "a"));
+        assertEquals(Collections.singletonList(Boolean.TRUE), cancelResults);
+        assertEquals(AcpPromptState.CANCELLING, holder[0].getState());
+        assertTrue(holder[0].terminal(AcpPromptState.CANCELLED, ""));
+    }
 }

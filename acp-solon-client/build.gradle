@@ -2,4 +2,20 @@ description = 'Adapter: ACP über org.noear:acp-sdk (Strang G). Einziges Produkt
 
 dependencies {
     api project(':acp-client-api')
+    // implementation, nicht api: SDK- und Reactor-Typen dürfen den Adapter nicht verlassen.
+    implementation libs.acp.sdk
+}
+
+// Der Roundtrip-Test startet den Demo-Agenten als echten Kindprozess (java -jar). Keine
+// Projektabhängigkeit auf acp-demo-agent: nur das gebaute Jar wird als Testeingabe genutzt.
+def demoAgentJar = rootProject.file('acp-demo-agent/build/libs/acp-demo-agent-all.jar')
+
+tasks.named('test') {
+    dependsOn ':acp-demo-agent:demoAgentJar'
+    inputs.file(demoAgentJar).withPropertyName('demoAgentJar')
+    systemProperty 'acp.demo.agent.jar', demoAgentJar.absolutePath
+    // Der Agent läuft auf derselben JVM wie der Build (unter JDK 8 also ein echter Java-8-Kindprozess).
+    systemProperty 'acp.agent.java.home', System.getProperty('java.home')
+    // Im Gradle-Build darf der Roundtrip nicht still übersprungen werden.
+    systemProperty 'acp.roundtrip.required', 'true'
 }
