@@ -59,7 +59,7 @@ entsperrtes KeePass mit KeePassRPC-Plugin auf demselben Rechner; 7 zusätzlich e
   nur geschwärzt weiter: Meldungen mit einem Secret werden ersetzt, die Adressen aus `-Dlive.*` und ihre
   Hostnamen durch `<host>`; Klassen und Stacktraces bleiben. Proxy-Adressen aus `-Dhttps.proxyHost` werden nicht
   ersetzt: vor dem Rückmelden kurz prüfen. Die Berichte unter `integration-tests/build/reports/tests/liveTest/`
-  und `build/test-results/liveTest/` enthalten dieselbe Ausgabe und bleiben lokal.
+  und `integration-tests/build/test-results/liveTest/` enthalten dieselbe Ausgabe und bleiben lokal.
 
 Ein `SKIPPED` mit „Live-Test übersprungen: -Dlive.… fehlt“ heißt: Parameter vergessen, nicht: Dienst
 fehlerhaft.
@@ -85,7 +85,9 @@ Parameter kommen aus Secrets und Variablen, die nur der Repository- oder Organis
 
 Die Base-URLs sind Secrets, damit GitHub ihre Werte im Log maskiert; ein Schritt des Workflows maskiert
 zusätzlich die Hostnamen, sodass auch Transportfehler des JDK keinen Host zeigen. Die Eingabe
-`embedding_dimension` prüft in Stufe 4 eine erwartete Dimension (leer: aus der ersten Antwort übernehmen).
+`embedding_dimension` gibt den Stufen 2 bis 4 eine erwartete Dimension vor (leer: aus der ersten Antwort
+übernehmen): Stufe 2 prüft sie über den Adapter, Stufe 3 meldet eine Abweichung und rechnet mit der gemessenen,
+Stufe 4 vergleicht sie ausdrücklich und meldet die tatsächliche.
 
 - Rückmeldung ist das Job-Log des Schritts „Live-Verifikation, Stufe N“: die `[live] Stufe N:`-Zeilen und die
   Gradle-Zusammenfassung je Test. Testberichte werden bewusst nicht als Artefakt abgelegt.
@@ -133,17 +135,24 @@ gehört der Wert in die Konfiguration (`embedding.dimension`). Mit gesetztem Wer
 - **Stufe 2** (`singleInputReturnsOneVectorPerText`): der produktive Adapter im Standardmodus (ein Request je
   Text) mit einem und mit drei Texten. Rückmeldung: Dimension, Norm, die drei Cosinus-Werte (gleicher Text
   zweimal, Paraphrase, fremdes Thema).
-- **Stufe 3** (`arrayInputProbe`): zuerst eine Roh-Probe mit `"input": [a, b, c]` über dieselben Header wie der
-  Adapter, dann, nur wenn der Dienst Arrays annimmt und je Eingabe einen Eintrag liefert, der Adapter im Modus
-  `ARRAY_UNVERIFIED` mit Teil-Batches von zwei Texten. Die Reihenfolge wird gegen Einzelanfragen geprüft
-  (Cosinus ≥ 0,999). Rückmeldung: alle `[live] Stufe 3:`-Zeilen, vor allem die Zeile mit `BEFUND`. Der Befund
-  („abgelehnt“, „angenommen, aber nicht verwendbar“, „Reihenfolge nicht bestätigt“ oder „angenommen, Reihenfolge
-  bestätigt“) entscheidet, ob `ARRAY_UNVERIFIED` Standard werden kann; diese Entscheidung trifft der
-  Auftraggeber.
+- **Stufe 3** (`arrayInputProbe`): zuerst eine Kontrollanfrage mit einem Text (muss funktionieren, sonst ist die
+  Stufe rot und sagt nichts über Arrays), dann eine Roh-Probe mit `"input": [a, b, c]` über dieselben Header wie
+  der Adapter, dann, nur wenn der Dienst Arrays annimmt und je Eingabe einen Eintrag liefert, der Adapter im
+  Modus `ARRAY_UNVERIFIED` mit Teil-Batches von zwei Texten. Die Reihenfolge gilt als bestätigt, wenn für jeden
+  Text der Einzelvektor gleicher Position der eindeutig nächste ist (ein Gleichstand, etwa durch einen
+  Nullvektor, bestätigt nichts); ob die Vektoren darüber hinaus identisch sind
+  (Cosinus ≥ 0,999), wird getrennt gemeldet. Nur ein Validierungsstatus (400, 413, 415, 422) zählt als
+  „abgelehnt“; jeder andere Status außer 200 bei der Array-Probe macht die Stufe rot (Dienstproblem, kein
+  Befund). Rückmeldung: alle
+  `[live] Stufe 3:`-Zeilen, vor allem die Zeile mit `BEFUND`. Der Befund („abgelehnt“, „angenommen, aber nicht
+  verwendbar“, „Dimension uneinheitlich“, „Reihenfolge nicht bestätigt“, „Adapter liefert nicht die
+  Einzelvektoren“ oder „angenommen, Reihenfolge bestätigt“) entscheidet, ob `ARRAY_UNVERIFIED` Standard werden
+  kann; diese Entscheidung trifft der Auftraggeber.
 - **Stufe 4** (`reportsTheActualDimensionAndResponseShape`): beschreibt die Antwort auf einen Einzeltext
   (HTTP-Status, `object`, Anzahl `data`, `index`, Form von `embedding`, Dimension, Endlichkeit, L2-Norm, `usage`)
   und meldet die tatsächliche Dimension als Empfehlung für `embedding.dimension`. Zusatzbefund: ob
-  `encoding_format=float` angenommen wird. Rückmeldung: beide Zeilen.
+  `encoding_format=float` angenommen wird. Rückmeldung: alle drei `[live] Stufe 4:`-Zeilen (Antwortform,
+  `BEFUND`, Zusatzbefund).
 
 ## Stufe 5 – MediaWiki
 
@@ -154,7 +163,7 @@ Voraussetzung: die Action-API des Wikis ist vom Rechner erreichbar; ein Seitenti
 export ENTERPRISE_AI_LIVE_WIKI_PASSWORD='…'   # nur mit -Dlive.wiki.user
 ./gradlew :integration-tests:liveTest -Dlive.stage=5 \
   -Dlive.wiki.apiUrl=https://wiki.intern.example/w -Dlive.wiki.startPoint=Hauptseite \
-  -Dlive.wiki.user=… [-Dlive.wiki.siteKey=intern] [-Dlive.wiki.maxDepth=0] [-Dlive.wiki.maxResources=20]
+  [-Dlive.wiki.user=…] [-Dlive.wiki.siteKey=intern] [-Dlive.wiki.maxDepth=0] [-Dlive.wiki.maxResources=20]
 ```
 
 Zwei Tests: `startPageIsDiscoveredLoadedAndIndexed` (discover, load, Chunking und Indexierung in einen
@@ -175,15 +184,20 @@ deshalb kann es nicht vorab übergeben werden).
 ```bash
 ./gradlew :integration-tests:liveTest -Dlive.stage=6 -Dlive.keepass.entry="Titel des Testeintrags" \
   [-Dlive.keepass.port=12546] [-Dlive.keepass.host=127.0.0.1] [-Dlive.keepass.origin=…] \
-  [-Dlive.keepass.clientId=EnterpriseAiClient] [-Dlive.keepass.pairingKeyFile=…]
+  [-Dlive.keepass.clientId=EnterpriseAiClientLive] [-Dlive.keepass.pairingKeyFile=…]
 ```
 
 Ablauf: Der Test verbindet sich, KeePass zeigt das Einmal-Passwort, der Dialog „KeePass-Pairing“ öffnet sich,
 das Passwort wird eingegeben. Der Pairing-Schlüssel wird wie in der Anwendung in einer Datei mit Rechten nur
-für den Besitzer abgelegt (Standard `integration-tests/build/live/keepassrpc-pairing.key`), damit Stufe 7 ohne
-neues Pairing läuft. Wer die Anwendung schon gepairt hat, kann mit `-Dlive.keepass.pairingKeyFile` auf deren
-Schlüsseldatei zeigen (gleicher `clientId`). Nach der Verifikation die Datei löschen oder das Pairing in
-KeePass widerrufen. Ohne Display (`-Dlive.headless=true`) und ohne Schlüsseldatei wird der Test übersprungen.
+für den Besitzer abgelegt (Standard `integration-tests/build/live/keepassrpc-pairing-<clientId>.key`, also
+`…-EnterpriseAiClientLive.key`; die Kennung im Dateinamen verhindert, dass ein Schlüssel unter einer anderen
+Kennung verwendet wird), damit Stufe 7 ohne neues Pairing läuft. Der Test pairt unter der eigenen Kennung `EnterpriseAiClientLive`, weil KeePassRPC je
+Kennung genau einen Schlüssel kennt und ein Pairing unter `EnterpriseAiClient` das Pairing der Anwendung ersetzen
+würde. Wer das Pairing der Anwendung mitbenutzen will, gibt `-Dlive.keepass.clientId=EnterpriseAiClient` und mit
+`-Dlive.keepass.pairingKeyFile` deren Schlüsseldatei an. Nach der Verifikation die Datei löschen oder das Pairing
+in KeePass widerrufen. Ohne Display (das JDK erkennt das selbst; `-Dlive.headless=true` erzwingt es) und ohne
+Schlüsseldatei wird der Test übersprungen. Lehnt KeePass einen gespeicherten Schlüssel ab (Pairing widerrufen),
+pairt der Provider einmal neu; die Rückmeldung nennt das.
 
 Rückmeldung: die `[live] Stufe 6:`-Zeilen (Pairing neu oder wiederverwendet, Benutzername vorhanden, Länge des
 Passwortfelds, zweite Auflösung ohne neues Pairing). Werte werden nie ausgegeben.

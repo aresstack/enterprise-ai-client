@@ -64,12 +64,14 @@ public class LiveConfluenceKeePassIT {
     @Test
     public void startPointIsDiscoveredAndLoadedWithKeePassCredentials() throws Exception {
         LiveSettings.withoutSecretLeak(() -> {
+            // Erst alle Parameter lesen (ohne Nebenwirkungen), dann KeePass ansprechen: Ein fehlender Parameter
+            // überspringt den Test, ohne vorher zu pairen oder einen Eintrag zu lesen.
             AtomicInteger prompts = new AtomicInteger();
             KeePassRpcSecretProvider provider = LiveKeePassIT.provider(prompts);
             String credentialRef = LiveSettings.required("live.confluence.credentialRef");
-            String mode = authorizationMode(provider, credentialRef);
             ConfluenceKnowledgeSource source = source(provider);
             SourceScope scope = scope();
+            String mode = authorizationMode(provider, credentialRef);
 
             List<KnowledgeResource> resources = source.discover(scope);
             assertFalse("Startpunkt nicht gefunden", resources.isEmpty());
@@ -79,7 +81,7 @@ public class LiveConfluenceKeePassIT {
             LiveSettings.report(STAGE, "discover (Tiefe " + scope.maxDepth() + "): " + resources.size()
                     + " Ressource(n) am Startpunkt, erste Seite " + document.text().length() + " Zeichen Text, Revision "
                     + (resources.get(0).revision().isKnown() ? "bekannt" : "unbekannt"));
-        }, LiveSettings.KEEPASS_PAIRING_ENV);
+        });
     }
 
     @Test
@@ -97,6 +99,6 @@ public class LiveConfluenceKeePassIT {
             LiveSettings.report(STAGE, "CQL-Suche" + (LiveSettings.optional("live.confluence.searchSpaceKey") != null
                     ? " im Space" : " ohne Space-Einschränkung") + ": " + hits.size() + " Treffer");
             assertFalse("Confluence-Suche liefert keinen Treffer", hits.isEmpty());
-        }, LiveSettings.KEEPASS_PAIRING_ENV);
+        });
     }
 }
