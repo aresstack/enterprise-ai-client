@@ -19,7 +19,11 @@ final class IndexFiles {
     private IndexFiles() {
     }
 
-    /** Schreibt über eine temporäre Datei und benennt atomar um; Leser sehen nie eine halbe Datei. */
+    /**
+     * Schreibt über eine temporäre Datei und benennt sie um, atomar wo das Dateisystem es unterstützt; sonst per
+     * ersetzendem Umbenennen. Gelesen wird nur von derselben, synchronisierten Instanz nach dem Schreiben, nie
+     * nebenläufig; die temporäre Datei schützt vor halb geschriebenen Zieldateien bei Abbruch.
+     */
     static void atomicWrite(Path target, byte[] content) {
         try {
             Files.createDirectories(target.getParent());

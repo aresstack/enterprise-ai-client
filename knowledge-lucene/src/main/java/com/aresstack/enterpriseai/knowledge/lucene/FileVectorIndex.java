@@ -154,6 +154,16 @@ final class FileVectorIndex {
         }
     }
 
+    /** Aktueller Stand eines Namespaces; bleibt unverändert, weil Schreibvorgänge stets eine Kopie ablegen. */
+    Map<String, VectorEntry> snapshot(EmbeddingModelIdentity space) {
+        return load(space);
+    }
+
+    /** Stellt einen mit {@link #snapshot} gesicherten Stand wieder her (Rollback nach gescheitertem Text-Schreiben). */
+    void restore(EmbeddingModelIdentity space, Map<String, VectorEntry> snapshot) {
+        write(space, new LinkedHashMap<String, VectorEntry>(snapshot));
+    }
+
     void removeAll() {
         cache.clear();
         IndexFiles.deleteRecursively(root);
@@ -276,6 +286,10 @@ final class FileVectorIndex {
         }
         EmbeddingModelIdentity identity = EmbeddingModelIdentity.of(in.readUTF(), in.readInt());
         int attributes = in.readInt();
+        if (attributes < 0) {
+            throw new KnowledgeIndexException("Vektordatei ist beschädigt (Attribute " + attributes + "): "
+                    + file.getFileName());
+        }
         for (int i = 0; i < attributes; i++) {
             identity = identity.withAttribute(in.readUTF(), in.readUTF());
         }

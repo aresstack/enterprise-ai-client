@@ -31,7 +31,8 @@ import java.util.Map;
  * <p>Ressource und Chunk eines Eintrags liegen einmal als gespeicherte Lucene-Felder vor; semantische Treffer
  * werden dort per Chunk-ID nachgeladen. Schreibreihenfolge: erst Vektoren, dann Text. Jeder Vektor trägt einen
  * Stempel (SHA-256 über Text, Überschriften und Revision des eingebetteten Chunks); ein semantischer Treffer zählt
- * nur, wenn das Textdokument denselben Stempel ergibt. Bricht der Prozess zwischen beiden Schreibvorgängen ab,
+ * nur, wenn das Textdokument denselben Stempel ergibt. Scheitert das Text-Schreiben mit einer Exception, wird der
+ * Vektorstand zurückgesetzt. Bricht der Prozess selbst zwischen beiden Schreibvorgängen ab,
  * werden die betroffenen Vektoren daher übersprungen, nie mit einer anderen Revision gepaart, bis der nächste
  * Upsert oder {@link #rebuild} die Hälften wieder angleicht.
  *
@@ -60,13 +61,24 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
     public synchronized void index(Collection<KnowledgeIndexEntry> entries) {
         requireOpen();
         for (Map.Entry<EmbeddingModelIdentity, List<KnowledgeIndexEntry>> namespace : bySpace(entries).entrySet()) {
-            vectors.upsert(namespace.getKey(), namespace.getValue());
-            text.upsert(namespace.getKey(), namespace.getValue());
+            final EmbeddingModelIdentity space = namespace.getKey();
+            final List<KnowledgeIndexEntry> spaceEntries = namespace.getValue();
+            writeBoth(space, new Runnable() {
+                @Override
+                public void run() {
+                    vectors.upsert(space, spaceEntries);
+                }
+            }, new Runnable() {
+                @Override
+                public void run() {
+                    text.upsert(space, spaceEntries);
+                }
+            });
         }
     }
 
     @Override
-    public synchronized void replace(EmbeddingModelIdentity space, KnowledgeResourceId resourceId,
+    public synchronized void replace(final EmbeddingModelIdentity space, final KnowledgeResourceId resourceId,
                                      Collection<KnowledgeIndexEntry> entries) {
         requireOpen();
         if (space == null || resourceId == null) {
@@ -81,8 +93,37 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
                 throw new IllegalArgumentException(entry + " gehört nicht zur Ressource " + resourceId);
             }
         }
-        vectors.replace(space, resourceId, checked);
-        text.replace(space, resourceId, checked);
+        final List<KnowledgeIndexEntry> replacement = checked;
+        writeBoth(space, new Runnable() {
+            @Override
+            public void run() {
+                vectors.replace(space, resourceId, replacement);
+            }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                text.replace(space, resourceId, replacement);
+            }
+        });
+    }
+
+    /**
+     * Schreibt erst Vektoren, dann Text. Scheitert der Text-Schreibvorgang, wird der Vektorstand zurückgesetzt
+     * (Lucene rollt seine Hälfte selbst zurück), sodass ein fehlgeschlagener Aufruf nichts ändert.
+     */
+    private void writeBoth(EmbeddingModelIdentity space, Runnable vectorWrite, Runnable textWrite) {
+        Map<String, FileVectorIndex.VectorEntry> before = vectors.snapshot(space);
+        vectorWrite.run();
+        try {
+            textWrite.run();
+        } catch (RuntimeException failure) {
+            try {
+                vectors.restore(space, before);
+            } catch (RuntimeException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            throw failure;
+        }
     }
 
     @Override

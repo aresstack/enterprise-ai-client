@@ -147,6 +147,30 @@ public class LuceneKnowledgeIndexTest {
     }
 
     @Test
+    public void failedTextWriteRollsBackTheVectors() throws Exception {
+        Path root = folder.newFolder("index").toPath();
+        LuceneKnowledgeIndex index = new LuceneKnowledgeIndex(root);
+        KnowledgeResource a = resource("wiki:x/A", "wiki");
+        index.index(Collections.singletonList(entry(a, 0, "eins", vector(SPACE_3D, 1, 0, 0))));
+        // Textindex unbrauchbar machen: an seiner Stelle liegt eine Datei.
+        Path textIndex = root.resolve("text").resolve(SPACE_3D.fingerprint());
+        IndexFiles.deleteRecursively(textIndex);
+        Files.write(textIndex, new byte[]{0});
+
+        try {
+            index.replace(SPACE_3D, a.id(), Arrays.asList(
+                    entry(a, 0, "eins neu", vector(SPACE_3D, 0, 1, 0)),
+                    entry(a, 1, "zwei", vector(SPACE_3D, 0, 0, 1))));
+            fail("Text-Schreiben muss scheitern");
+        } catch (KnowledgeIndexException expected) {
+            // erwartet
+        }
+        assertEquals("Vektoren auf den Stand vor dem Aufruf zurückgesetzt", 1, index.vectorCount(SPACE_3D));
+        index.close();
+        assertEquals("auch auf der Platte", 1, new FileVectorIndex(root.resolve("vectors")).size(SPACE_3D));
+    }
+
+    @Test
     public void recursiveDeleteRemovesSymbolicLinksWithoutFollowingThem() throws Exception {
         Path outside = folder.newFolder("outside").toPath();
         Path keep = Files.write(outside.resolve("keep.txt"), new byte[]{42});
