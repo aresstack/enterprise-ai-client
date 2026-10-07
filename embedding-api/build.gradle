@@ -1,5 +1,12 @@
 description = 'Port für Embeddings (Strang C).'
 
+// Testfixtures: ein deterministischer Fake-Port und ein wiederverwendbarer Vertragstest für Adapter und
+// Konsumenten (knowledge-*, application). Nur Testklassenpfade sehen sie (testFixtures(project(':embedding-api'))).
+apply plugin: 'java-test-fixtures'
+
 dependencies {
     api project(':domain')
+
+    testFixturesImplementation libs.junit
+    testImplementation testFixtures(project(":embedding-api"))
 }
