@@ -56,6 +56,7 @@ public final class EmbeddingModelIdentity {
         if (value == null) {
             throw new IllegalArgumentException("attribute value must not be null: " + k);
         }
+        requireWellFormed(value, "attribute value of " + k);
         SortedMap<String, String> copy = new TreeMap<String, String>(attributes);
         copy.put(k, value);
         return new EmbeddingModelIdentity(modelId, dimension, copy);
@@ -136,7 +137,23 @@ public final class EmbeddingModelIdentity {
         if (value == null || value.trim().isEmpty()) {
             throw new IllegalArgumentException(name + " must not be blank");
         }
-        return value.trim();
+        return requireWellFormed(value.trim(), name);
+    }
+
+    /**
+     * Ungepaarte Surrogate würde {@code getBytes(UTF-8)} durch {@code ?} ersetzen; zwei verschiedene Identitäten
+     * bekämen dann denselben Fingerprint. Deshalb nur wohlgeformtes UTF-16 zulassen.
+     */
+    private static String requireWellFormed(String value, String name) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isHighSurrogate(c) && i + 1 < value.length() && Character.isLowSurrogate(value.charAt(i + 1))) {
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                throw new IllegalArgumentException(name + " contains an unpaired surrogate at index " + i);
+            }
+        }
+        return value;
     }
 
     private static int requireDimension(int dimension) {

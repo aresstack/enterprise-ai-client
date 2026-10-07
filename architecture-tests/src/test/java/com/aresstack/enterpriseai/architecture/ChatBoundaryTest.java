@@ -24,6 +24,7 @@ public class ChatBoundaryTest {
     private static final String DOMAIN_CHAT = ROOT + ".domain.chat..";
     private static final String CHAT_API = ROOT + ".chat.api..";
     private static final String APPLICATION_CHAT = ROOT + ".application.chat..";
+    private static final String CHAT_OPENAI = ROOT + ".chat.openai..";
     private static final String[] JDK_BASICS = {"java.lang..", "java.util.."};
 
     private static JavaClasses productionClasses;
@@ -32,7 +33,7 @@ public class ChatBoundaryTest {
     public static void importProductionClasses() {
         BuildModel model = BuildModel.load();
         List<File> directories = new ArrayList<File>();
-        for (String module : Arrays.asList("domain", "chat-api", "application")) {
+        for (String module : Arrays.asList("domain", "chat-api", "application", "chat-openai")) {
             directories.addAll(model.existingClassDirectoriesOf(module));
         }
         productionClasses = new ClassFileImporter().importPaths(BuildModelTest.toPaths(directories));
@@ -58,6 +59,27 @@ public class ChatBoundaryTest {
                 .should().onlyDependOnClassesThat()
                 .resideInAnyPackage(concat(JDK_BASICS, DOMAIN_CHAT, CHAT_API, APPLICATION_CHAT))
                 .because("der Chat-Use-Case spricht nur über den Chat-Port mit dem Modell"));
+    }
+
+    @Test
+    public void openAiAdapterExposesOnlyItsEntryTypes() {
+        assertRule(classes().that().resideInAPackage(CHAT_OPENAI).and().arePublic().and().areTopLevelClasses()
+                .should().haveSimpleName("OpenAiCompatibleChatAdapter")
+                .orShould().haveSimpleName("OpenAiCompatibleChatConfig")
+                .orShould().haveSimpleName("DeveloperRolePolicy")
+                .because("JSON-DTOs, SSE-Parser und HTTP-Transport bleiben paketintern im Adapter"));
+    }
+
+    @Test
+    public void jsonAndHttpTypesNeverLeakThroughTheAdapterApi() {
+        assertRule(com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods()
+                .that().areDeclaredInClassesThat().resideInAPackage(CHAT_OPENAI)
+                .and().arePublic()
+                .should().haveRawReturnType(com.tngtech.archunit.base.DescribedPredicate.not(
+                        com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage("com.google.gson..")
+                                .or(com.tngtech.archunit.core.domain.JavaClass.Predicates.assignableTo(
+                                        java.net.URLConnection.class))))
+                .because("Gson- und HTTP-Verbindungstypen verlassen den Adapter nicht"));
     }
 
     private static void assertRule(ArchRule rule) {
