@@ -1,5 +1,13 @@
 description = 'Port für Wissensindex und Retrieval (Strang D). Keine Lucene-Typen.'
 
+// Testfixtures: ein InMemory-Index und ein wiederverwendbarer Vertragstest für KnowledgeIndexPort-Adapter
+// (knowledge-lucene) und Konsumenten (application: AP10, AP20). Nur Testklassenpfade sehen sie
+// (testFixtures(project(':knowledge-api'))).
+apply plugin: 'java-test-fixtures'
+
 dependencies {
     api project(':domain')
+
+    testFixturesImplementation libs.junit
+    testImplementation testFixtures(project(':knowledge-api'))
 }
