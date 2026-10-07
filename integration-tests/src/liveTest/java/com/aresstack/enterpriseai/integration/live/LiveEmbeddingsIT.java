@@ -175,8 +175,9 @@ public class LiveEmbeddingsIT {
 
     /**
      * Vergleicht Vektor i mit allen Einzeltext-Vektoren. Reihenfolge gilt als bestätigt, wenn für jeden Text der
-     * Einzelvektor gleicher Position der nächste ist; ob die Vektoren darüber hinaus identisch sind
-     * (Cosinus ≥ {@link #SAME_VECTOR}), wird getrennt gemeldet und entscheidet nicht über die Reihenfolge.
+     * Einzelvektor gleicher Position der eindeutig nächste ist ({@link EmbeddingEndpointProbe#uniqueNearest};
+     * ein Gleichstand, etwa durch einen Nullvektor, bestätigt nichts); ob die Vektoren darüber hinaus identisch
+     * sind (Cosinus ≥ {@link #SAME_VECTOR}), wird getrennt gemeldet und entscheidet nicht über die Reihenfolge.
      */
     private static Comparison compareWithSingles(int stage, String label, List<float[]> vectors, List<float[]> singles) {
         StringBuilder detail = new StringBuilder();
@@ -184,26 +185,19 @@ public class LiveEmbeddingsIT {
         boolean identical = true;
         for (int i = 0; i < vectors.size(); i++) {
             double same = EmbeddingEndpointProbe.cosine(vectors.get(i), singles.get(i));
-            int best = -1;
-            double bestValue = -2;
-            for (int j = 0; j < singles.size(); j++) {
-                double other = EmbeddingEndpointProbe.cosine(vectors.get(i), singles.get(j));
-                if (other > bestValue) {
-                    bestValue = other;
-                    best = j;
-                }
-            }
+            int best = EmbeddingEndpointProbe.uniqueNearest(vectors.get(i), singles);
             ordered &= best == i;
             identical &= same >= SAME_VECTOR;
             if (i > 0) {
                 detail.append(", ");
             }
             detail.append("Text ").append(i + 1).append(": ").append(String.format(Locale.ROOT, "%.4f", same))
-                    .append(best == i ? "" : " (am nächsten an Einzeltext " + (best + 1) + ")");
+                    .append(best == i ? "" : best < 0 ? " (kein eindeutig nächster Einzeltext)"
+                            : " (am nächsten an Einzeltext " + (best + 1) + ")");
         }
         LiveSettings.report(stage, label + ", Cosinus zum Einzeltext gleicher Position: " + detail + " -> Reihenfolge "
                 + (ordered ? "bestätigt" : "NICHT bestätigt") + " (je Text ist der Einzelvektor gleicher Position der "
-                + "nächste), identisch (Cosinus >= " + SAME_VECTOR + "): " + (identical ? "ja" : "nein"));
+                + "eindeutig nächste), identisch (Cosinus >= " + SAME_VECTOR + "): " + (identical ? "ja" : "nein"));
         return new Comparison(ordered, identical);
     }
 }

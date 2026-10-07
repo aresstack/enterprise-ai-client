@@ -139,7 +139,8 @@ gehört der Wert in die Konfiguration (`embedding.dimension`). Mit gesetztem Wer
   Stufe rot und sagt nichts über Arrays), dann eine Roh-Probe mit `"input": [a, b, c]` über dieselben Header wie
   der Adapter, dann, nur wenn der Dienst Arrays annimmt und je Eingabe einen Eintrag liefert, der Adapter im
   Modus `ARRAY_UNVERIFIED` mit Teil-Batches von zwei Texten. Die Reihenfolge gilt als bestätigt, wenn für jeden
-  Text der Einzelvektor gleicher Position der nächste ist; ob die Vektoren darüber hinaus identisch sind
+  Text der Einzelvektor gleicher Position der eindeutig nächste ist (ein Gleichstand, etwa durch einen
+  Nullvektor, bestätigt nichts); ob die Vektoren darüber hinaus identisch sind
   (Cosinus ≥ 0,999), wird getrennt gemeldet. Nur ein Validierungsstatus (400, 413, 415, 422) zählt als
   „abgelehnt“; jeder andere Status außer 200 bei der Array-Probe macht die Stufe rot (Dienstproblem, kein
   Befund). Rückmeldung: alle

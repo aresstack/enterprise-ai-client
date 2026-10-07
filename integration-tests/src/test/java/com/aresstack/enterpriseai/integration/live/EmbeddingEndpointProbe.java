@@ -598,6 +598,32 @@ public final class EmbeddingEndpointProbe {
         return new String(buffer.toByteArray(), UTF_8);
     }
 
+    /** Zwei Cosinus-Werte, die sich um weniger unterscheiden, gelten als Gleichstand (Float-Rauschen). */
+    public static final double NEAREST_TOLERANCE = 1e-6;
+
+    /**
+     * Index des Kandidaten mit der größten Cosinus-Ähnlichkeit zu {@code vector}, oder {@code -1}, wenn es keinen
+     * eindeutigen gibt: leere Liste, Nullvektor (Cosinus 0 zu allen) oder mindestens zwei Kandidaten innerhalb
+     * {@link #NEAREST_TOLERANCE} am Maximum. Ein Gleichstand darf eine Reihenfolge nie bestätigen.
+     */
+    public static int uniqueNearest(float[] vector, List<float[]> candidates) {
+        int best = -1;
+        double bestValue = Double.NEGATIVE_INFINITY;
+        boolean tie = false;
+        for (int j = 0; j < candidates.size(); j++) {
+            double value = cosine(vector, candidates.get(j));
+            if (value > bestValue + NEAREST_TOLERANCE) {
+                best = j;
+                bestValue = value;
+                tie = false;
+            } else if (value > bestValue - NEAREST_TOLERANCE) {
+                tie = true;
+                bestValue = Math.max(bestValue, value);
+            }
+        }
+        return tie ? -1 : best;
+    }
+
     /** Cosinus-Ähnlichkeit zweier Vektoren gleicher Länge; 0 bei Nullvektoren. */
     public static double cosine(float[] a, float[] b) {
         if (a.length != b.length) {

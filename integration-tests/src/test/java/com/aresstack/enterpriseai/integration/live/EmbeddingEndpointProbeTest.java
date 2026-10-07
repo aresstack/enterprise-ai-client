@@ -8,6 +8,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -190,6 +191,22 @@ public class EmbeddingEndpointProbeTest {
 
         EmbeddingEndpointProbe.Report missing = EmbeddingEndpointProbe.describe(200, "{\"data\":[]}", MODEL);
         assertTrue(missing.describe(), missing.describe().contains("object=fehlt"));
+    }
+
+    @Test
+    public void uniqueNearestRejectsTiesAndZeroVectors() {
+        List<float[]> singles = Arrays.asList(new float[] {1, 0}, new float[] {0, 1}, new float[] {1, 1});
+        assertEquals(0, EmbeddingEndpointProbe.uniqueNearest(new float[] {0.9f, 0.1f}, singles));
+        assertEquals(2, EmbeddingEndpointProbe.uniqueNearest(new float[] {1, 1}, singles));
+        assertEquals("Nullvektor: Cosinus 0 zu allen, Gleichstand", -1,
+                EmbeddingEndpointProbe.uniqueNearest(new float[] {0, 0}, singles));
+        assertEquals("Gleichstand zwischen zwei Kandidaten", -1, EmbeddingEndpointProbe.uniqueNearest(
+                new float[] {1, 1}, Arrays.asList(new float[] {1, 0}, new float[] {0, 1})));
+        assertEquals("identische Kandidaten (nur skaliert)", -1, EmbeddingEndpointProbe.uniqueNearest(
+                new float[] {1, 0}, Arrays.asList(new float[] {1, 0}, new float[] {2, 0})));
+        assertEquals("Unterschied unterhalb der Toleranz", -1, EmbeddingEndpointProbe.uniqueNearest(
+                new float[] {1, 0}, Arrays.asList(new float[] {1, 0}, new float[] {1, 1e-4f})));
+        assertEquals(-1, EmbeddingEndpointProbe.uniqueNearest(new float[] {1, 0}, Collections.<float[]>emptyList()));
     }
 
     @Test
