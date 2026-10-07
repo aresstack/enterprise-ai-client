@@ -2,4 +2,20 @@ description = 'Adapter: KeePassRPC hinter dem Security-Port (Strang F).'
 
 dependencies {
     api project(':security-api')
+    implementation libs.java.websocket
+    implementation libs.gson
+    testRuntimeOnly libs.slf4j.nop
+}
+
+// Optionaler Integrationstest gegen ein echtes KeePass mit KeePassRPC-Plugin. Standardmäßig ausgeschlossen;
+// aktivieren mit: ./gradlew :security-keepassrpc:test -Dkeepassrpc.it=true -Dkeepassrpc.it.entry=<Titel>
+// (weitere Properties: keepassrpc.it.host, keepassrpc.it.port, keepassrpc.it.origin; siehe KeePassRpcRealServerIT).
+tasks.named('test') {
+    ['keepassrpc.it', 'keepassrpc.it.entry', 'keepassrpc.it.host', 'keepassrpc.it.port', 'keepassrpc.it.origin',
+     'keepassrpc.it.keyFile'].each { name ->
+        def value = System.getProperty(name)
+        if (value != null) {
+            systemProperty name, value
+        }
+    }
 }

@@ -1,0 +1,290 @@
+package com.aresstack.enterpriseai.security.keepassrpc;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import org.java_websocket.WebSocket;
+import org.java_websocket.handshake.ClientHandshake;
+import org.java_websocket.server.WebSocketServer;
+
+import java.math.BigInteger;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcCrypto.G;
+import static com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcCrypto.K;
+import static com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcCrypto.N;
+
+/**
+ * Lokaler KeePassRPC-Server für Tests: serverseitiges SRP-Pairing, Key-Challenge-Response und verschlüsseltes
+ * JSON-RPC ({@code FindLogins}, {@code GetAllEntries}) nach der KeePassRPC-Protokollbeschreibung. Prüft wie das
+ * Original den Origin-Header.
+ */
+final class FakeKeePassRpcServer extends WebSocketServer {
+
+    private final SecureRandom random = new SecureRandom();
+    private final Gson gson = new Gson();
+    private final CountDownLatch started = new CountDownLatch(1);
+    private final Map<WebSocket, ConnectionState> states = new ConcurrentHashMap<WebSocket, ConnectionState>();
+    private final Map<String, String> pairedKeys = new ConcurrentHashMap<String, String>();
+    private final List<JsonObject> entries = new ArrayList<JsonObject>();
+    private final List<String> receivedMessages = new ArrayList<String>();
+
+    /** Das Einmal-Passwort, das KeePass beim Pairing anzeigen würde. */
+    volatile String pairingPassword = "S3cr3tPairingCode";
+    /** FindLogins findet nichts (Eintrag ohne passende URL), nur GetAllEntries liefert ihn. */
+    volatile boolean findLoginsEmpty;
+
+    FakeKeePassRpcServer() {
+        super(new InetSocketAddress("127.0.0.1", 0));
+        setReuseAddr(true);
+    }
+
+    FakeKeePassRpcServer startAndWait() throws InterruptedException {
+        start();
+        if (!started.await(10, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Fake-Server nicht gestartet");
+        }
+        return this;
+    }
+
+    int boundPort() {
+        return getPort();
+    }
+
+    void addEntry(String title, String userName, String password, boolean asFormFields) {
+        JsonObject entry = new JsonObject();
+        entry.addProperty("title", title);
+        entry.addProperty("uniqueID", Integer.toHexString(title.hashCode()));
+        if (asFormFields) {
+            JsonArray fields = new JsonArray();
+            fields.add(field("FFTusername", userName));
+            fields.add(field("FFTpassword", password));
+            entry.add("formFieldList", fields);
+        } else {
+            entry.addProperty("usernameValue", userName);
+            entry.addProperty("password", password);
+        }
+        synchronized (entries) {
+            entries.add(entry);
+        }
+    }
+
+    /** Simuliert "Pairing in KeePass widerrufen". */
+    void revokeAllPairings() {
+        pairedKeys.clear();
+    }
+
+    String pairedKeyOf(String clientId) {
+        return pairedKeys.get(clientId);
+    }
+
+    List<String> receivedMessages() {
+        synchronized (receivedMessages) {
+            return new ArrayList<String>(receivedMessages);
+        }
+    }
+
+    @Override
+    public void onStart() {
+        started.countDown();
+    }
+
+    @Override
+    public void onOpen(WebSocket connection, ClientHandshake handshake) {
+        String origin = handshake.getFieldValue("Origin");
+        if (origin == null || !origin.startsWith("chrome-extension://")) {
+            connection.close(1008, "origin");
+            return;
+        }
+        states.put(connection, new ConnectionState());
+    }
+
+    @Override
+    public void onMessage(WebSocket connection, String message) {
+        synchronized (receivedMessages) {
+            receivedMessages.add(message);
+        }
+        ConnectionState state = states.get(connection);
+        JsonObject request = gson.fromJson(message, JsonObject.class);
+        String protocol = request.get("protocol").getAsString();
+        if ("setup".equals(protocol) && request.has("srp")) {
+            connection.send(srp(state, request));
+        } else if ("setup".equals(protocol) && request.has("key")) {
+            connection.send(kcr(state, request.getAsJsonObject("key")));
+        } else if ("jsonrpc".equals(protocol) && state.sessionKey != null) {
+            connection.send(rpc(state, request.getAsJsonObject("jsonrpc")));
+        } else {
+            connection.send("{\"protocol\":\"error\",\"error\":{\"code\":\"UNEXPECTED\"}}");
+        }
+    }
+
+    private String srp(ConnectionState state, JsonObject request) {
+        JsonObject srp = request.getAsJsonObject("srp");
+        String stage = srp.get("stage").getAsString();
+        if ("identifyToServer".equals(stage)) {
+            state.clientId = srp.get("I").getAsString();
+            state.aHex = srp.get("A").getAsString();
+            state.salt = KeePassRpcCrypto.hex(randomBytes(16));
+            BigInteger x = new BigInteger(1, KeePassRpcCrypto.sha256(
+                    KeePassRpcCrypto.utf8(state.salt + pairingPassword)));
+            state.verifier = G.modPow(x, N);
+            state.b = new BigInteger(256, random);
+            state.bHex = KeePassRpcCrypto.toHex(K.multiply(state.verifier).add(G.modPow(state.b, N)).mod(N));
+            JsonObject reply = new JsonObject();
+            reply.addProperty("protocol", "setup");
+            JsonObject content = new JsonObject();
+            content.addProperty("stage", "identifyToClient");
+            content.addProperty("s", state.salt);
+            content.addProperty("B", state.bHex);
+            reply.add("srp", content);
+            return gson.toJson(reply);
+        }
+        BigInteger a = new BigInteger(state.aHex, 16);
+        BigInteger u = new BigInteger(1, KeePassRpcCrypto.sha256(KeePassRpcCrypto.utf8(state.aHex + state.bHex)));
+        String sHex = KeePassRpcCrypto.toHex(a.multiply(state.verifier.modPow(u, N)).modPow(state.b, N));
+        String expectedM = KeePassRpcCrypto.hex(KeePassRpcCrypto.sha256(
+                KeePassRpcCrypto.utf8(state.aHex + state.bHex + sHex)));
+        if (!expectedM.equalsIgnoreCase(srp.get("M").getAsString())) {
+            return error("AUTH_FAILED");
+        }
+        pairedKeys.put(state.clientId, KeePassRpcCrypto.hex(KeePassRpcCrypto.sha256(KeePassRpcCrypto.utf8(sHex))));
+        JsonObject reply = new JsonObject();
+        reply.addProperty("protocol", "setup");
+        JsonObject content = new JsonObject();
+        content.addProperty("stage", "proofToClient");
+        content.addProperty("M2", KeePassRpcCrypto.hex(KeePassRpcCrypto.sha256(
+                KeePassRpcCrypto.utf8(state.aHex + expectedM + sHex))));
+        reply.add("srp", content);
+        return gson.toJson(reply);
+    }
+
+    private String kcr(ConnectionState state, JsonObject key) {
+        if (key.has("username")) {
+            state.clientId = key.get("username").getAsString();
+            if (!pairedKeys.containsKey(state.clientId)) {
+                return error("UNKNOWN_CLIENT");
+            }
+            state.sc = new BigInteger(1, randomBytes(32)).toString();
+            JsonObject reply = new JsonObject();
+            reply.addProperty("protocol", "setup");
+            JsonObject content = new JsonObject();
+            content.addProperty("sc", state.sc);
+            reply.add("key", content);
+            return gson.toJson(reply);
+        }
+        String stored = pairedKeys.get(state.clientId);
+        String cc = key.get("cc").getAsString();
+        if (stored == null || !KeePassRpcCrypto.challengeResponse("1", stored.toCharArray(), state.sc, cc)
+                .equals(key.get("cr").getAsString())) {
+            return error("AUTH_FAILED");
+        }
+        state.sessionKey = stored;
+        JsonObject reply = new JsonObject();
+        reply.addProperty("protocol", "setup");
+        JsonObject content = new JsonObject();
+        content.addProperty("sr", KeePassRpcCrypto.challengeResponse("0", stored.toCharArray(), state.sc, cc));
+        reply.add("key", content);
+        return gson.toJson(reply);
+    }
+
+    private String rpc(ConnectionState state, JsonObject container) {
+        try {
+            Base64.Decoder decoder = Base64.getDecoder();
+            byte[] plaintext = KeePassRpcCrypto.decrypt(state.sessionKey.toCharArray(), new KeePassRpcCrypto.Sealed(
+                    decoder.decode(container.get("message").getAsString()),
+                    decoder.decode(container.get("iv").getAsString()),
+                    decoder.decode(container.get("hmac").getAsString())));
+            JsonObject call = gson.fromJson(new String(plaintext, StandardCharsets.UTF_8), JsonObject.class);
+            String method = call.get("method").getAsString();
+            JsonArray result = new JsonArray();
+            if ("FindLogins".equals(method) && !findLoginsEmpty) {
+                String freeText = call.getAsJsonArray("params").get(7).getAsString().toLowerCase();
+                synchronized (entries) {
+                    for (JsonObject entry : entries) {
+                        // Wie KeePassRPC: Freitextsuche liefert auch Teiltreffer, nicht nur exakte Titel.
+                        if (entry.get("title").getAsString().toLowerCase().contains(freeText)) {
+                            result.add(entry);
+                        }
+                    }
+                }
+            } else if ("GetAllEntries".equals(method)) {
+                synchronized (entries) {
+                    for (JsonObject entry : entries) {
+                        result.add(entry);
+                    }
+                }
+            }
+            JsonObject response = new JsonObject();
+            response.addProperty("jsonrpc", "2.0");
+            response.add("result", result);
+            response.add("id", call.get("id"));
+            KeePassRpcCrypto.Sealed sealed = KeePassRpcCrypto.encrypt(state.sessionKey.toCharArray(),
+                    gson.toJson(response).getBytes(StandardCharsets.UTF_8), random);
+            Base64.Encoder encoder = Base64.getEncoder();
+            JsonObject encrypted = new JsonObject();
+            encrypted.addProperty("message", encoder.encodeToString(sealed.ciphertext));
+            encrypted.addProperty("iv", encoder.encodeToString(sealed.iv));
+            encrypted.addProperty("hmac", encoder.encodeToString(sealed.hmac));
+            JsonObject reply = new JsonObject();
+            reply.addProperty("protocol", "jsonrpc");
+            reply.add("jsonrpc", encrypted);
+            return gson.toJson(reply);
+        } catch (KeePassRpcException e) {
+            return "{\"protocol\":\"error\",\"error\":{\"code\":\"DECRYPT\"}}";
+        }
+    }
+
+    private String error(String code) {
+        JsonObject reply = new JsonObject();
+        reply.addProperty("protocol", "setup");
+        JsonObject error = new JsonObject();
+        error.addProperty("code", code);
+        reply.add("error", error);
+        return gson.toJson(reply);
+    }
+
+    private static JsonElement field(String type, String value) {
+        JsonObject field = new JsonObject();
+        field.addProperty("type", type);
+        field.addProperty("value", value);
+        field.addProperty("name", type);
+        return field;
+    }
+
+    private byte[] randomBytes(int length) {
+        byte[] bytes = new byte[length];
+        random.nextBytes(bytes);
+        return bytes;
+    }
+
+    @Override
+    public void onClose(WebSocket connection, int code, String reason, boolean remote) {
+        states.remove(connection);
+    }
+
+    @Override
+    public void onError(WebSocket connection, Exception error) {
+        // Testserver: Fehler zeigen sich als Timeout oder geschlossene Verbindung beim Client.
+    }
+
+    private static final class ConnectionState {
+        String clientId;
+        String aHex;
+        String bHex;
+        String salt;
+        BigInteger b;
+        BigInteger verifier;
+        String sc;
+        String sessionKey;
+    }
+}
