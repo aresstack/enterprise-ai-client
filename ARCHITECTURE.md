@@ -4,6 +4,10 @@ Modularer Java-8-Desktop-KI-Client in Ports-and-Adapters-Architektur. Diese Date
 Arbeitsgrundlage für alle Stränge (A bis H) und für die späteren Integrationspakete. Die Regeln hier sind
 in `architecture-tests` ausführbar; was dort nicht geprüft wird, ist hier als Konvention festgehalten.
 
+Einstieg und ausführliche Erklärungen stehen in [README.md](README.md) und unter [docs/](docs/README.md)
+(Einrichtung, Modulübersicht, Diagramme, Konfiguration, RAG, ACP, MCP, Tests, Herkunft, Einschränkungen).
+Bei Widersprüchen gilt der Code auf `main`, danach diese Datei, danach die Seiten unter `docs/`.
+
 ## Schichten und Richtung
 
 ```
@@ -395,6 +399,9 @@ Regeln:
 
 ## Herkunft
 
+Kurzfassung; die ausführliche Tabelle je Arbeitspaket mit den Änderungen gegenüber der Vorlage steht in
+[docs/herkunft.md](docs/herkunft.md).
+
 | Konzept / Datei | Ursprung |
 |---|---|
 | Java-8-Multiprojekt, `release 8` auf neueren JDKs, `FAIL_ON_PROJECT_REPOS`, `java-library` | aresstack/corenth (`build.gradle`, `settings.gradle`) |
@@ -406,3 +413,17 @@ Regeln:
 | Konfiguration als Properties-Datei im Benutzerverzeichnis mit Pfad-Override per System-Property, unveränderliche Snapshots, Proxy-Modi System/keiner/manuell (`app.config`, `app.net`) | Miguel0888/askai-java8 (`AppConfigurationRepository`, `AskAiPaths`, `ProxyConfiguration`) |
 | Settings-Schlüssel für Proxy, Timeouts, mTLS (Windows-MY-Alias), KeePassRPC-Verdrahtung mit Pairing-Dialog und Zugangsdaten je Aufruf (`app.security`, `app.ui.security`) | Miguel0888/MainframeMate (`Settings`, `KeePassProvider`, `KeePassRpcPairingDialog`, `MvsBrowser`-Proxy) |
 | Composition Root als einziger Ort für Adapterkonstruktoren, Secret-Material verlässt den Aufruf nicht (`app.composition`, `CompositionRootBoundaryTest`) | aresstack/corenth (Composition Root, `adyton`) |
+
+## Weiterführende Dokumentation
+
+| Seite | Inhalt |
+|---|---|
+| [docs/einrichtung.md](docs/einrichtung.md) | Bauen, erster Start, Konfigurationsdatei, Demos, IDE, CI |
+| [docs/module.md](docs/module.md) | Modulübersicht mit Paketen, Bibliotheken und Testfixtures |
+| [docs/architektur.md](docs/architektur.md) | Modulgraph und Laufzeitsicht als Mermaid, Regeln je Testklasse |
+| [docs/konfiguration-api.md](docs/konfiguration-api.md), [-keepass](docs/konfiguration-keepass.md), [-mediawiki](docs/konfiguration-mediawiki.md), [-confluence](docs/konfiguration-confluence.md) | Konfiguration je Bereich |
+| [docs/rag-datenfluss.md](docs/rag-datenfluss.md) | Indexierung, Retrieval, Kontext, „Der Index führt“ |
+| [docs/acp.md](docs/acp.md), [docs/mcp.md](docs/mcp.md) | Agent-Modus und Wissenswerkzeuge |
+| [docs/tests.md](docs/tests.md) | Testanleitung |
+| [docs/herkunft.md](docs/herkunft.md) | Herkunftstabelle |
+| [docs/einschraenkungen.md](docs/einschraenkungen.md) | Bekannte Einschränkungen, UNVERIFIED, Restarbeit |
