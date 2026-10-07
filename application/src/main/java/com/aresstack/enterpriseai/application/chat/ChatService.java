@@ -144,6 +144,28 @@ public final class ChatService {
      * @throws IllegalArgumentException bei leerem Text oder unbekannter Konversation
      */
     public ChatTurn send(ChatConversationId id, String userText, ChatOptions options, ChatTurnListener listener) {
+        return start(id, userText, null, options, listener);
+    }
+
+    /**
+     * Wie {@link #send(ChatConversationId, String, ChatOptions, ChatTurnListener)}, gibt dem Modell aber für
+     * genau diesen Turn zusätzlich {@code context} mit, z. B. abgerufenes Wissen (RAG).
+     *
+     * <p>Der Kontext wird als System-Anteil an den System-Prompt angehängt (durch eine Leerzeile getrennt) bzw.
+     * bildet ohne System-Prompt die einzige System-Nachricht; er steht damit vor der Historie und getrennt von
+     * der Nutzerfrage. Er gelangt nicht in die Historie: Dort stehen wie bei {@code send} nur die unveränderte
+     * Nutzerfrage und die Antwort, spätere Turns sehen den Kontext nicht mehr. Die Rolle {@code developer} wird
+     * nie verwendet.
+     *
+     * @param context zusätzlicher System-Anteil; {@code null} oder leer verhält sich wie {@code send}
+     */
+    public ChatTurn sendWithContext(ChatConversationId id, String userText, String context, ChatOptions options,
+                                    ChatTurnListener listener) {
+        return start(id, userText, context == null || context.trim().isEmpty() ? null : context, options, listener);
+    }
+
+    private ChatTurn start(ChatConversationId id, String userText, String context, ChatOptions options,
+                           ChatTurnListener listener) {
         if (userText == null || userText.trim().isEmpty()) {
             throw new IllegalArgumentException("user text must not be blank");
         }
@@ -160,7 +182,9 @@ public final class ChatService {
             }
             session.conversation = session.conversation.append(ChatMessage.user(userText));
             session.running = turn;
-            request = ChatRequest.of(session.conversation, effective);
+            request = context == null
+                    ? ChatRequest.of(session.conversation, effective)
+                    : new ChatRequest(withContext(session.conversation, context), effective);
         }
         ChatTask task;
         try {
@@ -190,6 +214,14 @@ public final class ChatService {
                 session.conversation = session.conversation.append(answer);
             }
         }
+    }
+
+    private static List<ChatMessage> withContext(ChatConversation conversation, String context) {
+        String system = conversation.systemPrompt() == null ? context : conversation.systemPrompt() + "\n\n" + context;
+        List<ChatMessage> messages = new ArrayList<ChatMessage>(conversation.messages().size() + 1);
+        messages.add(ChatMessage.system(system));
+        messages.addAll(conversation.messages());
+        return messages;
     }
 
     private Session session(ChatConversationId id) {
