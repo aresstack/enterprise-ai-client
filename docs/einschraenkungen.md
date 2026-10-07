@@ -52,9 +52,12 @@ Seine Array-Probe für `/embeddings` würde die offene Frage an Strang C beantwo
 
 ## Übergangsklassen
 
-`domain.DomainModule` und `application.ApplicationModule` sind Modul-Anker aus AP1 ohne Verwendung in
-Produktions- oder Testcode. Sie werden nach dem Merge von AP25 in einem eigenen Aufräum-PR entfernt, sofern
-dann weiterhin nichts auf sie verweist.
+`domain.DomainModule` und `application.ApplicationModule` waren Modul-Anker aus AP1 ohne Verwendung in
+Produktions- oder Testcode; der Aufräum-PR von AP26 hat sie nach dem Merge von AP25 entfernt (vorher erneut
+geprüft: keine Referenz außer der eigenen Definition, vollständiger Build mit Architekturtests grün). Weitere
+tote Übergangsklassen sind nicht bekannt; die Ankerklassen der Module ohne Produktionscode (`architecture-tests`
+ohne, `integration-tests` mit `IntegrationTestsModule`) bleiben, weil das Build-Modell der Architekturtests sie
+braucht.
 
 ## Offene Fragen an den Auftraggeber
 
