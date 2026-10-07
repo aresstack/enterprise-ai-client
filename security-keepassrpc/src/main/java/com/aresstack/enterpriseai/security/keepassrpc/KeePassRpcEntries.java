@@ -27,10 +27,15 @@ final class KeePassRpcEntries {
             String entryTitle = string(entry, "title");
             if (entryTitle != null && wanted.equalsIgnoreCase(entryTitle.trim())) {
                 String password = firstNonNull(string(entry, "password"), formField(entry, "FFTpassword"));
-                return new KeePassEntry(entryTitle,
-                        firstNonNull(string(entry, "usernameValue"), string(entry, "username"),
-                                formField(entry, "FFTusername")),
-                        password == null ? new char[0] : password.toCharArray());
+                char[] passwordChars = password == null ? new char[0] : password.toCharArray();
+                try {
+                    return new KeePassEntry(entryTitle,
+                            firstNonNull(string(entry, "usernameValue"), string(entry, "username"),
+                                    formField(entry, "FFTusername")),
+                            passwordChars);
+                } finally {
+                    java.util.Arrays.fill(passwordChars, '\0');
+                }
             }
         }
         return null;
