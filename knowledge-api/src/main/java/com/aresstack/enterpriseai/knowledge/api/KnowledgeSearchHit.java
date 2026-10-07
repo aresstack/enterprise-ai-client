@@ -7,11 +7,15 @@ import java.util.Comparator;
 
 /**
  * Ein Suchtreffer: der gefundene Chunk, seine Ressource (Titel, Ort, Quelle, Metadaten für Quellenangaben) und
- * der Relevanz-Score (höher ist besser; Bedeutung je {@link #mode()}).
+ * der Relevanz-Score (höher ist besser; Bedeutung je {@link #mode()}). Chunk und Ressource gehören zusammen
+ * (gleiche Ressourcen- und Source-ID); Keyword-Scores sind positiv, semantische liegen in [-1, 1] (Rundungsfehler
+ * der Float-Arithmetik bis {@value #COSINE_TOLERANCE} werden auf die Grenze gezogen).
  *
  * <p>Übernommen aus askai-java8 {@code PassageSearchHit}, hier mit vollständigen Domain-Objekten.
  */
 public final class KnowledgeSearchHit {
+
+    static final double COSINE_TOLERANCE = 1e-4;
 
     private final KnowledgeResource resource;
     private final KnowledgeChunk chunk;
@@ -23,13 +27,30 @@ public final class KnowledgeSearchHit {
         if (resource == null || chunk == null || mode == null) {
             throw new IllegalArgumentException("resource, chunk und mode sind Pflicht");
         }
-        if (Double.isNaN(score) || Double.isInfinite(score)) {
-            throw new IllegalArgumentException("score muss endlich sein: " + score);
+        if (!chunk.id().resourceId().equals(resource.id()) || !chunk.sourceId().equals(resource.sourceId())) {
+            throw new IllegalArgumentException("Chunk " + chunk.id() + " gehört nicht zu Ressource " + resource.id()
+                    + " (" + resource.sourceId() + ")");
         }
         this.resource = resource;
         this.chunk = chunk;
-        this.score = score;
+        this.score = checkedScore(score, mode);
         this.mode = mode;
+    }
+
+    private static double checkedScore(double score, KnowledgeSearchMode mode) {
+        if (Double.isNaN(score) || Double.isInfinite(score)) {
+            throw new IllegalArgumentException("score muss endlich sein: " + score);
+        }
+        if (mode == KnowledgeSearchMode.KEYWORD) {
+            if (score <= 0) {
+                throw new IllegalArgumentException("Keyword-Score muss positiv sein: " + score);
+            }
+            return score;
+        }
+        if (Math.abs(score) > 1 + COSINE_TOLERANCE) {
+            throw new IllegalArgumentException("Cosine-Score muss in [-1, 1] liegen: " + score);
+        }
+        return Math.max(-1, Math.min(1, score));
     }
 
     /** Absteigend nach Score, bei Gleichstand aufsteigend nach Chunk-ID – die Ordnung jeder Trefferliste. */

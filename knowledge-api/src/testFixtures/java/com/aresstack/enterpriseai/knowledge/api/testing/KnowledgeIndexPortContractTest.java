@@ -136,7 +136,10 @@ public abstract class KnowledgeIndexPortContractTest {
         List<KnowledgeSearchHit> hits =
                 written().semanticSearch(KnowledgeSemanticQuery.of(vector(SPACE_3D, 1, 1, 1), 3));
         assertEquals(Arrays.asList("wiki:x/A#chunk-0", "wiki:x/A#chunk-1", "wiki:x/A#chunk-10"), ids(hits));
-        assertEquals(5, index.keywordSearch(KnowledgeKeywordQuery.of(SPACE_3D, "gleich", 5)).size());
+        List<KnowledgeSearchHit> keywordHits =
+                written().keywordSearch(KnowledgeKeywordQuery.of(SPACE_3D, "gleich", 5));
+        assertEquals(Arrays.asList("wiki:x/A#chunk-0", "wiki:x/A#chunk-1", "wiki:x/A#chunk-10", "wiki:x/A#chunk-11",
+                "wiki:x/A#chunk-2"), ids(keywordHits));
     }
 
     @Test

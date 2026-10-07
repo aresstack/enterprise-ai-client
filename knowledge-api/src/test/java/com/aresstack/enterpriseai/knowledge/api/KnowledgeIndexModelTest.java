@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.knowledge.api;
 
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunk;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 
@@ -75,6 +76,33 @@ public class KnowledgeIndexModelTest {
             fail();
         } catch (IllegalArgumentException expected) {
             // erwartet
+        }
+    }
+
+    @Test
+    public void hitsEnforceScoreRangesAndChunkOwnership() {
+        final KnowledgeResource a = resource("wiki:x/A", "wiki");
+        final KnowledgeResource b = resource("wiki:x/B", "wiki");
+        final KnowledgeResource otherSource = resource("wiki:x/A", "confluence");
+        assertEquals(1.0, new KnowledgeSearchHit(a, chunk(a, 0, "x"), 1.00001, KnowledgeSearchMode.SEMANTIC)
+                .score(), 0.0);
+        assertEquals(-1.0, new KnowledgeSearchHit(a, chunk(a, 0, "x"), -1.0, KnowledgeSearchMode.SEMANTIC)
+                .score(), 0.0);
+        Object[][] invalid = {
+                {a, chunk(a, 0, "x"), 0.0, KnowledgeSearchMode.KEYWORD},
+                {a, chunk(a, 0, "x"), -1.0, KnowledgeSearchMode.KEYWORD},
+                {a, chunk(a, 0, "x"), 2.0, KnowledgeSearchMode.SEMANTIC},
+                {b, chunk(a, 0, "x"), 0.5, KnowledgeSearchMode.SEMANTIC},
+                {otherSource, chunk(a, 0, "x"), 0.5, KnowledgeSearchMode.SEMANTIC},
+        };
+        for (Object[] row : invalid) {
+            try {
+                new KnowledgeSearchHit((KnowledgeResource) row[0], (KnowledgeChunk) row[1], (Double) row[2],
+                        (KnowledgeSearchMode) row[3]);
+                fail("abgelehnt erwartet: " + Arrays.toString(row));
+            } catch (IllegalArgumentException expected) {
+                // erwartet
+            }
         }
     }
 }
