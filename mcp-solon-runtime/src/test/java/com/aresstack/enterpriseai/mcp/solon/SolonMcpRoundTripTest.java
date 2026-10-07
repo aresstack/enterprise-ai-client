@@ -46,7 +46,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -225,16 +225,33 @@ public class SolonMcpRoundTripTest {
 
     @Test
     public void unchangedToolsStayCallableWhileTheToolSetIsUpdated() throws Exception {
+        // Handschlag über den Tool-Handler selbst: Der laufende ping-Aufruf meldet seinen Start und wartet, bis der
+        // Updater genau ein Update ausgeführt hat. So läuft jedes Update nachweislich während eines Aufrufs. Ein frei
+        // drehender Updater erzeugte zehntausende tools/list_changed, auf die der SDK-Client jeweils mit tools/list
+        // antwortet; auf langsamen Runnern brach der Server unter dieser Last mit SocketException ab.
+        final int calls = 50;
+        final Semaphore callStarted = new Semaphore(0);
+        final Semaphore updateDone = new Semaphore(0);
+        final McpToolContribution ping = McpToolContribution.of("ping", "Liveness check; returns \"pong\".",
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        callStarted.release();
+                        try {
+                            if (!updateDone.tryAcquire(10, TimeUnit.SECONDS)) {
+                                return McpToolResult.error("no update happened during this call");
+                            }
+                        } catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
+                            return McpToolResult.error("interrupted");
+                        }
+                        return McpToolResult.ok("pong");
+                    }
+                });
         final McpEndpointHandle handle = runtime.registerEndpoint(new McpEndpointDefinition("busy", "Busy"));
-        runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo()));
+        runtime.updateTools(handle, Arrays.asList(ping, McpTestTools.echo()));
         McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(10), Duration.ofSeconds(10))
                 .connect(runtime.endpointUrl(handle), null);
-        // Je Aufruf genau ein nebenläufiges Update, beide starten am selben Rendezvous. Ein frei drehender Updater
-        // erzeugte zehntausende tools/list_changed, auf die der SDK-Client jeweils mit tools/list antwortet; auf
-        // langsamen Runnern brach der Server unter dieser Last mit SocketException ab, was mit der geprüften
-        // Eigenschaft (unveränderte Tools bleiben während Updates aufrufbar) nichts zu tun hat.
-        final int calls = 50;
-        final CyclicBarrier rendezvous = new CyclicBarrier(2);
         final AtomicReference<Throwable> updaterFailure = new AtomicReference<Throwable>();
         Thread updater = new Thread(new Runnable() {
             @Override
@@ -242,11 +259,12 @@ public class SolonMcpRoundTripTest {
                 try {
                     boolean withEcho = false;
                     for (int i = 0; i < calls; i++) {
-                        rendezvous.await(10, TimeUnit.SECONDS);
+                        callStarted.acquire();
                         runtime.updateTools(handle, withEcho
-                                ? Arrays.asList(McpTestTools.ping(), McpTestTools.echo())
-                                : Collections.singletonList(McpTestTools.ping()));
+                                ? Arrays.asList(ping, McpTestTools.echo())
+                                : Collections.singletonList(ping));
                         withEcho = !withEcho;
+                        updateDone.release();
                     }
                 } catch (Throwable t) {
                     updaterFailure.set(t);
@@ -257,18 +275,12 @@ public class SolonMcpRoundTripTest {
         boolean allCallsDone = false;
         try {
             for (int i = 0; i < calls; i++) {
-                try {
-                    rendezvous.await(10, TimeUnit.SECONDS);
-                } catch (Exception barrierBroken) {
-                    Throwable cause = updaterFailure.get();
-                    throw new AssertionError("updater stopped early", cause != null ? cause : barrierBroken);
-                }
                 assertEquals("pong", client.callTool("ping", new HashMap<String, Object>()));
             }
             allCallsDone = true;
         } finally {
             if (!allCallsDone) {
-                // Bricht ein Aufruf ab, wartet der Updater sonst ewig am Rendezvous.
+                // Bricht ein Aufruf ab, wartet der Updater sonst ewig auf den nächsten Aufrufstart.
                 updater.interrupt();
             }
             updater.join(TimeUnit.SECONDS.toMillis(30));
