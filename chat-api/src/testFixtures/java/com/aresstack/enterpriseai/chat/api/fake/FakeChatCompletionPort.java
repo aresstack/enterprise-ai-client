@@ -100,8 +100,7 @@ public final class FakeChatCompletionPort implements ChatCompletionPort {
     private void play(Script script, ChatRequest request, ChatStreamListener listener, FakeTask task) {
         try {
             if (task.cancelRequested()) {
-                task.finish(true);
-                listener.onCancelled();
+                task.finishCancelled(listener);
                 return;
             }
             listener.onStart();
@@ -119,15 +118,10 @@ public final class FakeChatCompletionPort implements ChatCompletionPort {
             if (script.hanging && !task.cancelRequested()) {
                 task.awaitCancel(Long.MAX_VALUE);
             }
-            if (task.cancelRequested()) {
-                task.finish(true);
-                listener.onCancelled();
-            } else if (script.error != null) {
-                task.finish(false);
-                listener.onError(script.error);
+            if (script.error != null) {
+                task.finish(listener, null, script.error);
             } else {
-                task.finish(false);
-                listener.onComplete(response(text.toString(), request));
+                task.finish(listener, response(text.toString(), request), null);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -186,23 +180,29 @@ public final class FakeChatCompletionPort implements ChatCompletionPort {
         }
     }
 
+    /**
+     * Abbruch und Abschluss entscheiden sich unter einem Lock: Wer zuerst kommt, gewinnt. Ein Abbruch vor
+     * dem Abschluss führt immer zu onCancelled, ein Abbruch danach ist wirkungslos.
+     */
     private static final class FakeTask implements ChatTask {
         private final CountDownLatch cancelSignal = new CountDownLatch(1);
-        private volatile boolean done;
-        private volatile boolean cancelled;
+        private boolean done;
+        private boolean cancelled;
 
         @Override
-        public void cancel() {
-            cancelSignal.countDown();
+        public synchronized void cancel() {
+            if (!done) {
+                cancelSignal.countDown();
+            }
         }
 
         @Override
-        public boolean isDone() {
+        public synchronized boolean isDone() {
             return done;
         }
 
         @Override
-        public boolean isCancelled() {
+        public synchronized boolean isCancelled() {
             return cancelled;
         }
 
@@ -215,9 +215,26 @@ public final class FakeChatCompletionPort implements ChatCompletionPort {
             return cancelSignal.await(millis, TimeUnit.MILLISECONDS);
         }
 
-        void finish(boolean byCancel) {
-            cancelled = byCancel;
-            done = true;
+        void finishCancelled(ChatStreamListener listener) {
+            finish(listener, null, null);
+        }
+
+        /** Schließt ab: bei vorherigem Abbruch mit onCancelled, sonst mit Antwort bzw. Fehler. */
+        void finish(ChatStreamListener listener, ChatResponse response, ChatCompletionException error) {
+            synchronized (this) {
+                if (done) {
+                    return;
+                }
+                done = true;
+                cancelled = cancelRequested() || (response == null && error == null);
+            }
+            if (cancelled) {
+                listener.onCancelled();
+            } else if (error != null) {
+                listener.onError(error);
+            } else {
+                listener.onComplete(response);
+            }
         }
     }
 }
