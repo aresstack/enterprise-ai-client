@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.java_websocket.WebSocket;
+import org.java_websocket.WebSocketImpl;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
@@ -18,6 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 import static com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcCrypto.G;
@@ -31,7 +35,18 @@ import static com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcCrypto.N;
  */
 final class FakeKeePassRpcServer extends WebSocketServer {
 
+    private static final long FLUSH_DEADLINE_NANOS = TimeUnit.SECONDS.toNanos(10);
+
     private final SecureRandom random = new SecureRandom();
+    private final ScheduledExecutorService flusher = Executors.newSingleThreadScheduledExecutor(
+            new ThreadFactory() {
+                @Override
+                public Thread newThread(Runnable r) {
+                    Thread thread = new Thread(r, "FakeKeePassRpcServer-flusher");
+                    thread.setDaemon(true);
+                    return thread;
+                }
+            });
     private final Gson gson = new Gson();
     private final CountDownLatch started = new CountDownLatch(1);
     private final Map<WebSocket, ConnectionState> states = new ConcurrentHashMap<WebSocket, ConnectionState>();
@@ -110,6 +125,7 @@ final class FakeKeePassRpcServer extends WebSocketServer {
         String origin = handshake.getFieldValue("Origin");
         if (origin == null || !origin.startsWith("chrome-extension://")) {
             connection.close(1008, "origin");
+            ensureFlushed((WebSocketImpl) connection, System.nanoTime() + FLUSH_DEADLINE_NANOS);
             return;
         }
         states.put(connection, new ConnectionState());
@@ -124,9 +140,9 @@ final class FakeKeePassRpcServer extends WebSocketServer {
         JsonObject request = gson.fromJson(message, JsonObject.class);
         String protocol = request.get("protocol").getAsString();
         if ("setup".equals(protocol) && request.has("srp")) {
-            connection.send(srp(state, request));
+            reply(connection, srp(state, request));
         } else if ("setup".equals(protocol) && request.has("key")) {
-            connection.send(kcr(state, request.getAsJsonObject("key")));
+            reply(connection, kcr(state, request.getAsJsonObject("key")));
         } else if ("jsonrpc".equals(protocol) && state.sessionKey != null) {
             if (sendSignalBeforeEachReply) {
                 // Wie KeePassRPC-Signale (z. B. "Datenbank geöffnet"): JSON-RPC ohne passende ID.
@@ -136,11 +152,56 @@ final class FakeKeePassRpcServer extends WebSocketServer {
                 JsonArray params = new JsonArray();
                 params.add(3);
                 signal.add("params", params);
-                connection.send(seal(state, signal));
+                reply(connection, seal(state, signal));
             }
-            connection.send(rpc(state, request.getAsJsonObject("jsonrpc")));
+            reply(connection, rpc(state, request.getAsJsonObject("jsonrpc")));
         } else {
-            connection.send("{\"protocol\":\"error\",\"error\":{\"code\":\"UNEXPECTED\"}}");
+            reply(connection, "{\"protocol\":\"error\",\"error\":{\"code\":\"UNEXPECTED\"}}");
+        }
+    }
+
+    /**
+     * Sendet eine Antwort und stellt sicher, dass sie auch auf die Leitung kommt.
+     *
+     * <p>Hintergrund (Java-WebSocket 1.5.x, Serverseite): {@code WebSocketServer.run} entfernt einen nur
+     * schreibbereiten Key nicht aus {@code selectedKeys}. Die veraltete Schreibbereitschaft bleibt so an dem Key
+     * hängen, und beim nächsten Lesedurchlauf ruft der Selector-Thread nach {@code doRead} zusätzlich
+     * {@code doWrite} auf, das die Interest-Ops am Ende auf {@code OP_READ} zurücksetzt. Hat der Worker-Thread
+     * die Anfrage in genau diesem Moment schon beantwortet ({@code send} setzt {@code OP_READ|OP_WRITE}),
+     * überschreibt der Selector das {@code OP_WRITE}: Die Antwort bleibt in {@code outQueue} liegen, der Selector
+     * schläft in {@code select()}, und der Client läuft ohne jede Fehlermeldung in sein Timeout. Unter CPU-Last
+     * trat das etwa in einem von 15 bis 40 Testläufen auf (Thread-Dump: Selector in {@code EPoll.wait},
+     * {@code outQueue=1}, {@code interestOps=OP_READ}). Der Produktionscode ist nicht betroffen: der
+     * WebSocket-Client schreibt in einem eigenen blockierenden Thread.
+     *
+     * <p>Gegenmaßnahme: Ein Hilfsthread prüft kurz nach dem Senden, ob die Queue geleert wurde, und meldet
+     * andernfalls per {@link #onWriteDemand(WebSocket)} das Schreibinteresse erneut an (weckt den Selector).
+     * Das läuft bewusst nicht im Worker-Thread, weil der den Lesepuffer des Servers hält.
+     */
+    private void reply(WebSocket connection, String message) {
+        connection.send(message);
+        ensureFlushed((WebSocketImpl) connection, System.nanoTime() + FLUSH_DEADLINE_NANOS);
+    }
+
+    private void ensureFlushed(final WebSocketImpl connection, final long deadline) {
+        flusher.schedule(new Runnable() {
+            @Override
+            public void run() {
+                if (connection.outQueue.isEmpty() || connection.isClosed() || System.nanoTime() > deadline) {
+                    return;
+                }
+                onWriteDemand(connection);
+                ensureFlushed(connection, deadline);
+            }
+        }, 2, TimeUnit.MILLISECONDS);
+    }
+
+    @Override
+    public void stop(int timeout) throws InterruptedException {
+        try {
+            super.stop(timeout);
+        } finally {
+            flusher.shutdownNow();
         }
     }
 
@@ -309,7 +370,10 @@ final class FakeKeePassRpcServer extends WebSocketServer {
 
     @Override
     public void onError(WebSocket connection, Exception error) {
-        // Testserver: Fehler zeigen sich als Timeout oder geschlossene Verbindung beim Client.
+        // Sichtbar machen: Java-WebSocket schluckt Ausnahmen aus onMessage sonst still (slf4j-nop), und der Client
+        // sähe nur ein Timeout.
+        System.err.println("FakeKeePassRpcServer: Fehler auf " + connection);
+        error.printStackTrace();
     }
 
     private static final class ConnectionState {
