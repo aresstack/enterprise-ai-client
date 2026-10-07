@@ -21,6 +21,7 @@ public class EmbeddingBoundaryTest {
 
     private static final String DOMAIN_EMBEDDING = "com.aresstack.enterpriseai.domain.embedding..";
     private static final String EMBEDDING_API = "com.aresstack.enterpriseai.embedding.api..";
+    private static final String EMBEDDING_OPENAI = "com.aresstack.enterpriseai.embedding.openai..";
 
     private static JavaClasses productionClasses;
 
@@ -52,5 +53,33 @@ public class EmbeddingBoundaryTest {
                         EMBEDDING_API, DOMAIN_EMBEDDING, "java.lang..", "java.util..", "java.io..")
                 .allowEmptyShould(true);
         Violations.assertNone("embedding.api", Violations.of(Arrays.asList(rule), productionClasses));
+    }
+
+    /**
+     * Der Adapter zeigt nach außen nur Adapter, Konfiguration, Eingabemodus und Token-Quelle; HTTP-Transport,
+     * JSON-Mapping und Fehlerabbildung bleiben paketintern.
+     */
+    @Test
+    public void embeddingOpenAiExposesOnlyItsEntryPoints() {
+        ArchRule rule = classes().that().resideInAPackage(EMBEDDING_OPENAI).and().arePublic()
+                .should().haveSimpleNameStartingWith("OpenAiCompatibleEmbedding")
+                .orShould().haveSimpleName("EmbeddingInputMode")
+                .orShould().haveSimpleName("BearerTokenSource")
+                .orShould().haveSimpleName("Builder")
+                .allowEmptyShould(true);
+        Violations.assertNone("embedding.openai", Violations.of(Arrays.asList(rule), productionClasses));
+    }
+
+    /** Gson ist ein Implementierungsdetail des Adapters und taucht in keiner öffentlichen Signatur auf. */
+    @Test
+    public void embeddingOpenAiLeaksNoJsonTypes() {
+        ArchRule rule = com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods()
+                .that().areDeclaredInClassesThat().resideInAPackage(EMBEDDING_OPENAI)
+                .and().arePublic()
+                .should().haveRawReturnType(
+                        com.tngtech.archunit.base.DescribedPredicate.not(
+                                com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage("com.google.gson..")))
+                .allowEmptyShould(true);
+        Violations.assertNone("embedding.openai JSON", Violations.of(Arrays.asList(rule), productionClasses));
     }
 }
