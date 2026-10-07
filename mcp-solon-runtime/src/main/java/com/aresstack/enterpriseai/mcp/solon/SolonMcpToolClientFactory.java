@@ -17,8 +17,8 @@ import java.util.Map;
 /**
  * {@link McpToolClientFactory} über den echten Solon-MCP-Client (Streamable HTTP).
  *
- * <p>Fehlerabbildung: ein Ergebnis mit {@code isError} oder eine JSON-RPC-Fehlerantwort des Servers (z. B.
- * unbekanntes Tool) ist ein Tool-Fehler; alles andere (Verbindung, Zeitüberschreitung, HTTP-Fehler wie 404
+ * <p>Fehlerabbildung: ein Ergebnis mit {@code isError} oder die JSON-RPC-Fehlerantwort "Invalid params" des
+ * Servers (unbekanntes Tool, ungültige Argumente) ist ein Tool-Fehler; alles andere (Verbindung, Zeitüberschreitung, HTTP-Fehler wie 404
  * für einen falschen oder ungültig gewordenen Token) gilt als nicht erreichbarer Endpoint. Die URL trägt den
  * Token und wird weder geloggt noch in Exception-Meldungen übernommen.
  *
@@ -58,6 +58,27 @@ public final class SolonMcpToolClientFactory implements McpToolClientFactory {
                 .requestTimeout(requestTimeout)
                 .build();
         return new SolonMcpToolClient(client, url);
+    }
+
+    /** JSON-RPC "Invalid params": so meldet der MCP-Server ein unbekanntes Tool oder ungültige Argumente. */
+    static final int JSON_RPC_INVALID_PARAMS = -32602;
+
+    /**
+     * Ein Tool-Fehler liegt nur vor, wenn der Server mit einer JSON-RPC-Fehlerantwort "Invalid params"
+     * geantwortet hat. Das MCP-SDK verwendet {@link McpError} auch für Transport-, Parse- und
+     * Protokollfehler; die gelten – wie jeder andere Fehler – als nicht erreichbarer Endpoint.
+     */
+    static boolean isToolFailure(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof McpError) {
+                McpSchema.JSONRPCResponse.JSONRPCError error = ((McpError) cause).getJsonRpcError();
+                return error != null && error.code() != null && error.code() == JSON_RPC_INVALID_PARAMS;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return false;
     }
 
     private static final class SolonMcpToolClient implements McpToolClient {
@@ -122,16 +143,9 @@ public final class SolonMcpToolClientFactory implements McpToolClientFactory {
         }
 
         private McpToolCallException translate(RuntimeException ex) {
-            boolean serverAnswered = false;
-            for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
-                if (cause instanceof McpError) {
-                    serverAnswered = true;
-                    break;
-                }
-            }
             String message = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
             // Bewusst ohne Cause: Stacktraces und Meldungen der Bibliothek können die URL samt Token enthalten.
-            return new McpToolCallException(sanitize(message), !serverAnswered);
+            return new McpToolCallException(sanitize(message), !isToolFailure(ex));
         }
 
         private String sanitize(String message) {

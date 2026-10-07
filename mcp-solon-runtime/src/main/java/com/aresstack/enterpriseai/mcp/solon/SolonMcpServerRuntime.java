@@ -79,6 +79,7 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
      * Idempotent; wird von {@link #registerEndpoint(McpEndpointDefinition)} implizit aufgerufen.
      *
      * @throws IllegalStateException wenn bereits ein Solon-Server läuft, der nicht nur an Loopback bindet
+     *                               oder einen Kontextpfad verwendet
      */
     public void start() {
         synchronized (SOLON_LOCK) {
@@ -93,6 +94,11 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
             if (!LOOPBACK_HOST.equals(host)) {
                 throw new IllegalStateException("Solon server is not bound to " + LOOPBACK_HOST
                         + "; refusing to expose MCP endpoints");
+            }
+            String contextPath = Solon.cfg().serverContextPath();
+            if (contextPath != null && !contextPath.isEmpty() && !"/".equals(contextPath)) {
+                // Endpoint-URLs enthalten keinen Kontextpfad; mit einem würden alle Clients 404 bekommen.
+                throw new IllegalStateException("Solon server uses a context path; MCP endpoints need the root path");
             }
         }
     }
