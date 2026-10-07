@@ -47,6 +47,20 @@ public class InMemoryKnowledgeSourceTest {
     }
 
     @Test
+    public void childResourcesAreDiscoveredAndLinkedWithoutExplicitLinks() throws Exception {
+        InMemoryKnowledgeSource space = new InMemoryKnowledgeSource("space")
+                .add("home", "Home", "Startseite")
+                .addChild("home", "child", "Kind", "Kindseite");
+
+        List<KnowledgeResource> resources =
+                space.discover(SourceScope.builder().startPoint("home").maxDepth(1).build());
+
+        assertEquals(2, resources.size());
+        assertEquals(space.idOf("child"), resources.get(1).id());
+        assertEquals(space.idOf("child"), space.discoverLinks(space.idOf("home")).get(0).target());
+    }
+
+    @Test
     public void updateChangesRevisionAndContentHash() throws Exception {
         KnowledgeDocument before = source.load(source.idOf("y"));
         source.update("y", "Neuer Text");

@@ -147,7 +147,8 @@ public abstract class KnowledgeSourceContractTest {
         boolean loadable = false;
         for (SourceLink link : links) {
             try {
-                assertEquals(link.target(), source.load(link.target()).id());
+                // Ein Linkziel darf eine Weiterleitung sein; load liefert dann die ID des Ziels (siehe Port).
+                assertEquals(source.sourceId(), source.load(link.target()).resource().sourceId());
                 loadable = true;
             } catch (KnowledgeSourceException e) {
                 assertEquals(Kind.NOT_FOUND, e.kind());
@@ -172,7 +173,7 @@ public abstract class KnowledgeSourceContractTest {
         SearchableKnowledgeSource searchable = (SearchableKnowledgeSource) source;
         List<SourceSearchHit> hits = searchable.search(new SourceQuery(searchTextWithHits(), 1));
         assertEquals(1, hits.size());
-        assertEquals(hits.get(0).resourceId(), source.load(hits.get(0).resourceId()).id());
+        assertEquals(source.sourceId(), source.load(hits.get(0).resourceId()).resource().sourceId());
     }
 
     private static List<KnowledgeResourceId> ids(List<KnowledgeResource> resources) {

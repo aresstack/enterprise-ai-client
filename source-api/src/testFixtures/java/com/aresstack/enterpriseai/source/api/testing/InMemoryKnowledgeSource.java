@@ -31,7 +31,7 @@ import java.util.Set;
  * und als Referenzimplementierung des Vertrags.
  *
  * <p>Ressourcen werden über einen quellenlokalen Schlüssel angelegt; Startpunkte im {@link SourceScope} sind
- * diese Schlüssel. IDs haben die Form {@code <scheme>:<sourceId>/<key>}. {@link #update} erhöht die Revision,
+ * diese Schlüssel. Discovery folgt Links und Kindressourcen ({@link #addChild}). IDs haben die Form {@code <scheme>:<sourceId>/<key>}. {@link #update} erhöht die Revision,
  * {@link #remove} entfernt eine Ressource, {@link #failWith} lässt Aufrufe für eine Ressource scheitern –
  * damit lassen sich Neuindexierung, Löschung und Fehlerpfade testen. Alle Aufrufe werden in
  * {@link #calls()} protokolliert.
@@ -125,6 +125,7 @@ public final class InMemoryKnowledgeSource implements SearchableKnowledgeSource 
                 fail(key);
                 visited.add(key);
                 next.addAll(entries.get(key).links);
+                next.addAll(childrenOf(key));
             }
             level = next;
         }
@@ -152,7 +153,9 @@ public final class InMemoryKnowledgeSource implements SearchableKnowledgeSource 
         fail(key);
         Entry entry = existing(key, resourceId);
         List<SourceLink> links = new ArrayList<SourceLink>();
-        for (String target : new LinkedHashSet<String>(entry.links)) {
+        Set<String> targets = new LinkedHashSet<String>(entry.links);
+        targets.addAll(childrenOf(key));
+        for (String target : targets) {
             Entry linked = entries.get(target);
             links.add(new SourceLink(idOf(target), linked == null ? target : linked.title));
         }
@@ -176,6 +179,17 @@ public final class InMemoryKnowledgeSource implements SearchableKnowledgeSource 
             }
         }
         return hits;
+    }
+
+    /** Kindressourcen (über {@link #addChild}) zählen wie Links, analog zu Confluence-Kindseiten. */
+    private List<String> childrenOf(String parentKey) {
+        List<String> children = new ArrayList<String>();
+        for (Entry candidate : entries.values()) {
+            if (parentKey.equals(candidate.parentKey)) {
+                children.add(candidate.key);
+            }
+        }
+        return children;
     }
 
     private KnowledgeResource resource(Entry entry) {
