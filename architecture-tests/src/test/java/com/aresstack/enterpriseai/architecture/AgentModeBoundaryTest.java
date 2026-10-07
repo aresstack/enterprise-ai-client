@@ -28,13 +28,13 @@ import static org.junit.Assert.assertTrue;
  *   <li>Der Chat-Pfad (Modell, Port, Adapter, Use Case, Anbindung, Oberfläche) kennt weder ACP noch MCP noch
  *       den Agent-Modus.</li>
  *   <li>ACP- und MCP-Typen tauchen außerhalb ihrer eigenen Module nur in {@code application.agent},
- *       {@code app.agent} und der Composition Root ({@code app}) auf.</li>
+ *       {@code application.mcp} (AP20), {@code app.agent} und der Composition Root ({@code app}) auf.</li>
  *   <li>Der Agent-Use-Case sieht nur den ACP-Port, keine MCP-Typen und nicht den Chat.</li>
  *   <li>Die Modus-Umschaltung ({@code app.ui.agent}) ist reine Oberfläche: keine Use Cases, keine Ports.</li>
  * </ul>
  *
- * Für AP20 (MCP-Tools als Use Cases in application) wird das zugehörige Paket in
- * {@link #ACP_MCP_ALLOWED} ergänzt.
+ * AP20 (MCP-Wissenswerkzeuge in {@code application.mcp}) ist in {@link #ACP_MCP_ALLOWED} eingetragen; seine
+ * eigenen Grenzen prüft {@link McpKnowledgeToolsBoundaryTest}.
  */
 public class AgentModeBoundaryTest {
 
@@ -48,7 +48,8 @@ public class AgentModeBoundaryTest {
     private static final String[] ACP_AND_MCP = {ROOT + ".acp..", ROOT + ".mcp.."};
     /** Wo ACP-/MCP-Typen außerhalb ihrer eigenen Module vorkommen dürfen. */
     private static final String[] ACP_MCP_ALLOWED = {
-            ROOT + ".acp..", ROOT + ".mcp..", ROOT + ".application.agent..", ROOT + ".app.agent..", ROOT + ".app"};
+            ROOT + ".acp..", ROOT + ".mcp..", ROOT + ".application.agent..", ROOT + ".application.mcp..",
+            ROOT + ".app.agent..", ROOT + ".app"};
 
     private static JavaClasses productionClasses;
 

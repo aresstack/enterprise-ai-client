@@ -1,4 +1,4 @@
-description = 'Use Cases und Orchestrierung (Chat, RAG, Indexierung). Sieht nur domain und die *-api-Ports.'
+description = 'Use Cases und Orchestrierung (Chat, RAG, Indexierung, MCP-Wissenswerkzeuge). Sieht nur domain und die *-api-Ports.'
 
 dependencies {
     api project(':domain')
@@ -18,4 +18,6 @@ dependencies {
     testImplementation testFixtures(project(':embedding-api'))
     testImplementation testFixtures(project(':knowledge-api'))
     testImplementation testFixtures(project(':source-api'))
+    // AP20: In-Process-Registry und -Client für den MCP-Roundtrip der Wissenswerkzeuge (kein Netzwerk).
+    testImplementation testFixtures(project(':mcp-runtime-api'))
 }
