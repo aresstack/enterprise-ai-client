@@ -78,7 +78,7 @@ public final class KnowledgeMetadata {
     }
 
     private static void put(TreeMap<String, String> target, String key, String value) {
-        if (key == null || key.trim().isEmpty() || !key.trim().equals(key)) {
+        if (key == null || key.isEmpty() || KnowledgeText.hasEdgeSpace(key)) {
             throw new IllegalArgumentException("Metadaten-Schlüssel darf nicht leer sein und keinen Leerraum am Rand haben: "
                     + KnowledgeSourceId.quote(key));
         }

@@ -5,20 +5,20 @@ package com.aresstack.enterpriseai.domain.knowledge;
  * deterministische, modellunabhängige Schätzung; wer das Budget an einen konkreten Tokenizer koppeln will,
  * reicht eine eigene Implementierung an den {@link KnowledgeChunker}.
  *
- * <p>Der Chunker addiert die Zählungen einzelner Sätze; Implementierungen sollten daher (annähernd) additiv
- * über Leerraum-Grenzen sein.
+ * <p>Der Chunker übergibt {@link #count(String)} jeweils den vollständig zusammengesetzten Kandidaten
+ * (Überschriftenzeile, Trenner und Text) und vergleicht das Ergebnis mit dem Budget; Additivität wird nicht
+ * vorausgesetzt.
  */
 public interface KnowledgeTokenCounter {
 
     int count(String text);
 
     /**
-     * Stabile Kennung des Zählverfahrens (Name und Version). Geht in {@link KnowledgeChunker#fingerprint()} ein;
-     * eine Implementierung mit anderem Zählverhalten muss eine andere Kennung liefern. Default: Klassenname.
+     * Stabile, versionierte Kennung des Zählverfahrens, z. B. {@code "cl100k-v1"}. Geht in
+     * {@link KnowledgeChunker#fingerprint()} ein und muss daher über JVM-Neustarts gleich bleiben (kein
+     * Klassenname von Lambdas); eine Implementierung mit anderem Zählverhalten liefert eine andere Kennung.
      */
-    default String id() {
-        return getClass().getName();
-    }
+    String id();
 
     /**
      * Zählt jede Folge aus Buchstaben/Ziffern (Unicode, also auch Umlaute und ß) als ein Token und jedes

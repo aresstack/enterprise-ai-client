@@ -76,10 +76,10 @@ public final class KnowledgeChunker {
         if (document == null) {
             throw new IllegalArgumentException("Dokument fehlt");
         }
-        List<KnowledgeChunk> chunks = new ArrayList<KnowledgeChunk>();
         if (document.isBlank()) {
-            return chunks;
+            return Collections.emptyList();
         }
+        List<KnowledgeChunk> chunks = new ArrayList<KnowledgeChunk>();
         for (Section section : new StructureParser().parse(document.text())) {
             chunkSection(document.resource(), section, chunks);
         }

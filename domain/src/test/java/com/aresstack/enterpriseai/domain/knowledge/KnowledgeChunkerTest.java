@@ -210,20 +210,24 @@ public class KnowledgeChunkerTest {
     }
 
     @Test
+    public void blankDocumentsYieldAnImmutableEmptyList() {
+        for (String blank : new String[]{"", " \n\t", "\u00A0\u2007\u202F\u2028"}) {
+            List<KnowledgeChunk> chunks = chunk(blank, 100, 0);
+            assertTrue(chunks.isEmpty());
+            try {
+                chunks.add(null);
+                fail("unveränderlich erwartet");
+            } catch (UnsupportedOperationException expected) {
+                // erwartet
+            }
+        }
+    }
+
+    @Test
     public void chunkerFingerprintIncludesPolicyAndCounter() {
         assertEquals("chunker-v1;maxTokens=350;overlapSentences=1;counter=words-and-symbols-v1",
                 new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()).fingerprint());
-        KnowledgeTokenCounter characters = new KnowledgeTokenCounter() {
-            @Override
-            public int count(String text) {
-                return text.length();
-            }
-
-            @Override
-            public String id() {
-                return "characters-v1";
-            }
-        };
+        KnowledgeTokenCounter characters = new CharacterCounter();
         assertEquals("chunker-v1;maxTokens=350;overlapSentences=1;counter=characters-v1",
                 new KnowledgeChunker(KnowledgeChunkingPolicy.defaults(), characters).fingerprint());
     }
@@ -299,12 +303,7 @@ public class KnowledgeChunkerTest {
 
     @Test
     public void customTokenCounterDrivesTheBudget() {
-        KnowledgeTokenCounter characters = new KnowledgeTokenCounter() {
-            @Override
-            public int count(String text) {
-                return text.length();
-            }
-        };
+        KnowledgeTokenCounter characters = new CharacterCounter();
         List<KnowledgeChunk> chunks = new KnowledgeChunker(KnowledgeChunkingPolicy.of(15, 0), characters)
                 .chunk(KnowledgeDocument.of(RESOURCE, "Eins zwei. Drei vier. Fünf sechs."));
 
@@ -314,12 +313,7 @@ public class KnowledgeChunkerTest {
 
     @Test
     public void separatorsCountAgainstTheBudgetForCustomCounters() {
-        KnowledgeTokenCounter characters = new KnowledgeTokenCounter() {
-            @Override
-            public int count(String text) {
-                return text.length();
-            }
-        };
+        KnowledgeTokenCounter characters = new CharacterCounter();
         List<KnowledgeChunk> chunks = new KnowledgeChunker(KnowledgeChunkingPolicy.of(14, 0), characters)
                 .chunk(KnowledgeDocument.of(RESOURCE, "Abcdef. Ghijkl.\n\n# Kopf\nAbcdefg."));
 
@@ -350,12 +344,7 @@ public class KnowledgeChunkerTest {
 
     @Test
     public void headingWhoseFirstWordExceedsHalfTheBudgetIsDropped() {
-        KnowledgeTokenCounter characters = new KnowledgeTokenCounter() {
-            @Override
-            public int count(String text) {
-                return text.length();
-            }
-        };
+        KnowledgeTokenCounter characters = new CharacterCounter();
         List<KnowledgeChunk> chunks = new KnowledgeChunker(KnowledgeChunkingPolicy.of(8, 0), characters)
                 .chunk(KnowledgeDocument.of(RESOURCE, "# !!!!!!!!!!!!!!!!!!!!\nBody. Text."));
 
@@ -380,6 +369,19 @@ public class KnowledgeChunkerTest {
             fail();
         } catch (IllegalArgumentException expected) {
             // erwartet
+        }
+    }
+
+    /** Zählt Zeichen; macht Budgetgrenzen in Tests exakt nachrechenbar. */
+    private static final class CharacterCounter implements KnowledgeTokenCounter {
+        @Override
+        public int count(String text) {
+            return text.length();
+        }
+
+        @Override
+        public String id() {
+            return "characters-v1";
         }
     }
 }

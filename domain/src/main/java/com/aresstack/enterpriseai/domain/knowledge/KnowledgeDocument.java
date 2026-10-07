@@ -13,7 +13,7 @@ import java.text.Normalizer;
  * ausgedrückt – Überschriften als {@code #}-Zeilen, Absätze durch Leerzeilen getrennt, Listenpunkte als
  * {@code - }/{@code 1. }-Zeilen, Code in {@code ```}-Blöcken. HTML, Wiki-Markup oder Confluence-Storage-Format
  * wandelt der Adapter vorher um. Der Text wird beim Erzeugen auf Unicode-NFC und {@code \n}-Zeilenenden
- * normalisiert, damit gleiche Inhalte gleiche Chunks und gleiche {@link #contentHash()} ergeben.
+ * normalisiert (Unicode-Leerzeichen wie U+00A0 werden zu {@code ' '}), damit gleiche Inhalte gleiche Chunks und gleiche {@link #contentHash()} ergeben.
  */
 public final class KnowledgeDocument {
 
@@ -36,13 +36,13 @@ public final class KnowledgeDocument {
         return new KnowledgeDocument(resource, normalize(text));
     }
 
-    /** NFC und {@code \n}-Zeilenenden; {@code null} wird zu {@code ""}. */
+    /** NFC, {@code \n}-Zeilenenden, Unicode-Leerzeichen als {@code ' '}; {@code null} wird zu {@code ""}. */
     static String normalize(String text) {
         if (text == null) {
             return "";
         }
         String unified = text.replace("\r\n", "\n").replace('\r', '\n');
-        return Normalizer.normalize(unified, Normalizer.Form.NFC);
+        return KnowledgeText.unifySpaces(Normalizer.normalize(unified, Normalizer.Form.NFC));
     }
 
     public KnowledgeResource resource() {
@@ -58,7 +58,7 @@ public final class KnowledgeDocument {
     }
 
     public boolean isBlank() {
-        return text.trim().isEmpty();
+        return KnowledgeText.isBlank(text);
     }
 
     /** SHA-256 (hex) des normalisierten Texts; erkennt unveränderte Inhalte ohne Volltextvergleich. */

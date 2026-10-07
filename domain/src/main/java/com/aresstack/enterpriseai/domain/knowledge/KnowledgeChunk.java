@@ -28,7 +28,7 @@ public final class KnowledgeChunk {
         if (sourceId == null) {
             throw new IllegalArgumentException("Source-ID fehlt");
         }
-        if (text == null || text.trim().isEmpty()) {
+        if (KnowledgeText.isBlank(text)) {
             throw new IllegalArgumentException("Chunk " + id + " hat keinen Text");
         }
         if (tokenCount < 0) {
@@ -37,7 +37,7 @@ public final class KnowledgeChunk {
         List<String> path = new ArrayList<String>();
         if (headingPath != null) {
             for (String heading : headingPath) {
-                if (heading == null || heading.trim().isEmpty()) {
+                if (KnowledgeText.isBlank(heading)) {
                     throw new IllegalArgumentException("Leere Überschrift im headingPath von " + id);
                 }
                 path.add(heading);

@@ -47,7 +47,7 @@ final class SentenceSplitter {
                 end++;
             }
             int next = end;
-            while (next < length && Character.isWhitespace(text.charAt(next))) {
+            while (next < length && KnowledgeText.isSpace(text.charAt(next))) {
                 next++;
             }
             boolean boundary = next > end && next < length && isSentenceStart(text.codePointAt(next))
@@ -97,7 +97,7 @@ final class SentenceSplitter {
     /** Wort unmittelbar vor dem Punkt bei {@code periodIndex}, bis zum vorigen Leerraum. */
     private static boolean isAbbreviation(String text, int periodIndex) {
         int wordStart = periodIndex;
-        while (wordStart > 0 && !Character.isWhitespace(text.charAt(wordStart - 1))) {
+        while (wordStart > 0 && !KnowledgeText.isSpace(text.charAt(wordStart - 1))) {
             wordStart--;
         }
         String word = text.substring(wordStart, periodIndex);

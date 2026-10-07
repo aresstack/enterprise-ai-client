@@ -38,7 +38,7 @@ public final class KnowledgeResourceId {
         if (!matcher.matches()) {
             throw invalid(value, "erwartet <schema>:<id> mit klein geschriebenem Schema");
         }
-        if (!value.trim().equals(value)) {
+        if (KnowledgeText.hasEdgeSpace(value)) {
             throw invalid(value, "beginnt oder endet mit Leerraum");
         }
         for (int i = 0; i < value.length(); i++) {

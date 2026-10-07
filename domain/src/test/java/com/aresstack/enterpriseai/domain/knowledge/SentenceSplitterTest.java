@@ -31,8 +31,16 @@ public class SentenceSplitterTest {
                 splitter.split("Siehe J. R. R. Tolkien, d.h. Mittelerde, vgl. Kap. Drei."));
         assertEquals(Arrays.asList("Das ist „Dr.“ Meier.", "Ende."),
                 splitter.split("Das ist „Dr.“ Meier. Ende."));
+        assertEquals(Arrays.asList("Siehe (Abb.) Anhang."), splitter.split("Siehe (Abb.) Anhang."));
         assertEquals(Arrays.asList("Er sagte „Ende.“", "Danach ging er."),
                 splitter.split("Er sagte „Ende.“ Danach ging er."));
+    }
+
+    @Test
+    public void unicodeSpacesSeparateSentences() {
+        assertEquals(Arrays.asList("Erster Satz.", "Zweiter Satz."),
+                splitter.split("Erster Satz.\u00A0Zweiter Satz."));
+        assertEquals(Collections.singletonList("Siehe Dr.\u00A0Meier."), splitter.split("Siehe Dr.\u00A0Meier."));
     }
 
     @Test

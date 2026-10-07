@@ -57,7 +57,7 @@ public class KnowledgeModelTest {
             }
         });
         for (final String invalid : new String[]{null, "", "ohne-schema", "Wiki:x", "wiki:", " wiki:x", "wiki:x ",
-                "wiki:a\nb", "1x:y"}) {
+                "wiki:a\nb", "1x:y", "wiki:x\u00A0", "\u2007wiki:x"}) {
             assertRejected(new Runnable() {
                 public void run() {
                     KnowledgeResourceId.of(invalid);
@@ -84,6 +84,11 @@ public class KnowledgeModelTest {
         assertRejected(new Runnable() {
             public void run() {
                 KnowledgeMetadata.empty().with(" key", "v");
+            }
+        });
+        assertRejected(new Runnable() {
+            public void run() {
+                KnowledgeMetadata.empty().with("space\u00A0", "v");
             }
         });
         assertRejected(new Runnable() {
@@ -178,6 +183,8 @@ public class KnowledgeModelTest {
         assertNotEquals(nfc.contentHash(), KnowledgeDocument.of(resource, "Größe").contentHash());
         assertFalse(nfc.toString().contains("Zeile"));
         assertTrue(KnowledgeDocument.of(resource, null).isBlank());
+        assertTrue(KnowledgeDocument.of(resource, "\u00A0\u202F").isBlank());
+        assertEquals("a b\nc", KnowledgeDocument.of(resource, "a\u00A0b\u2028c").text());
     }
 
     @Test
