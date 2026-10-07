@@ -20,10 +20,12 @@ import com.aresstack.enterpriseai.acp.api.AgentProcessHandle;
 import com.aresstack.enterpriseai.acp.api.PromptDispatcher;
 import com.aresstack.enterpriseai.acp.api.PromptHandle;
 
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -78,6 +80,8 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
         private StdioAcpClientTransport transport;
         private AcpSyncClient client;
         private volatile boolean processAlive;
+        /** The spawned child, when the SDK transport exposes it (see {@link #spawnedProcess}); else null. */
+        private volatile Process process;
 
         private Connection(AgentLaunchSpec spec) {
             this.spec = spec;
@@ -121,6 +125,7 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                         })
                         .build();
                 client.initialize(); // capability negotiation happens inside; result readable via client
+                process = spawnedProcess(transport);
                 state.to(AcpConnectionState.READY);
             } catch (RuntimeException ex) {
                 state.to(AcpConnectionState.FAILED);
@@ -159,11 +164,16 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
         public AgentProcessHandle getProcess() {
             return new AgentProcessHandle() {
                 public boolean isAlive() {
-                    return processAlive;
+                    Process p = process;
+                    return p != null ? p.isAlive() : processAlive;
                 }
 
                 public void destroyForcibly() {
                     closeQuietly();
+                    Process p = process;
+                    if (p != null) {
+                        p.destroyForcibly(); // the graceful close may have timed out on a stuck agent
+                    }
                 }
             };
         }
@@ -217,6 +227,29 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                 }
             }
             executor.shutdownNow();
+            // Queued prompts dropped by shutdownNow() never reach their finally block: give every prompt
+            // still registered its single terminal so no consumer waits forever.
+            for (Map.Entry<String, PromptDispatcher> active : activePromptBySession.entrySet()) {
+                active.getValue().terminal(AcpPromptState.CANCELLED, "connection closed");
+                activePromptBySession.remove(active.getKey(), active.getValue());
+            }
+        }
+    }
+
+    /**
+     * The SDK transport keeps the spawned {@link Process} private and offers no force-kill. Reading it lets
+     * {@link AgentProcessHandle} report the real process state and force-kill a stuck agent. Pinned to
+     * acp-sdk 3.10.1 (field {@code process}); if the field is missing the handle falls back to the
+     * connection's own view, and the round-trip test catches a changed SDK.
+     */
+    static Process spawnedProcess(StdioAcpClientTransport transport) {
+        try {
+            Field field = StdioAcpClientTransport.class.getDeclaredField("process");
+            field.setAccessible(true);
+            Object value = field.get(transport);
+            return value instanceof Process ? (Process) value : null;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            return null;
         }
     }
 
@@ -263,6 +296,13 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
         public PromptHandle prompt(String text, AcpUpdateListener listener) {
             final String promptId = UUID.randomUUID().toString();
             final PromptDispatcher dispatcher = new PromptDispatcher(sessionId, promptId, listener);
+            if (state.get() != AcpSessionState.ACTIVE || connection.state.get() != AcpConnectionState.READY) {
+                // Never send on a closed session or a dead connection; the prompt fails on its own,
+                // without marking a healthy connection FAILED.
+                dispatcher.terminal(AcpPromptState.FAILED, "session " + state.get()
+                        + " / connection " + connection.state.get() + ": prompt not sent");
+                return handleFor(promptId, dispatcher);
+            }
             connection.activePromptBySession.put(sessionId, dispatcher);
             final String promptText = text == null ? "" : text;
             connection.executor.execute(new Runnable() {
@@ -297,6 +337,10 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                     }
                 }
             });
+            return handleFor(promptId, dispatcher);
+        }
+
+        private PromptHandle handleFor(final String promptId, final PromptDispatcher dispatcher) {
             return new PromptHandle() {
                 public String getPromptId() {
                     return promptId;

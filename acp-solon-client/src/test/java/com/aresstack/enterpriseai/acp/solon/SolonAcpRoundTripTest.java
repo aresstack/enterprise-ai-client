@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.acp.api.AcpConnectionState;
 import com.aresstack.enterpriseai.acp.api.AcpException;
 import com.aresstack.enterpriseai.acp.api.AcpPromptState;
 import com.aresstack.enterpriseai.acp.api.AcpSession;
+import com.aresstack.enterpriseai.acp.api.AcpSessionState;
 import com.aresstack.enterpriseai.acp.api.AcpUpdate;
 import com.aresstack.enterpriseai.acp.api.AcpUpdateListener;
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
@@ -116,6 +117,7 @@ public class SolonAcpRoundTripTest {
                 spec(Collections.singletonMap(EXIT_MARKER_ENV, exitMarker.getAbsolutePath())));
         try {
             assertEquals(AcpConnectionState.READY, connection.getState());
+            assertTrue("real child process is running", connection.getProcess().isAlive());
             AcpSession session = connection.newSession();
             Collecting listener = new Collecting();
             PromptHandle handle = session.prompt("hello acp", listener);
@@ -226,5 +228,52 @@ public class SolonAcpRoundTripTest {
             assertTrue("phase " + expected.getPhase(), expected.getPhase() == AcpException.Phase.INITIALIZE
                     || expected.getPhase() == AcpException.Phase.SPAWN);
         }
+    }
+
+    @Test
+    public void promptOnClosedSessionFailsWithoutHarmingTheConnection() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            AcpSession closed = connection.newSession();
+            closed.close();
+            assertEquals(AcpSessionState.CLOSED, closed.getState());
+
+            Collecting stale = new Collecting();
+            PromptHandle handle = closed.prompt("hello", stale);
+            assertTrue(stale.terminated.await(5, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.FAILED, handle.getState());
+            assertTrue(stale.updates.isEmpty());
+            assertEquals(AcpConnectionState.READY, connection.getState());
+
+            Collecting fresh = new Collecting();
+            connection.newSession().prompt("hello", fresh);
+            assertTrue(fresh.terminated.await(30, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.COMPLETED, fresh.terminal.get());
+        } finally {
+            connection.close();
+        }
+    }
+
+    @Test
+    public void closingTheConnectionTerminatesRunningAndQueuedPrompts() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        Collecting running = new Collecting();
+        Collecting queued = new Collecting();
+        try {
+            connection.newSession().prompt("slow burn", running);
+            assertTrue("no streaming started", running.firstUpdate.await(30, TimeUnit.SECONDS));
+            // Same single prompt executor: this one waits behind the slow prompt.
+            connection.newSession().prompt("hello", queued);
+        } finally {
+            connection.close();
+        }
+        assertTrue("running prompt got no terminal", running.terminated.await(30, TimeUnit.SECONDS));
+        assertTrue("queued prompt got no terminal", queued.terminated.await(30, TimeUnit.SECONDS));
+        assertEquals(1, running.terminalCount);
+        assertEquals(1, queued.terminalCount);
+        assertTrue(queued.terminal.get().isTerminal());
+        assertFalse(connection.getProcess().isAlive());
     }
 }

@@ -13,6 +13,7 @@ import com.agentclientprotocol.sdk.spec.AcpSchema;
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * External Java-8 demo ACP agent (STDIO transport). STDOUT carries ONLY the ACP protocol; every log line
@@ -25,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * host can prove the child process really terminated after shutdown.</p>
  *
  * <p>Origin: Miguel0888/askai-java8, {@code acp-demo-agent} ({@code DemoAcpAgentMain}), package and agent
- * name adapted, crash and exit-marker hooks added.</p>
+ * name adapted, unique session ids, crash and exit-marker hooks added.</p>
  */
 @AcpAgent(name = "enterprise-ai-demo-agent", version = "0.1")
 public final class DemoAcpAgentMain {
@@ -34,6 +35,7 @@ public final class DemoAcpAgentMain {
     public static final String EXIT_MARKER_ENV = "ACP_DEMO_EXIT_MARKER";
 
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
+    private final AtomicInteger sessions = new AtomicInteger();
 
     public static void main(String[] args) {
         System.err.println("[demo-agent] starting");
@@ -68,7 +70,7 @@ public final class DemoAcpAgentMain {
     @NewSession
     public AcpSchema.NewSessionResponse newSession() {
         System.err.println("[demo-agent] new session");
-        return new AcpSchema.NewSessionResponse("demo-session-1", null, null);
+        return new AcpSchema.NewSessionResponse("demo-session-" + sessions.incrementAndGet(), null, null);
     }
 
     @Cancel
