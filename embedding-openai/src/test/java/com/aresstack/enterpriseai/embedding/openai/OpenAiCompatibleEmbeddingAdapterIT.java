@@ -138,7 +138,7 @@ public class OpenAiCompatibleEmbeddingAdapterIT extends EmbeddingPortContractTes
             fail("expected REJECTED");
         } catch (EmbeddingException expected) {
             assertEquals(EmbeddingFailureKind.REJECTED, expected.kind());
-            assertTrue(expected.getMessage().contains("Input should be a valid string"));
+            assertTrue(expected.getMessage().contains("HTTP 422"));
         }
     }
 
@@ -162,6 +162,23 @@ public class OpenAiCompatibleEmbeddingAdapterIT extends EmbeddingPortContractTes
         assertInvalid(Collections.singletonList("x"));
         server.respondWith("{\"data\":[{\"index\":0,\"embedding\":[NaN,0,0,0,0,0,0,0]}]}");
         assertInvalid(Collections.singletonList("x"));
+    }
+
+    @Test
+    public void oversizedSuccessResponseIsRejected() {
+        StringBuilder huge = new StringBuilder("{\"data\":[{\"embedding\":[");
+        for (int i = 0; i < 200000; i++) {
+            huge.append("0.0000000001,");
+        }
+        huge.append("0]}]}");
+        server.respondWith(huge.toString());
+        try {
+            adapter(EmbeddingInputMode.SINGLE_STRING).embed(Collections.singletonList("x"));
+            fail("expected INVALID_RESPONSE");
+        } catch (EmbeddingException expected) {
+            assertEquals(EmbeddingFailureKind.INVALID_RESPONSE, expected.kind());
+            assertTrue(expected.getMessage().contains("implausibly large"));
+        }
     }
 
     @Test

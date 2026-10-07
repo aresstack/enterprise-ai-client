@@ -55,7 +55,7 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
     public void transportExceptionsBecomeUnavailable() {
         EmbeddingHttpTransport failing = new EmbeddingHttpTransport() {
             @Override
-            public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken) throws IOException {
+            public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken, long max) throws IOException {
                 throw new SocketTimeoutException("Read timed out");
             }
         };
@@ -66,6 +66,45 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
             assertEquals(EmbeddingFailureKind.UNAVAILABLE, expected.kind());
             assertTrue(expected.getMessage().contains("SocketTimeoutException"));
         }
+    }
+
+    @Test
+    public void malformedTokenIsRejectedWithoutEchoAndWiped() {
+        final char[] token = "abc\r\nX-Injected: 1".toCharArray();
+        RecordingTransport transport = new RecordingTransport("{\"data\":[{\"embedding\":[1,0]}]}");
+        try {
+            new OpenAiCompatibleEmbeddingAdapter(CONFIG, new BearerTokenSource() {
+                @Override
+                public char[] bearerToken() {
+                    return token;
+                }
+            }, transport).embed(Collections.singletonList("a"));
+            fail("expected AUTHENTICATION");
+        } catch (EmbeddingException expected) {
+            assertEquals(EmbeddingFailureKind.AUTHENTICATION, expected.kind());
+            assertTrue(!expected.getMessage().contains("abc") && !expected.getMessage().contains("Injected"));
+        }
+        assertTrue(transport.bodies.isEmpty());
+        assertArrayEquals(new char[token.length], token);
+    }
+
+    @Test
+    public void responseLimitScalesWithBatchAndTooLargeIsInvalid() {
+        final List<Long> limits = new ArrayList<Long>();
+        EmbeddingHttpTransport tooLarge = new EmbeddingHttpTransport() {
+            @Override
+            public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken, long max) throws IOException {
+                limits.add(max);
+                throw new ResponseTooLargeException(max);
+            }
+        };
+        try {
+            new OpenAiCompatibleEmbeddingAdapter(CONFIG, tokens(), tooLarge).embed(Collections.singletonList("a"));
+            fail("expected INVALID_RESPONSE");
+        } catch (EmbeddingException expected) {
+            assertEquals(EmbeddingFailureKind.INVALID_RESPONSE, expected.kind());
+        }
+        assertTrue(limits.get(0) > 2 * 64 && limits.get(0) < 1024 * 1024);
     }
 
     @Test
@@ -103,7 +142,7 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
         }
 
         @Override
-        public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken) {
+        public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken, long max) {
             bodies.add(jsonBody);
             tokens.add(bearerToken == null ? null : new String(bearerToken));
             return new HttpResult(200, response);

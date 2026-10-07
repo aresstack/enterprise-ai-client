@@ -94,15 +94,16 @@ public class EmbeddingResponseParserTest {
     }
 
     @Test
-    public void extractsServerErrorMessages() {
-        assertEquals("model not found",
-                EmbeddingResponseParser.errorMessage("{\"error\":{\"message\":\"model not found\",\"type\":\"x\"}}"));
-        assertEquals("internal_error", EmbeddingResponseParser.errorMessage("{\"error\":\"internal_error\"}"));
-        assertEquals("Input should be a valid string",
-                EmbeddingResponseParser.errorMessage("{\"detail\":\"Input should be a valid string\"}"));
-        assertEquals("[{\"msg\":\"bad\"}]", EmbeddingResponseParser.errorMessage("{\"detail\":[{\"msg\":\"bad\"}]}"));
-        assertNull(EmbeddingResponseParser.errorMessage("<html>Bad Gateway</html>"));
-        assertNull(EmbeddingResponseParser.errorMessage(""));
+    public void extractsOnlyMachineReadableErrorCodes() {
+        assertEquals("model_not_found", EmbeddingResponseParser.errorCode(
+                "{\"error\":{\"message\":\"model x not found\",\"code\":\"model_not_found\"}}"));
+        assertEquals("invalid_request_error", EmbeddingResponseParser.errorCode(
+                "{\"error\":{\"message\":\"bad\",\"type\":\"invalid_request_error\"}}"));
+        assertEquals("internal_error", EmbeddingResponseParser.errorCode("{\"error\":\"internal_error\"}"));
+        assertNull(EmbeddingResponseParser.errorCode("{\"error\":\"free text with spaces\"}"));
+        assertNull(EmbeddingResponseParser.errorCode("{\"detail\":\"Input should be a valid string\"}"));
+        assertNull(EmbeddingResponseParser.errorCode("<html>Bad Gateway</html>"));
+        assertNull(EmbeddingResponseParser.errorCode(""));
     }
 
     private static void assertInvalid(String json, int expectedCount) {

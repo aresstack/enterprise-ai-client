@@ -6,7 +6,6 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 public class EmbeddingErrorMapperTest {
 
@@ -26,22 +25,21 @@ public class EmbeddingErrorMapperTest {
     }
 
     @Test
-    public void messageCarriesStatusAndServerDetail() {
-        EmbeddingException ex = EmbeddingErrorMapper.fromStatus("https://ai/v1/embeddings", 422,
-                "{\"detail\":\"Input should be a valid string\"}");
-        assertEquals(EmbeddingFailureKind.REJECTED, ex.kind());
-        assertTrue(ex.getMessage().contains("HTTP 422"));
-        assertTrue(ex.getMessage().contains("Input should be a valid string"));
+    public void messageCarriesStatusAndErrorCodeOnly() {
+        EmbeddingException ex = EmbeddingErrorMapper.fromStatus("https://ai/v1/embeddings", 500,
+                "{\"error\":{\"message\":\"failed on: geheimer Vertragstext\",\"code\":\"internal_error\"}}");
+        assertEquals(EmbeddingFailureKind.PROVIDER_ERROR, ex.kind());
+        assertEquals("embedding endpoint https://ai/v1/embeddings returned HTTP 500 (internal_error)", ex.getMessage());
     }
 
     @Test
-    public void longOrMultilineBodiesAreShortened() {
-        StringBuilder body = new StringBuilder("line1\nline2\r\n");
-        for (int i = 0; i < 1000; i++) {
-            body.append('x');
-        }
-        EmbeddingException ex = EmbeddingErrorMapper.fromStatus("e", 500, body.toString());
-        assertFalse(ex.getMessage().contains("\n"));
-        assertTrue(ex.getMessage().length() < EmbeddingErrorMapper.MAX_DETAIL_LENGTH + 100);
+    public void echoedInputInValidationErrorsIsNeverCopied() {
+        String body = "{\"detail\":[{\"type\":\"string_type\",\"msg\":\"Input should be a valid string\","
+                + "\"input\":[\"geheimer Vertragstext\"]}]}";
+        EmbeddingException ex = EmbeddingErrorMapper.fromStatus("e", 422, body);
+        assertEquals("embedding endpoint e returned HTTP 422", ex.getMessage());
+        assertFalse(EmbeddingErrorMapper.fromStatus("e", 400, "geheimer Vertragstext").getMessage().contains("geheim"));
+        assertFalse(EmbeddingErrorMapper.fromStatus("e", 400, "{\"error\":\"geheimer Vertragstext\"}")
+                .getMessage().contains("geheim"));
     }
 }

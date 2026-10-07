@@ -134,6 +134,9 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
                 || uri.getHost() == null) {
             throw new IllegalArgumentException("baseUrl must be an absolute http(s) URL");
         }
+        if (uri.getRawQuery() != null || uri.getRawFragment() != null) {
+            throw new IllegalArgumentException("baseUrl must not contain a query or fragment");
+        }
         if (uri.getUserInfo() != null) {
             throw new IllegalArgumentException("baseUrl must not contain credentials");
         }

@@ -10,6 +10,7 @@ import com.google.gson.JsonParser;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Liest {@code data[].embedding} aus einer {@code /embeddings}-Antwort im OpenAI-Format.
@@ -21,6 +22,8 @@ import java.util.List;
  * Dimension und Endlichkeit prüft danach {@link com.aresstack.enterpriseai.domain.embedding.EmbeddingVector}.
  */
 final class EmbeddingResponseParser {
+
+    private static final Pattern ERROR_CODE = Pattern.compile("[A-Za-z0-9_.:-]{1,64}");
 
     private EmbeddingResponseParser() {
     }
@@ -65,25 +68,31 @@ final class EmbeddingResponseParser {
         return result;
     }
 
-    /** Fehlertext aus {@code {"error": {"message": "..."}}} bzw. {@code {"detail": ...}}, sonst {@code null}. */
-    static String errorMessage(String json) {
+    /**
+     * Maschinenlesbarer Fehlercode aus {@code {"error": {"code"|"type": ...}}} bzw. {@code {"error": "..."}}, sonst
+     * {@code null}. Bewusst kein Freitext ({@code message}, {@code detail}): Validierungsfehler können Teile der
+     * Eingabetexte zurückspiegeln, und die dürfen nicht in Exceptions oder Logs landen.
+     */
+    static String errorCode(String json) {
         try {
             JsonObject root = parseObject(json);
             JsonElement error = root.get("error");
-            if (error != null && error.isJsonObject() && error.getAsJsonObject().has("message")) {
-                return error.getAsJsonObject().get("message").getAsString();
+            if (error != null && error.isJsonObject()) {
+                String code = token(error.getAsJsonObject().get("code"));
+                return code != null ? code : token(error.getAsJsonObject().get("type"));
             }
-            if (error != null && error.isJsonPrimitive()) {
-                return error.getAsString();
-            }
-            JsonElement detail = root.get("detail");
-            if (detail != null) {
-                return detail.isJsonPrimitive() ? detail.getAsString() : detail.toString();
-            }
+            return token(error);
         } catch (RuntimeException ignored) {
-            // kein JSON-Fehlerobjekt
+            return null; // kein JSON-Fehlerobjekt
         }
-        return null;
+    }
+
+    private static String token(JsonElement element) {
+        if (element == null || !element.isJsonPrimitive()) {
+            return null;
+        }
+        String value = element.getAsString();
+        return ERROR_CODE.matcher(value).matches() ? value : null;
     }
 
     private static JsonObject parseObject(String json) {

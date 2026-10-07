@@ -41,6 +41,8 @@ public class OpenAiCompatibleEmbeddingConfigurationTest {
         assertRejected("ftp://host/v1", "m", 1);
         assertRejected("not a url", "m", 1);
         assertRejected("https://user:secret@host/v1", "m", 1);
+        assertRejected("https://host/v1?api-version=1", "m", 1);
+        assertRejected("https://host/v1#frag", "m", 1);
         assertRejected("https://host/v1", " ", 1);
         assertRejected("https://host/v1", "m", 0);
         try {

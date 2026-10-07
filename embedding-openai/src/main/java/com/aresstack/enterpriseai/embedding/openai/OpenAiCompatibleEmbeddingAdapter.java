@@ -82,7 +82,7 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
     }
 
     private List<EmbeddingVector> call(String requestBody, int expectedCount) {
-        HttpResult result = post(requestBody);
+        HttpResult result = post(requestBody, maxResponseBytes(expectedCount));
         if (result.status != 200) {
             throw EmbeddingErrorMapper.fromStatus(configuration.endpoint().toString(), result.status, result.body);
         }
@@ -100,10 +100,14 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         return Collections.unmodifiableList(vectors);
     }
 
-    private HttpResult post(String requestBody) {
+    private HttpResult post(String requestBody, long maxResponseBytes) {
         char[] token = tokenSource.bearerToken();
         try {
-            return transport.post(configuration.endpoint(), requestBody, token);
+            requireHeaderSafe(token);
+            return transport.post(configuration.endpoint(), requestBody, token, maxResponseBytes);
+        } catch (ResponseTooLargeException ex) {
+            throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE, "embedding response from "
+                    + configuration.endpoint() + " is implausibly large: " + ex.getMessage(), ex);
         } catch (IOException ex) {
             // Nur Typ und Endpunkt: IOException-Texte können Proxy-/Host-Details, aber keine Header enthalten.
             throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "embedding request to "
@@ -112,6 +116,30 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         } finally {
             if (token != null) {
                 Arrays.fill(token, '\0');
+            }
+        }
+    }
+
+    /**
+     * Großzügige Obergrenze für eine Antwort mit {@code expectedCount} Vektoren: 64 Bytes je Komponente (auch bei
+     * Pretty-Printing) plus Rahmen. Schützt vor unbegrenztem Puffern einer fehlerhaften Antwort.
+     */
+    private long maxResponseBytes(int expectedCount) {
+        return expectedCount * (configuration.dimension() * 64L + 1024L) + 64L * 1024L;
+    }
+
+    /**
+     * Ein Token mit Steuer- oder Nicht-ASCII-Zeichen würde {@code HttpURLConnection} mit einer Exception ablehnen,
+     * deren Text den kompletten Header samt Token enthält. Deshalb vorher prüfen und ohne Token-Inhalt melden.
+     */
+    private static void requireHeaderSafe(char[] token) {
+        if (token == null) {
+            return;
+        }
+        for (char c : token) {
+            if (c < 0x21 || c > 0x7E) {
+                throw new EmbeddingException(EmbeddingFailureKind.AUTHENTICATION,
+                        "bearer token contains characters that are not allowed in an HTTP header");
             }
         }
     }

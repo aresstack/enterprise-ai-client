@@ -31,7 +31,8 @@ final class UrlConnectionEmbeddingHttpTransport implements EmbeddingHttpTranspor
     }
 
     @Override
-    public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken) throws IOException {
+    public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken, long maxResponseBytes)
+            throws IOException {
         URLConnection raw = configuration.proxy() == null
                 ? endpoint.toURL().openConnection()
                 : endpoint.toURL().openConnection(configuration.proxy());
@@ -60,13 +61,17 @@ final class UrlConnectionEmbeddingHttpTransport implements EmbeddingHttpTranspor
             }
             int status = connection.getResponseCode();
             InputStream in = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            return new HttpResult(status, readAll(in, status >= 400 ? MAX_ERROR_BODY_BYTES : Integer.MAX_VALUE));
+            if (status >= 400) {
+                return new HttpResult(status, readAtMost(in, MAX_ERROR_BODY_BYTES));
+            }
+            return new HttpResult(status, readAll(in, maxResponseBytes));
         } finally {
             connection.disconnect();
         }
     }
 
-    private static String readAll(InputStream in, int limit) throws IOException {
+    /** Fehlerantworten: höchstens {@code limit} Bytes lesen, Rest verwerfen. */
+    private static String readAtMost(InputStream in, int limit) throws IOException {
         if (in == null) {
             return "";
         }
@@ -74,8 +79,29 @@ final class UrlConnectionEmbeddingHttpTransport implements EmbeddingHttpTranspor
         byte[] chunk = new byte[8192];
         try {
             int read;
-            while ((read = in.read(chunk)) != -1 && buffer.size() < limit) {
+            while (buffer.size() < limit && (read = in.read(chunk)) != -1) {
                 buffer.write(chunk, 0, Math.min(read, limit - buffer.size()));
+            }
+        } finally {
+            in.close();
+        }
+        return new String(buffer.toByteArray(), UTF8);
+    }
+
+    /** Erfolgsantworten: vollständig lesen, aber abbrechen, sobald {@code limit} überschritten ist. */
+    private static String readAll(InputStream in, long limit) throws IOException {
+        if (in == null) {
+            return "";
+        }
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        try {
+            int read;
+            while ((read = in.read(chunk)) != -1) {
+                if (buffer.size() + (long) read > limit) {
+                    throw new ResponseTooLargeException(limit);
+                }
+                buffer.write(chunk, 0, read);
             }
         } finally {
             in.close();

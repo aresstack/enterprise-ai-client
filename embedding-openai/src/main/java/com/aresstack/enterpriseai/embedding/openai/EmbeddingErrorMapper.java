@@ -4,12 +4,11 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 
 /**
- * Bildet HTTP-Status auf portneutrale {@link EmbeddingFailureKind}s ab. Die Fehlermeldung enthält Status und eine
- * gekürzte Servermeldung, nie Request-Header (Bearer-Token) und nie den Request-Body (Eingabetexte).
+ * Bildet HTTP-Status auf portneutrale {@link EmbeddingFailureKind}s ab. Die Fehlermeldung enthält nur Endpunkt,
+ * Status und gegebenenfalls einen maschinenlesbaren Fehlercode des Servers. Nie enthalten: Request-Header
+ * (Bearer-Token), Request-Body und freier Antworttext, weil Validierungsfehler Eingabetexte zurückspiegeln können.
  */
 final class EmbeddingErrorMapper {
-
-    static final int MAX_DETAIL_LENGTH = 300;
 
     private EmbeddingErrorMapper() {
     }
@@ -37,25 +36,10 @@ final class EmbeddingErrorMapper {
     static EmbeddingException fromStatus(String endpoint, int status, String body) {
         StringBuilder message = new StringBuilder("embedding endpoint ").append(endpoint)
                 .append(" returned HTTP ").append(status);
-        String detail = EmbeddingResponseParser.errorMessage(body);
-        if (detail == null) {
-            detail = body;
-        }
-        detail = sanitize(detail);
-        if (!detail.isEmpty()) {
-            message.append(": ").append(detail);
+        String code = EmbeddingResponseParser.errorCode(body);
+        if (code != null) {
+            message.append(" (").append(code).append(')');
         }
         return new EmbeddingException(kindOf(status), message.toString());
-    }
-
-    private static String sanitize(String detail) {
-        if (detail == null) {
-            return "";
-        }
-        String oneLine = detail.replaceAll("[\\r\\n\\t]+", " ").trim();
-        if (oneLine.length() > MAX_DETAIL_LENGTH) {
-            return oneLine.substring(0, MAX_DETAIL_LENGTH) + "…";
-        }
-        return oneLine;
     }
 }

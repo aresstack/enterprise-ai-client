@@ -11,9 +11,12 @@ import java.net.URI;
 interface EmbeddingHttpTransport {
 
     /**
-     * @param bearerToken {@code null} oder leer: kein {@code Authorization}-Header
-     * @throws IOException nur bei Transportfehlern; HTTP-Fehlerstatus kommen als {@link HttpResult}
+     * @param bearerToken      {@code null} oder leer: kein {@code Authorization}-Header; sonst bereits geprüft
+     *                         (nur sichtbare ASCII-Zeichen)
+     * @param maxResponseBytes Obergrenze für den gelesenen Antwort-Body
+     * @throws ResponseTooLargeException wenn der Body {@code maxResponseBytes} überschreitet
+     * @throws IOException               bei Transportfehlern; HTTP-Fehlerstatus kommen als {@link HttpResult}
      */
-    HttpResult post(URI endpoint, String jsonBody, char[] bearerToken) throws IOException;
+    HttpResult post(URI endpoint, String jsonBody, char[] bearerToken, long maxResponseBytes) throws IOException;
 
 }
