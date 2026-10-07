@@ -14,12 +14,17 @@ scannedProjects.each { evaluationDependsOn(it.path) }
 // die beim Kompilieren des Produktionscodes laufen); Testabhängigkeiten (z. B. junit) bleiben außen vor.
 def productionConfigurations = ['api', 'implementation', 'compileOnly', 'compileOnlyApi', 'runtimeOnly',
                                 'annotationProcessor']
+// Konfigurationen, über die eine Bibliothek zu Konsumenten durchsickert (ARCHITECTURE.md: Fremdbibliotheken
+// in Adaptern mit implementation deklarieren, nicht mit api).
+def exportedConfigurations = ['api', 'compileOnlyApi']
 
 def buildModel = new TreeMap<String, String>()
 buildModel.put('modules', rootProject.subprojects.collect { it.name }.sort().join(','))
 scannedProjects.each { scanned ->
     def projectDependencies = new TreeSet<String>()
     def externalDependencies = new TreeSet<String>()
+    def testFixtureDependencies = new TreeSet<String>()
+    def exportedExternalDependencies = new TreeSet<String>()
     productionConfigurations.each { configurationName ->
         def configuration = scanned.configurations.findByName(configurationName)
         if (configuration == null) {
@@ -27,9 +32,18 @@ scannedProjects.each { scanned ->
         }
         configuration.dependencies.each { dependency ->
             if (dependency instanceof ProjectDependency) {
-                projectDependencies << rootProject.project(dependency.path).name
+                def targetName = rootProject.project(dependency.path).name
+                projectDependencies << targetName
+                // testFixtures(project(':x')) fordert die Capability x-test-fixtures an.
+                if (dependency.requestedCapabilities.any { it.name.endsWith('-test-fixtures') }) {
+                    testFixtureDependencies << targetName
+                }
             } else {
-                externalDependencies << "${dependency.group}:${dependency.name}".toString()
+                def coordinate = "${dependency.group}:${dependency.name}".toString()
+                externalDependencies << coordinate
+                if (exportedConfigurations.contains(configurationName)) {
+                    exportedExternalDependencies << coordinate
+                }
             }
         }
     }
@@ -37,6 +51,37 @@ scannedProjects.each { scanned ->
     buildModel.put("externalDependencies.${scanned.name}".toString(), externalDependencies.join(','))
     buildModel.put("classDirectories.${scanned.name}".toString(),
             scanned.sourceSets.main.output.classesDirs.files.collect { it.absolutePath }.sort().join(File.pathSeparator))
+
+    // AP24-Erweiterungen (gelesen von BuildModelExtension):
+    buildModel.put("testFixtureDependencies.${scanned.name}".toString(), testFixtureDependencies.join(','))
+    buildModel.put("exportedExternalDependencies.${scanned.name}".toString(), exportedExternalDependencies.join(','))
+    def testFixtures = scanned.sourceSets.findByName('testFixtures')
+    if (testFixtures != null) {
+        buildModel.put("testFixtureClassDirectories.${scanned.name}".toString(),
+                testFixtures.output.classesDirs.files.collect { it.absolutePath }.sort().join(File.pathSeparator))
+    }
+}
+
+// AP24: Java-8-Ziel jedes Kompilierschritts (auch Tests, Testfixtures und dieses Modul selbst). Auf JDK 9+
+// erwartet Java8CompatibilityTest release=8, auf JDK 8 target=1.8.
+rootProject.subprojects.each { subproject ->
+    def compileTasks = new TreeMap<String, String>()
+    subproject.tasks.withType(JavaCompile).each { compile ->
+        def release = compile.options.release.getOrNull()
+        compileTasks.put(compile.name, release != null ? "release=${release}".toString()
+                : "target=${compile.targetCompatibility}".toString())
+    }
+    buildModel.put("compileTasks.${subproject.name}".toString(),
+            compileTasks.collect { name, target -> "${name}=${target}" }.join(','))
+}
+buildModel.put('rootDir', rootProject.projectDir.absolutePath)
+// AP24: kompilierte Testklassen jedes Moduls (auch dieses), damit Java8CompatibilityTest alle Klassendateien sieht.
+rootProject.subprojects.each { subproject ->
+    def test = subproject.sourceSets.findByName('test')
+    if (test != null) {
+        buildModel.put("testClassDirectories.${subproject.name}".toString(),
+                test.output.classesDirs.files.collect { it.absolutePath }.sort().join(File.pathSeparator))
+    }
 }
 
 def buildModelFile = layout.buildDirectory.file('architecture/build-model.properties')
@@ -58,10 +103,19 @@ dependencies {
     testImplementation libs.archunit
 }
 
+def projectsWithTestFixtures = scannedProjects.findAll { it.sourceSets.findByName('testFixtures') != null }
+
 tasks.named('test') {
     dependsOn writeBuildModel
     dependsOn scannedProjects.collect { it.tasks.named('classes') }
+    // AP24: Testfixtures werden auf Java-8-Bytecode geprüft und dürfen von Produktionsklassen nicht referenziert werden;
+    // die Testklassen aller Module werden ebenfalls auf Java-8-Bytecode geprüft.
+    dependsOn projectsWithTestFixtures.collect { it.tasks.named('testFixturesClasses') }
+    dependsOn scannedProjects.collect { it.tasks.named('testClasses') }
     inputs.file(buildModelFile)
     inputs.files(scannedProjects.collect { it.sourceSets.main.output.classesDirs })
+    inputs.files(projectsWithTestFixtures.collect { it.sourceSets.testFixtures.output.classesDirs })
+    inputs.files(scannedProjects.collect { it.sourceSets.test.output.classesDirs })
+    inputs.file(rootProject.file('settings.gradle'))
     systemProperty 'enterpriseai.architecture.buildModel', buildModelFile.get().asFile.absolutePath
 }
