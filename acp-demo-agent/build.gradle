@@ -1,1 +1,23 @@
 description = 'Testfixture: externer Demo-ACP-Agent-Prozess (Strang G). Nie Teil der Hauptanwendung, von keinem Modul abhängig nutzbar.'
+
+dependencies {
+    implementation libs.acp.sdk
+    // slf4j ruhig stellen: STDOUT gehört ausschließlich ACP, eigene Logs gehen auf STDERR.
+    runtimeOnly libs.slf4j.nop
+}
+
+// Lauffähiges Fat-Jar, das der Roundtrip-Test in acp-solon-client als Kindprozess startet.
+// Fester Dateiname ohne Version, damit der Test es ohne Projektabhängigkeit findet.
+tasks.register('demoAgentJar', Jar) {
+    group = 'build'
+    description = 'Lauffähiges Demo-ACP-Agent-Jar für den Roundtrip-Test in acp-solon-client.'
+    archiveBaseName = 'acp-demo-agent'
+    archiveClassifier = 'all'
+    archiveVersion = ''
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    dependsOn tasks.named('classes')
+    from sourceSets.main.output
+    from { configurations.runtimeClasspath.filter { it.name.endsWith('.jar') }.collect { zipTree(it) } }
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+    manifest { attributes('Main-Class': 'com.aresstack.enterpriseai.acp.demo.DemoAcpAgentMain') }
+}
