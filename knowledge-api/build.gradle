@@ -1,0 +1,5 @@
+description = 'Port für Wissensindex und Retrieval (Strang D). Keine Lucene-Typen.'
+
+dependencies {
+    api project(':domain')
+}

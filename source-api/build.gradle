@@ -1,0 +1,5 @@
+description = 'Generischer Knowledge-Source-Port (Strang E).'
+
+dependencies {
+    api project(':domain')
+}

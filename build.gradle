@@ -1,0 +1,43 @@
+// Gemeinsame Build-Konfiguration für alle Module (Java 8).
+// Modulspezifische Abhängigkeiten stehen ausschließlich im build.gradle des jeweiligen Moduls;
+// externe Versionen sind zentral in gradle/libs.versions.toml deklariert.
+
+allprojects {
+    group = 'com.aresstack.enterpriseai'
+    version = '0.1.0-SNAPSHOT'
+}
+
+subprojects {
+    apply plugin: 'java-library'
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        // Auf JDK 9+ gegen die Java-8-Plattform-API kompilieren, damit Java-9+-APIs
+        // (List.of, String.isBlank, java.net.http, ...) schon beim Kompilieren scheitern.
+        if (JavaVersion.current().isJava9Compatible()) {
+            options.release.set(8)
+        }
+        options.compilerArgs.addAll(['-Xlint:all', '-Xlint:-options', '-Xlint:-processing', '-Xlint:-serial'])
+    }
+
+    tasks.withType(Javadoc).configureEach {
+        options.encoding = 'UTF-8'
+    }
+
+    dependencies {
+        testImplementation libs.junit
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnit()
+        testLogging {
+            events = ['failed', 'skipped']
+            exceptionFormat = 'full'
+        }
+    }
+}

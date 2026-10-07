@@ -1,0 +1,5 @@
+description = 'Port für Embeddings (Strang C).'
+
+dependencies {
+    api project(':domain')
+}

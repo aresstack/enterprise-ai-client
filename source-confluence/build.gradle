@@ -1,0 +1,6 @@
+description = 'Adapter: Confluence als Knowledge Source (Strang F). Credentials nur über security-api.'
+
+dependencies {
+    api project(':source-api')
+    api project(':security-api')
+}

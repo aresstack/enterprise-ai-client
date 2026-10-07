@@ -1,0 +1,5 @@
+description = 'Adapter: ACP über org.noear:acp-sdk (Strang G). Einziges Produktionsmodul mit ACP-SDK-Typen.'
+
+dependencies {
+    api project(':acp-client-api')
+}

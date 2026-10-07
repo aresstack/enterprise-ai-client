@@ -1,0 +1,5 @@
+description = 'Adapter: MediaWiki als Knowledge Source (Strang E). Einziges Modul mit JWBF.'
+
+dependencies {
+    api project(':source-api')
+}

@@ -1,0 +1,5 @@
+description = 'Adapter: MCP Streamable HTTP über Solon (Strang H). Einziges Modul mit Solon-MCP-Typen.'
+
+dependencies {
+    api project(':mcp-runtime-api')
+}

@@ -1,0 +1,5 @@
+description = 'Neutraler Secret-/Access-Port (Strang F).'
+
+dependencies {
+    api project(':domain')
+}

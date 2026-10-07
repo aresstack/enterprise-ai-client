@@ -1,0 +1,12 @@
+description = 'Use Cases und Orchestrierung (Chat, RAG, Indexierung). Sieht nur domain und die *-api-Ports.'
+
+dependencies {
+    api project(':domain')
+    api project(':chat-api')
+    api project(':embedding-api')
+    api project(':knowledge-api')
+    api project(':source-api')
+    api project(':security-api')
+    api project(':acp-client-api')
+    api project(':mcp-runtime-api')
+}
