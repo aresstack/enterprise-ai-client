@@ -119,7 +119,8 @@ getrennter Zusatz (siehe [RAG-Datenfluss](rag-datenfluss.md), [ACP](acp.md), [MC
   und in den Brücken `app.security`, immer nur für die Dauer eines Aufrufs, nie in einem Feld, nie in Logs,
   Exceptions, `toString()`, Chat-Historie oder Indizes.
 - **Kein Logging-Framework.** Der Kern loggt nicht; Adapter und Composition Root nutzen höchstens
-  `java.util.logging`. Konsolenausgabe gibt es nur im Demo-Agenten.
+  `java.util.logging`. Die Anwendung schreibt dieses Protokoll in eine rollierende Datei unter
+  `<Anwendungsverzeichnis>/logs/` (`AppLogFile`). Konsolenausgabe gibt es nur im Demo-Agenten.
 - **Keine Provider-Namen im Kern**, keine Multi-Provider-Abstraktion, keine URL mit fremdem Host, kein
   Modellname und kein Key-Literal im Konstantenpool des Produktionscodes. Modelle und Endpunkte sind
   Konfiguration.

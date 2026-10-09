@@ -437,7 +437,9 @@ public final class AppConfigLoader {
             }
         }
         List<String> nonProxyHosts = r.list("network.proxy.nonProxyHosts");
-        return new NetworkConfig(mode, host, port, nonProxyHosts);
+        boolean windowsStore = r.bool("network.tls.useWindowsCertificateStore", true);
+        Path caCertificates = r.path("network.tls.caCertificatesFile", null);
+        return new NetworkConfig(mode, host, port, nonProxyHosts, windowsStore, caCertificates);
     }
 
     private static AgentConfig agent(ConfigReader r) {

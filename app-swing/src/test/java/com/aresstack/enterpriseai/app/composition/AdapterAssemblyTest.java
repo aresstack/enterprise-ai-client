@@ -77,9 +77,16 @@ public class AdapterAssemblyTest {
         ProxySelector.setDefault(originalSelector);
     }
 
-    private Properties exampleProperties(boolean keePassEnabled) throws Exception {
+    /** Die Vorlage mit den auskommentierten Beispielquellen (Wiki, Confluence) aktiviert. */
+    static Properties exampleWithSources() throws Exception {
         Properties p = new Properties();
-        p.load(new StringReader(AppConfigLoader.exampleConfiguration()));
+        p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
+        p.setProperty("sources", "wiki,confluence");
+        return p;
+    }
+
+    private Properties exampleProperties(boolean keePassEnabled) throws Exception {
+        Properties p = exampleWithSources();
         p.setProperty("knowledge.indexDirectory", temp.getRoot().toPath().resolve("index").toString());
         p.setProperty("knowledge.indexOnStartup", "false");
         p.setProperty("security.keepass.enabled", String.valueOf(keePassEnabled));

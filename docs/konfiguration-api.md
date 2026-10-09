@@ -101,16 +101,59 @@ Fehler wirft der Adapter `EmbeddingException`; es gibt keine Teilergebnisse und 
 ## Netzwerk (`network.*`)
 
 ```properties
-# SYSTEM (JVM-Proxy-Properties), NONE oder MANUAL
+# SYSTEM (Proxy-Einstellungen des Betriebssystems), NONE oder MANUAL
 network.proxy.mode=SYSTEM
 #network.proxy.host=proxy.intern.example
 #network.proxy.port=8080
 network.proxy.nonProxyHosts=*.intern.example
+# Vertrauensquellen für HTTPS: der JVM-Truststore immer, dazu unter Windows der Windows-Zertifikatspeicher
+# und/oder eine Datei mit CA-Zertifikaten (PEM mit einem oder mehreren Zertifikaten, oder DER)
+network.tls.useWindowsCertificateStore=true
+#network.tls.caCertificatesFile=C:/Zertifikate/firmen-ca.pem
 ```
 
-`ProxyPolicy` installiert die Regel als JVM-`ProxySelector` (Chat- und MediaWiki-Adapter über
-`HttpURLConnection`) und übergibt sie als expliziten `Proxy` an Embedding- und Confluence-Adapter. Loopback
-geht nie über einen Proxy. Proxy-Authentifizierung wird nicht unterstützt; die Einstellung gilt prozessweit.
+| Schlüssel | Bedeutung |
+|---|---|
+| `network.proxy.mode` | `SYSTEM` (Standard): die Proxy-Einstellungen des Betriebssystems, unter Windows die der Internetoptionen (fest eingetragener Proxy und Ausnahmen; Java 8 wertet weder PAC-Skripte noch WPAD aus). Die Anwendung setzt dafür beim Start `java.net.useSystemProxies=true`, sofern die Property nicht schon gesetzt ist; sind `http.proxyHost`/`https.proxyHost` als JVM-Properties gesetzt, gelten diese. `NONE`: immer direkt. `MANUAL`: `network.proxy.host` und `network.proxy.port`. |
+| `network.proxy.nonProxyHosts` | Hosts ohne Proxy, Muster wie bei `http.nonProxyHosts` (`*.intern.example`). Loopback geht nie über einen Proxy. |
+| `network.tls.useWindowsCertificateStore` | `true` (Standard): unter Windows gelten zusätzlich die vertrauenswürdigen Stammzertifikate des Windows-Zertifikatspeichers (`Windows-ROOT`). Damit akzeptiert die Anwendung dieselben Server wie Browser und PowerShell, insbesondere hinter einem Firmen-Proxy mit TLS-Inspektion oder bei einer internen CA. Außerhalb von Windows ohne Wirkung (Hinweis im Protokoll). |
+| `network.tls.caCertificatesFile` | Datei mit weiteren CA-Zertifikaten (PEM mit einem oder mehreren `BEGIN CERTIFICATE`-Blöcken oder ein einzelnes DER-Zertifikat), für Linux/macOS oder wenn der Windows-Speicher nicht reicht. Eine fehlende, leere oder unlesbare Datei ist ein Konfigurationsfehler beim Start. |
+
+`ProxyPolicy` installiert die Proxy-Regel als JVM-`ProxySelector` (Chat- und MediaWiki-Adapter über
+`HttpURLConnection`) und übergibt sie als expliziten `Proxy` an Embedding- und Confluence-Adapter.
+Proxy-Authentifizierung wird nicht unterstützt; die Einstellung gilt prozessweit.
+
+`TrustPolicy` baut aus den Vertrauensquellen einen gemeinsamen Trust-Manager (ein Serverzertifikat gilt, wenn
+eine Quelle es akzeptiert) und installiert ihn als Standard-`SSLSocketFactory` für `HttpsURLConnection`. Das
+gilt für alle Adapter ohne eigenen SSL-Kontext: Chat, Embeddings, MediaWiki und Confluence ohne
+Client-Zertifikat. Bekannte Grenze: Confluence **mit** Client-Zertifikat (`source.confluence.clientCertificate.*`)
+baut einen eigenen SSL-Kontext und prüft Serverzertifikate dort weiterhin nur gegen den JVM-Truststore. Die
+Quellen und Hinweise stehen beim Start im Protokoll (`Vertrauensquellen: JVM-Truststore, Windows-Zertifikatspeicher (n Zertifikate)`).
+
+## Fehlersuche: "Der KI-Dienst ist nicht erreichbar."
+
+Scheitert eine Chat-Anfrage, zeigt die Fehlerblase drei Zeilen: die Einordnung (`Der KI-Dienst ist nicht
+erreichbar.`, `Anmeldung am KI-Dienst fehlgeschlagen.`, …), `Technische Ursache:` mit der Ausnahmekette ohne
+Paketnamen (Tokens werden maskiert) und, wenn die Ursache bekannt ist, `Hinweis:` mit dem nächsten Schritt.
+Der vollständige Stacktrace steht in der Protokolldatei `<Anwendungsverzeichnis>/logs/enterprise-ai-client.0.log`
+([Einrichtung](einrichtung.md#anwendungsverzeichnis-und-konfigurationsdatei)); ihr Anfang nennt Java-Version,
+Betriebssystem, die geladene Konfiguration (ohne Secrets), die Vertrauensquellen und die Proxy-Regel.
+
+| Technische Ursache (Auszug) | Bedeutung | Abhilfe |
+|---|---|---|
+| `SSLHandshakeException … PKIX path building failed … unable to find valid certification path` | Java vertraut dem Serverzertifikat nicht. Java bringt einen eigenen Truststore mit und nutzt den des Betriebssystems nicht von selbst; PowerShell, Browser und `curl` auf demselben Rechner funktionieren deshalb trotzdem. Typisch: Firmen-Proxy mit TLS-Inspektion oder interne CA; ein Java 8 vor Update 141 kennt außerdem die Let's-Encrypt-Wurzel (ISRG Root X1) nicht. | Unter Windows `network.tls.useWindowsCertificateStore=true` lassen (Standard) und die App neu starten. Sonst die ausstellende CA als PEM exportieren und `network.tls.caCertificatesFile` setzen. Altes Java aktualisieren (`java -version`). |
+| `SSLException … handshake_failure`, `protocol_version`, `no cipher suites in common` | TLS-Version oder Cipher passt nicht; sehr altes Java. | Java aktualisieren. |
+| `UnknownHostException` | Der Hostname ist nicht auflösbar, meist weil das Netz einen Proxy verlangt, den Java nicht nutzt. | `network.proxy.mode=SYSTEM` mit eingetragenem Proxy in den Internetoptionen, oder `MANUAL` mit Host und Port. |
+| `Unable to tunnel through proxy. Proxy returns "HTTP/1.1 407 …"` | Der Proxy verlangt eine Anmeldung. | Nicht unterstützt; ein Proxy ohne Anmeldung oder eine Ausnahme für den Host ist nötig. |
+| `Unable to tunnel through proxy. Proxy returns "HTTP/1.1 403 …"` (oder 5xx) | Der Proxy lehnt den Host ab oder erreicht ihn nicht. | Freigabe für den Host beim Proxy-Betreiber. |
+| `SocketTimeoutException: connect timed out` | Keine Antwort vom Server oder Proxy (Firewall, falscher Port). | Erreichbarkeit prüfen; `chat.connectTimeoutMillis` nur erhöhen, wenn der Dienst wirklich langsam antwortet. |
+| `ConnectException: Connection refused` | Nichts hört auf dem Port. | `chat.baseUrl` (Host, Port, `https`) prüfen. |
+| `token source failed: SecretAccessException` (Zeile 1: Anmeldung fehlgeschlagen) | Der API-Key kam nicht aus KeePass. | KeePass gestartet und entsperrt, Eintrag mit genau dem Titel aus `chat.apiKeyRef`, Pairing bestätigt; der Grund steht im Protokoll ([KeePass](konfiguration-keepass.md)). |
+| `HTTP 401` / `HTTP 403` | Der Server lehnt den Key ab. | Passwortfeld des KeePass-Eintrags prüfen (nur der Key, ohne `Bearer`). |
+| `stream ended before [DONE]` | Die Antwort wurde abgebrochen (Verbindung, puffernder Proxy). | Erneut versuchen; bleibt es dabei, `chat.readTimeoutMillis` prüfen. |
+
+Zum Vergleich mit einem PowerShell-Test: `Invoke-RestMethod` nutzt den Windows-Zertifikatspeicher und die
+Proxy-Einstellungen von Windows; Java 8 tut beides nur mit den Schlüsseln oben.
 
 ## Was die Anwendung bei fehlendem Secret tut
 

@@ -17,7 +17,9 @@ import java.util.List;
 import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
@@ -101,6 +103,30 @@ public class ProxyPolicyTest {
         policy.install();
         policy.uninstall();
         assertSame(before, ProxySelector.getDefault());
+    }
+
+    @Test
+    public void systemModeSwitchesOnTheOperatingSystemProxySettingsUnlessAlreadyDecided() throws Exception {
+        String before = System.getProperty(ProxyPolicy.USE_SYSTEM_PROXIES);
+        try {
+            System.clearProperty(ProxyPolicy.USE_SYSTEM_PROXIES);
+            ProxyPolicy.defaultSelectorFor(network("NONE", null, null, null));
+            assertNull("NONE lässt die Property unangetastet", System.getProperty(ProxyPolicy.USE_SYSTEM_PROXIES));
+            ProxyPolicy.defaultSelectorFor(network("MANUAL", "proxy.example", "3128", null));
+            assertNull(System.getProperty(ProxyPolicy.USE_SYSTEM_PROXIES));
+            assertNotNull(ProxyPolicy.defaultSelectorFor(network("SYSTEM", null, null, null)));
+            assertEquals("true", System.getProperty(ProxyPolicy.USE_SYSTEM_PROXIES));
+            System.setProperty(ProxyPolicy.USE_SYSTEM_PROXIES, "false");
+            ProxyPolicy.defaultSelectorFor(network("SYSTEM", null, null, null));
+            assertEquals("eine gesetzte Property gewinnt", "false", System.getProperty(ProxyPolicy.USE_SYSTEM_PROXIES));
+            assertNotNull(new ProxyPolicy(network("SYSTEM", null, null, null)));
+        } finally {
+            if (before == null) {
+                System.clearProperty(ProxyPolicy.USE_SYSTEM_PROXIES);
+            } else {
+                System.setProperty(ProxyPolicy.USE_SYSTEM_PROXIES, before);
+            }
+        }
     }
 
     @Test

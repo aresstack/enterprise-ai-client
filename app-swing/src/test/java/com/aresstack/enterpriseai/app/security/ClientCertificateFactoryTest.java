@@ -35,7 +35,9 @@ public class ClientCertificateFactoryTest {
 
     private ClientCertificateConfig certificateConfig(Path keyStoreFile, boolean withPasswordRef) throws Exception {
         Properties p = new Properties();
-        p.load(new StringReader(AppConfigLoader.exampleConfiguration()));
+        // Die Vorlage liefert die Beispielquellen auskommentiert; hier wird der Confluence-Block aktiviert.
+        p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
+        p.setProperty("sources", "confluence");
         p.setProperty("knowledge.indexDirectory", temp.getRoot().toPath().resolve("index").toString());
         p.setProperty("source.confluence.clientCertificate.alias", "client");
         p.setProperty("source.confluence.clientCertificate.keyStoreFile", keyStoreFile.toString());

@@ -26,6 +26,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Verbindet die Chat-Shell mit genau einer Konversation des {@link RagChatUseCase} (AP22): wie
@@ -50,10 +52,12 @@ import java.util.concurrent.Executor;
  *
  * <p>Alle Model-Änderungen laufen über {@code uiExecutor} (in der Anwendung {@code SwingUtilities::invokeLater});
  * {@code sendRequested} und {@code stopRequested} müssen auf dem UI-Thread gerufen werden. In Verlauf, Quellen
- * und Hinweisen stehen nur Titel, Orte (laut Domänenregel ohne Zugangsdaten), Stände und Scores, nie Tokens oder
- * technische Fehlertexte.
+ * und Hinweisen stehen nur Titel, Orte (laut Domänenregel ohne Zugangsdaten), Stände und Scores, nie Tokens;
+ * eine gescheiterte Antwort nennt ihre technische Ursache wie {@link ChatServiceBinding#describe}.
  */
 public final class RagChatBinding implements ChatShellActions {
+
+    private static final Logger LOG = Logger.getLogger(RagChatBinding.class.getName());
 
     static final String RETRIEVING_ACTIVITY = "Wissen wird gesucht …";
     static final String SEND_REJECTED = "Die Nachricht konnte nicht gesendet werden.";
@@ -314,6 +318,7 @@ public final class RagChatBinding implements ChatShellActions {
         @Override
         public void onFailed(final ChatCompletionException error) {
             final String message = ChatServiceBinding.describe(error);
+            LOG.log(Level.WARNING, "Chat-Anfrage fehlgeschlagen (" + error.kind() + "): " + error.getMessage(), error);
             finish(new Runnable() {
                 @Override
                 public void run() {

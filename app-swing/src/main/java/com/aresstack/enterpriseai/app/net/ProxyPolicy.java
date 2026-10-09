@@ -14,16 +14,24 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Entscheidet je Ziel-URI, ob ein Proxy benutzt wird. {@link ProxyMode#SYSTEM} übernimmt die JVM-Voreinstellung
- * (Systemproperties {@code http(s).proxyHost} bzw. {@code java.net.useSystemProxies}), {@link ProxyMode#NONE}
- * verbindet immer direkt, {@link ProxyMode#MANUAL} nutzt Host und Port aus der Konfiguration mit Ausnahmen.
- * Loopback-Ziele (der lokale MCP-Endpoint, KeePassRPC) gehen nie über einen Proxy.
+ * Entscheidet je Ziel-URI, ob ein Proxy benutzt wird. {@link ProxyMode#SYSTEM} übernimmt die Proxy-Einstellungen
+ * des Betriebssystems (unter Windows die Internetoptionen, so wie PowerShell und Browser sie nutzen) bzw. die
+ * JVM-Properties {@code http(s).proxyHost}, wenn sie gesetzt sind; {@link ProxyMode#NONE} verbindet immer direkt,
+ * {@link ProxyMode#MANUAL} nutzt Host und Port aus der Konfiguration mit Ausnahmen. Loopback-Ziele (der lokale
+ * MCP-Endpoint, KeePassRPC) gehen nie über einen Proxy.
+ *
+ * <p>Java liest die Systemeinstellungen nur, wenn {@code java.net.useSystemProxies=true} gesetzt ist, bevor der
+ * Standard-{@link ProxySelector} zum ersten Mal erzeugt wird. Der öffentliche Konstruktor setzt die Property
+ * deshalb für {@link ProxyMode#SYSTEM}, sofern sie nicht schon gesetzt ist, und erfasst erst danach den
+ * Standard-Selector. Java 8 wertet unter Windows nur feste Proxy-Einträge aus, keine PAC-Skripte.
  *
  * <p>{@link #install()} setzt die Regel als {@link ProxySelector} der JVM; {@link #proxyFor(URI)} liefert sie
  * als {@link Proxy} für Adapter mit eigener Proxy-Einstellung. Keine statischen Felder, der Standard-Selector
  * wird im Konstruktor erfasst und bei {@link #uninstall()} zurückgesetzt.
  */
 public final class ProxyPolicy {
+
+    static final String USE_SYSTEM_PROXIES = "java.net.useSystemProxies";
 
     private final ProxyMode mode;
     private final InetSocketAddress manualAddress;
@@ -32,7 +40,15 @@ public final class ProxyPolicy {
     private final Selector installed;
 
     public ProxyPolicy(NetworkConfig config) {
-        this(config, ProxySelector.getDefault());
+        this(config, defaultSelectorFor(config));
+    }
+
+    /** Für {@link ProxyMode#SYSTEM}: Systemeinstellungen einschalten, bevor der Standard-Selector entsteht. */
+    static ProxySelector defaultSelectorFor(NetworkConfig config) {
+        if (config != null && config.proxyMode() == ProxyMode.SYSTEM && System.getProperty(USE_SYSTEM_PROXIES) == null) {
+            System.setProperty(USE_SYSTEM_PROXIES, "true");
+        }
+        return ProxySelector.getDefault();
     }
 
     ProxyPolicy(NetworkConfig config, ProxySelector systemSelector) {

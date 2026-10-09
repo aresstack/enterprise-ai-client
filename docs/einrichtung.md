@@ -43,8 +43,8 @@ java -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis -jar enterprise-ai-clie
 ```
 
 Einstiegspunkt ist `com.aresstack.enterpriseai.app.EnterpriseAiClientMain` (Modul `app-swing`). Ablauf beim
-Start: Konfiguration laden, Proxy-Regel installieren, Adapter bauen, Graphen komponieren, Shutdown-Hook
-registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
+Start: Protokolldatei öffnen, Konfiguration laden, Vertrauensregel (TLS) und Proxy-Regel installieren, Adapter
+bauen, Graphen komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
 
 ### Anwendungsverzeichnis und Konfigurationsdatei
 
@@ -54,6 +54,7 @@ registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
 | Konfigurationsdatei | `<Anwendungsverzeichnis>/enterprise-ai-client.properties`; überschreibbar mit `-Denterpriseai.config=<Datei>` |
 | Lucene-Index und Vektoren | `<Anwendungsverzeichnis>/index/` (Schlüssel `knowledge.indexDirectory`) |
 | KeePassRPC-Pairing-Schlüssel | `<Anwendungsverzeichnis>/keepassrpc-pairing.key` (Schlüssel `security.keepass.pairingKeyFile`) |
+| Protokolldateien | `<Anwendungsverzeichnis>/logs/enterprise-ai-client.<n>.log` (rollierend, drei Dateien à 2 MB, `java.util.logging` ab INFO; enthält Start, Konfiguration ohne Secrets, Vertrauensquellen, Proxy-Regel und jeden fehlgeschlagenen Chat- oder Indexierungslauf mit Stacktrace) |
 
 Beim ersten Start ohne Datei schreibt die Anwendung den Inhalt der kommentierten Vorlage als
 `enterprise-ai-client.properties` an genau diesen Pfad, erklärt das in einem Dialog und beendet sich mit
@@ -73,7 +74,10 @@ embedding.dimension=768
 
 Die Datei enthält keine Secrets. `chat.apiKeyRef` ist der Titel des KeePass-Eintrags, dessen Passwortfeld den
 API-Key trägt. Fehler in der Datei werden gesammelt gemeldet und nennen Schlüssel und Erwartung, nie den Wert;
-unbekannte Schlüssel erzeugen eine Warnung.
+unbekannte Schlüssel erzeugen eine Warnung. Die Vorlage hat `sources=` leer und die Beispielquellen (Wiki,
+Confluence) auskommentiert; ohne Quellen gibt es nur Chat, und die Statuszeile meldet keine fehlgeschlagene
+Indexierung gegen Beispielhosts. Proxy und TLS-Vertrauen stehen unter `network.*`
+([API-Konfiguration](konfiguration-api.md#netzwerk-network)).
 
 ### Erster Chat
 
@@ -83,6 +87,10 @@ unbekannte Schlüssel erzeugen eine Warnung.
    erneutes Pairing ist erst nach Widerruf in KeePass nötig.
 3. Frage in das Eingabefeld, Enter oder "Send". Die Antwort streamt in die Sprechblase; "Stop" bricht ab, die
    Frage bleibt in der Historie.
+4. Scheitert die Anfrage, zeigt die rote Blase die Einordnung ("Der KI-Dienst ist nicht erreichbar."), darunter
+   `Technische Ursache:` und meist einen `Hinweis:`; der Stacktrace steht im Protokoll. Die häufigsten Ursachen
+   (Zertifikat nicht vertraut, Proxy, KeePass) und ihre Abhilfe:
+   [Fehlersuche](konfiguration-api.md#fehlersuche-der-ki-dienst-ist-nicht-erreichbar).
 
 ### Quelle indexieren und RAG verwenden
 

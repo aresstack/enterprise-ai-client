@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.net.ProxyPolicy;
+import com.aresstack.enterpriseai.app.net.TrustPolicy;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
@@ -25,17 +26,20 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Einstiegspunkt der Desktop-Anwendung und Composition Root (AP23). Ablauf: Konfiguration laden (fehlt sie,
- * wird die Beispieldatei angelegt und erklärt), Proxy-Regel installieren, Adapter bauen, Graphen komponieren,
- * Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten. Schließen des Fensters fährt
- * geordnet herunter und beendet die JVM; der Shutdown-Hook deckt hartes Beenden ab (beide idempotent).
+ * Einstiegspunkt der Desktop-Anwendung und Composition Root (AP23). Ablauf: Protokolldatei anhängen,
+ * Konfiguration laden (fehlt sie, wird die Beispieldatei angelegt und erklärt), TLS-Vertrauen und Proxy-Regel
+ * installieren, Adapter bauen, Graphen komponieren, Shutdown-Hook registrieren, Fenster zeigen,
+ * Hintergrund-Indexierung starten. Schließen des Fensters fährt geordnet herunter und beendet die JVM; der
+ * Shutdown-Hook deckt hartes Beenden ab (beide idempotent).
  *
  * <p>Start: {@code ./gradlew :app-swing:run}; Konfigurationsdatei per {@code -Denterpriseai.config=<Pfad>},
- * Benutzerverzeichnis per {@code -Denterpriseai.home=<Pfad>} (siehe {@link AppPaths}).
+ * Benutzerverzeichnis per {@code -Denterpriseai.home=<Pfad>} (siehe {@link AppPaths}). Protokoll:
+ * {@code <Benutzerverzeichnis>/logs/enterprise-ai-client.0.log} ({@link AppLogFile}).
  */
 public final class EnterpriseAiClientMain {
 
@@ -47,20 +51,36 @@ public final class EnterpriseAiClientMain {
     }
 
     public static void main(String[] args) {
+        final Handler logFile = AppLogFile.install();
+        LOG.info("Enterprise AI Client startet: Java " + System.getProperty("java.version") + " ("
+                + System.getProperty("java.vendor") + "), " + System.getProperty("os.name") + " "
+                + System.getProperty("os.version"));
         Path configFile = AppPaths.configFile();
         AppConfig config;
+        TrustPolicy trust;
         try {
             config = AppConfigLoader.load(configFile);
+            trust = TrustPolicy.from(config.network());
         } catch (AppConfigException e) {
             String message = configProblem(configFile, e);
             LOG.severe(message);
             showError("Konfiguration", message);
+            AppLogFile.uninstall(logFile);
             System.exit(EXIT_CONFIG);
             return;
         }
+        LOG.info("Konfiguration aus " + configFile + ": " + config);
 
+        // Vertrauen und Proxy vor dem ersten Verbindungsaufbau prozessweit setzen (HttpURLConnection liest beides
+        // beim Öffnen einer Verbindung).
+        trust.install();
+        for (String notice : trust.notices()) {
+            LOG.info(notice);
+        }
+        LOG.info("TLS-Vertrauensquellen: " + trust.sources());
         final ProxyPolicy proxy = new ProxyPolicy(config.network());
         proxy.install();
+        LOG.info("Proxy-Regel: " + proxy);
         final ApplicationPorts ports;
         final CompositionRoot root;
         try {
@@ -71,7 +91,8 @@ public final class EnterpriseAiClientMain {
         } catch (RuntimeException e) {
             LOG.log(Level.SEVERE, "Anwendung konnte nicht zusammengesetzt werden", e);
             showError("Start fehlgeschlagen", "Die Anwendung konnte nicht gestartet werden: "
-                    + e.getClass().getSimpleName() + ". Details im Log.");
+                    + e.getClass().getSimpleName() + ". Details im Protokoll unter " + AppLogFile.directory() + ".");
+            AppLogFile.uninstall(logFile);
             System.exit(1);
             return;
         }

@@ -289,14 +289,17 @@ Bindings in `app.chat`, die AP23 in der Composition Root verdrahtet.
 
 ## Composition Root und Konfiguration (AP23)
 
-`app-swing` ist die einzige Composition Root. `EnterpriseAiClientMain` lädt die Konfiguration, installiert die
-Proxy-Regel, baut die Adapter, komponiert den Graphen, registriert den Shutdown-Hook und zeigt das Fenster.
+`app-swing` ist die einzige Composition Root. `EnterpriseAiClientMain` öffnet die Protokolldatei
+(`AppLogFile`, `java.util.logging` rollierend unter `<Anwendungsverzeichnis>/logs/`), lädt die Konfiguration,
+installiert Vertrauens- und Proxy-Regel, baut die Adapter, komponiert den Graphen, registriert den
+Shutdown-Hook und zeigt das Fenster.
 
 ```
 enterprise-ai-client.properties ──AppConfigLoader──▶ AppConfig (Snapshots, ohne Secrets)
         │                                              │
         ▼                                              ▼
-ProxyPolicy (JVM-ProxySelector)        AdapterAssembly ──▶ ApplicationPorts (Chat, Embedding, Index, Quellen,
+TrustPolicy (Standard-SSLSocketFactory) AdapterAssembly ──▶ ApplicationPorts (Chat, Embedding, Index, Quellen,
+ProxyPolicy (JVM-ProxySelector)
                                                             SecretProvider, AgentBackend, Schließreihenfolge)
                                                             │
                                        CompositionRoot ◀────┘  Use Cases (AP2/AP10/AP20), Bindings (AP22),
@@ -307,7 +310,8 @@ ProxyPolicy (JVM-ProxySelector)        AdapterAssembly ──▶ ApplicationPort
 
 - **Pakete**: `app.config` (Snapshots `AppConfig`, `ChatConfig`, `EmbeddingConfig`, `KnowledgeConfig`,
   `SourceConfig`, `KeePassConfig`, `NetworkConfig`, `AgentConfig`; `AppConfigLoader`, `AppPaths`), `app.net`
-  (`ProxyPolicy`), `app.security` (Brücken zum Security-Port, `FilePairingKeyStore`, `SwingPairingCallback`),
+  (`ProxyPolicy`, `TrustPolicy`, `ConnectionDiagnosis`), `app.security` (Brücken zum Security-Port,
+  `FilePairingKeyStore`, `SwingPairingCallback`),
   `app.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `app.knowledge` (`StartupIndexing`),
   `app.composition` (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`,
   `ShutdownSequence`, `StartupNotices`).
@@ -329,10 +333,17 @@ ProxyPolicy (JVM-ProxySelector)        AdapterAssembly ──▶ ApplicationPort
   `UnavailableSecretProvider`, zeigt beim Start, dass Secrets fehlen, und jede Anfrage scheitert mit einem
   Authentifizierungsfehler. Bekannte Grenze: der Chat-Adapter verlangt den Token als `String`, der sich nicht
   überschreiben lässt; jede Anfrage holt den Key neu über KeePassRPC (kein Cache erlaubt).
-- **Netz**: `ProxyPolicy` (SYSTEM/NONE/MANUAL mit Ausnahmen, Loopback nie über Proxy) als JVM-`ProxySelector`
-  für Chat- und MediaWiki-Adapter (`HttpURLConnection`) und als expliziter `Proxy` für Embedding- und
-  Confluence-Adapter; Confluence zusätzlich mit Timeouts und optionalem Client-Zertifikat (Windows-MY per Alias
-  oder PKCS12 mit Passwort über `SecretRef`, `ClientCertificateFactory`). Kein gemeinsamer Transport.
+- **Netz**: `ProxyPolicy` (SYSTEM = Proxy-Einstellungen des Betriebssystems über `java.net.useSystemProxies`,
+  NONE, MANUAL mit Ausnahmen, Loopback nie über Proxy) als JVM-`ProxySelector` für Chat- und MediaWiki-Adapter
+  (`HttpURLConnection`) und als expliziter `Proxy` für Embedding- und Confluence-Adapter; Confluence zusätzlich
+  mit Timeouts und optionalem Client-Zertifikat (Windows-MY per Alias oder PKCS12 mit Passwort über `SecretRef`,
+  `ClientCertificateFactory`). `TrustPolicy` (`network.tls.*`) vereint JVM-Truststore, unter Windows den
+  Windows-Zertifikatspeicher (`Windows-ROOT`) und optional eine CA-Datei zu einem Trust-Manager und installiert
+  ihn als Standard-`SSLSocketFactory` von `HttpsURLConnection` (gilt für alle Adapter ohne eigenen
+  SSL-Kontext; Confluence mit Client-Zertifikat bleibt beim JVM-Truststore). `ConnectionDiagnosis` macht aus
+  der Ausnahmekette einer gescheiterten Anfrage die Zeilen `Technische Ursache:` und `Hinweis:` der Fehlerblase
+  (Paketnamen entfernt, Tokens maskiert); die Bindings loggen jeden Fehler mit Stacktrace. Kein gemeinsamer
+  Transport.
 - **Agent-Modus**: `AgentBackend` (ACP-Connector, Startbeschreibung, `SolonMcpServerRuntime`, Endpoint-
   Definition) nur bei `agent.enabled=true`; `CompositionRoot` baut `AcpAgentLauncher` mit den Contributions
   von `KnowledgeMcpTools` (AP20) und `AgentService`. Der MCP-Token entsteht allein im Launcher je
@@ -347,7 +358,9 @@ ProxyPolicy (JVM-ProxySelector)        AdapterAssembly ──▶ ApplicationPort
   Quelle, In-Process-MCP-Registry, Fake-ACP-Connector) und prüft Indexierung, Chat- und RAG-Roundtrip durch die
   Shell, Agent-Werkzeuge und Shutdown-Reihenfolge; `AdapterAssemblyTest` baut die echten Adapter aus der
   Beispielkonfiguration ohne Netz; dazu `AppConfigLoaderTest`, `FilePairingKeyStoreTest`,
-  `SecretBackedTokenSourcesTest`, `ProxyPolicyTest`, `ShutdownSequenceTest`, `StartupIndexingTest`.
+  `SecretBackedTokenSourcesTest`, `ProxyPolicyTest`, `TrustPolicyTest` (lokaler HTTPS-Server mit
+  selbstsigniertem Zertifikat), `ConnectionDiagnosisTest`, `AppLogFileTest`, `ShutdownSequenceTest`,
+  `StartupIndexingTest`.
   Architekturregel `CompositionRootBoundaryTest`.
 - **Start**: `./gradlew :app-swing:run` (optional `-Denterpriseai.config=<Datei>`); Demos mit Fakes:
   `runChatDemo`, `runRagDemo`, `runAgentDemo`.

@@ -170,7 +170,9 @@ public class SliceAChatTest {
 
         TranscriptEntry answer = lastEntry(model);
         assertEquals(TranscriptEntry.State.FAILED, answer.getState());
-        assertEquals("Fehler im KI-Dienst. (Status 500)", answer.getFailureMessage());
+        // Überschrift plus technische Ursache; der vom Server zurückgegebene Token ist schon im Adapter geschwärzt.
+        assertEquals("Fehler im KI-Dienst. (Status 500)\nTechnische Ursache: HTTP 500: token *** was rejected",
+                answer.getFailureMessage());
         assertNoSecretInTranscript(model, TOKEN);
         for (ChatMessage message : root.chatService().conversation(view.conversation()).messages()) {
             SliceSupport.assertNoSecret(message.content(), TOKEN);

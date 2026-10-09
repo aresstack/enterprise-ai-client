@@ -45,13 +45,45 @@ public class AppConfigLoaderTest {
         assertEquals("Enterprise AI Client", config.windowTitle());
         assertEquals("openai/gpt-oss-120b", config.chat().model());
         assertEquals(768, config.embedding().dimension());
+        assertTrue("Beispielquellen sind auskommentiert, damit ein frischer Client nicht gegen Beispielhosts indexiert",
+                config.sources().isEmpty());
+        assertTrue(config.keePass().enabled());
+        assertEquals(ProxyMode.SYSTEM, config.network().proxyMode());
+        assertTrue(config.network().useWindowsCertificateStore());
+        assertNull(config.network().caCertificatesFile());
+        assertFalse(config.agent().enabled());
+        assertEquals("keine Warnungen erwartet: " + config.warnings(), 0, config.warnings().size());
+    }
+
+    @Test
+    public void exampleSourceBlocksLoadOnceUncommented() throws Exception {
+        Properties p = new Properties();
+        p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
+        p.setProperty("sources", "wiki,confluence");
+        AppConfig config = AppConfigLoader.fromProperties(p);
         assertEquals(2, config.sources().size());
         assertEquals("mediawiki", config.sources().get(0).type());
         assertEquals("confluence", config.sources().get(1).type());
-        assertTrue(config.keePass().enabled());
-        assertEquals(ProxyMode.SYSTEM, config.network().proxyMode());
-        assertFalse(config.agent().enabled());
         assertEquals("keine Warnungen erwartet: " + config.warnings(), 0, config.warnings().size());
+    }
+
+    @Test
+    public void tlsKeysAreReadWithDefaults() throws Exception {
+        Properties p = minimal();
+        p.setProperty("network.tls.useWindowsCertificateStore", "false");
+        p.setProperty("network.tls.caCertificatesFile", "C:/Zertifikate/firmen-ca.pem");
+        NetworkConfig network = AppConfigLoader.fromProperties(p).network();
+        assertFalse(network.useWindowsCertificateStore());
+        assertEquals("firmen-ca.pem", network.caCertificatesFile().getFileName().toString());
+        assertTrue(AppConfigLoader.fromProperties(minimal()).network().useWindowsCertificateStore());
+        p.setProperty("network.tls.useWindowsCertificateStore", "vielleicht");
+        try {
+            AppConfigLoader.fromProperties(p);
+            fail();
+        } catch (AppConfigException e) {
+            assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.tls.useWindowsCertificateStore"));
+            assertFalse(e.problems().toString().contains("vielleicht"));
+        }
     }
 
     @Test
