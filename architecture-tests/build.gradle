@@ -118,4 +118,11 @@ tasks.named('test') {
     inputs.files(scannedProjects.collect { it.sourceSets.test.output.classesDirs })
     inputs.file(rootProject.file('settings.gradle'))
     systemProperty 'enterpriseai.architecture.buildModel', buildModelFile.get().asFile.absolutePath
+    // Die älteren Regelklassen importieren die Produktionsklassen aller Module je Klasse neu und halten den Import
+    // in einem statischen Feld bis zum Ende der Test-JVM; mit dem Gradle-Standard von 512 MB lief die JVM auf
+    // JDK 8 seit #44 in java.lang.OutOfMemoryError (SourceBoundaryTest.importProductionClasses). Mit JDK-8-
+    // ähnlichem String-Speicher (-XX:-CompactStrings) ist der Heap am Ende voll (nach der letzten Full GC noch
+    // 425 MB belegt); 1 GB lässt Luft für weitere Module. Dauerhafte Abhilfe: alle Regelklassen auf
+    // ProductionClasses.all() umstellen, dann genügt wieder der Standard.
+    maxHeapSize = '1g'
 }
