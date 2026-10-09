@@ -88,7 +88,8 @@ Systemeinstellungen) und TLS-Vertrauen stehen unter `network.*`
 
 ### Einstellungen-Dialog
 
-Der Knopf „Einstellungen“ rechts in der Kopfzeile öffnet den Dialog, den auch der erste Start zeigt. Er
+Das Zahnrad im Fuß der Drawer-Seite „Chats“ (Hamburger ☰ links oben) öffnet den Dialog, den auch der erste Start
+zeigt. Er
 bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 
 | Reiter | Schlüssel |
@@ -164,7 +165,8 @@ Agent kann `refresh_knowledge_source` aufrufen ([MCP](mcp.md)).
    ```
 
    Das Jar entsteht mit `./gradlew :acp-demo-agent:demoAgentJar` unter `acp-demo-agent/build/libs/`.
-2. Die Shell bekommt Reiter "Chat" und "Agent". Der erste Auftrag im Reiter "Agent" startet den Agentenprozess,
+2. Die Modus-Pille neben dem Hamburger bietet „Agent“ an. Der erste Auftrag in der Agent-Ansicht startet den
+   Agentenprozess,
    öffnet eine ACP-Session und übergibt ihm per Umgebungsvariablen `ENTERPRISE_AI_MCP_*` einen eigenen
    MCP-Endpoint mit den Wissenswerkzeugen. Beim Beenden wird der Endpoint abgemeldet und der Token ungültig.
    Erklärung: [ACP](acp.md), [MCP](mcp.md).

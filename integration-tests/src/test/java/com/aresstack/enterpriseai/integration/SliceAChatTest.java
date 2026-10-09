@@ -90,7 +90,7 @@ public class SliceAChatTest {
         view = onEdt(() -> ShellAssembly.createShell(root, ComicPalette.defaultPalette(),
                 BubblePalette.windowsPhoneInspired()));
         model = view.chatModel();
-        composer = view.modalShell().chatShell().composer();
+        composer = view.workspace().chatShell().composer();
     }
 
     @After

@@ -1,6 +1,9 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
+import com.aresstack.enterpriseai.ui.comic.control.ComicWindowCloseButton;
+import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
+import com.aresstack.enterpriseai.ui.comic.control.ComicWindowResizer;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicTheme;
 
@@ -21,13 +24,17 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Der modale Rahmen um {@link SettingsPanel}: Fenster im Comic-Stil (Tintenkontur), Escape bricht ab,
- * Schließen des Fensters ebenfalls. {@link #show} blockiert auf dem EDT und liefert das gespeicherte Formular
+ * Der modale Rahmen um {@link SettingsPanel}: rahmenlos wie das Hauptfenster (Tintenkontur als Rand und
+ * Greifzone, die Überschrift zieht, das Comic-✕ rechts oben bricht ab), Escape bricht ab, Schließen des
+ * Fensters ebenfalls. {@link #show} blockiert auf dem EDT und liefert das gespeicherte Formular
  * oder {@code null}.
  */
 public final class SettingsDialog extends JDialog {
 
     private static final long serialVersionUID = 1L;
+    static final int WINDOW_PADDING = 4;
+    static final int RESIZE_GRIP = 6;
+    static final String CLOSE_TOOLTIP = "Abbrechen";
 
     private final SettingsPanel panel;
     private SettingsForm result;
@@ -35,6 +42,7 @@ public final class SettingsDialog extends JDialog {
     private SettingsDialog(Window owner, SettingsForm initial, List<String> problems, SettingsPanel.Mode mode,
                            SettingsDialogActions actions, ComicPalette palette) {
         super(owner, SettingsPanel.TITLE, ModalityType.APPLICATION_MODAL);
+        setUndecorated(true);
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         this.panel = new SettingsPanel(initial, problems, mode, actions, palette);
         panel.setOnSaved(new Consumer<SettingsForm>() {
@@ -53,8 +61,17 @@ public final class SettingsDialog extends JDialog {
         });
         JPanel content = new JPanel(new BorderLayout());
         content.setBackground(palette.getSurface());
-        content.setBorder(ComicBorder.roundedBorder(palette, 4));
+        content.setBorder(ComicBorder.windowBorder(palette, WINDOW_PADDING));
         content.add(panel, BorderLayout.CENTER);
+        panel.setWindowControls(new ComicWindowCloseButton(palette, new Runnable() {
+            @Override
+            public void run() {
+                result = null;
+                dispose();
+            }
+        }, CLOSE_TOOLTIP, 24));
+        ComicWindowDragger.install(panel.header());
+        ComicWindowResizer.install(content, RESIZE_GRIP);
         content.registerKeyboardAction(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {

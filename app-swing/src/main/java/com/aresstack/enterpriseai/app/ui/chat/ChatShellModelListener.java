@@ -10,4 +10,8 @@ public interface ChatShellModelListener {
 
     /** Streaming-Zustand oder RAG-Schalter haben sich geändert; Send/Stop neu bewerten. */
     void stateChanged();
+
+    /** Der Verlauf wurde geleert („Neuer Chat“); Ansichten verwerfen alle Zeilen. */
+    default void entriesCleared() {
+    }
 }

@@ -100,6 +100,14 @@ tasks.register('runSettingsDemo', JavaExec) {
     systemProperty 'java.awt.headless', System.getProperty('java.awt.headless', 'false')
 }
 
+tasks.register('runUiScreenshots', JavaExec) {
+    group = 'demo'
+    description = 'Rendert die Abnahme-Bilder A–H der Oberfläche headless als PNG; --args="<Zielverzeichnis>".'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.app.ui.UiScreenshotDemo'
+    systemProperty 'java.awt.headless', 'true'
+}
+
 tasks.register('runAgentDemo', JavaExec) {
     group = 'application'
     description = 'Startet die Shell mit Chat (Fake-Backend) und Agent-Modus (Demo-Agent über ACP, AP21).'

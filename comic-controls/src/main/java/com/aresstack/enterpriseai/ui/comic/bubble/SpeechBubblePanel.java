@@ -1,6 +1,9 @@
 package com.aresstack.enterpriseai.ui.comic.bubble;
 
+import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
@@ -9,6 +12,7 @@ import javax.swing.border.EmptyBorder;
 import java.awt.AlphaComposite;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
@@ -28,6 +32,10 @@ import java.awt.geom.RoundRectangle2D;
  * <p>Implements {@link WidthAwareHeight} so the transcript
  * rows can ask for the exact wrapped height at the final bubble width — before that, long
  * unbroken texts were measured unwrapped once and rendered as a single clipped line.</p>
+ *
+ * <p>A bubble may carry optional DETAILS ({@link #setDetails}): a short main text keeps the bubble
+ * narrow, and a small toggle inside the bubble unfolds the longer explanation (error causes, hints)
+ * within the same geometry — never a full-width banner.</p>
  */
 public final class SpeechBubblePanel extends JPanel
         implements WidthAwareHeight, WidthBoundedBubble {
@@ -44,6 +52,8 @@ public final class SpeechBubblePanel extends JPanel
      */
     private static final int DEFAULT_MAXIMUM_WIDTH = 1200;
     private static final int MINIMUM_WIDTH = 104;
+    /** Unfolded details never ask for more than this; longer lines wrap inside the bubble. */
+    private static final int DETAILS_READING_WIDTH = 520;
 
     private final BubbleSide side;
     private final Color bubbleColor;
@@ -52,6 +62,12 @@ public final class SpeechBubblePanel extends JPanel
     private final JPanel headerRow;
     private JLabel timestampLabel; // small stacked date/time next to the name, or null
     private final JTextArea textArea;
+    private final JPanel detailsBlock;
+    private final JButton detailsToggle;
+    private final JTextArea detailsArea;
+    private boolean detailsExpanded;
+    private String showDetailsLabel = "Details";
+    private String hideDetailsLabel = "Details";
     private int maximumBubbleWidth;
 
     // Fortgeschriebene Messung des Textes (Breite, Umbruch): Streaming hängt Deltas an, und die Messung je
@@ -79,6 +95,9 @@ public final class SpeechBubblePanel extends JPanel
         this.headerLabel = createHeaderLabel(header);
         this.headerRow = new JPanel();
         this.textArea = createTextArea(text);
+        this.detailsArea = createDetailsArea();
+        this.detailsToggle = createDetailsToggle();
+        this.detailsBlock = createDetailsBlock();
         this.measure = new StreamingTextMeasure(textArea.getFontMetrics(textArea.getFont()));
         measure.set(normalize(text));
         buildUi();
@@ -118,6 +137,61 @@ public final class SpeechBubblePanel extends JPanel
         headerLabel.setVisible(headerLabel.getText().length() > 0);
         headerRow.setVisible(headerLabel.isVisible());
         refreshLayout();
+    }
+
+    /**
+     * Attach (or with {@code null}/blank remove) a folded explanation under the main text. The
+     * bubble keeps the geometry of its SHORT main text; the details unfold inside it on demand.
+     */
+    public void setDetails(String details) {
+        String value = details == null ? "" : details.trim();
+        detailsArea.setText(value);
+        detailsBlock.setVisible(value.length() > 0);
+        if (value.length() == 0) {
+            detailsExpanded = false;
+        }
+        applyDetailsState();
+        refreshLayout();
+    }
+
+    /** The toggle captions, e.g. "Details anzeigen" / "Details ausblenden". */
+    public void setDetailsLabels(String showLabel, String hideLabel) {
+        this.showDetailsLabel = normalize(showLabel);
+        this.hideDetailsLabel = normalize(hideLabel);
+        applyDetailsState();
+        refreshLayout();
+    }
+
+    public String getDetails() {
+        return detailsArea.getText();
+    }
+
+    public boolean hasDetails() {
+        return detailsBlock.isVisible();
+    }
+
+    public boolean isDetailsExpanded() {
+        return hasDetails() && detailsExpanded;
+    }
+
+    public void setDetailsExpanded(boolean expanded) {
+        if (!hasDetails() || detailsExpanded == expanded) {
+            return;
+        }
+        detailsExpanded = expanded;
+        applyDetailsState();
+        refreshLayout();
+    }
+
+    /** The in-bubble toggle (for tests and keyboard wiring); hidden without details. */
+    public AbstractButton detailsToggle() {
+        return detailsToggle;
+    }
+
+    private void applyDetailsState() {
+        detailsArea.setVisible(isDetailsExpanded());
+        detailsToggle.setText((isDetailsExpanded() ? hideDetailsLabel : showDetailsLabel)
+                + (isDetailsExpanded() ? " \u25B4" : " \u25BE"));
     }
 
     /**
@@ -228,6 +302,7 @@ public final class SpeechBubblePanel extends JPanel
         if (headerLabel.isVisible()) {
             height += headerSize.height + 3;
         }
+        height += detailsHeight(contentWidth);
         return new Dimension(width, Math.max(48, height));
     }
 
@@ -248,7 +323,21 @@ public final class SpeechBubblePanel extends JPanel
         if (headerLabel.isVisible()) {
             height += headerBlockSize().height + 3;
         }
+        height += detailsHeight(innerWidth);
         return Math.max(48, height);
+    }
+
+    /** The folded/unfolded details block height at an inner width (0 without details). */
+    private int detailsHeight(int innerWidth) {
+        if (!hasDetails()) {
+            return 0;
+        }
+        int height = 3 + detailsToggle.getPreferredSize().height;
+        if (isDetailsExpanded()) {
+            detailsArea.setSize(new Dimension(Math.max(24, innerWidth), Short.MAX_VALUE));
+            height += 2 + detailsArea.getPreferredSize().height;
+        }
+        return height;
     }
 
     /** Greedy word-wrap line count from font metrics — independent of the Swing view state. */
@@ -282,6 +371,45 @@ public final class SpeechBubblePanel extends JPanel
         headerRow.setVisible(headerLabel.isVisible());
         add(headerRow, BorderLayout.NORTH);
         add(textArea, BorderLayout.CENTER);
+        add(detailsBlock, BorderLayout.SOUTH);
+    }
+
+    private JTextArea createDetailsArea() {
+        JTextArea area = createTextArea("");
+        area.setFont(area.getFont().deriveFont(Math.max(11f, area.getFont().getSize2D() - 1.5f)));
+        area.setForeground(withAlpha(textColor, 225));
+        area.setVisible(false);
+        return area;
+    }
+
+    private JButton createDetailsToggle() {
+        JButton toggle = new JButton();
+        toggle.setFont(headerLabel.getFont());
+        toggle.setForeground(withAlpha(textColor, 220));
+        toggle.setFocusable(true); // per Tab erreichbar (Leertaste klappt auf) …
+        toggle.setRequestFocusEnabled(false); // … ein Mausklick nimmt dem Editor den Fokus aber nicht weg
+        toggle.setBorderPainted(false);
+        toggle.setContentAreaFilled(false);
+        toggle.setOpaque(false);
+        toggle.setMargin(new Insets(0, 0, 0, 0));
+        toggle.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
+        toggle.setHorizontalAlignment(JButton.LEFT);
+        toggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        toggle.setAlignmentX(LEFT_ALIGNMENT);
+        toggle.addActionListener(event -> setDetailsExpanded(!isDetailsExpanded()));
+        return toggle;
+    }
+
+    private JPanel createDetailsBlock() {
+        JPanel block = new JPanel();
+        block.setLayout(new BoxLayout(block, BoxLayout.Y_AXIS));
+        block.setOpaque(false);
+        block.setBorder(BorderFactory.createEmptyBorder(3, 0, 0, 0));
+        detailsArea.setAlignmentX(LEFT_ALIGNMENT);
+        block.add(detailsToggle);
+        block.add(detailsArea);
+        block.setVisible(false);
+        return block;
     }
 
     private JLabel createHeaderLabel(String header) {
@@ -363,6 +491,19 @@ public final class SpeechBubblePanel extends JPanel
             int headerWidth = headerMetrics.stringWidth(headerLabel.getText())
                     + (timestampLabel != null ? 6 + timestampLabel.getPreferredSize().width : 0);
             maximum = Math.max(maximum, headerWidth + 8);
+        }
+        if (hasDetails()) {
+            maximum = Math.max(maximum, detailsToggle.getPreferredSize().width + 8);
+            if (isDetailsExpanded()) {
+                // Unfolded details may widen the bubble a little, but stay a bubble: the widest line
+                // counts only up to a comfortable reading width; longer lines wrap.
+                FontMetrics metrics = detailsArea.getFontMetrics(detailsArea.getFont());
+                int widest = 0;
+                for (String line : detailsArea.getText().split("\n")) {
+                    widest = Math.max(widest, metrics.stringWidth(line));
+                }
+                maximum = Math.max(maximum, Math.min(DETAILS_READING_WIDTH, widest + 8));
+            }
         }
         return maximum;
     }

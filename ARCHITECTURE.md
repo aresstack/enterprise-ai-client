@@ -187,8 +187,45 @@ Agent-Modus ist ein getrennter Zusatz: UI → `AgentService` (`application.agent
 - MCP für den Agenten: je Agentenprozess ein frisch registrierter Endpoint (neuer Token), übergeben als
   Umgebungsvariablen `ENTERPRISE_AI_MCP_*` (`app.agent.AgentMcpEnvironment`); beim Schließen von Verbindung
   oder Agent-Modus wird er abgemeldet.
-- Oberfläche: `app.ui.agent.ModalShellPanel` mit Reitern Chat/Agent; jede Karte ist eine eigene
-  `ChatShellPanel` mit eigenem Model. Die Agent-Karte baut `app.agent.AgentModeAssembly`.
+- Oberfläche: `app.ui.workspace.ChatWorkspacePanel` zeigt Chat oder Agent als Karte, gewählt über die
+  Modus-Pille `☰ [ Chat ▾ ]`/`[ Agent ▾ ]` neben dem Hamburger (Presentation-Model `app.ui.agent.ShellModeModel`);
+  jede Karte ist eine eigene `ChatShellPanel` mit eigenem Model. Die Agent-Karte baut `app.agent.AgentModeAssembly`.
+
+## Oberfläche (askai-java8 `arch`)
+
+Die Oberfläche folgt dem Design des Zweigs `arch` von askai-java8; `comic-controls` trägt die dort generischen
+Teile als Ports (`theme.ResearchUiPalette`/`ResearchUiMetrics`/`ResearchUiPainter`/`ResearchUiTypography`,
+`control.ResearchIconButton`/`ResearchPillButton`/`ResearchPillDropdown`/`ComicSplitPane`/`ComicSearchBar`/
+`ComicHoverMenu`/`ComicOverlayPanel`/`ComposerButton`/`ComposerToggleButton`, `paint.StrokeIcon`/`ComposerIcons`),
+dazu die Fensterstücke `ComicWindowCloseButton` (das ✕ aus `ComicOverlayPanel.CloseButton`, einmal gezeichnet),
+`ComicWindowDragger` und `ComicWindowResizer`. Farben, Radien und Höhen kommen aus den Research-Tokens; eine
+eigene Palette gibt es nicht.
+
+```
+┌────────────────────────────────────────────────┐
+│ ☰ [ Chat ▾ ] ‹Chats│Wissensquellen›  Titel   ✕ │  Kopfzeile = Zieh-Fläche des rahmenlosen Fensters
+├────────────┬───────────────────────────────────┤
+│ Drawer     │ Chat- oder Agent-Ansicht          │  ComicSplitPane; Drawer öffnet beim Überfahren des
+│ Suche      │   Transkript (Sprechblasen)       │  Hamburgers, rastet per Klick ein
+│ + Neuer    │   Statuszeile der Wissensbasis    │
+│   Chat     │ ┌───────────────────────────────┐ │
+│ Chat-Zeilen│ │ Nachricht…                    │ │  ein Composer: randloser Editor, RAG-Pille,
+│        ⚙   │ │ [RAG]              [➤ Senden] │ │  Senden in Ruhe / Stop während der Antwort
+└────────────┴─┴───────────────────────────────┴─┘
+```
+
+- `ShellFrame`: `setUndecorated(true)`, Tintenrand (`ComicBorder.windowBorder`) als Greifzone zum Vergrößern,
+  Kopfzeile zieht, Doppelklick maximiert, ✕ löst `WINDOW_CLOSING` aus. Headless-Start und Smoke-Test berühren
+  das Fenster nicht (`ShellAssembly.createShell` baut nur die Arbeitsfläche; `ShellFrame.content` rendert sie
+  ohne Fenster).
+- Drawer (`app.ui.sidebar`): Seite „Chats“ mit Suchleiste, „+ Neuer Chat“ (eröffnet eine neue Unterhaltung am
+  `ChatService` und schließt die bisherige; im Agent-Modus beendet es die ACP-Session über
+  `AgentService.endSession()`; nicht während einer Antwort), Zeilen je Ansicht und Zahnrad für die Einstellungen; Seite
+  „Wissensquellen“ listet `sources`. Weitere Seiten kommen als `ChatSidebarTab` dazu.
+- Fehler des KI-Dienstes bleiben Sprechblasen in Blasengeometrie: Überschrift sichtbar, „Technische Ursache“
+  und „Hinweis“ hinter „Details anzeigen“ (`SpeechBubblePanel.setDetails`).
+- Einstellungen-Dialog: ebenfalls rahmenlos (Überschrift zieht, ✕ bricht ab), Reiter als Pillen.
+- Abnahme-Bilder: `./gradlew :app-swing:runUiScreenshots --args="<Verzeichnis>"` rendert A–H headless.
 
 ## RAG und Indexierung (AP10)
 
@@ -269,7 +306,7 @@ Bindings in `app.chat`, die AP23 in der Composition Root verdrahtet.
   der Suche wird gemerkt und bricht den Turn ab, sobald er existiert; die Nutzerfrage bleibt in der Historie.
 - `app.chat.KnowledgeIndexingBinding` treibt `IndexKnowledgeUseCase` auf dem Arbeits-Executor und meldet
   Fortschritt, Ergebnis und Abbruch an `app.ui.chat.KnowledgeStatusModel`; die Statuszeile
-  (`KnowledgeStatusBar`) im Chat-Reiter zeigt den Text und einen Abbrechen-Knopf, der
+  (`KnowledgeStatusBar`) über dem Composer der Chat-Ansicht zeigt den Text und einen Abbrechen-Knopf, der
   `IndexingListener.isCancelled()` bedient.
 - Oberfläche: `SourceListPanel` (einklappbare Quellenliste unter der Antwort, Ort unverändert und ohne
   Zugangsdaten), Hinweis-Blase links in der Aktivitätsfarbe, Fehler des KI-Dienstes wie bisher. Modelle
@@ -313,7 +350,10 @@ ProxyPolicy (JVM-ProxySelector)
   (`ProxyPolicy`, `TrustPolicy`, `ConnectionDiagnosis`), `app.security` (Brücken zum Security-Port,
   `FilePairingKeyStore`, `SwingPairingCallback`),
   `app.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `app.ui.settings` (Einstellungen-Dialog,
-  reine Oberfläche über dem Formular `SettingsForm` und dem Vertrag `SettingsDialogActions`), `app.settings`
+  reine Oberfläche über dem Formular `SettingsForm` und dem Vertrag `SettingsDialogActions`), `app.ui.workspace`
+  (`ChatWorkspacePanel` mit Hamburger, Modus-Pille und Drawer, `ShellFrame` rahmenloses Hauptfenster,
+  `WorkspaceActions`, `KnowledgeSourceItem`), `app.ui.sidebar` (`ChatSidebarPanel`, `SidebarTabRibbon`,
+  `ChatHistoryRow`, `ChatSidebarTab`; Ports aus askai-java8 `arch`), `app.settings`
   (`ConfigurationFile`, `SettingsMapper`, `FileSettingsActions`, `ConfigurationStartup`, `ConfigurationCheck`:
   Dialog ↔ Datei ↔ `AppConfigLoader`; `ConnectionProbe` und `ConnectionChecker`: der Verbindungstest des Dialogs
   über `app.net`), `app.knowledge` (`StartupIndexing`), `app.composition`
@@ -325,8 +365,8 @@ ProxyPolicy (JVM-ProxySelector)
   (AP10-Retrieval/Kontext, Adapter-Timeouts), Fehlermeldungen nennen Schlüssel und Erwartung, nie den Wert;
   unbekannte Schlüssel werden als Warnung gemeldet. Fehlt die Datei, legt die Anwendung die kommentierte
   Vorlage `enterprise-ai-client.example.properties` ab und öffnet mit Oberfläche den Einstellungen-Dialog
-  (Erststart ohne Handarbeit; headless: Hinweis und Exit-Code 2). Der Dialog (Knopf „Einstellungen“ in der
-  Kopfzeile) schreibt nur seine Schlüssel zeilenschonend in dieselbe Datei; Änderungen gelten beim nächsten
+  (Erststart ohne Handarbeit; headless: Hinweis und Exit-Code 2). Der Dialog (Zahnrad im Fuß der
+  Drawer-Seite „Chats“) schreibt nur seine Schlüssel zeilenschonend in dieselbe Datei; Änderungen gelten beim nächsten
   Start. Modellnamen, Dimension (e5-base
   vermutlich 768, UNVERIFIED), Proxy und Quellen sind reine Konfiguration.
 - **Secrets**: in der Datei stehen nur `SecretRef`s (Titel des KeePass-Eintrags): `chat.apiKeyRef`,

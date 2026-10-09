@@ -36,6 +36,10 @@ import java.util.Map;
  * <p>Bekommt eine Antwort Quellen (AP22), erscheint direkt unter ihrer Blase eine eigene Zeile mit der
  * ein- und ausklappbaren {@link SourceListPanel Quellenliste}.
  *
+ * <p>Fehler bleiben Sprechblasen in normaler Geometrie: die Blase zeigt nur die erste Zeile der Fehlermeldung
+ * (die Überschrift, z. B. „Der KI-Dienst ist nicht erreichbar.“); „Technische Ursache“ und „Hinweis“ liegen als
+ * Details in der Blase und lassen sich dort aufklappen — kein Banner über die volle Breite.
+ *
  * <p>Streaming-Deltas werden gebündelt: während eine Antwort läuft, wird ihre Blase höchstens einmal je
  * {@value #FLUSH_INTERVAL_MILLIS} ms aktualisiert (das erste Delta sofort, weitere gesammelt und mit einem
  * nachlaufenden Timer), und jede Aktualisierung hängt nur den neuen Text an, statt die Blase neu zu setzen.
@@ -53,6 +57,8 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     static final String FAILED_HEADER = "Fehler";
     static final String NOTICE_HEADER = "Hinweis";
     static final String STREAMING_PLACEHOLDER = "…";
+    static final String SHOW_DETAILS_LABEL = "Details anzeigen";
+    static final String HIDE_DETAILS_LABEL = "Details ausblenden";
 
     /** Höchstens eine Blasen-Aktualisierung je Intervall, solange eine Antwort streamt. */
     static final int FLUSH_INTERVAL_MILLIS = 30;
@@ -165,8 +171,18 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         // Der Verlauf hängt nur an Einträgen; Send/Stop bewertet der Composer.
     }
 
+    @Override
+    public void entriesCleared() {
+        flushTimer.stop();
+        pending.clear();
+        rows.clear();
+        sourceRows.clear();
+        messageList.removeAll();
+        refresh(false);
+    }
+
     /** Die Blase eines Eintrags (für Tests und spätere Kontextaktionen), oder {@code null}. */
-    SpeechBubblePanel bubbleFor(long entryId) {
+    public SpeechBubblePanel bubbleFor(long entryId) {
         RowState state = rows.get(entryId);
         return state == null ? null : state.bubble();
     }
@@ -217,10 +233,25 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
                 }
                 return entry.getActivity().isEmpty() ? STREAMING_PLACEHOLDER : entry.getActivity();
             case FAILED:
-                return text.isEmpty() ? entry.getFailureMessage() : text + "\n\n" + entry.getFailureMessage();
+                String headline = failureHeadline(entry.getFailureMessage());
+                return text.isEmpty() ? headline : text + "\n\n" + headline;
             default:
                 return text;
         }
+    }
+
+    /** Die erste Zeile der Fehlermeldung: die Überschrift, die in der Blase steht. */
+    static String failureHeadline(String failureMessage) {
+        String message = failureMessage == null ? "" : failureMessage.trim();
+        int newline = message.indexOf('\n');
+        return newline < 0 ? message : message.substring(0, newline).trim();
+    }
+
+    /** Alles nach der ersten Zeile („Technische Ursache: …“, „Hinweis: …“): die aufklappbaren Details. */
+    static String failureDetails(String failureMessage) {
+        String message = failureMessage == null ? "" : failureMessage.trim();
+        int newline = message.indexOf('\n');
+        return newline < 0 ? "" : message.substring(newline + 1).trim();
     }
 
     static String header(TranscriptEntry entry) {
@@ -262,6 +293,10 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         SpeechBubblePanel bubble = new SpeechBubblePanel(user ? BubbleSide.RIGHT : BubbleSide.LEFT,
                 background, foreground, header, text);
         bubble.setHeaderTimestamp(entry.getCreatedAtMillis());
+        if (entry.getState() == TranscriptEntry.State.FAILED) {
+            bubble.setDetailsLabels(SHOW_DETAILS_LABEL, HIDE_DETAILS_LABEL);
+            bubble.setDetails(failureDetails(entry.getFailureMessage()));
+        }
         return new RowState(new BubbleMessageRow(bubble, user ? BubbleSide.RIGHT : BubbleSide.LEFT), header,
                 text.length(), !entry.getText().isEmpty());
     }

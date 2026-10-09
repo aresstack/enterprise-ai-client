@@ -2,98 +2,154 @@ package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.agent.AgentModeAssembly;
 import com.aresstack.enterpriseai.app.chat.RagChatBinding;
-import com.aresstack.enterpriseai.app.ui.agent.ModalShellPanel;
+import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.SourceConfig;
+import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
+import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
+import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceItem;
+import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
+import com.aresstack.enterpriseai.app.ui.workspace.WorkspaceActions;
+import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
-import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
-import com.aresstack.enterpriseai.ui.comic.theme.ComicTheme;
 
 import javax.swing.JComponent;
 import javax.swing.JFrame;
-import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
-import javax.swing.WindowConstants;
-import java.awt.BorderLayout;
-import java.awt.Dimension;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Baut die Oberfläche über dem Graphen aus {@link CompositionRoot}: Chat-Shell mit {@link RagChatBinding}
- * (AP22: RAG-Schalter, Quellen, Hinweise) und Statuszeile der Wissensbasis, dazu, falls konfiguriert, die
- * Agent-Ansicht mit Modus-Umschaltung (AP21). {@link #createShell} läuft auch headless (Tests); nur
- * {@link #createFrame} braucht ein Display.
+ * Baut die Oberfläche über dem Graphen aus {@link CompositionRoot}: die Arbeitsfläche
+ * ({@link ChatWorkspacePanel}: Hamburger, Modus-Pille, Drawer) mit der Chat-Ansicht samt
+ * {@link RagChatBinding} (AP22: RAG-Schalter, Quellen, Hinweise) und Statuszeile der Wissensbasis, dazu, falls
+ * konfiguriert, der Agent-Ansicht (AP21). „+ Neuer Chat“ eröffnet im Chat-Modus eine neue Unterhaltung am
+ * {@link ChatService}, schließt die bisherige dort und leert das Transkript; im Agent-Modus beendet es die
+ * ACP-Session samt Agentenprozess
+ * ({@link AgentService#endSession()}), damit der nächste Auftrag ohne den alten Kontext startet. Das Zahnrad reicht
+ * die Composition Root als {@link WorkspaceActions#settingsRequested()} an den Einstellungen-Dialog weiter.
+ * {@link #createShell} läuft auch headless (Tests); nur {@link #createFrame} braucht ein Display.
  */
 public final class ShellAssembly {
 
     private ShellAssembly() {
     }
 
-    /** Muss auf dem EDT laufen (auch headless möglich). */
+    /** Muss auf dem EDT laufen (auch headless möglich). Das Zahnrad ist ohne {@link ShellView#setSettingsAction} stumm. */
     public static ShellView createShell(CompositionRoot root, ComicPalette palette, BubblePalette bubbles) {
         if (!SwingUtilities.isEventDispatchThread()) {
             throw new IllegalStateException("createShell must run on the event dispatch thread");
         }
-        ChatService chatService = root.chatService();
-        ChatConversationId conversation = chatService.openConversation(root.config().chat().systemPrompt());
-        ChatShellModel chatModel = new ChatShellModel(root.clock());
-        ChatShellActions chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel, root.uiExecutor(),
-                root.workExecutor(), root.zone());
+        final ChatService chatService = root.chatService();
+        final String systemPrompt = root.config().chat().systemPrompt();
+        ChatConversationId conversation = chatService.openConversation(systemPrompt);
+        final ChatShellModel chatModel = new ChatShellModel(root.clock());
+        final RagChatBinding chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel,
+                root.uiExecutor(), root.workExecutor(), root.zone());
         ChatShellPanel chatShell = new ChatShellPanel(chatModel, chatActions, root.knowledgeStatus(), palette, bubbles);
 
-        AgentModeAssembly.AgentView agent = null;
+        final AgentModeAssembly.AgentView agent;
+        final AgentService agentService;
         if (root.hasAgent()) {
-            agent = AgentModeAssembly.create(root.agentService(), root.uiExecutor(), root.clock(), palette, bubbles);
+            agentService = root.agentService();
+            agent = AgentModeAssembly.create(agentService, root.uiExecutor(), root.clock(), palette, bubbles);
+        } else {
+            agentService = null;
+            agent = null;
         }
         ShellModeModel modes = new ShellModeModel(agent != null);
-        ModalShellPanel shell = new ModalShellPanel(modes, chatShell, agent == null ? null : agent.shell(), palette);
-        return new ShellView(shell, chatModel, chatActions, conversation, agent);
+        ChatWorkspacePanel workspace = new ChatWorkspacePanel(modes, chatShell, agent == null ? null : agent.shell(),
+                palette);
+        workspace.setWindowTitle(root.config().windowTitle());
+        workspace.setKnowledgeSources(knowledgeSources(root.config()));
+        final ShellView view = new ShellView(workspace, chatModel, chatActions, agent);
+        workspace.setActions(new WorkspaceActions() {
+            @Override
+            public void newChatRequested(ShellMode mode) {
+                if (mode == ShellMode.AGENT && agent != null) {
+                    if (!agent.model().isStreaming() && !agentService.isBusy()) {
+                        agentService.endSession(); // der Agent behält sonst den alten Kontext in seiner Session
+                        agent.model().clear();
+                    }
+                    return;
+                }
+                if (chatModel.isStreaming()) {
+                    return; // der Knopf ist während einer Antwort deaktiviert; zur Sicherheit auch hier
+                }
+                ChatConversationId previous = chatActions.conversationId();
+                ChatConversationId next = chatService.openConversation(systemPrompt);
+                try {
+                    chatActions.startConversation(next);
+                } catch (IllegalStateException stillBusy) {
+                    chatService.closeConversation(next); // eine Suche läuft noch; es bleibt alles beim Alten
+                    return;
+                }
+                chatModel.clear();
+                chatService.closeConversation(previous); // sonst behielte der ChatService jeden alten Verlauf
+            }
+
+            @Override
+            public void settingsRequested() {
+                Runnable action = view.settingsAction();
+                if (action != null) {
+                    action.run();
+                }
+            }
+        });
+        return view;
     }
 
-    /** Das Hauptfenster; braucht ein Display. Schließen löst den mitgegebenen Runnable aus. */
+    /** Das rahmenlose Hauptfenster; braucht ein Display. Schließen läuft über {@code WINDOW_CLOSING}. */
     public static JFrame createFrame(String title, ShellView view, ComicPalette palette) {
-        ComicTheme.installMenuDefaults(palette);
-        JFrame frame = new JFrame(title);
-        frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        JPanel content = new JPanel(new BorderLayout());
-        content.setBackground(palette.getSurface());
-        content.setBorder(ComicBorder.roundedBorder(palette, 6));
-        content.add(view.shell(), BorderLayout.CENTER);
-        frame.setContentPane(content);
-        frame.setMinimumSize(new Dimension(480, 420));
-        frame.setSize(new Dimension(860, 700));
-        frame.setLocationRelativeTo(null);
-        return frame;
+        return ShellFrame.create(title, view.workspace(), palette);
+    }
+
+    /** Die konfigurierten Quellen, wie der Drawer sie zeigt: Kennung als Name, Typ und Umfang als Beschreibung. */
+    static List<KnowledgeSourceItem> knowledgeSources(AppConfig config) {
+        List<KnowledgeSourceItem> items = new ArrayList<KnowledgeSourceItem>();
+        for (SourceConfig source : config.sources()) {
+            items.add(new KnowledgeSourceItem(source.sourceId().value(), describe(source)));
+        }
+        return items;
+    }
+
+    private static String describe(SourceConfig source) {
+        String type = source.type();
+        if (source.scope() == null || source.scope().startPoints().isEmpty()) {
+            return type;
+        }
+        return type + " · " + String.join(", ", source.scope().startPoints());
     }
 
     /** Die gebaute Oberfläche mit ihren Modellen. */
     public static final class ShellView {
 
-        private final ModalShellPanel shell;
+        private final ChatWorkspacePanel workspace;
         private final ChatShellModel chatModel;
-        private final ChatShellActions chatActions;
-        private final ChatConversationId conversation;
+        private final RagChatBinding chatActions;
         private final AgentModeAssembly.AgentView agent;
+        private Runnable settingsAction;
 
-        ShellView(ModalShellPanel shell, ChatShellModel chatModel, ChatShellActions chatActions,
-                  ChatConversationId conversation, AgentModeAssembly.AgentView agent) {
-            this.shell = shell;
+        ShellView(ChatWorkspacePanel workspace, ChatShellModel chatModel, RagChatBinding chatActions,
+                  AgentModeAssembly.AgentView agent) {
+            this.workspace = workspace;
             this.chatModel = chatModel;
             this.chatActions = chatActions;
-            this.conversation = conversation;
             this.agent = agent;
         }
 
         public JComponent shell() {
-            return shell;
+            return workspace;
         }
 
-        public ModalShellPanel modalShell() {
-            return shell;
+        public ChatWorkspacePanel workspace() {
+            return workspace;
         }
 
         public ChatShellModel chatModel() {
@@ -104,13 +160,23 @@ public final class ShellAssembly {
             return chatActions;
         }
 
+        /** Die Unterhaltung, in die der Chat gerade schreibt; wechselt mit „+ Neuer Chat“. */
         public ChatConversationId conversation() {
-            return conversation;
+            return chatActions.conversationId();
         }
 
         /** {@code null} ohne Agent-Modus. */
         public AgentModeAssembly.AgentView agent() {
             return agent;
+        }
+
+        /** Was das Zahnrad im Drawer tut (die Composition Root hängt den Einstellungen-Dialog an). */
+        public void setSettingsAction(Runnable action) {
+            this.settingsAction = action;
+        }
+
+        Runnable settingsAction() {
+            return settingsAction;
         }
     }
 }

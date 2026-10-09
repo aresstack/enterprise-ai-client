@@ -2,7 +2,9 @@ package com.aresstack.enterpriseai.app.chat;
 
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
-import com.aresstack.enterpriseai.app.ui.chat.ChatWindow;
+import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
+import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
+import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
@@ -44,7 +46,8 @@ public final class ChatShellDemo {
                         SwingUtilities::invokeLater);
                 ChatShellPanel shell = new ChatShellPanel(model, binding, palette,
                         BubblePalette.windowsPhoneInspired());
-                ChatWindow.create("Enterprise AI Client – Demo", shell, palette).setVisible(true);
+                ChatWorkspacePanel workspace = new ChatWorkspacePanel(new ShellModeModel(false), shell, null, palette);
+                ShellFrame.create("Enterprise AI Client – Demo", workspace, palette).setVisible(true);
             }
         });
     }

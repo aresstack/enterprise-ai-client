@@ -36,23 +36,26 @@ java -jar enterprise-ai-client-<version>.jar
    sowie der Titel des KeePass-Eintrags mit dem API-Key; „In KeePass prüfen“ testet den Eintrag sofort (bei
    Bedarf mit Pairing). Speichern schreibt die kommentierte Datei `enterprise-ai-client.properties` im
    Anwendungsverzeichnis (`~/.enterprise-ai-client/`, unter Windows `%APPDATA%\.enterprise-ai-client\`), danach
-   startet die Anwendung. Später öffnet der Knopf „Einstellungen“ in der Kopfzeile denselben Dialog; Änderungen
+   startet die Anwendung. Später öffnet das Zahnrad im Drawer (Hamburger ☰ links oben, Seite „Chats“) denselben
+   Dialog; Änderungen
    gelten beim nächsten Start. Secrets stehen nie in der Datei; sie kommen zur Laufzeit aus KeePass (Plugin
    KeePassRPC). Die Datei lässt sich weiterhin von Hand pflegen (Feineinstellungen wie Timeouts stehen nur
    dort). Alternativ: `-Denterpriseai.config=/pfad/zur/datei`.
 3. **Starten**: `./gradlew :app-swing:run` oder `java -jar enterprise-ai-client-<version>.jar`. Ohne erreichbares
    KeePass startet die Anwendung trotzdem und meldet, welche Secrets fehlen; Anfragen scheitern dann mit einem
    Authentifizierungsfehler.
-4. **Chatten**: Frage eintippen, Senden. Antworten streamen, ein Turn lässt sich abbrechen; der System-Prompt
-   kommt aus `chat.systemPrompt`.
+4. **Chatten**: Frage eintippen, Senden (Enter; Umschalt+Enter für eine neue Zeile). Antworten streamen, „Stop“
+   im Composer bricht ab; der System-Prompt kommt aus `chat.systemPrompt`. „+ Neuer Chat“ im Drawer beginnt eine
+   neue Unterhaltung. Das Fenster ist rahmenlos: die Kopfzeile zieht, der Rand vergrößert, das ✕ schließt.
 5. **Quelle indexieren**: Eine Quelle unter `sources` und `source.<id>.*` eintragen (MediaWiki oder
    Confluence). Mit `knowledge.indexOnStartup=true` (Standard) indexiert die Anwendung beim Start im
    Hintergrund; die Statuszeile zeigt den Fortschritt und bietet Abbrechen an. Alternativ stößt ein Agent
    `refresh_knowledge_source` an.
-6. **RAG verwenden**: Den Schalter „RAG“ neben dem Eingabefeld einschalten. Vor der Antwort sucht die
+6. **RAG verwenden**: Die Pille „RAG“ im Composer einschalten. Vor der Antwort sucht die
    Anwendung im Index; die Antwort trägt die verwendeten Quellen, Hinweise erscheinen als eigene Blase.
 7. **Agent-Modus**: `agent.enabled=true` und `agent.command`/`agent.args` auf einen ACP-fähigen Agenten setzen
-   (zum Ausprobieren der Demo-Agent aus `./gradlew :acp-demo-agent:demoAgentJar`). Der Reiter „Agent“ startet
+   (zum Ausprobieren der Demo-Agent aus `./gradlew :acp-demo-agent:demoAgentJar`). Die Modus-Pille „Agent“ neben
+   dem Hamburger wechselt in die Agent-Ansicht; der erste Auftrag startet
    den Prozess; er erhält die Wissenswerkzeuge über einen MCP-Endpoint, der nur für diesen Prozess gilt.
 
 Demos ohne Enterprise-API und ohne KeePass: `./gradlew :app-swing:runChatDemo` (Chat gegen einen Fake-Port),

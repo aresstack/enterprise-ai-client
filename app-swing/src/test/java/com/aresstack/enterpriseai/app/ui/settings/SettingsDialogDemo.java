@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
+import com.aresstack.enterpriseai.ui.comic.control.ComicWindowCloseButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicTheme;
 
@@ -34,7 +35,7 @@ public final class SettingsDialogDemo {
     }
 
     /** Attrappe: keine Probleme, Speichern merkt sich das Formular, die Probe meldet ein festes Ergebnis. */
-    static final class DemoActions implements SettingsDialogActions {
+    public static final class DemoActions implements SettingsDialogActions {
         final List<SettingsForm> saved = new ArrayList<SettingsForm>();
 
         @Override
@@ -70,7 +71,7 @@ public final class SettingsDialogDemo {
         }
     }
 
-    static SettingsForm sampleForm() {
+    public static SettingsForm sampleForm() {
         return SettingsForm.builder()
                 .windowTitle("Enterprise AI Client")
                 .chatBaseUrl("https://ki.intern.beispiel/v1")
@@ -153,8 +154,13 @@ public final class SettingsDialogDemo {
                 }
                 JPanel content = new JPanel(new BorderLayout());
                 content.setBackground(palette.getSurface());
-                content.setBorder(ComicBorder.roundedBorder(palette, 4));
+                content.setBorder(ComicBorder.windowBorder(palette, 4));
                 content.add(panel, BorderLayout.CENTER);
+                panel.setWindowControls(new ComicWindowCloseButton(palette, new Runnable() {
+                    @Override
+                    public void run() {
+                    }
+                }, "Abbrechen", 24));
                 content.setSize(800, height);
                 if (GraphicsEnvironment.isHeadless()) {
                     invalidateTree(content);

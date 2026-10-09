@@ -3,7 +3,7 @@
 ACP (Agent Client Protocol) ist das Protokoll, über das die Anwendung einen **externen Agentenprozess** steuert:
 Prozess starten, Verbindung initialisieren, Session anlegen, Prompts schicken, Updates (Text, Überlegungen,
 Tool-Aufrufe) streamen, abbrechen. Der normale Chat funktioniert vollständig ohne ACP; der Agent-Modus ist ein
-optionaler Zusatz mit eigenem Reiter, eigenem Transkript und eigener Session.
+optionaler Zusatz mit eigener Ansicht (Modus-Pille „Agent“), eigenem Transkript und eigener Session.
 
 ## Module
 
@@ -38,7 +38,7 @@ Ausgaben. Updates (`AcpUpdate`) unterscheiden Nachrichtentext, Überlegungen und
 
 ```mermaid
 sequenceDiagram
-    participant UI as Reiter Agent (app.ui)
+    participant UI as Agent-Ansicht (app.ui)
     participant B as AgentServiceBinding
     participant S as AgentService (application.agent)
     participant L as AcpAgentLauncher (app.agent)
@@ -80,8 +80,9 @@ sequenceDiagram
   Endpoint abgemeldet. ACP `session/new` selbst sendet eine leere `mcpServers`-Liste; eine Übergabe über ACP
   wäre eine Vertragsänderung in `acp-client-api` und `acp-solon-client` (siehe
   [Einschränkungen](einschraenkungen.md)).
-- **Oberfläche**: `app.ui.agent.ModalShellPanel` mit Reitern "Chat" und "Agent" (`ModeSwitchBar`, ein
-  `ComicToggleButton`). Jeder Reiter ist eine eigene `ChatShellPanel` mit eigenem Model; Verläufe und Sessions
+- **Oberfläche**: `app.ui.workspace.ChatWorkspacePanel` mit der Modus-Pille `[ Chat ▾ ]`/`[ Agent ▾ ]` neben dem
+  Hamburger (`ResearchPillDropdown`; ohne `agent.enabled` ist „Agent“ deaktiviert). Jede Ansicht ist eine eigene
+  `ChatShellPanel` mit eigenem Model; Verläufe und Sessions
   mischen sich nicht. Überlegungen des Agenten stehen im Transkript, nicht in der Antwortblase; Tool-Updates
   zeigt die Oberfläche derzeit nicht.
 

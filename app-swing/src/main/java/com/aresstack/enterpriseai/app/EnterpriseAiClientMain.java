@@ -20,15 +20,12 @@ import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsPanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
-import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import java.awt.GraphicsEnvironment;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
@@ -57,8 +54,6 @@ public final class EnterpriseAiClientMain {
     private static final Logger LOG = Logger.getLogger(EnterpriseAiClientMain.class.getName());
 
     static final int EXIT_CONFIG = 2;
-
-    static final String SETTINGS_BUTTON_LABEL = "Einstellungen";
 
     private EnterpriseAiClientMain() {
     }
@@ -143,7 +138,7 @@ public final class EnterpriseAiClientMain {
                         shutdownAndExit(root);
                     }
                 });
-                view.modalShell().switchBar().addTrailing(settingsButton(frame, file, settingsActions, palette));
+                view.setSettingsAction(settingsAction(frame, file, settingsActions, palette));
                 frame.setVisible(true);
                 root.startBackgroundWork();
                 List<String> notices = new ArrayList<String>();
@@ -163,17 +158,15 @@ public final class EnterpriseAiClientMain {
     }
 
     /**
-     * Der Knopf „Einstellungen“ in der Kopfzeile: öffnet den Dialog mit den Werten der Datei. Gespeichert
-     * wird in die Datei; der laufende Graph ist mit der alten Konfiguration gebaut, deshalb gelten Änderungen
-     * beim nächsten Start (Angebot, jetzt zu beenden).
+     * Das Zahnrad im Drawer: öffnet den Dialog mit den Werten der Datei. Gespeichert wird in die Datei; der
+     * laufende Graph ist mit der alten Konfiguration gebaut, deshalb gelten Änderungen beim nächsten Start
+     * (Angebot, jetzt zu beenden).
      */
-    private static ComicButton settingsButton(final JFrame frame, final ConfigurationFile file,
-                                              final SettingsDialogActions actions, final ComicPalette palette) {
-        ComicButton button = new ComicButton(SETTINGS_BUTTON_LABEL, null, ComicButton.Accent.ACTION, palette);
-        button.setToolTipText("Konfiguration bearbeiten (" + file.path() + ")");
-        button.addActionListener(new ActionListener() {
+    private static Runnable settingsAction(final JFrame frame, final ConfigurationFile file,
+                                           final SettingsDialogActions actions, final ComicPalette palette) {
+        return new Runnable() {
             @Override
-            public void actionPerformed(ActionEvent e) {
+            public void run() {
                 SettingsForm current;
                 try {
                     current = SettingsMapper.fromProperties(file.read());
@@ -198,8 +191,7 @@ public final class EnterpriseAiClientMain {
                     frame.dispose();
                 }
             }
-        });
-        return button;
+        };
     }
 
     private static void shutdownAndExit(final CompositionRoot root) {

@@ -210,7 +210,7 @@ public class ConfiguredApplicationSliceTest {
         final ShellAssembly.ShellView view = onEdt(() -> ShellAssembly.createShell(root,
                 ComicPalette.defaultPalette(), BubblePalette.windowsPhoneInspired()));
         final ChatShellModel model = view.chatModel();
-        final ChatComposerPanel composer = view.modalShell().chatShell().composer();
+        final ChatComposerPanel composer = view.workspace().chatShell().composer();
         chatServer.answerWith("Drei Monate ", "zum Quartalsende [1].");
         runOnEdt(() -> {
             model.setRagEnabled(true);

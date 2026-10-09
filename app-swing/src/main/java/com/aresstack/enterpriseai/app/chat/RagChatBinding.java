@@ -73,7 +73,7 @@ public final class RagChatBinding implements ChatShellActions {
     private static final DateTimeFormatter REVISION_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final RagChatUseCase rag;
-    private final ChatConversationId conversationId;
+    private ChatConversationId conversationId;
     private final ChatShellModel model;
     private final Executor uiExecutor;
     private final Executor workExecutor;
@@ -101,8 +101,25 @@ public final class RagChatBinding implements ChatShellActions {
         this.zone = zone;
     }
 
+    /** Die Unterhaltung, in die {@link #sendRequested} gerade schreibt (nur UI-Thread). */
     public ChatConversationId conversationId() {
         return conversationId;
+    }
+
+    /**
+     * „Neuer Chat“: ab jetzt geht jede Anfrage in diese Unterhaltung; das Transkript leert der Aufrufer über
+     * {@link ChatShellModel#clear()}. Nur auf dem UI-Thread und nur, solange keine Antwort läuft.
+     *
+     * @throws IllegalStateException während eine Antwort oder eine Suche läuft
+     */
+    public void startConversation(ChatConversationId conversation) {
+        if (conversation == null) {
+            throw new IllegalArgumentException("conversation must not be null");
+        }
+        if (runningTurn != null || retrieving != null || model.isStreaming()) {
+            throw new IllegalStateException("cannot start a new conversation while a response is running");
+        }
+        this.conversationId = conversation;
     }
 
     /** Muss auf dem UI-Thread gerufen werden (wie alle Model-Änderungen). */
