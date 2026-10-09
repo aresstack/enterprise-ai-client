@@ -151,7 +151,9 @@ public class KnowledgeIndexingBindingTest {
             }
         });
         awaitFinished();
-        assertEquals(KnowledgeIndexingBinding.DISCOVERY_FAILED, status.getText());
+        assertEquals(KnowledgeIndexingBinding.discoveryFailed("handbuch"), status.getText());
+        assertEquals("Indexierung von handbuch fehlgeschlagen: Die Quelle konnte nicht gelesen werden "
+                + "(Ursache im Protokoll).", status.getText());
     }
 
     @Test

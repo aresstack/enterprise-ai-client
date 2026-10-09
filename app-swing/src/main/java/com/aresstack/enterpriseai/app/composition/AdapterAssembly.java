@@ -87,7 +87,10 @@ public final class AdapterAssembly {
 
         List<KnowledgeSourceRegistration> registrations = new ArrayList<KnowledgeSourceRegistration>();
         for (SourceConfig source : config.sources()) {
-            registrations.add(new KnowledgeSourceRegistration(source(source, secrets, proxy), source.scope()));
+            // Mit Protokollhülle: Fehler der Quelle landen samt Ursachenkette im Protokoll, der Bericht an die UI
+            // enthält nur den Text.
+            registrations.add(new KnowledgeSourceRegistration(
+                    new LoggingKnowledgeSource(source(source, secrets, proxy)), source.scope()));
         }
         ports.sources(new KnowledgeSourceCatalog(registrations));
 

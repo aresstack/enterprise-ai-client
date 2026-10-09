@@ -8,7 +8,8 @@ import java.nio.file.Paths;
  * {@code %APPDATA%} (Windows) bzw. {@code user.home}, überschreibbar per System-Property.
  *
  * <ul>
- *   <li>{@code -Denterpriseai.home=<Verzeichnis>}: Anwendungsverzeichnis (Index, Pairing-Schlüssel, Konfiguration).</li>
+ *   <li>{@code -Denterpriseai.home=<Verzeichnis>}: Anwendungsverzeichnis (Index, Pairing-Schlüssel, Konfiguration,
+ *       Protokolldateien).</li>
  *   <li>{@code -Denterpriseai.config=<Datei>}: Konfigurationsdatei unabhängig vom Anwendungsverzeichnis.</li>
  * </ul>
  */
@@ -20,6 +21,7 @@ public final class AppPaths {
     public static final String CONFIG_FILE_NAME = "enterprise-ai-client.properties";
     public static final String INDEX_DIRECTORY_NAME = "index";
     public static final String PAIRING_KEY_FILE_NAME = "keepassrpc-pairing.key";
+    public static final String LOG_DIRECTORY_NAME = "logs";
 
     private AppPaths() {
     }
@@ -50,5 +52,10 @@ public final class AppPaths {
 
     public static Path defaultPairingKeyFile() {
         return appDirectory().resolve(PAIRING_KEY_FILE_NAME);
+    }
+
+    /** Protokolldateien: {@code <appDirectory>/logs/enterprise-ai-client.<n>.log}. */
+    public static Path defaultLogDirectory() {
+        return appDirectory().resolve(LOG_DIRECTORY_NAME);
     }
 }

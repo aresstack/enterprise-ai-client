@@ -14,10 +14,19 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Entscheidet je Ziel-URI, ob ein Proxy benutzt wird. {@link ProxyMode#SYSTEM} übernimmt die JVM-Voreinstellung
- * (Systemproperties {@code http(s).proxyHost} bzw. {@code java.net.useSystemProxies}), {@link ProxyMode#NONE}
- * verbindet immer direkt, {@link ProxyMode#MANUAL} nutzt Host und Port aus der Konfiguration mit Ausnahmen.
- * Loopback-Ziele (der lokale MCP-Endpoint, KeePassRPC) gehen nie über einen Proxy.
+ * Entscheidet je Ziel-URI, ob ein Proxy benutzt wird. {@link ProxyMode#AUTO} fragt zuerst das PAC-/WPAD-Skript
+ * des Unternehmens ({@link PacProxyRoutes}, Adresse aus {@code network.proxy.pacUrl} oder den
+ * Windows-Einstellungen) und fällt ohne Entscheidung des Skripts auf die Systemeinstellungen zurück;
+ * {@link ProxyMode#SYSTEM} übernimmt nur die Proxy-Einstellungen des Betriebssystems (unter Windows der fest
+ * eingetragene Proxy der Internetoptionen) bzw. die JVM-Properties {@code http(s).proxyHost}, wenn sie gesetzt
+ * sind; {@link ProxyMode#NONE} verbindet immer direkt, {@link ProxyMode#MANUAL} nutzt Host und Port aus der
+ * Konfiguration mit Ausnahmen. Loopback-Ziele (der lokale MCP-Endpoint, KeePassRPC) gehen nie über einen Proxy.
+ *
+ * <p>Java liest die Systemeinstellungen nur, wenn {@code java.net.useSystemProxies=true} gesetzt ist, bevor der
+ * Standard-{@link ProxySelector} zum ersten Mal erzeugt wird. Der öffentliche Konstruktor setzt die Property
+ * deshalb für {@link ProxyMode#AUTO} und {@link ProxyMode#SYSTEM}, sofern sie nicht schon gesetzt ist, und
+ * erfasst erst danach den Standard-Selector. Java 8 wertet unter Windows selbst nur feste Proxy-Einträge aus,
+ * keine PAC-Skripte; die übernimmt {@link PacProxyRoutes}.
  *
  * <p>{@link #install()} setzt die Regel als {@link ProxySelector} der JVM; {@link #proxyFor(URI)} liefert sie
  * als {@link Proxy} für Adapter mit eigener Proxy-Einstellung. Keine statischen Felder, der Standard-Selector
@@ -25,17 +34,37 @@ import java.util.Locale;
  */
 public final class ProxyPolicy {
 
+    static final String USE_SYSTEM_PROXIES = "java.net.useSystemProxies";
+
     private final ProxyMode mode;
     private final InetSocketAddress manualAddress;
     private final List<String> nonProxyHosts;
     private final ProxySelector systemSelector;
+    private final PacProxyRoutes pacRoutes;
     private final Selector installed;
 
     public ProxyPolicy(NetworkConfig config) {
-        this(config, ProxySelector.getDefault());
+        this(config, defaultSelectorFor(config), config.proxyMode() == ProxyMode.AUTO ? PacProxyRoutes.from(config) : null);
+    }
+
+    /** Für {@link ProxyMode#AUTO} und {@link ProxyMode#SYSTEM}: Systemeinstellungen einschalten, bevor der Standard-Selector entsteht. */
+    static ProxySelector defaultSelectorFor(NetworkConfig config) {
+        if (config != null && usesSystemSettings(config.proxyMode()) && System.getProperty(USE_SYSTEM_PROXIES) == null) {
+            System.setProperty(USE_SYSTEM_PROXIES, "true");
+        }
+        return ProxySelector.getDefault();
+    }
+
+    private static boolean usesSystemSettings(ProxyMode mode) {
+        return mode == ProxyMode.AUTO || mode == ProxyMode.SYSTEM;
     }
 
     ProxyPolicy(NetworkConfig config, ProxySelector systemSelector) {
+        this(config, systemSelector, config != null && config.proxyMode() == ProxyMode.AUTO
+                ? PacProxyRoutes.from(config) : null);
+    }
+
+    ProxyPolicy(NetworkConfig config, ProxySelector systemSelector, PacProxyRoutes pacRoutes) {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
@@ -45,6 +74,7 @@ public final class ProxyPolicy {
                 : null;
         this.nonProxyHosts = config.nonProxyHosts();
         this.systemSelector = systemSelector;
+        this.pacRoutes = mode == ProxyMode.AUTO ? pacRoutes : null;
         this.installed = new Selector();
     }
 
@@ -59,6 +89,60 @@ public final class ProxyPolicy {
         }
         List<Proxy> proxies = select(target);
         for (Proxy proxy : proxies) {
+            if (proxy != null) {
+                return proxy;
+            }
+        }
+        return Proxy.NO_PROXY;
+    }
+
+    /**
+     * Für das Protokoll: wie ein Ziel geroutet wird und warum (Ausnahme, PAC-Ergebnis, Systemeinstellung). Bei
+     * {@link ProxyMode#AUTO} löst das die erste PAC-Auswertung aus, damit Fehler schon beim Start sichtbar sind.
+     */
+    public String describeRoute(URI target) {
+        if (target == null || target.getHost() == null) {
+            return "direkt (kein Host)";
+        }
+        if (isLoopback(target.getHost())) {
+            return "direkt (Loopback)";
+        }
+        if (isExcluded(target.getHost())) {
+            return "direkt (network.proxy.nonProxyHosts)";
+        }
+        switch (mode) {
+            case NONE:
+                return "direkt (NONE)";
+            case MANUAL:
+                return "PROXY " + manualAddress.getHostString() + ":" + manualAddress.getPort() + " (MANUAL)";
+            case AUTO:
+                String pac = pacRoutes == null ? "kein PAC-Skript" : pacRoutes.describe(target);
+                Proxy decided = pacRoutes == null ? null : pacRoutes.resolve(target);
+                if (decided != null) {
+                    return pac;
+                }
+                return pac + "; Systemeinstellungen: " + describeSystem(target);
+            case SYSTEM:
+            default:
+                return describeSystem(target) + " (SYSTEM)";
+        }
+    }
+
+    private String describeSystem(URI target) {
+        Proxy proxy = systemProxyFor(target);
+        if (proxy.type() == Proxy.Type.DIRECT) {
+            return "direkt";
+        }
+        SocketAddress address = proxy.address();
+        if (address instanceof InetSocketAddress) {
+            InetSocketAddress inet = (InetSocketAddress) address;
+            return proxy.type() + " " + inet.getHostString() + ":" + inet.getPort();
+        }
+        return proxy.type() + " " + address;
+    }
+
+    private Proxy systemProxyFor(URI target) {
+        for (Proxy proxy : systemProxies(target)) {
             if (proxy != null) {
                 return proxy;
             }
@@ -88,14 +172,24 @@ public final class ProxyPolicy {
                 return Collections.singletonList(Proxy.NO_PROXY);
             case MANUAL:
                 return Collections.singletonList(new Proxy(Proxy.Type.HTTP, manualAddress));
+            case AUTO:
+                Proxy decided = pacRoutes == null ? null : pacRoutes.resolve(uri);
+                if (decided != null) {
+                    return Collections.singletonList(decided);
+                }
+                return systemProxies(uri);
             case SYSTEM:
             default:
-                if (systemSelector == null) {
-                    return Collections.singletonList(Proxy.NO_PROXY);
-                }
-                List<Proxy> proxies = systemSelector.select(uri);
-                return proxies == null || proxies.isEmpty() ? Collections.singletonList(Proxy.NO_PROXY) : proxies;
+                return systemProxies(uri);
         }
+    }
+
+    private List<Proxy> systemProxies(URI uri) {
+        if (systemSelector == null) {
+            return Collections.singletonList(Proxy.NO_PROXY);
+        }
+        List<Proxy> proxies = systemSelector.select(uri);
+        return proxies == null || proxies.isEmpty() ? Collections.singletonList(Proxy.NO_PROXY) : proxies;
     }
 
     static boolean isLoopback(String host) {
@@ -145,7 +239,8 @@ public final class ProxyPolicy {
     @Override
     public String toString() {
         return "ProxyPolicy[" + mode + (manualAddress == null ? "" : " " + manualAddress.getHostString() + ":"
-                + manualAddress.getPort()) + (nonProxyHosts.isEmpty() ? "" : " except " + nonProxyHosts) + "]";
+                + manualAddress.getPort()) + (pacRoutes == null ? "" : " " + pacRoutes)
+                + (nonProxyHosts.isEmpty() ? "" : " except " + nonProxyHosts) + "]";
     }
 
     /** Der installierte Selector; delegiert an die Regel, Verbindungsfehler gehen an den System-Selector. */
@@ -158,7 +253,7 @@ public final class ProxyPolicy {
 
         @Override
         public void connectFailed(URI uri, SocketAddress sa, IOException ioe) {
-            if (mode == ProxyMode.SYSTEM && systemSelector != null) {
+            if (usesSystemSettings(mode) && systemSelector != null) {
                 systemSelector.connectFailed(uri, sa, ioe);
             }
         }
