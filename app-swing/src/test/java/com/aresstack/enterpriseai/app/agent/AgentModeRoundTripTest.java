@@ -7,12 +7,12 @@ import com.aresstack.enterpriseai.acp.api.AcpException;
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
 import com.aresstack.enterpriseai.acp.solon.SolonAcpAgentConnector;
 import com.aresstack.enterpriseai.app.chat.ChatServiceBinding;
-import com.aresstack.enterpriseai.app.ui.agent.ModalShellPanel;
 import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModelListener;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
+import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.application.agent.AgentExchange;
 import com.aresstack.enterpriseai.application.agent.AgentService;
@@ -322,7 +322,7 @@ public class AgentModeRoundTripTest {
         final AgentModeAssembly.AgentView agentView;
         final ChatShellModel agentModel;
         final ShellModeModel modes = new ShellModeModel(true);
-        final ModalShellPanel panel;
+        final ChatWorkspacePanel panel;
 
         Shell(ChatConversationId conversation) {
             chatBinding = new ChatServiceBinding(chatService, conversation, chatModel,
@@ -331,7 +331,7 @@ public class AgentModeRoundTripTest {
             agentView = AgentModeAssembly.create(agentService, AgentModeRoundTripTest::runOnEdt,
                     System::currentTimeMillis, comic, bubbles);
             agentModel = agentView.model();
-            panel = new ModalShellPanel(modes, chatShell, agentView.shell(), comic);
+            panel = new ChatWorkspacePanel(modes, chatShell, agentView.shell(), comic);
             panel.setSize(800, 600);
             panel.doLayout();
         }

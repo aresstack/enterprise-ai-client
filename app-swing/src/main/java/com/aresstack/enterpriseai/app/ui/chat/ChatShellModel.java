@@ -170,6 +170,24 @@ public final class ChatShellModel {
         return entry;
     }
 
+    /**
+     * Leert den Verlauf für einen neuen Chat. Nur möglich, wenn keine Antwort läuft (vorher Stop); die
+     * Anbindung eröffnet daneben ihre neue Unterhaltung. Der RAG-Schalter bleibt, wie er ist.
+     */
+    public void clear() {
+        if (streamingEntry != null) {
+            throw new IllegalStateException("cannot clear while an assistant message is streaming");
+        }
+        if (entries.isEmpty()) {
+            return;
+        }
+        entries.clear();
+        for (ChatShellModelListener listener : listeners) {
+            listener.entriesCleared();
+        }
+        fireStateChanged();
+    }
+
     /** Die Antwort ist fehlgeschlagen. {@code message} ist für Menschen bestimmt und enthält keine Secrets. */
     public void failAssistantMessage(String message) {
         finishStreaming(TranscriptEntry.State.FAILED, message == null || message.trim().isEmpty()

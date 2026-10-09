@@ -11,8 +11,8 @@ import java.util.function.LongSupplier;
 
 /**
  * Baut die Agent-Ansicht: eigenes {@link ChatShellModel}, {@link AgentServiceBinding} und eine
- * {@link ChatShellPanel} mit Titel "Agent" ohne RAG-Schalter. Für die Composition Root (AP23) und die Demo;
- * zusammen mit {@code ModalShellPanel} ergibt das die Shell mit Modus-Umschaltung.
+ * {@link ChatShellPanel} ohne RAG-Schalter. Für die Composition Root (AP23) und die Demo; zusammen mit
+ * {@code ChatWorkspacePanel} (Modus-Pille Chat/Agent) ergibt das die Arbeitsfläche.
  */
 public final class AgentModeAssembly {
 
@@ -25,7 +25,6 @@ public final class AgentModeAssembly {
         ChatShellModel model = new ChatShellModel(clock);
         AgentServiceBinding binding = new AgentServiceBinding(agentService, model, uiExecutor);
         ChatShellPanel shell = new ChatShellPanel(model, binding, comicPalette, bubblePalette);
-        shell.titleBar().setTitle("Agent");
         shell.composer().setRagToggleVisible(false);
         return new AgentView(shell, model, binding);
     }

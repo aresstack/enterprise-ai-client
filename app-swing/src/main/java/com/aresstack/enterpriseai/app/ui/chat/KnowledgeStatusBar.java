@@ -1,18 +1,20 @@
 package com.aresstack.enterpriseai.app.ui.chat;
 
-import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
+import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
+import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
-import java.awt.Font;
 
 /**
- * Die schlichte Statuszeile zur Wissensbasis unter dem Verlauf (AP22): ein Text, z. B. der Fortschritt der
- * Indexierung, und ein Abbrechen-Knopf, solange ein Lauf aktiv ist. Folgt ausschließlich dem
- * {@link KnowledgeStatusModel}; ohne Text ist sie unsichtbar und nimmt keinen Platz ein.
+ * Die stille Statuszeile zur Wissensbasis über dem Composer: ein kurzer Text in gedämpfter Schrift, z. B. der
+ * Fortschritt der Indexierung, und ein kleiner Abbrechen-Knopf im Composer-Stil, solange ein Lauf aktiv ist.
+ * Folgt ausschließlich dem {@link KnowledgeStatusModel}; ohne Text ist sie unsichtbar und nimmt keinen Platz.
  */
 public final class KnowledgeStatusBar extends JPanel implements KnowledgeStatusModel.Listener {
 
@@ -21,7 +23,7 @@ public final class KnowledgeStatusBar extends JPanel implements KnowledgeStatusM
 
     private final KnowledgeStatusModel model;
     private final JLabel label = new JLabel();
-    private final ComicButton cancelButton;
+    private final ComposerButton cancelButton;
 
     public KnowledgeStatusBar(KnowledgeStatusModel model, ComicPalette palette) {
         super(new BorderLayout(8, 0));
@@ -29,16 +31,13 @@ public final class KnowledgeStatusBar extends JPanel implements KnowledgeStatusM
             throw new IllegalArgumentException("model and palette must not be null");
         }
         this.model = model;
-        this.cancelButton = new ComicButton(CANCEL_LABEL, null, ComicButton.Accent.CRITICAL, palette);
-        setOpaque(true);
-        setBackground(palette.getSurface());
-        setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(2, 0, 0, 0, palette.getInk()),
-                BorderFactory.createEmptyBorder(4, 12, 4, 10)));
-        label.setForeground(palette.getInk());
-        label.setFont(label.getFont().deriveFont(Font.PLAIN, Math.max(11f, label.getFont().getSize2D() - 1f)));
+        this.cancelButton = new ComposerButton(ComposerIcons.close(), CANCEL_LABEL, false,
+                "Indexierung nach der aktuellen Seite beenden");
+        setOpaque(false);
+        setBorder(BorderFactory.createEmptyBorder(2, 24, 0, 20));
+        label.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+        label.setFont(ResearchUiTypography.regular(12f));
         label.getAccessibleContext().setAccessibleName("Status der Wissensbasis");
-        cancelButton.setToolTipText("Indexierung nach der aktuellen Seite beenden");
         cancelButton.addActionListener(event -> model.requestCancel());
         add(label, BorderLayout.CENTER);
         add(cancelButton, BorderLayout.EAST);
@@ -69,7 +68,7 @@ public final class KnowledgeStatusBar extends JPanel implements KnowledgeStatusM
     }
 
     /** Der Abbrechen-Knopf; sichtbar nur während eines Laufs. */
-    public ComicButton cancelButton() {
+    public ComposerButton cancelButton() {
         return cancelButton;
     }
 }

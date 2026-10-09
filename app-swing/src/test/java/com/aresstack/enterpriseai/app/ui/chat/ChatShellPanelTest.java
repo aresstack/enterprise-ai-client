@@ -164,6 +164,76 @@ public class ChatShellPanelTest {
     }
 
     @Test
+    public void failureDetailsFoldBehindTheHeadlineAndRespectTheBubbleWidth() throws Exception {
+        Edt.run(new Runnable() {
+            @Override
+            public void run() {
+                ChatShellModel model = new ChatShellModel(() -> 0L);
+                ChatShellPanel shell = new ChatShellPanel(model, new RecordingActions(), comic, bubbles);
+                shell.setSize(700, 500);
+                model.addUserMessage("Frage");
+                TranscriptEntry answer = model.beginAssistantMessage();
+                model.failAssistantMessage("Der KI-Dienst ist nicht erreichbar.\n"
+                        + "Technische Ursache: connection to demo2.example failed: UnknownHostException\n"
+                        + "Hinweis: Proxy-Modus in den Einstellungen prüfen (AUTO/MANUAL).");
+
+                SpeechBubblePanel bubble = shell.transcript().bubbleFor(answer.getId());
+                assertEquals("nur die Überschrift steht in der Blase", "Der KI-Dienst ist nicht erreichbar.",
+                        bubble.getText());
+                assertTrue(bubble.hasDetails());
+                assertFalse("Details beginnen eingeklappt", bubble.isDetailsExpanded());
+                assertTrue(bubble.getDetails().startsWith("Technische Ursache: "));
+                assertTrue(bubble.getDetails().contains("Hinweis: Proxy-Modus"));
+                assertEquals(ChatTranscriptPanel.SHOW_DETAILS_LABEL + " \u25be", bubble.detailsToggle().getText());
+
+                shell.doLayout();
+                layoutTree(shell);
+                int folded = bubble.getHeight();
+                int limit = (int) Math.round(shell.transcript().getWidth() * 0.92);
+                assertTrue("Blase bleibt innerhalb der üblichen Breite", bubble.getWidth() <= limit);
+
+                bubble.detailsToggle().doClick();
+                assertTrue(bubble.isDetailsExpanded());
+                assertEquals(ChatTranscriptPanel.HIDE_DETAILS_LABEL + " \u25b4", bubble.detailsToggle().getText());
+                layoutTree(shell);
+                assertTrue("aufgeklappt wächst die Blase nach unten", bubble.getHeight() > folded);
+                assertTrue(bubble.getWidth() <= limit);
+                paint(shell);
+            }
+        });
+    }
+
+    @Test
+    public void clearEmptiesTheTranscriptButRefusesWhileStreaming() throws Exception {
+        Edt.run(new Runnable() {
+            @Override
+            public void run() {
+                ChatShellModel model = new ChatShellModel(() -> 0L);
+                ChatShellPanel shell = new ChatShellPanel(model, new RecordingActions(), comic, bubbles);
+                model.addUserMessage("Frage");
+                TranscriptEntry answer = model.beginAssistantMessage();
+                try {
+                    model.clear();
+                    throw new AssertionError("während einer Antwort darf nicht geleert werden");
+                } catch (IllegalStateException expected) {
+                    // erwartet
+                }
+                model.completeAssistantMessage();
+                assertNotNull(shell.transcript().bubbleFor(answer.getId()));
+
+                model.clear();
+                assertTrue(model.getEntries().isEmpty());
+                assertEquals(null, shell.transcript().bubbleFor(answer.getId()));
+                assertEquals(0, countRows(shell));
+
+                model.addUserMessage("Neue Frage");
+                assertEquals(1, model.getEntries().size());
+                assertNotNull(shell.transcript().bubbleFor(model.getEntries().get(0).getId()));
+            }
+        });
+    }
+
+    @Test
     public void transcriptShowsEntriesThatExistedBeforeTheView() throws Exception {
         Edt.run(new Runnable() {
             @Override
@@ -341,6 +411,16 @@ public class ChatShellPanelTest {
             component.paint(g2);
         } finally {
             g2.dispose();
+        }
+    }
+
+    private static void layoutTree(java.awt.Component component) {
+        component.invalidate();
+        component.doLayout();
+        if (component instanceof java.awt.Container) {
+            for (java.awt.Component child : ((java.awt.Container) component).getComponents()) {
+                layoutTree(child);
+            }
         }
     }
 }

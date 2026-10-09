@@ -91,6 +91,9 @@ ausführliche Fassung.
 | Teil | Quelle | Geändert |
 |---|---|---|
 | Comic-Komponenten (`comic-controls`) | askai-java8 | ohne flexmark (Markdown-Rendering entfällt), keine Abhängigkeiten |
+| Research-Tokens und Pillen (`ResearchUiPalette`, `ResearchUiMetrics`, `ResearchUiPainter`, `ResearchUiTypography`, `ResearchIconButton`, `ResearchPillButton`, `ResearchPillDropdown`), `ComicSplitPane`, `ComicSearchBar`, `ComicHoverMenu`, `ComicOverlayPanel`, `StrokeIcon`/`ComposerIcons`, `ComposerButton`/`ComposerToggleButton` | askai-java8 Zweig `arch` (`comic-controls`, `askai-app` `ui`) | Paket `ui.comic.*`; Typografie-Cache als Holder (keine veränderlichen statischen Felder); `ComicSearchBar` ohne statische Höhe; Pfeil-Logik der Reiterleiste ohne Flackern am Ende |
+| Fenster-✕, Ziehen, Vergrößern (`ComicWindowCloseButton`, `ComicWindowDragger`, `ComicWindowResizer`) | askai-java8 `arch` `ComicOverlayPanel.CloseButton`, `AskAiFrame` | Malerei des ✕ einmal in `ComicWindowCloseButton`; `CloseButton` erbt davon |
+| Arbeitsfläche, Drawer, Composer (`ChatWorkspacePanel`, `ChatSidebarPanel`, `SidebarTabRibbon`, `ChatHistoryRow`, `ChatComposerPanel`) | askai-java8 `arch` `ChatWorkspacePanel`, `ChatSidebarPanel`, `SidebarTabRibbon`, `ChatComposerPanel` | ohne Sessions-Liste und Plugins: Modus-Pille Chat/Agent statt Chat-Tabs, Drawer-Seiten Chats und Wissensquellen, Composer mit RAG-Pille und Senden/Stop |
 | `ChatShellModel` ohne Swing, `ChatServiceBinding` | neu | Streaming-Deltas gebündelt (ein UI-Update je 30 ms, AP22) |
 | Agent-Session-Anbindung, MCP-Endpoint je Agentenprozess | askai-java8 `AcpResearchSessionBackend` (dort `ASKAI_*`-Umgebung) | `ENTERPRISE_AI_MCP_*`, Token nur in der Composition Root |
 | Properties-Konfiguration im Benutzerverzeichnis, Pfad-Override, unveränderliche Snapshots, Proxy-Modi | askai-java8 `AppConfigurationRepository`, `AskAiPaths`, `ProxyConfiguration` | Schlüsselnamen neu, keine Secrets in der Datei |

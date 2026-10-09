@@ -5,10 +5,12 @@ import com.aresstack.enterpriseai.app.chat.fakeapi.FakeEmbeddingsServer;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
-import com.aresstack.enterpriseai.app.ui.chat.ChatWindow;
 import com.aresstack.enterpriseai.app.ui.chat.KnowledgeStatusModel;
 import com.aresstack.enterpriseai.app.ui.chat.SourceListPanel;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
+import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
+import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
@@ -97,7 +99,8 @@ public final class RagShellDemo {
                 ComicPalette palette = ComicPalette.defaultPalette();
                 ComicTheme.installMenuDefaults(palette);
                 Shell shell = new Shell(backend, palette, BubblePalette.windowsPhoneInspired());
-                JFrame frame = ChatWindow.create("Enterprise AI Client – RAG-Demo", shell.panel, palette);
+                JFrame frame = ShellFrame.create("Enterprise AI Client – RAG-Demo",
+                        new ChatWorkspacePanel(new ShellModeModel(false), shell.panel, null, palette), palette);
                 frame.addWindowListener(new WindowAdapter() {
                     @Override
                     public void windowClosed(WindowEvent event) {
@@ -112,7 +115,8 @@ public final class RagShellDemo {
 
     /**
      * Ohne Fenster (headless) wird die Shell auf 820×640 gelegt und per rekursivem {@code doLayout} gesetzt;
-     * mit Display (z. B. Xvfb) erscheint das echte {@link ChatWindow} und der Fensterinhalt wird gemalt.
+     * mit Display (z. B. Xvfb) erscheint das echte rahmenlose Fenster ({@link ShellFrame}) und der Fensterinhalt
+     * wird gemalt.
      */
     private static void screenshot(final Backend backend, File target) throws Exception {
         final boolean headless = GraphicsEnvironment.isHeadless();
@@ -132,8 +136,9 @@ public final class RagShellDemo {
                 if (headless) {
                     shell.panel.setSize(820, 640);
                 } else {
-                    frame[0] = ChatWindow.create("Enterprise AI Client – RAG-Demo", shell.panel,
-                            ComicPalette.defaultPalette());
+                    ComicPalette palette = ComicPalette.defaultPalette();
+                    frame[0] = ShellFrame.create("Enterprise AI Client – RAG-Demo",
+                            new ChatWorkspacePanel(new ShellModeModel(false), shell.panel, null, palette), palette);
                     frame[0].setSize(840, 700);
                     frame[0].setLocation(0, 0);
                     frame[0].setVisible(true);

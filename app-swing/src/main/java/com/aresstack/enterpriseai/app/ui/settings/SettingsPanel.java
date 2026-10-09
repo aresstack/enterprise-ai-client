@@ -1,11 +1,12 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
-import com.aresstack.enterpriseai.app.ui.chat.ChatTitleBar;
-import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSectionPanel;
-import com.aresstack.enterpriseai.ui.comic.control.ComicToggleButton;
+import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
+import com.aresstack.enterpriseai.ui.comic.control.ComposerToggleButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
@@ -34,10 +35,10 @@ import java.util.function.Supplier;
  *
  * <pre>
  * ┌──────────────────────────────────────────┐
- * │ Einstellungen                             │  ChatTitleBar (Comic-Impact-Platte)
+ * │ Einstellungen                          ✕  │  stille Überschrift; rechts Platz für das Fenster-✕
  * │ Hinweis zum Erststart bzw. zum Neustart   │
  * ├──────────────────────────────────────────┤
- * │ [KI-Dienst] [Wissensbasis] [KeePass] [..] │  ComicToggleButtons wie die Modus-Reiter
+ * │ [KI-Dienst] Wissensbasis  KeePass  …      │  Pillen wie die Reiterleiste des Drawers
  * ├──────────────────────────────────────────┤
  * │ Platten mit Formularzeilen (scrollbar)    │  CardLayout, je Reiter eine Karte
  * ├──────────────────────────────────────────┤
@@ -86,13 +87,15 @@ public final class SettingsPanel extends JPanel {
     private final KnowledgeTab knowledgeTab;
     private final SecurityTab securityTab;
     private final SystemTab systemTab;
-    private final List<ComicToggleButton> tabButtons = new ArrayList<ComicToggleButton>();
+    private final List<ComposerToggleButton> tabButtons = new ArrayList<ComposerToggleButton>();
+    private final JPanel header = new JPanel(new BorderLayout(8, 0));
+    private final JPanel windowControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
     private final CardLayout cards = new CardLayout();
     private final JPanel deck = new JPanel(cards);
     private final ComicSectionPanel problemsPlate;
     private final JTextArea problemsText = new JTextArea();
-    private final ComicButton saveButton;
-    private final ComicButton cancelButton;
+    private final ComposerButton saveButton;
+    private final ComposerButton cancelButton;
     private Consumer<SettingsForm> onSaved;
     private Runnable onCancel;
 
@@ -116,9 +119,10 @@ public final class SettingsPanel extends JPanel {
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
         this.problemsPlate = new ComicSectionPanel(palette);
-        this.saveButton = new ComicButton(SAVE_LABEL, null, ComicButton.Accent.ACTION, palette);
-        this.cancelButton = new ComicButton(mode == Mode.FIRST_START ? QUIT_LABEL : CANCEL_LABEL, null,
-                ComicButton.Accent.CRITICAL, palette);
+        this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
+        this.cancelButton = mode == Mode.FIRST_START
+                ? ComposerButton.primary(null, QUIT_LABEL, ResearchUiPalette.DANGER_RED, null)
+                : new ComposerButton(null, CANCEL_LABEL, false);
         setBackground(palette.getSurface());
         setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
         buildUi();
@@ -130,25 +134,34 @@ public final class SettingsPanel extends JPanel {
     private void buildUi() {
         JPanel north = new JPanel(new BorderLayout(0, 6));
         north.setOpaque(false);
-        north.add(new ChatTitleBar(TITLE, palette), BorderLayout.NORTH);
+        header.setOpaque(false);
+        header.setBorder(BorderFactory.createEmptyBorder(6, 14, 0, 8));
+        JLabel title = new JLabel(TITLE);
+        title.setFont(ResearchUiTypography.semiBold(15f));
+        title.setForeground(palette.getInk());
+        header.add(title, BorderLayout.CENTER);
+        windowControls.setOpaque(false);
+        header.add(windowControls, BorderLayout.EAST);
+        north.add(header, BorderLayout.NORTH);
         JPanel note = new JPanel(new GridLayout(0, 1, 0, 2));
         note.setOpaque(false);
-        note.setBorder(BorderFactory.createEmptyBorder(4, 14, 0, 14));
+        note.setBorder(BorderFactory.createEmptyBorder(2, 14, 0, 14));
         for (String line : (mode == Mode.FIRST_START ? FIRST_START_NOTE : EDIT_NOTE).split("\n")) {
             JLabel label = new JLabel(line);
-            label.setForeground(palette.getInk());
-            label.setFont(label.getFont().deriveFont(Font.PLAIN));
+            label.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+            label.setFont(ResearchUiTypography.regular(12f));
             note.add(label);
         }
         north.add(note, BorderLayout.CENTER);
-        JPanel tabs = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel tabs = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         tabs.setOpaque(false);
-        tabs.setBorder(BorderFactory.createEmptyBorder(6, 12, 0, 12));
+        tabs.setBorder(BorderFactory.createEmptyBorder(8, 12, 0, 12));
         ButtonGroup group = new ButtonGroup();
         JPanel[] pages = {serviceTab.panel(), knowledgeTab.panel(), securityTab.panel(), systemTab.panel()};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
-            ComicToggleButton button = new ComicToggleButton(name, palette);
+            ComposerToggleButton button = new ComposerToggleButton(null, name, null);
+            button.setAccent(ResearchUiPalette.SECONDARY_SURFACE);
             button.getAccessibleContext().setAccessibleName("Reiter " + name);
             button.addActionListener(new ActionListener() {
                 @Override
@@ -315,7 +328,7 @@ public final class SettingsPanel extends JPanel {
     }
 
     public void selectTab(int index) {
-        ComicToggleButton button = tabButtons.get(index);
+        ComposerToggleButton button = tabButtons.get(index);
         button.setSelected(true);
         cards.show(deck, TAB_LABELS[index]);
     }
@@ -334,12 +347,27 @@ public final class SettingsPanel extends JPanel {
         return mode;
     }
 
-    public ComicButton saveButton() {
+    public ComposerButton saveButton() {
         return saveButton;
     }
 
-    public ComicButton cancelButton() {
+    public ComposerButton cancelButton() {
         return cancelButton;
+    }
+
+    /** Die Überschrift-Zeile — im rahmenlosen Dialog zugleich die Zieh-Fläche. */
+    public JComponent header() {
+        return header;
+    }
+
+    /** Die Fensterknöpfe (das ✕) rechts in der Überschrift; {@code null} entfernt sie. */
+    public void setWindowControls(JComponent controls) {
+        windowControls.removeAll();
+        if (controls != null) {
+            windowControls.add(controls);
+        }
+        windowControls.revalidate();
+        windowControls.repaint();
     }
 
     /** Der angezeigte Problemtext (leer, wenn die Platte unsichtbar ist). */
@@ -347,7 +375,7 @@ public final class SettingsPanel extends JPanel {
         return problemsPlate.isVisible() ? problemsText.getText() : "";
     }
 
-    ComicToggleButton tabButton(int index) {
+    ComposerToggleButton tabButton(int index) {
         return tabButtons.get(index);
     }
 

@@ -136,7 +136,7 @@ public class ApplicationCompositionTest {
             }
         });
         assertNull("ohne Agent-Konfiguration keine Agent-Ansicht", view.get().agent());
-        assertFalse(view.get().modalShell().chatShell() == null);
+        assertFalse(view.get().workspace().chatShell() == null);
         TranscriptEntry answer = awaitAnswer(view.get());
         assertEquals("Hallo aus dem Fake.", answer.getText());
         assertEquals("Antworte kurz.", chatPort.lastRequest().messages().get(0).content());
@@ -191,7 +191,7 @@ public class ApplicationCompositionTest {
             }
         });
         assertNotNull(view.get().agent());
-        assertNotNull(view.get().modalShell().agentShell());
+        assertNotNull(view.get().workspace().agentShell());
     }
 
     @Test
