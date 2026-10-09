@@ -42,17 +42,58 @@ public final class ProxyPolicy {
     private final ProxySelector systemSelector;
     private final PacProxyRoutes pacRoutes;
     private final Selector installed;
+    private final boolean systemSettingsDeferred;
 
     public ProxyPolicy(NetworkConfig config) {
-        this(config, defaultSelectorFor(config), config.proxyMode() == ProxyMode.AUTO ? PacProxyRoutes.from(config) : null);
+        this(config, Jvm.capture(config));
     }
 
-    /** Für {@link ProxyMode#AUTO} und {@link ProxyMode#SYSTEM}: Systemeinstellungen einschalten, bevor der Standard-Selector entsteht. */
+    private ProxyPolicy(NetworkConfig config, Jvm jvm) {
+        this(config, jvm.systemSelector, config.proxyMode() == ProxyMode.AUTO ? PacProxyRoutes.from(config) : null,
+                jvm.systemSettingsDeferred);
+    }
+
+    /**
+     * Für {@link ProxyMode#AUTO} und {@link ProxyMode#SYSTEM}: Systemeinstellungen einschalten, bevor der
+     * Standard-Selector entsteht. Ist schon eine Regel installiert (laufende Anwendung, etwa beim Verbindungstest
+     * des Einstellungen-Dialogs), zählt der Selector darunter, damit eine neue Regel die Systemeinstellungen fragt
+     * und nicht die laufende Regel.
+     */
     static ProxySelector defaultSelectorFor(NetworkConfig config) {
         if (config != null && usesSystemSettings(config.proxyMode()) && System.getProperty(USE_SYSTEM_PROXIES) == null) {
             System.setProperty(USE_SYSTEM_PROXIES, "true");
         }
-        return ProxySelector.getDefault();
+        return beneathInstalledRules(ProxySelector.getDefault());
+    }
+
+    static ProxySelector beneathInstalledRules(ProxySelector current) {
+        ProxySelector selector = current;
+        while (selector instanceof Selector) {
+            selector = ((Selector) selector).system();
+        }
+        return selector;
+    }
+
+    /**
+     * Was die JVM beim Erzeugen hergibt. {@code java.net.useSystemProxies} liest der Standard-Selector nur bei seiner
+     * Initialisierung; entsteht eine Regel mit Systemeinstellungen erst, wenn schon eine andere installiert ist und
+     * die Eigenschaft bis dahin fehlte, gelten die Systemeinstellungen erst nach einem Neustart.
+     */
+    private static final class Jvm {
+        final ProxySelector systemSelector;
+        final boolean systemSettingsDeferred;
+
+        private Jvm(ProxySelector systemSelector, boolean systemSettingsDeferred) {
+            this.systemSelector = systemSelector;
+            this.systemSettingsDeferred = systemSettingsDeferred;
+        }
+
+        static Jvm capture(NetworkConfig config) {
+            boolean deferred = config != null && usesSystemSettings(config.proxyMode())
+                    && System.getProperty(USE_SYSTEM_PROXIES) == null
+                    && ProxySelector.getDefault() instanceof Selector;
+            return new Jvm(defaultSelectorFor(config), deferred);
+        }
     }
 
     private static boolean usesSystemSettings(ProxyMode mode) {
@@ -65,6 +106,11 @@ public final class ProxyPolicy {
     }
 
     ProxyPolicy(NetworkConfig config, ProxySelector systemSelector, PacProxyRoutes pacRoutes) {
+        this(config, systemSelector, pacRoutes, false);
+    }
+
+    private ProxyPolicy(NetworkConfig config, ProxySelector systemSelector, PacProxyRoutes pacRoutes,
+                        boolean systemSettingsDeferred) {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
@@ -76,10 +122,19 @@ public final class ProxyPolicy {
         this.systemSelector = systemSelector;
         this.pacRoutes = mode == ProxyMode.AUTO ? pacRoutes : null;
         this.installed = new Selector();
+        this.systemSettingsDeferred = systemSettingsDeferred;
     }
 
     public ProxyMode mode() {
         return mode;
+    }
+
+    /**
+     * {@code true}, wenn diese Regel Systemeinstellungen nutzen soll, die laufende JVM sie aber erst nach einem
+     * Neustart liest (sie wurde ohne AUTO/SYSTEM gestartet); {@link #describeRoute} sagt das dazu.
+     */
+    public boolean systemSettingsDeferred() {
+        return systemSettingsDeferred;
     }
 
     /** Der Proxy für ein Ziel oder {@link Proxy#NO_PROXY}. Nie {@code null}. */
@@ -130,15 +185,19 @@ public final class ProxyPolicy {
 
     private String describeSystem(URI target) {
         Proxy proxy = systemProxyFor(target);
+        String text;
         if (proxy.type() == Proxy.Type.DIRECT) {
-            return "direkt";
+            text = "direkt";
+        } else if (proxy.address() instanceof InetSocketAddress) {
+            InetSocketAddress inet = (InetSocketAddress) proxy.address();
+            text = proxy.type() + " " + inet.getHostString() + ":" + inet.getPort();
+        } else {
+            text = proxy.type() + " " + proxy.address();
         }
-        SocketAddress address = proxy.address();
-        if (address instanceof InetSocketAddress) {
-            InetSocketAddress inet = (InetSocketAddress) address;
-            return proxy.type() + " " + inet.getHostString() + ":" + inet.getPort();
+        if (systemSettingsDeferred) {
+            text += " [Systemeinstellungen liest diese laufende Anwendung erst nach einem Neustart]";
         }
-        return proxy.type() + " " + address;
+        return text;
     }
 
     private Proxy systemProxyFor(URI target) {
@@ -245,6 +304,11 @@ public final class ProxyPolicy {
 
     /** Der installierte Selector; delegiert an die Regel, Verbindungsfehler gehen an den System-Selector. */
     private final class Selector extends ProxySelector {
+
+        /** Der Selector, den diese Regel beim Erzeugen vorfand (Systemeinstellungen). */
+        ProxySelector system() {
+            return systemSelector;
+        }
 
         @Override
         public List<Proxy> select(URI uri) {

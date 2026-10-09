@@ -109,7 +109,12 @@ public final class ConnectionProbe {
             proxy = policy.proxyFor(target);
             String route = policy.describeRoute(target);
             String detail = "Ziel " + target + ": " + route;
-            if (undecided(policy, route)) {
+            boolean undecided = undecided(policy, route);
+            if (policy.systemSettingsDeferred() && (undecided || policy.mode() == ProxyMode.SYSTEM)) {
+                report(onStep, ConnectionCheckStep.warning(STEP_ROUTE, detail + ". Die Proxy-Einstellungen des "
+                        + "Systems liest diese laufende Anwendung erst nach einem Neustart (sie wurde ohne AUTO/SYSTEM "
+                        + "gestartet); der Test kann sie jetzt nicht prüfen. Speichern, neu starten und erneut prüfen."));
+            } else if (undecided) {
                 report(onStep, ConnectionCheckStep.warning(STEP_ROUTE, detail + ". Das PAC-Skript lieferte kein "
                         + "Ergebnis, es gelten die Systemeinstellungen. Hinter einem Firmen-Proxy: PAC-Adresse "
                         + "eintragen, PAC-Ermittlung POWERSHELL versuchen oder den Proxy mit MANUAL setzen."));

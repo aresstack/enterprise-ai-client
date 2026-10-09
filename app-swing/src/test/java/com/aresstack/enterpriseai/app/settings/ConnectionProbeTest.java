@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.app.settings;
 
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
+import com.aresstack.enterpriseai.app.net.ProxyPolicy;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep.Status;
 import com.sun.net.httpserver.HttpExchange;
@@ -289,6 +290,32 @@ public class ConnectionProbeTest {
         assertTrue(steps.get(1).detail(), steps.get(1).detail().contains("host.invalid löst der Proxy auf"));
         assertStatus(Status.FAILED, last(steps));
         assertTrue(last(steps).detail(), last(steps).detail().contains("Hinweis:"));
+    }
+
+    @Test
+    public void aDraftWithSystemSettingsInARunningApplicationWarnsThatTheyApplyAfterARestart() {
+        String before = System.getProperty("java.net.useSystemProxies");
+        Properties startup = properties("https://host.invalid/v1", false, true);
+        ProxyPolicy running = new ProxyPolicy(config(startup).network());
+        running.install();
+        try {
+            System.clearProperty("java.net.useSystemProxies");
+            Properties draft = properties("https://host.invalid/v1", false, true);
+            draft.setProperty("network.proxy.mode", "SYSTEM");
+            List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(draft), token(null)), false);
+            assertStatus(Status.WARNING, steps.get(0));
+            assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("(SYSTEM)"));
+            assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("Neustart"));
+            // Wie es weitergeht, hängt vom System-Selector der Test-JVM ab (direkt oder ein Proxy aus den
+            // JVM-Eigenschaften); host.invalid bleibt in jedem Fall unerreichbar.
+        } finally {
+            running.uninstall();
+            if (before == null) {
+                System.clearProperty("java.net.useSystemProxies");
+            } else {
+                System.setProperty("java.net.useSystemProxies", before);
+            }
+        }
     }
 
     @Test
