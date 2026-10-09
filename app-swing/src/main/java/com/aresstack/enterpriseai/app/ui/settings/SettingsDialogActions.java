@@ -6,9 +6,10 @@ import java.util.function.Consumer;
 
 /**
  * Was der Einstellungen-Dialog von außen braucht: Prüfen und Speichern des Formulars sowie die Probe des
- * KeePass-Eintrags. Die Oberfläche kennt weder Datei noch Adapter; produktiv verdrahtet
- * {@code app.settings.FileSettingsActions} die Konfigurationsdatei und {@code app.composition} den KeePass-Test.
- * Alle Methoden werden auf dem EDT gerufen; {@link #checkSecret} darf blockieren und liefert deshalb asynchron.
+ * KeePass-Eintrags und den Verbindungstest gegen den KI-Dienst. Die Oberfläche kennt weder Datei noch Adapter;
+ * produktiv verdrahtet {@code app.settings.FileSettingsActions} die Konfigurationsdatei und
+ * {@code app.composition} KeePass-Probe und Verbindungstest. Alle Methoden werden auf dem EDT gerufen;
+ * {@link #checkSecret} und {@link #checkConnection} dürfen blockieren und liefern deshalb asynchron.
  */
 public interface SettingsDialogActions {
 
@@ -23,4 +24,16 @@ public interface SettingsDialogActions {
      * erreichbar ist; stößt bei Bedarf das Pairing an. Das Ergebnis kommt später auf dem EDT.
      */
     void checkSecret(SettingsForm form, String secretRef, Consumer<SecretCheckResult> onResult);
+
+    /**
+     * Prüft mit dem Entwurf Schritt für Schritt den Weg zum KI-Dienst (Proxy-Route, Namensauflösung, API-Key aus
+     * KeePass, TLS, {@code GET /models}) und meldet jeden Schritt, sobald er feststeht, danach genau einmal
+     * {@link ConnectionCheckListener#onFinished}; alles auf dem EDT. Ohne Verdrahtung meldet die Vorgabe, dass der
+     * Test hier nicht verfügbar ist.
+     */
+    default void checkConnection(SettingsForm form, ConnectionCheckListener listener) {
+        listener.onStep(ConnectionCheckStep.failed("Verbindungstest",
+                "In dieser Umgebung nicht verfügbar."));
+        listener.onFinished(false);
+    }
 }

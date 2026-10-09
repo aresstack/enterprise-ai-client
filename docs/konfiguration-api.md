@@ -154,6 +154,12 @@ Der vollständige Stacktrace steht in der Protokolldatei `<Anwendungsverzeichnis
 Betriebssystem, die geladene Konfiguration (ohne Secrets), die Vertrauensquellen, die Proxy-Regel und die
 Zeile `Route zum KI-Dienst <host>: …` mit dem Proxy-Ergebnis für `chat.baseUrl`.
 
+Schneller als die Protokolldatei ist der Knopf **„Verbindung zum KI-Dienst prüfen“** im Einstellungen-Dialog
+(Reiter „Netzwerk & Agent“, [Einrichtung](einrichtung.md#einstellungen-dialog)): Er geht mit dem aktuellen Entwurf
+Proxy-Route, Namensauflösung, API-Key aus KeePass, TLS-Handshake und `GET /models` Schritt für Schritt durch und
+zeigt beim ersten roten Schritt dieselbe technische Ursache und denselben Hinweis wie die Tabelle unten, ohne dass
+man die Datei speichern oder die Anwendung neu starten muss.
+
 | Technische Ursache (Auszug) | Bedeutung | Abhilfe |
 |---|---|---|
 | `SSLHandshakeException … PKIX path building failed … unable to find valid certification path` | Java vertraut dem Serverzertifikat nicht. Java bringt einen eigenen Truststore mit und nutzt den des Betriebssystems nicht von selbst; PowerShell, Browser und `curl` auf demselben Rechner funktionieren deshalb trotzdem. Typisch: Firmen-Proxy mit TLS-Inspektion oder interne CA; ein Java 8 vor Update 141 kennt außerdem die Let's-Encrypt-Wurzel (ISRG Root X1) nicht. | Unter Windows `network.tls.useWindowsCertificateStore=true` lassen (Standard) und die App neu starten. Sonst die ausstellende CA als PEM exportieren und `network.tls.caCertificatesFile` setzen. Altes Java aktualisieren (`java -version`). |

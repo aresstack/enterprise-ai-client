@@ -315,10 +315,11 @@ ProxyPolicy (JVM-ProxySelector)
   `app.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `app.ui.settings` (Einstellungen-Dialog,
   reine Oberfläche über dem Formular `SettingsForm` und dem Vertrag `SettingsDialogActions`), `app.settings`
   (`ConfigurationFile`, `SettingsMapper`, `FileSettingsActions`, `ConfigurationStartup`, `ConfigurationCheck`:
-  Dialog ↔ Datei ↔ `AppConfigLoader`), `app.knowledge` (`StartupIndexing`), `app.composition`
+  Dialog ↔ Datei ↔ `AppConfigLoader`; `ConnectionProbe` und `ConnectionChecker`: der Verbindungstest des Dialogs
+  über `app.net`), `app.knowledge` (`StartupIndexing`), `app.composition`
   (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`, `ShutdownSequence`,
   `StartupNotices`, `LoggingKnowledgeSource` als Protokollhülle um jede Wissensquelle, `SettingsAssembly`,
-  `KeePassSecretChecker`).
+  `KeePassSecretChecker`, `ServiceConnectionChecker`).
 - **Konfiguration**: eine Properties-Datei im Benutzerverzeichnis (`~/.enterprise-ai-client/` bzw.
   `%APPDATA%`, überschreibbar mit `-Denterpriseai.home` und `-Denterpriseai.config`), eingebaute Defaults
   (AP10-Retrieval/Kontext, Adapter-Timeouts), Fehlermeldungen nennen Schlüssel und Erwartung, nie den Wert;

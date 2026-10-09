@@ -4,6 +4,8 @@ import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
+import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
@@ -21,13 +23,17 @@ import java.util.function.Consumer;
  * {@link SettingsDialogActions} über der Konfigurationsdatei: Prüfen heißt, die Datei mit dem Entwurf zu
  * verschmelzen, durch den {@link AppConfigLoader} zu schicken und die {@link ConfigurationCheck} des Starts
  * laufen zu lassen (dieselben Regeln wie beim Start, Meldungen mit Feldnamen); Speichern schreibt nur die
- * verwalteten Schlüssel. Die KeePass-Probe läuft auf dem Arbeits-Executor,
- * ihr Ergebnis kommt über den UI-Executor zurück.
+ * verwalteten Schlüssel. KeePass-Probe und Verbindungstest laufen auf dem Arbeits-Executor,
+ * ihre Ergebnisse kommen über den UI-Executor zurück.
  */
 public final class FileSettingsActions implements SettingsDialogActions {
 
+    static final String STEP_CONFIGURATION = "Konfiguration";
+    static final String STEP_TEST = "Verbindungstest";
+
     private final ConfigurationFile file;
     private final SecretChecker secretChecker;
+    private final ConnectionChecker connectionChecker;
     private final ConfigurationCheck check;
     private final Executor worker;
     private final Executor ui;
@@ -37,19 +43,29 @@ public final class FileSettingsActions implements SettingsDialogActions {
         this(file, secretChecker, ConfigurationCheck.none(), worker, ui);
     }
 
-    /**
-     * @param secretChecker die KeePass-Probe oder {@code null}, wenn keine möglich ist (Prüfen meldet das)
-     * @param check         zusätzliche Prüfung des Starts (z. B. TLS-Vertrauensregel), läuft bei Prüfen und Speichern
-     * @param worker        führt die Probe aus (nie der EDT)
-     * @param ui            liefert das Ergebnis der Probe ab (produktiv {@code SwingUtilities::invokeLater})
-     */
+    /** Wie der vollständige Konstruktor, ohne Verbindungstest (der Knopf meldet, dass er nicht verfügbar ist). */
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, ConfigurationCheck check,
+                               Executor worker, Executor ui) {
+        this(file, secretChecker, null, check, worker, ui);
+    }
+
+    /**
+     * @param secretChecker     die KeePass-Probe oder {@code null}, wenn keine möglich ist (Prüfen meldet das)
+     * @param connectionChecker der Verbindungstest oder {@code null}, wenn keiner möglich ist (der Knopf meldet das)
+     * @param check             zusätzliche Prüfung des Starts (z. B. TLS-Vertrauensregel), läuft bei Prüfen und
+     *                          Speichern
+     * @param worker            führt Probe und Verbindungstest aus (nie der EDT)
+     * @param ui                liefert die Ergebnisse ab (produktiv {@code SwingUtilities::invokeLater})
+     */
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
+                               ConnectionChecker connectionChecker, ConfigurationCheck check,
                                Executor worker, Executor ui) {
         if (file == null || check == null || worker == null || ui == null) {
             throw new IllegalArgumentException("file, check, worker and ui must not be null");
         }
         this.file = file;
         this.secretChecker = secretChecker;
+        this.connectionChecker = connectionChecker;
         this.check = check;
         this.worker = worker;
         this.ui = ui;
@@ -158,5 +174,94 @@ public final class FileSettingsActions implements SettingsDialogActions {
         } catch (RuntimeException rejected) {
             onResult.accept(SecretCheckResult.failed("Prüfung konnte nicht gestartet werden."));
         }
+    }
+
+    /**
+     * Der Entwurf geht durch den Loader (ein ungültiger Entwurf endet hier mit einem Schritt „Konfiguration“); mit
+     * der geladenen Konfiguration läuft der {@link ConnectionChecker} auf dem Arbeits-Executor, jeder Schritt und
+     * das Ende kommen über den UI-Executor.
+     */
+    @Override
+    public void checkConnection(SettingsForm form, final ConnectionCheckListener listener) {
+        if (form == null || listener == null) {
+            throw new IllegalArgumentException("form and listener must not be null");
+        }
+        final AppConfig config;
+        try {
+            config = AppConfigLoader.fromProperties(SettingsMapper.merge(current(), form));
+        } catch (AppConfigException e) {
+            finish(listener, ConnectionCheckStep.failed(STEP_CONFIGURATION, "Der Entwurf ist ungültig: "
+                    + join(SettingsMapper.describe(e.problems()))));
+            return;
+        } catch (IOException e) {
+            finish(listener, ConnectionCheckStep.failed(STEP_CONFIGURATION, "Konfigurationsdatei nicht lesbar ("
+                    + e.getClass().getSimpleName() + ")."));
+            return;
+        } catch (RuntimeException e) {
+            finish(listener, ConnectionCheckStep.failed(STEP_CONFIGURATION, "Der Entwurf ist ungültig ("
+                    + e.getClass().getSimpleName() + ")."));
+            return;
+        }
+        if (connectionChecker == null) {
+            finish(listener, ConnectionCheckStep.failed(STEP_TEST,
+                    "Der Verbindungstest ist in dieser Umgebung nicht verfügbar."));
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    boolean success;
+                    try {
+                        success = connectionChecker.check(config, new Consumer<ConnectionCheckStep>() {
+                            @Override
+                            public void accept(final ConnectionCheckStep step) {
+                                ui.execute(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        listener.onStep(step);
+                                    }
+                                });
+                            }
+                        });
+                    } catch (RuntimeException e) {
+                        final ConnectionCheckStep aborted = ConnectionCheckStep.failed(STEP_TEST,
+                                "Abgebrochen: " + e.getClass().getSimpleName());
+                        ui.execute(new Runnable() {
+                            @Override
+                            public void run() {
+                                listener.onStep(aborted);
+                            }
+                        });
+                        success = false;
+                    }
+                    final boolean delivered = success;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            listener.onFinished(delivered);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            finish(listener, ConnectionCheckStep.failed(STEP_TEST, "Der Verbindungstest konnte nicht gestartet werden."));
+        }
+    }
+
+    private static void finish(ConnectionCheckListener listener, ConnectionCheckStep step) {
+        listener.onStep(step);
+        listener.onFinished(false);
+    }
+
+    private static String join(List<String> parts) {
+        StringBuilder text = new StringBuilder();
+        for (String part : parts) {
+            if (text.length() > 0) {
+                text.append("; ");
+            }
+            text.append(part);
+        }
+        return text.toString();
     }
 }

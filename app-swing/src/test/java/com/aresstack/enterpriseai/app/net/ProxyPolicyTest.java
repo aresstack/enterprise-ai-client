@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
@@ -103,6 +104,37 @@ public class ProxyPolicyTest {
         policy.install();
         policy.uninstall();
         assertSame(before, ProxySelector.getDefault());
+    }
+
+    /** Regression (Codex zu #46): Der Verbindungstest des Dialogs erzeugt eine Regel, während die des Starts installiert ist. */
+    @Test
+    public void aPolicyCreatedWhileAnotherIsInstalledUsesTheSelectorBeneathItAndFlagsDeferredSystemSettings()
+            throws Exception {
+        String before = System.getProperty(ProxyPolicy.USE_SYSTEM_PROXIES);
+        FixedSelector system = new FixedSelector();
+        ProxyPolicy running = new ProxyPolicy(network("MANUAL", "stale.example", "3128", null), system);
+        running.install();
+        try {
+            System.clearProperty(ProxyPolicy.USE_SYSTEM_PROXIES);
+            assertSame(system, ProxyPolicy.defaultSelectorFor(network("NONE", null, null, null)));
+            ProxyPolicy draft = new ProxyPolicy(network("SYSTEM", null, null, null));
+            assertSame(system.proxy, draft.proxyFor(URI.create("https://ki.example/")));
+            assertTrue(draft.systemSettingsDeferred());
+            assertTrue(draft.describeRoute(URI.create("https://ki.example/")).contains("Neustart"));
+            assertFalse(new ProxyPolicy(network("NONE", null, null, null)).systemSettingsDeferred());
+
+            System.setProperty(ProxyPolicy.USE_SYSTEM_PROXIES, "true");
+            ProxyPolicy decided = new ProxyPolicy(network("SYSTEM", null, null, null));
+            assertFalse(decided.systemSettingsDeferred());
+            assertFalse(decided.describeRoute(URI.create("https://ki.example/")).contains("Neustart"));
+        } finally {
+            running.uninstall();
+            if (before == null) {
+                System.clearProperty(ProxyPolicy.USE_SYSTEM_PROXIES);
+            } else {
+                System.setProperty(ProxyPolicy.USE_SYSTEM_PROXIES, before);
+            }
+        }
     }
 
     @Test

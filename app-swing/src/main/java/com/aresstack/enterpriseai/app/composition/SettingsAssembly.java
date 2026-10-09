@@ -14,9 +14,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * Verdrahtet den Einstellungen-Dialog: Konfigurationsdatei, KeePass-Probe mit Swing-Pairing-Dialog, ein
- * Daemon-Thread für die Probe, Ergebnisse auf dem EDT, dazu die Prüfung, die der Start über den Loader hinaus
- * macht ({@link #configurationCheck()}). Wird vor der eigentlichen Komposition gebraucht (Erststart
+ * Verdrahtet den Einstellungen-Dialog: Konfigurationsdatei, KeePass-Probe und Verbindungstest mit
+ * Swing-Pairing-Dialog, ein Daemon-Thread für beide, Ergebnisse auf dem EDT, dazu die Prüfung, die der Start über
+ * den Loader hinaus macht ({@link #configurationCheck()}). Wird vor der eigentlichen Komposition gebraucht (Erststart
  * ohne Konfiguration) und später für den Knopf „Einstellungen“ in der Kopfzeile.
  */
 public final class SettingsAssembly {
@@ -24,7 +24,7 @@ public final class SettingsAssembly {
     private SettingsAssembly() {
     }
 
-    /** Produktiv: Datei, Swing-Pairing, eigener Daemon-Thread, EDT. */
+    /** Produktiv: Datei, Swing-Pairing, KeePass-Probe und Verbindungstest auf einem eigenen Daemon-Thread, EDT. */
     public static SettingsDialogActions create(ConfigurationFile file) {
         ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
@@ -43,7 +43,8 @@ public final class SettingsAssembly {
     }
 
     public static SettingsDialogActions create(ConfigurationFile file, Executor worker, Executor ui) {
-        return new FileSettingsActions(file, new KeePassSecretChecker(), configurationCheck(), worker, ui);
+        return new FileSettingsActions(file, new KeePassSecretChecker(), new ServiceConnectionChecker(),
+                configurationCheck(), worker, ui);
     }
 
     /**

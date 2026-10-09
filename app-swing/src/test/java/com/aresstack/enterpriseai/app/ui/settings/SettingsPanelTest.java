@@ -30,6 +30,11 @@ public class SettingsPanelTest {
         final List<SettingsForm> saved = new ArrayList<SettingsForm>();
         final List<String> checkedRefs = new ArrayList<String>();
         SecretCheckResult checkResult = SecretCheckResult.ok("gefunden");
+        final List<SettingsForm> connectionForms = new ArrayList<SettingsForm>();
+        List<ConnectionCheckStep> connectionSteps = Arrays.asList(
+                ConnectionCheckStep.ok("Proxy-Route", "direkt (NONE)"),
+                ConnectionCheckStep.ok("GET /models", "HTTP 200: 1 Modell(e)"));
+        boolean connectionSuccess = true;
 
         @Override
         public List<String> validate(SettingsForm form) {
@@ -48,6 +53,15 @@ public class SettingsPanelTest {
         public void checkSecret(SettingsForm form, String secretRef, Consumer<SecretCheckResult> onResult) {
             checkedRefs.add(secretRef);
             onResult.accept(checkResult);
+        }
+
+        @Override
+        public void checkConnection(SettingsForm form, ConnectionCheckListener listener) {
+            connectionForms.add(form);
+            for (ConnectionCheckStep step : connectionSteps) {
+                listener.onStep(step);
+            }
+            listener.onFinished(connectionSuccess);
         }
     }
 
@@ -282,6 +296,41 @@ public class SettingsPanelTest {
                 panel.securityTab().secretCheck().button().doClick();
                 assertEquals("nicht erreichbar", panel.securityTab().secretCheck().resultText());
                 assertEquals(2, actions.checkedRefs.size());
+            }
+        });
+    }
+
+    @Test
+    public void connectionCheckUsesTheCurrentDraftAndShowsEveryStepWithASummary() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
+                        SettingsPanel.Mode.EDIT, actions, palette);
+                ConnectionCheckRow row = panel.systemTab().connectionCheck();
+                panel.systemTab().proxyMode().setSelectedItem(SettingsForm.PROXY_MANUAL);
+                row.button().doClick();
+                assertEquals(1, actions.connectionForms.size());
+                assertEquals(SettingsForm.PROXY_MANUAL, actions.connectionForms.get(0).proxyMode());
+                assertEquals(2, row.steps().size());
+                assertEquals("GET /models", row.steps().get(1).title());
+                assertEquals(ConnectionCheckRow.SUCCESS_LABEL, row.summaryText());
+                assertTrue(row.button().isEnabled());
+
+                actions.connectionSteps = Arrays.asList(ConnectionCheckStep.ok("Proxy-Route", "direkt"),
+                        ConnectionCheckStep.warning("GET /models", "HTTP 200, Modell fehlt"));
+                row.button().doClick();
+                assertEquals(ConnectionCheckRow.SUCCESS_WITH_NOTES_LABEL, row.summaryText());
+
+                actions.connectionSteps = Arrays.asList(
+                        ConnectionCheckStep.failed("Namensauflösung", "UnknownHostException"));
+                actions.connectionSuccess = false;
+                row.button().doClick();
+                assertEquals(1, row.steps().size());
+                assertEquals(ConnectionCheckRow.FAILURE_LABEL, row.summaryText());
+                assertTrue(row.button().isEnabled());
+                assertEquals(3, actions.connectionForms.size());
             }
         });
     }

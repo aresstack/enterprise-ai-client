@@ -114,7 +114,7 @@ public final class SettingsPanel extends JPanel {
         this.serviceTab = new ServiceTab(actions, current, palette);
         this.knowledgeTab = new KnowledgeTab(palette);
         this.securityTab = new SecurityTab(actions, current, palette);
-        this.systemTab = new SystemTab(palette);
+        this.systemTab = new SystemTab(actions, current, palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = new ComicButton(SAVE_LABEL, null, ComicButton.Accent.ACTION, palette);
         this.cancelButton = new ComicButton(mode == Mode.FIRST_START ? QUIT_LABEL : CANCEL_LABEL, null,
