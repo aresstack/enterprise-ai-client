@@ -338,7 +338,8 @@ public final class ConfigurationFile {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Path temp = Files.createTempFile(parent, path.getFileName().toString(), ".tmp");
+        // Fester Präfix: createTempFile verlangt mindestens drei Zeichen, der Dateiname darf kürzer sein.
+        Path temp = Files.createTempFile(parent, "enterprise-ai-config-", ".tmp");
         try {
             Files.write(temp, content.getBytes(StandardCharsets.UTF_8));
             try {

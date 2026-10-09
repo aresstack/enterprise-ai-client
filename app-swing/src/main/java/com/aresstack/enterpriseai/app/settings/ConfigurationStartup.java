@@ -10,12 +10,14 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Beschafft die Konfiguration beim Start. Fehlt die Datei, wird zuerst die kommentierte Vorlage angelegt;
- * mit Oberfläche öffnet sich danach der Einstellungen-Dialog (leere Pflichtfelder) statt dass sich die
- * Anwendung beendet, ohne Oberfläche (headless) bleibt es beim Hinweis und Exit-Code 2. Eine vorhandene, aber
- * fehlerhafte Datei öffnet den Dialog mit ihren Werten und den Problemen; headless wird wie bisher gemeldet.
- * Der Dialog speichert selbst (über {@code SettingsDialogActions}); hier wird nach jeder Runde neu geladen,
- * bis die Datei lädt oder der Benutzer abbricht.
+ * Beschafft die Konfiguration beim Start. Fehlt die Datei, öffnet sich mit Oberfläche der Einstellungen-Dialog
+ * (leere Pflichtfelder, KeePass-Titel vorgeschlagen) statt dass sich die Anwendung beendet; die Datei entsteht
+ * erst beim Speichern aus der kommentierten Vorlage. Bricht der Benutzer ab, bleibt keine Datei zurück, damit
+ * der nächste Start den Dialog wieder zeigt und nicht die Beispielwerte der Vorlage lädt (die Vorlage ist
+ * absichtlich ladbar). Ohne Oberfläche (headless) bleibt es beim bisherigen Verhalten: Vorlage anlegen, Hinweis,
+ * Exit-Code 2. Eine vorhandene, aber fehlerhafte Datei öffnet den Dialog mit ihren Werten und den Problemen;
+ * headless wird wie bisher gemeldet. Der Dialog speichert selbst (über {@code SettingsDialogActions}); hier
+ * wird nach jeder Runde neu geladen, bis die Datei lädt oder der Benutzer abbricht.
  */
 public final class ConfigurationStartup {
 
@@ -78,13 +80,13 @@ public final class ConfigurationStartup {
             throw new IllegalArgumentException("file must not be null");
         }
         if (!file.exists()) {
-            try {
-                file.createIfMissing(AppConfigLoader.exampleConfiguration());
-            } catch (IOException e) {
-                return Outcome.failed("Es gibt keine Konfiguration unter\n" + file.path() + "\nund die Vorlage konnte "
-                        + "dort nicht angelegt werden (" + e.getClass().getSimpleName() + ").");
-            }
             if (ui == null) {
+                try {
+                    file.createIfMissing(AppConfigLoader.exampleConfiguration());
+                } catch (IOException e) {
+                    return Outcome.failed("Es gibt keine Konfiguration unter\n" + file.path() + "\nund die Vorlage "
+                            + "konnte dort nicht angelegt werden (" + e.getClass().getSimpleName() + ").");
+                }
                 return Outcome.failed(templateCreated(file));
             }
             return editUntilLoadable(file, ui, SettingsMapper.firstStartDefaults(), Collections.<String>emptyList(),
@@ -116,7 +118,8 @@ public final class ConfigurationStartup {
             SettingsForm edited = ui.edit(current, currentProblems, first);
             if (edited == null) {
                 return Outcome.cancelled(first
-                        ? "Die Einrichtung wurde abgebrochen. Die Vorlage liegt unter\n" + file.path()
+                        ? "Die Einrichtung wurde abgebrochen; es wurde keine Konfiguration geschrieben (" + file.path()
+                                + "). Der nächste Start öffnet den Dialog erneut."
                         : "Die Konfiguration unter\n" + file.path() + "\nwurde nicht korrigiert.");
             }
             try {

@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
@@ -47,6 +48,19 @@ public final class FileSettingsActions implements SettingsDialogActions {
         return file;
     }
 
+    /**
+     * Die Datei als Properties; fehlt sie (Erststart), zählt die Vorlage, weil {@link #save} genau daraus
+     * schreibt. So prüft {@link #validate} dasselbe, was nachher auf der Platte steht.
+     */
+    private Properties current() throws IOException {
+        if (file.exists()) {
+            return file.read();
+        }
+        Properties template = new Properties();
+        template.load(new StringReader(AppConfigLoader.exampleConfiguration()));
+        return template;
+    }
+
     @Override
     public List<String> validate(SettingsForm form) {
         if (form == null) {
@@ -54,7 +68,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
         }
         Properties current;
         try {
-            current = file.read();
+            current = current();
         } catch (IOException e) {
             return Collections.singletonList("Konfigurationsdatei nicht lesbar: " + file.path() + " ("
                     + e.getClass().getSimpleName() + ")");
@@ -75,7 +89,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
         if (!problems.isEmpty()) {
             throw new IllegalArgumentException("Entwurf hat Probleme: " + problems);
         }
-        Properties current = file.read();
+        Properties current = current();
         // Leere Felder sind Entfernungen (Zeile auskommentieren), nie "schlüssel=" ohne Wert.
         file.update(SettingsMapper.writes(form), SettingsMapper.removals(form, current),
                 AppConfigLoader.exampleConfiguration());
@@ -100,7 +114,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
         }
         final KeePassConfig keePass;
         try {
-            keePass = AppConfigLoader.keePassSection(SettingsMapper.merge(file.read(), form));
+            keePass = AppConfigLoader.keePassSection(SettingsMapper.merge(current(), form));
         } catch (AppConfigException e) {
             onResult.accept(SecretCheckResult.failed("KeePass-Einstellungen ungültig: "
                     + SettingsMapper.describe(e.problems())));

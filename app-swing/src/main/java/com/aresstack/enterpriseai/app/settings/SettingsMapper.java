@@ -51,7 +51,11 @@ public final class SettingsMapper {
     private SettingsMapper() {
     }
 
-    /** Das Formular für den allerersten Start: leere Pflichtfelder, Standardwerte des Loaders für den Rest. */
+    /**
+     * Das Formular für den allerersten Start: leere Pflichtfelder und die Standardwerte des Loaders für den Rest.
+     * Einzige Ausnahme ist der KeePass-Titel {@code keepass:Enterprise AI API}: ein Vorschlag, derselbe wie in der
+     * Vorlage und in der Doku, damit der Eintrag in KeePass und die Konfiguration ohne Abtippen zusammenpassen.
+     */
     public static SettingsForm firstStartDefaults() {
         return SettingsForm.builder().chatApiKeyRef("keepass:Enterprise AI API").build();
     }

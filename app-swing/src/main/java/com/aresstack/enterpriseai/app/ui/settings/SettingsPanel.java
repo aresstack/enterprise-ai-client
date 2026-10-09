@@ -74,8 +74,8 @@ public final class SettingsPanel extends JPanel {
     }
     /** Hinweiszeilen unter dem Titel; {@code \n} trennt Zeilen (keine HTML-Umbrüche, die sind headless unzuverlässig). */
     static final String FIRST_START_NOTE = "Willkommen. Für den ersten Start fehlen noch Basis-URL und Modell des "
-            + "KI-Dienstes,\ndas Embedding-Modell mit seiner Dimension und der Titel des KeePass-Eintrags mit dem "
-            + "API-Key.\nAlles andere hat sinnvolle Vorgaben und lässt sich später ändern.";
+            + "KI-Dienstes\nsowie das Embedding-Modell mit seiner Dimension; der KeePass-Titel ist ein Vorschlag.\n"
+            + "Alles andere hat sinnvolle Vorgaben und lässt sich später ändern.";
     static final String EDIT_NOTE = "Gespeicherte Änderungen gelten beim nächsten Start der Anwendung.\n"
             + "Secrets bleiben in KeePass; hier stehen nur die Titel der Einträge.";
 

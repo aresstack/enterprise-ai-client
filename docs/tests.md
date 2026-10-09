@@ -23,8 +23,8 @@ Testberichte liegen je Modul unter `<modul>/build/reports/tests/test/index.html`
 
 ## Testumfang je Modul
 
-Zahlen aus einem vollständigen lokalen Lauf auf JDK 21 (2026-10-07, Stand nach AP26, Unicode-Vertrag und
-Vorbereitung der Live-Verifikation): 1074 Tests, 0 Fehler, 2 übersprungen.
+Zahlen aus einem vollständigen lokalen Lauf auf JDK 8 (2026-10-09, Stand nach dem Einstellungen-Dialog):
+1121 Tests, 0 Fehler, 2 übersprungen.
 
 | Modul | Tests | Schwerpunkt |
 |---|---|---|
@@ -47,7 +47,7 @@ Vorbereitung der Live-Verifikation): 1074 Tests, 0 Fehler, 2 übersprungen.
 | `comic-controls` | 10 | Zeichnen und Zustände der Comic-Komponenten (headless) |
 | `app-swing` | 162 (1 übersprungen) | `ChatShellModel`, Bindings, Konfigurationslader, `ProxyPolicy`, `ApplicationCompositionTest` (headless Komposition mit Fakes, darunter `knowledgeToolsReadOnlyIndexedDocuments`), `RagShellIntegrationTest` (echte Adapter gegen Fake-HTTP-Server und Lucene-Temp-Index), `AgentModeRoundTripTest` (Demo-Agent), Pairing-Dialog; Einstellungen-Dialog: `ConfigurationFileTest` (Zeilen ersetzen, auskommentierte aktivieren, anhängen, Escaping, CRLF), `SettingsMapperTest` (Formular ↔ Schlüssel, Vorlage lädt nach Rundreise, Quellen entfernen/Typ wechseln), `FileSettingsActionsTest` (Prüfen über den Loader, Speichern lässt fremde Schlüssel und Kommentare stehen), `ConfigurationStartupTest` (Erststart headless wie bisher, mit Oberfläche Dialog, Abbruch, fehlerhafte Datei), `SettingsPanelTest` (headless: Felder, Quellen-Editor, Probleme mit Reiterwahl, KeePass-Probe), `KeePassSecretCheckerTest` (Probe gegen `FakeKeePassRpcServer`: gefunden, leer, fehlt, nicht erreichbar, Pairing abgebrochen; Secret erscheint nie), `ModeSwitchBarTest` |
 | `architecture-tests` | 153 | Registry-Konsistenz, Schichtregeln, Bytecode 52, verbotene Importe, Konstantenpool, Secret-Grenze, RAG- und Agent-Grenzen, JDK-Zeichenklassen-Verbot in `domain.knowledge`; Gegenbeispiele unter `*.archfixture` |
-| `integration-tests` | 38 | Vertical-Slice-Tests A–G und Konfigurations-Slice gegen lokale Fakes, Parser-Test des Testagenten, `EmbeddingEndpointProbeTest` (Roh-Probe der Live-Verifikation gegen `FakeEmbeddingsServer`), `FailureRedactionTest` (Schwärzung von Secrets und Hostnamen in Fehlerketten der Live-Tests); eigene JVM je Klasse (siehe unten) |
+| `integration-tests` | 39 | Vertical-Slice-Tests A–G und Konfigurations-Slice gegen lokale Fakes, Parser-Test des Testagenten, `EmbeddingEndpointProbeTest` (Roh-Probe der Live-Verifikation gegen `FakeEmbeddingsServer`), `FailureRedactionTest` (Schwärzung von Secrets und Hostnamen in Fehlerketten der Live-Tests); eigene JVM je Klasse (siehe unten) |
 | `acp-demo-agent` | 0 | Testfixture-Prozess, wird von anderen Modulen gestartet |
 
 ## Fixtures und Vertragstests

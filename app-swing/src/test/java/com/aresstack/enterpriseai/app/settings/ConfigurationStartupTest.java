@@ -118,6 +118,7 @@ public class ConfigurationStartupTest {
         assertEquals("keepass:Enterprise AI API", ui.initials.get(0).chatApiKeyRef());
         assertTrue(ui.problems.get(0).isEmpty());
         assertTrue(ui.firstStarts.get(0));
+        assertTrue("die Datei entsteht erst beim Speichern", file.exists());
         assertEquals("test-chat", outcome.config().chat().model());
         String text = new String(Files.readAllBytes(configPath()), StandardCharsets.UTF_8);
         assertTrue("die Kommentare der Vorlage bleiben erhalten", text.contains("#"));
@@ -131,7 +132,8 @@ public class ConfigurationStartupTest {
         assertFalse(outcome.isStarted());
         assertTrue(outcome.isCancelled());
         assertTrue(outcome.message(), outcome.message().contains(configPath().toString()));
-        assertTrue(file.exists());
+        assertFalse("ohne Speichern keine Datei, sonst lädt der nächste Start die Beispielwerte der Vorlage",
+                file.exists());
     }
 
     @Test

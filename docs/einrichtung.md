@@ -56,11 +56,13 @@ registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
 | Lucene-Index und Vektoren | `<Anwendungsverzeichnis>/index/` (Schlüssel `knowledge.indexDirectory`) |
 | KeePassRPC-Pairing-Schlüssel | `<Anwendungsverzeichnis>/keepassrpc-pairing.key` (Schlüssel `security.keepass.pairingKeyFile`) |
 
-Beim ersten Start ohne Datei schreibt die Anwendung den Inhalt der kommentierten Vorlage als
-`enterprise-ai-client.properties` an genau diesen Pfad und öffnet den [Einstellungen-Dialog](#einstellungen-dialog)
-mit leeren Pflichtfeldern; nach dem Speichern startet sie. „Beenden“ im Dialog lässt die Vorlage liegen und
-endet mit Exit-Code 2. Ohne Display (headless, etwa `smokeStartFatJar`) gibt es keinen Dialog: die Vorlage wird
-angelegt, der Hinweis geloggt, Exit-Code 2. Eine vorhandene Datei mit Fehlern öffnet den Dialog mit ihren Werten
+Beim ersten Start ohne Datei öffnet die Anwendung den [Einstellungen-Dialog](#einstellungen-dialog) mit leeren
+Pflichtfeldern (der KeePass-Titel ist mit `keepass:Enterprise AI API` vorgeschlagen); „Speichern“ schreibt die
+kommentierte Vorlage mit den eingetragenen Werten als `enterprise-ai-client.properties` an genau diesen Pfad, dann
+startet sie. „Beenden“ im Dialog schreibt keine Datei und endet mit Exit-Code 2; der nächste Start öffnet den
+Dialog erneut (die Vorlage allein wäre ladbar und würde sonst mit Beispiel-Adressen starten). Ohne Display
+(headless, etwa `smokeStartFatJar`) gibt es keinen Dialog: die Vorlage wird angelegt, der Hinweis geloggt,
+Exit-Code 2. Eine vorhandene Datei mit Fehlern öffnet den Dialog mit ihren Werten
 und den Problemen (headless: Meldung und Exit-Code 2). Die Vorlage selbst liegt im Repository unter
 `app-swing/src/main/resources/com/aresstack/enterpriseai/app/config/enterprise-ai-client.example.properties`
 und beschreibt jeden Schlüssel. Pflicht sind:

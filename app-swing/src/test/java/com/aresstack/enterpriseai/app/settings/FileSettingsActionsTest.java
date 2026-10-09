@@ -112,6 +112,26 @@ public class FileSettingsActionsTest {
     }
 
     @Test
+    public void missingFileIsValidatedAndSavedAgainstTheTemplate() throws Exception {
+        ConfigurationFile file = new ConfigurationFile(tmp.getRoot().toPath().resolve("neu").resolve("x"));
+        FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);
+        SettingsForm form = SettingsMapper.firstStartDefaults().toBuilder()
+                .chatBaseUrl("http://127.0.0.1:9/v1").chatModel("test-chat")
+                .embeddingModel("test-embedding").embeddingDimension("8")
+                .keePassEnabled(false).proxyMode(SettingsForm.PROXY_NONE).build();
+        assertTrue(actions.validate(form).toString(), actions.validate(form).isEmpty());
+        assertFalse(file.exists());
+        actions.save(form);
+        assertTrue("kurzer Dateiname ist erlaubt", file.exists());
+        AppConfig loaded = AppConfigLoader.load(file.path());
+        assertEquals("test-chat", loaded.chat().model());
+        assertTrue("Beispielquellen der Vorlage sind nicht aktiv", loaded.sources().isEmpty());
+        for (String warning : loaded.warnings()) {
+            assertFalse("keine verwaisten Quell-Schlüssel aus der Vorlage: " + warning, warning.contains("source."));
+        }
+    }
+
+    @Test
     public void saveRefusesAFormWithProblems() throws Exception {
         ConfigurationFile file = fileWith(validText());
         FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);
