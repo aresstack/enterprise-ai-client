@@ -38,6 +38,10 @@ dependencies {
     testImplementation testFixtures(project(':embedding-api'))
     testImplementation testFixtures(project(':knowledge-api'))
     testImplementation testFixtures(project(':source-api'))
+    // KeePass-Probe des Einstellungen-Dialogs gegen den Fake-Server; der erweitert WebSocketServer, deshalb
+    // muss der Typ zum Kompilieren des Tests sichtbar sein (wie in integration-tests).
+    testImplementation testFixtures(project(':security-keepassrpc'))
+    testImplementation libs.java.websocket
     // AP22: Die Fake-HTTP-Server des Integrationstests (/chat/completions, /embeddings) lesen und schreiben JSON;
     // seit AP25 als Testfixtures (app.chat.fakeapi), die Tests dieses Moduls sehen sie weiterhin.
     testFixturesImplementation libs.gson
@@ -86,6 +90,14 @@ tasks.register('runRagDemo', JavaExec) {
     description = 'Startet die Chat-Shell mit RAG (AP22) gegen Fake-Backends: Fake-Chat, deterministische Embeddings, In-Memory-Index.'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.aresstack.enterpriseai.app.chat.RagShellDemo'
+}
+
+tasks.register('runSettingsDemo', JavaExec) {
+    group = 'application'
+    description = 'Zeigt den Einstellungen-Dialog mit Attrappen (ohne Datei, ohne KeePass); --args="--screenshot datei.png" schreibt ihn headless als PNG.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.app.ui.settings.SettingsDialogDemo'
+    systemProperty 'java.awt.headless', System.getProperty('java.awt.headless', 'false')
 }
 
 tasks.register('runAgentDemo', JavaExec) {

@@ -1,0 +1,162 @@
+package com.aresstack.enterpriseai.app.settings;
+
+import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppConfigException;
+import com.aresstack.enterpriseai.app.config.AppConfigLoader;
+import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
+import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
+import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
+import com.aresstack.enterpriseai.domain.security.SecretRef;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.Collections;
+import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
+
+/**
+ * {@link SettingsDialogActions} über der Konfigurationsdatei: Prüfen heißt, die Datei mit dem Entwurf zu
+ * verschmelzen, durch den {@link AppConfigLoader} zu schicken und die {@link ConfigurationCheck} des Starts
+ * laufen zu lassen (dieselben Regeln wie beim Start, Meldungen mit Feldnamen); Speichern schreibt nur die
+ * verwalteten Schlüssel. Die KeePass-Probe läuft auf dem Arbeits-Executor,
+ * ihr Ergebnis kommt über den UI-Executor zurück.
+ */
+public final class FileSettingsActions implements SettingsDialogActions {
+
+    private final ConfigurationFile file;
+    private final SecretChecker secretChecker;
+    private final ConfigurationCheck check;
+    private final Executor worker;
+    private final Executor ui;
+
+    /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
+        this(file, secretChecker, ConfigurationCheck.none(), worker, ui);
+    }
+
+    /**
+     * @param secretChecker die KeePass-Probe oder {@code null}, wenn keine möglich ist (Prüfen meldet das)
+     * @param check         zusätzliche Prüfung des Starts (z. B. TLS-Vertrauensregel), läuft bei Prüfen und Speichern
+     * @param worker        führt die Probe aus (nie der EDT)
+     * @param ui            liefert das Ergebnis der Probe ab (produktiv {@code SwingUtilities::invokeLater})
+     */
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, ConfigurationCheck check,
+                               Executor worker, Executor ui) {
+        if (file == null || check == null || worker == null || ui == null) {
+            throw new IllegalArgumentException("file, check, worker and ui must not be null");
+        }
+        this.file = file;
+        this.secretChecker = secretChecker;
+        this.check = check;
+        this.worker = worker;
+        this.ui = ui;
+    }
+
+    public ConfigurationFile file() {
+        return file;
+    }
+
+    /**
+     * Die Datei als Properties; fehlt sie (Erststart), zählt die Vorlage, weil {@link #save} genau daraus
+     * schreibt. So prüft {@link #validate} dasselbe, was nachher auf der Platte steht.
+     */
+    private Properties current() throws IOException {
+        if (file.exists()) {
+            return file.read();
+        }
+        Properties template = new Properties();
+        template.load(new StringReader(AppConfigLoader.exampleConfiguration()));
+        return template;
+    }
+
+    @Override
+    public List<String> validate(SettingsForm form) {
+        if (form == null) {
+            throw new IllegalArgumentException("form must not be null");
+        }
+        Properties current;
+        try {
+            current = current();
+        } catch (IOException e) {
+            return Collections.singletonList("Konfigurationsdatei nicht lesbar: " + file.path() + " ("
+                    + e.getClass().getSimpleName() + ")");
+        }
+        try {
+            AppConfig config = AppConfigLoader.fromProperties(SettingsMapper.merge(current, form));
+            check.verify(config);
+            return Collections.emptyList();
+        } catch (AppConfigException e) {
+            return SettingsMapper.describe(e.problems());
+        } catch (RuntimeException e) {
+            return Collections.singletonList("Konfiguration ungültig: " + e.getClass().getSimpleName());
+        }
+    }
+
+    @Override
+    public void save(SettingsForm form) throws IOException {
+        List<String> problems = validate(form);
+        if (!problems.isEmpty()) {
+            throw new IllegalArgumentException("Entwurf hat Probleme: " + problems);
+        }
+        Properties current = current();
+        // Leere Felder sind Entfernungen (Zeile auskommentieren), nie "schlüssel=" ohne Wert.
+        file.update(SettingsMapper.writes(form), SettingsMapper.removals(form, current),
+                AppConfigLoader.exampleConfiguration());
+    }
+
+    @Override
+    public void checkSecret(final SettingsForm form, final String secretRef,
+                            final Consumer<SecretCheckResult> onResult) {
+        if (form == null || onResult == null) {
+            throw new IllegalArgumentException("form and onResult must not be null");
+        }
+        final SecretRef ref;
+        try {
+            ref = SecretRef.of(secretRef == null ? "" : secretRef.trim());
+        } catch (IllegalArgumentException e) {
+            onResult.accept(SecretCheckResult.failed("Bitte zuerst den Titel des KeePass-Eintrags eintragen."));
+            return;
+        }
+        if (secretChecker == null) {
+            onResult.accept(SecretCheckResult.failed("Die KeePass-Probe ist in dieser Umgebung nicht verfügbar."));
+            return;
+        }
+        final KeePassConfig keePass;
+        try {
+            keePass = AppConfigLoader.keePassSection(SettingsMapper.merge(current(), form));
+        } catch (AppConfigException e) {
+            onResult.accept(SecretCheckResult.failed("KeePass-Einstellungen ungültig: "
+                    + SettingsMapper.describe(e.problems())));
+            return;
+        } catch (IOException e) {
+            onResult.accept(SecretCheckResult.failed("Konfigurationsdatei nicht lesbar ("
+                    + e.getClass().getSimpleName() + ")."));
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    SecretCheckResult result;
+                    try {
+                        result = secretChecker.check(keePass, ref);
+                    } catch (RuntimeException e) {
+                        result = SecretCheckResult.failed("Prüfung fehlgeschlagen: " + e.getClass().getSimpleName());
+                    }
+                    final SecretCheckResult delivered = result;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            onResult.accept(delivered);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            onResult.accept(SecretCheckResult.failed("Prüfung konnte nicht gestartet werden."));
+        }
+    }
+}

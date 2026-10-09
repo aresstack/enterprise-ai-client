@@ -59,6 +59,11 @@ Fähigkeit aus der Spalte UNVERIFIED gestrichen.
 - **Quellen**: keine Anhänge im Wiki, keine Blogposts in Confluence, Confluence Cloud nicht Ziel; ein Wechsel
   von `siteKey` oder Embedding-Modell bedeutet Neuindexierung.
 - **Bibliotheken**: JWBF 3.1.1 und OkHttp 4.9.3 stehen im Versionskatalog, werden aber nicht verwendet.
+- **Einstellungen-Dialog**: Änderungen gelten erst beim nächsten Start; es gibt kein Neuladen zur Laufzeit,
+  weil Adapter und Graph mit der Konfiguration gebaut werden. Der Dialog verwaltet die gängigen Schlüssel;
+  Feineinstellungen (Timeouts, Retrieval- und Kontextparameter, Client-Zertifikat, Wiki-Namensräume,
+  KeePass-Origin/ClientId) bleiben Sache der Datei und werden beim Speichern unverändert übernommen. Der API-Key
+  lässt sich im Dialog nicht eingeben; er kommt ausschließlich aus KeePass.
 - **Kein Logging-Framework**: Außerhalb des Demo-Agenten gibt es keine Konsolenausgabe; Fehler landen in
   `java.util.logging` der Anwendung bzw. in der Oberfläche.
 

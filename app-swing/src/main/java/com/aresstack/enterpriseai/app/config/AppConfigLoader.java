@@ -115,6 +115,22 @@ public final class AppConfigLoader {
         return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, warnings);
     }
 
+    /**
+     * Nur der Abschnitt {@code security.keepass.*}, z. B. für die KeePass-Probe des Einstellungen-Dialogs, bevor
+     * die übrige Konfiguration vollständig ist. Probleme dieses Abschnitts kommen als {@link AppConfigException}.
+     */
+    public static KeePassConfig keePassSection(Properties properties) {
+        if (properties == null) {
+            throw new IllegalArgumentException("properties must not be null");
+        }
+        ConfigReader reader = new ConfigReader(properties);
+        KeePassConfig keePass = keePass(reader);
+        if (reader.hasProblems()) {
+            throw new AppConfigException(reader.problems());
+        }
+        return keePass;
+    }
+
     /** Die mitgelieferte Beispielkonfiguration (ohne Secrets) als Text, z. B. um sie als Vorlage abzulegen. */
     public static String exampleConfiguration() {
         try (InputStream in = AppConfigLoader.class.getResourceAsStream(EXAMPLE_RESOURCE)) {
