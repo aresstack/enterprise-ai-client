@@ -43,7 +43,8 @@ java -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis -jar enterprise-ai-clie
 ```
 
 Einstiegspunkt ist `com.aresstack.enterpriseai.app.EnterpriseAiClientMain` (Modul `app-swing`). Ablauf beim
-Start: Konfiguration laden, Proxy-Regel installieren, Adapter bauen, Graphen komponieren, Shutdown-Hook
+Start: Konfiguration beschaffen (Datei laden; fehlt sie oder lädt sie nicht, öffnet sich der
+Einstellungen-Dialog), Proxy-Regel installieren, Adapter bauen, Graphen komponieren, Shutdown-Hook
 registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
 
 ### Anwendungsverzeichnis und Konfigurationsdatei
@@ -56,8 +57,11 @@ registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
 | KeePassRPC-Pairing-Schlüssel | `<Anwendungsverzeichnis>/keepassrpc-pairing.key` (Schlüssel `security.keepass.pairingKeyFile`) |
 
 Beim ersten Start ohne Datei schreibt die Anwendung den Inhalt der kommentierten Vorlage als
-`enterprise-ai-client.properties` an genau diesen Pfad, erklärt das in einem Dialog und beendet sich mit
-Exit-Code 2. Die Datei muss dann nur noch ausgefüllt werden. Die Vorlage selbst liegt im Repository unter
+`enterprise-ai-client.properties` an genau diesen Pfad und öffnet den [Einstellungen-Dialog](#einstellungen-dialog)
+mit leeren Pflichtfeldern; nach dem Speichern startet sie. „Beenden“ im Dialog lässt die Vorlage liegen und
+endet mit Exit-Code 2. Ohne Display (headless, etwa `smokeStartFatJar`) gibt es keinen Dialog: die Vorlage wird
+angelegt, der Hinweis geloggt, Exit-Code 2. Eine vorhandene Datei mit Fehlern öffnet den Dialog mit ihren Werten
+und den Problemen (headless: Meldung und Exit-Code 2). Die Vorlage selbst liegt im Repository unter
 `app-swing/src/main/resources/com/aresstack/enterpriseai/app/config/enterprise-ai-client.example.properties`
 und beschreibt jeden Schlüssel. Pflicht sind:
 
@@ -74,6 +78,33 @@ embedding.dimension=768
 Die Datei enthält keine Secrets. `chat.apiKeyRef` ist der Titel des KeePass-Eintrags, dessen Passwortfeld den
 API-Key trägt. Fehler in der Datei werden gesammelt gemeldet und nennen Schlüssel und Erwartung, nie den Wert;
 unbekannte Schlüssel erzeugen eine Warnung.
+
+### Einstellungen-Dialog
+
+Der Knopf „Einstellungen“ rechts in der Kopfzeile öffnet den Dialog, den auch der erste Start zeigt. Er
+bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
+
+| Reiter | Schlüssel |
+|---|---|
+| KI-Dienst | `chat.baseUrl`, `chat.model`, `chat.apiKeyRef` (mit „In KeePass prüfen“), `chat.systemPrompt`; `embedding.baseUrl`, `embedding.model`, `embedding.dimension`, `embedding.apiKeyRef` |
+| Wissensbasis | `knowledge.indexDirectory` (mit Verzeichnisauswahl), `knowledge.indexOnStartup`; `sources` und je Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` |
+| KeePass | `security.keepass.enabled`, `host`, `port`, `clientDisplayName`, `pairingKeyStore`; „In KeePass prüfen“ mit dem Eintrag des API-Keys |
+| Netzwerk & Agent | `ui.windowTitle`; `network.proxy.mode` (SYSTEM, NONE, MANUAL), `host`, `port`, `nonProxyHosts`; `agent.enabled`, `agent.command`, `agent.args`, `agent.requestTimeoutSeconds` |
+
+- **Prüfen** läuft durch denselben Loader wie der Start: Speichern geht nur ohne Probleme; Probleme stehen unter
+  den Reitern mit Feldname und Schlüssel, der betroffene Reiter wird gewählt.
+- **Speichern** schreibt nur die Schlüssel des Dialogs und lässt alles andere stehen: Kommentare, Reihenfolge,
+  Feineinstellungen (Timeouts, Retrieval, Kontext, Client-Zertifikat, Wiki-Namensräume). Ein vorhandener
+  Schlüssel wird in seiner Zeile ersetzt, ein auskommentierter (`#schlüssel=…`) an seiner Stelle aktiviert,
+  ein neuer unter der Überschrift `# --- Vom Einstellungen-Dialog ergänzt ---` angehängt. Geleerte Felder und
+  entfernte Quellen werden auskommentiert, nicht gelöscht. Die Datei wird atomar ersetzt.
+- **In KeePass prüfen** löst den Eintrag mit den KeePass-Einstellungen des Entwurfs auf, pairt bei Bedarf über
+  den Pairing-Dialog (der Pairing-Schlüssel landet in der konfigurierten Datei und gilt dann auch für den
+  Start) und meldet nur, ob der Eintrag existiert und sein Passwortfeld gefüllt ist. Das Secret selbst verlässt
+  `app.security` nicht; der API-Key lässt sich im Dialog nicht eintippen (bewusst, siehe
+  [KeePass-Konfiguration](konfiguration-keepass.md)).
+- **Wirksamkeit**: Die laufende Anwendung ist mit der alten Konfiguration gebaut. Nach dem Speichern bietet sie
+  an, sich zu beenden; die Änderungen gelten beim nächsten Start.
 
 ### Erster Chat
 

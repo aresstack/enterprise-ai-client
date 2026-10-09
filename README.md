@@ -31,11 +31,15 @@ java -jar enterprise-ai-client-<version>.jar
 
 1. **Bauen**: `./gradlew build`. Ohne Netzwerk zu Maven Central schlägt der erste Lauf fehl; einfach
    wiederholen, sobald die Abhängigkeiten geladen sind.
-2. **Konfigurieren**: Der erste Start legt die kommentierte Vorlage `enterprise-ai-client.properties` im
-   Anwendungsverzeichnis an (`~/.enterprise-ai-client/`, unter Windows `%APPDATA%\.enterprise-ai-client\`)
-   und beendet sich. Pflicht sind Basis-URL und Modell des Chat-Dienstes, Modell und Dimension der
-   Embeddings sowie der Titel des KeePass-Eintrags mit dem API-Key. Secrets stehen nie in der Datei; sie kommen
-   zur Laufzeit aus KeePass (Plugin KeePassRPC). Alternativ: `-Denterpriseai.config=/pfad/zur/datei`.
+2. **Konfigurieren**: Der erste Start öffnet den Einstellungen-Dialog (Reiter KI-Dienst, Wissensbasis, KeePass,
+   Netzwerk & Agent). Pflicht sind Basis-URL und Modell des Chat-Dienstes, Modell und Dimension der Embeddings
+   sowie der Titel des KeePass-Eintrags mit dem API-Key; „In KeePass prüfen“ testet den Eintrag sofort (bei
+   Bedarf mit Pairing). Speichern schreibt die kommentierte Datei `enterprise-ai-client.properties` im
+   Anwendungsverzeichnis (`~/.enterprise-ai-client/`, unter Windows `%APPDATA%\.enterprise-ai-client\`), danach
+   startet die Anwendung. Später öffnet der Knopf „Einstellungen“ in der Kopfzeile denselben Dialog; Änderungen
+   gelten beim nächsten Start. Secrets stehen nie in der Datei; sie kommen zur Laufzeit aus KeePass (Plugin
+   KeePassRPC). Die Datei lässt sich weiterhin von Hand pflegen (Feineinstellungen wie Timeouts stehen nur
+   dort). Alternativ: `-Denterpriseai.config=/pfad/zur/datei`.
 3. **Starten**: `./gradlew :app-swing:run` oder `java -jar enterprise-ai-client-<version>.jar`. Ohne erreichbares
    KeePass startet die Anwendung trotzdem und meldet, welche Secrets fehlen; Anfragen scheitern dann mit einem
    Authentifizierungsfehler.

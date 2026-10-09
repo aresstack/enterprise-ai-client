@@ -3,34 +3,44 @@ package com.aresstack.enterpriseai.app;
 import com.aresstack.enterpriseai.app.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.app.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.app.composition.CompositionRoot;
+import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
 import com.aresstack.enterpriseai.app.config.AppConfig;
-import com.aresstack.enterpriseai.app.config.AppConfigException;
-import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.net.ProxyPolicy;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
+import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
+import com.aresstack.enterpriseai.app.settings.ConfigurationStartup;
+import com.aresstack.enterpriseai.app.settings.SettingsMapper;
+import com.aresstack.enterpriseai.app.ui.settings.SettingsDialog;
+import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
+import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
+import com.aresstack.enterpriseai.app.ui.settings.SettingsPanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
+import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import java.awt.GraphicsEnvironment;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Einstiegspunkt der Desktop-Anwendung und Composition Root (AP23). Ablauf: Konfiguration laden (fehlt sie,
- * wird die Beispieldatei angelegt und erklärt), Proxy-Regel installieren, Adapter bauen, Graphen komponieren,
+ * Einstiegspunkt der Desktop-Anwendung und Composition Root (AP23). Ablauf: Konfiguration beschaffen (fehlt
+ * sie oder lädt sie nicht, öffnet sich mit Oberfläche der Einstellungen-Dialog; ohne Display wird die
+ * Beispieldatei angelegt und erklärt), Proxy-Regel installieren, Adapter bauen, Graphen komponieren,
  * Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten. Schließen des Fensters fährt
  * geordnet herunter und beendet die JVM; der Shutdown-Hook deckt hartes Beenden ab (beide idempotent).
  *
@@ -43,21 +53,28 @@ public final class EnterpriseAiClientMain {
 
     static final int EXIT_CONFIG = 2;
 
+    static final String SETTINGS_BUTTON_LABEL = "Einstellungen";
+
     private EnterpriseAiClientMain() {
     }
 
     public static void main(String[] args) {
-        Path configFile = AppPaths.configFile();
-        AppConfig config;
-        try {
-            config = AppConfigLoader.load(configFile);
-        } catch (AppConfigException e) {
-            String message = configProblem(configFile, e);
-            LOG.severe(message);
-            showError("Konfiguration", message);
+        final ConfigurationFile file = new ConfigurationFile(AppPaths.configFile());
+        final boolean headless = GraphicsEnvironment.isHeadless();
+        final SettingsDialogActions settingsActions = headless ? null : SettingsAssembly.create(file);
+        ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
+                headless ? null : new SwingSettingsUi(settingsActions));
+        if (!outcome.isStarted()) {
+            if (outcome.isCancelled()) {
+                LOG.info(outcome.message());
+            } else {
+                LOG.severe(outcome.message());
+                showError("Konfiguration", outcome.message());
+            }
             System.exit(EXIT_CONFIG);
             return;
         }
+        AppConfig config = outcome.config();
 
         final ProxyPolicy proxy = new ProxyPolicy(config.network());
         proxy.install();
@@ -84,13 +101,14 @@ public final class EnterpriseAiClientMain {
                 ComicPalette palette = ComicPalette.defaultPalette();
                 BubblePalette bubbles = BubblePalette.windowsPhoneInspired();
                 ShellAssembly.ShellView view = ShellAssembly.createShell(root, palette, bubbles);
-                JFrame frame = ShellAssembly.createFrame(started.windowTitle(), view, palette);
+                final JFrame frame = ShellAssembly.createFrame(started.windowTitle(), view, palette);
                 frame.addWindowListener(new WindowAdapter() {
                     @Override
                     public void windowClosed(WindowEvent event) {
                         shutdownAndExit(root);
                     }
                 });
+                view.modalShell().switchBar().addTrailing(settingsButton(frame, file, settingsActions, palette));
                 frame.setVisible(true);
                 root.startBackgroundWork();
                 List<String> notices = StartupNotices.of(started);
@@ -99,6 +117,46 @@ public final class EnterpriseAiClientMain {
                 }
             }
         });
+    }
+
+    /**
+     * Der Knopf „Einstellungen“ in der Kopfzeile: öffnet den Dialog mit den Werten der Datei. Gespeichert
+     * wird in die Datei; der laufende Graph ist mit der alten Konfiguration gebaut, deshalb gelten Änderungen
+     * beim nächsten Start (Angebot, jetzt zu beenden).
+     */
+    private static ComicButton settingsButton(final JFrame frame, final ConfigurationFile file,
+                                              final SettingsDialogActions actions, final ComicPalette palette) {
+        ComicButton button = new ComicButton(SETTINGS_BUTTON_LABEL, null, ComicButton.Accent.ACTION, palette);
+        button.setToolTipText("Konfiguration bearbeiten (" + file.path() + ")");
+        button.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                SettingsForm current;
+                try {
+                    current = SettingsMapper.fromProperties(file.read());
+                } catch (IOException io) {
+                    LOG.log(Level.WARNING, "Konfigurationsdatei nicht lesbar", io);
+                    showError("Einstellungen", "Die Konfiguration unter\n" + file.path()
+                            + "\nist nicht lesbar (" + io.getClass().getSimpleName() + ").");
+                    return;
+                }
+                SettingsForm saved = SettingsDialog.show(frame, current, Collections.<String>emptyList(),
+                        SettingsPanel.Mode.EDIT, actions, palette);
+                if (saved == null) {
+                    return;
+                }
+                LOG.info("Einstellungen gespeichert; sie gelten beim nächsten Start");
+                Object[] options = {"Jetzt beenden", "Weiter"};
+                int choice = JOptionPane.showOptionDialog(frame,
+                        "Die Einstellungen sind gespeichert. Sie gelten beim nächsten Start der Anwendung.",
+                        "Einstellungen gespeichert", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE,
+                        null, options, options[1]);
+                if (choice == 0) {
+                    frame.dispose();
+                }
+            }
+        });
+        return button;
     }
 
     private static void shutdownAndExit(final CompositionRoot root) {
@@ -111,31 +169,6 @@ public final class EnterpriseAiClientMain {
         }, "enterprise-ai-exit");
         exit.setDaemon(false);
         exit.start();
-    }
-
-    /** Meldung ohne Werte aus der Datei; legt bei fehlender Datei die kommentierte Beispieldatei an. */
-    static String configProblem(Path configFile, AppConfigException e) {
-        if (!Files.exists(configFile)) {
-            try {
-                Path parent = configFile.getParent();
-                if (parent != null) {
-                    Files.createDirectories(parent);
-                }
-                Files.write(configFile, AppConfigLoader.exampleConfiguration().getBytes(StandardCharsets.UTF_8));
-                return "Es gab noch keine Konfiguration. Eine kommentierte Vorlage wurde angelegt unter\n"
-                        + configFile + "\nBitte ausfüllen (Basis-URL, Modell, KeePass-Eintrag für den API-Key) "
-                        + "und die Anwendung neu starten.";
-            } catch (IOException io) {
-                return "Es gibt keine Konfiguration unter\n" + configFile + "\nund die Vorlage konnte dort nicht "
-                        + "angelegt werden (" + io.getClass().getSimpleName() + ").";
-            }
-        }
-        StringBuilder sb = new StringBuilder("Die Konfiguration unter\n").append(configFile)
-                .append("\nhat Fehler:\n");
-        for (String problem : e.problems()) {
-            sb.append("  - ").append(problem).append('\n');
-        }
-        return sb.toString();
     }
 
     private static void showError(String title, String message) {
@@ -162,6 +195,43 @@ public final class EnterpriseAiClientMain {
                     JOptionPane.WARNING_MESSAGE);
         } catch (RuntimeException e) {
             LOG.log(Level.FINE, "Hinweisdialog nicht anzeigbar", e);
+        }
+    }
+
+    /** Zeigt den Einstellungen-Dialog vom Hauptthread aus modal auf dem EDT (Erststart, fehlerhafte Datei). */
+    static final class SwingSettingsUi implements ConfigurationStartup.SettingsUi {
+
+        private final SettingsDialogActions actions;
+
+        SwingSettingsUi(SettingsDialogActions actions) {
+            this.actions = actions;
+        }
+
+        @Override
+        public SettingsForm edit(final SettingsForm initial, final List<String> problems, final boolean firstStart) {
+            final AtomicReference<SettingsForm> result = new AtomicReference<SettingsForm>();
+            Runnable show = new Runnable() {
+                @Override
+                public void run() {
+                    result.set(SettingsDialog.show(null, initial, problems,
+                            firstStart ? SettingsPanel.Mode.FIRST_START : SettingsPanel.Mode.EDIT, actions,
+                            ComicPalette.defaultPalette()));
+                }
+            };
+            try {
+                if (SwingUtilities.isEventDispatchThread()) {
+                    show.run();
+                } else {
+                    SwingUtilities.invokeAndWait(show);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            } catch (InvocationTargetException e) {
+                LOG.log(Level.SEVERE, "Einstellungen-Dialog nicht anzeigbar", e.getCause());
+                return null;
+            }
+            return result.get();
         }
     }
 }

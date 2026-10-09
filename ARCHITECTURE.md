@@ -308,14 +308,20 @@ ProxyPolicy (JVM-ProxySelector)        AdapterAssembly ──▶ ApplicationPort
 - **Pakete**: `app.config` (Snapshots `AppConfig`, `ChatConfig`, `EmbeddingConfig`, `KnowledgeConfig`,
   `SourceConfig`, `KeePassConfig`, `NetworkConfig`, `AgentConfig`; `AppConfigLoader`, `AppPaths`), `app.net`
   (`ProxyPolicy`), `app.security` (Brücken zum Security-Port, `FilePairingKeyStore`, `SwingPairingCallback`),
-  `app.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `app.knowledge` (`StartupIndexing`),
-  `app.composition` (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`,
-  `ShutdownSequence`, `StartupNotices`).
+  `app.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `app.ui.settings` (Einstellungen-Dialog,
+  reine Oberfläche über dem Formular `SettingsForm` und dem Vertrag `SettingsDialogActions`), `app.settings`
+  (`ConfigurationFile`, `SettingsMapper`, `FileSettingsActions`, `ConfigurationStartup`: Dialog ↔ Datei ↔
+  `AppConfigLoader`), `app.knowledge` (`StartupIndexing`), `app.composition` (`AdapterAssembly`,
+  `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`, `ShutdownSequence`, `StartupNotices`,
+  `SettingsAssembly`, `KeePassSecretChecker`).
 - **Konfiguration**: eine Properties-Datei im Benutzerverzeichnis (`~/.enterprise-ai-client/` bzw.
   `%APPDATA%`, überschreibbar mit `-Denterpriseai.home` und `-Denterpriseai.config`), eingebaute Defaults
   (AP10-Retrieval/Kontext, Adapter-Timeouts), Fehlermeldungen nennen Schlüssel und Erwartung, nie den Wert;
   unbekannte Schlüssel werden als Warnung gemeldet. Fehlt die Datei, legt die Anwendung die kommentierte
-  Vorlage `enterprise-ai-client.example.properties` ab und erklärt das. Modellnamen, Dimension (e5-base
+  Vorlage `enterprise-ai-client.example.properties` ab und öffnet mit Oberfläche den Einstellungen-Dialog
+  (Erststart ohne Handarbeit; headless: Hinweis und Exit-Code 2). Der Dialog (Knopf „Einstellungen“ in der
+  Kopfzeile) schreibt nur seine Schlüssel zeilenschonend in dieselbe Datei; Änderungen gelten beim nächsten
+  Start. Modellnamen, Dimension (e5-base
   vermutlich 768, UNVERIFIED), Proxy und Quellen sind reine Konfiguration.
 - **Secrets**: in der Datei stehen nur `SecretRef`s (Titel des KeePass-Eintrags): `chat.apiKeyRef`,
   `embedding.apiKeyRef`, `source.<id>.credentialRef`, `…clientCertificate.keyStorePasswordRef`.
