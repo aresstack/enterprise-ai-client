@@ -24,7 +24,9 @@ final class ServiceTab {
     ServiceTab(SettingsDialogActions actions, Supplier<SettingsForm> form, ComicPalette palette) {
         FormRows chat = new FormRows(palette);
         chat.note("Die Enterprise-API im OpenAI-kompatiblen Format. An die Basis-URL hängt die Anwendung "
-                + "/chat/completions bzw. /embeddings an; sie endet also meist auf /v1.");
+                + "/chat/completions bzw. /embeddings an; sie endet also meist auf /v1. Ob der Dienst von hier aus "
+                + "erreichbar ist (Proxy, Namensauflösung, TLS, API-Key), prüft der Knopf „Verbindung zum KI-Dienst "
+                + "prüfen“ im Reiter „Netzwerk & Agent“.");
         chatBaseUrl = chat.textField("Basis-URL", "Absolute http(s)-URL ohne Zugangsdaten, Query oder Fragment");
         chatModel = chat.textField("Chat-Modell", "Modellname, wie ihn der Dienst unter GET /models nennt");
         chatApiKeyRef = chat.textField("KeePass-Eintrag mit API-Key",

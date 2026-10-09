@@ -13,8 +13,12 @@ import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.util.function.Supplier;
 
-/** Reiter „Netzwerk & Agent“: Fenstertitel, Proxy, TLS-Vertrauen und der optionale Agent-Modus über ACP. */
+/**
+ * Reiter „Netzwerk & Agent“: Fenstertitel, Proxy, TLS-Vertrauen, der Verbindungstest gegen den KI-Dienst und
+ * der optionale Agent-Modus über ACP.
+ */
 final class SystemTab {
 
     private final JTextField windowTitle;
@@ -27,13 +31,14 @@ final class SystemTab {
     private final JCheckBox useWindowsCertificateStore;
     private final JTextField caCertificatesFile;
     private final ComicButton chooseCaFile;
+    private final ConnectionCheckRow connectionCheck;
     private final JCheckBox agentEnabled;
     private final JTextField agentCommand;
     private final JTextField agentArgs;
     private final JTextField agentTimeout;
     private final JPanel panel;
 
-    SystemTab(ComicPalette palette) {
+    SystemTab(SettingsDialogActions actions, Supplier<SettingsForm> form, ComicPalette palette) {
         FormRows general = new FormRows(palette);
         windowTitle = general.textField("Fenstertitel", "Titel des Hauptfensters");
 
@@ -75,6 +80,14 @@ final class SystemTab {
             }
         });
 
+        FormRows connection = new FormRows(palette);
+        connection.note("Prüft mit dem aktuellen Entwurf (auch ungespeichert) Schritt für Schritt, was beim Start "
+                + "passiert: Proxy-Route für die Basis-URL, Namensauflösung, API-Key aus KeePass, TLS-Handshake und "
+                + "ein Aufruf GET /models, dessen Modellliste mit dem Chat-Modell verglichen wird. Ein roter Schritt "
+                + "nennt die Ursache; dieselben Zeilen stehen in der Protokolldatei.");
+        connectionCheck = new ConnectionCheckRow(actions, form, palette);
+        connection.component(null, connectionCheck, null);
+
         FormRows agent = new FormRows(palette);
         agent.note("Der Agent-Modus startet einen externen ACP-Agenten als Kindprozess und zeigt den Reiter "
                 + "„Agent“. Der Agent bekommt die Wissenswerkzeuge über einen eigenen MCP-Endpoint.");
@@ -87,6 +100,7 @@ final class SystemTab {
                 FormRows.plate("Allgemein", palette.getNavigationBlue(), general.panel(), palette),
                 FormRows.plate("Netzwerk (Proxy)", palette.getAccentOrange(), proxy.panel(), palette),
                 FormRows.plate("Zertifikate (TLS)", palette.getAccentYellow(), tls.panel(), palette),
+                FormRows.plate("Verbindungstest", palette.getAccentRed(), connection.panel(), palette),
                 FormRows.plate("Agent-Modus (ACP)", palette.getAgentPetrol(), agent.panel(), palette));
     }
 
@@ -172,6 +186,10 @@ final class SystemTab {
 
     JTextField caCertificatesFile() {
         return caCertificatesFile;
+    }
+
+    ConnectionCheckRow connectionCheck() {
+        return connectionCheck;
     }
 
     JCheckBox agentEnabled() {

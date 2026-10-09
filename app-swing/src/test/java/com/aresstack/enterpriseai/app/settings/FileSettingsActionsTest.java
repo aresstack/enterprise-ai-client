@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.app.settings;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
+import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
@@ -232,5 +234,96 @@ public class FileSettingsActionsTest {
         assertEquals(12999, seen.get(0).rpc().port());
         assertTrue(results.get(0).isSuccess());
         assertEquals("gefunden: keepass:Enterprise AI API", results.get(0).message());
+    }
+
+    private static final class RecordingListener implements ConnectionCheckListener {
+        final List<ConnectionCheckStep> steps = new ArrayList<ConnectionCheckStep>();
+        Boolean finished;
+
+        @Override
+        public void onStep(ConnectionCheckStep step) {
+            steps.add(step);
+        }
+
+        @Override
+        public void onFinished(boolean success) {
+            assertTrue("onFinished nur einmal", finished == null);
+            finished = success;
+        }
+    }
+
+    private static final class RecordingChecker implements ConnectionChecker {
+        final List<AppConfig> configs = new ArrayList<AppConfig>();
+        boolean success = true;
+
+        @Override
+        public boolean check(AppConfig config, Consumer<ConnectionCheckStep> onStep) {
+            configs.add(config);
+            onStep.accept(ConnectionCheckStep.ok("Proxy-Route", "direkt (NONE)"));
+            onStep.accept(ConnectionCheckStep.ok("GET /models", "HTTP 200"));
+            return success;
+        }
+    }
+
+    private static final class CountingExecutor implements Executor {
+        int executions;
+
+        @Override
+        public void execute(Runnable command) {
+            executions++;
+            command.run();
+        }
+    }
+
+    @Test
+    public void connectionCheckWithoutCheckerFailsImmediately() throws Exception {
+        FileSettingsActions actions = new FileSettingsActions(fileWith(validText()), null, DIRECT, DIRECT);
+        RecordingListener listener = new RecordingListener();
+        actions.checkConnection(SettingsMapper.fromProperties(actions.file().read()), listener);
+        assertEquals(1, listener.steps.size());
+        assertEquals(FileSettingsActions.STEP_TEST, listener.steps.get(0).title());
+        assertTrue(listener.steps.get(0).isFailure());
+        assertEquals(Boolean.FALSE, listener.finished);
+    }
+
+    @Test
+    public void connectionCheckRejectsAnInvalidDraftBeforeRunningTheChecker() throws Exception {
+        RecordingChecker checker = new RecordingChecker();
+        FileSettingsActions actions = new FileSettingsActions(fileWith(validText()), null, checker,
+                ConfigurationCheck.none(), DIRECT, DIRECT);
+        SettingsForm form = SettingsMapper.fromProperties(actions.file().read()).toBuilder()
+                .chatBaseUrl("keine url").build();
+        RecordingListener listener = new RecordingListener();
+        actions.checkConnection(form, listener);
+        assertEquals(1, listener.steps.size());
+        assertEquals(FileSettingsActions.STEP_CONFIGURATION, listener.steps.get(0).title());
+        assertTrue(listener.steps.get(0).detail(), listener.steps.get(0).detail().contains("chat.baseUrl"));
+        assertEquals(Boolean.FALSE, listener.finished);
+        assertTrue(checker.configs.isEmpty());
+    }
+
+    @Test
+    public void connectionCheckRunsTheCheckerWithTheDraftOnTheWorkerAndDeliversOnTheUiExecutor() throws Exception {
+        RecordingChecker checker = new RecordingChecker();
+        CountingExecutor worker = new CountingExecutor();
+        CountingExecutor ui = new CountingExecutor();
+        FileSettingsActions actions = new FileSettingsActions(fileWith(validText()), null, checker,
+                ConfigurationCheck.none(), worker, ui);
+        SettingsForm form = SettingsMapper.fromProperties(actions.file().read()).toBuilder()
+                .chatBaseUrl("http://127.0.0.1:9/v2").build();
+        RecordingListener listener = new RecordingListener();
+        actions.checkConnection(form, listener);
+
+        assertEquals(1, checker.configs.size());
+        assertEquals("http://127.0.0.1:9/v2", checker.configs.get(0).chat().baseUrl().toString());
+        assertEquals(2, listener.steps.size());
+        assertEquals(Boolean.TRUE, listener.finished);
+        assertEquals(1, worker.executions);
+        assertEquals(3, ui.executions);
+
+        checker.success = false;
+        listener = new RecordingListener();
+        actions.checkConnection(form, listener);
+        assertEquals(Boolean.FALSE, listener.finished);
     }
 }

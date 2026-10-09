@@ -52,6 +52,22 @@ public final class SettingsDialogDemo {
             onResult.accept(SecretCheckResult.ok("Eintrag \u201e" + secretRef.replace("keepass:", "")
                     + "\u201c gefunden; das Passwortfeld ist gefüllt."));
         }
+
+        @Override
+        public void checkConnection(SettingsForm form, ConnectionCheckListener listener) {
+            listener.onStep(ConnectionCheckStep.ok("Proxy-Route", "Ziel " + form.chatBaseUrl() + "/models: PROXY "
+                    + "proxy.intern.beispiel:8080 laut PAC-Skript aus den Windows-Einstellungen"));
+            listener.onStep(ConnectionCheckStep.ok("Namensauflösung", "proxy.intern.beispiel -> 10.0.0.8 (Proxy; "
+                    + "den Zielhost ki.intern.beispiel löst der Proxy auf)"));
+            listener.onStep(ConnectionCheckStep.ok("API-Key", "Aus dem KeePass-Eintrag \u201eEnterprise AI API\u201c "
+                    + "gelesen (wird nicht angezeigt)."));
+            listener.onStep(ConnectionCheckStep.ok("Verbindung und TLS", "TLS-Handshake mit ki.intern.beispiel "
+                    + "erfolgreich (TLS_AES_256_GCM_SHA384); Serverzertifikat für \u201eki.intern.beispiel\u201c, "
+                    + "ausgestellt von \u201eFirmen-CA\u201c; Vertrauensquellen: JVM, Windows-ROOT, CA-Datei."));
+            listener.onStep(ConnectionCheckStep.warning("GET /models", "HTTP 200: 3 Modell(e), aber \u201e"
+                    + form.chatModel() + "\u201c fehlt (chat.model prüfen). Verfügbar: modell-a, modell-b, modell-c"));
+            listener.onFinished(true);
+        }
     }
 
     static SettingsForm sampleForm() {
@@ -81,6 +97,7 @@ public final class SettingsDialogDemo {
         int tab = 0;
         int height = DEFAULT_HEIGHT;
         boolean problems = false;
+        boolean check = false;
         for (int i = 0; i < args.length; i++) {
             if ("--screenshot".equals(args[i]) && i + 1 < args.length) {
                 screenshot = args[++i];
@@ -90,6 +107,8 @@ public final class SettingsDialogDemo {
                 height = Integer.parseInt(args[++i]);
             } else if ("--problems".equals(args[i])) {
                 problems = true;
+            } else if ("--check".equals(args[i])) {
+                check = true;
             }
         }
         final List<String> shownProblems = problems
@@ -97,7 +116,7 @@ public final class SettingsDialogDemo {
                         "Embedding-Dimension (embedding.dimension): keine ganze Zahl")
                 : Collections.<String>emptyList();
         if (screenshot != null) {
-            screenshot(new File(screenshot), tab, height, shownProblems);
+            screenshot(new File(screenshot), tab, height, shownProblems, check);
             return;
         }
         final DemoActions actions = new DemoActions();
@@ -114,9 +133,12 @@ public final class SettingsDialogDemo {
 
     private static final int DEFAULT_HEIGHT = 680;
 
-    /** Ohne Fenster (headless) wird der Dialoginhalt auf 800×{@code height} gelegt und per rekursivem {@code doLayout} gesetzt. */
-    static void screenshot(final File target, final int tab, final int height, final List<String> problems)
-            throws Exception {
+    /**
+     * Ohne Fenster (headless) wird der Dialoginhalt auf 800×{@code height} gelegt und per rekursivem {@code doLayout}
+     * gesetzt; {@code check} drückt vorher „Verbindung zum KI-Dienst prüfen“ (Attrappen-Schritte).
+     */
+    static void screenshot(final File target, final int tab, final int height, final List<String> problems,
+                           final boolean check) throws Exception {
         final BufferedImage[] image = new BufferedImage[1];
         SwingUtilities.invokeAndWait(new Runnable() {
             @Override
@@ -126,6 +148,9 @@ public final class SettingsDialogDemo {
                 SettingsPanel panel = new SettingsPanel(sampleForm(), problems, SettingsPanel.Mode.EDIT,
                         new DemoActions(), palette);
                 panel.selectTab(tab);
+                if (check) {
+                    panel.systemTab().connectionCheck().button().doClick();
+                }
                 JPanel content = new JPanel(new BorderLayout());
                 content.setBackground(palette.getSurface());
                 content.setBorder(ComicBorder.roundedBorder(palette, 4));

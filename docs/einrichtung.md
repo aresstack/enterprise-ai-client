@@ -96,7 +96,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | KI-Dienst | `chat.baseUrl`, `chat.model`, `chat.apiKeyRef` (mit „In KeePass prüfen“), `chat.systemPrompt`; `embedding.baseUrl`, `embedding.model`, `embedding.dimension`, `embedding.apiKeyRef` |
 | Wissensbasis | `knowledge.indexDirectory` (mit Verzeichnisauswahl), `knowledge.indexOnStartup`; `sources` und je Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` |
 | KeePass | `security.keepass.enabled`, `host`, `port`, `clientDisplayName`, `pairingKeyStore`; „In KeePass prüfen“ mit dem Eintrag des API-Keys |
-| Netzwerk & Agent | `ui.windowTitle`; `network.proxy.mode` (AUTO, SYSTEM, NONE, MANUAL), `pacUrl`, `pacDiscovery`, `host`, `port`, `nonProxyHosts`; `network.tls.useWindowsCertificateStore`, `network.tls.caCertificatesFile` (mit Dateiauswahl); `agent.enabled`, `agent.command`, `agent.args`, `agent.requestTimeoutSeconds` |
+| Netzwerk & Agent | `ui.windowTitle`; `network.proxy.mode` (AUTO, SYSTEM, NONE, MANUAL), `pacUrl`, `pacDiscovery`, `host`, `port`, `nonProxyHosts`; `network.tls.useWindowsCertificateStore`, `network.tls.caCertificatesFile` (mit Dateiauswahl); „Verbindung zum KI-Dienst prüfen“; `agent.enabled`, `agent.command`, `agent.args`, `agent.requestTimeoutSeconds` |
 
 - **Prüfen** läuft durch denselben Loader wie der Start und baut wie dieser die TLS-Vertrauensregel (eine
   fehlende oder leere CA-Datei fällt also hier auf, nicht erst beim nächsten Start): Speichern geht nur ohne
@@ -111,6 +111,16 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
   Start) und meldet nur, ob der Eintrag existiert und sein Passwortfeld gefüllt ist. Das Secret selbst verlässt
   `app.security` nicht; der API-Key lässt sich im Dialog nicht eintippen (bewusst, siehe
   [KeePass-Konfiguration](konfiguration-keepass.md)).
+- **Verbindung zum KI-Dienst prüfen** (Reiter „Netzwerk & Agent“) geht mit dem aktuellen Entwurf, auch
+  ungespeichert, denselben Weg wie der Start und zeigt jeden Schritt einzeln, grün, orange (Hinweis), rot
+  (Ursache) oder grau (Information): die **Proxy-Route** für `chat.baseUrl` (bei AUTO samt PAC-Auswertung; ohne
+  PAC-Ergebnis ein Hinweis), die **Namensauflösung** des Hosts, der tatsächlich angesprochen wird (bei einer
+  Proxy-Route der Proxy, denn den Zielhost löst dann der Proxy auf), der **API-Key** aus KeePass (pairt bei Bedarf;
+  schlägt das fehl, läuft der Test ohne Key weiter), **Verbindung und TLS** mit der Vertrauensregel des Entwurfs
+  (Cipher, Serverzertifikat, befragte Vertrauensquellen) und **GET /models**, dessen Modellliste mit `chat.model`
+  verglichen wird (HTTP 401 ohne Key gilt als erreichbar, mit Key als abgelehnter Key; 404 ist ein Hinweis zur
+  Basis-URL). Der API-Key erscheint in keiner Zeile; dieselben Zeilen stehen im Protokoll unter
+  `Verbindungstest, …`. Der Test ändert nichts an der laufenden Anwendung.
 - **Wirksamkeit**: Die laufende Anwendung ist mit der alten Konfiguration gebaut. Nach dem Speichern bietet sie
   an, sich zu beenden; die Änderungen gelten beim nächsten Start.
 

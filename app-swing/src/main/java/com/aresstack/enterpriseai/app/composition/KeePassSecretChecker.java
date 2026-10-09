@@ -82,7 +82,15 @@ public final class KeePassSecretChecker implements SecretChecker {
     }
 
     static String describe(SecretUnavailableException e, SecretRef ref, String address) {
-        switch (e.reason()) {
+        return describe(e.reason(), ref, address);
+    }
+
+    /** Meldung für den Benutzer je Grund; nennt Titel und Adresse, nie Material. */
+    static String describe(SecretUnavailableException.Reason reason, SecretRef ref, String address) {
+        if (reason == null) {
+            return "KeePass-Zugriff fehlgeschlagen.";
+        }
+        switch (reason) {
             case NOT_FOUND:
                 return "Kein KeePass-Eintrag mit dem Titel „" + title(ref) + "“. Der Titel muss genau "
                         + "übereinstimmen (ohne das Präfix keepass:).";
@@ -95,7 +103,7 @@ public final class KeePassSecretChecker implements SecretChecker {
             case CANCELLED:
                 return "Das Pairing wurde abgebrochen.";
             default:
-                return "KeePass-Zugriff fehlgeschlagen (" + e.reason() + ").";
+                return "KeePass-Zugriff fehlgeschlagen (" + reason + ").";
         }
     }
 }
