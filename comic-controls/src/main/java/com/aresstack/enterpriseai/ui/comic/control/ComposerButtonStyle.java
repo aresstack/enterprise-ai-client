@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 
 import javax.swing.AbstractButton;
 import javax.swing.UIManager;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -32,12 +33,17 @@ final class ComposerButtonStyle {
     private ComposerButtonStyle() {
     }
 
-    /** No focus, no LaF chrome, hand cursor, the family's font and margins. */
+    /**
+     * No LaF chrome, hand cursor, the family's font and margins. Reachable with Tab (Space activates, the ring
+     * below marks the focus), but a mouse click never takes the focus away from the editor.
+     */
     static void configure(AbstractButton button, String tooltip) {
         button.setHorizontalTextPosition(AbstractButton.RIGHT);
         button.setIconTextGap(5);
         button.setFont(button.getFont().deriveFont(Font.BOLD, 11.5f));
-        button.setFocusable(false);
+        button.setFocusable(true);
+        button.setRequestFocusEnabled(false);
+        button.setFocusPainted(false);
         button.setBorderPainted(false);
         button.setContentAreaFilled(false);
         button.setOpaque(false);
@@ -78,9 +84,19 @@ final class ComposerButtonStyle {
             } else {
                 button.setForeground(flatForeground());
             }
+            if (button.isFocusOwner()) {
+                paintFocusRing(g2, button, filled && enabled ? Color.WHITE : active, filled ? FILLED_ARC : HOVER_ARC);
+            }
         } finally {
             g2.dispose();
         }
+    }
+
+    /** The keyboard focus: a thin ring just inside the plate (white on a filled plate, accent on a flat one). */
+    private static void paintFocusRing(Graphics2D g2, AbstractButton button, Color color, int arc) {
+        g2.setColor(color);
+        g2.setStroke(new BasicStroke(1.5f));
+        g2.drawRoundRect(1, 1, button.getWidth() - 3, button.getHeight() - 3, arc, arc);
     }
 
     static Color flatForeground() {

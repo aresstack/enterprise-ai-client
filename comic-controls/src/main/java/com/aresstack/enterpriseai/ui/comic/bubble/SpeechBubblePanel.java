@@ -386,7 +386,8 @@ public final class SpeechBubblePanel extends JPanel
         JButton toggle = new JButton();
         toggle.setFont(headerLabel.getFont());
         toggle.setForeground(withAlpha(textColor, 220));
-        toggle.setFocusable(false);
+        toggle.setFocusable(true); // per Tab erreichbar (Leertaste klappt auf) …
+        toggle.setRequestFocusEnabled(false); // … ein Mausklick nimmt dem Editor den Fokus aber nicht weg
         toggle.setBorderPainted(false);
         toggle.setContentAreaFilled(false);
         toggle.setOpaque(false);

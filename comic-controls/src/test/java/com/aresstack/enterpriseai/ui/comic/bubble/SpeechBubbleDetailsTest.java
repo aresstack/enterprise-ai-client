@@ -30,6 +30,9 @@ public class SpeechBubbleDetailsTest {
                 assertFalse(plain.hasDetails());
                 assertTrue(withDetails.hasDetails());
                 assertFalse("folded by default", withDetails.isDetailsExpanded());
+                assertTrue("reachable by keyboard", withDetails.detailsToggle().isFocusable());
+                assertFalse("a mouse click leaves the focus where it is",
+                        withDetails.detailsToggle().isRequestFocusEnabled());
                 assertTrue(withDetails.detailsToggle().getText().startsWith("Details anzeigen"));
 
                 int limit = 600;

@@ -101,6 +101,44 @@ public class AgentServiceTest {
     }
 
     @Test
+    public void endSessionEndsTheAgentAndTheNextPromptStartsAFreshOneWithoutTheOldContext() {
+        AgentService service = new AgentService(launcher, DIRECT);
+        service.send("eins", new RecordingAgentListener());
+        String firstSession = service.sessionId();
+        launcher.lastPrompt().complete();
+
+        service.endSession();
+        assertEquals(AgentStatus.NOT_STARTED, service.status());
+        assertNull(service.sessionId());
+        assertTrue("Prozess und Verbindung sind beendet", launcher.connections.get(0).isClosed());
+        assertEquals("das Transkript bleibt lesbar", 1, service.transcript().size());
+        service.endSession(); // idempotent
+
+        RecordingAgentListener next = new RecordingAgentListener();
+        service.send("zwei", next);
+        assertEquals("neuer Agentenprozess", 2, launcher.connections.size());
+        assertNotEquals(firstSession, service.sessionId());
+        launcher.lastPrompt().complete();
+        assertEquals(Collections.singletonList("completed"), next.events);
+        assertEquals(AgentStatus.READY, service.status());
+    }
+
+    @Test
+    public void endSessionIsRejectedWhileATurnRuns() {
+        AgentService service = new AgentService(launcher, DIRECT);
+        service.send("eins", new RecordingAgentListener());
+        try {
+            service.endSession();
+            fail("während eines Auftrags darf die Session nicht enden");
+        } catch (IllegalStateException expected) {
+            assertTrue(service.isBusy());
+        }
+        launcher.lastPrompt().complete();
+        assertEquals(AgentStatus.READY, service.status());
+        assertEquals(1, launcher.connections.size());
+    }
+
+    @Test
     public void aSecondPromptWhileOneRunsIsRejected() {
         AgentService service = new AgentService(launcher, DIRECT);
         service.send("eins", new RecordingAgentListener());

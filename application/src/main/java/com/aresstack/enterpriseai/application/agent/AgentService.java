@@ -20,7 +20,8 @@ import java.util.concurrent.RejectedExecutionException;
  * Session); weitere Aufträge laufen in derselben ACP-Session, so dass der Agent seinen Kontext behält. Höchstens
  * ein Auftrag läuft gleichzeitig. Ist der Agentenprozess weggefallen, startet der nächste Auftrag einen neuen
  * (in einer neuen Session, ohne den alten Kontext); einen automatischen Neustart ohne Nutzeraktion gibt es
- * nicht. {@link #close()} beendet Session, Verbindung und Prozess endgültig.
+ * nicht. {@link #endSession()} („Neuer Chat“) beendet Session, Verbindung und Prozess, der nächste Auftrag
+ * startet frisch; {@link #close()} beendet sie endgültig.
  *
  * <p>Das Transkript ({@link #transcript()}) gehört nur diesem Service. Es ist von den Chat-Konversationen des
  * {@code ChatService} getrennt; beide Modi teilen keinen Zustand.
@@ -159,6 +160,34 @@ public final class AgentService {
         }
         // Erst die Verbindung: Sie beendet jeden laufenden oder wartenden Prompt mit einem Terminal. Eine zuerst
         // geschlossene Session könnte den Prompt-Dispatcher des Adapters vorher abmelden.
+        closeQuietly(openConnection);
+        closeQuietly(openSession);
+    }
+
+    /**
+     * „Neuer Chat“ im Agent-Modus: beendet Session, Verbindung und Agentenprozess (samt Tool-Endpunkten), ohne
+     * den Service zu schließen; der nächste Auftrag startet einen frischen Agenten in einer neuen Session ohne
+     * den alten Kontext. Das Transkript bleibt lesbar. Ohne Wirkung, wenn kein Agent läuft oder nach
+     * {@link #close()}.
+     *
+     * @throws IllegalStateException solange ein Auftrag läuft (vorher {@link #cancel()} und abwarten)
+     */
+    public void endSession() {
+        AcpSession openSession;
+        AcpConnection openConnection;
+        synchronized (lock) {
+            if (closed) {
+                return;
+            }
+            if (running != null) {
+                throw new IllegalStateException("cannot end the agent session while a turn is running");
+            }
+            openSession = session;
+            openConnection = connection;
+            session = null;
+            connection = null;
+            status = AgentStatus.NOT_STARTED;
+        }
         closeQuietly(openConnection);
         closeQuietly(openSession);
     }

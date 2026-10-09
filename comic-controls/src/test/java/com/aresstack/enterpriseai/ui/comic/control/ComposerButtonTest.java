@@ -28,7 +28,9 @@ public class ComposerButtonTest {
                 BufferedImage image = render(send);
                 assertEquals(ResearchUiPalette.ACCENT_BLUE.getRGB() & 0xFFFFFF, image.getRGB(10, 14) & 0xFFFFFF);
                 assertEquals(Color.WHITE, send.getForeground());
-                assertFalse(send.isFocusable());
+                assertTrue("reachable with Tab", send.isFocusable());
+                assertFalse("a click leaves the focus in the editor", send.isRequestFocusEnabled());
+                assertFalse("the ring below replaces the LaF focus paint", send.isFocusPainted());
             }
         });
     }

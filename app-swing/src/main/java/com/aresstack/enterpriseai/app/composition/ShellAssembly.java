@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceItem;
 import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.app.ui.workspace.WorkspaceActions;
+import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
@@ -29,7 +30,8 @@ import java.util.List;
  * ({@link ChatWorkspacePanel}: Hamburger, Modus-Pille, Drawer) mit der Chat-Ansicht samt
  * {@link RagChatBinding} (AP22: RAG-Schalter, Quellen, Hinweise) und Statuszeile der Wissensbasis, dazu, falls
  * konfiguriert, der Agent-Ansicht (AP21). „+ Neuer Chat“ eröffnet im Chat-Modus eine neue Unterhaltung am
- * {@link ChatService} und leert das Transkript; im Agent-Modus leert es nur das Transkript. Das Zahnrad reicht
+ * {@link ChatService} und leert das Transkript; im Agent-Modus beendet es die ACP-Session samt Agentenprozess
+ * ({@link AgentService#endSession()}), damit der nächste Auftrag ohne den alten Kontext startet. Das Zahnrad reicht
  * die Composition Root als {@link WorkspaceActions#settingsRequested()} an den Einstellungen-Dialog weiter.
  * {@link #createShell} läuft auch headless (Tests); nur {@link #createFrame} braucht ein Display.
  */
@@ -52,9 +54,12 @@ public final class ShellAssembly {
         ChatShellPanel chatShell = new ChatShellPanel(chatModel, chatActions, root.knowledgeStatus(), palette, bubbles);
 
         final AgentModeAssembly.AgentView agent;
+        final AgentService agentService;
         if (root.hasAgent()) {
-            agent = AgentModeAssembly.create(root.agentService(), root.uiExecutor(), root.clock(), palette, bubbles);
+            agentService = root.agentService();
+            agent = AgentModeAssembly.create(agentService, root.uiExecutor(), root.clock(), palette, bubbles);
         } else {
+            agentService = null;
             agent = null;
         }
         ShellModeModel modes = new ShellModeModel(agent != null);
@@ -67,7 +72,8 @@ public final class ShellAssembly {
             @Override
             public void newChatRequested(ShellMode mode) {
                 if (mode == ShellMode.AGENT && agent != null) {
-                    if (!agent.model().isStreaming()) {
+                    if (!agent.model().isStreaming() && !agentService.isBusy()) {
+                        agentService.endSession(); // der Agent behält sonst den alten Kontext in seiner Session
                         agent.model().clear();
                     }
                     return;
