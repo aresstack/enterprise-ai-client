@@ -48,6 +48,18 @@ public class ConnectionDiagnosisTest {
     }
 
     @Test
+    public void handshakeFailureWithoutCertificateCauseGetsTheTlsHintInsteadOfTheCertificateRemedy() {
+        String handshake = ConnectionDiagnosis.hint(transport(
+                new SSLHandshakeException("Received fatal alert: handshake_failure")));
+        assertTrue(handshake, handshake.contains("TLS-Verhandlung"));
+        assertFalse(handshake, handshake.contains("Zertifikat des Servers"));
+        String version = ConnectionDiagnosis.hint(transport(
+                new SSLHandshakeException("Received fatal alert: protocol_version")));
+        assertTrue(version, version.contains("Java aktualisieren"));
+        assertFalse(version, version.contains("network.tls.caCertificatesFile"));
+    }
+
+    @Test
     public void proxyAndNameResolutionAndTimeoutsGetTheirOwnHints() {
         String auth = ConnectionDiagnosis.hint(transport(new IOException(
                 "Unable to tunnel through proxy. Proxy returns \"HTTP/1.1 407 Proxy Authentication Required\"")));
@@ -56,7 +68,8 @@ public class ConnectionDiagnosisTest {
                 "Unable to tunnel through proxy. Proxy returns \"HTTP/1.1 403 Forbidden\"")));
         assertTrue(refused, refused.contains("Proxy hat die Verbindung"));
         String unknown = ConnectionDiagnosis.hint(transport(new UnknownHostException("ki.example")));
-        assertTrue(unknown, unknown.contains("network.proxy.mode=SYSTEM"));
+        assertTrue(unknown, unknown.contains("network.proxy.mode=AUTO"));
+        assertTrue(unknown, unknown.contains("Route zum KI-Dienst"));
         String timeout = ConnectionDiagnosis.hint(transport(new SocketTimeoutException("connect timed out")));
         assertTrue(timeout, timeout.contains("chat.connectTimeoutMillis"));
         String connect = ConnectionDiagnosis.hint(transport(new ConnectException("Connection refused: connect")));

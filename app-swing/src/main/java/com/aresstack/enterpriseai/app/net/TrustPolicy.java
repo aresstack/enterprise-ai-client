@@ -4,6 +4,8 @@ import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 
 import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSocketFactory;
@@ -16,6 +18,7 @@ import java.io.InputStream;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.cert.Certificate;
@@ -24,6 +27,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 
@@ -50,6 +54,8 @@ public final class TrustPolicy {
     static final String JVM_SOURCE = "JVM-Truststore";
     static final String WINDOWS_SOURCE = "Windows-Zertifikatspeicher";
     static final String FILE_SOURCE = "CA-Datei";
+    /** JVM-Property des Standard-SSLContexts für Client-Zertifikate; wird hier genauso ausgewertet. */
+    static final String KEY_STORE_PROPERTY = "javax.net.ssl.keyStore";
 
     private final List<String> sources;
     private final List<String> notices;
@@ -139,15 +145,57 @@ public final class TrustPolicy {
             sources.add(FILE_SOURCE + " (" + certificates.size() + " Zertifikate)");
         }
         CompositeTrustManager composite = new CompositeTrustManager(delegates, sources);
+        KeyManager[] keyManagers;
+        try {
+            keyManagers = defaultKeyManagers(notices);
+        } catch (GeneralSecurityException | IOException | RuntimeException e) {
+            throw new AppConfigException(KEY_STORE_PROPERTY + ": Client-Schlüsselspeicher nicht ladbar ("
+                    + e.getClass().getSimpleName() + ")");
+        }
         SSLSocketFactory factory;
         try {
             SSLContext context = SSLContext.getInstance("TLS");
-            context.init(null, new TrustManager[] {composite}, null);
+            context.init(keyManagers, new TrustManager[] {composite}, null);
             factory = context.getSocketFactory();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("TLS-Kontext nicht erzeugbar: " + e.getMessage(), e);
         }
         return new TrustPolicy(sources, notices, composite, factory);
+    }
+
+    /**
+     * Client-Schlüssel wie beim Standard-SSLContext des JDK: aus {@code javax.net.ssl.keyStore} mit
+     * {@code keyStoreType}, {@code keyStoreProvider} und {@code keyStorePassword}, sonst keine. So verliert der
+     * Austausch der Vertrauensregel kein per JVM-Property eingerichtetes Client-Zertifikat. Das Passwort gelangt
+     * weder in Hinweise noch in Fehlermeldungen.
+     */
+    static KeyManager[] defaultKeyManagers(List<String> notices) throws GeneralSecurityException, IOException {
+        String location = System.getProperty(KEY_STORE_PROPERTY, "").trim();
+        if (location.isEmpty()) {
+            return null;
+        }
+        String type = System.getProperty("javax.net.ssl.keyStoreType", KeyStore.getDefaultType());
+        String provider = System.getProperty("javax.net.ssl.keyStoreProvider", "");
+        String password = System.getProperty("javax.net.ssl.keyStorePassword", "");
+        char[] secret = password.isEmpty() ? null : password.toCharArray();
+        KeyStore store = provider.isEmpty() ? KeyStore.getInstance(type) : KeyStore.getInstance(type, provider);
+        if ("NONE".equals(location)) {
+            store.load(null, secret);
+        } else {
+            try (InputStream in = Files.newInputStream(Paths.get(location))) {
+                store.load(in, secret);
+            }
+        }
+        KeyManagerFactory factory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        factory.init(store, secret);
+        int keys = 0;
+        for (Enumeration<String> aliases = store.aliases(); aliases.hasMoreElements();) {
+            if (store.isKeyEntry(aliases.nextElement())) {
+                keys++;
+            }
+        }
+        notices.add("Client-Zertifikate aus " + KEY_STORE_PROPERTY + ": " + keys + " Schlüssel");
+        return factory.getKeyManagers();
     }
 
     /** Die herangezogenen Vertrauensquellen in Prüfreihenfolge, für Log und Fehlermeldungen. */

@@ -14,6 +14,7 @@ jsoup = "1.17.2"
 jwbf = "3.1.1"
 javaWebsocket = "1.5.2"
 slf4j = "2.0.17"
+winProxy = "0.1.0-beta.4"
 
 [libraries]
 # Test
@@ -40,3 +41,7 @@ jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 jwbf = { module = "net.sourceforge:jwbf", version.ref = "jwbf" }
 java-websocket = { module = "org.java-websocket:Java-WebSocket", version.ref = "javaWebsocket" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+
+# app-swing: PAC-/WPAD-Proxyskripte wie Browser und PowerShell auswerten (Angelos Bibliothek, Java 8, bringt
+# GraalJS 21.2 mit; dieselbe Version wie in corenth und askai-java8).
+win-proxy-java = { module = "com.aresstack:win-proxy-java", version.ref = "winProxy" }

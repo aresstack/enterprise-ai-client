@@ -178,6 +178,47 @@ public class TrustPolicyTest {
     }
 
     @Test
+    public void clientKeyStoreFromTheJvmPropertiesStaysInTheReplacementContext() throws Exception {
+        Path keyStore = temp.newFile("client.jks").toPath();
+        try (InputStream in = TrustPolicyTest.class.getResourceAsStream("localhost.jks")) {
+            assertNotNull("Testressource localhost.jks fehlt", in);
+            Files.copy(in, keyStore, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        String previousStore = System.getProperty(TrustPolicy.KEY_STORE_PROPERTY);
+        String previousPassword = System.getProperty("javax.net.ssl.keyStorePassword");
+        System.setProperty(TrustPolicy.KEY_STORE_PROPERTY, keyStore.toString());
+        System.setProperty("javax.net.ssl.keyStorePassword", "changeit");
+        try {
+            TrustPolicy policy = TrustPolicy.jvmOnly();
+            assertEquals(1, policy.notices().size());
+            assertTrue(policy.notices().get(0), policy.notices().get(0)
+                    .contains(TrustPolicy.KEY_STORE_PROPERTY + ": 1 Schlüssel"));
+            assertFalse("das Passwort gehört nicht in die Hinweise", policy.notices().get(0).contains("changeit"));
+
+            System.setProperty("javax.net.ssl.keyStorePassword", "falsch");
+            try {
+                TrustPolicy.jvmOnly();
+                fail("expected AppConfigException");
+            } catch (AppConfigException e) {
+                assertTrue(e.getMessage(), e.getMessage().contains(TrustPolicy.KEY_STORE_PROPERTY
+                        + ": Client-Schlüsselspeicher nicht ladbar (IOException)"));
+                assertFalse(e.getMessage(), e.getMessage().contains("falsch"));
+            }
+        } finally {
+            restoreProperty(TrustPolicy.KEY_STORE_PROPERTY, previousStore);
+            restoreProperty("javax.net.ssl.keyStorePassword", previousPassword);
+        }
+    }
+
+    private static void restoreProperty(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
+    }
+
+    @Test
     public void windowsStoreIsSkippedWithANoticeOutsideWindows() {
         TrustPolicy policy = TrustPolicy.build(true, null, "Linux");
         assertEquals(1, policy.sources().size());

@@ -114,8 +114,9 @@ public class AdapterAssemblyTest {
             assertTrue(ports.secrets() instanceof KeePassRpcSecretProvider);
             assertEquals(Arrays.asList(KnowledgeSourceId.of("wiki"), KnowledgeSourceId.of("confluence")),
                     new java.util.ArrayList<KnowledgeSourceId>(ports.sources().ids()));
-            assertTrue(ports.sources().find(KnowledgeSourceId.of("wiki")).port() instanceof MediaWikiKnowledgeSource);
-            assertTrue(ports.sources().find(KnowledgeSourceId.of("confluence")).port()
+            assertTrue(unwrap(ports.sources().find(KnowledgeSourceId.of("wiki")).port())
+                    instanceof MediaWikiKnowledgeSource);
+            assertTrue(unwrap(ports.sources().find(KnowledgeSourceId.of("confluence")).port())
                     instanceof ConfluenceKnowledgeSource);
             assertFalse("Agent-Modus ist in der Beispielkonfiguration aus", ports.hasAgent());
             assertEquals(Arrays.asList("knowledge-index"), ports.resourceNames());
@@ -164,7 +165,8 @@ public class AdapterAssemblyTest {
         ApplicationPorts ports = AdapterAssembly.create(config, new ProxyPolicy(config.network()), null, null);
         try {
             KnowledgeSourcePort confluence = ports.sources().find(KnowledgeSourceId.of("confluence")).port();
-            assertTrue(confluence instanceof ConfluenceKnowledgeSource);
+            assertTrue("Quellen tragen die Protokollhülle", confluence instanceof LoggingKnowledgeSource);
+            assertTrue(unwrap(confluence) instanceof ConfluenceKnowledgeSource);
             try {
                 confluence.discover(SourceScope.of("space:DEV"));
                 fail("expected KnowledgeSourceException");
@@ -223,5 +225,9 @@ public class AdapterAssemblyTest {
         } finally {
             root.shutdown().run();
         }
+    }
+
+    private static KnowledgeSourcePort unwrap(KnowledgeSourcePort port) {
+        return ((LoggingKnowledgeSource) port).delegate();
     }
 }

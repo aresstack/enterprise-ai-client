@@ -4,7 +4,6 @@ import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 
 import javax.net.ssl.SSLException;
-import javax.net.ssl.SSLHandshakeException;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
@@ -102,8 +101,10 @@ public final class ConnectionDiagnosis {
             return "Der Proxy hat die Verbindung zum Dienst abgelehnt. Proxy-Einstellung prüfen "
                     + "(network.proxy.mode, network.proxy.nonProxyHosts).";
         }
-        if (has(chain, SSLHandshakeException.class) || has(chain, CertificateException.class)
-                || text.contains("pkix") || text.contains("certification path") || text.contains("certificate")) {
+        // Nur Zertifikatsursachen: eine SSLHandshakeException kann auch Protokollversion oder Cipher-Suite betreffen,
+        // dafür gilt der TLS-Zweig darunter.
+        if (has(chain, CertificateException.class) || text.contains("pkix") || text.contains("certification path")
+                || text.contains("certificate")) {
             return "Java vertraut dem Zertifikat des Servers nicht. Häufige Ursachen: ein Firmen-Proxy mit eigenem "
                     + "Zertifikat oder ein älteres Java, dem die Stammzertifizierungsstelle fehlt. Abhilfe: unter "
                     + "Windows network.tls.useWindowsCertificateStore=true belassen (Standard; nutzt die "
@@ -116,13 +117,15 @@ public final class ConnectionDiagnosis {
                     + "Java aktualisieren; TLS 1.3 gibt es in Java 8 erst ab Update 261.";
         }
         if (has(chain, UnknownHostException.class)) {
-            return "Der Hostname lässt sich nicht auflösen. Hinter einem Firmen-Proxy: network.proxy.mode=SYSTEM "
-                    + "übernimmt die Proxy-Einstellungen von Windows (Internetoptionen), MANUAL einen festen Proxy; "
-                    + "sonst Schreibweise der Basis-URL und Netzverbindung prüfen.";
+            return "Der Hostname lässt sich nicht auflösen. Hinter einem Firmen-Proxy: network.proxy.mode=AUTO "
+                    + "wertet das PAC-Proxyskript des Unternehmens aus und übernimmt sonst die Windows-Einstellungen "
+                    + "(welche Route galt, steht beim Start im Protokoll unter \"Route zum KI-Dienst\"); MANUAL setzt "
+                    + "einen festen Proxy. Sonst Schreibweise der Basis-URL und Netzverbindung prüfen.";
         }
         if (has(chain, SocketTimeoutException.class)) {
-            return "Zeitüberschreitung: Server oder Proxy antworten nicht. Netzverbindung und Proxy prüfen; die "
-                    + "Fristen stehen in chat.connectTimeoutMillis und chat.readTimeoutMillis.";
+            return "Zeitüberschreitung: Server oder Proxy antworten nicht. Netzverbindung und Proxy prüfen (die "
+                    + "Route steht beim Start im Protokoll unter \"Route zum KI-Dienst\"); die Fristen stehen in "
+                    + "chat.connectTimeoutMillis und chat.readTimeoutMillis.";
         }
         if (has(chain, ConnectException.class) || has(chain, NoRouteToHostException.class)) {
             return "Die Verbindung wird abgelehnt oder blockiert (Firewall, falscher Port, Proxy nötig). "

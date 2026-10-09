@@ -27,7 +27,10 @@ public class AppLogFileTest {
     @Test
     public void installWritesLinesWithCauseChainIntoTheDirectory() throws Exception {
         Path directory = temp.getRoot().toPath().resolve("logs");
-        Handler handler = AppLogFile.install(directory);
+        AppLogFile.Installation installed = AppLogFile.install(directory);
+        assertTrue(installed.isActive());
+        assertNull(installed.problem());
+        Handler handler = installed.handler();
         assertNotNull(handler);
         try {
             Logger logger = Logger.getLogger("com.aresstack.enterpriseai.app.AppLogFileTest.probe");
@@ -42,9 +45,10 @@ public class AppLogFileTest {
             assertTrue(content, content.contains("Caused by: java.lang.IllegalStateException: innen"));
             assertTrue(content, content.contains("\tat "));
         } finally {
-            AppLogFile.uninstall(handler);
+            AppLogFile.uninstall(installed);
         }
-        AppLogFile.uninstall(null);
+        AppLogFile.uninstall((AppLogFile.Installation) null);
+        AppLogFile.uninstall((Handler) null);
     }
 
     @Test
@@ -64,8 +68,14 @@ public class AppLogFileTest {
     }
 
     @Test
-    public void unwritableDirectoryYieldsNoHandlerInsteadOfAnException() throws Exception {
+    public void unwritableDirectoryYieldsTheProblemInsteadOfAnException() throws Exception {
         Path file = temp.newFile("datei-statt-verzeichnis").toPath();
-        assertNull(AppLogFile.install(file.resolve("logs")));
+        AppLogFile.Installation failed = AppLogFile.install(file.resolve("logs"));
+        assertFalse(failed.isActive());
+        assertNull(failed.handler());
+        assertNotNull(failed.problem());
+        assertTrue(failed.problem(), failed.problem().startsWith("Protokolldatei unter "
+                + file.resolve("logs") + " nicht anlegbar: "));
+        AppLogFile.uninstall(failed);
     }
 }

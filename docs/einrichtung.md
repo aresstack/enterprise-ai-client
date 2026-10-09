@@ -54,7 +54,7 @@ bauen, Graphen komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergr
 | Konfigurationsdatei | `<Anwendungsverzeichnis>/enterprise-ai-client.properties`; überschreibbar mit `-Denterpriseai.config=<Datei>` |
 | Lucene-Index und Vektoren | `<Anwendungsverzeichnis>/index/` (Schlüssel `knowledge.indexDirectory`) |
 | KeePassRPC-Pairing-Schlüssel | `<Anwendungsverzeichnis>/keepassrpc-pairing.key` (Schlüssel `security.keepass.pairingKeyFile`) |
-| Protokolldateien | `<Anwendungsverzeichnis>/logs/enterprise-ai-client.<n>.log` (rollierend, drei Dateien à 2 MB, `java.util.logging` ab INFO; enthält Start, Konfiguration ohne Secrets, Vertrauensquellen, Proxy-Regel und jeden fehlgeschlagenen Chat- oder Indexierungslauf mit Stacktrace) |
+| Protokolldateien | `<Anwendungsverzeichnis>/logs/enterprise-ai-client.<n>.log` (rollierend, drei Dateien à 2 MB, `java.util.logging` ab INFO; enthält Start, Konfiguration ohne Secrets, Vertrauensquellen, Proxy-Regel samt Route zum KI-Dienst, jeden fehlgeschlagenen Chat-Aufruf und jeden fehlgeschlagenen Zugriff auf eine Wissensquelle mit Stacktrace sowie je nicht indexierbarer Seite den Grund) |
 
 Beim ersten Start ohne Datei schreibt die Anwendung den Inhalt der kommentierten Vorlage als
 `enterprise-ai-client.properties` an genau diesen Pfad, erklärt das in einem Dialog und beendet sich mit
@@ -76,7 +76,8 @@ Die Datei enthält keine Secrets. `chat.apiKeyRef` ist der Titel des KeePass-Ein
 API-Key trägt. Fehler in der Datei werden gesammelt gemeldet und nennen Schlüssel und Erwartung, nie den Wert;
 unbekannte Schlüssel erzeugen eine Warnung. Die Vorlage hat `sources=` leer und die Beispielquellen (Wiki,
 Confluence) auskommentiert; ohne Quellen gibt es nur Chat, und die Statuszeile meldet keine fehlgeschlagene
-Indexierung gegen Beispielhosts. Proxy und TLS-Vertrauen stehen unter `network.*`
+Indexierung gegen Beispielhosts. Proxy (Standard `AUTO`: PAC-Skript des Unternehmens wie im Browser, sonst
+Systemeinstellungen) und TLS-Vertrauen stehen unter `network.*`
 ([API-Konfiguration](konfiguration-api.md#netzwerk-network)).
 
 ### Erster Chat
@@ -150,7 +151,8 @@ lässt "slow" im Auftrag den Agenten streamen, bis Stop gedrückt wird.
 ```
 
 Das Fat Jar enthält `app-swing` und alle Laufzeitabhängigkeiten (eigene Module, Lucene, Solon, Jackson, Gson,
-jsoup, Java-WebSocket, ACP-SDK). Es entsteht ohne Zusatz-Plugin aus einer eigenen Jar-Task in
+jsoup, Java-WebSocket, ACP-SDK, win-proxy-java mit GraalJS für PAC-Proxyskripte; mit GraalJS wächst das Jar von
+rund 16 auf rund 42 MB). Es entsteht ohne Zusatz-Plugin aus einer eigenen Jar-Task in
 `gradle/fat-jar.gradle` (eingebunden von `app-swing/build.gradle`), damit der Build auf JDK 8 wie auf JDK 21
 läuft. Dabei gilt:
 

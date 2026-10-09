@@ -131,6 +131,13 @@ public final class KnowledgeIndexingBinding {
         }
         int indexed = report.count(IndexingStatus.INDEXED) + report.count(IndexingStatus.EMPTY);
         int failed = report.count(IndexingStatus.FAILED);
+        for (ResourceIndexingOutcome outcome : report.outcomes()) {
+            if (outcome.status() == IndexingStatus.FAILED) {
+                // Der Grund je Ressource steht nur im Bericht; die Ursachenkette hat die Quellen-Hülle schon geloggt.
+                LOG.warning("Indexierung von " + report.sourceId().value() + ": " + outcome.resourceId().value()
+                        + " fehlgeschlagen (" + outcome.stage() + "): " + outcome.message());
+            }
+        }
         StringBuilder text = new StringBuilder();
         if (report.isCancelled()) {
             text.append("Indexierung abgebrochen: ").append(indexed).append(" von ").append(report.discovered())

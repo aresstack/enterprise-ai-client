@@ -25,8 +25,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -51,7 +51,7 @@ public final class EnterpriseAiClientMain {
     }
 
     public static void main(String[] args) {
-        final Handler logFile = AppLogFile.install();
+        final AppLogFile.Installation logFile = AppLogFile.install();
         LOG.info("Enterprise AI Client startet: Java " + System.getProperty("java.version") + " ("
                 + System.getProperty("java.vendor") + "), " + System.getProperty("os.name") + " "
                 + System.getProperty("os.version"));
@@ -81,6 +81,8 @@ public final class EnterpriseAiClientMain {
         final ProxyPolicy proxy = new ProxyPolicy(config.network());
         proxy.install();
         LOG.info("Proxy-Regel: " + proxy);
+        LOG.info("Route zum KI-Dienst " + config.chat().baseUrl().getHost() + ": "
+                + proxy.describeRoute(config.chat().baseUrl()));
         final ApplicationPorts ports;
         final CompositionRoot root;
         try {
@@ -91,7 +93,7 @@ public final class EnterpriseAiClientMain {
         } catch (RuntimeException e) {
             LOG.log(Level.SEVERE, "Anwendung konnte nicht zusammengesetzt werden", e);
             showError("Start fehlgeschlagen", "Die Anwendung konnte nicht gestartet werden: "
-                    + e.getClass().getSimpleName() + ". Details im Protokoll unter " + AppLogFile.directory() + ".");
+                    + e.getClass().getSimpleName() + ". " + logHint(logFile));
             AppLogFile.uninstall(logFile);
             System.exit(1);
             return;
@@ -114,7 +116,15 @@ public final class EnterpriseAiClientMain {
                 });
                 frame.setVisible(true);
                 root.startBackgroundWork();
-                List<String> notices = StartupNotices.of(started);
+                List<String> notices = new ArrayList<String>();
+                if (!logFile.isActive()) {
+                    // Ohne Protokolldatei stünden Fehlerdetails nur in der Sprechblase; das muss der Benutzer sofort
+                    // sehen, sonst sucht er später ein Protokoll, das es nicht gibt.
+                    notices.add(logFile.problem() + " Fehlerdetails stehen damit nur in der Sprechblase. "
+                            + "Schreibrechte prüfen oder mit -D" + AppPaths.HOME_PROPERTY
+                            + " ein beschreibbares Anwendungsverzeichnis wählen.");
+                }
+                notices.addAll(StartupNotices.of(started));
                 if (!notices.isEmpty()) {
                     showNotices(frame, notices);
                 }
@@ -157,6 +167,13 @@ public final class EnterpriseAiClientMain {
             sb.append("  - ").append(problem).append('\n');
         }
         return sb.toString();
+    }
+
+    /** Wo Details stehen: im Protokoll, oder warum es keines gibt. */
+    private static String logHint(AppLogFile.Installation logFile) {
+        return logFile.isActive()
+                ? "Details im Protokoll unter " + AppLogFile.directory() + "."
+                : "Es gibt kein Protokoll (" + logFile.problem() + ").";
     }
 
     private static void showError(String title, String message) {

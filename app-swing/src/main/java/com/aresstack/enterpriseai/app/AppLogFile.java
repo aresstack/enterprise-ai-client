@@ -43,17 +43,17 @@ public final class AppLogFile {
         return AppPaths.defaultLogDirectory();
     }
 
-    /** Hängt die Protokolldatei im Standardverzeichnis an den Wurzel-Logger; {@code null}, wenn das nicht ging. */
-    public static Handler install() {
+    /** Hängt die Protokolldatei im Standardverzeichnis an den Wurzel-Logger. */
+    public static Installation install() {
         return install(directory());
     }
 
     /**
-     * Hängt die Protokolldatei im Verzeichnis an den Wurzel-Logger.
-     *
-     * @return der Handler (zum Schließen beim Beenden) oder {@code null}, wenn die Datei nicht anlegbar war
+     * Hängt die Protokolldatei im Verzeichnis an den Wurzel-Logger. Geht das nicht (Verzeichnis nicht beschreibbar,
+     * Pfad ist eine Datei), ist das kein Fehler für den Start; der Aufrufer zeigt {@link Installation#problem()}
+     * dem Benutzer, damit niemand ein Protokoll sucht, das es nicht gibt.
      */
-    public static Handler install(Path directory) {
+    public static Installation install(Path directory) {
         if (directory == null) {
             throw new IllegalArgumentException("directory must not be null");
         }
@@ -65,11 +65,19 @@ public final class AppLogFile {
             handler.setFormatter(new LineFormatter());
             handler.setLevel(Level.INFO);
             Logger.getLogger("").addHandler(handler);
-            return handler;
+            return new Installation(handler, null);
         } catch (IOException | RuntimeException e) {
-            LOG.warning("Protokolldatei unter " + directory + " nicht anlegbar: " + e.getClass().getSimpleName()
-                    + ": " + e.getMessage());
-            return null;
+            String problem = "Protokolldatei unter " + directory + " nicht anlegbar: " + e.getClass().getSimpleName()
+                    + ": " + e.getMessage();
+            LOG.warning(problem);
+            return new Installation(null, problem);
+        }
+    }
+
+    /** Entfernt und schließt den Handler der Installation; {@code null} ist erlaubt. */
+    public static void uninstall(Installation installation) {
+        if (installation != null) {
+            uninstall(installation.handler());
         }
     }
 
@@ -80,6 +88,32 @@ public final class AppLogFile {
         }
         Logger.getLogger("").removeHandler(handler);
         handler.close();
+    }
+
+    /** Ergebnis von {@link #install(Path)}: der Handler oder der Grund, warum es keine Protokolldatei gibt. */
+    public static final class Installation {
+
+        private final Handler handler;
+        private final String problem;
+
+        Installation(Handler handler, String problem) {
+            this.handler = handler;
+            this.problem = problem;
+        }
+
+        /** Der Handler zum Schließen beim Beenden, oder {@code null} ohne Protokolldatei. */
+        public Handler handler() {
+            return handler;
+        }
+
+        /** Warum die Datei nicht anlegbar war (Verzeichnis und Ausnahme), oder {@code null}, wenn sie geschrieben wird. */
+        public String problem() {
+            return problem;
+        }
+
+        public boolean isActive() {
+            return handler != null;
+        }
     }
 
     /** Eine Zeile je Eintrag: Zeit, Stufe, Logger (Klassenname) und Meldung; Stacktrace darunter. */
