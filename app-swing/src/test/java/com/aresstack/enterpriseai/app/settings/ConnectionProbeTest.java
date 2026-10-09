@@ -228,14 +228,14 @@ public class ConnectionProbeTest {
     }
 
     @Test
-    public void aRejectedKeyFailsTheCall() {
+    public void aRejectedKeyFailsTheCallAndAnEchoedKeyIsRedacted() {
         responseCode = 401;
-        responseBody = "{\"error\":\"invalid key\"}";
+        responseBody = "{\"error\":\"invalid key " + TOKEN + " (" + TOKEN.replace("-", "%2D") + ")\"}";
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), true, true)), token(TOKEN)),
                 false);
         assertStatus(Status.FAILED, last(steps));
         assertTrue(last(steps).detail(), last(steps).detail().contains("API-Key ab"));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("invalid key"));
+        assertTrue(last(steps).detail(), last(steps).detail().contains("invalid key *** (***)"));
     }
 
     @Test
@@ -348,7 +348,10 @@ public class ConnectionProbeTest {
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), false, true)), token(null)),
                 true);
         assertStatus(Status.WARNING, last(steps));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("Umleitung nach https://127.0.0.1/other/v1/models"));
+        assertTrue(last(steps).detail(),
+                last(steps).detail().contains("Umleitung nach https://127.0.0.1/other/v1/models (ohne Query)"));
+        assertFalse(last(steps).detail(), last(steps).detail().contains("abcdefghijklmnopqrstuvwxyz"));
+        assertFalse(last(steps).detail(), last(steps).detail().contains("token="));
     }
 
     @Test
@@ -357,7 +360,20 @@ public class ConnectionProbeTest {
         assertEquals("https://h/v1/models", ConnectionProbe.modelsUrl(URI.create("https://h/v1")).toString());
         assertEquals("[a, b]", ConnectionProbe.modelIds("{\"data\":[{\"id\":\"a\"},{\"id\": \"b\"},{\"id\":\"a\"}]}")
                 .toString());
+        assertEquals("[other-model]", ConnectionProbe.modelIds("{\"id\":\"configured\",\"object\":\"list\",\"data\":["
+                + "{\"object\":\"model\",\"id\":\"other-model\",\"permission\":[{\"id\":\"perm-1\",\"data\":[{\"id\":\"x\"}]}]}"
+                + "],\"meta\":{\"id\":\"after\"}}").toString());
+        assertEquals("[a/b \"q\" \u00e4, 2]", ConnectionProbe.modelIds(
+                "{\"data\":[{\"id\":\"a\\/b \\\"q\\\" \\u00e4\"},{\"id\":2},{\"id\":\"2\"}]}").toString());
+        assertEquals("[bare]", ConnectionProbe.modelIds(" [ {\"id\":\"bare\"} ] ").toString());
+        assertTrue(ConnectionProbe.modelIds("{\"models\":[{\"id\":\"nicht data\"}]}").isEmpty());
+        assertTrue(ConnectionProbe.modelIds("{\"data\":[{\"id\":\"unvollst").isEmpty());
         assertTrue(ConnectionProbe.modelIds("kein json").isEmpty());
+        assertEquals("Bearer *** *** *** *** ***",
+                ConnectionProbe.redact("Bearer s-e+c s-e+c s-e%2Bc s%2De%2Bc s%2de%2bc", "s-e+c"));
+        assertEquals("https://h:8443/p (ohne Query)",
+                ConnectionProbe.describeLocation("https://user:pw@h:8443/p?k=s-e+c#f", "s-e+c"));
+        assertEquals("(leer)", ConnectionProbe.describeLocation("   ", "x"));
         assertEquals("localhost", ConnectionProbe.commonName("CN=localhost,O=Enterprise AI Client Test"));
         assertEquals("ki intern", ConnectionProbe.commonName("O=Firma, CN=ki intern"));
         assertEquals("O=Only", ConnectionProbe.commonName("O=Only"));

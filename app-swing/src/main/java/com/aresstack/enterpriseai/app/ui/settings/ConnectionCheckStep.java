@@ -25,6 +25,10 @@ public final class ConnectionCheckStep {
         this.detail = detail == null ? "" : detail.trim();
     }
 
+    public static ConnectionCheckStep of(String title, Status status, String detail) {
+        return new ConnectionCheckStep(title, status, detail);
+    }
+
     public static ConnectionCheckStep ok(String title, String detail) {
         return new ConnectionCheckStep(title, Status.OK, detail);
     }

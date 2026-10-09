@@ -33,7 +33,7 @@ public final class ConnectionDiagnosis {
     static final int MAX_DETAIL_LENGTH = 600;
     static final String MASKED_TOKEN = "Bearer ***";
 
-    private static final Pattern BEARER = Pattern.compile("(?i)bearer\\s+[^\\s\"',;]+");
+    private static final Pattern BEARER = Pattern.compile("(?i)bearer(?:\\s|%20|\\+)+[^\\s\"',;&]+");
     private static final Pattern QUALIFIED_EXCEPTION = Pattern.compile("\\b(?:[a-z][a-z0-9_]*\\.)+([A-Z][A-Za-z0-9_$]*)");
     private static final String SEPARATOR = " | ";
 
@@ -134,7 +134,7 @@ public final class ConnectionDiagnosis {
         return null;
     }
 
-    /** Maskiert alles, was wie ein Bearer-Token aussieht. */
+    /** Maskiert alles, was wie ein Bearer-Token aussieht, auch URL-kodiert ({@code Bearer%20…}). */
     public static String mask(String text) {
         if (text == null) {
             return "";

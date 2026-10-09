@@ -114,6 +114,8 @@ public class ConnectionDiagnosisTest {
         assertEquals(ConnectionDiagnosis.MASKED_TOKEN, ConnectionDiagnosis.mask("bearer xyz"));
         assertEquals("Authorization: Bearer *** gesendet", ConnectionDiagnosis.mask("Authorization: Bearer a.b-c gesendet"));
         assertEquals("", ConnectionDiagnosis.mask(null));
+        assertEquals("https://h/x?token=Bearer ***&y=1", ConnectionDiagnosis.mask("https://h/x?token=Bearer%20abc.def&y=1"));
+        assertEquals("q=Bearer ***", ConnectionDiagnosis.mask("q=Bearer+abcdef"));
 
         StringBuilder longMessage = new StringBuilder();
         for (int i = 0; i < 100; i++) {
