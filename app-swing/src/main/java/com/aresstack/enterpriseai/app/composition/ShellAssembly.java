@@ -30,7 +30,8 @@ import java.util.List;
  * ({@link ChatWorkspacePanel}: Hamburger, Modus-Pille, Drawer) mit der Chat-Ansicht samt
  * {@link RagChatBinding} (AP22: RAG-Schalter, Quellen, Hinweise) und Statuszeile der Wissensbasis, dazu, falls
  * konfiguriert, der Agent-Ansicht (AP21). „+ Neuer Chat“ eröffnet im Chat-Modus eine neue Unterhaltung am
- * {@link ChatService} und leert das Transkript; im Agent-Modus beendet es die ACP-Session samt Agentenprozess
+ * {@link ChatService}, schließt die bisherige dort und leert das Transkript; im Agent-Modus beendet es die
+ * ACP-Session samt Agentenprozess
  * ({@link AgentService#endSession()}), damit der nächste Auftrag ohne den alten Kontext startet. Das Zahnrad reicht
  * die Composition Root als {@link WorkspaceActions#settingsRequested()} an den Einstellungen-Dialog weiter.
  * {@link #createShell} läuft auch headless (Tests); nur {@link #createFrame} braucht ein Display.
@@ -81,8 +82,16 @@ public final class ShellAssembly {
                 if (chatModel.isStreaming()) {
                     return; // der Knopf ist während einer Antwort deaktiviert; zur Sicherheit auch hier
                 }
-                chatActions.startConversation(chatService.openConversation(systemPrompt));
+                ChatConversationId previous = chatActions.conversationId();
+                ChatConversationId next = chatService.openConversation(systemPrompt);
+                try {
+                    chatActions.startConversation(next);
+                } catch (IllegalStateException stillBusy) {
+                    chatService.closeConversation(next); // eine Suche läuft noch; es bleibt alles beim Alten
+                    return;
+                }
                 chatModel.clear();
+                chatService.closeConversation(previous); // sonst behielte der ChatService jeden alten Verlauf
             }
 
             @Override

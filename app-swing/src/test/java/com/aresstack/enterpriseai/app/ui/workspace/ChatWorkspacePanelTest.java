@@ -12,6 +12,8 @@ import org.junit.Test;
 
 import javax.swing.SwingUtilities;
 import java.awt.Graphics2D;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -199,6 +201,41 @@ public class ChatWorkspacePanelTest {
                 workspace.closeDrawer();
                 assertFalse(workspace.isDrawerOpen());
                 assertFalse(workspace.isDrawerPinned());
+            }
+        });
+    }
+
+    @Test
+    public void leavingTheWindowSchedulesTheCloseOfAHoverOpenedDrawerButAPinnedOneStays() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatShellModel chatModel = new ChatShellModel(() -> 0L);
+                ChatShellPanel chatShell = new ChatShellPanel(chatModel, new EchoActions(chatModel, "ok"), comic,
+                        bubbles);
+                ChatWorkspacePanel workspace = new ChatWorkspacePanel(new ShellModeModel(false), chatShell, null,
+                        comic);
+                workspace.setSize(900, 620);
+                workspace.doLayout();
+
+                MouseEvent hover = new MouseEvent(workspace.burger(), MouseEvent.MOUSE_ENTERED, 0L, 0, 4, 4, 0,
+                        false);
+                for (MouseListener listener : workspace.burger().getMouseListeners()) {
+                    listener.mouseEntered(hover);
+                }
+                assertTrue("Überfahren öffnet den Drawer", workspace.isDrawerOpen());
+                assertFalse(workspace.isDrawerPinned());
+                assertFalse(workspace.isSidebarCloseScheduled());
+
+                // Der Zeiger verlässt das Fenster: MOUSE_EXITED ist das letzte Ereignis, danach kommt nichts mehr.
+                MouseEvent exit = new MouseEvent(workspace, MouseEvent.MOUSE_EXITED, 0L, 0, 0, 300, 0, false);
+                workspace.watchPointer(exit);
+                assertTrue("ohne weiteres Ereignis muss der Timer schließen", workspace.isSidebarCloseScheduled());
+
+                workspace.openDrawer(); // rastet ein
+                workspace.watchPointer(exit);
+                assertFalse("eingerastet bleibt alles offen", workspace.isSidebarCloseScheduled());
+                assertTrue(workspace.isDrawerOpen());
             }
         });
     }

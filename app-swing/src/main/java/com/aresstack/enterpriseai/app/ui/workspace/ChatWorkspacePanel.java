@@ -639,27 +639,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         sidebarMouseWatcher = new AWTEventListener() {
             @Override
             public void eventDispatched(AWTEvent event) {
-                if (!(event instanceof MouseEvent) || !isShowing()) {
-                    return;
-                }
-                if (menuLocked) {
-                    sidebarCloseTimer.stop();
-                    return;
-                }
-                MouseEvent mouse = (MouseEvent) event;
-                int id = mouse.getID();
-                if (id != MouseEvent.MOUSE_MOVED && id != MouseEvent.MOUSE_ENTERED
-                        && id != MouseEvent.MOUSE_DRAGGED) {
-                    return;
-                }
-                Point onScreen = new Point(mouse.getXOnScreen(), mouse.getYOnScreen());
-                boolean inside = screenBounds(burger, HOVER_MARGIN_PX).contains(onScreen)
-                        || (ribbon.isOpen() && screenBounds(ribbon, HOVER_MARGIN_PX).contains(onScreen))
-                        || (sidebar.isVisible() && screenBounds(sidebar, HOVER_MARGIN_PX).contains(onScreen));
-                if (inside) {
-                    sidebarCloseTimer.stop();
-                } else if (!sidebarCloseTimer.isRunning()) {
-                    sidebarCloseTimer.restart();
+                if (event instanceof MouseEvent && isShowing()) {
+                    watchPointer((MouseEvent) event);
                 }
             }
         };
@@ -669,6 +650,38 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         } catch (SecurityException restricted) {
             sidebarMouseWatcher = null; // Schließen beim Verlassen entfällt; Klick und Rastung bleiben
         }
+    }
+
+    /**
+     * Ein Zeigerereignis des Beobachters. Beim Verlassen des Fensters ist {@code MOUSE_EXITED} das letzte, was
+     * AWT liefert; es zählt darum als „draußen“ und startet den Timer. Bleibt der Zeiger im Fenster, folgt sofort
+     * die nächste Bewegung, die den Timer innerhalb des Bereichs wieder anhält.
+     */
+    void watchPointer(MouseEvent mouse) {
+        if (menuLocked) {
+            sidebarCloseTimer.stop();
+            return;
+        }
+        int id = mouse.getID();
+        if (id != MouseEvent.MOUSE_MOVED && id != MouseEvent.MOUSE_ENTERED && id != MouseEvent.MOUSE_DRAGGED
+                && id != MouseEvent.MOUSE_EXITED) {
+            return;
+        }
+        Point onScreen = new Point(mouse.getXOnScreen(), mouse.getYOnScreen());
+        boolean inside = id != MouseEvent.MOUSE_EXITED
+                && (screenBounds(burger, HOVER_MARGIN_PX).contains(onScreen)
+                || (ribbon.isOpen() && screenBounds(ribbon, HOVER_MARGIN_PX).contains(onScreen))
+                || (sidebar.isVisible() && screenBounds(sidebar, HOVER_MARGIN_PX).contains(onScreen)));
+        if (inside) {
+            sidebarCloseTimer.stop();
+        } else if (!sidebarCloseTimer.isRunning()) {
+            sidebarCloseTimer.restart();
+        }
+    }
+
+    /** Ob der Beobachter das Wegfalten von Reiterleiste und Drawer eingeplant hat (für Tests). */
+    boolean isSidebarCloseScheduled() {
+        return sidebarCloseTimer.isRunning();
     }
 
     private void removeSidebarMouseWatcher() {

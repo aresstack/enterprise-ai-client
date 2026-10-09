@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistrat
 import com.aresstack.enterpriseai.application.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.application.rag.RetrievalResult;
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
+import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.knowledge.api.testing.InMemoryKnowledgeIndex;
@@ -28,6 +29,7 @@ import java.io.Closeable;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -142,6 +144,18 @@ public class ApplicationCompositionTest {
         assertEquals("Antworte kurz.", chatPort.lastRequest().messages().get(0).content());
         assertEquals(1, root.chatService().conversationIds().size());
         assertFalse(answer.hasSources());
+
+        // „+ Neuer Chat“: neue Unterhaltung, die alte verschwindet aus dem ChatService (sonst sammelt er Verläufe)
+        final ChatConversationId first = view.get().conversation();
+        SwingUtilities.invokeAndWait(new Runnable() {
+            @Override
+            public void run() {
+                view.get().workspace().newChatButton().doClick();
+            }
+        });
+        assertFalse(first.equals(view.get().conversation()));
+        assertEquals(Collections.singletonList(view.get().conversation()), root.chatService().conversationIds());
+        assertTrue(view.get().chatModel().getEntries().isEmpty());
     }
 
     @Test

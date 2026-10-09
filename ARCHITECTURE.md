@@ -219,7 +219,8 @@ eigene Palette gibt es nicht.
   das Fenster nicht (`ShellAssembly.createShell` baut nur die Arbeitsfläche; `ShellFrame.content` rendert sie
   ohne Fenster).
 - Drawer (`app.ui.sidebar`): Seite „Chats“ mit Suchleiste, „+ Neuer Chat“ (eröffnet eine neue Unterhaltung am
-  `ChatService`, nicht während einer Antwort), Zeilen je Ansicht und Zahnrad für die Einstellungen; Seite
+  `ChatService` und schließt die bisherige; im Agent-Modus beendet es die ACP-Session über
+  `AgentService.endSession()`; nicht während einer Antwort), Zeilen je Ansicht und Zahnrad für die Einstellungen; Seite
   „Wissensquellen“ listet `sources`. Weitere Seiten kommen als `ChatSidebarTab` dazu.
 - Fehler des KI-Dienstes bleiben Sprechblasen in Blasengeometrie: Überschrift sichtbar, „Technische Ursache“
   und „Hinweis“ hinter „Details anzeigen“ (`SpeechBubblePanel.setDetails`).
