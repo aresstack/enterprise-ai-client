@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -174,36 +175,43 @@ public final class SettingsMapper {
         return set;
     }
 
+    /** Die Schlüssel, die der Dialog wirklich schreibt: {@link #changes} ohne leere Werte (die sind Entfernungen). */
+    public static Map<String, String> writes(SettingsForm form) {
+        Map<String, String> writes = new LinkedHashMap<String, String>();
+        for (Map.Entry<String, String> entry : changes(form).entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                writes.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return writes;
+    }
+
     /**
      * Die Schlüssel, die entfernt (auskommentiert) werden: verwaltete Schlüssel mit leerem Wert sowie alle
      * {@code source.<id>.*} der Datei, deren Quelle das Formular nicht mehr kennt oder deren Typ sich geändert hat.
+     * Quell-IDs dürfen Punkte enthalten; ein Schlüssel wird deshalb der längsten bekannten ID (Formular oder
+     * {@code sources} der Datei) zugeordnet. Schlüssel zu Quellen, die nirgends gelistet sind, bleiben unberührt.
      */
     public static Set<String> removals(SettingsForm form, Properties current) {
         Set<String> remove = new LinkedHashSet<String>();
-        for (String key : new String[] {KEY_CHAT_SYSTEM_PROMPT, KEY_EMBEDDING_BASE_URL, KEY_EMBEDDING_API_KEY_REF,
-                KEY_INDEX_DIRECTORY, KEY_PROXY_HOST, KEY_PROXY_PORT, KEY_NON_PROXY_HOSTS, KEY_AGENT_COMMAND,
-                KEY_AGENT_ARGS}) {
-            remove.add(key);
-        }
         Map<String, String> changes = changes(form);
+        for (Map.Entry<String, String> entry : changes.entrySet()) {
+            if (entry.getValue().isEmpty()) {
+                remove.add(entry.getKey());
+            }
+        }
         Map<String, String> types = new LinkedHashMap<String, String>();
         for (SourceForm source : form.sources()) {
             types.put(source.id(), source.type());
-            for (String key : new String[] {"credentialRef", "startPoints", "maxDepth", "maxResources", "siteKey",
-                    "displayName", "searchSpaceKeys"}) {
-                remove.add(SOURCE_PREFIX + source.id() + "." + key);
-            }
         }
         if (current != null) {
+            Set<String> knownIds = new LinkedHashSet<String>(types.keySet());
+            knownIds.addAll(list(text(current, KEY_SOURCES, "")));
             for (String key : current.stringPropertyNames()) {
-                if (!key.startsWith(SOURCE_PREFIX)) {
+                String id = sourceIdOf(key, knownIds);
+                if (id == null) {
                     continue;
                 }
-                int dot = key.indexOf('.', SOURCE_PREFIX.length());
-                if (dot < 0) {
-                    continue;
-                }
-                String id = key.substring(SOURCE_PREFIX.length(), dot);
                 String type = types.get(id);
                 if (type == null) {
                     remove.add(key);
@@ -217,6 +225,21 @@ public final class SettingsMapper {
         }
         remove.removeAll(nonEmptyKeys(changes));
         return remove;
+    }
+
+    /** Die längste bekannte Quell-ID, zu der {@code source.<id>.<feld>} gehört, sonst {@code null}. */
+    static String sourceIdOf(String key, Collection<String> knownIds) {
+        if (!key.startsWith(SOURCE_PREFIX)) {
+            return null;
+        }
+        String best = null;
+        for (String id : knownIds) {
+            String prefix = SOURCE_PREFIX + id + ".";
+            if (key.startsWith(prefix) && key.length() > prefix.length() && (best == null || id.length() > best.length())) {
+                best = id;
+            }
+        }
+        return best;
     }
 
     /** Die Datei nach dem Speichern, als Properties (für die Prüfung mit dem Loader). */
@@ -246,9 +269,9 @@ public final class SettingsMapper {
             return "";
         }
         if (key.startsWith(SOURCE_PREFIX)) {
-            int dot = key.indexOf('.', SOURCE_PREFIX.length());
-            if (dot > 0) {
-                String id = key.substring(SOURCE_PREFIX.length(), dot);
+            int dot = key.lastIndexOf('.');
+            if (dot > SOURCE_PREFIX.length()) {
+                String id = key.substring(SOURCE_PREFIX.length(), dot); // IDs dürfen Punkte enthalten
                 String field = key.substring(dot + 1);
                 String label = "apiUrl".equals(field) ? "API-URL" : "baseUrl".equals(field) ? "Basis-URL"
                         : "startPoints".equals(field) ? "Startpunkte" : "credentialRef".equals(field) ? "KeePass-Eintrag"

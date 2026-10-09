@@ -198,11 +198,56 @@ public class SettingsMapperTest {
     }
 
     @Test
+    public void dottedSourceIdsKeepTheirUnmanagedKeys() {
+        Properties current = valid();
+        current.setProperty("sources", "team.wiki,confluence");
+        current.setProperty("source.team.wiki.type", "mediawiki");
+        current.setProperty("source.team.wiki.apiUrl", "http://127.0.0.1:9/w/api.php");
+        current.setProperty("source.team.wiki.startPoints", "Hauptseite");
+        current.setProperty("source.team.wiki.connectTimeoutMillis", "15000");
+        current.setProperty("source.old.apiUrl", "http://127.0.0.1:9/alt");
+        SettingsForm form = SettingsMapper.fromProperties(current);
+        assertEquals("team.wiki", form.sources().get(0).id());
+        Set<String> removals = SettingsMapper.removals(form, current);
+        for (String key : current.stringPropertyNames()) {
+            if (key.startsWith("source.team.wiki.")) {
+                assertFalse("vorhandener Schlüssel der unveränderten Quelle: " + key, removals.contains(key));
+            }
+        }
+        assertFalse("nirgends gelistete Quellen bleiben unberührt", removals.contains("source.old.apiUrl"));
+        Properties merged = SettingsMapper.merge(current, form);
+        assertEquals("15000", merged.getProperty("source.team.wiki.connectTimeoutMillis"));
+        AppConfigLoader.fromProperties(merged);
+
+        SettingsForm without = form.toBuilder().sources(java.util.Collections.<SourceForm>emptyList()).build();
+        Set<String> gone = SettingsMapper.removals(without, current);
+        assertTrue(gone.contains("source.team.wiki.type"));
+        assertTrue(gone.contains("source.team.wiki.connectTimeoutMillis"));
+        assertTrue(gone.contains("sources"));
+        assertEquals("team.wiki", SettingsMapper.sourceIdOf("source.team.wiki.apiUrl", current.stringPropertyNames()
+                .contains("x") ? java.util.Collections.<String>emptySet() : java.util.Arrays.asList("team", "team.wiki")));
+        assertNull(SettingsMapper.sourceIdOf("source.team.wiki.apiUrl", java.util.Collections.singleton("wiki")));
+    }
+
+    @Test
+    public void writesLeaveOutEmptyValues() {
+        SettingsForm form = SettingsMapper.fromProperties(valid()).toBuilder().chatSystemPrompt("").build();
+        Map<String, String> writes = SettingsMapper.writes(form);
+        assertFalse(writes.containsKey("chat.systemPrompt"));
+        assertEquals("test-chat", writes.get("chat.model"));
+        for (String value : writes.values()) {
+            assertFalse(value.isEmpty());
+        }
+    }
+
+    @Test
     public void describePutsFieldLabelsInFront() {
         assertEquals("Basis-URL des KI-Dienstes (chat.baseUrl): fehlt (Pflichtangabe)",
                 SettingsMapper.describe("chat.baseUrl: fehlt (Pflichtangabe)"));
         assertEquals("Quelle \u201ewiki\u201c, API-URL (source.wiki.apiUrl): keine gültige URL",
                 SettingsMapper.describe("source.wiki.apiUrl: keine gültige URL"));
+        assertEquals("Quelle \u201eteam.wiki\u201c, Startpunkte (source.team.wiki.startPoints): fehlt",
+                SettingsMapper.describe("source.team.wiki.startPoints: fehlt"));
         assertEquals("retrieval.maxResults: keine ganze Zahl", SettingsMapper.describe("retrieval.maxResults: keine ganze Zahl"));
         assertEquals("ohne Doppelpunkt", SettingsMapper.describe("ohne Doppelpunkt"));
     }

@@ -92,6 +92,26 @@ public class FileSettingsActionsTest {
     }
 
     @Test
+    public void clearingAFieldCommentsItsLineOutInsteadOfWritingAnEmptyValue() throws Exception {
+        ConfigurationFile file = fileWith(validText() + "chat.systemPrompt=Antworte kurz.\n"
+                + "sources=wiki\nsource.wiki.type=mediawiki\nsource.wiki.apiUrl=http://127.0.0.1:9/w/api.php\n"
+                + "source.wiki.startPoints=Hauptseite\nsource.wiki.linkNamespaces=0\n");
+        FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);
+        SettingsForm form = SettingsMapper.fromProperties(file.read()).toBuilder()
+                .chatSystemPrompt("").sources(java.util.Collections.<com.aresstack.enterpriseai.app.ui.settings.SourceForm>emptyList())
+                .build();
+        actions.save(form);
+        String text = new String(Files.readAllBytes(file.path()), StandardCharsets.UTF_8);
+        assertTrue(text, text.contains("\n#chat.systemPrompt=Antworte kurz.\n"));
+        assertFalse(text, text.contains("\nchat.systemPrompt="));
+        assertTrue(text, text.contains("\n#sources=wiki\n"));
+        assertTrue(text, text.contains("\n#source.wiki.linkNamespaces=0\n"));
+        assertFalse(text, text.contains("\nsources="));
+        AppConfig loaded = AppConfigLoader.load(file.path());
+        assertTrue(loaded.sources().isEmpty());
+    }
+
+    @Test
     public void saveRefusesAFormWithProblems() throws Exception {
         ConfigurationFile file = fileWith(validText());
         FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);

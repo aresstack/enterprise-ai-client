@@ -76,7 +76,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
             throw new IllegalArgumentException("Entwurf hat Probleme: " + problems);
         }
         Properties current = file.read();
-        file.update(SettingsMapper.changes(form), SettingsMapper.removals(form, current),
+        // Leere Felder sind Entfernungen (Zeile auskommentieren), nie "schlüssel=" ohne Wert.
+        file.update(SettingsMapper.writes(form), SettingsMapper.removals(form, current),
                 AppConfigLoader.exampleConfiguration());
     }
 
