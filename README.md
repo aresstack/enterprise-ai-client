@@ -91,7 +91,7 @@ Code. Die vollständigen Regeln prüft `./gradlew :architecture-tests:test`.
 | Bauen, erster Start, Konfigurationsdatei, IDE, Fat Jar und Releases | [docs/einrichtung.md](docs/einrichtung.md) |
 | Module, Pakete, Bibliotheken, Testfixtures | [docs/module.md](docs/module.md) |
 | Schichten, Modulgraph, Laufzeitsicht, Regeln | [docs/architektur.md](docs/architektur.md) |
-| Chat- und Embedding-Endpunkt, Proxy, beobachtetes Serververhalten | [docs/konfiguration-api.md](docs/konfiguration-api.md) |
+| Chat- und Embedding-Endpunkt, Proxy und TLS-Vertrauen, Fehlersuche "nicht erreichbar", beobachtetes Serververhalten | [docs/konfiguration-api.md](docs/konfiguration-api.md) |
 | KeePassRPC, Pairing, Secret-Referenzen | [docs/konfiguration-keepass.md](docs/konfiguration-keepass.md) |
 | MediaWiki als Wissensquelle | [docs/konfiguration-mediawiki.md](docs/konfiguration-mediawiki.md) |
 | Confluence Data Center als Wissensquelle | [docs/konfiguration-confluence.md](docs/konfiguration-confluence.md) |

@@ -246,14 +246,17 @@ public class RagShellIntegrationTest {
         assertEquals("Wie viele Tage Urlaub habe ich?", history.get(history.size() - 1).content());
         assertFalse(chat.isBusy(conversation));
 
-        // 5. Fehler des Chat-Dienstes: Fehlerblase ohne technische Details.
+        // 5. Fehler des Chat-Dienstes: Fehlerblase mit Überschrift und technischer Ursache, der Token bleibt draußen.
         chatServer.failWith(500, "{\"error\":{\"message\":\"internal_error " + TOKEN + "\"}}");
         ask("Was gilt für Gleitzeit?", true);
         awaitIdle(shell.model);
         entries = entries(shell.model);
         TranscriptEntry failed = entries.get(entries.size() - 1);
         assertEquals(TranscriptEntry.State.FAILED, failed.getState());
-        assertEquals("Fehler im KI-Dienst. (Status 500)", failed.getFailureMessage());
+        assertEquals("Fehler im KI-Dienst. (Status 500)\nTechnische Ursache: HTTP 500: internal_error ***",
+                failed.getFailureMessage());
+        assertFalse("der vom Server zurückgegebene Token erscheint nie in der Blase",
+                failed.getFailureMessage().contains(TOKEN));
         assertTrue("Quellen wurden vor dem Fehler gefunden", failed.hasSources());
 
         // 6. Embedding-Dienst ausgefallen: Hinweis, Quellen nur aus der Volltextsuche.

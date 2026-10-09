@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.app.composition;
 
+import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.net.TrustPolicy;
+import com.aresstack.enterpriseai.app.settings.ConfigurationCheck;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.app.settings.FileSettingsActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
@@ -12,7 +15,8 @@ import java.util.concurrent.ThreadFactory;
 
 /**
  * Verdrahtet den Einstellungen-Dialog: Konfigurationsdatei, KeePass-Probe mit Swing-Pairing-Dialog, ein
- * Daemon-Thread für die Probe, Ergebnisse auf dem EDT. Wird vor der eigentlichen Komposition gebraucht (Erststart
+ * Daemon-Thread für die Probe, Ergebnisse auf dem EDT, dazu die Prüfung, die der Start über den Loader hinaus
+ * macht ({@link #configurationCheck()}). Wird vor der eigentlichen Komposition gebraucht (Erststart
  * ohne Konfiguration) und später für den Knopf „Einstellungen“ in der Kopfzeile.
  */
 public final class SettingsAssembly {
@@ -39,6 +43,20 @@ public final class SettingsAssembly {
     }
 
     public static SettingsDialogActions create(ConfigurationFile file, Executor worker, Executor ui) {
-        return new FileSettingsActions(file, new KeePassSecretChecker(), worker, ui);
+        return new FileSettingsActions(file, new KeePassSecretChecker(), configurationCheck(), worker, ui);
+    }
+
+    /**
+     * Was der Start nach dem Laden zusätzlich prüft: die TLS-Vertrauensregel liest
+     * {@code network.tls.caCertificatesFile}; eine fehlende oder leere Datei soll im Dialog auffallen, nicht erst
+     * als Fehlerdialog beim nächsten Start. Baut die Regel nur, installiert sie nicht.
+     */
+    public static ConfigurationCheck configurationCheck() {
+        return new ConfigurationCheck() {
+            @Override
+            public void verify(AppConfig config) {
+                TrustPolicy.from(config.network());
+            }
+        };
     }
 }

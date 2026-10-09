@@ -7,8 +7,10 @@ import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
 import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.net.ProxyPolicy;
+import com.aresstack.enterpriseai.app.net.TrustPolicy;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.app.settings.ConfigurationStartup;
@@ -31,6 +33,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -38,14 +41,16 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Einstiegspunkt der Desktop-Anwendung und Composition Root (AP23). Ablauf: Konfiguration beschaffen (fehlt
- * sie oder lädt sie nicht, öffnet sich mit Oberfläche der Einstellungen-Dialog; ohne Display wird die
- * Beispieldatei angelegt und erklärt), Proxy-Regel installieren, Adapter bauen, Graphen komponieren,
- * Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten. Schließen des Fensters fährt
- * geordnet herunter und beendet die JVM; der Shutdown-Hook deckt hartes Beenden ab (beide idempotent).
+ * Einstiegspunkt der Desktop-Anwendung und Composition Root (AP23). Ablauf: Protokolldatei anhängen,
+ * Konfiguration beschaffen (fehlt sie oder lädt sie nicht, öffnet sich mit Oberfläche der Einstellungen-Dialog;
+ * ohne Display wird die Beispieldatei angelegt und erklärt), TLS-Vertrauen und Proxy-Regel installieren,
+ * Adapter bauen, Graphen komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung
+ * starten. Schließen des Fensters fährt geordnet herunter und beendet die JVM; der Shutdown-Hook deckt hartes
+ * Beenden ab (beide idempotent).
  *
  * <p>Start: {@code ./gradlew :app-swing:run}; Konfigurationsdatei per {@code -Denterpriseai.config=<Pfad>},
- * Benutzerverzeichnis per {@code -Denterpriseai.home=<Pfad>} (siehe {@link AppPaths}).
+ * Benutzerverzeichnis per {@code -Denterpriseai.home=<Pfad>} (siehe {@link AppPaths}). Protokoll:
+ * {@code <Benutzerverzeichnis>/logs/enterprise-ai-client.0.log} ({@link AppLogFile}).
  */
 public final class EnterpriseAiClientMain {
 
@@ -59,11 +64,15 @@ public final class EnterpriseAiClientMain {
     }
 
     public static void main(String[] args) {
+        final AppLogFile.Installation logFile = AppLogFile.install();
+        LOG.info("Enterprise AI Client startet: Java " + System.getProperty("java.version") + " ("
+                + System.getProperty("java.vendor") + "), " + System.getProperty("os.name") + " "
+                + System.getProperty("os.version"));
         final ConfigurationFile file = new ConfigurationFile(AppPaths.configFile());
         final boolean headless = GraphicsEnvironment.isHeadless();
         final SettingsDialogActions settingsActions = headless ? null : SettingsAssembly.create(file);
         ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
-                headless ? null : new SwingSettingsUi(settingsActions));
+                headless ? null : new SwingSettingsUi(settingsActions), SettingsAssembly.configurationCheck());
         if (!outcome.isStarted()) {
             if (outcome.isCancelled()) {
                 LOG.info(outcome.message());
@@ -71,13 +80,38 @@ public final class EnterpriseAiClientMain {
                 LOG.severe(outcome.message());
                 showError("Konfiguration", outcome.message());
             }
+            AppLogFile.uninstall(logFile);
             System.exit(EXIT_CONFIG);
             return;
         }
         AppConfig config = outcome.config();
+        LOG.info("Konfiguration aus " + file.path() + ": " + config);
+        TrustPolicy trust;
+        try {
+            trust = TrustPolicy.from(config.network());
+        } catch (AppConfigException e) {
+            // Die Datei hat die Prüfung in ConfigurationStartup bestanden; hier landet nur, was sich seither
+            // geändert hat (z. B. die CA-Datei gelöscht).
+            String message = ConfigurationStartup.problems(file, e);
+            LOG.severe(message);
+            showError("Konfiguration", message);
+            AppLogFile.uninstall(logFile);
+            System.exit(EXIT_CONFIG);
+            return;
+        }
 
+        // Vertrauen und Proxy vor dem ersten Verbindungsaufbau prozessweit setzen (HttpURLConnection liest beides
+        // beim Öffnen einer Verbindung).
+        trust.install();
+        for (String notice : trust.notices()) {
+            LOG.info(notice);
+        }
+        LOG.info("TLS-Vertrauensquellen: " + trust.sources());
         final ProxyPolicy proxy = new ProxyPolicy(config.network());
         proxy.install();
+        LOG.info("Proxy-Regel: " + proxy);
+        LOG.info("Route zum KI-Dienst " + config.chat().baseUrl().getHost() + ": "
+                + proxy.describeRoute(config.chat().baseUrl()));
         final ApplicationPorts ports;
         final CompositionRoot root;
         try {
@@ -88,7 +122,8 @@ public final class EnterpriseAiClientMain {
         } catch (RuntimeException e) {
             LOG.log(Level.SEVERE, "Anwendung konnte nicht zusammengesetzt werden", e);
             showError("Start fehlgeschlagen", "Die Anwendung konnte nicht gestartet werden: "
-                    + e.getClass().getSimpleName() + ". Details im Log.");
+                    + e.getClass().getSimpleName() + ". " + logHint(logFile));
+            AppLogFile.uninstall(logFile);
             System.exit(1);
             return;
         }
@@ -111,7 +146,15 @@ public final class EnterpriseAiClientMain {
                 view.modalShell().switchBar().addTrailing(settingsButton(frame, file, settingsActions, palette));
                 frame.setVisible(true);
                 root.startBackgroundWork();
-                List<String> notices = StartupNotices.of(started);
+                List<String> notices = new ArrayList<String>();
+                if (!logFile.isActive()) {
+                    // Ohne Protokolldatei stünden Fehlerdetails nur in der Sprechblase; das muss der Benutzer sofort
+                    // sehen, sonst sucht er später ein Protokoll, das es nicht gibt.
+                    notices.add(logFile.problem() + " Fehlerdetails stehen damit nur in der Sprechblase. "
+                            + "Schreibrechte prüfen oder mit -D" + AppPaths.HOME_PROPERTY
+                            + " ein beschreibbares Anwendungsverzeichnis wählen.");
+                }
+                notices.addAll(StartupNotices.of(started));
                 if (!notices.isEmpty()) {
                     showNotices(frame, notices);
                 }
@@ -169,6 +212,13 @@ public final class EnterpriseAiClientMain {
         }, "enterprise-ai-exit");
         exit.setDaemon(false);
         exit.start();
+    }
+
+    /** Wo Details stehen: im Protokoll, oder warum es keines gibt. */
+    private static String logHint(AppLogFile.Installation logFile) {
+        return logFile.isActive()
+                ? "Details im Protokoll unter " + AppLogFile.directory() + "."
+                : "Es gibt kein Protokoll (" + logFile.problem() + ").";
     }
 
     private static void showError(String title, String message) {

@@ -17,7 +17,8 @@ import java.util.List;
  * absichtlich ladbar). Ohne Oberfläche (headless) bleibt es beim bisherigen Verhalten: Vorlage anlegen, Hinweis,
  * Exit-Code 2. Eine vorhandene, aber fehlerhafte Datei öffnet den Dialog mit ihren Werten und den Problemen;
  * headless wird wie bisher gemeldet. Der Dialog speichert selbst (über {@code SettingsDialogActions}); hier
- * wird nach jeder Runde neu geladen, bis die Datei lädt oder der Benutzer abbricht.
+ * wird nach jeder Runde neu geladen, bis die Datei lädt (und die {@link ConfigurationCheck} besteht) oder der
+ * Benutzer abbricht.
  */
 public final class ConfigurationStartup {
 
@@ -76,8 +77,16 @@ public final class ConfigurationStartup {
      * @param ui der Dialog, oder {@code null} ohne Display (headless): dann Vorlage und Meldung wie bisher
      */
     public static Outcome obtain(ConfigurationFile file, SettingsUi ui) {
-        if (file == null) {
-            throw new IllegalArgumentException("file must not be null");
+        return obtain(file, ui, ConfigurationCheck.none());
+    }
+
+    /**
+     * @param ui    der Dialog, oder {@code null} ohne Display (headless): dann Vorlage und Meldung wie bisher
+     * @param check zusätzliche Prüfung der geladenen Konfiguration; ihre Probleme zählen wie die des Loaders
+     */
+    public static Outcome obtain(ConfigurationFile file, SettingsUi ui, ConfigurationCheck check) {
+        if (file == null || check == null) {
+            throw new IllegalArgumentException("file and check must not be null");
         }
         if (!file.exists()) {
             if (ui == null) {
@@ -89,11 +98,11 @@ public final class ConfigurationStartup {
                 }
                 return Outcome.failed(templateCreated(file));
             }
-            return editUntilLoadable(file, ui, SettingsMapper.firstStartDefaults(), Collections.<String>emptyList(),
-                    true);
+            return editUntilLoadable(file, ui, check, SettingsMapper.firstStartDefaults(),
+                    Collections.<String>emptyList(), true);
         }
         try {
-            return Outcome.started(AppConfigLoader.load(file.path()));
+            return Outcome.started(load(file, check));
         } catch (AppConfigException e) {
             if (ui == null) {
                 return Outcome.failed(problems(file, e));
@@ -105,12 +114,18 @@ public final class ConfigurationStartup {
                 return Outcome.failed("Die Konfiguration unter\n" + file.path() + "\nist nicht lesbar ("
                         + io.getClass().getSimpleName() + ").");
             }
-            return editUntilLoadable(file, ui, form, SettingsMapper.describe(e.problems()), false);
+            return editUntilLoadable(file, ui, check, form, SettingsMapper.describe(e.problems()), false);
         }
     }
 
-    private static Outcome editUntilLoadable(ConfigurationFile file, SettingsUi ui, SettingsForm form,
-                                             List<String> problems, boolean firstStart) {
+    private static AppConfig load(ConfigurationFile file, ConfigurationCheck check) {
+        AppConfig config = AppConfigLoader.load(file.path());
+        check.verify(config);
+        return config;
+    }
+
+    private static Outcome editUntilLoadable(ConfigurationFile file, SettingsUi ui, ConfigurationCheck check,
+                                             SettingsForm form, List<String> problems, boolean firstStart) {
         SettingsForm current = form;
         List<String> currentProblems = problems;
         boolean first = firstStart;
@@ -123,10 +138,10 @@ public final class ConfigurationStartup {
                         : "Die Konfiguration unter\n" + file.path() + "\nwurde nicht korrigiert.");
             }
             try {
-                return Outcome.started(AppConfigLoader.load(file.path()));
+                return Outcome.started(load(file, check));
             } catch (AppConfigException e) {
                 // Der Dialog speichert nur fehlerfreie Entwürfe; hier landet nur, was die Datei nach dem
-                // Speichern trotzdem nicht laden lässt (z. B. parallel geändert).
+                // Speichern trotzdem nicht laden lässt (z. B. parallel geändert, Prüfung im Dialog ohne check).
                 current = edited;
                 currentProblems = SettingsMapper.describe(e.problems());
                 first = false;
@@ -141,7 +156,8 @@ public final class ConfigurationStartup {
                 + "und die Anwendung neu starten.";
     }
 
-    static String problems(ConfigurationFile file, AppConfigException e) {
+    /** Die Probleme einer vorhandenen Datei als Meldung ohne Werte (auch für den Start nach dem Dialog). */
+    public static String problems(ConfigurationFile file, AppConfigException e) {
         StringBuilder sb = new StringBuilder("Die Konfiguration unter\n").append(file.path()).append("\nhat Fehler:\n");
         for (String problem : e.problems()) {
             sb.append("  - ").append(problem).append('\n');

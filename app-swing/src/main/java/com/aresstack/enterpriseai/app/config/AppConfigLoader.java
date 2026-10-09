@@ -441,7 +441,7 @@ public final class AppConfigLoader {
     }
 
     private static NetworkConfig network(ConfigReader r) {
-        ProxyMode mode = r.enumValue("network.proxy.mode", ProxyMode.class, ProxyMode.SYSTEM);
+        ProxyMode mode = r.enumValue("network.proxy.mode", ProxyMode.class, ProxyMode.AUTO);
         String host = r.text("network.proxy.host", null);
         int port = r.integer("network.proxy.port", 0, 0, 65535);
         if (mode == ProxyMode.MANUAL) {
@@ -453,7 +453,32 @@ public final class AppConfigLoader {
             }
         }
         List<String> nonProxyHosts = r.list("network.proxy.nonProxyHosts");
-        return new NetworkConfig(mode, host, port, nonProxyHosts);
+        String pacUrl = pacUrl(r);
+        PacDiscovery pacDiscovery = r.enumValue("network.proxy.pacDiscovery", PacDiscovery.class,
+                PacDiscovery.WINDOWS_SETTINGS);
+        boolean windowsStore = r.bool("network.tls.useWindowsCertificateStore", true);
+        Path caCertificates = r.path("network.tls.caCertificatesFile", null);
+        return new NetworkConfig(mode, host, port, nonProxyHosts, pacUrl, pacDiscovery, windowsStore, caCertificates);
+    }
+
+    /** Die PAC-Adresse muss eine absolute http-, https- oder file-URL sein; die Meldung nennt nie den Wert. */
+    private static String pacUrl(ConfigReader r) {
+        String value = r.text("network.proxy.pacUrl", null);
+        if (value == null) {
+            return null;
+        }
+        String scheme;
+        try {
+            scheme = new java.net.URI(value).getScheme();
+        } catch (java.net.URISyntaxException e) {
+            scheme = null;
+        }
+        if (scheme == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)
+                || "file".equalsIgnoreCase(scheme))) {
+            r.problem("network.proxy.pacUrl", "keine absolute http-, https- oder file-URL");
+            return null;
+        }
+        return value;
     }
 
     private static AgentConfig agent(ConfigReader r) {

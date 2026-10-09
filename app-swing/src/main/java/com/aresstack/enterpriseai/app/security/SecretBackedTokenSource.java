@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 
 import java.util.Arrays;
+import java.util.logging.Logger;
 
 /**
  * {@link OpenAiCompatibleChatConfig.TokenSource} über den Security-Port: Der API-Key wird je Anfrage mit
@@ -15,8 +16,15 @@ import java.util.Arrays;
  *
  * <p>Bekannte Grenze: Die Schnittstelle des Chat-Adapters verlangt einen {@link String}; dieser lässt sich nicht
  * überschreiben und lebt bis zur Garbage Collection. Das {@code char[]} aus dem Material wird sofort genullt.
+ *
+ * <p>Der Chat-Adapter gibt von einem Fehler der Token-Quelle nur den Klassennamen weiter (er kann nicht wissen,
+ * ob eine fremde Meldung Secret-Material enthält). Damit der Grund (KeePass nicht erreichbar, Eintrag fehlt,
+ * Pairing abgelehnt) trotzdem auffindbar ist, protokolliert diese Brücke ihn; die Meldung nennt nur Grund und
+ * Referenz.
  */
 public final class SecretBackedTokenSource implements OpenAiCompatibleChatConfig.TokenSource {
+
+    private static final Logger LOG = Logger.getLogger(SecretBackedTokenSource.class.getName());
 
     private final SecretProvider secrets;
     private final SecretRef ref;
@@ -54,6 +62,7 @@ public final class SecretBackedTokenSource implements OpenAiCompatibleChatConfig
                 }
             });
         } catch (SecretUnavailableException e) {
+            LOG.warning("API-Key für den Chat nicht lesbar: " + SecretAccessException.describe(e.reason(), e.ref()));
             throw new SecretAccessException(e);
         }
     }

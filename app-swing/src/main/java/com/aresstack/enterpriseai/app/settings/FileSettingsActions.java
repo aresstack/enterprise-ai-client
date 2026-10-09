@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.settings;
 
+import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
@@ -18,28 +19,38 @@ import java.util.function.Consumer;
 
 /**
  * {@link SettingsDialogActions} über der Konfigurationsdatei: Prüfen heißt, die Datei mit dem Entwurf zu
- * verschmelzen und durch den {@link AppConfigLoader} zu schicken (dieselben Regeln wie beim Start, Meldungen mit
- * Feldnamen); Speichern schreibt nur die verwalteten Schlüssel. Die KeePass-Probe läuft auf dem Arbeits-Executor,
+ * verschmelzen, durch den {@link AppConfigLoader} zu schicken und die {@link ConfigurationCheck} des Starts
+ * laufen zu lassen (dieselben Regeln wie beim Start, Meldungen mit Feldnamen); Speichern schreibt nur die
+ * verwalteten Schlüssel. Die KeePass-Probe läuft auf dem Arbeits-Executor,
  * ihr Ergebnis kommt über den UI-Executor zurück.
  */
 public final class FileSettingsActions implements SettingsDialogActions {
 
     private final ConfigurationFile file;
     private final SecretChecker secretChecker;
+    private final ConfigurationCheck check;
     private final Executor worker;
     private final Executor ui;
 
+    /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
+        this(file, secretChecker, ConfigurationCheck.none(), worker, ui);
+    }
+
     /**
      * @param secretChecker die KeePass-Probe oder {@code null}, wenn keine möglich ist (Prüfen meldet das)
+     * @param check         zusätzliche Prüfung des Starts (z. B. TLS-Vertrauensregel), läuft bei Prüfen und Speichern
      * @param worker        führt die Probe aus (nie der EDT)
      * @param ui            liefert das Ergebnis der Probe ab (produktiv {@code SwingUtilities::invokeLater})
      */
-    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
-        if (file == null || worker == null || ui == null) {
-            throw new IllegalArgumentException("file, worker and ui must not be null");
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, ConfigurationCheck check,
+                               Executor worker, Executor ui) {
+        if (file == null || check == null || worker == null || ui == null) {
+            throw new IllegalArgumentException("file, check, worker and ui must not be null");
         }
         this.file = file;
         this.secretChecker = secretChecker;
+        this.check = check;
         this.worker = worker;
         this.ui = ui;
     }
@@ -74,7 +85,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     + e.getClass().getSimpleName() + ")");
         }
         try {
-            AppConfigLoader.fromProperties(SettingsMapper.merge(current, form));
+            AppConfig config = AppConfigLoader.fromProperties(SettingsMapper.merge(current, form));
+            check.verify(config);
             return Collections.emptyList();
         } catch (AppConfigException e) {
             return SettingsMapper.describe(e.problems());

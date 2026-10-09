@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 
 import java.util.Arrays;
+import java.util.logging.Logger;
 
 /**
  * {@link BearerTokenSource} des Embedding-Adapters über den Security-Port: je Request aufgelöst, als getrimmte Kopie
@@ -20,6 +21,8 @@ import java.util.Arrays;
  * Indexierung meldet die Ressource als fehlgeschlagen, statt ohne Abschluss abzubrechen.
  */
 public final class SecretBackedBearerTokenSource implements BearerTokenSource {
+
+    private static final Logger LOG = Logger.getLogger(SecretBackedBearerTokenSource.class.getName());
 
     private final SecretProvider secrets;
     private final SecretRef ref;
@@ -52,6 +55,7 @@ public final class SecretBackedBearerTokenSource implements BearerTokenSource {
                 }
             });
         } catch (SecretUnavailableException e) {
+            LOG.warning("API-Key für Embeddings nicht lesbar: " + SecretAccessException.describe(e.reason(), e.ref()));
             throw new EmbeddingException(EmbeddingFailureKind.AUTHENTICATION,
                     SecretAccessException.describe(e.reason(), e.ref()), e);
         }

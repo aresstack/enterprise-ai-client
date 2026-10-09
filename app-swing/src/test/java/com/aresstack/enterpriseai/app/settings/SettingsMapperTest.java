@@ -106,6 +106,8 @@ public class SettingsMapperTest {
         expected.setProperty("security.keepass.port", "12546");
         expected.setProperty("security.keepass.clientDisplayName", "Enterprise AI Client");
         expected.setProperty("security.keepass.pairingKeyStore", "file");
+        expected.setProperty("network.proxy.pacDiscovery", "WINDOWS_SETTINGS");
+        expected.setProperty("network.tls.useWindowsCertificateStore", "true");
         expected.setProperty("agent.enabled", "false");
         expected.setProperty("agent.requestTimeoutSeconds", "30");
         assertEquals(expected, added);
@@ -114,11 +116,55 @@ public class SettingsMapperTest {
     }
 
     @Test
+    public void proxyAutoAndTlsKeysRoundTripThroughTheLoader() {
+        Properties current = valid();
+        current.setProperty("network.proxy.mode", "auto");
+        current.setProperty("network.proxy.pacUrl", "file:///C:/wpad.dat");
+        current.setProperty("network.proxy.pacDiscovery", "powershell");
+        current.setProperty("network.tls.useWindowsCertificateStore", "false");
+        current.setProperty("network.tls.caCertificatesFile", "C:/Zertifikate/firmen-ca.pem");
+        SettingsForm form = SettingsMapper.fromProperties(current);
+        assertEquals(SettingsForm.PROXY_AUTO, form.proxyMode());
+        assertEquals("file:///C:/wpad.dat", form.pacUrl());
+        assertEquals(SettingsForm.PAC_POWERSHELL, form.pacDiscovery());
+        assertFalse(form.useWindowsCertificateStore());
+        assertEquals("C:/Zertifikate/firmen-ca.pem", form.caCertificatesFile());
+
+        Properties merged = SettingsMapper.merge(current, form);
+        AppConfig config = AppConfigLoader.fromProperties(merged);
+        assertEquals("file:///C:/wpad.dat", config.network().pacUrl());
+        assertEquals("POWERSHELL", config.network().pacDiscovery().name());
+        assertFalse(config.network().useWindowsCertificateStore());
+        assertEquals("C:/Zertifikate/firmen-ca.pem", config.network().caCertificatesFile().toString());
+
+        SettingsForm cleared = form.toBuilder().pacUrl("").caCertificatesFile("").build();
+        Set<String> removals = SettingsMapper.removals(cleared, current);
+        assertTrue(removals.contains("network.proxy.pacUrl"));
+        assertTrue(removals.contains("network.tls.caCertificatesFile"));
+        assertNull(AppConfigLoader.fromProperties(SettingsMapper.merge(current, cleared)).network().caCertificatesFile());
+    }
+
+    @Test
+    public void emptyFileYieldsTheLoaderDefaultsForProxyAndTls() {
+        SettingsForm form = SettingsMapper.fromProperties(new Properties());
+        assertEquals(SettingsForm.PROXY_AUTO, form.proxyMode());
+        assertEquals(SettingsForm.PAC_WINDOWS_SETTINGS, form.pacDiscovery());
+        assertTrue(form.useWindowsCertificateStore());
+        assertEquals("", form.caCertificatesFile());
+    }
+
+    @Test
     public void templateRoundTripsAndStillLoads() throws Exception {
         Properties current = template();
         SettingsForm form = SettingsMapper.fromProperties(current);
         Properties merged = SettingsMapper.merge(current, form);
         for (String key : current.stringPropertyNames()) {
+            if (current.getProperty(key).isEmpty()) {
+                // "sources=" (leer) der Vorlage: leer und fehlend sind für den Loader dasselbe; der Dialog
+                // kommentiert leere Werte aus.
+                assertNull(key, merged.getProperty(key));
+                continue;
+            }
             assertEquals(key, current.getProperty(key), merged.getProperty(key));
         }
         AppConfigLoader.fromProperties(merged);
@@ -248,6 +294,8 @@ public class SettingsMapperTest {
                 SettingsMapper.describe("source.wiki.apiUrl: keine gültige URL"));
         assertEquals("Quelle \u201eteam.wiki\u201c, Startpunkte (source.team.wiki.startPoints): fehlt",
                 SettingsMapper.describe("source.team.wiki.startPoints: fehlt"));
+        assertEquals("CA-Datei (network.tls.caCertificatesFile): Datei nicht lesbar (NoSuchFileException)",
+                SettingsMapper.describe("network.tls.caCertificatesFile: Datei nicht lesbar (NoSuchFileException)"));
         assertEquals("retrieval.maxResults: keine ganze Zahl", SettingsMapper.describe("retrieval.maxResults: keine ganze Zahl"));
         assertEquals("ohne Doppelpunkt", SettingsMapper.describe("ohne Doppelpunkt"));
     }

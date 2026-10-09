@@ -24,8 +24,9 @@ import java.util.function.Consumer;
 /**
  * Zeigt den Einstellungen-Dialog ohne Datei und ohne KeePass (Aktionen sind Attrappen: Prüfen findet nichts zu
  * beanstanden, die KeePass-Probe antwortet fest). Start: {@code ./gradlew :app-swing:runSettingsDemo}. Mit
- * {@code --args="--screenshot datei.png [--tab 0-3] [--problems]"} wird der Dialoginhalt ohne Fenster als PNG
- * geschrieben (headless), z. B. für die Dokumentation.
+ * {@code --args="--screenshot datei.png [--tab 0-3] [--problems] [--height 680]"} wird der Dialoginhalt ohne
+ * Fenster als PNG geschrieben (headless), z. B. für die Dokumentation; eine größere Höhe zeigt lange Reiter ohne
+ * Rollbalken.
  */
 public final class SettingsDialogDemo {
 
@@ -71,18 +72,22 @@ public final class SettingsDialogDemo {
                         .url("https://confluence.intern.beispiel/confluence").credentialRef("keepass:Confluence")
                         .startPoints("space:DEV").maxDepth("3").maxResources("1000").searchSpaceKeys("DEV").build())
                 .nonProxyHosts("*.intern.beispiel")
+                .caCertificatesFile("C:/Zertifikate/firmen-ca.pem")
                 .build();
     }
 
     public static void main(String[] args) throws Exception {
         String screenshot = null;
         int tab = 0;
+        int height = DEFAULT_HEIGHT;
         boolean problems = false;
         for (int i = 0; i < args.length; i++) {
             if ("--screenshot".equals(args[i]) && i + 1 < args.length) {
                 screenshot = args[++i];
             } else if ("--tab".equals(args[i]) && i + 1 < args.length) {
                 tab = Integer.parseInt(args[++i]);
+            } else if ("--height".equals(args[i]) && i + 1 < args.length) {
+                height = Integer.parseInt(args[++i]);
             } else if ("--problems".equals(args[i])) {
                 problems = true;
             }
@@ -92,7 +97,7 @@ public final class SettingsDialogDemo {
                         "Embedding-Dimension (embedding.dimension): keine ganze Zahl")
                 : Collections.<String>emptyList();
         if (screenshot != null) {
-            screenshot(new File(screenshot), tab, shownProblems);
+            screenshot(new File(screenshot), tab, height, shownProblems);
             return;
         }
         final DemoActions actions = new DemoActions();
@@ -107,8 +112,11 @@ public final class SettingsDialogDemo {
         System.exit(0);
     }
 
-    /** Ohne Fenster (headless) wird der Dialoginhalt auf 800×680 gelegt und per rekursivem {@code doLayout} gesetzt. */
-    static void screenshot(final File target, final int tab, final List<String> problems) throws Exception {
+    private static final int DEFAULT_HEIGHT = 680;
+
+    /** Ohne Fenster (headless) wird der Dialoginhalt auf 800×{@code height} gelegt und per rekursivem {@code doLayout} gesetzt. */
+    static void screenshot(final File target, final int tab, final int height, final List<String> problems)
+            throws Exception {
         final BufferedImage[] image = new BufferedImage[1];
         SwingUtilities.invokeAndWait(new Runnable() {
             @Override
@@ -122,7 +130,7 @@ public final class SettingsDialogDemo {
                 content.setBackground(palette.getSurface());
                 content.setBorder(ComicBorder.roundedBorder(palette, 4));
                 content.add(panel, BorderLayout.CENTER);
-                content.setSize(800, 680);
+                content.setSize(800, height);
                 if (GraphicsEnvironment.isHeadless()) {
                     invalidateTree(content);
                     layoutTree(content);

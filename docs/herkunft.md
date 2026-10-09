@@ -94,6 +94,7 @@ ausführliche Fassung.
 | `ChatShellModel` ohne Swing, `ChatServiceBinding` | neu | Streaming-Deltas gebündelt (ein UI-Update je 30 ms, AP22) |
 | Agent-Session-Anbindung, MCP-Endpoint je Agentenprozess | askai-java8 `AcpResearchSessionBackend` (dort `ASKAI_*`-Umgebung) | `ENTERPRISE_AI_MCP_*`, Token nur in der Composition Root |
 | Properties-Konfiguration im Benutzerverzeichnis, Pfad-Override, unveränderliche Snapshots, Proxy-Modi | askai-java8 `AppConfigurationRepository`, `AskAiPaths`, `ProxyConfiguration` | Schlüsselnamen neu, keine Secrets in der Datei |
+| PAC-/WPAD-Proxyskript auswerten (`network.proxy.mode=AUTO`, `app.net.PacProxyRoutes`) | Bibliothek aresstack/win-proxy-java 0.1.0-beta.4, Einbindung wie corenth `WinProxyPlatformProxyRouteResolver` und askai-java8 `ProxyConfiguration` | Nur die Modi PAC_URL_MANUAL, PAC_URL_WINDOWS_SETTINGS, PAC_URL_POWERSHELL; Ergebnis je Host gecacht; Fehler fallen protokolliert auf die Systemeinstellungen zurück |
 | Settings-Schlüssel für Proxy, Timeouts, mTLS, KeePass-Verdrahtung mit Pairing-Dialog | MainframeMate `Settings`, `KeePassProvider`, `KeePassRpcPairingDialog`, `MvsBrowser`-Proxy | API-Key als `SecretRef` statt verschlüsselt in den Settings |
 | Shutdown-Reihenfolge, Hintergrund-Indexierung beim Start | MainframeMate `MainFrame`/`Main`, `IndexingService`; askai-java8 (Semantic Index beim Start) | `ShutdownSequence` mit fünf Stufen, `StartupIndexing` abschaltbar |
 | Composition Root als einziger Ort für Adapterkonstruktoren | corenth | `CompositionRootBoundaryTest` |

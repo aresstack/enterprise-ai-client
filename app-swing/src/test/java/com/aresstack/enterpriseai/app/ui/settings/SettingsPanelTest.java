@@ -93,6 +93,10 @@ public class SettingsPanelTest {
                 panel.securityTab().port().setText("12999");
                 panel.systemTab().agentEnabled().setSelected(true);
                 panel.systemTab().agentCommand().setText("agent.cmd");
+                panel.systemTab().proxyMode().setSelectedItem(SettingsForm.PROXY_AUTO);
+                panel.systemTab().pacUrl().setText("file:///C:/wpad.dat");
+                panel.systemTab().useWindowsCertificateStore().setSelected(false);
+                panel.systemTab().caCertificatesFile().setText("C:/ca.pem");
                 SettingsForm form = panel.toForm();
                 assertEquals("anderes-modell", form.chatModel());
                 assertEquals("Mein Client", form.windowTitle());
@@ -100,6 +104,11 @@ public class SettingsPanelTest {
                 assertEquals("12999", form.keePassPort());
                 assertTrue(form.agentEnabled());
                 assertEquals("agent.cmd", form.agentCommand());
+                assertEquals(SettingsForm.PROXY_AUTO, form.proxyMode());
+                assertEquals("file:///C:/wpad.dat", form.pacUrl());
+                assertEquals(SettingsForm.PAC_WINDOWS_SETTINGS, form.pacDiscovery());
+                assertFalse(form.useWindowsCertificateStore());
+                assertEquals("C:/ca.pem", form.caCertificatesFile());
                 assertEquals("http://127.0.0.1:9/w/api.php", form.sources().get(0).url());
 
                 panel.setForm(sample());

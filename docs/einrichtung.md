@@ -43,9 +43,9 @@ java -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis -jar enterprise-ai-clie
 ```
 
 Einstiegspunkt ist `com.aresstack.enterpriseai.app.EnterpriseAiClientMain` (Modul `app-swing`). Ablauf beim
-Start: Konfiguration beschaffen (Datei laden; fehlt sie oder lädt sie nicht, öffnet sich der
-Einstellungen-Dialog), Proxy-Regel installieren, Adapter bauen, Graphen komponieren, Shutdown-Hook
-registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
+Start: Protokolldatei öffnen, Konfiguration beschaffen (Datei laden; fehlt sie oder lädt sie nicht, öffnet sich
+der Einstellungen-Dialog), Vertrauensregel (TLS) und Proxy-Regel installieren, Adapter bauen, Graphen
+komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
 
 ### Anwendungsverzeichnis und Konfigurationsdatei
 
@@ -55,6 +55,7 @@ registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
 | Konfigurationsdatei | `<Anwendungsverzeichnis>/enterprise-ai-client.properties`; überschreibbar mit `-Denterpriseai.config=<Datei>` |
 | Lucene-Index und Vektoren | `<Anwendungsverzeichnis>/index/` (Schlüssel `knowledge.indexDirectory`) |
 | KeePassRPC-Pairing-Schlüssel | `<Anwendungsverzeichnis>/keepassrpc-pairing.key` (Schlüssel `security.keepass.pairingKeyFile`) |
+| Protokolldateien | `<Anwendungsverzeichnis>/logs/enterprise-ai-client.<n>.log` (rollierend, drei Dateien à 2 MB, `java.util.logging` ab INFO; enthält Start, Konfiguration ohne Secrets, Vertrauensquellen, Proxy-Regel samt Route zum KI-Dienst, jeden fehlgeschlagenen Chat-Aufruf und jeden fehlgeschlagenen Zugriff auf eine Wissensquelle mit Stacktrace sowie je nicht indexierbarer Seite den Grund) |
 
 Beim ersten Start ohne Datei öffnet die Anwendung den [Einstellungen-Dialog](#einstellungen-dialog) mit leeren
 Pflichtfeldern (der KeePass-Titel ist mit `keepass:Enterprise AI API` vorgeschlagen); „Speichern“ schreibt die
@@ -79,7 +80,11 @@ embedding.dimension=768
 
 Die Datei enthält keine Secrets. `chat.apiKeyRef` ist der Titel des KeePass-Eintrags, dessen Passwortfeld den
 API-Key trägt. Fehler in der Datei werden gesammelt gemeldet und nennen Schlüssel und Erwartung, nie den Wert;
-unbekannte Schlüssel erzeugen eine Warnung.
+unbekannte Schlüssel erzeugen eine Warnung. Die Vorlage hat `sources=` leer und die Beispielquellen (Wiki,
+Confluence) auskommentiert; ohne Quellen gibt es nur Chat, und die Statuszeile meldet keine fehlgeschlagene
+Indexierung gegen Beispielhosts. Proxy (Standard `AUTO`: PAC-Skript des Unternehmens wie im Browser, sonst
+Systemeinstellungen) und TLS-Vertrauen stehen unter `network.*`
+([API-Konfiguration](konfiguration-api.md#netzwerk-network)).
 
 ### Einstellungen-Dialog
 
@@ -91,10 +96,11 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | KI-Dienst | `chat.baseUrl`, `chat.model`, `chat.apiKeyRef` (mit „In KeePass prüfen“), `chat.systemPrompt`; `embedding.baseUrl`, `embedding.model`, `embedding.dimension`, `embedding.apiKeyRef` |
 | Wissensbasis | `knowledge.indexDirectory` (mit Verzeichnisauswahl), `knowledge.indexOnStartup`; `sources` und je Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` |
 | KeePass | `security.keepass.enabled`, `host`, `port`, `clientDisplayName`, `pairingKeyStore`; „In KeePass prüfen“ mit dem Eintrag des API-Keys |
-| Netzwerk & Agent | `ui.windowTitle`; `network.proxy.mode` (SYSTEM, NONE, MANUAL), `host`, `port`, `nonProxyHosts`; `agent.enabled`, `agent.command`, `agent.args`, `agent.requestTimeoutSeconds` |
+| Netzwerk & Agent | `ui.windowTitle`; `network.proxy.mode` (AUTO, SYSTEM, NONE, MANUAL), `pacUrl`, `pacDiscovery`, `host`, `port`, `nonProxyHosts`; `network.tls.useWindowsCertificateStore`, `network.tls.caCertificatesFile` (mit Dateiauswahl); `agent.enabled`, `agent.command`, `agent.args`, `agent.requestTimeoutSeconds` |
 
-- **Prüfen** läuft durch denselben Loader wie der Start: Speichern geht nur ohne Probleme; Probleme stehen unter
-  den Reitern mit Feldname und Schlüssel, der betroffene Reiter wird gewählt.
+- **Prüfen** läuft durch denselben Loader wie der Start und baut wie dieser die TLS-Vertrauensregel (eine
+  fehlende oder leere CA-Datei fällt also hier auf, nicht erst beim nächsten Start): Speichern geht nur ohne
+  Probleme; Probleme stehen unter den Reitern mit Feldname und Schlüssel, der betroffene Reiter wird gewählt.
 - **Speichern** schreibt nur die Schlüssel des Dialogs und lässt alles andere stehen: Kommentare, Reihenfolge,
   Feineinstellungen (Timeouts, Retrieval, Kontext, Client-Zertifikat, Wiki-Namensräume). Ein vorhandener
   Schlüssel wird in seiner Zeile ersetzt, ein auskommentierter (`#schlüssel=…`) an seiner Stelle aktiviert,
@@ -116,6 +122,10 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
    erneutes Pairing ist erst nach Widerruf in KeePass nötig.
 3. Frage in das Eingabefeld, Enter oder "Send". Die Antwort streamt in die Sprechblase; "Stop" bricht ab, die
    Frage bleibt in der Historie.
+4. Scheitert die Anfrage, zeigt die rote Blase die Einordnung ("Der KI-Dienst ist nicht erreichbar."), darunter
+   `Technische Ursache:` und meist einen `Hinweis:`; der Stacktrace steht im Protokoll. Die häufigsten Ursachen
+   (Zertifikat nicht vertraut, Proxy, KeePass) und ihre Abhilfe:
+   [Fehlersuche](konfiguration-api.md#fehlersuche-der-ki-dienst-ist-nicht-erreichbar).
 
 ### Quelle indexieren und RAG verwenden
 
@@ -175,7 +185,8 @@ lässt "slow" im Auftrag den Agenten streamen, bis Stop gedrückt wird.
 ```
 
 Das Fat Jar enthält `app-swing` und alle Laufzeitabhängigkeiten (eigene Module, Lucene, Solon, Jackson, Gson,
-jsoup, Java-WebSocket, ACP-SDK). Es entsteht ohne Zusatz-Plugin aus einer eigenen Jar-Task in
+jsoup, Java-WebSocket, ACP-SDK, win-proxy-java mit GraalJS für PAC-Proxyskripte; mit GraalJS wächst das Jar von
+rund 16 auf rund 42 MB). Es entsteht ohne Zusatz-Plugin aus einer eigenen Jar-Task in
 `gradle/fat-jar.gradle` (eingebunden von `app-swing/build.gradle`), damit der Build auf JDK 8 wie auf JDK 21
 läuft. Dabei gilt:
 

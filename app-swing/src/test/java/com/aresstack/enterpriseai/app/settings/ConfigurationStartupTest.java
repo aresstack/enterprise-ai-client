@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.app.settings;
 
+import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import org.junit.Rule;
@@ -61,6 +63,17 @@ public class ConfigurationStartupTest {
             return toSave;
         }
     }
+
+    /** Wie die TLS-Vertrauensregel des Starts: eine eingetragene CA-Datei, die es nicht gibt, ist ein Problem. */
+    private static final ConfigurationCheck CA_FILE_MUST_EXIST = new ConfigurationCheck() {
+        @Override
+        public void verify(AppConfig config) {
+            Path file = config.network().caCertificatesFile();
+            if (file != null && !Files.exists(file)) {
+                throw new AppConfigException("network.tls.caCertificatesFile: Datei nicht lesbar (NoSuchFileException)");
+            }
+        }
+    };
 
     private Path configPath() {
         return tmp.getRoot().toPath().resolve("home").resolve("enterprise-ai-client.properties");
@@ -134,6 +147,30 @@ public class ConfigurationStartupTest {
         assertTrue(outcome.message(), outcome.message().contains(configPath().toString()));
         assertFalse("ohne Speichern keine Datei, sonst lädt der nächste Start die Beispielwerte der Vorlage",
                 file.exists());
+    }
+
+    @Test
+    public void checkProblemsCountLikeLoaderProblems() throws Exception {
+        ConfigurationFile file = new ConfigurationFile(configPath());
+        FileSettingsActions actions = new FileSettingsActions(file, null, CA_FILE_MUST_EXIST, DIRECT, DIRECT);
+        new FileSettingsActions(file, null, DIRECT, DIRECT)
+                .save(completeForm().toBuilder().caCertificatesFile(tmp.getRoot().toPath().resolve("fehlt.pem")
+                        .toString()).build());
+
+        ConfigurationStartup.Outcome headless = ConfigurationStartup.obtain(file, null, CA_FILE_MUST_EXIST);
+        assertFalse(headless.isStarted());
+        assertTrue(headless.message(), headless.message().contains("hat Fehler"));
+        assertTrue(headless.message(), headless.message().contains("network.tls.caCertificatesFile"));
+        assertFalse(headless.message(), headless.message().contains("fehlt.pem"));
+
+        SettingsForm fixed = SettingsMapper.fromProperties(file.read()).toBuilder().caCertificatesFile("").build();
+        ScriptedUi ui = new ScriptedUi(actions, fixed);
+        ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file, ui, CA_FILE_MUST_EXIST);
+        assertTrue(outcome.isStarted());
+        assertEquals(1, ui.problems.get(0).size());
+        assertTrue(ui.problems.get(0).get(0), ui.problems.get(0).get(0)
+                .startsWith("CA-Datei (network.tls.caCertificatesFile): "));
+        assertNull(outcome.config().network().caCertificatesFile());
     }
 
     @Test

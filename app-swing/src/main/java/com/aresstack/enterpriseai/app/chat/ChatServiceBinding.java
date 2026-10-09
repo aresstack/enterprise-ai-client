@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.chat;
 
+import com.aresstack.enterpriseai.app.net.ConnectionDiagnosis;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.application.chat.ChatService;
@@ -10,6 +11,8 @@ import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.chat.ChatResponse;
 
 import java.util.concurrent.Executor;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Verbindet die Chat-Shell mit genau einer Konversation des {@link ChatService}.
@@ -24,6 +27,11 @@ import java.util.concurrent.Executor;
  * Der RAG-Schalter wird in AP4 nur durchgereicht und ignoriert; AP22 wertet ihn aus.
  */
 public final class ChatServiceBinding implements ChatShellActions {
+
+    private static final Logger LOG = Logger.getLogger(ChatServiceBinding.class.getName());
+
+    static final String DETAIL_PREFIX = "Technische Ursache: ";
+    static final String HINT_PREFIX = "Hinweis: ";
 
     private final ChatService chatService;
     private final ChatShellModel model;
@@ -76,8 +84,28 @@ public final class ChatServiceBinding implements ChatShellActions {
         }
     }
 
-    /** Für Menschen lesbare Fehlermeldung ohne technische Details aus Header oder Anfrage. */
+    /**
+     * Für Menschen lesbare Fehlermeldung: erste Zeile die Fehlerart, dann die technische Ursache (Ursachenkette des
+     * Adapters, die laut Port-Vertrag keine Zugangsdaten enthält; Bearer-Token werden zusätzlich maskiert) und,
+     * wenn die Ursache bekannt ist, ein Hinweis, was zu tun ist (Zertifikat, Proxy, KeePass). Ohne diese Zeilen
+     * stand beim ersten Start gegen die echte API nur "nicht erreichbar" in der Blase, und niemand konnte sehen,
+     * ob Java dem Zertifikat misstraut oder den Proxy nicht kennt.
+     */
     static String describe(ChatCompletionException error) {
+        StringBuilder text = new StringBuilder(headline(error));
+        String detail = ConnectionDiagnosis.detail(error);
+        if (!detail.isEmpty()) {
+            text.append('\n').append(DETAIL_PREFIX).append(detail);
+        }
+        String hint = ConnectionDiagnosis.hint(error);
+        if (hint != null) {
+            text.append('\n').append(HINT_PREFIX).append(hint);
+        }
+        return text.toString();
+    }
+
+    /** Die erste Zeile: Fehlerart und Status, ohne technische Details. */
+    static String headline(ChatCompletionException error) {
         String reason;
         switch (error.kind()) {
             case AUTHENTICATION:
@@ -133,6 +161,7 @@ public final class ChatServiceBinding implements ChatShellActions {
         @Override
         public void onFailed(final ChatCompletionException error) {
             final String message = describe(error);
+            LOG.log(Level.WARNING, "Chat-Anfrage fehlgeschlagen (" + error.kind() + "): " + error.getMessage(), error);
             finish(new Runnable() {
                 @Override
                 public void run() {

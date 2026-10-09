@@ -136,7 +136,8 @@ public class ChatServiceBindingTest {
             }
         });
         assertEquals(TranscriptEntry.State.FAILED, answer.getState());
-        assertEquals("Fehler im KI-Dienst. (Status 500)", answer.getFailureMessage());
+        assertEquals("Fehler im KI-Dienst. (Status 500)\nTechnische Ursache: internal_error",
+                answer.getFailureMessage());
     }
 
     @Test
@@ -171,11 +172,32 @@ public class ChatServiceBindingTest {
     }
 
     @Test
-    public void errorTextsNameTheKindWithoutTechnicalDetail() {
-        assertEquals("Anmeldung am KI-Dienst fehlgeschlagen. (Status 401)", ChatServiceBinding.describe(
-                new ChatCompletionException(ChatErrorKind.AUTHENTICATION, 401, "Bearer abc", null)));
-        assertEquals("Der KI-Dienst ist nicht erreichbar.", ChatServiceBinding.describe(
+    public void errorTextsNameTheKindThenTheCauseAndMaskAnythingTokenLike() {
+        assertEquals("Anmeldung am KI-Dienst fehlgeschlagen. (Status 401)\nTechnische Ursache: HTTP 401: Bearer ***",
+                ChatServiceBinding.describe(new ChatCompletionException(ChatErrorKind.AUTHENTICATION, 401,
+                        "HTTP 401: Bearer abc", null)));
+        assertEquals("Der KI-Dienst ist nicht erreichbar.\nTechnische Ursache: connect timed out",
+                ChatServiceBinding.describe(new ChatCompletionException(ChatErrorKind.TRANSPORT, "connect timed out")));
+        assertEquals("Der KI-Dienst ist nicht erreichbar.", ChatServiceBinding.headline(
                 new ChatCompletionException(ChatErrorKind.TRANSPORT, "connect timed out")));
+    }
+
+    /** Regression Erststart gegen die echte API: "nicht erreichbar" nennt jetzt Ursache (TLS) und Hinweis. */
+    @Test
+    public void certificateProblemsShowCauseAndRemedyInTheBubble() {
+        javax.net.ssl.SSLHandshakeException handshake = new javax.net.ssl.SSLHandshakeException(
+                "PKIX path building failed: unable to find valid certification path to requested target");
+        String text = ChatServiceBinding.describe(new ChatCompletionException(ChatErrorKind.TRANSPORT,
+                "connection to ki.example failed: SSLHandshakeException", handshake));
+        String[] lines = text.split("\n");
+        assertEquals(3, lines.length);
+        assertEquals("Der KI-Dienst ist nicht erreichbar.", lines[0]);
+        assertTrue(lines[1], lines[1].startsWith(ChatServiceBinding.DETAIL_PREFIX
+                + "connection to ki.example failed: SSLHandshakeException | SSLHandshakeException: PKIX"));
+        assertTrue(lines[2], lines[2].startsWith(ChatServiceBinding.HINT_PREFIX + "Java vertraut dem Zertifikat"));
+        String keePass = ChatServiceBinding.describe(new ChatCompletionException(ChatErrorKind.AUTHENTICATION,
+                "token source failed: SecretAccessException"));
+        assertTrue(keePass, keePass.contains(ChatServiceBinding.HINT_PREFIX + "Der API-Key konnte nicht aus KeePass"));
     }
 
     private final class Fixture {

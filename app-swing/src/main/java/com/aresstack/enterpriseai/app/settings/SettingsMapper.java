@@ -39,9 +39,13 @@ public final class SettingsMapper {
     static final String KEY_KEEPASS_DISPLAY_NAME = "security.keepass.clientDisplayName";
     static final String KEY_KEEPASS_PAIRING_STORE = "security.keepass.pairingKeyStore";
     static final String KEY_PROXY_MODE = "network.proxy.mode";
+    static final String KEY_PAC_URL = "network.proxy.pacUrl";
+    static final String KEY_PAC_DISCOVERY = "network.proxy.pacDiscovery";
     static final String KEY_PROXY_HOST = "network.proxy.host";
     static final String KEY_PROXY_PORT = "network.proxy.port";
     static final String KEY_NON_PROXY_HOSTS = "network.proxy.nonProxyHosts";
+    static final String KEY_TLS_WINDOWS_STORE = "network.tls.useWindowsCertificateStore";
+    static final String KEY_TLS_CA_FILE = "network.tls.caCertificatesFile";
     static final String KEY_AGENT_ENABLED = "agent.enabled";
     static final String KEY_AGENT_COMMAND = "agent.command";
     static final String KEY_AGENT_ARGS = "agent.args";
@@ -89,10 +93,15 @@ public final class SettingsMapper {
         b.keePassClientDisplayName(text(p, KEY_KEEPASS_DISPLAY_NAME, "Enterprise AI Client"));
         b.keePassPairingKeyStore(text(p, KEY_KEEPASS_PAIRING_STORE, SettingsForm.PAIRING_KEY_STORE_FILE)
                 .toLowerCase(Locale.ROOT));
-        b.proxyMode(text(p, KEY_PROXY_MODE, SettingsForm.PROXY_SYSTEM).toUpperCase(Locale.ROOT).replace('-', '_'));
+        b.proxyMode(text(p, KEY_PROXY_MODE, SettingsForm.PROXY_AUTO).toUpperCase(Locale.ROOT).replace('-', '_'));
+        b.pacUrl(text(p, KEY_PAC_URL, ""));
+        b.pacDiscovery(text(p, KEY_PAC_DISCOVERY, SettingsForm.PAC_WINDOWS_SETTINGS).toUpperCase(Locale.ROOT)
+                .replace('-', '_'));
         b.proxyHost(text(p, KEY_PROXY_HOST, ""));
         b.proxyPort(text(p, KEY_PROXY_PORT, ""));
         b.nonProxyHosts(text(p, KEY_NON_PROXY_HOSTS, ""));
+        b.useWindowsCertificateStore(bool(p, KEY_TLS_WINDOWS_STORE, true));
+        b.caCertificatesFile(text(p, KEY_TLS_CA_FILE, ""));
         b.agentEnabled(bool(p, KEY_AGENT_ENABLED, false));
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
         b.agentArgs(text(p, KEY_AGENT_ARGS, ""));
@@ -169,9 +178,13 @@ public final class SettingsMapper {
         put(set, KEY_KEEPASS_DISPLAY_NAME, form.keePassClientDisplayName());
         put(set, KEY_KEEPASS_PAIRING_STORE, form.keePassPairingKeyStore());
         put(set, KEY_PROXY_MODE, form.proxyMode());
+        put(set, KEY_PAC_URL, form.pacUrl());
+        put(set, KEY_PAC_DISCOVERY, form.pacDiscovery());
         put(set, KEY_PROXY_HOST, form.proxyHost());
         put(set, KEY_PROXY_PORT, form.proxyPort());
         put(set, KEY_NON_PROXY_HOSTS, form.nonProxyHosts());
+        set.put(KEY_TLS_WINDOWS_STORE, String.valueOf(form.useWindowsCertificateStore()));
+        put(set, KEY_TLS_CA_FILE, form.caCertificatesFile());
         set.put(KEY_AGENT_ENABLED, String.valueOf(form.agentEnabled()));
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
@@ -315,10 +328,20 @@ public final class SettingsMapper {
                 return "Ablage des Pairing-Schlüssels";
             case KEY_PROXY_MODE:
                 return "Proxy-Modus";
+            case KEY_PAC_URL:
+                return "Adresse des PAC-Skripts";
+            case KEY_PAC_DISCOVERY:
+                return "PAC-Ermittlung";
             case KEY_PROXY_HOST:
                 return "Proxy-Host";
             case KEY_PROXY_PORT:
                 return "Proxy-Port";
+            case KEY_NON_PROXY_HOSTS:
+                return "Hosts ohne Proxy";
+            case KEY_TLS_WINDOWS_STORE:
+                return "Windows-Zertifikatspeicher";
+            case KEY_TLS_CA_FILE:
+                return "CA-Datei";
             case KEY_AGENT_COMMAND:
                 return "Agent-Kommando";
             case KEY_AGENT_TIMEOUT:

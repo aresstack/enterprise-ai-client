@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.logging.Logger;
 
 /**
  * Verbindet die Statuszeile der Chat-Shell mit dem {@link IndexKnowledgeUseCase} (AP22): startet die Indexierung
@@ -26,12 +27,21 @@ import java.util.function.LongSupplier;
  *
  * <p>Welche Quellen wann indexiert werden, entscheidet die Composition Root (AP23); sie ruft
  * {@link #indexSource} auf. Je Anbindung läuft höchstens eine Indexierung gleichzeitig. In der Statuszeile
- * stehen Zahlen und Titel, keine Fehlertexte aus Quellen oder Adaptern.
+ * stehen Zahlen, Titel und die Quell-ID, keine Fehlertexte aus Quellen oder Adaptern; die Ursache einer
+ * gescheiterten Discovery (Quelle nicht erreichbar, Zugriff verweigert) geht ins Protokoll.
  */
 public final class KnowledgeIndexingBinding {
 
+    private static final Logger LOG = Logger.getLogger(KnowledgeIndexingBinding.class.getName());
+
     static final String START_FAILED = "Indexierung konnte nicht gestartet werden.";
-    static final String DISCOVERY_FAILED = "Indexierung fehlgeschlagen: Die Quelle konnte nicht gelesen werden.";
+    static final String DISCOVERY_FAILED_SUFFIX = " fehlgeschlagen: Die Quelle konnte nicht gelesen werden "
+            + "(Ursache im Protokoll).";
+
+    /** Statuszeile, wenn die Quelle selbst nicht lesbar war; nennt die Quelle, nicht den Fehlertext des Adapters. */
+    static String discoveryFailed(String sourceId) {
+        return "Indexierung von " + sourceId + DISCOVERY_FAILED_SUFFIX;
+    }
 
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -115,10 +125,19 @@ public final class KnowledgeIndexingBinding {
     /** Der Text nach dem Lauf: Seiten, Abschnitte, Fehlschläge, Abbruch, Zeitstempel. */
     String summary(IndexingReport report, long nowMillis) {
         if (report.discoveryFailed()) {
-            return DISCOVERY_FAILED;
+            LOG.warning("Indexierung von " + report.sourceId().value() + ": Quelle nicht lesbar: "
+                    + report.discoveryFailure());
+            return discoveryFailed(report.sourceId().value());
         }
         int indexed = report.count(IndexingStatus.INDEXED) + report.count(IndexingStatus.EMPTY);
         int failed = report.count(IndexingStatus.FAILED);
+        for (ResourceIndexingOutcome outcome : report.outcomes()) {
+            if (outcome.status() == IndexingStatus.FAILED) {
+                // Der Grund je Ressource steht nur im Bericht; die Ursachenkette hat die Quellen-Hülle schon geloggt.
+                LOG.warning("Indexierung von " + report.sourceId().value() + ": " + outcome.resourceId().value()
+                        + " fehlgeschlagen (" + outcome.stage() + "): " + outcome.message());
+            }
+        }
         StringBuilder text = new StringBuilder();
         if (report.isCancelled()) {
             text.append("Indexierung abgebrochen: ").append(indexed).append(" von ").append(report.discovered())

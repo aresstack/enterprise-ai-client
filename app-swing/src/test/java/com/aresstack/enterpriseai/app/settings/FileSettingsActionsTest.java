@@ -62,6 +62,33 @@ public class FileSettingsActionsTest {
     }
 
     @Test
+    public void checkProblemsBlockSavingLikeLoaderProblems() throws Exception {
+        ConfigurationCheck caFileMustExist = new ConfigurationCheck() {
+            @Override
+            public void verify(AppConfig config) {
+                if (config.network().caCertificatesFile() != null) {
+                    throw new com.aresstack.enterpriseai.app.config.AppConfigException(
+                            "network.tls.caCertificatesFile: Datei enthält kein Zertifikat");
+                }
+            }
+        };
+        FileSettingsActions actions = new FileSettingsActions(fileWith(validText()), null, caFileMustExist,
+                DIRECT, DIRECT);
+        SettingsForm form = SettingsMapper.fromProperties(actions.file().read()).toBuilder()
+                .caCertificatesFile("C:/ca.pem").build();
+        List<String> problems = actions.validate(form);
+        assertEquals(1, problems.size());
+        assertEquals("CA-Datei (network.tls.caCertificatesFile): Datei enthält kein Zertifikat", problems.get(0));
+        try {
+            actions.save(form);
+            fail("mit Problemen darf nicht gespeichert werden");
+        } catch (IllegalArgumentException expected) {
+            assertFalse(actions.file().read().containsKey("network.tls.caCertificatesFile"));
+        }
+        assertTrue(actions.validate(form.toBuilder().caCertificatesFile("").build()).isEmpty());
+    }
+
+    @Test
     public void problemsCarryFieldLabels() throws Exception {
         FileSettingsActions actions = new FileSettingsActions(fileWith(validText()), null, DIRECT, DIRECT);
         SettingsForm form = SettingsMapper.fromProperties(actions.file().read()).toBuilder()
