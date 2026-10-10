@@ -196,6 +196,28 @@ public final class ChatShellModel {
         fireStateChanged();
     }
 
+    /**
+     * Stellt eine gespeicherte Zeile wieder her (Chat-Historie): sofort vollständig, mit ihrem ursprünglichen
+     * Zeitpunkt und, bei Nutzernachrichten, den Namen ihrer Anhänge. Nur, solange keine Antwort läuft.
+     */
+    public TranscriptEntry restoreEntry(TranscriptEntry.Author author, String text, long createdAtMillis,
+                                        List<String> attachmentNames) {
+        if (author == null || text == null) {
+            throw new IllegalArgumentException("author and text must not be null");
+        }
+        if (streamingEntry != null) {
+            throw new IllegalStateException("cannot restore while an assistant message is streaming");
+        }
+        TranscriptEntry entry = new TranscriptEntry(nextId++, author, createdAtMillis, text,
+                TranscriptEntry.State.COMPLETE);
+        entries.add(entry);
+        if (attachmentNames != null && !attachmentNames.isEmpty()) {
+            entry.setAttachments(attachmentNames);
+        }
+        fireEntryAdded(entry);
+        return entry;
+    }
+
     /** Die Antwort ist fehlgeschlagen. {@code message} ist für Menschen bestimmt und enthält keine Secrets. */
     public void failAssistantMessage(String message) {
         finishStreaming(TranscriptEntry.State.FAILED, message == null || message.trim().isEmpty()

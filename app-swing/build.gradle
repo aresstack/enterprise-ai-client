@@ -41,6 +41,8 @@ dependencies {
     implementation libs.flexmark.ext.autolink
     implementation libs.flexmark.ext.gfm.strikethrough
     implementation libs.mermaid.java
+    // Chat-Historie (app.chat.FileChatHistoryStore, aus askai-java8 arch): ein JSON-Dokument je Chat.
+    implementation libs.gson
 
     // Strang A: skriptbarer Fake-ChatCompletionPort für UI-Tests und die Demo.
     testImplementation testFixtures(project(':chat-api'))

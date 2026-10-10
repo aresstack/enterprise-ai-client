@@ -93,6 +93,25 @@ final class ChatAttachmentStrip extends JPanel {
     }
 
     private Component createChip(final Path file) {
+        String fileName = file.getFileName().toString();
+        JButton remove = new JButton("\u00D7");
+        remove.setToolTipText(fileName + " entfernen");
+        remove.getAccessibleContext().setAccessibleName(fileName + " entfernen");
+        remove.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+        remove.setRequestFocusEnabled(false); // per Tab erreichbar, ein Klick nimmt dem Editor nicht den Fokus
+        remove.setBorderPainted(false);
+        remove.setContentAreaFilled(false);
+        remove.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        remove.setMargin(new Insets(0, 4, 0, 2));
+        remove.addActionListener(event -> removeAttachment(file));
+        return chip(fileName, file.toString(), remove);
+    }
+
+    /**
+     * Ein Chip mit Dateinamen (gekürzt) und optionalem Element rechts (im Composer das ✕); auch für die Chips
+     * unter einer gesendeten Nutzernachricht.
+     */
+    static JPanel chip(String fileName, String tooltip, Component trailing) {
         JPanel chip = new JPanel(new BorderLayout(4, 0)) {
             private static final long serialVersionUID = 1L;
 
@@ -108,24 +127,14 @@ final class ChatAttachmentStrip extends JPanel {
             }
         };
         chip.setOpaque(false);
-        chip.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 4));
-        String fileName = file.getFileName().toString();
+        chip.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, trailing == null ? 8 : 4));
         JLabel name = new JLabel(ellipsize(fileName, 28));
         name.setForeground(ResearchUiPalette.TEXT_DARK);
-        name.setToolTipText(file.toString());
+        name.setToolTipText(tooltip);
         chip.add(name, BorderLayout.CENTER);
-
-        JButton remove = new JButton("\u00D7");
-        remove.setToolTipText(fileName + " entfernen");
-        remove.getAccessibleContext().setAccessibleName(fileName + " entfernen");
-        remove.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
-        remove.setRequestFocusEnabled(false); // per Tab erreichbar, ein Klick nimmt dem Editor nicht den Fokus
-        remove.setBorderPainted(false);
-        remove.setContentAreaFilled(false);
-        remove.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        remove.setMargin(new Insets(0, 4, 0, 2));
-        remove.addActionListener(event -> removeAttachment(file));
-        chip.add(remove, BorderLayout.EAST);
+        if (trailing != null) {
+            chip.add(trailing, BorderLayout.EAST);
+        }
         return chip;
     }
 

@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.app.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.application.attachment.Attachment;
 import com.aresstack.enterpriseai.application.attachment.AttachmentException;
 import com.aresstack.enterpriseai.application.attachment.AttachmentTools;
 import com.aresstack.enterpriseai.application.attachment.ReadAttachmentTool;
@@ -107,6 +108,7 @@ public final class RagChatBinding implements ChatShellActions {
     private Request retrieving; // die Anfrage, deren Suche gerade läuft (nur UI-Thread)
     private ToolSupport tools;
     private boolean conversationHasAttachments; // nur UI-Thread
+    private ChatHistoryBinding history; // nur UI-Thread
 
     /**
      * @param uiExecutor   führt Model-Änderungen auf dem UI-Thread aus
@@ -147,49 +149,35 @@ public final class RagChatBinding implements ChatShellActions {
      * @throws IllegalStateException während eine Antwort oder eine Suche läuft
      */
     public void startConversation(ChatConversationId conversation) {
+        startConversation(conversation, false);
+    }
+
+    /**
+     * Wie {@link #startConversation(ChatConversationId)}, für einen gespeicherten Chat: {@code hasAttachments}
+     * sagt, ob seine Unterhaltung schon Anhänge hat (dann läuft sie weiter über die Werkzeuge). Die Anhänge einer
+     * verlassenen Unterhaltung bleiben liegen; sie gehören zu ihrem gespeicherten Chat.
+     *
+     * @throws IllegalStateException während eine Antwort oder eine Suche läuft
+     */
+    public void startConversation(ChatConversationId conversation, boolean hasAttachments) {
         if (conversation == null) {
             throw new IllegalArgumentException("conversation must not be null");
         }
         if (runningTurn != null || retrieving != null || model.isStreaming()) {
             throw new IllegalStateException("cannot start a new conversation while a response is running");
         }
-        final ChatConversationId previous = this.conversationId;
         this.conversationId = conversation;
-        if (conversationHasAttachments && tools != null && !previous.equals(conversation)) {
-            discardAttachments(previous);
-        }
-        this.conversationHasAttachments = false;
+        this.conversationHasAttachments = hasAttachments;
     }
 
-    /** Die Anhänge einer geschlossenen Unterhaltung sind nicht mehr erreichbar: im Hintergrund löschen. */
-    private void discardAttachments(final ChatConversationId conversation) {
-        final ToolSupport support = tools;
-        try {
-            workExecutor.execute(() -> {
-                try {
-                    support.store().delete(conversation);
-                } catch (RuntimeException e) {
-                    LOG.log(Level.WARNING, "Anhänge nicht gelöscht: " + e.getMessage(), e);
-                }
-            });
-        } catch (RuntimeException rejected) {
-            LOG.log(Level.WARNING, "Anhänge nicht gelöscht: Arbeits-Thread nimmt nichts mehr an", rejected);
-        }
+    /** Die Chat-Historie, die abgelegte Anhänge mit ihren Kennungen erfährt ({@code null}: keine). */
+    void setHistory(ChatHistoryBinding history) {
+        this.history = history;
     }
 
     /** Schaltet Tool-Calling und Dateianhänge ein (Composition Root); {@code null} schaltet sie aus. */
     public void enableTools(final ToolSupport support) {
         this.tools = support;
-        if (support != null) {
-            // Unterhaltungen früherer Starts sind nicht mehr erreichbar; ihre Kopien sollen nicht liegen bleiben.
-            // Synchron, damit kein späteres Ablegen mit dem Aufräumen um die Wette läuft (das Verzeichnis ist
-            // klein, weil jeder Start und jeder neue Chat aufräumt).
-            try {
-                support.store().deleteAll();
-            } catch (RuntimeException e) {
-                LOG.log(Level.WARNING, "Alte Anhänge nicht gelöscht: " + e.getMessage(), e);
-            }
-        }
     }
 
     @Override
@@ -218,7 +206,7 @@ public final class RagChatBinding implements ChatShellActions {
         for (Path file : newFiles) {
             names.add(file.getFileName().toString());
         }
-        model.addUserMessage(text, names);
+        final TranscriptEntry question = model.addUserMessage(text, names);
         final TranscriptEntry answer = model.beginAssistantMessage();
         final TurnListener listener = new TurnListener();
         final boolean toolPath = tools != null
@@ -253,14 +241,19 @@ public final class RagChatBinding implements ChatShellActions {
                         String extraContext = null;
                         ChatCompletionPort via = null;
                         if (support != null) {
+                            final List<Attachment> stored = new ArrayList<Attachment>(newFiles.size());
                             for (Path file : newFiles) {
-                                support.store().add(conversation, file);
+                                stored.add(support.store().add(conversation, file));
                             }
                             if (!newFiles.isEmpty()) {
-                                // Erst nach erfolgreicher Ablage: ab jetzt läuft die Unterhaltung über die Werkzeuge.
+                                // Erst nach erfolgreicher Ablage: ab jetzt läuft die Unterhaltung über die Werkzeuge,
+                                // und der gespeicherte Chat bekommt die Kennungen der Anhänge.
                                 uiExecutor.execute(() -> {
                                     if (conversation.equals(conversationId)) {
                                         conversationHasAttachments = true;
+                                    }
+                                    if (history != null) {
+                                        history.attachmentsStored(conversation, question, stored);
                                     }
                                 });
                             }

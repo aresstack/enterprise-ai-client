@@ -1,8 +1,10 @@
 package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.agent.AgentModeAssembly;
+import com.aresstack.enterpriseai.app.chat.ChatHistoryBinding;
 import com.aresstack.enterpriseai.app.chat.DocumentAttachmentTextExtractor;
 import com.aresstack.enterpriseai.app.chat.FileAttachmentStore;
+import com.aresstack.enterpriseai.app.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.app.chat.RagChatBinding;
 import com.aresstack.enterpriseai.app.chat.ToolSupport;
 import com.aresstack.enterpriseai.app.config.AppPaths;
@@ -13,10 +15,12 @@ import com.aresstack.enterpriseai.app.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
 import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
+import com.aresstack.enterpriseai.app.ui.workspace.SavedChatItem;
 import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.app.ui.workspace.WorkspaceActions;
 import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
+import com.aresstack.enterpriseai.application.history.ChatRecord;
 import com.aresstack.enterpriseai.document.tika.DocumentExtraction;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
@@ -26,6 +30,9 @@ import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -35,11 +42,16 @@ import java.util.function.Function;
  * konfiguriert, der Agent-Ansicht (AP21). „+ Neuer Chat“ eröffnet im Chat-Modus eine neue Unterhaltung am
  * {@link ChatService}, schließt die bisherige dort und leert das Transkript; im Agent-Modus beendet es die
  * ACP-Session samt Agentenprozess
- * ({@link AgentService#endSession()}), damit der nächste Auftrag ohne den alten Kontext startet. Das Zahnrad reicht
+ * ({@link AgentService#endSession()}), damit der nächste Auftrag ohne den alten Kontext startet. Die Chat-Historie
+ * ({@link ChatHistoryBinding}) speichert jeden Chat samt Anhängen unter {@code chats/} neben der
+ * Konfigurationsdatei; der Drawer listet, öffnet und löscht die gespeicherten Chats. Das Zahnrad reicht
  * die Composition Root als {@link WorkspaceActions#settingsRequested()} an den Einstellungen-Dialog weiter.
  * {@link #createShell} läuft auch headless (Tests); nur {@link #createFrame} braucht ein Display.
  */
 public final class ShellAssembly {
+
+    /** Ordner der gespeicherten Chats und ihrer Anhänge, neben der Konfigurationsdatei. */
+    static final String CHATS_DIRECTORY = "chats";
 
     private ShellAssembly() {
     }
@@ -55,13 +67,17 @@ public final class ShellAssembly {
         final ChatShellModel chatModel = new ChatShellModel(root.clock());
         final RagChatBinding chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel,
                 root.uiExecutor(), root.workExecutor(), root.zone(), root.sourceSelection());
+        // Chat-Historie neben der Konfigurationsdatei: chats/<chatId>.json, Anhänge im Ordner chats/<chatId>/.
+        final Path chatsDirectory = AppPaths.configFile().toAbsolutePath().getParent().resolve(CHATS_DIRECTORY);
         if (root.ports().responses() != null) {
-            // Tool-Calling und Dateianhänge: /responses, Ablage neben der Konfigurationsdatei, Text über document-tika.
+            // Tool-Calling und Dateianhänge: /responses, Ablage im Ordner des Chats, Text über document-tika.
             chatActions.enableTools(new ToolSupport(root.ports().responses(),
-                    new FileAttachmentStore(AppPaths.configFile().toAbsolutePath().getParent().resolve("attachments")),
+                    new FileAttachmentStore(chatsDirectory),
                     new DocumentAttachmentTextExtractor(DocumentExtraction.detector(), DocumentExtraction.registry()),
                     root.config().chat().toolsEnabled()));
         }
+        final ChatHistoryBinding history = new ChatHistoryBinding(new FileChatHistoryStore(chatsDirectory),
+                chatService, chatActions, chatModel, systemPrompt, root.clock());
         ChatShellPanel chatShell = new ChatShellPanel(chatModel, chatActions, root.knowledgeStatus(), palette, bubbles);
 
         final AgentModeAssembly.AgentView agent;
@@ -92,8 +108,13 @@ public final class ShellAssembly {
                     }
                     return;
                 }
+                startNewChat();
+            }
+
+            /** Neue Unterhaltung im Chat; {@code false}, solange eine Antwort oder Suche läuft. */
+            private boolean startNewChat() {
                 if (chatModel.isStreaming()) {
-                    return; // der Knopf ist während einer Antwort deaktiviert; zur Sicherheit auch hier
+                    return false; // der Knopf ist während einer Antwort deaktiviert; zur Sicherheit auch hier
                 }
                 ChatConversationId previous = chatActions.conversationId();
                 ChatConversationId next = chatService.openConversation(systemPrompt);
@@ -101,10 +122,39 @@ public final class ShellAssembly {
                     chatActions.startConversation(next);
                 } catch (IllegalStateException stillBusy) {
                     chatService.closeConversation(next); // eine Suche läuft noch; es bleibt alles beim Alten
-                    return;
+                    return false;
                 }
                 chatModel.clear();
-                chatService.closeConversation(previous); // sonst behielte der ChatService jeden alten Verlauf
+                chatService.closeConversation(previous); // gespeichert ist er; der ChatService braucht ihn nicht mehr
+                return true;
+            }
+
+            @Override
+            public List<SavedChatItem> savedChats() {
+                List<SavedChatItem> items = new ArrayList<SavedChatItem>();
+                for (ChatRecord record : history.savedChats()) {
+                    items.add(new SavedChatItem(record.getId(), record.getTitle(), record.getModifiedAt(),
+                            record.getMessages().size(), record.attachmentCount()));
+                }
+                return items;
+            }
+
+            @Override
+            public String currentChatId() {
+                return history.currentChatId();
+            }
+
+            @Override
+            public void openSavedChatRequested(String chatId) {
+                history.open(chatId);
+            }
+
+            @Override
+            public void deleteSavedChatRequested(String chatId) {
+                if (chatId.equals(history.currentChatId()) && !startNewChat()) {
+                    return; // der laufende Chat lässt sich gerade nicht verlassen
+                }
+                history.delete(chatId);
             }
 
             @Override

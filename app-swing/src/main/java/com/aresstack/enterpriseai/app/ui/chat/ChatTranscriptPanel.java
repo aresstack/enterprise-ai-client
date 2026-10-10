@@ -44,6 +44,9 @@ import java.util.Map;
  * Kopieraktion, Links und Mermaid-Diagramme (als Bild, Klick öffnet den Betrachter) werden nativ gerendert;
  * {@code ```markdown}-Umhüllungen fallen weg. Nutzer, Hinweise und Fehler bleiben Text-Sprechblasen.
  *
+ * <p>Hat eine Nutzernachricht Anhänge, stehen sie als Chips (Dateiname) in einer eigenen Zeile unter ihrer Blase,
+ * nach dem Senden wie nach dem Laden eines gespeicherten Chats.
+ *
  * <p>Bekommt eine Antwort Quellen (AP22), erscheint direkt unter ihrer Blase eine eigene Zeile mit der
  * ein- und ausklappbaren {@link SourceListPanel Quellenliste}.
  *
@@ -63,8 +66,6 @@ import java.util.Map;
 public final class ChatTranscriptPanel extends JPanel implements ChatShellModelListener {
 
     static final String USER_HEADER = "Du";
-    /** Vor jedem Dateinamen in der Nutzerblase (Anhänge). */
-    static final String ATTACHMENT_PREFIX = "Anhang: ";
     static final String ASSISTANT_HEADER = "Assistent";
     static final String CANCELLED_SUFFIX = " · abgebrochen";
     static final String FAILED_HEADER = "Fehler";
@@ -151,6 +152,9 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         state.row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.add(state.row);
         messageList.add(spacer());
+        if (entry.getAuthor() == TranscriptEntry.Author.USER && !entry.getAttachments().isEmpty()) {
+            addAttachmentsRow(entry);
+        }
         if (entry.hasSources()) {
             addSourcesRow(entry);
         }
@@ -286,13 +290,6 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     static String displayText(TranscriptEntry entry) {
         String text = entry.getText();
-        if (entry.getAuthor() == TranscriptEntry.Author.USER && !entry.getAttachments().isEmpty()) {
-            StringBuilder withAttachments = new StringBuilder(text).append('\n');
-            for (String name : entry.getAttachments()) {
-                withAttachments.append('\n').append(ATTACHMENT_PREFIX).append(name);
-            }
-            return withAttachments.toString();
-        }
         switch (entry.getState()) {
             case STREAMING:
                 if (!text.isEmpty()) {
@@ -395,6 +392,15 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         messageList.add(row, index);
         messageList.add(spacer(), index + 1);
         sourceRows.put(entry.getId(), row);
+    }
+
+    /** Hängt die Anhang-Chips einer Nutzernachricht als eigene, rechts ausgerichtete Zeile unter ihre Blase. */
+    private void addAttachmentsRow(TranscriptEntry entry) {
+        AttachmentChipsPanel chips = new AttachmentChipsPanel(entry.getAttachments());
+        BubbleMessageRow row = new BubbleMessageRow(chips, BubbleSide.RIGHT);
+        row.setAlignmentX(LEFT_ALIGNMENT);
+        messageList.add(row);
+        messageList.add(spacer());
     }
 
     private static JComponent spacer() {

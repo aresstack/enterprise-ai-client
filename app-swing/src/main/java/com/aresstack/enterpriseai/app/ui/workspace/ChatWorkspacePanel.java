@@ -28,7 +28,10 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
 import javax.swing.Timer;
@@ -48,7 +51,9 @@ import java.awt.event.AWTEventListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -72,7 +77,7 @@ import java.util.Locale;
  * Der Hamburger öffnet Reiterleiste und Drawer beim Überfahren und rastet mit einem Klick ein; ohne Rastung
  * falten beide zusammen weg, sobald der Zeiger den Bereich verlässt. Die Modus-Pille neben dem Hamburger
  * wechselt zwischen Chat und Agent (Navigation, kein Reiterband). Der Drawer trägt die Seite „Chats“ mit
- * „+ Neuer Chat“, der Chat-Suche, den Chat-Zeilen und dem Zahnrad für die Einstellungen im Fuß, sowie die
+ * „+ Neuer Chat“, der Chat-Suche, den Chat-Zeilen (laufender Chat, Agent, gespeicherte Chats) und dem Zahnrad für die Einstellungen im Fuß, sowie die
  * Seite „Wissensquellen“ ({@link KnowledgeSourcesPanel}: hinzufügen, bearbeiten, an- und abwählen, indexieren). Beide Ansichten sind vollständige, voneinander unabhängige {@link ChatShellPanel}s
  * mit eigenem Model: eine im Hintergrund laufende Agent-Antwort schreibt nicht in den Chat.
  */
@@ -92,6 +97,9 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private static final int SIDEBAR_CLOSE_DELAY_MS = 300;
     private static final int LIST_REFRESH_DELAY_MS = 150;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.GERMANY);
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd.MM.", Locale.GERMANY);
+    private static final long DAY_MILLIS = 24L * 60L * 60L * 1000L;
+    static final String DELETE_CHAT_LABEL = "Chat löschen";
 
     private final ShellModeModel modes;
     private final ChatShellPanel chatShell;
@@ -496,7 +504,11 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         }
     }
 
-    /** Baut die Chat-Zeilen neu: je Ansicht eine Zeile, gefiltert nach der Chat-Suche. */
+    /**
+     * Baut die Chat-Zeilen neu, gefiltert nach der Chat-Suche: unter AKTIV je Ansicht eine Zeile (der laufende
+     * Chat und der Agent), darunter die gespeicherten Chats nach Alter (HEUTE, GESTERN, LETZTE 7 TAGE, ÄLTER)
+     * wie in askai-java8 arch. Ein Klick öffnet einen gespeicherten Chat, das {@code …}-Menü löscht ihn.
+     */
     void refreshChatList() {
         listRefreshTimer.stop();
         chatListPanel.removeAll();
@@ -508,6 +520,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         if (agentShell != null) {
             addChatRow(ShellMode.AGENT, agentShell.model(), AGENT_TITLE, "Agent", filter);
         }
+        addSavedChats(filter);
         chatListPanel.add(Box.createVerticalGlue());
         chatListPanel.revalidate();
         chatListPanel.repaint();
@@ -534,11 +547,100 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         String meta = kind + " · " + (count == 0 ? "noch keine Nachrichten"
                 : count == 1 ? "1 Nachricht" : count + " Nachrichten");
         String time = lastMillis == 0L ? "" : TIME.format(Instant.ofEpochMilli(lastMillis).atZone(ZoneId.systemDefault()));
+        final String currentId = actions == null ? null : actions.currentChatId();
+        ChatHistoryRow.MenuSupplier menu = null;
+        if (mode == ShellMode.CHAT && currentId != null && count > 0) {
+            final String rowTitle = title;
+            menu = () -> deleteMenu(currentId, rowTitle);
+        }
         ChatHistoryRow row = new ChatHistoryRow(title, meta, time, model.isStreaming(), modes.getMode() == mode,
-                () -> modes.select(mode), palette);
+                () -> modes.select(mode), menu, palette);
         row.setAlignmentX(LEFT_ALIGNMENT);
         chatRows.add(row);
         chatListPanel.add(row);
+    }
+
+    /** Die gespeicherten Chats ohne den laufenden, nach Alter gruppiert; leere Gruppen fehlen. */
+    private void addSavedChats(String filter) {
+        if (actions == null) {
+            return;
+        }
+        String currentId = actions.currentChatId();
+        long startOfToday = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        List<SavedChatItem> today = new ArrayList<SavedChatItem>();
+        List<SavedChatItem> yesterday = new ArrayList<SavedChatItem>();
+        List<SavedChatItem> lastWeek = new ArrayList<SavedChatItem>();
+        List<SavedChatItem> older = new ArrayList<SavedChatItem>();
+        for (SavedChatItem chat : actions.savedChats()) {
+            if (chat.id().equals(currentId)
+                    || !filter.isEmpty() && !chat.title().toLowerCase(Locale.ROOT).contains(filter)) {
+                continue;
+            }
+            long at = chat.modifiedAtMillis();
+            if (at >= startOfToday) {
+                today.add(chat);
+            } else if (at >= startOfToday - DAY_MILLIS) {
+                yesterday.add(chat);
+            } else if (at >= startOfToday - 6 * DAY_MILLIS) {
+                lastWeek.add(chat);
+            } else {
+                older.add(chat);
+            }
+        }
+        addSavedGroup("HEUTE", today, startOfToday);
+        addSavedGroup("GESTERN", yesterday, startOfToday);
+        addSavedGroup("LETZTE 7 TAGE", lastWeek, startOfToday);
+        addSavedGroup("ÄLTER", older, startOfToday);
+    }
+
+    private void addSavedGroup(String title, List<SavedChatItem> group, long startOfToday) {
+        if (group.isEmpty()) {
+            return;
+        }
+        chatListPanel.add(groupHeader(title));
+        for (final SavedChatItem chat : group) {
+            ZonedDateTime at = Instant.ofEpochMilli(chat.modifiedAtMillis()).atZone(ZoneId.systemDefault());
+            String time = chat.modifiedAtMillis() >= startOfToday ? TIME.format(at) : DAY.format(at);
+            String meta = "Chat · " + (chat.messageCount() == 1 ? "1 Nachricht" : chat.messageCount() + " Nachrichten")
+                    + (chat.attachmentCount() == 0 ? ""
+                    : chat.attachmentCount() == 1 ? " · 1 Anhang" : " · " + chat.attachmentCount() + " Anhänge");
+            ChatHistoryRow row = new ChatHistoryRow(chat.title(), meta, time, false, false,
+                    () -> openSavedChat(chat.id()), () -> deleteMenu(chat.id(), chat.title()), palette);
+            row.setAlignmentX(LEFT_ALIGNMENT);
+            chatRows.add(row);
+            chatListPanel.add(row);
+        }
+    }
+
+    private void openSavedChat(String chatId) {
+        if (actions == null || chatShell.model().isStreaming()) {
+            return;
+        }
+        modes.select(ShellMode.CHAT);
+        actions.openSavedChatRequested(chatId);
+        if (menuLocked) {
+            refreshChatList();
+        } else {
+            collapseMenuAndSidebar();
+        }
+    }
+
+    /** Das Menü einer Chat-Zeile: Löschen mit Rückfrage (Nachrichten und Anhänge gehen verloren). */
+    private JPopupMenu deleteMenu(final String chatId, final String title) {
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem delete = new JMenuItem(DELETE_CHAT_LABEL);
+        delete.setEnabled(!chatShell.model().isStreaming());
+        delete.addActionListener(event -> {
+            int answer = JOptionPane.showConfirmDialog(this,
+                    "Chat „" + title + "“ mit allen Nachrichten und Anhängen löschen?", DELETE_CHAT_LABEL,
+                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (answer == JOptionPane.OK_OPTION && actions != null) {
+                actions.deleteSavedChatRequested(chatId);
+                refreshChatList();
+            }
+        });
+        menu.add(delete);
+        return menu;
     }
 
     // ------------------------------------------------------------------ Drawer-Verhalten (arch)

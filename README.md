@@ -60,17 +60,23 @@ java -jar enterprise-ai-client-<version>.jar
    Die Tika-Parser vergrößern das Fat Jar deutlich.
 6. **RAG verwenden**: Die Pille „RAG“ im Composer einschalten. Vor der Antwort sucht die
    Anwendung im Index; die Antwort trägt die verwendeten Quellen, Hinweise erscheinen als eigene Blase.
-7. **Dateianhänge und Tool-Calls**: Die Büroklammer im Composer hängt Dateien an (Chips mit ✕ über dem Editor, die
-   Namen erscheinen in der Nutzerblase). Unterhaltungen mit Anhängen laufen über `POST <chat.baseUrl>/responses`
+7. **Dateianhänge und Tool-Calls**: Die Büroklammer im Composer hängt Dateien an (Chips mit ✕ über dem Editor,
+   nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen laufen über `POST <chat.baseUrl>/responses`
    statt über das Streaming von `/chat/completions`: Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
    und holt sich den Inhalt selbst über die Werkzeuge `read_attachment` und `search_attachment`; der Client führt
    sie lokal aus (Text über `document-tika`, also Apache Tika) und schickt nur das Ergebnis zurück
    (`function_call_output` mit `previous_response_id`, höchstens 8 Runden, kein `tool_choice`). Die Dateien liegen
-   unter `attachments/<chatId>/` neben der Konfigurationsdatei; `chat.tools.enabled=true` nutzt den Werkzeugpfad
+   unter `chats/<chatId>/` neben der Konfigurationsdatei; `chat.tools.enabled=true` nutzt den Werkzeugpfad
    für jede Frage. Gegen das echte Gateway UNVERIFIED.
    Modellauswahl: Nach „Verbindung testen“ (Einstellungen → KI-Dienst) zeigen Auswahllisten unter Chat- und
    Embedding-Modell die Modelle aus `GET /models`, getrennt nach `capabilities`; „(Tool-Calling)“ markiert Modelle mit
    `tool_calling: true`, die Anhänge brauchen. Eine Wahl füllt nur das Textfeld, gespeichert wird wie bisher.
+   **Chat-Historie** (aus askai-java8 arch): Jeder Chat wird nach jeder Nachricht als `chats/<chatId>.json` neben
+   der Konfigurationsdatei gespeichert, seine Anhänge im Ordner `chats/<chatId>/`. Der Drawer-Reiter „Chats“
+   listet die gespeicherten Chats unter HEUTE, GESTERN, LETZTE 7 TAGE und ÄLTER; ein Klick öffnet einen Chat mit
+   Verlauf und Anhang-Chips (das Modell bekommt den Verlauf wieder, die Werkzeuge finden die Anhänge), das
+   `…`-Menü einer Zeile (oder Rechtsklick) löscht ihn nach Rückfrage samt Anhängen. Agent-Unterhaltungen werden
+   nicht gespeichert.
 8. **Agent-Modus**: `agent.enabled=true` und `agent.command`/`agent.args` auf einen ACP-fähigen Agenten setzen
    (zum Ausprobieren der Demo-Agent aus `./gradlew :acp-demo-agent:demoAgentJar`). Die Modus-Pille „Agent“ neben
    dem Hamburger wechselt in die Agent-Ansicht; der erste Auftrag startet
