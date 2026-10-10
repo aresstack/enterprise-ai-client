@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.app.net.HttpConnections;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.net.TrustPolicy;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
+import com.aresstack.enterpriseai.app.ui.settings.ModelChoice;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.http.api.HttpRoute;
 
@@ -27,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -105,6 +107,17 @@ public final class ConnectionProbe {
      * @return {@code true}, wenn kein Schritt fehlgeschlagen ist
      */
     public boolean run(Consumer<ConnectionCheckStep> onStep) {
+        return run(onStep, null);
+    }
+
+    /**
+     * Wie {@link #run(Consumer)}; meldet nach erfolgreichem {@code GET /models} zusätzlich die Modelle, getrennt
+     * nach Chat (Chat-Endpunkt) und Embeddings (Embedding-Endpunkt), höchstens einmal.
+     *
+     * @param onModels darf {@code null} sein
+     */
+    public boolean run(Consumer<ConnectionCheckStep> onStep,
+                       BiConsumer<List<ModelChoice>, List<ModelChoice>> onModels) {
         if (onStep == null) {
             throw new IllegalArgumentException("onStep must not be null");
         }
@@ -146,7 +159,16 @@ public final class ConnectionProbe {
         if (step.isFailure()) {
             return false;
         }
-        checkEmbeddingModel(models, route, token, out);
+        List<ModelChoice> embeddingModels = checkEmbeddingModel(models, route, token, out);
+        if (onModels != null) {
+            List<ModelChoice> chatModels = new ArrayList<ModelChoice>();
+            for (ModelChoice choice : models(models.body)) {
+                if (choice.suitableForChat()) {
+                    chatModels.add(choice);
+                }
+            }
+            onModels.accept(chatModels, embeddingModels); // auch leer, damit alte Listen verschwinden
+        }
         return true;
     }
 
@@ -222,21 +244,25 @@ public final class ConnectionProbe {
         }
     }
 
-    private void checkEmbeddingModel(Fetched chatModels, HttpRoute chatRoute, String token, Reporter out) {
+    /** @return die für Embeddings geeigneten Modelle des Embedding-Endpunkts; leer, wenn keine Liste kam */
+    private List<ModelChoice> checkEmbeddingModel(Fetched chatModels, HttpRoute chatRoute, String token, Reporter out) {
+        List<ModelChoice> suitable = new ArrayList<ModelChoice>();
+        String body = chatModels.body;
         if (config.embedding() == null) {
-            return;
+            collectEmbeddingModels(body, suitable);
+            return suitable;
         }
         String model = config.embedding().model();
         URI embeddingModels = modelsUrl(config.embedding().baseUrl());
         List<String> ids;
         if (embeddingModels.equals(target())) {
-            ids = modelIds(chatModels.body);
+            ids = modelIds(body);
         } else {
             try {
                 HttpRoute route = network.routes().routeFor(embeddingModels);
                 if (route.isUnavailable()) {
                     out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, embeddingModels + ": " + route.describe()));
-                    return;
+                    return suitable;
                 }
                 // Den Chat-Key nur an den Embedding-Dienst schicken, wenn er derselbe Eintrag ist.
                 boolean sameKey = config.embedding().apiKeyRef() == null
@@ -245,14 +271,16 @@ public final class ConnectionProbe {
                 if (fetched.code != HttpURLConnection.HTTP_OK) {
                     out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, "GET " + embeddingModels + ": HTTP "
                             + fetched.code + "; Embedding-Modell nicht geprüft."));
-                    return;
+                    return suitable;
                 }
-                ids = modelIds(fetched.body);
+                body = fetched.body;
+                ids = modelIds(body);
             } catch (IOException | RuntimeException e) {
                 out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, embeddingModels + ": " + describe(e)));
-                return;
+                return suitable;
             }
         }
+        collectEmbeddingModels(body, suitable);
         if (ids.isEmpty()) {
             out.report(ConnectionCheckStep.info(STEP_EMBEDDING, "Keine Modellliste; „" + model + "“ nicht geprüft."));
         } else if (ids.contains(model)) {
@@ -260,6 +288,15 @@ public final class ConnectionProbe {
         } else {
             out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, "„" + model + "“ fehlt (embedding.model prüfen). "
                     + "Verfügbar: " + listed(ids)));
+        }
+        return suitable;
+    }
+
+    private static void collectEmbeddingModels(String body, List<ModelChoice> into) {
+        for (ModelChoice choice : models(body)) {
+            if (choice.suitableForEmbedding()) {
+                into.add(choice);
+            }
         }
     }
 
@@ -349,6 +386,126 @@ public final class ConnectionProbe {
      * und andere Schlüssel zählen nicht; JSON-Escapes werden aufgelöst. Ohne JSON-Bibliothek in app-swing ein
      * kleiner Scanner, der nur Strings und Klammertiefe kennt; Unlesbares ergibt eine leere Liste.
      */
+    /**
+     * Die Einträge der Modellliste mit {@code tool_calling} und {@code capabilities}; Format wie bei
+     * {@link #modelIds(String)}. Einträge ohne Kennung fallen weg, doppelte Kennungen zählen einmal.
+     */
+    static List<ModelChoice> models(String body) {
+        List<ModelChoice> models = new ArrayList<ModelChoice>();
+        if (body == null) {
+            return models;
+        }
+        Set<String> seen = new LinkedHashSet<String>();
+        int depth = 0;
+        int arrayDepth = -1;
+        int objectStart = -1;
+        int i = skipWhitespace(body, 0);
+        if (i < body.length() && body.charAt(i) == '[') {
+            arrayDepth = 1;
+        }
+        StringBuilder text = new StringBuilder();
+        while (i < body.length()) {
+            char c = body.charAt(i);
+            if (c == '{' || c == '[') {
+                if (c == '{' && arrayDepth >= 0 && depth == arrayDepth) {
+                    objectStart = i;
+                }
+                depth++;
+                i++;
+            } else if (c == '}' || c == ']') {
+                depth--;
+                if (arrayDepth >= 0 && depth < arrayDepth) {
+                    break;
+                }
+                if (c == '}' && objectStart >= 0 && depth == arrayDepth) {
+                    ModelChoice choice = entry(body.substring(objectStart, i + 1));
+                    if (choice != null && seen.add(choice.id())) {
+                        models.add(choice);
+                    }
+                    objectStart = -1;
+                }
+                i++;
+            } else if (c == '"') {
+                text.setLength(0);
+                i = readString(body, i, text);
+                if (i < 0) {
+                    break;
+                }
+                int next = skipWhitespace(body, i);
+                if (next < body.length() && body.charAt(next) == ':') {
+                    int value = skipWhitespace(body, next + 1);
+                    if (arrayDepth < 0 && depth == 1 && text.toString().equals("data") && value < body.length()
+                            && body.charAt(value) == '[') {
+                        arrayDepth = depth + 1;
+                        i = value;
+                    } else {
+                        i = next + 1;
+                    }
+                }
+            } else {
+                i++;
+            }
+        }
+        return models;
+    }
+
+    /** Ein Objekt der Modellliste; {@code null} ohne Kennung. */
+    private static ModelChoice entry(String object) {
+        String id = null;
+        boolean toolCalling = false;
+        List<String> capabilities = new ArrayList<String>();
+        boolean inCapabilities = false;
+        int depth = 0;
+        int i = 0;
+        StringBuilder text = new StringBuilder();
+        while (i < object.length()) {
+            char c = object.charAt(i);
+            if (c == '{' || c == '[') {
+                depth++;
+                i++;
+            } else if (c == '}' || c == ']') {
+                depth--;
+                if (depth <= 1) {
+                    inCapabilities = false;
+                }
+                i++;
+            } else if (c == '"') {
+                text.setLength(0);
+                i = readString(object, i, text);
+                if (i < 0) {
+                    break;
+                }
+                int next = skipWhitespace(object, i);
+                if (next < object.length() && object.charAt(next) == ':') {
+                    String key = text.toString();
+                    int value = skipWhitespace(object, next + 1);
+                    if (depth == 1 && key.equals("id") && value < object.length() && object.charAt(value) == '"') {
+                        text.setLength(0);
+                        i = readString(object, value, text);
+                        if (i < 0) {
+                            break;
+                        }
+                        id = text.toString();
+                    } else if (depth == 1 && key.equals("tool_calling")) {
+                        toolCalling = object.startsWith("true", value);
+                        i = value;
+                    } else if (depth == 1 && key.equals("capabilities") && value < object.length()
+                            && object.charAt(value) == '[') {
+                        inCapabilities = true;
+                        i = value;
+                    } else {
+                        i = next + 1;
+                    }
+                } else if (inCapabilities && depth == 2) {
+                    capabilities.add(text.toString().toLowerCase(Locale.ROOT));
+                }
+            } else {
+                i++;
+            }
+        }
+        return id == null || id.isEmpty() ? null : new ModelChoice(id, toolCalling, capabilities);
+    }
+
     static List<String> modelIds(String body) {
         Set<String> ids = new LinkedHashSet<String>();
         if (body == null) {

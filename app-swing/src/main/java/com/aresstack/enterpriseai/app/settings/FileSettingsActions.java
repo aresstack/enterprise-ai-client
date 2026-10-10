@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.app.net.HttpRoutes;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.app.ui.settings.NetworkLogListener;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
+import com.aresstack.enterpriseai.app.ui.settings.ModelChoice;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
@@ -291,6 +293,17 @@ public final class FileSettingsActions implements SettingsDialogActions {
                                     @Override
                                     public void run() {
                                         listener.onStep(step);
+                                    }
+                                });
+                            }
+                        }, new BiConsumer<List<ModelChoice>, List<ModelChoice>>() {
+                            @Override
+                            public void accept(final List<ModelChoice> chatModels,
+                                               final List<ModelChoice> embeddingModels) {
+                                ui.execute(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        listener.onModels(chatModels, embeddingModels);
                                     }
                                 });
                             }
