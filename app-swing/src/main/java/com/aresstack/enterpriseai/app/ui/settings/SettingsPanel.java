@@ -67,13 +67,13 @@ public final class SettingsPanel extends JPanel {
     public static final String CANCEL_LABEL = "Abbrechen";
     public static final String QUIT_LABEL = "Beenden";
     private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle",
-            "Technische Details"};
+            "Sprachausgabe", "Technische Details"};
     /** Index des Reiters „Modelle“ (Auswahl je Kategorie). */
     static final int MODELS_TAB = 3;
     /** Index der Kategorie „Technische Details“ (Protokoll). */
-    static final int TECHNICAL_TAB = 4;
+    static final int TECHNICAL_TAB = 5;
 
-    /** Die Kategorien in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle, Technische Details. */
+    /** Die Kategorien in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle, Sprachausgabe, Technische Details. */
     public static int tabCount() {
         return TAB_LABELS.length;
     }
@@ -95,6 +95,7 @@ public final class SettingsPanel extends JPanel {
     private final SecurityTab securityTab;
     private final SystemTab systemTab;
     private final ModelsTab modelsTab;
+    private final SpeechTab speechTab;
     private final JTextArea technicalText = new JTextArea();
     private final List<ComposerToggleButton> tabButtons = new ArrayList<ComposerToggleButton>();
     private final JPanel header = new JPanel(new BorderLayout(8, 0));
@@ -129,6 +130,7 @@ public final class SettingsPanel extends JPanel {
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
         this.modelsTab = new ModelsTab(actions, current, palette);
+        this.speechTab = new SpeechTab(palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START
@@ -168,7 +170,7 @@ public final class SettingsPanel extends JPanel {
         tabs.setOpaque(false);
         ButtonGroup group = new ButtonGroup();
         JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel(), modelsTab.panel(),
-                technicalPage()};
+                speechTab.panel(), technicalPage()};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
             ComposerToggleButton button = new ComposerToggleButton(null, name, null);
@@ -298,6 +300,7 @@ public final class SettingsPanel extends JPanel {
         securityTab.load(form);
         systemTab.load(form);
         modelsTab.load(form);
+        speechTab.load(form);
     }
 
     /** Der aktuelle Stand aller Felder als Formular, Quellen und Index-Einstellungen wie geladen. */
@@ -307,6 +310,7 @@ public final class SettingsPanel extends JPanel {
         securityTab.store(b);
         systemTab.store(b);
         modelsTab.store(b);
+        speechTab.store(b);
         return b.build();
     }
 

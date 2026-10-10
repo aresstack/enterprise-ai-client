@@ -32,7 +32,8 @@ java -jar enterprise-ai-client-<version>.jar
 1. **Bauen**: `./gradlew build`. Ohne Netzwerk zu Maven Central schlägt der erste Lauf fehl; einfach
    wiederholen, sobald die Abhängigkeiten geladen sind.
 2. **Konfigurieren**: Der erste Start öffnet den Einstellungen-Dialog (Navigationsliste links wie askai arch:
-   KI-Dienst, KeePass, Netzwerk & Agent, Modelle, Technische Details mit Pfaden und dem Ende des Protokolls). Pflicht sind Basis-URL und Modell des Chat-Dienstes, Modell und Dimension der Embeddings
+   KI-Dienst, KeePass, Netzwerk & Agent, Modelle, Sprachausgabe mit „Neue Antworten automatisch vorlesen“,
+   Technische Details mit Pfaden und dem Ende des Protokolls). Pflicht sind Basis-URL und Modell des Chat-Dienstes, Modell und Dimension der Embeddings
    sowie der Titel des KeePass-Eintrags mit dem API-Key; „In KeePass prüfen“ testet den Eintrag sofort (bei
    Bedarf mit Pairing). Speichern schreibt die kommentierte Datei `enterprise-ai-client.properties` im
    Anwendungsverzeichnis (`~/.enterprise-ai-client/`, unter Windows `%APPDATA%\.enterprise-ai-client\`), danach
