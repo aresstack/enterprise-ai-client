@@ -223,9 +223,6 @@ public final class RagChatBinding implements ChatShellActions {
         final TurnListener listener = new TurnListener();
         final boolean toolPath = tools != null
                 && (tools.alwaysOn() || conversationHasAttachments || !newFiles.isEmpty());
-        if (!newFiles.isEmpty()) {
-            conversationHasAttachments = true;
-        }
         RagOptions ragOptions = RagOptions.disabled();
         if (ragEnabled) {
             if (!sources.isRestricted()) {
@@ -258,6 +255,14 @@ public final class RagChatBinding implements ChatShellActions {
                         if (support != null) {
                             for (Path file : newFiles) {
                                 support.store().add(conversation, file);
+                            }
+                            if (!newFiles.isEmpty()) {
+                                // Erst nach erfolgreicher Ablage: ab jetzt läuft die Unterhaltung über die Werkzeuge.
+                                uiExecutor.execute(() -> {
+                                    if (conversation.equals(conversationId)) {
+                                        conversationHasAttachments = true;
+                                    }
+                                });
                             }
                             AttachmentTools attachments = new AttachmentTools(support.store(), support.extractor(),
                                     conversation);

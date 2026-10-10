@@ -55,8 +55,7 @@ final class OpenAiResponsesCodec {
         } else {
             for (ChatMessage message : request.messages()) {
                 JsonObject item = new JsonObject();
-                item.addProperty("role", message.role() == ChatRole.ASSISTANT
-                        ? "assistant" : "user");
+                item.addProperty("role", roleOf(message.role()));
                 item.addProperty("content", message.content());
                 input.add(item);
             }
@@ -140,6 +139,19 @@ final class OpenAiResponsesCodec {
             }
         }
         return new ResponsesResult(string(root, "id"), calls, text.toString(), string(root, "model"));
+    }
+
+    /** developer nie senden (das Gateway antwortet darauf mit 500); als system behält sie ihren Vorrang. */
+    private static String roleOf(ChatRole role) {
+        switch (role) {
+            case ASSISTANT:
+                return "assistant";
+            case SYSTEM:
+            case DEVELOPER:
+                return "system";
+            default:
+                return "user";
+        }
     }
 
     private static void appendContent(JsonElement content, StringBuilder text) {

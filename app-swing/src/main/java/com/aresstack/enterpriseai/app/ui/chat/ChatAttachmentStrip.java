@@ -119,7 +119,7 @@ final class ChatAttachmentStrip extends JPanel {
         remove.setToolTipText(fileName + " entfernen");
         remove.getAccessibleContext().setAccessibleName(fileName + " entfernen");
         remove.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
-        remove.setFocusable(false);
+        remove.setRequestFocusEnabled(false); // per Tab erreichbar, ein Klick nimmt dem Editor nicht den Fokus
         remove.setBorderPainted(false);
         remove.setContentAreaFilled(false);
         remove.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));

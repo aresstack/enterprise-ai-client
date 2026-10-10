@@ -46,7 +46,7 @@ public final class OpenAiCompatibleChatConfig {
     /** Pfad des werkzeugfähigen Antwort-Endpunkts (Tool-Calling). */
     public static final String RESPONSES_PATH = "responses";
 
-    private static final String[] ENDPOINT_SUFFIXES = {"/chat/completions", "/embeddings", "/models"};
+    private static final String[] ENDPOINT_SUFFIXES = {"/chat/completions", "/embeddings", "/models", "/responses"};
 
     private final URI baseUrl;
     private final URI endpoint;
