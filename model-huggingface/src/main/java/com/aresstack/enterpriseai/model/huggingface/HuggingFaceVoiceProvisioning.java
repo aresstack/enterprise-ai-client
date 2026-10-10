@@ -103,6 +103,27 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         }
     }
 
+    /** Nur Ordner der angebotenen Stimmen; Dateien darin werden gelöscht, Unterordner gibt es nicht. */
+    @Override
+    public void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException {
+        HuggingFaceVoice voice = find(voiceId);
+        Path target = modelRoot.resolve(voice.id());
+        if (!Files.isDirectory(target)) {
+            return;
+        }
+        try {
+            try (DirectoryStream<Path> files = Files.newDirectoryStream(target)) {
+                for (Path file : files) {
+                    Files.delete(file);
+                }
+            }
+            Files.delete(target);
+        } catch (IOException e) {
+            throw new LocalVoiceInstallException("Stimme " + voice.id() + " ließ sich nicht entfernen: "
+                    + e.getMessage(), e);
+        }
+    }
+
     private HuggingFaceVoice find(String voiceId) throws LocalVoiceInstallException {
         for (HuggingFaceVoice voice : voices) {
             if (voice.id().equals(voiceId)) {

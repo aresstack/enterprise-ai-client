@@ -135,7 +135,7 @@ public final class SettingsPanel extends JPanel {
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
         this.modelsTab = new ModelsTab(actions, current, palette);
-        this.speechTab = new SpeechTab(actions, current, modelsTab, palette);
+        this.speechTab = new SpeechTab(palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START
@@ -394,13 +394,17 @@ public final class SettingsPanel extends JPanel {
         showCard(TAB_LABELS[index]);
     }
 
+    /** Reiter „Modelle“ mit dem Unterreiter „Lokale Modelle“ bzw. „Cloud-Modelle“ (Screenshots). */
+    public void selectModelsPage(boolean local) {
+        selectTab(MODELS_TAB);
+        modelsTab.showPage(local);
+    }
+
     /** Zeigt eine Karte; der Reiter „Modelle“ fragt beim ersten Anzeigen die Modellquellen im Hintergrund ab. */
     private void showCard(String name) {
         cards.show(deck, name);
         if (TAB_LABELS[MODELS_TAB].equals(name)) {
             modelsTab.shown();
-        } else if (TAB_LABELS[SPEECH_TAB].equals(name)) {
-            speechTab.shown();
         } else if (TAB_LABELS[TECHNICAL_TAB].equals(name)) {
             loadTechnicalDetails();
         }

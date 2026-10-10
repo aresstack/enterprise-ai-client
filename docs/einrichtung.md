@@ -181,9 +181,10 @@ Agent kann `refresh_knowledge_source` aufrufen ([MCP](mcp.md)).
 Oben rechts über dem Verlauf liegt der Play/Pause-Orb (wie in askai-java8): Play liest die letzte Antwort vor und
 bleibt aktiv, jede neue Antwort wird dann automatisch vorgelesen, bis Pause es beendet. Mit „Neue Antworten
 automatisch vorlesen“ (Einstellungen → Sprachausgabe) ist der Orb schon beim Start aktiv. Vorgelesen wird mit dem Modell der Kategorie **TTS**
-(Einstellungen → Modelle, Schlüssel `model.tts`), gesprochen über die Quelle dieses Modells: ein TTS-Modell der
-Enterprise-API über `POST <chat.baseUrl>/audio/speech` (noch ungetestet; die Stimme kommt aus `speech.voice`,
-falls der Dienst eine verlangt), ein lokales über den optionalen
+(Einstellungen → Modelle, Schlüssel `model.tts`; genau eine Auswahl, entweder im Unterreiter „Cloud-Modelle“ oder
+„Lokale Modelle“, eine Wahl im einen wählt im anderen ab), gesprochen über die Quelle dieses Modells: ein TTS-Modell
+der Enterprise-API über `POST <chat.baseUrl>/audio/speech` (noch ungetestet; das Modell bestimmt die Stimme, der
+optionale Dateischlüssel `speech.voice` wird nur mitgeschickt, falls gesetzt), ein lokales über den optionalen
 Java-21-Sidecar. Ohne TTS-Modell, oder bei einem lokalen Modell ohne Java 21 und Sidecar, bleibt der Orb
 deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
 
@@ -198,7 +199,9 @@ deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
    optional `tokenizer_config.json`, `onnx/model.onnx` oder `model.onnx`; z. B. ein ONNX-Export von MMS-TTS Deutsch)
    als eigenen Ordner unter das Modellverzeichnis legen (`models.local.modelRoot`, Standard
    `<Anwendungsverzeichnis>/local-models`). Der Ordnername ist der Modellname. Es wird nichts heruntergeladen.
-4. Einstellungen → Modelle → TTS: die Stimme („Lokal (Java 21)“) wählen, neu starten.
+   Alternativ: Einstellungen → Modelle → „Lokale Modelle“ → „Lokale Stimmen“ → „Installieren“ lädt eine der
+   angebotenen Stimmen; „Entfernen“ löscht sie wieder.
+4. Einstellungen → Modelle → „Lokale Modelle“ → TTS: die Stimme wählen, speichern, neu starten.
 
 `speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Spracheingabe (Mikrofon,
 Audiodatei) gehört nicht zum Enterprise-Client.

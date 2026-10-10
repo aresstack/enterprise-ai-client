@@ -88,6 +88,11 @@ public interface SettingsDialogActions {
         return reference.key();
     }
 
+    /** Ob ein Modell vom lokalen Sidecar kommt (Reiter „Lokale Modelle“) statt von der Enterprise-API. */
+    default boolean isLocal(ModelReference reference) {
+        return !"default".equals(reference.catalogId());
+    }
+
     /**
      * „Neu suchen“ im Abschnitt „Lokale Modelle“: sucht installierte Java-Laufzeiten und liefert sie genau einmal
      * auf dem EDT, kompatible (Java 21+) zuerst, mit der automatischen Wahl.
@@ -102,7 +107,7 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * „Lokale Stimmen“ der Sprachausgabe: die angebotenen Stimmen mit Installationsstand im Modellverzeichnis des
+     * „Lokale Stimmen“ im Reiter „Lokale Modelle“: die angebotenen Stimmen mit Installationsstand im Modellverzeichnis des
      * Entwurfs, genau einmal auf dem EDT.
      */
     default void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {
@@ -114,6 +119,11 @@ public interface SettingsDialogActions {
      * Entwurfs); Fortschritt und Ende auf dem EDT.
      */
     default void installLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
+        progress.finished(false, "In dieser Umgebung nicht verfügbar.");
+    }
+
+    /** Entfernt eine installierte Stimme aus dem Modellverzeichnis des Entwurfs; Ende auf dem EDT. */
+    default void removeLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
         progress.finished(false, "In dieser Umgebung nicht verfügbar.");
     }
 

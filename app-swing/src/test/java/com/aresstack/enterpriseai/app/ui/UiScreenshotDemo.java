@@ -167,6 +167,12 @@ public final class UiScreenshotDemo {
         write(dialog, new File(dir, "G1-einstellungen-keepass.png"));
         settings.selectTab(2);
         write(dialog, new File(dir, "G2-einstellungen-netzwerk.png"));
+        settings.selectModelsPage(false);
+        write(dialog, new File(dir, "G3-modelle-cloud.png"));
+        settings.selectModelsPage(true);
+        write(dialog, new File(dir, "G4-modelle-lokal.png"));
+        settings.selectTab(4);
+        write(dialog, new File(dir, "G5-sprachausgabe.png"));
 
         // I: Quellen-Dialog aus dem Drawer-Reiter (✎ an einer Quelle)
         SourcePanel source = new SourcePanel(new SourceDefinition("handbuch", MediaWikiSourceProvider.TYPE_ID, true,

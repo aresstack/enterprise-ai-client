@@ -1,5 +1,11 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
+import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
+import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelDescriptor;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowCloseButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
@@ -69,6 +75,49 @@ public final class SettingsDialogDemo {
                     + form.chatModel() + "\u201c fehlt (chat.model prüfen). Verfügbar: modell-a, modell-b, modell-c"));
             listener.onFinished(true);
         }
+
+        @Override
+        public ModelCatalogSnapshot cachedModels() {
+            return new ModelCatalogSnapshot(Arrays.asList(
+                    cloud("chat-modell", Arrays.asList("chat"), Collections.<String>emptyList()),
+                    cloud("embedding-modell", Arrays.asList("embeddings"), Collections.<String>emptyList()),
+                    cloud("tts-stimme-a", Arrays.asList("tts"), Arrays.asList("audio")),
+                    cloud("tts-stimme-b", Arrays.asList("tts"), Arrays.asList("audio"))),
+                    Collections.singletonList(new CatalogStatus("default", "Enterprise-API", true, "4 Modelle")));
+        }
+
+        @Override
+        public void refreshModels(SettingsForm form, Consumer<ModelCatalogSnapshot> onResult) {
+            onResult.accept(cachedModels());
+        }
+
+        @Override
+        public void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {
+            onResult.accept(Arrays.asList(
+                    new LocalVoiceOffer("stimme-1", "Stimme 1 (mittel)", "de_DE", true),
+                    new LocalVoiceOffer("stimme-2", "Stimme 2 (hoch)", "de_DE", false),
+                    new LocalVoiceOffer("stimme-3", "Stimme 3", "de_DE", false)));
+        }
+
+        @Override
+        public ModelReference parseModel(String text) {
+            return ModelReference.parse(text, Collections.singletonList("local"), "default");
+        }
+
+        @Override
+        public String storedModel(ModelReference reference) {
+            return "default".equals(reference.catalogId()) ? reference.modelId() : reference.key();
+        }
+
+        @Override
+        public String localVoiceSelection(String voiceId) {
+            return "local:" + voiceId;
+        }
+
+        private static ModelDescriptor cloud(String id, List<String> capabilities, List<String> output) {
+            return ModelDescriptor.builder("default", id).catalogName("Enterprise-API").capabilities(capabilities)
+                    .outputModalities(output).build();
+        }
     }
 
     public static SettingsForm sampleForm() {
@@ -82,6 +131,7 @@ public final class SettingsDialogDemo {
                 .embeddingDimension("768")
                 .indexDirectory("C:/Daten/enterprise-ai-index")
                 .caCertificatesFile("C:/Zertifikate/firmen-ca.pem")
+                .modelSelection(ModelCategory.TTS.key(), "local:stimme-1")
                 .build();
     }
 

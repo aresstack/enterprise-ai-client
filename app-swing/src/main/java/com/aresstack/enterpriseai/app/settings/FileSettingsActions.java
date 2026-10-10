@@ -643,6 +643,53 @@ public final class FileSettingsActions implements SettingsDialogActions {
     }
 
     @Override
+    public void removeLocalVoice(SettingsForm form, final String voiceId, final LocalVoiceInstallProgress progress) {
+        if (form == null || voiceId == null || progress == null) {
+            throw new IllegalArgumentException("form, voiceId and progress must not be null");
+        }
+        if (voices == null) {
+            progress.finished(false, "In dieser Umgebung nicht verfügbar.");
+            return;
+        }
+        final Path root = localModelRoot(form);
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    boolean ok;
+                    String message;
+                    try {
+                        voices.remove(voiceId, root);
+                        ok = true;
+                        message = "Entfernt aus " + root;
+                    } catch (LocalVoiceInstallException e) {
+                        ok = false;
+                        message = e.getMessage();
+                    } catch (RuntimeException e) {
+                        ok = false;
+                        message = "Entfernen fehlgeschlagen: " + e;
+                    }
+                    final boolean removed = ok;
+                    final String result = message;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            progress.finished(removed, result);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            progress.finished(false, "Entfernen konnte nicht gestartet werden.");
+        }
+    }
+
+    @Override
+    public boolean isLocal(ModelReference reference) {
+        return !ModelsConfig.defaultCatalogId().equals(reference.catalogId());
+    }
+
+    @Override
     public String localVoiceSelection(String voiceId) {
         return LocalSidecarModelCatalogAdapter.CATALOG_ID + ":" + voiceId;
     }

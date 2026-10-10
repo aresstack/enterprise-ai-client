@@ -89,4 +89,9 @@ public final class LocalVoices implements LocalVoiceInstaller {
         HttpRoutes routes = HttpRoutes.from(network);
         new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, routes)).install(voiceId, modelRoot, listener);
     }
+
+    @Override
+    public void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException {
+        new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, NO_NETWORK)).remove(voiceId, modelRoot);
+    }
 }
