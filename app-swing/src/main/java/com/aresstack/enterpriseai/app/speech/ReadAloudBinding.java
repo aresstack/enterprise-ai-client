@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.application.speech.ReadAloudService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,6 +23,8 @@ public final class ReadAloudBinding implements ReadAloudControl {
     private final String description;
     private final boolean autoStart;
     private final ExecutorService reader;
+    /** Jede Ausgabe und jedes Stopp zählt hoch; eine wartende Ausgabe mit alter Nummer spricht nicht mehr. */
+    private final AtomicLong generation = new AtomicLong();
 
     private ReadAloudBinding(ReadAloudService service, String description, boolean autoStart) {
         this.service = service;
@@ -71,9 +74,13 @@ public final class ReadAloudBinding implements ReadAloudControl {
             return;
         }
         service.stop(); // beendet eine laufende Antwort
+        final long mine = generation.incrementAndGet();
         reader.execute(new Runnable() {
             @Override
             public void run() {
+                if (generation.get() != mine) {
+                    return; // inzwischen pausiert oder von einer neueren Antwort abgelöst
+                }
                 try {
                     service.speak(markdown, new ReadAloudService.Listener() {
                         @Override
@@ -96,6 +103,7 @@ public final class ReadAloudBinding implements ReadAloudControl {
 
     @Override
     public void stop() {
+        generation.incrementAndGet();
         if (service != null) {
             service.stop();
         }
