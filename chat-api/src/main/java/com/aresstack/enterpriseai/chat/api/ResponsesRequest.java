@@ -40,16 +40,20 @@ public final class ResponsesRequest {
         return new ResponsesRequest(instructions, messages, null, null, tools, options);
     }
 
-    /** Fortsetzung der Antwort {@code previousResponseId} mit den Ergebnissen ihrer Werkzeugaufrufe. */
-    public static ResponsesRequest continueWith(String previousResponseId, List<ToolOutput> outputs,
-                                                List<ToolDefinition> tools, ChatOptions options) {
+    /**
+     * Fortsetzung der Antwort {@code previousResponseId} mit den Ergebnissen ihrer Werkzeugaufrufe. Die
+     * Anweisungen werden erneut mitgegeben, weil {@code previous_response_id} sie nicht übernimmt.
+     */
+    public static ResponsesRequest continueWith(String previousResponseId, String instructions,
+                                                List<ToolOutput> outputs, List<ToolDefinition> tools,
+                                                ChatOptions options) {
         if (previousResponseId == null || previousResponseId.isEmpty()) {
             throw new IllegalArgumentException("previousResponseId must not be empty");
         }
         if (outputs == null || outputs.isEmpty()) {
             throw new IllegalArgumentException("outputs must not be empty");
         }
-        return new ResponsesRequest(null, null, previousResponseId, outputs, tools, options);
+        return new ResponsesRequest(instructions, null, previousResponseId, outputs, tools, options);
     }
 
     /** {@code null} ohne Anweisungen. */

@@ -153,13 +153,43 @@ public final class RagChatBinding implements ChatShellActions {
         if (runningTurn != null || retrieving != null || model.isStreaming()) {
             throw new IllegalStateException("cannot start a new conversation while a response is running");
         }
+        final ChatConversationId previous = this.conversationId;
         this.conversationId = conversation;
+        if (conversationHasAttachments && tools != null && !previous.equals(conversation)) {
+            discardAttachments(previous);
+        }
         this.conversationHasAttachments = false;
     }
 
+    /** Die Anhänge einer geschlossenen Unterhaltung sind nicht mehr erreichbar: im Hintergrund löschen. */
+    private void discardAttachments(final ChatConversationId conversation) {
+        final ToolSupport support = tools;
+        try {
+            workExecutor.execute(() -> {
+                try {
+                    support.store().delete(conversation);
+                } catch (RuntimeException e) {
+                    LOG.log(Level.WARNING, "Anhänge nicht gelöscht: " + e.getMessage(), e);
+                }
+            });
+        } catch (RuntimeException rejected) {
+            LOG.log(Level.WARNING, "Anhänge nicht gelöscht: Arbeits-Thread nimmt nichts mehr an", rejected);
+        }
+    }
+
     /** Schaltet Tool-Calling und Dateianhänge ein (Composition Root); {@code null} schaltet sie aus. */
-    public void enableTools(ToolSupport support) {
+    public void enableTools(final ToolSupport support) {
         this.tools = support;
+        if (support != null) {
+            // Unterhaltungen früherer Starts sind nicht mehr erreichbar; ihre Kopien sollen nicht liegen bleiben.
+            // Synchron, damit kein späteres Ablegen mit dem Aufräumen um die Wette läuft (das Verzeichnis ist
+            // klein, weil jeder Start und jeder neue Chat aufräumt).
+            try {
+                support.store().deleteAll();
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "Alte Anhänge nicht gelöscht: " + e.getMessage(), e);
+            }
+        }
     }
 
     @Override

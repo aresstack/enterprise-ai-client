@@ -7,9 +7,12 @@ import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -113,6 +116,39 @@ public final class FileAttachmentStore implements AttachmentStore {
             return Files.readAllBytes(file);
         } catch (IOException e) {
             throw new AttachmentException(attachmentId + " nicht lesbar: " + e.getClass().getSimpleName(), e);
+        }
+    }
+
+    @Override
+    public synchronized void delete(ChatConversationId conversation) {
+        deleteTree(conversationDirectory(conversation));
+    }
+
+    @Override
+    public synchronized void deleteAll() {
+        deleteTree(root);
+    }
+
+    private static void deleteTree(Path directory) {
+        if (!Files.isDirectory(directory)) {
+            return;
+        }
+        try {
+            Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                    Files.deleteIfExists(file);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException error) throws IOException {
+                    Files.deleteIfExists(dir);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            throw new AttachmentException("Anhänge nicht löschbar: " + e.getClass().getSimpleName(), e);
         }
     }
 

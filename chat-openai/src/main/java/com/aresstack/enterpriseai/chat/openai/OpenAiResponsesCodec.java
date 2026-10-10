@@ -39,6 +39,10 @@ final class OpenAiResponsesCodec {
         JsonObject body = new JsonObject();
         body.addProperty("model", options.model() != null ? options.model() : defaultModel);
         JsonArray input = new JsonArray();
+        if (request.instructions() != null) {
+            // Auch bei Fortsetzungen: previous_response_id übernimmt die Anweisungen nicht.
+            body.addProperty("instructions", request.instructions());
+        }
         if (request.isContinuation()) {
             body.addProperty("previous_response_id", request.previousResponseId());
             for (ToolOutput output : request.toolOutputs()) {
@@ -49,9 +53,6 @@ final class OpenAiResponsesCodec {
                 input.add(item);
             }
         } else {
-            if (request.instructions() != null) {
-                body.addProperty("instructions", request.instructions());
-            }
             for (ChatMessage message : request.messages()) {
                 JsonObject item = new JsonObject();
                 item.addProperty("role", message.role() == ChatRole.ASSISTANT

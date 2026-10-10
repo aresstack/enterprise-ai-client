@@ -20,4 +20,10 @@ public interface AttachmentStore {
 
     /** @throws AttachmentException wenn der Anhang unbekannt oder nicht lesbar ist */
     byte[] read(ChatConversationId conversation, String attachmentId);
+
+    /** Löscht alle Anhänge der Unterhaltung (beim Schließen); unbekannte Unterhaltungen sind kein Fehler. */
+    void delete(ChatConversationId conversation);
+
+    /** Löscht alle Anhänge aller Unterhaltungen (beim Start: frühere Unterhaltungen sind nicht mehr erreichbar). */
+    void deleteAll();
 }

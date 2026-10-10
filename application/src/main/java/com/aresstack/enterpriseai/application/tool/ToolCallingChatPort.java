@@ -111,8 +111,9 @@ public final class ToolCallingChatPort implements ChatCompletionPort {
                 input.add(message);
             }
         }
-        ResponsesResult result = responses.create(ResponsesRequest.start(
-                instructions.length() == 0 ? null : instructions.toString(), input, definitions, request.options()));
+        String system = instructions.length() == 0 ? null : instructions.toString();
+        ResponsesResult result = responses.create(ResponsesRequest.start(system, input, definitions,
+                request.options()));
         int round = 0;
         while (result.hasFunctionCalls()) {
             if (task != null && task.isCancelRequested()) {
@@ -132,7 +133,7 @@ public final class ToolCallingChatPort implements ChatCompletionPort {
             if (task != null && task.isCancelRequested()) {
                 return null;
             }
-            result = responses.create(ResponsesRequest.continueWith(result.id(), outputs, definitions,
+            result = responses.create(ResponsesRequest.continueWith(result.id(), system, outputs, definitions,
                     request.options()));
         }
         return new ChatResponse(ChatMessage.assistant(result.outputText()), ChatFinishReason.STOP,
