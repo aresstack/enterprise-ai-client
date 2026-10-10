@@ -93,8 +93,6 @@ public final class RagChatBinding implements ChatShellActions {
     static final String READING_ACTIVITY = "Liest Anhang …";
     static final String SEARCHING_ACTIVITY = "Durchsucht Anhang …";
     static final String ATTACHMENTS_UNAVAILABLE_NOTICE = "Dateianhänge sind in dieser Sitzung nicht verfügbar.";
-    static final String NO_SOURCE_SELECTED_NOTICE = "Keine Wissensquelle ausgewählt (Häkchen im Reiter "
-            + "„Wissensquellen“). Die Antwort entstand ohne Kontext aus der Wissensbasis.";
 
     private static final DateTimeFormatter REVISION_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -243,9 +241,7 @@ public final class RagChatBinding implements ChatShellActions {
         if (ragEnabled) {
             if (!sources.isRestricted()) {
                 ragOptions = RagOptions.enabled();
-            } else if (sources.allowedSources().isEmpty()) {
-                model.addNotice(NO_SOURCE_SELECTED_NOTICE);
-            } else {
+            } else if (!sources.allowedSources().isEmpty()) {
                 ragOptions = RagOptions.enabled().restrictedTo(sources.allowedSources());
             }
         }

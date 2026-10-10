@@ -259,7 +259,7 @@ public class RagChatBindingTest {
     }
 
     @Test
-    public void noTickedSourceAnswersWithoutRetrievalAndSaysSo() throws Exception {
+    public void noTickedSourceAnswersAsPlainChatWithoutNotice() throws Exception {
         indexAll();
         int embeddingCalls = embeddings.calls().size();
         port.enqueueAnswer("Ohne Kontext");
@@ -278,7 +278,7 @@ public class RagChatBindingTest {
         for (TranscriptEntry entry : entries(fixture.model)) {
             texts.add(entry.getText());
         }
-        assertTrue(texts.toString(), texts.contains(RagChatBinding.NO_SOURCE_SELECTED_NOTICE));
+        assertEquals("nur Frage und Antwort, kein Hinweis", 2, texts.size());
         assertTrue(texts.toString(), texts.contains("Ohne Kontext"));
         assertEquals("Antworte knapp.", port.lastRequest().messages().get(0).content());
         assertEquals("kein Embedding-Aufruf", embeddingCalls, embeddings.calls().size());
