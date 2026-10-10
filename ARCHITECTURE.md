@@ -215,6 +215,8 @@ eigene Palette gibt es nicht.
 ```
 
 - `ShellFrame`: `setUndecorated(true)`, Tintenrand (`ComicBorder.windowBorder`) als Greifzone zum Vergrößern,
+  runde Ecken wie der Windows-11-Rahmen des askai-Fensters (`ComicWindowShape`: Fensterform und Kontur mit
+  `ResearchUiMetrics.RADIUS_WINDOW`, maximiert eckig; ebenso der Einstellungen-Dialog),
   Kopfzeile zieht, Doppelklick maximiert und stellt die vorherige Größe wieder her (eigene Buchführung in
   `ComicWindowDragger`, nicht über `setExtendedState`; die Taskleiste bleibt frei), Ziehen am maximierten Fenster
   stellt es unter dem Zeiger wieder her, ✕ löst `WINDOW_CLOSING` aus. Headless-Start und Smoke-Test berühren

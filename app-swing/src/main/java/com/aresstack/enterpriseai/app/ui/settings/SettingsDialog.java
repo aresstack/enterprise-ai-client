@@ -4,8 +4,10 @@ import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowCloseButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowResizer;
+import com.aresstack.enterpriseai.ui.comic.control.ComicWindowShape;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicTheme;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
 
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -92,6 +94,7 @@ public final class SettingsDialog extends JDialog {
             }
         });
         setContentPane(content);
+        ComicWindowShape.install(this, content, palette, WINDOW_PADDING, ResearchUiMetrics.RADIUS_WINDOW);
         setMinimumSize(new Dimension(640, 520));
         setSize(new Dimension(800, 680));
         setLocationRelativeTo(owner);

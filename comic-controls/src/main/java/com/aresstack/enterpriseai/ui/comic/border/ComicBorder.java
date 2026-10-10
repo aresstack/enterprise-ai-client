@@ -45,6 +45,19 @@ public final class ComicBorder implements Border {
         return new ComicBorder(palette, 2, 0, new Insets(padding, padding, padding, padding));
     }
 
+    /**
+     * The same contour and grip padding as {@link #windowBorder}, with rounded corners of {@code radius}
+     * pixels — for a frameless window whose own shape is rounded with the same radius
+     * ({@code ComicWindowShape}), so no square window corner shows behind the curve.
+     */
+    public static ComicBorder roundedWindowBorder(ComicPalette palette, int padding, int radius) {
+        requirePalette(palette);
+        int thickness = 2; // die Mittellinie liegt eine halbe Strichbreite innen: ihr Bogen ist um so viel kleiner,
+        // damit die Außenkante der Tinte genau auf der Fensterform liegt
+        return new ComicBorder(palette, thickness, Math.max(0, radius * 2 - thickness),
+                new Insets(padding, padding, padding, padding));
+    }
+
     /** Rounded ink contour for panels that want the comic outline without an impact burst. */
     public static ComicBorder roundedBorder(ComicPalette palette, int padding) {
         requirePalette(palette);
