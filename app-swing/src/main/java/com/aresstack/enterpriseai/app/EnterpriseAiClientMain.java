@@ -15,9 +15,13 @@ import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.security.ProxyAuthenticator;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
+import com.aresstack.enterpriseai.app.settings.FileIndexActions;
 import com.aresstack.enterpriseai.app.settings.FileSourceActions;
 import com.aresstack.enterpriseai.app.settings.ConfigurationStartup;
 import com.aresstack.enterpriseai.app.settings.SettingsMapper;
+import com.aresstack.enterpriseai.app.ui.settings.IndexDialog;
+import com.aresstack.enterpriseai.app.ui.settings.IndexForm;
+import com.aresstack.enterpriseai.app.ui.settings.IndexPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialog;
 import com.aresstack.enterpriseai.app.ui.settings.SourceDialog;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
@@ -178,19 +182,26 @@ public final class EnterpriseAiClientMain {
                     return;
                 }
                 LOG.info("Einstellungen gespeichert; sie gelten beim nächsten Start");
-                Object[] options = {"Jetzt beenden", "Weiter"};
-                int choice = JOptionPane.showOptionDialog(frame,
-                        "Die Einstellungen sind gespeichert. Sie gelten beim nächsten Start der Anwendung.",
-                        "Einstellungen gespeichert", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE,
-                        null, options, options[1]);
-                if (choice == 0) {
-                    frame.dispose();
-                }
+                offerRestart(frame, "Einstellungen gespeichert",
+                        "Die Einstellungen sind gespeichert. Sie gelten beim nächsten Start der Anwendung.");
             }
         };
     }
 
-    /** Der Drawer-Reiter „Wissensquellen“ bearbeitet die Quellen der Datei über den Quellen-Dialog. */
+    /** Nach dem Speichern: „Jetzt beenden“ schließt das Fenster, denn der laufende Graph hat den alten Stand. */
+    private static void offerRestart(JFrame frame, String title, String message) {
+        Object[] options = {"Jetzt beenden", "Weiter"};
+        int choice = JOptionPane.showOptionDialog(frame, message, title, JOptionPane.DEFAULT_OPTION,
+                JOptionPane.INFORMATION_MESSAGE, null, options, options[1]);
+        if (choice == 0) {
+            frame.dispose();
+        }
+    }
+
+    /**
+     * Der Drawer-Reiter „Wissensquellen“ bearbeitet die Quellen der Datei über den Quellen-Dialog und mit
+     * „Index …“ Indexverzeichnis und Indexierung beim Start über den Index-Dialog.
+     */
     private static void attachSourceEditing(ShellAssembly.ShellView view, final JFrame frame,
                                             ConfigurationFile file, final ComicPalette palette) {
         final FileSourceActions sources = new FileSourceActions(file);
@@ -198,6 +209,34 @@ public final class EnterpriseAiClientMain {
             SourceDialog.Result result = SourceDialog.show(frame, initial, originalId, actions, palette);
             return new KnowledgeSourcesController.SourceEditorLauncher.Result(result.outcome(), result.source());
         });
+        view.workspace().knowledgeSources().setIndexSettingsAction(indexSettingsAction(frame, file, palette));
+    }
+
+    /**
+     * „Index …“ im Drawer-Reiter „Wissensquellen“: öffnet den Index-Dialog mit den Werten der Datei. Gespeichert
+     * wird in die Datei; der laufende Graph arbeitet mit dem alten Index, deshalb gelten Änderungen beim nächsten
+     * Start (Angebot, jetzt zu beenden, wie nach dem Einstellungen-Dialog).
+     */
+    private static Runnable indexSettingsAction(final JFrame frame, final ConfigurationFile file,
+                                                final ComicPalette palette) {
+        final FileIndexActions actions = new FileIndexActions(file);
+        return () -> {
+            IndexForm current;
+            try {
+                current = actions.current();
+            } catch (IOException io) {
+                LOG.log(Level.WARNING, "Konfigurationsdatei nicht lesbar", io);
+                showError(IndexPanel.TITLE, "Die Konfiguration unter\n" + file.path()
+                        + "\nist nicht lesbar (" + io.getClass().getSimpleName() + ").");
+                return;
+            }
+            if (IndexDialog.show(frame, current, actions, palette) == null) {
+                return;
+            }
+            LOG.info("Index-Einstellungen gespeichert; sie gelten beim nächsten Start");
+            offerRestart(frame, "Index-Einstellungen gespeichert",
+                    "Die Index-Einstellungen sind gespeichert. Sie gelten beim nächsten Start der Anwendung.");
+        };
     }
 
     private static void shutdownAndExit(final CompositionRoot root) {

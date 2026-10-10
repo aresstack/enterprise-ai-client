@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -24,8 +25,10 @@ import java.util.List;
 
 /**
  * Die Drawer-Seite „Wissensquellen“: oben „+ MediaWiki“ und „+ Confluence“ (wie „+ Neuer Chat“), darunter je
- * Quelle eine {@link KnowledgeSourceRow} mit Häkchen, Indexstand, „Jetzt indexieren“ und Bearbeiten, unten ein
- * stiller Hinweis, was das Häkchen bewirkt. Ohne {@link KnowledgeSourceActions} bleiben alle Knöpfe wirkungslos.
+ * Quelle eine {@link KnowledgeSourceRow} mit Häkchen, Indexstand, „Jetzt indexieren“ und Bearbeiten, dann ein
+ * stiller Hinweis, was das Häkchen bewirkt, und unten der Bereich „Index“ mit „Index …“ für Indexverzeichnis
+ * und Indexierung beim Start (öffnet den Index-Dialog; gilt beim nächsten Start). Ohne
+ * {@link KnowledgeSourceActions} bzw. {@link #setIndexSettingsAction} bleiben die Knöpfe wirkungslos.
  */
 public final class KnowledgeSourcesPanel extends JPanel {
 
@@ -36,14 +39,20 @@ public final class KnowledgeSourcesPanel extends JPanel {
     static final String EMPTY_TEXT = "Noch keine Wissensquelle. „+ MediaWiki“ oder „+ Confluence“ legt eine an.";
     static final String HINT_TEXT = "<html>Der Chat durchsucht nur angehakte Quellen; abgewählte werden auch beim "
             + "Start nicht indexiert.</html>";
+    public static final String INDEX_LABEL = "Index …";
+    static final String INDEX_TOOLTIP = "Indexverzeichnis und Indexierung beim Start ändern; gilt beim nächsten Start";
+    static final String INDEX_HINT_TEXT = "<html>Indexverzeichnis und Indexierung beim Start; Änderungen gelten beim "
+            + "nächsten Start.</html>";
 
     private final ComicPalette palette;
     private final ResearchPillButton addWiki;
     private final ResearchPillButton addConfluence;
+    private final ResearchPillButton indexButton;
     private final JPanel list = new WidthTrackingPanel();
     private final List<KnowledgeSourceRow> rows = new ArrayList<KnowledgeSourceRow>();
     private List<KnowledgeSourceItem> items = Collections.emptyList();
     private KnowledgeSourceActions actions;
+    private Runnable indexSettingsAction;
 
     public KnowledgeSourcesPanel(ComicPalette palette) {
         super(new BorderLayout());
@@ -66,15 +75,53 @@ public final class KnowledgeSourcesPanel extends JPanel {
         scroll.getViewport().setBackground(palette.getSurface());
         scroll.getVerticalScrollBar().setUnitIncrement(16);
 
-        JLabel hint = new JLabel(HINT_TEXT);
-        hint.setFont(ResearchUiTypography.regular(11f));
-        hint.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
-        hint.setBorder(BorderFactory.createEmptyBorder(6, 14, 10, 12));
+        JLabel hint = mutedText(HINT_TEXT, 6, 6);
+
+        indexButton = new ResearchPillButton(INDEX_LABEL, ResearchUiMetrics.NEW_CHAT_HEIGHT - 4,
+                ResearchUiMetrics.RADIUS_CONTROL, ResearchUiMetrics.NEW_CHAT_PADDING_H - 2);
+        indexButton.setFont(ResearchUiTypography.semiBold(12.5f));
+        indexButton.setToolTipText(INDEX_TOOLTIP);
+        indexButton.setEnabled(false);
+        indexButton.addActionListener(event -> {
+            if (indexSettingsAction != null) {
+                indexSettingsAction.run();
+            }
+        });
+        JPanel indexRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        indexRow.setOpaque(false);
+        indexRow.setBorder(BorderFactory.createEmptyBorder(0, 2, 0, 8));
+        indexRow.add(indexButton);
+        JPanel south = new JPanel();
+        south.setLayout(new BoxLayout(south, BoxLayout.Y_AXIS));
+        south.setOpaque(false);
+        for (JComponent part : new JComponent[] {hint, sectionHeader("INDEX"), indexRow,
+                mutedText(INDEX_HINT_TEXT, 4, 10)}) {
+            part.setAlignmentX(LEFT_ALIGNMENT);
+            south.add(part);
+        }
 
         add(north, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
-        add(hint, BorderLayout.SOUTH);
+        add(south, BorderLayout.SOUTH);
         refresh();
+    }
+
+    /** Ein gedämpfter, umbrechender Hinweis in der Breite des Drawers. */
+    private static JLabel mutedText(String html, int top, int bottom) {
+        JLabel label = new JLabel(html);
+        label.setFont(ResearchUiTypography.regular(11f));
+        label.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
+        label.setBorder(BorderFactory.createEmptyBorder(top, 14, bottom, 12));
+        return label;
+    }
+
+    /** Die stille Abschnittsüberschrift („WISSENSQUELLEN“, „INDEX“). */
+    private static JLabel sectionHeader(String text) {
+        JLabel header = new JLabel(text);
+        header.setFont(ResearchUiTypography.semiBold(11f));
+        header.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
+        header.setBorder(BorderFactory.createEmptyBorder(10, 10, 4, 8));
+        return header;
     }
 
     private ResearchPillButton pill(String label, String tooltip, final String type) {
@@ -93,6 +140,12 @@ public final class KnowledgeSourcesPanel extends JPanel {
     public void setActions(KnowledgeSourceActions actions) {
         this.actions = actions;
         refresh();
+    }
+
+    /** Was „Index …“ tut (öffnet produktiv den Index-Dialog über der Konfigurationsdatei); {@code null} sperrt. */
+    public void setIndexSettingsAction(Runnable action) {
+        this.indexSettingsAction = action;
+        indexButton.setEnabled(action != null);
     }
 
     public void setItems(List<KnowledgeSourceItem> sources) {
@@ -118,16 +171,18 @@ public final class KnowledgeSourcesPanel extends JPanel {
         return addConfluence;
     }
 
+    /** „Index …“ im Bereich „Index“ unten. */
+    public ResearchPillButton indexButton() {
+        return indexButton;
+    }
+
     private void refresh() {
         boolean canAdd = actions != null && actions.canAdd();
         addWiki.setEnabled(canAdd);
         addConfluence.setEnabled(canAdd);
         list.removeAll();
         rows.clear();
-        JLabel header = new JLabel("WISSENSQUELLEN");
-        header.setFont(ResearchUiTypography.semiBold(11f));
-        header.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
-        header.setBorder(BorderFactory.createEmptyBorder(10, 10, 4, 8));
+        JLabel header = sectionHeader("WISSENSQUELLEN");
         header.setAlignmentX(LEFT_ALIGNMENT);
         list.add(header);
         if (items.isEmpty()) {

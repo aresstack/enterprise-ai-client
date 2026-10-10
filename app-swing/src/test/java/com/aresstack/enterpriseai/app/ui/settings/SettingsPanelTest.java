@@ -119,7 +119,7 @@ public class SettingsPanelTest {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
                 assertEquals("http://127.0.0.1:9/v1", panel.serviceTab().chatBaseUrl().getText());
-                assertEquals(1, panel.knowledgeTab().sources().size());
+                assertEquals(1, panel.toForm().sources().size());
                 assertFalse(panel.securityTab().enabled().isSelected());
                 assertEquals(SettingsForm.PROXY_DISABLED, panel.systemTab().proxyMode().getSelectedItem());
 
@@ -161,7 +161,7 @@ public class SettingsPanelTest {
     }
 
     @Test
-    public void knowledgeTabKeepsSourcesUnchangedAndOnlySummarizesThem() throws Exception {
+    public void sourcesPassThroughTheDialogUnchanged() throws Exception {
         final ScriptedActions actions = new ScriptedActions();
         onEdt(new Runnable() {
             @Override
@@ -172,15 +172,12 @@ public class SettingsPanelTest {
                         .url("http://127.0.0.1:9/confluence").enabled(false).build();
                 SettingsPanel panel = new SettingsPanel(SettingsForm.builder().sources(Arrays.asList(wiki, confluence))
                         .build(), Collections.<String>emptyList(), SettingsPanel.Mode.EDIT, actions, palette);
-                assertEquals("Konfiguriert: wiki, confluence (abgewählt)", panel.knowledgeTab().sourcesSummary());
                 List<SourceForm> sources = panel.toForm().sources();
                 assertEquals(2, sources.size());
                 assertEquals("http://127.0.0.1:9/w/api.php", sources.get(0).url());
                 assertEquals("Hauptseite", sources.get(0).startPoints());
                 assertTrue(sources.get(0).enabled());
                 assertFalse(sources.get(1).enabled());
-                assertEquals("Noch keine Wissensquelle konfiguriert.",
-                        KnowledgeTab.summary(Collections.<SourceForm>emptyList()));
             }
         });
     }
@@ -200,12 +197,12 @@ public class SettingsPanelTest {
                 assertFalse(panel.save());
                 assertTrue(panel.problemsText(), panel.problemsText().contains("security.keepass.port"));
                 assertTrue(panel.problemsText(), panel.problemsText().contains("chat.model"));
-                assertTrue("Reiter KeePass gewählt", panel.tabButton(2).isSelected());
+                assertTrue("Reiter KeePass gewählt", panel.tabButton(1).isSelected());
                 assertTrue(actions.saved.isEmpty());
 
                 actions.problems = Collections.singletonList("Quelle „wiki“, API-URL (source.wiki.apiUrl): keine gültige URL");
                 assertFalse(panel.save());
-                assertTrue("Reiter Wissensbasis gewählt", panel.tabButton(1).isSelected());
+                assertTrue("Quellen haben keinen Reiter: der erste wird gewählt", panel.tabButton(0).isSelected());
             }
         });
     }
@@ -419,7 +416,7 @@ public class SettingsPanelTest {
             public void run() {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
-                assertEquals(4, SettingsPanel.tabCount());
+                assertEquals(3, SettingsPanel.tabCount());
                 for (int i = 0; i < SettingsPanel.tabCount(); i++) {
                     panel.tabButton(i).doClick();
                     assertTrue(panel.tabButton(i).isSelected());

@@ -225,11 +225,14 @@ eigene Palette gibt es nicht.
 - Drawer (`app.ui.sidebar`): Seite „Chats“ mit Suchleiste, „+ Neuer Chat“ (eröffnet eine neue Unterhaltung am
   `ChatService` und schließt die bisherige; im Agent-Modus beendet es die ACP-Session über
   `AgentService.endSession()`; nicht während einer Antwort), Zeilen je Ansicht und Zahnrad für die Einstellungen; Seite
-  „Wissensquellen“ listet `sources`. Weitere Seiten kommen als `ChatSidebarTab` dazu.
+  „Wissensquellen“ listet `sources` (Häkchen, Indexstand, ⟳, ✎-Dialog, „+ MediaWiki“/„+ Confluence“) und öffnet
+  unten mit „Index …“ den Index-Dialog (`knowledge.indexDirectory`, `knowledge.indexOnStartup`; gilt beim nächsten
+  Start). Weitere Seiten kommen als `ChatSidebarTab` dazu.
 - Fehler des KI-Dienstes bleiben Sprechblasen in Blasengeometrie: Überschrift sichtbar, „Technische Ursache“
   und „Hinweis“ hinter „Details anzeigen“ (`SpeechBubblePanel.setDetails`).
-- Einstellungen-Dialog: ebenfalls rahmenlos (Überschrift zieht, ✕ bricht ab), Reiter als Pillen.
-- Abnahme-Bilder: `./gradlew :app-swing:runUiScreenshots --args="<Verzeichnis>"` rendert A–H headless.
+- Einstellungen-Dialog: ebenfalls rahmenlos (Überschrift zieht, ✕ bricht ab), Reiter als Pillen (KI-Dienst,
+  KeePass, Netzwerk & Agent; Quellen und Index-Einstellungen liegen in der Drawer-Seite „Wissensquellen“).
+- Abnahme-Bilder: `./gradlew :app-swing:runUiScreenshots --args="<Verzeichnis>"` rendert A–J headless (G1/G2 Reiter des Einstellungen-Dialogs, I Quellen-Dialog, J Index-Dialog).
 
 ## RAG und Indexierung (AP10)
 
@@ -354,11 +357,14 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   (`HttpRoutes`, `NetworkServices`, `TrustPolicy`, `ConnectionDiagnosis`), `app.security` (Brücken zum Security-Port,
   `FilePairingKeyStore`, `SwingPairingCallback`),
   `app.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `app.ui.settings` (Einstellungen-Dialog,
-  reine Oberfläche über dem Formular `SettingsForm` und dem Vertrag `SettingsDialogActions`), `app.ui.workspace`
+  reine Oberfläche über dem Formular `SettingsForm` und dem Vertrag `SettingsDialogActions`; dazu `SourceDialog`
+  über `SourceForm`/`SourceActions` und `IndexDialog` über `IndexForm`/`IndexActions` für die Drawer-Seite
+  „Wissensquellen“), `app.ui.workspace`
   (`ChatWorkspacePanel` mit Hamburger, Modus-Pille und Drawer, `ShellFrame` rahmenloses Hauptfenster,
   `WorkspaceActions`, `KnowledgeSourceItem`), `app.ui.sidebar` (`ChatSidebarPanel`, `SidebarTabRibbon`,
   `ChatHistoryRow`, `ChatSidebarTab`; Ports aus askai-java8 `arch`), `app.settings`
-  (`ConfigurationFile`, `SettingsMapper`, `FileSettingsActions`, `ConfigurationStartup`, `ConfigurationCheck`:
+  (`ConfigurationFile`, `SettingsMapper`, `FileSettingsActions`, `FileSourceActions`, `FileIndexActions`,
+  `ConfigurationStartup`, `ConfigurationCheck`:
   Dialog ↔ Datei ↔ `AppConfigLoader`; `ConnectionProbe` und `ConnectionChecker`: der Verbindungstest des Dialogs
   über `app.net`), `app.knowledge` (`StartupIndexing`), `app.composition`
   (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`, `ShutdownSequence`,

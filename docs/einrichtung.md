@@ -95,10 +95,14 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | Reiter | Schlüssel |
 |---|---|
 | KI-Dienst | `chat.baseUrl`, `chat.model`, `chat.apiKeyRef` (mit „In KeePass prüfen“), `chat.systemPrompt`; `embedding.baseUrl`, `embedding.model`, `embedding.dimension`, `embedding.apiKeyRef` |
-| Wissensbasis | `knowledge.indexDirectory` (mit Verzeichnisauswahl), `knowledge.indexOnStartup`; `sources` und je Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` |
 | KeePass | `security.keepass.enabled`, `host`, `port`, `clientDisplayName`, `pairingKeyStore`; „In KeePass prüfen“ mit dem Eintrag des API-Keys |
 | Netzwerk & Agent | `ui.windowTitle`; Proxy-Auflösung wie AskAI (`network.proxy.mode` mit den Modi von win-proxy-java, PAC-URL/Ermittlungsskript, Host/Port, Test-URL, Timeout, „Proxy auflösen“, „HTTPS-Verbindung testen“); TLS-Quellen (`network.tls.*`); User-Agent, Prefer IPv6, Proxy-Anmeldung NONE/BASIC (KeePass-Eintrag); Agent-Modus. „Verbindung testen“ steht im Reiter KI-Dienst. |
 
+- **Wissensquellen und Index** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet `sources` und je
+  Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki
+  `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` (Häkchen, ⟳, ✎,
+  „+ MediaWiki“/„+ Confluence“) und über „Index …“ `knowledge.indexDirectory` (mit Verzeichnisauswahl) und
+  `knowledge.indexOnStartup`. Beides schreibt in dieselbe Datei; Änderungen am Index gelten beim nächsten Start.
 - **Prüfen** läuft durch denselben Loader wie der Start und baut wie dieser die TLS-Vertrauensregel (eine
   fehlende oder leere CA-Datei fällt also hier auf, nicht erst beim nächsten Start): Speichern geht nur ohne
   Probleme; Probleme stehen unter den Reitern mit Feldname und Schlüssel, der betroffene Reiter wird gewählt.
