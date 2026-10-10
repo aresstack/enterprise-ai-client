@@ -50,6 +50,12 @@ public final class SimpleContentDetector implements ContentDetector {
         EXTENSION_MAP.put("pptx", new MimeCategory("application/vnd.openxmlformats-officedocument.presentationml.presentation", ContentCategory.OFFICE_DOCUMENT));
         EXTENSION_MAP.put("odt", new MimeCategory("application/vnd.oasis.opendocument.text", ContentCategory.OFFICE_DOCUMENT));
         EXTENSION_MAP.put("ods", new MimeCategory("application/vnd.oasis.opendocument.spreadsheet", ContentCategory.OFFICE_DOCUMENT));
+        // Weitere Formate, die erst Tika liest (Rich Text, alte PowerPoint-Dateien, OpenDocument-Präsentationen, Mails).
+        EXTENSION_MAP.put("rtf", new MimeCategory("application/rtf", ContentCategory.OFFICE_DOCUMENT));
+        EXTENSION_MAP.put("ppt", new MimeCategory("application/vnd.ms-powerpoint", ContentCategory.OFFICE_DOCUMENT));
+        EXTENSION_MAP.put("odp", new MimeCategory("application/vnd.oasis.opendocument.presentation", ContentCategory.OFFICE_DOCUMENT));
+        EXTENSION_MAP.put("eml", new MimeCategory("message/rfc822", ContentCategory.OFFICE_DOCUMENT));
+        EXTENSION_MAP.put("msg", new MimeCategory("application/vnd.ms-outlook", ContentCategory.OFFICE_DOCUMENT));
 
         // Structured data
         EXTENSION_MAP.put("json", new MimeCategory("application/json", ContentCategory.STRUCTURED_DATA));

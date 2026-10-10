@@ -95,7 +95,7 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
         }
         Set<Path> files = new LinkedHashSet<Path>();
         for (String startPoint : scope.startPoints()) {
-            Path start = inside(startPoint.trim().isEmpty() ? "." : startPoint.trim());
+            final Path start = inside(startPoint.trim().isEmpty() ? "." : startPoint.trim());
             if (start == null || !Files.exists(start)) {
                 continue;
             }
@@ -116,8 +116,12 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
                             }
 
                             @Override
-                            public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                                // Nicht lesbare Unterverzeichnisse und Dateien überspringen.
+                            public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                                // Startverzeichnis nicht lesbar: Fehler statt leerer Liste (sonst räumt der Index
+                                // alle Dokumente der Quelle ab). Einzelne Unterverzeichnisse und Dateien überspringen.
+                                if (file.equals(start)) {
+                                    throw exc;
+                                }
                                 return FileVisitResult.CONTINUE;
                             }
                         });

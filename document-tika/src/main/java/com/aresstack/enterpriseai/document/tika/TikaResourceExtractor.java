@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.document.api.ExtractedDocument;
 import com.aresstack.enterpriseai.document.api.ExtractionRequest;
 import com.aresstack.enterpriseai.document.api.ExtractionResult;
 import com.aresstack.enterpriseai.document.api.ResourceExtractor;
+import org.apache.tika.exception.WriteLimitReachedException;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.metadata.TikaCoreProperties;
 import org.apache.tika.parser.AutoDetectParser;
@@ -68,12 +69,13 @@ public final class TikaResourceExtractor implements ResourceExtractor {
         try (InputStream in = new ByteArrayInputStream(bytes)) {
             parser.parse(in, handler, metadata, new ParseContext());
         } catch (Exception e) {
-            // Größenlimit erreicht: der bis dahin gelesene Text bleibt im Handler und wird verwendet.
-            if (handler.toString().isEmpty()) {
+            // Nur beim Größenlimit bleibt der bis dahin gelesene Text verwendbar; andere Fehler (defekt,
+            // verschlüsselt) sind ein Fehlschlag.
+            if (!WriteLimitReachedException.isWriteLimitReached(e) || handler.toString().isEmpty()) {
                 return ExtractionResult.failure(request.resourceId(), type,
                         "Tika-Extraktion fehlgeschlagen: " + e.getClass().getSimpleName());
             }
-            warnings.add("Text gekürzt oder unvollständig: " + e.getClass().getSimpleName());
+            warnings.add("Text nach " + maxCharacters + " Zeichen gekürzt");
         }
         ExtractedDocument.Builder document = ExtractedDocument.builder().contentType(type);
         String title = metadata.get(TikaCoreProperties.TITLE);
