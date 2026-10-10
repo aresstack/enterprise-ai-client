@@ -23,6 +23,9 @@ import java.util.TreeMap;
  */
 final class ChatTemplate {
 
+    /** Der eine undefinierte Wert (Vergleich per Identität). */
+    private static final Undefined UNDEFINED = new Undefined();
+
     private final List<Node> body;
 
     private ChatTemplate(List<Node> body) {
@@ -67,9 +70,8 @@ final class ChatTemplate {
 
     /** Jinja-Undefined: falsch, leer ausgegeben, Attribute wieder undefiniert. */
     static final class Undefined {
-        static final Undefined VALUE = new Undefined();
 
-        private Undefined() {
+        Undefined() {
         }
 
         @Override
@@ -102,7 +104,7 @@ final class ChatTemplate {
                     return scope.values.get(name);
                 }
             }
-            return Undefined.VALUE;
+            return UNDEFINED;
         }
 
         void set(String name, Object value) {
@@ -361,8 +363,8 @@ final class ChatTemplate {
                 loop.put("first", i == 0);
                 loop.put("last", i == items.size() - 1);
                 loop.put("length", (long) items.size());
-                loop.put("previtem", i > 0 ? items.get(i - 1) : Undefined.VALUE);
-                loop.put("nextitem", i + 1 < items.size() ? items.get(i + 1) : Undefined.VALUE);
+                loop.put("previtem", i > 0 ? items.get(i - 1) : UNDEFINED);
+                loop.put("nextitem", i + 1 < items.size() ? items.get(i + 1) : UNDEFINED);
                 inner.set("loop", loop);
                 try {
                     renderAll(body, inner, out);
@@ -460,7 +462,7 @@ final class ChatTemplate {
                         String parameter = parameters.get(i);
                         Object value = i < args.size() ? args.get(i)
                                 : kwargs.containsKey(parameter) ? kwargs.get(parameter)
-                                : defaults.get(i) != null ? defaults.get(i).eval(scope) : Undefined.VALUE;
+                                : defaults.get(i) != null ? defaults.get(i).eval(scope) : UNDEFINED;
                         inner.set(parameter, value);
                     }
                     StringBuilder result = new StringBuilder();
@@ -1023,7 +1025,7 @@ final class ChatTemplate {
             if (Values.truthy(condition.eval(scope))) {
                 return then.eval(scope);
             }
-            return otherwise == null ? Undefined.VALUE : otherwise.eval(scope);
+            return otherwise == null ? UNDEFINED : otherwise.eval(scope);
         }
     }
 
@@ -1458,7 +1460,7 @@ final class ChatTemplate {
         }
 
         static boolean truthy(Object value) {
-            if (value == null || value == Undefined.VALUE) {
+            if (value == null || value == UNDEFINED) {
                 return false;
             }
             if (value instanceof Boolean) {
@@ -1483,7 +1485,7 @@ final class ChatTemplate {
             if (value == null) {
                 return "None";
             }
-            if (value == Undefined.VALUE) {
+            if (value == UNDEFINED) {
                 return "";
             }
             if (value instanceof String) {
@@ -1538,7 +1540,7 @@ final class ChatTemplate {
                 }
                 return out.append('}').toString();
             }
-            if (value == Undefined.VALUE) {
+            if (value == UNDEFINED) {
                 return "";
             }
             return String.valueOf(value);
@@ -1555,7 +1557,7 @@ final class ChatTemplate {
         }
 
         static List<Object> iterate(Object value) throws TemplateException {
-            if (value == null || value == Undefined.VALUE) {
+            if (value == null || value == UNDEFINED) {
                 return Collections.emptyList();
             }
             if (value instanceof List) {
@@ -1593,7 +1595,7 @@ final class ChatTemplate {
         static Object attribute(Object target, String name) {
             if (target instanceof Namespace) {
                 Map<String, Object> values = ((Namespace) target).values;
-                return values.containsKey(name) ? values.get(name) : Undefined.VALUE;
+                return values.containsKey(name) ? values.get(name) : UNDEFINED;
             }
             if (target instanceof Map) {
                 Map<?, ?> map = (Map<?, ?>) target;
@@ -1601,7 +1603,7 @@ final class ChatTemplate {
                     return map.get(name);
                 }
             }
-            return Undefined.VALUE;
+            return UNDEFINED;
         }
 
         static Object item(Object target, Object index) throws TemplateException {
@@ -1611,24 +1613,24 @@ final class ChatTemplate {
                 }
                 Map<?, ?> map = (Map<?, ?>) target;
                 Object key = index instanceof String ? index : str(index);
-                return map.containsKey(key) ? map.get(key) : Undefined.VALUE;
+                return map.containsKey(key) ? map.get(key) : UNDEFINED;
             }
             if (target instanceof List || target instanceof String) {
                 List<?> list = target instanceof String ? chars((String) target) : (List<?>) target;
                 if (!(index instanceof Number)) {
-                    return Undefined.VALUE;
+                    return UNDEFINED;
                 }
                 int i = (int) ((Number) index).longValue();
                 if (i < 0) {
                     i += list.size();
                 }
-                return i >= 0 && i < list.size() ? list.get(i) : Undefined.VALUE;
+                return i >= 0 && i < list.size() ? list.get(i) : UNDEFINED;
             }
-            return Undefined.VALUE;
+            return UNDEFINED;
         }
 
         static boolean equal(Object a, Object b) {
-            if (a == Undefined.VALUE || b == Undefined.VALUE) {
+            if (a == UNDEFINED || b == UNDEFINED) {
                 return a == b;
             }
             if (a == null || b == null) {
@@ -1675,7 +1677,7 @@ final class ChatTemplate {
                     if (a instanceof String && b instanceof String) {
                         return (String) a + b;
                     }
-                    if (a == Undefined.VALUE || b == Undefined.VALUE) {
+                    if (a == UNDEFINED || b == UNDEFINED) {
                         return str(a) + str(b);
                     }
                     throw new TemplateException("+ von Zeichenkette und " + repr(a instanceof String ? b : a, true));
@@ -1884,15 +1886,15 @@ final class ChatTemplate {
             }
             if ("first".equals(name)) {
                 List<Object> items = Values.iterate(value);
-                return items.isEmpty() ? Undefined.VALUE : items.get(0);
+                return items.isEmpty() ? UNDEFINED : items.get(0);
             }
             if ("last".equals(name)) {
                 List<Object> items = Values.iterate(value);
-                return items.isEmpty() ? Undefined.VALUE : items.get(items.size() - 1);
+                return items.isEmpty() ? UNDEFINED : items.get(items.size() - 1);
             }
             if ("default".equals(name) || "d".equals(name)) {
                 boolean bool = args.size() > 1 && Values.truthy(args.get(1)) || Values.truthy(kwargs.get("boolean"));
-                boolean missing = value == Undefined.VALUE || (bool && !Values.truthy(value));
+                boolean missing = value == UNDEFINED || (bool && !Values.truthy(value));
                 return missing ? (args.isEmpty() ? "" : args.get(0)) : value;
             }
             if ("join".equals(name)) {
@@ -2030,7 +2032,7 @@ final class ChatTemplate {
             Map<?, ?> map = value instanceof Namespace ? ((Namespace) value).values
                     : value instanceof Map ? (Map<?, ?>) value : null;
             if (map == null) {
-                if (value == Undefined.VALUE || value == null) {
+                if (value == UNDEFINED || value == null) {
                     return out;
                 }
                 throw new TemplateException("items() braucht ein Dict");
@@ -2057,10 +2059,10 @@ final class ChatTemplate {
 
         static boolean test(String name, Object value, List<Object> args) throws TemplateException {
             if ("defined".equals(name)) {
-                return value != Undefined.VALUE;
+                return value != UNDEFINED;
             }
             if ("undefined".equals(name)) {
-                return value == Undefined.VALUE;
+                return value == UNDEFINED;
             }
             if ("none".equals(name)) {
                 return value == null;
@@ -2247,7 +2249,7 @@ final class ChatTemplate {
                     throw new TemplateException("index: nicht gefunden");
                 }
             }
-            if (receiver == Undefined.VALUE) {
+            if (receiver == UNDEFINED) {
                 throw new TemplateException("Methode " + name + " auf undefiniertem Wert");
             }
             throw new TemplateException("Methode " + name + " wird nicht unterstützt");
@@ -2280,7 +2282,7 @@ final class ChatTemplate {
         }
 
         private static void write(Object value, int indent, boolean sortKeys, int depth, StringBuilder out) {
-            if (value == null || value == Undefined.VALUE) {
+            if (value == null || value == UNDEFINED) {
                 out.append("null");
             } else if (value instanceof Boolean) {
                 out.append((Boolean) value ? "true" : "false");
