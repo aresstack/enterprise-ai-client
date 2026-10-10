@@ -26,9 +26,11 @@ import com.aresstack.enterpriseai.application.resource.policy.ActorType;
 import com.aresstack.enterpriseai.application.resource.policy.ClientResourceAccessPolicy;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunker;
+import com.aresstack.enterpriseai.domain.resource.ResourceScheme;
 import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
 import com.aresstack.enterpriseai.resource.holkas.HolkasAcquisitionPort;
 import com.aresstack.enterpriseai.resource.holkas.KnowledgeSourceConnectorRegistry;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -103,7 +105,8 @@ public final class CompositionRoot {
         // Gelesen wird nach corenth vermittelt: Tamias (Regel) → Chalcotheca (Archiv) → AcquisitionPort → Holkas-
         // Connector der Quelle; der Use Case fragt den Quellen-Port nicht mehr direkt.
         MediatedResourceService resourceAccess = new MediatedResourceService(new ClientResourceAccessPolicy(),
-                new HolkasAcquisitionPort(new KnowledgeSourceConnectorRegistry(ports.sources()::ports, clock)),
+                new HolkasAcquisitionPort(new KnowledgeSourceConnectorRegistry(resourceSchemes(ports),
+                        ports.sources()::ports, clock)),
                 new InMemoryResourceArchive());
         this.resourceDocuments = new MediatedKnowledgeDocuments(resourceAccess,
                 new ActorIdentity("enterprise-ai-client-user", ActorType.HUMAN));
@@ -153,6 +156,18 @@ public final class CompositionRoot {
             throw new IllegalArgumentException("config, ports, uiExecutor and clock must not be null");
         }
         return new CompositionRoot(config, ports, uiExecutor, clock, zone == null ? ZoneId.systemDefault() : zone);
+    }
+
+    /** Ressourcenschemata aller Quelltypen: jeder bekommt denselben Holkas-Connector über die Quellen-Adapter. */
+    private static List<ResourceScheme> resourceSchemes(ApplicationPorts ports) {
+        List<ResourceScheme> schemes = new ArrayList<ResourceScheme>();
+        for (KnowledgeSourceProvider provider : ports.sourceProviders()) {
+            ResourceScheme scheme = ResourceScheme.of(provider.type().scheme());
+            if (!schemes.contains(scheme)) {
+                schemes.add(scheme);
+            }
+        }
+        return schemes;
     }
 
     private static ThreadFactory daemonThreads(final String name) {
