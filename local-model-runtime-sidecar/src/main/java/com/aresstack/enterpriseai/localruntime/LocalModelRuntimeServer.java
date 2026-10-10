@@ -12,9 +12,10 @@ import com.aresstack.enterpriseai.localruntime.generation.LocalGenerationMessage
 import com.aresstack.enterpriseai.localruntime.generation.LocalGenerationRequest;
 import com.aresstack.enterpriseai.localruntime.generation.LocalGenerationResult;
 import com.aresstack.enterpriseai.localruntime.generation.LocalGenerationTokenListener;
-import com.aresstack.enterpriseai.localruntime.speech.LocalSpeechEngine;
-import com.aresstack.enterpriseai.localruntime.speech.LocalSpeechModel;
-import com.aresstack.enterpriseai.localruntime.speech.LocalSpeechModelStore;
+import com.aresstack.enterpriseai.localruntime.speech.LocalSpeechRuntime;
+import com.aresstack.enterpriseai.localruntime.speech.LocalVoice;
+import com.aresstack.enterpriseai.localruntime.speech.LocalVoiceStore;
+import com.aresstack.enterpriseai.localruntime.speech.SpeechRuntimeException;
 import com.aresstack.windirectml.encoder.EmbeddingException;
 import com.aresstack.windirectml.encoder.pack.EncoderPackageLifecycle;
 import com.aresstack.windirectml.modelpack.ModelConversionResult;
@@ -58,18 +59,18 @@ final class LocalModelRuntimeServer {
     private final LocalModelStore store;
     private final LocalModelEngine engine;
     private final LocalGenerationEngine generationEngine;
-    private final LocalSpeechModelStore voices;
-    private final LocalSpeechEngine speechEngine;
+    private final LocalVoiceStore voices;
+    private final LocalSpeechRuntime speechRuntime;
     private HttpServer server;
 
     LocalModelRuntimeServer(LocalModelStore store, LocalModelEngine engine,
-                            LocalGenerationEngine generationEngine, LocalSpeechModelStore voices,
-                            LocalSpeechEngine speechEngine) {
+                            LocalGenerationEngine generationEngine, LocalVoiceStore voices,
+                            LocalSpeechRuntime speechRuntime) {
         this.store = store;
         this.engine = engine;
         this.generationEngine = generationEngine;
         this.voices = voices;
-        this.speechEngine = speechEngine;
+        this.speechRuntime = speechRuntime;
     }
 
     /** @return the bound port (the OS chooses one for requestedPort=0). */
@@ -86,7 +87,7 @@ final class LocalModelRuntimeServer {
         }
         engine.close();
         generationEngine.close();
-        speechEngine.close();
+        speechRuntime.close();
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -150,7 +151,7 @@ final class LocalModelRuntimeServer {
             entry.put("details", details(model));
             models.add(entry);
         }
-        for (LocalSpeechModel voice : voices.models()) {
+        for (LocalVoice voice : voices.voices()) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("name", voice.virtualName());
             entry.put("model", voice.virtualName());
@@ -158,8 +159,8 @@ final class LocalModelRuntimeServer {
             entry.put("size", store.directorySizeBytes(voice.directory()));
             entry.put("digest", "");
             Map<String, Object> details = new LinkedHashMap<>();
-            details.put("family", "vits");
-            details.put("format", "onnx");
+            details.put("family", voice.family());
+            details.put("runtime", speechRuntime.name());
             details.put("capabilities", List.of("text_to_speech"));
             details.put("sample_rate", voice.sampleRate());
             entry.put("details", details);
@@ -188,7 +189,7 @@ final class LocalModelRuntimeServer {
             typed(exchange, 400, INVALID_REQUEST, "input must not be empty");
             return;
         }
-        LocalSpeechModel voice = voices.find(LocalJson.str(request, "model"));
+        LocalVoice voice = voices.find(LocalJson.str(request, "model"));
         if (voice == null) {
             if (find(LocalJson.str(request, "model")) != null) {
                 capabilityMismatch(exchange, LocalJson.str(request, "model"), "text_to_speech");
@@ -199,9 +200,12 @@ final class LocalModelRuntimeServer {
         }
         byte[] wav;
         try {
-            wav = speechEngine.synthesizeWav(voice, input);
-        } catch (ai.onnxruntime.OrtException failed) {
+            wav = speechRuntime.synthesizeWav(voice, input);
+        } catch (SpeechRuntimeException failed) {
             typed(exchange, 500, MODEL_NOT_LOADABLE, failed.getMessage());
+            return;
+        } catch (IllegalArgumentException unspeakable) {
+            typed(exchange, 400, INVALID_REQUEST, unspeakable.getMessage());
             return;
         }
         exchange.getResponseHeaders().add("Content-Type", "audio/wav");

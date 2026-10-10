@@ -46,8 +46,9 @@ public final class LocalModelRuntimeMain {
                 new com.aresstack.enterpriseai.localruntime.generation.DirectMLGenerationRuntimePort(),
                 com.aresstack.enterpriseai.localruntime.generation.LocalGenerationBackend.parse(backend.name()));
         LocalModelRuntimeServer server = new LocalModelRuntimeServer(store, engine, generationEngine,
-                new com.aresstack.enterpriseai.localruntime.speech.LocalSpeechModelStore(Path.of(modelRoot)),
-                new com.aresstack.enterpriseai.localruntime.speech.LocalSpeechEngine());
+                new com.aresstack.enterpriseai.localruntime.speech.LocalVoiceStore(Path.of(modelRoot)),
+                // Pilot backend for speech; an in-house inference engine replaces it behind LocalSpeechRuntime.
+                new com.aresstack.enterpriseai.localruntime.speech.OnnxSpeechRuntime());
         int boundPort = server.start(host, port);
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "local-runtime-shutdown"));
         // Die with the parent (stdin EOF): a hard-killed host must never leave this JVM behind.
