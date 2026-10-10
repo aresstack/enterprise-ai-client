@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.app.composition;
 
+import com.aresstack.enterpriseai.app.config.SourceConfig;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
@@ -12,6 +14,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -32,6 +35,7 @@ public final class ApplicationPorts implements Closeable {
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
+    private final Function<SourceConfig, KnowledgeSourcePort> sourceFactory;
     private final List<NamedResource> resources;
     private boolean closed;
 
@@ -47,6 +51,7 @@ public final class ApplicationPorts implements Closeable {
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
+        this.sourceFactory = builder.sourceFactory;
         this.resources = Collections.unmodifiableList(new ArrayList<NamedResource>(builder.resources));
     }
 
@@ -68,6 +73,15 @@ public final class ApplicationPorts implements Closeable {
 
     public KnowledgeIndexPort index() {
         return index;
+    }
+
+    /**
+     * Baut den Port einer Quelle, die nach dem Start im Drawer hinzugefügt oder geändert wurde (mit denselben
+     * Secrets und derselben Netzregel wie beim Start), oder {@code null}: dann gilt so eine Änderung erst nach dem
+     * nächsten Start.
+     */
+    public Function<SourceConfig, KnowledgeSourcePort> sourceFactory() {
+        return sourceFactory;
     }
 
     public KnowledgeSourceCatalog sources() {
@@ -136,6 +150,7 @@ public final class ApplicationPorts implements Closeable {
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
+        private Function<SourceConfig, KnowledgeSourcePort> sourceFactory;
         private final List<NamedResource> resources = new ArrayList<NamedResource>();
 
         private Builder() {
@@ -169,6 +184,11 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder agent(AgentBackend value) {
             this.agent = value;
+            return this;
+        }
+
+        public Builder sourceFactory(Function<SourceConfig, KnowledgeSourcePort> value) {
+            this.sourceFactory = value;
             return this;
         }
 

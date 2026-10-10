@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkingPolicy;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.knowledge.api.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.source.api.SourceScope;
@@ -16,6 +17,7 @@ import org.junit.Test;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -114,5 +116,46 @@ public class StartupIndexingTest {
         run.start();
         assertTrue(run.awaitTermination(1, TimeUnit.SECONDS));
         assertTrue(run.reports().isEmpty());
+    }
+
+    @Test
+    public void deselectedSourcesAreSkipped() throws Exception {
+        InMemoryKnowledgeSource a = new InMemoryKnowledgeSource("a").add("1", "Eins", "Erster Text.");
+        InMemoryKnowledgeSource b = new InMemoryKnowledgeSource("b").add("2", "Zwei", "Zweiter Text.");
+        KnowledgeSourceCatalog catalog = new KnowledgeSourceCatalog(Arrays.asList(
+                new KnowledgeSourceRegistration(a, SourceScope.of("1")),
+                new KnowledgeSourceRegistration(b, SourceScope.of("2"))));
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(a.sourceId(), false);
+        selection.register(b.sourceId(), true);
+        StartupIndexing run = new StartupIndexing(binding, status, catalog, DIRECT, selection);
+        run.start();
+        assertTrue(run.awaitTermination(1, TimeUnit.SECONDS));
+        assertEquals(1, run.reports().size());
+        assertEquals("b", run.reports().get(0).sourceId().value());
+        assertTrue(index.resourceIds(embeddings.modelIdentity(), a.sourceId()).isEmpty());
+    }
+
+    @Test
+    public void selectionRestrictsRetrievalToTickedSources() {
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        assertFalse("ohne angebundene Quelle bleibt RAG unbeschränkt", selection.isRestricted());
+        KnowledgeSourceId a = KnowledgeSourceId.of("a");
+        KnowledgeSourceId b = KnowledgeSourceId.of("b");
+        selection.register(a, true);
+        selection.register(b, false);
+        assertTrue(selection.isRestricted());
+        assertEquals(Collections.singleton(a), selection.allowedSources());
+        assertTrue(selection.setEnabled(b, true));
+        assertFalse("unbekannte Quellen bleiben unbekannt", selection.setEnabled(KnowledgeSourceId.of("c"), true));
+        assertEquals(2, selection.allowedSources().size());
+        selection.setEnabled(a, false);
+        selection.setEnabled(b, false);
+        assertTrue(selection.isRestricted());
+        assertTrue(selection.allowedSources().isEmpty());
+        selection.unregister(a);
+        selection.unregister(b);
+        assertFalse(selection.isRegistered(a));
+        assertTrue("nach dem Entfernen der letzten Quelle bleibt die Suche eingeschränkt", selection.isRestricted());
     }
 }

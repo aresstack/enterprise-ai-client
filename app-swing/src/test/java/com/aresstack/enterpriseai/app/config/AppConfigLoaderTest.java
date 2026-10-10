@@ -166,12 +166,6 @@ public class AppConfigLoaderTest {
         p.setProperty("chat.baseUrl", "ftp://geheimer-host.example/secret-path");
         p.setProperty("embedding.dimension", "siebenhundert");
         p.setProperty("chat.temperature", "9.9");
-        p.setProperty("sources", "wiki");
-        p.setProperty("source.wiki.type", "mediawiki");
-        p.setProperty("source.wiki.apiUrl", "https://wiki.example/w/api.php");
-        p.setProperty("source.wiki.maxDepth", "-7");
-        // Wird erst vom Builder der Adapter-Konfiguration abgelehnt (Großbuchstaben); dessen Meldung nennt den Wert.
-        p.setProperty("source.wiki.siteKey", "Geheimer-SiteKey");
         try {
             AppConfigLoader.fromProperties(p);
             fail("expected AppConfigException");
@@ -180,15 +174,60 @@ public class AppConfigLoaderTest {
             assertTrue(message, message.contains("chat.baseUrl"));
             assertTrue(message, message.contains("embedding.dimension"));
             assertTrue(message, message.contains("chat.temperature"));
-            assertTrue(message, message.contains("source.wiki.maxDepth"));
-            assertTrue(message, message.contains("source.wiki.*"));
             assertFalse(message, message.contains("geheimer-host"));
             assertFalse(message, message.contains("secret-path"));
             assertFalse(message, message.contains("siebenhundert"));
             assertFalse(message, message.contains("9.9"));
-            assertFalse(message, message.contains("-7"));
-            assertFalse("verschachtelte Adapter-Meldungen dürfen den Wert nicht durchreichen: " + message,
-                    message.contains("Geheimer-SiteKey"));
+        }
+    }
+
+    @Test
+    public void brokenSourcesAreSkippedWithAWarningThatNamesKeysButNoValues() throws Exception {
+        Properties p = minimal();
+        p.setProperty("sources", "wiki, ok");
+        p.setProperty("source.wiki.type", "mediawiki");
+        p.setProperty("source.wiki.apiUrl", "https://wiki.example/w/api.php");
+        p.setProperty("source.wiki.maxDepth", "-7");
+        // Wird erst vom Builder der Adapter-Konfiguration abgelehnt (Großbuchstaben); dessen Meldung nennt den Wert.
+        p.setProperty("source.wiki.siteKey", "Geheimer-SiteKey");
+        p.setProperty("source.ok.type", "mediawiki");
+        p.setProperty("source.ok.apiUrl", "https://wiki.example/w/api.php");
+        p.setProperty("source.ok.startPoints", "Hauptseite");
+        AppConfig config = AppConfigLoader.fromProperties(p);
+        assertEquals(config.warnings().toString(), 1, config.sources().size());
+        assertEquals("ok", config.sources().get(0).sourceId().value());
+        String all = String.join("\n", config.warnings());
+        assertTrue(all, all.contains("Wissensquelle „wiki“ wird übersprungen"));
+        assertTrue(all, all.contains("source.wiki.maxDepth"));
+        assertTrue(all, all.contains("source.wiki.*"));
+        assertFalse("übersprungene Schlüssel sind keine unbekannten Schlüssel: " + all, all.contains("ignoriert"));
+        assertFalse(all, all.contains("-7"));
+        assertFalse("verschachtelte Adapter-Meldungen dürfen den Wert nicht durchreichen: " + all,
+                all.contains("Geheimer-SiteKey"));
+        try {
+            AppConfigLoader.sourceSection(p, "wiki");
+            fail("expected AppConfigException");
+        } catch (AppConfigException e) {
+            String message = String.join("\n", e.problems());
+            assertTrue(message, message.contains("source.wiki.maxDepth"));
+            assertFalse(message, message.contains("Geheimer-SiteKey"));
+        }
+        assertEquals("ok", AppConfigLoader.sourceSection(p, "ok").sourceId().value());
+    }
+
+    @Test
+    public void sourceEnabledDefaultsToTrueAndCanBeSwitchedOff() throws Exception {
+        Properties p = minimal();
+        p.setProperty("sources", "wiki");
+        p.setProperty("source.wiki.type", "mediawiki");
+        p.setProperty("source.wiki.apiUrl", "https://wiki.example/w/api.php");
+        p.setProperty("source.wiki.startPoints", "Hauptseite");
+        assertTrue(AppConfigLoader.fromProperties(p).sources().get(0).enabled());
+        p.setProperty("source.wiki.enabled", "false");
+        AppConfig config = AppConfigLoader.fromProperties(p);
+        assertFalse(config.sources().get(0).enabled());
+        for (String warning : config.warnings()) {
+            assertFalse(warning, warning.contains("source.wiki"));
         }
     }
 
@@ -236,20 +275,20 @@ public class AppConfigLoaderTest {
     }
 
     @Test
-    public void duplicateOrUnknownSourceTypesAreProblems() throws Exception {
+    public void duplicateOrUnknownSourceTypesAreSkippedWithWarnings() throws Exception {
         Properties p = minimal();
-        p.setProperty("sources", "a,a,b");
+        p.setProperty("sources", "a,a,b,Ungültig!");
         p.setProperty("source.a.type", "mediawiki");
         p.setProperty("source.a.apiUrl", "https://wiki.example/w/api.php");
+        p.setProperty("source.a.startPoints", "Hauptseite");
         p.setProperty("source.b.type", "sharepoint");
-        try {
-            AppConfigLoader.fromProperties(p);
-            fail("expected AppConfigException");
-        } catch (AppConfigException e) {
-            String all = String.join("\n", e.problems());
-            assertTrue(all, all.contains("sources"));
-            assertTrue(all, all.contains("source.b.type"));
-        }
+        AppConfig config = AppConfigLoader.fromProperties(p);
+        assertEquals(config.warnings().toString(), 1, config.sources().size());
+        assertEquals("a", config.sources().get(0).sourceId().value());
+        String all = String.join("\n", config.warnings());
+        assertTrue(all, all.contains("„a“ steht doppelt"));
+        assertTrue(all, all.contains("source.b.type"));
+        assertTrue(all, all.contains("„Ungültig!“ wird übersprungen"));
     }
 
     @Test

@@ -10,7 +10,11 @@ import com.aresstack.enterpriseai.app.ui.chat.KnowledgeStatusModel;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogDemo;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsPanel;
+import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
+import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
+import com.aresstack.enterpriseai.app.ui.settings.SourcePanel;
 import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
+import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceActions;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceItem;
 import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
@@ -110,8 +114,9 @@ public final class UiScreenshotDemo {
         scene.workspace.openDrawer();
         scene.workspace.ribbon().finishAnimation();
         write(scene.window, new File(dir, "E-sidebar-offen.png"));
-        scene.workspace.sidebar().showTab(ChatWorkspacePanel.KNOWLEDGE_TAB);
+        scene.workspace.showSidebarTab(ChatWorkspacePanel.KNOWLEDGE_TAB);
         write(scene.window, new File(dir, "E2-sidebar-wissensquellen.png"));
+        scene.workspace.showSidebarTab(scene.workspace.sidebar().tabTitles().get(0));
         scene.workspace.closeDrawer();
         scene.workspace.ribbon().finishAnimation();
 
@@ -153,8 +158,72 @@ public final class UiScreenshotDemo {
         dialog.add(settings, BorderLayout.CENTER);
         dialog.setSize(800, 680);
         write(dialog, new File(dir, "G-einstellungen.png"));
+        settings.selectTab(1);
+        write(dialog, new File(dir, "G1-einstellungen-wissensbasis.png"));
         settings.selectTab(3);
         write(dialog, new File(dir, "G2-einstellungen-netzwerk.png"));
+
+        // I: Quellen-Dialog aus dem Drawer-Reiter (✎ an einer Quelle)
+        SourcePanel source = new SourcePanel(SourceForm.builder("handbuch", SourceForm.TYPE_MEDIAWIKI)
+                .url("https://wiki.example.org/w/api.php").startPoints("Urlaub, Kündigung, Gleitzeit, Homeoffice")
+                .build(), "handbuch", new SourceActions() {
+                    @Override
+                    public List<SourceForm> sources() {
+                        return Collections.emptyList();
+                    }
+
+                    @Override
+                    public List<String> validate(SourceForm draft, String originalId) {
+                        return Collections.emptyList();
+                    }
+
+                    @Override
+                    public void save(SourceForm draft, String originalId) {
+                    }
+
+                    @Override
+                    public void remove(String id) {
+                    }
+
+                    @Override
+                    public void setEnabled(String id, boolean enabled) {
+                    }
+                }, palette);
+        source.setWindowControls(new ComicWindowCloseButton(palette, new Runnable() {
+            @Override
+            public void run() {
+            }
+        }, "Abbrechen", 24));
+        JPanel sourceDialog = new JPanel(new BorderLayout());
+        sourceDialog.setBackground(palette.getSurface());
+        sourceDialog.setBorder(ComicBorder.windowBorder(palette, 4));
+        sourceDialog.add(source, BorderLayout.CENTER);
+        sourceDialog.setSize(620, 600);
+        write(sourceDialog, new File(dir, "I-quelle-bearbeiten.png"));
+    }
+
+    /** Knöpfe des Reiters „Wissensquellen“ sind sichtbar aktiv; die Demo tut beim Klicken nichts. */
+    private static final class DemoSourceActions implements KnowledgeSourceActions {
+        @Override
+        public void enabledChanged(String sourceId, boolean enabled) {
+        }
+
+        @Override
+        public void indexRequested(String sourceId) {
+        }
+
+        @Override
+        public void editRequested(String sourceId) {
+        }
+
+        @Override
+        public void addRequested(String type) {
+        }
+
+        @Override
+        public boolean canAdd() {
+            return true;
+        }
     }
 
     /** Die Arbeitsfläche mit Chat- und Agent-Ansicht in einem fensterartigen Inhalt (Tintenrand, ✕). */
@@ -179,9 +248,15 @@ public final class UiScreenshotDemo {
                 agentShell = null;
             }
             workspace = new ChatWorkspacePanel(modes, chatShell, agentShell, palette);
+            workspace.setKnowledgeSourceActions(new DemoSourceActions());
             workspace.setKnowledgeSources(Arrays.asList(
-                    new KnowledgeSourceItem("handbuch", "mediawiki · Urlaub, Kündigung, Gleitzeit, Homeoffice"),
-                    new KnowledgeSourceItem("it-wiki", "confluence · IT")));
+                    new KnowledgeSourceItem("handbuch", "MediaWiki", "Urlaub, Kündigung, Gleitzeit, Homeoffice", true,
+                            "34 Seiten im Index · Stand 00:12", KnowledgeSourceItem.State.IDLE, true, true),
+                    new KnowledgeSourceItem("it-wiki", "Confluence", "IT", true, "Wird indexiert …",
+                            KnowledgeSourceItem.State.RUNNING, false, true),
+                    new KnowledgeSourceItem("archiv", "MediaWiki", "Archiv", false,
+                            "Abgewählt: wird nicht indexiert und nicht durchsucht", KnowledgeSourceItem.State.IDLE,
+                            false, true)));
             window = ShellFrame.content("Enterprise AI Client", workspace, palette, new Runnable() {
                 @Override
                 public void run() {

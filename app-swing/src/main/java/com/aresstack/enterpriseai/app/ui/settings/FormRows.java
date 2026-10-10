@@ -142,7 +142,7 @@ final class FormRows {
 
     /** Hinweis über beide Spalten; bricht um. */
     JLabel note(String text) {
-        JLabel note = new JLabel("<html><body style='width: " + NOTE_WIDTH + "px'>" + escape(text) + "</body></html>");
+        JLabel note = new JLabel(html(text));
         note.setForeground(MUTED);
         note.setFont(note.getFont().deriveFont(Font.PLAIN, Math.max(11f, note.getFont().getSize2D() - 1f)));
         GridBagConstraints c = new GridBagConstraints();
@@ -213,6 +213,11 @@ final class FormRows {
         }
         column.add(Box.createVerticalGlue());
         return column;
+    }
+
+    /** Umbrechender Hinweistext in der Breite von {@link #note}. */
+    static String html(String text) {
+        return "<html><body style='width: " + NOTE_WIDTH + "px'>" + escape(text) + "</body></html>";
     }
 
     static String escape(String text) {

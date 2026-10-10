@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.application.knowledge.IndexingStatus;
 import com.aresstack.enterpriseai.application.knowledge.ResourceIndexingOutcome;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
@@ -52,6 +53,20 @@ public final class KnowledgeIndexingBinding {
     private final LongSupplier clock;
     private final ZoneId zone;
     private boolean running;
+    private final List<RunListener> runListeners = new java.util.concurrent.CopyOnWriteArrayList<RunListener>();
+
+    /** Beobachtet Beginn und Ende jedes Laufs dieser Anbindung (Start-Indexierung wie Knopf); auf dem UI-Thread. */
+    public interface RunListener {
+        void started(KnowledgeSourceId sourceId);
+
+        void finished(IndexingReport report);
+    }
+
+    public void addRunListener(RunListener listener) {
+        if (listener != null) {
+            runListeners.add(listener);
+        }
+    }
 
     /**
      * @param uiExecutor   führt Änderungen am Status-Model auf dem UI-Thread aus
@@ -95,6 +110,9 @@ public final class KnowledgeIndexingBinding {
         }
         running = true;
         status.started("Indexierung von " + source.sourceId().value() + " …");
+        for (RunListener listener : runListeners) {
+            listener.started(source.sourceId());
+        }
         try {
             workExecutor.execute(new Runnable() {
                 @Override
@@ -105,6 +123,9 @@ public final class KnowledgeIndexingBinding {
                         public void run() {
                             running = false;
                             status.finished(summary(report, clock.getAsLong()));
+                            for (RunListener listener : runListeners) {
+                                listener.finished(report);
+                            }
                             if (onDone != null) {
                                 onDone.accept(report);
                             }

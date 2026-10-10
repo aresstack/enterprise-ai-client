@@ -9,13 +9,16 @@ import com.aresstack.enterpriseai.app.composition.StartupNotices;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppPaths;
+import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.app.net.ProxyPolicy;
 import com.aresstack.enterpriseai.app.net.TrustPolicy;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
+import com.aresstack.enterpriseai.app.settings.FileSourceActions;
 import com.aresstack.enterpriseai.app.settings.ConfigurationStartup;
 import com.aresstack.enterpriseai.app.settings.SettingsMapper;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialog;
+import com.aresstack.enterpriseai.app.ui.settings.SourceDialog;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsPanel;
@@ -139,6 +142,7 @@ public final class EnterpriseAiClientMain {
                     }
                 });
                 view.setSettingsAction(settingsAction(frame, file, settingsActions, palette));
+                attachSourceEditing(view, frame, file, palette);
                 frame.setVisible(true);
                 root.startBackgroundWork();
                 List<String> notices = new ArrayList<String>();
@@ -192,6 +196,16 @@ public final class EnterpriseAiClientMain {
                 }
             }
         };
+    }
+
+    /** Der Drawer-Reiter „Wissensquellen“ bearbeitet die Quellen der Datei über den Quellen-Dialog. */
+    private static void attachSourceEditing(ShellAssembly.ShellView view, final JFrame frame,
+                                            ConfigurationFile file, final ComicPalette palette) {
+        final FileSourceActions sources = new FileSourceActions(file);
+        view.knowledgeSources().setEditing(sources, sources::sourceConfig, (initial, originalId, actions) -> {
+            SourceDialog.Result result = SourceDialog.show(frame, initial, originalId, actions, palette);
+            return new KnowledgeSourcesController.SourceEditorLauncher.Result(result.outcome(), result.source());
+        });
     }
 
     private static void shutdownAndExit(final CompositionRoot root) {

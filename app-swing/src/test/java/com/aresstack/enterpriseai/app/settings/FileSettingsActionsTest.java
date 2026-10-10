@@ -133,11 +133,11 @@ public class FileSettingsActionsTest {
         String text = new String(Files.readAllBytes(file.path()), StandardCharsets.UTF_8);
         assertTrue(text, text.contains("\n#chat.systemPrompt=Antworte kurz.\n"));
         assertFalse(text, text.contains("\nchat.systemPrompt="));
-        assertTrue(text, text.contains("\n#sources=wiki\n"));
-        assertTrue(text, text.contains("\n#source.wiki.linkNamespaces=0\n"));
-        assertFalse(text, text.contains("\nsources="));
+        // Quellen verwaltet der Drawer-Reiter; der Einstellungen-Dialog lässt ihre Zeilen unverändert.
+        assertTrue(text, text.contains("\nsources=wiki\n"));
+        assertTrue(text, text.contains("\nsource.wiki.linkNamespaces=0\n"));
         AppConfig loaded = AppConfigLoader.load(file.path());
-        assertTrue(loaded.sources().isEmpty());
+        assertEquals(1, loaded.sources().size());
     }
 
     @Test
