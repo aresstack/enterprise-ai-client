@@ -77,9 +77,9 @@ final class ModuleRegistry {
                 // Der KIPITZ-Adapter bedient Katalog und Sprachausgabe seiner TTS-Modelle.
                 .module("model-kipitz", "model.kipitz", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
                         "http-api", "speech-api")
-                // Der Sidecar-Adapter bedient Katalog und Sprachausgabe über denselben Prozess.
+                // Der Sidecar-Adapter bedient Katalog, Chat, Embeddings und Sprachausgabe über denselben Prozess.
                 .module("model-sidecar", "model.sidecar", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
-                        "speech-api")
+                        "speech-api", "chat-api", "embedding-api")
 
                 // Sprachausgabe: neutraler Port (Modell aus der Katalog-Kategorie TTS, Audio als WAV).
                 .module("speech-api", "speech.api", ModuleKind.PORT, "Sprache", "domain")

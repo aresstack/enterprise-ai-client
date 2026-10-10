@@ -118,8 +118,8 @@ public final class EnterpriseAiClientMain {
         final ApplicationPorts ports;
         final CompositionRoot root;
         try {
-            ports = AdapterAssembly.create(config, network, new SwingPairingCallback(
-                    config.keePass().rpc().host() + ":" + config.keePass().rpc().port()));
+            ports = AdapterAssembly.createWithLocalModels(config, network, new SwingPairingCallback(
+                    config.keePass().rpc().host() + ":" + config.keePass().rpc().port()), modelCatalogs);
             if (networkConfig.proxyAuthMode() == ProxyAuthMode.BASIC && networkConfig.proxyCredentialRef() != null) {
                 ProxyAuthenticator.install(ports.secrets(), networkConfig.proxyCredentialRef());
             }

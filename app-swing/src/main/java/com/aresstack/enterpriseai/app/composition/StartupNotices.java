@@ -39,10 +39,10 @@ public final class StartupNotices {
         }
         for (ModelCategory category : new ModelCategory[] {ModelCategory.CHAT, ModelCategory.EMBEDDING}) {
             ModelReference selected = config.models().selections().get(category);
-            if (selected != null && !KipitzModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId())) {
-                notices.add(category.displayName() + ": gewählt ist ein lokales Modell. Chat und Embeddings laufen "
-                        + "bisher nur über die Enterprise-API; bitte unter Einstellungen → Modelle ein KIPITZ-Modell "
-                        + "wählen.");
+            if (selected != null && !KipitzModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId())
+                    && config.models().localSidecar() == null) {
+                notices.add(category.displayName() + ": gewählt ist ein lokales Modell, aber Java 21 und das "
+                        + "Sidecar-Jar fehlen (Einstellungen → Lokale Modelle); bis dahin scheitern diese Anfragen.");
             }
         }
         notices.addAll(config.warnings());

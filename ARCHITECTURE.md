@@ -68,7 +68,7 @@ Moduls liegen nur dort (geprüft).
 | `http-api` | PORT | `http.api` | domain | N (Netz) |
 | `model-api` | PORT | `model.api` | domain | Modellverwaltung |
 | `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api, speech-api | Modellverwaltung, Sprachausgabe |
-| `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api, speech-api | Modellverwaltung, Sprachausgabe |
+| `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api, speech-api, chat-api, embedding-api | Modellverwaltung, lokaler Chat/Embeddings (`/api/chat`, `/api/embed`), Sprachausgabe |
 | `speech-api` | PORT | `speech.api` | domain | Sprachausgabe (TTS über die Quelle des gewählten Modells: KIPITZ oder lokaler Sidecar) |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |

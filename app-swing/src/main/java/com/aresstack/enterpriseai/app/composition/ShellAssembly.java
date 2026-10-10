@@ -284,17 +284,21 @@ public final class ShellAssembly {
         }
 
         /**
-         * Die Modellliste des Composers aus dem Modellkatalog: die Chat-Modelle (Kategorie CHAT) der Enterprise-API
-         * aus dem zuletzt abgefragten Stand. Eine Wahl gilt ab der nächsten Nachricht und wird als {@code chat.model}
+         * Die Modellliste des Composers aus dem Modellkatalog: die Chat-Modelle (Kategorie CHAT) aller Quellen aus
+         * dem zuletzt abgefragten Stand. Eine Wahl gilt ab der nächsten Nachricht und wird als {@code chat.model}
          * gespeichert ({@code persist}, läuft nicht auf dem EDT).
          */
         public void setChatModels(final Supplier<ModelCatalogSnapshot> catalog, final Consumer<String> persist,
                                   final Executor worker) {
             composer.setModelChoices(() -> {
                 List<String> ids = new ArrayList<String>();
+                // Enterprise-Modelle ohne Präfix, alle anderen als <katalog>:<modell>; ausgeführt wird über den
+                // Katalog des Eintrags (ChatModelExecutorRegistry).
                 for (ModelDescriptor model : catalog.get().modelsFor(ModelCategory.CHAT)) {
-                    if (ModelsConfig.defaultCatalogId().equals(model.catalogId()) && !ids.contains(model.modelId())) {
-                        ids.add(model.modelId());
+                    String id = ModelsConfig.defaultCatalogId().equals(model.catalogId()) ? model.modelId()
+                            : model.catalogId() + ":" + model.modelId();
+                    if (!ids.contains(id)) {
+                        ids.add(id);
                     }
                 }
                 return ids;
