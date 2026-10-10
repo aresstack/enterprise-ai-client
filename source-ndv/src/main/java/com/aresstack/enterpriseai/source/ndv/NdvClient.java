@@ -184,18 +184,15 @@ class NdvClient implements Closeable {
             if (objects != null && objects.length > 0) {
                 int safetyLimit = 1000;
                 for (int p = 0; p < safetyLimit; p++) {
-                    try {
-                        IPalTypeObject[] more = pal.getObjectsNext();
-                        if (more == null || more.length == 0) break;
-                        List<NdvObjectInfo> morePage = toInfoList(more);
-                        total += morePage.size();
-                        LOG.fine("[NdvClient] getObjectsNext page " + (p + 1) + " returned " + morePage.size() + " objects");
-                        if (!morePage.isEmpty() && !callback.onPage(morePage, total)) {
-                            return total;
-                        }
-                    } catch (PalResultException done) {
-                        LOG.fine("[NdvClient] getObjectsNext ended (end of data)");
-                        break;
+                    // Ende der Daten ist ein leeres Array; eine PalResultException ist ein echter Fehler und darf
+                    // keine verkürzte Auflistung ergeben (sonst räumt der Index gültige Objekte ab).
+                    IPalTypeObject[] more = pal.getObjectsNext();
+                    if (more == null || more.length == 0) break;
+                    List<NdvObjectInfo> morePage = toInfoList(more);
+                    total += morePage.size();
+                    LOG.fine("[NdvClient] getObjectsNext page " + (p + 1) + " returned " + morePage.size() + " objects");
+                    if (!morePage.isEmpty() && !callback.onPage(morePage, total)) {
+                        return total;
                     }
                 }
             }
