@@ -118,7 +118,7 @@ public class AdapterAssemblyTest {
             assertTrue(unwrap(ports.sources().find(KnowledgeSourceId.of("confluence")).port())
                     instanceof ConfluenceKnowledgeSource);
             assertFalse("Agent-Modus ist in der Beispielkonfiguration aus", ports.hasAgent());
-            assertEquals(Arrays.asList("knowledge-index"), ports.resourceNames());
+            assertEquals(Arrays.asList("local-chat", "knowledge-index"), ports.resourceNames());
             assertFalse(ports.toString().toLowerCase().contains("password"));
         } finally {
             ports.close();
