@@ -4,8 +4,10 @@ import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowCloseButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowResizer;
+import com.aresstack.enterpriseai.ui.comic.control.ComicWindowShape;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicTheme;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
 
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -17,7 +19,8 @@ import java.awt.event.WindowEvent;
 /**
  * Das rahmenlose Hauptfenster: {@code setUndecorated(true)}, eine Tintenkontur als Fensterrand, dessen Polster
  * zugleich die Greifzone zum Vergrößern ist, die schlanke Kopfzeile der Arbeitsfläche als Zieh-Fläche und das
- * Comic-✕ ({@link ComicWindowCloseButton}) ganz rechts darin. Schließen läuft über {@code WINDOW_CLOSING}, damit
+ * Comic-✕ ({@link ComicWindowCloseButton}) ganz rechts darin. Die Ecken sind rund wie beim Windows-11-Rahmen des
+ * askai-Fensters ({@link ComicWindowShape}), maximiert eckig. Schließen läuft über {@code WINDOW_CLOSING}, damit
  * die Fenster-Listener der Composition Root (Shutdown) wie gewohnt greifen. Braucht ein Display; der
  * Headless-Start und der Smoke-Test der Composition Root berühren diese Klasse nicht.
  */
@@ -38,12 +41,14 @@ public final class ShellFrame {
         final JFrame frame = new JFrame(title == null ? "" : title);
         frame.setUndecorated(true);
         frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        frame.setContentPane(content(frame.getTitle(), workspace, palette, new Runnable() {
+        JPanel content = content(frame.getTitle(), workspace, palette, new Runnable() {
             @Override
             public void run() {
                 frame.dispatchEvent(new WindowEvent(frame, WindowEvent.WINDOW_CLOSING));
             }
-        }));
+        });
+        frame.setContentPane(content);
+        ComicWindowShape.install(frame, content, palette, WINDOW_PADDING, ResearchUiMetrics.RADIUS_WINDOW);
         frame.setMinimumSize(new Dimension(640, 480));
         frame.setSize(new Dimension(1040, 720));
         frame.setLocationRelativeTo(null);
