@@ -77,6 +77,12 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
      * Quellen behalten ihre zuletzt bekannten Modelle.
      */
     public ModelCatalogSnapshot refresh(AppConfig config, NetworkServices network, Supplier<String> token) {
+        synchronized (refreshLock) {
+            return refreshNow(config, network, token);
+        }
+    }
+
+    private ModelCatalogSnapshot refreshNow(AppConfig config, NetworkServices network, Supplier<String> token) {
         List<ModelCatalogPort> catalogs = new ArrayList<ModelCatalogPort>();
         catalogs.add(new KipitzModelCatalogAdapter(KipitzModelCatalogConfig.builder(config.chat().baseUrl())
                 .bearerToken(token)
@@ -91,10 +97,15 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
             catalogs.add(local);
         }
         ModelCatalogSnapshot snapshot = new UnifiedModelCatalog(catalogs, cache.read()).refresh();
+        if (local != null) {
+            stopIfReleased(local);
+        }
         LOG.info("Modellkatalog: " + snapshot);
         cache.write(snapshot);
         return snapshot;
     }
+
+    private final Object refreshLock = new Object();
 
     private synchronized LocalSidecarModelCatalogAdapter sidecar(LocalSidecarConfig config) {
         if (closed) {
@@ -108,6 +119,13 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
             sidecar = new LocalSidecarModelCatalogAdapter(config);
         }
         return sidecar;
+    }
+
+    /** Ein während der Abfrage ersetzter oder geschlossener Sidecar darf nicht weiterlaufen. */
+    private synchronized void stopIfReleased(LocalSidecarModelCatalogAdapter local) {
+        if (local != sidecar) {
+            local.close();
+        }
     }
 
     /** Beendet den Sidecar-Prozess; idempotent. */

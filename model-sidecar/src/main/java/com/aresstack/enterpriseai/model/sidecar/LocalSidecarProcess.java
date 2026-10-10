@@ -151,9 +151,19 @@ final class LocalSidecarProcess {
                 return null;
             }
             String value = url.getAsString();
-            return value.startsWith("http://127.0.0.1:") || value.startsWith("http://localhost:") ? value : null;
+            return isLoopback(value) ? value : null;
         } catch (RuntimeException notJson) {
             return null;
+        }
+    }
+
+    private static boolean isLoopback(String value) {
+        try {
+            java.net.URI uri = new java.net.URI(value);
+            return "http".equals(uri.getScheme()) && uri.getRawUserInfo() == null && uri.getPort() > 0
+                    && ("127.0.0.1".equals(uri.getHost()) || "localhost".equals(uri.getHost()));
+        } catch (java.net.URISyntaxException invalid) {
+            return false;
         }
     }
 
