@@ -22,7 +22,7 @@ import com.aresstack.enterpriseai.domain.security.SecretRef;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.StringReader;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -122,7 +122,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
             byte[] bytes = new byte[(int) (length - start)];
             in.seek(start);
             in.readFully(bytes);
-            String tail = new String(bytes, Charset.defaultCharset());
+            String tail = new String(bytes, StandardCharsets.UTF_8);
             if (start > 0) {
                 int firstLine = tail.indexOf('\n');
                 tail = firstLine < 0 ? tail : tail.substring(firstLine + 1);
