@@ -34,9 +34,10 @@ jobs:
     permissions:
       contents: write
     concurrency:
-      # Auf Branches ersetzt ein neuer Push den laufenden Snapshot-Lauf; auf main werden Läufe nacheinander
-      # abgearbeitet, damit kein Release halb fertig abgebrochen wird. Dieselbe Gruppe nutzt der Cleanup-Job.
-      group: release-${{ github.ref }}
+      # Auf Branches ersetzt ein neuer Push den laufenden Snapshot-Lauf; dieselbe Gruppe nutzt der Cleanup-Job.
+      # Auf main bekommt jeder Commit eine eigene Gruppe: Eine gemeinsame Gruppe hält nur einen wartenden Lauf, und
+      # GitHub bricht diesen ab, sobald ein weiterer Push kommt (so gingen die Releases 0.1.25 und 0.1.31 verloren).
+      group: ${{ github.ref == 'refs/heads/main' && format('release-main-{0}', github.sha) || format('release-{0}', github.ref) }}
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     env:
       GH_TOKEN: ${{ github.token }}
@@ -128,14 +129,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "::warning title=Kein Release angelegt::Tag $TAG existiert bereits. Die Version in gradle.properties wurde nicht erhöht; das Jar liegt nur als Workflow-Artefakt vor."
+          tag_exists() {
+            echo "::warning title=Kein Release angelegt::Tag $TAG existiert bereits (Commit $(git ls-remote --tags origin "refs/tags/$TAG" | cut -c1-12)). Dieser Lauf für Commit $GITHUB_SHA legt kein Release an, weil projectVersion in gradle.properties nicht erhöht wurde; das Jar liegt nur als Workflow-Artefakt vor."
             {
               echo "## Kein Release angelegt"
               echo
               echo "Tag \`$TAG\` existiert bereits. Die Version in \`gradle.properties\` wurde seit dem letzten Release nicht erhöht."
               echo "Das Jar \`$(basename "$JAR")\` liegt nur als Workflow-Artefakt dieses Laufs vor."
             } >> "$GITHUB_STEP_SUMMARY"
+          }
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            tag_exists
             exit 0
           fi
           notes="$(mktemp)"
@@ -147,11 +151,18 @@ jobs:
             echo "Commit: $GITHUB_SHA · Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo
           } > "$notes"
-          gh release create "$TAG" "$JAR" "$SIDECAR" \
+          # Läufe auf main laufen parallel; kam ein anderer Lauf mit derselben Version zuvor, endet dieser ohne Fehler.
+          if ! gh release create "$TAG" "$JAR" "$SIDECAR" \
             --target "$GITHUB_SHA" \
             --title "enterprise-ai-client $VERSION" \
             --notes-file "$notes" \
-            --generate-notes
+            --generate-notes; then
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              tag_exists
+              exit 0
+            fi
+            exit 1
+          fi
           {
             echo "## Release $TAG angelegt"
             echo
