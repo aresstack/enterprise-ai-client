@@ -25,6 +25,8 @@ final class CodeBlockPanel extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
         JLabel languageLabel = new JLabel(language == null || language.trim().isEmpty() ? "code" : language.trim());
+        // Die Sprachmarke stammt aus der Modellantwort: nie als Swing-HTML deuten (ein „<html>…“ bliebe Text).
+        languageLabel.putClientProperty("html.disable", Boolean.TRUE);
         languageLabel.setForeground(theme.getMutedForeground());
         languageLabel.setHorizontalAlignment(SwingConstants.LEFT);
         MarkdownActionButton copyButton = new MarkdownActionButton(

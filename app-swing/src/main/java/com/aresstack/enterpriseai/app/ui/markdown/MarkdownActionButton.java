@@ -18,6 +18,8 @@ import java.awt.RenderingHints;
  * Ein kleiner, rahmenloser Symbolknopf im Stil der Composer-Aktionen: kein Text, nur eine Strichglyphe in der
  * umgebenden Vordergrundfarbe, eine weiche abgerundete Hover-/Druck-Hervorhebung, Handcursor und Tooltip
  * (aus askai-java8 {@code MarkdownActionButton}). Für die Kopieraktionen an Codeblöcken und Mermaid-Diagrammen.
+ * Wie die Composer-Knöpfe per Tab erreichbar (Leertaste löst aus, die Hervorhebung zeigt den Fokus), ohne dass ein
+ * Mausklick dem Editor den Fokus nimmt.
  */
 final class MarkdownActionButton extends JButton {
 
@@ -32,7 +34,9 @@ final class MarkdownActionButton extends JButton {
         this.overlay = new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 32);
         setToolTipText(tooltip);
         getAccessibleContext().setAccessibleName(tooltip);
-        setFocusable(false);
+        setFocusable(true);
+        setRequestFocusEnabled(false);
+        setFocusPainted(false);
         setBorderPainted(false);
         setContentAreaFilled(false);
         setRolloverEnabled(true);
@@ -51,7 +55,7 @@ final class MarkdownActionButton extends JButton {
             if (getModel().isPressed()) {
                 g2.setColor(overlay.darker());
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-            } else if (getModel().isRollover()) {
+            } else if (getModel().isRollover() || isFocusOwner()) {
                 g2.setColor(overlay);
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
             }

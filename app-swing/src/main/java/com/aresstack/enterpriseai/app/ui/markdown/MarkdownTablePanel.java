@@ -6,11 +6,14 @@ import com.vladsch.flexmark.ext.tables.TableRow;
 import com.vladsch.flexmark.util.ast.Node;
 
 import javax.swing.BorderFactory;
+import javax.swing.JComponent;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
+import javax.swing.table.TableCellRenderer;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.util.ArrayList;
@@ -33,6 +36,7 @@ final class MarkdownTablePanel extends JScrollPane {
         table.setRowHeight(table.getFontMetrics(table.getFont()).getHeight() + 8);
         JTableHeader header = table.getTableHeader();
         header.setFont(theme.getBodyFont().deriveFont(Font.BOLD));
+        disableHtml(table, header);
         fitColumns(table);
 
         setViewportView(table);
@@ -42,6 +46,17 @@ final class MarkdownTablePanel extends JScrollPane {
         setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_AS_NEEDED);
         int height = header.getPreferredSize().height + table.getRowHeight() * Math.max(1, table.getRowCount()) + 4;
         setPreferredSize(new Dimension(400, Math.min(320, height)));
+    }
+
+    /** Zellen und Spaltentitel stammen aus der Modellantwort: nie als Swing-HTML deuten (ein „<html>…“ bleibt Text). */
+    private static void disableHtml(JTable table, JTableHeader header) {
+        DefaultTableCellRenderer cellRenderer = new DefaultTableCellRenderer();
+        cellRenderer.putClientProperty("html.disable", Boolean.TRUE);
+        table.setDefaultRenderer(Object.class, cellRenderer);
+        TableCellRenderer headerRenderer = header.getDefaultRenderer();
+        if (headerRenderer instanceof JComponent) {
+            ((JComponent) headerRenderer).putClientProperty("html.disable", Boolean.TRUE);
+        }
     }
 
     private static DefaultTableModel createModel(TableBlock tableBlock) {
