@@ -32,6 +32,8 @@ dependencies {
     implementation project(':source-sharepoint')
     // Outlook-Postfachdateien (PST/OST), lokal.
     implementation project(':source-outlook')
+    // BetaView über HTTP, Anmeldung über KeePass.
+    implementation project(':source-betaview')
     implementation project(':resource-api')
     implementation project(':resource-holkas')
     implementation project(':document-tika')

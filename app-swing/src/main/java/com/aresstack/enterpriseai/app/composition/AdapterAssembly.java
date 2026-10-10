@@ -49,6 +49,7 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
+import com.aresstack.enterpriseai.source.betaview.BetaViewSourceProvider;
 import com.aresstack.enterpriseai.source.confluence.ConfluenceSourceProvider;
 import com.aresstack.enterpriseai.source.ftp.FtpSourceProvider;
 import com.aresstack.enterpriseai.source.ftp.JesSourceProvider;
@@ -253,6 +254,8 @@ public final class AdapterAssembly {
         providers.add(new SharePointSourceProvider(secrets, DocumentExtraction.detector(),
                 DocumentExtraction.registry()));
         providers.add(new OutlookSourceProvider());
+        providers.add(new BetaViewSourceProvider(secrets, network.routes(), network.tls(), network.userAgent(),
+                DocumentExtraction.detector(), DocumentExtraction.registry()));
         return providers;
     }
 

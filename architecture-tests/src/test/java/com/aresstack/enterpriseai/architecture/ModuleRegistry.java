@@ -70,6 +70,9 @@ final class ModuleRegistry {
                 // Outlook-Postfachdateien (PST/OST): java-libpst adapterintern, Auswahl aus MainframeMate.
                 .module("source-outlook", "source.outlook", ModuleKind.ADAPTER, "Quellen",
                         "domain", "source-api")
+                // BetaView: HTTP-Client, Suche und Download aus MainframeMate, Anmeldung über security-api.
+                .module("source-betaview", "source.betaview", ModuleKind.ADAPTER, "Quellen",
+                        "domain", "source-api", "security-api", "http-api", "document-api")
 
                 // Ressourcenschicht aus corenth: AcquisitionPort und Bronze-Typen (Port), Holkas-Connectoren über
                 // den Quellen-Ports (äußerer Adapterring, keine UI-API).
@@ -113,7 +116,8 @@ final class ModuleRegistry {
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
                         "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api", "source-ftp",
-                        "source-ndv", "source-sharepoint", "source-outlook")
+                        "source-ndv", "source-sharepoint", "source-outlook",
+                        "source-betaview")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

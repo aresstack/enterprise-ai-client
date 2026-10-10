@@ -1,0 +1,9 @@
+description = 'Adapter: BetaView-Dokumente (Listen, Reports) als Knowledge Source. HTTP-Client, Suche und Download aus MainframeMate (betaview-integration), jsoup adapterintern, Zugangsdaten über security-api, Extraktion über document-api.'
+
+dependencies {
+    api project(':source-api')
+    api project(':security-api')
+    api project(':http-api')
+    api project(':document-api')
+    implementation libs.jsoup
+}
