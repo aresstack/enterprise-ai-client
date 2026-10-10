@@ -39,6 +39,11 @@ include 'source-localfiles'
 include 'document-api'
 include 'document-tika'
 
+// Modellverwaltung: Katalog-Port, Enterprise-API-Katalog (KIPITZ), optionaler lokaler Java-21-Sidecar
+include 'model-api'
+include 'model-kipitz'
+include 'model-sidecar'
+
 // Strang F – Security
 include 'security-api'
 include 'security-keepassrpc'

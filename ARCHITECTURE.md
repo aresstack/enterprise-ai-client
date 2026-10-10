@@ -63,6 +63,9 @@ Moduls liegen nur dort (geprüft).
 | `document-api` | PORT | `document.api` | domain | Dokumente (corenth deigma) |
 | `document-tika` | ADAPTER | `document.tika` | document-api | Dokumente (Tika) |
 | `http-api` | PORT | `http.api` | domain | N (Netz) |
+| `model-api` | PORT | `model.api` | domain | Modellverwaltung |
+| `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api | Modellverwaltung |
+| `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api | Modellverwaltung |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |
 | `acp-client-api` | PORT | `acp.api` | domain | G (AP16) |

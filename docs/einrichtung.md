@@ -94,9 +94,10 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 
 | Reiter | Schlüssel |
 |---|---|
-| KI-Dienst | `chat.baseUrl`, `chat.model`, `chat.apiKeyRef` (mit „In KeePass prüfen“), `chat.systemPrompt`; `embedding.baseUrl`, `embedding.model`, `embedding.dimension`, `embedding.apiKeyRef` |
+| KI-Dienst | `chat.baseUrl`, `chat.apiKeyRef` (mit „In KeePass prüfen“), `chat.systemPrompt`; `embedding.baseUrl`, `embedding.dimension`, `embedding.apiKeyRef` |
 | KeePass | `security.keepass.enabled`, `host`, `port`, `clientDisplayName`, `pairingKeyStore`; „In KeePass prüfen“ mit dem Eintrag des API-Keys |
 | Netzwerk & Agent | `ui.windowTitle`; Proxy-Auflösung wie AskAI (`network.proxy.mode` mit den Modi von win-proxy-java, PAC-URL/Ermittlungsskript, Host/Port, Test-URL, Timeout, „Proxy auflösen“, „HTTPS-Verbindung testen“); TLS-Quellen (`network.tls.*`); User-Agent, Prefer IPv6, Proxy-Anmeldung NONE/BASIC (KeePass-Eintrag); Agent-Modus. „Verbindung testen“ steht im Reiter KI-Dienst. |
+| Modelle | je Kategorie ein Modell: `chat.model`, `embedding.model`, `model.rerank`, `model.tts`, `model.stt`, `model.vision`, `model.documentOcr`, `model.imageEmbedding` (lokale mit Präfix `local:`); „Modelle aktualisieren“; lokaler Sidecar `models.local.java`, `models.local.sidecarJar`, `models.local.modelRoot` |
 
 - **Wissensquellen und Index** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet `sources` und je
   Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki

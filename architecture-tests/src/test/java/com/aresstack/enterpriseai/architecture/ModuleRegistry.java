@@ -33,7 +33,7 @@ final class ModuleRegistry {
                 .module("domain", "domain", ModuleKind.DOMAIN, "Kern")
                 .module("application", "application", ModuleKind.APPLICATION, "Kern (AP10, AP20, AP21, AP23)",
                         "domain", "chat-api", "embedding-api", "knowledge-api", "source-api", "security-api",
-                        "acp-client-api", "mcp-runtime-api")
+                        "acp-client-api", "mcp-runtime-api", "model-api")
 
                 .module("chat-api", "chat.api", ModuleKind.PORT, "A", "domain")
                 .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "domain", "chat-api", "http-api")
@@ -62,6 +62,13 @@ final class ModuleRegistry {
                 .module("document-api", "document.api", ModuleKind.PORT, "Dokumente", "domain")
                 .module("document-tika", "document.tika", ModuleKind.ADAPTER, "Dokumente", "document-api")
 
+                // Modellverwaltung nach Kategorien: neutraler Katalog-Port, KIPITZ über GET /models, optionaler
+                // lokaler Java-21-Sidecar (askai-java8 arch, ohne Installer).
+                .module("model-api", "model.api", ModuleKind.PORT, "Modelle", "domain")
+                .module("model-kipitz", "model.kipitz", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
+                        "http-api")
+                .module("model-sidecar", "model.sidecar", ModuleKind.ADAPTER, "Modelle", "domain", "model-api")
+
                 .module("security-api", "security.api", ModuleKind.PORT, "F", "domain")
                 .module("security-keepassrpc", "security.keepassrpc", ModuleKind.ADAPTER, "F", "domain", "security-api")
 
@@ -79,7 +86,8 @@ final class ModuleRegistry {
                         "acp-client-api", "mcp-runtime-api", "http-api",
                         "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
-                        "comic-controls", "document-api", "document-tika", "source-localfiles")
+                        "comic-controls", "document-api", "document-tika", "source-localfiles",
+                        "model-api", "model-kipitz", "model-sidecar")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

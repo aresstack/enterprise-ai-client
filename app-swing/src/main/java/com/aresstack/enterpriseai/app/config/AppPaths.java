@@ -22,6 +22,8 @@ public final class AppPaths {
     public static final String INDEX_DIRECTORY_NAME = "index";
     public static final String PAIRING_KEY_FILE_NAME = "keepassrpc-pairing.key";
     public static final String LOG_DIRECTORY_NAME = "logs";
+    /** Zwischenspeicher der letzten Modellabfrage (Reiter „Modelle“). */
+    public static final String MODEL_CATALOG_FILE_NAME = "model-catalog.properties";
 
     private AppPaths() {
     }
