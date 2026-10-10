@@ -4,12 +4,13 @@ import com.aresstack.enterpriseai.app.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.app.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.app.composition.CompositionRoot;
 import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
-import com.aresstack.enterpriseai.app.speech.ReadAloudBinding;
+import com.aresstack.enterpriseai.app.speech.SwitchableReadAloud;
 import com.aresstack.enterpriseai.app.speech.SpeechOutput;
 import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
 import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
@@ -135,9 +136,9 @@ public final class EnterpriseAiClientMain {
         // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über die Quelle dieses Modells (Enterprise-API oder
         // lokaler Sidecar, derselbe Prozess wie der Katalog); ohne TTS-Modell oder ohne Java 21 für ein lokales
         // bleibt sie aus und der Lautsprecher-Knopf nennt den Grund.
-        final ReadAloudBinding readAloud = SpeechOutput.readAloud(config.models(),
-                modelCatalogs.speech(config, network, chatToken(config, ports)));
-        LOG.info("Sprachausgabe: " + readAloud.description());
+        final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
+                modelCatalogs.speech(config, config.models(), network, chatToken(config, ports))));
+        LOG.info("Sprachausgabe: " + readAloud.currentDescription());
         root.shutdown().then("read-aloud", new Runnable() {
             @Override
             public void run() {
@@ -167,7 +168,12 @@ public final class EnterpriseAiClientMain {
                         shutdownAndExit(root);
                     }
                 });
-                view.setSettingsAction(settingsAction(frame, file, settingsActions, palette));
+                view.setSettingsAction(settingsAction(frame, file, settingsActions, palette, new Runnable() {
+                    @Override
+                    public void run() {
+                        rebindSpeech(readAloud, file, started, modelCatalogs, network, ports);
+                    }
+                }));
                 view.setChatModels(modelCatalogs::cached, modelId -> {
                     try {
                         file.update(Collections.singletonMap(ModelsConfig.keyOf(ModelCategory.CHAT), modelId), null, null);
@@ -199,10 +205,12 @@ public final class EnterpriseAiClientMain {
     /**
      * Das Zahnrad im Drawer: öffnet den Dialog mit den Werten der Datei. Gespeichert wird in die Datei; der
      * laufende Graph ist mit der alten Konfiguration gebaut, deshalb gelten Änderungen beim nächsten Start
-     * (Angebot, jetzt zu beenden).
+     * (Angebot, jetzt zu beenden). Ausnahme wie die Chat-Auswahl: TTS-Modell und Vorlesen gelten sofort
+     * ({@code afterSave}).
      */
     private static Runnable settingsAction(final JFrame frame, final ConfigurationFile file,
-                                           final SettingsDialogActions actions, final ComicPalette palette) {
+                                           final SettingsDialogActions actions, final ComicPalette palette,
+                                           final Runnable afterSave) {
         return new Runnable() {
             @Override
             public void run() {
@@ -220,9 +228,11 @@ public final class EnterpriseAiClientMain {
                 if (saved == null) {
                     return;
                 }
-                LOG.info("Einstellungen gespeichert; sie gelten beim nächsten Start");
+                LOG.info("Einstellungen gespeichert; sie gelten beim nächsten Start, die Sprachausgabe sofort");
+                afterSave.run();
                 offerRestart(frame, "Einstellungen gespeichert",
-                        "Die Einstellungen sind gespeichert. Sie gelten beim nächsten Start der Anwendung.");
+                        "Die Einstellungen sind gespeichert. Die Sprachausgabe gilt sofort, alles andere beim "
+                                + "nächsten Start der Anwendung.");
             }
         };
     }
@@ -231,6 +241,22 @@ public final class EnterpriseAiClientMain {
      * Fragt die Modellquellen (KIPITZ {@code GET /models}, optional den lokalen Sidecar) einmal im Hintergrund ab,
      * damit der Reiter „Modelle“ aktuelle Listen hat; blockiert weder Start noch EDT. Fehler landen nur im Protokoll.
      */
+    /**
+     * Liest die gespeicherte Datei neu und bindet die Sprachausgabe an die neue TTS-Auswahl (auf dem EDT). Nur die
+     * Modellwerte sind neu; Endpunkt, Netz und Token bleiben die des laufenden Graphen (gelten beim nächsten Start).
+     */
+    private static void rebindSpeech(SwitchableReadAloud readAloud, ConfigurationFile file, AppConfig running,
+                                     ModelCatalogs catalogs, NetworkServices network, ApplicationPorts ports) {
+        try {
+            ModelsConfig saved = AppConfigLoader.load(file.path()).models();
+            readAloud.replace(SpeechOutput.readAloud(saved,
+                    catalogs.speech(running, saved, network, chatToken(running, ports))));
+            LOG.info("Sprachausgabe: " + readAloud.currentDescription());
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Sprachausgabe nicht neu gebunden; sie gilt beim nächsten Start", e);
+        }
+    }
+
     /** Das Bearer-Token des Chats, je Anfrage aus dem Secret-Port geholt. */
     private static java.util.function.Supplier<String> chatToken(final AppConfig config,
                                                                  final ApplicationPorts ports) {
