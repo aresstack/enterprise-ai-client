@@ -25,7 +25,7 @@ public final class AgentModeAssembly {
         ChatShellModel model = new ChatShellModel(clock);
         AgentServiceBinding binding = new AgentServiceBinding(agentService, model, uiExecutor);
         ChatShellPanel shell = new ChatShellPanel(model, binding, comicPalette, bubblePalette);
-        shell.composer().setRagToggleVisible(false);
+        shell.composer().setModelControlsVisible(false);
         return new AgentView(shell, model, binding);
     }
 

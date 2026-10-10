@@ -383,14 +383,12 @@ public class RagShellIntegrationTest {
         return done.get();
     }
 
-    /** Tippt die Frage in die Eingabezeile, setzt den RAG-Schalter und sendet über die Oberfläche. */
+    /** Tippt die Frage in die Eingabezeile, setzt die Wissenssuche im Model und sendet über die Oberfläche. */
     private void ask(final String question, final boolean rag) throws Exception {
         onEdt(new Runnable() {
             @Override
             public void run() {
-                if (shell.panel.composer().ragToggle().isSelected() != rag) {
-                    shell.panel.composer().ragToggle().doClick();
-                }
+                shell.model.setRagEnabled(rag);
                 assertEquals(rag, shell.model.isRagEnabled());
                 shell.panel.composer().editor().setText(question);
                 assertTrue(shell.panel.composer().sendButton().isEnabled());

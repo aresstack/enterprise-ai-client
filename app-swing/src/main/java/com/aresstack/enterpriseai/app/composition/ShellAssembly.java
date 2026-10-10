@@ -79,6 +79,7 @@ public final class ShellAssembly {
         final ChatHistoryBinding history = new ChatHistoryBinding(new FileChatHistoryStore(chatsDirectory),
                 chatService, chatActions, chatModel, systemPrompt, root.clock());
         ChatShellPanel chatShell = new ChatShellPanel(chatModel, chatActions, root.knowledgeStatus(), palette, bubbles);
+        chatShell.composer().setModelName(root.config().chat().model());
 
         final AgentModeAssembly.AgentView agent;
         final AgentService agentService;
@@ -96,8 +97,19 @@ public final class ShellAssembly {
         final KnowledgeSourcesController sources = knowledgeSources(root);
         workspace.setKnowledgeSourceActions(sources);
         final ChatWorkspacePanel drawer = workspace;
-        sources.attach(items -> drawer.setKnowledgeSources(items));
+        // Kein RAG-Schalter (wie askai arch): gesucht wird, sobald Wissensquellen konfiguriert sind; welche, sagen
+        // die Häkchen im Reiter „Wissensquellen“.
+        sources.attach(items -> {
+            drawer.setKnowledgeSources(items);
+            chatModel.setRagEnabled(!items.isEmpty());
+        });
         final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources);
+        chatShell.composer().setModelAction(() -> {
+            Runnable action = view.settingsAction();
+            if (action != null) {
+                action.run();
+            }
+        });
         workspace.setActions(new WorkspaceActions() {
             @Override
             public void newChatRequested(ShellMode mode) {

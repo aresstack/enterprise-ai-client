@@ -274,7 +274,7 @@ public final class UiScreenshotDemo {
             chatModel.setRagEnabled(true);
             if (agent) {
                 agentShell = new ChatShellPanel(agentModel, new NoActions(), palette, bubbles);
-                agentShell.composer().setRagToggleVisible(false);
+                agentShell.composer().setModelControlsVisible(false);
             } else {
                 agentShell = null;
             }

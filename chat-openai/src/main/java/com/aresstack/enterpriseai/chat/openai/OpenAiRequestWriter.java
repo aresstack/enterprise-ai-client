@@ -52,6 +52,10 @@ final class OpenAiRequestWriter {
         if (options.endUserId() != null) {
             body.addProperty("user", options.endUserId());
         }
+        if (options.reasoningEffort() != null) {
+            // Nur wenn im Composer gewählt; gegen das Gateway UNVERIFIED.
+            body.addProperty("reasoning_effort", options.reasoningEffort());
+        }
         // "n" wird bewusst nie gesendet: der Server akzeptiert es, ignoriert es aber.
         return body.toString();
     }
