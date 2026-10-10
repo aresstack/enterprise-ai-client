@@ -44,15 +44,6 @@ public class ComicWindowDraggerTest {
     }
 
     @Test
-    public void aWindowThePlatformLeftAtFullSizeShrinksToThreeQuarters() {
-        Rectangle usable = new Rectangle(0, 0, 1920, 1040);
-        assertEquals(new Rectangle(240, 130, 1440, 780),
-                ComicWindowDragger.fallbackBounds(usable, new Dimension(640, 480)));
-        assertEquals("never below the minimum size", new Rectangle(0, 0, 800, 600),
-                ComicWindowDragger.fallbackBounds(new Rectangle(0, 0, 800, 600), new Dimension(800, 600)));
-    }
-
-    @Test
     public void nonFramesAreNeverMaximized() {
         assertFalse(ComicWindowDragger.isMaximized(null));
         assertNull(ComicWindowDragger.restore(null));

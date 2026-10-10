@@ -28,7 +28,8 @@ import java.awt.event.MouseEvent;
  * once more instead of restoring; X11 without a window manager does not support it at all). Instead the
  * frame's bounds before maximizing are kept on its root pane and the frame covers the usable area of its
  * screen (the taskbar stays visible). A frame the platform maximized itself (e.g. Windows+Up) is
- * restored through its extended state.
+ * restored through its extended state; the platform then applies its own saved geometry later, so such
+ * a frame is not dragged out of the maximized state.
  */
 public final class ComicWindowDragger {
 
@@ -147,7 +148,9 @@ public final class ComicWindowDragger {
     /**
      * Bring a maximized frame back to its bounds before maximizing.
      *
-     * @return the frame's bounds afterwards, or {@code null} when the window was not a maximized frame
+     * @return the frame's bounds afterwards when this class maximized it; {@code null} when the window was not
+     *         a maximized frame or the platform maximized it (its restore completes asynchronously, with the
+     *         platform's own saved geometry)
      */
     public static Rectangle restore(Window window) {
         if (!(window instanceof Frame) || !isMaximized(window)) {
@@ -158,15 +161,11 @@ public final class ComicWindowDragger {
         if (platformMaximized(frame)) {
             frame.setExtendedState(frame.getExtendedState() & ~Frame.MAXIMIZED_BOTH);
         }
-        if (normal != null) {
-            rootPane(window).putClientProperty(NORMAL_BOUNDS, null);
-            frame.setBounds(normal);
-        } else {
-            Rectangle usable = usableBounds(frame.getGraphicsConfiguration());
-            if (frame.getBounds().equals(usable)) {
-                frame.setBounds(fallbackBounds(usable, frame.getMinimumSize())); // Plattform ließ die Größe stehen
-            }
+        if (normal == null) {
+            return null;
         }
+        rootPane(window).putClientProperty(NORMAL_BOUNDS, null);
+        frame.setBounds(normal);
         frame.validate();
         return frame.getBounds();
     }
@@ -197,14 +196,6 @@ public final class ComicWindowDragger {
         double ratio = maximized.width <= 0 ? 0.5 : (grab.x - maximized.x) / (double) maximized.width;
         ratio = Math.max(0d, Math.min(1d, ratio));
         return new Point(grab.x - (int) Math.round(ratio * normal.width), maximized.y);
-    }
-
-    /** Three quarters of the usable area, centred, never below {@code minimum}. */
-    static Rectangle fallbackBounds(Rectangle usable, Dimension minimum) {
-        int width = Math.max(minimum == null ? 0 : minimum.width, usable.width * 3 / 4);
-        int height = Math.max(minimum == null ? 0 : minimum.height, usable.height * 3 / 4);
-        return new Rectangle(usable.x + (usable.width - width) / 2, usable.y + (usable.height - height) / 2,
-                width, height);
     }
 
     private static boolean platformMaximized(Frame frame) {

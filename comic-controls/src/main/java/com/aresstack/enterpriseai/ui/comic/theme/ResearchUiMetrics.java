@@ -12,6 +12,11 @@ public final class ResearchUiMetrics {
     public static final int RADIUS_SECONDARY = 12;
     /** Corner radius of the blacklist chips. */
     public static final int RADIUS_CHIP = 18;
+    /**
+     * Corner radius of a frameless window: the 8px that Windows 11 gives the decorated askai window
+     * (its frame comes from the operating system), so the frameless client keeps the same round corners.
+     */
+    public static final int RADIUS_WINDOW = 8;
 
     /** "+ Neuer Chat" button. */
     public static final int NEW_CHAT_HEIGHT = 36;
