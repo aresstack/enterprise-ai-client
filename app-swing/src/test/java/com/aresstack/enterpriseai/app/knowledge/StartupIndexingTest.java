@@ -154,6 +154,8 @@ public class StartupIndexingTest {
         assertTrue(selection.isRestricted());
         assertTrue(selection.allowedSources().isEmpty());
         selection.unregister(a);
+        selection.unregister(b);
         assertFalse(selection.isRegistered(a));
+        assertTrue("nach dem Entfernen der letzten Quelle bleibt die Suche eingeschränkt", selection.isRestricted());
     }
 }

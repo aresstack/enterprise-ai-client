@@ -17,6 +17,8 @@ import java.util.Set;
 public final class KnowledgeSourceSelection implements RagSourceFilter {
 
     private final Map<KnowledgeSourceId, Boolean> sources = new LinkedHashMap<KnowledgeSourceId, Boolean>();
+    /** Einmal verwaltet, bleibt die Auswahl einschränkend: entfernte Quellen tauchen nicht über den Index wieder auf. */
+    private boolean managed;
 
     /** Bindet eine Quelle an (oder setzt ihr Häkchen neu). */
     public synchronized void register(KnowledgeSourceId id, boolean enabled) {
@@ -24,6 +26,7 @@ public final class KnowledgeSourceSelection implements RagSourceFilter {
             throw new IllegalArgumentException("id must not be null");
         }
         sources.put(id, enabled);
+        managed = true;
     }
 
     /** Die Quelle ist nicht mehr konfiguriert: RAG durchsucht sie nicht mehr. */
@@ -50,7 +53,7 @@ public final class KnowledgeSourceSelection implements RagSourceFilter {
 
     @Override
     public synchronized boolean isRestricted() {
-        return !sources.isEmpty();
+        return managed;
     }
 
     @Override
