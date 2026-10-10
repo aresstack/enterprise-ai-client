@@ -28,6 +28,8 @@ dependencies {
     implementation project(':source-ftp')
     // Natural über NDV, Anmeldung über KeePass.
     implementation project(':source-ndv')
+    // SharePoint über WebDAV (SSO, sonst KeePass).
+    implementation project(':source-sharepoint')
     implementation project(':resource-api')
     implementation project(':resource-holkas')
     implementation project(':document-tika')

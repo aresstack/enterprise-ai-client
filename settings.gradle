@@ -38,6 +38,8 @@ include 'source-localfiles'
 include 'source-ftp'
 // Mainframe: Natural über NDV
 include 'source-ndv'
+// SharePoint über WebDAV
+include 'source-sharepoint'
 
 // Ressourcenschicht aus corenth: Port (AcquisitionPort, Bronze) und Holkas-Connectoren über den Quellen
 include 'resource-api'

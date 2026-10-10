@@ -55,6 +55,7 @@ import com.aresstack.enterpriseai.source.ftp.JesSourceProvider;
 import com.aresstack.enterpriseai.source.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.source.ndv.NdvSourceProvider;
+import com.aresstack.enterpriseai.source.sharepoint.SharePointSourceProvider;
 
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -248,6 +249,8 @@ public final class AdapterAssembly {
         providers.add(new FtpSourceProvider(secrets));
         providers.add(new NdvSourceProvider(secrets));
         providers.add(new JesSourceProvider(secrets));
+        providers.add(new SharePointSourceProvider(secrets, DocumentExtraction.detector(),
+                DocumentExtraction.registry()));
         return providers;
     }
 

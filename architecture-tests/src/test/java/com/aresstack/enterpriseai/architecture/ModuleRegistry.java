@@ -63,6 +63,10 @@ final class ModuleRegistry {
                 // NDV (Natural Development Server): NATSPOD/PAL aus MainframeMate, Anmeldung über security-api.
                 .module("source-ndv", "source.ndv", ModuleKind.ADAPTER, "Quellen",
                         "domain", "source-api", "security-api")
+                // SharePoint über WebDAV (UNC, WebClient): Anmeldung SSO-first aus MainframeMate, Extraktion über
+                // document-api.
+                .module("source-sharepoint", "source.sharepoint", ModuleKind.ADAPTER, "Quellen",
+                        "domain", "source-api", "security-api", "document-api")
 
                 // Ressourcenschicht aus corenth: AcquisitionPort und Bronze-Typen (Port), Holkas-Connectoren über
                 // den Quellen-Ports (äußerer Adapterring, keine UI-API).
@@ -106,7 +110,7 @@ final class ModuleRegistry {
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
                         "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api", "source-ftp",
-                        "source-ndv")
+                        "source-ndv", "source-sharepoint")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

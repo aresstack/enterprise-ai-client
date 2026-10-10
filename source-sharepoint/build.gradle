@@ -1,0 +1,7 @@
+description = 'Adapter: SharePoint-Dokumentbibliothek über WebDAV (Windows-WebClient, UNC) als Knowledge Source. Anmeldung SSO-first aus MainframeMate (sharepoint), Fallback-Zugangsdaten über security-api, Extraktion über document-api.'
+
+dependencies {
+    api project(':source-api')
+    api project(':security-api')
+    api project(':document-api')
+}
