@@ -8,7 +8,7 @@ import com.aresstack.enterpriseai.app.composition.CompositionRoot;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
-import com.aresstack.enterpriseai.app.net.ProxyPolicy;
+import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.ui.chat.ChatComposerPanel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.SourceReference;
@@ -158,7 +158,7 @@ public class ConfiguredApplicationSliceTest {
         p.setProperty("security.keepass.port", String.valueOf(keePass.boundPort()));
         p.setProperty("security.keepass.pairingKeyStore", "memory");
         p.setProperty("security.keepass.timeoutMillis", "10000");
-        p.setProperty("network.proxy.mode", "NONE");
+        p.setProperty("network.proxy.mode", "DISABLED");
         AppConfig config = AppConfigLoader.fromProperties(p);
         assertTrue(config.warnings().toString(), config.warnings().isEmpty());
         return config;
@@ -167,7 +167,7 @@ public class ConfiguredApplicationSliceTest {
     @Test
     public void configuredApplicationIndexesBothSourcesWithKeePassCredentialsAndAnswersWithSources() throws Exception {
         AppConfig config = config();
-        ports = AdapterAssembly.create(config, new ProxyPolicy(config.network()), clientDisplayName -> {
+        ports = AdapterAssembly.create(config, NetworkServices.from(config.network()), clientDisplayName -> {
             pairings.incrementAndGet();
             return keePass.pairingPassword().toCharArray();
         }, new InMemoryPairingKeyStore());

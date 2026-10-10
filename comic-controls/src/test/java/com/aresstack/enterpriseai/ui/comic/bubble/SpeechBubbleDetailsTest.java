@@ -15,7 +15,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class SpeechBubbleDetailsTest {
 
-    private static final String DETAILS = "Technische Ursache: connection to demo2.kipitz.de failed: "
+    private static final String DETAILS = "Technische Ursache: connection to ki.intern.example failed: "
             + "UnknownHostException\nHinweis: Proxy-Modus AUTO/MANUAL in den Einstellungen prüfen.";
 
     @Test

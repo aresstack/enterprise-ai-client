@@ -111,7 +111,7 @@ public class SliceGAgentMcpTest {
         p.setProperty("knowledge.indexDirectory", temp.getRoot().toString());
         p.setProperty("knowledge.indexOnStartup", "true");
         p.setProperty("security.keepass.enabled", "false");
-        p.setProperty("network.proxy.mode", "NONE");
+        p.setProperty("network.proxy.mode", "DISABLED");
         p.setProperty("agent.enabled", "true");
         p.setProperty("agent.command", spec.getCommand());
         p.setProperty("agent.mcpEndpointId", "agent-tools");

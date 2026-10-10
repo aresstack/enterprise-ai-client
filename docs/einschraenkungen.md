@@ -22,7 +22,7 @@ Fähigkeit aus der Spalte UNVERIFIED gestrichen.
 | MediaWiki | Action-API-Abfragen aus MainframeMate, Fake-Transport, lokaler HTTP-Server. | Login-Varianten, Single Sign-on, Proxy, echtes Firmen-Wiki. |
 | Confluence | REST-Endpunkte aus MainframeMate, `FakeConfluence`, lokaler HTTP-Server. | Echte Data-Center-Instanz, Bearer/PAT, Windows-MY (nur unter Windows prüfbar), PKCS12 ohne echte Gegenstelle. |
 | KeePassRPC | Protokoll und Kryptografie aus MainframeMate, `FakeKeePassRpcServer`. | Handschlag mit einem echten KeePassRPC-Plugin, Pairing über den Swing-Dialog; `KeePassRpcRealServerIT` und `LiveKeePassIT` (Stufe 6, pairt über den Dialog der Anwendung) sind vorbereitet, aber von niemandem ausgeführt. |
-| Proxy | `ProxyPolicy` mit Modi System/keiner/manuell. | Proxy-Authentifizierung wird nicht unterstützt; Verhalten hinter dem Firmen-Proxy ungeprüft. |
+| Proxy und TLS | win-proxy-java 0.2.0 und win-trust-java 0.1.0, Route je Verbindung, Proxy-Auth BASIC über KeePass. | UNVERIFIED: hinter dem Firmen-Proxy, mit PAC/WPAD, mit Windows-Zertifikatspeichern und mit Proxy-Anmeldung nur auf Angelos Rechner prüfbar; `WINDOWS_NATIVE_*` meldet in 0.2.0 NOT_IMPLEMENTED. |
 | JDK 8 | CI baut und testet auf Temurin 8 und 21. | Lokale Entwicklung fand überwiegend auf neueren JDKs statt. |
 
 ## Bewusste Grenzen
@@ -88,6 +88,5 @@ braucht.
 
 - MCP-Endpoint über ACP `session/new` statt Umgebungsvariablen (Vertragsänderung ACP).
 - `char[]`-Token im Chat-Adapter.
-- Proxy-Authentifizierung.
 - Anzeige von Tool-Aufrufen des Agenten in der Oberfläche.
 - Ungenutzte Bibliotheken (JWBF, OkHttp) aus dem Versionskatalog entfernen.

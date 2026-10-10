@@ -97,7 +97,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | KI-Dienst | `chat.baseUrl`, `chat.model`, `chat.apiKeyRef` (mit „In KeePass prüfen“), `chat.systemPrompt`; `embedding.baseUrl`, `embedding.model`, `embedding.dimension`, `embedding.apiKeyRef` |
 | Wissensbasis | `knowledge.indexDirectory` (mit Verzeichnisauswahl), `knowledge.indexOnStartup`; `sources` und je Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` |
 | KeePass | `security.keepass.enabled`, `host`, `port`, `clientDisplayName`, `pairingKeyStore`; „In KeePass prüfen“ mit dem Eintrag des API-Keys |
-| Netzwerk & Agent | `ui.windowTitle`; `network.proxy.mode` (AUTO, SYSTEM, NONE, MANUAL), `pacUrl`, `pacDiscovery`, `host`, `port`, `nonProxyHosts`; `network.tls.useWindowsCertificateStore`, `network.tls.caCertificatesFile` (mit Dateiauswahl); „Verbindung zum KI-Dienst prüfen“; `agent.enabled`, `agent.command`, `agent.args`, `agent.requestTimeoutSeconds` |
+| Netzwerk & Agent | `ui.windowTitle`; Proxy-Auflösung wie AskAI (`network.proxy.mode` mit den Modi von win-proxy-java, PAC-URL/Ermittlungsskript, Host/Port, Test-URL, Timeout, „Proxy auflösen“, „HTTPS-Verbindung testen“); TLS-Quellen (`network.tls.*`); User-Agent, Prefer IPv6, Proxy-Anmeldung NONE/BASIC (KeePass-Eintrag); Agent-Modus. „Verbindung testen“ steht im Reiter KI-Dienst. |
 
 - **Prüfen** läuft durch denselben Loader wie der Start und baut wie dieser die TLS-Vertrauensregel (eine
   fehlende oder leere CA-Datei fällt also hier auf, nicht erst beim nächsten Start): Speichern geht nur ohne

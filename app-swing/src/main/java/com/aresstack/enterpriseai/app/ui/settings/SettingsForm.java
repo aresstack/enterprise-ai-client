@@ -27,9 +27,15 @@ public final class SettingsForm {
     public static final String PROXY_PAC_URL_WINDOWS_SETTINGS = "PAC_URL_WINDOWS_SETTINGS";
     public static final String PROXY_WINDOWS_NATIVE_PROXY_SETTINGS = "WINDOWS_NATIVE_PROXY_SETTINGS";
     public static final String PROXY_WINDOWS_NATIVE_ROUTE_RESOLVER = "WINDOWS_NATIVE_ROUTE_RESOLVER";
-    public static final String[] PROXY_MODES = {PROXY_DISABLED, PROXY_MANUAL, PROXY_WINDOWS_STATIC,
+    private static final String[] PROXY_MODES = {PROXY_DISABLED, PROXY_MANUAL, PROXY_WINDOWS_STATIC,
             PROXY_PAC_URL_MANUAL, PROXY_PAC_URL_POWERSHELL, PROXY_PAC_URL_WSCRIPT, PROXY_PAC_URL_WINDOWS_SETTINGS,
             PROXY_WINDOWS_NATIVE_PROXY_SETTINGS, PROXY_WINDOWS_NATIVE_ROUTE_RESOLVER};
+
+    /** Die Modi der Bibliothek win-proxy-java in der Reihenfolge der Auswahlliste. */
+    public static String[] proxyModes() {
+        return PROXY_MODES.clone();
+    }
+
     public static final String PROXY_AUTH_NONE = "NONE";
     public static final String PROXY_AUTH_BASIC = "BASIC";
 
@@ -211,7 +217,7 @@ public final class SettingsForm {
         return keePassPairingKeyStore;
     }
 
-    /** Einer der {@link #PROXY_MODES} (Namen der Bibliothek). */
+    /** Einer der {@link #proxyModes()} (Namen der Bibliothek). */
     public String proxyMode() {
         return proxyMode;
     }

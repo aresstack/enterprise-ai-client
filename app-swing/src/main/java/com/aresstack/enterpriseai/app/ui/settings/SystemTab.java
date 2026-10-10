@@ -69,7 +69,7 @@ final class SystemTab {
         windowTitle = general.textField("Fenstertitel", "Titel des Hauptfensters");
 
         FormRows proxy = new FormRows(palette);
-        proxyMode = proxy.comboBox("Mode", null, SettingsForm.PROXY_MODES);
+        proxyMode = proxy.comboBox("Mode", null, SettingsForm.proxyModes());
         testUrl = proxy.textField("Test URL", null);
         discoveryScript = proxy.textArea("PAC URL discovery script", 3, null);
         proxyHost = proxy.textField("Manual host", null);
@@ -377,7 +377,7 @@ final class SystemTab {
 
     /** Ein Modus der Bibliothek; Unbekanntes (auch der alte POWERSHELL_ROUTE_RESOLVER_LEGACY) wird zum Standard. */
     private static String known(String value) {
-        for (String option : SettingsForm.PROXY_MODES) {
+        for (String option : SettingsForm.proxyModes()) {
             if (option.equals(value)) {
                 return option;
             }
