@@ -3,11 +3,9 @@ package com.aresstack.enterpriseai.app.ui.markdown;
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import java.awt.BorderLayout;
-import java.awt.Dimension;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 
@@ -25,6 +23,8 @@ final class CodeBlockPanel extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
         JLabel languageLabel = new JLabel(language == null || language.trim().isEmpty() ? "code" : language.trim());
+        // Die Sprachmarke stammt aus der Modellantwort: nie als Swing-HTML deuten (ein „<html>…“ bliebe Text).
+        languageLabel.putClientProperty("html.disable", Boolean.TRUE);
         languageLabel.setForeground(theme.getMutedForeground());
         languageLabel.setHorizontalAlignment(SwingConstants.LEFT);
         MarkdownActionButton copyButton = new MarkdownActionButton(
@@ -41,15 +41,11 @@ final class CodeBlockPanel extends JPanel {
         textArea.setBorder(BorderFactory.createEmptyBorder(4, 2, 2, 2));
         textArea.setLineWrap(false);
 
-        JScrollPane scrollPane = new JScrollPane(textArea);
+        // Volle Höhe bis zur Kappung, darüber vertikal scrollbar; ein nötiger horizontaler Balken wird eingerechnet.
+        CappedScrollPane scrollPane = new CappedScrollPane(textArea, 200, 8);
         scrollPane.setBorder(null);
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);
-        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
-        int lineCount = Math.max(1, textArea.getLineCount());
-        int height = Math.min(320, lineCount * textArea.getFontMetrics(textArea.getFont()).getHeight() + 14);
-        scrollPane.setPreferredSize(new Dimension(200, height));
 
         add(header, BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);

@@ -22,12 +22,21 @@ public interface DesktopLinkOpener {
                     if (!isAllowedScheme(scheme) || !Desktop.isDesktopSupported()) {
                         return;
                     }
-                    Desktop.getDesktop().browse(uri);
+                    Desktop desktop = Desktop.getDesktop();
+                    if (isMailScheme(scheme) && desktop.isSupported(Desktop.Action.MAIL)) {
+                        desktop.mail(uri); // mailto gehört zum Mailprogramm, nicht zum Browser
+                    } else if (desktop.isSupported(Desktop.Action.BROWSE)) {
+                        desktop.browse(uri);
+                    }
                 } catch (Exception ignored) {
                     // Fehler der Desktop-Integration ignorieren, der Chat bleibt benutzbar.
                 }
             }
         };
+    }
+
+    static boolean isMailScheme(String scheme) {
+        return scheme != null && "mailto".equals(scheme.toLowerCase(Locale.ENGLISH));
     }
 
     static boolean isAllowedScheme(String scheme) {

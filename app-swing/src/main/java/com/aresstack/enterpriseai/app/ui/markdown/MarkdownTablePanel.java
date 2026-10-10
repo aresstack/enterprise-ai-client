@@ -6,21 +6,27 @@ import com.vladsch.flexmark.ext.tables.TableRow;
 import com.vladsch.flexmark.util.ast.Node;
 
 import javax.swing.BorderFactory;
-import javax.swing.JScrollPane;
+import javax.swing.JComponent;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
+import javax.swing.table.TableCellRenderer;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Rendert eine Markdown-Tabelle als nicht editierbare Swing-Tabelle (aus askai-java8 {@code MarkdownTablePanel}). */
-final class MarkdownTablePanel extends JScrollPane {
+/**
+ * Rendert eine Markdown-Tabelle als nicht editierbare Swing-Tabelle (aus askai-java8 {@code MarkdownTablePanel}); volle
+ * Höhe bis zur Kappung, darüber vertikal scrollbar, ein nötiger horizontaler Balken wird eingerechnet.
+ */
+final class MarkdownTablePanel extends CappedScrollPane {
 
     MarkdownTablePanel(TableBlock tableBlock, MarkdownTheme theme) {
-        JTable table = new JTable(createModel(tableBlock));
+        super(new JTable(createModel(tableBlock)), 400, 4);
+        JTable table = (JTable) getViewport().getView();
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         table.setRowSelectionAllowed(true);
         table.setColumnSelectionAllowed(false);
@@ -33,14 +39,20 @@ final class MarkdownTablePanel extends JScrollPane {
         table.setRowHeight(table.getFontMetrics(table.getFont()).getHeight() + 8);
         JTableHeader header = table.getTableHeader();
         header.setFont(theme.getBodyFont().deriveFont(Font.BOLD));
+        disableHtml(table, header);
         fitColumns(table);
-
-        setViewportView(table);
         setBorder(BorderFactory.createLineBorder(theme.getSeparatorColor()));
-        setHorizontalScrollBarPolicy(HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_NEVER);
-        int height = header.getPreferredSize().height + table.getRowHeight() * Math.max(1, table.getRowCount()) + 4;
-        setPreferredSize(new Dimension(400, Math.min(320, height)));
+    }
+
+    /** Zellen und Spaltentitel stammen aus der Modellantwort: nie als Swing-HTML deuten (ein „<html>…“ bleibt Text). */
+    private static void disableHtml(JTable table, JTableHeader header) {
+        DefaultTableCellRenderer cellRenderer = new DefaultTableCellRenderer();
+        cellRenderer.putClientProperty("html.disable", Boolean.TRUE);
+        table.setDefaultRenderer(Object.class, cellRenderer);
+        TableCellRenderer headerRenderer = header.getDefaultRenderer();
+        if (headerRenderer instanceof JComponent) {
+            ((JComponent) headerRenderer).putClientProperty("html.disable", Boolean.TRUE);
+        }
     }
 
     private static DefaultTableModel createModel(TableBlock tableBlock) {
