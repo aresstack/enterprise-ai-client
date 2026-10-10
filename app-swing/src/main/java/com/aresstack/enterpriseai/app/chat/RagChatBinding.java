@@ -42,6 +42,8 @@ import java.util.logging.Logger;
  *       auf dem Event-Thread. Sobald der Turn steht, kommen seine Quellen an die Antwort und Hinweise (Suche ganz
  *       oder teilweise ausgefallen, keine Treffer) als eigene Hinweiszeile in den Verlauf; Deltas, Abschluss,
  *       Abbruch und Fehler laufen weiter über den {@code ChatTurn} der Antwort.</li>
+ *   <li><b>Quellen</b>: gesucht wird nur in den Quellen, die der {@link RagSourceFilter} erlaubt (die Häkchen im
+ *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche, und ein Hinweis sagt das.</li>
  *   <li><b>Stop</b> während des Retrievals merkt sich den Wunsch und bricht den Turn ab, sobald er existiert;
  *       die Nutzerfrage bleibt dabei in der Historie (AP2-Regel), die Antwortblase endet als abgebrochen.</li>
  * </ul>
@@ -69,6 +71,8 @@ public final class RagChatBinding implements ChatShellActions {
             "Die Volltextsuche ist ausgefallen; es wurde nur semantisch gesucht.";
     static final String SEMANTIC_PATH_FAILED_NOTICE =
             "Die semantische Suche ist ausgefallen; es wurde nur im Volltext gesucht.";
+    static final String NO_SOURCE_SELECTED_NOTICE = "Keine Wissensquelle ausgewählt (Häkchen im Reiter "
+            + "„Wissensquellen“). Die Antwort entstand ohne Kontext aus der Wissensbasis.";
 
     private static final DateTimeFormatter REVISION_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -78,6 +82,7 @@ public final class RagChatBinding implements ChatShellActions {
     private final Executor uiExecutor;
     private final Executor workExecutor;
     private final ZoneId zone;
+    private final RagSourceFilter sources;
     private ChatTurn runningTurn;
     private Request retrieving; // die Anfrage, deren Suche gerade läuft (nur UI-Thread)
 
@@ -88,8 +93,14 @@ public final class RagChatBinding implements ChatShellActions {
      */
     public RagChatBinding(RagChatUseCase rag, ChatConversationId conversationId, ChatShellModel model,
                           Executor uiExecutor, Executor workExecutor, ZoneId zone) {
+        this(rag, conversationId, model, uiExecutor, workExecutor, zone, RagSourceFilter.ALL);
+    }
+
+    /** @param sources welche Quellen RAG durchsucht (je Nachricht gefragt) */
+    public RagChatBinding(RagChatUseCase rag, ChatConversationId conversationId, ChatShellModel model,
+                          Executor uiExecutor, Executor workExecutor, ZoneId zone, RagSourceFilter sources) {
         if (rag == null || conversationId == null || model == null || uiExecutor == null || workExecutor == null
-                || zone == null) {
+                || zone == null || sources == null) {
             throw new IllegalArgumentException(
                     "rag, conversationId, model, uiExecutor, workExecutor and zone must not be null");
         }
@@ -99,6 +110,7 @@ public final class RagChatBinding implements ChatShellActions {
         this.uiExecutor = uiExecutor;
         this.workExecutor = workExecutor;
         this.zone = zone;
+        this.sources = sources;
     }
 
     /** Die Unterhaltung, in die {@link #sendRequested} gerade schreibt (nur UI-Thread). */
@@ -135,6 +147,16 @@ public final class RagChatBinding implements ChatShellActions {
             startWithoutRetrieval(text, listener);
             return;
         }
+        final RagOptions options;
+        if (!sources.isRestricted()) {
+            options = RagOptions.enabled();
+        } else if (sources.allowedSources().isEmpty()) {
+            model.addNotice(NO_SOURCE_SELECTED_NOTICE);
+            startWithoutRetrieval(text, listener);
+            return;
+        } else {
+            options = RagOptions.enabled().restrictedTo(sources.allowedSources());
+        }
         final Request request = new Request(answer, listener);
         model.setAssistantActivity(RETRIEVING_ACTIVITY);
         retrieving = request;
@@ -144,7 +166,7 @@ public final class RagChatBinding implements ChatShellActions {
                 public void run() {
                     final RagChatTurn turn;
                     try {
-                        turn = rag.send(conversationId, text, RagOptions.enabled(), listener);
+                        turn = rag.send(conversationId, text, options, listener);
                     } catch (final RuntimeException rejected) {
                         // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
                         uiExecutor.execute(new Runnable() {

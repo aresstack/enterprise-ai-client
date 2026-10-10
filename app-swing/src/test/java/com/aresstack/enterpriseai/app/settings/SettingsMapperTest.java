@@ -207,6 +207,23 @@ public class SettingsMapperTest {
     }
 
     @Test
+    public void deselectedSourceRoundTripsAsEnabledFalse() {
+        Properties current = valid();
+        current.setProperty("source.confluence.enabled", "false");
+        SettingsForm form = SettingsMapper.fromProperties(current);
+        assertTrue(form.sources().get(0).enabled());
+        assertFalse(form.sources().get(1).enabled());
+        Properties merged = SettingsMapper.merge(current, form);
+        assertEquals("false", merged.getProperty("source.confluence.enabled"));
+        assertNull("angehakt ist der Standard und braucht keinen Schlüssel", merged.getProperty("source.wiki.enabled"));
+        assertFalse(AppConfigLoader.fromProperties(merged).sources().get(1).enabled());
+
+        SettingsForm ticked = form.toBuilder().sources(java.util.Arrays.asList(form.sources().get(0),
+                form.sources().get(1).toBuilder().enabled(true).build())).build();
+        assertNull(SettingsMapper.merge(current, ticked).getProperty("source.confluence.enabled"));
+    }
+
+    @Test
     public void changingTheSourceTypeDropsKeysOfTheOldType() {
         Properties current = valid();
         SettingsForm form = SettingsMapper.fromProperties(current).toBuilder()

@@ -326,8 +326,50 @@ public class ChatWorkspacePanelTest {
             @Override
             public void run() {
                 ChatWorkspacePanel workspace = chatOnlyWorkspace();
-                workspace.setKnowledgeSources(Arrays.asList(new KnowledgeSourceItem("handbuch", "mediawiki · Urlaub"),
-                        new KnowledgeSourceItem("wiki", "confluence")));
+                final List<String> calls = new ArrayList<String>();
+                workspace.setKnowledgeSourceActions(new KnowledgeSourceActions() {
+                    @Override
+                    public void enabledChanged(String sourceId, boolean enabled) {
+                        calls.add("enabled " + sourceId + " " + enabled);
+                    }
+
+                    @Override
+                    public void indexRequested(String sourceId) {
+                        calls.add("index " + sourceId);
+                    }
+
+                    @Override
+                    public void editRequested(String sourceId) {
+                        calls.add("edit " + sourceId);
+                    }
+
+                    @Override
+                    public void addRequested(String type) {
+                        calls.add("add " + type);
+                    }
+
+                    @Override
+                    public boolean canAdd() {
+                        return true;
+                    }
+                });
+                workspace.setKnowledgeSources(Arrays.asList(
+                        new KnowledgeSourceItem("handbuch", "MediaWiki", "Urlaub", true, "12 Seiten im Index",
+                                KnowledgeSourceItem.State.IDLE, true, true),
+                        new KnowledgeSourceItem("wiki", "Confluence", "IT", false, "Abgewählt",
+                                KnowledgeSourceItem.State.IDLE, false, true)));
+                KnowledgeSourcesPanel pane = workspace.knowledgeSources();
+                assertEquals(2, pane.rows().size());
+                assertTrue(pane.rows().get(0).checkBox().isSelected());
+                assertFalse(pane.rows().get(1).checkBox().isSelected());
+                assertFalse(pane.rows().get(1).indexButton().isEnabled());
+                assertEquals("MediaWiki · Urlaub", pane.rows().get(0).item().description());
+                pane.rows().get(0).checkBox().doClick();
+                pane.rows().get(0).indexButton().doClick();
+                pane.rows().get(1).editButton().doClick();
+                pane.addConfluenceButton().doClick();
+                assertEquals(Arrays.asList("enabled handbuch false", "index handbuch", "edit wiki",
+                        "add confluence"), calls);
                 workspace.openDrawer();
                 workspace.ribbon().finishAnimation();
                 workspace.sidebar().showTab(ChatWorkspacePanel.KNOWLEDGE_TAB);

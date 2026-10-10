@@ -97,7 +97,7 @@ public class SettingsPanelTest {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
                 assertEquals("http://127.0.0.1:9/v1", panel.serviceTab().chatBaseUrl().getText());
-                assertEquals(1, panel.knowledgeTab().sources().sources().size());
+                assertEquals(1, panel.knowledgeTab().sources().size());
                 assertFalse(panel.securityTab().enabled().isSelected());
                 assertEquals(SettingsForm.PROXY_NONE, panel.systemTab().proxyMode().getSelectedItem());
 
@@ -132,38 +132,26 @@ public class SettingsPanelTest {
     }
 
     @Test
-    public void sourcesCanBeAddedEditedAndRemoved() throws Exception {
+    public void knowledgeTabKeepsSourcesUnchangedAndOnlySummarizesThem() throws Exception {
         final ScriptedActions actions = new ScriptedActions();
         onEdt(new Runnable() {
             @Override
             public void run() {
-                SettingsPanel panel = new SettingsPanel(SettingsForm.builder().build(), Collections.<String>emptyList(),
-                        SettingsPanel.Mode.EDIT, actions, palette);
-                SourcesEditor editor = panel.knowledgeTab().sources();
-                editor.addWikiButton().doClick();
-                assertEquals("wiki", editor.idField().getText());
-                editor.urlField().setText("http://127.0.0.1:9/w/api.php");
-                editor.startPointsField().setText("Hauptseite");
-                editor.addConfluenceButton().doClick();
-                assertEquals("confluence", editor.idField().getText());
-                editor.urlField().setText("http://127.0.0.1:9/confluence");
-                editor.addWikiButton().doClick();
-                assertEquals("wiki2", editor.idField().getText());
-
+                SourceForm wiki = SourceForm.builder("wiki", SourceForm.TYPE_MEDIAWIKI)
+                        .url("http://127.0.0.1:9/w/api.php").startPoints("Hauptseite").build();
+                SourceForm confluence = SourceForm.builder("confluence", SourceForm.TYPE_CONFLUENCE)
+                        .url("http://127.0.0.1:9/confluence").enabled(false).build();
+                SettingsPanel panel = new SettingsPanel(SettingsForm.builder().sources(Arrays.asList(wiki, confluence))
+                        .build(), Collections.<String>emptyList(), SettingsPanel.Mode.EDIT, actions, palette);
+                assertEquals("Konfiguriert: wiki, confluence (abgewählt)", panel.knowledgeTab().sourcesSummary());
                 List<SourceForm> sources = panel.toForm().sources();
-                assertEquals(3, sources.size());
-                assertEquals("wiki", sources.get(0).id());
+                assertEquals(2, sources.size());
                 assertEquals("http://127.0.0.1:9/w/api.php", sources.get(0).url());
                 assertEquals("Hauptseite", sources.get(0).startPoints());
-                assertTrue(sources.get(1).isConfluence());
-                assertEquals("http://127.0.0.1:9/confluence", sources.get(1).url());
-
-                editor.sourceList().setSelectedIndex(1);
-                editor.removeButton().doClick();
-                sources = panel.toForm().sources();
-                assertEquals(2, sources.size());
-                assertEquals("wiki", sources.get(0).id());
-                assertEquals("wiki2", sources.get(1).id());
+                assertTrue(sources.get(0).enabled());
+                assertFalse(sources.get(1).enabled());
+                assertEquals("Noch keine Wissensquelle konfiguriert.",
+                        KnowledgeTab.summary(Collections.<SourceForm>emptyList()));
             }
         });
     }

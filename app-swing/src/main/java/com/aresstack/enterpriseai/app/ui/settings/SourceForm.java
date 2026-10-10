@@ -4,7 +4,8 @@ package com.aresstack.enterpriseai.app.ui.settings;
  * Eine Wissensquelle im Einstellungen-Dialog, so wie der Benutzer sie eingibt (Text und Schalter, keine
  * Secrets, keine Adaptertypen). Je nach {@link #type()} sind nur ein Teil der Felder sinnvoll: MediaWiki
  * nutzt {@code url} als API-URL, {@code siteKey}, {@code displayName} und {@code requiresLogin}; Confluence nutzt
- * {@code url} als Basis-URL, {@code searchSpaceKeys} und {@code includeAttachments}.
+ * {@code url} als Basis-URL, {@code searchSpaceKeys} und {@code includeAttachments}. {@link #enabled()} ist das
+ * Häkchen im Drawer-Reiter „Wissensquellen“: abgewählte Quellen werden weder indexiert noch im Chat durchsucht.
  */
 public final class SourceForm {
 
@@ -23,6 +24,7 @@ public final class SourceForm {
     private final String displayName;
     private final String searchSpaceKeys;
     private final boolean includeAttachments;
+    private final boolean enabled;
 
     private SourceForm(Builder b) {
         this.id = b.id;
@@ -37,6 +39,7 @@ public final class SourceForm {
         this.displayName = b.displayName;
         this.searchSpaceKeys = b.searchSpaceKeys;
         this.includeAttachments = b.includeAttachments;
+        this.enabled = b.enabled;
     }
 
     /** Eine neue Quelle des Typs mit leeren Feldern und den Standardwerten des Loaders. */
@@ -47,7 +50,8 @@ public final class SourceForm {
     public Builder toBuilder() {
         return new Builder(id, type).url(url).credentialRef(credentialRef).startPoints(startPoints)
                 .maxDepth(maxDepth).maxResources(maxResources).requiresLogin(requiresLogin).siteKey(siteKey)
-                .displayName(displayName).searchSpaceKeys(searchSpaceKeys).includeAttachments(includeAttachments);
+                .displayName(displayName).searchSpaceKeys(searchSpaceKeys).includeAttachments(includeAttachments)
+                .enabled(enabled);
     }
 
     public String id() {
@@ -108,6 +112,11 @@ public final class SourceForm {
         return includeAttachments;
     }
 
+    /** {@code true}: die Quelle wird indexiert und im Chat durchsucht (Standard). */
+    public boolean enabled() {
+        return enabled;
+    }
+
     @Override
     public String toString() {
         return "SourceForm[" + id + ", " + type + "]";
@@ -126,6 +135,7 @@ public final class SourceForm {
         private String displayName = "";
         private String searchSpaceKeys = "";
         private boolean includeAttachments;
+        private boolean enabled = true;
 
         private Builder(String id, String type) {
             this.id = SettingsForm.text(id);
@@ -179,6 +189,11 @@ public final class SourceForm {
 
         public Builder includeAttachments(boolean value) {
             this.includeAttachments = value;
+            return this;
+        }
+
+        public Builder enabled(boolean value) {
+            this.enabled = value;
             return this;
         }
 

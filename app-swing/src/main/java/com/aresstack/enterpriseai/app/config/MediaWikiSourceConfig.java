@@ -11,8 +11,8 @@ public final class MediaWikiSourceConfig extends SourceConfig {
     private final MediaWikiSiteConfig site;
 
     MediaWikiSourceConfig(KnowledgeSourceId sourceId, SourceScope scope, SecretRef credentialRef,
-                          MediaWikiSiteConfig site) {
-        super(sourceId, scope, credentialRef);
+                          MediaWikiSiteConfig site, boolean enabled) {
+        super(sourceId, scope, credentialRef, enabled);
         this.site = site;
     }
 

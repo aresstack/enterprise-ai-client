@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.chat;
 
+import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
@@ -45,6 +46,7 @@ import org.junit.Test;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -236,6 +238,53 @@ public class RagChatBindingTest {
     }
 
     @Test
+    public void deselectedSourcesAreNotSearched() throws Exception {
+        indexAll();
+        port.enqueueAnswer("Weiß ich nicht");
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(source.sourceId(), false);
+        selection.register(KnowledgeSourceId.of("andere"), true);
+        final Fixture fixture = fixture(index, embeddings, selection);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+
+        List<TranscriptEntry> entries = entries(fixture.model);
+        assertFalse("keine Treffer aus der abgewählten Quelle", entries.get(1).hasSources());
+        assertFalse(port.lastRequest().messages().get(0).content().contains("Kündigungsfrist"));
+    }
+
+    @Test
+    public void noTickedSourceAnswersWithoutRetrievalAndSaysSo() throws Exception {
+        indexAll();
+        int embeddingCalls = embeddings.calls().size();
+        port.enqueueAnswer("Ohne Kontext");
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(source.sourceId(), false);
+        final Fixture fixture = fixture(index, embeddings, selection);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+
+        List<String> texts = new ArrayList<String>();
+        for (TranscriptEntry entry : entries(fixture.model)) {
+            texts.add(entry.getText());
+        }
+        assertTrue(texts.toString(), texts.contains(RagChatBinding.NO_SOURCE_SELECTED_NOTICE));
+        assertTrue(texts.toString(), texts.contains("Ohne Kontext"));
+        assertEquals("Antworte knapp.", port.lastRequest().messages().get(0).content());
+        assertEquals("kein Embedding-Aufruf", embeddingCalls, embeddings.calls().size());
+    }
+
+    @Test
     public void noHitsBecomeANotice() throws Exception {
         port.enqueueAnswer("Weiß ich nicht");
         final Fixture fixture = fixture(index, embeddings); // leerer Index
@@ -406,13 +455,18 @@ public class RagChatBindingTest {
     }
 
     private Fixture fixture(KnowledgeIndexPort indexPort, EmbeddingPort embeddingPort) throws Exception {
+        return fixture(indexPort, embeddingPort, RagSourceFilter.ALL);
+    }
+
+    private Fixture fixture(KnowledgeIndexPort indexPort, EmbeddingPort embeddingPort, final RagSourceFilter filter)
+            throws Exception {
         final RagChatUseCase rag = new RagChatUseCase(chat,
                 new RetrieveKnowledgeUseCase(indexPort, embeddingPort, space, null),
                 new PromptContextAssembler(null));
         return onEdt(new Callable<Fixture>() {
             @Override
             public Fixture call() {
-                return new Fixture(rag);
+                return new Fixture(rag, filter);
             }
         });
     }
@@ -422,7 +476,11 @@ public class RagChatBindingTest {
         final RagChatBinding binding;
 
         Fixture(RagChatUseCase rag) {
-            binding = new RagChatBinding(rag, conversation, model, EDT, workers, UTC);
+            this(rag, RagSourceFilter.ALL);
+        }
+
+        Fixture(RagChatUseCase rag, RagSourceFilter filter) {
+            binding = new RagChatBinding(rag, conversation, model, EDT, workers, UTC, filter);
         }
     }
 

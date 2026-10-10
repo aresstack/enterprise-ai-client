@@ -16,8 +16,9 @@ public final class ConfluenceSourceConfig extends SourceConfig {
     private final ClientCertificateConfig clientCertificate;
 
     ConfluenceSourceConfig(KnowledgeSourceId sourceId, SourceScope scope, ConfluenceConfig confluence,
-                           int connectTimeoutMillis, int readTimeoutMillis, ClientCertificateConfig clientCertificate) {
-        super(sourceId, scope, confluence.credentialRef());
+                           int connectTimeoutMillis, int readTimeoutMillis, ClientCertificateConfig clientCertificate,
+                           boolean enabled) {
+        super(sourceId, scope, confluence.credentialRef(), enabled);
         this.confluence = confluence;
         this.connectTimeoutMillis = connectTimeoutMillis;
         this.readTimeoutMillis = readTimeoutMillis;

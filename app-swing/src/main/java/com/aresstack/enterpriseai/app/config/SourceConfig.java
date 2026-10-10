@@ -14,11 +14,13 @@ public abstract class SourceConfig {
     private final KnowledgeSourceId sourceId;
     private final SourceScope scope;
     private final SecretRef credentialRef;
+    private final boolean enabled;
 
-    SourceConfig(KnowledgeSourceId sourceId, SourceScope scope, SecretRef credentialRef) {
+    SourceConfig(KnowledgeSourceId sourceId, SourceScope scope, SecretRef credentialRef, boolean enabled) {
         this.sourceId = sourceId;
         this.scope = scope;
         this.credentialRef = credentialRef;
+        this.enabled = enabled;
     }
 
     public KnowledgeSourceId sourceId() {
@@ -35,12 +37,20 @@ public abstract class SourceConfig {
         return credentialRef;
     }
 
+    /**
+     * {@code source.<id>.enabled} (Standard {@code true}): abgewählte Quellen bleiben konfiguriert, werden aber
+     * beim Start nicht indexiert und im Chat nicht durchsucht; das Häkchen im Drawer schaltet sie zur Laufzeit um.
+     */
+    public boolean enabled() {
+        return enabled;
+    }
+
     /** Kurzer Typname für Meldungen, z. B. {@code mediawiki}. */
     public abstract String type();
 
     @Override
     public String toString() {
         return getClass().getSimpleName() + "[" + sourceId + ", scope=" + scope + ", credentialRef="
-                + (credentialRef == null ? "keine" : credentialRef) + "]";
+                + (credentialRef == null ? "keine" : credentialRef) + (enabled ? "" : ", abgewählt") + "]";
     }
 }

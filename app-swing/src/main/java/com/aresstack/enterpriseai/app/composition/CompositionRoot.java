@@ -4,11 +4,14 @@ import com.aresstack.enterpriseai.app.agent.AcpAgentLauncher;
 import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.KnowledgeConfig;
+import com.aresstack.enterpriseai.app.config.SourceConfig;
+import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.app.knowledge.StartupIndexing;
 import com.aresstack.enterpriseai.app.ui.chat.KnowledgeStatusModel;
 import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeUseCase;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.application.knowledge.RefreshKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.application.mcp.KnowledgeMcpTools;
@@ -66,6 +69,7 @@ public final class CompositionRoot {
     private final ZoneId zone;
     private final KnowledgeStatusModel knowledgeStatus;
     private final KnowledgeIndexingBinding indexingBinding;
+    private final KnowledgeSourceSelection sourceSelection;
     private final StartupIndexing startupIndexing;
     private final ShutdownSequence shutdown;
 
@@ -94,7 +98,18 @@ public final class CompositionRoot {
         this.knowledgeStatus = new KnowledgeStatusModel();
         this.indexingBinding = new KnowledgeIndexingBinding(indexing, knowledgeStatus, uiExecutor, workExecutor,
                 clock, zone);
-        this.startupIndexing = new StartupIndexing(indexingBinding, knowledgeStatus, ports.sources(), uiExecutor);
+        this.sourceSelection = new KnowledgeSourceSelection();
+        for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
+            boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt
+            for (SourceConfig source : config.sources()) {
+                if (source.sourceId().equals(registration.sourceId())) {
+                    enabled = source.enabled();
+                }
+            }
+            sourceSelection.register(registration.sourceId(), enabled);
+        }
+        this.startupIndexing = new StartupIndexing(indexingBinding, knowledgeStatus, ports.sources(), uiExecutor,
+                sourceSelection);
 
         if (ports.hasAgent()) {
             AgentBackend agent = ports.agent();
@@ -220,6 +235,11 @@ public final class CompositionRoot {
 
     public boolean hasAgent() {
         return agentService != null;
+    }
+
+    /** Die Häkchen der Wissensquellen: Start-Indexierung und RAG richten sich danach. */
+    public KnowledgeSourceSelection sourceSelection() {
+        return sourceSelection;
     }
 
     public StartupIndexing startupIndexing() {
