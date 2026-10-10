@@ -30,6 +30,9 @@ import java.util.function.Consumer;
  */
 final class SourceEditor {
 
+    /** Markiert ein Häkchen, dessen Schlüssel in der Datei fehlte. */
+    private static final String UNSET_FLAG = "enterprise-ai.unsetFlag";
+
     private final ComicPalette palette;
     private final List<KnowledgeSourceType> types;
     private final boolean typeSelectable;
@@ -107,7 +110,13 @@ final class SourceEditor {
         switch (field.kind()) {
             case FLAG: {
                 JCheckBox box = rows.checkBox(field.label(), hint);
-                box.setSelected("true".equalsIgnoreCase(value));
+                String flag = value == null ? "" : value.trim().toLowerCase(java.util.Locale.ROOT);
+                box.setSelected(flag.equals("true") || flag.equals("yes") || flag.equals("ja") || flag.equals("on")
+                        || flag.equals("1"));
+                if (value == null || value.trim().isEmpty()) {
+                    // nicht gesetzt: unverändert bleibt der Schlüssel weg, damit die Vorgabe des Adapters gilt
+                    box.putClientProperty(UNSET_FLAG, Boolean.TRUE);
+                }
                 return box;
             }
             case DIRECTORY: {
@@ -133,6 +142,10 @@ final class SourceEditor {
         SourceSettings settings = loaded == null ? SourceSettings.empty() : loaded.settings();
         for (Map.Entry<String, JComponent> entry : inputs.entrySet()) {
             JComponent input = entry.getValue();
+            if (input instanceof JCheckBox && Boolean.TRUE.equals(input.getClientProperty(UNSET_FLAG))
+                    && !((JCheckBox) input).isSelected()) {
+                continue;
+            }
             String value = input instanceof JCheckBox ? (((JCheckBox) input).isSelected() ? "true" : "false")
                     : ((JTextField) input).getText();
             settings = settings.with(entry.getKey(), value);

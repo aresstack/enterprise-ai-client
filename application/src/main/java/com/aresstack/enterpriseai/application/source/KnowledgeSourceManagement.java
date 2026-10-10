@@ -193,8 +193,9 @@ public final class KnowledgeSourceManagement {
      */
     public void remove(String id) throws IOException {
         requireStore();
-        store.remove(id);
+        // erst die abgeleiteten Daten: scheitert das, bleibt die Quelle in der Datei und lässt sich erneut entfernen
         withdraw(id);
+        store.remove(id);
     }
 
     /** Schreibt nur das Häkchen. */
