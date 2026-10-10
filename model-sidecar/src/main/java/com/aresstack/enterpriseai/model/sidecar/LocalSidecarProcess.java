@@ -61,7 +61,13 @@ final class LocalSidecarProcess {
         command.add("--port=0");
         command.add("--model-root=" + config.modelRoot().toAbsolutePath());
         command.add("--backend=cpu");
-        final Process started = new ProcessBuilder(command).start();
+        final Process started;
+        try {
+            started = new ProcessBuilder(command).start();
+        } catch (IOException launchFailed) {
+            lastStartFailureMillis = System.currentTimeMillis();
+            throw launchFailed;
+        }
         final CountDownLatch ready = new CountDownLatch(1);
         final String[] readyBaseUrl = new String[1];
         daemon("local-sidecar-stdout", new Runnable() {
