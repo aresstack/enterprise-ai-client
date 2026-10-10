@@ -21,6 +21,9 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
+import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+
 /**
  * Der Inhalt des Quellen-Dialogs in der Sprache des Einstellungen-Dialogs:
  *
@@ -32,32 +35,29 @@ import java.util.List;
  * │ Platte „Quelle“ mit den Feldern          │
  * ├──────────────────────────────────────────┤
  * │ Probleme (rote Platte, nur bei Bedarf)   │
- * │ [Entfernen]        [Abbrechen] [Speichern]│
+ * │                    [Abbrechen] [Speichern]│
  * └──────────────────────────────────────────┘
  * </pre>
  *
- * Speichern prüft über {@link SourceActions#validate} und schreibt nur fehlerfreie Entwürfe. „Entfernen“ (nur beim
- * Bearbeiten) fragt beim ersten Klick nach („Wirklich entfernen?“) und entfernt beim zweiten. Läuft headless
- * (Tests); der Rahmen ist {@link SourceDialog}.
+ * Die Felder kommen aus dem Quelltyp ({@link SourceEditor}); beim Hinzufügen wählt der Benutzer oben den Typ.
+ * Speichern prüft über {@link SourceActions#validate} und schreibt nur fehlerfreie Entwürfe. Entfernt wird nicht
+ * hier, sondern in der Zeile der Quelle. Läuft headless (Tests); der Rahmen ist {@link SourceDialog}.
  */
 public final class SourcePanel extends JPanel {
 
     /** Wie der Dialog endete. */
     public enum Outcome {
         SAVED,
-        REMOVED,
         CANCELLED
     }
 
     /** Wird gerufen, sobald der Dialog fertig ist (gespeichert, entfernt oder abgebrochen). */
     public interface Listener {
-        void finished(Outcome outcome, SourceForm source);
+        void finished(Outcome outcome, SourceDefinition source);
     }
 
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
-    public static final String REMOVE_LABEL = "Entfernen";
-    public static final String CONFIRM_REMOVE_LABEL = "Wirklich entfernen?";
     static final String NOTE = "Gespeichert wird in die Konfigurationsdatei; danach wird die Quelle indexiert.\n"
             + "Zugangsdaten bleiben in KeePass; hier steht nur der Titel des Eintrags.";
 
@@ -71,41 +71,52 @@ public final class SourcePanel extends JPanel {
     private final JTextArea problemsText = new JTextArea();
     private final ComposerButton saveButton;
     private final ComposerButton cancelButton;
-    private final ComposerButton removeButton;
-    private final String title;
+    private final JLabel heading = new JLabel();
     private Listener listener;
-    private boolean removeArmed;
 
     /**
-     * @param initial    die Quelle, wie sie in der Datei steht, oder eine neue mit Vorgaben
+     * @param initial    die Quelle, wie sie in der Datei steht, oder ein neuer Entwurf mit Vorgaben
      * @param originalId die ID in der Datei beim Bearbeiten, {@code null} beim Hinzufügen
+     * @param types      die angebotenen Quelltypen (beim Hinzufügen zur Auswahl)
      */
-    public SourcePanel(SourceForm initial, String originalId, SourceActions actions, ComicPalette palette) {
+    public SourcePanel(SourceDefinition initial, String originalId, List<KnowledgeSourceType> types,
+                       SourceActions actions, ComicPalette palette) {
         super(new BorderLayout(0, 8));
-        if (initial == null || actions == null || palette == null) {
-            throw new IllegalArgumentException("initial, actions and palette must not be null");
+        if (initial == null || types == null || actions == null || palette == null) {
+            throw new IllegalArgumentException("initial, types, actions and palette must not be null");
         }
         this.actions = actions;
         this.originalId = originalId;
         this.palette = palette;
-        this.editor = new SourceEditor(palette);
+        this.editor = new SourceEditor(palette, types, originalId == null, this::typeChanged);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = new ComposerButton(null, CANCEL_LABEL, false);
-        this.removeButton = new ComposerButton(null, REMOVE_LABEL, false);
-        this.title = titleFor(initial, originalId);
         setBackground(palette.getSurface());
         setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
         buildUi();
         wire();
-        editor.load(initial);
+        load(initial);
     }
 
-    /** Die Überschrift: „MediaWiki-Quelle hinzufügen“ bzw. „Confluence-Quelle „id“ bearbeiten“. */
-    public static String titleFor(SourceForm source, String originalId) {
-        String kind = SourceForm.kindLabel(source.type());
-        String noun = source.isFiles() ? kind + ": Quelle" : kind + "-Quelle";
-        return originalId == null ? noun + " hinzufügen" : noun + " „" + originalId + "“ bearbeiten";
+    /** Die Überschrift: „Quelle hinzufügen“ bzw. „Quelle „id“ bearbeiten (Confluence)“. */
+    public static String titleFor(SourceDefinition source, KnowledgeSourceType type, String originalId) {
+        if (originalId == null) {
+            return "Quelle hinzufügen";
+        }
+        String kind = type == null ? source.typeId() : type.displayName();
+        return "Quelle „" + originalId + "“ bearbeiten (" + kind + ")";
+    }
+
+    private void load(SourceDefinition source) {
+        editor.load(source);
+        heading.setText(titleFor(source, editor.type(), originalId));
+        showProblems(Collections.<String>emptyList());
+    }
+
+    /** Typwechsel beim Hinzufügen: neuer Entwurf mit den Vorgaben des Typs. */
+    private void typeChanged(String typeId) {
+        load(actions.draft(typeId));
     }
 
     private void buildUi() {
@@ -113,7 +124,6 @@ public final class SourcePanel extends JPanel {
         north.setOpaque(false);
         header.setOpaque(false);
         header.setBorder(BorderFactory.createEmptyBorder(6, 14, 0, 8));
-        JLabel heading = new JLabel(title);
         heading.setFont(ResearchUiTypography.semiBold(15f));
         heading.setForeground(palette.getInk());
         header.add(heading, BorderLayout.CENTER);
@@ -160,9 +170,6 @@ public final class SourcePanel extends JPanel {
         buttons.setBorder(BorderFactory.createEmptyBorder(4, 12, 0, 12));
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.setOpaque(false);
-        removeButton.setToolTipText("Quelle aus der Konfiguration nehmen; ihre Zeilen werden auskommentiert");
-        removeButton.setVisible(originalId != null);
-        left.add(removeButton);
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.setOpaque(false);
         saveButton.setToolTipText("Quelle prüfen, speichern und indexieren");
@@ -184,7 +191,6 @@ public final class SourcePanel extends JPanel {
     private void wire() {
         saveButton.addActionListener(event -> save());
         cancelButton.addActionListener(event -> finish(Outcome.CANCELLED, null));
-        removeButton.addActionListener(event -> remove());
     }
 
     public void setListener(Listener listener) {
@@ -207,17 +213,17 @@ public final class SourcePanel extends JPanel {
     }
 
     public String title() {
-        return title;
+        return heading.getText();
     }
 
     /** Der aktuelle Stand der Felder. */
-    public SourceForm toForm() {
-        return editor.toForm();
+    public SourceDefinition toDefinition() {
+        return editor.toDefinition();
     }
 
     /** Prüft und speichert; bei Erfolg endet der Dialog mit {@link Outcome#SAVED}. */
     public boolean save() {
-        SourceForm draft = editor.toForm();
+        SourceDefinition draft = editor.toDefinition();
         List<String> problems;
         try {
             problems = actions.validate(draft, originalId);
@@ -236,29 +242,6 @@ public final class SourcePanel extends JPanel {
         }
         showProblems(Collections.<String>emptyList());
         finish(Outcome.SAVED, draft);
-        return true;
-    }
-
-    /** Erster Aufruf fragt nach, der zweite entfernt die Quelle aus der Datei. */
-    public boolean remove() {
-        if (originalId == null) {
-            return false;
-        }
-        if (!removeArmed) {
-            removeArmed = true;
-            removeButton.setText(CONFIRM_REMOVE_LABEL);
-            removeButton.setAccent(ResearchUiPalette.DANGER_RED);
-            removeButton.setEmphasized(true);
-            removeButton.revalidate();
-            return false;
-        }
-        try {
-            actions.remove(originalId);
-        } catch (IOException | RuntimeException e) {
-            showProblems(Collections.singletonList("Entfernen fehlgeschlagen: " + e.getClass().getSimpleName()));
-            return false;
-        }
-        finish(Outcome.REMOVED, null);
         return true;
     }
 
@@ -286,7 +269,7 @@ public final class SourcePanel extends JPanel {
         editor.focusFirstField();
     }
 
-    private void finish(Outcome outcome, SourceForm source) {
+    private void finish(Outcome outcome, SourceDefinition source) {
         if (listener != null) {
             listener.finished(outcome, source);
         }
@@ -304,10 +287,6 @@ public final class SourcePanel extends JPanel {
 
     ComposerButton saveButton() {
         return saveButton;
-    }
-
-    ComposerButton removeButton() {
-        return removeButton;
     }
 
     ComposerButton cancelButton() {

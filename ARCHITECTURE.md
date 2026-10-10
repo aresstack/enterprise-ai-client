@@ -57,8 +57,12 @@ Moduls liegen nur dort (geprüft).
 | `knowledge-api` | PORT | `knowledge.api` | domain | D (AP7, AP8) |
 | `knowledge-lucene` | ADAPTER | `knowledge.lucene` | domain, knowledge-api | D (AP9) |
 | `source-api` | PORT | `source.api` | domain | E (AP11) |
-| `source-mediawiki` | ADAPTER | `source.mediawiki` | domain, source-api | E (AP12) |
-| `source-confluence` | ADAPTER | `source.confluence` | domain, source-api, security-api | F (AP15) |
+| `source-mediawiki` | ADAPTER | `source.mediawiki` | domain, source-api, http-api | E (AP12) |
+| `source-confluence` | ADAPTER | `source.confluence` | domain, source-api, security-api, http-api | F (AP15) |
+| `source-localfiles` | ADAPTER | `source.localfiles` | domain, source-api, document-api | Dateien (0.1.10) |
+| `document-api` | PORT | `document.api` | domain | Dokumente (corenth deigma) |
+| `document-tika` | ADAPTER | `document.tika` | document-api | Dokumente (Tika) |
+| `http-api` | PORT | `http.api` | domain | N (Netz) |
 | `model-api` | PORT | `model.api` | domain | Modellverwaltung |
 | `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api | Modellverwaltung |
 | `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api | Modellverwaltung |
@@ -228,7 +232,7 @@ eigene Palette gibt es nicht.
 - Drawer (`app.ui.sidebar`): Seite „Chats“ mit Suchleiste, „+ Neuer Chat“ (eröffnet eine neue Unterhaltung am
   `ChatService` und schließt die bisherige; im Agent-Modus beendet es die ACP-Session über
   `AgentService.endSession()`; nicht während einer Antwort), Zeilen je Ansicht und Zahnrad für die Einstellungen; Seite
-  „Wissensquellen“ listet `sources` (Häkchen, Indexstand, ⟳, ✎-Dialog, „+ MediaWiki“/„+ Confluence“) und öffnet
+  „Wissensquellen“ listet `sources` (Häkchen, Indexstand, ⟳, ✎-Dialog, „+ Quelle“, ✕ je Zeile) und öffnet
   unten mit „Index …“ den Index-Dialog (`knowledge.indexDirectory`, `knowledge.indexOnStartup`; gilt beim nächsten
   Start). Weitere Seiten kommen als `ChatSidebarTab` dazu.
 - Antworten des Assistenten sind Markdown-Blasen wie in askai-java8 `arch` (`app.ui.chat.AssistantMarkdownBubble`

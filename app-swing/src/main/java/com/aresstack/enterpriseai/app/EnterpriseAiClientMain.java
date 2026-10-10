@@ -25,7 +25,10 @@ import com.aresstack.enterpriseai.app.ui.settings.IndexDialog;
 import com.aresstack.enterpriseai.app.ui.settings.IndexForm;
 import com.aresstack.enterpriseai.app.ui.settings.IndexPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialog;
+import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
 import com.aresstack.enterpriseai.app.ui.settings.SourceDialog;
+import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsPanel;
@@ -161,6 +164,7 @@ public final class EnterpriseAiClientMain {
                             + " ein beschreibbares Anwendungsverzeichnis wählen.");
                 }
                 notices.addAll(StartupNotices.of(started));
+                notices.addAll(root.ports().sourceWarnings());
                 if (!notices.isEmpty()) {
                     showNotices(frame, notices);
                 }
@@ -241,11 +245,19 @@ public final class EnterpriseAiClientMain {
      */
     private static void attachSourceEditing(ShellAssembly.ShellView view, final JFrame frame,
                                             ConfigurationFile file, final ComicPalette palette) {
-        final FileSourceActions sources = new FileSourceActions(file);
-        view.knowledgeSources().setEditing(sources, sources::sourceConfig, (initial, originalId, actions) -> {
-            SourceDialog.Result result = SourceDialog.show(frame, initial, originalId, actions, palette);
-            return new KnowledgeSourcesController.SourceEditorLauncher.Result(result.outcome(), result.source());
-        });
+        view.knowledgeSources().setEditing(new FileSourceActions(file),
+                new KnowledgeSourcesController.SourceEditorLauncher() {
+                    @Override
+                    public SourceDefinition edit(SourceDefinition initial, String originalId,
+                                                 List<KnowledgeSourceType> types, SourceActions actions) {
+                        return SourceDialog.show(frame, initial, originalId, types, actions, palette);
+                    }
+
+                    @Override
+                    public boolean confirmRemove(String id, String typeName) {
+                        return SourceDialog.confirmRemove(frame, id, typeName, palette);
+                    }
+                });
         view.workspace().knowledgeSources().setIndexSettingsAction(indexSettingsAction(frame, file, palette));
     }
 

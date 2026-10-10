@@ -14,12 +14,14 @@ import com.aresstack.enterpriseai.app.ui.settings.IndexPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogDemo;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
-import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
 import com.aresstack.enterpriseai.app.ui.settings.SourcePanel;
 import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceActions;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceItem;
 import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.domain.source.SourceSettings;
+import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.bubble.SpeechBubblePanel;
@@ -167,29 +169,22 @@ public final class UiScreenshotDemo {
         write(dialog, new File(dir, "G2-einstellungen-netzwerk.png"));
 
         // I: Quellen-Dialog aus dem Drawer-Reiter (✎ an einer Quelle)
-        SourcePanel source = new SourcePanel(SourceForm.builder("handbuch", SourceForm.TYPE_MEDIAWIKI)
-                .url("https://wiki.example.org/w/api.php").startPoints("Urlaub, Kündigung, Gleitzeit, Homeoffice")
-                .build(), "handbuch", new SourceActions() {
+        SourcePanel source = new SourcePanel(new SourceDefinition("handbuch", MediaWikiSourceProvider.TYPE_ID, true,
+                SourceSettings.empty().with("apiUrl", "https://wiki.example.org/w/api.php")
+                        .with("startPoints", "Urlaub, Kündigung, Gleitzeit, Homeoffice")), "handbuch",
+                Collections.singletonList(MediaWikiSourceProvider.sourceType()), new SourceActions() {
                     @Override
-                    public List<SourceForm> sources() {
+                    public List<String> validate(SourceDefinition draft, String originalId) {
                         return Collections.emptyList();
                     }
 
                     @Override
-                    public List<String> validate(SourceForm draft, String originalId) {
-                        return Collections.emptyList();
+                    public void save(SourceDefinition draft, String originalId) {
                     }
 
                     @Override
-                    public void save(SourceForm draft, String originalId) {
-                    }
-
-                    @Override
-                    public void remove(String id) {
-                    }
-
-                    @Override
-                    public void setEnabled(String id, boolean enabled) {
+                    public SourceDefinition draft(String typeId) {
+                        return null;
                     }
                 }, palette);
         source.setWindowControls(new ComicWindowCloseButton(palette, new Runnable() {
@@ -248,7 +243,11 @@ public final class UiScreenshotDemo {
         }
 
         @Override
-        public void addRequested(String type) {
+        public void removeRequested(String sourceId) {
+        }
+
+        @Override
+        public void addRequested() {
         }
 
         @Override
@@ -274,7 +273,7 @@ public final class UiScreenshotDemo {
             chatModel.setRagEnabled(true);
             if (agent) {
                 agentShell = new ChatShellPanel(agentModel, new NoActions(), palette, bubbles);
-                agentShell.composer().setRagToggleVisible(false);
+                agentShell.composer().setModelControlsVisible(false);
             } else {
                 agentShell = null;
             }

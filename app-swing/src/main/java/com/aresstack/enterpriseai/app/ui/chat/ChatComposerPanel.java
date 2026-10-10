@@ -1,7 +1,6 @@
 package com.aresstack.enterpriseai.app.ui.chat;
 
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
-import com.aresstack.enterpriseai.ui.comic.control.ComposerToggleButton;
 import com.aresstack.enterpriseai.ui.comic.control.PlaceholderTextArea;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
@@ -12,10 +11,14 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JFileChooser;
+import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.SwingConstants;
 import javax.swing.UIManager;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
@@ -38,14 +41,18 @@ import java.awt.geom.RoundRectangle2D;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * Der Composer nach askai-java8 (arch, {@code ChatComposerPanel}): EINE abgerundete Fläche, darin der rahmenlose
- * Editor und eine Fußzeile mit den Nebenaktionen. Links der kleine RAG-Schalter als integrierte Pille, rechts
- * genau EIN Hauptknopf: „Senden“ (Akzentblau) solange nichts läuft, „Stop“ (Rot) während eine Antwort streamt —
- * nie beide. Die Fläche wird weiß und bekommt den blauen Rand, sobald der Editor den Fokus hat oder eine
- * Antwort läuft; Enter sendet, Umschalt+Enter bricht um.
+ * Editor und eine Fußzeile wie in arch. Links Modell ▾ und Denkaufwand ▾, in der Mitte die Statuszeile, rechts
+ * Büroklammer, Audiodatei, Mikrofon und genau EIN Hauptknopf: „Senden“ (Akzentblau) solange nichts läuft, „Stop“
+ * (Rot) während eine Antwort streamt — nie beide. Audiodatei und Mikrofon bleiben deaktiviert, solange kein
+ * Spracherkennungs-Modell verfügbar ist. Einen RAG-Schalter gibt es nicht (in arch gab es ihn nie): ob Wissen
+ * gesucht wird, folgt aus den aktivierten Wissensquellen. Die Fläche wird weiß und bekommt den blauen Rand,
+ * sobald der Editor den Fokus hat oder eine Antwort läuft; Enter sendet, Umschalt+Enter bricht um.
  *
  * <p>Farben und Icons kommen aus {@link ResearchUiPalette} und {@link ComposerIcons}; die wenigen eigenen
  * Töne (Rand und Fläche in Ruhe, Platzhalter) sind die der Referenz.</p>
@@ -55,8 +62,17 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String PLACEHOLDER = "Nachricht…";
     static final String SEND_LABEL = "Senden";
     static final String STOP_LABEL = "Stop";
-    static final String RAG_LABEL = "RAG";
     static final String ATTACH_TOOLTIP = "Dateien anhängen";
+    static final String NO_SPEECH_MODEL = "kein Modell verfügbar";
+    static final String AUDIO_FILE_TOOLTIP = "Audiodatei transkribieren (" + NO_SPEECH_MODEL + ")";
+    static final String MICROPHONE_TOOLTIP = "Diktieren (" + NO_SPEECH_MODEL + ")";
+    static final String MODEL_PLACEHOLDER = "Modell";
+    static final String STREAMING_STATUS = "Antwort wird erstellt …";
+    /** Denkaufwand: Anzeige und Wert ({@code null} = Standard des Modells), wie arch „Think: …“. */
+    private static final List<String> REASONING_LABELS = Collections.unmodifiableList(Arrays.asList(
+            "Denken: Standard", "Denken: niedrig", "Denken: mittel", "Denken: hoch"));
+    private static final List<String> REASONING_EFFORTS = Collections.unmodifiableList(Arrays.asList(
+            null, "low", "medium", "high"));
 
     private static final int ARC = 18;
     private static final int MIN_EDITOR_HEIGHT = 62;
@@ -66,16 +82,23 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private static final Color BACKGROUND_FOCUSED = Color.WHITE;
     private static final Color PRIMARY = ResearchUiPalette.ACCENT_BLUE;
     private static final Color DANGER = ResearchUiPalette.DANGER_RED;
+    private static final Color TEXT_MUTED = ResearchUiPalette.LIGHT_TEXT_MUTED;
     private static final String SEND_ACTION = "enterpriseai.send";
 
     private final ChatShellModel model;
     private final ChatShellActions actions;
-    private final ComposerToggleButton ragToggle;
+    private final ComposerButton modelButton;
+    private final ComposerButton reasoningButton;
+    private final JLabel statusLabel = new JLabel(" ");
     private final PlaceholderTextArea editor;
     private final ComposerButton sendButton;
     private final ComposerButton stopButton;
     private final ComposerButton attachButton;
+    private final ComposerButton audioFileButton;
+    private final ComposerButton microphoneButton;
     private final ChatAttachmentStrip attachmentStrip;
+    private Runnable modelAction;
+    private String reasoningEffort;
     private File lastDirectory;
     private boolean editorFocused;
 
@@ -85,14 +108,24 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         }
         this.model = model;
         this.actions = actions;
-        this.ragToggle = new ComposerToggleButton(null, RAG_LABEL, "Wissensbasis für die nächste Frage verwenden");
-        ragToggle.setAccent(ResearchUiPalette.SECONDARY_SURFACE); // ein Werkzeug-Schalter: dunkel wie die Pillen, Blau bleibt „Senden“
+        this.modelButton = new ComposerButton(ComposerIcons.chevronDown(), MODEL_PLACEHOLDER, false,
+                "Chat-Modell (Einstellungen → KI-Dienst)");
+        modelButton.setHorizontalTextPosition(SwingConstants.LEFT); // Name zuerst, Chevron danach (arch)
+        this.reasoningButton = new ComposerButton(ComposerIcons.chevronDown(), REASONING_LABELS.get(0), false,
+                "Denkaufwand (nur für Modelle, die ihn unterstützen)");
+        reasoningButton.setHorizontalTextPosition(SwingConstants.LEFT);
         this.editor = new PlaceholderTextArea(PLACEHOLDER, 2, 40);
         this.sendButton = ComposerButton.primary(ComposerIcons.send(), SEND_LABEL, PRIMARY, "Senden (Enter)");
         this.stopButton = ComposerButton.primary(ComposerIcons.stop(), STOP_LABEL, DANGER, "Antwort abbrechen");
         this.attachButton = ComposerButton.iconButton(ComposerIcons.paperclip(), ATTACH_TOOLTIP);
         attachButton.getAccessibleContext().setAccessibleName(ATTACH_TOOLTIP);
         attachButton.setVisible(actions.supportsAttachments());
+        this.audioFileButton = ComposerButton.iconButton(ComposerIcons.audioFile(), AUDIO_FILE_TOOLTIP);
+        audioFileButton.getAccessibleContext().setAccessibleName(AUDIO_FILE_TOOLTIP);
+        audioFileButton.setEnabled(false);
+        this.microphoneButton = ComposerButton.iconButton(ComposerIcons.microphone(), MICROPHONE_TOOLTIP);
+        microphoneButton.getAccessibleContext().setAccessibleName(MICROPHONE_TOOLTIP);
+        microphoneButton.setEnabled(false);
         this.attachmentStrip = new ChatAttachmentStrip(() -> refreshAttachmentState());
         buildUi();
         wireBehaviour();
@@ -112,9 +145,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
 
     @Override
     public void stateChanged() {
-        if (ragToggle.isSelected() != model.isRagEnabled()) {
-            ragToggle.setSelected(model.isRagEnabled());
-        }
         refreshControls();
     }
 
@@ -174,6 +204,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     }
 
     private void refreshAttachmentState() {
+        refreshControls();
         int count = attachmentStrip.count();
         attachButton.setToolTipText(count > 0 ? ATTACH_TOOLTIP + " (" + count + " vorgemerkt)" : ATTACH_TOOLTIP);
         revalidate();
@@ -181,11 +212,58 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     }
 
     /**
-     * Blendet den RAG-Schalter aus, z. B. in der Agent-Ansicht, wo der Agent seinen Kontext selbst beschafft.
-     * Der Zustand im Model bleibt unberührt.
+     * Blendet Modell- und Denkaufwand-Auswahl aus, z. B. in der Agent-Ansicht, wo der Agent sein Modell selbst
+     * wählt.
      */
-    public void setRagToggleVisible(boolean visible) {
-        ragToggle.setVisible(visible);
+    public void setModelControlsVisible(boolean visible) {
+        modelButton.setVisible(visible);
+        reasoningButton.setVisible(visible);
+    }
+
+    /** Der Name des Chat-Modells im Modellknopf (leer: „Modell“). */
+    public void setModelName(String name) {
+        modelButton.setText(name == null || name.trim().isEmpty() ? MODEL_PLACEHOLDER : name.trim());
+        modelButton.setToolTipText("Chat-Modell: " + modelButton.getText() + " (Einstellungen → KI-Dienst)");
+    }
+
+    /** Was ein Klick auf den Modellknopf tut (bis zum Modellkatalog: die Einstellungen öffnen). */
+    public void setModelAction(Runnable action) {
+        this.modelAction = action;
+    }
+
+    public ComposerButton modelButton() {
+        return modelButton;
+    }
+
+    public ComposerButton reasoningButton() {
+        return reasoningButton;
+    }
+
+    /** Der gewählte Denkaufwand ({@code low}, {@code medium}, {@code high}) oder {@code null} für den Standard. */
+    public String reasoningEffort() {
+        return reasoningEffort;
+    }
+
+    /** Wählt einen Denkaufwand aus {@link #REASONING_LABELS} (Index) und meldet ihn der Anbindung. */
+    void selectReasoning(int index) {
+        reasoningEffort = REASONING_EFFORTS.get(index);
+        reasoningButton.setText(REASONING_LABELS.get(index));
+        actions.reasoningChanged(reasoningEffort);
+        revalidate();
+        repaint();
+    }
+
+    public ComposerButton audioFileButton() {
+        return audioFileButton;
+    }
+
+    public ComposerButton microphoneButton() {
+        return microphoneButton;
+    }
+
+    /** Die Statuszeile in der Mitte der Fußzeile. */
+    public JLabel statusLabel() {
+        return statusLabel;
     }
 
     /** Das Eingabefeld (für Tests, Demo und Composition Root, z. B. um den Fokus zu setzen). */
@@ -201,11 +279,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     /** „Stop“: sichtbar und aktiv nur, solange eine Antwort läuft. */
     public ComposerButton stopButton() {
         return stopButton;
-    }
-
-    /** Der RAG-Schalter; sein Zustand liegt im {@link ChatShellModel}. */
-    public ComposerToggleButton ragToggle() {
-        return ragToggle;
     }
 
     /** Ob gerade eine Antwort läuft (dann zeigt die Fläche Stop und den Akzentrand). */
@@ -273,24 +346,49 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         setMinimumSize(new Dimension(320, 104));
     }
 
+    /** Die Fußzeile wie arch: links Modell und Denkaufwand, Mitte Status, rechts Anhang, Audio, Mikrofon, Senden. */
     private JPanel buildFooter() {
         JPanel footer = new JPanel(new BorderLayout(8, 0));
         footer.setOpaque(false);
         footer.setBorder(new EmptyBorder(5, 0, 0, 0));
         JPanel west = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         west.setOpaque(false);
-        west.add(attachButton);
-        west.add(ragToggle);
+        west.add(modelButton);
+        west.add(reasoningButton);
         footer.add(west, BorderLayout.WEST);
+
+        statusLabel.setForeground(TEXT_MUTED);
+        statusLabel.setFont(statusLabel.getFont().deriveFont(statusLabel.getFont().getSize2D() - 1f));
+        JPanel center = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        center.setOpaque(false);
+        center.add(statusLabel);
+        footer.add(center, BorderLayout.CENTER);
 
         JPanel east = new JPanel();
         east.setOpaque(false);
         east.setLayout(new BoxLayout(east, BoxLayout.X_AXIS));
         east.add(Box.createHorizontalGlue());
+        east.add(attachButton);
+        east.add(Box.createHorizontalStrut(4));
+        east.add(audioFileButton);
+        east.add(Box.createHorizontalStrut(4));
+        east.add(microphoneButton);
+        east.add(Box.createHorizontalStrut(4));
         east.add(sendButton);
         east.add(stopButton);
         footer.add(east, BorderLayout.EAST);
         return footer;
+    }
+
+    private void showReasoningMenu() {
+        JPopupMenu menu = new JPopupMenu();
+        for (int i = 0; i < REASONING_LABELS.size(); i++) {
+            final int index = i;
+            JMenuItem item = new JMenuItem(REASONING_LABELS.get(i));
+            item.addActionListener(event -> selectReasoning(index));
+            menu.add(item);
+        }
+        menu.show(reasoningButton, 0, reasoningButton.getHeight());
     }
 
     private void wireBehaviour() {
@@ -300,7 +398,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                 actions.stopRequested();
             }
         });
-        ragToggle.addActionListener(event -> model.setRagEnabled(ragToggle.isSelected()));
+        modelButton.addActionListener(event -> {
+            if (modelAction != null) {
+                modelAction.run();
+            }
+        });
+        reasoningButton.addActionListener(event -> showReasoningMenu());
         attachButton.addActionListener(event -> chooseFiles());
 
         editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), SEND_ACTION);
@@ -351,6 +454,13 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         sendButton.setEnabled(model.canSend(editor.getText()));
         stopButton.setEnabled(busy);
         attachButton.setEnabled(!busy);
+        reasoningButton.setEnabled(!busy);
+        int pending = attachmentStrip.count();
+        String status = busy ? STREAMING_STATUS
+                : pending == 1 ? "1 Anhang vorgemerkt" : pending > 1 ? pending + " Anhänge vorgemerkt" : " ";
+        if (!status.equals(statusLabel.getText())) {
+            statusLabel.setText(status);
+        }
         if (sendButton.isVisible() == busy || stopButton.isVisible() != busy) {
             sendButton.setVisible(!busy);
             stopButton.setVisible(busy);

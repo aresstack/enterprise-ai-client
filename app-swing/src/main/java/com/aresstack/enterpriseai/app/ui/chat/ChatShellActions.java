@@ -28,6 +28,13 @@ public interface ChatShellActions {
         return false;
     }
 
+    /**
+     * Der Nutzer hat im Composer den Denkaufwand gewählt ({@code low}, {@code medium}, {@code high} oder
+     * {@code null} für den Standard des Modells); gilt ab der nächsten Nachricht.
+     */
+    default void reasoningChanged(String effort) {
+    }
+
     /** Der Nutzer will die laufende Antwort abbrechen. */
     void stopRequested();
 }

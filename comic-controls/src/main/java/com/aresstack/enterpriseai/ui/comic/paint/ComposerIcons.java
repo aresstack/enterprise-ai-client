@@ -49,6 +49,36 @@ public final class ComposerIcons {
         };
     }
 
+    /** AskAI's microphone (dictation). */
+    public static StrokeIcon microphone() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawRoundRect(5, 1, 6, 9, 6, 6);
+                g2.drawArc(3, 5, 10, 8, 180, 180);
+                g2.drawLine(8, 13, 8, 15);
+                g2.drawLine(5, 15, 11, 15);
+            }
+        };
+    }
+
+    /** AskAI's audio file (transcribe a recording): a dog-eared page with a note. */
+    public static StrokeIcon audioFile() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawRoundRect(2, 1, 10, 13, 2, 2);
+                g2.drawLine(9, 1, 12, 4);
+                g2.drawLine(9, 1, 9, 4);
+                g2.drawLine(9, 4, 12, 4);
+                g2.drawLine(6, 7, 6, 11);
+                g2.drawLine(6, 7, 10, 6);
+                g2.fillOval(4, 10, 3, 3);
+                g2.fillOval(8, 9, 3, 3);
+            }
+        };
+    }
+
     /** The three-line hamburger. */
     public static StrokeIcon menu() {
         return new StrokeIcon() {

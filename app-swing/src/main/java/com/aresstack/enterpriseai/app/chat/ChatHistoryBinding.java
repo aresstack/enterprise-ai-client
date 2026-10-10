@@ -98,7 +98,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         for (ChatMessageRecord message : record.getMessages()) {
             if (message.isUser() && !message.getText().trim().isEmpty()) {
                 history.add(ChatMessage.user(message.getText()));
-            } else if (message.isAssistant() && !message.getText().trim().isEmpty()) {
+            } else if (message.isAssistant() && !message.isCancelled() && !message.getText().trim().isEmpty()) {
+                // Abgebrochene Teilantworten bleiben, wie im laufenden ChatService, aus dem Modellverlauf.
                 history.add(ChatMessage.assistant(message.getText()));
             }
         }
@@ -238,8 +239,9 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                 if (!finished || entry.getText().trim().isEmpty()) {
                     return null;
                 }
-                return new ChatMessageRecord(ChatMessageRecord.ROLE_ASSISTANT, entry.getText(),
+                ChatMessageRecord answer = new ChatMessageRecord(ChatMessageRecord.ROLE_ASSISTANT, entry.getText(),
                         entry.getCreatedAtMillis(), null);
+                return entry.getState() == TranscriptEntry.State.CANCELLED ? answer.markCancelled() : answer;
         }
     }
 

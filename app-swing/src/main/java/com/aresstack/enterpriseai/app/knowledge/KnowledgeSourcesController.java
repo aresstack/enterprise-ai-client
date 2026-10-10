@@ -1,18 +1,18 @@
 package com.aresstack.enterpriseai.app.knowledge;
 
 import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
-import com.aresstack.enterpriseai.app.config.SourceConfig;
 import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
-import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
-import com.aresstack.enterpriseai.app.ui.settings.SourcePanel;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceActions;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceItem;
 import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.application.knowledge.IndexingStatus;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
-import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.source.api.SourceDefinitionStore;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -39,10 +39,13 @@ import java.util.logging.Logger;
  *
  * <ul>
  *   <li><b>Häkchen</b> wirken sofort: die {@link KnowledgeSourceSelection} entscheidet, was RAG durchsucht und was
- *       die Start-Indexierung überspringt; dauerhaft steht es über {@link SourceActions#setEnabled} in der Datei.</li>
- *   <li><b>Hinzufügen und Bearbeiten</b> laufen über den Quellen-Dialog und schreiben die Datei. Mit einer
- *       {@code sourceFactory} wird die gespeicherte Quelle sofort angebunden und indexiert; ohne sie gilt die
- *       Änderung nach dem nächsten Start, und die Zeile sagt das.</li>
+ *       die Start-Indexierung überspringt; dauerhaft steht es über den Use Case in der Datei.</li>
+ *   <li><b>„+ Quelle“ und Bearbeiten</b> laufen über den Quellen-Dialog; welche Quelltypen es gibt und welche
+ *       Felder sie haben, liefert {@link KnowledgeSourceManagement} aus den registrierten Adaptern. Die gespeicherte
+ *       Quelle wird sofort angebunden und indexiert; bietet kein Adapter ihren Typ an, gilt die Änderung nach dem
+ *       nächsten Start, und die Zeile sagt das.</li>
+ *   <li><b>Entfernen</b> fragt kurz nach, nimmt die Zeile sofort aus der Liste und lässt den Use Case die Quelle
+ *       aus der Datei nehmen und ihren Index zurückziehen (auf dem Arbeits-Executor).</li>
  *   <li><b>Indexstand</b>: Seiten im Index je Quelle (auf dem Arbeits-Executor gezählt), dazu das Ergebnis des
  *       letzten Laufs dieser Sitzung; die {@link KnowledgeIndexingBinding} meldet Beginn und Ende jedes Laufs.</li>
  *   <li>Eine Quelle der Datei, die nicht angebunden ist, zeigt ihr erstes Problem oder „gilt nach dem Neustart“.</li>
@@ -61,79 +64,60 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     static final String RESTART_TEXT = "Gespeichert; gilt nach dem nächsten Start";
     static final String COUNTING_TEXT = "Indexstand wird gelesen …";
 
-    /** Öffnet den Quellen-Dialog und liefert, wie er endete (produktiv modal über {@code SourceDialog}). */
+    /** Öffnet den Quellen-Dialog und die Rückfrage vor dem Entfernen (produktiv modal über {@code SourceDialog}). */
     public interface SourceEditorLauncher {
-        Result edit(SourceForm initial, String originalId, SourceActions actions);
+        /** Die gespeicherte Quelle oder {@code null}, wenn abgebrochen. */
+        SourceDefinition edit(SourceDefinition initial, String originalId, List<KnowledgeSourceType> types,
+                              SourceActions actions);
 
-        /** Wie der Dialog endete und, nach dem Speichern, die gespeicherte Quelle. */
-        final class Result {
-            private final SourcePanel.Outcome outcome;
-            private final SourceForm source;
-
-            public Result(SourcePanel.Outcome outcome, SourceForm source) {
-                this.outcome = outcome;
-                this.source = source;
-            }
-
-            public SourcePanel.Outcome outcome() {
-                return outcome;
-            }
-
-            public SourceForm source() {
-                return source;
-            }
-        }
+        /** {@code true}: wirklich entfernen. */
+        boolean confirmRemove(String sourceId, String typeName);
     }
 
-    /** Liest eine gespeicherte Quelle streng aus der Datei (produktiv {@code FileSourceActions#sourceConfig}). */
-    public interface SourceResolver {
-        SourceConfig resolve(String id) throws IOException;
-    }
-
-    private final List<SourceConfig> startupSources;
+    private final List<SourceDefinition> startupSources;
     private final Map<String, KnowledgeSourceRegistration> live = new LinkedHashMap<String, KnowledgeSourceRegistration>();
     private final Set<String> pendingRestart = new HashSet<String>();
     private final Map<String, Integer> counts = new HashMap<String, Integer>();
     private final Map<String, String> lastRun = new HashMap<String, String>();
     private final Set<String> failedRuns = new HashSet<String>();
     private final Map<String, String> writeProblems = new HashMap<String, String>();
+    private final Set<String> removing = new HashSet<String>();
     private final KnowledgeSourceSelection selection;
     private final KnowledgeIndexingBinding binding;
     private final Function<KnowledgeSourceId, Integer> indexCount;
-    private final Function<SourceConfig, KnowledgeSourcePort> sourceFactory;
+    private final KnowledgeSourceManagement management;
     private final Executor uiExecutor;
     private final Executor workExecutor;
     private final LongSupplier clock;
     private final ZoneId zone;
     private Consumer<List<KnowledgeSourceItem>> view;
-    private SourceActions file;
-    private SourceResolver resolver;
+    private KnowledgeSourceManagement editing;
     private SourceEditorLauncher launcher;
     private String running;
 
     /**
      * @param startupSources die beim Start geladenen Quellen (Anzeige, solange keine Datei angeschlossen ist)
      * @param catalog        die beim Start angebundenen Quellen
+     * @param management     Quelltypen, Prüfen, Speichern, Entfernen und Anbinden (Use Case; ohne Ablage)
      * @param indexCount     Seiten im Index je Quelle; blockiert, läuft auf {@code workExecutor} ({@code null}: keine)
-     * @param sourceFactory  baut neu gespeicherte Quellen ohne Neustart ({@code null}: Änderungen nach dem Neustart)
      */
-    public KnowledgeSourcesController(List<SourceConfig> startupSources, KnowledgeSourceCatalog catalog,
+    public KnowledgeSourcesController(List<SourceDefinition> startupSources, KnowledgeSourceCatalog catalog,
                                       KnowledgeSourceSelection selection, KnowledgeIndexingBinding binding,
                                       Function<KnowledgeSourceId, Integer> indexCount,
-                                      Function<SourceConfig, KnowledgeSourcePort> sourceFactory,
+                                      KnowledgeSourceManagement management,
                                       Executor uiExecutor, Executor workExecutor, LongSupplier clock, ZoneId zone) {
-        if (startupSources == null || catalog == null || selection == null || binding == null || uiExecutor == null
-                || workExecutor == null || clock == null || zone == null) {
-            throw new IllegalArgumentException("only indexCount and sourceFactory may be null");
+        if (startupSources == null || catalog == null || selection == null || binding == null || management == null
+                || uiExecutor == null || workExecutor == null || clock == null || zone == null) {
+            throw new IllegalArgumentException("only indexCount may be null");
         }
-        this.startupSources = new ArrayList<SourceConfig>(startupSources);
+        this.startupSources = new ArrayList<SourceDefinition>(startupSources);
         for (KnowledgeSourceRegistration registration : catalog.registrations()) {
             live.put(registration.sourceId().value(), registration);
         }
         this.selection = selection;
         this.binding = binding;
         this.indexCount = indexCount;
-        this.sourceFactory = sourceFactory;
+        this.management = management;
         this.uiExecutor = uiExecutor;
         this.workExecutor = workExecutor;
         this.clock = clock;
@@ -164,10 +148,9 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         publish();
     }
 
-    /** Die Konfigurationsdatei und der Dialog; ohne sie lässt sich nur an- und abwählen und indexieren. */
-    public void setEditing(SourceActions sourceFile, SourceResolver sourceResolver, SourceEditorLauncher editor) {
-        this.file = sourceFile;
-        this.resolver = sourceResolver;
+    /** Die Ablage (Konfigurationsdatei) und der Dialog; ohne sie lässt sich nur an- und abwählen und indexieren. */
+    public void setEditing(SourceDefinitionStore store, SourceEditorLauncher editor) {
+        this.editing = store == null ? null : management.withStore(store);
         this.launcher = editor;
         publish();
     }
@@ -178,9 +161,9 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     public void enabledChanged(String sourceId, boolean enabled) {
         selection.setEnabled(KnowledgeSourceId.of(sourceId), enabled);
         writeProblems.remove(sourceId);
-        if (file != null) {
+        if (editing != null) {
             try {
-                file.setEnabled(sourceId, enabled);
+                editing.setEnabled(sourceId, enabled);
             } catch (IOException | RuntimeException e) {
                 LOG.log(Level.WARNING, "Häkchen der Quelle " + sourceId + " nicht gespeichert", e);
                 writeProblems.put(sourceId, "Häkchen nicht gespeichert (" + e.getClass().getSimpleName()
@@ -206,11 +189,11 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
 
     @Override
     public void editRequested(String sourceId) {
-        if (!canAdd()) {
+        if (!canAdd() || removing.contains(sourceId)) {
             return;
         }
-        SourceForm current = null;
-        for (SourceForm source : fileSources()) {
+        SourceDefinition current = null;
+        for (SourceDefinition source : fileSources()) {
             if (source.id().equals(sourceId)) {
                 current = source;
             }
@@ -218,42 +201,110 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         if (current == null) {
             return;
         }
-        SourceEditorLauncher.Result result = launcher.edit(current, sourceId, file);
-        if (result == null) {
-            return;
-        }
-        if (result.outcome() == SourcePanel.Outcome.REMOVED) {
-            detach(sourceId);
-        } else if (result.outcome() == SourcePanel.Outcome.SAVED && result.source() != null) {
-            if (!result.source().id().equals(sourceId)) {
+        KnowledgeSourceType type = management.type(current.typeId());
+        List<KnowledgeSourceType> types = type == null ? Collections.<KnowledgeSourceType>emptyList()
+                : Collections.singletonList(type);
+        SourceDefinition saved = launcher.edit(current, sourceId, types, dialogActions());
+        if (saved != null) {
+            if (!saved.id().equals(sourceId)) {
                 detach(sourceId);
             }
-            connect(result.source().id());
+            connect(saved.id());
         }
         publish();
     }
 
     @Override
-    public void addRequested(String type) {
-        if (!canAdd()) {
+    public void addRequested() {
+        List<KnowledgeSourceType> types = management.types();
+        if (!canAdd() || types.isEmpty()) {
             return;
         }
-        String kind = SourceForm.TYPE_CONFLUENCE.equals(type) ? SourceForm.TYPE_CONFLUENCE
-                : SourceForm.TYPE_FILES.equals(type) ? SourceForm.TYPE_FILES : SourceForm.TYPE_MEDIAWIKI;
-        SourceForm.Builder initial = SourceForm.builder(freeId(kind), kind);
-        if (SourceForm.TYPE_FILES.equals(kind)) {
-            initial.startPoints(".").maxDepth("20");
-        }
-        SourceEditorLauncher.Result result = launcher.edit(initial.build(), null, file);
-        if (result != null && result.outcome() == SourcePanel.Outcome.SAVED && result.source() != null) {
-            connect(result.source().id());
+        SourceDefinition initial = editing.draft(types.get(0).id(), taken());
+        SourceDefinition saved = launcher.edit(initial, null, types, dialogActions());
+        if (saved != null) {
+            connect(saved.id());
         }
         publish();
+    }
+
+    @Override
+    public void removeRequested(final String sourceId) {
+        if (!canAdd() || removing.contains(sourceId) || sourceId.equals(running)) {
+            return;
+        }
+        SourceDefinition current = null;
+        for (SourceDefinition source : fileSources()) {
+            if (source.id().equals(sourceId)) {
+                current = source;
+            }
+        }
+        if (current == null || !launcher.confirmRemove(sourceId, label(current.typeId()))) {
+            return;
+        }
+        // Sofort aus der Liste und aus Chat/Indexierung; Datei und Index räumt der Use Case im Hintergrund.
+        removing.add(sourceId);
+        detach(sourceId);
+        publish();
+        final KnowledgeSourceManagement target = editing;
+        try {
+            workExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    target.remove(sourceId);
+                } catch (IOException | RuntimeException e) {
+                    failure = e;
+                }
+                final Exception problem = failure;
+                uiExecutor.execute(() -> {
+                    removing.remove(sourceId);
+                    if (problem != null) {
+                        LOG.log(Level.WARNING, "Quelle " + sourceId + " nicht vollständig entfernt", problem);
+                        writeProblems.put(sourceId, "Entfernen fehlgeschlagen ("
+                                + problem.getClass().getSimpleName() + "); bitte erneut versuchen");
+                    }
+                    publish();
+                });
+            });
+        } catch (RuntimeException rejected) {
+            removing.remove(sourceId);
+            writeProblems.put(sourceId, "Entfernen fehlgeschlagen; bitte erneut versuchen");
+            publish();
+        }
     }
 
     @Override
     public boolean canAdd() {
-        return file != null && launcher != null;
+        return editing != null && launcher != null;
+    }
+
+    /** Was der Dialog braucht, über dem Use Case (Typwechsel holt einen frischen Entwurf). */
+    private SourceActions dialogActions() {
+        final KnowledgeSourceManagement target = editing;
+        return new SourceActions() {
+            @Override
+            public List<String> validate(SourceDefinition draft, String originalId) {
+                return target.validate(draft, originalId);
+            }
+
+            @Override
+            public void save(SourceDefinition draft, String originalId) throws IOException {
+                target.save(draft, originalId);
+            }
+
+            @Override
+            public SourceDefinition draft(String typeId) {
+                return target.draft(typeId, taken());
+            }
+        };
+    }
+
+    private Set<String> taken() {
+        Set<String> taken = new HashSet<String>(live.keySet());
+        for (SourceDefinition source : fileSources()) {
+            taken.add(source.id());
+        }
+        return taken;
     }
 
     // ------------------------------------------------------------------ Anbinden
@@ -261,15 +312,15 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     /** Bindet die gespeicherte Quelle an (ersetzt eine alte) und indexiert sie, wenn sie angehakt ist. */
     private void connect(String id) {
         writeProblems.remove(id);
-        if (sourceFactory == null || resolver == null) {
-            pendingRestart.add(id);
-            return;
-        }
-        final SourceConfig config;
-        final KnowledgeSourcePort port;
+        final SourceDefinition config;
+        final KnowledgeSourceRegistration registration;
         try {
-            config = resolver.resolve(id);
-            port = sourceFactory.apply(config);
+            config = editing.find(id);
+            if (config == null || management.type(config.typeId()) == null) {
+                pendingRestart.add(id);
+                return;
+            }
+            registration = editing.open(config);
         } catch (IOException | RuntimeException e) {
             LOG.log(Level.WARNING, "Quelle " + id + " nicht angebunden; gilt nach dem nächsten Start", e);
             pendingRestart.add(id);
@@ -279,7 +330,6 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         lastRun.remove(id);
         failedRuns.remove(id);
         counts.remove(id);
-        KnowledgeSourceRegistration registration = new KnowledgeSourceRegistration(port, config.scope());
         live.put(id, registration);
         selection.register(registration.sourceId(), config.enabled());
         if (config.enabled() && !binding.isRunning()) {
@@ -355,12 +405,12 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
 
     // ------------------------------------------------------------------ Liste
 
-    private List<SourceForm> fileSources() {
-        if (file == null) {
+    private List<SourceDefinition> fileSources() {
+        if (editing == null) {
             return Collections.emptyList();
         }
         try {
-            return file.sources();
+            return editing.definitions();
         } catch (IOException | RuntimeException e) {
             LOG.log(Level.WARNING, "Wissensquellen der Konfigurationsdatei nicht lesbar", e);
             return Collections.emptyList();
@@ -370,24 +420,22 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     /** Die Zeilen in Dateireihenfolge (ohne Datei: die beim Start geladenen Quellen). */
     public List<KnowledgeSourceItem> items() {
         List<KnowledgeSourceItem> items = new ArrayList<KnowledgeSourceItem>();
-        if (file == null) {
-            for (SourceConfig source : startupSources) {
-                String id = source.sourceId().value();
-                items.add(item(id, label(source.type()), String.join(", ", source.scope().startPoints()),
-                        null));
+        if (editing == null) {
+            for (SourceDefinition source : startupSources) {
+                items.add(item(source.id(), label(source.typeId()), summary(source), null));
             }
             return items;
         }
-        for (SourceForm source : fileSources()) {
-            if (source.id().isEmpty()) {
+        for (SourceDefinition source : fileSources()) {
+            if (source.id().isEmpty() || removing.contains(source.id())) {
                 continue;
             }
-            items.add(item(source.id(), label(source.type()), source.startPoints(), source));
+            items.add(item(source.id(), label(source.typeId()), summary(source), source));
         }
         return items;
     }
 
-    private KnowledgeSourceItem item(String id, String kind, String scope, SourceForm form) {
+    private KnowledgeSourceItem item(String id, String kind, String scope, SourceDefinition form) {
         KnowledgeSourceRegistration registration = live.get(id);
         boolean connected = registration != null && !pendingRestart.contains(id);
         boolean enabled = connected ? selection.isEnabled(registration.sourceId()) : form == null || form.enabled();
@@ -398,8 +446,8 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             status = writeProblems.get(id);
             state = KnowledgeSourceItem.State.PROBLEM;
         } else if (!connected) {
-            List<String> problems = form == null || file == null ? Collections.<String>emptyList()
-                    : file.validate(form, id);
+            List<String> problems = form == null || editing == null ? Collections.<String>emptyList()
+                    : editing.validate(form, id);
             if (!problems.isEmpty()) {
                 status = "Fehlerhaft: " + problems.get(0);
                 state = KnowledgeSourceItem.State.PROBLEM;
@@ -418,7 +466,8 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             }
         }
         boolean indexable = connected && enabled && !binding.isRunning();
-        return new KnowledgeSourceItem(id, kind, scope, enabled, status, state, indexable, editable);
+        boolean removable = editable && !id.equals(running);
+        return new KnowledgeSourceItem(id, kind, scope, enabled, status, state, indexable, editable, removable);
     }
 
     private String indexText(String id) {
@@ -435,23 +484,18 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         return pages.isEmpty() || pages.equals(COUNTING_TEXT) ? run : pages + " · " + run;
     }
 
-    private static String label(String type) {
-        return SourceForm.kindLabel(type);
+    /** Typ für die Anzeige: der Name, den der Adapter beschreibt, sonst die Typ-ID aus der Datei. */
+    private String label(String typeId) {
+        KnowledgeSourceType type = management.type(typeId);
+        return type == null ? typeId : type.displayName();
     }
 
-    private String freeId(String type) {
-        Set<String> taken = new HashSet<String>(live.keySet());
-        for (SourceForm source : fileSources()) {
-            taken.add(source.id());
-        }
-        String base = SourceForm.TYPE_CONFLUENCE.equals(type) ? "confluence"
-                : SourceForm.TYPE_FILES.equals(type) ? "dateien" : "wiki";
-        String candidate = base;
-        int n = 2;
-        while (taken.contains(candidate)) {
-            candidate = base + n++;
-        }
-        return candidate;
+    /** Umfang für die Anzeige: der Schlüssel, den der Adapter als Zusammenfassung nennt, sonst die Startpunkte. */
+    private String summary(SourceDefinition source) {
+        KnowledgeSourceType type = management.type(source.typeId());
+        String key = type == null || type.summaryKey().isEmpty() ? "startPoints" : type.summaryKey();
+        String value = source.settings().get(key);
+        return value.isEmpty() ? source.settings().get("startPoints") : value;
     }
 
     private void publish() {

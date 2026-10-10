@@ -12,11 +12,17 @@ public interface KnowledgeSourceActions {
     /** „Jetzt indexieren“. */
     void indexRequested(String sourceId);
 
-    /** Bearbeiten (öffnet den Quellen-Dialog, dort auch Entfernen). */
+    /** Bearbeiten (öffnet den Quellen-Dialog). */
     void editRequested(String sourceId);
 
-    /** „+ MediaWiki“, „+ Confluence“ bzw. „+ Dateien“; {@code type} ist {@code mediawiki}, {@code confluence} oder {@code files}. */
-    void addRequested(String type);
+    /**
+     * Entfernen in der Zeile: nach kurzer Rückfrage verschwindet die Quelle sofort aus der Liste; sie wird aus der
+     * Konfiguration genommen und ihr Index zurückgezogen (Use Case, nicht Oberfläche).
+     */
+    void removeRequested(String sourceId);
+
+    /** „+ Quelle“: welcher Quelltyp, fragt der Dialog. */
+    void addRequested();
 
     /** Ob Hinzufügen geht (ohne Konfigurationsdatei nicht). */
     boolean canAdd();

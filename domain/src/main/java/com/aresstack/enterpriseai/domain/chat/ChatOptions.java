@@ -22,6 +22,7 @@ public final class ChatOptions {
     private final Double frequencyPenalty;
     private final List<String> stop;
     private final String endUserId;
+    private final String reasoningEffort;
 
     private ChatOptions(Builder builder) {
         this.model = builder.model;
@@ -33,6 +34,7 @@ public final class ChatOptions {
         this.frequencyPenalty = builder.frequencyPenalty;
         this.stop = Collections.unmodifiableList(new ArrayList<String>(builder.stop));
         this.endUserId = builder.endUserId;
+        this.reasoningEffort = builder.reasoningEffort;
     }
 
     /** @return Optionen ohne gesetzte Werte */
@@ -56,6 +58,7 @@ public final class ChatOptions {
         builder.frequencyPenalty = frequencyPenalty;
         builder.stop.addAll(stop);
         builder.endUserId = endUserId;
+        builder.reasoningEffort = reasoningEffort;
         return builder;
     }
 
@@ -79,6 +82,7 @@ public final class ChatOptions {
             builder.stop.addAll(fallback.stop);
         }
         builder.endUserId = endUserId != null ? endUserId : fallback.endUserId;
+        builder.reasoningEffort = reasoningEffort != null ? reasoningEffort : fallback.reasoningEffort;
         return builder.build();
     }
 
@@ -121,6 +125,14 @@ public final class ChatOptions {
         return endUserId;
     }
 
+    /**
+     * @return gewünschter Denkaufwand von Reasoning-Modellen ({@code low}, {@code medium}, {@code high}) oder
+     *         {@code null} für den Standard des Modells
+     */
+    public String reasoningEffort() {
+        return reasoningEffort;
+    }
+
     @Override
     public String toString() {
         return "ChatOptions[model=" + model + ", temperature=" + temperature + ", topP=" + topP + ", topK=" + topK
@@ -140,6 +152,7 @@ public final class ChatOptions {
         private Double frequencyPenalty;
         private final List<String> stop = new ArrayList<String>();
         private String endUserId;
+        private String reasoningEffort;
 
         private Builder() {
         }
@@ -198,6 +211,16 @@ public final class ChatOptions {
 
         public Builder endUserId(String value) {
             this.endUserId = blankToNull(value);
+            return this;
+        }
+
+        /** {@code low}, {@code medium}, {@code high} oder {@code null} (Standard des Modells). */
+        public Builder reasoningEffort(String value) {
+            String effort = blankToNull(value);
+            if (effort != null && !effort.matches("low|medium|high")) {
+                throw new IllegalArgumentException("reasoningEffort must be low, medium or high");
+            }
+            this.reasoningEffort = effort;
             return this;
         }
 

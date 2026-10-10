@@ -53,13 +53,23 @@ java -jar enterprise-ai-client-<version>.jar
    Confluence). Mit `knowledge.indexOnStartup=true` (Standard) indexiert die Anwendung beim Start im
    Hintergrund; die Statuszeile zeigt den Fortschritt und bietet Abbrechen an. Alternativ stößt ein Agent
    `refresh_knowledge_source` an.
-   **Lokale Dateien**: „+ Dateien“ im Drawer-Reiter „Wissensquellen“ legt eine Quelle `type=files` an
+   **„+ Quelle“**: Der Drawer-Reiter „Wissensquellen“ hat genau einen Knopf zum Hinzufügen. Welche Quelltypen
+   der Dialog anbietet und welche Felder sie haben, beschreibt jeder Adapter selbst über den Port
+   `KnowledgeSourceProvider` (`source-api`, nach corenth); der Use Case `KnowledgeSourceManagement` prüft,
+   speichert und entfernt. Das ✕ in einer Zeile entfernt die Quelle nach kurzer Rückfrage: sie verschwindet sofort,
+   ihre Zeilen in der Datei werden auskommentiert und ihr Index wird gelöscht. Gespeichert wird weiter als
+   `source.<id>.type` und `source.<id>.*`; bestehende Dateien laden unverändert.
+   **Lokale Dateien**: „+ Quelle“ mit Typ „Lokale Dateien“ legt eine Quelle `type=files` an
    („Verzeichnis wählen …“); das Verzeichnis wird rekursiv gelesen. Erkennung und Extraktion stammen aus corenth
    `deigma` (Module `document-api` und `document-tika`, Quelle `source-localfiles`): Text und Markdown direkt,
    PDF, Word, Excel, PowerPoint, OpenDocument, RTF, HTML und Mails über Apache Tika 2.9.1 wie in MainframeMate.
    Die Tika-Parser vergrößern das Fat Jar deutlich.
-6. **RAG verwenden**: Die Pille „RAG“ im Composer einschalten. Vor der Antwort sucht die
-   Anwendung im Index; die Antwort trägt die verwendeten Quellen, Hinweise erscheinen als eigene Blase.
+6. **RAG verwenden**: Einen RAG-Schalter gibt es nicht (wie in askai-java8 arch). Sind Wissensquellen
+   konfiguriert, sucht die Anwendung vor jeder Antwort in den angehakten Quellen; die Antwort trägt die verwendeten
+   Quellen, Hinweise erscheinen als eigene Blase. Der Composer zeigt wie arch links das Chat-Modell (Klick öffnet die
+   Einstellungen) und den Denkaufwand („Denken: Standard/niedrig/mittel/hoch“, gesendet als `reasoning_effort` bzw.
+   `reasoning.effort`, gegen das Gateway UNVERIFIED), rechts Büroklammer, Audiodatei und Mikrofon (deaktiviert,
+   solange kein Spracherkennungs-Modell verfügbar ist) und Senden/Stop; dazwischen eine Statuszeile.
 7. **Dateianhänge und Tool-Calls**: Die Büroklammer im Composer hängt Dateien an (Chips mit ✕ über dem Editor,
    nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen laufen über `POST <chat.baseUrl>/responses`
    statt über das Streaming von `/chat/completions`: Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge

@@ -105,8 +105,6 @@ public class SettingsPanelTest {
         return SettingsForm.builder()
                 .chatBaseUrl("http://127.0.0.1:9/v1").chatModel("test-chat").chatApiKeyRef("keepass:Enterprise AI API")
                 .embeddingModel("test-embedding").embeddingDimension("8")
-                .addSource(SourceForm.builder("wiki", SourceForm.TYPE_MEDIAWIKI).url("http://127.0.0.1:9/w/api.php")
-                        .startPoints("Hauptseite").build())
                 .keePassEnabled(false).proxyMode(SettingsForm.PROXY_DISABLED).build();
     }
 
@@ -119,7 +117,6 @@ public class SettingsPanelTest {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
                 assertEquals("http://127.0.0.1:9/v1", panel.serviceTab().chatBaseUrl().getText());
-                assertEquals(1, panel.toForm().sources().size());
                 assertFalse(panel.securityTab().enabled().isSelected());
                 assertEquals(SettingsForm.PROXY_DISABLED, panel.systemTab().proxyMode().getSelectedItem());
 
@@ -152,32 +149,9 @@ public class SettingsPanelTest {
                 assertEquals("keepass:Firmen-Proxy", form.proxyCredentialRef());
                 assertEquals("Mozilla/5.0 Test", form.userAgent());
                 assertEquals("C:/ca.pem", form.caCertificatesFile());
-                assertEquals("http://127.0.0.1:9/w/api.php", form.sources().get(0).url());
 
                 panel.setForm(sample());
                 assertEquals("test-chat", panel.modelsTab().chatModel().getText());
-            }
-        });
-    }
-
-    @Test
-    public void sourcesPassThroughTheDialogUnchanged() throws Exception {
-        final ScriptedActions actions = new ScriptedActions();
-        onEdt(new Runnable() {
-            @Override
-            public void run() {
-                SourceForm wiki = SourceForm.builder("wiki", SourceForm.TYPE_MEDIAWIKI)
-                        .url("http://127.0.0.1:9/w/api.php").startPoints("Hauptseite").build();
-                SourceForm confluence = SourceForm.builder("confluence", SourceForm.TYPE_CONFLUENCE)
-                        .url("http://127.0.0.1:9/confluence").enabled(false).build();
-                SettingsPanel panel = new SettingsPanel(SettingsForm.builder().sources(Arrays.asList(wiki, confluence))
-                        .build(), Collections.<String>emptyList(), SettingsPanel.Mode.EDIT, actions, palette);
-                List<SourceForm> sources = panel.toForm().sources();
-                assertEquals(2, sources.size());
-                assertEquals("http://127.0.0.1:9/w/api.php", sources.get(0).url());
-                assertEquals("Hauptseite", sources.get(0).startPoints());
-                assertTrue(sources.get(0).enabled());
-                assertFalse(sources.get(1).enabled());
             }
         });
     }

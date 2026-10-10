@@ -127,8 +127,7 @@ public class FileSettingsActionsTest {
                 + "source.wiki.startPoints=Hauptseite\nsource.wiki.linkNamespaces=0\n");
         FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);
         SettingsForm form = SettingsMapper.fromProperties(file.read()).toBuilder()
-                .chatSystemPrompt("").sources(java.util.Collections.<com.aresstack.enterpriseai.app.ui.settings.SourceForm>emptyList())
-                .build();
+                .chatSystemPrompt("").build();
         actions.save(form);
         String text = new String(Files.readAllBytes(file.path()), StandardCharsets.UTF_8);
         assertTrue(text, text.contains("\n#chat.systemPrompt=Antworte kurz.\n"));

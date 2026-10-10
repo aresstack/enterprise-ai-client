@@ -3,8 +3,6 @@ package com.aresstack.enterpriseai.app.security;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.ClientCertificateConfig;
-import com.aresstack.enterpriseai.app.config.ConfluenceSourceConfig;
-import com.aresstack.enterpriseai.app.config.SourceConfig;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import org.junit.Rule;
@@ -34,23 +32,8 @@ public class ClientCertificateFactoryTest {
     public TemporaryFolder temp = new TemporaryFolder();
 
     private ClientCertificateConfig certificateConfig(Path keyStoreFile, boolean withPasswordRef) throws Exception {
-        Properties p = new Properties();
-        // Die Vorlage liefert die Beispielquellen auskommentiert; hier wird der Confluence-Block aktiviert.
-        p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
-        p.setProperty("sources", "confluence");
-        p.setProperty("knowledge.indexDirectory", temp.getRoot().toPath().resolve("index").toString());
-        p.setProperty("source.confluence.clientCertificate.alias", "client");
-        p.setProperty("source.confluence.clientCertificate.keyStoreFile", keyStoreFile.toString());
-        if (withPasswordRef) {
-            p.setProperty("source.confluence.clientCertificate.keyStorePasswordRef", REF.id());
-        }
-        AppConfig config = AppConfigLoader.fromProperties(p);
-        for (SourceConfig source : config.sources()) {
-            if (source instanceof ConfluenceSourceConfig) {
-                return ((ConfluenceSourceConfig) source).clientCertificate();
-            }
-        }
-        throw new AssertionError("Beispielkonfiguration ohne Confluence-Quelle");
+        // Wie die Confluence-Quelle es aus source.<id>.clientCertificate.* baut.
+        return new ClientCertificateConfig("client", keyStoreFile, withPasswordRef ? REF : null);
     }
 
     @Test

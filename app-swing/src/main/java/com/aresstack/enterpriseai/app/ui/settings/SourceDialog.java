@@ -9,22 +9,33 @@ import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicTheme;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
 
+import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
+
+import javax.swing.BorderFactory;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Window;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.List;
 
 /**
  * Der modale Rahmen um {@link SourcePanel}: rahmenlos und rund wie der Einstellungen-Dialog (Tintenkontur als Rand
  * und Greifzone, die Überschrift zieht, das Comic-✕ bricht ab), Escape und Schließen brechen ab. {@link #show}
- * blockiert auf dem EDT und liefert, wie der Dialog endete.
+ * blockiert auf dem EDT und liefert die gespeicherte Quelle; {@link #confirmRemove} ist die kleine Rückfrage vor
+ * dem Entfernen einer Quelle.
  */
 public final class SourceDialog extends JDialog {
 
@@ -32,37 +43,17 @@ public final class SourceDialog extends JDialog {
     static final int WINDOW_PADDING = 4;
     static final int RESIZE_GRIP = 6;
 
-    /** Wie der Dialog endete und, nach dem Speichern, die gespeicherte Quelle. */
-    public static final class Result {
-        private final SourcePanel.Outcome outcome;
-        private final SourceForm source;
-
-        Result(SourcePanel.Outcome outcome, SourceForm source) {
-            this.outcome = outcome;
-            this.source = source;
-        }
-
-        public SourcePanel.Outcome outcome() {
-            return outcome;
-        }
-
-        /** Die gespeicherte Quelle, sonst {@code null}. */
-        public SourceForm source() {
-            return source;
-        }
-    }
-
     private final SourcePanel panel;
-    private Result result = new Result(SourcePanel.Outcome.CANCELLED, null);
+    private SourceDefinition result;
 
-    private SourceDialog(Window owner, SourceForm initial, String originalId, SourceActions actions,
-                         ComicPalette palette) {
-        super(owner, SourcePanel.titleFor(initial, originalId), ModalityType.APPLICATION_MODAL);
+    private SourceDialog(Window owner, SourceDefinition initial, String originalId, List<KnowledgeSourceType> types,
+                         SourceActions actions, ComicPalette palette) {
+        super(owner, originalId == null ? "Quelle hinzufügen" : "Quelle bearbeiten", ModalityType.APPLICATION_MODAL);
         setUndecorated(true);
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-        this.panel = new SourcePanel(initial, originalId, actions, palette);
+        this.panel = new SourcePanel(initial, originalId, types, actions, palette);
         panel.setListener((outcome, source) -> {
-            result = new Result(outcome, source);
+            result = outcome == SourcePanel.Outcome.SAVED ? source : null;
             dispose();
         });
         JPanel content = new JPanel(new BorderLayout());
@@ -96,14 +87,65 @@ public final class SourceDialog extends JDialog {
      * Zeigt den Dialog modal (nur auf dem EDT).
      *
      * @param originalId die ID in der Datei beim Bearbeiten, {@code null} beim Hinzufügen
+     * @return die gespeicherte Quelle; {@code null}, wenn abgebrochen
      */
-    public static Result show(Window owner, SourceForm initial, String originalId, SourceActions actions,
-                              ComicPalette palette) {
+    public static SourceDefinition show(Window owner, SourceDefinition initial, String originalId,
+                                        List<KnowledgeSourceType> types, SourceActions actions,
+                                        ComicPalette palette) {
         ComicPalette colors = palette == null ? ComicPalette.defaultPalette() : palette;
         ComicTheme.installMenuDefaults(colors);
-        SourceDialog dialog = new SourceDialog(owner, initial, originalId, actions, colors);
+        SourceDialog dialog = new SourceDialog(owner, initial, originalId, types, actions, colors);
         dialog.setVisible(true);
         return dialog.result;
+    }
+
+    /**
+     * Die kleine Rückfrage vor dem Entfernen, im selben rahmenlosen Stil (nur auf dem EDT).
+     *
+     * @return {@code true}, wenn der Benutzer „Entfernen“ wählt
+     */
+    public static boolean confirmRemove(Window owner, String sourceId, String typeName, ComicPalette palette) {
+        ComicPalette colors = palette == null ? ComicPalette.defaultPalette() : palette;
+        ComicTheme.installMenuDefaults(colors);
+        final boolean[] confirmed = {false};
+        final JDialog dialog = new JDialog(owner, "Quelle entfernen", ModalityType.APPLICATION_MODAL);
+        dialog.setUndecorated(true);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        JPanel content = new JPanel(new BorderLayout(0, 10));
+        content.setBackground(colors.getSurface());
+        content.setBorder(BorderFactory.createCompoundBorder(ComicBorder.windowBorder(colors, WINDOW_PADDING),
+                BorderFactory.createEmptyBorder(12, 16, 12, 16)));
+        JLabel heading = new JLabel("Quelle „" + sourceId + "“ entfernen?");
+        heading.setFont(ResearchUiTypography.semiBold(15f));
+        heading.setForeground(colors.getInk());
+        JLabel text = new JLabel(FormRows.html((typeName == null ? "" : typeName + ": ")
+                + "Die Quelle verschwindet aus der Liste und aus der Konfiguration, ihr Index wird gelöscht. "
+                + "Die Zeilen in der Datei werden nur auskommentiert."));
+        text.setForeground(colors.getInk());
+        ComposerButton remove = ComposerButton.primary(null, "Entfernen", ResearchUiPalette.DANGER_RED, null);
+        ComposerButton cancel = new ComposerButton(null, SourcePanel.CANCEL_LABEL, false);
+        remove.addActionListener(event -> {
+            confirmed[0] = true;
+            dialog.dispose();
+        });
+        cancel.addActionListener(event -> dialog.dispose());
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttons.setOpaque(false);
+        buttons.add(cancel);
+        buttons.add(remove);
+        content.add(heading, BorderLayout.NORTH);
+        content.add(text, BorderLayout.CENTER);
+        content.add(buttons, BorderLayout.SOUTH);
+        content.registerKeyboardAction(event -> dialog.dispose(), KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ComicWindowDragger.install(heading);
+        dialog.setContentPane(content);
+        dialog.pack();
+        ComicWindowShape.install(dialog, content, colors, WINDOW_PADDING, ResearchUiMetrics.RADIUS_WINDOW);
+        dialog.setLocationRelativeTo(owner);
+        dialog.getRootPane().setDefaultButton(null);
+        dialog.setVisible(true);
+        return confirmed[0];
     }
 
     public SourcePanel panel() {

@@ -1,8 +1,12 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.domain.source.SourceSettings;
+import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Test;
 
+import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -13,7 +17,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Der Quellen-Dialog: Probleme blockieren das Speichern, Entfernen fragt einmal nach. */
+/** Der Quellen-Dialog: Probleme blockieren das Speichern; die Felder kommen aus dem Quelltyp. */
 public class SourcePanelTest {
 
     private final ComicPalette palette = ComicPalette.defaultPalette();
@@ -23,29 +27,20 @@ public class SourcePanelTest {
         List<String> problems = Collections.emptyList();
 
         @Override
-        public List<SourceForm> sources() {
-            return Collections.emptyList();
-        }
-
-        @Override
-        public List<String> validate(SourceForm draft, String originalId) {
+        public List<String> validate(SourceDefinition draft, String originalId) {
             calls.add("validate " + draft.id() + "/" + originalId);
             return problems;
         }
 
         @Override
-        public void save(SourceForm draft, String originalId) {
-            calls.add("save " + draft.id() + " " + draft.url() + "/" + originalId);
+        public void save(SourceDefinition draft, String originalId) {
+            calls.add("save " + draft.id() + " " + draft.settings().get("apiUrl") + "/" + originalId);
         }
 
         @Override
-        public void remove(String id) {
-            calls.add("remove " + id);
-        }
-
-        @Override
-        public void setEnabled(String id, boolean enabled) {
-            calls.add("enabled " + id);
+        public SourceDefinition draft(String typeId) {
+            calls.add("draft " + typeId);
+            return new SourceDefinition("neu", typeId, true, SourceSettings.empty());
         }
     }
 
@@ -54,39 +49,20 @@ public class SourcePanelTest {
         final Recording actions = new Recording();
         final List<String> outcomes = new ArrayList<String>();
         onEdt(() -> {
-            SourcePanel panel = new SourcePanel(SourceForm.builder("wiki", SourceForm.TYPE_MEDIAWIKI).build(), null,
+            SourcePanel panel = new SourcePanel(new SourceDefinition("wiki", MediaWikiSourceProvider.TYPE_ID, true,
+                    SourceSettings.empty()), null, Collections.singletonList(MediaWikiSourceProvider.sourceType()),
                     actions, palette);
             panel.setListener((outcome, source) -> outcomes.add(outcome + (source == null ? "" : " " + source.id())));
-            assertFalse("neue Quellen haben nichts zu entfernen", panel.removeButton().isVisible());
             actions.problems = Collections.singletonList("URL (source.wiki.apiUrl): fehlt");
             assertFalse(panel.save());
             assertTrue(panel.problemsText(), panel.problemsText().contains("source.wiki.apiUrl"));
             assertTrue(outcomes.isEmpty());
 
             actions.problems = Collections.emptyList();
-            panel.editor().urlField().setText("http://127.0.0.1:9/w/api.php");
+            ((JTextField) panel.editor().input("apiUrl")).setText("http://127.0.0.1:9/w/api.php");
             panel.saveButton().doClick();
             assertEquals(Collections.singletonList("SAVED wiki"), outcomes);
             assertTrue(actions.calls.toString(), actions.calls.contains("save wiki http://127.0.0.1:9/w/api.php/null"));
-        });
-    }
-
-    @Test
-    public void removingAsksOnceBeforeItRemoves() throws Exception {
-        final Recording actions = new Recording();
-        final List<String> outcomes = new ArrayList<String>();
-        onEdt(() -> {
-            SourcePanel panel = new SourcePanel(SourceForm.builder("wiki", SourceForm.TYPE_MEDIAWIKI)
-                    .url("http://127.0.0.1:9/w/api.php").build(), "wiki", actions, palette);
-            panel.setListener((outcome, source) -> outcomes.add(String.valueOf(outcome)));
-            assertTrue(panel.removeButton().isVisible());
-            panel.removeButton().doClick();
-            assertEquals(SourcePanel.CONFIRM_REMOVE_LABEL, panel.removeButton().getText());
-            assertFalse(actions.calls.contains("remove wiki"));
-            assertTrue(outcomes.isEmpty());
-            panel.removeButton().doClick();
-            assertTrue(actions.calls.contains("remove wiki"));
-            assertEquals(Collections.singletonList("REMOVED"), outcomes);
         });
     }
 

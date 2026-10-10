@@ -25,6 +25,7 @@ public final class KnowledgeSourceItem {
     private final State state;
     private final boolean indexable;
     private final boolean editable;
+    private final boolean removable;
 
     /**
      * @param kind      Typ für die Anzeige, z. B. „MediaWiki“
@@ -35,6 +36,12 @@ public final class KnowledgeSourceItem {
      */
     public KnowledgeSourceItem(String id, String kind, String scope, boolean enabled, String status, State state,
                                boolean indexable, boolean editable) {
+        this(id, kind, scope, enabled, status, state, indexable, editable, editable);
+    }
+
+    /** @param removable ob Entfernen gerade geht (ohne Datei nicht, nicht während die Quelle indexiert wird) */
+    public KnowledgeSourceItem(String id, String kind, String scope, boolean enabled, String status, State state,
+                               boolean indexable, boolean editable, boolean removable) {
         if (id == null || id.trim().isEmpty()) {
             throw new IllegalArgumentException("id must not be blank");
         }
@@ -46,6 +53,7 @@ public final class KnowledgeSourceItem {
         this.state = state == null ? State.IDLE : state;
         this.indexable = indexable;
         this.editable = editable;
+        this.removable = removable;
     }
 
     public String id() {
@@ -86,6 +94,10 @@ public final class KnowledgeSourceItem {
 
     public boolean editable() {
         return editable;
+    }
+
+    public boolean removable() {
+        return removable;
     }
 
     @Override

@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.app.config;
 
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -14,7 +16,7 @@ public final class AppConfig {
     private final ChatConfig chat;
     private final EmbeddingConfig embedding;
     private final KnowledgeConfig knowledge;
-    private final List<SourceConfig> sources;
+    private final List<SourceDefinition> sources;
     private final KeePassConfig keePass;
     private final NetworkConfig network;
     private final AgentConfig agent;
@@ -22,13 +24,13 @@ public final class AppConfig {
     private final List<String> warnings;
 
     AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
-              List<SourceConfig> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
+              List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
               ModelsConfig models, List<String> warnings) {
         this.windowTitle = windowTitle;
         this.chat = chat;
         this.embedding = embedding;
         this.knowledge = knowledge;
-        this.sources = Collections.unmodifiableList(new ArrayList<SourceConfig>(sources));
+        this.sources = Collections.unmodifiableList(new ArrayList<SourceDefinition>(sources));
         this.keePass = keePass;
         this.network = network;
         this.agent = agent;
@@ -52,8 +54,8 @@ public final class AppConfig {
         return knowledge;
     }
 
-    /** Wissensquellen in Konfigurationsreihenfolge. */
-    public List<SourceConfig> sources() {
+    /** Wissensquellen in Konfigurationsreihenfolge, typneutral; Einstellungen prüft der Quellen-Port des Adapters. */
+    public List<SourceDefinition> sources() {
         return sources;
     }
 

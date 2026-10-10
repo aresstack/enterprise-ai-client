@@ -14,7 +14,7 @@ public final class ClientCertificateConfig {
     private final Path keyStoreFile;
     private final SecretRef keyStorePasswordRef;
 
-    ClientCertificateConfig(String alias, Path keyStoreFile, SecretRef keyStorePasswordRef) {
+    public ClientCertificateConfig(String alias, Path keyStoreFile, SecretRef keyStorePasswordRef) {
         this.alias = alias;
         this.keyStoreFile = keyStoreFile;
         this.keyStorePasswordRef = keyStorePasswordRef;

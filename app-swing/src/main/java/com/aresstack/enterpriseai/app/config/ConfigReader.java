@@ -29,6 +29,10 @@ final class ConfigReader {
         this.properties = properties;
     }
 
+    Properties properties() {
+        return properties;
+    }
+
     List<String> problems() {
         return Collections.unmodifiableList(problems);
     }
