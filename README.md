@@ -73,8 +73,7 @@ java -jar enterprise-ai-client-<version>.jar
    Quellen, Hinweise erscheinen als eigene Blase. Der Composer zeigt wie arch links das Chat-Modell (Klick zeigt die
    Chat-Modelle des Modellkatalogs, Kategorie CHAT; die Wahl gilt ab der nächsten Nachricht und wird als `chat.model`
    gespeichert, „Modelle verwalten …“ öffnet die Einstellungen) und den Denkaufwand („Denken: Standard/niedrig/mittel/hoch“, gesendet als `reasoning_effort` bzw.
-   `reasoning.effort`, gegen das Gateway UNVERIFIED), rechts Büroklammer, Audiodatei und Mikrofon (deaktiviert,
-   solange kein Spracherkennungs-Modell verfügbar ist) und Senden/Stop; dazwischen eine Statuszeile.
+   `reasoning.effort`, gegen das Gateway UNVERIFIED), rechts Büroklammer und Senden/Stop; dazwischen eine Statuszeile.
 7. **Dateianhänge und Tool-Calls**: Die Büroklammer im Composer hängt Dateien an (Chips mit ✕ über dem Editor,
    nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen laufen über `POST <chat.baseUrl>/responses`
    statt über das Streaming von `/chat/completions`: Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
