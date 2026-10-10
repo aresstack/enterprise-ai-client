@@ -555,7 +555,13 @@ Kurzfassung; die ausführliche Tabelle je Arbeitspaket mit den Änderungen gegen
 Eigener Gradle-Build, **nicht** Teil von `settings.gradle`: übernommen aus askai-java8 (Branch `arch`,
 `local-model-runtime-sidecar-java21`), läuft als separater Java-21-Prozess auf 127.0.0.1 und ist nur über
 `model-sidecar` erreichbar (Katalog `GET /api/tags`, Sprachausgabe `POST /v1/audio/speech`). Für ihn gelten die
-Java-8- und Architekturregeln des Clients nicht. Neu gegenüber arch: Sprachausgabe mit VITS-Stimmen (ONNX,
-Hugging-Face-Layout) über ONNX Runtime als Java-Bibliothek, kein externes Programm. CI baut ihn im Job `sidecar`
+Java-8- und Architekturregeln des Clients nicht. Neu gegenüber arch: Sprachausgabe, kein externes Programm.
+Schichten im Paket `speech`: `LocalVoiceStore` erkennt Stimmen je Ordner über `VoiceFormatReader`
+(Piper `<name>.onnx` + `<name>.onnx.json` aus `rhasspy/piper-voices`, oder VITS im Hugging-Face-Layout),
+`VoiceTextEncoder` macht daraus Token-Ids (Piper: Phonem-Ids aus `phoneme_id_map`; `phoneme_type text` direkt,
+`espeak` nur Deutsch über den regelbasierten `GermanPhonemizer` als Näherung an espeak-ng, andere Sprachen werden
+nicht angeboten), `LocalSpeechRuntime` rechnet. `OnnxSpeechRuntime` (ONNX Runtime als Java-Bibliothek) ist nur das
+Pilot-Backend; ONNX-Typen bleiben in dieser Klasse, eine eigene Inferenz-Engine ersetzt sie dort. Der Sidecar lädt
+nichts herunter: Stimmen installiert der Client. CI baut ihn im Job `sidecar`
 (JDK 21), das Release legt `local-model-runtime-sidecar-<version>.zip` neben das Fat Jar.
 
