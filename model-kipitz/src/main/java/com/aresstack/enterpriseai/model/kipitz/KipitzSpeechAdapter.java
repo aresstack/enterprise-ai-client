@@ -26,12 +26,18 @@ public final class KipitzSpeechAdapter implements SpeechSynthesisPort {
     private static final int MAX_AUDIO_BYTES = 64 * 1024 * 1024;
 
     private final KipitzModelCatalogConfig config;
+    private final String voice;
 
-    public KipitzSpeechAdapter(KipitzModelCatalogConfig config) {
+    /**
+     * @param voice Stimme ({@code voice}, bei OpenAI-kompatiblen Diensten meist Pflicht) aus der Konfiguration;
+     *              {@code null} oder leer = ohne
+     */
+    public KipitzSpeechAdapter(KipitzModelCatalogConfig config, String voice) {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
         this.config = config;
+        this.voice = voice == null || voice.trim().isEmpty() ? null : voice.trim();
     }
 
     @Override
@@ -47,6 +53,9 @@ public final class KipitzSpeechAdapter implements SpeechSynthesisPort {
         JsonObject request = new JsonObject();
         request.addProperty("model", modelId);
         request.addProperty("input", text);
+        if (voice != null) {
+            request.addProperty("voice", voice);
+        }
         request.addProperty("response_format", "wav");
         byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
         URI target = config.endpoint("audio/speech");

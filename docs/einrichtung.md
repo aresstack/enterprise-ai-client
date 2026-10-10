@@ -180,7 +180,8 @@ Agent kann `refresh_knowledge_source` aufrufen ([MCP](mcp.md)).
 
 Unter jeder fertigen Antwort steht ein Lautsprecher-Knopf. Vorgelesen wird mit dem Modell der Kategorie **TTS**
 (Einstellungen → Modelle, Schlüssel `model.tts`), gesprochen über die Quelle dieses Modells: ein TTS-Modell der
-Enterprise-API über `POST <chat.baseUrl>/audio/speech` (noch ungetestet), ein lokales über den optionalen
+Enterprise-API über `POST <chat.baseUrl>/audio/speech` (noch ungetestet; die Stimme kommt aus `speech.voice`,
+falls der Dienst eine verlangt), ein lokales über den optionalen
 Java-21-Sidecar. Ohne TTS-Modell, oder bei einem lokalen Modell ohne Java 21 und Sidecar, bleibt der Knopf
 deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
 

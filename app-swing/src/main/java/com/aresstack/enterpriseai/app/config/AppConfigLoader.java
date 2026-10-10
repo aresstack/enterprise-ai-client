@@ -270,7 +270,8 @@ public final class AppConfigLoader {
      * Modellverwaltung: eine Auswahl je Kategorie ({@code chat.model}, {@code embedding.model},
      * {@code model.<kategorie>}) und der optionale lokale Sidecar ({@code models.local.*}). Ohne Java-Pfad bleibt
      * der Sidecar aus; fehlt bei gesetztem Java-Pfad das Jar, gibt es einen Hinweis statt eines Fehlers.
-     * {@code speech.readAloud.autoStart} liest neue Antworten automatisch vor (wie askai arch, Standard aus).
+     * {@code speech.readAloud.autoStart} liest neue Antworten automatisch vor (wie askai arch, Standard aus);
+     * {@code speech.voice} ist die Stimme der Enterprise-Sprachausgabe.
      */
     private static ModelsConfig models(ConfigReader r, List<String> warnings) {
         ModelSelections selections = ModelSelections.none();
@@ -288,7 +289,8 @@ public final class AppConfigLoader {
         } else if (java != null) {
             local = new LocalSidecarConfig(java, jar, modelRoot, readyTimeout);
         }
-        return new ModelsConfig(selections, local, r.bool(ModelsConfig.READ_ALOUD_AUTO_START_KEY, false));
+        return new ModelsConfig(selections, local, r.bool(ModelsConfig.READ_ALOUD_AUTO_START_KEY, false),
+                r.text(ModelsConfig.SPEECH_VOICE_KEY, null));
     }
 
     private static KnowledgeConfig knowledge(ConfigReader r) {

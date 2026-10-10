@@ -24,15 +24,25 @@ public final class ModelsConfig {
     /** Neue Antworten automatisch vorlesen (askai arch {@code readAloudAutoStart}); braucht ein TTS-Modell. */
     public static final String READ_ALOUD_AUTO_START_KEY = "speech.readAloud.autoStart";
 
+    /** Stimme der Enterprise-Sprachausgabe ({@code voice} bei {@code /audio/speech}); leer = ohne. */
+    public static final String SPEECH_VOICE_KEY = "speech.voice";
+
     private final ModelSelections selections;
     private final LocalSidecarConfig localSidecar;
     private final boolean readAloudAutoStart;
+    private final String speechVoice;
 
     ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar) {
         this(selections, localSidecar, false);
     }
 
     ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar, boolean readAloudAutoStart) {
+        this(selections, localSidecar, readAloudAutoStart, null);
+    }
+
+    ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar, boolean readAloudAutoStart,
+                 String speechVoice) {
+        this.speechVoice = speechVoice == null || speechVoice.trim().isEmpty() ? null : speechVoice.trim();
         this.selections = selections == null ? ModelSelections.none() : selections;
         this.localSidecar = localSidecar;
         this.readAloudAutoStart = readAloudAutoStart;
@@ -78,6 +88,11 @@ public final class ModelsConfig {
     /** Ob neue Antworten automatisch vorgelesen werden. */
     public boolean readAloudAutoStart() {
         return readAloudAutoStart;
+    }
+
+    /** Stimme für die Sprachausgabe der Enterprise-API ({@code speech.voice}) oder {@code null}. */
+    public String speechVoice() {
+        return speechVoice;
     }
 
     @Override

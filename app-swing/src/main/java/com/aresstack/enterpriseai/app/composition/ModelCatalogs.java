@@ -144,7 +144,7 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
      */
     public List<SpeechSynthesisPort> speech(AppConfig config, NetworkServices network, Supplier<String> token) {
         List<SpeechSynthesisPort> ports = new ArrayList<SpeechSynthesisPort>();
-        ports.add(new KipitzSpeechAdapter(kipitz(config, network, token)));
+        ports.add(new KipitzSpeechAdapter(kipitz(config, network, token), config.models().speechVoice()));
         if (config.models().localSidecar() != null) {
             ports.add(localSpeech(config.models().localSidecar()));
         }
