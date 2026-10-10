@@ -41,6 +41,7 @@ final class ModelsTab {
     private final ComicButton refresh;
     private final JavaRuntimeRow localJava;
     private final JTextField localSidecarJar;
+    private final JLabel detectedSidecarJar;
     private final JTextField localModelRoot;
     private final JPanel panel;
     private boolean refreshedOnce;
@@ -82,7 +83,9 @@ final class ModelsTab {
                 + "oder neuer wird automatisch gefunden; ohne Java 21 bleiben lokale Modelle aus, die Modelle der "
                 + "Enterprise-API funktionieren unabhängig davon. Es wird nichts heruntergeladen oder installiert.");
         localJava = new JavaRuntimeRow(local, actions, palette);
-        localSidecarJar = local.textField("Sidecar-Jar", "Pfad zu local-model-runtime-sidecar.jar");
+        localSidecarJar = local.textField("Sidecar-Jar (optional)", "Pfad zu local-model-runtime-sidecar.jar; leer = "
+                + "automatisch neben dem Client, im Anwendungs- oder Modellverzeichnis suchen");
+        detectedSidecarJar = local.note(" ");
         localModelRoot = local.textField("Modellverzeichnis (optional)",
                 "Verzeichnis der lokal installierten Modelle; leer = <Anwendungsverzeichnis>/local-models");
 
@@ -103,6 +106,7 @@ final class ModelsTab {
         }
         localJava.load(form.localJava());
         localSidecarJar.setText(form.localSidecarJar());
+        showDetectedSidecarJar(form);
         localModelRoot.setText(form.localModelRoot());
     }
 
@@ -121,6 +125,18 @@ final class ModelsTab {
         }
         b.localJava(localJava.stored()).localSidecarJar(localSidecarJar.getText())
                 .localModelRoot(localModelRoot.getText());
+    }
+
+    private void showDetectedSidecarJar(SettingsForm form) {
+        if (!form.localSidecarJar().trim().isEmpty()) {
+            detectedSidecarJar.setText("Eingetragener Pfad übersteuert die automatische Suche.");
+            return;
+        }
+        String found = actions.detectedSidecarJar(form.localModelRoot());
+        detectedSidecarJar.setText(found.isEmpty()
+                ? "Kein Sidecar-Jar gefunden: Release-Zip neben dem Client entpacken oder Pfad eintragen."
+                : "✓ Automatisch gefunden: " + found);
+        detectedSidecarJar.setToolTipText(found.isEmpty() ? null : found);
     }
 
     /** Beim ersten Anzeigen des Reiters: einmal im Hintergrund abfragen. */

@@ -188,7 +188,8 @@ Java-21-Sidecar. Ohne TTS-Modell, oder bei einem lokalen Modell ohne Java 21 und
 deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
 
 1. `local-model-runtime-sidecar-<version>.zip` aus dem Release entpacken.
-2. Einstellungen → Lokale Modelle: `local-model-runtime-sidecar.jar` angeben (`models.local.sidecarJar`). Java 21
+2. Das Zip neben dem Client-Jar (oder im Anwendungs- bzw. Modellverzeichnis) entpacken; das Sidecar-Jar wird dort
+   automatisch gefunden (`models.local.sidecarJar` übersteuert, passende Version bevorzugt). Java 21
    wird automatisch gefunden (`JAVA_HOME`, `PATH`, Program Files je Hersteller, `%USERPROFILE%\.jdks`, Scoop;
    exakt Java 21 vor der kleinsten höheren Version) und in `models.local.java` gespeichert; das Dropdown
    „Java-Runtime für Sidecar“ zeigt alle Funde, ältere Versionen ausgegraut, „Neu suchen“ sucht erneut. Beim Start

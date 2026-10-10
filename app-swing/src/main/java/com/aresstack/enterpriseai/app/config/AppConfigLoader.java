@@ -282,6 +282,10 @@ public final class AppConfigLoader {
         Path java = r.path("models.local.java", null);
         Path jar = r.path("models.local.sidecarJar", null);
         Path modelRoot = r.path("models.local.modelRoot", AppPaths.appDirectory().resolve("local-models"));
+        if (jar == null) {
+            // Ohne Eintrag: neben dem Client-Jar, im Anwendungs- und im Modellverzeichnis suchen.
+            jar = SidecarJarLocator.find(modelRoot);
+        }
         int readyTimeout = r.integer("models.local.readyTimeoutMillis", 60000, 1000, MAX_TIMEOUT);
         LocalSidecarConfig local = null;
         // Java 21 wird automatisch erkannt und gespeichert; ohne Sidecar-Jar bleiben lokale Modelle still aus.

@@ -142,7 +142,7 @@ jobs:
           {
             echo "Lauffähiges Jar der Swing-Anwendung (Java 8 oder neuer): \`java -jar $(basename "$JAR")\`"
             echo
-            echo "Optional: \`$(basename "$SIDECAR")\` ist der lokale Java-21-Sidecar (Sprachausgabe, lokale Modelle). Entpacken und unter Einstellungen → Lokale Modelle \`local-model-runtime-sidecar.jar\` angeben; Java 21 wird automatisch erkannt."
+            echo "Optional: \`$(basename "$SIDECAR")\` ist der lokale Java-21-Sidecar (Sprachausgabe, lokale Modelle). Neben dem Client-Jar entpacken; Sidecar-Jar und Java 21 werden automatisch gefunden."
             echo
             echo "Commit: $GITHUB_SHA · Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo

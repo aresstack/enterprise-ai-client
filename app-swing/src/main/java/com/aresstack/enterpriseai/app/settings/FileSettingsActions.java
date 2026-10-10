@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.AppPaths;
+import com.aresstack.enterpriseai.app.config.SidecarJarLocator;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
@@ -453,6 +454,19 @@ public final class FileSettingsActions implements SettingsDialogActions {
         } catch (RuntimeException rejected) {
             onResult.accept(failed("Abfrage konnte nicht gestartet werden."));
         }
+    }
+
+    @Override
+    public String detectedSidecarJar(String modelRoot) {
+        java.nio.file.Path root;
+        try {
+            root = modelRoot == null || modelRoot.trim().isEmpty()
+                    ? AppPaths.appDirectory().resolve("local-models") : java.nio.file.Paths.get(modelRoot.trim());
+        } catch (RuntimeException e) {
+            root = null;
+        }
+        java.nio.file.Path found = SidecarJarLocator.find(root);
+        return found == null ? "" : found.toString();
     }
 
     @Override

@@ -95,6 +95,11 @@ public interface SettingsDialogActions {
         onResult.accept(JavaRuntimeOverview.empty());
     }
 
+    /** Das ohne Eintrag automatisch gefundene Sidecar-Jar; leer, wenn keins gefunden wurde. Blockiert kurz. */
+    default String detectedSidecarJar(String modelRoot) {
+        return "";
+    }
+
     /** Das Standard-Ermittlungsskript der Bibliothek für einen Modus (PowerShell bzw. VBScript), sonst leer. */
     default String defaultDiscoveryScript(String proxyMode) {
         return "";
