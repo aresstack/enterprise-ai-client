@@ -234,7 +234,7 @@ public final class HttpRoutes implements HttpRoutePort {
             lines.add("- " + step);
         }
         if (diagnostics.getPacUrl() != null) {
-            lines.add("PAC URL: " + diagnostics.getPacUrl()
+            lines.add("PAC URL: " + NetworkConfig.redactUrl(diagnostics.getPacUrl())
                     + (diagnostics.getPacUrlSource() == null ? "" : " (" + diagnostics.getPacUrlSource() + ")"));
         }
         if (diagnostics.getPacScriptLength() > 0) {
@@ -255,7 +255,7 @@ public final class HttpRoutes implements HttpRoutePort {
                 text.append(" ").append(config.proxyHost()).append(":").append(config.proxyPort());
                 break;
             case PAC_URL_MANUAL:
-                text.append(" ").append(config.pacUrl());
+                text.append(" ").append(NetworkConfig.redactUrl(config.pacUrl()));
                 break;
             case PAC_URL_POWERSHELL:
             case PAC_URL_WSCRIPT:

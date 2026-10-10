@@ -170,11 +170,30 @@ public final class NetworkConfig {
         return text.length() == 0 ? "keine (JVM-Rückfall)" : text.toString();
     }
 
+    /** URL für Protokoll und Dialog: ohne Zugangsdaten, Query und Fragment (PAC-Adressen können signiert sein). */
+    public static String redactUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        try {
+            URI uri = new URI(url.trim());
+            if (uri.getScheme() == null) {
+                return "(keine URL)";
+            }
+            boolean cut = uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null;
+            String text = new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), uri.getPath(), null, null)
+                    .toString();
+            return cut ? text + " (gekürzt)" : text;
+        } catch (Exception e) {
+            return "(keine gültige URL)";
+        }
+    }
+
     @Override
     public String toString() {
         return "NetworkConfig[proxyMode=" + proxyMode
                 + (proxyMode == ProxyMode.MANUAL_PROXY ? ", proxy=" + proxyHost + ":" + proxyPort : "")
-                + (pacUrl != null ? ", pacUrl=" + pacUrl : "")
+                + (pacUrl != null ? ", pacUrl=" + redactUrl(pacUrl) : "")
                 + (pacDiscoveryScript != null ? ", pacDiscoveryScript=eigenes" : "")
                 + ", nonProxyHosts=" + nonProxyHosts
                 + ", testUrl=" + testUrl

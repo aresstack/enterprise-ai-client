@@ -339,7 +339,7 @@ Shutdown-Hook und zeigt das Fenster.
 enterprise-ai-client.properties ──AppConfigLoader──▶ AppConfig (Snapshots, ohne Secrets)
         │                                              │
         ▼                                              ▼
-TrustPolicy (Standard-SSLSocketFactory) AdapterAssembly ──▶ ApplicationPorts (Chat, Embedding, Index, Quellen,
+TrustPolicy (SSLSocketFactory je Verb.)   AdapterAssembly ──▶ ApplicationPorts (Chat, Embedding, Index, Quellen,
 NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
                                                             SecretProvider, AgentBackend, Schließreihenfolge)
                                                             │
@@ -387,10 +387,10 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   überschreiben lässt; jede Anfrage holt den Key neu über KeePassRPC (kein Cache erlaubt).
 - **Netz**: `HttpRoutes` implementiert den Port `HttpRoutePort` (Modul `http-api`) mit win-proxy-java 0.2.0: Route je Ziel, Cache, harter Timeout, nie auf dem EDT, NOT_IMPLEMENTED/ERROR als nicht verfügbare Route statt DIRECT. Jeder Adapter (Chat, Embeddings, MediaWiki, Confluence) übergibt Route, `SSLSocketFactory` (win-trust-java 0.1.0) und User-Agent je `HttpURLConnection`; kein globaler `ProxySelector`. Confluence zusätzlich
   mit Timeouts und optionalem Client-Zertifikat (Windows-MY per Alias oder PKCS12 mit Passwort über `SecretRef`,
-  `ClientCertificateFactory`). `TrustPolicy` (`network.tls.*`) vereint JVM-Truststore, unter Windows den
-  Windows-Zertifikatspeicher (`Windows-ROOT`) und optional eine CA-Datei zu einem Trust-Manager und installiert
-  ihn als Standard-`SSLSocketFactory` von `HttpsURLConnection` (gilt für alle Adapter ohne eigenen
-  SSL-Kontext; Confluence mit Client-Zertifikat bleibt beim JVM-Truststore). `ConnectionDiagnosis` macht aus
+  `ClientCertificateFactory`). `TrustPolicy` (`network.tls.*`) vereint über win-trust-java JVM-Truststore, unter Windows
+  Windows-ROOT und Windows Root+Intermediate sowie optional eine CA-Datei zu einem Trust-Manager; die
+  `SSLSocketFactory` wird je Verbindung gesetzt, nie global (Confluence mit Client-Zertifikat nutzt denselben
+  Trust-Manager). `ConnectionDiagnosis` macht aus
   der Ausnahmekette einer gescheiterten Anfrage die Zeilen `Technische Ursache:` und `Hinweis:` der Fehlerblase
   (Paketnamen entfernt, Tokens maskiert); die Bindings loggen jeden Fehler mit Stacktrace. Kein gemeinsamer
   Transport.

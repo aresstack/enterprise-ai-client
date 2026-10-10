@@ -152,10 +152,10 @@ erreichbar.`, `Anmeldung am KI-Dienst fehlgeschlagen.`, …), `Technische Ursach
 Paketnamen (Tokens werden maskiert) und, wenn die Ursache bekannt ist, `Hinweis:` mit dem nächsten Schritt.
 Der vollständige Stacktrace steht in der Protokolldatei `<Anwendungsverzeichnis>/logs/enterprise-ai-client.0.log`
 ([Einrichtung](einrichtung.md#anwendungsverzeichnis-und-konfigurationsdatei)); ihr Anfang nennt Java-Version,
-Betriebssystem, die geladene Konfiguration (ohne Secrets), die Vertrauensquellen, die Proxy-Regel und die
-Zeile `Route zum KI-Dienst <host>: …` mit dem Proxy-Ergebnis für `chat.baseUrl`.
+Betriebssystem, die geladene Konfiguration (ohne Secrets), die Vertrauensquellen, die Proxy-Regel und je Ziel
+die Zeile `Proxy-Route …` mit dem Ergebnis; „Proxy auflösen“ im Reiter Netzwerk zeigt jeden Schritt.
 
-Schneller als die Protokolldatei ist der Knopf **„Verbindung zum KI-Dienst prüfen“** im Einstellungen-Dialog
+Schneller als die Protokolldatei ist der Knopf **„Verbindung testen“** (Reiter KI-Dienst) im Einstellungen-Dialog
 (Reiter „Netzwerk & Agent“, [Einrichtung](einrichtung.md#einstellungen-dialog)): Er geht mit dem aktuellen Entwurf
 Proxy-Route, Namensauflösung, API-Key aus KeePass, TLS-Handshake und `GET /models` Schritt für Schritt durch und
 zeigt beim ersten roten Schritt dieselbe technische Ursache und denselben Hinweis wie die Tabelle unten, ohne dass
@@ -163,10 +163,10 @@ man die Datei speichern oder die Anwendung neu starten muss.
 
 | Technische Ursache (Auszug) | Bedeutung | Abhilfe |
 |---|---|---|
-| `SSLHandshakeException … PKIX path building failed … unable to find valid certification path` | Java vertraut dem Serverzertifikat nicht. Java bringt einen eigenen Truststore mit und nutzt den des Betriebssystems nicht von selbst; PowerShell, Browser und `curl` auf demselben Rechner funktionieren deshalb trotzdem. Typisch: Firmen-Proxy mit TLS-Inspektion oder interne CA; ein Java 8 vor Update 141 kennt außerdem die Let's-Encrypt-Wurzel (ISRG Root X1) nicht. | Unter Windows `network.tls.useWindowsCertificateStore=true` lassen (Standard) und die App neu starten. Sonst die ausstellende CA als PEM exportieren und `network.tls.caCertificatesFile` setzen. Altes Java aktualisieren (`java -version`). |
+| `SSLHandshakeException … PKIX path building failed … unable to find valid certification path` | Java vertraut dem Serverzertifikat nicht. Java bringt einen eigenen Truststore mit und nutzt den des Betriebssystems nicht von selbst; PowerShell, Browser und `curl` auf demselben Rechner funktionieren deshalb trotzdem. Typisch: Firmen-Proxy mit TLS-Inspektion oder interne CA; ein Java 8 vor Update 141 kennt außerdem die Let's-Encrypt-Wurzel (ISRG Root X1) nicht. | Unter Windows `network.tls.useWindowsRoot` und `network.tls.useWindowsCaStores` auf `true` lassen (Standard) und die App neu starten. Sonst die ausstellende CA als PEM exportieren und `network.tls.caCertificatesFile` setzen. Altes Java aktualisieren (`java -version`). |
 | `SSLException … handshake_failure`, `protocol_version`, `no cipher suites in common` | TLS-Version oder Cipher passt nicht; sehr altes Java. | Java aktualisieren. |
-| `UnknownHostException` | Der Hostname ist nicht auflösbar, meist weil das Netz einen Proxy verlangt, den Java nicht nutzt. | der passende Modus unter `network.proxy.mode` (meist `PAC_URL_POWERSHELL`) wertet das PAC-Skript des Unternehmens aus; die Zeile `Route zum KI-Dienst` im Protokoll zeigt, ob ein Proxy gefunden wurde. Steht dort `pac-url-not-found`, obwohl der Browser einen Proxy nutzt: `network.proxy.pacDiscovery=POWERSHELL` versuchen oder die PAC-Adresse aus den Internetoptionen ("Skript für automatische Konfiguration") in `network.proxy.pacUrl` eintragen; zuletzt `MANUAL` mit Host und Port. |
-| `Unable to tunnel through proxy. Proxy returns "HTTP/1.1 407 …"` | Der Proxy verlangt eine Anmeldung. | Nicht unterstützt; ein Proxy ohne Anmeldung oder eine Ausnahme für den Host ist nötig. |
+| `UnknownHostException` | Der Hostname ist nicht auflösbar, meist weil das Netz einen Proxy verlangt, den Java nicht nutzt. | der passende Modus unter `network.proxy.mode` (meist `PAC_URL_POWERSHELL`) wertet das PAC-Skript des Unternehmens aus; „Proxy auflösen“ im Reiter Netzwerk zeigt, ob ein Proxy gefunden wurde. Findet das Skript keine PAC-Adresse, obwohl der Browser einen Proxy nutzt: `PAC_URL_WINDOWS_SETTINGS` oder `PAC_URL_WSCRIPT` versuchen oder die PAC-Adresse aus den Internetoptionen mit `PAC_URL_MANUAL` eintragen; zuletzt `MANUAL_PROXY` mit Host und Port. |
+| `Unable to tunnel through proxy. Proxy returns "HTTP/1.1 407 …"` | Der Proxy verlangt eine Anmeldung. | `network.proxy.auth.mode=BASIC` mit einem KeePass-Eintrag (`network.proxy.auth.credentialRef`); integrierte Windows-Anmeldung wird nicht unterstützt. |
 | `Unable to tunnel through proxy. Proxy returns "HTTP/1.1 403 …"` (oder 5xx) | Der Proxy lehnt den Host ab oder erreicht ihn nicht. | Freigabe für den Host beim Proxy-Betreiber. |
 | `SocketTimeoutException: connect timed out` | Keine Antwort vom Server oder Proxy (Firewall, falscher Port). | Erreichbarkeit prüfen; `chat.connectTimeoutMillis` nur erhöhen, wenn der Dienst wirklich langsam antwortet. |
 | `ConnectException: Connection refused` | Nichts hört auf dem Port. | `chat.baseUrl` (Host, Port, `https`) prüfen. |
