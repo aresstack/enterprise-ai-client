@@ -53,6 +53,7 @@ import com.aresstack.enterpriseai.source.confluence.ConfluenceSourceProvider;
 import com.aresstack.enterpriseai.source.ftp.FtpSourceProvider;
 import com.aresstack.enterpriseai.source.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
+import com.aresstack.enterpriseai.source.ndv.NdvSourceProvider;
 
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -244,6 +245,7 @@ public final class AdapterAssembly {
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry()));
         providers.add(new FtpSourceProvider(secrets));
+        providers.add(new NdvSourceProvider(secrets));
         return providers;
     }
 

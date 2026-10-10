@@ -26,6 +26,8 @@ dependencies {
     implementation project(':source-localfiles')
     // Mainframe über FTP (MVS-Datasets, COBOL), Anmeldung über KeePass.
     implementation project(':source-ftp')
+    // Natural über NDV, Anmeldung über KeePass.
+    implementation project(':source-ndv')
     implementation project(':resource-api')
     implementation project(':resource-holkas')
     implementation project(':document-tika')

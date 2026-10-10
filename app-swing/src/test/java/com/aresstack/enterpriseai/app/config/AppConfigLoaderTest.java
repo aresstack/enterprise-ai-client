@@ -65,13 +65,14 @@ public class AppConfigLoaderTest {
     public void exampleSourceBlocksLoadOnceUncommented() throws Exception {
         Properties p = new Properties();
         p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
-        p.setProperty("sources", "wiki,confluence,dateien,cobol");
+        p.setProperty("sources", "wiki,confluence,dateien,cobol,natural");
         AppConfig config = AppConfigLoader.fromProperties(p);
-        assertEquals(4, config.sources().size());
+        assertEquals(5, config.sources().size());
         assertEquals("mediawiki", config.sources().get(0).typeId());
         assertEquals("confluence", config.sources().get(1).typeId());
         assertEquals("files", config.sources().get(2).typeId());
         assertEquals("ftp", config.sources().get(3).typeId());
+        assertEquals("ndv", config.sources().get(4).typeId());
         assertEquals("keine Warnungen erwartet: " + config.warnings(), 0, config.warnings().size());
     }
 
