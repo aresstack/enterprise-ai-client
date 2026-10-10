@@ -6,8 +6,6 @@ import com.aresstack.enterpriseai.app.composition.CompositionRoot;
 import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.app.speech.ReadAloudBinding;
 import com.aresstack.enterpriseai.app.speech.SpeechOutput;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
-import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
 import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
@@ -134,15 +132,11 @@ public final class EnterpriseAiClientMain {
             System.exit(1);
             return;
         }
-        // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über den lokalen Sidecar (derselbe Prozess wie der
-        // Katalog); ohne Java 21 oder TTS-Modell bleibt sie aus und der Lautsprecher-Knopf nennt den Grund.
+        // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über die Quelle dieses Modells (Enterprise-API oder
+        // lokaler Sidecar, derselbe Prozess wie der Katalog); ohne TTS-Modell oder ohne Java 21 für ein lokales
+        // bleibt sie aus und der Lautsprecher-Knopf nennt den Grund.
         final ReadAloudBinding readAloud = SpeechOutput.readAloud(config.models(),
-                new java.util.function.Function<LocalSidecarConfig, SpeechSynthesisPort>() {
-                    @Override
-                    public SpeechSynthesisPort apply(LocalSidecarConfig sidecar) {
-                        return modelCatalogs.localSpeech(sidecar);
-                    }
-                });
+                modelCatalogs.speech(config, network, chatToken(config, ports)));
         LOG.info("Sprachausgabe: " + readAloud.description());
         root.shutdown().then("read-aloud", new Runnable() {
             @Override
@@ -237,19 +231,25 @@ public final class EnterpriseAiClientMain {
      * Fragt die Modellquellen (KIPITZ {@code GET /models}, optional den lokalen Sidecar) einmal im Hintergrund ab,
      * damit der Reiter „Modelle“ aktuelle Listen hat; blockiert weder Start noch EDT. Fehler landen nur im Protokoll.
      */
+    /** Das Bearer-Token des Chats, je Anfrage aus dem Secret-Port geholt. */
+    private static java.util.function.Supplier<String> chatToken(final AppConfig config,
+                                                                 final ApplicationPorts ports) {
+        return new java.util.function.Supplier<String>() {
+            @Override
+            public String get() {
+                return config.chat().apiKeyRef() == null ? null
+                        : new SecretBackedTokenSource(ports.secrets(), config.chat().apiKeyRef()).token();
+            }
+        };
+    }
+
     private static void refreshModelsInBackground(final ModelCatalogs catalogs, final AppConfig config,
                                                   final NetworkServices network, final ApplicationPorts ports) {
         Thread thread = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    catalogs.refresh(config, network, new java.util.function.Supplier<String>() {
-                        @Override
-                        public String get() {
-                            return config.chat().apiKeyRef() == null ? null
-                                    : new SecretBackedTokenSource(ports.secrets(), config.chat().apiKeyRef()).token();
-                        }
-                    });
+                    catalogs.refresh(config, network, chatToken(config, ports));
                 } catch (RuntimeException e) {
                     LOG.log(Level.WARNING, "Modellkatalog konnte nicht abgefragt werden", e);
                 }

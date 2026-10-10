@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.application.modelcatalog.UnifiedModelCatalog;
 import com.aresstack.enterpriseai.model.api.ModelCatalogPort;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogConfig;
+import com.aresstack.enterpriseai.model.kipitz.KipitzSpeechAdapter;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisException;
@@ -87,14 +88,7 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
 
     private ModelCatalogSnapshot refreshNow(AppConfig config, NetworkServices network, Supplier<String> token) {
         List<ModelCatalogPort> catalogs = new ArrayList<ModelCatalogPort>();
-        catalogs.add(new KipitzModelCatalogAdapter(KipitzModelCatalogConfig.builder(config.chat().baseUrl())
-                .bearerToken(token)
-                .routes(network.routes())
-                .sslSocketFactory(network.tls())
-                .userAgent(network.userAgent())
-                .connectTimeoutMillis(config.chat().connectTimeoutMillis())
-                .readTimeoutMillis(Math.min(60000, Math.max(5000, config.chat().readTimeoutMillis())))
-                .build()));
+        catalogs.add(new KipitzModelCatalogAdapter(kipitz(config, network, token)));
         LocalSidecarModelCatalogAdapter local = sidecar(config.models().localSidecar());
         if (local != null) {
             catalogs.add(local);
@@ -109,6 +103,18 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
     }
 
     private final Object refreshLock = new Object();
+
+    private static KipitzModelCatalogConfig kipitz(AppConfig config, NetworkServices network,
+                                                   Supplier<String> token) {
+        return KipitzModelCatalogConfig.builder(config.chat().baseUrl())
+                .bearerToken(token)
+                .routes(network.routes())
+                .sslSocketFactory(network.tls())
+                .userAgent(network.userAgent())
+                .connectTimeoutMillis(config.chat().connectTimeoutMillis())
+                .readTimeoutMillis(Math.min(60000, Math.max(5000, config.chat().readTimeoutMillis())))
+                .build();
+    }
 
     private synchronized LocalSidecarModelCatalogAdapter sidecar(LocalSidecarConfig config) {
         if (closed) {
@@ -132,13 +138,24 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
     }
 
     /**
+     * Die Sprachausgabe je Modellquelle, wie die Quellen selbst: die Enterprise-API (KIPITZ) immer, der lokale
+     * Sidecar nur, wenn er konfiguriert ist. Welcher Port spricht, entscheidet der Katalog des gewählten TTS-Modells
+     * ({@code model.tts}); lokale und Enterprise-Modelle sind gleichwertig.
+     */
+    public List<SpeechSynthesisPort> speech(AppConfig config, NetworkServices network, Supplier<String> token) {
+        List<SpeechSynthesisPort> ports = new ArrayList<SpeechSynthesisPort>();
+        ports.add(new KipitzSpeechAdapter(kipitz(config, network, token)));
+        if (config.models().localSidecar() != null) {
+            ports.add(localSpeech(config.models().localSidecar()));
+        }
+        return ports;
+    }
+
+    /**
      * Die Sprachausgabe des lokalen Sidecars für diese Pfade: teilt sich den Prozess mit dem Katalog (ein Sidecar
      * für die ganze Anwendung) und startet ihn erst beim ersten Vorlesen. Nach {@link #close()} scheitert sie.
      */
-    public SpeechSynthesisPort localSpeech(final LocalSidecarConfig config) {
-        if (config == null) {
-            throw new IllegalArgumentException("config must not be null");
-        }
+    private SpeechSynthesisPort localSpeech(final LocalSidecarConfig config) {
         return new SpeechSynthesisPort() {
             @Override
             public String catalogId() {

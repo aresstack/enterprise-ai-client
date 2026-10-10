@@ -1,7 +1,9 @@
-description = 'Adapter: Modellkatalog der Enterprise-API (KIPITZ) über GET <baseUrl>/models.'
+description = 'Adapter: Modellkatalog der Enterprise-API (KIPITZ) über GET <baseUrl>/models, Sprachausgabe über POST <baseUrl>/audio/speech.'
 
 dependencies {
     api project(':model-api')
+    // Sprachausgabe der TTS-Modelle desselben Katalogs (POST <baseUrl>/audio/speech).
+    api project(':speech-api')
     // Route je Anfrage (Proxy-Entscheidung) über den neutralen Port http-api aus der Composition Root.
     api project(':http-api')
     // JSON-Mapping bleibt im Adapter (implementation, nicht api), wie in chat-openai.
