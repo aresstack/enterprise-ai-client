@@ -2,6 +2,8 @@ description = 'Adapter: OpenAI-kompatibler /chat/completions-Client (Strang A).'
 
 dependencies {
     api project(':chat-api')
+    // Route je Anfrage (Proxy-Entscheidung) kommt über den neutralen Port http-api aus der Composition Root.
+    api project(':http-api')
     // JSON-Mapping bleibt im Adapter (implementation, nicht api), wie in MainframeMate (CloudChatManager).
     implementation libs.gson
 }

@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
-import com.aresstack.enterpriseai.app.net.ProxyPolicy;
+import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.application.knowledge.IndexingStage;
@@ -91,7 +91,7 @@ public class AdapterAssemblyTest {
         p.setProperty("knowledge.indexOnStartup", "false");
         p.setProperty("security.keepass.enabled", String.valueOf(keePassEnabled));
         p.setProperty("security.keepass.pairingKeyStore", "memory");
-        p.setProperty("network.proxy.mode", "MANUAL");
+        p.setProperty("network.proxy.mode", "MANUAL_PROXY");
         p.setProperty("network.proxy.host", "proxy.intern.example");
         p.setProperty("network.proxy.port", "3128");
         return p;
@@ -104,7 +104,7 @@ public class AdapterAssemblyTest {
     @Test
     public void exampleConfigurationYieldsRealAdaptersWithoutTouchingTheNetwork() throws Exception {
         AppConfig config = exampleConfig(true);
-        ProxyPolicy proxy = new ProxyPolicy(config.network());
+        NetworkServices proxy = NetworkServices.from(config.network());
         ApplicationPorts ports = AdapterAssembly.create(config, proxy, NO_PAIRING, new InMemoryPairingKeyStore());
         try {
             assertTrue(ports.chat() instanceof OpenAiCompatibleChatAdapter);
@@ -130,7 +130,7 @@ public class AdapterAssemblyTest {
     @Test
     public void withoutKeePassTheAppComposesAndReportsMissingSecrets() throws Exception {
         AppConfig config = exampleConfig(false);
-        ProxyPolicy proxy = new ProxyPolicy(config.network());
+        NetworkServices proxy = NetworkServices.from(config.network());
         ApplicationPorts ports = AdapterAssembly.create(config, proxy, null, null);
         CompositionRoot root = CompositionRoot.compose(config, ports, new DirectExecutor(),
                 System::currentTimeMillis, null);
@@ -162,7 +162,7 @@ public class AdapterAssemblyTest {
         p.setProperty("source.confluence.clientCertificate.keyStorePasswordRef", "Client-Zertifikat");
         AppConfig config = AppConfigLoader.fromProperties(p);
 
-        ApplicationPorts ports = AdapterAssembly.create(config, new ProxyPolicy(config.network()), null, null);
+        ApplicationPorts ports = AdapterAssembly.create(config, NetworkServices.from(config.network()), null, null);
         try {
             KnowledgeSourcePort confluence = ports.sources().find(KnowledgeSourceId.of("confluence")).port();
             assertTrue("Quellen tragen die Protokollhülle", confluence instanceof LoggingKnowledgeSource);
@@ -188,7 +188,7 @@ public class AdapterAssemblyTest {
         AppConfig config = AppConfigLoader.fromProperties(p);
         UnavailableSecretProvider secrets = new UnavailableSecretProvider("Test ohne KeePass");
         OpenAiCompatibleEmbeddingAdapter embeddings = AdapterAssembly.embeddings(config.embedding(), secrets,
-                new ProxyPolicy(config.network()));
+                NetworkServices.from(config.network()));
         InMemoryKnowledgeSource wiki = new InMemoryKnowledgeSource("wiki")
                 .add("Urlaub", "Urlaubsregelung", "Urlaub wird im Portal beantragt.")
                 .add("Reisen", "Reisekosten", "Reisekosten werden über das Formular RK-1 abgerechnet.");

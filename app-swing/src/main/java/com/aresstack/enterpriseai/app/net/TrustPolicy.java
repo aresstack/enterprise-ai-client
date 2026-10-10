@@ -2,8 +2,9 @@ package com.aresstack.enterpriseai.app.net;
 
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
+import com.aresstack.wintrust.CertificateTrustConfiguration;
+import com.aresstack.wintrust.SystemTrustSslSocketFactory;
 
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -33,46 +34,46 @@ import java.util.Locale;
 
 /**
  * Entscheidet, welchen Serverzertifikaten die Anwendung vertraut. Java vertraut von Haus aus nur seinem eigenen
- * Truststore ({@code cacerts} bzw. {@code -Djavax.net.ssl.trustStore}); PowerShell, Browser und andere
- * Windows-Programme nutzen dagegen den Zertifikatspeicher des Systems. Deshalb scheiterte der erste Start gegen
- * die echte Enterprise-API mit "nicht erreichbar", obwohl derselbe Aufruf in PowerShell funktionierte: Ein
- * Firmen-Proxy mit eigenem Zertifikat oder eine Wurzel, die einem älteren Java fehlt, ist für Java unbekannt.
+ * Truststore ({@code cacerts}); PowerShell, Browser und andere Windows-Programme nutzen den Zertifikatspeicher des
+ * Systems. Die Quellen liefert win-trust-java ({@link SystemTrustSslSocketFactory#build}, je
+ * {@link CertificateTrustConfiguration} zwischengespeichert): JVM-Truststore, {@code Windows-ROOT} (SunMSCAPI) und
+ * der PowerShell-Export der Windows-Speicher Root und CA, drei getrennte Schalter. Dazu optional eine PEM-/DER-Datei
+ * mit weiteren CA-Zertifikaten ({@code network.tls.caCertificatesFile}). Ein Zertifikat gilt, sobald eine Quelle
+ * es akzeptiert; lehnen alle ab, nennt die Fehlermeldung die befragten Quellen und den Grund der ersten.
  *
- * <p>Die Regel vereint drei Quellen in dieser Reihenfolge: den JVM-Truststore, unter Windows den Speicher der
- * Stammzertifikate ({@code Windows-ROOT}, Provider SunMSCAPI) und optional eine PEM-/DER-Datei mit weiteren
- * CA-Zertifikaten ({@code network.tls.caCertificatesFile}). Ein Zertifikat gilt, sobald eine Quelle es
- * akzeptiert. Lehnen alle ab, nennt die Fehlermeldung die befragten Quellen und den Grund der ersten.
- *
- * <p>{@link #install()} setzt die Regel als Standard-{@link SSLSocketFactory} von {@link HttpsURLConnection};
- * damit gilt sie für Chat-, Embedding-, MediaWiki- und Confluence-Adapter (ohne Client-Zertifikat), die
- * {@code HttpURLConnection} nutzen. Keine statischen Felder; {@link #uninstall()} stellt die vorherige Factory
- * wieder her. Hostnamen-Prüfung und Protokolle bleiben die des JDK.
+ * <p>Die Regel wird nie prozessweit gesetzt: Die Adapter bekommen die {@link SSLSocketFactory} und setzen sie je
+ * {@code HttpsURLConnection}. Der Aufbau kann unter Windows Sekunden dauern (PowerShell-Export); deshalb baut
+ * {@link #deferred} erst beim ersten Verbindungsaufbau, nie beim Start und nie auf dem EDT, und {@link #verify}
+ * prüft für den Einstellungen-Dialog nur die CA-Datei. Client-Schlüssel aus {@code javax.net.ssl.keyStore} bleiben
+ * wie beim Standard-SSLContext erhalten.
  */
 public final class TrustPolicy {
 
-    static final String WINDOWS_ROOT_STORE = "Windows-ROOT";
     static final String JVM_SOURCE = "JVM-Truststore";
-    static final String WINDOWS_SOURCE = "Windows-Zertifikatspeicher";
+    static final String WINDOWS_ROOT_SOURCE = "Windows-ROOT";
+    static final String WINDOWS_CA_SOURCE = "Windows Root+CA";
     static final String FILE_SOURCE = "CA-Datei";
     /** JVM-Property des Standard-SSLContexts für Client-Zertifikate; wird hier genauso ausgewertet. */
     static final String KEY_STORE_PROPERTY = "javax.net.ssl.keyStore";
 
     private final List<String> sources;
     private final List<String> notices;
+    private final List<String> diagnostics;
     private final CompositeTrustManager trustManager;
     private final SSLSocketFactory socketFactory;
-    private SSLSocketFactory previousDefault;
 
-    private TrustPolicy(List<String> sources, List<String> notices, CompositeTrustManager trustManager,
-                        SSLSocketFactory socketFactory) {
+    private TrustPolicy(List<String> sources, List<String> notices, List<String> diagnostics,
+                        CompositeTrustManager trustManager, SSLSocketFactory socketFactory) {
         this.sources = Collections.unmodifiableList(sources);
         this.notices = Collections.unmodifiableList(notices);
+        this.diagnostics = Collections.unmodifiableList(new ArrayList<String>(diagnostics));
         this.trustManager = trustManager;
         this.socketFactory = socketFactory;
     }
 
     /**
-     * Baut die Regel aus der Konfiguration.
+     * Baut die Regel jetzt (blockierend; unter Windows mit PowerShell-Export, sofern eingeschaltet). Nie auf dem
+     * EDT rufen.
      *
      * @throws AppConfigException wenn {@code network.tls.caCertificatesFile} nicht lesbar ist oder kein
      *                            Zertifikat enthält (die Meldung nennt den Schlüssel, nie den Inhalt)
@@ -81,68 +82,89 @@ public final class TrustPolicy {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
-        return build(config.useWindowsCertificateStore(), config.caCertificatesFile(),
-                System.getProperty("os.name", ""));
+        return build(config.tlsUseJvmDefault(), config.tlsUseWindowsRoot(), config.tlsUseWindowsCaStores(),
+                config.caCertificatesFile(), System.getProperty("os.name", ""));
     }
 
     /** Regel allein aus dem JVM-Truststore, wie das JDK sie ohne diese Klasse anwendet (Tests). */
     public static TrustPolicy jvmOnly() {
-        return build(false, null, "");
+        return build(true, false, false, null, "");
     }
 
-    static TrustPolicy build(boolean useWindowsStore, Path caCertificatesFile, String osName) {
+    /**
+     * Die billige Prüfung für Dialog und Start: liest die CA-Datei, lädt keine Windows-Speicher.
+     *
+     * @throws AppConfigException wie {@link #from}
+     */
+    public static void verify(NetworkConfig config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config must not be null");
+        }
+        if (config.caCertificatesFile() != null) {
+            caFileTrustManager(config.caCertificatesFile(), new ArrayList<String>());
+        }
+    }
+
+    /**
+     * Socket-Factory, die die Regel beim ersten Verbindungsaufbau über {@link #from} baut und dann behält;
+     * schlägt der Aufbau fehl, scheitert nur dieser Verbindungsaufbau, der nächste versucht es erneut.
+     */
+    public static SSLSocketFactory deferred(final NetworkConfig config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config must not be null");
+        }
+        return new LazySslSocketFactory("TrustPolicy(" + config.describeTrust() + ")") {
+            @Override
+            protected SSLSocketFactory load() throws IOException {
+                try {
+                    return from(config).socketFactory();
+                } catch (AppConfigException | IllegalStateException e) {
+                    throw new IOException("TLS-Vertrauensquellen nicht nutzbar: " + e.getMessage(), e);
+                }
+            }
+        };
+    }
+
+    static TrustPolicy build(boolean useJvmDefault, boolean useWindowsRoot, boolean useWindowsCaStores,
+                             Path caCertificatesFile, String osName) {
         List<String> sources = new ArrayList<String>();
         List<String> notices = new ArrayList<String>();
         List<X509TrustManager> delegates = new ArrayList<X509TrustManager>();
-        try {
-            delegates.add(jvmTrustManager());
+        boolean windows = isWindows(osName);
+        if ((useWindowsRoot || useWindowsCaStores) && !windows) {
+            notices.add("Windows-Zertifikatspeicher stehen nur unter Windows zur Verfügung; sie bleiben hier aus.");
+        }
+        CertificateTrustConfiguration trust = CertificateTrustConfiguration.builder()
+                .useJvmDefault(useJvmDefault)
+                .useWindowsRoot(useWindowsRoot && windows)
+                .useWindowsCaStores(useWindowsCaStores && windows)
+                .build();
+        SystemTrustSslSocketFactory.Result result = SystemTrustSslSocketFactory.build(trust);
+        if (result.isJvmDefaultTrusted()) {
             sources.add(JVM_SOURCE);
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("JVM-Truststore nicht nutzbar: " + e.getMessage(), e);
         }
-        if (useWindowsStore) {
-            if (isWindows(osName)) {
-                try {
-                    KeyStore windowsRoot = KeyStore.getInstance(WINDOWS_ROOT_STORE);
-                    windowsRoot.load(null, null);
-                    int count = windowsRoot.size();
-                    delegates.add(trustManagerFor(windowsRoot));
-                    sources.add(WINDOWS_SOURCE + " (" + count + " Zertifikate)");
-                } catch (GeneralSecurityException | IOException | RuntimeException e) {
-                    notices.add(WINDOWS_SOURCE + " nicht nutzbar (" + e.getClass().getSimpleName() + ": "
-                            + e.getMessage() + "); es gilt nur der JVM-Truststore.");
-                }
-            } else {
-                notices.add(WINDOWS_SOURCE + " steht nur unter Windows zur Verfügung; es gilt der JVM-Truststore.");
+        if (result.isWindowsRootTrusted()) {
+            sources.add(WINDOWS_ROOT_SOURCE);
+        }
+        if (result.isWindowsCaStoresTrusted()) {
+            sources.add(WINDOWS_CA_SOURCE + " (" + result.getWindowsRootAnchorCount() + " Root, "
+                    + result.getWindowsIntermediateCount() + " Zwischenzertifikate)");
+        }
+        X509TrustManager library = result.getTrustManager();
+        if (result.isFallbackToJvmDefault() || library == null) {
+            notices.add("Keine konfigurierte TLS-Quelle nutzbar; es gilt der JVM-Truststore.");
+            try {
+                library = trustManagerFor(null);
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException("JVM-Truststore nicht nutzbar: " + e.getMessage(), e);
+            }
+            if (!sources.contains(JVM_SOURCE)) {
+                sources.add(JVM_SOURCE + " (Rückfall)");
             }
         }
+        delegates.add(library);
         if (caCertificatesFile != null) {
-            List<X509Certificate> certificates;
-            try {
-                certificates = loadCertificates(caCertificatesFile);
-            } catch (IOException e) {
-                throw new AppConfigException("network.tls.caCertificatesFile: Datei nicht lesbar ("
-                        + e.getClass().getSimpleName() + ")");
-            } catch (CertificateException e) {
-                throw new AppConfigException("network.tls.caCertificatesFile: kein PEM- oder DER-Zertifikat ("
-                        + e.getMessage() + ")");
-            }
-            if (certificates.isEmpty()) {
-                throw new AppConfigException("network.tls.caCertificatesFile: Datei enthält kein Zertifikat");
-            }
-            try {
-                KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());
-                store.load(null, null);
-                int i = 0;
-                for (X509Certificate certificate : certificates) {
-                    store.setCertificateEntry("ca-" + (i++), certificate);
-                }
-                delegates.add(trustManagerFor(store));
-            } catch (GeneralSecurityException | IOException e) {
-                throw new AppConfigException("network.tls.caCertificatesFile: Zertifikate nicht nutzbar ("
-                        + e.getClass().getSimpleName() + ")");
-            }
-            sources.add(FILE_SOURCE + " (" + certificates.size() + " Zertifikate)");
+            delegates.add(caFileTrustManager(caCertificatesFile, sources));
         }
         CompositeTrustManager composite = new CompositeTrustManager(delegates, sources);
         KeyManager[] keyManagers;
@@ -160,7 +182,37 @@ public final class TrustPolicy {
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("TLS-Kontext nicht erzeugbar: " + e.getMessage(), e);
         }
-        return new TrustPolicy(sources, notices, composite, factory);
+        return new TrustPolicy(sources, notices, result.getDiagnostics(), composite, factory);
+    }
+
+    /** Trust-Manager aus der CA-Datei; hängt die Quelle mit Zertifikatzahl an {@code sources}. */
+    private static X509TrustManager caFileTrustManager(Path caCertificatesFile, List<String> sources) {
+        List<X509Certificate> certificates;
+        try {
+            certificates = loadCertificates(caCertificatesFile);
+        } catch (IOException e) {
+            throw new AppConfigException("network.tls.caCertificatesFile: Datei nicht lesbar ("
+                    + e.getClass().getSimpleName() + ")");
+        } catch (CertificateException e) {
+            throw new AppConfigException("network.tls.caCertificatesFile: kein PEM- oder DER-Zertifikat ("
+                    + e.getMessage() + ")");
+        }
+        if (certificates.isEmpty()) {
+            throw new AppConfigException("network.tls.caCertificatesFile: Datei enthält kein Zertifikat");
+        }
+        try {
+            KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());
+            store.load(null, null);
+            int i = 0;
+            for (X509Certificate certificate : certificates) {
+                store.setCertificateEntry("ca-" + (i++), certificate);
+            }
+            sources.add(FILE_SOURCE + " (" + certificates.size() + " Zertifikate)");
+            return trustManagerFor(store);
+        } catch (GeneralSecurityException | IOException e) {
+            throw new AppConfigException("network.tls.caCertificatesFile: Zertifikate nicht nutzbar ("
+                    + e.getClass().getSimpleName() + ")");
+        }
     }
 
     /**
@@ -203,9 +255,14 @@ public final class TrustPolicy {
         return sources;
     }
 
-    /** Hinweise aus dem Aufbau (z. B. Windows-Speicher nicht verfügbar); keine Fehler. */
+    /** Hinweise aus dem Aufbau (Windows-Speicher nicht verfügbar, Rückfälle, Client-Schlüssel); keine Fehler. */
     public List<String> notices() {
         return notices;
+    }
+
+    /** Die Diagnosezeilen von win-trust-java (geladene Quellen, Zahl der Zertifikate, Exportfehler). */
+    public List<String> diagnostics() {
+        return diagnostics;
     }
 
     public X509TrustManager trustManager() {
@@ -215,24 +272,6 @@ public final class TrustPolicy {
     /** Socket-Factory mit dieser Regel (Schlüssel- und Protokolleinstellungen des JDK). */
     public SSLSocketFactory socketFactory() {
         return socketFactory;
-    }
-
-    /** Setzt die Regel als Standard für alle {@link HttpsURLConnection}. Idempotent. */
-    public synchronized void install() {
-        SSLSocketFactory current = HttpsURLConnection.getDefaultSSLSocketFactory();
-        if (current == socketFactory) {
-            return;
-        }
-        previousDefault = current;
-        HttpsURLConnection.setDefaultSSLSocketFactory(socketFactory);
-    }
-
-    /** Stellt die vorherige Standard-Factory wieder her, falls diese Regel installiert ist. */
-    public synchronized void uninstall() {
-        if (HttpsURLConnection.getDefaultSSLSocketFactory() == socketFactory && previousDefault != null) {
-            HttpsURLConnection.setDefaultSSLSocketFactory(previousDefault);
-            previousDefault = null;
-        }
     }
 
     /** Liest alle X.509-Zertifikate einer PEM-Datei (auch mehrere hintereinander) oder einer DER-Datei. */
@@ -251,10 +290,6 @@ public final class TrustPolicy {
 
     static boolean isWindows(String osName) {
         return osName != null && osName.toLowerCase(Locale.ROOT).contains("windows");
-    }
-
-    private static X509TrustManager jvmTrustManager() throws GeneralSecurityException {
-        return trustManagerFor(null);
     }
 
     private static X509TrustManager trustManagerFor(KeyStore store) throws GeneralSecurityException {

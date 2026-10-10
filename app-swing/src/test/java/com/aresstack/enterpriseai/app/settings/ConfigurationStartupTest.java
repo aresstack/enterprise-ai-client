@@ -83,7 +83,7 @@ public class ConfigurationStartupTest {
         return SettingsMapper.firstStartDefaults().toBuilder()
                 .chatBaseUrl("http://127.0.0.1:9/v1").chatModel("test-chat")
                 .embeddingModel("test-embedding").embeddingDimension("8")
-                .keePassEnabled(false).proxyMode(SettingsForm.PROXY_NONE).build();
+                .keePassEnabled(false).proxyMode(SettingsForm.PROXY_DISABLED).build();
     }
 
     @Test

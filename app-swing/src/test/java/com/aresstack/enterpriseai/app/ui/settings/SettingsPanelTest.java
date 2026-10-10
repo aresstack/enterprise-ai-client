@@ -63,6 +63,28 @@ public class SettingsPanelTest {
             }
             listener.onFinished(connectionSuccess);
         }
+
+        final List<String> networkCalls = new ArrayList<String>();
+
+        @Override
+        public void resolveProxy(SettingsForm form, NetworkLogListener listener) {
+            networkCalls.add("resolve " + form.proxyMode());
+            listener.line("Resolving " + form.testUrl() + " ...");
+            listener.line("Result: DIRECT (disabled)");
+            listener.finished(true);
+        }
+
+        @Override
+        public void checkHttps(SettingsForm form, NetworkLogListener listener) {
+            networkCalls.add("https " + form.proxyMode());
+            listener.line("Result: HTTP 200");
+            listener.finished(true);
+        }
+
+        @Override
+        public String defaultDiscoveryScript(String proxyMode) {
+            return SettingsForm.PROXY_PAC_URL_POWERSHELL.equals(proxyMode) ? "# PowerShell-Vorgabe" : "' WScript-Vorgabe";
+        }
     }
 
     private static void onEdt(Runnable runnable) throws Exception {
@@ -85,7 +107,7 @@ public class SettingsPanelTest {
                 .embeddingModel("test-embedding").embeddingDimension("8")
                 .addSource(SourceForm.builder("wiki", SourceForm.TYPE_MEDIAWIKI).url("http://127.0.0.1:9/w/api.php")
                         .startPoints("Hauptseite").build())
-                .keePassEnabled(false).proxyMode(SettingsForm.PROXY_NONE).build();
+                .keePassEnabled(false).proxyMode(SettingsForm.PROXY_DISABLED).build();
     }
 
     @Test
@@ -99,7 +121,7 @@ public class SettingsPanelTest {
                 assertEquals("http://127.0.0.1:9/v1", panel.serviceTab().chatBaseUrl().getText());
                 assertEquals(1, panel.knowledgeTab().sources().sources().size());
                 assertFalse(panel.securityTab().enabled().isSelected());
-                assertEquals(SettingsForm.PROXY_NONE, panel.systemTab().proxyMode().getSelectedItem());
+                assertEquals(SettingsForm.PROXY_DISABLED, panel.systemTab().proxyMode().getSelectedItem());
 
                 panel.serviceTab().chatModel().setText("  anderes-modell ");
                 panel.systemTab().windowTitle().setText("Mein Client");
@@ -107,9 +129,12 @@ public class SettingsPanelTest {
                 panel.securityTab().port().setText("12999");
                 panel.systemTab().agentEnabled().setSelected(true);
                 panel.systemTab().agentCommand().setText("agent.cmd");
-                panel.systemTab().proxyMode().setSelectedItem(SettingsForm.PROXY_AUTO);
-                panel.systemTab().pacUrl().setText("file:///C:/wpad.dat");
-                panel.systemTab().useWindowsCertificateStore().setSelected(false);
+                panel.systemTab().proxyMode().setSelectedItem(SettingsForm.PROXY_PAC_URL_MANUAL);
+                panel.systemTab().discoveryScript().setText("file:///C:/wpad.dat");
+                panel.systemTab().tlsWindowsCaStores().setSelected(false);
+                panel.systemTab().proxyAuthMode().setSelectedItem(SettingsForm.PROXY_AUTH_BASIC);
+                panel.systemTab().proxyCredentialRef().setText("keepass:Firmen-Proxy");
+                panel.systemTab().userAgent().setText("Mozilla/5.0 Test");
                 panel.systemTab().caCertificatesFile().setText("C:/ca.pem");
                 SettingsForm form = panel.toForm();
                 assertEquals("anderes-modell", form.chatModel());
@@ -118,10 +143,14 @@ public class SettingsPanelTest {
                 assertEquals("12999", form.keePassPort());
                 assertTrue(form.agentEnabled());
                 assertEquals("agent.cmd", form.agentCommand());
-                assertEquals(SettingsForm.PROXY_AUTO, form.proxyMode());
+                assertEquals(SettingsForm.PROXY_PAC_URL_MANUAL, form.proxyMode());
                 assertEquals("file:///C:/wpad.dat", form.pacUrl());
-                assertEquals(SettingsForm.PAC_WINDOWS_SETTINGS, form.pacDiscovery());
-                assertFalse(form.useWindowsCertificateStore());
+                assertTrue(form.tlsJvmDefault());
+                assertTrue(form.tlsWindowsRoot());
+                assertFalse(form.tlsWindowsCaStores());
+                assertEquals(SettingsForm.PROXY_AUTH_BASIC, form.proxyAuthMode());
+                assertEquals("keepass:Firmen-Proxy", form.proxyCredentialRef());
+                assertEquals("Mozilla/5.0 Test", form.userAgent());
                 assertEquals("C:/ca.pem", form.caCertificatesFile());
                 assertEquals("http://127.0.0.1:9/w/api.php", form.sources().get(0).url());
 
@@ -301,6 +330,65 @@ public class SettingsPanelTest {
     }
 
     @Test
+    public void proxyModesAreExactlyTheLibraryModesAndTheScriptFieldIsRememberedPerMode() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
+                        SettingsPanel.Mode.EDIT, actions, palette);
+                SystemTab tab = panel.systemTab();
+                List<String> modes = new ArrayList<String>();
+                for (int i = 0; i < tab.proxyMode().getItemCount(); i++) {
+                    modes.add(String.valueOf(tab.proxyMode().getItemAt(i)));
+                }
+                List<String> library = new ArrayList<String>();
+                for (com.aresstack.winproxy.ProxyMode mode : com.aresstack.winproxy.ProxyMode.values()) {
+                    if (!mode.name().endsWith("_LEGACY")) {
+                        library.add(mode.name());
+                    }
+                }
+                Collections.sort(library);
+                List<String> sorted = new ArrayList<String>(modes);
+                Collections.sort(sorted);
+                assertEquals(library, sorted);
+
+                tab.proxyMode().setSelectedItem(SettingsForm.PROXY_PAC_URL_POWERSHELL);
+                assertEquals("# PowerShell-Vorgabe", tab.discoveryScript().getText());
+                tab.discoveryScript().setText("Write-Output 'http://wpad.intern.example/wpad.dat'");
+                tab.proxyMode().setSelectedItem(SettingsForm.PROXY_PAC_URL_WSCRIPT);
+                assertEquals("' WScript-Vorgabe", tab.discoveryScript().getText());
+                tab.proxyMode().setSelectedItem(SettingsForm.PROXY_PAC_URL_POWERSHELL);
+                assertEquals("Write-Output 'http://wpad.intern.example/wpad.dat'", tab.discoveryScript().getText());
+                assertEquals("Write-Output 'http://wpad.intern.example/wpad.dat'",
+                        panel.toForm().pacDiscoveryScript());
+
+                tab.proxyMode().setSelectedItem(SettingsForm.PROXY_DISABLED);
+                tab.resolveButton().doClick();
+                tab.httpsButton().doClick();
+                assertEquals("[resolve DISABLED, https DISABLED]", actions.networkCalls.toString());
+                assertTrue(tab.logText(), tab.logText().contains("Result: DIRECT (disabled)"));
+                assertTrue(tab.logText(), tab.logText().contains("Result: HTTP 200"));
+                assertTrue(tab.resolveButton().isEnabled());
+            }
+        });
+    }
+
+    @Test
+    public void aDefaultScriptIsStoredAsEmptySoTheLibraryDefaultApplies() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
+                        SettingsPanel.Mode.EDIT, actions, palette);
+                panel.systemTab().proxyMode().setSelectedItem(SettingsForm.PROXY_PAC_URL_POWERSHELL);
+                assertEquals("", panel.toForm().pacDiscoveryScript());
+            }
+        });
+    }
+
+    @Test
     public void connectionCheckUsesTheCurrentDraftAndShowsEveryStepWithASummary() throws Exception {
         final ScriptedActions actions = new ScriptedActions();
         onEdt(new Runnable() {
@@ -308,7 +396,7 @@ public class SettingsPanelTest {
             public void run() {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
-                ConnectionCheckRow row = panel.systemTab().connectionCheck();
+                ConnectionCheckRow row = panel.serviceTab().connectionCheck();
                 panel.systemTab().proxyMode().setSelectedItem(SettingsForm.PROXY_MANUAL);
                 row.button().doClick();
                 assertEquals(1, actions.connectionForms.size());

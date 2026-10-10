@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
@@ -14,6 +15,7 @@ import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 
+import javax.net.ssl.SSLSocketFactory;
 import java.net.URI;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -37,6 +39,10 @@ import java.util.Map;
  * </ul>
  *
  * <p>Anmeldedaten fordert der Adapter erst beim Login über den {@link MediaWikiCredentialsProvider} an.
+ *
+ * <p>Netz: Die Composition Root gibt die Proxy-Route ({@link HttpRoutePort}) und die Vertrauensquellen
+ * ({@link SSLSocketFactory}) mit; beides wird jeder Verbindung einzeln mitgegeben. Der Konstruktor ohne
+ * diese Parameter bleibt für die JVM-Standards erhalten.
  */
 public final class MediaWikiKnowledgeSource implements SearchableKnowledgeSource {
 
@@ -50,6 +56,17 @@ public final class MediaWikiKnowledgeSource implements SearchableKnowledgeSource
     public MediaWikiKnowledgeSource(KnowledgeSourceId sourceId, MediaWikiSiteConfig site,
                                     MediaWikiCredentialsProvider credentialsProvider) {
         this(sourceId, site, new UrlConnectionMediaWikiTransport(requireSite(site)), credentialsProvider);
+    }
+
+    /**
+     * @param routes           Proxy-Route je Ziel; {@code null} = JVM-Standard
+     * @param sslSocketFactory Vertrauensquellen für HTTPS; {@code null} = JVM-Standard
+     */
+    public MediaWikiKnowledgeSource(KnowledgeSourceId sourceId, MediaWikiSiteConfig site,
+                                    MediaWikiCredentialsProvider credentialsProvider, HttpRoutePort routes,
+                                    SSLSocketFactory sslSocketFactory) {
+        this(sourceId, site, new UrlConnectionMediaWikiTransport(requireSite(site), routes, sslSocketFactory),
+                credentialsProvider);
     }
 
     MediaWikiKnowledgeSource(KnowledgeSourceId sourceId, MediaWikiSiteConfig site, MediaWikiTransport transport,

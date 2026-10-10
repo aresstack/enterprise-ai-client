@@ -25,7 +25,7 @@ final class TestConfigs {
         p.setProperty("knowledge.indexOnStartup", "true");
         p.setProperty("retrieval.maxResults", "5");
         p.setProperty("security.keepass.enabled", "false");
-        p.setProperty("network.proxy.mode", "NONE");
+        p.setProperty("network.proxy.mode", "DISABLED");
         return p;
     }
 

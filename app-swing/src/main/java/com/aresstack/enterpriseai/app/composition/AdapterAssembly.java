@@ -10,7 +10,7 @@ import com.aresstack.enterpriseai.app.config.EmbeddingConfig;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.MediaWikiSourceConfig;
 import com.aresstack.enterpriseai.app.config.SourceConfig;
-import com.aresstack.enterpriseai.app.net.ProxyPolicy;
+import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.security.ClientCertificateFactory;
 import com.aresstack.enterpriseai.app.security.FilePairingKeyStore;
 import com.aresstack.enterpriseai.app.security.SecretBackedBearerTokenSource;
@@ -46,7 +46,9 @@ import java.util.logging.Logger;
 /**
  * Baut die echten Adapter aus der Konfiguration: der einzige Ort, an dem Adapterkonstruktoren aufgerufen werden.
  * Kein Netzwerkzugriff beim Bauen; Verbindungen entstehen erst bei der ersten Anfrage. Secrets werden nie
- * gelesen, nur als {@code SecretRef} an die Brücken in {@code app.security} weitergereicht.
+ * gelesen, nur als {@code SecretRef} an die Brücken in {@code app.security} weitergereicht. Proxy-Route,
+ * TLS-Vertrauensregel und User-Agent bekommt jeder Adapter aus denselben {@link NetworkServices}; nichts davon
+ * wird prozessweit gesetzt.
  *
  * <p>Nahtstelle "ohne KeePass": Ist KeePassRPC deaktiviert, bekommt jeder Adapter einen
  * {@link UnavailableSecretProvider}; die Anwendung startet, und jede Anfrage, die ein Secret braucht,
@@ -64,25 +66,25 @@ public final class AdapterAssembly {
      * ({@code security.keepass.pairingKeyStore=file}) oder nur im Speicher ({@code memory}: nach jedem Start
      * erneut pairen).
      */
-    public static ApplicationPorts create(AppConfig config, ProxyPolicy proxy, KeePassPairingCallback pairing) {
+    public static ApplicationPorts create(AppConfig config, NetworkServices network, KeePassPairingCallback pairing) {
         KeePassConfig keePass = config.keePass();
         KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
                 ? new InMemoryPairingKeyStore()
                 : new FilePairingKeyStore(keePass.pairingKeyFile());
-        return create(config, proxy, pairing, keyStore);
+        return create(config, network, pairing, keyStore);
     }
 
     /** Mit eigener Schlüsselablage (Tests: {@code InMemoryPairingKeyStore}). */
-    public static ApplicationPorts create(AppConfig config, ProxyPolicy proxy, KeePassPairingCallback pairing,
+    public static ApplicationPorts create(AppConfig config, NetworkServices network, KeePassPairingCallback pairing,
                                           KeePassPairingKeyStore keyStore) {
-        if (config == null || proxy == null) {
-            throw new IllegalArgumentException("config and proxy must not be null");
+        if (config == null || network == null) {
+            throw new IllegalArgumentException("config and network must not be null");
         }
         SecretProvider secrets = secrets(config.keePass(), pairing, keyStore);
         ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
 
-        ports.chat(chat(config.chat(), secrets));
-        OpenAiCompatibleEmbeddingAdapter embeddings = embeddings(config.embedding(), secrets, proxy);
+        ports.chat(chat(config.chat(), secrets, network));
+        OpenAiCompatibleEmbeddingAdapter embeddings = embeddings(config.embedding(), secrets, network);
         ports.embeddings(embeddings, embeddings.modelIdentity());
 
         List<KnowledgeSourceRegistration> registrations = new ArrayList<KnowledgeSourceRegistration>();
@@ -90,7 +92,7 @@ public final class AdapterAssembly {
             // Mit Protokollhülle: Fehler der Quelle landen samt Ursachenkette im Protokoll, der Bericht an die UI
             // enthält nur den Text.
             registrations.add(new KnowledgeSourceRegistration(
-                    new LoggingKnowledgeSource(source(source, secrets, proxy)), source.scope()));
+                    new LoggingKnowledgeSource(source(source, secrets, network)), source.scope()));
         }
         ports.sources(new KnowledgeSourceCatalog(registrations));
 
@@ -125,25 +127,30 @@ public final class AdapterAssembly {
         return new KeePassRpcSecretProvider(keePass.rpc(), keyStore, pairing);
     }
 
-    static OpenAiCompatibleChatAdapter chat(ChatConfig chat, SecretProvider secrets) {
+    static OpenAiCompatibleChatAdapter chat(ChatConfig chat, SecretProvider secrets, NetworkServices network) {
         OpenAiCompatibleChatConfig adapterConfig = OpenAiCompatibleChatConfig.builder(chat.baseUrl(), chat.model())
                 .bearerToken(new SecretBackedTokenSource(secrets, chat.apiKeyRef()))
                 .connectTimeoutMillis(chat.connectTimeoutMillis())
                 .readTimeoutMillis(chat.readTimeoutMillis())
                 .developerRolePolicy(chat.developerRolePolicy())
+                .routes(network.routes())
+                .sslSocketFactory(network.tls())
+                .userAgent(network.userAgent())
                 .build();
         return new OpenAiCompatibleChatAdapter(adapterConfig);
     }
 
     static OpenAiCompatibleEmbeddingAdapter embeddings(EmbeddingConfig embedding, SecretProvider secrets,
-                                                       ProxyPolicy proxy) {
+                                                       NetworkServices network) {
         OpenAiCompatibleEmbeddingConfiguration adapterConfig = OpenAiCompatibleEmbeddingConfiguration
                 .builder(embedding.baseUrl().toString(), embedding.model(), embedding.dimension())
                 .inputMode(embedding.inputMode())
                 .maxBatchSize(embedding.maxBatchSize())
                 .connectTimeoutMillis(embedding.connectTimeoutMillis())
                 .readTimeoutMillis(embedding.readTimeoutMillis())
-                .proxy(proxy.proxyFor(embedding.baseUrl()))
+                .routes(network.routes())
+                .sslSocketFactory(network.tls())
+                .userAgent(network.userAgent())
                 .build();
         return new OpenAiCompatibleEmbeddingAdapter(adapterConfig,
                 new SecretBackedBearerTokenSource(secrets, embedding.apiKeyRef()));
@@ -151,25 +158,31 @@ public final class AdapterAssembly {
 
     static com.aresstack.enterpriseai.source.api.KnowledgeSourcePort source(SourceConfig source,
                                                                               SecretProvider secrets,
-                                                                              ProxyPolicy proxy) {
+                                                                              NetworkServices network) {
         if (source instanceof MediaWikiSourceConfig) {
             MediaWikiSourceConfig wiki = (MediaWikiSourceConfig) source;
             MediaWikiCredentialsProvider credentials = wiki.credentialRef() == null
                     ? MediaWikiCredentialsProvider.anonymous()
                     : new SecretBackedMediaWikiCredentialsProvider(secrets, wiki.credentialRef());
-            return new MediaWikiKnowledgeSource(wiki.sourceId(), wiki.site(), credentials);
+            return new MediaWikiKnowledgeSource(wiki.sourceId(), wiki.site(), credentials, network.routes(),
+                    network.tls());
         }
         if (source instanceof ConfluenceSourceConfig) {
             ConfluenceSourceConfig confluence = (ConfluenceSourceConfig) source;
             UrlConnectionConfluenceTransport.Builder transport = UrlConnectionConfluenceTransport.builder()
-                    .proxy(proxy.proxyFor(confluence.confluence().baseUrl()))
+                    .routes(network.routes())
+                    .userAgent(network.userAgent())
                     .connectTimeoutMillis(confluence.connectTimeoutMillis())
                     .readTimeoutMillis(confluence.readTimeoutMillis());
             if (confluence.clientCertificate() != null) {
                 // Erst beim ersten Verbindungsaufbau geladen: Das KeyStore-Passwort wird dann je Versuch über den
-                // Security-Port geholt. Ohne erreichbaren Tresor startet die Anwendung trotzdem; die Quelle meldet
-                // je Anfrage UNAVAILABLE, bis das Zertifikat ladbar ist.
-                transport.sslSocketFactory(ClientCertificateFactory.deferred(confluence.clientCertificate(), secrets));
+                // Security-Port geholt, die Vertrauensregel der Anwendung kommt in denselben TLS-Kontext. Ohne
+                // erreichbaren Tresor startet die Anwendung trotzdem; die Quelle meldet je Anfrage UNAVAILABLE, bis
+                // das Zertifikat ladbar ist.
+                transport.sslSocketFactory(ClientCertificateFactory.deferred(confluence.clientCertificate(), secrets,
+                        network));
+            } else {
+                transport.sslSocketFactory(network.tls());
             }
             return new ConfluenceKnowledgeSource(confluence.sourceId(), confluence.confluence(), transport.build(),
                     secrets);

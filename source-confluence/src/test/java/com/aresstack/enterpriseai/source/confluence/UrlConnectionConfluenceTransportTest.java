@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.source.confluence;
 
+import com.aresstack.enterpriseai.http.api.HttpRoute;
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.After;
 import org.junit.Before;
@@ -28,6 +30,8 @@ public class UrlConnectionConfluenceTransportTest {
     private HttpServer server;
     private URI base;
     private final AtomicReference<String> seenAuthorization = new AtomicReference<String>();
+    private final AtomicReference<String> seenUri = new AtomicReference<String>();
+    private final AtomicReference<String> seenUserAgent = new AtomicReference<String>();
     private final UrlConnectionConfluenceTransport transport =
             UrlConnectionConfluenceTransport.builder().proxy(Proxy.NO_PROXY).readTimeoutMillis(5000).build();
 
@@ -36,6 +40,8 @@ public class UrlConnectionConfluenceTransportTest {
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         server.createContext("/ok", exchange -> {
             seenAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            seenUri.set(exchange.getRequestURI().toString());
+            seenUserAgent.set(exchange.getRequestHeaders().getFirst("User-Agent"));
             respond(exchange, 200, "application/json", "{\"a\":1}");
         });
         server.createContext("/redirect", exchange -> {
@@ -91,8 +97,53 @@ public class UrlConnectionConfluenceTransportTest {
     }
 
     @Test
-    public void toStringShowsProxyAndMtlsButNoHeaders() {
-        assertEquals("UrlConnectionConfluenceTransport[proxy=DIRECT, mTLS=false]", transport.toString());
+    public void toStringShowsProxyAndTlsButNoHeaders() {
+        assertEquals("UrlConnectionConfluenceTransport[proxy=DIRECT, tls=false]", transport.toString());
+    }
+
+    @Test
+    public void aProxyRouteSendsTheAbsoluteUrlToTheProxyAndTheUserAgent() throws IOException {
+        final int port = server.getAddress().getPort();
+        HttpRoutePort viaProxy = new HttpRoutePort() {
+            @Override
+            public HttpRoute routeFor(URI target) {
+                return HttpRoute.proxy("127.0.0.1", port, "test");
+            }
+        };
+        UrlConnectionConfluenceTransport proxied = UrlConnectionConfluenceTransport.builder()
+                .routes(viaProxy).userAgent("EnterpriseAiClient/test").readTimeoutMillis(5000).build();
+        ConfluenceHttpResponse response = proxied.get(URI.create("http://confluence.intern.invalid/ok"), headers(), 1024);
+        assertEquals(200, response.status());
+        assertEquals("http://confluence.intern.invalid/ok", seenUri.get());
+        assertEquals("EnterpriseAiClient/test", seenUserAgent.get());
+        assertEquals("UrlConnectionConfluenceTransport[proxy=" + viaProxy + ", tls=false]", proxied.toString());
+    }
+
+    @Test
+    public void anUnavailableRouteFailsBeforeAnyRequest() {
+        HttpRoutePort unavailable = new HttpRoutePort() {
+            @Override
+            public HttpRoute routeFor(URI target) {
+                return HttpRoute.unavailable("pac-download-failed", "HTTP 404");
+            }
+        };
+        UrlConnectionConfluenceTransport blocked = UrlConnectionConfluenceTransport.builder().routes(unavailable).build();
+        try {
+            blocked.get(base.resolve("/ok"), headers(), 1024);
+            fail("expected IOException");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("pac-download-failed"));
+        }
+        assertEquals(null, seenUri.get());
+    }
+
+    @Test
+    public void aDirectRouteTakesPrecedenceOverAFixedProxy() throws IOException {
+        UrlConnectionConfluenceTransport direct = UrlConnectionConfluenceTransport.builder()
+                .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(InetAddress.getLoopbackAddress(), 1)))
+                .routes(HttpRoutePort.direct()).readTimeoutMillis(5000).build();
+        assertEquals(200, direct.get(base.resolve("/ok"), headers(), 1024).status());
+        assertEquals("/ok", seenUri.get());
     }
 
     private static Map<String, String> headers() {

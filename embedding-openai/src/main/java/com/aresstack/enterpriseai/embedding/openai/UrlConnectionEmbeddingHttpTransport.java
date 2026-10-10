@@ -6,7 +6,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URLConnection;
 import java.nio.charset.Charset;
 
 /**
@@ -33,13 +32,7 @@ final class UrlConnectionEmbeddingHttpTransport implements EmbeddingHttpTranspor
     @Override
     public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken, long maxResponseBytes)
             throws IOException {
-        URLConnection raw = configuration.proxy() == null
-                ? endpoint.toURL().openConnection()
-                : endpoint.toURL().openConnection(configuration.proxy());
-        if (!(raw instanceof HttpURLConnection)) {
-            throw new IOException("not an HTTP endpoint: " + endpoint);
-        }
-        HttpURLConnection connection = (HttpURLConnection) raw;
+        HttpURLConnection connection = RouteConnections.open(endpoint, configuration);
         try {
             connection.setConnectTimeout(configuration.connectTimeoutMillis());
             connection.setReadTimeout(configuration.readTimeoutMillis());

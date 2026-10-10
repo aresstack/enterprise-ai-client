@@ -8,6 +8,8 @@ import com.aresstack.enterpriseai.domain.chat.ChatMessage;
 import com.aresstack.enterpriseai.domain.chat.ChatOptions;
 import com.aresstack.enterpriseai.domain.chat.ChatRequest;
 import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.http.api.HttpRoute;
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.After;
@@ -389,6 +391,85 @@ public class OpenAiCompatibleChatAdapterTest {
     @Test(expected = IllegalArgumentException.class)
     public void configRejectsBaseUrlWithoutHost() {
         OpenAiCompatibleChatConfig.builder(URI.create("http:/v1"), "m");
+    }
+
+    @Test
+    public void configRejectsBaseUrlsThatAlreadyNameAnEndpoint() {
+        for (String bad : new String[] {"https://host/v1/chat/completions", "https://host/v1/Chat/Completions/",
+                "https://host/v1/embeddings", "https://host/v1/models/"}) {
+            try {
+                OpenAiCompatibleChatConfig.builder(URI.create(bad), "m");
+                fail("expected rejection of " + bad);
+            } catch (IllegalArgumentException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("endpoint path"));
+            }
+        }
+        OpenAiCompatibleChatConfig ok = OpenAiCompatibleChatConfig.builder(URI.create("https://host/v1/"), "m").build();
+        assertEquals("https://host/v1/chat/completions", ok.endpoint().toString());
+        assertEquals("https://host/v1/models", ok.modelsEndpoint().toString());
+        assertNull(OpenAiCompatibleChatConfig.endpointSuffix(URI.create("https://host/v1")));
+        assertEquals("/models", OpenAiCompatibleChatConfig.endpointSuffix(URI.create("https://host/models")));
+    }
+
+    @Test
+    public void anUnavailableRouteFailsBeforeAnyRequestAndNamesTheReason() {
+        HttpRoutePort unavailable = new HttpRoutePort() {
+            @Override
+            public HttpRoute routeFor(URI target) {
+                return HttpRoute.unavailable("pac-download-failed", "PAC-Skript nicht ladbar (HTTP 404)");
+            }
+        };
+        OpenAiCompatibleChatAdapter routed = new OpenAiCompatibleChatAdapter(
+                OpenAiCompatibleChatConfig.builder(server.baseUrl(), "gpt-intern").bearerToken(token())
+                        .routes(unavailable).build());
+        try {
+            routed.complete(request("x"));
+            fail("expected ChatCompletionException");
+        } catch (ChatCompletionException e) {
+            assertEquals(ChatErrorKind.TRANSPORT, e.kind());
+            assertTrue(e.getCause() instanceof java.io.IOException);
+            assertTrue(e.getCause().getMessage(), e.getCause().getMessage().contains("pac-download-failed"));
+            assertTrue(e.getCause().getMessage(), e.getCause().getMessage().contains("HTTP 404"));
+        }
+        assertEquals("keine Verbindung ohne Route", 0, server.requestCount());
+    }
+
+    @Test
+    public void aProxyRouteSendsTheRequestToTheProxyWithTheAbsoluteTargetUrl() {
+        final URI proxy = server.baseUrl();
+        HttpRoutePort viaProxy = new HttpRoutePort() {
+            @Override
+            public HttpRoute routeFor(URI target) {
+                return HttpRoute.proxy(proxy.getHost(), proxy.getPort(), "test");
+            }
+        };
+        server.respond(200, "application/json", "{\"model\":\"gpt-intern\",\"choices\":[{\"index\":0,"
+                + "\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}");
+        OpenAiCompatibleChatAdapter routed = new OpenAiCompatibleChatAdapter(
+                OpenAiCompatibleChatConfig.builder(URI.create("http://ki.intern.invalid/v1"), "gpt-intern")
+                        .bearerToken(token()).routes(viaProxy).userAgent("EnterpriseAiClient/test").build());
+
+        assertEquals("ok", routed.complete(request("Hi")).content());
+
+        FakeOpenAiServer.Recorded recorded = server.lastRequest();
+        assertEquals("der Zielhost wird nie selbst aufgelöst; der Proxy bekommt die absolute URL",
+                "ki.intern.invalid", recorded.uri.getHost());
+        assertEquals("/v1/chat/completions", recorded.uri.getPath());
+        assertEquals("EnterpriseAiClient/test", recorded.header("User-Agent"));
+    }
+
+    @Test
+    public void aDirectRouteConnectsWithoutProxy() {
+        server.respond(200, "application/json", "{\"model\":\"gpt-intern\",\"choices\":[{\"index\":0,"
+                + "\"message\":{\"role\":\"assistant\",\"content\":\"direkt\"},\"finish_reason\":\"stop\"}]}");
+        OpenAiCompatibleChatAdapter routed = new OpenAiCompatibleChatAdapter(
+                OpenAiCompatibleChatConfig.builder(server.baseUrl(), "gpt-intern").bearerToken(token())
+                        .routes(HttpRoutePort.direct()).build());
+        assertEquals("direkt", routed.complete(request("Hi")).content());
+        assertEquals("/v1/chat/completions", server.lastRequest().uri.getPath());
+        String userAgent = server.lastRequest().header("User-Agent");
+        assertTrue("ohne Angabe bleibt der User-Agent der JVM: " + userAgent,
+                userAgent == null || userAgent.startsWith("Java/"));
     }
 
     private void assertStatus(int status, ChatErrorKind expected) {

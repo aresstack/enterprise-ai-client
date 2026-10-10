@@ -1,0 +1,5 @@
+description = 'Port für die HTTP-Route je Ziel-URL (Proxy-Entscheidung), neutral ohne java.net.Proxy oder TLS-Typen.'
+
+dependencies {
+    // Nur JDK (java.lang, java.util, java.net.URI); domain ist laut Registry erlaubt, aber nicht nötig.
+}

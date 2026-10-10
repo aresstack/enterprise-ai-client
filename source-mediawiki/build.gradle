@@ -6,6 +6,8 @@ apply plugin: 'java-test-fixtures'
 
 dependencies {
     api project(':source-api')
+    // Proxy-Route je Ziel (Port); die Umsetzung liefert app-swing.
+    api project(':http-api')
 
     // Adapter-intern: JSON der Action-API und HTML-Bereinigung (wie MainframeMate wiki-integration).
     implementation libs.gson

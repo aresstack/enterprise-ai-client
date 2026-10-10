@@ -71,4 +71,26 @@ public class OpenAiCompatibleEmbeddingConfigurationTest {
             // ok
         }
     }
+
+    @Test
+    public void baseUrlMustNotNameAnEndpointPath() {
+        for (String bad : new String[] {"https://ai.intern/v1/embeddings", "https://ai.intern/v1/Embeddings/",
+                "https://ai.intern/v1/chat/completions", "https://ai.intern/v1/models"}) {
+            try {
+                OpenAiCompatibleEmbeddingConfiguration.builder(bad, "m", 2).build();
+                org.junit.Assert.fail("expected rejection of " + bad);
+            } catch (IllegalArgumentException expected) {
+                org.junit.Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("endpoint path"));
+            }
+        }
+        OpenAiCompatibleEmbeddingConfiguration ok =
+                OpenAiCompatibleEmbeddingConfiguration.builder("https://ai.intern/v1/", "m", 2).build();
+        org.junit.Assert.assertEquals("https://ai.intern/v1/embeddings", ok.endpoint().toString());
+        org.junit.Assert.assertEquals("https://ai.intern/v1/models", ok.modelsEndpoint().toString());
+        org.junit.Assert.assertNull(ok.routes());
+        org.junit.Assert.assertNull(ok.userAgent());
+        org.junit.Assert.assertEquals("/models",
+                OpenAiCompatibleEmbeddingConfiguration.endpointSuffix("https://ai.intern/models"));
+        org.junit.Assert.assertNull(OpenAiCompatibleEmbeddingConfiguration.endpointSuffix("::nicht::"));
+    }
 }

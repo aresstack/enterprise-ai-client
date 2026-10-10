@@ -1,7 +1,9 @@
 package com.aresstack.enterpriseai.embedding.openai;
 
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 
+import javax.net.ssl.SSLSocketFactory;
 import java.net.Proxy;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -21,6 +23,8 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
 
     /** Pfad relativ zur Base-URL, wie in der Enterprise-OpenAPI dokumentiert. */
     public static final String DEFAULT_EMBEDDINGS_PATH = "/embeddings";
+    /** Pfad der Modellliste unter derselben Basis-URL (Verbindungstest). */
+    public static final String MODELS_PATH = "/models";
     public static final int DEFAULT_CONNECT_TIMEOUT_MILLIS = 10000;
     public static final int DEFAULT_READ_TIMEOUT_MILLIS = 60000;
     public static final int DEFAULT_MAX_BATCH_SIZE = 16;
@@ -34,9 +38,14 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
     private final Proxy proxy;
+    private final HttpRoutePort routes;
+    private final SSLSocketFactory sslSocketFactory;
+    private final String userAgent;
+    private final URI modelsEndpoint;
 
     private OpenAiCompatibleEmbeddingConfiguration(Builder builder) {
         this.endpoint = resolveEndpoint(builder.baseUrl, builder.embeddingsPath);
+        this.modelsEndpoint = resolveEndpoint(builder.baseUrl, MODELS_PATH);
         this.modelId = requireText(builder.modelId, "modelId");
         if (builder.dimension <= 0) {
             throw new IllegalArgumentException("dimension must be configured and positive: " + builder.dimension);
@@ -51,6 +60,9 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
         this.connectTimeoutMillis = requireTimeout(builder.connectTimeoutMillis, "connectTimeoutMillis");
         this.readTimeoutMillis = requireTimeout(builder.readTimeoutMillis, "readTimeoutMillis");
         this.proxy = builder.proxy;
+        this.routes = builder.routes;
+        this.sslSocketFactory = builder.sslSocketFactory;
+        this.userAgent = builder.userAgent;
     }
 
     /**
@@ -103,8 +115,32 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
     }
 
     /** {@code null}: JVM-Standard (System-Properties / ProxySelector). */
+    /**
+     * Fester Proxy für alle Anfragen; {@code null}: JVM-Standard. Ist ein {@link #routes() Routen-Port} gesetzt,
+     * entscheidet dieser je Anfrage und dieser Wert bleibt unbenutzt.
+     */
     public Proxy proxy() {
         return proxy;
+    }
+
+    /** Route je Anfrage (Proxy-Entscheidung der Composition Root); {@code null}: {@link #proxy()} bzw. JVM. */
+    public HttpRoutePort routes() {
+        return routes;
+    }
+
+    /** Socket-Factory für HTTPS (Vertrauensregel); {@code null}: JVM-Standard. */
+    public SSLSocketFactory sslSocketFactory() {
+        return sslSocketFactory;
+    }
+
+    /** {@code User-Agent} jeder Anfrage; {@code null}: JVM-Standard. */
+    public String userAgent() {
+        return userAgent;
+    }
+
+    /** {@code <baseUrl>/models}. */
+    public URI modelsEndpoint() {
+        return modelsEndpoint;
     }
 
     @Override
@@ -140,7 +176,39 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
         if (uri.getUserInfo() != null) {
             throw new IllegalArgumentException("baseUrl must not contain credentials");
         }
+        String suffix = endpointSuffix(base);
+        if (suffix != null) {
+            throw new IllegalArgumentException("baseUrl must not end with the endpoint path " + suffix
+                    + "; the adapter appends " + p + " itself");
+        }
         return uri;
+    }
+
+    /**
+     * Der Endpunkt-Pfad, auf den eine Basis-URL fälschlich endet ({@code /chat/completions}, {@code /embeddings},
+     * {@code /models}), sonst {@code null}.
+     */
+    public static String endpointSuffix(String baseUrl) {
+        if (baseUrl == null) {
+            return null;
+        }
+        String path;
+        try {
+            URI uri = new URI(baseUrl.trim());
+            path = uri.getPath() == null ? "" : uri.getPath();
+        } catch (URISyntaxException ex) {
+            return null;
+        }
+        path = path.toLowerCase(java.util.Locale.ROOT);
+        while (path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        for (String suffix : new String[] {"/chat/completions", "/embeddings", "/models"}) {
+            if (path.endsWith(suffix)) {
+                return suffix;
+            }
+        }
+        return null;
     }
 
     private static String requireText(String value, String name) {
@@ -170,6 +238,9 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
         private int connectTimeoutMillis = DEFAULT_CONNECT_TIMEOUT_MILLIS;
         private int readTimeoutMillis = DEFAULT_READ_TIMEOUT_MILLIS;
         private Proxy proxy;
+        private HttpRoutePort routes;
+        private SSLSocketFactory sslSocketFactory;
+        private String userAgent;
 
         private Builder(String baseUrl, String modelId, int dimension) {
             this.baseUrl = baseUrl;
@@ -217,6 +288,27 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
 
         public Builder proxy(Proxy proxy) {
             this.proxy = proxy;
+            return this;
+        }
+
+        /**
+         * Routenentscheidung je Anfrage; hat Vorrang vor {@link #proxy(Proxy)}. DIRECT wird ausdrücklich
+         * {@code Proxy.NO_PROXY}, UNAVAILABLE ein Transportfehler mit Grund.
+         */
+        public Builder routes(HttpRoutePort port) {
+            this.routes = port;
+            return this;
+        }
+
+        /** Socket-Factory für HTTPS (Vertrauensregel); {@code null}: JVM-Standard. */
+        public Builder sslSocketFactory(SSLSocketFactory factory) {
+            this.sslSocketFactory = factory;
+            return this;
+        }
+
+        /** {@code User-Agent} jeder Anfrage; leer oder {@code null}: JVM-Standard. */
+        public Builder userAgent(String value) {
+            this.userAgent = value == null || value.trim().isEmpty() ? null : value.trim();
             return this;
         }
 

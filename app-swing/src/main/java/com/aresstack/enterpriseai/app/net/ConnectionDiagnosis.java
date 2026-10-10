@@ -93,13 +93,20 @@ public final class ConnectionDiagnosis {
                     + "puffert den Stream). Erneut versuchen; bleibt es dabei, chat.readTimeoutMillis prüfen.";
         }
         if (text.contains("407") || text.contains("proxy authentication")) {
-            return "Der Proxy verlangt eine Anmeldung. Proxy-Authentifizierung unterstützt die Anwendung noch "
-                    + "nicht; ein Proxy ohne Anmeldung (network.proxy.mode=MANUAL mit Host und Port) oder eine "
-                    + "direkte Verbindung (NONE) ist nötig.";
+            return "Der Proxy verlangt eine Anmeldung. Unter Netzwerk die Proxy-Anmeldung BASIC mit einem "
+                    + "KeePass-Eintrag (Benutzername und Passwort) einstellen (network.proxy.auth.mode, "
+                    + "network.proxy.auth.credentialRef); eine Windows-integrierte Anmeldung (NTLM/Kerberos) "
+                    + "unterstützt die Anwendung nicht.";
+        }
+        if (text.contains("proxy route for") && text.contains("unavailable")) {
+            return "Die Proxy-Route konnte nicht bestimmt werden (NOT_IMPLEMENTED oder ERROR der Auflösung); es "
+                    + "wurde keine Verbindung versucht. Unter Netzwerk „Proxy auflösen“ zeigt jeden Schritt "
+                    + "(PAC-Adresse, Skript, Ergebnis); Modus, PAC-Adresse oder Ermittlungsskript anpassen.";
         }
         if (text.contains("unable to tunnel through proxy") || text.contains("proxy returns")) {
             return "Der Proxy hat die Verbindung zum Dienst abgelehnt. Proxy-Einstellung prüfen "
-                    + "(network.proxy.mode, network.proxy.nonProxyHosts).";
+                    + "(network.proxy.mode, network.proxy.nonProxyHosts); „Proxy auflösen“ unter Netzwerk zeigt "
+                    + "die Route.";
         }
         // Nur Zertifikatsursachen: eine SSLHandshakeException kann auch Protokollversion oder Cipher-Suite betreffen,
         // dafür gilt der TLS-Zweig darunter.
@@ -107,9 +114,9 @@ public final class ConnectionDiagnosis {
                 || text.contains("certificate")) {
             return "Java vertraut dem Zertifikat des Servers nicht. Häufige Ursachen: ein Firmen-Proxy mit eigenem "
                     + "Zertifikat oder ein älteres Java, dem die Stammzertifizierungsstelle fehlt. Abhilfe: unter "
-                    + "Windows network.tls.useWindowsCertificateStore=true belassen (Standard; nutzt die "
-                    + "Windows-Stammzertifikate wie PowerShell), das CA-Zertifikat als PEM-Datei unter "
-                    + "network.tls.caCertificatesFile eintragen oder Java aktualisieren.";
+                    + "Windows network.tls.useWindowsRoot und network.tls.useWindowsCaStores eingeschaltet lassen "
+                    + "(Standard; nutzt die Windows-Zertifikatspeicher wie PowerShell), das CA-Zertifikat als "
+                    + "PEM-Datei unter network.tls.caCertificatesFile eintragen oder Java aktualisieren.";
         }
         if (has(chain, SSLException.class) || text.contains("handshake_failure") || text.contains("protocol_version")
                 || text.contains("no cipher suites")) {
@@ -117,14 +124,15 @@ public final class ConnectionDiagnosis {
                     + "Java aktualisieren; TLS 1.3 gibt es in Java 8 erst ab Update 261.";
         }
         if (has(chain, UnknownHostException.class)) {
-            return "Der Hostname lässt sich nicht auflösen. Hinter einem Firmen-Proxy: network.proxy.mode=AUTO "
-                    + "wertet das PAC-Proxyskript des Unternehmens aus und übernimmt sonst die Windows-Einstellungen "
-                    + "(welche Route galt, steht beim Start im Protokoll unter \"Route zum KI-Dienst\"); MANUAL setzt "
-                    + "einen festen Proxy. Sonst Schreibweise der Basis-URL und Netzverbindung prüfen.";
+            return "Der Hostname lässt sich nicht auflösen. Hinter einem Firmen-Proxy muss die Proxy-Route den Proxy "
+                    + "nennen (Modus PAC_URL_POWERSHELL wertet das PAC-Skript des Unternehmens aus, MANUAL_PROXY "
+                    + "setzt einen festen Proxy; „Proxy auflösen“ unter Netzwerk zeigt das Ergebnis, beim Start "
+                    + "steht es im Protokoll unter \"Proxy-Route\"). Sonst Schreibweise der Basis-URL und "
+                    + "Netzverbindung prüfen.";
         }
         if (has(chain, SocketTimeoutException.class)) {
             return "Zeitüberschreitung: Server oder Proxy antworten nicht. Netzverbindung und Proxy prüfen (die "
-                    + "Route steht beim Start im Protokoll unter \"Route zum KI-Dienst\"); die Fristen stehen in "
+                    + "Route steht im Protokoll unter \"Proxy-Route\"); die Fristen stehen in "
                     + "chat.connectTimeoutMillis und chat.readTimeoutMillis.";
         }
         if (has(chain, ConnectException.class) || has(chain, NoRouteToHostException.class)) {

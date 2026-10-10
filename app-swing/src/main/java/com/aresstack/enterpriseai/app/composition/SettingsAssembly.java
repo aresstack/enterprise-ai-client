@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppConfigException;
+import com.aresstack.enterpriseai.app.net.HttpRoutes;
 import com.aresstack.enterpriseai.app.net.TrustPolicy;
 import com.aresstack.enterpriseai.app.settings.ConfigurationCheck;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
@@ -48,15 +50,24 @@ public final class SettingsAssembly {
     }
 
     /**
-     * Was der Start nach dem Laden zusätzlich prüft: die TLS-Vertrauensregel liest
-     * {@code network.tls.caCertificatesFile}; eine fehlende oder leere Datei soll im Dialog auffallen, nicht erst
-     * als Fehlerdialog beim nächsten Start. Baut die Regel nur, installiert sie nicht.
+     * Was der Start nach dem Laden zusätzlich prüft: die CA-Datei der TLS-Vertrauensregel
+     * ({@code network.tls.caCertificatesFile}) und die Prüfung der Proxy-Bibliothek ({@code validate()}: fehlender
+     * Host bei MANUAL_PROXY, ungültige PAC-Adresse, nicht umgesetzter Modus). Beides soll im Dialog auffallen,
+     * nicht erst beim nächsten Start. Lädt keine Windows-Speicher und löst nichts auf (läuft auf dem EDT).
      */
     public static ConfigurationCheck configurationCheck() {
         return new ConfigurationCheck() {
             @Override
             public void verify(AppConfig config) {
-                TrustPolicy.from(config.network());
+                TrustPolicy.verify(config.network());
+                java.util.List<String> problems = HttpRoutes.validationProblems(config.network());
+                if (!problems.isEmpty()) {
+                    java.util.List<String> described = new java.util.ArrayList<String>();
+                    for (String problem : problems) {
+                        described.add("network.proxy.mode: " + problem);
+                    }
+                    throw new AppConfigException(described);
+                }
             }
         };
     }

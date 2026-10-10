@@ -7,6 +7,8 @@ apply plugin: 'java-test-fixtures'
 dependencies {
     api project(':source-api')
     api project(':security-api')
+    // Proxy-Route je Ziel (Port); die Umsetzung liefert app-swing.
+    api project(':http-api')
     implementation libs.gson
     implementation libs.jsoup
 

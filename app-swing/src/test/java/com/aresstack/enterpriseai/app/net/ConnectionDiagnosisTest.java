@@ -68,8 +68,12 @@ public class ConnectionDiagnosisTest {
                 "Unable to tunnel through proxy. Proxy returns \"HTTP/1.1 403 Forbidden\"")));
         assertTrue(refused, refused.contains("Proxy hat die Verbindung"));
         String unknown = ConnectionDiagnosis.hint(transport(new UnknownHostException("ki.example")));
-        assertTrue(unknown, unknown.contains("network.proxy.mode=AUTO"));
-        assertTrue(unknown, unknown.contains("Route zum KI-Dienst"));
+        assertTrue(unknown, unknown.contains("PAC_URL_POWERSHELL"));
+        assertTrue(unknown, unknown.contains("Proxy-Route"));
+        assertTrue(unknown, unknown.contains("Proxy auflösen"));
+        String unavailable = ConnectionDiagnosis.hint(transport(new IOException(
+                "proxy route for ki.example unavailable: UNAVAILABLE (resolver-failed): PAC-Download fehlgeschlagen")));
+        assertTrue(unavailable, unavailable.contains("Proxy auflösen"));
         String timeout = ConnectionDiagnosis.hint(transport(new SocketTimeoutException("connect timed out")));
         assertTrue(timeout, timeout.contains("chat.connectTimeoutMillis"));
         String connect = ConnectionDiagnosis.hint(transport(new ConnectException("Connection refused: connect")));

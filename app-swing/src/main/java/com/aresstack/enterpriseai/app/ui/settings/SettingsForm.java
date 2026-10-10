@@ -11,18 +11,27 @@ import java.util.List;
  * Änderungen über {@link #toBuilder()}.
  *
  * <p>Nicht hier vertretene Schlüssel der Konfigurationsdatei (Timeouts, Retrieval-Feinheiten, Werkzeuggrenzen,
- * Proxy-Ausnahmen je Quelle, mTLS) bleiben in der Datei unverändert erhalten.
+ * Proxy-Ausnahmen, mTLS) bleiben in der Datei unverändert erhalten.
  */
 public final class SettingsForm {
 
     public static final String PAIRING_KEY_STORE_FILE = "file";
     public static final String PAIRING_KEY_STORE_MEMORY = "memory";
-    public static final String PROXY_AUTO = "AUTO";
-    public static final String PROXY_SYSTEM = "SYSTEM";
-    public static final String PROXY_NONE = "NONE";
-    public static final String PROXY_MANUAL = "MANUAL";
-    public static final String PAC_WINDOWS_SETTINGS = "WINDOWS_SETTINGS";
-    public static final String PAC_POWERSHELL = "POWERSHELL";
+    /** Die Modi von win-proxy-java ({@code com.aresstack.winproxy.ProxyMode}), Reihenfolge wie in AskAI. */
+    public static final String PROXY_DISABLED = "DISABLED";
+    public static final String PROXY_MANUAL = "MANUAL_PROXY";
+    public static final String PROXY_WINDOWS_STATIC = "WINDOWS_STATIC_PROXY";
+    public static final String PROXY_PAC_URL_MANUAL = "PAC_URL_MANUAL";
+    public static final String PROXY_PAC_URL_POWERSHELL = "PAC_URL_POWERSHELL";
+    public static final String PROXY_PAC_URL_WSCRIPT = "PAC_URL_WSCRIPT";
+    public static final String PROXY_PAC_URL_WINDOWS_SETTINGS = "PAC_URL_WINDOWS_SETTINGS";
+    public static final String PROXY_WINDOWS_NATIVE_PROXY_SETTINGS = "WINDOWS_NATIVE_PROXY_SETTINGS";
+    public static final String PROXY_WINDOWS_NATIVE_ROUTE_RESOLVER = "WINDOWS_NATIVE_ROUTE_RESOLVER";
+    public static final String[] PROXY_MODES = {PROXY_DISABLED, PROXY_MANUAL, PROXY_WINDOWS_STATIC,
+            PROXY_PAC_URL_MANUAL, PROXY_PAC_URL_POWERSHELL, PROXY_PAC_URL_WSCRIPT, PROXY_PAC_URL_WINDOWS_SETTINGS,
+            PROXY_WINDOWS_NATIVE_PROXY_SETTINGS, PROXY_WINDOWS_NATIVE_ROUTE_RESOLVER};
+    public static final String PROXY_AUTH_NONE = "NONE";
+    public static final String PROXY_AUTH_BASIC = "BASIC";
 
     private final String windowTitle;
     private final String chatBaseUrl;
@@ -43,11 +52,18 @@ public final class SettingsForm {
     private final String keePassPairingKeyStore;
     private final String proxyMode;
     private final String pacUrl;
-    private final String pacDiscovery;
+    private final String pacDiscoveryScript;
     private final String proxyHost;
     private final String proxyPort;
-    private final String nonProxyHosts;
-    private final boolean useWindowsCertificateStore;
+    private final String testUrl;
+    private final String resolveTimeoutMillis;
+    private final String proxyAuthMode;
+    private final String proxyCredentialRef;
+    private final String userAgent;
+    private final boolean preferIpv6;
+    private final boolean tlsJvmDefault;
+    private final boolean tlsWindowsRoot;
+    private final boolean tlsWindowsCaStores;
     private final String caCertificatesFile;
     private final boolean agentEnabled;
     private final String agentCommand;
@@ -74,11 +90,18 @@ public final class SettingsForm {
         this.keePassPairingKeyStore = b.keePassPairingKeyStore;
         this.proxyMode = b.proxyMode;
         this.pacUrl = b.pacUrl;
-        this.pacDiscovery = b.pacDiscovery;
+        this.pacDiscoveryScript = b.pacDiscoveryScript;
         this.proxyHost = b.proxyHost;
         this.proxyPort = b.proxyPort;
-        this.nonProxyHosts = b.nonProxyHosts;
-        this.useWindowsCertificateStore = b.useWindowsCertificateStore;
+        this.testUrl = b.testUrl;
+        this.resolveTimeoutMillis = b.resolveTimeoutMillis;
+        this.proxyAuthMode = b.proxyAuthMode;
+        this.proxyCredentialRef = b.proxyCredentialRef;
+        this.userAgent = b.userAgent;
+        this.preferIpv6 = b.preferIpv6;
+        this.tlsJvmDefault = b.tlsJvmDefault;
+        this.tlsWindowsRoot = b.tlsWindowsRoot;
+        this.tlsWindowsCaStores = b.tlsWindowsCaStores;
         this.caCertificatesFile = b.caCertificatesFile;
         this.agentEnabled = b.agentEnabled;
         this.agentCommand = b.agentCommand;
@@ -86,7 +109,7 @@ public final class SettingsForm {
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
     }
 
-    /** Leeres Formular mit den Standardwerten des Loaders (Fenstertitel, KeePass an, Proxy AUTO, Windows-Zertifikate an, Agent aus). */
+    /** Leeres Formular mit den Standardwerten des Loaders (Fenstertitel, KeePass an, Proxy PAC_URL_POWERSHELL, alle TLS-Quellen an, Agent aus). */
     public static Builder builder() {
         return new Builder();
     }
@@ -101,9 +124,12 @@ public final class SettingsForm {
                 .indexDirectory(indexDirectory).indexOnStartup(indexOnStartup).sources(sources)
                 .keePassEnabled(keePassEnabled).keePassHost(keePassHost).keePassPort(keePassPort)
                 .keePassClientDisplayName(keePassClientDisplayName).keePassPairingKeyStore(keePassPairingKeyStore)
-                .proxyMode(proxyMode).pacUrl(pacUrl).pacDiscovery(pacDiscovery)
-                .proxyHost(proxyHost).proxyPort(proxyPort).nonProxyHosts(nonProxyHosts)
-                .useWindowsCertificateStore(useWindowsCertificateStore).caCertificatesFile(caCertificatesFile)
+                .proxyMode(proxyMode).pacUrl(pacUrl).pacDiscoveryScript(pacDiscoveryScript)
+                .proxyHost(proxyHost).proxyPort(proxyPort).testUrl(testUrl).resolveTimeoutMillis(resolveTimeoutMillis)
+                .proxyAuthMode(proxyAuthMode).proxyCredentialRef(proxyCredentialRef)
+                .userAgent(userAgent).preferIpv6(preferIpv6)
+                .tlsJvmDefault(tlsJvmDefault).tlsWindowsRoot(tlsWindowsRoot).tlsWindowsCaStores(tlsWindowsCaStores)
+                .caCertificatesFile(caCertificatesFile)
                 .agentEnabled(agentEnabled).agentCommand(agentCommand).agentArgs(agentArgs)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds);
     }
@@ -185,19 +211,19 @@ public final class SettingsForm {
         return keePassPairingKeyStore;
     }
 
-    /** {@link #PROXY_AUTO}, {@link #PROXY_SYSTEM}, {@link #PROXY_NONE} oder {@link #PROXY_MANUAL}. */
+    /** Einer der {@link #PROXY_MODES} (Namen der Bibliothek). */
     public String proxyMode() {
         return proxyMode;
     }
 
-    /** Nur bei AUTO: Adresse des PAC-Skripts ({@code http}, {@code https}, {@code file}); leer: aus den Windows-Einstellungen. */
+    /** Bei PAC_URL_MANUAL: Adresse des PAC-/WPAD-Skripts. */
     public String pacUrl() {
         return pacUrl;
     }
 
-    /** Nur bei AUTO ohne PAC-Adresse: {@link #PAC_WINDOWS_SETTINGS} oder {@link #PAC_POWERSHELL}. */
-    public String pacDiscovery() {
-        return pacDiscovery;
+    /** Bei PAC_URL_POWERSHELL/PAC_URL_WSCRIPT: Skript, das die PAC-Adresse liefert; leer = Standard der Bibliothek. */
+    public String pacDiscoveryScript() {
+        return pacDiscoveryScript;
     }
 
     public String proxyHost() {
@@ -208,13 +234,45 @@ public final class SettingsForm {
         return proxyPort;
     }
 
-    public String nonProxyHosts() {
-        return nonProxyHosts;
+    /** Ziel für „Proxy auflösen“ und den HTTPS-Test; leer = Basis-URL + /models. */
+    public String testUrl() {
+        return testUrl;
     }
 
-    /** Unter Windows zusätzlich die Stammzertifikate des Windows-Zertifikatspeichers anerkennen. */
-    public boolean useWindowsCertificateStore() {
-        return useWindowsCertificateStore;
+    /** Frist der Proxy-Auflösung in Millisekunden; leer = Standard. */
+    public String resolveTimeoutMillis() {
+        return resolveTimeoutMillis;
+    }
+
+    /** {@link #PROXY_AUTH_NONE} oder {@link #PROXY_AUTH_BASIC}. */
+    public String proxyAuthMode() {
+        return proxyAuthMode;
+    }
+
+    /** Bei BASIC: Titel des KeePass-Eintrags mit Benutzername und Passwort für den Proxy. */
+    public String proxyCredentialRef() {
+        return proxyCredentialRef;
+    }
+
+    /** Leer = Standard der Anwendung. */
+    public String userAgent() {
+        return userAgent;
+    }
+
+    public boolean preferIpv6() {
+        return preferIpv6;
+    }
+
+    public boolean tlsJvmDefault() {
+        return tlsJvmDefault;
+    }
+
+    public boolean tlsWindowsRoot() {
+        return tlsWindowsRoot;
+    }
+
+    public boolean tlsWindowsCaStores() {
+        return tlsWindowsCaStores;
     }
 
     /** Leer: keine zusätzliche CA-Datei; sonst Pfad einer PEM-/DER-Datei mit weiteren CA-Zertifikaten. */
@@ -264,13 +322,20 @@ public final class SettingsForm {
         private String keePassPort = "12546";
         private String keePassClientDisplayName = "Enterprise AI Client";
         private String keePassPairingKeyStore = PAIRING_KEY_STORE_FILE;
-        private String proxyMode = PROXY_AUTO;
+        private String proxyMode = PROXY_PAC_URL_POWERSHELL;
         private String pacUrl = "";
-        private String pacDiscovery = PAC_WINDOWS_SETTINGS;
+        private String pacDiscoveryScript = "";
         private String proxyHost = "";
         private String proxyPort = "";
-        private String nonProxyHosts = "";
-        private boolean useWindowsCertificateStore = true;
+        private String testUrl = "";
+        private String resolveTimeoutMillis = "";
+        private String proxyAuthMode = PROXY_AUTH_NONE;
+        private String proxyCredentialRef = "";
+        private String userAgent = "";
+        private boolean preferIpv6;
+        private boolean tlsJvmDefault = true;
+        private boolean tlsWindowsRoot = true;
+        private boolean tlsWindowsCaStores = true;
         private String caCertificatesFile = "";
         private boolean agentEnabled;
         private String agentCommand = "";
@@ -382,8 +447,9 @@ public final class SettingsForm {
             return this;
         }
 
-        public Builder pacDiscovery(String value) {
-            this.pacDiscovery = text(value);
+        /** Skripte bleiben unverändert (mehrzeilig); nur ganz leerer Text zählt als leer. */
+        public Builder pacDiscoveryScript(String value) {
+            this.pacDiscoveryScript = value == null || value.trim().isEmpty() ? "" : value;
             return this;
         }
 
@@ -397,13 +463,48 @@ public final class SettingsForm {
             return this;
         }
 
-        public Builder nonProxyHosts(String value) {
-            this.nonProxyHosts = text(value);
+        public Builder testUrl(String value) {
+            this.testUrl = text(value);
             return this;
         }
 
-        public Builder useWindowsCertificateStore(boolean value) {
-            this.useWindowsCertificateStore = value;
+        public Builder resolveTimeoutMillis(String value) {
+            this.resolveTimeoutMillis = text(value);
+            return this;
+        }
+
+        public Builder proxyAuthMode(String value) {
+            this.proxyAuthMode = text(value);
+            return this;
+        }
+
+        public Builder proxyCredentialRef(String value) {
+            this.proxyCredentialRef = text(value);
+            return this;
+        }
+
+        public Builder userAgent(String value) {
+            this.userAgent = text(value);
+            return this;
+        }
+
+        public Builder preferIpv6(boolean value) {
+            this.preferIpv6 = value;
+            return this;
+        }
+
+        public Builder tlsJvmDefault(boolean value) {
+            this.tlsJvmDefault = value;
+            return this;
+        }
+
+        public Builder tlsWindowsRoot(boolean value) {
+            this.tlsWindowsRoot = value;
+            return this;
+        }
+
+        public Builder tlsWindowsCaStores(boolean value) {
+            this.tlsWindowsCaStores = value;
             return this;
         }
 

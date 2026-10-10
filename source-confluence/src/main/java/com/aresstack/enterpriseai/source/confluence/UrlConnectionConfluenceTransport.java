@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.source.confluence;
 
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLSocketFactory;
 import java.io.ByteArrayOutputStream;
@@ -14,21 +16,27 @@ import java.util.Map;
  * {@link ConfluenceHttpTransport} über {@link HttpURLConnection} (Java 8, keine Zusatzbibliothek), wie
  * MainframeMate {@code ConfluenceRestClient}.
  *
- * <p>Proxy und mTLS werden von außen hereingereicht (Composition Root; z. B. {@link ClientCertificates}); der
- * Adapter liest keine globalen Proxy-Einstellungen. Weiterleitungen werden nicht verfolgt, damit ein
+ * <p>Proxy und TLS werden von außen hereingereicht (Composition Root): die Proxy-Route je Ziel über den
+ * {@link HttpRoutePort} (Vorrang) oder ein fester {@link Proxy}; die {@link SSLSocketFactory} trägt die
+ * Vertrauensquellen und gegebenenfalls das Client-Zertifikat ({@link ClientCertificates}). Der Adapter liest
+ * keine globalen Proxy-Einstellungen und setzt nichts prozessweit. Weiterleitungen werden nicht verfolgt, damit ein
  * {@code Authorization}-Header nie an ein anderes Ziel geht; Confluence DC leitet nicht angemeldete Zugriffe auf
  * die Login-Seite um, das meldet der Adapter als verweigerten Zugriff.
  */
 public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTransport {
 
     private final Proxy proxy;
+    private final HttpRoutePort routes;
     private final SSLSocketFactory sslSocketFactory;
+    private final String userAgent;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
 
     private UrlConnectionConfluenceTransport(Builder builder) {
         this.proxy = builder.proxy;
+        this.routes = builder.routes;
         this.sslSocketFactory = builder.sslSocketFactory;
+        this.userAgent = builder.userAgent;
         this.connectTimeoutMillis = builder.connectTimeoutMillis;
         this.readTimeoutMillis = builder.readTimeoutMillis;
     }
@@ -43,13 +51,8 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
             throw new IOException("nur http/https unterstützt: " + scheme);
         }
-        HttpURLConnection connection = (HttpURLConnection) (proxy == null
-                ? uri.toURL().openConnection()
-                : uri.toURL().openConnection(proxy));
+        HttpURLConnection connection = open(uri);
         try {
-            if (sslSocketFactory != null && connection instanceof HttpsURLConnection) {
-                ((HttpsURLConnection) connection).setSSLSocketFactory(sslSocketFactory);
-            }
             connection.setRequestMethod("GET");
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(connectTimeoutMillis);
@@ -65,6 +68,22 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
         } finally {
             connection.disconnect();
         }
+    }
+
+    private HttpURLConnection open(URI uri) throws IOException {
+        if (routes != null) {
+            return RouteConnections.open(uri, routes, sslSocketFactory, userAgent);
+        }
+        HttpURLConnection connection = (HttpURLConnection) (proxy == null
+                ? uri.toURL().openConnection()
+                : uri.toURL().openConnection(proxy));
+        if (sslSocketFactory != null && connection instanceof HttpsURLConnection) {
+            ((HttpsURLConnection) connection).setSSLSocketFactory(sslSocketFactory);
+        }
+        if (userAgent != null) {
+            connection.setRequestProperty("User-Agent", userAgent);
+        }
+        return connection;
     }
 
     private static byte[] readLimited(InputStream stream, int maxBytes) throws IOException {
@@ -84,30 +103,47 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
 
     @Override
     public String toString() {
-        return "UrlConnectionConfluenceTransport[proxy=" + (proxy == null ? "direkt" : proxy)
-                + ", mTLS=" + (sslSocketFactory != null) + "]";
+        return "UrlConnectionConfluenceTransport[proxy=" + (routes != null ? routes : proxy == null ? "direkt" : proxy)
+                + ", tls=" + (sslSocketFactory != null) + "]";
     }
 
     /** Builder; Defaults: direkte Verbindung, Standard-TLS, 15 s Verbindungs- und 60 s Lese-Timeout. */
     public static final class Builder {
 
         private Proxy proxy;
+        private HttpRoutePort routes;
         private SSLSocketFactory sslSocketFactory;
+        private String userAgent;
         private int connectTimeoutMillis = 15000;
         private int readTimeoutMillis = 60000;
 
         private Builder() {
         }
 
-        /** Proxy aus der äußeren Infrastruktur-Konfiguration; {@code null} = direkt. */
+        /** Fester Proxy; {@code null} = direkt. Ein gesetzter {@link #routes(HttpRoutePort)} hat Vorrang. */
         public Builder proxy(Proxy value) {
             this.proxy = value;
             return this;
         }
 
-        /** TLS mit Client-Zertifikat, z. B. {@link ClientCertificates#windowsMy(String)}; {@code null} = Standard. */
+        /** Proxy-Route je Ziel aus der Composition Root; {@code null} = {@link #proxy(Proxy)} bzw. direkt. */
+        public Builder routes(HttpRoutePort value) {
+            this.routes = value;
+            return this;
+        }
+
+        /**
+         * TLS-Fabrik mit den Vertrauensquellen der Anwendung und gegebenenfalls Client-Zertifikat, z. B.
+         * {@link ClientCertificates#windowsMy(String, javax.net.ssl.X509TrustManager)}; {@code null} = JVM-Standard.
+         */
         public Builder sslSocketFactory(SSLSocketFactory value) {
             this.sslSocketFactory = value;
+            return this;
+        }
+
+        /** {@code User-Agent}-Header; {@code null} oder leer = JVM-Standard. */
+        public Builder userAgent(String value) {
+            this.userAgent = value == null || value.trim().isEmpty() ? null : value.trim();
             return this;
         }
 

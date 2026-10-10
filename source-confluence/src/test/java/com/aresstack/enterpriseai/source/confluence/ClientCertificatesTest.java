@@ -5,7 +5,9 @@ import org.junit.Test;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.X509KeyManager;
+import javax.net.ssl.X509TrustManager;
 import java.io.InputStream;
+import java.security.cert.X509Certificate;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 
@@ -37,6 +39,25 @@ public class ClientCertificatesTest {
     public void buildsASocketFactoryForAnExistingAlias() throws Exception {
         SSLSocketFactory factory = ClientCertificates.fromKeyStore(testStore(), PASSWORD, " test-client ");
         assertNotNull(factory);
+    }
+
+    @Test
+    public void acceptsAnOwnTrustManagerForServerCertificates() throws Exception {
+        X509TrustManager trust = new X509TrustManager() {
+            @Override
+            public void checkClientTrusted(X509Certificate[] chain, String authType) {
+            }
+
+            @Override
+            public void checkServerTrusted(X509Certificate[] chain, String authType) {
+            }
+
+            @Override
+            public X509Certificate[] getAcceptedIssuers() {
+                return new X509Certificate[0];
+            }
+        };
+        assertNotNull(ClientCertificates.fromKeyStore(testStore(), PASSWORD, "test-client", trust));
     }
 
     @Test

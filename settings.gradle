@@ -18,6 +18,9 @@ include 'application'
 include 'chat-api'
 include 'chat-openai'
 
+// Strang N (Netz): neutraler Port für die HTTP-Route je Ziel-URL; Implementierung in app-swing (app.net).
+include 'http-api'
+
 // Strang C – Embedding
 include 'embedding-api'
 include 'embedding-openai'
