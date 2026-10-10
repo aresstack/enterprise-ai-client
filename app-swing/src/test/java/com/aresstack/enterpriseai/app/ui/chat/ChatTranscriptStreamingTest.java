@@ -1,7 +1,11 @@
 package com.aresstack.enterpriseai.app.ui.chat;
 
+import com.aresstack.enterpriseai.app.ui.markdown.CachingMermaidImageRenderer;
+import com.aresstack.enterpriseai.app.ui.markdown.DesktopLinkOpener;
+import com.aresstack.enterpriseai.app.ui.markdown.MarkdownMessageView;
+import com.aresstack.enterpriseai.app.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
-import com.aresstack.enterpriseai.ui.comic.bubble.SpeechBubblePanel;
+import com.aresstack.enterpriseai.ui.comic.bubble.BubbleSide;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Test;
 
@@ -76,7 +80,8 @@ public class ChatTranscriptStreamingTest {
         Edt.run(new Runnable() {
             @Override
             public void run() {
-                SpeechBubblePanel bubble = shell.get().transcript().bubbleFor(answer.get().getId());
+                AssistantMarkdownBubble bubble =
+                        (AssistantMarkdownBubble) shell.get().transcript().bubbleFor(answer.get().getId());
                 assertEquals(expected.toString(), bubble.getText());
                 assertEquals(expected.toString(), answer.get().getText());
                 int flushes = shell.get().transcript().flushCount();
@@ -86,8 +91,13 @@ public class ChatTranscriptStreamingTest {
                 assertTrue("deutlich weniger Aktualisierungen als Deltas: " + flushes, flushes < DELTAS / 10);
                 // Die Höhe der Blase folgt dem vollständigen Text, nicht einem veralteten Stand.
                 int height = bubble.preferredHeightForWidth(500);
-                SpeechBubblePanel fresh = new SpeechBubblePanel(bubble.getSide(), java.awt.Color.BLUE,
-                        java.awt.Color.WHITE, ChatTranscriptPanel.ASSISTANT_HEADER, expected.toString());
+                MarkdownMessageView freshView = new MarkdownMessageView(
+                        MarkdownTheme.forBubble(bubbles.getAssistantBackground(), bubbles.getAssistantForeground()),
+                        DesktopLinkOpener.systemDefault(), CachingMermaidImageRenderer.forChat());
+                freshView.setMarkdown(expected.toString());
+                AssistantMarkdownBubble fresh = new AssistantMarkdownBubble(BubbleSide.LEFT, bubbles,
+                        ChatTranscriptPanel.ASSISTANT_HEADER, freshView);
+                fresh.setHeaderTimestamp(0L);
                 assertEquals(fresh.preferredHeightForWidth(500), height);
             }
         });

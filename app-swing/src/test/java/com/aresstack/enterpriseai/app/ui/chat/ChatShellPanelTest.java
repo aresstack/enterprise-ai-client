@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app.ui.chat;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubbleSide;
 import com.aresstack.enterpriseai.ui.comic.bubble.SpeechBubblePanel;
+import com.aresstack.enterpriseai.ui.comic.bubble.TranscriptBubble;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Test;
 
@@ -46,8 +47,9 @@ public class ChatShellPanelTest {
                 assertEquals("Wer bist du?", entries.get(0).getText());
                 assertEquals("", composer.editor().getText());
 
-                SpeechBubblePanel user = shell.transcript().bubbleFor(entries.get(0).getId());
-                SpeechBubblePanel assistant = shell.transcript().bubbleFor(entries.get(1).getId());
+                TranscriptBubble user = shell.transcript().bubbleFor(entries.get(0).getId());
+                TranscriptBubble assistant = shell.transcript().bubbleFor(entries.get(1).getId());
+                assertTrue("Antworten sind Markdown-Blasen", assistant instanceof AssistantMarkdownBubble);
                 assertEquals(BubbleSide.RIGHT, user.getSide());
                 assertEquals(BubbleSide.LEFT, assistant.getSide());
                 assertEquals("Hallo, Welt", assistant.getText());
@@ -80,7 +82,7 @@ public class ChatShellPanelTest {
 
                 TranscriptEntry answer = model.getEntries().get(1);
                 assertEquals(TranscriptEntry.State.CANCELLED, answer.getState());
-                SpeechBubblePanel bubble = shell.transcript().bubbleFor(answer.getId());
+                TranscriptBubble bubble = shell.transcript().bubbleFor(answer.getId());
                 assertEquals("Ich denke", bubble.getText());
                 assertFalse(composer.stopButton().isEnabled());
                 assertTrue(composer.sendButton().isEnabled());
@@ -151,7 +153,7 @@ public class ChatShellPanelTest {
                 model.appendAssistantDelta("Teil");
                 model.failAssistantMessage("Server nicht erreichbar");
 
-                SpeechBubblePanel bubble = shell.transcript().bubbleFor(answer.getId());
+                SpeechBubblePanel bubble = (SpeechBubblePanel) shell.transcript().bubbleFor(answer.getId());
                 assertNotNull(bubble);
                 assertTrue(bubble.getText().startsWith("Teil"));
                 assertTrue(bubble.getText().endsWith("Server nicht erreichbar"));
@@ -177,7 +179,7 @@ public class ChatShellPanelTest {
                         + "Technische Ursache: connection to demo2.example failed: UnknownHostException\n"
                         + "Hinweis: Proxy-Modus in den Einstellungen prüfen (AUTO/MANUAL).");
 
-                SpeechBubblePanel bubble = shell.transcript().bubbleFor(answer.getId());
+                SpeechBubblePanel bubble = (SpeechBubblePanel) shell.transcript().bubbleFor(answer.getId());
                 assertEquals("nur die Überschrift steht in der Blase", "Der KI-Dienst ist nicht erreichbar.",
                         bubble.getText());
                 assertTrue(bubble.hasDetails());
@@ -335,7 +337,7 @@ public class ChatShellPanelTest {
                 assertEquals("Wissen wird gesucht …", shell.transcript().bubbleFor(answer.getId()).getText());
 
                 TranscriptEntry notice = model.addNotice("Die Wissenssuche ist ausgefallen.");
-                SpeechBubblePanel bubble = shell.transcript().bubbleFor(notice.getId());
+                SpeechBubblePanel bubble = (SpeechBubblePanel) shell.transcript().bubbleFor(notice.getId());
                 assertNotNull(bubble);
                 assertEquals(BubbleSide.LEFT, bubble.getSide());
                 assertEquals(ChatTranscriptPanel.NOTICE_HEADER, ChatTranscriptPanel.header(notice));

@@ -143,7 +143,7 @@ public final class UiScreenshotDemo {
                 + "Hinweis: Namensauflösung oder Proxy-Regel prüfen (Einstellungen → Netzwerk & Agent → "
                 + "„Verbindung zum KI-Dienst prüfen“).");
         write(scene.window, new File(dir, "H-fehlerblase.png"));
-        SpeechBubblePanel bubble = scene.chatShell.transcript().bubbleFor(failed.getId());
+        SpeechBubblePanel bubble = (SpeechBubblePanel) scene.chatShell.transcript().bubbleFor(failed.getId());
         bubble.setDetailsExpanded(true);
         write(scene.window, new File(dir, "H2-fehlerblase-details.png"));
 

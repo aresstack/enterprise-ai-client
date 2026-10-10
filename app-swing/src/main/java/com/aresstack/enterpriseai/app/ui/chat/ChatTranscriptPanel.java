@@ -1,9 +1,15 @@
 package com.aresstack.enterpriseai.app.ui.chat;
 
+import com.aresstack.enterpriseai.app.ui.markdown.CachingMermaidImageRenderer;
+import com.aresstack.enterpriseai.app.ui.markdown.DesktopLinkOpener;
+import com.aresstack.enterpriseai.app.ui.markdown.MarkdownMessageView;
+import com.aresstack.enterpriseai.app.ui.markdown.MarkdownTheme;
+import com.aresstack.enterpriseai.app.ui.markdown.MermaidImageRenderer;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubbleMessageRow;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubbleSide;
 import com.aresstack.enterpriseai.ui.comic.bubble.SpeechBubblePanel;
+import com.aresstack.enterpriseai.ui.comic.bubble.TranscriptBubble;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
@@ -32,6 +38,11 @@ import java.util.Map;
  * Der Chat-Verlauf als Sprechblasen im AskAI-Stil: Nutzer rechts (blau), Assistent links (petrol), Fehler
  * links in der Fehlerfarbe, Hinweise der Anwendung links in der gelben Aktivitätsfarbe. Folgt ausschließlich dem
  * {@link ChatShellModel}; Streaming-Deltas aktualisieren die vorhandene Blase, statt neue anzulegen.
+ *
+ * <p>Antworten des Assistenten sind Markdown-Blasen ({@link AssistantMarkdownBubble} mit
+ * {@link MarkdownMessageView}, wie askai-java8 {@code arch}): Überschriften, Listen, Tabellen, Code mit
+ * Kopieraktion, Links und Mermaid-Diagramme (als Bild, Klick öffnet den Betrachter) werden nativ gerendert;
+ * {@code ```markdown}-Umhüllungen fallen weg. Nutzer, Hinweise und Fehler bleiben Text-Sprechblasen.
  *
  * <p>Bekommt eine Antwort Quellen (AP22), erscheint direkt unter ihrer Blase eine eigene Zeile mit der
  * ein- und ausklappbaren {@link SourceListPanel Quellenliste}.
@@ -69,6 +80,9 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final ChatShellModel model;
     private final ComicPalette comicPalette;
     private final BubblePalette bubblePalette;
+    private final MarkdownTheme assistantTheme;
+    private final DesktopLinkOpener linkOpener;
+    private final MermaidImageRenderer mermaidImageRenderer;
     private final JPanel messageList = new WidthTrackingList();
     private final ComicScrollPane scrollPane;
     private final Map<Long, RowState> rows = new HashMap<Long, RowState>();
@@ -80,12 +94,29 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private int flushCount;
 
     public ChatTranscriptPanel(ChatShellModel model, ComicPalette comicPalette, BubblePalette bubblePalette) {
+        this(model, comicPalette, bubblePalette, DesktopLinkOpener.systemDefault(),
+                CachingMermaidImageRenderer.forChat());
+    }
+
+    /**
+     * @param linkOpener           öffnet angeklickte Links der Antworten
+     * @param mermaidImageRenderer rendert Mermaid-Zäune der Antworten zu Bildern (je Verlauf ein eigener Cache)
+     */
+    public ChatTranscriptPanel(ChatShellModel model, ComicPalette comicPalette, BubblePalette bubblePalette,
+                               DesktopLinkOpener linkOpener, MermaidImageRenderer mermaidImageRenderer) {
         if (model == null || comicPalette == null || bubblePalette == null) {
             throw new IllegalArgumentException("model and palettes must not be null");
+        }
+        if (linkOpener == null || mermaidImageRenderer == null) {
+            throw new IllegalArgumentException("linkOpener and mermaidImageRenderer must not be null");
         }
         this.model = model;
         this.comicPalette = comicPalette;
         this.bubblePalette = bubblePalette;
+        this.linkOpener = linkOpener;
+        this.mermaidImageRenderer = mermaidImageRenderer;
+        this.assistantTheme = MarkdownTheme.forBubble(bubblePalette.getAssistantBackground(),
+                bubblePalette.getAssistantForeground());
         setLayout(new BorderLayout());
         setOpaque(true);
         setBackground(bubblePalette.getTranscriptBackground());
@@ -181,10 +212,13 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         refresh(false);
     }
 
-    /** Die Blase eines Eintrags (für Tests und spätere Kontextaktionen), oder {@code null}. */
-    public SpeechBubblePanel bubbleFor(long entryId) {
+    /**
+     * Die Blase eines Eintrags (für Tests und spätere Kontextaktionen), oder {@code null}: eine
+     * {@link SpeechBubblePanel} für Nutzer, Hinweise und Fehler, sonst die Markdown-Blase des Assistenten.
+     */
+    public TranscriptBubble bubbleFor(long entryId) {
         RowState state = rows.get(entryId);
-        return state == null ? null : state.bubble();
+        return state == null ? null : state.bubble;
     }
 
     /** Bringt die Blase eines Eintrags auf seinen aktuellen Stand; Streaming-Text wird nur angehängt. */
@@ -199,22 +233,46 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         } else {
             String text = displayText(entry);
             boolean showsEntryText = !entry.getText().isEmpty();
-            if (state.showsEntryText && showsEntryText && text.length() >= state.shownLength) {
-                // Der Text eines Eintrags wächst nur durch Anhängen (TranscriptEntry.append), daher reicht der Rest.
-                state.bubble().appendText(text.substring(state.shownLength));
+            // Der Text eines Eintrags wächst nur durch Anhängen (TranscriptEntry.append), daher reicht der Rest.
+            boolean appendable = state.showsEntryText && showsEntryText && text.length() >= state.shownLength;
+            if (state.bubble instanceof AssistantMarkdownBubble) {
+                applyMarkdown(((AssistantMarkdownBubble) state.bubble).view(), entry, text,
+                        appendable ? text.substring(state.shownLength) : null);
+            } else if (appendable) {
+                ((SpeechBubblePanel) state.bubble).appendText(text.substring(state.shownLength));
             } else {
-                state.bubble().setText(text);
+                ((SpeechBubblePanel) state.bubble).setText(text);
             }
             state.showsEntryText = showsEntryText;
             state.shownLength = text.length();
             String header = header(entry);
             if (!header.equals(state.header)) {
-                state.bubble().setHeader(header);
+                state.bubble.setHeader(header);
                 state.header = header;
             }
         }
         if (entry.hasSources() && !sourceRows.containsKey(entry.getId())) {
             addSourcesRow(entry);
+        }
+    }
+
+    /**
+     * Bringt den Markdown-Körper einer Antwort auf den Stand des Eintrags: ein Delta wird angehängt (gedrosselt neu
+     * gerendert), ein geänderter Text (Platzhalter, Aktivität, Neustart) ersetzt den Inhalt; mit dem Ende des
+     * Streamings rendert die Ansicht vollständig und erst dann die Mermaid-Diagramme.
+     */
+    private static void applyMarkdown(MarkdownMessageView view, TranscriptEntry entry, String text, String delta) {
+        boolean streaming = entry.getState() == TranscriptEntry.State.STREAMING;
+        if (delta != null) {
+            view.appendMarkdownDelta(delta);
+        } else if (streaming) {
+            view.startStreaming();
+            view.appendMarkdownDelta(text);
+        } else {
+            view.setMarkdown(text);
+        }
+        if (!streaming && view.isStreaming()) {
+            view.finishStreaming();
         }
     }
 
@@ -273,32 +331,49 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     private RowState createRow(TranscriptEntry entry) {
         boolean user = entry.getAuthor() == TranscriptEntry.Author.USER;
+        boolean notice = entry.getAuthor() == TranscriptEntry.Author.NOTICE;
+        boolean failed = entry.getState() == TranscriptEntry.State.FAILED;
+        BubbleSide side = user ? BubbleSide.RIGHT : BubbleSide.LEFT;
+        String header = header(entry);
+        String text = displayText(entry);
+        if (!user && !notice && !failed) {
+            AssistantMarkdownBubble bubble = createMarkdownBubble(entry, header, text);
+            bubble.setHeaderTimestamp(entry.getCreatedAtMillis());
+            return new RowState(new BubbleMessageRow(bubble, side), bubble, header, text.length(),
+                    !entry.getText().isEmpty());
+        }
         Color background;
         Color foreground;
         if (user) {
             background = bubblePalette.getUserBackground();
             foreground = bubblePalette.getUserForeground();
-        } else if (entry.getAuthor() == TranscriptEntry.Author.NOTICE) {
+        } else if (notice) {
             background = bubblePalette.getActivityBackground();
             foreground = bubblePalette.getActivityForeground();
-        } else if (entry.getState() == TranscriptEntry.State.FAILED) {
+        } else {
             background = bubblePalette.getFailureAccent();
             foreground = Color.WHITE;
-        } else {
-            background = bubblePalette.getAssistantBackground();
-            foreground = bubblePalette.getAssistantForeground();
         }
-        String header = header(entry);
-        String text = displayText(entry);
-        SpeechBubblePanel bubble = new SpeechBubblePanel(user ? BubbleSide.RIGHT : BubbleSide.LEFT,
-                background, foreground, header, text);
+        SpeechBubblePanel bubble = new SpeechBubblePanel(side, background, foreground, header, text);
         bubble.setHeaderTimestamp(entry.getCreatedAtMillis());
-        if (entry.getState() == TranscriptEntry.State.FAILED) {
+        if (failed) {
             bubble.setDetailsLabels(SHOW_DETAILS_LABEL, HIDE_DETAILS_LABEL);
             bubble.setDetails(failureDetails(entry.getFailureMessage()));
         }
-        return new RowState(new BubbleMessageRow(bubble, user ? BubbleSide.RIGHT : BubbleSide.LEFT), header,
-                text.length(), !entry.getText().isEmpty());
+        return new RowState(new BubbleMessageRow(bubble, side), bubble, header, text.length(),
+                !entry.getText().isEmpty());
+    }
+
+    /** Eine Antwortblase mit Markdown-Körper; eine laufende Antwort beginnt im Streaming-Modus (gedrosselt gerendert). */
+    private AssistantMarkdownBubble createMarkdownBubble(TranscriptEntry entry, String header, String text) {
+        MarkdownMessageView view = new MarkdownMessageView(assistantTheme, linkOpener, mermaidImageRenderer);
+        if (entry.getState() == TranscriptEntry.State.STREAMING) {
+            view.startStreaming();
+            view.appendMarkdownDelta(text);
+        } else {
+            view.setMarkdown(text);
+        }
+        return new AssistantMarkdownBubble(BubbleSide.LEFT, bubblePalette, header, view);
     }
 
     /** Hängt die Quellenliste als eigene, links ausgerichtete Zeile direkt unter die Blase des Eintrags. */
@@ -350,19 +425,18 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     /** Eine Zeile des Verlaufs mit dem, was ihre Blase gerade zeigt (für das Anhängen von Deltas). */
     private static final class RowState {
         final BubbleMessageRow row;
+        final TranscriptBubble bubble;
         String header;
         int shownLength;
         boolean showsEntryText; // Blase zeigt den Eintragstext (nicht Platzhalter oder Aktivität)
 
-        RowState(BubbleMessageRow row, String header, int shownLength, boolean showsEntryText) {
+        RowState(BubbleMessageRow row, TranscriptBubble bubble, String header, int shownLength,
+                 boolean showsEntryText) {
             this.row = row;
+            this.bubble = bubble;
             this.header = header;
             this.shownLength = shownLength;
             this.showsEntryText = showsEntryText;
-        }
-
-        SpeechBubblePanel bubble() {
-            return (SpeechBubblePanel) row.getBubble();
         }
     }
 
