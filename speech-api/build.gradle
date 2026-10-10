@@ -1,0 +1,5 @@
+description = 'Port: Sprachausgabe (Text-to-Speech), neutral über Modellkennung und WAV-Audio.'
+
+dependencies {
+    api project(':domain')
+}

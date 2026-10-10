@@ -1,0 +1,79 @@
+// Java-21-Sidecar für lokale Modelle, übernommen aus askai-java8 (Branch arch, local-model-runtime-sidecar-java21):
+// Reranking, Embeddings und Generierung über win-directml-java wie dort, neu: Sprachausgabe (VITS-Stimmen als ONNX)
+// über ONNX Runtime, POST /v1/audio/speech. Läuft als eigener Prozess, gestartet vom Java-8-Client mit
+// --host=127.0.0.1 --port=0 --model-root=<pfad> --backend=cpu; kein Teil des Fat Jars.
+plugins {
+    id 'application'
+}
+
+def clientProperties = new Properties()
+file('../gradle.properties').withInputStream { clientProperties.load(it) }
+version = (findProperty('projectVersion') ?: clientProperties.getProperty('projectVersion', 'dev')).toString().trim()
+group = 'com.aresstack.enterpriseai'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// Gleicher Stand wie askai-java8 arch: win-directml-java aus Maven Central.
+ext.directmlVersion = '0.2.1'
+
+dependencies {
+    implementation "com.aresstack:directml-runtime:${directmlVersion}"
+    implementation "com.aresstack:directml-encoder:${directmlVersion}"
+    implementation "com.aresstack:directml-model-package:${directmlVersion}"
+    implementation "com.aresstack:directml-inference:${directmlVersion}"
+    implementation "com.aresstack:directml-model-catalog:${directmlVersion}"
+    // Sprachausgabe: ONNX Runtime als Java-Bibliothek (CPU, nativer Teil im Jar), kein externes Programm.
+    implementation 'com.microsoft.onnxruntime:onnxruntime:1.20.0'
+}
+
+application {
+    mainClass = 'com.aresstack.enterpriseai.localruntime.LocalModelRuntimeMain'
+}
+
+// Wie arch: schlankes Jar mit Class-Path-Manifest und lib/ daneben, damit `java -jar` ohne Umpacken läuft.
+tasks.register('sidecarLibs', Sync) {
+    group = 'build'
+    description = 'Sammelt die Abhängigkeiten des Sidecars in build/sidecar/lib.'
+    from configurations.runtimeClasspath.filter { it.name.endsWith('.jar') }
+    into layout.buildDirectory.dir('sidecar/lib')
+}
+
+tasks.register('sidecarJar', Jar) {
+    group = 'build'
+    description = 'Baut das ausführbare Sidecar-Jar (schlank, mit lib/ im Class-Path).'
+    archiveBaseName = 'local-model-runtime-sidecar'
+    archiveVersion = ''
+    destinationDirectory = layout.buildDirectory.dir('sidecar')
+    dependsOn tasks.named('classes'), tasks.named('sidecarLibs')
+    from sourceSets.main.output
+    manifest {
+        attributes('Main-Class': application.mainClass.get())
+        attributes('Implementation-Version': project.version)
+        attributes('Class-Path': configurations.runtimeClasspath
+                .filter { it.name.endsWith('.jar') }
+                .collect { 'lib/' + it.name }
+                .join(' '))
+    }
+}
+
+// Release-Asset: local-model-runtime-sidecar-<version>.zip mit local-model-runtime-sidecar.jar und lib/.
+tasks.register('sidecarZip', Zip) {
+    group = 'build'
+    description = 'Packt Sidecar-Jar und lib/ in ein Zip für das GitHub-Release.'
+    dependsOn tasks.named('sidecarJar')
+    archiveBaseName = 'local-model-runtime-sidecar'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from(layout.buildDirectory.dir('sidecar'))
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('sidecarZip')
+}

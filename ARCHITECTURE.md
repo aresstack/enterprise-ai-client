@@ -67,7 +67,8 @@ Moduls liegen nur dort (geprüft).
 | `http-api` | PORT | `http.api` | domain | N (Netz) |
 | `model-api` | PORT | `model.api` | domain | Modellverwaltung |
 | `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api | Modellverwaltung |
-| `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api | Modellverwaltung |
+| `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api, speech-api | Modellverwaltung, Sprachausgabe |
+| `speech-api` | PORT | `speech.api` | domain | Sprachausgabe (TTS über den lokalen Sidecar) |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |
 | `acp-client-api` | PORT | `acp.api` | domain | G (AP16) |
@@ -546,3 +547,13 @@ Kurzfassung; die ausführliche Tabelle je Arbeitspaket mit den Änderungen gegen
 | [docs/live-verifikation.md](docs/live-verifikation.md) | Live-Verifikation gegen echte Dienste in sieben Stufen (`liveTest`, `-Dlive.stage`, GitHub-Actions-Workflow), Ergebnisprotokoll |
 | [docs/herkunft.md](docs/herkunft.md) | Herkunftstabelle |
 | [docs/einschraenkungen.md](docs/einschraenkungen.md) | Bekannte Einschränkungen, UNVERIFIED, Restarbeit |
+
+## Lokaler Java-21-Sidecar (`local-model-runtime-sidecar/`)
+
+Eigener Gradle-Build, **nicht** Teil von `settings.gradle`: übernommen aus askai-java8 (Branch `arch`,
+`local-model-runtime-sidecar-java21`), läuft als separater Java-21-Prozess auf 127.0.0.1 und ist nur über
+`model-sidecar` erreichbar (Katalog `GET /api/tags`, Sprachausgabe `POST /v1/audio/speech`). Für ihn gelten die
+Java-8- und Architekturregeln des Clients nicht. Neu gegenüber arch: Sprachausgabe mit VITS-Stimmen (ONNX,
+Hugging-Face-Layout) über ONNX Runtime als Java-Bibliothek, kein externes Programm. CI baut ihn im Job `sidecar`
+(JDK 21), das Release legt `local-model-runtime-sidecar-<version>.zip` neben das Fat Jar.
+

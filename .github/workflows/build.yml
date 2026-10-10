@@ -22,3 +22,16 @@ jobs:
           cache: gradle
       - name: Build und Tests
         run: ./gradlew build --no-daemon --warning-mode all
+
+  sidecar:
+    # Der lokale Java-21-Sidecar ist ein eigener Gradle-Build (local-model-runtime-sidecar/), nicht Teil des Java-8-Builds.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Sidecar bauen
+        run: ./gradlew -p local-model-runtime-sidecar build --no-daemon --warning-mode all

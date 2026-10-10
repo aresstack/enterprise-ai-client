@@ -47,6 +47,11 @@ public final class LocalSidecarModelCatalogAdapter implements ModelCatalogPort, 
         return config;
     }
 
+    /** Die Sprachausgabe desselben Sidecar-Prozesses (Stimmen aus {@code /api/tags} mit {@code text_to_speech}). */
+    public LocalSidecarSpeechAdapter speechSynthesis() {
+        return new LocalSidecarSpeechAdapter(process);
+    }
+
     @Override
     public String catalogId() {
         return CATALOG_ID;

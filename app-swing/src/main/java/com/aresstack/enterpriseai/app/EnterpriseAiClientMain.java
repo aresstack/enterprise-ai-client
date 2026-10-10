@@ -4,6 +4,10 @@ import com.aresstack.enterpriseai.app.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.app.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.app.composition.CompositionRoot;
 import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
+import com.aresstack.enterpriseai.app.speech.ReadAloudBinding;
+import com.aresstack.enterpriseai.app.speech.SpeechOutput;
+import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
+import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
 import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
@@ -130,6 +134,22 @@ public final class EnterpriseAiClientMain {
             System.exit(1);
             return;
         }
+        // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über den lokalen Sidecar (derselbe Prozess wie der
+        // Katalog); ohne Java 21 oder TTS-Modell bleibt sie aus und der Lautsprecher-Knopf nennt den Grund.
+        final ReadAloudBinding readAloud = SpeechOutput.readAloud(config.models(),
+                new java.util.function.Function<LocalSidecarConfig, SpeechSynthesisPort>() {
+                    @Override
+                    public SpeechSynthesisPort apply(LocalSidecarConfig sidecar) {
+                        return modelCatalogs.localSpeech(sidecar);
+                    }
+                });
+        LOG.info("Sprachausgabe: " + readAloud.description());
+        root.shutdown().then("read-aloud", new Runnable() {
+            @Override
+            public void run() {
+                readAloud.close();
+            }
+        });
         root.shutdown().then("model-sidecar", new Runnable() {
             @Override
             public void run() {
@@ -161,6 +181,7 @@ public final class EnterpriseAiClientMain {
                         LOG.log(Level.WARNING, "Chat-Modell " + modelId + " nicht gespeichert; gilt bis zum Beenden", e);
                     }
                 }, root.workExecutor());
+                view.workspace().chatShell().transcript().setReadAloud(readAloud);
                 attachSourceEditing(view, frame, file, palette);
                 frame.setVisible(true);
                 root.startBackgroundWork();
