@@ -18,6 +18,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
+import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollBar;
@@ -31,6 +32,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.LayoutManager;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
@@ -83,6 +85,8 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     static final String CANCELLED_SUFFIX = " · abgebrochen";
     static final String FAILED_HEADER = "Fehler";
     static final String NOTICE_HEADER = "Hinweis";
+    /** Die Infozeile eines leeren Verlaufs (askai arch {@code showEmptyState}). */
+    static final String EMPTY_STATE_TEXT = "Neue Unterhaltung. Nachricht unten eingeben und Enter drücken.";
     static final String STREAMING_PLACEHOLDER = "…";
     static final String SHOW_DETAILS_LABEL = "Details anzeigen";
     static final String HIDE_DETAILS_LABEL = "Details ausblenden";
@@ -107,6 +111,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final DesktopLinkOpener linkOpener;
     private final MermaidImageRenderer mermaidImageRenderer;
     private final JPanel messageList = new WidthTrackingList();
+    private final JLabel emptyState = new JLabel(EMPTY_STATE_TEXT, SwingConstants.CENTER);
     private final ComicScrollPane scrollPane;
     private final Map<Long, RowState> rows = new HashMap<Long, RowState>();
     private final Map<Long, BubbleMessageRow> sourceRows = new HashMap<Long, BubbleMessageRow>();
@@ -179,6 +184,14 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             }
         });
         flushTimer.setRepeats(false);
+        emptyState.setName("transcript.emptyState");
+        emptyState.setFont(emptyState.getFont().deriveFont(Font.ITALIC,
+                Math.max(11f, emptyState.getFont().getSize2D() - 1f)));
+        emptyState.setForeground(bubblePalette.getInfoForeground());
+        emptyState.setBorder(BorderFactory.createEmptyBorder(7, 12, 7, 12));
+        emptyState.setAlignmentX(LEFT_ALIGNMENT);
+        emptyState.setMaximumSize(new Dimension(Integer.MAX_VALUE, emptyState.getPreferredSize().height));
+        messageList.add(emptyState);
         for (TranscriptEntry entry : model.getEntries()) {
             entryAdded(entry);
         }
@@ -188,6 +201,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     @Override
     public void entryAdded(TranscriptEntry entry) {
         flushPendingUpdates();
+        messageList.remove(emptyState);
         RowState state = createRow(entry);
         state.streamed = entry.getState() == TranscriptEntry.State.STREAMING;
         rows.put(entry.getId(), state);
@@ -327,6 +341,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             readAloud.stop(); // die Stimme überlebt ihren Chat nicht
         }
         messageList.removeAll();
+        messageList.add(emptyState);
         refresh(false);
     }
 

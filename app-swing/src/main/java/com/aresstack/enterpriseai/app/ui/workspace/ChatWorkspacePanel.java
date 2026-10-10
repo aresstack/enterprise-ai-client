@@ -92,7 +92,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
 
     static final int SIDEBAR_MIN_WIDTH = 240;
     static final int SIDEBAR_MAX_WIDTH = 560;
-    static final int SIDEBAR_DEFAULT_WIDTH = 300;
+    static final int SIDEBAR_DEFAULT_WIDTH = 360; // wie askai arch
     private static final int HOVER_MARGIN_PX = 12;
     private static final int SIDEBAR_CLOSE_DELAY_MS = 300;
     private static final int LIST_REFRESH_DELAY_MS = 150;
@@ -522,6 +522,13 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             addChatRow(ShellMode.AGENT, agentShell.model(), AGENT_TITLE, "Agent", filter);
         }
         addSavedChats(filter);
+        if (chatRows.isEmpty()) {
+            JLabel none = new JLabel(filter.isEmpty() ? "Keine Chats" : "Keine passenden Chats"); // wie arch
+            none.setEnabled(false);
+            none.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+            none.setAlignmentX(LEFT_ALIGNMENT);
+            chatListPanel.add(none);
+        }
         chatListPanel.add(Box.createVerticalGlue());
         chatListPanel.revalidate();
         chatListPanel.repaint();

@@ -37,6 +37,8 @@ import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 import java.io.File;
 import java.nio.file.Path;
@@ -459,6 +461,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             public void focusLost(FocusEvent event) {
                 editorFocused = false;
                 repaint();
+            }
+        });
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent event) {
+                editor.requestFocusInWindow(); // ein Klick irgendwo auf die Fläche setzt den Cursor (arch)
             }
         });
     }

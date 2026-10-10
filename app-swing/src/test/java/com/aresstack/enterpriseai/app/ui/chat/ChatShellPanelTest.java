@@ -398,7 +398,13 @@ public class ChatShellPanelTest {
 
     private static int countRows(ChatShellPanel shell) {
         javax.swing.JScrollPane scroll = shell.transcript().scrollPane();
-        return ((java.awt.Container) scroll.getViewport().getView()).getComponentCount();
+        int rows = 0;
+        for (java.awt.Component row : ((java.awt.Container) scroll.getViewport().getView()).getComponents()) {
+            if (!"transcript.emptyState".equals(row.getName())) {
+                rows++; // die Infozeile des leeren Verlaufs zählt nicht
+            }
+        }
+        return rows;
     }
 
     private static void paint(java.awt.Component component) {
