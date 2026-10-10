@@ -391,13 +391,13 @@ public class ChatShellPanelTest {
     }
 
     private static int rowIndexOf(ChatShellPanel shell, java.awt.Component bubble) {
-        javax.swing.JScrollPane scroll = (javax.swing.JScrollPane) shell.transcript().getComponent(0);
+        javax.swing.JScrollPane scroll = shell.transcript().scrollPane();
         java.awt.Container list = (java.awt.Container) scroll.getViewport().getView();
         return list.getComponentZOrder(bubble.getParent());
     }
 
     private static int countRows(ChatShellPanel shell) {
-        javax.swing.JScrollPane scroll = (javax.swing.JScrollPane) shell.transcript().getComponent(0);
+        javax.swing.JScrollPane scroll = shell.transcript().scrollPane();
         return ((java.awt.Container) scroll.getViewport().getView()).getComponentCount();
     }
 

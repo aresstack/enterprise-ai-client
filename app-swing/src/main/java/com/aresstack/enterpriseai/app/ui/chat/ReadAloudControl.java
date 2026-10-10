@@ -1,13 +1,13 @@
 package com.aresstack.enterpriseai.app.ui.chat;
 
 /**
- * Bedienabsicht „Antwort vorlesen“ für den Verlauf (wie {@link ChatShellActions} nur Absichten, keine Ports): unter
- * jeder fertigen Antwort steht ein Lautsprecher-Knopf. Ist keine Sprachausgabe verfügbar, bleibt er deaktiviert und
- * sein Tooltip nennt den Grund. Alle Methoden laufen auf dem EDT; Rückmeldungen ebenfalls.
+ * Bedienabsicht „Vorlesen“ für den Verlauf (wie {@link ChatShellActions} nur Absichten, keine Ports): der zentrale
+ * Play/Pause-Orb aus askai-java8 {@code arch}. Ist keine Sprachausgabe verfügbar, bleibt der Orb deaktiviert und
+ * sein Tooltip nennt den Grund. Alle Methoden laufen auf dem EDT.
  */
 public interface ReadAloudControl {
 
-    /** Der Vorlesezustand hat sich geändert (Start, Ende, Stopp); auf dem EDT. */
+    /** Die Sprachausgabe wurde ausgetauscht (anderes TTS-Modell): Verfügbarkeit und Tooltip neu lesen; auf dem EDT. */
     interface Listener {
         void readAloudChanged();
     }
@@ -15,17 +15,17 @@ public interface ReadAloudControl {
     /** Ob vorgelesen werden kann. */
     boolean isAvailable();
 
-    /** Tooltip des Knopfs: das Modell oder, wenn nicht verfügbar, der Grund. */
+    /** Tooltip-Zusatz des Orbs: die Stimme oder, wenn nicht verfügbar, der Grund. */
     String description();
 
-    /** Ob gerade diese Antwort vorgelesen wird. */
-    boolean isReading(long entryId);
-
-    /** Startet das Vorlesen dieser Antwort oder stoppt es, wenn sie gerade gelesen wird. */
-    void toggle(long entryId, String markdown);
-
-    /** Ob neue Antworten nach dem Streaming automatisch vorgelesen werden. */
+    /** Ob das Vorlesen beim Start aktiv ist (neue Antworten werden dann ohne Klick vorgelesen). */
     boolean autoStart();
+
+    /** Liest diese Antwort vor; eine laufende Ausgabe endet vorher. Kehrt sofort zurück. */
+    void speak(String markdown);
+
+    /** Beendet die laufende Ausgabe; idempotent. */
+    void stop();
 
     void addListener(Listener listener);
 }

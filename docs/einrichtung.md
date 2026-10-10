@@ -178,11 +178,13 @@ Agent kann `refresh_knowledge_source` aufrufen ([MCP](mcp.md)).
 
 ### Sprachausgabe (Vorlesen)
 
-Unter jeder fertigen Antwort steht ein Lautsprecher-Knopf. Vorgelesen wird mit dem Modell der Kategorie **TTS**
+Oben rechts über dem Verlauf liegt der Play/Pause-Orb (wie in askai-java8): Play liest die letzte Antwort vor und
+bleibt aktiv, jede neue Antwort wird dann automatisch vorgelesen, bis Pause es beendet. Mit „Neue Antworten
+automatisch vorlesen“ (Einstellungen → Sprachausgabe) ist der Orb schon beim Start aktiv. Vorgelesen wird mit dem Modell der Kategorie **TTS**
 (Einstellungen → Modelle, Schlüssel `model.tts`), gesprochen über die Quelle dieses Modells: ein TTS-Modell der
 Enterprise-API über `POST <chat.baseUrl>/audio/speech` (noch ungetestet; die Stimme kommt aus `speech.voice`,
 falls der Dienst eine verlangt), ein lokales über den optionalen
-Java-21-Sidecar. Ohne TTS-Modell, oder bei einem lokalen Modell ohne Java 21 und Sidecar, bleibt der Knopf
+Java-21-Sidecar. Ohne TTS-Modell, oder bei einem lokalen Modell ohne Java 21 und Sidecar, bleibt der Orb
 deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
 
 1. `local-model-runtime-sidecar-<version>.zip` aus dem Release entpacken.
