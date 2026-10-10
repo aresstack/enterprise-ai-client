@@ -47,9 +47,10 @@ final class FtpKnowledgeSource implements KnowledgeSourcePort {
 
     private final KnowledgeSourceId sourceId;
     private final FtpConnectionSettings settings;
-    private final FtpSessionPool sessions;
+    private final FtpSessionPool<FtpClientSession> sessions;
 
-    FtpKnowledgeSource(KnowledgeSourceId sourceId, FtpConnectionSettings settings, FtpSessionPool sessions) {
+    FtpKnowledgeSource(KnowledgeSourceId sourceId, FtpConnectionSettings settings,
+                       FtpSessionPool<FtpClientSession> sessions) {
         if (sourceId == null || settings == null || sessions == null) {
             throw new IllegalArgumentException("sourceId, settings and sessions are required");
         }

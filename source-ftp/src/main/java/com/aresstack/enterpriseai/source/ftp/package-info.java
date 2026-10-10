@@ -1,8 +1,10 @@
 /**
- * Adapter: FTP-Server, vor allem MVS/z/OS, als Wissensquelle (COBOL-Quellen in PDS-Membern).
+ * Adapter: FTP-Server, vor allem MVS/z/OS, als Wissensquelle (COBOL-Quellen in PDS-Membern) und JES-Jobausgaben
+ * über dieselbe FTP-Verbindungsschicht ({@code SITE FILETYPE=JES}).
  *
- * <p>Öffentlich ist nur der Quelltyp ({@link com.aresstack.enterpriseai.source.ftp.FtpSourceProvider}); die
- * Connector-Registry (resource-holkas) bedient das Schema {@code ftp} über den Quellen-Port, die Oberfläche sieht nur
+ * <p>Öffentlich sind nur die Quelltypen ({@link com.aresstack.enterpriseai.source.ftp.FtpSourceProvider},
+ * {@link com.aresstack.enterpriseai.source.ftp.JesSourceProvider}); die Connector-Registry (resource-holkas)
+ * bedient die Schemata {@code ftp} und {@code jes} über den Quellen-Port, die Oberfläche sieht nur
  * „+ Quelle“. Apache Commons Net bleibt paketintern, Zugangsdaten kommen nur beim Verbindungsaufbau über den
  * Security-Port.
  *

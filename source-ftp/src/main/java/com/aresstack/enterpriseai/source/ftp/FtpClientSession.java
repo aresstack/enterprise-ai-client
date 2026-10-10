@@ -10,7 +10,7 @@ import java.util.List;
  *
  * <p>Schnitt nach corenth ({@code holkas.ftp.FtpClientSession}); die Implementierung kommt aus MainframeMate.
  */
-interface FtpClientSession extends AutoCloseable {
+interface FtpClientSession extends FtpSessionPool.Session {
 
     /** {@code true}, wenn der Server sich als MVS/z/OS meldet. */
     boolean mvs();

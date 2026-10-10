@@ -16,16 +16,22 @@ import java.util.Arrays;
  * {@link SecretProvider} aufgelöst und danach vergessen; bricht die Verbindung ab (Leerlauf-Timeout des Servers),
  * wird einmal neu verbunden. Vorgänge laufen nacheinander.
  */
-final class FtpSessionPool {
+final class FtpSessionPool<S extends FtpSessionPool.Session> {
+
+    /** Eine angemeldete Sitzung (Dateien oder JES). */
+    interface Session {
+        /** Trennt die Verbindung; mehrfacher Aufruf ist erlaubt. */
+        void close();
+    }
 
     /** Ein Vorgang auf der angemeldeten Sitzung. */
-    interface Operation<T> {
-        T run(FtpClientSession session) throws IOException, KnowledgeSourceException;
+    interface Operation<S, T> {
+        T run(S session) throws IOException, KnowledgeSourceException;
     }
 
     /** Öffnet eine angemeldete Sitzung (Naht für Tests). */
-    interface Connector {
-        FtpClientSession open(FtpConnectionSettings settings, String user, char[] password) throws IOException;
+    interface Connector<S> {
+        S open(FtpConnectionSettings settings, String user, char[] password) throws IOException;
     }
 
     private static final String ANONYMOUS = "anonymous";
@@ -33,11 +39,11 @@ final class FtpSessionPool {
     private final KnowledgeSourceId sourceId;
     private final FtpConnectionSettings settings;
     private final SecretProvider secrets;
-    private final Connector connector;
-    private FtpClientSession session;
+    private final Connector<S> connector;
+    private S session;
 
     FtpSessionPool(KnowledgeSourceId sourceId, FtpConnectionSettings settings, SecretProvider secrets,
-                   Connector connector) {
+                   Connector<S> connector) {
         if (sourceId == null || settings == null || connector == null) {
             throw new IllegalArgumentException("sourceId, settings and connector are required");
         }
@@ -50,7 +56,7 @@ final class FtpSessionPool {
         this.connector = connector;
     }
 
-    synchronized <T> T run(Operation<T> operation) throws KnowledgeSourceException {
+    synchronized <T> T run(Operation<S, T> operation) throws KnowledgeSourceException {
         for (int attempt = 0; ; attempt++) {
             if (session == null) {
                 session = connect();
@@ -81,7 +87,7 @@ final class FtpSessionPool {
         }
     }
 
-    private FtpClientSession connect() throws KnowledgeSourceException {
+    private S connect() throws KnowledgeSourceException {
         final SecretRef ref = settings.credentialRef;
         try {
             if (ref == null) {

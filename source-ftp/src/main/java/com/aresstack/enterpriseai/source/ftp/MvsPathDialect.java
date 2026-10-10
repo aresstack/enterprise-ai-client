@@ -63,8 +63,9 @@ final class MvsPathDialect {
         int lastDot = trimmed.lastIndexOf('.');
         if (lastDot > 0 && lastDot < trimmed.length() - 1) {
             List<String> candidates = new ArrayList<String>(2);
-            candidates.add(toAbsolutePath(toMemberSpec(trimmed.substring(0, lastDot), trimmed.substring(lastDot + 1))));
+            // Erst das exakte Dataset, dann die Kurzform DS.MEMBER: entdeckte Member tragen schon DS(MEMBER).
             candidates.add(toAbsolutePath(trimmed));
+            candidates.add(toAbsolutePath(toMemberSpec(trimmed.substring(0, lastDot), trimmed.substring(lastDot + 1))));
             return candidates;
         }
         return Collections.singletonList(toAbsolutePath(trimmed));
