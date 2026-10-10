@@ -29,12 +29,17 @@ import com.aresstack.enterpriseai.document.tika.DocumentExtraction;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
 import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
+import com.aresstack.enterpriseai.model.sidecar.LocalSidecarEmbeddingAdapter;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointDefinition;
 import com.aresstack.enterpriseai.mcp.solon.SolonMcpServerRuntime;
@@ -135,10 +140,13 @@ public final class AdapterAssembly {
                     config.embedding().dimension()));
         }
         EmbeddingModelExecutorRegistry embeddingModels = new EmbeddingModelExecutorRegistry(embeddingPorts);
-        // Ohne ausführbaren Katalog bleibt es bei der Enterprise-API; der Start-Hinweis nennt den Grund.
-        EmbeddingPort embeddings = embeddingModel != null && embeddingModels.supports(embeddingModel.catalogId())
-                ? embeddingModels.require(embeddingModel.catalogId())
-                : embeddingModels.require(KipitzModelCatalogAdapter.CATALOG_ID);
+        String embeddingCatalog = embeddingModel == null ? KipitzModelCatalogAdapter.CATALOG_ID
+                : embeddingModel.catalogId();
+        // Ein lokal gewähltes Modell ohne Sidecar scheitert (Start-Hinweis), statt Text an die Enterprise-API zu geben.
+        EmbeddingPort embeddings = embeddingModels.supports(embeddingCatalog)
+                ? embeddingModels.require(embeddingCatalog)
+                : unavailableEmbeddings(LocalSidecarEmbeddingAdapter.identity(embeddingModel.modelId(),
+                config.embedding().dimension()));
         ports.embeddings(embeddings, embeddings.modelIdentity());
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
@@ -164,6 +172,21 @@ public final class AdapterAssembly {
         ports.index(index);
         ports.closing("knowledge-index", index);
         return ports.build();
+    }
+
+    private static EmbeddingPort unavailableEmbeddings(final EmbeddingModelIdentity identity) {
+        return new EmbeddingPort() {
+            @Override
+            public EmbeddingModelIdentity modelIdentity() {
+                return identity;
+            }
+
+            @Override
+            public EmbeddingBatch embed(List<String> texts) {
+                throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "Lokales Embedding-Modell gewählt, "
+                        + "aber Java 21 und das Sidecar-Jar fehlen (Einstellungen → Lokale Modelle)");
+            }
+        };
     }
 
     static SecretProvider secrets(KeePassConfig keePass, KeePassPairingCallback pairing,

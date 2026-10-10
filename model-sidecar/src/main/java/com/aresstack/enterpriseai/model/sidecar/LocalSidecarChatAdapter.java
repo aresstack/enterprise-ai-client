@@ -107,6 +107,7 @@ public final class LocalSidecarChatAdapter implements ChatCompletionPort {
             task.started();
             StringBuilder text = new StringBuilder();
             JsonObject last = null;
+            boolean done = false;
             BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(),
                     StandardCharsets.UTF_8));
             try {
@@ -127,14 +128,16 @@ public final class LocalSidecarChatAdapter implements ChatCompletionPort {
                     }
                     last = event;
                     if (event.has("done") && event.get("done").getAsBoolean()) {
+                        done = true;
                         break;
                     }
                 }
             } finally {
                 reader.close();
             }
-            if (last == null) {
-                throw new ChatCompletionException(ChatErrorKind.PROTOCOL, "Sidecar lieferte keine Antwort");
+            if (!done) {
+                throw new ChatCompletionException(ChatErrorKind.TRANSPORT, last == null
+                        ? "Sidecar lieferte keine Antwort" : "Antwort des Sidecars brach vor dem Ende ab");
             }
             task.finish(response(last, text.toString(), request), null);
         } catch (ChatCompletionException e) {
