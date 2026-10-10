@@ -19,7 +19,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Indexiert alle konfigurierten Quellen einmal nacheinander (Konfigurationsreihenfolge) über die
+ * Indexiert alle konfigurierten und angehakten Quellen einmal nacheinander (Konfigurationsreihenfolge) über die
  * {@link KnowledgeIndexingBinding} der Shell: Jede Quelle ist ein Lauf der Statuszeile, der Abbrechen-Knopf
  * beendet den aktuellen Lauf, und danach wird keine weitere Quelle begonnen. {@link #cancel()} tut dasselbe
  * beim Beenden; {@link #awaitTermination(long, TimeUnit)} wartet, bis nichts mehr in den Index schreibt.
@@ -36,6 +36,7 @@ public final class StartupIndexing {
     private final KnowledgeStatusModel status;
     private final KnowledgeSourceCatalog sources;
     private final Executor uiExecutor;
+    private final KnowledgeSourceSelection selection;
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean cancelled = new AtomicBoolean();
     private final CountDownLatch done = new CountDownLatch(1);
@@ -44,6 +45,12 @@ public final class StartupIndexing {
 
     public StartupIndexing(KnowledgeIndexingBinding binding, KnowledgeStatusModel status,
                            KnowledgeSourceCatalog sources, Executor uiExecutor) {
+        this(binding, status, sources, uiExecutor, null);
+    }
+
+    /** @param selection die Häkchen; abgewählte Quellen überspringt der Lauf ({@code null}: alle indexieren) */
+    public StartupIndexing(KnowledgeIndexingBinding binding, KnowledgeStatusModel status,
+                           KnowledgeSourceCatalog sources, Executor uiExecutor, KnowledgeSourceSelection selection) {
         if (binding == null || status == null || sources == null || uiExecutor == null) {
             throw new IllegalArgumentException("binding, status, sources and uiExecutor must not be null");
         }
@@ -51,6 +58,7 @@ public final class StartupIndexing {
         this.status = status;
         this.sources = sources;
         this.uiExecutor = uiExecutor;
+        this.selection = selection;
     }
 
     /** Startet die Kette über den UI-Executor; ein zweiter Aufruf tut nichts. */
@@ -113,6 +121,11 @@ public final class StartupIndexing {
             return;
         }
         final KnowledgeSourceRegistration registration = remaining.next();
+        if (selection != null && !selection.isEnabled(registration.sourceId())) {
+            LOG.info("Indexierung von Quelle " + registration.sourceId().value() + " übersprungen: abgewählt");
+            next();
+            return;
+        }
         boolean accepted;
         try {
             accepted = binding.indexSource(registration.port(), registration.scope(), new Consumer<IndexingReport>() {

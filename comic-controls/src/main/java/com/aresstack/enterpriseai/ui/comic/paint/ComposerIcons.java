@@ -5,8 +5,8 @@ import java.awt.geom.Line2D;
 
 /**
  * AskAI's composer glyph set as reusable {@link StrokeIcon}s (send, stop, hamburger, gear, plus,
- * chevrons, close). The geometry is the reference's, verbatim — no icon assets, every glyph is
- * drawn with the owning component's foreground.
+ * chevrons, close); pencil and refresh are own additions for list rows. The reference geometry is
+ * verbatim — no icon assets, every glyph is drawn with the owning component's foreground.
  */
 public final class ComposerIcons {
 
@@ -111,6 +111,32 @@ public final class ComposerIcons {
             protected void paint(Graphics2D g2) {
                 g2.drawLine(6, 3, 10, 7);
                 g2.drawLine(10, 7, 6, 11);
+            }
+        };
+    }
+
+    /** A pencil (edit): a slanted shaft with a tip and a short cap line. */
+    public static StrokeIcon pencil() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                int[] x = {3, 10, 12, 5, 3};
+                int[] y = {10, 3, 5, 12, 12};
+                g2.drawPolyline(x, y, 5);
+                g2.drawLine(3, 10, 5, 12);
+                g2.drawLine(9, 4, 11, 6);
+            }
+        };
+    }
+
+    /** Circular arrows (re-index, refresh): an open ring with an arrowhead at its end. */
+    public static StrokeIcon refresh() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.draw(new java.awt.geom.Arc2D.Double(2.5, 2.5, 10, 10, 60, 280, java.awt.geom.Arc2D.OPEN));
+                g2.drawLine(10, 1, 10, 4);
+                g2.drawLine(10, 4, 13, 4);
             }
         };
     }

@@ -147,7 +147,8 @@ public final class SettingsMapper {
                 .credentialRef(text(p, prefix + "credentialRef", ""))
                 .startPoints(text(p, prefix + "startPoints", ""))
                 .maxDepth(text(p, prefix + "maxDepth", "1"))
-                .maxResources(text(p, prefix + "maxResources", ""));
+                .maxResources(text(p, prefix + "maxResources", ""))
+                .enabled(bool(p, prefix + "enabled", true));
         if (wiki) {
             b.siteKey(text(p, prefix + "siteKey", ""))
                     .displayName(text(p, prefix + "displayName", ""))
@@ -186,6 +187,8 @@ public final class SettingsMapper {
             put(set, prefix + "startPoints", source.startPoints());
             put(set, prefix + "maxDepth", source.maxDepth());
             put(set, prefix + "maxResources", source.maxResources());
+            // Nur das Abwählen steht in der Datei; aktiv ist der Standard (leer = Zeile auskommentieren).
+            put(set, prefix + "enabled", source.enabled() ? "" : "false");
             if (source.isConfluence()) {
                 put(set, prefix + "searchSpaceKeys", source.searchSpaceKeys());
                 set.put(prefix + "includeAttachments", String.valueOf(source.includeAttachments()));
@@ -327,7 +330,7 @@ public final class SettingsMapper {
                 String label = "apiUrl".equals(field) ? "API-URL" : "baseUrl".equals(field) ? "Basis-URL"
                         : "startPoints".equals(field) ? "Startpunkte" : "credentialRef".equals(field) ? "KeePass-Eintrag"
                         : "maxDepth".equals(field) ? "Tiefe" : "maxResources".equals(field) ? "Höchstzahl Seiten"
-                        : "type".equals(field) ? "Typ" : field;
+                        : "type".equals(field) ? "Typ" : "enabled".equals(field) ? "Aktiv" : field;
                 return "Quelle „" + id + "“, " + label;
             }
         }

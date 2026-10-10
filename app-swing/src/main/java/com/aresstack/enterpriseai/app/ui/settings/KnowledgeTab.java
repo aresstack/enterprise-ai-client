@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.JCheckBox;
 import javax.swing.JFileChooser;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
@@ -12,15 +13,26 @@ import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
-/** Reiter „Wissensbasis“: Indexverzeichnis, Indexierung beim Start und die Wissensquellen. */
+/**
+ * Reiter „Wissensbasis“: Indexverzeichnis und Indexierung beim Start. Die Wissensquellen selbst verwaltet der
+ * Drawer-Reiter „Wissensquellen“ (hinzufügen, bearbeiten, entfernen, an- und abwählen, indexieren); hier stehen sie
+ * nur als Hinweis und laufen beim Speichern unverändert mit.
+ */
 final class KnowledgeTab {
+
+    static final String SOURCES_NOTE = "Wissensquellen werden in der Seitenleiste verwaltet (☰, Reiter „Wissensquellen“): "
+            + "hinzufügen, bearbeiten, entfernen, per Häkchen an- und abwählen und einzeln indexieren.";
 
     private final JTextField indexDirectory;
     private final ComicButton chooseDirectory;
     private final JCheckBox indexOnStartup;
-    private final SourcesEditor sources;
+    private final JLabel sourcesSummary;
     private final JPanel panel;
+    private List<SourceForm> sources = Collections.emptyList();
 
     KnowledgeTab(ComicPalette palette) {
         FormRows index = new FormRows(palette);
@@ -42,11 +54,13 @@ final class KnowledgeTab {
             }
         });
 
-        sources = new SourcesEditor(palette);
+        FormRows hint = new FormRows(palette);
+        hint.note(SOURCES_NOTE);
+        sourcesSummary = hint.note("");
 
         panel = FormRows.column(palette,
                 FormRows.plate("Index", palette.getNavigationBlue(), index.panel(), palette),
-                FormRows.plate("Wissensquellen", palette.getAgentPetrol(), sources, palette));
+                FormRows.plate("Wissensquellen", palette.getAgentPetrol(), hint.panel(), palette));
     }
 
     private void chooseDirectory() {
@@ -70,16 +84,40 @@ final class KnowledgeTab {
     void load(SettingsForm form) {
         indexDirectory.setText(form.indexDirectory());
         indexOnStartup.setSelected(form.indexOnStartup());
-        sources.setSources(form.sources());
+        sources = new ArrayList<SourceForm>(form.sources());
+        sourcesSummary.setText(FormRows.html(summary(sources)));
+    }
+
+    /** „Konfiguriert: wiki, confluence (abgewählt)“ bzw. „Noch keine Wissensquelle konfiguriert.“ */
+    static String summary(List<SourceForm> sources) {
+        if (sources.isEmpty()) {
+            return "Noch keine Wissensquelle konfiguriert.";
+        }
+        StringBuilder text = new StringBuilder("Konfiguriert: ");
+        for (int i = 0; i < sources.size(); i++) {
+            SourceForm source = sources.get(i);
+            if (i > 0) {
+                text.append(", ");
+            }
+            text.append(source.id().isEmpty() ? "(ohne ID)" : source.id());
+            if (!source.enabled()) {
+                text.append(" (abgewählt)");
+            }
+        }
+        return text.toString();
     }
 
     void store(SettingsForm.Builder b) {
         b.indexDirectory(indexDirectory.getText()).indexOnStartup(indexOnStartup.isSelected())
-                .sources(sources.sources());
+                .sources(sources);
     }
 
-    SourcesEditor sources() {
-        return sources;
+    List<SourceForm> sources() {
+        return Collections.unmodifiableList(sources);
+    }
+
+    String sourcesSummary() {
+        return summary(sources);
     }
 
     JTextField indexDirectory() {

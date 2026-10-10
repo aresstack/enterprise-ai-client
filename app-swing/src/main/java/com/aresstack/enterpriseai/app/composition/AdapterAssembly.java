@@ -95,6 +95,9 @@ public final class AdapterAssembly {
                     new LoggingKnowledgeSource(source(source, secrets, network)), source.scope()));
         }
         ports.sources(new KnowledgeSourceCatalog(registrations));
+        final SecretProvider sourceSecrets = secrets;
+        final NetworkServices sourceNetwork = network;
+        ports.sourceFactory(source -> new LoggingKnowledgeSource(source(source, sourceSecrets, sourceNetwork)));
 
         if (config.agent().enabled()) {
             final SolonMcpServerRuntime mcp = new SolonMcpServerRuntime();

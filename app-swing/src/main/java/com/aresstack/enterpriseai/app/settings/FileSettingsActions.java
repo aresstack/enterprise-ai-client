@@ -17,8 +17,12 @@ import com.aresstack.enterpriseai.domain.security.SecretRef;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -123,8 +127,21 @@ public final class FileSettingsActions implements SettingsDialogActions {
         }
         Properties current = current();
         // Leere Felder sind Entfernungen (Zeile auskommentieren), nie "schlüssel=" ohne Wert.
-        file.update(SettingsMapper.writes(form), SettingsMapper.removals(form, current),
-                AppConfigLoader.exampleConfiguration());
+        // Quellen verwaltet der Drawer-Reiter (FileSourceActions); der Dialog schreibt sie nicht zurück, sonst
+        // würde eine fehlerhafte Quelle beim Speichern anderer Einstellungen umgeschrieben.
+        Map<String, String> writes = new LinkedHashMap<String, String>();
+        for (Map.Entry<String, String> entry : SettingsMapper.writes(form).entrySet()) {
+            if (!FileSourceActions.isSourceKey(entry.getKey())) {
+                writes.put(entry.getKey(), entry.getValue());
+            }
+        }
+        Set<String> removals = new LinkedHashSet<String>();
+        for (String key : SettingsMapper.removals(form, current)) {
+            if (!FileSourceActions.isSourceKey(key)) {
+                removals.add(key);
+            }
+        }
+        file.update(writes, removals, AppConfigLoader.exampleConfiguration());
     }
 
     @Override

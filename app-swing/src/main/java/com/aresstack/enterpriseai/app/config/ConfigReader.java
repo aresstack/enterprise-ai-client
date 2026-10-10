@@ -41,6 +41,27 @@ final class ConfigReader {
         problems.add(key + ": " + expectation);
     }
 
+    /** Anzahl der bisher vermerkten Probleme, als Marke für {@link #takeProblemsSince}. */
+    int problemCount() {
+        return problems.size();
+    }
+
+    /** Nimmt die seit {@code mark} vermerkten Probleme heraus (sie zählen danach nicht mehr) und liefert sie. */
+    List<String> takeProblemsSince(int mark) {
+        List<String> taken = new ArrayList<String>(problems.subList(mark, problems.size()));
+        problems.subList(mark, problems.size()).clear();
+        return taken;
+    }
+
+    /** Vermerkt alle Schlüssel mit diesem Präfix als gelesen (z. B. die einer übersprungenen Quelle). */
+    void markRead(String prefix) {
+        for (String key : properties.stringPropertyNames()) {
+            if (key.startsWith(prefix)) {
+                readKeys.add(key);
+            }
+        }
+    }
+
     /** Schlüssel der Datei, die nie gelesen wurden (Tippfehler), in Dateireihenfolge nicht garantiert. */
     List<String> unreadKeys() {
         List<String> unread = new ArrayList<String>();

@@ -2,28 +2,26 @@ package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.agent.AgentModeAssembly;
 import com.aresstack.enterpriseai.app.chat.RagChatBinding;
-import com.aresstack.enterpriseai.app.config.AppConfig;
-import com.aresstack.enterpriseai.app.config.SourceConfig;
+import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
 import com.aresstack.enterpriseai.app.ui.workspace.ChatWorkspacePanel;
-import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceItem;
 import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.app.ui.workspace.WorkspaceActions;
 import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.function.Function;
 
 /**
  * Baut die Oberfläche über dem Graphen aus {@link CompositionRoot}: die Arbeitsfläche
@@ -51,7 +49,7 @@ public final class ShellAssembly {
         ChatConversationId conversation = chatService.openConversation(systemPrompt);
         final ChatShellModel chatModel = new ChatShellModel(root.clock());
         final RagChatBinding chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel,
-                root.uiExecutor(), root.workExecutor(), root.zone());
+                root.uiExecutor(), root.workExecutor(), root.zone(), root.sourceSelection());
         ChatShellPanel chatShell = new ChatShellPanel(chatModel, chatActions, root.knowledgeStatus(), palette, bubbles);
 
         final AgentModeAssembly.AgentView agent;
@@ -67,8 +65,11 @@ public final class ShellAssembly {
         ChatWorkspacePanel workspace = new ChatWorkspacePanel(modes, chatShell, agent == null ? null : agent.shell(),
                 palette);
         workspace.setWindowTitle(root.config().windowTitle());
-        workspace.setKnowledgeSources(knowledgeSources(root.config()));
-        final ShellView view = new ShellView(workspace, chatModel, chatActions, agent);
+        final KnowledgeSourcesController sources = knowledgeSources(root);
+        workspace.setKnowledgeSourceActions(sources);
+        final ChatWorkspacePanel drawer = workspace;
+        sources.attach(items -> drawer.setKnowledgeSources(items));
+        final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources);
         workspace.setActions(new WorkspaceActions() {
             @Override
             public void newChatRequested(ShellMode mode) {
@@ -110,21 +111,14 @@ public final class ShellAssembly {
         return ShellFrame.create(title, view.workspace(), palette);
     }
 
-    /** Die konfigurierten Quellen, wie der Drawer sie zeigt: Kennung als Name, Typ und Umfang als Beschreibung. */
-    static List<KnowledgeSourceItem> knowledgeSources(AppConfig config) {
-        List<KnowledgeSourceItem> items = new ArrayList<KnowledgeSourceItem>();
-        for (SourceConfig source : config.sources()) {
-            items.add(new KnowledgeSourceItem(source.sourceId().value(), describe(source)));
-        }
-        return items;
-    }
-
-    private static String describe(SourceConfig source) {
-        String type = source.type();
-        if (source.scope() == null || source.scope().startPoints().isEmpty()) {
-            return type;
-        }
-        return type + " · " + String.join(", ", source.scope().startPoints());
+    /** Der Drawer-Reiter „Wissensquellen“: Häkchen, Indexstand je Quelle, Indexieren und (mit Datei) Bearbeiten. */
+    static KnowledgeSourcesController knowledgeSources(CompositionRoot root) {
+        final ApplicationPorts ports = root.ports();
+        Function<KnowledgeSourceId, Integer> count = sourceId ->
+                ports.index().resourceIds(ports.embeddingSpace(), sourceId).size();
+        return new KnowledgeSourcesController(root.config().sources(), ports.sources(), root.sourceSelection(),
+                root.indexingBinding(), count, ports.sourceFactory(), root.uiExecutor(), root.workExecutor(),
+                root.clock(), root.zone());
     }
 
     /** Die gebaute Oberfläche mit ihren Modellen. */
@@ -134,14 +128,21 @@ public final class ShellAssembly {
         private final ChatShellModel chatModel;
         private final RagChatBinding chatActions;
         private final AgentModeAssembly.AgentView agent;
+        private final KnowledgeSourcesController sources;
         private Runnable settingsAction;
 
         ShellView(ChatWorkspacePanel workspace, ChatShellModel chatModel, RagChatBinding chatActions,
-                  AgentModeAssembly.AgentView agent) {
+                  AgentModeAssembly.AgentView agent, KnowledgeSourcesController sources) {
             this.workspace = workspace;
             this.chatModel = chatModel;
             this.chatActions = chatActions;
             this.agent = agent;
+            this.sources = sources;
+        }
+
+        /** Der Drawer-Reiter „Wissensquellen“; {@link KnowledgeSourcesController#setEditing} hängt die Datei an. */
+        public KnowledgeSourcesController knowledgeSources() {
+            return sources;
         }
 
         public JComponent shell() {

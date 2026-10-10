@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -41,13 +42,16 @@ import java.util.regex.Pattern;
  * KeePass-Eintrags) sowie Embedding-Modell und -Dimension; alles andere hat Defaults (AP3/AP6/AP10/AP14). Probleme
  * werden gesammelt und als eine {@link AppConfigException} gemeldet, die nur Schlüssel und Erwartung nennt, nie
  * den abgelehnten Wert (auch nicht aus verschachtelten Ausnahmen der Adapter-Konfigurationen). Unbekannte Schlüssel
- * sind kein Fehler, erscheinen aber als Hinweis in {@link AppConfig#warnings()}.
+ * sind kein Fehler, erscheinen aber als Hinweis in {@link AppConfig#warnings()}. Eine fehlerhafte Wissensquelle
+ * hält den Start nicht auf: sie wird mit einem Hinweis übersprungen und lässt sich im Drawer-Reiter
+ * „Wissensquellen“ korrigieren ({@link #sourceSection} prüft eine einzelne Quelle streng).
  */
 public final class AppConfigLoader {
 
     public static final String EXAMPLE_RESOURCE = "enterprise-ai-client.example.properties";
 
     private static final Pattern SOURCE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
+    private static final String SOURCE_ID_RULE = "Quell-ID muss dem Muster [A-Za-z0-9][A-Za-z0-9._-]* entsprechen";
     private static final int MAX_TIMEOUT = 3600000;
 
     private AppConfigLoader() {
@@ -84,7 +88,7 @@ public final class AppConfigLoader {
         ChatConfig chat = chat(reader);
         EmbeddingConfig embedding = embedding(reader, chat);
         KnowledgeConfig knowledge = knowledge(reader);
-        List<SourceConfig> sources = sources(reader);
+        List<SourceConfig> sources = sources(reader, warnings);
         KeePassConfig keePass = keePass(reader);
         NetworkConfig network = network(reader, chat == null ? null : chat.baseUrl(), warnings);
         AgentConfig agent = agent(reader);
@@ -302,24 +306,57 @@ public final class AppConfigLoader {
         return new KnowledgeConfig(indexDirectory, indexOnStartup, chunking, batch, retrieval, context);
     }
 
-    private static List<SourceConfig> sources(ConfigReader r) {
+    /**
+     * Die Quellen aus {@code sources}. Probleme einer Quelle (ungültige oder doppelte ID, fehlende oder ungültige
+     * Felder) werden nicht zu Konfigurationsfehlern, sondern zu einem Hinweis, und die Quelle wird übersprungen.
+     */
+    private static List<SourceConfig> sources(ConfigReader r, List<String> warnings) {
         List<SourceConfig> sources = new ArrayList<SourceConfig>();
         Set<String> seen = new HashSet<String>();
         for (String id : r.list("sources")) {
             if (!SOURCE_ID.matcher(id).matches()) {
-                r.problem("sources", "Quell-ID muss dem Muster [A-Za-z0-9][A-Za-z0-9._-]* entsprechen");
+                warnings.add("Wissensquelle „" + id + "“ wird übersprungen: " + SOURCE_ID_RULE);
                 continue;
             }
             if (!seen.add(id)) {
-                r.problem("sources", "Quell-ID doppelt: " + id);
+                warnings.add("Wissensquelle „" + id + "“ steht doppelt in sources; der zweite Eintrag wird übersprungen.");
                 continue;
             }
+            int mark = r.problemCount();
             SourceConfig source = source(r, id);
-            if (source != null) {
-                sources.add(source);
+            List<String> problems = r.takeProblemsSince(mark);
+            if (!problems.isEmpty() || source == null) {
+                r.markRead("source." + id + ".");
+                warnings.add("Wissensquelle „" + id + "“ wird übersprungen, bis sie im Reiter „Wissensquellen“ "
+                        + "korrigiert ist: " + String.join("; ", problems));
+                continue;
             }
+            sources.add(source);
         }
         return sources;
+    }
+
+    /**
+     * Genau eine Quelle {@code source.<id>.*}, streng geprüft: der Bearbeiten-Dialog des Drawers prüft damit seinen
+     * Entwurf, und die Anwendung baut damit eine neu gespeicherte Quelle, ohne neu zu starten.
+     *
+     * @throws AppConfigException mit allen Problemen dieser Quelle (Schlüssel und Erwartung, nie Werte)
+     */
+    public static SourceConfig sourceSection(Properties properties, String id) {
+        if (properties == null) {
+            throw new IllegalArgumentException("properties must not be null");
+        }
+        String trimmed = id == null ? "" : id.trim();
+        if (!SOURCE_ID.matcher(trimmed).matches()) {
+            throw new AppConfigException(Collections.singletonList("sources: " + SOURCE_ID_RULE));
+        }
+        ConfigReader reader = new ConfigReader(properties);
+        SourceConfig source = source(reader, trimmed);
+        if (reader.hasProblems() || source == null) {
+            throw new AppConfigException(reader.hasProblems() ? reader.problems()
+                    : Collections.singletonList("source." + trimmed + ".type: fehlt (Pflichtangabe)"));
+        }
+        return source;
     }
 
     private static SourceConfig source(ConfigReader r, String id) {
@@ -331,12 +368,13 @@ public final class AppConfigLoader {
         KnowledgeSourceId sourceId = KnowledgeSourceId.of(id);
         SourceScope scope = scope(r, prefix);
         SecretRef credentialRef = r.secretRef(prefix + "credentialRef");
+        boolean enabled = r.bool(prefix + "enabled", true);
         String lower = type.toLowerCase(Locale.ROOT);
         if ("mediawiki".equals(lower)) {
-            return mediaWiki(r, prefix, sourceId, scope, credentialRef);
+            return mediaWiki(r, prefix, sourceId, scope, credentialRef, enabled);
         }
         if ("confluence".equals(lower)) {
-            return confluence(r, prefix, sourceId, scope, credentialRef);
+            return confluence(r, prefix, sourceId, scope, credentialRef, enabled);
         }
         r.problem(prefix + "type", "unbekannter Quelltyp; erlaubt sind mediawiki und confluence");
         return null;
@@ -346,7 +384,7 @@ public final class AppConfigLoader {
         List<String> startPoints = r.list(prefix + "startPoints");
         if (startPoints.isEmpty()) {
             r.problem(prefix + "startPoints", "fehlt (mindestens ein Startpunkt)");
-            startPoints = java.util.Collections.singletonList("-");
+            startPoints = Collections.singletonList("-");
         }
         int maxDepth = r.integer(prefix + "maxDepth", 1, 0, 100);
         int maxResources = r.integer(prefix + "maxResources", SourceScope.DEFAULT_MAX_RESOURCES, 1, 1000000);
@@ -359,7 +397,7 @@ public final class AppConfigLoader {
     }
 
     private static SourceConfig mediaWiki(ConfigReader r, String prefix, KnowledgeSourceId sourceId,
-                                          SourceScope scope, SecretRef credentialRef) {
+                                          SourceScope scope, SecretRef credentialRef, boolean enabled) {
         URI apiUrl = r.httpUri(prefix + "apiUrl", true);
         String siteKey = r.text(prefix + "siteKey", sourceId.value().toLowerCase(Locale.ROOT));
         String displayName = r.text(prefix + "displayName", null);
@@ -390,7 +428,7 @@ public final class AppConfigLoader {
                 }
                 site.linkNamespaces(ids);
             }
-            return new MediaWikiSourceConfig(sourceId, scope, credentialRef, site.build());
+            return new MediaWikiSourceConfig(sourceId, scope, credentialRef, site.build(), enabled);
         } catch (NumberFormatException e) {
             r.problem(prefix + "linkNamespaces", "Namensräume müssen ganze Zahlen sein");
             return null;
@@ -401,7 +439,7 @@ public final class AppConfigLoader {
     }
 
     private static SourceConfig confluence(ConfigReader r, String prefix, KnowledgeSourceId sourceId,
-                                           SourceScope scope, SecretRef credentialRef) {
+                                           SourceScope scope, SecretRef credentialRef, boolean enabled) {
         URI baseUrl = r.httpUri(prefix + "baseUrl", true);
         int pageSize = r.integer(prefix + "pageSize", 50, 1, 500);
         boolean attachments = r.bool(prefix + "includeAttachments", false);
@@ -426,7 +464,7 @@ public final class AppConfigLoader {
             for (String spaceKey : spaceKeys) {
                 builder.searchSpaceKey(spaceKey);
             }
-            return new ConfluenceSourceConfig(sourceId, scope, builder.build(), connect, read, certificate);
+            return new ConfluenceSourceConfig(sourceId, scope, builder.build(), connect, read, certificate, enabled);
         } catch (IllegalArgumentException e) {
             r.problem(prefix + "*", "Confluence-Einstellung ungültig (siehe Beispielkonfiguration)");
             return null;

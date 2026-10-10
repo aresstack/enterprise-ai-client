@@ -73,7 +73,7 @@ import java.util.Locale;
  * falten beide zusammen weg, sobald der Zeiger den Bereich verlässt. Die Modus-Pille neben dem Hamburger
  * wechselt zwischen Chat und Agent (Navigation, kein Reiterband). Der Drawer trägt die Seite „Chats“ mit
  * „+ Neuer Chat“, der Chat-Suche, den Chat-Zeilen und dem Zahnrad für die Einstellungen im Fuß, sowie die
- * Seite „Wissensquellen“. Beide Ansichten sind vollständige, voneinander unabhängige {@link ChatShellPanel}s
+ * Seite „Wissensquellen“ ({@link KnowledgeSourcesPanel}: hinzufügen, bearbeiten, an- und abwählen, indexieren). Beide Ansichten sind vollständige, voneinander unabhängige {@link ChatShellPanel}s
  * mit eigenem Model: eine im Hintergrund laufende Agent-Antwort schreibt nicht in den Chat.
  */
 public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.Listener {
@@ -113,8 +113,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private final JPanel chatListPanel = new JPanel();
     private final ResearchPillButton newChatButton;
     private final ResearchIconButton settingsButton;
-    private final JPanel knowledgeListPanel = new JPanel();
-    private final JPanel knowledgePane;
+    private final KnowledgeSourcesPanel knowledgePane;
     private final List<ChatHistoryRow> chatRows = new ArrayList<ChatHistoryRow>();
 
     private final Timer sidebarCloseTimer;
@@ -122,7 +121,6 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private AWTEventListener sidebarMouseWatcher;
     private boolean menuLocked;
     private WorkspaceActions actions;
-    private List<KnowledgeSourceItem> knowledgeSources = Collections.emptyList();
 
     /** @param agentShell die Agent-Ansicht oder {@code null}, wenn kein Agent konfiguriert ist */
     public ChatWorkspacePanel(ShellModeModel modes, ChatShellPanel chatShell, ChatShellPanel agentShell,
@@ -144,7 +142,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         this.newChatButton = new ResearchPillButton(NEW_CHAT_LABEL, ResearchUiMetrics.NEW_CHAT_HEIGHT,
                 ResearchUiMetrics.RADIUS_CONTROL, ResearchUiMetrics.NEW_CHAT_PADDING_H);
         this.settingsButton = new ResearchIconButton(ComposerIcons.gear(), SETTINGS_TOOLTIP);
-        this.knowledgePane = buildKnowledgeTab();
+        this.knowledgePane = new KnowledgeSourcesPanel(palette);
         this.sidebar = new ChatSidebarPanel(CHATS_TAB, buildChatsTab(), palette);
         this.sidebarSplit = new ComicSplitPane(sidebar, deck, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH, palette);
         this.sidebarCloseTimer = new Timer(SIDEBAR_CLOSE_DELAY_MS, event -> onPointerLeftSidebarArea());
@@ -186,11 +184,19 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         windowControls.repaint();
     }
 
-    /** Die konfigurierten Wissensquellen für die Drawer-Seite „Wissensquellen“. */
+    /** Die Wissensquellen für die Drawer-Seite „Wissensquellen“ (auf dem EDT). */
     public void setKnowledgeSources(List<KnowledgeSourceItem> sources) {
-        this.knowledgeSources = sources == null ? Collections.<KnowledgeSourceItem>emptyList()
-                : new ArrayList<KnowledgeSourceItem>(sources);
-        refreshKnowledgeList();
+        knowledgePane.setItems(sources);
+    }
+
+    /** Was Häkchen, „Jetzt indexieren“, Bearbeiten und Hinzufügen der Seite „Wissensquellen“ tun. */
+    public void setKnowledgeSourceActions(KnowledgeSourceActions sourceActions) {
+        knowledgePane.setActions(sourceActions);
+    }
+
+    /** Die Drawer-Seite „Wissensquellen“. */
+    public KnowledgeSourcesPanel knowledgeSources() {
+        return knowledgePane;
     }
 
     @Override
@@ -444,42 +450,6 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         return footer;
     }
 
-    private JPanel buildKnowledgeTab() {
-        knowledgeListPanel.setLayout(new BoxLayout(knowledgeListPanel, BoxLayout.Y_AXIS));
-        knowledgeListPanel.setOpaque(false);
-        JScrollPane scroll = new ComicScrollPane(knowledgeListPanel, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER, palette);
-        scroll.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
-        scroll.getViewport().setBackground(palette.getSurface());
-        JPanel tab = new JPanel(new BorderLayout());
-        tab.setOpaque(false);
-        tab.add(scroll, BorderLayout.CENTER);
-        refreshKnowledgeList();
-        return tab;
-    }
-
-    private void refreshKnowledgeList() {
-        knowledgeListPanel.removeAll();
-        knowledgeListPanel.add(groupHeader("KONFIGURIERTE QUELLEN"));
-        if (knowledgeSources.isEmpty()) {
-            JLabel empty = new JLabel("Keine Wissensquellen konfiguriert.");
-            empty.setFont(ResearchUiTypography.regular(12f));
-            empty.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
-            empty.setBorder(BorderFactory.createEmptyBorder(6, 14, 6, 8));
-            empty.setAlignmentX(LEFT_ALIGNMENT);
-            knowledgeListPanel.add(empty);
-        }
-        for (KnowledgeSourceItem source : knowledgeSources) {
-            ChatHistoryRow row = new ChatHistoryRow(source.name(), source.description(), "", false, false, null,
-                    palette);
-            row.setAlignmentX(LEFT_ALIGNMENT);
-            knowledgeListPanel.add(row);
-        }
-        knowledgeListPanel.add(Box.createVerticalGlue());
-        knowledgeListPanel.revalidate();
-        knowledgeListPanel.repaint();
-    }
-
     private JLabel groupHeader(String text) {
         JLabel header = new JLabel(text);
         header.setFont(ResearchUiTypography.semiBold(11f));
@@ -572,6 +542,12 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     }
 
     // ------------------------------------------------------------------ Drawer-Verhalten (arch)
+
+    /** Zeigt einen Drawer-Reiter samt Markierung in der Reiterleiste (wie ein Klick auf den Reiter). */
+    public void showSidebarTab(String title) {
+        sidebar.showTab(title);
+        refreshRibbonTabs();
+    }
 
     private void refreshRibbonTabs() {
         ribbon.setTabs(sidebar.tabTitles(), sidebar.activeTab());
