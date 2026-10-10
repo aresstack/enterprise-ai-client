@@ -1,8 +1,13 @@
 package com.aresstack.enterpriseai.app.composition;
 
+import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.LocalVoicesConfig;
+import com.aresstack.enterpriseai.app.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.net.HttpRoutes;
+import com.aresstack.enterpriseai.app.security.FilePairingKeyStore;
+import com.aresstack.enterpriseai.app.security.ProxyAuthenticator;
+import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.LocalVoiceInstaller;
 import com.aresstack.enterpriseai.application.localruntime.LocalVoiceService;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
@@ -12,6 +17,8 @@ import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoice;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoiceProvisioning;
+import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
+import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 
 import java.net.URI;
 import java.nio.file.Path;
@@ -43,14 +50,33 @@ public final class LocalVoices implements LocalVoiceInstaller {
         this.curated = curated;
     }
 
+    /**
+     * Proxy-Anmeldung BASIC mit den Einstellungen des Entwurfs: Beim Erststart (oder nach geänderten Zugangsdaten
+     * im Dialog) hat {@code EnterpriseAiClientMain} den {@link ProxyAuthenticator} noch nicht bzw. mit alten Werten
+     * gesetzt; ohne ihn scheitert der Download am Proxy mit 407. Gleicher Weg wie beim Start (KeePass, Pairing).
+     */
+    static void installProxyAuthentication(NetworkConfig network, KeePassConfig keePass) {
+        if (network.proxyAuthMode() != ProxyAuthMode.BASIC || network.proxyCredentialRef() == null
+                || keePass == null || !keePass.enabled()) {
+            return;
+        }
+        String address = keePass.rpc().host() + ":" + keePass.rpc().port();
+        KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
+                ? new InMemoryPairingKeyStore()
+                : new FilePairingKeyStore(keePass.pairingKeyFile());
+        ProxyAuthenticator.install(AdapterAssembly.secrets(keePass, new SwingPairingCallback(address), keyStore),
+                network.proxyCredentialRef());
+    }
+
     @Override
     public List<LocalVoiceOffer> offers(Path modelRoot) {
         return new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, NO_NETWORK)).offers(modelRoot);
     }
 
     @Override
-    public void install(NetworkConfig network, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
-            throws LocalVoiceInstallException {
+    public void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
+                        LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
+        installProxyAuthentication(network, keePass);
         HttpRoutes routes = HttpRoutes.from(network);
         new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, routes)).install(voiceId, modelRoot, listener);
     }
