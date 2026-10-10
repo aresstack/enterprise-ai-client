@@ -304,9 +304,11 @@ public final class ShellAssembly {
         /**
          * Die Modellliste des Composers aus dem Modellkatalog: die Chat-Modelle (Kategorie CHAT) aller Quellen aus
          * dem zuletzt abgefragten Stand. Eine Wahl gilt ab der nächsten Nachricht und wird als {@code chat.model}
-         * gespeichert ({@code persist}, läuft nicht auf dem EDT).
+         * gespeichert ({@code persist}, läuft nicht auf dem EDT). Dazu kommen die installierten lokalen Chat-Modelle
+         * ({@code localChats}, Ordnernamen), ausgeführt im Client.
          */
-        public void setChatModels(final Supplier<ModelCatalogSnapshot> catalog, final Consumer<String> persist,
+        public void setChatModels(final Supplier<ModelCatalogSnapshot> catalog,
+                                  final Supplier<List<String>> localChats, final Consumer<String> persist,
                                   final Executor worker) {
             composer.setModelChoices(() -> {
                 List<String> ids = new ArrayList<String>();
@@ -315,6 +317,12 @@ public final class ShellAssembly {
                 for (ModelDescriptor model : catalog.get().modelsFor(ModelCategory.CHAT)) {
                     String id = ModelsConfig.defaultCatalogId().equals(model.catalogId()) ? model.modelId()
                             : model.catalogId() + ":" + model.modelId();
+                    if (!ids.contains(id)) {
+                        ids.add(id);
+                    }
+                }
+                for (String local : localChats.get()) {
+                    String id = ModelsConfig.LOCAL_CATALOG_ID + ":" + local;
                     if (!ids.contains(id)) {
                         ids.add(id);
                     }

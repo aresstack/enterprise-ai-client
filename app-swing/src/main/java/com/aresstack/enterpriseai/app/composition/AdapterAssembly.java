@@ -52,7 +52,9 @@ import com.aresstack.enterpriseai.source.ftp.JesSourceProvider;
 import com.aresstack.enterpriseai.source.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.source.ndv.NdvSourceProvider;
+import com.aresstack.enterpriseai.text.local.LocalChatAdapter;
 import com.aresstack.enterpriseai.text.local.LocalEmbeddingAdapter;
+import com.aresstack.enterpriseai.text.onnx.OnnxCausalLmRuntime;
 import com.aresstack.enterpriseai.text.onnx.OnnxTextEncoderRuntime;
 
 import java.io.Closeable;
@@ -105,10 +107,19 @@ public final class AdapterAssembly {
         ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
 
         // Ausführung je Katalog der Modellauswahl: die Enterprise-API immer; lokal installierte Modelle laufen im
-        // Prozess über ONNX Runtime (Embeddings hier, Stimmen in ModelCatalogs).
+        // Prozess über ONNX Runtime (Chat und Embeddings hier, Stimmen in ModelCatalogs).
         OpenAiCompatibleChatAdapter chatAdapter = chat(config.chat(), secrets, network);
         Map<String, ChatCompletionPort> chats = new LinkedHashMap<String, ChatCompletionPort>();
         chats.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
+        // lokale Chat-Modelle: geladen erst bei der ersten Anfrage, Modell = Ordnername der Auswahl
+        final OnnxCausalLmRuntime decoder = new OnnxCausalLmRuntime();
+        chats.put(ModelsConfig.LOCAL_CATALOG_ID, new LocalChatAdapter(config.models().localModelRoot(), decoder));
+        ports.closing("local-chat", new Closeable() {
+            @Override
+            public void close() {
+                decoder.close();
+            }
+        });
         Map<String, ResponsesPort> responses = new LinkedHashMap<String, ResponsesPort>();
         // derselbe Adapter: /responses mit Route, TLS und Token des Chats
         responses.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);

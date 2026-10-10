@@ -32,8 +32,8 @@ import java.util.function.Supplier;
 
 /**
  * Reiter „Modelle“ (wie die zentrale Modellauswahl je Funktion in askai-java8 arch), oben zwei Unterreiter nach
- * Modellquelle: „Cloud-Modelle“ (Enterprise-API, {@code GET /models}) und „Lokale Modelle“ (Stimmen, die im
- * Client über ONNX Runtime sprechen, Hugging-Face-Suche und Modellverzeichnis). Je Kategorie gibt es
+ * Modellquelle: „Cloud-Modelle“ (Enterprise-API, {@code GET /models}) und „Lokale Modelle“ (Chat, Embeddings und
+ * Stimmen, die im Client über ONNX Runtime laufen, Hugging-Face-Suche und Modellverzeichnis). Je Kategorie gibt es
  * genau eine Auswahl ({@link ModelSelection}); beide Unterreiter sind Sichten darauf, wer in einem wählt, wählt im
  * anderen ab. Die Listen zeigen nur passende Modelle; sie kommen zuerst aus dem Zwischenspeicher der letzten
  * Abfrage und werden beim ersten Öffnen des Reiters sowie mit „Modelle aktualisieren“ im Hintergrund neu geholt.
@@ -46,7 +46,8 @@ final class ModelsTab {
     static final String CLOUD_PAGE = "Cloud-Modelle";
     static final String LOCAL_PAGE = "Lokale Modelle";
     /** Funktionen, für die der Client Modelle im Prozess rechnet. */
-    private static final ModelCategory[] LOCAL_CATEGORIES = {ModelCategory.EMBEDDING, ModelCategory.TTS};
+    private static final ModelCategory[] LOCAL_CATEGORIES = {ModelCategory.CHAT, ModelCategory.EMBEDDING,
+            ModelCategory.TTS};
 
     private final SettingsDialogActions actions;
     private final Supplier<SettingsForm> form;
@@ -136,7 +137,8 @@ final class ModelsTab {
         searchNote.note("Angeboten werden nur Modelle, die der Client ohne Umwandlung lädt: Sprachausgabe als "
                 + "Piper-Stimme (.onnx mit .onnx.json, deutsch oder Text-Eingabe) oder VITS (config.json, vocab.json, "
                 + "onnx/model.onnx); Embeddings als ONNX-Export mit config.json und tokenizer.json (WordPiece, BPE "
-                + "oder Unigram).");
+                + "oder Unigram); Chat als Decoder-ONNX-Export mit KV-Cache (past_key_values), config.json und "
+                + "tokenizer.json.");
         JPanel searchContent = new JPanel(new BorderLayout(0, 4));
         searchContent.setOpaque(false);
         searchContent.add(searchNote.panel(), BorderLayout.NORTH);

@@ -185,7 +185,7 @@ public final class ChatModelExecutorRegistry {
 
     private ChatCompletionException unsupported(String catalogId, String what) {
         return new ChatCompletionException(ChatErrorKind.INVALID_REQUEST, what + " ist für Modelle aus „" + catalogId
-                + "“ nicht verfügbar (lokal laufen nur Stimmen; Chat und Werkzeug-Chat gibt "
+                + "“ nicht verfügbar (lokale Modelle beantworten nur den normalen Chat; Werkzeug-Chat gibt "
                 + "es nur über die Enterprise-API)");
     }
 

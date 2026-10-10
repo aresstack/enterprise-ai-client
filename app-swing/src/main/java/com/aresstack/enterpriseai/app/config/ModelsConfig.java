@@ -26,7 +26,7 @@ public final class ModelsConfig {
     /** Stimme der Enterprise-Sprachausgabe ({@code voice} bei {@code /audio/speech}); leer = ohne. */
     public static final String SPEECH_VOICE_KEY = "speech.voice";
 
-    /** Katalog der lokal installierten Modelle (heute nur Stimmen): Auswahl {@code local:<ordner>}. */
+    /** Katalog der lokal installierten Modelle (Stimmen, Embeddings, Chat): Auswahl {@code local:<ordner>}. */
     public static final String LOCAL_CATALOG_ID = "local";
 
     private final ModelSelections selections;

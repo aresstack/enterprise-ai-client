@@ -208,6 +208,18 @@ und `1_Pooling/config.json`, fehlen sie, gilt Mittelwert mit L2-Normalisierung. 
 Modelle“ → Embeddings wählen, speichern, neu starten und die Wissensquellen neu indexieren: ein anderes Modell ist eine
 andere Embedding-Welt. Präfixe wie `query:`/`passage:` (E5) setzt der Client nicht.
 
+### Lokaler Chat
+
+Chat-Modelle laufen ebenso im Client über die ONNX-Runtime-Bibliothek für Java (onnxruntime-genai wird nicht
+gebraucht: die Generierungsschleife mit KV-Cache steht im Client). Die Hub-Suche bietet Decoder-Exporte mit
+`past_key_values` an (etwa `onnx/model_q4.onnx` aus transformers.js-Exporten), dazu `config.json`, `tokenizer.json` und
+`tokenizer_config.json`. Die Chat-Vorlage (`chat_template` bzw. `chat_template.jinja`) rendert ein kleiner
+Jinja-Interpreter in reinem Java; lehnt sie eine System-Nachricht ab, wandert der System-Text vor die erste
+Nutzernachricht, fehlt sie, gilt ChatML. Ohne Angaben antwortet das Modell gierig, sonst nach Temperatur, Top-p und
+Top-k bzw. `generation_config.json`. Installierte Chat-Modelle stehen im Composer als `local:<ordner>` und unter
+„Lokale Modelle“ → Chat; es rechnet immer nur eine Antwort gleichzeitig. Werkzeug-Chat (Anhänge lesen) läuft nur über
+die Enterprise-API. Mit echten Hub-Modellen ist das ungeprüft.
+
 `speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Spracheingabe (Mikrofon,
 Audiodatei) gehört nicht zum Enterprise-Client.
 

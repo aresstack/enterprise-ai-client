@@ -177,7 +177,8 @@ public final class EnterpriseAiClientMain {
                         rebindSpeech(readAloud, file, started, modelCatalogs, network, ports);
                     }
                 }));
-                view.setChatModels(modelCatalogs::cached, modelId -> {
+                view.setChatModels(modelCatalogs::cached, () -> installedLocalChats(localVoices,
+                        started.models().localModelRoot()), modelId -> {
                     try {
                         file.update(Collections.singletonMap(ModelsConfig.keyOf(ModelCategory.CHAT), modelId), null, null);
                     } catch (IOException | RuntimeException e) {
@@ -211,6 +212,21 @@ public final class EnterpriseAiClientMain {
      * (Angebot, jetzt zu beenden). Ausnahme wie die Chat-Auswahl: TTS-Modell und Vorlesen gelten sofort
      * ({@code afterSave}).
      */
+    /** Ordnernamen der installierten lokalen Chat-Modelle für die Modellliste des Composers. */
+    private static List<String> installedLocalChats(LocalVoices localVoices, java.nio.file.Path modelRoot) {
+        List<String> ids = new ArrayList<String>();
+        try {
+            for (com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer offer : localVoices.offers(modelRoot)) {
+                if (offer.isInstalled() && offer.category() == ModelCategory.CHAT) {
+                    ids.add(offer.id());
+                }
+            }
+        } catch (RuntimeException unreadable) {
+            LOG.log(Level.FINE, "Lokale Chat-Modelle nicht lesbar", unreadable);
+        }
+        return ids;
+    }
+
     private static Runnable settingsAction(final JFrame frame, final ConfigurationFile file,
                                            final SettingsDialogActions actions, final ComicPalette palette,
                                            final Runnable afterSave) {

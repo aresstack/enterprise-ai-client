@@ -44,7 +44,8 @@ final class HubModelSearch {
     private static final String[] CHAT_GRAPHS = {"model_q4.onnx", "model_quantized.onnx", "model_int8.onnx",
             "model_uint8.onnx", "model.onnx"};
     private static final String[] TEXT_EXTRAS = {"tokenizer_config.json", "generation_config.json",
-            "special_tokens_map.json", "modules.json", "1_Pooling/config.json", "sentence_bert_config.json"};
+            "special_tokens_map.json", "chat_template.jinja", "modules.json", "1_Pooling/config.json",
+            "sentence_bert_config.json"};
     private static final Pattern PIPER_NAME = Pattern.compile("^([a-z]{2,3})_[A-Z]{2}-.+");
 
     private final HuggingFaceHub hub;
