@@ -22,6 +22,9 @@ dependencies {
     implementation project(':knowledge-lucene')
     implementation project(':source-mediawiki')
     implementation project(':source-confluence')
+    // Lokale Dateien als Quelle; Extraktion über document-tika (Klartext/Markdown ohne Tika, sonst Apache Tika).
+    implementation project(':source-localfiles')
+    implementation project(':document-tika')
     implementation project(':security-keepassrpc')
     implementation project(':acp-solon-client')
     implementation project(':mcp-solon-runtime')

@@ -137,6 +137,15 @@ public final class SettingsMapper {
         String type = text(p, prefix + "type", "").toLowerCase(Locale.ROOT);
         boolean wiki = SourceForm.TYPE_MEDIAWIKI.equals(type);
         boolean confluence = SourceForm.TYPE_CONFLUENCE.equals(type);
+        if (SourceForm.TYPE_FILES.equals(type)) {
+            return SourceForm.builder(id, SourceForm.TYPE_FILES)
+                    .url(text(p, prefix + "directory", ""))
+                    .startPoints(text(p, prefix + "startPoints", "."))
+                    .maxDepth(text(p, prefix + "maxDepth", "20"))
+                    .maxResources(text(p, prefix + "maxResources", ""))
+                    .enabled(bool(p, prefix + "enabled", true))
+                    .build();
+        }
         if (!wiki && !confluence) {
             // Unbekannter oder fehlender Typ: der Dialog zeigt die Quelle als MediaWiki-Eintrag mit leerer URL,
             // damit der Benutzer sie sieht und korrigieren oder entfernen kann.
@@ -182,13 +191,17 @@ public final class SettingsMapper {
         for (SourceForm source : form.sources()) {
             String prefix = SOURCE_PREFIX + source.id() + ".";
             set.put(prefix + "type", source.type());
-            put(set, prefix + (source.isConfluence() ? "baseUrl" : "apiUrl"), source.url());
-            put(set, prefix + "credentialRef", source.credentialRef());
+            put(set, prefix + (source.isConfluence() ? "baseUrl" : source.isFiles() ? "directory" : "apiUrl"),
+                    source.url());
+            put(set, prefix + "credentialRef", source.isFiles() ? "" : source.credentialRef());
             put(set, prefix + "startPoints", source.startPoints());
             put(set, prefix + "maxDepth", source.maxDepth());
             put(set, prefix + "maxResources", source.maxResources());
             // Nur das Abwählen steht in der Datei; aktiv ist der Standard (leer = Zeile auskommentieren).
             put(set, prefix + "enabled", source.enabled() ? "" : "false");
+            if (source.isFiles()) {
+                continue;
+            }
             if (source.isConfluence()) {
                 put(set, prefix + "searchSpaceKeys", source.searchSpaceKeys());
                 set.put(prefix + "includeAttachments", String.valueOf(source.includeAttachments()));
@@ -328,6 +341,7 @@ public final class SettingsMapper {
                 String id = key.substring(SOURCE_PREFIX.length(), dot); // IDs dürfen Punkte enthalten
                 String field = key.substring(dot + 1);
                 String label = "apiUrl".equals(field) ? "API-URL" : "baseUrl".equals(field) ? "Basis-URL"
+                        : "directory".equals(field) ? "Verzeichnis"
                         : "startPoints".equals(field) ? "Startpunkte" : "credentialRef".equals(field) ? "KeePass-Eintrag"
                         : "maxDepth".equals(field) ? "Tiefe" : "maxResources".equals(field) ? "Höchstzahl Seiten"
                         : "type".equals(field) ? "Typ" : "enabled".equals(field) ? "Aktiv" : field;

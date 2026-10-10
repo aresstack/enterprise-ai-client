@@ -69,6 +69,12 @@ final class FormRows {
         JComponent field() {
             return field;
         }
+
+        void setLabelText(String text) {
+            if (label != null) {
+                label.setText(text);
+            }
+        }
     }
 
     Row textField(JTextField field, String label, String tooltip) {

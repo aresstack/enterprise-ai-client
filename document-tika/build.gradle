@@ -1,0 +1,12 @@
+description = 'Adapter: Dokument-Extraktion (Klartext, Markdown aus corenth deigma; PDF, Office, HTML, Mail über Apache Tika).'
+
+dependencies {
+    api project(':document-api')
+
+    // Wie MainframeMate: tika-core plus Standard-Parser (PDFBox, POI, ...). flexmark ausgeschlossen (Tika zieht eine
+    // Java-11-Version; app-swing nutzt die Java-8-Linie 0.62.x).
+    implementation libs.tika.core
+    implementation(libs.tika.parsers.standard) {
+        exclude group: 'com.vladsch.flexmark'
+    }
+}

@@ -103,8 +103,9 @@ public final class SourcePanel extends JPanel {
 
     /** Die Überschrift: „MediaWiki-Quelle hinzufügen“ bzw. „Confluence-Quelle „id“ bearbeiten“. */
     public static String titleFor(SourceForm source, String originalId) {
-        String kind = source.isConfluence() ? "Confluence" : "MediaWiki";
-        return originalId == null ? kind + "-Quelle hinzufügen" : kind + "-Quelle „" + originalId + "“ bearbeiten";
+        String kind = SourceForm.kindLabel(source.type());
+        String noun = source.isFiles() ? kind + ": Quelle" : kind + "-Quelle";
+        return originalId == null ? noun + " hinzufügen" : noun + " „" + originalId + "“ bearbeiten";
     }
 
     private void buildUi() {

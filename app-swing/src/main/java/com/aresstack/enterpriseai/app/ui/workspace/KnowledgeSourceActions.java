@@ -15,7 +15,7 @@ public interface KnowledgeSourceActions {
     /** Bearbeiten (öffnet den Quellen-Dialog, dort auch Entfernen). */
     void editRequested(String sourceId);
 
-    /** „+ MediaWiki“ bzw. „+ Confluence“; {@code type} ist {@code mediawiki} oder {@code confluence}. */
+    /** „+ MediaWiki“, „+ Confluence“ bzw. „+ Dateien“; {@code type} ist {@code mediawiki}, {@code confluence} oder {@code files}. */
     void addRequested(String type);
 
     /** Ob Hinzufügen geht (ohne Konfigurationsdatei nicht). */

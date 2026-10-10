@@ -53,6 +53,11 @@ java -jar enterprise-ai-client-<version>.jar
    Confluence). Mit `knowledge.indexOnStartup=true` (Standard) indexiert die Anwendung beim Start im
    Hintergrund; die Statuszeile zeigt den Fortschritt und bietet Abbrechen an. Alternativ stößt ein Agent
    `refresh_knowledge_source` an.
+   **Lokale Dateien**: „+ Dateien“ im Drawer-Reiter „Wissensquellen“ legt eine Quelle `type=files` an
+   („Verzeichnis wählen …“); das Verzeichnis wird rekursiv gelesen. Erkennung und Extraktion stammen aus corenth
+   `deigma` (Module `document-api` und `document-tika`, Quelle `source-localfiles`): Text und Markdown direkt,
+   PDF, Word, Excel, PowerPoint, OpenDocument, RTF, HTML und Mails über Apache Tika 2.9.1 wie in MainframeMate.
+   Die Tika-Parser vergrößern das Fat Jar deutlich.
 6. **RAG verwenden**: Die Pille „RAG“ im Composer einschalten. Vor der Antwort sucht die
    Anwendung im Index; die Antwort trägt die verwendeten Quellen, Hinweise erscheinen als eigene Blase.
 7. **Agent-Modus**: `agent.enabled=true` und `agent.command`/`agent.args` auf einen ACP-fähigen Agenten setzen

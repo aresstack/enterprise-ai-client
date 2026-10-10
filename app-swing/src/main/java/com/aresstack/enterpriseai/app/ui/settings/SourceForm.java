@@ -11,6 +11,8 @@ public final class SourceForm {
 
     public static final String TYPE_MEDIAWIKI = "mediawiki";
     public static final String TYPE_CONFLUENCE = "confluence";
+    /** Lokales Verzeichnis; {@link #url()} ist dann der Verzeichnispfad. */
+    public static final String TYPE_FILES = "files";
 
     private final String id;
     private final String type;
@@ -70,7 +72,17 @@ public final class SourceForm {
         return TYPE_CONFLUENCE.equals(type);
     }
 
-    /** API-URL (MediaWiki) bzw. Basis-URL (Confluence). */
+    public boolean isFiles() {
+        return TYPE_FILES.equals(type);
+    }
+
+    /** Anzeigename des Typs: „MediaWiki“, „Confluence“ oder „Lokale Dateien“. */
+    public static String kindLabel(String type) {
+        return TYPE_CONFLUENCE.equalsIgnoreCase(type) ? "Confluence"
+                : TYPE_FILES.equalsIgnoreCase(type) ? "Lokale Dateien" : "MediaWiki";
+    }
+
+    /** API-URL (MediaWiki), Basis-URL (Confluence) bzw. Verzeichnis (lokale Dateien). */
     public String url() {
         return url;
     }

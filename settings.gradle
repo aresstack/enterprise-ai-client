@@ -33,6 +33,11 @@ include 'knowledge-lucene'
 include 'source-api'
 include 'source-mediawiki'
 include 'source-confluence'
+include 'source-localfiles'
+
+// Dokument-Extraktion (aus corenth deigma, Tika wie MainframeMate)
+include 'document-api'
+include 'document-tika'
 
 // Strang F – Security
 include 'security-api'

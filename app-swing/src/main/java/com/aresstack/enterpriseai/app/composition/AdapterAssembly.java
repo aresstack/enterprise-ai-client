@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.app.config.ChatConfig;
 import com.aresstack.enterpriseai.app.config.ConfluenceSourceConfig;
 import com.aresstack.enterpriseai.app.config.EmbeddingConfig;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.config.LocalFilesSourceConfig;
 import com.aresstack.enterpriseai.app.config.MediaWikiSourceConfig;
 import com.aresstack.enterpriseai.app.config.SourceConfig;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
@@ -21,6 +22,7 @@ import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatConfig;
+import com.aresstack.enterpriseai.document.tika.DocumentExtraction;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
 import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
@@ -33,6 +35,7 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
 import com.aresstack.enterpriseai.source.confluence.ConfluenceKnowledgeSource;
 import com.aresstack.enterpriseai.source.confluence.UrlConnectionConfluenceTransport;
+import com.aresstack.enterpriseai.source.localfiles.LocalFilesKnowledgeSource;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiCredentialsProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiKnowledgeSource;
 
@@ -189,6 +192,12 @@ public final class AdapterAssembly {
             }
             return new ConfluenceKnowledgeSource(confluence.sourceId(), confluence.confluence(), transport.build(),
                     secrets);
+        }
+        if (source instanceof LocalFilesSourceConfig) {
+            LocalFilesSourceConfig files = (LocalFilesSourceConfig) source;
+            // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
+            return new LocalFilesKnowledgeSource(files.sourceId(), files.directory(), DocumentExtraction.detector(),
+                    DocumentExtraction.registry(), files.maxFileBytes());
         }
         throw new IllegalArgumentException("unsupported source type: " + source.type());
     }
