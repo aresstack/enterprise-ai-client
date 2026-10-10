@@ -38,7 +38,7 @@ import java.awt.geom.RoundRectangle2D;
  * within the same geometry — never a full-width banner.</p>
  */
 public final class SpeechBubblePanel extends JPanel
-        implements WidthAwareHeight, WidthBoundedBubble {
+        implements WidthAwareHeight, WidthBoundedBubble, TranscriptBubble {
 
     private static final int ARC = 22;
     private static final int TAIL_WIDTH = 16;

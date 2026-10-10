@@ -228,6 +228,13 @@ eigene Palette gibt es nicht.
   „Wissensquellen“ listet `sources` (Häkchen, Indexstand, ⟳, ✎-Dialog, „+ MediaWiki“/„+ Confluence“) und öffnet
   unten mit „Index …“ den Index-Dialog (`knowledge.indexDirectory`, `knowledge.indexOnStartup`; gilt beim nächsten
   Start). Weitere Seiten kommen als `ChatSidebarTab` dazu.
+- Antworten des Assistenten sind Markdown-Blasen wie in askai-java8 `arch` (`app.ui.chat.AssistantMarkdownBubble`
+  mit `app.ui.markdown.MarkdownMessageView`): flexmark 0.62.2 (Tabellen, Autolinks, Durchstreichen) wird auf native
+  Swing-Komponenten abgebildet (Überschriften, Listen, Zitate, Codeblöcke mit Kopieraktion, Tabellen, Links über
+  `DesktopLinkOpener`); `mermaid`-Zäune rendert `mermaid-java` (GraalJS + Batik, ohne Browser, ohne Netz) abseits des
+  EDT zu Bildern, ein Klick öffnet den zoombaren `MermaidViewerDialog`. Eine einzelne äußere ```markdown-Umhüllung
+  der Antwort fällt weg (`MarkdownResponseNormalizer`). Nutzer-, Hinweis- und Fehlerblasen bleiben
+  `SpeechBubblePanel`; beide erfüllen `TranscriptBubble` (comic-controls bleibt abhängigkeitsfrei).
 - Fehler des KI-Dienstes bleiben Sprechblasen in Blasengeometrie: Überschrift sichtbar, „Technische Ursache“
   und „Hinweis“ hinter „Details anzeigen“ (`SpeechBubblePanel.setDetails`).
 - Einstellungen-Dialog: ebenfalls rahmenlos (Überschrift zieht, ✕ bricht ab), Reiter als Pillen (KI-Dienst,
@@ -319,7 +326,9 @@ Bindings in `app.chat`, die AP23 in der Composition Root verdrahtet.
   Zugangsdaten), Hinweis-Blase links in der Aktivitätsfarbe, Fehler des KI-Dienstes wie bisher. Modelle
   (`ChatShellModel`, `KnowledgeStatusModel`) bleiben ohne Swing.
 - Streaming: `ChatTranscriptPanel` bündelt Deltas (höchstens eine Blasen-Aktualisierung je 30 ms, Abschluss,
-  Abbruch, Fehler und Quellen sofort) und hängt Text an, statt ihn neu zu setzen; `SpeechBubblePanel`
+  Abbruch, Fehler und Quellen sofort) und hängt Text an, statt ihn neu zu setzen. Die Markdown-Blase der Antwort
+  rendert gedrosselt neu (`MarkdownMessageView`: frühestens nach 90 ms, bei teuren Renderings nach dem Dreifachen
+  der gemessenen Renderzeit, höchstens 2 s; Mermaid erst nach dem Abschluss); `SpeechBubblePanel`
   (comic-controls) schreibt seine Breiten- und Umbruchmessung über `StreamingTextMeasure` je abgeschlossenem
   Wort und je Zeile fort, auch ohne Zeilenumbrüche. Die Zeit je Delta wächst damit nicht mit der Textlänge
   (`ChatTranscriptStreamingTest`: 20.000 Deltas mit und ohne Zeilenumbrüche, `StreamingTextMeasureTest`).

@@ -31,6 +31,13 @@ dependencies {
     implementation libs.win.proxy.java
     // TLS-Vertrauen aus JVM-Truststore, Windows-ROOT und Windows Root/CA-Export: app.net.TrustPolicy.
     implementation libs.win.trust.java
+    // Markdown-Rendering der Antworten (app.ui.markdown, aus askai-java8 arch): flexmark mit Tabellen, Autolinks und
+    // Durchstreichen; Mermaid-Zäune werden mit mermaid-java (GraalJS + Batik, ohne Browser und Netz) zu Bildern.
+    implementation libs.flexmark
+    implementation libs.flexmark.ext.tables
+    implementation libs.flexmark.ext.autolink
+    implementation libs.flexmark.ext.gfm.strikethrough
+    implementation libs.mermaid.java
 
     // Strang A: skriptbarer Fake-ChatCompletionPort für UI-Tests und die Demo.
     testImplementation testFixtures(project(':chat-api'))

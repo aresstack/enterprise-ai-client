@@ -16,6 +16,8 @@ javaWebsocket = "1.5.2"
 slf4j = "2.0.17"
 winProxy = "0.2.0"
 winTrust = "0.1.0"
+flexmark = "0.62.2"
+mermaidJava = "0.2.0-beta.2"
 
 [libraries]
 # Test
@@ -49,3 +51,12 @@ slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 # app-swing als implementation; die Adapter sehen nur den Port http-api.
 win-proxy-java = { module = "com.aresstack:win-proxy-java", version.ref = "winProxy" }
 win-trust-java = { module = "com.aresstack:win-trust-java", version.ref = "winTrust" }
+
+# app-swing (app.ui.markdown): Markdown-Rendering der Antworten wie askai-java8 arch (flexmark 0.62.x ist die letzte
+# Java-8-Linie; Tabellen, Autolinks, Durchstreichen) und Mermaid-Diagramme als Bild ohne Browser und ohne Netz
+# (mermaid-java: GraalJS 21.2 + Batik, dieselbe GraalJS-Version wie win-proxy-java). Nur in app-swing als implementation.
+flexmark = { module = "com.vladsch.flexmark:flexmark", version.ref = "flexmark" }
+flexmark-ext-tables = { module = "com.vladsch.flexmark:flexmark-ext-tables", version.ref = "flexmark" }
+flexmark-ext-autolink = { module = "com.vladsch.flexmark:flexmark-ext-autolink", version.ref = "flexmark" }
+flexmark-ext-gfm-strikethrough = { module = "com.vladsch.flexmark:flexmark-ext-gfm-strikethrough", version.ref = "flexmark" }
+mermaid-java = { module = "com.aresstack:mermaid-java", version.ref = "mermaidJava" }

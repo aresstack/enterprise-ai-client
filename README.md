@@ -45,8 +45,9 @@ java -jar enterprise-ai-client-<version>.jar
 3. **Starten**: `./gradlew :app-swing:run` oder `java -jar enterprise-ai-client-<version>.jar`. Ohne erreichbares
    KeePass startet die Anwendung trotzdem und meldet, welche Secrets fehlen; Anfragen scheitern dann mit einem
    Authentifizierungsfehler.
-4. **Chatten**: Frage eintippen, Senden (Enter; Umschalt+Enter für eine neue Zeile). Antworten streamen, „Stop“
-   im Composer bricht ab; der System-Prompt kommt aus `chat.systemPrompt`. „+ Neuer Chat“ im Drawer beginnt eine
+4. **Chatten**: Frage eintippen, Senden (Enter; Umschalt+Enter für eine neue Zeile). Antworten streamen und
+   erscheinen als Markdown (Überschriften, Listen, Tabellen, Code mit Kopierknopf, Links; Mermaid-Diagramme als
+   Bild, ein Klick vergrößert), „Stop“ im Composer bricht ab; der System-Prompt kommt aus `chat.systemPrompt`. „+ Neuer Chat“ im Drawer beginnt eine
    neue Unterhaltung. Das Fenster ist rahmenlos: die Kopfzeile zieht, der Rand vergrößert, das ✕ schließt.
 5. **Quelle indexieren**: Eine Quelle unter `sources` und `source.<id>.*` eintragen (MediaWiki oder
    Confluence). Mit `knowledge.indexOnStartup=true` (Standard) indexiert die Anwendung beim Start im

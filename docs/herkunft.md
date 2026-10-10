@@ -90,7 +90,8 @@ ausführliche Fassung.
 
 | Teil | Quelle | Geändert |
 |---|---|---|
-| Comic-Komponenten (`comic-controls`) | askai-java8 | ohne flexmark (Markdown-Rendering entfällt), keine Abhängigkeiten |
+| Comic-Komponenten (`comic-controls`) | askai-java8 | ohne flexmark, keine Abhängigkeiten; `TranscriptBubble` als gemeinsamer Vertrag von Text- und Markdown-Blase |
+| Markdown- und Mermaid-Rendering der Antworten (`app.ui.markdown`: `MarkdownMessageView`, `FlexmarkSwingRenderer`, `InlineMarkdownRenderer`, `CodeBlockPanel`, `MarkdownTablePanel`, `MermaidDiagramPanel`, `MermaidViewerDialog`, Normalisierer und Render-Kette; `app.ui.chat.AssistantMarkdownBubble`) | askai-java8 `arch` (`ui.markdown`, `ui.bubble.AssistantMarkdownBubble`) | in app-swing statt comic-controls; ohne geteilte Render-Instanz (`CachingMermaidImageRenderer.forChat()` je Verlauf), ohne Logging, `WidthAwareHeight` aus comic-controls, Streaming gedrosselt statt entprellt, deutsche Beschriftungen, Fenstersymbol vom Besitzer |
 | Research-Tokens und Pillen (`ResearchUiPalette`, `ResearchUiMetrics`, `ResearchUiPainter`, `ResearchUiTypography`, `ResearchIconButton`, `ResearchPillButton`, `ResearchPillDropdown`), `ComicSplitPane`, `ComicSearchBar`, `ComicHoverMenu`, `ComicOverlayPanel`, `StrokeIcon`/`ComposerIcons`, `ComposerButton`/`ComposerToggleButton` | askai-java8 Zweig `arch` (`comic-controls`, `askai-app` `ui`) | Paket `ui.comic.*`; Typografie-Cache als Holder (keine veränderlichen statischen Felder); `ComicSearchBar` ohne statische Höhe; Pfeil-Logik der Reiterleiste ohne Flackern am Ende; Pille und Composer-Knöpfe per Tab erreichbar (Fokusring, Pfeiltasten an der Pille), ein Klick nimmt dem Editor den Fokus nicht |
 | Fenster-✕, Ziehen, Vergrößern (`ComicWindowCloseButton`, `ComicWindowDragger`, `ComicWindowResizer`) | askai-java8 `arch` `ComicOverlayPanel.CloseButton`, `AskAiFrame` | Malerei des ✕ einmal in `ComicWindowCloseButton`; `CloseButton` erbt davon |
 | Arbeitsfläche, Drawer, Composer (`ChatWorkspacePanel`, `ChatSidebarPanel`, `SidebarTabRibbon`, `ChatHistoryRow`, `ChatComposerPanel`) | askai-java8 `arch` `ChatWorkspacePanel`, `ChatSidebarPanel`, `SidebarTabRibbon`, `ChatComposerPanel` | ohne Sessions-Liste und Plugins: Modus-Pille Chat/Agent statt Chat-Tabs, Drawer-Seiten Chats und Wissensquellen, Composer mit RAG-Pille und Senden/Stop |
@@ -118,7 +119,8 @@ ausführliche Fassung.
 
 ## Offen
 
-- Ob `comic-controls` außer flexmark weitere Teile der askai-Vorlage weglässt, ist nicht dokumentiert.
+- Ob `comic-controls` weitere Teile der askai-Vorlage weglässt, ist nicht dokumentiert (flexmark liegt seit 0.1.8 in
+  app-swing, siehe oben).
 - Welche Teile von corenth `pinakes` als Vorbild für `knowledge-lucene` dienten, nennt der Code nur für die
   Feldnamen (`LuceneLexicalIndex`); mehr ist nicht belegt.
 - Der Reflection-Zugriff auf ein Feld des acp-sdk (AP17) hängt an Version 3.10.1.
