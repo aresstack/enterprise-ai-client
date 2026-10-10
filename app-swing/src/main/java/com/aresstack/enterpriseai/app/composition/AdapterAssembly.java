@@ -34,6 +34,7 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.confluence.ConfluenceSourceProvider;
+import com.aresstack.enterpriseai.source.ftp.FtpSourceProvider;
 import com.aresstack.enterpriseai.source.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 
@@ -169,6 +170,7 @@ public final class AdapterAssembly {
                         new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network)));
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry()));
+        providers.add(new FtpSourceProvider(secrets));
         return providers;
     }
 

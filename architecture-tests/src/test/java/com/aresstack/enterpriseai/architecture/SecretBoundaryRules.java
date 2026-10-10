@@ -34,7 +34,8 @@ final class SecretBoundaryRules {
      * {@code SecretRef}) ist eine bewusste Architekturentscheidung: Registry, ARCHITECTURE.md und diese Liste.
      */
     static List<String> modulesAllowedToUseSecretMaterial() {
-        return Collections.unmodifiableList(Arrays.asList("security-api", "security-keepassrpc", "source-confluence"));
+        return Collections.unmodifiableList(Arrays.asList("security-api", "security-keepassrpc", "source-confluence",
+                "source-ftp"));
     }
 
     /**

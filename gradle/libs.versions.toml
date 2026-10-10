@@ -19,6 +19,7 @@ winTrust = "0.1.0"
 flexmark = "0.62.2"
 mermaidJava = "0.2.0-beta.2"
 tika = "2.9.1"
+commonsNet = "3.9.0"
 
 [libraries]
 # Test
@@ -65,3 +66,6 @@ mermaid-java = { module = "com.aresstack:mermaid-java", version.ref = "mermaidJa
 # document-tika: Dokument-Extraktion (PDF, Office, HTML, Mail) wie MainframeMate; nur in document-tika als implementation.
 tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }
 tika-parsers-standard = { module = "org.apache.tika:tika-parsers-standard-package", version.ref = "tika" }
+
+# source-ftp: FTP/MVS wie MainframeMate (Apache Commons Net); nur in source-ftp als implementation.
+commons-net = { module = "commons-net:commons-net", version.ref = "commonsNet" }

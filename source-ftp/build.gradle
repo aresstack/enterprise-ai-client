@@ -1,0 +1,7 @@
+description = 'Adapter: FTP (vor allem MVS/z/OS) als Knowledge Source. Apache Commons Net nur adapterintern, Zugangsdaten über security-api.'
+
+dependencies {
+    api project(':source-api')
+    api project(':security-api')
+    implementation libs.commons.net
+}

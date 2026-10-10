@@ -34,6 +34,8 @@ include 'source-api'
 include 'source-mediawiki'
 include 'source-confluence'
 include 'source-localfiles'
+// Mainframe über FTP (MVS-Datasets, COBOL)
+include 'source-ftp'
 
 // Ressourcenschicht aus corenth: Port (AcquisitionPort, Bronze) und Holkas-Connectoren über den Quellen
 include 'resource-api'
