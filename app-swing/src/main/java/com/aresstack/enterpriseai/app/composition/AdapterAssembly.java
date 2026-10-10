@@ -86,7 +86,9 @@ public final class AdapterAssembly {
         SecretProvider secrets = secrets(config.keePass(), pairing, keyStore);
         ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
 
-        ports.chat(chat(config.chat(), secrets, network));
+        OpenAiCompatibleChatAdapter chatAdapter = chat(config.chat(), secrets, network);
+        ports.chat(chatAdapter);
+        ports.responses(chatAdapter); // derselbe Adapter: /responses mit Route, TLS und Token des Chats
         OpenAiCompatibleEmbeddingAdapter embeddings = embeddings(config.embedding(), secrets, network);
         ports.embeddings(embeddings, embeddings.modelIdentity());
 

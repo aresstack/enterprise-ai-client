@@ -161,11 +161,30 @@ public final class ChatService {
      */
     public ChatTurn sendWithContext(ChatConversationId id, String userText, String context, ChatOptions options,
                                     ChatTurnListener listener) {
-        return start(id, userText, context == null || context.trim().isEmpty() ? null : context, options, listener);
+        return start(id, userText, context == null || context.trim().isEmpty() ? null : context, options, listener,
+                chatPort);
+    }
+
+    /**
+     * Wie {@link #sendWithContext(ChatConversationId, String, String, ChatOptions, ChatTurnListener)}, aber dieser
+     * eine Turn läuft über {@code via} statt über den Standard-Port, z. B. über die Werkzeug-Schleife
+     * (Tool-Calling). Historienregeln und Abbruch bleiben gleich.
+     *
+     * @param via Port nur für diesen Turn; {@code null} heißt der Standard-Port
+     */
+    public ChatTurn sendWithContext(ChatConversationId id, String userText, String context, ChatOptions options,
+                                    ChatTurnListener listener, ChatCompletionPort via) {
+        return start(id, userText, context == null || context.trim().isEmpty() ? null : context, options, listener,
+                via == null ? chatPort : via);
     }
 
     private ChatTurn start(ChatConversationId id, String userText, String context, ChatOptions options,
                            ChatTurnListener listener) {
+        return start(id, userText, context, options, listener, chatPort);
+    }
+
+    private ChatTurn start(ChatConversationId id, String userText, String context, ChatOptions options,
+                           ChatTurnListener listener, ChatCompletionPort port) {
         if (userText == null || userText.trim().isEmpty()) {
             throw new IllegalArgumentException("user text must not be blank");
         }
@@ -188,7 +207,7 @@ public final class ChatService {
         }
         ChatTask task;
         try {
-            task = chatPort.stream(request, turn.portListener());
+            task = port.stream(request, turn.portListener());
         } catch (ChatCompletionException e) {
             turn.failedToStart(e);
             return turn;

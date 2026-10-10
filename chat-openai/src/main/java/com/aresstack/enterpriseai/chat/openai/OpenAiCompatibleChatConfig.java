@@ -43,12 +43,15 @@ public final class OpenAiCompatibleChatConfig {
     public static final String CHAT_COMPLETIONS_PATH = "chat/completions";
     /** Pfad der Modellliste; die Basis-URL endet selbst nie auf einen dieser Endpunkte. */
     public static final String MODELS_PATH = "models";
+    /** Pfad des werkzeugfähigen Antwort-Endpunkts (Tool-Calling). */
+    public static final String RESPONSES_PATH = "responses";
 
-    private static final String[] ENDPOINT_SUFFIXES = {"/chat/completions", "/embeddings", "/models"};
+    private static final String[] ENDPOINT_SUFFIXES = {"/chat/completions", "/embeddings", "/models", "/responses"};
 
     private final URI baseUrl;
     private final URI endpoint;
     private final URI modelsEndpoint;
+    private final URI responsesEndpoint;
     private final String defaultModel;
     private final TokenSource tokenSource;
     private final int connectTimeoutMillis;
@@ -62,6 +65,7 @@ public final class OpenAiCompatibleChatConfig {
         this.baseUrl = builder.baseUrl;
         this.endpoint = resolve(builder.baseUrl, CHAT_COMPLETIONS_PATH);
         this.modelsEndpoint = resolve(builder.baseUrl, MODELS_PATH);
+        this.responsesEndpoint = resolve(builder.baseUrl, RESPONSES_PATH);
         this.defaultModel = builder.defaultModel;
         this.tokenSource = builder.tokenSource;
         this.connectTimeoutMillis = builder.connectTimeoutMillis;
@@ -93,6 +97,11 @@ public final class OpenAiCompatibleChatConfig {
     /** {@code <baseUrl>/models}, der Endpunkt des Verbindungstests. */
     public URI modelsEndpoint() {
         return modelsEndpoint;
+    }
+
+    /** {@code <baseUrl>/responses}, der Endpunkt für Tool-Calling. */
+    public URI responsesEndpoint() {
+        return responsesEndpoint;
     }
 
     public String defaultModel() {

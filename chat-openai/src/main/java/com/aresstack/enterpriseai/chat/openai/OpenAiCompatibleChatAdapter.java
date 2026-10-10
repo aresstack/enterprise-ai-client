@@ -5,6 +5,9 @@ import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
 import com.aresstack.enterpriseai.chat.api.ChatTask;
+import com.aresstack.enterpriseai.chat.api.ResponsesPort;
+import com.aresstack.enterpriseai.chat.api.ResponsesRequest;
+import com.aresstack.enterpriseai.chat.api.ResponsesResult;
 import com.aresstack.enterpriseai.domain.chat.ChatMessage;
 import com.aresstack.enterpriseai.domain.chat.ChatRequest;
 import com.aresstack.enterpriseai.domain.chat.ChatResponse;
@@ -33,8 +36,11 @@ import java.util.concurrent.RejectedExecutionException;
  * Null-{@code delta.content}, {@code [DONE]}, Bearer-Header), ohne dessen Provider-Weiche, Settings-Zugriff und
  * Tool-Call-Akkumulation; OkHttp ist durch {@link HttpURLConnection} ersetzt, damit der Adapter nur Gson braucht.
  * Wo der alte Client anderes erwartet als die realen Tests der Enterprise-API, gelten die Tests.
+ *
+ * <p>Zusätzlich {@link ResponsesPort}: werkzeugfähige Antworten über {@code POST <baseUrl>/responses}, ohne
+ * Streaming, mit derselben Route, demselben TLS und demselben Token wie der Chat.
  */
-public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
+public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort, ResponsesPort {
 
     private static final Charset UTF_8 = Charset.forName("UTF-8");
     private static final String JSON_UTF_8 = "application/json; charset=utf-8";
@@ -43,6 +49,7 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
     private final Executor executor;
     private final OpenAiRequestWriter writer;
     private final OpenAiResponseParser parser = new OpenAiResponseParser();
+    private final OpenAiResponsesCodec responsesCodec;
 
     public OpenAiCompatibleChatAdapter(OpenAiCompatibleChatConfig config) {
         this(config, new Executor() {
@@ -65,6 +72,34 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
         this.config = config;
         this.executor = executor;
         this.writer = new OpenAiRequestWriter(config.defaultModel(), config.developerRolePolicy());
+        this.responsesCodec = new OpenAiResponsesCodec(config.defaultModel());
+    }
+
+    @Override
+    public ResponsesResult create(ResponsesRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("request must not be null");
+        }
+        byte[] body = responsesCodec.write(request).getBytes(UTF_8);
+        String token = token();
+        HttpURLConnection connection = null;
+        try {
+            connection = open(config.responsesEndpoint(), "application/json", token);
+            send(connection, body);
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw OpenAiErrors.forStatus(status, readError(connection), token);
+            }
+            return responsesCodec.read(readAll(connection.getInputStream()));
+        } catch (ChatCompletionException e) {
+            throw OpenAiErrors.redacted(e, token);
+        } catch (IOException e) {
+            throw transport(e);
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 
     @Override
@@ -232,9 +267,13 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
     }
 
     private HttpURLConnection open(String accept, String token) throws IOException {
+        return open(config.endpoint(), accept, token);
+    }
+
+    private HttpURLConnection open(java.net.URI target, String accept, String token) throws IOException {
         // Route, TLS-Vertrauen und User-Agent kommen je Anfrage aus der Konfiguration; nichts davon ist
         // prozessweit gesetzt (kein ProxySelector, keine Standard-SSLSocketFactory).
-        HttpURLConnection connection = RouteConnections.open(config.endpoint(), config.routes(),
+        HttpURLConnection connection = RouteConnections.open(target, config.routes(),
                 config.sslSocketFactory(), config.userAgent());
         connection.setRequestMethod("POST");
         connection.setDoOutput(true);

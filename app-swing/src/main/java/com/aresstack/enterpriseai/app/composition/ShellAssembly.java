@@ -1,7 +1,11 @@
 package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.agent.AgentModeAssembly;
+import com.aresstack.enterpriseai.app.chat.DocumentAttachmentTextExtractor;
+import com.aresstack.enterpriseai.app.chat.FileAttachmentStore;
 import com.aresstack.enterpriseai.app.chat.RagChatBinding;
+import com.aresstack.enterpriseai.app.chat.ToolSupport;
+import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
@@ -13,6 +17,7 @@ import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.app.ui.workspace.WorkspaceActions;
 import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
+import com.aresstack.enterpriseai.document.tika.DocumentExtraction;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
@@ -50,6 +55,13 @@ public final class ShellAssembly {
         final ChatShellModel chatModel = new ChatShellModel(root.clock());
         final RagChatBinding chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel,
                 root.uiExecutor(), root.workExecutor(), root.zone(), root.sourceSelection());
+        if (root.ports().responses() != null) {
+            // Tool-Calling und Dateianhänge: /responses, Ablage neben der Konfigurationsdatei, Text über document-tika.
+            chatActions.enableTools(new ToolSupport(root.ports().responses(),
+                    new FileAttachmentStore(AppPaths.configFile().toAbsolutePath().getParent().resolve("attachments")),
+                    new DocumentAttachmentTextExtractor(DocumentExtraction.detector(), DocumentExtraction.registry()),
+                    root.config().chat().toolsEnabled()));
+        }
         ChatShellPanel chatShell = new ChatShellPanel(chatModel, chatActions, root.knowledgeStatus(), palette, bubbles);
 
         final AgentModeAssembly.AgentView agent;
