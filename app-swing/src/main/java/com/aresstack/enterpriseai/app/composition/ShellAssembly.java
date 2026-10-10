@@ -219,6 +219,8 @@ public final class ShellAssembly {
         private final AgentModeAssembly.AgentView agent;
         private final KnowledgeSourcesController sources;
         private final ChatComposerPanel composer;
+        private final Object persistLock = new Object();
+        private volatile String latestModel;
         private Runnable settingsAction;
 
         ShellView(ChatWorkspacePanel workspace, ChatShellModel chatModel, RagChatBinding chatActions,
@@ -288,7 +290,13 @@ public final class ShellAssembly {
                 return ids;
             }, id -> {
                 chatActions.modelChanged(id);
-                worker.execute(() -> persist.accept(id));
+                latestModel = id;
+                // Schreiben nacheinander und immer die letzte Wahl: so gewinnt nie eine ältere Auswahl.
+                worker.execute(() -> {
+                    synchronized (persistLock) {
+                        persist.accept(latestModel);
+                    }
+                });
             });
         }
     }
