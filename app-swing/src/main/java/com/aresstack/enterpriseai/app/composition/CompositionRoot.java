@@ -1,10 +1,10 @@
 package com.aresstack.enterpriseai.app.composition;
 
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 import com.aresstack.enterpriseai.app.agent.AcpAgentLauncher;
 import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.KnowledgeConfig;
-import com.aresstack.enterpriseai.app.config.SourceConfig;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.app.knowledge.StartupIndexing;
 import com.aresstack.enterpriseai.app.ui.chat.KnowledgeStatusModel;
@@ -101,8 +101,8 @@ public final class CompositionRoot {
         this.sourceSelection = new KnowledgeSourceSelection();
         for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
             boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt
-            for (SourceConfig source : config.sources()) {
-                if (source.sourceId().equals(registration.sourceId())) {
+            for (SourceDefinition source : config.sources()) {
+                if (source.id().equals(registration.sourceId().value())) {
                     enabled = source.enabled();
                 }
             }

@@ -2,6 +2,8 @@ package com.aresstack.enterpriseai.app.config;
 
 import com.aresstack.enterpriseai.application.rag.RetrievalSettings;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.winproxy.ProxyMode;
 import org.junit.Rule;
 import org.junit.Test;
@@ -66,9 +68,9 @@ public class AppConfigLoaderTest {
         p.setProperty("sources", "wiki,confluence,dateien");
         AppConfig config = AppConfigLoader.fromProperties(p);
         assertEquals(3, config.sources().size());
-        assertEquals("mediawiki", config.sources().get(0).type());
-        assertEquals("confluence", config.sources().get(1).type());
-        assertEquals("files", config.sources().get(2).type());
+        assertEquals("mediawiki", config.sources().get(0).typeId());
+        assertEquals("confluence", config.sources().get(1).typeId());
+        assertEquals("files", config.sources().get(2).typeId());
         assertEquals("keine Warnungen erwartet: " + config.warnings(), 0, config.warnings().size());
     }
 
@@ -290,31 +292,20 @@ public class AppConfigLoaderTest {
         p.setProperty("source.wiki.type", "mediawiki");
         p.setProperty("source.wiki.apiUrl", "https://wiki.example/w/api.php");
         p.setProperty("source.wiki.maxDepth", "-7");
-        // Wird erst vom Builder der Adapter-Konfiguration abgelehnt (Großbuchstaben); dessen Meldung nennt den Wert.
-        p.setProperty("source.wiki.siteKey", "Geheimer-SiteKey");
         p.setProperty("source.ok.type", "mediawiki");
         p.setProperty("source.ok.apiUrl", "https://wiki.example/w/api.php");
         p.setProperty("source.ok.startPoints", "Hauptseite");
+        // Der Loader liest Quellen typneutral; ob die Einstellungen stimmen, prüft der Adapter des Typs.
         AppConfig config = AppConfigLoader.fromProperties(p);
-        assertEquals(config.warnings().toString(), 1, config.sources().size());
-        assertEquals("ok", config.sources().get(0).sourceId().value());
+        assertEquals(config.warnings().toString(), 2, config.sources().size());
+        assertEquals("ok", config.sources().get(1).id());
+        assertEquals("-7", config.sources().get(0).settings().get("maxDepth"));
         String all = String.join("\n", config.warnings());
-        assertTrue(all, all.contains("Wissensquelle „wiki“ wird übersprungen"));
-        assertTrue(all, all.contains("source.wiki.maxDepth"));
-        assertTrue(all, all.contains("source.wiki.*"));
-        assertFalse("übersprungene Schlüssel sind keine unbekannten Schlüssel: " + all, all.contains("ignoriert"));
-        assertFalse(all, all.contains("-7"));
-        assertFalse("verschachtelte Adapter-Meldungen dürfen den Wert nicht durchreichen: " + all,
-                all.contains("Geheimer-SiteKey"));
-        try {
-            AppConfigLoader.sourceSection(p, "wiki");
-            fail("expected AppConfigException");
-        } catch (AppConfigException e) {
-            String message = String.join("\n", e.problems());
-            assertTrue(message, message.contains("source.wiki.maxDepth"));
-            assertFalse(message, message.contains("Geheimer-SiteKey"));
-        }
-        assertEquals("ok", AppConfigLoader.sourceSection(p, "ok").sourceId().value());
+        assertFalse("gelesene Quell-Schlüssel sind keine unbekannten Schlüssel: " + all, all.contains("ignoriert"));
+        java.util.List<String> problems = new MediaWikiSourceProvider(ref -> null, null, null, "Test")
+                .validate(config.sources().get(0).settings());
+        assertFalse(problems.isEmpty());
+        assertFalse(problems.toString(), problems.toString().contains("-7"));
     }
 
     @Test
@@ -364,15 +355,13 @@ public class AppConfigLoaderTest {
         p.setProperty("source.confluence.clientCertificate.alias", "mein-zertifikat");
         AppConfig config = AppConfigLoader.fromProperties(p);
         assertEquals(2, config.sources().size());
-        MediaWikiSourceConfig wiki = (MediaWikiSourceConfig) config.sources().get(0);
-        assertEquals("wiki", wiki.sourceId().value());
-        assertEquals(SecretRef.of("Intranet-Wiki"), wiki.credentialRef());
-        assertEquals(2, wiki.scope().startPoints().size());
-        assertEquals(1, wiki.scope().maxDepth());
-        ConfluenceSourceConfig confluence = (ConfluenceSourceConfig) config.sources().get(1);
-        assertEquals(SecretRef.of("Confluence"), confluence.confluence().credentialRef());
-        assertNotNull(confluence.clientCertificate());
-        assertTrue(confluence.clientCertificate().usesWindowsStore());
+        SourceDefinition wiki = config.sources().get(0);
+        assertEquals("wiki", wiki.id());
+        assertEquals("Intranet-Wiki", wiki.settings().get("credentialRef"));
+        assertEquals("Hauptseite, Handbuch", wiki.settings().get("startPoints"));
+        SourceDefinition confluence = config.sources().get(1);
+        assertEquals("confluence", confluence.typeId());
+        assertEquals("mein-zertifikat", confluence.settings().get("clientCertificate.alias"));
         assertEquals(0, config.warnings().size());
     }
 
@@ -385,11 +374,12 @@ public class AppConfigLoaderTest {
         p.setProperty("source.a.startPoints", "Hauptseite");
         p.setProperty("source.b.type", "sharepoint");
         AppConfig config = AppConfigLoader.fromProperties(p);
-        assertEquals(config.warnings().toString(), 1, config.sources().size());
-        assertEquals("a", config.sources().get(0).sourceId().value());
+        // Unbekannte Typen bleiben stehen (der Reiter zeigt sie als fehlerhaft); doppelte und ungültige IDs nicht.
+        assertEquals(config.warnings().toString(), 2, config.sources().size());
+        assertEquals("a", config.sources().get(0).id());
+        assertEquals("sharepoint", config.sources().get(1).typeId());
         String all = String.join("\n", config.warnings());
         assertTrue(all, all.contains("„a“ steht doppelt"));
-        assertTrue(all, all.contains("source.b.type"));
         assertTrue(all, all.contains("„Ungültig!“ wird übersprungen"));
     }
 

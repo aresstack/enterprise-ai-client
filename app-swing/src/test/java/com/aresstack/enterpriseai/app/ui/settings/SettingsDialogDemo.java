@@ -81,13 +81,6 @@ public final class SettingsDialogDemo {
                 .embeddingModel("embedding-modell")
                 .embeddingDimension("768")
                 .indexDirectory("C:/Daten/enterprise-ai-index")
-                .addSource(SourceForm.builder("wiki", SourceForm.TYPE_MEDIAWIKI)
-                        .url("https://wiki.intern.beispiel/w/api.php").siteKey("intern").displayName("Intranet-Wiki")
-                        .credentialRef("keepass:Intranet-Wiki").requiresLogin(true)
-                        .startPoints("Hauptseite,Handbuch").maxDepth("2").maxResources("500").build())
-                .addSource(SourceForm.builder("confluence", SourceForm.TYPE_CONFLUENCE)
-                        .url("https://confluence.intern.beispiel/confluence").credentialRef("keepass:Confluence")
-                        .startPoints("space:DEV").maxDepth("3").maxResources("1000").searchSpaceKeys("DEV").build())
                 .caCertificatesFile("C:/Zertifikate/firmen-ca.pem")
                 .build();
     }

@@ -1,8 +1,5 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * Der Inhalt des Einstellungen-Dialogs: alle Werte so, wie der Benutzer sie eingibt (Text, auch für Zahlen,
@@ -50,7 +47,6 @@ public final class SettingsForm {
     private final String embeddingApiKeyRef;
     private final String indexDirectory;
     private final boolean indexOnStartup;
-    private final List<SourceForm> sources;
     private final boolean keePassEnabled;
     private final String keePassHost;
     private final String keePassPort;
@@ -88,7 +84,6 @@ public final class SettingsForm {
         this.embeddingApiKeyRef = b.embeddingApiKeyRef;
         this.indexDirectory = b.indexDirectory;
         this.indexOnStartup = b.indexOnStartup;
-        this.sources = Collections.unmodifiableList(new ArrayList<SourceForm>(b.sources));
         this.keePassEnabled = b.keePassEnabled;
         this.keePassHost = b.keePassHost;
         this.keePassPort = b.keePassPort;
@@ -127,7 +122,7 @@ public final class SettingsForm {
                 .chatSystemPrompt(chatSystemPrompt)
                 .embeddingBaseUrl(embeddingBaseUrl).embeddingModel(embeddingModel)
                 .embeddingDimension(embeddingDimension).embeddingApiKeyRef(embeddingApiKeyRef)
-                .indexDirectory(indexDirectory).indexOnStartup(indexOnStartup).sources(sources)
+                .indexDirectory(indexDirectory).indexOnStartup(indexOnStartup)
                 .keePassEnabled(keePassEnabled).keePassHost(keePassHost).keePassPort(keePassPort)
                 .keePassClientDisplayName(keePassClientDisplayName).keePassPairingKeyStore(keePassPairingKeyStore)
                 .proxyMode(proxyMode).pacUrl(pacUrl).pacDiscoveryScript(pacDiscoveryScript)
@@ -190,10 +185,6 @@ public final class SettingsForm {
 
     public boolean indexOnStartup() {
         return indexOnStartup;
-    }
-
-    public List<SourceForm> sources() {
-        return sources;
     }
 
     public boolean keePassEnabled() {
@@ -305,7 +296,7 @@ public final class SettingsForm {
     @Override
     public String toString() {
         return "SettingsForm[chatBaseUrl=" + chatBaseUrl + ", chatModel=" + chatModel + ", chatApiKeyRef="
-                + chatApiKeyRef + ", embeddingModel=" + embeddingModel + ", sources=" + sources.size()
+                + chatApiKeyRef + ", embeddingModel=" + embeddingModel
                 + ", keePassEnabled=" + keePassEnabled + ", proxyMode=" + proxyMode + ", agentEnabled=" + agentEnabled
                 + "]";
     }
@@ -322,7 +313,6 @@ public final class SettingsForm {
         private String embeddingApiKeyRef = "";
         private String indexDirectory = "";
         private boolean indexOnStartup = true;
-        private List<SourceForm> sources = new ArrayList<SourceForm>();
         private boolean keePassEnabled = true;
         private String keePassHost = "127.0.0.1";
         private String keePassPort = "12546";
@@ -403,18 +393,6 @@ public final class SettingsForm {
 
         public Builder indexOnStartup(boolean value) {
             this.indexOnStartup = value;
-            return this;
-        }
-
-        public Builder sources(List<SourceForm> value) {
-            this.sources = new ArrayList<SourceForm>(value == null ? Collections.<SourceForm>emptyList() : value);
-            return this;
-        }
-
-        public Builder addSource(SourceForm value) {
-            if (value != null) {
-                this.sources.add(value);
-            }
             return this;
         }
 

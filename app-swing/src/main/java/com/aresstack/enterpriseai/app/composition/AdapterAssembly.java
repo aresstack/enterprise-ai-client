@@ -5,12 +5,9 @@ import com.aresstack.enterpriseai.acp.solon.SolonAcpAgentConnector;
 import com.aresstack.enterpriseai.app.config.AgentConfig;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.ChatConfig;
-import com.aresstack.enterpriseai.app.config.ConfluenceSourceConfig;
+import com.aresstack.enterpriseai.app.config.ClientCertificateConfig;
 import com.aresstack.enterpriseai.app.config.EmbeddingConfig;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
-import com.aresstack.enterpriseai.app.config.LocalFilesSourceConfig;
-import com.aresstack.enterpriseai.app.config.MediaWikiSourceConfig;
-import com.aresstack.enterpriseai.app.config.SourceConfig;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.security.ClientCertificateFactory;
 import com.aresstack.enterpriseai.app.security.FilePairingKeyStore;
@@ -20,9 +17,11 @@ import com.aresstack.enterpriseai.app.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatConfig;
 import com.aresstack.enterpriseai.document.tika.DocumentExtraction;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
 import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
@@ -33,11 +32,10 @@ import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
-import com.aresstack.enterpriseai.source.confluence.ConfluenceKnowledgeSource;
-import com.aresstack.enterpriseai.source.confluence.UrlConnectionConfluenceTransport;
-import com.aresstack.enterpriseai.source.localfiles.LocalFilesKnowledgeSource;
-import com.aresstack.enterpriseai.source.mediawiki.MediaWikiCredentialsProvider;
-import com.aresstack.enterpriseai.source.mediawiki.MediaWikiKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
+import com.aresstack.enterpriseai.source.confluence.ConfluenceSourceProvider;
+import com.aresstack.enterpriseai.source.localfiles.LocalFilesSourceProvider;
+import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -92,17 +90,11 @@ public final class AdapterAssembly {
         OpenAiCompatibleEmbeddingAdapter embeddings = embeddings(config.embedding(), secrets, network);
         ports.embeddings(embeddings, embeddings.modelIdentity());
 
-        List<KnowledgeSourceRegistration> registrations = new ArrayList<KnowledgeSourceRegistration>();
-        for (SourceConfig source : config.sources()) {
-            // Mit Protokollhülle: Fehler der Quelle landen samt Ursachenkette im Protokoll, der Bericht an die UI
-            // enthält nur den Text.
-            registrations.add(new KnowledgeSourceRegistration(
-                    new LoggingKnowledgeSource(source(source, secrets, network)), source.scope()));
+        // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
+        for (KnowledgeSourceProvider provider : sourceProviders(secrets, network)) {
+            ports.sourceProvider(new LoggingSourceProvider(provider));
         }
-        ports.sources(new KnowledgeSourceCatalog(registrations));
-        final SecretProvider sourceSecrets = secrets;
-        final NetworkServices sourceNetwork = network;
-        ports.sourceFactory(source -> new LoggingKnowledgeSource(source(source, sourceSecrets, sourceNetwork)));
+        ports.sources(startupSources(config.sources(), ports));
 
         if (config.agent().enabled()) {
             final SolonMcpServerRuntime mcp = new SolonMcpServerRuntime();
@@ -164,44 +156,41 @@ public final class AdapterAssembly {
                 new SecretBackedBearerTokenSource(secrets, embedding.apiKeyRef()));
     }
 
-    static com.aresstack.enterpriseai.source.api.KnowledgeSourcePort source(SourceConfig source,
-                                                                              SecretProvider secrets,
-                                                                              NetworkServices network) {
-        if (source instanceof MediaWikiSourceConfig) {
-            MediaWikiSourceConfig wiki = (MediaWikiSourceConfig) source;
-            MediaWikiCredentialsProvider credentials = wiki.credentialRef() == null
-                    ? MediaWikiCredentialsProvider.anonymous()
-                    : new SecretBackedMediaWikiCredentialsProvider(secrets, wiki.credentialRef());
-            return new MediaWikiKnowledgeSource(wiki.sourceId(), wiki.site(), credentials, network.routes(),
-                    network.tls());
-        }
-        if (source instanceof ConfluenceSourceConfig) {
-            ConfluenceSourceConfig confluence = (ConfluenceSourceConfig) source;
-            UrlConnectionConfluenceTransport.Builder transport = UrlConnectionConfluenceTransport.builder()
-                    .routes(network.routes())
-                    .userAgent(network.userAgent())
-                    .connectTimeoutMillis(confluence.connectTimeoutMillis())
-                    .readTimeoutMillis(confluence.readTimeoutMillis());
-            if (confluence.clientCertificate() != null) {
-                // Erst beim ersten Verbindungsaufbau geladen: Das KeyStore-Passwort wird dann je Versuch über den
-                // Security-Port geholt, die Vertrauensregel der Anwendung kommt in denselben TLS-Kontext. Ohne
-                // erreichbaren Tresor startet die Anwendung trotzdem; die Quelle meldet je Anfrage UNAVAILABLE, bis
-                // das Zertifikat ladbar ist.
-                transport.sslSocketFactory(ClientCertificateFactory.deferred(confluence.clientCertificate(), secrets,
-                        network));
-            } else {
-                transport.sslSocketFactory(network.tls());
+    /**
+     * Die Quelltypen der Anwendung in der Reihenfolge des Dialogs „+ Quelle“. Ein neuer Adapter (SharePoint, Mail,
+     * FTP ...) kommt hier als weiterer Provider hinzu; Kern, Use Cases und Oberfläche bleiben unverändert.
+     */
+    static List<KnowledgeSourceProvider> sourceProviders(final SecretProvider secrets, final NetworkServices network) {
+        List<KnowledgeSourceProvider> providers = new ArrayList<KnowledgeSourceProvider>();
+        providers.add(new MediaWikiSourceProvider(ref -> new SecretBackedMediaWikiCredentialsProvider(secrets, ref),
+                network.routes(), network.tls(), network.userAgent()));
+        providers.add(new ConfluenceSourceProvider(secrets, network.routes(), network.tls(), network.userAgent(),
+                (alias, keyStoreFile, passwordRef) -> ClientCertificateFactory.deferred(
+                        new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network)));
+        // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
+        providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry()));
+        return providers;
+    }
+
+    /** Die Quellen der Konfiguration, die sich öffnen lassen; die übrigen werden mit einem Hinweis übersprungen. */
+    static KnowledgeSourceCatalog startupSources(List<SourceDefinition> definitions, ApplicationPorts.Builder ports) {
+        KnowledgeSourceManagement sources = new KnowledgeSourceManagement(ports.sourceProviders(), null, null);
+        List<KnowledgeSourceRegistration> registrations = new ArrayList<KnowledgeSourceRegistration>();
+        for (SourceDefinition definition : definitions) {
+            List<String> problems = sources.validate(definition, definition.id());
+            if (!problems.isEmpty()) {
+                ports.sourceWarning("Wissensquelle „" + definition.id() + "“ wird übersprungen, bis sie im Reiter "
+                        + "„Wissensquellen“ korrigiert ist: " + String.join("; ", problems));
+                continue;
             }
-            return new ConfluenceKnowledgeSource(confluence.sourceId(), confluence.confluence(), transport.build(),
-                    secrets);
+            try {
+                registrations.add(sources.open(definition));
+            } catch (RuntimeException e) {
+                ports.sourceWarning("Wissensquelle „" + definition.id() + "“ wird übersprungen: nicht anbindbar ("
+                        + e.getClass().getSimpleName() + ")");
+            }
         }
-        if (source instanceof LocalFilesSourceConfig) {
-            LocalFilesSourceConfig files = (LocalFilesSourceConfig) source;
-            // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
-            return new LocalFilesKnowledgeSource(files.sourceId(), files.directory(), DocumentExtraction.detector(),
-                    DocumentExtraction.registry(), files.maxFileBytes());
-        }
-        throw new IllegalArgumentException("unsupported source type: " + source.type());
+        return new KnowledgeSourceCatalog(registrations);
     }
 
     static AgentBackend agent(AgentConfig agent, SolonMcpServerRuntime mcp) {

@@ -1,8 +1,7 @@
 package com.aresstack.enterpriseai.app.composition;
 
-import com.aresstack.enterpriseai.app.config.SourceConfig;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
-import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.chat.api.ResponsesPort;
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
@@ -15,7 +14,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -37,7 +35,8 @@ public final class ApplicationPorts implements Closeable {
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
-    private final Function<SourceConfig, KnowledgeSourcePort> sourceFactory;
+    private final List<KnowledgeSourceProvider> sourceProviders;
+    private final List<String> sourceWarnings;
     private final List<NamedResource> resources;
     private boolean closed;
 
@@ -54,7 +53,8 @@ public final class ApplicationPorts implements Closeable {
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
-        this.sourceFactory = builder.sourceFactory;
+        this.sourceProviders = Collections.unmodifiableList(new ArrayList<KnowledgeSourceProvider>(builder.sourceProviders));
+        this.sourceWarnings = Collections.unmodifiableList(new ArrayList<String>(builder.sourceWarnings));
         this.resources = Collections.unmodifiableList(new ArrayList<NamedResource>(builder.resources));
     }
 
@@ -84,12 +84,17 @@ public final class ApplicationPorts implements Closeable {
     }
 
     /**
-     * Baut den Port einer Quelle, die nach dem Start im Drawer hinzugefügt oder geändert wurde (mit denselben
-     * Secrets und derselben Netzregel wie beim Start), oder {@code null}: dann gilt so eine Änderung erst nach dem
-     * nächsten Start.
+     * Ein Quellen-Port je Quelltyp (MediaWiki, Confluence, lokale Dateien ...), mit denselben Secrets und derselben
+     * Netzregel wie beim Start. Daraus bietet „+ Quelle“ die Typen an und bindet neue Quellen ohne Neustart an;
+     * leer: Änderungen gelten erst nach dem nächsten Start.
      */
-    public Function<SourceConfig, KnowledgeSourcePort> sourceFactory() {
-        return sourceFactory;
+    public List<KnowledgeSourceProvider> sourceProviders() {
+        return sourceProviders;
+    }
+
+    /** Hinweise zu Quellen, die beim Start übersprungen wurden (fehlerhafte Einstellungen, unbekannter Typ). */
+    public List<String> sourceWarnings() {
+        return sourceWarnings;
     }
 
     public KnowledgeSourceCatalog sources() {
@@ -159,7 +164,8 @@ public final class ApplicationPorts implements Closeable {
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
-        private Function<SourceConfig, KnowledgeSourcePort> sourceFactory;
+        private final List<KnowledgeSourceProvider> sourceProviders = new ArrayList<KnowledgeSourceProvider>();
+        private final List<String> sourceWarnings = new ArrayList<String>();
         private final List<NamedResource> resources = new ArrayList<NamedResource>();
 
         private Builder() {
@@ -201,8 +207,21 @@ public final class ApplicationPorts implements Closeable {
             return this;
         }
 
-        public Builder sourceFactory(Function<SourceConfig, KnowledgeSourcePort> value) {
-            this.sourceFactory = value;
+        public Builder sourceProvider(KnowledgeSourceProvider value) {
+            if (value == null) {
+                throw new IllegalArgumentException("provider must not be null");
+            }
+            this.sourceProviders.add(value);
+            return this;
+        }
+
+        /** Die bisher registrierten Quellen-Ports (für die Start-Quellen). */
+        List<KnowledgeSourceProvider> sourceProviders() {
+            return Collections.unmodifiableList(sourceProviders);
+        }
+
+        public Builder sourceWarning(String value) {
+            this.sourceWarnings.add(value);
             return this;
         }
 

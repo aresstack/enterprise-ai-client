@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.composition;
 
+import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.app.agent.AgentModeAssembly;
 import com.aresstack.enterpriseai.app.chat.ChatHistoryBinding;
 import com.aresstack.enterpriseai.app.chat.DocumentAttachmentTextExtractor;
@@ -179,7 +180,9 @@ public final class ShellAssembly {
         Function<KnowledgeSourceId, Integer> count = sourceId ->
                 ports.index().resourceIds(ports.embeddingSpace(), sourceId).size();
         return new KnowledgeSourcesController(root.config().sources(), ports.sources(), root.sourceSelection(),
-                root.indexingBinding(), count, ports.sourceFactory(), root.uiExecutor(), root.workExecutor(),
+                root.indexingBinding(), count,
+                new KnowledgeSourceManagement(ports.sourceProviders(), null, ports.index()), root.uiExecutor(),
+                root.workExecutor(),
                 root.clock(), root.zone());
     }
 

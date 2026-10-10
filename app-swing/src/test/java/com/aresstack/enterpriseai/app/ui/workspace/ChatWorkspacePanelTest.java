@@ -344,8 +344,13 @@ public class ChatWorkspacePanelTest {
                     }
 
                     @Override
-                    public void addRequested(String type) {
-                        calls.add("add " + type);
+                    public void removeRequested(String sourceId) {
+                        calls.add("remove " + sourceId);
+                    }
+
+                    @Override
+                    public void addRequested() {
+                        calls.add("add");
                     }
 
                     @Override
@@ -367,9 +372,10 @@ public class ChatWorkspacePanelTest {
                 pane.rows().get(0).checkBox().doClick();
                 pane.rows().get(0).indexButton().doClick();
                 pane.rows().get(1).editButton().doClick();
-                pane.addConfluenceButton().doClick();
-                assertEquals(Arrays.asList("enabled handbuch false", "index handbuch", "edit wiki",
-                        "add confluence"), calls);
+                pane.rows().get(1).removeButton().doClick();
+                pane.addButton().doClick();
+                assertEquals(Arrays.asList("enabled handbuch false", "index handbuch", "edit wiki", "remove wiki",
+                        "add"), calls);
                 workspace.openDrawer();
                 workspace.ribbon().finishAnimation();
                 workspace.sidebar().showTab(ChatWorkspacePanel.KNOWLEDGE_TAB);
