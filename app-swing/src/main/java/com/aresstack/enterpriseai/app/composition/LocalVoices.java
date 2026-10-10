@@ -23,6 +23,8 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -43,6 +45,8 @@ public final class LocalVoices implements LocalVoiceInstaller {
 
     private final List<HuggingFaceVoice> curated;
     private final String hubEndpoint;
+    /** Treffer der Hub-Suchen dieses Prozesses, damit „Installieren“ sie über die Kennung findet. */
+    private final Map<String, HuggingFaceVoice> discovered = new ConcurrentHashMap<String, HuggingFaceVoice>();
     /** Ob im Prozess schon eine Proxy-Anmeldung läuft (vom Start oder von einem früheren Download). */
     private final AtomicBoolean proxyAuthenticated = new AtomicBoolean();
 
@@ -85,6 +89,13 @@ public final class LocalVoices implements LocalVoiceInstaller {
     }
 
     @Override
+    public List<LocalVoiceOffer> search(NetworkConfig network, KeePassConfig keePass, String query, Path modelRoot)
+            throws LocalVoiceInstallException {
+        installProxyAuthentication(network, keePass);
+        return new LocalVoiceService(provisioning(HttpRoutes.from(network))).search(query, modelRoot);
+    }
+
+    @Override
     public void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
                         LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
         installProxyAuthentication(network, keePass);
@@ -106,6 +117,6 @@ public final class LocalVoices implements LocalVoiceInstaller {
     }
 
     private HuggingFaceVoiceProvisioning provisioning(HttpRoutePort routes) {
-        return new HuggingFaceVoiceProvisioning(curated, hubEndpoint, routes);
+        return new HuggingFaceVoiceProvisioning(curated, discovered, hubEndpoint, routes);
     }
 }

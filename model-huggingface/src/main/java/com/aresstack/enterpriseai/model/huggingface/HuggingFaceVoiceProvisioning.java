@@ -20,13 +20,18 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * {@link LocalVoiceProvisioning} über den Hugging Face Hub mit huggingface4j: lädt die Dateien einer kuratierten
- * Stimme anonym (öffentliche Repositories wie {@code rhasspy/piper-voices}) nach
- * {@code <Modellverzeichnis>/.<id>.download}, setzt abgebrochene Downloads fort ({@code .part}), prüft jede Datei
- * gegen Größe und SHA-256 aus den Hub-Metadaten ({@link HubFileIndex}) und verschiebt den fertigen Ordner nach
+ * {@link LocalVoiceProvisioning} über den Hugging Face Hub mit huggingface4j: bietet die kuratierten Stimmen, die
+ * schon installierten und die Treffer der Hub-Suche ({@link HubVoiceSearch}, nur Formate, die der Sidecar ohne
+ * Umwandlung lädt) an. Installieren lädt die Dateien anonym nach {@code <Modellverzeichnis>/.<id>.download},
+ * setzt abgebrochene Downloads fort ({@code .part}), prüft zuerst die kleine Konfigurationsdatei
+ * ({@link VoiceConfigCheck}) und jede Datei gegen Größe und SHA-256 aus den Hub-Metadaten ({@link HubFileIndex}),
+ * legt die Herkunft ab ({@link VoiceSource}) und verschiebt den fertigen Ordner nach
  * {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn der Sidecar.
  */
 public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisioning {
@@ -34,29 +39,59 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     private static final String STAGING_SUFFIX = ".download";
 
     private final List<HuggingFaceVoice> voices;
+    private final Map<String, HuggingFaceVoice> discovered;
     private final String endpoint;
     private final HttpRoutePort routes;
 
     /**
-     * @param voices   die kuratierten Stimmen aus der Konfiguration
-     * @param endpoint Basis-URL des Hubs aus der Konfiguration (leer: nur Anzeigen und Entfernen gehen)
-     * @param routes   Proxy-Route je Ziel (die Route der Anwendung über win-proxy-java)
+     * @param voices     die kuratierten Stimmen aus der Konfiguration
+     * @param discovered Treffer früherer Suchen (vom Aufrufer gehalten, wird hier ergänzt; thread-sicher)
+     * @param endpoint   Basis-URL des Hubs aus der Konfiguration (leer: nur Anzeigen und Entfernen gehen)
+     * @param routes     Proxy-Route je Ziel (die Route der Anwendung über win-proxy-java)
      */
-    public HuggingFaceVoiceProvisioning(List<HuggingFaceVoice> voices, String endpoint, HttpRoutePort routes) {
-        if (voices == null || endpoint == null || routes == null) {
-            throw new IllegalArgumentException("voices, endpoint and routes must not be null");
+    public HuggingFaceVoiceProvisioning(List<HuggingFaceVoice> voices, Map<String, HuggingFaceVoice> discovered,
+                                        String endpoint, HttpRoutePort routes) {
+        if (voices == null || discovered == null || endpoint == null || routes == null) {
+            throw new IllegalArgumentException("voices, discovered, endpoint and routes must not be null");
         }
         this.voices = Collections.unmodifiableList(new ArrayList<HuggingFaceVoice>(voices));
+        this.discovered = discovered;
         this.endpoint = endpoint.trim();
         this.routes = routes;
     }
 
+    /** Kuratierte Stimmen, danach alle anderen installierten (mit Herkunftsdatei). */
     @Override
     public List<LocalVoiceOffer> offers(Path modelRoot) {
         List<LocalVoiceOffer> offers = new ArrayList<LocalVoiceOffer>();
+        Set<String> listed = new HashSet<String>();
         for (HuggingFaceVoice voice : voices) {
-            offers.add(new LocalVoiceOffer(voice.id(), voice.displayName(), voice.language(),
-                    complete(modelRoot.resolve(voice.id()), voice)));
+            offers.add(offer(voice, modelRoot));
+            listed.add(voice.id());
+        }
+        for (HuggingFaceVoice voice : installed(modelRoot)) {
+            if (listed.add(voice.id())) {
+                offers.add(offer(voice, modelRoot));
+            }
+        }
+        return offers;
+    }
+
+    @Override
+    public List<LocalVoiceOffer> search(String query, Path modelRoot) throws LocalVoiceInstallException {
+        requireEndpoint();
+        List<HuggingFaceVoice> found;
+        try {
+            found = new HubVoiceSearch(hub(new RouteProxySelector(routes))).search(query);
+        } catch (HuggingFaceHubException e) {
+            throw new LocalVoiceInstallException("Suche auf dem Hugging Face Hub fehlgeschlagen: " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw new LocalVoiceInstallException("Suche auf dem Hugging Face Hub fehlgeschlagen: " + e, e);
+        }
+        List<LocalVoiceOffer> offers = new ArrayList<LocalVoiceOffer>();
+        for (HuggingFaceVoice voice : found) {
+            discovered.put(voice.id(), voice);
+            offers.add(offer(voice, modelRoot));
         }
         return offers;
     }
@@ -64,7 +99,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     @Override
     public void install(String voiceId, Path modelRoot, final LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException {
-        HuggingFaceVoice voice = find(voiceId);
+        HuggingFaceVoice voice = find(voiceId, modelRoot);
         Path target = modelRoot.resolve(voice.id());
         if (complete(target, voice)) {
             return;
@@ -76,15 +111,54 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     @Override
     public void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException {
-        HuggingFaceVoice voice = find(voiceId);
+        HuggingFaceVoice voice = find(voiceId, modelRoot);
         download(voice, modelRoot, modelRoot.resolve(voice.id()), listener);
+    }
+
+    private LocalVoiceOffer offer(HuggingFaceVoice voice, Path modelRoot) {
+        return new LocalVoiceOffer(voice.id(), voice.displayName(), voice.language(),
+                complete(modelRoot.resolve(voice.id()), voice));
+    }
+
+    /** Installierte Stimmen mit Herkunftsdatei, nach Ordnername. */
+    private static List<HuggingFaceVoice> installed(Path modelRoot) {
+        List<HuggingFaceVoice> installed = new ArrayList<HuggingFaceVoice>();
+        if (!Files.isDirectory(modelRoot)) {
+            return installed;
+        }
+        List<Path> directories = new ArrayList<Path>();
+        try (DirectoryStream<Path> children = Files.newDirectoryStream(modelRoot)) {
+            for (Path child : children) {
+                if (Files.isDirectory(child) && !child.getFileName().toString().startsWith(".")) {
+                    directories.add(child);
+                }
+            }
+        } catch (IOException e) {
+            return installed;
+        }
+        Collections.sort(directories);
+        for (Path directory : directories) {
+            HuggingFaceVoice voice = VoiceSource.read(directory);
+            if (voice != null) {
+                installed.add(voice);
+            }
+        }
+        return installed;
+    }
+
+    private HuggingFaceHub hub(RouteProxySelector proxies) {
+        return HuggingFaceHub.standard().endpoint(endpoint).anonymous().proxySelector(proxies).build();
+    }
+
+    private void requireEndpoint() throws LocalVoiceInstallException {
+        if (endpoint.isEmpty()) {
+            throw new LocalVoiceInstallException("Keine Hugging-Face-Adresse konfiguriert (hub.endpoint).");
+        }
     }
 
     private void download(HuggingFaceVoice voice, Path modelRoot, Path target,
                           final LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
-        if (endpoint.isEmpty()) {
-            throw new LocalVoiceInstallException("Keine Hugging-Face-Adresse konfiguriert (hub.endpoint).");
-        }
+        requireEndpoint();
         Path staging = modelRoot.resolve("." + voice.id() + STAGING_SUFFIX);
         try {
             Files.createDirectories(staging);
@@ -93,9 +167,9 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
                     + e.getMessage() + ")", e);
         }
         RouteProxySelector proxies = new RouteProxySelector(routes);
-        HuggingFaceHub hub = HuggingFaceHub.standard().endpoint(endpoint).anonymous().proxySelector(proxies).build();
+        HuggingFaceHub hub = hub(proxies);
         HubFileIndex index = new HubFileIndex(endpoint, proxies);
-        for (String file : voice.files()) {
+        for (String file : configFirst(voice.files())) {
             final String name = HuggingFaceVoice.fileName(file);
             Path destination = staging.resolve(name);
             HubFileIndex.Entry expected = expected(index, voice, file);
@@ -114,6 +188,12 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
                 throw new LocalVoiceInstallException("Download von " + name + " fehlgeschlagen: " + e, e);
             }
             verify(destination, expected);
+            VoiceConfigCheck.check(destination);
+        }
+        try {
+            VoiceSource.write(voice, staging);
+        } catch (IOException e) {
+            throw new LocalVoiceInstallException("Herkunft der Stimme nicht speicherbar: " + e.getMessage(), e);
         }
         moveIntoPlace(staging, target);
         if (!complete(target, voice)) {
@@ -124,7 +204,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     /** Nur Ordner der angebotenen Stimmen; Dateien darin werden gelöscht, Unterordner gibt es nicht. */
     @Override
     public void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException {
-        HuggingFaceVoice voice = find(voiceId);
+        HuggingFaceVoice voice = find(voiceId, modelRoot);
         Path target = modelRoot.resolve(voice.id());
         if (!Files.isDirectory(target)) {
             return;
@@ -142,13 +222,37 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         }
     }
 
-    private HuggingFaceVoice find(String voiceId) throws LocalVoiceInstallException {
+    /** Kuratiert, dann Suchtreffer, dann die Herkunftsdatei im installierten Ordner. */
+    private HuggingFaceVoice find(String voiceId, Path modelRoot) throws LocalVoiceInstallException {
         for (HuggingFaceVoice voice : voices) {
             if (voice.id().equals(voiceId)) {
                 return voice;
             }
         }
-        throw new LocalVoiceInstallException("Unbekannte Stimme: " + voiceId);
+        HuggingFaceVoice found = discovered.get(voiceId);
+        if (found == null && voiceId != null && voiceId.matches("[A-Za-z0-9._-]+") && !voiceId.startsWith(".")) {
+            found = VoiceSource.read(modelRoot.resolve(voiceId));
+        }
+        if (found == null) {
+            throw new LocalVoiceInstallException("Unbekannte Stimme: " + voiceId);
+        }
+        return found;
+    }
+
+    /** Konfigurationsdateien (JSON) zuerst: passt die Stimme nicht, wird das große Modell gar nicht geladen. */
+    private static List<String> configFirst(List<String> files) {
+        List<String> ordered = new ArrayList<String>();
+        for (String file : files) {
+            if (file.endsWith(".json")) {
+                ordered.add(file);
+            }
+        }
+        for (String file : files) {
+            if (!file.endsWith(".json")) {
+                ordered.add(file);
+            }
+        }
+        return ordered;
     }
 
     /** Alle Dateien der Stimme liegen nicht leer im Ordner. */

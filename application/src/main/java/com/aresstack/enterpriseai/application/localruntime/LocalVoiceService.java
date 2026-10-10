@@ -28,6 +28,12 @@ public final class LocalVoiceService {
         return provisioning.offers(modelRoot);
     }
 
+    /** Stimmen beim Anbieter suchen (nur vom Sidecar ladbare Formate); installiert nichts. */
+    public List<LocalVoiceOffer> search(String query, Path modelRoot) throws LocalVoiceInstallException {
+        requireRoot(modelRoot);
+        return provisioning.search(query == null ? "" : query.trim(), modelRoot);
+    }
+
     public void install(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException {
         requireRoot(modelRoot);

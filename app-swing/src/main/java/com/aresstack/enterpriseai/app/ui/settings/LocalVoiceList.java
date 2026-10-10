@@ -9,6 +9,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JTextField;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -21,9 +22,11 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * „Lokale Stimmen“ im Reiter „Lokale Modelle“: je kuratierte Stimme eine Zeile mit Installationsstand und
+ * „Lokale Stimmen“ im Reiter „Lokale Modelle“: je vorgeschlagene oder installierte Stimme eine Zeile mit Installationsstand und
  * „Installieren“ bzw. „Aktualisieren“ und „Entfernen“, darunter eine Statuszeile mit Fortschritt oder Fehlergrund. Installieren wählt
- * nichts aus: eine installierte Stimme steht danach in der TTS-Liste darüber und wird dort gewählt.
+ * nichts aus: eine installierte Stimme steht danach in der TTS-Liste darüber und wird dort gewählt. Dazu die
+ * Hugging-Face-Suche ({@link #searchPanel()}): Suchfeld und Treffer, nur Modelle, die der Sidecar ohne Umwandlung
+ * lädt; ihre Zeilen haben dieselben Knöpfe.
  */
 final class LocalVoiceList {
 
@@ -33,6 +36,8 @@ final class LocalVoiceList {
     static final String NOT_INSTALLED = "Nicht installiert";
     static final String INSTALLED = "✓ installiert";
     static final String NONE = "Keine lokalen Stimmen konfiguriert.";
+    static final String SEARCH_LABEL = "Suchen";
+    static final String NO_HITS = "Keine vom Sidecar ladbaren Modelle gefunden.";
 
     /** Rückmeldungen an den Reiter. */
     interface Listener {
@@ -53,6 +58,12 @@ final class LocalVoiceList {
     private final JPanel panel = new JPanel(new BorderLayout(0, 6));
     private final List<ComicButton> buttons = new ArrayList<ComicButton>();
     private List<LocalVoiceOffer> offers = Collections.emptyList();
+    private final JPanel searchPanel = new JPanel(new BorderLayout(0, 6));
+    private final JTextField query = new JTextField(24);
+    private final ComicButton searchButton;
+    private final JPanel hits = new JPanel();
+    /** {@code null}: noch nicht gesucht. */
+    private List<LocalVoiceOffer> found;
     private String loadedRoot;
     private boolean busy;
 
@@ -69,7 +80,59 @@ final class LocalVoiceList {
         panel.setOpaque(false);
         panel.add(lines, BorderLayout.CENTER);
         panel.add(status, BorderLayout.SOUTH);
+
+        query.setToolTipText("Suchbegriff, z. B. „thorsten“, „piper de“ oder „mms-tts-deu“; leer = beliebteste");
+        query.getAccessibleContext().setAccessibleName("Hugging Face durchsuchen");
+        searchButton = new ComicButton(SEARCH_LABEL, null, ComicButton.Accent.ACTION, palette);
+        searchButton.setToolTipText("Sucht auf dem Hugging Face Hub über die Netzwerkeinstellungen");
+        ActionListener search = new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                search();
+            }
+        };
+        searchButton.addActionListener(search);
+        query.addActionListener(search);
+        JPanel searchRow = new JPanel(new BorderLayout(8, 0));
+        searchRow.setOpaque(false);
+        searchRow.add(query, BorderLayout.CENTER);
+        searchRow.add(searchButton, BorderLayout.EAST);
+        hits.setOpaque(false);
+        hits.setLayout(new BoxLayout(hits, BoxLayout.Y_AXIS));
+        searchPanel.setOpaque(false);
+        searchPanel.add(searchRow, BorderLayout.NORTH);
+        searchPanel.add(hits, BorderLayout.CENTER);
         fill();
+    }
+
+    /** Suchfeld und Treffer der Hugging-Face-Suche. */
+    JPanel searchPanel() {
+        return searchPanel;
+    }
+
+    private void search() {
+        if (busy) {
+            return;
+        }
+        busy = true;
+        updateButtons();
+        show("Suche auf dem Hugging Face Hub …", true);
+        actions.searchLocalVoices(form.get(), query.getText(), new LocalVoiceSearchCallback() {
+            @Override
+            public void found(List<LocalVoiceOffer> result) {
+                busy = false;
+                found = new ArrayList<LocalVoiceOffer>(result);
+                show(result.isEmpty() ? NO_HITS : result.size() + " ladbare Modelle gefunden.", true);
+                fill();
+            }
+
+            @Override
+            public void failed(String message) {
+                busy = false;
+                show(message, false);
+                updateButtons();
+            }
+        });
     }
 
     JPanel panel() {
@@ -113,9 +176,35 @@ final class LocalVoiceList {
         for (LocalVoiceOffer offer : offers) {
             lines.add(line(offer));
         }
+        hits.removeAll();
+        if (found != null && found.isEmpty()) {
+            JLabel none = new JLabel(NO_HITS);
+            none.setForeground(FormRows.MUTED);
+            none.setAlignmentX(JComponent.LEFT_ALIGNMENT);
+            hits.add(none);
+        }
+        if (found != null) {
+            for (LocalVoiceOffer hit : found) {
+                hits.add(line(withInstalledState(hit)));
+            }
+        }
         updateButtons();
         lines.revalidate();
         lines.repaint();
+        hits.revalidate();
+        hits.repaint();
+    }
+
+    /** Ein Treffer mit dem Installationsstand aus der zuletzt gelesenen Liste (nach Installieren/Entfernen). */
+    private LocalVoiceOffer withInstalledState(LocalVoiceOffer hit) {
+        boolean installed = false;
+        for (LocalVoiceOffer offer : offers) {
+            if (offer.id().equals(hit.id())) {
+                installed = offer.isInstalled();
+            }
+        }
+        return installed == hit.isInstalled() ? hit
+                : new LocalVoiceOffer(hit.id(), hit.displayName(), hit.language(), installed);
     }
 
     private JPanel line(final LocalVoiceOffer offer) {
@@ -128,7 +217,7 @@ final class LocalVoiceList {
         ComicButton action = new ComicButton(offer.isInstalled() ? REMOVE_LABEL : INSTALL_LABEL, null,
                 offer.isInstalled() ? ComicButton.Accent.CRITICAL : ComicButton.Accent.ACTION, palette);
         action.setToolTipText(offer.isInstalled() ? "Löscht die Dateien der Stimme aus dem Modellverzeichnis"
-                : "Lädt die Stimme vom Hugging Face Hub ins Modellverzeichnis; gewählt wird sie in der TTS-Liste");
+                : "Lädt die Dateien unverändert vom Hugging Face Hub ins Modellverzeichnis; gewählt wird in der TTS-Liste");
         action.getAccessibleContext().setAccessibleName(action.getText() + ": " + offer.displayName());
         action.addActionListener(new ActionListener() {
             @Override
@@ -231,6 +320,9 @@ final class LocalVoiceList {
     private void updateButtons() {
         for (ComicButton button : buttons) {
             button.setEnabled(!busy);
+        }
+        if (searchButton != null) {
+            searchButton.setEnabled(!busy);
         }
     }
 

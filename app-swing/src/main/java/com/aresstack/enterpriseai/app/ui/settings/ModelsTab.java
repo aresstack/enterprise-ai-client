@@ -129,9 +129,18 @@ final class ModelsTab {
             }
         }, palette);
         FormRows voiceNote = new FormRows(palette);
-        voiceNote.note("Stimmen für den lokalen Sidecar, geladen vom Hugging Face Hub über die Netzwerkeinstellungen "
-                + "ins Modellverzeichnis. Ohne externes Programm; die deutsche Aussprache ist regelbasiert. "
-                + "Installieren wählt nichts aus: gewählt wird unter TTS oben.");
+        voiceNote.note("Vorgeschlagene und installierte Stimmen für den lokalen Sidecar, geladen vom Hugging Face Hub "
+                + "über die Netzwerkeinstellungen ins Modellverzeichnis, ohne Umwandlung. Ohne externes Programm; die "
+                + "deutsche Aussprache ist regelbasiert. Installieren wählt nichts aus: gewählt wird unter TTS oben.");
+        FormRows searchNote = new FormRows(palette);
+        searchNote.note("Angeboten werden nur Modelle, die der Sidecar ohne Umwandlung lädt: Sprachausgabe als "
+                + "Piper-Stimme (.onnx mit .onnx.json, deutsch oder Text-Eingabe) oder VITS (config.json, vocab.json, "
+                + "onnx/model.onnx). Chat und Embeddings fehlen, bis der Sidecar dafür eine Laufzeit hat, die "
+                + "Hub-Dateien direkt lädt.");
+        JPanel searchContent = new JPanel(new BorderLayout(0, 4));
+        searchContent.setOpaque(false);
+        searchContent.add(searchNote.panel(), BorderLayout.NORTH);
+        searchContent.add(voices.searchPanel(), BorderLayout.CENTER);
         JPanel voiceContent = new JPanel(new BorderLayout(0, 4));
         voiceContent.setOpaque(false);
         voiceContent.add(voiceNote.panel(), BorderLayout.NORTH);
@@ -155,6 +164,7 @@ final class ModelsTab {
                 FormRows.plate("Lokale Modelle je Funktion", palette.getNavigationBlue(), localSelection.panel(),
                         palette),
                 FormRows.plate("Lokale Stimmen", palette.getAccentOrange(), voiceContent, palette),
+                FormRows.plate("Hugging Face durchsuchen", palette.getAccentOrange(), searchContent, palette),
                 FormRows.plate("Laufzeit", palette.getAgentPetrol(), local.panel(), palette));
         deck.setOpaque(false);
         deck.add(cloudPage, CLOUD_PAGE);

@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.net.HttpRoutes;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.app.ui.settings.LocalVoiceInstallProgress;
+import com.aresstack.enterpriseai.app.ui.settings.LocalVoiceSearchCallback;
 import com.aresstack.enterpriseai.app.ui.settings.NetworkLogListener;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
@@ -580,27 +581,15 @@ public final class FileSettingsActions implements SettingsDialogActions {
             return;
         }
         final Path root = localModelRoot(form);
-        final NetworkConfig network;
-        final KeePassConfig keePass;
-        KeePassConfig keePassDraft;
+        final NetworkDraft draft;
         try {
-            Properties merged = SettingsMapper.merge(current(), form);
-            network = AppConfigLoader.networkSection(merged);
-            try {
-                keePassDraft = AppConfigLoader.keePassSection(merged);
-            } catch (AppConfigException noKeePass) {
-                // nur für die Proxy-Anmeldung nötig; ohne gültigen Abschnitt lädt der Download ohne sie
-                keePassDraft = null;
-            }
-        } catch (AppConfigException e) {
-            progress.finished(false, "Netzwerkeinstellungen unvollständig: "
-                    + join(SettingsMapper.describe(e.problems())));
-            return;
-        } catch (IOException | RuntimeException e) {
-            progress.finished(false, "Entwurf nicht lesbar (" + e.getClass().getSimpleName() + ").");
+            draft = networkDraft(form);
+        } catch (IllegalStateException e) {
+            progress.finished(false, e.getMessage());
             return;
         }
-        keePass = keePassDraft;
+        final NetworkConfig network = draft.network;
+        final KeePassConfig keePass = draft.keePass;
         try {
             worker.execute(new Runnable() {
                 private String lastLine = "";
@@ -654,6 +643,88 @@ public final class FileSettingsActions implements SettingsDialogActions {
             });
         } catch (RuntimeException rejected) {
             progress.finished(false, "Installation konnte nicht gestartet werden.");
+        }
+    }
+
+    /** Netzwerk- und KeePass-Abschnitt des Entwurfs für Downloads und Suche. */
+    private static final class NetworkDraft {
+        final NetworkConfig network;
+        final KeePassConfig keePass;
+
+        NetworkDraft(NetworkConfig network, KeePassConfig keePass) {
+            this.network = network;
+            this.keePass = keePass;
+        }
+    }
+
+    /** @throws IllegalStateException mit dem Grund für die Oberfläche, wenn der Netzwerkabschnitt nicht passt */
+    private NetworkDraft networkDraft(SettingsForm form) {
+        try {
+            Properties merged = SettingsMapper.merge(current(), form);
+            NetworkConfig network = AppConfigLoader.networkSection(merged);
+            KeePassConfig keePass;
+            try {
+                keePass = AppConfigLoader.keePassSection(merged);
+            } catch (AppConfigException noKeePass) {
+                // nur für die Proxy-Anmeldung nötig; ohne gültigen Abschnitt lädt der Download ohne sie
+                keePass = null;
+            }
+            return new NetworkDraft(network, keePass);
+        } catch (AppConfigException e) {
+            throw new IllegalStateException("Netzwerkeinstellungen unvollständig: "
+                    + join(SettingsMapper.describe(e.problems())));
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalStateException("Entwurf nicht lesbar (" + e.getClass().getSimpleName() + ").");
+        }
+    }
+
+    /** Hub-Suche mit den Netzwerkeinstellungen des Entwurfs; Ergebnis genau einmal auf dem EDT. */
+    @Override
+    public void searchLocalVoices(SettingsForm form, final String query, final LocalVoiceSearchCallback callback) {
+        if (form == null || callback == null) {
+            throw new IllegalArgumentException("form and callback must not be null");
+        }
+        if (voices == null) {
+            callback.failed("In dieser Umgebung nicht verfügbar.");
+            return;
+        }
+        final Path root = localModelRoot(form);
+        final NetworkDraft draft;
+        try {
+            draft = networkDraft(form);
+        } catch (IllegalStateException e) {
+            callback.failed(e.getMessage());
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    List<LocalVoiceOffer> found = null;
+                    String message = null;
+                    try {
+                        found = voices.search(draft.network, draft.keePass, query, root);
+                    } catch (LocalVoiceInstallException e) {
+                        message = e.getMessage();
+                    } catch (RuntimeException e) {
+                        message = "Suche fehlgeschlagen: " + e;
+                    }
+                    final List<LocalVoiceOffer> result = found;
+                    final String error = message;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (result != null) {
+                                callback.found(result);
+                            } else {
+                                callback.failed(error);
+                            }
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            callback.failed("Suche konnte nicht gestartet werden.");
         }
     }
 

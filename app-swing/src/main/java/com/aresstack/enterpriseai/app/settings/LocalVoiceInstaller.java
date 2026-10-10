@@ -17,6 +17,10 @@ public interface LocalVoiceInstaller {
 
     List<LocalVoiceOffer> offers(Path modelRoot);
 
+    /** Hub-Suche nach vom Sidecar ladbaren Stimmen; Treffer sind danach über ihre Kennung installierbar. */
+    List<LocalVoiceOffer> search(NetworkConfig network, KeePassConfig keePass, String query, Path modelRoot)
+            throws LocalVoiceInstallException;
+
     /** @param keePass KeePass-Abschnitt des Entwurfs für die Proxy-Anmeldung (BASIC) oder {@code null} */
     void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException;

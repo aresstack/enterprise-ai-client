@@ -16,6 +16,12 @@ public interface LocalVoiceProvisioning {
     List<LocalVoiceOffer> offers(Path modelRoot);
 
     /**
+     * Sucht beim Anbieter nach Stimmen, die der Sidecar ohne Umwandlung laden kann, mit Installationsstand unter
+     * {@code modelRoot}; Treffer lassen sich danach über ihre Kennung installieren. Blockiert (Netz).
+     */
+    List<LocalVoiceOffer> search(String query, Path modelRoot) throws LocalVoiceInstallException;
+
+    /**
      * Installiert die Stimme nach {@code modelRoot/<id>}; ist sie vollständig da, passiert nichts. Unterbrochene
      * Downloads werden fortgesetzt, eine halbe Installation ist für den Sidecar nie sichtbar. Blockiert (Netz).
      */
