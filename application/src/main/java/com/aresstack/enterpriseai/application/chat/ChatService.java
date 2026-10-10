@@ -66,6 +66,26 @@ public final class ChatService {
         return id;
     }
 
+    /**
+     * Öffnet eine gespeicherte Konversation wieder (Chat-Historie): gleiche Kennung, Verlauf aus der Ablage. Eine
+     * schon offene Konversation dieser Kennung wird ersetzt, solange in ihr kein Turn läuft.
+     *
+     * @throws IllegalStateException wenn in der offenen Konversation gerade ein Turn läuft
+     */
+    public void restoreConversation(ChatConversationId id, String systemPrompt, List<ChatMessage> history) {
+        if (id == null || history == null) {
+            throw new IllegalArgumentException("id and history must not be null");
+        }
+        ChatConversation conversation = new ChatConversation(id, systemPrompt, history);
+        synchronized (lock) {
+            Session existing = sessions.get(id);
+            if (existing != null && existing.running != null) {
+                throw new IllegalStateException("conversation " + id + " is busy");
+            }
+            sessions.put(id, new Session(conversation));
+        }
+    }
+
     /** @return die Kennungen aller offenen Konversationen in Anlagereihenfolge */
     public List<ChatConversationId> conversationIds() {
         synchronized (lock) {
