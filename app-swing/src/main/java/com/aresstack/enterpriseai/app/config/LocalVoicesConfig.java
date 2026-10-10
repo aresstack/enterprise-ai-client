@@ -26,17 +26,26 @@ public final class LocalVoicesConfig {
     }
 
     public static List<HuggingFaceVoice> curated() {
+        return parse(load());
+    }
+
+    /** Basis-URL des Hugging Face Hubs; leer, wenn die Datei fehlt (dann scheitert nur der Download). */
+    public static String hubEndpoint() {
+        return load().getProperty("hub.endpoint", "").trim();
+    }
+
+    private static Properties load() {
         Properties properties = new Properties();
         InputStream in = LocalVoicesConfig.class.getResourceAsStream(RESOURCE);
         if (in == null) {
-            return Collections.emptyList();
+            return properties;
         }
         try (Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             properties.load(reader);
         } catch (IOException e) {
-            return Collections.emptyList();
+            return new Properties();
         }
-        return parse(properties);
+        return properties;
     }
 
     static List<HuggingFaceVoice> parse(Properties properties) {

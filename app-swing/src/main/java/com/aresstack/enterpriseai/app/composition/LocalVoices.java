@@ -42,15 +42,17 @@ public final class LocalVoices implements LocalVoiceInstaller {
     };
 
     private final List<HuggingFaceVoice> curated;
+    private final String hubEndpoint;
     /** Ob im Prozess schon eine Proxy-Anmeldung läuft (vom Start oder von einem früheren Download). */
     private final AtomicBoolean proxyAuthenticated = new AtomicBoolean();
 
     public LocalVoices() {
-        this(LocalVoicesConfig.curated());
+        this(LocalVoicesConfig.curated(), LocalVoicesConfig.hubEndpoint());
     }
 
-    LocalVoices(List<HuggingFaceVoice> curated) {
+    LocalVoices(List<HuggingFaceVoice> curated, String hubEndpoint) {
         this.curated = curated;
+        this.hubEndpoint = hubEndpoint;
     }
 
     /** Der Start hat den {@link ProxyAuthenticator} aus der gespeicherten Konfiguration gesetzt. */
@@ -79,7 +81,7 @@ public final class LocalVoices implements LocalVoiceInstaller {
 
     @Override
     public List<LocalVoiceOffer> offers(Path modelRoot) {
-        return new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, NO_NETWORK)).offers(modelRoot);
+        return new LocalVoiceService(provisioning(NO_NETWORK)).offers(modelRoot);
     }
 
     @Override
@@ -87,7 +89,7 @@ public final class LocalVoices implements LocalVoiceInstaller {
                         LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
         installProxyAuthentication(network, keePass);
         HttpRoutes routes = HttpRoutes.from(network);
-        new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, routes)).install(voiceId, modelRoot, listener);
+        new LocalVoiceService(provisioning(routes)).install(voiceId, modelRoot, listener);
     }
 
     @Override
@@ -95,11 +97,15 @@ public final class LocalVoices implements LocalVoiceInstaller {
                        LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
         installProxyAuthentication(network, keePass);
         HttpRoutes routes = HttpRoutes.from(network);
-        new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, routes)).update(voiceId, modelRoot, listener);
+        new LocalVoiceService(provisioning(routes)).update(voiceId, modelRoot, listener);
     }
 
     @Override
     public void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException {
-        new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, NO_NETWORK)).remove(voiceId, modelRoot);
+        new LocalVoiceService(provisioning(NO_NETWORK)).remove(voiceId, modelRoot);
+    }
+
+    private HuggingFaceVoiceProvisioning provisioning(HttpRoutePort routes) {
+        return new HuggingFaceVoiceProvisioning(curated, hubEndpoint, routes);
     }
 }

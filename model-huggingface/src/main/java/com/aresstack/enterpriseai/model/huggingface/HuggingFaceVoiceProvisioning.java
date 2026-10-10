@@ -8,7 +8,6 @@ import com.aresstack.enterpriseai.model.api.LocalVoiceProvisioning;
 import com.aresstack.huggingface.hub.HuggingFaceHub;
 import com.aresstack.huggingface.hub.HuggingFaceHubException;
 import com.aresstack.huggingface.hub.download.DownloadProgress;
-import com.aresstack.huggingface.hub.download.DownloadResult;
 import com.aresstack.huggingface.hub.download.ProgressListener;
 
 import java.io.IOException;
@@ -22,31 +21,33 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * {@link LocalVoiceProvisioning} über den Hugging Face Hub mit huggingface4j: lädt die Dateien einer kuratierten
  * Stimme anonym (öffentliche Repositories wie {@code rhasspy/piper-voices}) nach
- * {@code <Modellverzeichnis>/.<id>.download}, setzt abgebrochene Downloads fort ({@code .part}), prüft große
- * Dateien gegen den SHA-256 aus {@code X-Linked-ETag}, wenn der Hub ihn liefert, und verschiebt den fertigen Ordner
- * nach {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn der Sidecar.
+ * {@code <Modellverzeichnis>/.<id>.download}, setzt abgebrochene Downloads fort ({@code .part}), prüft jede Datei
+ * gegen Größe und SHA-256 aus den Hub-Metadaten ({@link HubFileIndex}) und verschiebt den fertigen Ordner nach
+ * {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn der Sidecar.
  */
 public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisioning {
 
     private static final String STAGING_SUFFIX = ".download";
 
     private final List<HuggingFaceVoice> voices;
+    private final String endpoint;
     private final HttpRoutePort routes;
 
     /**
-     * @param voices die kuratierten Stimmen aus der Konfiguration
-     * @param routes Proxy-Route je Ziel (die Route der Anwendung über win-proxy-java)
+     * @param voices   die kuratierten Stimmen aus der Konfiguration
+     * @param endpoint Basis-URL des Hubs aus der Konfiguration (leer: nur Anzeigen und Entfernen gehen)
+     * @param routes   Proxy-Route je Ziel (die Route der Anwendung über win-proxy-java)
      */
-    public HuggingFaceVoiceProvisioning(List<HuggingFaceVoice> voices, HttpRoutePort routes) {
-        if (voices == null || routes == null) {
-            throw new IllegalArgumentException("voices and routes must not be null");
+    public HuggingFaceVoiceProvisioning(List<HuggingFaceVoice> voices, String endpoint, HttpRoutePort routes) {
+        if (voices == null || endpoint == null || routes == null) {
+            throw new IllegalArgumentException("voices, endpoint and routes must not be null");
         }
         this.voices = Collections.unmodifiableList(new ArrayList<HuggingFaceVoice>(voices));
+        this.endpoint = endpoint.trim();
         this.routes = routes;
     }
 
@@ -81,6 +82,9 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
 
     private void download(HuggingFaceVoice voice, Path modelRoot, Path target,
                           final LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
+        if (endpoint.isEmpty()) {
+            throw new LocalVoiceInstallException("Keine Hugging-Face-Adresse konfiguriert (hub.endpoint).");
+        }
         Path staging = modelRoot.resolve("." + voice.id() + STAGING_SUFFIX);
         try {
             Files.createDirectories(staging);
@@ -88,14 +92,15 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
             throw new LocalVoiceInstallException("Modellverzeichnis nicht beschreibbar: " + modelRoot + " ("
                     + e.getMessage() + ")", e);
         }
-        HuggingFaceHub hub = HuggingFaceHub.standard().anonymous().proxySelector(new RouteProxySelector(routes))
-                .build();
+        RouteProxySelector proxies = new RouteProxySelector(routes);
+        HuggingFaceHub hub = HuggingFaceHub.standard().endpoint(endpoint).anonymous().proxySelector(proxies).build();
+        HubFileIndex index = new HubFileIndex(endpoint, proxies);
         for (String file : voice.files()) {
             final String name = HuggingFaceVoice.fileName(file);
             Path destination = staging.resolve(name);
-            DownloadResult result;
+            HubFileIndex.Entry expected = expected(index, voice, file);
             try {
-                result = hub.models().model(voice.repository()).file(file).revision(voice.revision())
+                hub.models().model(voice.repository()).file(file).revision(voice.revision())
                         .downloadTo(destination).resume(true).overwrite(false)
                         .onProgress(new ProgressListener() {
                             @Override
@@ -108,7 +113,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
             } catch (RuntimeException e) {
                 throw new LocalVoiceInstallException("Download von " + name + " fehlgeschlagen: " + e, e);
             }
-            verify(destination, result);
+            verify(destination, expected);
         }
         moveIntoPlace(staging, target);
         if (!complete(target, voice)) {
@@ -164,26 +169,52 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         }
     }
 
-    /** SHA-256 gegen {@code X-Linked-ETag} (Git-LFS-Dateien); kleine Git-Dateien haben nur eine SHA-1 als ETag. */
-    private static void verify(Path file, DownloadResult result) throws LocalVoiceInstallException {
-        String etag = result.getEtag();
-        if (etag == null || result.isSkipped()) {
+    /** Größe und SHA-256 der Datei laut Hub; ohne Eintrag stimmt der Pfad der Konfiguration nicht. */
+    private static HubFileIndex.Entry expected(HubFileIndex index, HuggingFaceVoice voice, String file)
+            throws LocalVoiceInstallException {
+        HubFileIndex.Entry entry;
+        try {
+            entry = index.entry(voice.repository(), voice.revision(), file);
+        } catch (IOException | RuntimeException e) {
+            throw new LocalVoiceInstallException("Metadaten von " + HuggingFaceVoice.fileName(file)
+                    + " nicht abrufbar: " + e.getMessage(), e);
+        }
+        if (entry == null) {
+            throw new LocalVoiceInstallException("Datei " + file + " fehlt im Repository " + voice.repository()
+                    + " (Revision " + voice.revision() + ").");
+        }
+        return entry;
+    }
+
+    /** Größe immer, SHA-256 bei LFS-Dateien; bei Abweichung tatsächliche Werte melden und Datei verwerfen. */
+    private static void verify(Path file, HubFileIndex.Entry expected) throws LocalVoiceInstallException {
+        long size;
+        try {
+            size = Files.size(file);
+        } catch (IOException e) {
+            throw new LocalVoiceInstallException("Größe von " + file.getFileName() + " nicht lesbar: "
+                    + e.getMessage(), e);
+        }
+        String actual = expected.sha256 == null ? null : sha256(file);
+        if (size == expected.size && (expected.sha256 == null || expected.sha256.equals(actual))) {
             return;
         }
-        String expected = etag.replace("W/", "").replace("\"", "").trim().toLowerCase(Locale.ROOT);
-        if (!expected.matches("[0-9a-f]{64}")) {
-            return;
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException ignored) {
+            // die Meldung unten reicht
         }
-        String actual = sha256(file);
-        if (!expected.equals(actual)) {
-            try {
-                Files.deleteIfExists(file);
-            } catch (IOException ignored) {
-                // die Meldung unten reicht
-            }
-            throw new LocalVoiceInstallException("Prüfsumme von " + file.getFileName() + " stimmt nicht (erwartet "
-                    + expected + ", erhalten " + actual + "); Datei verworfen.");
+        StringBuilder message = new StringBuilder("Prüfsumme von ").append(file.getFileName())
+                .append(" stimmt nicht (erwartet ");
+        if (expected.sha256 != null) {
+            message.append("SHA-256 ").append(expected.sha256).append(", ");
         }
+        message.append(expected.size).append(" Bytes; erhalten ");
+        if (actual != null) {
+            message.append("SHA-256 ").append(actual).append(", ");
+        }
+        message.append(size).append(" Bytes); Datei verworfen.");
+        throw new LocalVoiceInstallException(message.toString());
     }
 
     private static String sha256(Path file) throws LocalVoiceInstallException {

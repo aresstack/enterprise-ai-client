@@ -6,4 +6,6 @@ dependencies {
     api project(':http-api')
     // Angelos Java-8-Hub-Client; bleibt im Adapter (implementation, nicht api).
     implementation libs.huggingface4j
+    // Hub-Metadaten (Größe, LFS-SHA-256) je Datei lesen; nur paketintern.
+    implementation libs.gson
 }
