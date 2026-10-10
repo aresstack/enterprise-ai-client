@@ -55,7 +55,7 @@ final class HuggingFaceVitsVoiceReader implements VoiceFormatReader {
             VoiceTextEncoder encoder = new VitsCharacterEncoder(Collections.unmodifiableMap(vocabulary), addBlank,
                     lowerCase);
             return new LocalVoice(directory.getFileName().toString(), FAMILY, graph, sampleRate, encoder,
-                    VoiceParameters.DEFAULT);
+                    VoiceParameters.defaults());
         } catch (IOException | RuntimeException unreadable) {
             LOG.warning("Stimme in " + directory + " nicht lesbar: " + unreadable.getMessage());
             return null;

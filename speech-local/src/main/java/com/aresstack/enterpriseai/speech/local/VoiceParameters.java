@@ -3,8 +3,10 @@ package com.aresstack.enterpriseai.speech.local;
 /** VITS-Parameter einer Stimme ({@code inference} einer Piper-Stimme) und Sprecher ({@code -1} = keiner). */
 final class VoiceParameters {
 
-    /** Piper-Standardwerte. */
-    static final VoiceParameters DEFAULT = new VoiceParameters(0.667f, 1.0f, 0.8f, -1L);
+    /** @return die Piper-Standardwerte */
+    static VoiceParameters defaults() {
+        return new VoiceParameters(0.667f, 1.0f, 0.8f, -1L);
+    }
 
     final float noiseScale;
     final float lengthScale;

@@ -53,7 +53,7 @@ final class PiperVoiceReader implements VoiceFormatReader {
             int sampleRate = VoiceJson.intValue(VoiceJson.object(config.get("audio")).get("sample_rate"), 22050);
             Map<String, Object> inference = VoiceJson.object(config.get("inference"));
             int speakers = VoiceJson.intValue(config.get("num_speakers"), 1);
-            VoiceParameters defaults = VoiceParameters.DEFAULT;
+            VoiceParameters defaults = VoiceParameters.defaults();
             VoiceParameters parameters = new VoiceParameters(
                     VoiceJson.floatValue(inference.get("noise_scale"), defaults.noiseScale),
                     VoiceJson.floatValue(inference.get("length_scale"), defaults.lengthScale),
