@@ -46,7 +46,8 @@ final class CodeBlockPanel extends JPanel {
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        // Ab der Kappung bei 320 px scrollt der Block vertikal, statt die restlichen Zeilen abzuschneiden.
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         int lineCount = Math.max(1, textArea.getLineCount());
         int height = Math.min(320, lineCount * textArea.getFontMetrics(textArea.getFont()).getHeight() + 14);
         scrollPane.setPreferredSize(new Dimension(200, height));

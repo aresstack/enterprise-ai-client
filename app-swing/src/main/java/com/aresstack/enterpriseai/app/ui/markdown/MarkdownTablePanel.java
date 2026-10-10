@@ -38,7 +38,8 @@ final class MarkdownTablePanel extends JScrollPane {
         setViewportView(table);
         setBorder(BorderFactory.createLineBorder(theme.getSeparatorColor()));
         setHorizontalScrollBarPolicy(HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_NEVER);
+        // Ab der Kappung bei 320 px scrollt die Tabelle vertikal, statt die restlichen Zeilen abzuschneiden.
+        setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_AS_NEEDED);
         int height = header.getPreferredSize().height + table.getRowHeight() * Math.max(1, table.getRowCount()) + 4;
         setPreferredSize(new Dimension(400, Math.min(320, height)));
     }
