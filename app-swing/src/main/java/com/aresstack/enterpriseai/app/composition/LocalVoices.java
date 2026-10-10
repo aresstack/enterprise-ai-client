@@ -51,12 +51,13 @@ public final class LocalVoices implements LocalVoiceInstaller {
     }
 
     /**
-     * Proxy-Anmeldung BASIC mit den Einstellungen des Entwurfs: Beim Erststart (oder nach geänderten Zugangsdaten
-     * im Dialog) hat {@code EnterpriseAiClientMain} den {@link ProxyAuthenticator} noch nicht bzw. mit alten Werten
-     * gesetzt; ohne ihn scheitert der Download am Proxy mit 407. Gleicher Weg wie beim Start (KeePass, Pairing).
+     * Proxy-Anmeldung BASIC mit den Einstellungen des Entwurfs, nur wenn der Prozess noch keine hat: Beim Erststart
+     * hat {@code EnterpriseAiClientMain} den {@link ProxyAuthenticator} noch nicht gesetzt; ohne ihn scheitert der
+     * Download am Proxy mit 407. Eine laufende Anmeldung bleibt unangetastet (kein Entwurf ersetzt sie, ein
+     * Speicher-Pairing bleibt gültig); geänderte Zugangsdaten greifen wie bisher nach dem Neustart.
      */
     static void installProxyAuthentication(NetworkConfig network, KeePassConfig keePass) {
-        if (network.proxyAuthMode() != ProxyAuthMode.BASIC || network.proxyCredentialRef() == null
+        if (ProxyAuthenticator.installed() || network.proxyAuthMode() != ProxyAuthMode.BASIC || network.proxyCredentialRef() == null
                 || keePass == null || !keePass.enabled()) {
             return;
         }

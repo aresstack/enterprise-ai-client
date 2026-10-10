@@ -29,6 +29,8 @@ public final class ProxyAuthenticator extends Authenticator {
 
     private static final Logger LOG = Logger.getLogger(ProxyAuthenticator.class.getName());
 
+    private static volatile boolean installed;
+
     private final SecretProvider secrets;
     private final SecretRef ref;
 
@@ -47,8 +49,14 @@ public final class ProxyAuthenticator extends Authenticator {
             System.setProperty(TUNNELING_DISABLED_SCHEMES, "");
         }
         Authenticator.setDefault(authenticator);
+        installed = true;
         LOG.info("Proxy-Anmeldung BASIC aus KeePass-Eintrag " + ref + " eingerichtet");
         return authenticator;
+    }
+
+    /** Ob im Prozess schon eine Proxy-Anmeldung gesetzt ist ({@code Authenticator.getDefault} gibt es erst ab Java 9). */
+    public static boolean installed() {
+        return installed;
     }
 
     public SecretRef ref() {
