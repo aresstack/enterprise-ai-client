@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.app.composition;
 
-import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.LocalVoicesConfig;
+import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.net.HttpRoutes;
 import com.aresstack.enterpriseai.app.settings.LocalVoiceInstaller;
 import com.aresstack.enterpriseai.application.localruntime.LocalVoiceService;
@@ -49,9 +49,9 @@ public final class LocalVoices implements LocalVoiceInstaller {
     }
 
     @Override
-    public void install(AppConfig config, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+    public void install(NetworkConfig network, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException {
-        HttpRoutes routes = HttpRoutes.from(config.network());
+        HttpRoutes routes = HttpRoutes.from(network);
         new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, routes)).install(voiceId, modelRoot, listener);
     }
 }

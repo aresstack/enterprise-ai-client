@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.app.settings;
 
-import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
@@ -16,6 +16,6 @@ public interface LocalVoiceInstaller {
 
     List<LocalVoiceOffer> offers(Path modelRoot);
 
-    void install(AppConfig config, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+    void install(NetworkConfig network, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException;
 }

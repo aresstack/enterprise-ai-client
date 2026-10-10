@@ -556,7 +556,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
     }
 
     /**
-     * Lädt mit den Netzwerkeinstellungen des Entwurfs; der Rest des Entwurfs muss dafür nicht vollständig sein.
+     * Lädt mit den Netzwerkeinstellungen des Entwurfs; nur dieser Abschnitt wird geprüft, der Rest darf noch
+     * unvollständig sein (Erststart).
      * Fortschritt höchstens einmal je Prozentpunkt und Datei.
      */
     @Override
@@ -569,11 +570,12 @@ public final class FileSettingsActions implements SettingsDialogActions {
             return;
         }
         final Path root = localModelRoot(form);
-        final AppConfig config;
+        final NetworkConfig network;
         try {
-            config = draftConfig(form);
+            network = AppConfigLoader.networkSection(SettingsMapper.merge(current(), form));
         } catch (AppConfigException e) {
-            progress.finished(false, "Entwurf unvollständig: " + join(SettingsMapper.describe(e.problems())));
+            progress.finished(false, "Netzwerkeinstellungen unvollständig: "
+                    + join(SettingsMapper.describe(e.problems())));
             return;
         } catch (IOException | RuntimeException e) {
             progress.finished(false, "Entwurf nicht lesbar (" + e.getClass().getSimpleName() + ").");
@@ -588,7 +590,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     boolean ok;
                     String message;
                     try {
-                        voices.install(config, voiceId, root, new LocalVoiceInstallListener() {
+                        voices.install(network, voiceId, root, new LocalVoiceInstallListener() {
                             @Override
                             public void progress(String file, long done, long total) {
                                 final String line = total > 0
@@ -652,20 +654,6 @@ public final class FileSettingsActions implements SettingsDialogActions {
         return AppPaths.appDirectory().resolve(AppConfigLoader.DEFAULT_LOCAL_MODEL_DIRECTORY);
     }
 
-    /** Der Entwurf durch den Loader, mit Platzhaltern für noch fehlende Chat- und Embedding-Angaben. */
-    private AppConfig draftConfig(SettingsForm form) throws IOException {
-        SettingsForm.Builder probe = form.toBuilder();
-        if (form.chatModel().isEmpty()) {
-            probe.chatModel("-");
-        }
-        if (form.embeddingModel().isEmpty()) {
-            probe.embeddingModel("-");
-        }
-        if (form.embeddingDimension().isEmpty()) {
-            probe.embeddingDimension("1");
-        }
-        return AppConfigLoader.fromProperties(SettingsMapper.merge(current(), probe.build()));
-    }
 
     /** Die zuletzt bekannten Modelle mit einer Meldung, warum diesmal nichts abgefragt wurde. */
     private ModelCatalogSnapshot failed(String message) {

@@ -35,7 +35,7 @@ final class LocalVoiceRow {
     private final JComboBox<Choice> combo = new JComboBox<Choice>();
     private final JLabel status = new JLabel(" ");
     private final ComicButton action;
-    private boolean loadedOnce;
+    private String loadedRoot;
     private boolean busy;
 
     /** @param useVoice übernimmt den gespeicherten Wert ({@code local:<id>}) als TTS-Auswahl */
@@ -73,15 +73,20 @@ final class LocalVoiceRow {
         updateButton();
     }
 
-    /** Beim ersten Anzeigen des Reiters den Installationsstand lesen. */
+    /** Beim Anzeigen des Reiters den Installationsstand lesen, wenn sich das Modellverzeichnis geändert hat. */
     void shown() {
-        if (!loadedOnce) {
+        if (!busy && !root().equals(loadedRoot)) {
             reload(null);
         }
     }
 
+    private String root() {
+        String root = form.get().localModelRoot();
+        return root == null ? "" : root.trim();
+    }
+
     private void reload(final String select) {
-        loadedOnce = true;
+        loadedRoot = root();
         actions.localVoices(form.get(), new Consumer<List<LocalVoiceOffer>>() {
             @Override
             public void accept(List<LocalVoiceOffer> offers) {
