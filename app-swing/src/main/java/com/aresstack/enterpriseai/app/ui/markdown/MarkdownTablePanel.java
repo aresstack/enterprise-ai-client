@@ -7,7 +7,6 @@ import com.vladsch.flexmark.util.ast.Node;
 
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
-import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -19,11 +18,15 @@ import java.awt.Font;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Rendert eine Markdown-Tabelle als nicht editierbare Swing-Tabelle (aus askai-java8 {@code MarkdownTablePanel}). */
-final class MarkdownTablePanel extends JScrollPane {
+/**
+ * Rendert eine Markdown-Tabelle als nicht editierbare Swing-Tabelle (aus askai-java8 {@code MarkdownTablePanel}); volle
+ * Höhe bis zur Kappung, darüber vertikal scrollbar, ein nötiger horizontaler Balken wird eingerechnet.
+ */
+final class MarkdownTablePanel extends CappedScrollPane {
 
     MarkdownTablePanel(TableBlock tableBlock, MarkdownTheme theme) {
-        JTable table = new JTable(createModel(tableBlock));
+        super(new JTable(createModel(tableBlock)), 400, 4);
+        JTable table = (JTable) getViewport().getView();
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         table.setRowSelectionAllowed(true);
         table.setColumnSelectionAllowed(false);
@@ -38,14 +41,7 @@ final class MarkdownTablePanel extends JScrollPane {
         header.setFont(theme.getBodyFont().deriveFont(Font.BOLD));
         disableHtml(table, header);
         fitColumns(table);
-
-        setViewportView(table);
         setBorder(BorderFactory.createLineBorder(theme.getSeparatorColor()));
-        setHorizontalScrollBarPolicy(HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        // Ab der Kappung bei 320 px scrollt die Tabelle vertikal, statt die restlichen Zeilen abzuschneiden.
-        setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_AS_NEEDED);
-        int height = header.getPreferredSize().height + table.getRowHeight() * Math.max(1, table.getRowCount()) + 4;
-        setPreferredSize(new Dimension(400, Math.min(320, height)));
     }
 
     /** Zellen und Spaltentitel stammen aus der Modellantwort: nie als Swing-HTML deuten (ein „<html>…“ bleibt Text). */
