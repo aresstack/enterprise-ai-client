@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.settings;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
@@ -615,7 +616,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
 
     /** Hub-Suche mit den Netzwerkeinstellungen des Entwurfs; Ergebnis genau einmal auf dem EDT. */
     @Override
-    public void searchLocalVoices(SettingsForm form, final String query, final LocalVoiceSearchCallback callback) {
+    public void searchLocalVoices(SettingsForm form, final String query, final ModelCategory category,
+                                  final LocalVoiceSearchCallback callback) {
         if (form == null || callback == null) {
             throw new IllegalArgumentException("form and callback must not be null");
         }
@@ -638,7 +640,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     List<LocalVoiceOffer> found = null;
                     String message = null;
                     try {
-                        found = voices.search(draft.network, draft.keePass, query, root);
+                        found = voices.search(draft.network, draft.keePass, query, category, root);
                     } catch (LocalVoiceInstallException e) {
                         message = e.getMessage();
                     } catch (RuntimeException e) {

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
@@ -109,10 +110,12 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * Sucht auf dem Hugging Face Hub nach Stimmen, die der Client ohne Umwandlung lädt (Netzwerkeinstellungen des
-     * Entwurfs); Ergebnis genau einmal auf dem EDT. Installiert wird ein Treffer über {@link #installLocalVoice}.
+     * Sucht auf dem Hugging Face Hub nach Modellen der Kategorie ({@code null} = alle), die der Client ohne Umwandlung
+     * lädt (Netzwerkeinstellungen des Entwurfs); Ergebnis genau einmal auf dem EDT. Installiert wird ein Treffer über
+     * {@link #installLocalVoice}.
      */
-    default void searchLocalVoices(SettingsForm form, String query, LocalVoiceSearchCallback callback) {
+    default void searchLocalVoices(SettingsForm form, String query, ModelCategory category,
+                                   LocalVoiceSearchCallback callback) {
         callback.failed("In dieser Umgebung nicht verfügbar.");
     }
 

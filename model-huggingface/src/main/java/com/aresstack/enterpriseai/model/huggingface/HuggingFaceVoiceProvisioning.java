@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
@@ -81,11 +82,12 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     }
 
     @Override
-    public List<LocalVoiceOffer> search(String query, Path modelRoot) throws LocalVoiceInstallException {
+    public List<LocalVoiceOffer> search(String query, ModelCategory category, Path modelRoot)
+            throws LocalVoiceInstallException {
         requireEndpoint();
         List<HuggingFaceVoice> found;
         try {
-            found = new HubModelSearch(hub(new RouteProxySelector(routes))).search(query);
+            found = new HubModelSearch(hub(new RouteProxySelector(routes))).search(query, category);
         } catch (HuggingFaceHubException e) {
             throw new LocalVoiceInstallException("Suche auf dem Hugging Face Hub fehlgeschlagen: " + e.getMessage(), e);
         } catch (RuntimeException e) {

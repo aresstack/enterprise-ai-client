@@ -54,12 +54,20 @@ final class HubModelSearch {
         this.hub = hub;
     }
 
-    /** Unterstützte Modelle zur Suche (Sprachausgabe, Embeddings, Chat); leer, wenn nichts passt. Blockiert (Netz). */
-    List<HuggingFaceVoice> search(String query) throws HuggingFaceHubException {
-        List<HuggingFaceVoice> found = new ArrayList<HuggingFaceVoice>(voices(query));
+    /**
+     * Unterstützte Modelle zur Suche: Sprachausgabe, Embeddings und Chat, oder nur die genannte Kategorie
+     * ({@code null} = alle drei); leer, wenn nichts passt. Blockiert (Netz).
+     */
+    List<HuggingFaceVoice> search(String query, ModelCategory category) throws HuggingFaceHubException {
+        List<HuggingFaceVoice> found = new ArrayList<HuggingFaceVoice>();
+        if (category == null || category == ModelCategory.TTS) {
+            found.addAll(voices(query));
+        }
         Map<String, ModelSummary> embeddings = new LinkedHashMap<String, ModelSummary>();
-        collect(embeddings, request(query).task("feature-extraction").filter("onnx"), TEXT_LIMIT);
-        collect(embeddings, request(query).task("sentence-similarity").filter("onnx"), TEXT_LIMIT);
+        if (category == null || category == ModelCategory.EMBEDDING) {
+            collect(embeddings, request(query).task("feature-extraction").filter("onnx"), TEXT_LIMIT);
+            collect(embeddings, request(query).task("sentence-similarity").filter("onnx"), TEXT_LIMIT);
+        }
         for (ModelSummary repository : embeddings.values()) {
             HuggingFaceVoice model = textModel(repository.getId(), paths(hub.models().model(repository.getId())
                     .files().execute()), ModelCategory.EMBEDDING);
@@ -68,7 +76,9 @@ final class HubModelSearch {
             }
         }
         Map<String, ModelSummary> chats = new LinkedHashMap<String, ModelSummary>();
-        collect(chats, request(query).task("text-generation").filter("onnx"), TEXT_LIMIT);
+        if (category == null || category == ModelCategory.CHAT) {
+            collect(chats, request(query).task("text-generation").filter("onnx"), TEXT_LIMIT);
+        }
         for (ModelSummary repository : chats.values()) {
             HuggingFaceVoice model = textModel(repository.getId(), paths(hub.models().model(repository.getId())
                     .files().execute()), ModelCategory.CHAT);

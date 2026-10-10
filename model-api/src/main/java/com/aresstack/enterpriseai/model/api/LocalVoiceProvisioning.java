@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.model.api;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 
 import java.nio.file.Path;
@@ -16,10 +17,12 @@ public interface LocalVoiceProvisioning {
     List<LocalVoiceOffer> offers(Path modelRoot);
 
     /**
-     * Sucht beim Anbieter nach Stimmen, die der Client ohne Umwandlung laden kann, mit Installationsstand unter
-     * {@code modelRoot}; Treffer lassen sich danach über ihre Kennung installieren. Blockiert (Netz).
+     * Sucht beim Anbieter nach Modellen der Kategorie ({@code null} = alle lokal unterstützten), die der Client ohne
+     * Umwandlung laden kann, mit Installationsstand unter {@code modelRoot}; Treffer lassen sich danach über ihre
+     * Kennung installieren. Blockiert (Netz).
      */
-    List<LocalVoiceOffer> search(String query, Path modelRoot) throws LocalVoiceInstallException;
+    List<LocalVoiceOffer> search(String query, ModelCategory category, Path modelRoot)
+            throws LocalVoiceInstallException;
 
     /**
      * Installiert die Stimme nach {@code modelRoot/<id>}; ist sie vollständig da, passiert nichts. Unterbrochene

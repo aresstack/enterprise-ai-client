@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.composition;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.LocalVoicesConfig;
 import com.aresstack.enterpriseai.app.config.ProxyAuthMode;
@@ -89,10 +90,10 @@ public final class LocalVoices implements LocalVoiceInstaller {
     }
 
     @Override
-    public List<LocalVoiceOffer> search(NetworkConfig network, KeePassConfig keePass, String query, Path modelRoot)
-            throws LocalVoiceInstallException {
+    public List<LocalVoiceOffer> search(NetworkConfig network, KeePassConfig keePass, String query,
+                                        ModelCategory category, Path modelRoot) throws LocalVoiceInstallException {
         installProxyAuthentication(network, keePass);
-        return new LocalVoiceService(provisioning(HttpRoutes.from(network))).search(query, modelRoot);
+        return new LocalVoiceService(provisioning(HttpRoutes.from(network))).search(query, category, modelRoot);
     }
 
     @Override

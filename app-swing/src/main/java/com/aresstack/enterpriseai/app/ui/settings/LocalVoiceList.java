@@ -1,11 +1,13 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -25,8 +27,8 @@ import java.util.function.Supplier;
  * „Installiert und vorgeschlagen“ im Reiter „Lokale Modelle“: je vorgeschlagene oder installierte Stimme eine Zeile mit Installationsstand und
  * „Installieren“ bzw. „Aktualisieren“ und „Entfernen“, darunter eine Statuszeile mit Fortschritt oder Fehlergrund. Installieren wählt
  * nichts aus: eine installierte Stimme steht danach in der TTS-Liste darüber und wird dort gewählt. Dazu die
- * Hugging-Face-Suche ({@link #searchPanel()}): Suchfeld und Treffer, nur Modelle, die der Client ohne Umwandlung
- * lädt; ihre Zeilen haben dieselben Knöpfe.
+ * Hugging-Face-Suche ({@link #searchPanel()}): Kategorie (Chat, Embeddings, Sprachausgabe oder alle), Suchfeld und
+ * Treffer, nur Modelle, die der Client ohne Umwandlung lädt; ihre Zeilen haben dieselben Knöpfe.
  */
 final class LocalVoiceList {
 
@@ -35,9 +37,13 @@ final class LocalVoiceList {
     static final String UPDATE_LABEL = "Aktualisieren";
     static final String NOT_INSTALLED = "Nicht installiert";
     static final String INSTALLED = "✓ installiert";
-    static final String NONE = "Keine lokalen Stimmen konfiguriert.";
+    static final String NONE = "Keine lokalen Modelle installiert oder vorgeschlagen.";
     static final String SEARCH_LABEL = "Suchen";
     static final String NO_HITS = "Keine im Client ladbaren Modelle gefunden.";
+    static final String ALL_CATEGORIES = "Alle Funktionen";
+    /** Kategorien der Suche, in der Reihenfolge der Auswahl nach „Alle Funktionen“. */
+    private static final ModelCategory[] SEARCH_CATEGORIES = {ModelCategory.CHAT, ModelCategory.EMBEDDING,
+            ModelCategory.TTS};
 
     /** Rückmeldungen an den Reiter. */
     interface Listener {
@@ -60,6 +66,7 @@ final class LocalVoiceList {
     private List<LocalVoiceOffer> offers = Collections.emptyList();
     private final JPanel searchPanel = new JPanel(new BorderLayout(0, 6));
     private final JTextField query = new JTextField(24);
+    private final JComboBox<String> category = FormRows.<String>fittingComboBox();
     private final ComicButton searchButton;
     private final JPanel hits = new JPanel();
     /** {@code null}: noch nicht gesucht. */
@@ -81,7 +88,7 @@ final class LocalVoiceList {
         panel.add(lines, BorderLayout.CENTER);
         panel.add(status, BorderLayout.SOUTH);
 
-        query.setToolTipText("Suchbegriff, z. B. „thorsten“, „piper de“ oder „mms-tts-deu“; leer = beliebteste");
+        query.setToolTipText("Suchbegriff, z. B. „thorsten“, „multilingual-e5“ oder „qwen instruct“; leer = beliebteste");
         query.getAccessibleContext().setAccessibleName("Hugging Face durchsuchen");
         searchButton = new ComicButton(SEARCH_LABEL, null, ComicButton.Accent.ACTION, palette);
         searchButton.setToolTipText("Sucht auf dem Hugging Face Hub über die Netzwerkeinstellungen");
@@ -93,8 +100,15 @@ final class LocalVoiceList {
         };
         searchButton.addActionListener(search);
         query.addActionListener(search);
+        category.addItem(ALL_CATEGORIES);
+        for (ModelCategory searchable : SEARCH_CATEGORIES) {
+            category.addItem(searchable.displayName());
+        }
+        category.setToolTipText("Nur Modelle dieser Funktion suchen");
+        category.getAccessibleContext().setAccessibleName("Funktion der Suche");
         JPanel searchRow = new JPanel(new BorderLayout(8, 0));
         searchRow.setOpaque(false);
+        searchRow.add(category, BorderLayout.WEST);
         searchRow.add(query, BorderLayout.CENTER);
         searchRow.add(searchButton, BorderLayout.EAST);
         hits.setOpaque(false);
@@ -117,7 +131,7 @@ final class LocalVoiceList {
         busy = true;
         updateButtons();
         show("Suche auf dem Hugging Face Hub …", true);
-        actions.searchLocalVoices(form.get(), query.getText(), new LocalVoiceSearchCallback() {
+        actions.searchLocalVoices(form.get(), query.getText(), selectedCategory(), new LocalVoiceSearchCallback() {
             @Override
             public void found(List<LocalVoiceOffer> result) {
                 busy = false;
@@ -133,6 +147,12 @@ final class LocalVoiceList {
                 updateButtons();
             }
         });
+    }
+
+    /** Die gewählte Funktion der Suche; {@code null} = alle. */
+    private ModelCategory selectedCategory() {
+        int index = category.getSelectedIndex();
+        return index <= 0 ? null : SEARCH_CATEGORIES[index - 1];
     }
 
     JPanel panel() {

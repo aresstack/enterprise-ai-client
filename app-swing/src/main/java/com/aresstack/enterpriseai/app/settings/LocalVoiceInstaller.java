@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.settings;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
@@ -17,8 +18,9 @@ public interface LocalVoiceInstaller {
 
     List<LocalVoiceOffer> offers(Path modelRoot);
 
-    /** Hub-Suche nach im Client ladbaren Stimmen; Treffer sind danach über ihre Kennung installierbar. */
-    List<LocalVoiceOffer> search(NetworkConfig network, KeePassConfig keePass, String query, Path modelRoot)
+    /** Hub-Suche nach im Client ladbaren Modellen einer Kategorie ({@code null} = alle); danach installierbar. */
+    List<LocalVoiceOffer> search(NetworkConfig network, KeePassConfig keePass, String query, ModelCategory category,
+                                 Path modelRoot)
             throws LocalVoiceInstallException;
 
     /** @param keePass KeePass-Abschnitt des Entwurfs für die Proxy-Anmeldung (BASIC) oder {@code null} */

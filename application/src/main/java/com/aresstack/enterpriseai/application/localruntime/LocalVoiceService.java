@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.application.localruntime;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
@@ -28,10 +29,11 @@ public final class LocalVoiceService {
         return provisioning.offers(modelRoot);
     }
 
-    /** Stimmen beim Anbieter suchen (nur im Client ladbare Formate); installiert nichts. */
-    public List<LocalVoiceOffer> search(String query, Path modelRoot) throws LocalVoiceInstallException {
+    /** Modelle einer Kategorie ({@code null} = alle) beim Anbieter suchen (nur im Client ladbare Formate). */
+    public List<LocalVoiceOffer> search(String query, ModelCategory category, Path modelRoot)
+            throws LocalVoiceInstallException {
         requireRoot(modelRoot);
-        return provisioning.search(query == null ? "" : query.trim(), modelRoot);
+        return provisioning.search(query == null ? "" : query.trim(), category, modelRoot);
     }
 
     public void install(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)

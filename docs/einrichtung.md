@@ -220,6 +220,10 @@ Top-k bzw. `generation_config.json`. Installierte Chat-Modelle stehen im Compose
 „Lokale Modelle“ → Chat; es rechnet immer nur eine Antwort gleichzeitig. Werkzeug-Chat (Anhänge lesen) läuft nur über
 die Enterprise-API. Mit echten Hub-Modellen ist das ungeprüft.
 
+Über dem Suchfeld wählt „Alle Funktionen“, „Chat“, „Embeddings“ oder „Sprachausgabe (TTS)“, wonach gesucht wird;
+Treffer zeigen ihre Funktion vorn im Namen. Installierte Modelle stehen danach unter „Lokale Modelle“ in der Zeile ihrer
+Funktion zur Wahl.
+
 `speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Spracheingabe (Mikrofon,
 Audiodatei) gehört nicht zum Enterprise-Client.
 
