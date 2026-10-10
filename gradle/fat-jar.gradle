@@ -31,7 +31,9 @@ def servicesPrefix = 'META-INF/services/'
 def excludedFromFatJar = { String name ->
     name == 'META-INF/MANIFEST.MF' || name == 'META-INF/INDEX.LIST' ||
             name ==~ /META-INF\/[^\/]+\.(SF|DSA|RSA|EC)/ ||
-            name.endsWith('module-info.class')
+            name.endsWith('module-info.class') ||
+            // Ant-Standardausschlüsse: Gradle kopiert sie aus zipTree nie (z. B. .gitignore in rome-utils über Tika).
+            name.tokenize('/').last() ==~ /(.*~|#.*#|\.#.*|%.*%|\._.*|\.cvsignore|vssver\.scc|\.DS_Store|\.gitattributes|\.gitignore|\.gitmodules|\.hgignore|\.hgsub|\.hgsubstate|\.hgtags|\.bzrignore)/
 }
 
 // Provider-Zeilen einer ServiceLoader-Datei ohne Kommentare und Leerzeilen.
