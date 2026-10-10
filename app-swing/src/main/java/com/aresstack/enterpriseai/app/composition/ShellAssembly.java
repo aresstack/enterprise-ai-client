@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.app.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.app.chat.RagChatBinding;
 import com.aresstack.enterpriseai.app.chat.ToolSupport;
 import com.aresstack.enterpriseai.app.config.AppPaths;
+import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
@@ -97,11 +98,13 @@ public final class ShellAssembly {
         final KnowledgeSourcesController sources = knowledgeSources(root);
         workspace.setKnowledgeSourceActions(sources);
         final ChatWorkspacePanel drawer = workspace;
-        // Kein RAG-Schalter (wie askai arch): gesucht wird, sobald Wissensquellen konfiguriert sind; welche, sagen
-        // die Häkchen im Reiter „Wissensquellen“.
+        // Kein RAG-Schalter (wie askai arch): gesucht wird, sobald Wissensquellen angebunden sind; welche, sagen
+        // die Häkchen im Reiter „Wissensquellen“. Nur konfigurierte, aber nicht angebundene Quellen schalten RAG
+        // nicht ein (sonst würde ungefiltert im ganzen Index gesucht).
+        final KnowledgeSourceSelection selection = root.sourceSelection();
         sources.attach(items -> {
             drawer.setKnowledgeSources(items);
-            chatModel.setRagEnabled(!items.isEmpty());
+            chatModel.setRagEnabled(!items.isEmpty() && selection.isRestricted());
         });
         final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources);
         chatShell.composer().setModelAction(() -> {
