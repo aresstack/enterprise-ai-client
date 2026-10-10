@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.net.HttpRoutes;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
+import com.aresstack.enterpriseai.app.ui.settings.LocalVoiceInstallProgress;
 import com.aresstack.enterpriseai.app.ui.settings.NetworkLogListener;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
@@ -19,7 +20,11 @@ import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
+import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
+import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
+import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 
 import java.io.IOException;
@@ -59,6 +64,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private final Executor ui;
     private final ModelCatalogLoader models;
     private final JavaRuntimeSelectionService javaRuntimes;
+    private final LocalVoiceInstaller voices;
 
     /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
@@ -105,6 +111,18 @@ public final class FileSettingsActions implements SettingsDialogActions {
                                ConnectionChecker connectionChecker, ConfigurationCheck check,
                                ModelCatalogLoader models, JavaRuntimeSelectionService javaRuntimes,
                                Executor worker, Executor ui) {
+        this(file, secretChecker, connectionChecker, check, models, javaRuntimes, null, worker, ui);
+    }
+
+    /**
+     * Wie oben, dazu die lokalen Stimmen der Sprachausgabe.
+     *
+     * @param voices Anzeige und Installation lokaler Stimmen oder {@code null} (dann bleibt die Liste leer)
+     */
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
+                               ConnectionChecker connectionChecker, ConfigurationCheck check,
+                               ModelCatalogLoader models, JavaRuntimeSelectionService javaRuntimes,
+                               LocalVoiceInstaller voices, Executor worker, Executor ui) {
         if (file == null || check == null || worker == null || ui == null) {
             throw new IllegalArgumentException("file, check, worker and ui must not be null");
         }
@@ -116,6 +134,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
         this.ui = ui;
         this.models = models;
         this.javaRuntimes = javaRuntimes;
+        this.voices = voices;
     }
 
     /** Wie viel vom Ende der Protokolldatei „Technische Details“ zeigt. */
@@ -500,6 +519,152 @@ public final class FileSettingsActions implements SettingsDialogActions {
         } catch (RuntimeException rejected) {
             onResult.accept(JavaRuntimeOverview.empty());
         }
+    }
+
+    @Override
+    public void localVoices(SettingsForm form, final Consumer<List<LocalVoiceOffer>> onResult) {
+        if (form == null || onResult == null) {
+            throw new IllegalArgumentException("form and onResult must not be null");
+        }
+        if (voices == null) {
+            onResult.accept(Collections.<LocalVoiceOffer>emptyList());
+            return;
+        }
+        final Path root = localModelRoot(form);
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    List<LocalVoiceOffer> result;
+                    try {
+                        result = voices.offers(root);
+                    } catch (RuntimeException e) {
+                        result = Collections.emptyList();
+                    }
+                    final List<LocalVoiceOffer> delivered = result;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            onResult.accept(delivered);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            onResult.accept(Collections.<LocalVoiceOffer>emptyList());
+        }
+    }
+
+    /**
+     * Lädt mit den Netzwerkeinstellungen des Entwurfs; der Rest des Entwurfs muss dafür nicht vollständig sein.
+     * Fortschritt höchstens einmal je Prozentpunkt und Datei.
+     */
+    @Override
+    public void installLocalVoice(SettingsForm form, final String voiceId, final LocalVoiceInstallProgress progress) {
+        if (form == null || voiceId == null || progress == null) {
+            throw new IllegalArgumentException("form, voiceId and progress must not be null");
+        }
+        if (voices == null) {
+            progress.finished(false, "In dieser Umgebung nicht verfügbar.");
+            return;
+        }
+        final Path root = localModelRoot(form);
+        final AppConfig config;
+        try {
+            config = draftConfig(form);
+        } catch (AppConfigException e) {
+            progress.finished(false, "Entwurf unvollständig: " + join(SettingsMapper.describe(e.problems())));
+            return;
+        } catch (IOException | RuntimeException e) {
+            progress.finished(false, "Entwurf nicht lesbar (" + e.getClass().getSimpleName() + ").");
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                private String lastLine = "";
+
+                @Override
+                public void run() {
+                    boolean ok;
+                    String message;
+                    try {
+                        voices.install(config, voiceId, root, new LocalVoiceInstallListener() {
+                            @Override
+                            public void progress(String file, long done, long total) {
+                                final String line = total > 0
+                                        ? file + ": " + (done * 100 / total) + " % von " + megabytes(total)
+                                        : file + ": " + megabytes(done);
+                                if (line.equals(lastLine)) {
+                                    return;
+                                }
+                                lastLine = line;
+                                ui.execute(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        progress.progress(line);
+                                    }
+                                });
+                            }
+                        });
+                        ok = true;
+                        message = "Installiert in " + root.resolve(voiceId);
+                    } catch (LocalVoiceInstallException e) {
+                        ok = false;
+                        message = e.getMessage();
+                    } catch (RuntimeException e) {
+                        ok = false;
+                        message = "Installation fehlgeschlagen: " + e;
+                    }
+                    final boolean installed = ok;
+                    final String result = message;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            progress.finished(installed, result);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            progress.finished(false, "Installation konnte nicht gestartet werden.");
+        }
+    }
+
+    @Override
+    public String localVoiceSelection(String voiceId) {
+        return LocalSidecarModelCatalogAdapter.CATALOG_ID + ":" + voiceId;
+    }
+
+    private static String megabytes(long bytes) {
+        return String.format(java.util.Locale.GERMAN, "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+
+    /** Modellverzeichnis des Entwurfs; leer heißt wie beim Start {@code <Anwendungsverzeichnis>/local-models}. */
+    static Path localModelRoot(SettingsForm form) {
+        String root = form.localModelRoot() == null ? "" : form.localModelRoot().trim();
+        if (!root.isEmpty()) {
+            try {
+                return java.nio.file.Paths.get(root);
+            } catch (java.nio.file.InvalidPathException ignored) {
+                // wie leer behandeln
+            }
+        }
+        return AppPaths.appDirectory().resolve(AppConfigLoader.DEFAULT_LOCAL_MODEL_DIRECTORY);
+    }
+
+    /** Der Entwurf durch den Loader, mit Platzhaltern für noch fehlende Chat- und Embedding-Angaben. */
+    private AppConfig draftConfig(SettingsForm form) throws IOException {
+        SettingsForm.Builder probe = form.toBuilder();
+        if (form.chatModel().isEmpty()) {
+            probe.chatModel("-");
+        }
+        if (form.embeddingModel().isEmpty()) {
+            probe.embeddingModel("-");
+        }
+        if (form.embeddingDimension().isEmpty()) {
+            probe.embeddingDimension("1");
+        }
+        return AppConfigLoader.fromProperties(SettingsMapper.merge(current(), probe.build()));
     }
 
     /** Die zuletzt bekannten Modelle mit einer Meldung, warum diesmal nichts abgefragt wurde. */

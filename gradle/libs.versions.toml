@@ -20,6 +20,7 @@ flexmark = "0.62.2"
 mermaidJava = "0.2.0-beta.2"
 tika = "2.9.1"
 commonsNet = "3.9.0"
+huggingface4j = "0.1.1"
 
 [libraries]
 # Test
@@ -69,3 +70,6 @@ tika-parsers-standard = { module = "org.apache.tika:tika-parsers-standard-packag
 
 # source-ftp: FTP/MVS wie MainframeMate (Apache Commons Net); nur in source-ftp als implementation.
 commons-net = { module = "commons-net:commons-net", version.ref = "commonsNet" }
+
+# model-huggingface: Stimmen für den lokalen Sidecar vom Hugging Face Hub (Angelos Bibliothek, Java 8, nur Gson).
+huggingface4j = { module = "com.aresstack:huggingface4j", version.ref = "huggingface4j" }

@@ -84,6 +84,10 @@ final class ModuleRegistry {
                 .module("model-sidecar", "model.sidecar", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
                         "speech-api", "chat-api", "embedding-api")
 
+                // Stimmen für den Sidecar vom Hugging Face Hub (huggingface4j), Proxy-Route über http-api.
+                .module("model-huggingface", "model.huggingface", ModuleKind.ADAPTER, "Modelle", "domain",
+                        "model-api", "http-api")
+
                 // Sprachausgabe: neutraler Port (Modell aus der Katalog-Kategorie TTS, Audio als WAV).
                 .module("speech-api", "speech.api", ModuleKind.PORT, "Sprache", "domain")
 
@@ -106,7 +110,7 @@ final class ModuleRegistry {
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
                         "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api", "source-ftp",
-                        "source-ndv")
+                        "source-ndv", "model-huggingface")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

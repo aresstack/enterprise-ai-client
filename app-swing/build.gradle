@@ -38,6 +38,7 @@ dependencies {
     // Modellverwaltung: Katalog der Enterprise-API und optionaler lokaler Java-21-Sidecar.
     implementation project(':model-kipitz')
     implementation project(':model-sidecar')
+    implementation project(':model-huggingface')
     implementation project(':speech-api')
     // Proxy je Ziel in den Modi von win-proxy-java (PAC per PowerShell/VBScript/Windows-Einstellungen, fester
     // Proxy, ...): app.net.HttpRoutes. Bringt GraalJS mit; das Fat Jar führt dessen ServiceLoader-Dateien zusammen.

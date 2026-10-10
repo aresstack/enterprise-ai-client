@@ -53,6 +53,8 @@ import java.util.regex.Pattern;
 public final class AppConfigLoader {
 
     public static final String EXAMPLE_RESOURCE = "enterprise-ai-client.example.properties";
+    /** Modellverzeichnis des Sidecars unter dem Anwendungsverzeichnis, wenn {@code models.local.modelRoot} fehlt. */
+    public static final String DEFAULT_LOCAL_MODEL_DIRECTORY = "local-models";
 
     private static final Pattern SOURCE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
     private static final String SOURCE_ID_RULE = "Quell-ID muss dem Muster [A-Za-z0-9][A-Za-z0-9._-]* entsprechen";
@@ -281,7 +283,7 @@ public final class AppConfigLoader {
         }
         Path java = r.path("models.local.java", null);
         Path jar = r.path("models.local.sidecarJar", null);
-        Path modelRoot = r.path("models.local.modelRoot", AppPaths.appDirectory().resolve("local-models"));
+        Path modelRoot = r.path("models.local.modelRoot", AppPaths.appDirectory().resolve(DEFAULT_LOCAL_MODEL_DIRECTORY));
         if (jar == null) {
             // Ohne Eintrag: neben dem Client-Jar, im Anwendungs- und im Modellverzeichnis suchen.
             jar = SidecarJarLocator.find(modelRoot);

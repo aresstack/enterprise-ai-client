@@ -70,6 +70,8 @@ public final class SettingsPanel extends JPanel {
             "Sprachausgabe", "Technische Details"};
     /** Index des Reiters „Modelle“ (Auswahl je Kategorie). */
     static final int MODELS_TAB = 3;
+    /** Index der Kategorie „Sprachausgabe“. */
+    static final int SPEECH_TAB = 4;
     /** Index der Kategorie „Technische Details“ (Protokoll). */
     static final int TECHNICAL_TAB = 5;
 
@@ -130,7 +132,7 @@ public final class SettingsPanel extends JPanel {
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
         this.modelsTab = new ModelsTab(actions, current, palette);
-        this.speechTab = new SpeechTab(palette);
+        this.speechTab = new SpeechTab(actions, current, modelsTab, palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START
@@ -394,6 +396,8 @@ public final class SettingsPanel extends JPanel {
         cards.show(deck, name);
         if (TAB_LABELS[MODELS_TAB].equals(name)) {
             modelsTab.shown();
+        } else if (TAB_LABELS[SPEECH_TAB].equals(name)) {
+            speechTab.shown();
         } else if (TAB_LABELS[TECHNICAL_TAB].equals(name)) {
             loadTechnicalDetails();
         }
