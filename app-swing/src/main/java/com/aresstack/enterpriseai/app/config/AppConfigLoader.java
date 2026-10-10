@@ -366,7 +366,8 @@ public final class AppConfigLoader {
         boolean requiresLogin = r.bool(prefix + "requiresLogin", credentialRef != null);
         int connect = r.integer(prefix + "connectTimeoutMillis", 15000, 1, MAX_TIMEOUT);
         int read = r.integer(prefix + "readTimeoutMillis", 30000, 1, MAX_TIMEOUT);
-        String userAgent = r.text(prefix + "userAgent", null);
+        // Eigener Wert der Quelle vor network.http.userAgent; ohne beide gilt der Standard des Adapters.
+        String userAgent = r.text(prefix + "userAgent", r.text("network.http.userAgent", null));
         List<String> namespaces = r.list(prefix + "linkNamespaces");
         if (apiUrl == null) {
             return null;

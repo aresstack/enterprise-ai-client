@@ -238,7 +238,10 @@ public final class ConnectionProbe {
                     out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, embeddingModels + ": " + route.describe()));
                     return;
                 }
-                Fetched fetched = fetch(embeddingModels, route, token, out, false);
+                // Den Chat-Key nur an den Embedding-Dienst schicken, wenn er derselbe Eintrag ist.
+                boolean sameKey = config.embedding().apiKeyRef() == null
+                        || config.embedding().apiKeyRef().equals(config.chat().apiKeyRef());
+                Fetched fetched = fetch(embeddingModels, route, sameKey ? token : null, out, false);
                 if (fetched.code != HttpURLConnection.HTTP_OK) {
                     out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, "GET " + embeddingModels + ": HTTP "
                             + fetched.code + "; Embedding-Modell nicht geprüft."));
