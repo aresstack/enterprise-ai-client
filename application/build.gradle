@@ -9,6 +9,7 @@ dependencies {
     api project(':security-api')
     api project(':acp-client-api')
     api project(':mcp-runtime-api')
+    api project(':resource-api')
 }
 
 dependencies {

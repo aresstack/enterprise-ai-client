@@ -49,7 +49,7 @@ Moduls liegen nur dort (geprüft).
 | Modul | Rolle | Basispaket (`com.aresstack.enterpriseai.`) | darf sehen | Strang / AP |
 |---|---|---|---|---|
 | `domain` | DOMAIN | `domain` | – | Kern; Unterpakete je Strang, siehe unten |
-| `application` | APPLICATION | `application` | domain, alle `*-api` | AP10, AP20, AP21, AP23 |
+| `application` | APPLICATION | `application` | domain, alle `*-api` | AP10, AP20, AP21, AP23; Tamias und Chalcotheca (`application.resource`, 0.1.15) |
 | `chat-api` | PORT | `chat.api` | domain | A (AP2) |
 | `chat-openai` | ADAPTER | `chat.openai` | domain, chat-api | A (AP3) |
 | `embedding-api` | PORT | `embedding.api` | domain | C (AP5) |
@@ -60,6 +60,8 @@ Moduls liegen nur dort (geprüft).
 | `source-mediawiki` | ADAPTER | `source.mediawiki` | domain, source-api, http-api | E (AP12) |
 | `source-confluence` | ADAPTER | `source.confluence` | domain, source-api, security-api, http-api | F (AP15) |
 | `source-localfiles` | ADAPTER | `source.localfiles` | domain, source-api, document-api | Dateien (0.1.10) |
+| `resource-api` | PORT | `resource.api` | domain | Ressourcenschicht aus corenth: AcquisitionPort, Bronze (0.1.15) |
+| `resource-holkas` | ADAPTER | `resource.holkas` | domain, resource-api, source-api | Holkas-Connectoren über den Quellen (0.1.15) |
 | `document-api` | PORT | `document.api` | domain | Dokumente (corenth deigma) |
 | `document-tika` | ADAPTER | `document.tika` | document-api | Dokumente (Tika) |
 | `http-api` | PORT | `http.api` | domain | N (Netz) |

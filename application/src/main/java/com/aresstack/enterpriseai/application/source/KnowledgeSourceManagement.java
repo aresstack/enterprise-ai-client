@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * Use Case „Wissensquellen verwalten“: der Dialog „+ Quelle“ bekommt die Quelltypen aller registrierten
  * {@link KnowledgeSourceProvider}, prüft und speichert Entwürfe darüber und entfernt Quellen. Nach corenth sind die
  * Indexdaten einer Quelle abgeleitete Sichten: wer eine Quelle entfernt (oder unter neuer ID speichert), zieht ihre
- * Einträge aus dem Wissensindex zurück, damit RAG und Agent sie nicht mehr finden. Das gehört hierher, nicht in die
+ * Einträge aus dem Wissensindex (und über {@link #withWithdrawal} aus dem Ressourcenarchiv) zurück, damit RAG und Agent sie nicht mehr finden. Das gehört hierher, nicht in die
  * Oberfläche.
  *
  * <p>Ohne {@link SourceDefinitionStore} (keine Konfigurationsdatei) lassen sich Quellen nur lesen und öffnen.
@@ -36,6 +36,7 @@ public final class KnowledgeSourceManagement {
     private final Map<String, KnowledgeSourceProvider> providers;
     private final SourceDefinitionStore store;
     private final KnowledgeIndexPort index;
+    private final List<SourceDataWithdrawal> withdrawals;
 
     /**
      * @param providers ein Provider je Quelltyp, in der Reihenfolge des Dialogs
@@ -44,6 +45,11 @@ public final class KnowledgeSourceManagement {
      */
     public KnowledgeSourceManagement(List<KnowledgeSourceProvider> providers, SourceDefinitionStore store,
                                      KnowledgeIndexPort index) {
+        this(providers, store, index, Collections.<SourceDataWithdrawal>emptyList());
+    }
+
+    private KnowledgeSourceManagement(List<KnowledgeSourceProvider> providers, SourceDefinitionStore store,
+                                      KnowledgeIndexPort index, List<SourceDataWithdrawal> withdrawals) {
         if (providers == null) {
             throw new IllegalArgumentException("providers must not be null");
         }
@@ -59,11 +65,24 @@ public final class KnowledgeSourceManagement {
         this.providers = Collections.unmodifiableMap(byType);
         this.store = store;
         this.index = index;
+        this.withdrawals = Collections.unmodifiableList(new ArrayList<SourceDataWithdrawal>(withdrawals));
     }
 
     /** Dieselbe Verwaltung über einer (anderen) Ablage. */
     public KnowledgeSourceManagement withStore(SourceDefinitionStore value) {
-        return new KnowledgeSourceManagement(new ArrayList<KnowledgeSourceProvider>(providers.values()), value, index);
+        return new KnowledgeSourceManagement(new ArrayList<KnowledgeSourceProvider>(providers.values()), value, index,
+                withdrawals);
+    }
+
+    /** Dieselbe Verwaltung, die beim Entfernen zusätzlich {@code value} zurückzieht (z. B. das Ressourcenarchiv). */
+    public KnowledgeSourceManagement withWithdrawal(SourceDataWithdrawal value) {
+        if (value == null) {
+            throw new IllegalArgumentException("withdrawal must not be null");
+        }
+        List<SourceDataWithdrawal> all = new ArrayList<SourceDataWithdrawal>(withdrawals);
+        all.add(value);
+        return new KnowledgeSourceManagement(new ArrayList<KnowledgeSourceProvider>(providers.values()), store, index,
+                all);
     }
 
     /** Die Quelltypen in der Reihenfolge der Registrierung. */
@@ -206,8 +225,15 @@ public final class KnowledgeSourceManagement {
     }
 
     private void withdraw(String id) {
-        if (index != null && SOURCE_ID.matcher(id).matches()) {
-            index.removeSource(KnowledgeSourceId.of(id));
+        if (!SOURCE_ID.matcher(id).matches()) {
+            return;
+        }
+        KnowledgeSourceId sourceId = KnowledgeSourceId.of(id);
+        if (index != null) {
+            index.removeSource(sourceId);
+        }
+        for (SourceDataWithdrawal withdrawal : withdrawals) {
+            withdrawal.withdraw(sourceId);
         }
     }
 

@@ -196,7 +196,8 @@ public final class ShellAssembly {
                 ports.index().resourceIds(ports.embeddingSpace(), sourceId).size();
         return new KnowledgeSourcesController(root.config().sources(), ports.sources(), root.sourceSelection(),
                 root.indexingBinding(), count,
-                new KnowledgeSourceManagement(ports.sourceProviders(), null, ports.index()), root.uiExecutor(),
+                new KnowledgeSourceManagement(ports.sourceProviders(), null, ports.index())
+                        .withWithdrawal(root.resourceDocuments()::withdraw), root.uiExecutor(),
                 root.workExecutor(),
                 root.clock(), root.zone());
     }

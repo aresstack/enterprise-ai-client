@@ -1,0 +1,5 @@
+description = 'Port der Ressourcenschicht aus corenth (Chalcotheca): AcquisitionPort, Bronze-Inhalte und -Listen.'
+
+dependencies {
+    api project(':domain')
+}

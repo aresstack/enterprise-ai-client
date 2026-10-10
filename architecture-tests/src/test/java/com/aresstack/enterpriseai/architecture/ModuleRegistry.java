@@ -33,7 +33,7 @@ final class ModuleRegistry {
                 .module("domain", "domain", ModuleKind.DOMAIN, "Kern")
                 .module("application", "application", ModuleKind.APPLICATION, "Kern (AP10, AP20, AP21, AP23)",
                         "domain", "chat-api", "embedding-api", "knowledge-api", "source-api", "security-api",
-                        "acp-client-api", "mcp-runtime-api")
+                        "acp-client-api", "mcp-runtime-api", "resource-api")
 
                 .module("chat-api", "chat.api", ModuleKind.PORT, "A", "domain")
                 .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "domain", "chat-api", "http-api")
@@ -58,6 +58,12 @@ final class ModuleRegistry {
                 .module("source-localfiles", "source.localfiles", ModuleKind.ADAPTER, "E",
                         "domain", "source-api", "document-api")
 
+                // Ressourcenschicht aus corenth: AcquisitionPort und Bronze-Typen (Port), Holkas-Connectoren über
+                // den Quellen-Ports (äußerer Adapterring, keine UI-API).
+                .module("resource-api", "resource.api", ModuleKind.PORT, "Ressourcen", "domain")
+                .module("resource-holkas", "resource.holkas", ModuleKind.ADAPTER, "Ressourcen",
+                        "domain", "resource-api", "source-api")
+
                 // Dokument-Extraktion (aus corenth deigma): neutraler Port und Adapter mit Apache Tika.
                 .module("document-api", "document.api", ModuleKind.PORT, "Dokumente", "domain")
                 .module("document-tika", "document.tika", ModuleKind.ADAPTER, "Dokumente", "document-api")
@@ -79,7 +85,8 @@ final class ModuleRegistry {
                         "acp-client-api", "mcp-runtime-api", "http-api",
                         "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
-                        "comic-controls", "document-api", "document-tika", "source-localfiles")
+                        "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
+                        "resource-holkas")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

@@ -35,6 +35,10 @@ include 'source-mediawiki'
 include 'source-confluence'
 include 'source-localfiles'
 
+// Ressourcenschicht aus corenth: Port (AcquisitionPort, Bronze) und Holkas-Connectoren über den Quellen
+include 'resource-api'
+include 'resource-holkas'
+
 // Dokument-Extraktion (aus corenth deigma, Tika wie MainframeMate)
 include 'document-api'
 include 'document-tika'
