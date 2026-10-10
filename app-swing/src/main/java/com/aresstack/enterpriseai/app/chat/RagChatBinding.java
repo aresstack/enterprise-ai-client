@@ -93,7 +93,7 @@ public final class RagChatBinding implements ChatShellActions {
      */
     public RagChatBinding(RagChatUseCase rag, ChatConversationId conversationId, ChatShellModel model,
                           Executor uiExecutor, Executor workExecutor, ZoneId zone) {
-        this(rag, conversationId, model, uiExecutor, workExecutor, zone, RagSourceFilter.ALL);
+        this(rag, conversationId, model, uiExecutor, workExecutor, zone, RagSourceFilter.unrestricted());
     }
 
     /** @param sources welche Quellen RAG durchsucht (je Nachricht gefragt) */

@@ -12,17 +12,19 @@ import java.util.Set;
 public interface RagSourceFilter {
 
     /** Keine Einschränkung: alle Quellen des Index (so lange keine Quelle konfiguriert ist). */
-    RagSourceFilter ALL = new RagSourceFilter() {
-        @Override
-        public boolean isRestricted() {
-            return false;
-        }
+    static RagSourceFilter unrestricted() {
+        return new RagSourceFilter() {
+            @Override
+            public boolean isRestricted() {
+                return false;
+            }
 
-        @Override
-        public Set<KnowledgeSourceId> allowedSources() {
-            return Collections.emptySet();
-        }
-    };
+            @Override
+            public Set<KnowledgeSourceId> allowedSources() {
+                return Collections.emptySet();
+            }
+        };
+    }
 
     /** {@code true}: nur {@link #allowedSources()} durchsuchen; {@code false}: alle Quellen. */
     boolean isRestricted();

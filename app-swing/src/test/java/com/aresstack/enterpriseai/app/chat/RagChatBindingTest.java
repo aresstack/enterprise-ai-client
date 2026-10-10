@@ -455,7 +455,7 @@ public class RagChatBindingTest {
     }
 
     private Fixture fixture(KnowledgeIndexPort indexPort, EmbeddingPort embeddingPort) throws Exception {
-        return fixture(indexPort, embeddingPort, RagSourceFilter.ALL);
+        return fixture(indexPort, embeddingPort, RagSourceFilter.unrestricted());
     }
 
     private Fixture fixture(KnowledgeIndexPort indexPort, EmbeddingPort embeddingPort, final RagSourceFilter filter)
@@ -476,7 +476,7 @@ public class RagChatBindingTest {
         final RagChatBinding binding;
 
         Fixture(RagChatUseCase rag) {
-            this(rag, RagSourceFilter.ALL);
+            this(rag, RagSourceFilter.unrestricted());
         }
 
         Fixture(RagChatUseCase rag, RagSourceFilter filter) {
