@@ -366,17 +366,20 @@ public final class AppConfigLoader {
             return null;
         }
         KnowledgeSourceId sourceId = KnowledgeSourceId.of(id);
+        String lower = type.toLowerCase(Locale.ROOT);
+        boolean enabled = r.bool(prefix + "enabled", true);
+        if ("files".equals(lower)) {
+            return localFiles(r, prefix, sourceId, enabled);
+        }
         SourceScope scope = scope(r, prefix);
         SecretRef credentialRef = r.secretRef(prefix + "credentialRef");
-        boolean enabled = r.bool(prefix + "enabled", true);
-        String lower = type.toLowerCase(Locale.ROOT);
         if ("mediawiki".equals(lower)) {
             return mediaWiki(r, prefix, sourceId, scope, credentialRef, enabled);
         }
         if ("confluence".equals(lower)) {
             return confluence(r, prefix, sourceId, scope, credentialRef, enabled);
         }
-        r.problem(prefix + "type", "unbekannter Quelltyp; erlaubt sind mediawiki und confluence");
+        r.problem(prefix + "type", "unbekannter Quelltyp; erlaubt sind mediawiki, confluence und files");
         return null;
     }
 
@@ -394,6 +397,23 @@ public final class AppConfigLoader {
             r.problem(prefix + "startPoints", "Crawl-Umfang ungültig (siehe Beispielkonfiguration)");
             return SourceScope.of("-");
         }
+    }
+
+    /** Lokales Verzeichnis: Startpunkte Standard {@code .}, Tiefe Standard 20 (praktisch rekursiv). */
+    private static SourceConfig localFiles(ConfigReader r, String prefix, KnowledgeSourceId sourceId, boolean enabled) {
+        Path directory = r.path(prefix + "directory", null);
+        List<String> startPoints = r.list(prefix + "startPoints");
+        int maxDepth = r.integer(prefix + "maxDepth", 20, 0, 100);
+        int maxResources = r.integer(prefix + "maxResources", 5000, 1, 1000000);
+        int maxFileMegabytes = r.integer(prefix + "maxFileMegabytes", 50, 1, 2000);
+        if (directory == null) {
+            r.problem(prefix + "directory", "fehlt (Pflichtangabe: Verzeichnis mit den Dokumenten)");
+            return null;
+        }
+        SourceScope scope = SourceScope.builder()
+                .startPoints(startPoints.isEmpty() ? Collections.singletonList(".") : startPoints)
+                .maxDepth(maxDepth).maxResources(maxResources).build();
+        return new LocalFilesSourceConfig(sourceId, scope, directory, maxFileMegabytes * 1024L * 1024L, enabled);
     }
 
     private static SourceConfig mediaWiki(ConfigReader r, String prefix, KnowledgeSourceId sourceId,

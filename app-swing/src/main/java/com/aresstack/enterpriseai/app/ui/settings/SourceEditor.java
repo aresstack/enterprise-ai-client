@@ -2,7 +2,9 @@ package com.aresstack.enterpriseai.app.ui.settings;
 
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
@@ -18,7 +20,11 @@ final class SourceEditor {
     private final JTextField id;
     private final JLabel typeLabel = new JLabel();
     private final JTextField url;
+    private final FormRows.Row urlRow;
+    private final JButton chooseDirectory;
+    private final FormRows.Row chooseDirectoryRow;
     private final JTextField credentialRef;
+    private final FormRows.Row credentialRefRow;
     private final JTextField startPoints;
     private final JTextField maxDepth;
     private final JTextField maxResources;
@@ -41,11 +47,17 @@ final class SourceEditor {
         rows.component("Typ", typeLabel, null);
         typeLabel.setForeground(palette.getInk());
         url = new JTextField(28);
-        rows.textField(url, "URL", null);
-        credentialRef = rows.textField("KeePass-Eintrag (optional)",
+        urlRow = rows.textField(url, "URL", null);
+        chooseDirectory = new JButton("Verzeichnis wählen …");
+        chooseDirectory.setFocusPainted(false);
+        chooseDirectory.addActionListener(event -> chooseDirectory());
+        chooseDirectoryRow = rows.component(null, chooseDirectory,
+                "Lokale Dateien: Ordner mit Dokumenten (PDF, Word, Excel, PowerPoint, Text, Markdown, HTML ...)");
+        credentialRef = new JTextField(28);
+        credentialRefRow = rows.textField(credentialRef, "KeePass-Eintrag (optional)",
                 "Titel des KeePass-Eintrags mit Benutzername und Passwort; leer = anonym");
         startPoints = rows.textField("Startpunkte",
-                "Kommagetrennt: Seitentitel (MediaWiki) bzw. space:KEY oder page:ID (Confluence)");
+                "Kommagetrennt: Seitentitel (MediaWiki), space:KEY oder page:ID (Confluence) bzw. Unterordner (. = alles)");
         maxDepth = rows.textField("Tiefe", "Wie viele Linkebenen ab den Startpunkten verfolgt werden (0 = nur Startpunkte)");
         maxResources = rows.textField("Höchstzahl Seiten (optional)", "Obergrenze je Lauf; leer = Standard");
         requiresLogin = new JCheckBox("Anmeldung erforderlich");
@@ -75,13 +87,18 @@ final class SourceEditor {
     }
 
     void load(SourceForm source) {
-        type = source.isConfluence() ? SourceForm.TYPE_CONFLUENCE : SourceForm.TYPE_MEDIAWIKI;
+        type = source.isConfluence() ? SourceForm.TYPE_CONFLUENCE
+                : source.isFiles() ? SourceForm.TYPE_FILES : SourceForm.TYPE_MEDIAWIKI;
         enabled = source.enabled();
-        boolean wiki = !source.isConfluence();
+        boolean files = source.isFiles();
+        boolean wiki = !source.isConfluence() && !files;
         id.setText(source.id());
-        typeLabel.setText(wiki ? "MediaWiki (API-URL, z. B. …/w/api.php)" : "Confluence (Basis-URL der Instanz)");
+        typeLabel.setText(files ? "Lokale Dateien (Verzeichnis, rekursiv; PDF und Office über Apache Tika)"
+                : wiki ? "MediaWiki (API-URL, z. B. …/w/api.php)" : "Confluence (Basis-URL der Instanz)");
+        urlRow.setLabelText(files ? "Verzeichnis" : "URL");
         url.setText(source.url());
-        url.setToolTipText(wiki ? "Die api.php der MediaWiki-Installation" : "Basis-URL von Confluence, ohne /rest");
+        url.setToolTipText(files ? "Ordner mit den Dokumenten, z. B. C:\\Daten\\Handbuch"
+                : wiki ? "Die api.php der MediaWiki-Installation" : "Basis-URL von Confluence, ohne /rest");
         credentialRef.setText(source.credentialRef());
         startPoints.setText(source.startPoints());
         maxDepth.setText(source.maxDepth());
@@ -91,11 +108,13 @@ final class SourceEditor {
         displayName.setText(source.displayName());
         searchSpaceKeys.setText(source.searchSpaceKeys());
         includeAttachments.setSelected(source.includeAttachments());
+        chooseDirectoryRow.setVisible(files);
+        credentialRefRow.setVisible(!files);
         requiresLoginRow.setVisible(wiki);
         siteKeyRow.setVisible(wiki);
         displayNameRow.setVisible(wiki);
-        searchSpaceKeysRow.setVisible(!wiki);
-        includeAttachmentsRow.setVisible(!wiki);
+        searchSpaceKeysRow.setVisible(source.isConfluence());
+        includeAttachmentsRow.setVisible(source.isConfluence());
         panel.revalidate();
         panel.repaint();
     }
@@ -114,6 +133,15 @@ final class SourceEditor {
                 .includeAttachments(includeAttachments.isSelected())
                 .enabled(enabled)
                 .build();
+    }
+
+    private void chooseDirectory() {
+        JFileChooser chooser = new JFileChooser(url.getText().trim().isEmpty() ? null : url.getText().trim());
+        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        chooser.setDialogTitle("Verzeichnis mit Dokumenten wählen");
+        if (chooser.showOpenDialog(panel) == JFileChooser.APPROVE_OPTION && chooser.getSelectedFile() != null) {
+            url.setText(chooser.getSelectedFile().getAbsolutePath());
+        }
     }
 
     void focusFirstField() {

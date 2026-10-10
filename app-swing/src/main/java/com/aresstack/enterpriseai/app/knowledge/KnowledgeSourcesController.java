@@ -238,8 +238,13 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         if (!canAdd()) {
             return;
         }
-        String kind = SourceForm.TYPE_CONFLUENCE.equals(type) ? SourceForm.TYPE_CONFLUENCE : SourceForm.TYPE_MEDIAWIKI;
-        SourceEditorLauncher.Result result = launcher.edit(SourceForm.builder(freeId(kind), kind).build(), null, file);
+        String kind = SourceForm.TYPE_CONFLUENCE.equals(type) ? SourceForm.TYPE_CONFLUENCE
+                : SourceForm.TYPE_FILES.equals(type) ? SourceForm.TYPE_FILES : SourceForm.TYPE_MEDIAWIKI;
+        SourceForm.Builder initial = SourceForm.builder(freeId(kind), kind);
+        if (SourceForm.TYPE_FILES.equals(kind)) {
+            initial.startPoints(".").maxDepth("20");
+        }
+        SourceEditorLauncher.Result result = launcher.edit(initial.build(), null, file);
         if (result != null && result.outcome() == SourcePanel.Outcome.SAVED && result.source() != null) {
             connect(result.source().id());
         }
@@ -431,7 +436,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     }
 
     private static String label(String type) {
-        return SourceForm.TYPE_CONFLUENCE.equalsIgnoreCase(type) ? "Confluence" : "MediaWiki";
+        return SourceForm.kindLabel(type);
     }
 
     private String freeId(String type) {
@@ -439,7 +444,8 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         for (SourceForm source : fileSources()) {
             taken.add(source.id());
         }
-        String base = SourceForm.TYPE_CONFLUENCE.equals(type) ? "confluence" : "wiki";
+        String base = SourceForm.TYPE_CONFLUENCE.equals(type) ? "confluence"
+                : SourceForm.TYPE_FILES.equals(type) ? "dateien" : "wiki";
         String candidate = base;
         int n = 2;
         while (taken.contains(candidate)) {

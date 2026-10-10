@@ -54,6 +54,13 @@ final class ModuleRegistry {
                         "http-api")
                 .module("source-confluence", "source.confluence", ModuleKind.ADAPTER, "F",
                         "domain", "source-api", "security-api", "http-api")
+                // Lokale Dateien: Verzeichnis als Quelle; Erkennung/Extraktion nur über den Port document-api.
+                .module("source-localfiles", "source.localfiles", ModuleKind.ADAPTER, "E",
+                        "domain", "source-api", "document-api")
+
+                // Dokument-Extraktion (aus corenth deigma): neutraler Port und Adapter mit Apache Tika.
+                .module("document-api", "document.api", ModuleKind.PORT, "Dokumente", "domain")
+                .module("document-tika", "document.tika", ModuleKind.ADAPTER, "Dokumente", "document-api")
 
                 .module("security-api", "security.api", ModuleKind.PORT, "F", "domain")
                 .module("security-keepassrpc", "security.keepassrpc", ModuleKind.ADAPTER, "F", "domain", "security-api")
@@ -72,7 +79,7 @@ final class ModuleRegistry {
                         "acp-client-api", "mcp-runtime-api", "http-api",
                         "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
-                        "comic-controls")
+                        "comic-controls", "document-api", "document-tika", "source-localfiles")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

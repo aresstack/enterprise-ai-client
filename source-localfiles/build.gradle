@@ -1,0 +1,6 @@
+description = 'Adapter: lokales Verzeichnis als Knowledge Source. Erkennung und Extraktion über den Port document-api.'
+
+dependencies {
+    api project(':source-api')
+    api project(':document-api')
+}
