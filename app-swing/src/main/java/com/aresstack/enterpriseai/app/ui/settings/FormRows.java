@@ -17,6 +17,7 @@ import javax.swing.JTextField;
 import javax.swing.text.JTextComponent;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -32,6 +33,8 @@ final class FormRows {
     /** Gedämpfter, aber lesbarer Hinweistext (wie der Platzhalter des Composers). */
     static final Color MUTED = new Color(0x6B6F76);
     private static final int NOTE_WIDTH = 460;
+    private static final int FIELD_WIDTH = 240;
+    private static final int MIN_FIELD_WIDTH = 80;
 
     private final ComicPalette palette;
     private final JPanel panel = new JPanel(new GridBagLayout());
@@ -148,7 +151,7 @@ final class FormRows {
 
     /** Hinweis über beide Spalten; bricht um. */
     JLabel note(String text) {
-        JLabel note = new JLabel(html(text));
+        JLabel note = new WrappingLabel(flow(text));
         note.setForeground(MUTED);
         note.setFont(note.getFont().deriveFont(Font.PLAIN, Math.max(11f, note.getFont().getSize2D() - 1f)));
         GridBagConstraints c = new GridBagConstraints();
@@ -221,7 +224,32 @@ final class FormRows {
         return column;
     }
 
-    /** Umbrechender Hinweistext in der Breite von {@link #note}. */
+    /** HTML-Text ohne feste Breite; {@link WrappingLabel} bricht ihn in der Breite der Seite um. */
+    static String flow(String text) {
+        return "<html>" + escape(text) + "</html>";
+    }
+
+    /**
+     * Dropdown, dessen längster Eintrag die Seite nicht verbreitert: das Formular dehnt es auf die freie Breite,
+     * zu lange Einträge kürzt der Renderer mit „…“.
+     */
+    static <T> JComboBox<T> fittingComboBox() {
+        return new JComboBox<T>() {
+            @Override
+            public Dimension getPreferredSize() {
+                Dimension size = super.getPreferredSize();
+                return isPreferredSizeSet() ? size : new Dimension(Math.min(size.width, FIELD_WIDTH), size.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension size = super.getMinimumSize();
+                return isMinimumSizeSet() ? size : new Dimension(Math.min(size.width, MIN_FIELD_WIDTH), size.height);
+            }
+        };
+    }
+
+    /** Umbrechender Hinweistext mit fester Breite (für kleine Dialoge ohne Seitenbreite). */
     static String html(String text) {
         return "<html><body style='width: " + NOTE_WIDTH + "px'>" + escape(text) + "</body></html>";
     }

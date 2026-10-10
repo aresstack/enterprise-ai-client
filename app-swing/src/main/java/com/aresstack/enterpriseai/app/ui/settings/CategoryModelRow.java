@@ -33,7 +33,7 @@ final class CategoryModelRow {
 
     private final ModelCategory category;
     private final SettingsDialogActions actions;
-    private final JComboBox<ModelOption> combo = new JComboBox<ModelOption>();
+    private final JComboBox<ModelOption> combo = FormRows.<ModelOption>fittingComboBox();
     private final JTextField field;
     private String stored = "";
     private boolean filling;

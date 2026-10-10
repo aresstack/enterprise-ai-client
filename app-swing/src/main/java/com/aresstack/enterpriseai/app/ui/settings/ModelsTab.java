@@ -188,7 +188,7 @@ final class ModelsTab {
     }
 
     private JLabel line(String text, boolean ok) {
-        JLabel label = new JLabel(text);
+        JLabel label = new WrappingLabel(text);
         label.putClientProperty("html.disable", Boolean.TRUE);
         label.setFont(label.getFont().deriveFont(Font.PLAIN, Math.max(11f, label.getFont().getSize2D() - 1f)));
         label.setForeground(ok ? palette.getAgentPetrol() : palette.getAccentOrange());

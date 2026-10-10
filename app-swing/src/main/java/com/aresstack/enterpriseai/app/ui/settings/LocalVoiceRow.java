@@ -32,8 +32,8 @@ final class LocalVoiceRow {
     private final Supplier<SettingsForm> form;
     private final Consumer<String> useVoice;
     private final ComicPalette palette;
-    private final JComboBox<Choice> combo = new JComboBox<Choice>();
-    private final JLabel status = new JLabel(" ");
+    private final JComboBox<Choice> combo = FormRows.<Choice>fittingComboBox();
+    private final JLabel status = new WrappingLabel(" ");
     private final ComicButton action;
     private String loadedRoot;
     private boolean busy;

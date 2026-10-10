@@ -15,12 +15,15 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
+import java.awt.Rectangle;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -188,7 +191,7 @@ public final class SettingsPanel extends JPanel {
             group.add(button);
             tabButtons.add(button);
             tabs.add(button);
-            ComicScrollPane scroll = new ComicScrollPane(pages[i], ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ComicScrollPane scroll = new ComicScrollPane(new FittingPage(pages[i]), ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                     ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER, palette);
             scroll.getVerticalScrollBar().setUnitIncrement(16);
             scroll.getViewport().setBackground(palette.getSurface());
@@ -467,5 +470,44 @@ public final class SettingsPanel extends JPanel {
 
     ModelsTab modelsTab() {
         return modelsTab;
+    }
+
+    /**
+     * Hält eine Einstellungsseite auf der Breite des sichtbaren Bereichs (wie die Wissensquellen im Drawer): ohne
+     * waagrechten Scrollbalken würde sonst die Wunschbreite langer Pfade die Seite rechts abschneiden.
+     */
+    private static final class FittingPage extends JPanel implements Scrollable {
+
+        FittingPage(JPanel page) {
+            super(new BorderLayout());
+            setOpaque(false);
+            add(page, BorderLayout.CENTER);
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visible, int orientation, int direction) {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visible, int orientation, int direction) {
+            return Math.max(16, visible.height - 16);
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            // Kürzere Seiten füllen die Höhe, längere scrollen.
+            return getParent() != null && getParent().getHeight() > getPreferredSize().height;
+        }
     }
 }
