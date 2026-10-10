@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 import javax.swing.JComponent;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -26,7 +27,9 @@ import java.awt.event.MouseEvent;
  * Hauch beim Überfahren, der helle {@link ResearchUiPalette#ACCENT_BLUE}-Hauch plus 3px Akzent links,
  * wenn gewählt. Der grüne Punkt heißt genau eines: in diesem Chat läuft gerade eine Verarbeitung. Ein
  * {@code …}-Auslöser erscheint nur beim Überfahren; er (und der Rechtsklick) öffnet das Menü, das die
- * Arbeitsfläche liefert (z. B. „Löschen“) — die Zeile selbst besitzt keine Chat-Aktionen.
+ * Arbeitsfläche liefert (z. B. „Löschen“) — die Zeile selbst besitzt keine Chat-Aktionen. Eine gelöschte Zeile
+ * (arch: Soft Delete) zeigt einen gedimmten Titel, „Gelöscht“ in gedämpftem Rot und einen dauerhaften ↩-Pfeil, der
+ * den Chat bis zum Neustart zurückholt.
  */
 public final class ChatHistoryRow extends JComponent {
 
@@ -34,6 +37,9 @@ public final class ChatHistoryRow extends JComponent {
     public interface MenuSupplier {
         JPopupMenu buildMenu();
     }
+
+    /** Tooltip des Rückpfeils einer gelöschten Zeile (arch: „Restore (until the app restarts)“). */
+    public static final String UNDO_TOOLTIP = "Wiederherstellen (bis zum Neustart)";
 
     private static final Color HOVER_WASH = ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.94f);
     private static final Color SELECTED_WASH = ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.88f);
@@ -45,6 +51,8 @@ public final class ChatHistoryRow extends JComponent {
     private final boolean selected;
     private final Runnable openAction;
     private final MenuSupplier menuSupplier;
+    private final boolean deleted;
+    private final Runnable undoAction;
     private final ComicPalette palette;
     private boolean hovered;
     private boolean menuHovered;
@@ -57,6 +65,17 @@ public final class ChatHistoryRow extends JComponent {
     /** @param menuSupplier das Aktionsmenü ({@code …} beim Überfahren, Rechtsklick) oder {@code null} */
     public ChatHistoryRow(String title, String meta, String time, boolean busy, boolean selected,
                           Runnable openAction, MenuSupplier menuSupplier, ComicPalette palette) {
+        this(title, meta, time, busy, selected, false, openAction, menuSupplier, null, palette);
+    }
+
+    /**
+     * @param deleted    die Zeile steht für einen gelöschten Chat (arch: „Deleted“ mit ↩)
+     * @param undoAction holt den gelöschten Chat zurück (der ↩-Pfeil), oder {@code null}
+     */
+    public ChatHistoryRow(String title, String meta, String time, boolean busy, boolean selected, boolean deleted,
+                          Runnable openAction, MenuSupplier menuSupplier, Runnable undoAction, ComicPalette palette) {
+        this.deleted = deleted;
+        this.undoAction = undoAction;
         this.title = title == null ? "" : title;
         this.meta = meta == null ? "" : meta;
         this.time = time == null ? "" : time;
@@ -86,7 +105,7 @@ public final class ChatHistoryRow extends JComponent {
 
             @Override
             public void mouseMoved(MouseEvent event) {
-                boolean inMenu = hasMenu() && menuHit().contains(event.getPoint());
+                boolean inMenu = (hasMenu() || hasUndo()) && menuHit().contains(event.getPoint());
                 if (inMenu != menuHovered) {
                     menuHovered = inMenu;
                     repaint();
@@ -97,6 +116,10 @@ public final class ChatHistoryRow extends JComponent {
             public void mousePressed(MouseEvent event) {
                 if (event.isPopupTrigger()) {
                     showMenu(event.getX(), event.getY());
+                    return;
+                }
+                if (hasUndo() && menuHit().contains(event.getPoint())) {
+                    undoAction.run(); // der dauerhafte Rückpfeil holt den Chat zurück
                     return;
                 }
                 if (hasMenu() && hovered && menuHit().contains(event.getPoint())) {
@@ -120,6 +143,18 @@ public final class ChatHistoryRow extends JComponent {
 
     private boolean hasMenu() {
         return menuSupplier != null;
+    }
+
+    private boolean hasUndo() {
+        return deleted && undoAction != null;
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent event) {
+        if (hasUndo() && menuHit().contains(event.getPoint())) {
+            return UNDO_TOOLTIP;
+        }
+        return title;
     }
 
     private void showMenu(int x, int y) {
@@ -153,6 +188,17 @@ public final class ChatHistoryRow extends JComponent {
 
     public boolean isBusy() {
         return busy;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    /** Löst den Rückpfeil aus (für Tests), sofern die Zeile gelöscht ist. */
+    public void undo() {
+        if (hasUndo()) {
+            undoAction.run();
+        }
     }
 
     /** Löst die Öffnen-Aktion aus (für Tests), sofern es eine gibt. */
@@ -193,7 +239,24 @@ public final class ChatHistoryRow extends JComponent {
                 g2.drawString(time, rightEdge - timeWidth, dotCenterY + timeMetrics.getAscent() / 2 - 1);
             }
             int titleLimit = rightEdge - timeWidth - 8;
-            if (hasMenu() && hovered) {
+            if (hasUndo()) {
+                // Gelöschte Zeilen tragen einen DAUERHAFTEN Rückpfeil (ohne Überfahren): ein Klick macht das Löschen
+                // rückgängig, solange die Anwendung läuft.
+                Rectangle hit = menuHit();
+                if (menuHovered) {
+                    g2.setColor(ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.82f));
+                    g2.fillOval(hit.x, hit.y, hit.width, hit.height);
+                }
+                g2.setColor(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+                g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                int cx = hit.x + hit.width / 2;
+                int cy = hit.y + hit.height / 2;
+                g2.drawLine(cx - 5, cy, cx + 6, cy);
+                g2.drawLine(cx - 5, cy, cx - 1, cy - 4);
+                g2.drawLine(cx - 5, cy, cx - 1, cy + 4);
+                g2.drawLine(cx + 6, cy, cx + 6, cy - 5);
+                titleLimit = hit.x - 6;
+            } else if (hasMenu() && hovered) {
                 Rectangle hit = menuHit();
                 if (menuHovered) {
                     g2.setColor(ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.82f));
@@ -210,14 +273,15 @@ public final class ChatHistoryRow extends JComponent {
 
             g2.setFont(ResearchUiTypography.semiBold(13f));
             FontMetrics titleMetrics = g2.getFontMetrics();
-            g2.setColor(palette.getInk());
+            g2.setColor(deleted ? ResearchUiPalette.LIGHT_TEXT_MUTED : palette.getInk());
             g2.drawString(ellipsize(title, titleMetrics, titleLimit - textX), textX,
                     dotCenterY + titleMetrics.getAscent() / 2 - 1);
 
             if (!meta.isEmpty()) {
                 g2.setFont(ResearchUiTypography.regular(11f));
                 FontMetrics metaMetrics = g2.getFontMetrics();
-                g2.setColor(ResearchUiPalette.LIGHT_TEXT_MUTED);
+                g2.setColor(deleted ? ResearchUiPainter.mix(ResearchUiPalette.DANGER_RED, Color.WHITE, 0.25f)
+                        : ResearchUiPalette.LIGHT_TEXT_MUTED);
                 g2.drawString(ellipsize(meta, metaMetrics, rightEdge - textX), textX, getHeight() - 9);
             }
         } finally {

@@ -39,7 +39,10 @@ import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -122,6 +125,16 @@ public final class ShellAssembly {
                 action.run();
             }
         });
+        // Löschen wie askai arch: bis zum Beenden nur vorgemerkt (↩ holt den Chat zurück), erst dann samt Anhängen weg.
+        final Set<String> pendingDeletes = Collections.synchronizedSet(new LinkedHashSet<String>());
+        root.shutdown().then("chat-history-deletes", () -> {
+            synchronized (pendingDeletes) {
+                for (String chatId : pendingDeletes) {
+                    history.delete(chatId);
+                }
+                pendingDeletes.clear();
+            }
+        });
         workspace.setActions(new WorkspaceActions() {
             @Override
             public void newChatRequested(ShellMode mode) {
@@ -178,7 +191,12 @@ public final class ShellAssembly {
                 if (chatId.equals(history.currentChatId()) && !startNewChat()) {
                     return; // der laufende Chat lässt sich gerade nicht verlassen
                 }
-                history.delete(chatId);
+                pendingDeletes.add(chatId);
+            }
+
+            @Override
+            public void restoreSavedChatRequested(String chatId) {
+                pendingDeletes.remove(chatId);
             }
 
             @Override

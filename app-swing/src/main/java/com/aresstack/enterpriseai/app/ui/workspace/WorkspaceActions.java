@@ -32,8 +32,15 @@ public interface WorkspaceActions {
     default void openSavedChatRequested(String chatId) {
     }
 
-    /** Ein gespeicherter Chat soll samt Anhängen gelöscht werden (bestätigt ist das schon). */
+    /**
+     * Ein gespeicherter Chat soll gelöscht werden (askai arch: ohne Rückfrage, mit ↩). Bis zum Beenden lässt er sich
+     * mit {@link #restoreSavedChatRequested} zurückholen; erst dann gehen Nachrichten und Anhänge endgültig.
+     */
     default void deleteSavedChatRequested(String chatId) {
+    }
+
+    /** Ein in diesem Lauf gelöschter Chat soll zurückkommen. */
+    default void restoreSavedChatRequested(String chatId) {
     }
 
     /** Ein Chat soll einen neuen Titel bekommen (askai arch: „Umbenennen“). */

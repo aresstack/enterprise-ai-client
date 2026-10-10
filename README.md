@@ -90,7 +90,8 @@ java -jar enterprise-ai-client-<version>.jar
    listet die gespeicherten Chats unter HEUTE, GESTERN, LETZTE 7 TAGE und ÄLTER; ein Klick öffnet einen Chat mit
    Verlauf und Anhang-Chips (das Modell bekommt den Verlauf wieder, die Werkzeuge finden die Anhänge), das
    `…`-Menü einer Zeile (oder Rechtsklick) benennt ihn um („Umbenennen …“, der Titel bleibt dann fest) oder löscht
-   ihn nach Rückfrage samt Anhängen. Agent-Unterhaltungen werden
+   ihn ohne Rückfrage: die Zeile bleibt als „Gelöscht“ mit ↩ stehen und holt ihn bis zum Beenden zurück,
+   erst dann gehen Nachrichten und Anhänge endgültig. Agent-Unterhaltungen werden
    nicht gespeichert.
 8. **Agent-Modus**: `agent.enabled=true` und `agent.command`/`agent.args` auf einen ACP-fähigen Agenten setzen
    (zum Ausprobieren der Demo-Agent aus `./gradlew :acp-demo-agent:demoAgentJar`). Die Modus-Pille „Agent“ neben

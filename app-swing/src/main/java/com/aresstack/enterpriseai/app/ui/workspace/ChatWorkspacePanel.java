@@ -31,7 +31,6 @@ import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
@@ -65,8 +64,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Die Arbeitsfläche nach askai-java8 (arch, {@code ChatWorkspacePanel}):
@@ -108,6 +109,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private static final long DAY_MILLIS = 24L * 60L * 60L * 1000L;
     static final String DELETE_CHAT_LABEL = "Chat löschen";
     static final String RENAME_CHAT_LABEL = "Umbenennen …";
+    static final String RESTORE_CHAT_LABEL = "Wiederherstellen";
+    static final String DELETED_META = "Gelöscht";
 
     private final ShellModeModel modes;
     private final ChatShellPanel chatShell;
@@ -631,7 +634,11 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             String meta = "Chat · " + (chat.messageCount() == 1 ? "1 Nachricht" : chat.messageCount() + " Nachrichten")
                     + (chat.attachmentCount() == 0 ? ""
                     : chat.attachmentCount() == 1 ? " · 1 Anhang" : " · " + chat.attachmentCount() + " Anhänge");
-            ChatHistoryRow row = new ChatHistoryRow(chat.title(), meta, time, false, false,
+            boolean deleted = deletedChatIds.contains(chat.id());
+            ChatHistoryRow row = deleted
+                    ? new ChatHistoryRow(chat.title(), DELETED_META, time, false, false, true, null,
+                    () -> restoreMenu(chat.id()), () -> restoreChat(chat.id()), palette)
+                    : new ChatHistoryRow(chat.title(), meta, time, false, false,
                     () -> openSavedChat(chat.id()), () -> deleteMenu(chat.id(), chat.title()), palette);
             row.setAlignmentX(LEFT_ALIGNMENT);
             chatRows.add(row);
@@ -704,7 +711,39 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         return row;
     }
 
-    /** Das Menü einer Chat-Zeile: Umbenennen und Löschen mit Rückfrage (Nachrichten und Anhänge gehen verloren). */
+    /**
+     * Soft Delete wie askai arch: der Chat bleibt in diesem Lauf als „Gelöscht“ mit ↩ in der Liste; endgültig weg ist
+     * er erst nach dem Beenden. Ersetzt die frühere Rückfrage.
+     */
+    private final Set<String> deletedChatIds = new LinkedHashSet<String>();
+
+    private void deleteChat(String chatId) {
+        if (actions == null) {
+            return;
+        }
+        actions.deleteSavedChatRequested(chatId);
+        if (!chatId.equals(actions.currentChatId())) { // sonst ließ sich der laufende Chat gerade nicht verlassen
+            deletedChatIds.add(chatId);
+        }
+        refreshChatList();
+    }
+
+    private void restoreChat(String chatId) {
+        if (deletedChatIds.remove(chatId) && actions != null) {
+            actions.restoreSavedChatRequested(chatId);
+        }
+        refreshChatList();
+    }
+
+    private JPopupMenu restoreMenu(final String chatId) {
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem restore = new JMenuItem(RESTORE_CHAT_LABEL);
+        restore.addActionListener(event -> restoreChat(chatId));
+        menu.add(restore);
+        return menu;
+    }
+
+    /** Das Menü einer Chat-Zeile: Umbenennen und Löschen (ohne Rückfrage, mit ↩ wie arch). */
     private JPopupMenu deleteMenu(final String chatId, final String title) {
         JPopupMenu menu = new JPopupMenu();
         JMenuItem rename = new JMenuItem(RENAME_CHAT_LABEL);
@@ -715,15 +754,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         menu.add(rename);
         JMenuItem delete = new JMenuItem(DELETE_CHAT_LABEL);
         delete.setEnabled(!chatShell.model().isStreaming());
-        delete.addActionListener(event -> {
-            int answer = JOptionPane.showConfirmDialog(this,
-                    "Chat „" + title + "“ mit allen Nachrichten und Anhängen löschen?", DELETE_CHAT_LABEL,
-                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
-            if (answer == JOptionPane.OK_OPTION && actions != null) {
-                actions.deleteSavedChatRequested(chatId);
-                refreshChatList();
-            }
-        });
+        delete.addActionListener(event -> deleteChat(chatId));
         menu.add(delete);
         return menu;
     }
