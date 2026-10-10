@@ -91,7 +91,7 @@ public class ChatShellPanelTest {
     }
 
     @Test
-    public void ragToggleTravelsWithTheSendIntent() throws Exception {
+    public void ragFlagOfTheModelTravelsWithTheSendIntent() throws Exception {
         Edt.run(new Runnable() {
             @Override
             public void run() {
@@ -102,16 +102,12 @@ public class ChatShellPanelTest {
 
                 composer.editor().setText("ohne");
                 composer.submit();
-                composer.ragToggle().doClick();
-                assertTrue(model.isRagEnabled());
+                model.setRagEnabled(true);
                 composer.editor().setText("mit");
                 composer.submit();
 
                 assertEquals(java.util.Arrays.asList("ohne", "mit"), actions.sent);
                 assertEquals(java.util.Arrays.asList(false, true), actions.ragFlags);
-
-                model.setRagEnabled(false);
-                assertFalse("Model führt den Schalter", composer.ragToggle().isSelected());
             }
         });
     }

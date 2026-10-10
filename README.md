@@ -58,8 +58,12 @@ java -jar enterprise-ai-client-<version>.jar
    `deigma` (Module `document-api` und `document-tika`, Quelle `source-localfiles`): Text und Markdown direkt,
    PDF, Word, Excel, PowerPoint, OpenDocument, RTF, HTML und Mails über Apache Tika 2.9.1 wie in MainframeMate.
    Die Tika-Parser vergrößern das Fat Jar deutlich.
-6. **RAG verwenden**: Die Pille „RAG“ im Composer einschalten. Vor der Antwort sucht die
-   Anwendung im Index; die Antwort trägt die verwendeten Quellen, Hinweise erscheinen als eigene Blase.
+6. **RAG verwenden**: Einen RAG-Schalter gibt es nicht (wie in askai-java8 arch). Sind Wissensquellen
+   konfiguriert, sucht die Anwendung vor jeder Antwort in den angehakten Quellen; die Antwort trägt die verwendeten
+   Quellen, Hinweise erscheinen als eigene Blase. Der Composer zeigt wie arch links das Chat-Modell (Klick öffnet die
+   Einstellungen) und den Denkaufwand („Denken: Standard/niedrig/mittel/hoch“, gesendet als `reasoning_effort` bzw.
+   `reasoning.effort`, gegen das Gateway UNVERIFIED), rechts Büroklammer, Audiodatei und Mikrofon (deaktiviert,
+   solange kein Spracherkennungs-Modell verfügbar ist) und Senden/Stop; dazwischen eine Statuszeile.
 7. **Dateianhänge und Tool-Calls**: Die Büroklammer im Composer hängt Dateien an (Chips mit ✕ über dem Editor,
    nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen laufen über `POST <chat.baseUrl>/responses`
    statt über das Streaming von `/chat/completions`: Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge

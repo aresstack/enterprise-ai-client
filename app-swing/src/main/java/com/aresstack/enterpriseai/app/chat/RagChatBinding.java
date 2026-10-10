@@ -23,6 +23,7 @@ import com.aresstack.enterpriseai.application.tool.ToolCallingChatPort;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
+import com.aresstack.enterpriseai.domain.chat.ChatOptions;
 import com.aresstack.enterpriseai.domain.chat.ChatResponse;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
@@ -109,6 +110,7 @@ public final class RagChatBinding implements ChatShellActions {
     private ToolSupport tools;
     private boolean conversationHasAttachments; // nur UI-Thread
     private ChatHistoryBinding history; // nur UI-Thread
+    private String reasoningEffort; // nur UI-Thread; null = Standard des Modells
 
     /**
      * @param uiExecutor   führt Model-Änderungen auf dem UI-Thread aus
@@ -181,6 +183,16 @@ public final class RagChatBinding implements ChatShellActions {
     }
 
     @Override
+    public void reasoningChanged(String effort) {
+        this.reasoningEffort = effort;
+    }
+
+    /** Optionen dieses Turns: nur der gewählte Denkaufwand, sonst {@code null} (Standard). */
+    private ChatOptions turnOptions() {
+        return reasoningEffort == null ? null : ChatOptions.builder().reasoningEffort(reasoningEffort).build();
+    }
+
+    @Override
     public boolean supportsAttachments() {
         return tools != null;
     }
@@ -226,6 +238,7 @@ public final class RagChatBinding implements ChatShellActions {
             return;
         }
         final RagOptions options = ragOptions;
+        final ChatOptions chatOptions = turnOptions();
         final ToolSupport support = toolPath ? tools : null;
         final ChatConversationId conversation = conversationId;
         final Request request = new Request(answer, listener);
@@ -268,7 +281,7 @@ public final class RagChatBinding implements ChatShellActions {
                                 showActivity(listener, TOOLS_ACTIVITY);
                             }
                         }
-                        turn = rag.send(conversation, text, options, null, listener, extraContext, via);
+                        turn = rag.send(conversation, text, options, chatOptions, listener, extraContext, via);
                     } catch (final RuntimeException rejected) {
                         // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
                         LOG.log(Level.WARNING, "Nachricht nicht gestartet: " + rejected.getMessage(), rejected);
@@ -309,7 +322,7 @@ public final class RagChatBinding implements ChatShellActions {
     /** RAG aus: der bisherige Weg, synchron gestartet wie in {@link ChatServiceBinding}. */
     private void startWithoutRetrieval(String text, TurnListener listener) {
         try {
-            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), listener).turn();
+            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener).turn();
             if (!turn.isDone()) {
                 runningTurn = turn;
             }

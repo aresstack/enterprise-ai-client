@@ -85,6 +85,12 @@ final class OpenAiResponsesCodec {
         if (options.endUserId() != null) {
             body.addProperty("user", options.endUserId());
         }
+        if (options.reasoningEffort() != null) {
+            // Nur wenn im Composer gewählt; gegen das Gateway UNVERIFIED.
+            JsonObject reasoning = new JsonObject();
+            reasoning.addProperty("effort", options.reasoningEffort());
+            body.add("reasoning", reasoning);
+        }
         return body.toString();
     }
 

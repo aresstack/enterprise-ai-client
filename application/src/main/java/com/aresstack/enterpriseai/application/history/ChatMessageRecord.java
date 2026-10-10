@@ -14,6 +14,8 @@ public final class ChatMessageRecord {
     private String role;
     private String text;
     private long createdAt;
+    /** Abgebrochene Antwort: wird angezeigt, geht aber nicht in den Verlauf für das Modell (wie im ChatService). */
+    private boolean cancelled;
     private List<AttachmentRecord> attachments = new ArrayList<AttachmentRecord>();
 
     /** Für die Deserialisierung. */
@@ -38,6 +40,16 @@ public final class ChatMessageRecord {
 
     public long getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isCancelled() {
+        return cancelled;
+    }
+
+    /** Markiert eine abgebrochene Antwort (Teiltext). */
+    public ChatMessageRecord markCancelled() {
+        this.cancelled = true;
+        return this;
     }
 
     public List<AttachmentRecord> getAttachments() {

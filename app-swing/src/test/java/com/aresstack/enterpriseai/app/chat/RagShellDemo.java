@@ -362,9 +362,7 @@ public final class RagShellDemo {
         }
 
         void ask(String question, boolean rag) {
-            if (panel.composer().ragToggle().isSelected() != rag) {
-                panel.composer().ragToggle().doClick(0);
-            }
+            panel.model().setRagEnabled(rag);
             panel.composer().editor().setText(question);
             panel.composer().sendButton().doClick(0);
         }
