@@ -34,6 +34,12 @@ public final class SettingsAssembly {
 
     /** Wie {@link #create(ConfigurationFile)}, dazu die Modellabfrage des Reiters „Modelle“ ({@code null}: keine). */
     public static SettingsDialogActions create(ConfigurationFile file, final ModelCatalogLoader models) {
+        return create(file, models, new LocalVoices());
+    }
+
+    /** Wie {@link #create(ConfigurationFile, ModelCatalogLoader)} mit der Stimmenversorgung des Starts. */
+    public static SettingsDialogActions create(ConfigurationFile file, final ModelCatalogLoader models,
+                                               LocalVoices voices) {
         ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -42,7 +48,7 @@ public final class SettingsAssembly {
                 return t;
             }
         });
-        return create(file, models, worker, new Executor() {
+        return create(file, models, voices, worker, new Executor() {
             @Override
             public void execute(Runnable command) {
                 SwingUtilities.invokeLater(command);
@@ -56,8 +62,13 @@ public final class SettingsAssembly {
 
     public static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, Executor worker,
                                                Executor ui) {
+        return create(file, models, new LocalVoices(), worker, ui);
+    }
+
+    private static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, LocalVoices voices,
+                                                Executor worker, Executor ui) {
         return new FileSettingsActions(file, new KeePassSecretChecker(), new ServiceConnectionChecker(),
-                configurationCheck(), models, JavaRuntimes.selectionService(file), new LocalVoices(), worker, ui);
+                configurationCheck(), models, JavaRuntimes.selectionService(file), voices, worker, ui);
     }
 
     /**

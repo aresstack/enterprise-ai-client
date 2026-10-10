@@ -23,6 +23,7 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Verdrahtet die Stimmenversorgung des Sidecars: kuratierte Stimmen aus {@link LocalVoicesConfig},
@@ -41,6 +42,8 @@ public final class LocalVoices implements LocalVoiceInstaller {
     };
 
     private final List<HuggingFaceVoice> curated;
+    /** Ob im Prozess schon eine Proxy-Anmeldung läuft (vom Start oder von einem früheren Download). */
+    private final AtomicBoolean proxyAuthenticated = new AtomicBoolean();
 
     public LocalVoices() {
         this(LocalVoicesConfig.curated());
@@ -50,15 +53,20 @@ public final class LocalVoices implements LocalVoiceInstaller {
         this.curated = curated;
     }
 
+    /** Der Start hat den {@link ProxyAuthenticator} aus der gespeicherten Konfiguration gesetzt. */
+    public void proxyAuthenticationInstalled() {
+        proxyAuthenticated.set(true);
+    }
+
     /**
      * Proxy-Anmeldung BASIC mit den Einstellungen des Entwurfs, nur wenn der Prozess noch keine hat: Beim Erststart
      * hat {@code EnterpriseAiClientMain} den {@link ProxyAuthenticator} noch nicht gesetzt; ohne ihn scheitert der
      * Download am Proxy mit 407. Eine laufende Anmeldung bleibt unangetastet (kein Entwurf ersetzt sie, ein
      * Speicher-Pairing bleibt gültig); geänderte Zugangsdaten greifen wie bisher nach dem Neustart.
      */
-    static void installProxyAuthentication(NetworkConfig network, KeePassConfig keePass) {
-        if (ProxyAuthenticator.installed() || network.proxyAuthMode() != ProxyAuthMode.BASIC || network.proxyCredentialRef() == null
-                || keePass == null || !keePass.enabled()) {
+    private void installProxyAuthentication(NetworkConfig network, KeePassConfig keePass) {
+        if (network.proxyAuthMode() != ProxyAuthMode.BASIC || network.proxyCredentialRef() == null
+                || keePass == null || !keePass.enabled() || !proxyAuthenticated.compareAndSet(false, true)) {
             return;
         }
         String address = keePass.rpc().host() + ":" + keePass.rpc().port();
