@@ -50,9 +50,9 @@ import java.util.function.Supplier;
 /**
  * Der Composer nach askai-java8 (arch, {@code ChatComposerPanel}): EINE abgerundete Fläche, darin der rahmenlose
  * Editor und eine Fußzeile wie in arch. Links Modell ▾ und Denkaufwand ▾, in der Mitte die Statuszeile, rechts
- * Büroklammer, Audiodatei, Mikrofon und genau EIN Hauptknopf: „Senden“ (Akzentblau) solange nichts läuft, „Stop“
- * (Rot) während eine Antwort streamt — nie beide. Audiodatei und Mikrofon bleiben deaktiviert, solange kein
- * Spracherkennungs-Modell verfügbar ist. Einen RAG-Schalter gibt es nicht (in arch gab es ihn nie): ob Wissen
+ * Büroklammer und genau EIN Hauptknopf: „Senden“ (Akzentblau) solange nichts läuft, „Stop“ (Rot) während eine
+ * Antwort streamt — nie beide. Audiodatei und Mikrofon aus arch gehören nicht zum Enterprise-Client (keine
+ * Spracheingabe, keine Audio-Pipeline) und fehlen daher. Einen RAG-Schalter gibt es nicht (in arch gab es ihn nie): ob Wissen
  * gesucht wird, folgt aus den aktivierten Wissensquellen. Die Fläche wird weiß und bekommt den blauen Rand,
  * sobald der Editor den Fokus hat oder eine Antwort läuft; Enter sendet, Umschalt+Enter bricht um.
  *
@@ -65,9 +65,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String SEND_LABEL = "Senden";
     static final String STOP_LABEL = "Stop";
     static final String ATTACH_TOOLTIP = "Dateien anhängen";
-    static final String NO_SPEECH_MODEL = "kein Modell verfügbar";
-    static final String AUDIO_FILE_TOOLTIP = "Audiodatei transkribieren (" + NO_SPEECH_MODEL + ")";
-    static final String MICROPHONE_TOOLTIP = "Diktieren (" + NO_SPEECH_MODEL + ")";
     static final String MODEL_PLACEHOLDER = "Modell";
     static final String STREAMING_STATUS = "Antwort wird erstellt …";
     /** Denkaufwand: Anzeige und Wert ({@code null} = Standard des Modells), wie arch „Think: …“. */
@@ -96,8 +93,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final ComposerButton sendButton;
     private final ComposerButton stopButton;
     private final ComposerButton attachButton;
-    private final ComposerButton audioFileButton;
-    private final ComposerButton microphoneButton;
     private final ChatAttachmentStrip attachmentStrip;
     private Runnable modelAction;
     private Supplier<List<String>> modelChoices;
@@ -124,12 +119,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.attachButton = ComposerButton.iconButton(ComposerIcons.paperclip(), ATTACH_TOOLTIP);
         attachButton.getAccessibleContext().setAccessibleName(ATTACH_TOOLTIP);
         attachButton.setVisible(actions.supportsAttachments());
-        this.audioFileButton = ComposerButton.iconButton(ComposerIcons.audioFile(), AUDIO_FILE_TOOLTIP);
-        audioFileButton.getAccessibleContext().setAccessibleName(AUDIO_FILE_TOOLTIP);
-        audioFileButton.setEnabled(false);
-        this.microphoneButton = ComposerButton.iconButton(ComposerIcons.microphone(), MICROPHONE_TOOLTIP);
-        microphoneButton.getAccessibleContext().setAccessibleName(MICROPHONE_TOOLTIP);
-        microphoneButton.setEnabled(false);
         this.attachmentStrip = new ChatAttachmentStrip(() -> refreshAttachmentState());
         buildUi();
         wireBehaviour();
@@ -266,14 +255,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         repaint();
     }
 
-    public ComposerButton audioFileButton() {
-        return audioFileButton;
-    }
-
-    public ComposerButton microphoneButton() {
-        return microphoneButton;
-    }
-
     /** Die Statuszeile in der Mitte der Fußzeile. */
     public JLabel statusLabel() {
         return statusLabel;
@@ -359,7 +340,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         setMinimumSize(new Dimension(320, 104));
     }
 
-    /** Die Fußzeile wie arch: links Modell und Denkaufwand, Mitte Status, rechts Anhang, Audio, Mikrofon, Senden. */
+    /** Die Fußzeile wie arch: links Modell und Denkaufwand, Mitte Status, rechts Anhang und Senden/Stop. */
     private JPanel buildFooter() {
         JPanel footer = new JPanel(new BorderLayout(8, 0));
         footer.setOpaque(false);
@@ -382,10 +363,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         east.setLayout(new BoxLayout(east, BoxLayout.X_AXIS));
         east.add(Box.createHorizontalGlue());
         east.add(attachButton);
-        east.add(Box.createHorizontalStrut(4));
-        east.add(audioFileButton);
-        east.add(Box.createHorizontalStrut(4));
-        east.add(microphoneButton);
         east.add(Box.createHorizontalStrut(4));
         east.add(sendButton);
         east.add(stopButton);

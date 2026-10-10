@@ -196,8 +196,8 @@ deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
    `<Anwendungsverzeichnis>/local-models`). Der Ordnername ist der Modellname. Es wird nichts heruntergeladen.
 4. Einstellungen → Modelle → TTS: die Stimme („Lokal (Java 21)“) wählen, neu starten.
 
-`speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Mikrofon und Audiodatei im
-Composer bleiben deaktiviert, solange kein STT-Modell verfügbar ist.
+`speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Spracheingabe (Mikrofon,
+Audiodatei) gehört nicht zum Enterprise-Client.
 
 ## Demos ohne Backend
 
