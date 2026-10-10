@@ -185,8 +185,8 @@ public final class ChatModelExecutorRegistry {
 
     private ChatCompletionException unsupported(String catalogId, String what) {
         return new ChatCompletionException(ChatErrorKind.INVALID_REQUEST, what + " ist für Modelle aus „" + catalogId
-                + "“ nicht verfügbar (lokale Modelle brauchen Java 21 und das Sidecar-Jar; Werkzeug-Chat gibt es nur "
-                + "über die Enterprise-API)");
+                + "“ nicht verfügbar (lokal laufen nur Stimmen; Chat und Werkzeug-Chat gibt "
+                + "es nur über die Enterprise-API)");
     }
 
     @Override

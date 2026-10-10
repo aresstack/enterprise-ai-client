@@ -47,13 +47,12 @@ include 'resource-holkas'
 include 'document-api'
 include 'document-tika'
 
-// Modellverwaltung: Katalog-Port, Enterprise-API-Katalog (KIPITZ), optionaler lokaler Java-21-Sidecar
+// Modellverwaltung: Katalog-Port, Enterprise-API-Katalog (KIPITZ), Stimmen vom Hugging Face Hub
 include 'model-api'
 include 'model-kipitz'
-include 'model-sidecar'
 include 'model-huggingface'
 
-// Sprachausgabe: neutraler Port; heute nur über den lokalen Sidecar (model-sidecar)
+// Sprachausgabe: neutraler Port, lokale Stimmen im Prozess (speech-local) über ONNX Runtime (speech-onnx)
 include 'speech-api'
 include 'speech-runtime-api'
 include 'speech-local'

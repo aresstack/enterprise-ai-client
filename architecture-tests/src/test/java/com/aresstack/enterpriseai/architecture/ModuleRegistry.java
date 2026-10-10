@@ -74,17 +74,13 @@ final class ModuleRegistry {
                 .module("document-api", "document.api", ModuleKind.PORT, "Dokumente", "domain")
                 .module("document-tika", "document.tika", ModuleKind.ADAPTER, "Dokumente", "document-api")
 
-                // Modellverwaltung nach Kategorien: neutraler Katalog-Port, KIPITZ über GET /models, optionaler
-                // lokaler Java-21-Sidecar (askai-java8 arch, ohne Installer).
+                // Modellverwaltung nach Kategorien: neutraler Katalog-Port, KIPITZ über GET /models.
                 .module("model-api", "model.api", ModuleKind.PORT, "Modelle", "domain")
                 // Der KIPITZ-Adapter bedient Katalog und Sprachausgabe seiner TTS-Modelle.
                 .module("model-kipitz", "model.kipitz", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
                         "http-api", "speech-api")
-                // Der Sidecar-Adapter bedient Katalog, Chat, Embeddings und Sprachausgabe über denselben Prozess.
-                .module("model-sidecar", "model.sidecar", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
-                        "speech-api", "chat-api", "embedding-api")
 
-                // Stimmen für den Sidecar vom Hugging Face Hub (huggingface4j), Proxy-Route über http-api.
+                // Lokale Stimmen vom Hugging Face Hub (huggingface4j), Proxy-Route über http-api.
                 .module("model-huggingface", "model.huggingface", ModuleKind.ADAPTER, "Modelle", "domain",
                         "model-api", "http-api")
 
@@ -92,7 +88,7 @@ final class ModuleRegistry {
                 .module("speech-api", "speech.api", ModuleKind.PORT, "Sprache", "domain")
                 // Inferenz-Laufzeit lokaler Stimmen (Token-Ids zu Audio), austauschbar gegen eine eigene Engine.
                 .module("speech-runtime-api", "speech.runtime", ModuleKind.PORT, "Sprache", "domain")
-                // Lokale Stimmen im Prozess (Piper, VITS) über speech-runtime-api; kein Sidecar, kein Programm.
+                // Lokale Stimmen im Prozess (Piper, VITS) über speech-runtime-api; kein externes Programm.
                 .module("speech-local", "speech.local", ModuleKind.ADAPTER, "Sprache", "domain", "speech-api",
                         "speech-runtime-api")
                 // Pilot-Backend ONNX Runtime (Java-Bibliothek im Prozess); nur hier ONNX-Typen.
@@ -117,7 +113,7 @@ final class ModuleRegistry {
                         "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
-                        "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api", "source-ftp",
+                        "resource-holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")

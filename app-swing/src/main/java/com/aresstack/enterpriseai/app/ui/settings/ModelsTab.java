@@ -32,8 +32,8 @@ import java.util.function.Supplier;
 
 /**
  * Reiter „Modelle“ (wie die zentrale Modellauswahl je Funktion in askai-java8 arch), oben zwei Unterreiter nach
- * Modellquelle: „Cloud-Modelle“ (Enterprise-API, {@code GET /models}) und „Lokale Modelle“ (optionaler
- * Java-21-Sidecar mit installierten Hugging-Face-Stimmen, Laufzeit und Modellverzeichnis). Je Kategorie gibt es
+ * Modellquelle: „Cloud-Modelle“ (Enterprise-API, {@code GET /models}) und „Lokale Modelle“ (Stimmen, die im
+ * Client über ONNX Runtime sprechen, Hugging-Face-Suche und Modellverzeichnis). Je Kategorie gibt es
  * genau eine Auswahl ({@link ModelSelection}); beide Unterreiter sind Sichten darauf, wer in einem wählt, wählt im
  * anderen ab. Die Listen zeigen nur passende Modelle; sie kommen zuerst aus dem Zwischenspeicher der letzten
  * Abfrage und werden beim ersten Öffnen des Reiters sowie mit „Modelle aktualisieren“ im Hintergrund neu geholt.
@@ -55,9 +55,6 @@ final class ModelsTab {
     private final List<CategoryModelRow> localRows = new ArrayList<CategoryModelRow>();
     private final JPanel statusLines = new JPanel();
     private final ComicButton refresh;
-    private final JavaRuntimeRow localJava;
-    private final JTextField localSidecarJar;
-    private final JLabel detectedSidecarJar;
     private final JTextField localModelRoot;
     private final LocalVoiceList voices;
     private final CardLayout pages = new CardLayout();
@@ -87,8 +84,7 @@ final class ModelsTab {
 
         FormRows sources = new FormRows(palette);
         refresh = new ComicButton(REFRESH_LABEL, null, ComicButton.Accent.ACTION, palette);
-        refresh.setToolTipText("Fragt mit dem aktuellen Entwurf GET /models der Enterprise-API und, falls "
-                + "konfiguriert, den lokalen Sidecar ab");
+        refresh.setToolTipText("Fragt mit dem aktuellen Entwurf GET /models der Enterprise-API ab");
         refresh.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -104,10 +100,9 @@ final class ModelsTab {
         sources.component(null, sourceRow, null);
 
         FormRows localSelection = new FormRows(palette);
-        localSelection.note("Je Funktion ein Modell des lokalen Sidecars. Installierte Stimmen stehen unter TTS; "
+        localSelection.note("Lokal läuft heute nur die Sprachausgabe: installierte Stimmen stehen unter TTS; "
                 + "eine Wahl hier ersetzt die Wahl unter „Cloud-Modelle“ und umgekehrt.");
-        for (ModelCategory category : new ModelCategory[] {ModelCategory.CHAT, ModelCategory.EMBEDDING,
-                ModelCategory.TTS}) {
+        for (ModelCategory category : new ModelCategory[] {ModelCategory.TTS}) {
             localRows.add(new CategoryModelRow(localSelection, category, true, false, selections.get(category),
                     actions, palette));
         }
@@ -131,7 +126,7 @@ final class ModelsTab {
         FormRows voiceNote = new FormRows(palette);
         voiceNote.note("Vorgeschlagene und installierte Stimmen, geladen vom Hugging Face Hub über die "
                 + "Netzwerkeinstellungen ins Modellverzeichnis, ohne Umwandlung. Sie sprechen im Client selbst (ONNX "
-                + "Runtime), ohne Sidecar und ohne externes Programm; die deutsche Aussprache ist regelbasiert. "
+                + "Runtime), ohne externes Programm; die deutsche Aussprache ist regelbasiert. "
                 + "Installieren wählt nichts aus: gewählt wird unter TTS oben.");
         FormRows searchNote = new FormRows(palette);
         searchNote.note("Angeboten werden nur Modelle, die der Client ohne Umwandlung lädt: Sprachausgabe als "
@@ -148,13 +143,6 @@ final class ModelsTab {
         voiceContent.add(voices.panel(), BorderLayout.CENTER);
 
         FormRows local = new FormRows(palette);
-        local.note("Optional: lokale Modelle über den Java-21-Sidecar (local-model-runtime-sidecar-java21). Java 21 "
-                + "oder neuer wird automatisch gefunden; ohne Java 21 bleiben lokale Modelle aus, die Cloud-Modelle "
-                + "funktionieren unabhängig davon.");
-        localJava = new JavaRuntimeRow(local, actions, palette);
-        localSidecarJar = local.textField("Sidecar-Jar (optional)", "Pfad zu local-model-runtime-sidecar.jar; leer = "
-                + "automatisch neben dem Client, im Anwendungs- oder Modellverzeichnis suchen");
-        detectedSidecarJar = local.note(" ");
         localModelRoot = local.textField("Modellverzeichnis (optional)",
                 "Verzeichnis der lokal installierten Modelle; leer = <Anwendungsverzeichnis>/local-models");
 
@@ -166,7 +154,7 @@ final class ModelsTab {
                         palette),
                 FormRows.plate("Lokale Stimmen", palette.getAccentOrange(), voiceContent, palette),
                 FormRows.plate("Hugging Face durchsuchen", palette.getAccentOrange(), searchContent, palette),
-                FormRows.plate("Laufzeit", palette.getAgentPetrol(), local.panel(), palette));
+                FormRows.plate("Modellverzeichnis", palette.getAgentPetrol(), local.panel(), palette));
         deck.setOpaque(false);
         deck.add(cloudPage, CLOUD_PAGE);
         deck.add(localPage, LOCAL_PAGE);
@@ -208,7 +196,6 @@ final class ModelsTab {
         pages.show(deck, local ? LOCAL_PAGE : CLOUD_PAGE);
         if (local) {
             localShown = true;
-            localJava.shown();
             voices.shown();
         }
     }
@@ -231,9 +218,6 @@ final class ModelsTab {
         for (Map.Entry<ModelCategory, ModelSelection> entry : selections.entrySet()) {
             entry.getValue().set(valueOf(form, entry.getKey()));
         }
-        localJava.load(form.localJava());
-        localSidecarJar.setText(form.localSidecarJar());
-        showDetectedSidecarJar(form);
         localModelRoot.setText(form.localModelRoot());
     }
 
@@ -251,20 +235,7 @@ final class ModelsTab {
                     b.modelSelection(entry.getKey().key(), value);
             }
         }
-        b.localJava(localJava.stored()).localSidecarJar(localSidecarJar.getText())
-                .localModelRoot(localModelRoot.getText());
-    }
-
-    private void showDetectedSidecarJar(SettingsForm form) {
-        if (!form.localSidecarJar().trim().isEmpty()) {
-            detectedSidecarJar.setText("Eingetragener Pfad übersteuert die automatische Suche.");
-            return;
-        }
-        String found = actions.detectedSidecarJar(form.localModelRoot());
-        detectedSidecarJar.setText(found.isEmpty()
-                ? "Kein Sidecar-Jar gefunden: Release-Zip neben dem Client entpacken oder Pfad eintragen."
-                : "✓ Automatisch gefunden: " + found);
-        detectedSidecarJar.setToolTipText(found.isEmpty() ? null : found);
+        b.localModelRoot(localModelRoot.getText());
     }
 
     /** Beim ersten Anzeigen des Reiters: einmal im Hintergrund abfragen. */
@@ -273,7 +244,6 @@ final class ModelsTab {
             refresh();
         }
         if (localShown) {
-            localJava.shown();
             voices.shown();
         }
     }

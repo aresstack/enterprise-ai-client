@@ -16,7 +16,7 @@ public final class SpeechOutput {
 
     static final String NO_MODEL = "Sprachausgabe aus: kein TTS-Modell gewählt (Einstellungen → Modelle)";
     static final String NO_PORT = "Sprachausgabe aus: die Quelle des gewählten TTS-Modells ist nicht verfügbar "
-            + "(lokale Modelle brauchen Java 21 und das Sidecar-Jar, Einstellungen → Lokale Modelle)";
+            + "(lokale Stimme installiert? Einstellungen → Modelle → Lokale Modelle)";
 
     private SpeechOutput() {
     }

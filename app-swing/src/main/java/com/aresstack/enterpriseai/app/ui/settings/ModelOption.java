@@ -45,7 +45,7 @@ final class ModelOption {
         return new ModelOption(stored, stored + "  (nicht im Katalog)", null);
     }
 
-    /** Ein lokal installiertes Modell, das der Katalog (noch) nicht meldet, etwa eine Stimme ohne laufenden Sidecar. */
+    /** Ein lokal installiertes Modell, das der Katalog (noch) nicht meldet, etwa eine installierte Stimme. */
     static ModelOption installed(String stored, String label) {
         return new ModelOption(stored, label + "  · Lokal", null, true);
     }

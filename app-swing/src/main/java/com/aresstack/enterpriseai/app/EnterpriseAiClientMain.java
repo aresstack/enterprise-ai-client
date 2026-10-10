@@ -3,7 +3,6 @@ package com.aresstack.enterpriseai.app;
 import com.aresstack.enterpriseai.app.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.app.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.app.composition.CompositionRoot;
-import com.aresstack.enterpriseai.app.composition.JavaRuntimes;
 import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.app.speech.SwitchableReadAloud;
 import com.aresstack.enterpriseai.app.speech.SpeechOutput;
@@ -33,7 +32,6 @@ import com.aresstack.enterpriseai.app.ui.settings.IndexPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialog;
 import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
 import com.aresstack.enterpriseai.app.ui.settings.SourceDialog;
-import com.aresstack.enterpriseai.domain.localruntime.JavaRuntimeInstallation;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
@@ -93,7 +91,6 @@ public final class EnterpriseAiClientMain {
         final LocalVoices localVoices = new LocalVoices();
         final SettingsDialogActions settingsActions = headless ? null
                 : SettingsAssembly.create(file, modelCatalogs, localVoices);
-        resolveJavaRuntime(file);
         ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
                 headless ? null : new SwingSettingsUi(settingsActions), SettingsAssembly.configurationCheck());
         if (!outcome.isStarted()) {
@@ -124,8 +121,8 @@ public final class EnterpriseAiClientMain {
         final ApplicationPorts ports;
         final CompositionRoot root;
         try {
-            ports = AdapterAssembly.createWithLocalModels(config, network, new SwingPairingCallback(
-                    config.keePass().rpc().host() + ":" + config.keePass().rpc().port()), modelCatalogs);
+            ports = AdapterAssembly.create(config, network, new SwingPairingCallback(
+                    config.keePass().rpc().host() + ":" + config.keePass().rpc().port()));
             if (networkConfig.proxyAuthMode() == ProxyAuthMode.BASIC && networkConfig.proxyCredentialRef() != null) {
                 ProxyAuthenticator.install(ports.secrets(), networkConfig.proxyCredentialRef());
                 localVoices.proxyAuthenticationInstalled();
@@ -141,8 +138,7 @@ public final class EnterpriseAiClientMain {
             return;
         }
         // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über die Quelle dieses Modells (Enterprise-API oder
-        // lokaler Sidecar, derselbe Prozess wie der Katalog); ohne TTS-Modell oder ohne Java 21 für ein lokales
-        // bleibt sie aus und der Play/Pause-Orb nennt den Grund.
+        // lokale Stimme im Prozess); ohne TTS-Modell bleibt sie aus und der Play/Pause-Orb nennt den Grund.
         final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
                 modelCatalogs.speech(config, config.models(), network, chatToken(config, ports))));
         LOG.info("Sprachausgabe: " + readAloud.currentDescription());
@@ -152,7 +148,7 @@ public final class EnterpriseAiClientMain {
                 readAloud.close();
             }
         });
-        root.shutdown().then("model-sidecar", new Runnable() {
+        root.shutdown().then("local-voices", new Runnable() {
             @Override
             public void run() {
                 modelCatalogs.close();
@@ -210,23 +206,6 @@ public final class EnterpriseAiClientMain {
     }
 
     /**
-     * Java 21+ für den optionalen Sidecar: gespeicherte Wahl nur prüfen, sonst suchen, automatisch wählen und in
-     * {@code models.local.java} speichern. Ohne gefundenes Java 21 bleibt der Sidecar aus; das ist kein Fehler.
-     */
-    private static void resolveJavaRuntime(ConfigurationFile file) {
-        if (!file.exists()) {
-            return;
-        }
-        try {
-            JavaRuntimeInstallation selected = JavaRuntimes.selectionService(file).resolveAtStartup();
-            LOG.info(selected == null ? "Kein Java 21 oder neuer gefunden; der lokale Sidecar bleibt aus."
-                    : "Java für den lokalen Sidecar: " + selected);
-        } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Java-Erkennung für den lokalen Sidecar fehlgeschlagen", e);
-        }
-    }
-
-    /**
      * Das Zahnrad im Drawer: öffnet den Dialog mit den Werten der Datei. Gespeichert wird in die Datei; der
      * laufende Graph ist mit der alten Konfiguration gebaut, deshalb gelten Änderungen beim nächsten Start
      * (Angebot, jetzt zu beenden). Ausnahme wie die Chat-Auswahl: TTS-Modell und Vorlesen gelten sofort
@@ -262,7 +241,7 @@ public final class EnterpriseAiClientMain {
     }
 
     /**
-     * Fragt die Modellquellen (KIPITZ {@code GET /models}, optional den lokalen Sidecar) einmal im Hintergrund ab,
+     * Fragt die Modellquelle (KIPITZ {@code GET /models}) einmal im Hintergrund ab,
      * damit der Reiter „Modelle“ aktuelle Listen hat; blockiert weder Start noch EDT. Fehler landen nur im Protokoll.
      */
     /**

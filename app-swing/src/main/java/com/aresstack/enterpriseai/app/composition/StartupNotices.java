@@ -39,10 +39,9 @@ public final class StartupNotices {
         }
         for (ModelCategory category : new ModelCategory[] {ModelCategory.CHAT, ModelCategory.EMBEDDING}) {
             ModelReference selected = config.models().selections().get(category);
-            if (selected != null && !KipitzModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId())
-                    && config.models().localSidecar() == null) {
-                notices.add(category.displayName() + ": gewählt ist ein lokales Modell, aber Java 21 und das "
-                        + "Sidecar-Jar fehlen (Einstellungen → Lokale Modelle); bis dahin scheitern diese Anfragen.");
+            if (selected != null && !KipitzModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId())) {
+                notices.add(category.displayName() + ": gewählt ist ein lokales Modell; lokal gibt es nur Stimmen. "
+                        + "Bitte unter Einstellungen → Modelle → Cloud-Modelle ein Modell wählen.");
             }
         }
         notices.addAll(config.warnings());

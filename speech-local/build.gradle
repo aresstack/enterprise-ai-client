@@ -1,4 +1,4 @@
-description = 'Adapter: lokale Sprachausgabe im Prozess (Piper- und VITS-Stimmen aus dem Modellverzeichnis) über den Port speech-runtime-api; kein Sidecar, kein externes Programm.'
+description = 'Adapter: lokale Sprachausgabe im Prozess (Piper- und VITS-Stimmen aus dem Modellverzeichnis) über den Port speech-runtime-api; kein externes Programm.'
 
 dependencies {
     api project(':speech-api')

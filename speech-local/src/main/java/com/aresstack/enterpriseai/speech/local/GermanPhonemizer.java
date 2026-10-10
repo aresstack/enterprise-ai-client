@@ -13,7 +13,7 @@ import java.util.Set;
 
 /**
  * Rule-based German grapheme-to-phoneme conversion into the espeak-ng IPA symbols German Piper voices were trained
- * on ({@code Guten Tag} → {@code ɡˈuːtən tˈaːk}). It replaces espeak-ng, which the sidecar must not start as an
+ * on ({@code Guten Tag} → {@code ɡˈuːtən tˈaːk}). It replaces espeak-ng, which the client must not start as an
  * external program, and is deliberately an approximation: spelling rules for vowel length, final devoicing,
  * {@code ch}/{@code sch}/{@code st}/{@code sp}, vocalised {@code r}, reduced {@code e}, stress on the first
  * syllable apart from common prefixes and suffixes, a small lexicon of frequent words, numbers spelled out and

@@ -8,8 +8,7 @@ import java.util.Set;
 
 /**
  * Ordnet ein Modell allein über seine gemeldeten Metadaten Kategorien zu: {@code capabilities} sowie Ein- und
- * Ausgabemodalitäten (bei der Enterprise-API {@code architecture.input_modalities}/{@code output_modalities},
- * beim lokalen Sidecar die Fähigkeiten seines Manifests). Modellnamen spielen keine Rolle. Meldet ein Katalog
+ * Ausgabemodalitäten (bei der Enterprise-API {@code architecture.input_modalities}/{@code output_modalities}). Modellnamen spielen keine Rolle. Meldet ein Katalog
  * gar keine Metadaten, gilt das Modell wie bisher für Chat und Embeddings als möglich.
  */
 public final class ModelClassification {

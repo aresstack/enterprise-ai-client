@@ -4,8 +4,6 @@ import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelSelections;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -13,7 +11,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Modellverwaltung: die eine Auswahl je {@link ModelCategory} und der optionale lokale Java-21-Sidecar. Chat und
+ * Modellverwaltung: die eine Auswahl je {@link ModelCategory} und das Modellverzeichnis der lokalen Stimmen. Chat und
  * Embeddings stehen weiter unter {@code chat.model} und {@code embedding.model}, alle anderen Kategorien unter
  * {@code model.<kategorie>}; Werte sind {@code [<katalog>:]<modell>}, ohne Katalog gilt die Enterprise-API.
  */
@@ -28,28 +26,27 @@ public final class ModelsConfig {
     /** Stimme der Enterprise-Sprachausgabe ({@code voice} bei {@code /audio/speech}); leer = ohne. */
     public static final String SPEECH_VOICE_KEY = "speech.voice";
 
+    /** Katalog der lokal installierten Modelle (heute nur Stimmen): Auswahl {@code local:<ordner>}. */
+    public static final String LOCAL_CATALOG_ID = "local";
+
     private final ModelSelections selections;
-    private final LocalSidecarConfig localSidecar;
     private final boolean readAloudAutoStart;
     private final String speechVoice;
     private final Path localModelRoot;
 
-    ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar, boolean readAloudAutoStart,
-                 String speechVoice, Path localModelRoot) {
+    ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, String speechVoice, Path localModelRoot) {
         if (localModelRoot == null) {
             throw new IllegalArgumentException("localModelRoot must not be null");
         }
         this.localModelRoot = localModelRoot;
         this.speechVoice = speechVoice == null || speechVoice.trim().isEmpty() ? null : speechVoice.trim();
         this.selections = selections == null ? ModelSelections.none() : selections;
-        this.localSidecar = localSidecar;
         this.readAloudAutoStart = readAloudAutoStart;
     }
 
     /** Die bekannten Kataloge (Präfixe einer Auswahl). */
     public static List<String> catalogIds() {
-        return Collections.unmodifiableList(Arrays.asList(KipitzModelCatalogAdapter.CATALOG_ID,
-                LocalSidecarModelCatalogAdapter.CATALOG_ID));
+        return Collections.unmodifiableList(Arrays.asList(KipitzModelCatalogAdapter.CATALOG_ID, LOCAL_CATALOG_ID));
     }
 
     /** Der Katalog einer Auswahl ohne Präfix: die Enterprise-API. */
@@ -78,11 +75,6 @@ public final class ModelsConfig {
         return selections;
     }
 
-    /** Der lokale Sidecar oder {@code null}, wenn kein Java 21 konfiguriert ist (lokale Modelle fehlen dann). */
-    public LocalSidecarConfig localSidecar() {
-        return localSidecar;
-    }
-
     /** Modellverzeichnis der lokalen Modelle ({@code models.local.modelRoot}), ein Ordner je Stimme. */
     public Path localModelRoot() {
         return localModelRoot;
@@ -100,7 +92,7 @@ public final class ModelsConfig {
 
     @Override
     public String toString() {
-        return "ModelsConfig[" + selections + ", local=" + localSidecar + ", readAloudAutoStart="
+        return "ModelsConfig[" + selections + ", local=" + localModelRoot + ", readAloudAutoStart="
                 + readAloudAutoStart + "]";
     }
 }

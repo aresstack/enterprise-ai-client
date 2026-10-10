@@ -71,7 +71,7 @@ public final class AppConfig {
         return agent;
     }
 
-    /** Modellauswahl je Kategorie und optionaler lokaler Sidecar. */
+    /** Modellauswahl je Kategorie und Modellverzeichnis lokaler Stimmen. */
     public ModelsConfig models() {
         return models;
     }

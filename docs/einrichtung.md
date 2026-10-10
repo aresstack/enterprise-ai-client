@@ -97,7 +97,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | KI-Dienst | `chat.baseUrl`, `chat.apiKeyRef` (mit „In KeePass prüfen“), `chat.systemPrompt`; `embedding.baseUrl`, `embedding.dimension`, `embedding.apiKeyRef` |
 | KeePass | `security.keepass.enabled`, `host`, `port`, `clientDisplayName`, `pairingKeyStore`; „In KeePass prüfen“ mit dem Eintrag des API-Keys |
 | Netzwerk & Agent | `ui.windowTitle`; Proxy-Auflösung wie AskAI (`network.proxy.mode` mit den Modi von win-proxy-java, PAC-URL/Ermittlungsskript, Host/Port, Test-URL, Timeout, „Proxy auflösen“, „HTTPS-Verbindung testen“); TLS-Quellen (`network.tls.*`); User-Agent, Prefer IPv6, Proxy-Anmeldung NONE/BASIC (KeePass-Eintrag); Agent-Modus. „Verbindung testen“ steht im Reiter KI-Dienst. |
-| Modelle | je Kategorie ein Modell: `chat.model`, `embedding.model`, `model.rerank`, `model.tts`, `model.stt`, `model.vision`, `model.documentOcr`, `model.imageEmbedding` (lokale mit Präfix `local:`); „Modelle aktualisieren“; lokaler Sidecar `models.local.java`, `models.local.sidecarJar`, `models.local.modelRoot` |
+| Modelle | je Kategorie ein Modell: `chat.model`, `embedding.model`, `model.rerank`, `model.tts`, `model.stt`, `model.vision`, `model.documentOcr`, `model.imageEmbedding` (lokale mit Präfix `local:`); „Modelle aktualisieren“; Modellverzeichnis lokaler Stimmen `models.local.modelRoot` |
 
 - **Wissensquellen und Index** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet `sources` und je
   Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki
@@ -184,24 +184,19 @@ automatisch vorlesen“ (Einstellungen → Sprachausgabe) ist der Orb schon beim
 (Einstellungen → Modelle, Schlüssel `model.tts`; genau eine Auswahl, entweder im Unterreiter „Cloud-Modelle“ oder
 „Lokale Modelle“, eine Wahl im einen wählt im anderen ab), gesprochen über die Quelle dieses Modells: ein TTS-Modell
 der Enterprise-API über `POST <chat.baseUrl>/audio/speech` (noch ungetestet; das Modell bestimmt die Stimme, der
-optionale Dateischlüssel `speech.voice` wird nur mitgeschickt, falls gesetzt), ein lokales über den optionalen
-Java-21-Sidecar. Ohne TTS-Modell, oder bei einem lokalen Modell ohne Java 21 und Sidecar, bleibt der Orb
-deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
+optionale Dateischlüssel `speech.voice` wird nur mitgeschickt, falls gesetzt), eine lokale Stimme im Client selbst
+(ONNX Runtime im Prozess, kein externes Programm, kein Java 21). Ohne TTS-Modell bleibt der Orb deaktiviert und nennt
+im Tooltip den Grund. Für eine lokale Stimme:
 
-1. `local-model-runtime-sidecar-<version>.zip` aus dem Release entpacken.
-2. Das Zip neben dem Client-Jar (oder im Anwendungs- bzw. Modellverzeichnis) entpacken; das Sidecar-Jar wird dort
-   automatisch gefunden (`models.local.sidecarJar` übersteuert, passende Version bevorzugt). Java 21
-   wird automatisch gefunden (`JAVA_HOME`, `PATH`, Program Files je Hersteller, `%USERPROFILE%\.jdks`, Scoop;
-   exakt Java 21 vor der kleinsten höheren Version) und in `models.local.java` gespeichert; das Dropdown
-   „Java-Runtime für Sidecar“ zeigt alle Funde, ältere Versionen ausgegraut, „Neu suchen“ sucht erneut. Beim Start
-   wird eine gespeicherte Wahl nur geprüft; gesucht wird nur, wenn sie fehlt oder ungültig ist.
-3. Eine VITS-Stimme im ONNX-Format (Hugging-Face-Layout: `config.json` mit `"model_type": "vits"`, `vocab.json`,
-   optional `tokenizer_config.json`, `onnx/model.onnx` oder `model.onnx`; z. B. ein ONNX-Export von MMS-TTS Deutsch)
-   als eigenen Ordner unter das Modellverzeichnis legen (`models.local.modelRoot`, Standard
-   `<Anwendungsverzeichnis>/local-models`). Der Ordnername ist der Modellname. Es wird nichts heruntergeladen.
-   Alternativ: Einstellungen → Modelle → „Lokale Modelle“ → „Lokale Stimmen“ → „Installieren“ lädt eine der
-   angebotenen Stimmen; „Aktualisieren“ lädt sie neu, „Entfernen“ löscht sie wieder.
-4. Einstellungen → Modelle → „Lokale Modelle“ → TTS: die Stimme wählen, speichern, neu starten.
+1. Einstellungen → Modelle → „Lokale Modelle“: unter „Lokale Stimmen“ eine vorgeschlagene Stimme installieren oder
+   unter „Hugging Face durchsuchen“ suchen und einen Treffer installieren. Angeboten werden nur Stimmen, die der
+   Client ohne Umwandlung lädt: Piper (`<name>.onnx` + `<name>.onnx.json`, deutsch oder `phoneme_type text`) oder
+   VITS im Hugging-Face-Layout (`config.json` mit `"model_type": "vits"`, `vocab.json`, `onnx/model.onnx` oder
+   `model.onnx`). Geladen wird über die Netzwerkeinstellungen ins Modellverzeichnis (`models.local.modelRoot`,
+   Standard `<Anwendungsverzeichnis>/local-models`); Größe und SHA-256 werden gegen die Hub-Metadaten geprüft.
+   „Aktualisieren“ lädt eine Stimme neu, „Entfernen“ löscht sie. Eine Stimme kann auch von Hand als eigener Ordner
+   unter das Modellverzeichnis gelegt werden; der Ordnername ist der Modellname.
+2. Einstellungen → Modelle → „Lokale Modelle“ → TTS: die Stimme wählen, speichern, neu starten.
 
 `speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Spracheingabe (Mikrofon,
 Audiodatei) gehört nicht zum Enterprise-Client.

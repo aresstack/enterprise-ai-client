@@ -63,8 +63,10 @@ public final class SettingsMapper {
     static final String KEY_AGENT_ARGS = "agent.args";
     static final String KEY_AGENT_TIMEOUT = "agent.requestTimeoutSeconds";
     static final String SOURCE_PREFIX = "source.";
+    /** Schlüssel des entfernten Java-21-Sidecars (bis 0.1.42); Speichern entfernt sie aus der Datei. */
     static final String KEY_LOCAL_JAVA = "models.local.java";
     static final String KEY_LOCAL_SIDECAR_JAR = "models.local.sidecarJar";
+    static final String KEY_LOCAL_READY_TIMEOUT = "models.local.readyTimeoutMillis";
     static final String KEY_LOCAL_MODEL_ROOT = "models.local.modelRoot";
 
     private SettingsMapper() {
@@ -133,8 +135,6 @@ public final class SettingsMapper {
                 b.modelSelection(category.key(), text(p, ModelsConfig.keyOf(category), ""));
             }
         }
-        b.localJava(text(p, KEY_LOCAL_JAVA, ""));
-        b.localSidecarJar(text(p, KEY_LOCAL_SIDECAR_JAR, ""));
         b.localModelRoot(text(p, KEY_LOCAL_MODEL_ROOT, ""));
         return b.build();
     }
@@ -186,8 +186,10 @@ public final class SettingsMapper {
                 put(set, ModelsConfig.keyOf(category), form.modelSelection(category.key()));
             }
         }
-        put(set, KEY_LOCAL_JAVA, form.localJava());
-        put(set, KEY_LOCAL_SIDECAR_JAR, form.localSidecarJar());
+        // Der Sidecar ist entfernt: seine Schlüssel verschwinden beim Speichern (leer = entfernen).
+        set.put(KEY_LOCAL_JAVA, "");
+        set.put(KEY_LOCAL_SIDECAR_JAR, "");
+        set.put(KEY_LOCAL_READY_TIMEOUT, "");
         put(set, KEY_LOCAL_MODEL_ROOT, form.localModelRoot());
         return set;
     }

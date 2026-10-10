@@ -12,7 +12,7 @@ import java.nio.file.Path;
 /**
  * {@link SpeechSynthesisPort} der lokalen Stimmen im Prozess: Modellkennung = Ordner unter dem Modellverzeichnis.
  * Liest die Stimme, macht aus dem Text Token-Ids und lässt die {@link LocalSpeechRuntime} rechnen; das Ergebnis
- * kommt als WAV. Kein Sidecar, kein externes Programm. Blockiert (Modell laden, rechnen).
+ * kommt als WAV. Kein externes Programm. Blockiert (Modell laden, rechnen).
  */
 public final class LocalVoiceSpeechAdapter implements SpeechSynthesisPort {
 

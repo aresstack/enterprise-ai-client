@@ -68,7 +68,7 @@ public final class SettingsAssembly {
     private static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, LocalVoices voices,
                                                 Executor worker, Executor ui) {
         return new FileSettingsActions(file, new KeePassSecretChecker(), new ServiceConnectionChecker(),
-                configurationCheck(), models, JavaRuntimes.selectionService(file), voices, worker, ui);
+                configurationCheck(), models, voices, worker, ui);
     }
 
     /**

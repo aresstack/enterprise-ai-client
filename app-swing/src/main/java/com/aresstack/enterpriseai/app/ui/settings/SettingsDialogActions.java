@@ -1,6 +1,5 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
-import com.aresstack.enterpriseai.application.localruntime.JavaRuntimeOverview;
 import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
@@ -70,8 +69,8 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * Fragt mit dem Entwurf alle Modellquellen ab (Enterprise-API {@code GET /models}, optional der lokale
-     * Sidecar) und liefert den vereinten Katalog genau einmal auf dem EDT; Fehler stehen in seinen Quellenständen.
+     * Fragt mit dem Entwurf alle Modellquellen ab (Enterprise-API {@code GET /models}, installierte lokale
+     * Stimmen) und liefert den vereinten Katalog genau einmal auf dem EDT; Fehler stehen in seinen Quellenständen.
      */
     default void refreshModels(SettingsForm form, Consumer<ModelCatalogSnapshot> onResult) {
         onResult.accept(new ModelCatalogSnapshot(null, Collections.singletonList(
@@ -88,22 +87,9 @@ public interface SettingsDialogActions {
         return reference.key();
     }
 
-    /** Ob ein Modell vom lokalen Sidecar kommt (Reiter „Lokale Modelle“) statt von der Enterprise-API. */
+    /** Ob ein Modell lokal im Client läuft (Reiter „Lokale Modelle“) statt von der Enterprise-API. */
     default boolean isLocal(ModelReference reference) {
         return !"default".equals(reference.catalogId());
-    }
-
-    /**
-     * „Neu suchen“ im Abschnitt „Lokale Modelle“: sucht installierte Java-Laufzeiten und liefert sie genau einmal
-     * auf dem EDT, kompatible (Java 21+) zuerst, mit der automatischen Wahl.
-     */
-    default void discoverJavaRuntimes(Consumer<JavaRuntimeOverview> onResult) {
-        onResult.accept(JavaRuntimeOverview.empty());
-    }
-
-    /** Das ohne Eintrag automatisch gefundene Sidecar-Jar; leer, wenn keins gefunden wurde. Blockiert kurz. */
-    default String detectedSidecarJar(String modelRoot) {
-        return "";
     }
 
     /**
@@ -123,7 +109,7 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * Sucht auf dem Hugging Face Hub nach Stimmen, die der Sidecar ohne Umwandlung lädt (Netzwerkeinstellungen des
+     * Sucht auf dem Hugging Face Hub nach Stimmen, die der Client ohne Umwandlung lädt (Netzwerkeinstellungen des
      * Entwurfs); Ergebnis genau einmal auf dem EDT. Installiert wird ein Treffer über {@link #installLocalVoice}.
      */
     default void searchLocalVoices(SettingsForm form, String query, LocalVoiceSearchCallback callback) {
@@ -140,7 +126,7 @@ public interface SettingsDialogActions {
         progress.finished(false, "In dieser Umgebung nicht verfügbar.");
     }
 
-    /** Der Wert für die TTS-Auswahl, unter dem der Sidecar eine installierte Stimme meldet. */
+    /** Der Wert für die TTS-Auswahl, unter dem eine installierte Stimme gewählt wird. */
     default String localVoiceSelection(String voiceId) {
         return voiceId;
     }

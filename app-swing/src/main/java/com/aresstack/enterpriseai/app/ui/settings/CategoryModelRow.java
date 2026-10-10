@@ -76,7 +76,7 @@ final class CategoryModelRow {
         });
         combo.getAccessibleContext().setAccessibleName((local ? "Lokales Modell für " : "Cloud-Modell für ")
                 + category.displayName());
-        String source = local ? "Lokale Modelle des Sidecars und installierte Stimmen"
+        String source = local ? "Installierte lokale Stimmen"
                 : "Passende Modelle aus GET /models der Enterprise-API";
         if (withTextField && !local) {
             field = rows.textField(category.displayName(), "Modellkennung, wie sie der Dienst nennt; optional mit "
@@ -158,7 +158,7 @@ final class CategoryModelRow {
         rebuild();
     }
 
-    /** Lokal installierte Modelle, die der Katalog nicht melden muss (Stimmen ohne laufenden Sidecar). */
+    /** Lokal installierte Modelle, die der Katalog nicht melden muss (installierte Stimmen). */
     void showInstalled(List<ModelOption> options) {
         this.installed = options == null ? Collections.<ModelOption>emptyList()
                 : new ArrayList<ModelOption>(options);

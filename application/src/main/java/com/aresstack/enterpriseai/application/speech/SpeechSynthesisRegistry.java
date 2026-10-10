@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * Die Sprachausgabe je Modellkatalog: die Auswahl {@code model.tts} nennt Katalog und Modell, die Registry liefert den
  * {@link SpeechSynthesisPort} dieses Katalogs. Wer vorliest, kennt keinen konkreten Anbieter (Enterprise-API oder
- * lokaler Sidecar); welche Kataloge sprechen können, entscheidet allein die Composition Root.
+ * lokale Stimme im Client); welche Kataloge sprechen können, entscheidet allein die Composition Root.
  */
 public final class SpeechSynthesisRegistry {
 

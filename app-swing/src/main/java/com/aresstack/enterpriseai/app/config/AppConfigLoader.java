@@ -14,7 +14,6 @@ import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 import com.aresstack.enterpriseai.domain.source.SourceSettings;
 import com.aresstack.enterpriseai.embedding.openai.EmbeddingInputMode;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcConfig;
 import com.aresstack.winproxy.ProxyMode;
 
@@ -53,7 +52,7 @@ import java.util.regex.Pattern;
 public final class AppConfigLoader {
 
     public static final String EXAMPLE_RESOURCE = "enterprise-ai-client.example.properties";
-    /** Modellverzeichnis des Sidecars unter dem Anwendungsverzeichnis, wenn {@code models.local.modelRoot} fehlt. */
+    /** Modellverzeichnis der lokalen Stimmen unter dem Anwendungsverzeichnis, wenn {@code models.local.modelRoot} fehlt. */
     public static final String DEFAULT_LOCAL_MODEL_DIRECTORY = "local-models";
 
     private static final Pattern SOURCE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
@@ -270,8 +269,7 @@ public final class AppConfigLoader {
 
     /**
      * Modellverwaltung: eine Auswahl je Kategorie ({@code chat.model}, {@code embedding.model},
-     * {@code model.<kategorie>}) und der optionale lokale Sidecar ({@code models.local.*}). Ohne Java-Pfad bleibt
-     * der Sidecar aus, ebenso ohne Jar (der Java-Pfad wird beim Start automatisch erkannt, daher kein Hinweis).
+     * {@code model.<kategorie>}) und das Modellverzeichnis der lokalen Stimmen ({@code models.local.modelRoot}).
      * {@code speech.readAloud.autoStart} liest neue Antworten automatisch vor (wie askai arch, Standard aus);
      * {@code speech.voice} ist die Stimme der Enterprise-Sprachausgabe.
      */
@@ -281,20 +279,8 @@ public final class AppConfigLoader {
             ModelReference reference = ModelsConfig.parse(r.text(ModelsConfig.keyOf(category), null));
             selections = selections.with(category, reference);
         }
-        Path java = r.path("models.local.java", null);
-        Path jar = r.path("models.local.sidecarJar", null);
         Path modelRoot = r.path("models.local.modelRoot", AppPaths.appDirectory().resolve(DEFAULT_LOCAL_MODEL_DIRECTORY));
-        if (jar == null) {
-            // Ohne Eintrag: neben dem Client-Jar, im Anwendungs- und im Modellverzeichnis suchen.
-            jar = SidecarJarLocator.find(modelRoot);
-        }
-        int readyTimeout = r.integer("models.local.readyTimeoutMillis", 60000, 1000, MAX_TIMEOUT);
-        LocalSidecarConfig local = null;
-        // Java 21 wird automatisch erkannt und gespeichert; ohne Sidecar-Jar bleiben lokale Modelle still aus.
-        if (java != null && jar != null) {
-            local = new LocalSidecarConfig(java, jar, modelRoot, readyTimeout);
-        }
-        return new ModelsConfig(selections, local, r.bool(ModelsConfig.READ_ALOUD_AUTO_START_KEY, false),
+        return new ModelsConfig(selections, r.bool(ModelsConfig.READ_ALOUD_AUTO_START_KEY, false),
                 r.text(ModelsConfig.SPEECH_VOICE_KEY, null), modelRoot);
     }
 

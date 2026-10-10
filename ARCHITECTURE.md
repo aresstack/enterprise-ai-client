@@ -69,11 +69,10 @@ Moduls liegen nur dort (geprüft).
 | `http-api` | PORT | `http.api` | domain | N (Netz) |
 | `model-api` | PORT | `model.api` | domain | Modellverwaltung |
 | `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api, speech-api | Modellverwaltung, Sprachausgabe |
-| `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api, speech-api, chat-api, embedding-api | Modellverwaltung, lokaler Chat/Embeddings (`/api/chat`, `/api/embed`), Sprachausgabe |
-| `model-huggingface` | ADAPTER | `model.huggingface` | domain, model-api, http-api | Stimmen für den Sidecar installieren (huggingface4j, kuratiert) |
+| `model-huggingface` | ADAPTER | `model.huggingface` | domain, model-api, http-api | Lokale Stimmen installieren und auf dem Hub suchen (huggingface4j, ohne Umwandlung) |
 | `speech-api` | PORT | `speech.api` | domain | Sprachausgabe (TTS über die Quelle des gewählten Modells: KIPITZ oder lokale Stimme im Prozess) |
 | `speech-runtime-api` | PORT | `speech.runtime` | domain | Inferenz-Laufzeit lokaler Stimmen (Token-Ids zu Audio), austauschbar |
-| `speech-local` | ADAPTER | `speech.local` | domain, speech-api, speech-runtime-api | Lokale Stimmen im Prozess (Piper, VITS aus dem Modellverzeichnis), kein Sidecar |
+| `speech-local` | ADAPTER | `speech.local` | domain, speech-api, speech-runtime-api | Lokale Stimmen im Prozess (Piper, VITS aus dem Modellverzeichnis) |
 | `speech-onnx` | ADAPTER | `speech.onnx` | domain, speech-runtime-api | Pilot-Backend ONNX Runtime (Java-Bibliothek, kein externes Programm) |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |
@@ -554,18 +553,12 @@ Kurzfassung; die ausführliche Tabelle je Arbeitspaket mit den Änderungen gegen
 | [docs/herkunft.md](docs/herkunft.md) | Herkunftstabelle |
 | [docs/einschraenkungen.md](docs/einschraenkungen.md) | Bekannte Einschränkungen, UNVERIFIED, Restarbeit |
 
-## Lokaler Java-21-Sidecar (`local-model-runtime-sidecar/`)
+## Lokale Stimmen im Prozess (`speech-local`, `speech-onnx`)
 
-Eigener Gradle-Build, **nicht** Teil von `settings.gradle`: übernommen aus askai-java8 (Branch `arch`,
-`local-model-runtime-sidecar-java21`), läuft als separater Java-21-Prozess auf 127.0.0.1 und ist nur über
-`model-sidecar` erreichbar (Katalog `GET /api/tags`, Sprachausgabe `POST /v1/audio/speech`). Für ihn gelten die
-Java-8- und Architekturregeln des Clients nicht. Neu gegenüber arch: Sprachausgabe, kein externes Programm.
-Schichten im Paket `speech`: `LocalVoiceStore` erkennt Stimmen je Ordner über `VoiceFormatReader`
-(Piper `<name>.onnx` + `<name>.onnx.json` aus `rhasspy/piper-voices`, oder VITS im Hugging-Face-Layout),
-`VoiceTextEncoder` macht daraus Token-Ids (Piper: Phonem-Ids aus `phoneme_id_map`; `phoneme_type text` direkt,
-`espeak` nur Deutsch über den regelbasierten `GermanPhonemizer` als Näherung an espeak-ng, andere Sprachen werden
-nicht angeboten), `LocalSpeechRuntime` rechnet. `OnnxSpeechRuntime` (ONNX Runtime als Java-Bibliothek) ist nur das
-Pilot-Backend; ONNX-Typen bleiben in dieser Klasse, eine eigene Inferenz-Engine ersetzt sie dort. Der Sidecar lädt
-nichts herunter: Stimmen installiert der Client. CI baut ihn im Job `sidecar`
-(JDK 21), das Release legt `local-model-runtime-sidecar-<version>.zip` neben das Fat Jar.
-
+Lokale Stimmen laufen im Java-8-Client selbst, ohne zweiten Prozess, ohne Java 21 und ohne externes Programm.
+`LocalVoiceStore` erkennt Stimmen je Ordner im Modellverzeichnis über `VoiceFormatReader` (Piper `<name>.onnx` +
+`<name>.onnx.json`, oder VITS im Hugging-Face-Layout), `VoiceTextEncoder` macht daraus Token-Ids (Piper: Phonem-Ids
+aus `phoneme_id_map`; `phoneme_type text` direkt, `espeak` nur Deutsch über den regelbasierten `GermanPhonemizer`
+als Näherung an espeak-ng), `LocalSpeechRuntime` (Port `speech-runtime-api`) rechnet. `OnnxSpeechRuntime` in
+`speech-onnx` (ONNX Runtime als Java-Bibliothek, native Bibliotheken im Jar) ist nur das Pilot-Backend; ONNX-Typen
+bleiben in diesem Modul, eine eigene Inferenz-Engine ersetzt es dort.

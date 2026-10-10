@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * Lokale Stimmen für die Sprachausgabe anzeigen, installieren, aktualisieren und entfernen. Ausgewählt wird eine installierte Stimme wie
- * jedes andere Modell über die Katalog-Kategorie TTS; der Sidecar meldet sie unter ihrer Kennung. Blockiert.
+ * jedes andere Modell über die Katalog-Kategorie TTS; gewählt wird sie unter ihrer Kennung. Blockiert.
  */
 public final class LocalVoiceService {
 
@@ -28,7 +28,7 @@ public final class LocalVoiceService {
         return provisioning.offers(modelRoot);
     }
 
-    /** Stimmen beim Anbieter suchen (nur vom Sidecar ladbare Formate); installiert nichts. */
+    /** Stimmen beim Anbieter suchen (nur im Client ladbare Formate); installiert nichts. */
     public List<LocalVoiceOffer> search(String query, Path modelRoot) throws LocalVoiceInstallException {
         requireRoot(modelRoot);
         return provisioning.search(query == null ? "" : query.trim(), modelRoot);

@@ -17,7 +17,7 @@ public interface LocalVoiceInstaller {
 
     List<LocalVoiceOffer> offers(Path modelRoot);
 
-    /** Hub-Suche nach vom Sidecar ladbaren Stimmen; Treffer sind danach über ihre Kennung installierbar. */
+    /** Hub-Suche nach im Client ladbaren Stimmen; Treffer sind danach über ihre Kennung installierbar. */
     List<LocalVoiceOffer> search(NetworkConfig network, KeePassConfig keePass, String query, Path modelRoot)
             throws LocalVoiceInstallException;
 

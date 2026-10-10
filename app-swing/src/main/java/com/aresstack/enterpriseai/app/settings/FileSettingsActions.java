@@ -1,12 +1,9 @@
 package com.aresstack.enterpriseai.app.settings;
 
-import com.aresstack.enterpriseai.application.localruntime.JavaRuntimeOverview;
-import com.aresstack.enterpriseai.application.localruntime.JavaRuntimeSelectionService;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.AppPaths;
-import com.aresstack.enterpriseai.app.config.SidecarJarLocator;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
@@ -25,7 +22,6 @@ import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 
 import java.io.IOException;
@@ -64,7 +60,6 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private final Executor worker;
     private final Executor ui;
     private final ModelCatalogLoader models;
-    private final JavaRuntimeSelectionService javaRuntimes;
     private final LocalVoiceInstaller voices;
 
     /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
@@ -104,26 +99,13 @@ public final class FileSettingsActions implements SettingsDialogActions {
     }
 
     /**
-     * Wie oben, dazu die Java-Erkennung des Abschnitts „Lokale Modelle“.
-     *
-     * @param javaRuntimes Suche nach Java-Laufzeiten oder {@code null} (dann bleibt das Dropdown leer)
-     */
-    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
-                               ConnectionChecker connectionChecker, ConfigurationCheck check,
-                               ModelCatalogLoader models, JavaRuntimeSelectionService javaRuntimes,
-                               Executor worker, Executor ui) {
-        this(file, secretChecker, connectionChecker, check, models, javaRuntimes, null, worker, ui);
-    }
-
-    /**
      * Wie oben, dazu die lokalen Stimmen der Sprachausgabe.
      *
      * @param voices Anzeige und Installation lokaler Stimmen oder {@code null} (dann bleibt die Liste leer)
      */
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
                                ConnectionChecker connectionChecker, ConfigurationCheck check,
-                               ModelCatalogLoader models, JavaRuntimeSelectionService javaRuntimes,
-                               LocalVoiceInstaller voices, Executor worker, Executor ui) {
+                               ModelCatalogLoader models, LocalVoiceInstaller voices, Executor worker, Executor ui) {
         if (file == null || check == null || worker == null || ui == null) {
             throw new IllegalArgumentException("file, check, worker and ui must not be null");
         }
@@ -134,7 +116,6 @@ public final class FileSettingsActions implements SettingsDialogActions {
         this.worker = worker;
         this.ui = ui;
         this.models = models;
-        this.javaRuntimes = javaRuntimes;
         this.voices = voices;
     }
 
@@ -477,52 +458,6 @@ public final class FileSettingsActions implements SettingsDialogActions {
     }
 
     @Override
-    public String detectedSidecarJar(String modelRoot) {
-        java.nio.file.Path root;
-        try {
-            root = modelRoot == null || modelRoot.trim().isEmpty()
-                    ? AppPaths.appDirectory().resolve("local-models") : java.nio.file.Paths.get(modelRoot.trim());
-        } catch (RuntimeException e) {
-            root = null;
-        }
-        java.nio.file.Path found = SidecarJarLocator.find(root);
-        return found == null ? "" : found.toString();
-    }
-
-    @Override
-    public void discoverJavaRuntimes(final Consumer<JavaRuntimeOverview> onResult) {
-        if (onResult == null) {
-            throw new IllegalArgumentException("onResult must not be null");
-        }
-        if (javaRuntimes == null) {
-            onResult.accept(JavaRuntimeOverview.empty());
-            return;
-        }
-        try {
-            worker.execute(new Runnable() {
-                @Override
-                public void run() {
-                    JavaRuntimeOverview result;
-                    try {
-                        result = javaRuntimes.discover();
-                    } catch (RuntimeException e) {
-                        result = JavaRuntimeOverview.empty();
-                    }
-                    final JavaRuntimeOverview delivered = result;
-                    ui.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            onResult.accept(delivered);
-                        }
-                    });
-                }
-            });
-        } catch (RuntimeException rejected) {
-            onResult.accept(JavaRuntimeOverview.empty());
-        }
-    }
-
-    @Override
     public void localVoices(SettingsForm form, final Consumer<List<LocalVoiceOffer>> onResult) {
         if (form == null || onResult == null) {
             throw new IllegalArgumentException("form and onResult must not be null");
@@ -777,7 +712,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
 
     @Override
     public String localVoiceSelection(String voiceId) {
-        return LocalSidecarModelCatalogAdapter.CATALOG_ID + ":" + voiceId;
+        return ModelsConfig.LOCAL_CATALOG_ID + ":" + voiceId;
     }
 
     private static String megabytes(long bytes) {

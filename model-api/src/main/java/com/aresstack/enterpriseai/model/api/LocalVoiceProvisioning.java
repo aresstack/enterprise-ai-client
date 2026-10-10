@@ -6,9 +6,9 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Versorgt den lokalen Sidecar mit Stimmen für die Sprachausgabe: welche Stimmen der Client anbietet, ob sie im
- * Modellverzeichnis liegen, und das Installieren (Herunterladen, Prüfen, Ablegen genau im Format, das der Sidecar
- * liest). Der Sidecar selbst lädt nie etwas herunter. Woher die Dateien kommen, ist Sache des Adapters.
+ * Versorgt den Client mit lokalen Stimmen für die Sprachausgabe: welche Stimmen der Client anbietet, ob sie im
+ * Modellverzeichnis liegen, und das Installieren (Herunterladen, Prüfen, Ablegen genau im Format, das der Client
+ * liest). Woher die Dateien kommen, ist Sache des Adapters.
  */
 public interface LocalVoiceProvisioning {
 
@@ -16,14 +16,14 @@ public interface LocalVoiceProvisioning {
     List<LocalVoiceOffer> offers(Path modelRoot);
 
     /**
-     * Sucht beim Anbieter nach Stimmen, die der Sidecar ohne Umwandlung laden kann, mit Installationsstand unter
+     * Sucht beim Anbieter nach Stimmen, die der Client ohne Umwandlung laden kann, mit Installationsstand unter
      * {@code modelRoot}; Treffer lassen sich danach über ihre Kennung installieren. Blockiert (Netz).
      */
     List<LocalVoiceOffer> search(String query, Path modelRoot) throws LocalVoiceInstallException;
 
     /**
      * Installiert die Stimme nach {@code modelRoot/<id>}; ist sie vollständig da, passiert nichts. Unterbrochene
-     * Downloads werden fortgesetzt, eine halbe Installation ist für den Sidecar nie sichtbar. Blockiert (Netz).
+     * Downloads werden fortgesetzt, eine halbe Installation ist für den Client nie sichtbar. Blockiert (Netz).
      */
     void install(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException;

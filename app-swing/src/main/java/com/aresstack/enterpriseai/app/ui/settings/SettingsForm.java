@@ -76,8 +76,6 @@ public final class SettingsForm {
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
     private final Map<String, String> modelSelections;
-    private final String localJava;
-    private final String localSidecarJar;
     private final String localModelRoot;
 
     private SettingsForm(Builder b) {
@@ -118,8 +116,6 @@ public final class SettingsForm {
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
         this.modelSelections = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.modelSelections));
-        this.localJava = b.localJava;
-        this.localSidecarJar = b.localSidecarJar;
         this.localModelRoot = b.localModelRoot;
     }
 
@@ -148,7 +144,7 @@ public final class SettingsForm {
                 .readAloudAutoStart(readAloudAutoStart)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .modelSelections(modelSelections)
-                .localJava(localJava).localSidecarJar(localSidecarJar).localModelRoot(localModelRoot);
+                .localModelRoot(localModelRoot);
     }
 
     static String text(String value) {
@@ -329,15 +325,6 @@ public final class SettingsForm {
         return value == null ? "" : value;
     }
 
-    /** Java-21-Programm des optionalen lokalen Sidecars; leer = keine lokalen Modelle. */
-    public String localJava() {
-        return localJava;
-    }
-
-    public String localSidecarJar() {
-        return localSidecarJar;
-    }
-
     public String localModelRoot() {
         return localModelRoot;
     }
@@ -388,8 +375,6 @@ public final class SettingsForm {
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
         private final Map<String, String> modelSelections = new LinkedHashMap<String, String>();
-        private String localJava = "";
-        private String localSidecarJar = "";
         private String localModelRoot = "";
 
         private Builder() {
@@ -595,16 +580,6 @@ public final class SettingsForm {
             } else {
                 modelSelections.put(categoryKey, trimmed);
             }
-            return this;
-        }
-
-        public Builder localJava(String value) {
-            this.localJava = text(value);
-            return this;
-        }
-
-        public Builder localSidecarJar(String value) {
-            this.localSidecarJar = text(value);
             return this;
         }
 

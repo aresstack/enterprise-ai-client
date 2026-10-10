@@ -35,9 +35,8 @@ dependencies {
     implementation project(':acp-solon-client')
     implementation project(':mcp-solon-runtime')
     implementation project(':http-api')
-    // Modellverwaltung: Katalog der Enterprise-API und optionaler lokaler Java-21-Sidecar.
+    // Modellverwaltung: Katalog der Enterprise-API und Stimmen vom Hugging Face Hub.
     implementation project(':model-kipitz')
-    implementation project(':model-sidecar')
     implementation project(':model-huggingface')
     implementation project(':speech-api')
     implementation project(':speech-runtime-api')

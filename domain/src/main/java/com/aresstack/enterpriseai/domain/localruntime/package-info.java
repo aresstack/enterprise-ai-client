@@ -1,7 +1,5 @@
 /**
- * Java-Laufzeiten für den optionalen lokalen Sidecar: {@link com.aresstack.enterpriseai.domain.localruntime.JavaRuntimeInstallation}
- * ist eine gefundene und mit {@code java -version} geprüfte Installation,
- * {@link com.aresstack.enterpriseai.domain.localruntime.JavaRuntimeSelector} die Auswahlregel (exakt Java 21 vor der
- * kleinsten höheren Version, nie die höchste nur weil sie die höchste ist).
+ * Lokale Modelle des Clients: {@link com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer} ist eine
+ * angebotene oder installierte lokale Stimme.
  */
 package com.aresstack.enterpriseai.domain.localruntime;

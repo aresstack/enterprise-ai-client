@@ -2,8 +2,8 @@ package com.aresstack.enterpriseai.domain.localruntime;
 
 /**
  * Eine lokale Stimme für die Sprachausgabe, die der Client installieren kann (kuratierte Liste aus der
- * Konfiguration), mit ihrem Installationsstand im Modellverzeichnis des Sidecars. Die Kennung ist zugleich der
- * Ordnername unter dem Modellverzeichnis und der Modellname, unter dem der Sidecar die Stimme meldet.
+ * Konfiguration), mit ihrem Installationsstand im Modellverzeichnis. Die Kennung ist zugleich der
+ * Ordnername unter dem Modellverzeichnis und der Modellname, unter dem die Stimme gewählt wird.
  */
 public final class LocalVoiceOffer {
 

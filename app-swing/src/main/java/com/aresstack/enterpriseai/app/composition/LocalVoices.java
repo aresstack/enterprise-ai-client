@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Verdrahtet die Stimmenversorgung des Sidecars: kuratierte Stimmen aus {@link LocalVoicesConfig},
+ * Verdrahtet die Versorgung mit lokalen Stimmen: kuratierte Stimmen aus {@link LocalVoicesConfig},
  * {@link HuggingFaceVoiceProvisioning} (huggingface4j) mit der Proxy-Route aus den Netzwerkeinstellungen des
  * Entwurfs, davor der Anwendungsfall {@link LocalVoiceService}. TLS: huggingface4j nimmt keine eigene
  * {@code SSLSocketFactory} an und vertraut deshalb den JVM-Zertifikaten, nicht der TrustPolicy der Anwendung.

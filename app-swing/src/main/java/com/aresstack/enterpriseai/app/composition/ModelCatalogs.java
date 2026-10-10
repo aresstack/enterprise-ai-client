@@ -8,25 +8,10 @@ import com.aresstack.enterpriseai.app.settings.ModelCatalogLoader;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.application.modelcatalog.UnifiedModelCatalog;
 import com.aresstack.enterpriseai.application.speech.SpeechSynthesisRegistry;
-import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
-import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
-import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
-import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
-import com.aresstack.enterpriseai.chat.api.ChatTask;
-import com.aresstack.enterpriseai.domain.chat.ChatRequest;
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.model.api.ModelCatalogPort;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogConfig;
 import com.aresstack.enterpriseai.model.kipitz.KipitzSpeechAdapter;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarEmbeddingAdapter;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
 import com.aresstack.enterpriseai.speech.local.LocalVoiceSpeechAdapter;
 import com.aresstack.enterpriseai.speech.onnx.OnnxSpeechRuntime;
@@ -39,13 +24,12 @@ import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
- * Baut die Modellquellen aus der Konfiguration und führt sie über {@link UnifiedModelCatalog} zusammen: die
- * Enterprise-API (KIPITZ, {@code GET /models}) immer, den lokalen Java-21-Sidecar nur, wenn er konfiguriert ist.
- * Der Sidecar-Prozess gehört dieser Klasse (einer für die ganze Anwendung, neu gestartet, wenn sich seine Pfade
- * ändern) und endet mit {@link #close()}. Jeder Stand landet im {@link ModelCatalogCache}. Eine Instanz dient beim
- * Start der Hintergrundabfrage und im Einstellungen-Dialog dem Reiter „Modelle“.
+ * Baut die Modellquelle aus der Konfiguration: die Enterprise-API (KIPITZ, {@code GET /models}); lokale Modelle sind
+ * die installierten Stimmen im Modellverzeichnis, die der Dialog selbst listet. Jeder Stand landet im
+ * {@link ModelCatalogCache}. Eine Instanz dient beim Start der Hintergrundabfrage und im Einstellungen-Dialog dem
+ * Reiter „Modelle“; sie hält das Inferenz-Backend der lokalen Stimmen, das mit {@link #close()} endet.
  */
-public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntime, Closeable {
+public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
 
     private static final Logger LOG = Logger.getLogger(ModelCatalogs.class.getName());
 
@@ -56,10 +40,9 @@ public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntim
 
     private final ModelCatalogCache cache;
     private final TokenLookup dialogTokens;
-    private LocalSidecarModelCatalogAdapter sidecar;
     /** Pilot-Backend der lokalen Stimmen im Prozess; eins für die ganze Anwendung, geladen beim ersten Vorlesen. */
     private final OnnxSpeechRuntime localSpeechRuntime = new OnnxSpeechRuntime();
-    private boolean closed;
+    private final Object refreshLock = new Object();
 
     /**
      * @param cache        Zwischenspeicher neben der Konfiguration
@@ -94,32 +77,19 @@ public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntim
     }
 
     /**
-     * Fragt alle Quellen ab (blockiert, nie auf dem EDT), speichert den Stand und liefert ihn. Nicht erreichbare
-     * Quellen behalten ihre zuletzt bekannten Modelle.
+     * Fragt die Quelle ab (blockiert, nie auf dem EDT), speichert den Stand und liefert ihn. Ist sie nicht
+     * erreichbar, bleiben die zuletzt bekannten Modelle.
      */
     public ModelCatalogSnapshot refresh(AppConfig config, NetworkServices network, Supplier<String> token) {
         synchronized (refreshLock) {
-            return refreshNow(config, network, token);
+            List<ModelCatalogPort> catalogs = new ArrayList<ModelCatalogPort>();
+            catalogs.add(new KipitzModelCatalogAdapter(kipitz(config, network, token)));
+            ModelCatalogSnapshot snapshot = new UnifiedModelCatalog(catalogs, cache.read()).refresh();
+            LOG.info("Modellkatalog: " + snapshot);
+            cache.write(snapshot);
+            return snapshot;
         }
     }
-
-    private ModelCatalogSnapshot refreshNow(AppConfig config, NetworkServices network, Supplier<String> token) {
-        List<ModelCatalogPort> catalogs = new ArrayList<ModelCatalogPort>();
-        catalogs.add(new KipitzModelCatalogAdapter(kipitz(config, network, token)));
-        LocalSidecarModelCatalogAdapter local = sidecar(config.models().localSidecar());
-        if (local != null) {
-            catalogs.add(local);
-        }
-        ModelCatalogSnapshot snapshot = new UnifiedModelCatalog(catalogs, cache.read()).refresh();
-        if (local != null) {
-            stopIfReleased(local);
-        }
-        LOG.info("Modellkatalog: " + snapshot);
-        cache.write(snapshot);
-        return snapshot;
-    }
-
-    private final Object refreshLock = new Object();
 
     private static KipitzModelCatalogConfig kipitz(AppConfig config, NetworkServices network,
                                                    Supplier<String> token) {
@@ -133,98 +103,26 @@ public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntim
                 .build();
     }
 
-    private synchronized LocalSidecarModelCatalogAdapter sidecar(LocalSidecarConfig config) {
-        if (closed) {
-            return null;
-        }
-        if (sidecar != null && (config == null || !sidecar.config().equals(config))) {
-            sidecar.close();
-            sidecar = null;
-        }
-        if (sidecar == null && config != null) {
-            sidecar = new LocalSidecarModelCatalogAdapter(config);
-        }
-        return sidecar;
-    }
-
-    /** Ein während der Abfrage ersetzter oder geschlossener Sidecar darf nicht weiterlaufen. */
-    private synchronized void stopIfReleased(LocalSidecarModelCatalogAdapter local) {
-        if (local != sidecar) {
-            local.close();
-        }
-    }
-
     /**
      * Die Sprachausgabe je Modellquelle: die Enterprise-API (KIPITZ) und die lokalen Stimmen im Prozess, beide
-     * immer. Welcher Port spricht, entscheidet der Katalog des gewählten TTS-Modells
-     * ({@code model.tts}); lokale und Enterprise-Modelle sind gleichwertig.
+     * immer. Welcher Port spricht, entscheidet der Katalog des gewählten TTS-Modells ({@code model.tts}).
      *
      * @param connection Verbindung der Enterprise-API (die des laufenden Graphen, passend zu Netz und Token)
-     * @param models     Stimme und lokaler Sidecar, auch frisch gespeichert
+     * @param models     Stimme und Modellverzeichnis, auch frisch gespeichert
      */
     public SpeechSynthesisRegistry speech(AppConfig connection, ModelsConfig models, NetworkServices network,
                                           Supplier<String> token) {
         List<SpeechSynthesisPort> ports = new ArrayList<SpeechSynthesisPort>();
         ports.add(new KipitzSpeechAdapter(kipitz(connection, network, token), models.speechVoice()));
-        // Lokale Stimmen sprechen im Prozess (ONNX Runtime als Pilot), ohne Sidecar und ohne Java 21.
-        ports.add(new LocalVoiceSpeechAdapter(LocalSidecarModelCatalogAdapter.CATALOG_ID, models.localModelRoot(),
+        // Lokale Stimmen sprechen im Prozess (ONNX Runtime als Pilot), ohne externes Programm.
+        ports.add(new LocalVoiceSpeechAdapter(ModelsConfig.LOCAL_CATALOG_ID, models.localModelRoot(),
                 localSpeechRuntime));
         return new SpeechSynthesisRegistry(ports);
     }
 
-    /** Chat des lokalen Sidecars für diese Pfade (geteilter Prozess, Start bei der ersten Anfrage). */
+    /** Gibt geladene Stimmen frei; idempotent. */
     @Override
-    public ChatCompletionPort chat(final LocalSidecarConfig config) {
-        return new ChatCompletionPort() {
-            @Override
-            public ChatResponse complete(ChatRequest request) {
-                return running(config).chat().complete(request);
-            }
-
-            @Override
-            public ChatTask stream(ChatRequest request, ChatStreamListener listener) {
-                return running(config).chat().stream(request, listener);
-            }
-        };
-    }
-
-    /** Embeddings des lokalen Sidecars für diese Pfade (geteilter Prozess, Start bei der ersten Anfrage). */
-    @Override
-    public EmbeddingPort embeddings(final LocalSidecarConfig config, final String modelId, final int dimension) {
-        final EmbeddingModelIdentity identity = LocalSidecarEmbeddingAdapter.identity(modelId, dimension);
-        return new EmbeddingPort() {
-            @Override
-            public EmbeddingModelIdentity modelIdentity() {
-                return identity;
-            }
-
-            @Override
-            public EmbeddingBatch embed(List<String> texts) {
-                LocalSidecarModelCatalogAdapter local = sidecar(config);
-                if (local == null) {
-                    throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "Lokaler Sidecar ist beendet");
-                }
-                return local.embeddings(modelId, dimension).embed(texts);
-            }
-        };
-    }
-
-    private LocalSidecarModelCatalogAdapter running(LocalSidecarConfig config) {
-        LocalSidecarModelCatalogAdapter local = sidecar(config);
-        if (local == null) {
-            throw new ChatCompletionException(ChatErrorKind.TRANSPORT, "Lokaler Sidecar ist beendet");
-        }
-        return local;
-    }
-
-    /** Beendet den Sidecar-Prozess; idempotent. */
-    @Override
-    public synchronized void close() {
-        closed = true;
+    public void close() {
         localSpeechRuntime.close();
-        if (sidecar != null) {
-            sidecar.close();
-            sidecar = null;
-        }
     }
 }

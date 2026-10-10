@@ -25,7 +25,7 @@ import java.util.function.Supplier;
  * „Lokale Stimmen“ im Reiter „Lokale Modelle“: je vorgeschlagene oder installierte Stimme eine Zeile mit Installationsstand und
  * „Installieren“ bzw. „Aktualisieren“ und „Entfernen“, darunter eine Statuszeile mit Fortschritt oder Fehlergrund. Installieren wählt
  * nichts aus: eine installierte Stimme steht danach in der TTS-Liste darüber und wird dort gewählt. Dazu die
- * Hugging-Face-Suche ({@link #searchPanel()}): Suchfeld und Treffer, nur Modelle, die der Sidecar ohne Umwandlung
+ * Hugging-Face-Suche ({@link #searchPanel()}): Suchfeld und Treffer, nur Modelle, die der Client ohne Umwandlung
  * lädt; ihre Zeilen haben dieselben Knöpfe.
  */
 final class LocalVoiceList {
@@ -37,7 +37,7 @@ final class LocalVoiceList {
     static final String INSTALLED = "✓ installiert";
     static final String NONE = "Keine lokalen Stimmen konfiguriert.";
     static final String SEARCH_LABEL = "Suchen";
-    static final String NO_HITS = "Keine vom Sidecar ladbaren Modelle gefunden.";
+    static final String NO_HITS = "Keine im Client ladbaren Modelle gefunden.";
 
     /** Rückmeldungen an den Reiter. */
     interface Listener {

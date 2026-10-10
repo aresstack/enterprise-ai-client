@@ -7,7 +7,7 @@ import java.util.List;
 /** Ergebnis einer Hub-Suche nach lokalen Stimmen; genau ein Aufruf, auf dem EDT. */
 public interface LocalVoiceSearchCallback {
 
-    /** Die vom Sidecar ladbaren Treffer mit Installationsstand; leer, wenn nichts passt. */
+    /** Die im Client ladbaren Treffer mit Installationsstand; leer, wenn nichts passt. */
     void found(List<LocalVoiceOffer> offers);
 
     /** Die Suche ist gescheitert; {@code message} nennt den Grund. */

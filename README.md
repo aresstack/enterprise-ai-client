@@ -106,8 +106,7 @@ Temp-Verzeichnis), `:app-swing:runAgentDemo` (Chat gegen Fake-Port plus Demo-Age
 
 Der Reiter „Modelle“ im Einstellungen-Dialog wählt je Funktion genau ein Modell: Chat, Embeddings, Reranking,
 Sprachausgabe, Spracheingabe, Bildverständnis, Dokumente/OCR und Bild-Embeddings. Die Liste kommt im Hintergrund
-aus `GET /models` des KIPITZ-Dienstes und, optional, aus dem lokalen Java-21-Sidecar (`models.local.java`,
-`models.local.sidecarJar`); eingeordnet wird nur nach den gelieferten Metadaten (Capabilities, Modalitäten), nie
+aus `GET /models` des KIPITZ-Dienstes, lokal kommen installierte Stimmen dazu; eingeordnet wird nur nach den gelieferten Metadaten (Capabilities, Modalitäten), nie
 nach Namen. Gespeichert wird `chat.model`, `embedding.model` und `model.<funktion>`, lokale Modelle mit dem Präfix
 `local:`. Eine gespeicherte Auswahl bleibt erhalten, auch wenn die Quelle gerade nicht erreichbar ist; der letzte
 Stand liegt in `model-catalog.properties`. Funktionen ohne passendes Modell zeigen „kein Modell verfügbar“.
