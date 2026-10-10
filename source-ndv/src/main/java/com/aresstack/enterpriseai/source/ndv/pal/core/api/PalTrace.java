@@ -1,91 +1,60 @@
 package com.aresstack.enterpriseai.source.ndv.pal.core.api;
 
-import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
+/**
+ * PAL-Protokollmitschnitt. In MainframeMate eine Trace-Datei über die Systemeigenschaft {@code PALTRACE}; hier
+ * ohne globalen Dateizustand über {@code java.util.logging} (Stufe FINEST).
+ */
 public final class PalTrace {
-    private static FileWriter protokollDatei;
+    private static final Logger LOG = Logger.getLogger(PalTrace.class.getName());
 
     private PalTrace() {
     }
 
-    public static synchronized void open(boolean append) throws IOException {
-        String palTrace = System.getProperty("PALTRACE");
-        if (!"ON".equals(palTrace)) {
+    public static void open(boolean append) throws IOException {
+        // Mitschnitt läuft über java.util.logging; keine Datei zu öffnen.
+    }
+
+    public static void close() throws IOException {
+        // nichts zu schließen
+    }
+
+    public static void flush() throws IOException {
+        // nichts zu leeren
+    }
+
+    public static void header(String transactionName) throws IOException {
+        if (LOG.isLoggable(Level.FINEST)) {
+            LOG.finest("[" + Thread.currentThread().getId() + "] ------ Transaction '" + transactionName + "' ------");
+        }
+    }
+
+    public static void buffer(byte[] data, boolean received, String sessionId) throws IOException {
+        if (!LOG.isLoggable(Level.FINEST)) {
             return;
         }
-        if (protokollDatei != null) {
-            throw new IllegalStateException("Trace file is already open");
-        }
-        String fileName = System.getProperty("PALTRACEFILE", "NatPal.trc");
-        String tmpDir = System.getProperty("java.io.tmpdir");
-        String separator = System.getProperty("file.separator");
-        String path = tmpDir + separator + fileName;
-        protokollDatei = new FileWriter(path, append);
-    }
-
-    public static synchronized void close() throws IOException {
-        if (protokollDatei != null) {
-            protokollDatei.close();
-            protokollDatei = null;
-        }
-    }
-
-    public static synchronized void flush() throws IOException {
-        if (protokollDatei != null) {
-            protokollDatei.flush();
-        }
-    }
-
-    public static synchronized void header(String transactionName) throws IOException {
-        if (protokollDatei == null) {
-            return;
-        }
-        protokollDatei.write("[" + Thread.currentThread().getId() + "] ------ Transaction '" + transactionName + "' ------\r\n");
-    }
-
-    public static synchronized void buffer(byte[] data, boolean received, String sessionId) throws IOException {
-        if (protokollDatei == null) {
-            return;
-        }
-        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss:SSS");
-        protokollDatei.write(sdf.format(new Date()) + " ");
-        if (received) {
-            protokollDatei.write("<<===== Pal data from server <<=======\r\n");
-        } else {
-            protokollDatei.write("=====>> Pal data to server ======>>\r\n");
-        }
+        StringBuilder sb = new StringBuilder(received ? "<<===== Pal data from server <<=======" : "=====>> Pal data to server ======>>");
         for (int i = 0; i < data.length; i++) {
             if (i % 30 == 0) {
-                if (i > 0) {
-                    protokollDatei.write("\r\n");
-                }
-                protokollDatei.write(String.format("%04d ", i));
+                sb.append("\r\n").append(String.format("%04d ", i));
             }
-            protokollDatei.write(String.format("%02X ", data[i] & 0xFF));
+            sb.append(String.format("%02X ", data[i] & 0xFF));
         }
-        if (data.length > 0) {
-            protokollDatei.write("\r\n");
+        LOG.finest(sb.toString());
+    }
+
+    public static void text(String text) throws IOException {
+        if (LOG.isLoggable(Level.FINEST)) {
+            LOG.finest(text);
         }
     }
 
-    public static synchronized void text(String text) throws IOException {
-        if (protokollDatei == null) {
-            return;
-        }
-        protokollDatei.write(text);
-    }
-
-    public static synchronized void type(String typeName, boolean received) throws IOException {
-        if (protokollDatei == null) {
-            return;
-        }
-        if (received) {
-            protokollDatei.write("<<<<< " + typeName + "\r\n");
-        } else {
-            protokollDatei.write(">>>> " + typeName + "\r\n");
+    public static void type(String typeName, boolean received) throws IOException {
+        if (LOG.isLoggable(Level.FINEST)) {
+            LOG.finest((received ? "<<<<< " : ">>>> ") + typeName);
         }
     }
 }

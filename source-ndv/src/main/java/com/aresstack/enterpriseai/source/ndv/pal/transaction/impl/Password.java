@@ -29,7 +29,8 @@ public final class Password {
     private static final int BCD_VORZEICHEN_PLUS = 12;
 
     /** Erkannte Plattform (ASCII oder EBCDIC). */
-    private static int erkannePlattform;
+    /** Java rechnet immer in ASCII/Unicode (Leerzeichen 0x20); EBCDIC-Erkennung aus dem Original entfällt. */
+    private static final int erkannePlattform = PLATTFORM_ASCII;
 
     private Password() {
     }
@@ -64,7 +65,6 @@ public final class Password {
         String zeitText = (new SimpleDateFormat("HH0mm0ss"))
                 .format((new GregorianCalendar()).getTime());
 
-        plattformErkennen();
 
         if (userId.length() > 8) {
             throw new IllegalArgumentException("the user id " + userId + " exceeds 8 bytes");
@@ -162,20 +162,6 @@ public final class Password {
     //  Plattformerkennung
     // =================================================================
 
-    /**
-     * Erkennt ob die aktuelle Laufzeitumgebung ASCII oder EBCDIC verwendet.
-     * Ein Leerzeichen ist in ASCII 0x20 (32), in EBCDIC 0x40 (64).
-     */
-    private static void plattformErkennen() {
-        byte leerzeichen = 32;
-        erkannePlattform = 0;
-        if (leerzeichen == 32) {
-            erkannePlattform = PLATTFORM_ASCII;
-        }
-        if (leerzeichen == 64) {
-            erkannePlattform = PLATTFORM_EBCDIC;
-        }
-    }
 
     // =================================================================
     //  Kern-Verwürfelung

@@ -50,23 +50,21 @@ public final class ObjectType {
     public static final String PROFILER_RES_EXT_CONSOLIDATED = "NPRC";
     public static final String COVERGAGE_RES_EXT = "NCVF";
 
-    public static final List<String> BREAKPOINT_EXTENSIONS = Collections.unmodifiableList(
+    private static final List<String> BREAKPOINT_EXTENSIONS = Collections.unmodifiableList(
             Arrays.asList("NSP", "NSN", "NS7", "NS3", "NSM", "NSS", "NSC", "NSH", "NSG"));
 
-    private static Hashtable<Integer, String> idZuDateiendung;
-    private static Hashtable<String, Integer> dateiendungZuId;
-    private static Hashtable<String, String> dateiendungZuName;
-    private static Hashtable<Integer, String> idZuName;
-    private static Hashtable<Integer, String> idZuGruppenName;
-    private static List<String> sprachListe;
+    private static final Hashtable<Integer, String> idZuDateiendung = new Hashtable<>();
+    private static final Hashtable<String, Integer> dateiendungZuId = new Hashtable<>();
+    private static final Hashtable<String, String> dateiendungZuName = new Hashtable<>();
+    private static final Hashtable<Integer, String> idZuName = new Hashtable<>();
+    private static final Hashtable<Integer, String> idZuGruppenName = new Hashtable<>();
 
     private ObjectType() {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static synchronized Hashtable getInstanceIdExtension() {
-        if (idZuDateiendung == null) {
-            idZuDateiendung = new Hashtable<>();
+        if (idZuDateiendung.isEmpty()) {
             idZuDateiendung.put(GDA, "NSG");
             idZuDateiendung.put(LDA, "NSL");
             idZuDateiendung.put(PDA, "NSA");
@@ -92,8 +90,7 @@ public final class ObjectType {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static synchronized Hashtable getInstanceExtensionId() {
-        if (dateiendungZuId == null) {
-            dateiendungZuId = new Hashtable<>();
+        if (dateiendungZuId.isEmpty()) {
             dateiendungZuId.put("NSG", GDA);
             dateiendungZuId.put("NSL", LDA);
             dateiendungZuId.put("NSA", PDA);
@@ -117,8 +114,7 @@ public final class ObjectType {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static synchronized Hashtable getInstanceExtensionName() {
-        if (dateiendungZuName == null) {
-            dateiendungZuName = new Hashtable<>();
+        if (dateiendungZuName.isEmpty()) {
             dateiendungZuName.put("NSG", "Global Data Area");
             dateiendungZuName.put("NSL", "Local Data Area");
             dateiendungZuName.put("NSA", "Parameter Data Area");
@@ -142,8 +138,7 @@ public final class ObjectType {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static synchronized Hashtable getInstanceIdName() {
-        if (idZuName == null) {
-            idZuName = new Hashtable<>();
+        if (idZuName.isEmpty()) {
             idZuName.put(GDA, "Global Data Area");
             idZuName.put(LDA, "Local Data Area");
             idZuName.put(PDA, "Parameter Data Area");
@@ -169,8 +164,7 @@ public final class ObjectType {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static synchronized Hashtable getInstanceIdGroupName() {
-        if (idZuGruppenName == null) {
-            idZuGruppenName = new Hashtable<>();
+        if (idZuGruppenName.isEmpty()) {
             idZuGruppenName.put(GDA, "Global Data Areas");
             idZuGruppenName.put(LDA, "Local Data Areas");
             idZuGruppenName.put(PDA, "Parameter Data Areas");
@@ -196,7 +190,7 @@ public final class ObjectType {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static final List getUnmodifiableLanguageList() {
-        if (sprachListe == null) {
+        {
             String[] langs = new String[60];
             langs[0] = "English";
             langs[1] = "German";
@@ -245,9 +239,8 @@ public final class ObjectType {
             langs[57] = "Chinese (Republic of China)";
             langs[58] = "Japanese (Kanji)";
             langs[59] = "Korean";
-            sprachListe = Collections.unmodifiableList(Arrays.asList(langs));
+            return Collections.unmodifiableList(Arrays.asList(langs));
         }
-        return sprachListe;
     }
 
     public static String langToFileName(String langIndex, boolean withExtension) {

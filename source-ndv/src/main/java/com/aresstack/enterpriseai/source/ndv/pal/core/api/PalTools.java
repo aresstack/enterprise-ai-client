@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.source.ndv.pal.core.api;
 import java.util.Hashtable;
 
 public class PalTools {
-    private static Hashtable<Integer, String> formatZuordnung;
+    private static final Hashtable<Integer, String> formatZuordnung = new Hashtable<>();
 
     private PalTools() {
     }
@@ -26,8 +26,7 @@ public class PalTools {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static synchronized Hashtable getInstanceFormat() {
-        if (formatZuordnung == null) {
-            formatZuordnung = new Hashtable<>();
+        if (formatZuordnung.isEmpty()) {
             formatZuordnung.put(1, "N");
             formatZuordnung.put(2, "P");
             formatZuordnung.put(3, "I");

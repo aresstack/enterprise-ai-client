@@ -11,7 +11,6 @@ import com.aresstack.enterpriseai.source.ndv.pal.core.api.IPalTypeSource;
  */
 public final class ConversionResult {
 
-    private static final ConversionResult OK = new ConversionResult(null, null, -1, (byte) 0);
 
     private final String fehlermeldung;
     private final IPalTypeSource quelle;
@@ -28,7 +27,7 @@ public final class ConversionResult {
 
     /** Erfolg — keine Konvertierungsfehler. */
     public static ConversionResult ok() {
-        return OK;
+        return new ConversionResult(null, null, -1, (byte) 0);
     }
 
     /** Fehler — nicht abbildbarer Codepunkt erkannt. */
