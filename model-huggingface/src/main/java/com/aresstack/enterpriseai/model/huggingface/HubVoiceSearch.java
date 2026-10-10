@@ -18,16 +18,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Sucht auf dem Hugging Face Hub nach Sprachausgabe-Modellen, die der Sidecar ohne Umwandlung lädt, und macht
+ * Sucht auf dem Hugging Face Hub nach Sprachausgabe-Modellen, die der Client ohne Umwandlung lädt, und macht
  * aus jedem Treffer die installierbaren Stimmen:
  * <ul>
  *   <li>Piper: je Paar {@code <name>.onnx} + {@code <name>.onnx.json} eine Stimme. Folgt der Name dem Piper-Schema
- *   {@code <sprache>_<REGION>-…}, bleiben nur deutsche: andere espeak-Sprachen kann der Sidecar nicht
+ *   {@code <sprache>_<REGION>-…}, bleiben nur deutsche: andere espeak-Sprachen kann der Client ohne espeak-ng nicht
  *   phonemisieren. Ob die Stimme wirklich passt, prüft die Installation an der {@code .onnx.json}.</li>
  *   <li>VITS im Hugging-Face-Layout: {@code config.json}, {@code vocab.json} und {@code onnx/model.onnx} oder
  *   {@code model.onnx}; {@code model_type=vits} prüft die Installation an der {@code config.json}.</li>
  * </ul>
- * Chat- und Embedding-Modelle bietet die Suche nicht an: der Sidecar hat dafür noch keine Laufzeit, die
+ * Chat- und Embedding-Modelle bietet die Suche nicht an: es gibt dafür noch keine Laufzeit, die
  * Hub-Dateien direkt lädt.
  */
 final class HubVoiceSearch {

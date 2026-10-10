@@ -1,0 +1,8 @@
+description = 'Adapter: lokale Sprachausgabe im Prozess (Piper- und VITS-Stimmen aus dem Modellverzeichnis) über den Port speech-runtime-api; kein Sidecar, kein externes Programm.'
+
+dependencies {
+    api project(':speech-api')
+    api project(':speech-runtime-api')
+    // JSON der Stimmenkonfiguration bleibt im Adapter (implementation, nicht api).
+    implementation libs.gson
+}

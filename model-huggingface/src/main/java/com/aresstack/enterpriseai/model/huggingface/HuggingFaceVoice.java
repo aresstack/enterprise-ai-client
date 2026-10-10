@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Eine kuratierte Stimme aus der Konfiguration: Kennung (Ordnername und Modellname im Sidecar), Anzeigename,
+ * Eine kuratierte Stimme aus der Konfiguration: Kennung (Ordnername und Modellkennung der lokalen Stimme), Anzeigename,
  * Sprache, Hub-Repository, Revision und die Dateien im Repository (für Piper {@code <name>.onnx} und
  * {@code <name>.onnx.json}). Die Dateien landen unter ihrem Dateinamen ohne Pfad im Stimmenordner.
  */

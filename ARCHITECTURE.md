@@ -71,7 +71,10 @@ Moduls liegen nur dort (geprüft).
 | `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api, speech-api | Modellverwaltung, Sprachausgabe |
 | `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api, speech-api, chat-api, embedding-api | Modellverwaltung, lokaler Chat/Embeddings (`/api/chat`, `/api/embed`), Sprachausgabe |
 | `model-huggingface` | ADAPTER | `model.huggingface` | domain, model-api, http-api | Stimmen für den Sidecar installieren (huggingface4j, kuratiert) |
-| `speech-api` | PORT | `speech.api` | domain | Sprachausgabe (TTS über die Quelle des gewählten Modells: KIPITZ oder lokaler Sidecar) |
+| `speech-api` | PORT | `speech.api` | domain | Sprachausgabe (TTS über die Quelle des gewählten Modells: KIPITZ oder lokale Stimme im Prozess) |
+| `speech-runtime-api` | PORT | `speech.runtime` | domain | Inferenz-Laufzeit lokaler Stimmen (Token-Ids zu Audio), austauschbar |
+| `speech-local` | ADAPTER | `speech.local` | domain, speech-api, speech-runtime-api | Lokale Stimmen im Prozess (Piper, VITS aus dem Modellverzeichnis), kein Sidecar |
+| `speech-onnx` | ADAPTER | `speech.onnx` | domain, speech-runtime-api | Pilot-Backend ONNX Runtime (Java-Bibliothek, kein externes Programm) |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |
 | `acp-client-api` | PORT | `acp.api` | domain | G (AP16) |

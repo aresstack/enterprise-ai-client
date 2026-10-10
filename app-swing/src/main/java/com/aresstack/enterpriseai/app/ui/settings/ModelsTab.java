@@ -129,13 +129,14 @@ final class ModelsTab {
             }
         }, palette);
         FormRows voiceNote = new FormRows(palette);
-        voiceNote.note("Vorgeschlagene und installierte Stimmen für den lokalen Sidecar, geladen vom Hugging Face Hub "
-                + "über die Netzwerkeinstellungen ins Modellverzeichnis, ohne Umwandlung. Ohne externes Programm; die "
-                + "deutsche Aussprache ist regelbasiert. Installieren wählt nichts aus: gewählt wird unter TTS oben.");
+        voiceNote.note("Vorgeschlagene und installierte Stimmen, geladen vom Hugging Face Hub über die "
+                + "Netzwerkeinstellungen ins Modellverzeichnis, ohne Umwandlung. Sie sprechen im Client selbst (ONNX "
+                + "Runtime), ohne Sidecar und ohne externes Programm; die deutsche Aussprache ist regelbasiert. "
+                + "Installieren wählt nichts aus: gewählt wird unter TTS oben.");
         FormRows searchNote = new FormRows(palette);
-        searchNote.note("Angeboten werden nur Modelle, die der Sidecar ohne Umwandlung lädt: Sprachausgabe als "
+        searchNote.note("Angeboten werden nur Modelle, die der Client ohne Umwandlung lädt: Sprachausgabe als "
                 + "Piper-Stimme (.onnx mit .onnx.json, deutsch oder Text-Eingabe) oder VITS (config.json, vocab.json, "
-                + "onnx/model.onnx). Chat und Embeddings fehlen, bis der Sidecar dafür eine Laufzeit hat, die "
+                + "onnx/model.onnx). Chat- und Embedding-Modelle fehlen, bis es dafür eine Laufzeit gibt, die "
                 + "Hub-Dateien direkt lädt.");
         JPanel searchContent = new JPanel(new BorderLayout(0, 4));
         searchContent.setOpaque(false);

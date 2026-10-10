@@ -295,7 +295,7 @@ public final class AppConfigLoader {
             local = new LocalSidecarConfig(java, jar, modelRoot, readyTimeout);
         }
         return new ModelsConfig(selections, local, r.bool(ModelsConfig.READ_ALOUD_AUTO_START_KEY, false),
-                r.text(ModelsConfig.SPEECH_VOICE_KEY, null));
+                r.text(ModelsConfig.SPEECH_VOICE_KEY, null), modelRoot);
     }
 
     private static KnowledgeConfig knowledge(ConfigReader r) {

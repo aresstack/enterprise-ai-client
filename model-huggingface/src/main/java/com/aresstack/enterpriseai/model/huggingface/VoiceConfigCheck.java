@@ -13,7 +13,7 @@ import java.util.Locale;
 
 /**
  * Prüft die kleine Konfigurationsdatei einer Stimme, bevor das große Modell geladen wird, mit denselben Regeln
- * wie die Leser des Sidecars: Piper ({@code .onnx.json}) mit {@code phoneme_type "text"} oder deutscher
+ * wie die Stimmenleser von speech-local: Piper ({@code .onnx.json}) mit {@code phoneme_type "text"} oder deutscher
  * espeak-Stimme, VITS ({@code config.json}) mit {@code model_type "vits"}. Andere Dateien prüft sie nicht.
  */
 final class VoiceConfigCheck {
@@ -36,7 +36,7 @@ final class VoiceConfigCheck {
         if (name.equals("config.json")) {
             if (!"vits".equals(text(config, "model_type"))) {
                 throw new LocalVoiceInstallException("Kein VITS-Modell (model_type \"" + text(config, "model_type")
-                        + "\"); der Sidecar lädt in diesem Layout nur VITS-Stimmen.");
+                        + "\"); der Client lädt in diesem Layout nur VITS-Stimmen.");
             }
             return;
         }
@@ -46,7 +46,7 @@ final class VoiceConfigCheck {
         }
         if (!type.isEmpty() && !"espeak".equals(type)) {
             throw new LocalVoiceInstallException("Piper-Stimme mit phoneme_type \"" + type
-                    + "\" wird vom Sidecar nicht unterstützt.");
+                    + "\" wird nicht unterstützt.");
         }
         String language = text(object(config, "espeak"), "voice");
         if (language.isEmpty()) {
@@ -55,7 +55,7 @@ final class VoiceConfigCheck {
         String normalized = language.toLowerCase(Locale.ROOT);
         if (!normalized.equals("de") && !normalized.startsWith("de-") && !normalized.startsWith("de_")) {
             throw new LocalVoiceInstallException("Piper-Stimme für espeak-Sprache \"" + language
-                    + "\": ohne externes Programm spricht der Sidecar nur deutsche espeak-Stimmen.");
+                    + "\": ohne externes Programm spricht der Client nur deutsche espeak-Stimmen.");
         }
     }
 

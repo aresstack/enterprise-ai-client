@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -31,17 +32,14 @@ public final class ModelsConfig {
     private final LocalSidecarConfig localSidecar;
     private final boolean readAloudAutoStart;
     private final String speechVoice;
-
-    ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar) {
-        this(selections, localSidecar, false);
-    }
-
-    ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar, boolean readAloudAutoStart) {
-        this(selections, localSidecar, readAloudAutoStart, null);
-    }
+    private final Path localModelRoot;
 
     ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar, boolean readAloudAutoStart,
-                 String speechVoice) {
+                 String speechVoice, Path localModelRoot) {
+        if (localModelRoot == null) {
+            throw new IllegalArgumentException("localModelRoot must not be null");
+        }
+        this.localModelRoot = localModelRoot;
         this.speechVoice = speechVoice == null || speechVoice.trim().isEmpty() ? null : speechVoice.trim();
         this.selections = selections == null ? ModelSelections.none() : selections;
         this.localSidecar = localSidecar;
@@ -83,6 +81,11 @@ public final class ModelsConfig {
     /** Der lokale Sidecar oder {@code null}, wenn kein Java 21 konfiguriert ist (lokale Modelle fehlen dann). */
     public LocalSidecarConfig localSidecar() {
         return localSidecar;
+    }
+
+    /** Modellverzeichnis der lokalen Modelle ({@code models.local.modelRoot}), ein Ordner je Stimme. */
+    public Path localModelRoot() {
+        return localModelRoot;
     }
 
     /** Ob neue Antworten automatisch vorgelesen werden. */

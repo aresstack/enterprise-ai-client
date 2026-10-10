@@ -1,0 +1,7 @@
+description = 'Adapter: Pilot-Backend der lokalen Sprachausgabe mit ONNX Runtime im Prozess (Java-Bibliothek mit nativen Bibliotheken im Jar, kein externes Programm).'
+
+dependencies {
+    api project(':speech-runtime-api')
+    // ONNX Runtime bleibt im Adapter (implementation, nicht api); die Klassen sind Java 8 (Class-Version 52).
+    implementation libs.onnxruntime
+}

@@ -21,6 +21,7 @@ mermaidJava = "0.2.0-beta.2"
 tika = "2.9.1"
 commonsNet = "3.9.0"
 huggingface4j = "0.1.1"
+onnxruntime = "1.20.0"
 
 [libraries]
 # Test
@@ -73,3 +74,4 @@ commons-net = { module = "commons-net:commons-net", version.ref = "commonsNet" }
 
 # model-huggingface: Stimmen für den lokalen Sidecar vom Hugging Face Hub (Angelos Bibliothek, Java 8, nur Gson).
 huggingface4j = { module = "com.aresstack:huggingface4j", version.ref = "huggingface4j" }
+onnxruntime = { module = "com.microsoft.onnxruntime:onnxruntime", version.ref = "onnxruntime" }

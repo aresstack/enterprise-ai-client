@@ -27,12 +27,12 @@ import java.util.Set;
 
 /**
  * {@link LocalVoiceProvisioning} über den Hugging Face Hub mit huggingface4j: bietet die kuratierten Stimmen, die
- * schon installierten und die Treffer der Hub-Suche ({@link HubVoiceSearch}, nur Formate, die der Sidecar ohne
+ * schon installierten und die Treffer der Hub-Suche ({@link HubVoiceSearch}, nur Formate, die der Client ohne
  * Umwandlung lädt) an. Installieren lädt die Dateien anonym nach {@code <Modellverzeichnis>/.<id>.download},
  * setzt abgebrochene Downloads fort ({@code .part}), prüft zuerst die kleine Konfigurationsdatei
  * ({@link VoiceConfigCheck}) und jede Datei gegen Größe und SHA-256 aus den Hub-Metadaten ({@link HubFileIndex}),
  * legt die Herkunft ab ({@link VoiceSource}) und verschiebt den fertigen Ordner nach
- * {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn der Sidecar.
+ * {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn die Sprachausgabe.
  */
 public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisioning {
 

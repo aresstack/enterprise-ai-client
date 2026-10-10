@@ -90,6 +90,14 @@ final class ModuleRegistry {
 
                 // Sprachausgabe: neutraler Port (Modell aus der Katalog-Kategorie TTS, Audio als WAV).
                 .module("speech-api", "speech.api", ModuleKind.PORT, "Sprache", "domain")
+                // Inferenz-Laufzeit lokaler Stimmen (Token-Ids zu Audio), austauschbar gegen eine eigene Engine.
+                .module("speech-runtime-api", "speech.runtime", ModuleKind.PORT, "Sprache", "domain")
+                // Lokale Stimmen im Prozess (Piper, VITS) über speech-runtime-api; kein Sidecar, kein Programm.
+                .module("speech-local", "speech.local", ModuleKind.ADAPTER, "Sprache", "domain", "speech-api",
+                        "speech-runtime-api")
+                // Pilot-Backend ONNX Runtime (Java-Bibliothek im Prozess); nur hier ONNX-Typen.
+                .module("speech-onnx", "speech.onnx", ModuleKind.ADAPTER, "Sprache", "domain",
+                        "speech-runtime-api")
 
                 .module("security-api", "security.api", ModuleKind.PORT, "F", "domain")
                 .module("security-keepassrpc", "security.keepassrpc", ModuleKind.ADAPTER, "F", "domain", "security-api")
@@ -110,7 +118,7 @@ final class ModuleRegistry {
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
                         "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api", "source-ftp",
-                        "source-ndv", "model-huggingface")
+                        "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

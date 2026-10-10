@@ -55,6 +55,9 @@ include 'model-huggingface'
 
 // Sprachausgabe: neutraler Port; heute nur über den lokalen Sidecar (model-sidecar)
 include 'speech-api'
+include 'speech-runtime-api'
+include 'speech-local'
+include 'speech-onnx'
 
 // Strang F – Security
 include 'security-api'

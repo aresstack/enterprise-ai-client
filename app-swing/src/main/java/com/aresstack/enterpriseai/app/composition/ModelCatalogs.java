@@ -27,9 +27,9 @@ import com.aresstack.enterpriseai.model.kipitz.KipitzSpeechAdapter;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarEmbeddingAdapter;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
-import com.aresstack.enterpriseai.speech.api.SpeechSynthesisException;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
-import com.aresstack.enterpriseai.speech.api.SynthesizedSpeech;
+import com.aresstack.enterpriseai.speech.local.LocalVoiceSpeechAdapter;
+import com.aresstack.enterpriseai.speech.onnx.OnnxSpeechRuntime;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -57,6 +57,8 @@ public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntim
     private final ModelCatalogCache cache;
     private final TokenLookup dialogTokens;
     private LocalSidecarModelCatalogAdapter sidecar;
+    /** Pilot-Backend der lokalen Stimmen im Prozess; eins für die ganze Anwendung, geladen beim ersten Vorlesen. */
+    private final OnnxSpeechRuntime localSpeechRuntime = new OnnxSpeechRuntime();
     private boolean closed;
 
     /**
@@ -153,8 +155,8 @@ public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntim
     }
 
     /**
-     * Die Sprachausgabe je Modellquelle, wie die Quellen selbst: die Enterprise-API (KIPITZ) immer, der lokale
-     * Sidecar nur, wenn er konfiguriert ist. Welcher Port spricht, entscheidet der Katalog des gewählten TTS-Modells
+     * Die Sprachausgabe je Modellquelle: die Enterprise-API (KIPITZ) und die lokalen Stimmen im Prozess, beide
+     * immer. Welcher Port spricht, entscheidet der Katalog des gewählten TTS-Modells
      * ({@code model.tts}); lokale und Enterprise-Modelle sind gleichwertig.
      *
      * @param connection Verbindung der Enterprise-API (die des laufenden Graphen, passend zu Netz und Token)
@@ -164,32 +166,10 @@ public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntim
                                           Supplier<String> token) {
         List<SpeechSynthesisPort> ports = new ArrayList<SpeechSynthesisPort>();
         ports.add(new KipitzSpeechAdapter(kipitz(connection, network, token), models.speechVoice()));
-        if (models.localSidecar() != null) {
-            ports.add(localSpeech(models.localSidecar()));
-        }
+        // Lokale Stimmen sprechen im Prozess (ONNX Runtime als Pilot), ohne Sidecar und ohne Java 21.
+        ports.add(new LocalVoiceSpeechAdapter(LocalSidecarModelCatalogAdapter.CATALOG_ID, models.localModelRoot(),
+                localSpeechRuntime));
         return new SpeechSynthesisRegistry(ports);
-    }
-
-    /**
-     * Die Sprachausgabe des lokalen Sidecars für diese Pfade: teilt sich den Prozess mit dem Katalog (ein Sidecar
-     * für die ganze Anwendung) und startet ihn erst beim ersten Vorlesen. Nach {@link #close()} scheitert sie.
-     */
-    private SpeechSynthesisPort localSpeech(final LocalSidecarConfig config) {
-        return new SpeechSynthesisPort() {
-            @Override
-            public String catalogId() {
-                return LocalSidecarModelCatalogAdapter.CATALOG_ID;
-            }
-
-            @Override
-            public SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException {
-                LocalSidecarModelCatalogAdapter local = sidecar(config);
-                if (local == null) {
-                    throw new SpeechSynthesisException("Lokaler Sidecar ist beendet");
-                }
-                return local.speechSynthesis().synthesize(modelId, text);
-            }
-        };
     }
 
     /** Chat des lokalen Sidecars für diese Pfade (geteilter Prozess, Start bei der ersten Anfrage). */
@@ -241,6 +221,7 @@ public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntim
     @Override
     public synchronized void close() {
         closed = true;
+        localSpeechRuntime.close();
         if (sidecar != null) {
             sidecar.close();
             sidecar = null;
