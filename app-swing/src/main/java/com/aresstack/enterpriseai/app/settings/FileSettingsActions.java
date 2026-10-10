@@ -571,8 +571,17 @@ public final class FileSettingsActions implements SettingsDialogActions {
         }
         final Path root = localModelRoot(form);
         final NetworkConfig network;
+        final KeePassConfig keePass;
+        KeePassConfig keePassDraft;
         try {
-            network = AppConfigLoader.networkSection(SettingsMapper.merge(current(), form));
+            Properties merged = SettingsMapper.merge(current(), form);
+            network = AppConfigLoader.networkSection(merged);
+            try {
+                keePassDraft = AppConfigLoader.keePassSection(merged);
+            } catch (AppConfigException noKeePass) {
+                // nur für die Proxy-Anmeldung nötig; ohne gültigen Abschnitt lädt der Download ohne sie
+                keePassDraft = null;
+            }
         } catch (AppConfigException e) {
             progress.finished(false, "Netzwerkeinstellungen unvollständig: "
                     + join(SettingsMapper.describe(e.problems())));
@@ -581,6 +590,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
             progress.finished(false, "Entwurf nicht lesbar (" + e.getClass().getSimpleName() + ").");
             return;
         }
+        keePass = keePassDraft;
         try {
             worker.execute(new Runnable() {
                 private String lastLine = "";
@@ -590,7 +600,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     boolean ok;
                     String message;
                     try {
-                        voices.install(network, voiceId, root, new LocalVoiceInstallListener() {
+                        voices.install(network, keePass, voiceId, root, new LocalVoiceInstallListener() {
                             @Override
                             public void progress(String file, long done, long total) {
                                 final String line = total > 0

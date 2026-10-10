@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.app.composition.JavaRuntimes;
 import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.app.speech.SwitchableReadAloud;
 import com.aresstack.enterpriseai.app.speech.SpeechOutput;
+import com.aresstack.enterpriseai.app.composition.LocalVoices;
 import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
@@ -89,7 +90,9 @@ public final class EnterpriseAiClientMain {
         final boolean headless = GraphicsEnvironment.isHeadless();
         final ModelCatalogs modelCatalogs = SettingsAssembly.modelCatalogs(
                 AppPaths.appDirectory().resolve(AppPaths.MODEL_CATALOG_FILE_NAME));
-        final SettingsDialogActions settingsActions = headless ? null : SettingsAssembly.create(file, modelCatalogs);
+        final LocalVoices localVoices = new LocalVoices();
+        final SettingsDialogActions settingsActions = headless ? null
+                : SettingsAssembly.create(file, modelCatalogs, localVoices);
         resolveJavaRuntime(file);
         ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
                 headless ? null : new SwingSettingsUi(settingsActions), SettingsAssembly.configurationCheck());
@@ -125,6 +128,7 @@ public final class EnterpriseAiClientMain {
                     config.keePass().rpc().host() + ":" + config.keePass().rpc().port()), modelCatalogs);
             if (networkConfig.proxyAuthMode() == ProxyAuthMode.BASIC && networkConfig.proxyCredentialRef() != null) {
                 ProxyAuthenticator.install(ports.secrets(), networkConfig.proxyCredentialRef());
+                localVoices.proxyAuthenticationInstalled();
             }
             root = CompositionRoot.compose(config, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
                     null);

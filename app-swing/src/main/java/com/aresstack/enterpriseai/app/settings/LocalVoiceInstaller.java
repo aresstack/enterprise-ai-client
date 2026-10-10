@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.settings;
 
+import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
@@ -16,6 +17,7 @@ public interface LocalVoiceInstaller {
 
     List<LocalVoiceOffer> offers(Path modelRoot);
 
-    void install(NetworkConfig network, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+    /** @param keePass KeePass-Abschnitt des Entwurfs für die Proxy-Anmeldung (BASIC) oder {@code null} */
+    void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException;
 }
