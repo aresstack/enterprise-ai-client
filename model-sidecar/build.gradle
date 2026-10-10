@@ -1,8 +1,10 @@
-description = 'Adapter: Modellkatalog und Sprachausgabe des optionalen lokalen Java-21-Sidecars (local-model-runtime-sidecar).'
+description = 'Adapter: Modellkatalog, Chat, Embeddings und Sprachausgabe des optionalen lokalen Java-21-Sidecars (local-model-runtime-sidecar).'
 
 dependencies {
     api project(':model-api')
     api project(':speech-api')
+    api project(':chat-api')
+    api project(':embedding-api')
     // JSON-Mapping bleibt im Adapter (implementation, nicht api).
     implementation libs.gson
 }

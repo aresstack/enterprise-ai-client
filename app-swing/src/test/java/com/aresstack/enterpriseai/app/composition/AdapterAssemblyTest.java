@@ -11,7 +11,6 @@ import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.knowledge.ResourceIndexingOutcome;
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
-import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
@@ -107,7 +106,7 @@ public class AdapterAssemblyTest {
         NetworkServices proxy = NetworkServices.from(config.network());
         ApplicationPorts ports = AdapterAssembly.create(config, proxy, NO_PAIRING, new InMemoryPairingKeyStore());
         try {
-            assertTrue(ports.chat() instanceof OpenAiCompatibleChatAdapter);
+            assertTrue("Chat geht über die Ausführung je Katalog", ports.chat().toString().startsWith("RoutedChat"));
             assertTrue(ports.embeddings() instanceof OpenAiCompatibleEmbeddingAdapter);
             assertEquals(768, ports.embeddingSpace().dimension());
             assertTrue(ports.index() instanceof LuceneKnowledgeIndex);

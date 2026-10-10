@@ -8,11 +8,24 @@ import com.aresstack.enterpriseai.app.settings.ModelCatalogLoader;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.application.modelcatalog.UnifiedModelCatalog;
 import com.aresstack.enterpriseai.application.speech.SpeechSynthesisRegistry;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
+import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
+import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
+import com.aresstack.enterpriseai.chat.api.ChatTask;
+import com.aresstack.enterpriseai.domain.chat.ChatRequest;
+import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.model.api.ModelCatalogPort;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogConfig;
 import com.aresstack.enterpriseai.model.kipitz.KipitzSpeechAdapter;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
+import com.aresstack.enterpriseai.model.sidecar.LocalSidecarEmbeddingAdapter;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisException;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
@@ -32,7 +45,7 @@ import java.util.logging.Logger;
  * ändern) und endet mit {@link #close()}. Jeder Stand landet im {@link ModelCatalogCache}. Eine Instanz dient beim
  * Start der Hintergrundabfrage und im Einstellungen-Dialog dem Reiter „Modelle“.
  */
-public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
+public final class ModelCatalogs implements ModelCatalogLoader, LocalModelRuntime, Closeable {
 
     private static final Logger LOG = Logger.getLogger(ModelCatalogs.class.getName());
 
@@ -177,6 +190,51 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
                 return local.speechSynthesis().synthesize(modelId, text);
             }
         };
+    }
+
+    /** Chat des lokalen Sidecars für diese Pfade (geteilter Prozess, Start bei der ersten Anfrage). */
+    @Override
+    public ChatCompletionPort chat(final LocalSidecarConfig config) {
+        return new ChatCompletionPort() {
+            @Override
+            public ChatResponse complete(ChatRequest request) {
+                return running(config).chat().complete(request);
+            }
+
+            @Override
+            public ChatTask stream(ChatRequest request, ChatStreamListener listener) {
+                return running(config).chat().stream(request, listener);
+            }
+        };
+    }
+
+    /** Embeddings des lokalen Sidecars für diese Pfade (geteilter Prozess, Start bei der ersten Anfrage). */
+    @Override
+    public EmbeddingPort embeddings(final LocalSidecarConfig config, final String modelId, final int dimension) {
+        final EmbeddingModelIdentity identity = LocalSidecarEmbeddingAdapter.identity(modelId, dimension);
+        return new EmbeddingPort() {
+            @Override
+            public EmbeddingModelIdentity modelIdentity() {
+                return identity;
+            }
+
+            @Override
+            public EmbeddingBatch embed(List<String> texts) {
+                LocalSidecarModelCatalogAdapter local = sidecar(config);
+                if (local == null) {
+                    throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "Lokaler Sidecar ist beendet");
+                }
+                return local.embeddings(modelId, dimension).embed(texts);
+            }
+        };
+    }
+
+    private LocalSidecarModelCatalogAdapter running(LocalSidecarConfig config) {
+        LocalSidecarModelCatalogAdapter local = sidecar(config);
+        if (local == null) {
+            throw new ChatCompletionException(ChatErrorKind.TRANSPORT, "Lokaler Sidecar ist beendet");
+        }
+        return local;
     }
 
     /** Beendet den Sidecar-Prozess; idempotent. */

@@ -52,6 +52,16 @@ public final class LocalSidecarModelCatalogAdapter implements ModelCatalogPort, 
         return new LocalSidecarSpeechAdapter(process);
     }
 
+    /** Der Chat desselben Sidecar-Prozesses ({@code POST /api/chat}). */
+    public LocalSidecarChatAdapter chat() {
+        return new LocalSidecarChatAdapter(process);
+    }
+
+    /** Embeddings desselben Sidecar-Prozesses ({@code POST /api/embed}) mit konfigurierter Dimension. */
+    public LocalSidecarEmbeddingAdapter embeddings(String modelId, int dimension) {
+        return new LocalSidecarEmbeddingAdapter(process, modelId, dimension);
+    }
+
     @Override
     public String catalogId() {
         return CATALOG_ID;

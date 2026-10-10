@@ -18,13 +18,29 @@ import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
+import com.aresstack.enterpriseai.app.config.ModelsConfig;
+import com.aresstack.enterpriseai.application.modelexecution.ChatModelExecutorRegistry;
+import com.aresstack.enterpriseai.application.modelexecution.EmbeddingModelExecutorRegistry;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
+import com.aresstack.enterpriseai.chat.api.ResponsesPort;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatConfig;
 import com.aresstack.enterpriseai.document.tika.DocumentExtraction;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
 import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
+import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
+import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
+import com.aresstack.enterpriseai.model.sidecar.LocalSidecarEmbeddingAdapter;
+import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointDefinition;
 import com.aresstack.enterpriseai.mcp.solon.SolonMcpServerRuntime;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
@@ -40,7 +56,9 @@ import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 
 import java.io.Closeable;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -69,26 +87,66 @@ public final class AdapterAssembly {
      * erneut pairen).
      */
     public static ApplicationPorts create(AppConfig config, NetworkServices network, KeePassPairingCallback pairing) {
+        return createWithLocalModels(config, network, pairing, null);
+    }
+
+    /** Produktiv mit lokalem Sidecar ({@code local} darf {@code null} sein: dann nur die Enterprise-API). */
+    public static ApplicationPorts createWithLocalModels(AppConfig config, NetworkServices network,
+                                                         KeePassPairingCallback pairing, LocalModelRuntime local) {
         KeePassConfig keePass = config.keePass();
         KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
                 ? new InMemoryPairingKeyStore()
                 : new FilePairingKeyStore(keePass.pairingKeyFile());
-        return create(config, network, pairing, keyStore);
+        return create(config, network, pairing, keyStore, local);
     }
 
     /** Mit eigener Schlüsselablage (Tests: {@code InMemoryPairingKeyStore}). */
     public static ApplicationPorts create(AppConfig config, NetworkServices network, KeePassPairingCallback pairing,
                                           KeePassPairingKeyStore keyStore) {
+        return create(config, network, pairing, keyStore, null);
+    }
+
+    private static ApplicationPorts create(AppConfig config, NetworkServices network, KeePassPairingCallback pairing,
+                                           KeePassPairingKeyStore keyStore, LocalModelRuntime local) {
         if (config == null || network == null) {
             throw new IllegalArgumentException("config and network must not be null");
         }
         SecretProvider secrets = secrets(config.keePass(), pairing, keyStore);
         ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
 
+        // Ausführung je Katalog der Modellauswahl: Enterprise-API immer, der lokale Sidecar, wenn konfiguriert.
+        LocalSidecarConfig sidecar = local == null ? null : config.models().localSidecar();
         OpenAiCompatibleChatAdapter chatAdapter = chat(config.chat(), secrets, network);
-        ports.chat(chatAdapter);
-        ports.responses(chatAdapter); // derselbe Adapter: /responses mit Route, TLS und Token des Chats
-        OpenAiCompatibleEmbeddingAdapter embeddings = embeddings(config.embedding(), secrets, network);
+        Map<String, ChatCompletionPort> chats = new LinkedHashMap<String, ChatCompletionPort>();
+        chats.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
+        Map<String, ResponsesPort> responses = new LinkedHashMap<String, ResponsesPort>();
+        // derselbe Adapter: /responses mit Route, TLS und Token des Chats
+        responses.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
+        if (sidecar != null) {
+            chats.put(LocalSidecarModelCatalogAdapter.CATALOG_ID, local.chat(sidecar));
+        }
+        ChatModelExecutorRegistry chatModels = new ChatModelExecutorRegistry(chats, responses,
+                ModelsConfig.catalogIds(), ModelsConfig.defaultCatalogId(),
+                config.models().selections().get(ModelCategory.CHAT));
+        ports.chat(chatModels.chat());
+        ports.responses(chatModels.responses());
+
+        Map<String, EmbeddingPort> embeddingPorts = new LinkedHashMap<String, EmbeddingPort>();
+        embeddingPorts.put(KipitzModelCatalogAdapter.CATALOG_ID, embeddings(config.embedding(), secrets, network));
+        ModelReference embeddingModel = config.models().selections().get(ModelCategory.EMBEDDING);
+        if (sidecar != null && embeddingModel != null
+                && LocalSidecarModelCatalogAdapter.CATALOG_ID.equals(embeddingModel.catalogId())) {
+            embeddingPorts.put(embeddingModel.catalogId(), local.embeddings(sidecar, embeddingModel.modelId(),
+                    config.embedding().dimension()));
+        }
+        EmbeddingModelExecutorRegistry embeddingModels = new EmbeddingModelExecutorRegistry(embeddingPorts);
+        String embeddingCatalog = embeddingModel == null ? KipitzModelCatalogAdapter.CATALOG_ID
+                : embeddingModel.catalogId();
+        // Ein lokal gewähltes Modell ohne Sidecar scheitert (Start-Hinweis), statt Text an die Enterprise-API zu geben.
+        EmbeddingPort embeddings = embeddingModels.supports(embeddingCatalog)
+                ? embeddingModels.require(embeddingCatalog)
+                : unavailableEmbeddings(LocalSidecarEmbeddingAdapter.identity(embeddingModel.modelId(),
+                config.embedding().dimension()));
         ports.embeddings(embeddings, embeddings.modelIdentity());
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
@@ -114,6 +172,21 @@ public final class AdapterAssembly {
         ports.index(index);
         ports.closing("knowledge-index", index);
         return ports.build();
+    }
+
+    private static EmbeddingPort unavailableEmbeddings(final EmbeddingModelIdentity identity) {
+        return new EmbeddingPort() {
+            @Override
+            public EmbeddingModelIdentity modelIdentity() {
+                return identity;
+            }
+
+            @Override
+            public EmbeddingBatch embed(List<String> texts) {
+                throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "Lokales Embedding-Modell gewählt, "
+                        + "aber Java 21 und das Sidecar-Jar fehlen (Einstellungen → Lokale Modelle)");
+            }
+        };
     }
 
     static SecretProvider secrets(KeePassConfig keePass, KeePassPairingCallback pairing,
