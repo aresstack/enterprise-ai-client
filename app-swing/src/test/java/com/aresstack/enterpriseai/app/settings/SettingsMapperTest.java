@@ -90,8 +90,6 @@ public class SettingsMapperTest {
             }
         }
         Properties expected = new Properties();
-        expected.setProperty("source.wiki.requiresLogin", "false");
-        expected.setProperty("source.confluence.maxDepth", "1");
         expected.setProperty("security.keepass.host", "127.0.0.1");
         expected.setProperty("security.keepass.port", "12546");
         expected.setProperty("security.keepass.clientDisplayName", "Enterprise AI Client");
