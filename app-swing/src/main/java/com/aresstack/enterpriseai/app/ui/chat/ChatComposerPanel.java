@@ -41,6 +41,8 @@ import java.awt.geom.RoundRectangle2D;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -67,9 +69,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String MODEL_PLACEHOLDER = "Modell";
     static final String STREAMING_STATUS = "Antwort wird erstellt …";
     /** Denkaufwand: Anzeige und Wert ({@code null} = Standard des Modells), wie arch „Think: …“. */
-    static final String[][] REASONING_LEVELS = {
-            {"Denken: Standard", null}, {"Denken: niedrig", "low"}, {"Denken: mittel", "medium"},
-            {"Denken: hoch", "high"}};
+    private static final List<String> REASONING_LABELS = Collections.unmodifiableList(Arrays.asList(
+            "Denken: Standard", "Denken: niedrig", "Denken: mittel", "Denken: hoch"));
+    private static final List<String> REASONING_EFFORTS = Collections.unmodifiableList(Arrays.asList(
+            null, "low", "medium", "high"));
 
     private static final int ARC = 18;
     private static final int MIN_EDITOR_HEIGHT = 62;
@@ -108,7 +111,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.modelButton = new ComposerButton(ComposerIcons.chevronDown(), MODEL_PLACEHOLDER, false,
                 "Chat-Modell (Einstellungen → KI-Dienst)");
         modelButton.setHorizontalTextPosition(SwingConstants.LEFT); // Name zuerst, Chevron danach (arch)
-        this.reasoningButton = new ComposerButton(ComposerIcons.chevronDown(), REASONING_LEVELS[0][0], false,
+        this.reasoningButton = new ComposerButton(ComposerIcons.chevronDown(), REASONING_LABELS.get(0), false,
                 "Denkaufwand (nur für Modelle, die ihn unterstützen)");
         reasoningButton.setHorizontalTextPosition(SwingConstants.LEFT);
         this.editor = new PlaceholderTextArea(PLACEHOLDER, 2, 40);
@@ -241,10 +244,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         return reasoningEffort;
     }
 
-    /** Wählt einen Denkaufwand aus {@link #REASONING_LEVELS} (Index) und meldet ihn der Anbindung. */
+    /** Wählt einen Denkaufwand aus {@link #REASONING_LABELS} (Index) und meldet ihn der Anbindung. */
     void selectReasoning(int index) {
-        reasoningEffort = REASONING_LEVELS[index][1];
-        reasoningButton.setText(REASONING_LEVELS[index][0]);
+        reasoningEffort = REASONING_EFFORTS.get(index);
+        reasoningButton.setText(REASONING_LABELS.get(index));
         actions.reasoningChanged(reasoningEffort);
         revalidate();
         repaint();
@@ -379,9 +382,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
 
     private void showReasoningMenu() {
         JPopupMenu menu = new JPopupMenu();
-        for (int i = 0; i < REASONING_LEVELS.length; i++) {
+        for (int i = 0; i < REASONING_LABELS.size(); i++) {
             final int index = i;
-            JMenuItem item = new JMenuItem(REASONING_LEVELS[i][0]);
+            JMenuItem item = new JMenuItem(REASONING_LABELS.get(i));
             item.addActionListener(event -> selectReasoning(index));
             menu.add(item);
         }
