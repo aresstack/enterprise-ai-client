@@ -8,6 +8,9 @@ import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
 import com.aresstack.enterpriseai.app.ui.chat.KnowledgeStatusModel;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.app.ui.settings.IndexActions;
+import com.aresstack.enterpriseai.app.ui.settings.IndexForm;
+import com.aresstack.enterpriseai.app.ui.settings.IndexPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogDemo;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
@@ -159,8 +162,8 @@ public final class UiScreenshotDemo {
         dialog.setSize(800, 680);
         write(dialog, new File(dir, "G-einstellungen.png"));
         settings.selectTab(1);
-        write(dialog, new File(dir, "G1-einstellungen-wissensbasis.png"));
-        settings.selectTab(3);
+        write(dialog, new File(dir, "G1-einstellungen-keepass.png"));
+        settings.selectTab(2);
         write(dialog, new File(dir, "G2-einstellungen-netzwerk.png"));
 
         // I: Quellen-Dialog aus dem Drawer-Reiter (✎ an einer Quelle)
@@ -200,6 +203,34 @@ public final class UiScreenshotDemo {
         sourceDialog.add(source, BorderLayout.CENTER);
         sourceDialog.setSize(620, 600);
         write(sourceDialog, new File(dir, "I-quelle-bearbeiten.png"));
+
+        // J: Index-Dialog aus dem Drawer-Reiter („Index …“ unten auf der Seite „Wissensquellen“)
+        IndexPanel index = new IndexPanel(new IndexForm("C:/Daten/enterprise-ai-index", true), new IndexActions() {
+                    @Override
+                    public IndexForm current() {
+                        return new IndexForm("C:/Daten/enterprise-ai-index", true);
+                    }
+
+                    @Override
+                    public List<String> validate(IndexForm draft) {
+                        return Collections.emptyList();
+                    }
+
+                    @Override
+                    public void save(IndexForm draft) {
+                    }
+                }, palette);
+        index.setWindowControls(new ComicWindowCloseButton(palette, new Runnable() {
+            @Override
+            public void run() {
+            }
+        }, "Abbrechen", 24));
+        JPanel indexDialog = new JPanel(new BorderLayout());
+        indexDialog.setBackground(palette.getSurface());
+        indexDialog.setBorder(ComicBorder.windowBorder(palette, 4));
+        indexDialog.add(index, BorderLayout.CENTER);
+        indexDialog.setSize(640, 340);
+        write(indexDialog, new File(dir, "J-index-einstellungen.png"));
     }
 
     /** Knöpfe des Reiters „Wissensquellen“ sind sichtbar aktiv; die Demo tut beim Klicken nichts. */
@@ -249,6 +280,8 @@ public final class UiScreenshotDemo {
             }
             workspace = new ChatWorkspacePanel(modes, chatShell, agentShell, palette);
             workspace.setKnowledgeSourceActions(new DemoSourceActions());
+            workspace.knowledgeSources().setIndexSettingsAction(() -> {
+            });
             workspace.setKnowledgeSources(Arrays.asList(
                     new KnowledgeSourceItem("handbuch", "MediaWiki", "Urlaub, Kündigung, Gleitzeit, Homeoffice", true,
                             "34 Seiten im Index · Stand 00:12", KnowledgeSourceItem.State.IDLE, true, true),

@@ -127,21 +127,27 @@ public final class FileSettingsActions implements SettingsDialogActions {
         }
         Properties current = current();
         // Leere Felder sind Entfernungen (Zeile auskommentieren), nie "schlüssel=" ohne Wert.
-        // Quellen verwaltet der Drawer-Reiter (FileSourceActions); der Dialog schreibt sie nicht zurück, sonst
-        // würde eine fehlerhafte Quelle beim Speichern anderer Einstellungen umgeschrieben.
+        // Quellen (FileSourceActions) und Index-Einstellungen (FileIndexActions) verwaltet der Drawer-Reiter
+        // „Wissensquellen“; der Dialog schreibt sie nicht zurück, sonst würde eine fehlerhafte Quelle beim
+        // Speichern anderer Einstellungen umgeschrieben.
         Map<String, String> writes = new LinkedHashMap<String, String>();
         for (Map.Entry<String, String> entry : SettingsMapper.writes(form).entrySet()) {
-            if (!FileSourceActions.isSourceKey(entry.getKey())) {
+            if (!managedElsewhere(entry.getKey())) {
                 writes.put(entry.getKey(), entry.getValue());
             }
         }
         Set<String> removals = new LinkedHashSet<String>();
         for (String key : SettingsMapper.removals(form, current)) {
-            if (!FileSourceActions.isSourceKey(key)) {
+            if (!managedElsewhere(key)) {
                 removals.add(key);
             }
         }
         file.update(writes, removals, AppConfigLoader.exampleConfiguration());
+    }
+
+    /** Schlüssel, die die Dialoge des Drawer-Reiters „Wissensquellen“ schreiben: Quellen und Index-Einstellungen. */
+    private static boolean managedElsewhere(String key) {
+        return FileSourceActions.isSourceKey(key) || FileIndexActions.isIndexKey(key);
     }
 
     @Override

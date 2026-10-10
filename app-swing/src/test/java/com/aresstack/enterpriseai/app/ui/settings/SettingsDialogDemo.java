@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 /**
  * Zeigt den Einstellungen-Dialog ohne Datei und ohne KeePass (Aktionen sind Attrappen: Prüfen findet nichts zu
  * beanstanden, die KeePass-Probe antwortet fest). Start: {@code ./gradlew :app-swing:runSettingsDemo}. Mit
- * {@code --args="--screenshot datei.png [--tab 0-3] [--problems] [--height 680]"} wird der Dialoginhalt ohne
+ * {@code --args="--screenshot datei.png [--tab 0-2] [--problems] [--height 680]"} wird der Dialoginhalt ohne
  * Fenster als PNG geschrieben (headless), z. B. für die Dokumentation; eine größere Höhe zeigt lange Reiter ohne
  * Rollbalken.
  */

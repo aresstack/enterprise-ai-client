@@ -38,7 +38,7 @@ import java.util.function.Supplier;
  * │ Einstellungen                          ✕  │  stille Überschrift; rechts Platz für das Fenster-✕
  * │ Hinweis zum Erststart bzw. zum Neustart   │
  * ├──────────────────────────────────────────┤
- * │ [KI-Dienst] Wissensbasis  KeePass  …      │  Pillen wie die Reiterleiste des Drawers
+ * │ [KI-Dienst] KeePass  Netzwerk & Agent     │  Pillen wie die Reiterleiste des Drawers
  * ├──────────────────────────────────────────┤
  * │ Platten mit Formularzeilen (scrollbar)    │  CardLayout, je Reiter eine Karte
  * ├──────────────────────────────────────────┤
@@ -49,7 +49,9 @@ import java.util.function.Supplier;
  *
  * Speichern prüft über {@link SettingsDialogActions#validate}, zeigt Probleme mit Feldnamen und schreibt nur
  * fehlerfreie Entwürfe ({@link SettingsDialogActions#save}); danach ruft es den Erfolgs-Callback. Läuft
- * headless (Tests) ohne Fenster; der modale Rahmen ist {@link SettingsDialog}.
+ * headless (Tests) ohne Fenster; der modale Rahmen ist {@link SettingsDialog}. Wissensquellen und
+ * Index-Einstellungen haben keinen Reiter mehr (Drawer-Reiter „Wissensquellen“, {@link SourceDialog} und
+ * {@link IndexDialog}); das Formular trägt sie unverändert weiter.
  */
 public final class SettingsPanel extends JPanel {
 
@@ -63,9 +65,9 @@ public final class SettingsPanel extends JPanel {
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
     public static final String QUIT_LABEL = "Beenden";
-    private static final String[] TAB_LABELS = {"KI-Dienst", "Wissensbasis", "KeePass", "Netzwerk & Agent"};
+    private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent"};
 
-    /** Die Reiter in Reihenfolge: KI-Dienst, Wissensbasis, KeePass, Netzwerk &amp; Agent. */
+    /** Die Reiter in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent. */
     public static int tabCount() {
         return TAB_LABELS.length;
     }
@@ -84,7 +86,6 @@ public final class SettingsPanel extends JPanel {
     private final SettingsDialogActions actions;
     private final ComicPalette palette;
     private final ServiceTab serviceTab;
-    private final KnowledgeTab knowledgeTab;
     private final SecurityTab securityTab;
     private final SystemTab systemTab;
     private final List<ComposerToggleButton> tabButtons = new ArrayList<ComposerToggleButton>();
@@ -98,6 +99,8 @@ public final class SettingsPanel extends JPanel {
     private final ComposerButton cancelButton;
     private Consumer<SettingsForm> onSaved;
     private Runnable onCancel;
+    /** Der geladene Stand; liefert die Felder ohne Reiter (Quellen, Index) unverändert in {@link #toForm()}. */
+    private SettingsForm loaded;
 
     public SettingsPanel(SettingsForm initial, List<String> problems, Mode mode, SettingsDialogActions actions,
                          ComicPalette palette) {
@@ -115,7 +118,6 @@ public final class SettingsPanel extends JPanel {
             }
         };
         this.serviceTab = new ServiceTab(actions, current, palette);
-        this.knowledgeTab = new KnowledgeTab(palette);
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
         this.problemsPlate = new ComicSectionPanel(palette);
@@ -157,7 +159,7 @@ public final class SettingsPanel extends JPanel {
         tabs.setOpaque(false);
         tabs.setBorder(BorderFactory.createEmptyBorder(8, 12, 0, 12));
         ButtonGroup group = new ButtonGroup();
-        JPanel[] pages = {serviceTab.panel(), knowledgeTab.panel(), securityTab.panel(), systemTab.panel()};
+        JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel()};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
             ComposerToggleButton button = new ComposerToggleButton(null, name, null);
@@ -241,19 +243,21 @@ public final class SettingsPanel extends JPanel {
         this.onCancel = callback;
     }
 
-    /** Füllt alle Reiter aus dem Formular. */
+    /** Füllt alle Reiter aus dem Formular; Quellen und Index-Einstellungen merkt es sich unverändert. */
     public void setForm(SettingsForm form) {
+        if (form == null) {
+            throw new IllegalArgumentException("form must not be null");
+        }
+        loaded = form;
         serviceTab.load(form);
-        knowledgeTab.load(form);
         securityTab.load(form);
         systemTab.load(form);
     }
 
-    /** Der aktuelle Stand aller Felder als Formular. */
+    /** Der aktuelle Stand aller Felder als Formular, Quellen und Index-Einstellungen wie geladen. */
     public SettingsForm toForm() {
-        SettingsForm.Builder b = SettingsForm.builder();
+        SettingsForm.Builder b = loaded.toBuilder();
         serviceTab.store(b);
-        knowledgeTab.store(b);
         securityTab.store(b);
         systemTab.store(b);
         return b.build();
@@ -313,16 +317,14 @@ public final class SettingsPanel extends JPanel {
         }
     }
 
-    /** Springt zu dem Reiter, zu dem das erste Problem gehört. */
+    /** Springt zu dem Reiter, zu dem das erste Problem gehört; ohne eigenen Reiter (Quellen, Index) zum ersten. */
     private void selectTabFor(List<String> problems) {
         String first = problems.get(0);
         int tab = 0;
-        if (first.contains("(source.") || first.contains("(sources") || first.contains("(knowledge.")) {
+        if (first.contains("(security.")) {
             tab = 1;
-        } else if (first.contains("(security.")) {
-            tab = 2;
         } else if (first.contains("(network.") || first.contains("(agent.") || first.contains("(ui.")) {
-            tab = 3;
+            tab = 2;
         }
         selectTab(tab);
     }
@@ -385,10 +387,6 @@ public final class SettingsPanel extends JPanel {
 
     ServiceTab serviceTab() {
         return serviceTab;
-    }
-
-    KnowledgeTab knowledgeTab() {
-        return knowledgeTab;
     }
 
     SecurityTab securityTab() {
