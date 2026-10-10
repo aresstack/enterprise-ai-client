@@ -45,13 +45,14 @@ import java.util.Map;
 
 /**
  * Der Chat-Verlauf als Sprechblasen im AskAI-Stil: Nutzer rechts (blau), Assistent links (petrol), Fehler
- * links in der Fehlerfarbe, Hinweise der Anwendung links in der gelben Aktivitätsfarbe. Folgt ausschließlich dem
- * {@link ChatShellModel}; Streaming-Deltas aktualisieren die vorhandene Blase, statt neue anzulegen.
+ * links in der Fehlerfarbe; Hinweise der Anwendung und der leere Verlauf sind zentrierte kursive Infozeilen ohne
+ * Blase wie in arch. Folgt ausschließlich dem {@link ChatShellModel}; Streaming-Deltas aktualisieren die vorhandene
+ * Blase, statt neue anzulegen.
  *
  * <p>Antworten des Assistenten sind Markdown-Blasen ({@link AssistantMarkdownBubble} mit
  * {@link MarkdownMessageView}, wie askai-java8 {@code arch}): Überschriften, Listen, Tabellen, Code mit
  * Kopieraktion, Links und Mermaid-Diagramme (als Bild, Klick öffnet den Betrachter) werden nativ gerendert;
- * {@code ```markdown}-Umhüllungen fallen weg. Nutzer, Hinweise und Fehler bleiben Text-Sprechblasen.
+ * {@code ```markdown}-Umhüllungen fallen weg. Nutzer und Fehler bleiben Text-Sprechblasen.
  *
  * <p>Hat eine Nutzernachricht Anhänge, stehen sie als Chips (Dateiname) in einer eigenen Zeile unter ihrer Blase,
  * nach dem Senden wie nach dem Laden eines gespeicherten Chats.
@@ -185,12 +186,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         });
         flushTimer.setRepeats(false);
         emptyState.setName("transcript.emptyState");
-        emptyState.setFont(emptyState.getFont().deriveFont(Font.ITALIC,
-                Math.max(11f, emptyState.getFont().getSize2D() - 1f)));
-        emptyState.setForeground(bubblePalette.getInfoForeground());
-        emptyState.setBorder(BorderFactory.createEmptyBorder(7, 12, 7, 12));
-        emptyState.setAlignmentX(LEFT_ALIGNMENT);
-        emptyState.setMaximumSize(new Dimension(Integer.MAX_VALUE, emptyState.getPreferredSize().height));
+        styleInfoLine(emptyState);
         messageList.add(emptyState);
         for (TranscriptEntry entry : model.getEntries()) {
             entryAdded(entry);
@@ -303,6 +299,12 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         flushPendingUpdates();
     }
 
+    /** Die Infozeile eines Hinweises (für Tests), oder {@code null}. */
+    JLabel noticeLineFor(long entryId) {
+        RowState state = rows.get(entryId);
+        return state == null || state.bubble != null ? null : (JLabel) state.row;
+    }
+
     /** Wendet gesammelte Streaming-Aktualisierungen sofort an (UI-Thread). */
     void flushPendingUpdates() {
         flushTimer.stop();
@@ -346,8 +348,8 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     }
 
     /**
-     * Die Blase eines Eintrags (für Tests und spätere Kontextaktionen), oder {@code null}: eine
-     * {@link SpeechBubblePanel} für Nutzer, Hinweise und Fehler, sonst die Markdown-Blase des Assistenten.
+     * Die Blase eines Eintrags (für Tests und spätere Kontextaktionen), oder {@code null} (auch für Hinweiszeilen):
+     * eine {@link SpeechBubblePanel} für Nutzer und Fehler, sonst die Markdown-Blase des Assistenten.
      */
     public TranscriptBubble bubbleFor(long entryId) {
         RowState state = rows.get(entryId);
@@ -357,8 +359,8 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     /** Bringt die Blase eines Eintrags auf seinen aktuellen Stand; Streaming-Text wird nur angehängt. */
     private void apply(TranscriptEntry entry) {
         RowState state = rows.get(entry.getId());
-        if (state == null) {
-            return;
+        if (state == null || state.bubble == null) {
+            return; // Hinweiszeilen ändern sich nicht
         }
         if (entry.getState() == TranscriptEntry.State.FAILED) {
             // Die Blasenfarbe ist unveränderlich: eine fehlgeschlagene Antwort bekommt eine neue Fehlerblase.
@@ -477,7 +479,11 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         BubbleSide side = user ? BubbleSide.RIGHT : BubbleSide.LEFT;
         String header = header(entry);
         String text = displayText(entry);
-        if (!user && !notice && !failed) {
+        if (notice) {
+            JLabel line = infoLine(text);
+            return new RowState(line, null, header, text.length(), true);
+        }
+        if (!user && !failed) {
             AssistantMarkdownBubble bubble = createMarkdownBubble(entry, header, text);
             bubble.setHeaderTimestamp(entry.getCreatedAtMillis());
             return new RowState(new BubbleMessageRow(bubble, side), bubble, header, text.length(),
@@ -488,9 +494,6 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         if (user) {
             background = bubblePalette.getUserBackground();
             foreground = bubblePalette.getUserForeground();
-        } else if (notice) {
-            background = bubblePalette.getActivityBackground();
-            foreground = bubblePalette.getActivityForeground();
         } else {
             background = bubblePalette.getFailureAccent();
             foreground = Color.WHITE;
@@ -519,7 +522,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     /** Hängt die Quellenliste als eigene, links ausgerichtete Zeile direkt unter die Blase des Eintrags. */
     private void addSourcesRow(TranscriptEntry entry) {
-        BubbleMessageRow answerRow = rows.get(entry.getId()).row;
+        JComponent answerRow = rows.get(entry.getId()).row;
         SourceListPanel panel = new SourceListPanel(entry.getSources(), comicPalette, bubblePalette);
         BubbleMessageRow row = new BubbleMessageRow(panel, BubbleSide.LEFT);
         row.setAlignmentX(LEFT_ALIGNMENT);
@@ -536,6 +539,26 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.add(row);
         messageList.add(spacer());
+    }
+
+    /**
+     * Eine Infozeile wie askai arch ({@code BubbleTranscriptPanel.appendInfo}): zentriert, kursiv, ohne Blase, in der
+     * Info-Farbe; so erscheinen Hinweise der Anwendung und der leere Verlauf.
+     */
+    private JLabel infoLine(String text) {
+        JLabel line = new JLabel(text, SwingConstants.CENTER);
+        styleInfoLine(line);
+        line.putClientProperty("info.plainText", text);
+        return line;
+    }
+
+    private void styleInfoLine(JLabel line) {
+        line.putClientProperty("html.disable", Boolean.TRUE); // Hinweistext ist Klartext
+        line.setFont(line.getFont().deriveFont(Font.ITALIC, Math.max(11f, line.getFont().getSize2D() - 1f)));
+        line.setForeground(bubblePalette.getInfoForeground());
+        line.setBorder(BorderFactory.createEmptyBorder(7, 12, 7, 12));
+        line.setAlignmentX(LEFT_ALIGNMENT);
+        line.setMaximumSize(new Dimension(Integer.MAX_VALUE, line.getPreferredSize().height));
     }
 
     private static JComponent spacer() {
@@ -574,14 +597,14 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     /** Eine Zeile des Verlaufs mit dem, was ihre Blase gerade zeigt (für das Anhängen von Deltas). */
     private static final class RowState {
-        final BubbleMessageRow row;
-        final TranscriptBubble bubble;
+        final JComponent row;
+        final TranscriptBubble bubble; // null bei einer Hinweiszeile
         String header;
         int shownLength;
         boolean showsEntryText; // Blase zeigt den Eintragstext (nicht Platzhalter oder Aktivität)
         boolean streamed; // zuletzt im Zustand STREAMING gesehen (Ende live erlebt → automatisches Vorlesen)
 
-        RowState(BubbleMessageRow row, TranscriptBubble bubble, String header, int shownLength,
+        RowState(JComponent row, TranscriptBubble bubble, String header, int shownLength,
                  boolean showsEntryText) {
             this.row = row;
             this.bubble = bubble;

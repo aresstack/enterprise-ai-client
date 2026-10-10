@@ -333,11 +333,9 @@ public class ChatShellPanelTest {
                 assertEquals("Wissen wird gesucht …", shell.transcript().bubbleFor(answer.getId()).getText());
 
                 TranscriptEntry notice = model.addNotice("Die Wissenssuche ist ausgefallen.");
-                SpeechBubblePanel bubble = (SpeechBubblePanel) shell.transcript().bubbleFor(notice.getId());
-                assertNotNull(bubble);
-                assertEquals(BubbleSide.LEFT, bubble.getSide());
-                assertEquals(ChatTranscriptPanel.NOTICE_HEADER, ChatTranscriptPanel.header(notice));
-                assertEquals("Die Wissenssuche ist ausgefallen.", bubble.getText());
+                javax.swing.JLabel line = shell.transcript().noticeLineFor(notice.getId());
+                assertNotNull("Hinweis als Infozeile wie arch", line);
+                assertEquals("Die Wissenssuche ist ausgefallen.", line.getText());
                 assertTrue("Antwort läuft weiter", shell.composer().stopButton().isEnabled());
 
                 model.appendAssistantDelta("Antwort");
