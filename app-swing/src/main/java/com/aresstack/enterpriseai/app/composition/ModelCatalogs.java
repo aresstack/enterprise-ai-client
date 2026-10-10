@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.app.settings.ModelCatalogCache;
 import com.aresstack.enterpriseai.app.settings.ModelCatalogLoader;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.application.modelcatalog.UnifiedModelCatalog;
+import com.aresstack.enterpriseai.application.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.model.api.ModelCatalogPort;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogConfig;
@@ -146,14 +147,14 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
      * @param connection Verbindung der Enterprise-API (die des laufenden Graphen, passend zu Netz und Token)
      * @param models     Stimme und lokaler Sidecar, auch frisch gespeichert
      */
-    public List<SpeechSynthesisPort> speech(AppConfig connection, ModelsConfig models, NetworkServices network,
-                                            Supplier<String> token) {
+    public SpeechSynthesisRegistry speech(AppConfig connection, ModelsConfig models, NetworkServices network,
+                                          Supplier<String> token) {
         List<SpeechSynthesisPort> ports = new ArrayList<SpeechSynthesisPort>();
         ports.add(new KipitzSpeechAdapter(kipitz(connection, network, token), models.speechVoice()));
         if (models.localSidecar() != null) {
             ports.add(localSpeech(models.localSidecar()));
         }
-        return ports;
+        return new SpeechSynthesisRegistry(ports);
     }
 
     /**
