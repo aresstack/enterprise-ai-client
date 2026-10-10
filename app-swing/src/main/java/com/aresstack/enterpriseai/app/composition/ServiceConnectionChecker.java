@@ -9,7 +9,6 @@ import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConnectionChecker;
 import com.aresstack.enterpriseai.app.settings.ConnectionProbe;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
-import com.aresstack.enterpriseai.app.ui.settings.ModelChoice;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
@@ -17,8 +16,6 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -50,37 +47,40 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
     }
 
     @Override
-    public boolean check(AppConfig config, Consumer<ConnectionCheckStep> onStep) {
-        return check(config, onStep, null);
-    }
-
-    @Override
-    public boolean check(final AppConfig config, Consumer<ConnectionCheckStep> onStep,
-                         BiConsumer<List<ModelChoice>, List<ModelChoice>> onModels) {
+    public boolean check(final AppConfig config, Consumer<ConnectionCheckStep> onStep) {
         if (config == null || onStep == null) {
             throw new IllegalArgumentException("config and onStep must not be null");
         }
         ConnectionProbe.TokenLookup tokens = new ConnectionProbe.TokenLookup() {
             @Override
             public String token() throws IOException {
-                KeePassConfig keePass = config.keePass();
-                SecretRef ref = config.chat().apiKeyRef();
-                if (!keePass.enabled() || ref == null) {
-                    return null;
-                }
-                String address = keePass.rpc().host() + ":" + keePass.rpc().port();
-                KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
-                        ? new InMemoryPairingKeyStore()
-                        : new FilePairingKeyStore(keePass.pairingKeyFile());
-                SecretProvider provider = AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore);
-                try {
-                    return new SecretBackedTokenSource(provider, ref).token();
-                } catch (SecretAccessException e) {
-                    // Nur der Grund wandert in die Anzeige; die Ausnahme selbst bleibt hier.
-                    throw new IOException(KeePassSecretChecker.describe(e.reason(), e.ref(), address));
-                }
+                return chatToken(config, pairing);
             }
         };
-        return new ConnectionProbe(config, tokens).run(onStep, onModels);
+        return new ConnectionProbe(config, tokens).run(onStep);
+    }
+
+    /**
+     * Der API-Key des Chats über KeePass, wie die Anwendung ihn holt (Pairing-Dialog bei Bedarf); {@code null} ohne
+     * KeePass oder Referenz. Auch für die Modellabfrage des Einstellungen-Dialogs ({@link DialogModelCatalogs}).
+     */
+    static String chatToken(AppConfig config, KeePassSecretChecker.PairingCallbackFactory pairing)
+            throws IOException {
+        KeePassConfig keePass = config.keePass();
+        SecretRef ref = config.chat().apiKeyRef();
+        if (!keePass.enabled() || ref == null) {
+            return null;
+        }
+        String address = keePass.rpc().host() + ":" + keePass.rpc().port();
+        KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
+                ? new InMemoryPairingKeyStore()
+                : new FilePairingKeyStore(keePass.pairingKeyFile());
+        SecretProvider provider = AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore);
+        try {
+            return new SecretBackedTokenSource(provider, ref).token();
+        } catch (SecretAccessException e) {
+            // Nur der Grund wandert in die Anzeige; die Ausnahme selbst bleibt hier.
+            throw new IOException(KeePassSecretChecker.describe(e.reason(), e.ref(), address));
+        }
     }
 }

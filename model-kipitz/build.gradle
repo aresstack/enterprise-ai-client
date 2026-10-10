@@ -1,0 +1,9 @@
+description = 'Adapter: Modellkatalog der Enterprise-API (KIPITZ) über GET <baseUrl>/models.'
+
+dependencies {
+    api project(':model-api')
+    // Route je Anfrage (Proxy-Entscheidung) über den neutralen Port http-api aus der Composition Root.
+    api project(':http-api')
+    // JSON-Mapping bleibt im Adapter (implementation, nicht api), wie in chat-openai.
+    implementation libs.gson
+}

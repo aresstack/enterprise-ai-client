@@ -15,7 +15,6 @@ import java.awt.event.ActionListener;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
 /**
@@ -40,17 +39,8 @@ final class ConnectionCheckRow extends JPanel {
     private final List<ConnectionCheckStep> reported = new ArrayList<ConnectionCheckStep>();
     private final ComicPalette palette;
 
-    private final BiConsumer<List<ModelChoice>, List<ModelChoice>> onModels;
-
-    ConnectionCheckRow(SettingsDialogActions actions, Supplier<SettingsForm> form, ComicPalette palette) {
-        this(actions, form, palette, null);
-    }
-
-    /** @param onModels empfängt die Modellliste aus {@code GET /models} auf dem EDT; darf {@code null} sein */
-    ConnectionCheckRow(final SettingsDialogActions actions, final Supplier<SettingsForm> form, ComicPalette palette,
-                       BiConsumer<List<ModelChoice>, List<ModelChoice>> onModels) {
+    ConnectionCheckRow(final SettingsDialogActions actions, final Supplier<SettingsForm> form, ComicPalette palette) {
         super(new BorderLayout(0, 4));
-        this.onModels = onModels;
         this.palette = palette;
         this.button = new ComicButton(CHECK_LABEL, null, ComicButton.Accent.ACTION, palette);
         setOpaque(false);
@@ -87,13 +77,6 @@ final class ConnectionCheckRow extends JPanel {
                     reported.add(step);
                     steps.add(line(step));
                     refresh();
-                }
-
-                @Override
-                public void onModels(List<ModelChoice> chatModels, List<ModelChoice> embeddingModels) {
-                    if (ConnectionCheckRow.this.onModels != null) {
-                        ConnectionCheckRow.this.onModels.accept(chatModels, embeddingModels);
-                    }
                 }
 
                 @Override
