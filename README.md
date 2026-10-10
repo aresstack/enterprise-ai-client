@@ -59,6 +59,9 @@ java -jar enterprise-ai-client-<version>.jar
    speichert und entfernt. Das ✕ in einer Zeile entfernt die Quelle nach kurzer Rückfrage: sie verschwindet sofort,
    ihre Zeilen in der Datei werden auskommentiert und ihr Index wird gelöscht. Gespeichert wird weiter als
    `source.<id>.type` und `source.<id>.*`; bestehende Dateien laden unverändert.
+   Dokumente liest der Agent über die Ressourcenschicht aus corenth: Tamias prüft den Zugriff,
+   Chalcotheca hält die Kopie, Holkas holt sie über den Connector der Quelle (`wiki`, `confluence`, `file`); beim
+   Entfernen einer Quelle werden auch ihre Archiveinträge zurückgezogen.
    **Lokale Dateien**: „+ Quelle“ mit Typ „Lokale Dateien“ legt eine Quelle `type=files` an
    („Verzeichnis wählen …“); das Verzeichnis wird rekursiv gelesen. Erkennung und Extraktion stammen aus corenth
    `deigma` (Module `document-api` und `document-tika`, Quelle `source-localfiles`): Text und Markdown direkt,

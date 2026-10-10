@@ -18,9 +18,17 @@ import com.aresstack.enterpriseai.application.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.application.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.application.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
+import com.aresstack.enterpriseai.application.resource.InMemoryResourceArchive;
+import com.aresstack.enterpriseai.application.resource.MediatedKnowledgeDocuments;
+import com.aresstack.enterpriseai.application.resource.MediatedResourceService;
+import com.aresstack.enterpriseai.application.resource.policy.ActorIdentity;
+import com.aresstack.enterpriseai.application.resource.policy.ActorType;
+import com.aresstack.enterpriseai.application.resource.policy.ClientResourceAccessPolicy;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
+import com.aresstack.enterpriseai.resource.holkas.HolkasAcquisitionPort;
+import com.aresstack.enterpriseai.resource.holkas.KnowledgeSourceConnectorRegistry;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -58,6 +66,7 @@ public final class CompositionRoot {
     private final PromptContextAssembler contextAssembler;
     private final RagChatUseCase ragChat;
     private final IndexKnowledgeUseCase indexing;
+    private final MediatedKnowledgeDocuments resourceDocuments;
     private final LoadKnowledgeDocumentUseCase documents;
     private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeMcpTools knowledgeTools;
@@ -91,7 +100,15 @@ public final class CompositionRoot {
                 new KnowledgeChunker(knowledge.chunking()), knowledge.embeddingBatchSize());
         // Der Index führt (AP20-Folge #32): get_knowledge_document liefert nur Dokumente, die im konfigurierten
         // Namespace indexiert sind; der Agent sieht ausschließlich den freigegebenen Korpus.
-        this.documents = new LoadKnowledgeDocumentUseCase(ports.sources(), ports.index(), ports.embeddingSpace());
+        // Gelesen wird nach corenth vermittelt: Tamias (Regel) → Chalcotheca (Archiv) → AcquisitionPort → Holkas-
+        // Connector der Quelle; der Use Case fragt den Quellen-Port nicht mehr direkt.
+        MediatedResourceService resourceAccess = new MediatedResourceService(new ClientResourceAccessPolicy(),
+                new HolkasAcquisitionPort(new KnowledgeSourceConnectorRegistry(ports.sources()::ports, clock)),
+                new InMemoryResourceArchive());
+        this.resourceDocuments = new MediatedKnowledgeDocuments(resourceAccess,
+                new ActorIdentity("enterprise-ai-client-user", ActorType.HUMAN));
+        this.documents = new LoadKnowledgeDocumentUseCase(ports.sources(), ports.index(), ports.embeddingSpace())
+                .withReader(resourceDocuments);
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
         this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, refresh, config.agent().toolSettings());
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
@@ -214,6 +231,11 @@ public final class CompositionRoot {
 
     public IndexKnowledgeUseCase indexing() {
         return indexing;
+    }
+
+    /** Der vermittelte Lesezugriff auf Wissensdokumente (corenth-Ressourcenschicht) mit seinem Archiv. */
+    public MediatedKnowledgeDocuments resourceDocuments() {
+        return resourceDocuments;
     }
 
     public LoadKnowledgeDocumentUseCase documents() {

@@ -25,6 +25,9 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
  * gefragt; die erste, die die ID nicht als fremd ablehnt, entscheidet (Dokument oder Fehler). Kennt keine Quelle die
  * ID, ist das Ergebnis {@code UNSUPPORTED}.
  *
+ * <p>Gelesen wird über einen {@link KnowledgeDocumentReader}: produktiv der vermittelte Zugriff nach corenth
+ * ({@link #withReader}), sonst direkt aus dem Quellen-Port.
+ *
  * <p>Kennt Quellen und Index nur über ihre Ports; keine Adapter- oder Security-Typen. Blockiert für die Dauer des
  * Ladens.
  */
@@ -33,10 +36,11 @@ public final class LoadKnowledgeDocumentUseCase {
     private final KnowledgeSourceCatalog catalog;
     private final KnowledgeIndexPort index;
     private final EmbeddingModelIdentity space;
+    private final KnowledgeDocumentReader reader;
 
     /** Ohne Index: Die Quellen entscheiden, welche ID sie kennen; jede akzeptierte ID wird geladen. */
     public LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog) {
-        this(catalog, null, null, false);
+        this(catalog, null, null, false, KnowledgeDocumentReader.direct());
     }
 
     /**
@@ -47,11 +51,11 @@ public final class LoadKnowledgeDocumentUseCase {
      */
     public LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog, KnowledgeIndexPort index,
                                         EmbeddingModelIdentity space) {
-        this(catalog, index, space, true);
+        this(catalog, index, space, true, KnowledgeDocumentReader.direct());
     }
 
     private LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog, KnowledgeIndexPort index,
-                                         EmbeddingModelIdentity space, boolean gated) {
+                                         EmbeddingModelIdentity space, boolean gated, KnowledgeDocumentReader reader) {
         if (catalog == null) {
             throw new IllegalArgumentException("catalog ist Pflicht");
         }
@@ -61,6 +65,15 @@ public final class LoadKnowledgeDocumentUseCase {
         this.catalog = catalog;
         this.index = index;
         this.space = space;
+        this.reader = reader;
+    }
+
+    /** Derselbe Use Case, der über {@code value} liest (z. B. den vermittelten Zugriff). */
+    public LoadKnowledgeDocumentUseCase withReader(KnowledgeDocumentReader value) {
+        if (value == null) {
+            throw new IllegalArgumentException("reader ist Pflicht");
+        }
+        return new LoadKnowledgeDocumentUseCase(catalog, index, space, index != null, value);
     }
 
     public KnowledgeSourceCatalog catalog() {
@@ -91,11 +104,11 @@ public final class LoadKnowledgeDocumentUseCase {
             if (owner == null) {
                 throw new KnowledgeDocumentNotIndexedException(resourceId, null);
             }
-            return catalog.find(owner).port().load(resourceId);
+            return reader.read(owner, catalog.find(owner).port(), resourceId);
         }
-        for (KnowledgeSourcePort source : catalog.ports()) {
+        for (KnowledgeSourceRegistration registration : catalog.registrations()) {
             try {
-                return source.load(resourceId);
+                return reader.read(registration.sourceId(), registration.port(), resourceId);
             } catch (KnowledgeSourceException e) {
                 if (e.kind() != KnowledgeSourceException.Kind.UNSUPPORTED) {
                     throw e;
@@ -127,7 +140,7 @@ public final class LoadKnowledgeDocumentUseCase {
         if (index != null && !index.resourceIds(space, sourceId).contains(resourceId)) {
             throw new KnowledgeDocumentNotIndexedException(resourceId, sourceId);
         }
-        return registration.port().load(resourceId);
+        return reader.read(sourceId, registration.port(), resourceId);
     }
 
     /** Die konfigurierte Quelle, unter der die Ressource im Namespace indexiert ist, oder {@code null}. */
