@@ -36,18 +36,24 @@ final class ModuleRegistry {
                         "acp-client-api", "mcp-runtime-api")
 
                 .module("chat-api", "chat.api", ModuleKind.PORT, "A", "domain")
-                .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "domain", "chat-api")
+                .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "domain", "chat-api", "http-api")
+
+                // Netz: HTTP-Route je Ziel-URL (Proxy-Entscheidung) als neutraler Port; die einzige
+                // Implementierung (win-proxy-java) liegt in app-swing (app.net.HttpRoutes).
+                .module("http-api", "http.api", ModuleKind.PORT, "N (Netz)", "domain")
 
                 .module("embedding-api", "embedding.api", ModuleKind.PORT, "C", "domain")
-                .module("embedding-openai", "embedding.openai", ModuleKind.ADAPTER, "C", "domain", "embedding-api")
+                .module("embedding-openai", "embedding.openai", ModuleKind.ADAPTER, "C", "domain", "embedding-api",
+                        "http-api")
 
                 .module("knowledge-api", "knowledge.api", ModuleKind.PORT, "D", "domain")
                 .module("knowledge-lucene", "knowledge.lucene", ModuleKind.ADAPTER, "D", "domain", "knowledge-api")
 
                 .module("source-api", "source.api", ModuleKind.PORT, "E", "domain")
-                .module("source-mediawiki", "source.mediawiki", ModuleKind.ADAPTER, "E", "domain", "source-api")
+                .module("source-mediawiki", "source.mediawiki", ModuleKind.ADAPTER, "E", "domain", "source-api",
+                        "http-api")
                 .module("source-confluence", "source.confluence", ModuleKind.ADAPTER, "F",
-                        "domain", "source-api", "security-api")
+                        "domain", "source-api", "security-api", "http-api")
 
                 .module("security-api", "security.api", ModuleKind.PORT, "F", "domain")
                 .module("security-keepassrpc", "security.keepassrpc", ModuleKind.ADAPTER, "F", "domain", "security-api")
@@ -63,7 +69,7 @@ final class ModuleRegistry {
                 .module("app-swing", "app", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
                         "domain", "application",
                         "chat-api", "embedding-api", "knowledge-api", "source-api", "security-api",
-                        "acp-client-api", "mcp-runtime-api",
+                        "acp-client-api", "mcp-runtime-api", "http-api",
                         "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls")

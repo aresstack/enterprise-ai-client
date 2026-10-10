@@ -84,7 +84,7 @@ public class SliceAChatTest {
         p.setProperty("knowledge.indexDirectory", temp.getRoot().toString());
         p.setProperty("knowledge.indexOnStartup", "false");
         p.setProperty("security.keepass.enabled", "false");
-        p.setProperty("network.proxy.mode", "NONE");
+        p.setProperty("network.proxy.mode", "DISABLED");
         root = CompositionRoot.compose(AppConfigLoader.fromProperties(p), ports, SwingUtilities::invokeLater,
                 System::currentTimeMillis, ZoneId.of("Europe/Berlin"));
         view = onEdt(() -> ShellAssembly.createShell(root, ComicPalette.defaultPalette(),

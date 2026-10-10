@@ -126,7 +126,7 @@ public class TrustPolicyTest {
 
     @Test
     public void jvmTruststoreAloneRejectsTheSelfSignedServerAndNamesTheConsultedSources() throws Exception {
-        TrustPolicy policy = TrustPolicy.build(false, null, "Linux");
+        TrustPolicy policy = TrustPolicy.build(true, false, false, null, "Linux");
         assertEquals(java.util.Collections.singletonList(TrustPolicy.JVM_SOURCE), policy.sources());
         try {
             get(url(), policy.socketFactory());
@@ -143,7 +143,7 @@ public class TrustPolicyTest {
 
     @Test
     public void configuredCaFileMakesTheServerTrustedNextToTheJvmTruststore() throws Exception {
-        TrustPolicy policy = TrustPolicy.build(false, serverCertificate, "Linux");
+        TrustPolicy policy = TrustPolicy.build(true, false, false, serverCertificate, "Linux");
         assertEquals(2, policy.sources().size());
         assertTrue(policy.sources().get(1), policy.sources().get(1).startsWith(TrustPolicy.FILE_SOURCE + " (1 "));
         assertEquals(200, get(url(), policy.socketFactory()));
@@ -153,28 +153,13 @@ public class TrustPolicyTest {
 
     @Test
     public void aForeignCaFileDoesNotHelp() throws Exception {
-        TrustPolicy policy = TrustPolicy.build(false, otherCertificate, "Linux");
+        TrustPolicy policy = TrustPolicy.build(true, false, false, otherCertificate, "Linux");
         try {
             get(url(), policy.socketFactory());
             fail("fremde CA darf das Serverzertifikat nicht beglaubigen");
         } catch (SSLException expected) {
             assertTrue(ConnectionDiagnosis.detail(expected).contains(TrustPolicy.FILE_SOURCE));
         }
-    }
-
-    @Test
-    public void installMakesTheRuleTheDefaultForHttpsUrlConnectionAndUninstallRestoresIt() throws Exception {
-        TrustPolicy policy = TrustPolicy.build(false, serverCertificate, "Linux");
-        policy.install();
-        policy.install();
-        assertSame(policy.socketFactory(), HttpsURLConnection.getDefaultSSLSocketFactory());
-        assertEquals("Verbindung ohne explizite Factory nutzt die installierte Regel", 200, get(url(), null));
-        policy.uninstall();
-        assertSame(originalDefault, HttpsURLConnection.getDefaultSSLSocketFactory());
-        TrustPolicy other = TrustPolicy.build(false, null, "Linux");
-        other.uninstall();
-        assertSame("uninstall einer nicht installierten Regel ändert nichts", originalDefault,
-                HttpsURLConnection.getDefaultSSLSocketFactory());
     }
 
     @Test
@@ -220,26 +205,26 @@ public class TrustPolicyTest {
 
     @Test
     public void windowsStoreIsSkippedWithANoticeOutsideWindows() {
-        TrustPolicy policy = TrustPolicy.build(true, null, "Linux");
+        TrustPolicy policy = TrustPolicy.build(true, true, true, null, "Linux");
         assertEquals(1, policy.sources().size());
         assertEquals(1, policy.notices().size());
         assertTrue(policy.notices().get(0), policy.notices().get(0).contains("nur unter Windows"));
-        TrustPolicy quiet = TrustPolicy.build(false, null, "Windows 11");
+        TrustPolicy quiet = TrustPolicy.build(true, false, false, null, "Windows 11");
         assertTrue(quiet.notices().isEmpty());
+        assertFalse("die Bibliothek meldet ihre Quellen", quiet.diagnostics().isEmpty());
     }
 
     @Test
     public void windowsStoreOnWindowsIsUsedOrReportedButNeverFatal() {
         // Auf Windows-Runnern liefert SunMSCAPI den Speicher; auf anderen JDKs fehlt der KeyStore-Typ und die Regel
         // meldet das als Hinweis statt zu scheitern.
-        TrustPolicy policy = TrustPolicy.build(true, null, "Windows 10");
+        TrustPolicy policy = TrustPolicy.build(true, true, false, null, "Windows 10");
         assertFalse(policy.sources().isEmpty());
         assertEquals(TrustPolicy.JVM_SOURCE, policy.sources().get(0));
-        if (policy.sources().size() == 1) {
-            assertEquals(1, policy.notices().size());
-            assertTrue(policy.notices().get(0), policy.notices().get(0).contains("nicht nutzbar"));
+        if (policy.sources().size() > 1) {
+            assertTrue(policy.sources().get(1), policy.sources().get(1).startsWith(TrustPolicy.WINDOWS_ROOT_SOURCE));
         } else {
-            assertTrue(policy.sources().get(1), policy.sources().get(1).startsWith(TrustPolicy.WINDOWS_SOURCE));
+            assertFalse(policy.diagnostics().isEmpty());
         }
     }
 
@@ -255,13 +240,13 @@ public class TrustPolicyTest {
         Path der = temp.newFile("single.der").toPath();
         Files.write(der, certificates.get(1).getEncoded());
         assertEquals(1, TrustPolicy.loadCertificates(der).size());
-        assertEquals(1, TrustPolicy.build(false, der, "Linux").sources().size() - 1);
+        assertEquals(1, TrustPolicy.build(true, false, false, der, "Linux").sources().size() - 1);
     }
 
     @Test
     public void unreadableOrEmptyCaFileIsAConfigurationProblemNamingTheKeyOnly() throws Exception {
         try {
-            TrustPolicy.build(false, temp.getRoot().toPath().resolve("fehlt.pem"), "Linux");
+            TrustPolicy.build(true, false, false, temp.getRoot().toPath().resolve("fehlt.pem"), "Linux");
             fail();
         } catch (AppConfigException e) {
             assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.tls.caCertificatesFile"));
@@ -270,7 +255,7 @@ public class TrustPolicyTest {
         Path garbage = temp.newFile("kein-zertifikat.pem").toPath();
         Files.write(garbage, "nur Text".getBytes(StandardCharsets.UTF_8));
         try {
-            TrustPolicy.build(false, garbage, "Linux");
+            TrustPolicy.build(true, false, false, garbage, "Linux");
             fail();
         } catch (AppConfigException e) {
             assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.tls.caCertificatesFile"));
@@ -283,12 +268,22 @@ public class TrustPolicyTest {
         TrustPolicy policy = TrustPolicy.from(config.network());
         assertEquals(2, policy.sources().size());
         assertEquals(200, get(url(), policy.socketFactory()));
-        assertTrue(config.network().toString().contains("useWindowsCertificateStore=false"));
+        assertTrue(config.network().toString(), config.network().toString().contains("tls=JVM-Truststore, CA-Datei"));
+        TrustPolicy.verify(config.network());
+    }
+
+    @Test
+    public void deferredFactoryBuildsOnFirstConnectionOnly() throws Exception {
+        AppConfig config = network().caFile(serverCertificate).windowsStore(false).build();
+        SSLSocketFactory deferred = TrustPolicy.deferred(config.network());
+        assertFalse(((LazySslSocketFactory) deferred).isLoaded());
+        assertEquals(200, get(url(), deferred));
+        assertTrue(((LazySslSocketFactory) deferred).isLoaded());
     }
 
     @Test
     public void compositeRejectionCarriesTheFirstReasonAndSuppressesTheRest() throws Exception {
-        TrustPolicy policy = TrustPolicy.build(false, otherCertificate, "Linux");
+        TrustPolicy policy = TrustPolicy.build(true, false, false, otherCertificate, "Linux");
         X509Certificate[] chain = TrustPolicy.loadCertificates(serverCertificate).toArray(new X509Certificate[0]);
         try {
             policy.trustManager().checkServerTrusted(chain, "RSA");
@@ -315,7 +310,7 @@ public class TrustPolicyTest {
             p.setProperty("embedding.model", "e");
             p.setProperty("embedding.dimension", "4");
             p.setProperty("security.keepass.enabled", "true");
-            p.setProperty("network.proxy.mode", "NONE");
+            p.setProperty("network.proxy.mode", "DISABLED");
         }
 
         NetworkConfigBuilder caFile(Path file) {
@@ -324,7 +319,8 @@ public class TrustPolicyTest {
         }
 
         NetworkConfigBuilder windowsStore(boolean value) {
-            p.setProperty("network.tls.useWindowsCertificateStore", String.valueOf(value));
+            p.setProperty("network.tls.useWindowsRoot", String.valueOf(value));
+            p.setProperty("network.tls.useWindowsCaStores", String.valueOf(value));
             return this;
         }
 

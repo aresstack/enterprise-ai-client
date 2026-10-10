@@ -26,8 +26,8 @@ public interface SettingsDialogActions {
     void checkSecret(SettingsForm form, String secretRef, Consumer<SecretCheckResult> onResult);
 
     /**
-     * Prüft mit dem Entwurf Schritt für Schritt den Weg zum KI-Dienst (Proxy-Route, Namensauflösung, API-Key aus
-     * KeePass, TLS, {@code GET /models}) und meldet jeden Schritt, sobald er feststeht, danach genau einmal
+     * Prüft mit dem Entwurf Schritt für Schritt den Weg zum KI-Dienst (API-Key aus KeePass, Proxy-Route,
+     * HTTPS-Verbindung, {@code GET /models}, Chat- und Embedding-Modell) und meldet jeden Schritt, sobald er feststeht, danach genau einmal
      * {@link ConnectionCheckListener#onFinished}; alles auf dem EDT. Ohne Verdrahtung meldet die Vorgabe, dass der
      * Test hier nicht verfügbar ist.
      */
@@ -35,5 +35,25 @@ public interface SettingsDialogActions {
         listener.onStep(ConnectionCheckStep.failed("Verbindungstest",
                 "In dieser Umgebung nicht verfügbar."));
         listener.onFinished(false);
+    }
+
+    /**
+     * „Proxy auflösen“: nur die Proxy-Auflösung der Test-URL mit den Netzwerkeinstellungen des Entwurfs (keine
+     * Namensauflösung des Ziels, kein TLS, keine Anmeldung); Zeilen und Ende auf dem EDT.
+     */
+    default void resolveProxy(SettingsForm form, NetworkLogListener listener) {
+        listener.line("ERROR: in dieser Umgebung nicht verfügbar");
+        listener.finished(false);
+    }
+
+    /** „HTTPS-Verbindung testen“: dieselbe Route plus echte HTTPS-Verbindung mit den TLS-Quellen des Entwurfs. */
+    default void checkHttps(SettingsForm form, NetworkLogListener listener) {
+        listener.line("ERROR: in dieser Umgebung nicht verfügbar");
+        listener.finished(false);
+    }
+
+    /** Das Standard-Ermittlungsskript der Bibliothek für einen Modus (PowerShell bzw. VBScript), sonst leer. */
+    default String defaultDiscoveryScript(String proxyMode) {
+        return "";
     }
 }

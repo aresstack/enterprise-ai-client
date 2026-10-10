@@ -18,14 +18,14 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * Der Knopf „Verbindung zum KI-Dienst prüfen“ mit Zusammenfassung und der Liste der Schritte, wie sie
+ * Der Knopf „Verbindung testen“ des Reiters KI-Dienst mit Zusammenfassung und der Liste der Schritte, wie sie
  * eintreffen: grün (in Ordnung), orange (Hinweis), rot (fehlgeschlagen), grau (Information). Während der Test
  * läuft, ist der Knopf gesperrt; Schritte und Ende kommen über {@link SettingsDialogActions#checkConnection}
  * auf dem EDT.
  */
 final class ConnectionCheckRow extends JPanel {
 
-    static final String CHECK_LABEL = "Verbindung zum KI-Dienst prüfen";
+    static final String CHECK_LABEL = "Verbindung testen";
     static final String RUNNING_LABEL = "Prüfe … (bei Bedarf öffnet sich der Pairing-Dialog)";
     static final String SUCCESS_LABEL = "Verbindung in Ordnung.";
     static final String SUCCESS_WITH_NOTES_LABEL = "Verbindung steht; bitte die Hinweise beachten.";
@@ -44,8 +44,8 @@ final class ConnectionCheckRow extends JPanel {
         this.palette = palette;
         this.button = new ComicButton(CHECK_LABEL, null, ComicButton.Accent.ACTION, palette);
         setOpaque(false);
-        button.setToolTipText("Prüft mit dem aktuellen Entwurf Proxy-Route, Namensauflösung, API-Key aus KeePass, "
-                + "TLS und einen Aufruf GET /models gegen den KI-Dienst");
+        button.setToolTipText("Prüft mit dem aktuellen Entwurf API-Key aus KeePass, Proxy-Route, HTTPS-Verbindung, "
+                + "GET /models mit HTTP-Status sowie Chat- und Embedding-Modell");
         summary.setFont(smaller(summary.getFont()));
         summary.setForeground(palette.getInk());
         JPanel head = new JPanel(new BorderLayout(8, 0));

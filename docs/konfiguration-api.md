@@ -100,49 +100,50 @@ Fehler wirft der Adapter `EmbeddingException`; es gibt keine Teilergebnisse und 
 
 ## Netzwerk (`network.*`)
 
+Proxy-Auflösung über `com.aresstack:win-proxy-java` 0.2.0, TLS-Vertrauen über `com.aresstack:win-trust-java`
+0.1.0. Felder und Modi entsprechen dem ProxyPanel von AskAI; die Modusnamen sind die Enum-Werte der Bibliothek.
+
 ```properties
-# AUTO (PAC-Skript, sonst Systemeinstellungen), SYSTEM, NONE oder MANUAL
-network.proxy.mode=AUTO
-#network.proxy.pacUrl=http://wpad.intern.example/wpad.dat
-#network.proxy.pacDiscovery=WINDOWS_SETTINGS
+network.proxy.mode=PAC_URL_POWERSHELL
 #network.proxy.host=proxy.intern.example
 #network.proxy.port=8080
-network.proxy.nonProxyHosts=*.intern.example
-# Vertrauensquellen für HTTPS: der JVM-Truststore immer, dazu unter Windows der Windows-Zertifikatspeicher
-# und/oder eine Datei mit CA-Zertifikaten (PEM mit einem oder mehreren Zertifikaten, oder DER)
-network.tls.useWindowsCertificateStore=true
+#network.proxy.pacUrl=http://wpad.intern.example/wpad.dat
+#network.proxy.pacDiscoveryScript=
+#network.proxy.testUrl=
+#network.proxy.resolveTimeoutMillis=45000
+#network.proxy.nonProxyHosts=*.intern.example
+network.proxy.auth.mode=NONE
+#network.proxy.auth.credentialRef=keepass:Firmen-Proxy
+#network.http.userAgent=
+network.http.preferIPv6=false
+network.tls.useJvmDefault=true
+network.tls.useWindowsRoot=true
+network.tls.useWindowsCaStores=true
 #network.tls.caCertificatesFile=C:/Zertifikate/firmen-ca.pem
 ```
 
 | Schlüssel | Bedeutung |
 |---|---|
-| `network.proxy.mode` | `AUTO` (Standard): wie Browser und PowerShell auf demselben Rechner. Gibt es ein PAC-/WPAD-Proxyskript (Adresse aus `network.proxy.pacUrl` oder aus den Windows-Einstellungen), entscheidet das Skript je Ziel; liefert es keine Entscheidung (keine PAC-Adresse bekannt, Skript nicht ladbar, kein Windows), gelten die Systemeinstellungen wie bei `SYSTEM`, mit Grund im Protokoll. `SYSTEM`: nur die Proxy-Einstellungen des Betriebssystems, unter Windows der fest eingetragene Proxy der Internetoptionen mit Ausnahmen (Java 8 selbst wertet weder PAC-Skripte noch WPAD aus); sind `http.proxyHost`/`https.proxyHost` als JVM-Properties gesetzt, gelten diese. Für `AUTO` und `SYSTEM` setzt die Anwendung beim Start `java.net.useSystemProxies=true`, sofern die Property nicht schon gesetzt ist. `NONE`: immer direkt. `MANUAL`: `network.proxy.host` und `network.proxy.port`. |
-| `network.proxy.pacUrl` | Nur `AUTO`: Adresse des PAC-Skripts (`http`, `https` oder `file`), wenn sie nicht aus den Windows-Einstellungen kommen soll; damit funktioniert PAC auch unter Linux und macOS. |
-| `network.proxy.pacDiscovery` | Nur `AUTO` ohne `pacUrl`: `WINDOWS_SETTINGS` (Standard) liest die PAC-Adresse per `reg.exe` aus Benutzer- und Richtlinien-Hives, dem Verbindungs-Blob und dem WPAD-Flag, ohne PowerShell; `POWERSHELL` fragt sie mit einem PowerShell-Einzeiler ab, falls `reg.exe` gesperrt ist. |
-| `network.proxy.nonProxyHosts` | Hosts ohne Proxy, Muster wie bei `http.nonProxyHosts` (`*.intern.example`). Loopback geht nie über einen Proxy. |
-| `network.tls.useWindowsCertificateStore` | `true` (Standard): unter Windows gelten zusätzlich die vertrauenswürdigen Stammzertifikate des Windows-Zertifikatspeichers (`Windows-ROOT`). Damit akzeptiert die Anwendung dieselben Server wie Browser und PowerShell, insbesondere hinter einem Firmen-Proxy mit TLS-Inspektion oder bei einer internen CA. Außerhalb von Windows ohne Wirkung (Hinweis im Protokoll). |
-| `network.tls.caCertificatesFile` | Datei mit weiteren CA-Zertifikaten (PEM mit einem oder mehreren `BEGIN CERTIFICATE`-Blöcken oder ein einzelnes DER-Zertifikat), für Linux/macOS oder wenn der Windows-Speicher nicht reicht. Eine fehlende, leere oder unlesbare Datei ist ein Konfigurationsfehler beim Start. |
+| `network.proxy.mode` | `DISABLED`, `MANUAL_PROXY`, `WINDOWS_STATIC_PROXY`, `PAC_URL_MANUAL`, `PAC_URL_POWERSHELL` (Standard), `PAC_URL_WSCRIPT`, `PAC_URL_WINDOWS_SETTINGS`, `WINDOWS_NATIVE_PROXY_SETTINGS`, `WINDOWS_NATIVE_ROUTE_RESOLVER`. Alte Namen werden gelesen und beim Speichern ersetzt: `NONE` → `DISABLED`, `MANUAL` → `MANUAL_PROXY`, `SYSTEM` → `WINDOWS_STATIC_PROXY`, `AUTO` → `PAC_URL_POWERSHELL` (mit `pacUrl`: `PAC_URL_MANUAL`). |
+| `network.proxy.host`, `port` | Pflicht bei `MANUAL_PROXY`. |
+| `network.proxy.pacUrl` | Pflicht bei `PAC_URL_MANUAL` (`http`, `https` oder `file`). |
+| `network.proxy.pacDiscoveryScript` | `PAC_URL_POWERSHELL`/`PAC_URL_WSCRIPT`: Skript, das die PAC-URL ausgibt; leer = Standardskript der Bibliothek (liest `AutoConfigURL`). |
+| `network.proxy.testUrl` | Ziel für „Proxy auflösen“ und „HTTPS-Verbindung testen“; leer = `<chat.baseUrl>/models`. |
+| `network.proxy.resolveTimeoutMillis` | Harte Obergrenze je Auflösung (Standard 45000). |
+| `network.proxy.nonProxyHosts` | Hosts ohne Proxy (`*`-Muster); Loopback geht nie über einen Proxy. |
+| `network.proxy.auth.mode`, `credentialRef` | `NONE` oder `BASIC`; bei `BASIC` Benutzer und Passwort aus dem genannten KeePass-Eintrag, nie aus dieser Datei. |
+| `network.http.userAgent` | User-Agent aller Aufrufe; leer = `EnterpriseAiClient/<Version>`. |
+| `network.http.preferIPv6` | IPv6 bevorzugen (wirkt nach Neustart). |
+| `network.tls.useJvmDefault`, `useWindowsRoot`, `useWindowsCaStores` | Vertrauensquellen: JVM-`cacerts`, Windows-ROOT, Windows Root+Intermediate (Windows-Quellen nur unter Windows). Der alte Schalter `useWindowsCertificateStore` gilt für beide Windows-Quellen, solange die neuen fehlen. |
+| `network.tls.caCertificatesFile` | Weitere CA-Zertifikate (PEM oder DER). |
 
-`ProxyPolicy` installiert die Proxy-Regel als JVM-`ProxySelector` (Chat- und MediaWiki-Adapter über
-`HttpURLConnection`) und übergibt sie als expliziten `Proxy` an Embedding- und Confluence-Adapter.
-Proxy-Authentifizierung wird nicht unterstützt; die Einstellung gilt prozessweit.
-
-Das PAC-Skript wertet `PacProxyRoutes` mit der Bibliothek `com.aresstack:win-proxy-java` (0.1.0-beta.4, Java 8,
-GraalJS; dieselbe wie in MainframeMate, corenth und askai-java8) aus: Adresse ermitteln, Skript laden,
-`FindProxyForURL(url, host)` ausführen. Die Anwendung speichert das Ergebnis je Ziel-Host zehn Minuten (die
-erste Auswertung dauert rund eine Sekunde, weitere Millisekunden), Fehler eine Minute; ein Fehler steht mit
-technischem Grund (`pac-url-not-found`, `pac-download-failed`, `pac-evaluation-failed`) im Protokoll und führt
-auf die Systemeinstellungen zurück, nie still. Beim Start steht im Protokoll die Zeile
-`Route zum KI-Dienst <host>: …` mit dem Ergebnis für `chat.baseUrl`, zum Beispiel
-`PROXY proxy.intern.example:8080 (resolved) laut PAC-Skript aus den Windows-Einstellungen (reg.exe)` oder
-`ERROR (pac-url-not-found): … es gelten die Systemeinstellungen; Systemeinstellungen: direkt`.
-
-`TrustPolicy` baut aus den Vertrauensquellen einen gemeinsamen Trust-Manager (ein Serverzertifikat gilt, wenn
-eine Quelle es akzeptiert) und installiert ihn als Standard-`SSLSocketFactory` für `HttpsURLConnection`. Das
-gilt für alle Adapter ohne eigenen SSL-Kontext: Chat, Embeddings, MediaWiki und Confluence ohne
-Client-Zertifikat. Bekannte Grenze: Confluence **mit** Client-Zertifikat (`source.confluence.clientCertificate.*`)
-baut einen eigenen SSL-Kontext und prüft Serverzertifikate dort weiterhin nur gegen den JVM-Truststore. Die
-Quellen und Hinweise stehen beim Start im Protokoll (`Vertrauensquellen: JVM-Truststore, Windows-Zertifikatspeicher (n Zertifikate)`).
+`HttpRoutes` (Port `HttpRoutePort` aus `http-api`) löst die Route je Ziel (`scheme://host:port`) auf, außerhalb
+des EDT, mit hartem Timeout und Cache (Erfolg 10 min, Fehler 1 min). Jede `HttpURLConnection` von Chat,
+Embeddings, MediaWiki und Confluence bekommt die Route und die `SSLSocketFactory` aus win-trust-java einzeln;
+es gibt keinen globalen `ProxySelector` und keine globale `SSLSocketFactory`. `NOT_IMPLEMENTED` und `ERROR` werden
+als nicht verfügbare Route gemeldet; die Anwendung verbindet dann nicht und fällt nie still auf `DIRECT` zurück.
+Der Start wartet nicht auf die Auflösung. Für `BASIC` installiert die Anwendung einen `Authenticator`, der nur
+Proxy-Anfragen beantwortet.
 
 ## Fehlersuche: "Der KI-Dienst ist nicht erreichbar."
 
@@ -151,10 +152,10 @@ erreichbar.`, `Anmeldung am KI-Dienst fehlgeschlagen.`, …), `Technische Ursach
 Paketnamen (Tokens werden maskiert) und, wenn die Ursache bekannt ist, `Hinweis:` mit dem nächsten Schritt.
 Der vollständige Stacktrace steht in der Protokolldatei `<Anwendungsverzeichnis>/logs/enterprise-ai-client.0.log`
 ([Einrichtung](einrichtung.md#anwendungsverzeichnis-und-konfigurationsdatei)); ihr Anfang nennt Java-Version,
-Betriebssystem, die geladene Konfiguration (ohne Secrets), die Vertrauensquellen, die Proxy-Regel und die
-Zeile `Route zum KI-Dienst <host>: …` mit dem Proxy-Ergebnis für `chat.baseUrl`.
+Betriebssystem, die geladene Konfiguration (ohne Secrets), die Vertrauensquellen, die Proxy-Regel und je Ziel
+die Zeile `Proxy-Route …` mit dem Ergebnis; „Proxy auflösen“ im Reiter Netzwerk zeigt jeden Schritt.
 
-Schneller als die Protokolldatei ist der Knopf **„Verbindung zum KI-Dienst prüfen“** im Einstellungen-Dialog
+Schneller als die Protokolldatei ist der Knopf **„Verbindung testen“** (Reiter KI-Dienst) im Einstellungen-Dialog
 (Reiter „Netzwerk & Agent“, [Einrichtung](einrichtung.md#einstellungen-dialog)): Er geht mit dem aktuellen Entwurf
 Proxy-Route, Namensauflösung, API-Key aus KeePass, TLS-Handshake und `GET /models` Schritt für Schritt durch und
 zeigt beim ersten roten Schritt dieselbe technische Ursache und denselben Hinweis wie die Tabelle unten, ohne dass
@@ -162,10 +163,10 @@ man die Datei speichern oder die Anwendung neu starten muss.
 
 | Technische Ursache (Auszug) | Bedeutung | Abhilfe |
 |---|---|---|
-| `SSLHandshakeException … PKIX path building failed … unable to find valid certification path` | Java vertraut dem Serverzertifikat nicht. Java bringt einen eigenen Truststore mit und nutzt den des Betriebssystems nicht von selbst; PowerShell, Browser und `curl` auf demselben Rechner funktionieren deshalb trotzdem. Typisch: Firmen-Proxy mit TLS-Inspektion oder interne CA; ein Java 8 vor Update 141 kennt außerdem die Let's-Encrypt-Wurzel (ISRG Root X1) nicht. | Unter Windows `network.tls.useWindowsCertificateStore=true` lassen (Standard) und die App neu starten. Sonst die ausstellende CA als PEM exportieren und `network.tls.caCertificatesFile` setzen. Altes Java aktualisieren (`java -version`). |
+| `SSLHandshakeException … PKIX path building failed … unable to find valid certification path` | Java vertraut dem Serverzertifikat nicht. Java bringt einen eigenen Truststore mit und nutzt den des Betriebssystems nicht von selbst; PowerShell, Browser und `curl` auf demselben Rechner funktionieren deshalb trotzdem. Typisch: Firmen-Proxy mit TLS-Inspektion oder interne CA; ein Java 8 vor Update 141 kennt außerdem die Let's-Encrypt-Wurzel (ISRG Root X1) nicht. | Unter Windows `network.tls.useWindowsRoot` und `network.tls.useWindowsCaStores` auf `true` lassen (Standard) und die App neu starten. Sonst die ausstellende CA als PEM exportieren und `network.tls.caCertificatesFile` setzen. Altes Java aktualisieren (`java -version`). |
 | `SSLException … handshake_failure`, `protocol_version`, `no cipher suites in common` | TLS-Version oder Cipher passt nicht; sehr altes Java. | Java aktualisieren. |
-| `UnknownHostException` | Der Hostname ist nicht auflösbar, meist weil das Netz einen Proxy verlangt, den Java nicht nutzt. | `network.proxy.mode=AUTO` (Standard) wertet das PAC-Skript des Unternehmens aus; die Zeile `Route zum KI-Dienst` im Protokoll zeigt, ob ein Proxy gefunden wurde. Steht dort `pac-url-not-found`, obwohl der Browser einen Proxy nutzt: `network.proxy.pacDiscovery=POWERSHELL` versuchen oder die PAC-Adresse aus den Internetoptionen ("Skript für automatische Konfiguration") in `network.proxy.pacUrl` eintragen; zuletzt `MANUAL` mit Host und Port. |
-| `Unable to tunnel through proxy. Proxy returns "HTTP/1.1 407 …"` | Der Proxy verlangt eine Anmeldung. | Nicht unterstützt; ein Proxy ohne Anmeldung oder eine Ausnahme für den Host ist nötig. |
+| `UnknownHostException` | Der Hostname ist nicht auflösbar, meist weil das Netz einen Proxy verlangt, den Java nicht nutzt. | der passende Modus unter `network.proxy.mode` (meist `PAC_URL_POWERSHELL`) wertet das PAC-Skript des Unternehmens aus; „Proxy auflösen“ im Reiter Netzwerk zeigt, ob ein Proxy gefunden wurde. Findet das Skript keine PAC-Adresse, obwohl der Browser einen Proxy nutzt: `PAC_URL_WINDOWS_SETTINGS` oder `PAC_URL_WSCRIPT` versuchen oder die PAC-Adresse aus den Internetoptionen mit `PAC_URL_MANUAL` eintragen; zuletzt `MANUAL_PROXY` mit Host und Port. |
+| `Unable to tunnel through proxy. Proxy returns "HTTP/1.1 407 …"` | Der Proxy verlangt eine Anmeldung. | `network.proxy.auth.mode=BASIC` mit einem KeePass-Eintrag (`network.proxy.auth.credentialRef`); integrierte Windows-Anmeldung wird nicht unterstützt. |
 | `Unable to tunnel through proxy. Proxy returns "HTTP/1.1 403 …"` (oder 5xx) | Der Proxy lehnt den Host ab oder erreicht ihn nicht. | Freigabe für den Host beim Proxy-Betreiber. |
 | `SocketTimeoutException: connect timed out` | Keine Antwort vom Server oder Proxy (Firewall, falscher Port). | Erreichbarkeit prüfen; `chat.connectTimeoutMillis` nur erhöhen, wenn der Dienst wirklich langsam antwortet. |
 | `ConnectException: Connection refused` | Nichts hört auf dem Port. | `chat.baseUrl` (Host, Port, `https`) prüfen. |
@@ -175,7 +176,7 @@ man die Datei speichern oder die Anwendung neu starten muss.
 
 Zum Vergleich mit einem PowerShell-Test: `Invoke-RestMethod` nutzt den Windows-Zertifikatspeicher und die
 Proxy-Einstellungen von Windows einschließlich PAC-Skript; Java 8 tut beides nur mit den Schlüsseln oben
-(`network.tls.*` und `network.proxy.mode=AUTO`).
+(`network.tls.*` und `network.proxy.mode`).
 
 ## Was die Anwendung bei fehlendem Secret tut
 

@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.app.config;
 
 import com.aresstack.enterpriseai.application.rag.RetrievalSettings;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
+import com.aresstack.winproxy.ProxyMode;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -48,10 +49,11 @@ public class AppConfigLoaderTest {
         assertTrue("Beispielquellen sind auskommentiert, damit ein frischer Client nicht gegen Beispielhosts indexiert",
                 config.sources().isEmpty());
         assertTrue(config.keePass().enabled());
-        assertEquals(ProxyMode.AUTO, config.network().proxyMode());
+        assertEquals(ProxyMode.PAC_URL_POWERSHELL, config.network().proxyMode());
         assertNull(config.network().pacUrl());
-        assertEquals(PacDiscovery.WINDOWS_SETTINGS, config.network().pacDiscovery());
-        assertTrue(config.network().useWindowsCertificateStore());
+        assertTrue(config.network().tlsUseJvmDefault());
+        assertTrue(config.network().tlsUseWindowsRoot());
+        assertTrue(config.network().tlsUseWindowsCaStores());
         assertNull(config.network().caCertificatesFile());
         assertFalse(config.agent().enabled());
         assertEquals("keine Warnungen erwartet: " + config.warnings(), 0, config.warnings().size());
@@ -70,19 +72,27 @@ public class AppConfigLoaderTest {
     }
 
     @Test
-    public void proxyModeDefaultsToAutoAndPacKeysAreValidated() throws Exception {
+    public void proxyModeDefaultsToPowerShellDiscoveryAndPacKeysAreValidated() throws Exception {
         NetworkConfig network = AppConfigLoader.fromProperties(minimal()).network();
-        assertEquals(ProxyMode.AUTO, network.proxyMode());
+        assertEquals(ProxyMode.PAC_URL_POWERSHELL, network.proxyMode());
         assertNull(network.pacUrl());
-        assertEquals(PacDiscovery.WINDOWS_SETTINGS, network.pacDiscovery());
+        assertNull("leer = Standardskript der Bibliothek", network.pacDiscoveryScript());
+        assertEquals(ProxyAuthMode.NONE, network.proxyAuthMode());
+        assertFalse(network.preferIpv6());
 
         Properties p = minimal();
+        p.setProperty("network.proxy.mode", "PAC_URL_MANUAL");
+        try {
+            AppConfigLoader.fromProperties(p);
+            fail();
+        } catch (AppConfigException e) {
+            assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.proxy.pacUrl: fehlt"));
+        }
         p.setProperty("network.proxy.pacUrl", "http://wpad.intern.example/wpad.dat");
-        p.setProperty("network.proxy.pacDiscovery", "POWERSHELL");
         network = AppConfigLoader.fromProperties(p).network();
+        assertEquals(ProxyMode.PAC_URL_MANUAL, network.proxyMode());
         assertEquals("http://wpad.intern.example/wpad.dat", network.pacUrl());
-        assertEquals(PacDiscovery.POWERSHELL, network.pacDiscovery());
-        assertTrue(network.toString(), network.toString().contains("pac=http://wpad.intern.example/wpad.dat"));
+        assertTrue(network.toString(), network.toString().contains("pacUrl=http://wpad.intern.example/wpad.dat"));
 
         p.setProperty("network.proxy.pacUrl", "C:\\Skripte\\proxy.pac");
         try {
@@ -92,32 +102,123 @@ public class AppConfigLoaderTest {
             assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.proxy.pacUrl: keine absolute"));
             assertFalse("der Wert steht nicht in der Meldung", e.problems().toString().contains("Skripte"));
         }
-        p.setProperty("network.proxy.pacUrl", "file:///C:/Skripte/proxy.pac");
-        p.setProperty("network.proxy.pacDiscovery", "REGISTRY");
+        p.setProperty("network.proxy.pacUrl", "http://wpad.intern.example/wpad.dat");
+        p.setProperty("network.proxy.mode", "REGISTRY");
         try {
             AppConfigLoader.fromProperties(p);
             fail();
         } catch (AppConfigException e) {
-            assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.proxy.pacDiscovery"));
+            assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.proxy.mode"));
         }
+    }
+
+    @Test
+    public void everyLibraryModeNameIsAccepted() throws Exception {
+        for (ProxyMode mode : ProxyMode.values()) {
+            Properties p = minimal();
+            p.setProperty("network.proxy.mode", mode.name());
+            p.setProperty("network.proxy.host", "proxy.intern.example");
+            p.setProperty("network.proxy.port", "8080");
+            p.setProperty("network.proxy.pacUrl", "http://wpad.intern.example/wpad.dat");
+            assertEquals(mode, AppConfigLoader.fromProperties(p).network().proxyMode());
+        }
+    }
+
+    @Test
+    public void legacyModeNamesAreMigratedWithAWarning() throws Exception {
+        assertEquals(ProxyMode.DISABLED, AppConfigLoader.legacyMode("NONE", null));
+        assertEquals(ProxyMode.MANUAL_PROXY, AppConfigLoader.legacyMode("MANUAL", null));
+        assertEquals(ProxyMode.WINDOWS_STATIC_PROXY, AppConfigLoader.legacyMode("SYSTEM", null));
+        assertEquals(ProxyMode.PAC_URL_POWERSHELL, AppConfigLoader.legacyMode("AUTO", null));
+        assertEquals(ProxyMode.PAC_URL_MANUAL, AppConfigLoader.legacyMode("AUTO", "http://wpad.intern.example/wpad.dat"));
+        assertNull(AppConfigLoader.legacyMode("DISABLED", null));
+
+        Properties p = minimal();
+        p.setProperty("network.proxy.mode", "AUTO");
+        p.setProperty("network.proxy.pacDiscovery", "POWERSHELL");
+        AppConfig config = AppConfigLoader.fromProperties(p);
+        assertEquals(ProxyMode.PAC_URL_POWERSHELL, config.network().proxyMode());
+        String all = config.warnings().toString();
+        assertTrue(all, all.contains("network.proxy.mode=AUTO"));
+        assertTrue(all, all.contains("network.proxy.pacDiscovery"));
+    }
+
+    @Test
+    public void testUrlDefaultsToTheModelsEndpointOfTheChatService() throws Exception {
+        NetworkConfig network = AppConfigLoader.fromProperties(minimal()).network();
+        assertTrue(network.testUrl().toString(), network.testUrl().toString().endsWith("/models"));
+        Properties p = minimal();
+        p.setProperty("network.proxy.testUrl", "https://ki.intern.example/v1/models");
+        assertEquals("https://ki.intern.example/v1/models",
+                AppConfigLoader.fromProperties(p).network().testUrl().toString());
+    }
+
+    @Test
+    public void basicProxyAuthNeedsAKeePassEntry() throws Exception {
+        Properties p = minimal();
+        p.setProperty("network.proxy.auth.mode", "BASIC");
+        try {
+            AppConfigLoader.fromProperties(p);
+            fail();
+        } catch (AppConfigException e) {
+            assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.proxy.auth.credentialRef"));
+        }
+        p.setProperty("network.proxy.auth.credentialRef", "Firmen-Proxy");
+        NetworkConfig network = AppConfigLoader.fromProperties(p).network();
+        assertEquals(ProxyAuthMode.BASIC, network.proxyAuthMode());
+        assertEquals("Firmen-Proxy", network.proxyCredentialRef().id());
     }
 
     @Test
     public void tlsKeysAreReadWithDefaults() throws Exception {
         Properties p = minimal();
-        p.setProperty("network.tls.useWindowsCertificateStore", "false");
+        p.setProperty("network.tls.useJvmDefault", "false");
+        p.setProperty("network.tls.useWindowsCaStores", "false");
         p.setProperty("network.tls.caCertificatesFile", "C:/Zertifikate/firmen-ca.pem");
         NetworkConfig network = AppConfigLoader.fromProperties(p).network();
-        assertFalse(network.useWindowsCertificateStore());
+        assertFalse(network.tlsUseJvmDefault());
+        assertTrue(network.tlsUseWindowsRoot());
+        assertFalse(network.tlsUseWindowsCaStores());
         assertEquals("firmen-ca.pem", network.caCertificatesFile().getFileName().toString());
-        assertTrue(AppConfigLoader.fromProperties(minimal()).network().useWindowsCertificateStore());
-        p.setProperty("network.tls.useWindowsCertificateStore", "vielleicht");
+        p.setProperty("network.tls.useWindowsRoot", "vielleicht");
         try {
             AppConfigLoader.fromProperties(p);
             fail();
         } catch (AppConfigException e) {
-            assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.tls.useWindowsCertificateStore"));
+            assertTrue(e.problems().toString(), e.problems().get(0).startsWith("network.tls.useWindowsRoot"));
             assertFalse(e.problems().toString().contains("vielleicht"));
+        }
+    }
+
+    @Test
+    public void legacyWindowsStoreSwitchStillAppliesToBothWindowsSources() throws Exception {
+        Properties p = minimal();
+        p.setProperty("network.tls.useWindowsCertificateStore", "false");
+        AppConfig config = AppConfigLoader.fromProperties(p);
+        assertFalse(config.network().tlsUseWindowsRoot());
+        assertFalse(config.network().tlsUseWindowsCaStores());
+        assertTrue(config.network().tlsUseJvmDefault());
+        assertTrue(config.warnings().toString(), config.warnings().toString().contains("useWindowsCertificateStore"));
+    }
+
+    @Test
+    public void baseUrlsMustNotNameAnEndpointPath() throws Exception {
+        Properties p = minimal();
+        p.setProperty("chat.baseUrl", "https://ki.intern.example/v1/chat/completions");
+        try {
+            AppConfigLoader.fromProperties(p);
+            fail();
+        } catch (AppConfigException e) {
+            assertTrue(e.problems().toString(), e.problems().get(0).startsWith("chat.baseUrl"));
+            assertTrue(e.problems().toString(), e.problems().get(0).contains("Endpunktpfad"));
+        }
+        p = minimal();
+        p.setProperty("embedding.baseUrl", "https://ki.intern.example/v1/embeddings");
+        try {
+            AppConfigLoader.fromProperties(p);
+            fail();
+        } catch (AppConfigException e) {
+            assertTrue(e.problems().toString(), e.problems().toString().contains("embedding.baseUrl"));
         }
     }
 
@@ -294,7 +395,7 @@ public class AppConfigLoaderTest {
     @Test
     public void manualProxyNeedsHostAndPort() throws Exception {
         Properties p = minimal();
-        p.setProperty("network.proxy.mode", "MANUAL");
+        p.setProperty("network.proxy.mode", "MANUAL_PROXY");
         try {
             AppConfigLoader.fromProperties(p);
             fail("expected AppConfigException");
@@ -305,7 +406,7 @@ public class AppConfigLoaderTest {
         p.setProperty("network.proxy.host", "proxy.example");
         p.setProperty("network.proxy.port", "3128");
         AppConfig config = AppConfigLoader.fromProperties(p);
-        assertEquals(ProxyMode.MANUAL, config.network().proxyMode());
+        assertEquals(ProxyMode.MANUAL_PROXY, config.network().proxyMode());
         assertEquals(3128, config.network().proxyPort());
     }
 

@@ -25,9 +25,12 @@ dependencies {
     implementation project(':security-keepassrpc')
     implementation project(':acp-solon-client')
     implementation project(':mcp-solon-runtime')
-    // Proxy je Ziel aus dem PAC-/WPAD-Skript des Unternehmens (network.proxy.mode=AUTO): app.net.PacProxyRoutes.
-    // Bringt GraalJS mit; das Fat Jar führt dessen ServiceLoader-Dateien zusammen (js und regex).
+    implementation project(':http-api')
+    // Proxy je Ziel in den Modi von win-proxy-java (PAC per PowerShell/VBScript/Windows-Einstellungen, fester
+    // Proxy, ...): app.net.HttpRoutes. Bringt GraalJS mit; das Fat Jar führt dessen ServiceLoader-Dateien zusammen.
     implementation libs.win.proxy.java
+    // TLS-Vertrauen aus JVM-Truststore, Windows-ROOT und Windows Root/CA-Export: app.net.TrustPolicy.
+    implementation libs.win.trust.java
 
     // Strang A: skriptbarer Fake-ChatCompletionPort für UI-Tests und die Demo.
     testImplementation testFixtures(project(':chat-api'))

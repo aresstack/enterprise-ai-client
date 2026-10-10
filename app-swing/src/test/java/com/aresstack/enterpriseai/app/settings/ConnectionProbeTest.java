@@ -2,7 +2,6 @@ package com.aresstack.enterpriseai.app.settings;
 
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
-import com.aresstack.enterpriseai.app.net.ProxyPolicy;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep.Status;
 import com.sun.net.httpserver.HttpExchange;
@@ -124,7 +123,7 @@ public class ConnectionProbeTest {
         p.setProperty("embedding.model", "test-embedding");
         p.setProperty("embedding.dimension", "8");
         p.setProperty("security.keepass.enabled", String.valueOf(keePass));
-        p.setProperty("network.proxy.mode", "NONE");
+        p.setProperty("network.proxy.mode", "DISABLED");
         if (trustServer) {
             p.setProperty("network.tls.caCertificatesFile", serverCertificate.toString());
         }
@@ -189,18 +188,19 @@ public class ConnectionProbeTest {
         ConnectionProbe probe = new ConnectionProbe(config(properties(baseUrl(), true, true)), token(" " + TOKEN + " "));
         List<ConnectionCheckStep> steps = run(probe, true);
 
-        assertEquals("[Proxy-Route, Namensauflösung, API-Key, Verbindung und TLS, GET /models]", titles(steps));
-        for (ConnectionCheckStep step : steps) {
-            assertStatus(Status.OK, step);
+        assertEquals("[API-Key, Proxy-Route, HTTPS-Verbindung, GET /models, Embedding-Modell]", titles(steps));
+        for (int i = 0; i < 4; i++) {
+            assertStatus(Status.OK, steps.get(i));
         }
-        assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("direkt (Loopback)"));
-        assertTrue(steps.get(0).detail(), steps.get(0).detail().contains(baseUrl() + "/models"));
-        assertTrue(steps.get(1).detail(), steps.get(1).detail().contains("127.0.0.1"));
-        assertTrue(steps.get(2).detail(), steps.get(2).detail().contains("Enterprise AI API"));
-        assertTrue(steps.get(3).detail(), steps.get(3).detail().contains("localhost"));
-        assertTrue(steps.get(3).detail(), steps.get(3).detail().contains("Vertrauensquellen"));
-        assertTrue(steps.get(4).detail(), steps.get(4).detail().contains("test-chat"));
-        assertEquals("[/v1/models]", paths.toString());
+        assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("Enterprise AI API"));
+        assertTrue(steps.get(1).detail(), steps.get(1).detail().contains("DIRECT (loopback)"));
+        assertTrue(steps.get(1).detail(), steps.get(1).detail().contains(baseUrl() + "/models"));
+        assertTrue(steps.get(2).detail(), steps.get(2).detail().contains("127.0.0.1"));
+        assertTrue(steps.get(2).detail(), steps.get(2).detail().contains("Vertrauensquellen"));
+        assertTrue(steps.get(3).detail(), steps.get(3).detail().contains("test-chat"));
+        assertStatus(Status.WARNING, last(steps));
+        assertTrue(last(steps).detail(), last(steps).detail().contains("test-embedding"));
+        assertEquals("eine Modellliste für Chat und Embeddings", "[/v1/models]", paths.toString());
         assertEquals("[Bearer " + TOKEN + "]", authorizations.toString());
     }
 
@@ -209,9 +209,10 @@ public class ConnectionProbeTest {
         responseBody = "{\"data\":[{\"id\":\"alpha\"},{\"id\":\"beta\"}]}";
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), true, true)), token(TOKEN)),
                 true);
-        assertStatus(Status.WARNING, last(steps));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("test-chat"));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("alpha, beta"));
+        ConnectionCheckStep models = steps.get(3);
+        assertStatus(Status.WARNING, models);
+        assertTrue(models.detail(), models.detail().contains("test-chat"));
+        assertTrue(models.detail(), models.detail().contains("alpha, beta"));
     }
 
     @Test
@@ -220,10 +221,11 @@ public class ConnectionProbeTest {
         responseBody = "{\"error\":\"missing key\"}";
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), false, true)), token(TOKEN)),
                 true);
-        assertStatus(Status.INFO, steps.get(2));
-        assertTrue(steps.get(2).detail(), steps.get(2).detail().contains("ausgeschaltet"));
-        assertStatus(Status.OK, last(steps));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("401"));
+        assertStatus(Status.INFO, steps.get(0));
+        assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("ausgeschaltet"));
+        assertEquals("[API-Key, Proxy-Route, HTTPS-Verbindung, GET /models, Embedding-Modell]", titles(steps));
+        assertStatus(Status.OK, steps.get(3));
+        assertTrue(steps.get(3).detail(), steps.get(3).detail().contains("401"));
         assertNull(authorizations.get(0));
     }
 
@@ -242,18 +244,19 @@ public class ConnectionProbeTest {
     public void aFailingKeyLookupIsAWarningAndTheCallGoesOnWithoutKey() {
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), true, true)),
                 failing("KeePass ist unter 127.0.0.1:12546 nicht erreichbar.")), true);
-        assertStatus(Status.WARNING, steps.get(2));
-        assertTrue(steps.get(2).detail(), steps.get(2).detail().contains("12546 nicht erreichbar"));
-        assertTrue(steps.get(2).detail(), steps.get(2).detail().contains("ohne API-Key"));
-        assertStatus(Status.OK, last(steps));
+        assertStatus(Status.WARNING, steps.get(0));
+        assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("12546 nicht erreichbar"));
+        assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("ohne API-Key"));
+        assertStatus(Status.OK, steps.get(3));
         assertNull(authorizations.get(0));
     }
 
     @Test
-    public void anUnknownHostStopsAtNameResolutionWithTheHint() {
+    public void anUnknownHostFailsTheConnectionStepWithTheHint() {
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(
                 config(properties("https://host.invalid/v1", false, true)), token(null)), false);
-        assertEquals("[Proxy-Route, Namensauflösung]", titles(steps));
+        assertEquals("[API-Key, Proxy-Route, HTTPS-Verbindung]", titles(steps));
+        assertTrue(steps.get(1).detail(), steps.get(1).detail().contains("DIRECT (disabled)"));
         assertStatus(Status.FAILED, last(steps));
         assertTrue(last(steps).detail(), last(steps).detail().contains("host.invalid"));
         assertTrue(last(steps).detail(), last(steps).detail().contains("UnknownHostException"));
@@ -264,58 +267,43 @@ public class ConnectionProbeTest {
     public void anUntrustedCertificateFailsTheTlsStep() {
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), false, false)), token(null)),
                 false);
-        assertEquals("[Proxy-Route, Namensauflösung, API-Key, Verbindung und TLS]", titles(steps));
+        assertEquals("[API-Key, Proxy-Route, HTTPS-Verbindung]", titles(steps));
         assertStatus(Status.FAILED, last(steps));
         assertTrue(last(steps).detail(), last(steps).detail().contains("vertraut"));
         assertTrue("Kein Aufruf ohne Handshake", paths.isEmpty());
     }
 
     @Test
-    public void aManualProxyIsResolvedInsteadOfTheTarget() throws IOException {
+    public void aManualProxyCarriesTheConnectionAndTheTargetIsNotResolvedLocally() throws IOException {
         int closedPort;
         try (ServerSocket socket = new ServerSocket(0)) {
             closedPort = socket.getLocalPort();
         }
         Properties p = properties("https://host.invalid/v1", false, true);
-        p.setProperty("network.proxy.mode", "MANUAL");
+        p.setProperty("network.proxy.mode", "MANUAL_PROXY");
         p.setProperty("network.proxy.host", "127.0.0.1");
         p.setProperty("network.proxy.port", String.valueOf(closedPort));
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(p), token(null)), false);
 
-        assertEquals("[Proxy-Route, Namensauflösung, API-Key, Verbindung und TLS]", titles(steps));
-        assertStatus(Status.OK, steps.get(0));
-        assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("PROXY 127.0.0.1:" + closedPort + " (MANUAL)"));
+        assertEquals("[API-Key, Proxy-Route, HTTPS-Verbindung]", titles(steps));
         assertStatus(Status.OK, steps.get(1));
-        assertTrue(steps.get(1).detail(), steps.get(1).detail().startsWith("127.0.0.1 -> 127.0.0.1"));
-        assertTrue(steps.get(1).detail(), steps.get(1).detail().contains("host.invalid löst der Proxy auf"));
+        assertTrue(steps.get(1).detail(), steps.get(1).detail().contains("PROXY 127.0.0.1:" + closedPort));
         assertStatus(Status.FAILED, last(steps));
+        assertFalse("host.invalid löst der Proxy auf, nicht der Client: " + last(steps).detail(),
+                last(steps).detail().contains("UnknownHostException"));
         assertTrue(last(steps).detail(), last(steps).detail().contains("Hinweis:"));
     }
 
     @Test
-    public void aDraftWithSystemSettingsInARunningApplicationWarnsThatTheyApplyAfterARestart() {
-        String before = System.getProperty("java.net.useSystemProxies");
-        Properties startup = properties("https://host.invalid/v1", false, true);
-        ProxyPolicy running = new ProxyPolicy(config(startup).network());
-        running.install();
-        try {
-            System.clearProperty("java.net.useSystemProxies");
-            Properties draft = properties("https://host.invalid/v1", false, true);
-            draft.setProperty("network.proxy.mode", "SYSTEM");
-            List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(draft), token(null)), false);
-            assertStatus(Status.WARNING, steps.get(0));
-            assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("(SYSTEM)"));
-            assertTrue(steps.get(0).detail(), steps.get(0).detail().contains("Neustart"));
-            // Wie es weitergeht, hängt vom System-Selector der Test-JVM ab (direkt oder ein Proxy aus den
-            // JVM-Eigenschaften); host.invalid bleibt in jedem Fall unerreichbar.
-        } finally {
-            running.uninstall();
-            if (before == null) {
-                System.clearProperty("java.net.useSystemProxies");
-            } else {
-                System.setProperty("java.net.useSystemProxies", before);
-            }
-        }
+    public void aNotImplementedModeFailsVisiblyWithoutAnyConnection() {
+        Properties p = properties(baseUrl().replace("127.0.0.1", "ki.intern.invalid"), false, true);
+        p.setProperty("network.proxy.mode", "WINDOWS_NATIVE_ROUTE_RESOLVER");
+        List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(p), token(null)), false);
+        assertEquals("[API-Key, Proxy-Route]", titles(steps));
+        assertStatus(Status.FAILED, last(steps));
+        assertTrue(last(steps).detail(), last(steps).detail().contains("UNAVAILABLE"));
+        assertFalse(last(steps).detail(), last(steps).detail().contains("DIRECT"));
+        assertTrue("keine Verbindung versucht", paths.isEmpty());
     }
 
     @Test
@@ -324,9 +312,9 @@ public class ConnectionProbeTest {
         responseBody = "";
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), false, true)), token(null)),
                 true);
-        assertStatus(Status.WARNING, last(steps));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("404"));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("/v1"));
+        assertStatus(Status.WARNING, steps.get(3));
+        assertTrue(steps.get(3).detail(), steps.get(3).detail().contains("404"));
+        assertTrue(steps.get(3).detail(), steps.get(3).detail().contains("/v1"));
     }
 
     @Test
@@ -335,9 +323,9 @@ public class ConnectionProbeTest {
         responseBody = "<html>Service Unavailable</html>";
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), false, true)), token(null)),
                 false);
-        assertStatus(Status.FAILED, last(steps));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("503"));
-        assertTrue(last(steps).detail(), last(steps).detail().contains("Service Unavailable"));
+        assertStatus(Status.FAILED, steps.get(3));
+        assertTrue(steps.get(3).detail(), steps.get(3).detail().contains("503"));
+        assertTrue(steps.get(3).detail(), steps.get(3).detail().contains("Service Unavailable"));
     }
 
     @Test
@@ -347,11 +335,11 @@ public class ConnectionProbeTest {
         location = "https://127.0.0.1/other/v1/models?token=Bearer%20abcdefghijklmnopqrstuvwxyz";
         List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), false, true)), token(null)),
                 true);
-        assertStatus(Status.WARNING, last(steps));
-        assertTrue(last(steps).detail(),
-                last(steps).detail().contains("Umleitung nach https://127.0.0.1/other/v1/models (ohne Query)"));
-        assertFalse(last(steps).detail(), last(steps).detail().contains("abcdefghijklmnopqrstuvwxyz"));
-        assertFalse(last(steps).detail(), last(steps).detail().contains("token="));
+        assertStatus(Status.WARNING, steps.get(3));
+        assertTrue(steps.get(3).detail(),
+                steps.get(3).detail().contains("Umleitung nach https://127.0.0.1/other/v1/models (ohne Query)"));
+        assertFalse(steps.get(3).detail(), steps.get(3).detail().contains("abcdefghijklmnopqrstuvwxyz"));
+        assertFalse(steps.get(3).detail(), steps.get(3).detail().contains("token="));
     }
 
     @Test

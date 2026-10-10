@@ -4,7 +4,10 @@ import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.config.NetworkConfig;
+import com.aresstack.enterpriseai.app.net.HttpRoutes;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
+import com.aresstack.enterpriseai.app.ui.settings.NetworkLogListener;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
@@ -21,6 +24,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
@@ -263,6 +267,100 @@ public final class FileSettingsActions implements SettingsDialogActions {
             });
         } catch (RuntimeException rejected) {
             finish(listener, ConnectionCheckStep.failed(STEP_TEST, "Der Verbindungstest konnte nicht gestartet werden."));
+        }
+    }
+
+    @Override
+    public void resolveProxy(SettingsForm form, NetworkLogListener listener) {
+        runNetworkProbe(form, listener, new BiFunction<NetworkConfig, Consumer<String>, Boolean>() {
+            @Override
+            public Boolean apply(NetworkConfig config, Consumer<String> out) {
+                return NetworkProbe.resolve(config, out);
+            }
+        });
+    }
+
+    @Override
+    public void checkHttps(SettingsForm form, NetworkLogListener listener) {
+        runNetworkProbe(form, listener, new BiFunction<NetworkConfig, Consumer<String>, Boolean>() {
+            @Override
+            public Boolean apply(NetworkConfig config, Consumer<String> out) {
+                return NetworkProbe.checkHttps(config, out);
+            }
+        });
+    }
+
+    @Override
+    public String defaultDiscoveryScript(String proxyMode) {
+        try {
+            com.aresstack.winproxy.ProxyMode mode = com.aresstack.winproxy.ProxyMode.valueOf(proxyMode);
+            if (mode != com.aresstack.winproxy.ProxyMode.PAC_URL_POWERSHELL
+                    && mode != com.aresstack.winproxy.ProxyMode.PAC_URL_WSCRIPT) {
+                return "";
+            }
+            return HttpRoutes.defaultDiscoveryScript(mode);
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    /** Netzwerkabschnitt des Entwurfs laden, Probe auf dem Arbeits-Executor, Zeilen und Ende über den UI-Executor. */
+    private void runNetworkProbe(SettingsForm form, final NetworkLogListener listener,
+                                 final BiFunction<NetworkConfig, Consumer<String>, Boolean> probe) {
+        if (form == null || listener == null) {
+            throw new IllegalArgumentException("form and listener must not be null");
+        }
+        final NetworkConfig config;
+        try {
+            config = AppConfigLoader.networkSection(SettingsMapper.merge(current(), form));
+        } catch (AppConfigException e) {
+            listener.line("ERROR: " + join(SettingsMapper.describe(e.problems())));
+            listener.finished(false);
+            return;
+        } catch (IOException e) {
+            listener.line("ERROR: Konfigurationsdatei nicht lesbar (" + e.getClass().getSimpleName() + ")");
+            listener.finished(false);
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    boolean success;
+                    try {
+                        success = probe.apply(config, new Consumer<String>() {
+                            @Override
+                            public void accept(final String line) {
+                                ui.execute(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        listener.line(line);
+                                    }
+                                });
+                            }
+                        });
+                    } catch (RuntimeException e) {
+                        final String aborted = "ERROR: " + e.getClass().getSimpleName();
+                        ui.execute(new Runnable() {
+                            @Override
+                            public void run() {
+                                listener.line(aborted);
+                            }
+                        });
+                        success = false;
+                    }
+                    final boolean delivered = success;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            listener.finished(delivered);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            listener.line("ERROR: konnte nicht gestartet werden");
+            listener.finished(false);
         }
     }
 

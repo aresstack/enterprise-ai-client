@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.settings;
 
+import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
 
@@ -40,12 +41,22 @@ public final class SettingsMapper {
     static final String KEY_KEEPASS_PAIRING_STORE = "security.keepass.pairingKeyStore";
     static final String KEY_PROXY_MODE = "network.proxy.mode";
     static final String KEY_PAC_URL = "network.proxy.pacUrl";
-    static final String KEY_PAC_DISCOVERY = "network.proxy.pacDiscovery";
+    static final String KEY_PAC_DISCOVERY_SCRIPT = "network.proxy.pacDiscoveryScript";
     static final String KEY_PROXY_HOST = "network.proxy.host";
     static final String KEY_PROXY_PORT = "network.proxy.port";
-    static final String KEY_NON_PROXY_HOSTS = "network.proxy.nonProxyHosts";
-    static final String KEY_TLS_WINDOWS_STORE = "network.tls.useWindowsCertificateStore";
+    static final String KEY_TEST_URL = "network.proxy.testUrl";
+    static final String KEY_RESOLVE_TIMEOUT = "network.proxy.resolveTimeoutMillis";
+    static final String KEY_PROXY_AUTH_MODE = "network.proxy.auth.mode";
+    static final String KEY_PROXY_CREDENTIAL_REF = "network.proxy.auth.credentialRef";
+    static final String KEY_USER_AGENT = "network.http.userAgent";
+    static final String KEY_PREFER_IPV6 = "network.http.preferIPv6";
+    static final String KEY_TLS_JVM = "network.tls.useJvmDefault";
+    static final String KEY_TLS_WINDOWS_ROOT = "network.tls.useWindowsRoot";
+    static final String KEY_TLS_WINDOWS_CA = "network.tls.useWindowsCaStores";
     static final String KEY_TLS_CA_FILE = "network.tls.caCertificatesFile";
+    /** Schlüssel der Fassungen bis 0.1.3: nur gelesen, beim Speichern entfernt. */
+    static final String KEY_LEGACY_PAC_DISCOVERY = "network.proxy.pacDiscovery";
+    static final String KEY_LEGACY_TLS_WINDOWS_STORE = "network.tls.useWindowsCertificateStore";
     static final String KEY_AGENT_ENABLED = "agent.enabled";
     static final String KEY_AGENT_COMMAND = "agent.command";
     static final String KEY_AGENT_ARGS = "agent.args";
@@ -93,14 +104,26 @@ public final class SettingsMapper {
         b.keePassClientDisplayName(text(p, KEY_KEEPASS_DISPLAY_NAME, "Enterprise AI Client"));
         b.keePassPairingKeyStore(text(p, KEY_KEEPASS_PAIRING_STORE, SettingsForm.PAIRING_KEY_STORE_FILE)
                 .toLowerCase(Locale.ROOT));
-        b.proxyMode(text(p, KEY_PROXY_MODE, SettingsForm.PROXY_AUTO).toUpperCase(Locale.ROOT).replace('-', '_'));
-        b.pacUrl(text(p, KEY_PAC_URL, ""));
-        b.pacDiscovery(text(p, KEY_PAC_DISCOVERY, SettingsForm.PAC_WINDOWS_SETTINGS).toUpperCase(Locale.ROOT)
-                .replace('-', '_'));
+        String pacUrl = text(p, KEY_PAC_URL, "");
+        String mode = text(p, KEY_PROXY_MODE, SettingsForm.PROXY_PAC_URL_POWERSHELL).toUpperCase(Locale.ROOT)
+                .replace('-', '_');
+        Object legacy = AppConfigLoader.legacyMode(mode, pacUrl.isEmpty() ? null : pacUrl);
+        b.proxyMode(legacy == null ? mode : legacy.toString());
+        b.pacUrl(pacUrl);
+        String script = p.getProperty(KEY_PAC_DISCOVERY_SCRIPT);
+        b.pacDiscoveryScript(script == null ? "" : script);
         b.proxyHost(text(p, KEY_PROXY_HOST, ""));
         b.proxyPort(text(p, KEY_PROXY_PORT, ""));
-        b.nonProxyHosts(text(p, KEY_NON_PROXY_HOSTS, ""));
-        b.useWindowsCertificateStore(bool(p, KEY_TLS_WINDOWS_STORE, true));
+        b.testUrl(text(p, KEY_TEST_URL, ""));
+        b.resolveTimeoutMillis(text(p, KEY_RESOLVE_TIMEOUT, ""));
+        b.proxyAuthMode(text(p, KEY_PROXY_AUTH_MODE, SettingsForm.PROXY_AUTH_NONE).toUpperCase(Locale.ROOT));
+        b.proxyCredentialRef(text(p, KEY_PROXY_CREDENTIAL_REF, ""));
+        b.userAgent(text(p, KEY_USER_AGENT, ""));
+        b.preferIpv6(bool(p, KEY_PREFER_IPV6, false));
+        boolean legacyWindows = bool(p, KEY_LEGACY_TLS_WINDOWS_STORE, true);
+        b.tlsJvmDefault(bool(p, KEY_TLS_JVM, true));
+        b.tlsWindowsRoot(bool(p, KEY_TLS_WINDOWS_ROOT, legacyWindows));
+        b.tlsWindowsCaStores(bool(p, KEY_TLS_WINDOWS_CA, legacyWindows));
         b.caCertificatesFile(text(p, KEY_TLS_CA_FILE, ""));
         b.agentEnabled(bool(p, KEY_AGENT_ENABLED, false));
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
@@ -182,11 +205,20 @@ public final class SettingsMapper {
         put(set, KEY_KEEPASS_PAIRING_STORE, form.keePassPairingKeyStore());
         put(set, KEY_PROXY_MODE, form.proxyMode());
         put(set, KEY_PAC_URL, form.pacUrl());
-        put(set, KEY_PAC_DISCOVERY, form.pacDiscovery());
+        // Skript unverändert (mehrzeilig); ConfigurationFile schreibt Zeilenumbrüche als \n.
+        set.put(KEY_PAC_DISCOVERY_SCRIPT, form.pacDiscoveryScript() == null || form.pacDiscoveryScript().trim().isEmpty()
+                ? "" : form.pacDiscoveryScript());
         put(set, KEY_PROXY_HOST, form.proxyHost());
         put(set, KEY_PROXY_PORT, form.proxyPort());
-        put(set, KEY_NON_PROXY_HOSTS, form.nonProxyHosts());
-        set.put(KEY_TLS_WINDOWS_STORE, String.valueOf(form.useWindowsCertificateStore()));
+        put(set, KEY_TEST_URL, form.testUrl());
+        put(set, KEY_RESOLVE_TIMEOUT, form.resolveTimeoutMillis());
+        put(set, KEY_PROXY_AUTH_MODE, form.proxyAuthMode());
+        put(set, KEY_PROXY_CREDENTIAL_REF, form.proxyCredentialRef());
+        put(set, KEY_USER_AGENT, form.userAgent());
+        set.put(KEY_PREFER_IPV6, String.valueOf(form.preferIpv6()));
+        set.put(KEY_TLS_JVM, String.valueOf(form.tlsJvmDefault()));
+        set.put(KEY_TLS_WINDOWS_ROOT, String.valueOf(form.tlsWindowsRoot()));
+        set.put(KEY_TLS_WINDOWS_CA, String.valueOf(form.tlsWindowsCaStores()));
         put(set, KEY_TLS_CA_FILE, form.caCertificatesFile());
         set.put(KEY_AGENT_ENABLED, String.valueOf(form.agentEnabled()));
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
@@ -243,6 +275,8 @@ public final class SettingsMapper {
                 }
             }
         }
+        remove.add(KEY_LEGACY_PAC_DISCOVERY);
+        remove.add(KEY_LEGACY_TLS_WINDOWS_STORE);
         remove.removeAll(nonEmptyKeys(changes));
         return remove;
     }
@@ -330,19 +364,25 @@ public final class SettingsMapper {
             case KEY_KEEPASS_PAIRING_STORE:
                 return "Ablage des Pairing-Schlüssels";
             case KEY_PROXY_MODE:
-                return "Proxy-Modus";
+                return "Mode";
             case KEY_PAC_URL:
-                return "Adresse des PAC-Skripts";
-            case KEY_PAC_DISCOVERY:
-                return "PAC-Ermittlung";
+                return "PAC URL";
+            case KEY_PAC_DISCOVERY_SCRIPT:
+                return "PAC URL discovery script";
             case KEY_PROXY_HOST:
-                return "Proxy-Host";
+                return "Manual host";
             case KEY_PROXY_PORT:
-                return "Proxy-Port";
-            case KEY_NON_PROXY_HOSTS:
-                return "Hosts ohne Proxy";
-            case KEY_TLS_WINDOWS_STORE:
-                return "Windows-Zertifikatspeicher";
+                return "Manual port";
+            case KEY_TEST_URL:
+                return "Test URL";
+            case KEY_RESOLVE_TIMEOUT:
+                return "Resolve timeout (ms)";
+            case KEY_PROXY_AUTH_MODE:
+                return "Proxy auth mode";
+            case KEY_PROXY_CREDENTIAL_REF:
+                return "Proxy credentials (KeePass entry)";
+            case KEY_USER_AGENT:
+                return "User-Agent";
             case KEY_TLS_CA_FILE:
                 return "CA-Datei";
             case KEY_AGENT_COMMAND:

@@ -1,6 +1,10 @@
 package com.aresstack.enterpriseai.chat.openai;
 
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+
+import javax.net.ssl.SSLSocketFactory;
 import java.net.URI;
+import java.util.Locale;
 
 /**
  * Unveränderliche Konfiguration des Adapters für die interne GPT-kompatible Enterprise-API. Base-URL, Modell
@@ -35,22 +39,37 @@ public final class OpenAiCompatibleChatConfig {
         }
     }
 
+    /** Pfad, den der Adapter für Chat-Anfragen an die Basis-URL hängt. */
+    public static final String CHAT_COMPLETIONS_PATH = "chat/completions";
+    /** Pfad der Modellliste; die Basis-URL endet selbst nie auf einen dieser Endpunkte. */
+    public static final String MODELS_PATH = "models";
+
+    private static final String[] ENDPOINT_SUFFIXES = {"/chat/completions", "/embeddings", "/models"};
+
     private final URI baseUrl;
     private final URI endpoint;
+    private final URI modelsEndpoint;
     private final String defaultModel;
     private final TokenSource tokenSource;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
     private final DeveloperRolePolicy developerRolePolicy;
+    private final HttpRoutePort routes;
+    private final SSLSocketFactory sslSocketFactory;
+    private final String userAgent;
 
     private OpenAiCompatibleChatConfig(Builder builder) {
         this.baseUrl = builder.baseUrl;
-        this.endpoint = resolve(builder.baseUrl, "chat/completions");
+        this.endpoint = resolve(builder.baseUrl, CHAT_COMPLETIONS_PATH);
+        this.modelsEndpoint = resolve(builder.baseUrl, MODELS_PATH);
         this.defaultModel = builder.defaultModel;
         this.tokenSource = builder.tokenSource;
         this.connectTimeoutMillis = builder.connectTimeoutMillis;
         this.readTimeoutMillis = builder.readTimeoutMillis;
         this.developerRolePolicy = builder.developerRolePolicy;
+        this.routes = builder.routes;
+        this.sslSocketFactory = builder.sslSocketFactory;
+        this.userAgent = builder.userAgent;
     }
 
     /**
@@ -66,8 +85,14 @@ public final class OpenAiCompatibleChatConfig {
     }
 
     /** @return {@code <baseUrl>/chat/completions} */
+    /** {@code <baseUrl>/chat/completions}. */
     public URI endpoint() {
         return endpoint;
+    }
+
+    /** {@code <baseUrl>/models}, der Endpunkt des Verbindungstests. */
+    public URI modelsEndpoint() {
+        return modelsEndpoint;
     }
 
     public String defaultModel() {
@@ -91,12 +116,29 @@ public final class OpenAiCompatibleChatConfig {
         return developerRolePolicy;
     }
 
+    /** Route je Anfrage (Proxy-Entscheidung); {@code null}: JVM-Standard ohne eigene Entscheidung. */
+    public HttpRoutePort routes() {
+        return routes;
+    }
+
+    /** Socket-Factory für HTTPS (Vertrauensregel); {@code null}: JVM-Standard. */
+    public SSLSocketFactory sslSocketFactory() {
+        return sslSocketFactory;
+    }
+
+    /** {@code User-Agent} jeder Anfrage; {@code null}: der Standard der JVM. */
+    public String userAgent() {
+        return userAgent;
+    }
+
     @Override
     public String toString() {
         return "OpenAiCompatibleChatConfig[baseUrl=" + baseUrl + ", defaultModel=" + defaultModel
                 + ", token=" + (tokenSource == null ? "none" : "***") + ", connectTimeoutMillis="
                 + connectTimeoutMillis + ", readTimeoutMillis=" + readTimeoutMillis
-                + ", developerRolePolicy=" + developerRolePolicy + "]";
+                + ", developerRolePolicy=" + developerRolePolicy
+                + ", routes=" + (routes == null ? "jvm" : routes) + ", tls=" + (sslSocketFactory == null ? "jvm" : "eigen")
+                + ", userAgent=" + (userAgent == null ? "jvm" : userAgent) + "]";
     }
 
     public static final class Builder {
@@ -107,6 +149,9 @@ public final class OpenAiCompatibleChatConfig {
         private int connectTimeoutMillis = 10000;
         private int readTimeoutMillis = 120000;
         private DeveloperRolePolicy developerRolePolicy = DeveloperRolePolicy.REJECT;
+        private HttpRoutePort routes;
+        private SSLSocketFactory sslSocketFactory;
+        private String userAgent;
 
         private Builder(URI baseUrl, String defaultModel) {
             if (baseUrl == null || baseUrl.getScheme() == null
@@ -121,6 +166,11 @@ public final class OpenAiCompatibleChatConfig {
             }
             if (baseUrl.getQuery() != null || baseUrl.getFragment() != null) {
                 throw new IllegalArgumentException("baseUrl must not contain a query or fragment");
+            }
+            String endpointSuffix = endpointSuffix(baseUrl);
+            if (endpointSuffix != null) {
+                throw new IllegalArgumentException("baseUrl must not end with the endpoint path " + endpointSuffix
+                        + "; the adapter appends /chat/completions itself");
             }
             if (defaultModel == null || defaultModel.trim().isEmpty()) {
                 throw new IllegalArgumentException("defaultModel must not be blank");
@@ -158,6 +208,28 @@ public final class OpenAiCompatibleChatConfig {
             return this;
         }
 
+        /**
+         * Routenentscheidung je Anfrage. Der Adapter fragt den Port vor jeder Verbindung und übergibt das Ergebnis
+         * explizit an {@code URL.openConnection(Proxy)}: DIRECT heißt {@code Proxy.NO_PROXY} (kein JVM-Selector),
+         * UNAVAILABLE scheitert als Transportfehler mit dem Grund. {@code null}: JVM-Standard.
+         */
+        public Builder routes(HttpRoutePort port) {
+            this.routes = port;
+            return this;
+        }
+
+        /** Socket-Factory für HTTPS-Verbindungen (Vertrauensregel der Anwendung); {@code null}: JVM-Standard. */
+        public Builder sslSocketFactory(SSLSocketFactory factory) {
+            this.sslSocketFactory = factory;
+            return this;
+        }
+
+        /** {@code User-Agent} jeder Anfrage; leer oder {@code null}: JVM-Standard. */
+        public Builder userAgent(String value) {
+            this.userAgent = value == null || value.trim().isEmpty() ? null : value.trim();
+            return this;
+        }
+
         public OpenAiCompatibleChatConfig build() {
             return new OpenAiCompatibleChatConfig(this);
         }
@@ -166,5 +238,22 @@ public final class OpenAiCompatibleChatConfig {
     private static URI resolve(URI base, String path) {
         String text = base.toString();
         return URI.create(text.endsWith("/") ? text + path : text + "/" + path);
+    }
+
+    /**
+     * Der Endpunkt-Pfad, auf den die Basis-URL fälschlich endet ({@code /chat/completions}, {@code /embeddings},
+     * {@code /models}), sonst {@code null}. Schließende Schrägstriche zählen nicht.
+     */
+    public static String endpointSuffix(URI baseUrl) {
+        String path = baseUrl.getPath() == null ? "" : baseUrl.getPath().toLowerCase(Locale.ROOT);
+        while (path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        for (String suffix : ENDPOINT_SUFFIXES) {
+            if (path.endsWith(suffix)) {
+                return suffix;
+            }
+        }
+        return null;
     }
 }

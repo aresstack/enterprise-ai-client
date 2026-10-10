@@ -232,7 +232,10 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
     }
 
     private HttpURLConnection open(String accept, String token) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) config.endpoint().toURL().openConnection();
+        // Route, TLS-Vertrauen und User-Agent kommen je Anfrage aus der Konfiguration; nichts davon ist
+        // prozessweit gesetzt (kein ProxySelector, keine Standard-SSLSocketFactory).
+        HttpURLConnection connection = RouteConnections.open(config.endpoint(), config.routes(),
+                config.sslSocketFactory(), config.userAgent());
         connection.setRequestMethod("POST");
         connection.setDoOutput(true);
         connection.setUseCaches(false);

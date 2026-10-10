@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcConfig;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.confluence.ConfluenceConfig;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSiteConfig;
+import com.aresstack.winproxy.ProxyMode;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -89,7 +90,7 @@ public final class AppConfigLoader {
         KnowledgeConfig knowledge = knowledge(reader);
         List<SourceConfig> sources = sources(reader, warnings);
         KeePassConfig keePass = keePass(reader);
-        NetworkConfig network = network(reader);
+        NetworkConfig network = network(reader, chat == null ? null : chat.baseUrl(), warnings);
         AgentConfig agent = agent(reader);
 
         for (String unread : reader.unreadKeys()) {
@@ -135,6 +136,25 @@ public final class AppConfigLoader {
         return keePass;
     }
 
+    /**
+     * Nur der Abschnitt {@code network.*} (plus {@code chat.baseUrl} für die Standard-Test-URL), z. B. für
+     * „Proxy auflösen“ und den HTTPS-Test des Einstellungen-Dialogs, bevor die übrige Konfiguration vollständig ist.
+     * Hinweise zu alten Schlüsseln gehen verloren; Probleme kommen als {@link AppConfigException}.
+     */
+    public static NetworkConfig networkSection(Properties properties) {
+        if (properties == null) {
+            throw new IllegalArgumentException("properties must not be null");
+        }
+        // Die Chat-URL zählt hier nur als Vorgabe der Test-URL; ist sie ungültig, fehlt die Vorgabe, mehr nicht.
+        URI chatBaseUrl = new ConfigReader(properties).httpUri("chat.baseUrl", false);
+        ConfigReader reader = new ConfigReader(properties);
+        NetworkConfig network = network(reader, chatBaseUrl, new ArrayList<String>());
+        if (reader.hasProblems()) {
+            throw new AppConfigException(reader.problems());
+        }
+        return network;
+    }
+
     /** Die mitgelieferte Beispielkonfiguration (ohne Secrets) als Text, z. B. um sie als Vorlage abzulegen. */
     public static String exampleConfiguration() {
         try (InputStream in = AppConfigLoader.class.getResourceAsStream(EXAMPLE_RESOURCE)) {
@@ -156,7 +176,7 @@ public final class AppConfigLoader {
     // ------------------------------------------------------------------ Abschnitte
 
     private static ChatConfig chat(ConfigReader r) {
-        URI baseUrl = r.httpUri("chat.baseUrl", true);
+        URI baseUrl = baseUrl(r, "chat.baseUrl", true);
         String model = r.required("chat.model");
         SecretRef apiKeyRef = r.secretRef("chat.apiKeyRef");
         if (apiKeyRef == null && !r.has("chat.apiKeyRef")) {
@@ -192,8 +212,23 @@ public final class AppConfigLoader {
         return new ChatConfig(baseUrl, model, apiKeyRef, systemPrompt, connect, read, policy, defaults);
     }
 
+    /**
+     * Basis-URL ohne Endpunktpfad: Die Adapter hängen {@code /chat/completions}, {@code /embeddings} und
+     * {@code /models} selbst an; eine URL, die schon so endet, ist ein Konfigurationsfehler (die Meldung nennt
+     * nie den Wert).
+     */
+    private static URI baseUrl(ConfigReader r, String key, boolean required) {
+        URI uri = r.httpUri(key, required);
+        if (uri != null && OpenAiCompatibleEmbeddingConfiguration.endpointSuffix(uri.toString()) != null) {
+            r.problem(key, "darf nicht auf einen Endpunktpfad enden (/chat/completions, /embeddings, /models); "
+                    + "nur die Basis, meist bis /v1");
+            return null;
+        }
+        return uri;
+    }
+
     private static EmbeddingConfig embedding(ConfigReader r, ChatConfig chat) {
-        URI baseUrl = r.httpUri("embedding.baseUrl", false);
+        URI baseUrl = baseUrl(r, "embedding.baseUrl", false);
         if (baseUrl == null && chat != null && !r.has("embedding.baseUrl")) {
             baseUrl = chat.baseUrl();
         }
@@ -369,7 +404,8 @@ public final class AppConfigLoader {
         boolean requiresLogin = r.bool(prefix + "requiresLogin", credentialRef != null);
         int connect = r.integer(prefix + "connectTimeoutMillis", 15000, 1, MAX_TIMEOUT);
         int read = r.integer(prefix + "readTimeoutMillis", 30000, 1, MAX_TIMEOUT);
-        String userAgent = r.text(prefix + "userAgent", null);
+        // Eigener Wert der Quelle vor network.http.userAgent; ohne beide gilt der Standard des Adapters.
+        String userAgent = r.text(prefix + "userAgent", r.text("network.http.userAgent", null));
         List<String> namespaces = r.list(prefix + "linkNamespaces");
         if (apiUrl == null) {
             return null;
@@ -478,25 +514,109 @@ public final class AppConfigLoader {
         return new KeePassConfig(enabled, rpc, keyFile);
     }
 
-    private static NetworkConfig network(ConfigReader r) {
-        ProxyMode mode = r.enumValue("network.proxy.mode", ProxyMode.class, ProxyMode.AUTO);
+    /**
+     * {@code network.*}: Modusnamen sind die der Bibliothek win-proxy-java. Alte Schlüssel und Namen der Fassungen
+     * bis 0.1.3 werden nur gelesen und übersetzt (NONE → DISABLED, MANUAL → MANUAL_PROXY, SYSTEM →
+     * WINDOWS_STATIC_PROXY, AUTO → PAC_URL_MANUAL mit pacUrl, sonst PAC_URL_POWERSHELL;
+     * {@code network.tls.useWindowsCertificateStore} → beide Windows-Quellen); der Einstellungen-Dialog schreibt
+     * beim nächsten Speichern die neuen. Jede Übersetzung steht als Hinweis in {@code warnings}.
+     */
+    static NetworkConfig network(ConfigReader r, URI chatBaseUrl, List<String> warnings) {
+        NetworkConfig.Builder b = NetworkConfig.builder();
+        String pacUrl = pacUrl(r);
+        ProxyMode mode = proxyMode(r, pacUrl, warnings);
+        b.proxyMode(mode);
         String host = r.text("network.proxy.host", null);
         int port = r.integer("network.proxy.port", 0, 0, 65535);
-        if (mode == ProxyMode.MANUAL) {
+        if (mode == ProxyMode.MANUAL_PROXY) {
             if (host == null) {
-                r.problem("network.proxy.host", "fehlt (Pflicht bei network.proxy.mode=MANUAL)");
+                r.problem("network.proxy.host", "fehlt (Pflicht bei network.proxy.mode=MANUAL_PROXY)");
             }
             if (port == 0) {
-                r.problem("network.proxy.port", "fehlt oder 0 (Pflicht bei network.proxy.mode=MANUAL)");
+                r.problem("network.proxy.port", "fehlt oder 0 (Pflicht bei network.proxy.mode=MANUAL_PROXY)");
             }
         }
-        List<String> nonProxyHosts = r.list("network.proxy.nonProxyHosts");
-        String pacUrl = pacUrl(r);
-        PacDiscovery pacDiscovery = r.enumValue("network.proxy.pacDiscovery", PacDiscovery.class,
-                PacDiscovery.WINDOWS_SETTINGS);
-        boolean windowsStore = r.bool("network.tls.useWindowsCertificateStore", true);
-        Path caCertificates = r.path("network.tls.caCertificatesFile", null);
-        return new NetworkConfig(mode, host, port, nonProxyHosts, pacUrl, pacDiscovery, windowsStore, caCertificates);
+        if (mode == ProxyMode.PAC_URL_MANUAL && pacUrl == null && !r.has("network.proxy.pacUrl")) {
+            r.problem("network.proxy.pacUrl", "fehlt (Pflicht bei network.proxy.mode=PAC_URL_MANUAL)");
+        }
+        b.proxy(host, port);
+        b.nonProxyHosts(r.list("network.proxy.nonProxyHosts"));
+        b.pacUrl(pacUrl);
+        b.pacDiscoveryScript(r.text("network.proxy.pacDiscoveryScript", null));
+        URI testUrl = r.httpUri("network.proxy.testUrl", false);
+        b.testUrl(testUrl != null ? testUrl : chatBaseUrl == null ? null : modelsUrl(chatBaseUrl));
+        b.resolveTimeoutMillis(r.integer("network.proxy.resolveTimeoutMillis",
+                NetworkConfig.DEFAULT_RESOLVE_TIMEOUT_MILLIS, 1000, MAX_TIMEOUT));
+        ProxyAuthMode auth = r.enumValue("network.proxy.auth.mode", ProxyAuthMode.class, ProxyAuthMode.NONE);
+        SecretRef credentialRef = r.secretRef("network.proxy.auth.credentialRef");
+        if (auth == ProxyAuthMode.BASIC && credentialRef == null && !r.has("network.proxy.auth.credentialRef")) {
+            r.problem("network.proxy.auth.credentialRef", "fehlt (Pflicht bei network.proxy.auth.mode=BASIC: Titel "
+                    + "des KeePass-Eintrags mit Benutzername und Passwort für den Proxy)");
+        }
+        b.proxyAuth(auth, auth == ProxyAuthMode.BASIC ? credentialRef : null);
+        b.userAgent(r.text("network.http.userAgent", null));
+        b.preferIpv6(r.bool("network.http.preferIPv6", false));
+        boolean legacyWindowsStore = r.bool("network.tls.useWindowsCertificateStore", true);
+        if (r.has("network.tls.useWindowsCertificateStore")) {
+            warnings.add("network.tls.useWindowsCertificateStore ist der alte Schalter; er gilt für "
+                    + "network.tls.useWindowsRoot und network.tls.useWindowsCaStores, solange diese fehlen. Der "
+                    + "Einstellungen-Dialog schreibt beim Speichern die neuen Schlüssel.");
+        }
+        b.tls(r.bool("network.tls.useJvmDefault", true),
+                r.bool("network.tls.useWindowsRoot", legacyWindowsStore),
+                r.bool("network.tls.useWindowsCaStores", legacyWindowsStore));
+        b.caCertificatesFile(r.path("network.tls.caCertificatesFile", null));
+        return b.build();
+    }
+
+    /** {@code <baseUrl>/models} ohne doppelten Schrägstrich. */
+    static URI modelsUrl(URI baseUrl) {
+        String text = baseUrl.toString();
+        while (text.endsWith("/")) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return URI.create(text + "/models");
+    }
+
+    /** Modusname der Bibliothek oder einer der alten Namen; die Übersetzung erzeugt einen Hinweis. */
+    private static ProxyMode proxyMode(ConfigReader r, String pacUrl, List<String> warnings) {
+        String legacyDiscovery = r.text("network.proxy.pacDiscovery", null);
+        if (legacyDiscovery != null) {
+            warnings.add("network.proxy.pacDiscovery wird nicht mehr ausgewertet; den Modus PAC_URL_POWERSHELL, "
+                    + "PAC_URL_WSCRIPT oder PAC_URL_WINDOWS_SETTINGS wählen. Der Einstellungen-Dialog entfernt den "
+                    + "Schlüssel beim Speichern.");
+        }
+        String raw = r.text("network.proxy.mode", null);
+        if (raw == null) {
+            return ProxyMode.PAC_URL_POWERSHELL;
+        }
+        String name = raw.toUpperCase(Locale.ROOT).replace('-', '_');
+        ProxyMode legacy = legacyMode(name, pacUrl);
+        if (legacy != null) {
+            warnings.add("network.proxy.mode=" + name + " ist der alte Name und gilt als " + legacy
+                    + "; der Einstellungen-Dialog schreibt beim Speichern den neuen.");
+            return legacy;
+        }
+        return r.enumValue("network.proxy.mode", ProxyMode.class, ProxyMode.PAC_URL_POWERSHELL);
+    }
+
+    /** Die Modusnamen der Fassungen bis 0.1.3; {@code null}, wenn {@code name} keiner davon ist. */
+    public static ProxyMode legacyMode(String name, String pacUrl) {
+        if (name == null) {
+            return null;
+        }
+        switch (name) {
+            case "NONE":
+                return ProxyMode.DISABLED;
+            case "MANUAL":
+                return ProxyMode.MANUAL_PROXY;
+            case "SYSTEM":
+                return ProxyMode.WINDOWS_STATIC_PROXY;
+            case "AUTO":
+                return pacUrl == null ? ProxyMode.PAC_URL_POWERSHELL : ProxyMode.PAC_URL_MANUAL;
+            default:
+                return null;
+        }
     }
 
     /** Die PAC-Adresse muss eine absolute http-, https- oder file-URL sein; die Meldung nennt nie den Wert. */

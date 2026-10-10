@@ -2,12 +2,13 @@ package com.aresstack.enterpriseai.app.settings;
 
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
-import com.aresstack.enterpriseai.app.config.ProxyMode;
 import com.aresstack.enterpriseai.app.net.ConnectionDiagnosis;
-import com.aresstack.enterpriseai.app.net.ProxyPolicy;
+import com.aresstack.enterpriseai.app.net.HttpConnections;
+import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.net.TrustPolicy;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
+import com.aresstack.enterpriseai.http.api.HttpRoute;
 
 import javax.net.ssl.HttpsURLConnection;
 import java.io.ByteArrayOutputStream;
@@ -15,14 +16,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
-import java.net.SocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
-import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
@@ -37,11 +33,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Geht mit einer geladenen Konfiguration denselben Weg wie der Start und meldet jeden Schritt einzeln: die
- * Proxy-Route für {@code chat.baseUrl} ({@link ProxyPolicy}, bei AUTO samt PAC-Auswertung), die Namensauflösung
- * des Hosts, der tatsächlich angesprochen wird (Ziel oder Proxy), den API-Key aus KeePass, den TLS-Handshake mit
- * der Vertrauensregel der Konfiguration ({@link TrustPolicy}) und schließlich {@code GET <baseUrl>/models}, dessen
- * Antwort mit {@code chat.model} verglichen wird. Ein fehlgeschlagener Schritt beendet den Test; Hinweise
+ * „Verbindung testen“ im Reiter KI-Dienst: geht mit einer geladenen Konfiguration denselben Weg wie die Adapter und
+ * meldet jeden Schritt einzeln: API-Key aus KeePass, Proxy-Route für {@code <chat.baseUrl>/models}
+ * ({@code HttpRoutes} über win-proxy-java), HTTPS-Verbindung mit der Vertrauensregel der Konfiguration
+ * ({@link TrustPolicy} über win-trust-java), {@code GET <baseUrl>/models} mit HTTP-Status und Vergleich mit
+ * {@code chat.model}, zuletzt der Abgleich mit {@code embedding.model}. Ein fehlgeschlagener Schritt beendet den Test; Hinweise
  * (WARNING, INFO) nicht. Der API-Key erscheint in keiner Meldung: Jede Meldung geht durch {@link #redact}, das den
  * gesendeten Key (auch URL-kodiert) und alles, was wie ein Bearer-Token aussieht, ersetzt; eine Umleitung wird ohne
  * Query, Fragment und Anmeldedaten gezeigt. Die Schritte stehen zusätzlich im Protokoll.
@@ -59,11 +55,11 @@ public final class ConnectionProbe {
     }
 
     static final String MODELS_PATH = "/models";
-    static final String STEP_ROUTE = "Proxy-Route";
-    static final String STEP_RESOLVE = "Namensauflösung";
     static final String STEP_KEY = "API-Key";
-    static final String STEP_TLS = "Verbindung und TLS";
+    static final String STEP_ROUTE = "Proxy-Route";
+    static final String STEP_TLS = "HTTPS-Verbindung";
     static final String STEP_HTTP = "GET /models";
+    static final String STEP_EMBEDDING = "Embedding-Modell";
 
     private static final Logger LOG = Logger.getLogger(ConnectionProbe.class.getName());
     private static final int MAX_BODY_BYTES = 256 * 1024;
@@ -74,13 +70,20 @@ public final class ConnectionProbe {
 
     private final AppConfig config;
     private final TokenLookup tokens;
+    private final NetworkServices network;
 
     public ConnectionProbe(AppConfig config, TokenLookup tokens) {
-        if (config == null || tokens == null) {
-            throw new IllegalArgumentException("config and tokens must not be null");
+        this(config, tokens, config == null ? null : NetworkServices.from(config.network()));
+    }
+
+    /** Mit eigener Netzschicht (Tests: Route ohne PowerShell). */
+    public ConnectionProbe(AppConfig config, TokenLookup tokens, NetworkServices network) {
+        if (config == null || tokens == null || network == null) {
+            throw new IllegalArgumentException("config, tokens and network must not be null");
         }
         this.config = config;
         this.tokens = tokens;
+        this.network = network;
     }
 
     /** Der geprüfte Endpunkt: {@code chat.baseUrl} ohne Schrägstrich am Ende plus {@value #MODELS_PATH}. */
@@ -108,54 +111,75 @@ public final class ConnectionProbe {
         Reporter out = new Reporter(onStep);
         URI target = target();
 
-        Proxy proxy;
+        String token = lookupToken(out);
+        out.secret = token;
+
+        HttpRoute route;
         try {
-            ProxyPolicy policy = new ProxyPolicy(config.network());
-            proxy = policy.proxyFor(target);
-            String route = policy.describeRoute(target);
-            String detail = "Ziel " + target + ": " + route;
-            boolean undecided = undecided(policy, route);
-            if (policy.systemSettingsDeferred() && (undecided || policy.mode() == ProxyMode.SYSTEM)) {
-                out.report(ConnectionCheckStep.warning(STEP_ROUTE, detail + ". Die Proxy-Einstellungen des "
-                        + "Systems liest diese laufende Anwendung erst nach einem Neustart (sie wurde ohne AUTO/SYSTEM "
-                        + "gestartet); der Test kann sie jetzt nicht prüfen. Speichern, neu starten und erneut prüfen."));
-            } else if (undecided) {
-                out.report(ConnectionCheckStep.warning(STEP_ROUTE, detail + ". Das PAC-Skript lieferte kein "
-                        + "Ergebnis, es gelten die Systemeinstellungen. Hinter einem Firmen-Proxy: PAC-Adresse "
-                        + "eintragen, PAC-Ermittlung POWERSHELL versuchen oder den Proxy mit MANUAL setzen."));
-            } else {
-                out.report(ConnectionCheckStep.ok(STEP_ROUTE, detail));
-            }
+            route = network.routes().routeFor(target);
         } catch (RuntimeException e) {
             out.report(ConnectionCheckStep.failed(STEP_ROUTE, describe(e)));
             return false;
         }
-
-        boolean viaProxy = proxy.type() != Proxy.Type.DIRECT;
-        String host = viaProxy ? hostOf(proxy.address()) : target.getHost();
-        try {
-            InetAddress[] addresses = InetAddress.getAllByName(host);
-            String detail = host + " -> " + joinAddresses(addresses);
-            if (viaProxy) {
-                detail += " (Proxy; den Zielhost " + target.getHost() + " löst der Proxy auf)";
-            }
-            out.report(ConnectionCheckStep.ok(STEP_RESOLVE, detail));
-        } catch (UnknownHostException e) {
-            out.report(ConnectionCheckStep.failed(STEP_RESOLVE, host + ": " + describe(e)));
-            return false;
-        } catch (RuntimeException e) {
-            out.report(ConnectionCheckStep.failed(STEP_RESOLVE, host + ": " + describe(e)));
+        if (route.isUnavailable()) {
+            out.report(ConnectionCheckStep.failed(STEP_ROUTE, "Ziel " + target + ": " + route.describe()
+                    + ". Es wurde keine Verbindung versucht; „Proxy auflösen“ im Reiter Netzwerk zeigt jeden Schritt."));
             return false;
         }
+        out.report(ConnectionCheckStep.ok(STEP_ROUTE, "Ziel " + target + ": " + route.describe()));
 
-        String token = lookupToken(out);
-        out.secret = token;
-
-        boolean https = "https".equalsIgnoreCase(target.getScheme());
-        HttpURLConnection connection = null;
+        Fetched models;
         try {
-            TrustPolicy trust = https ? TrustPolicy.from(config.network()) : null;
-            connection = (HttpURLConnection) target.toURL().openConnection(proxy);
+            models = fetch(target, route, token, out, true);
+        } catch (AppConfigException e) {
+            out.report(ConnectionCheckStep.failed(STEP_TLS, "TLS-Vertrauensregel nicht baubar: "
+                    + join(SettingsMapper.describe(e.problems()))));
+            return false;
+        } catch (ReportedException e) {
+            return false;
+        } catch (IOException | RuntimeException e) {
+            out.report(ConnectionCheckStep.failed(STEP_HTTP, describe(e)));
+            return false;
+        }
+        ConnectionCheckStep step = evaluate(models.code, models.body, token, models.location);
+        out.report(step);
+        if (step.isFailure()) {
+            return false;
+        }
+        checkEmbeddingModel(models, route, token, out);
+        return true;
+    }
+
+    /** Antwort eines GET: Status, Körper (begrenzt), Umleitungsziel. */
+    private static final class Fetched {
+        final int code;
+        final String body;
+        final String location;
+
+        Fetched(int code, String body, String location) {
+            this.code = code;
+            this.body = body;
+            this.location = location;
+        }
+    }
+
+    private Fetched fetch(URI target, HttpRoute route, String token, Reporter out, boolean reportTls)
+            throws IOException {
+        boolean https = "https".equalsIgnoreCase(target.getScheme());
+        TrustPolicy trust;
+        try {
+            trust = https ? network.trust() : null;
+        } catch (AppConfigException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            if (reportTls) {
+                out.report(ConnectionCheckStep.failed(STEP_TLS, "TLS-Vertrauensquellen nicht nutzbar: " + describe(e)));
+            }
+            throw new ReportedException(e);
+        }
+        HttpURLConnection connection = HttpConnections.open(target, route,
+                trust == null ? null : trust.socketFactory(), network.userAgent());
+        try {
             connection.setConnectTimeout(config.chat().connectTimeoutMillis());
             connection.setReadTimeout(config.chat().readTimeoutMillis());
             connection.setRequestMethod("GET");
@@ -164,55 +188,79 @@ public final class ConnectionProbe {
             if (token != null) {
                 connection.setRequestProperty("Authorization", "Bearer " + token);
             }
-            if (connection instanceof HttpsURLConnection && trust != null) {
-                ((HttpsURLConnection) connection).setSSLSocketFactory(trust.socketFactory());
+            try {
+                connection.connect();
+            } catch (IOException | RuntimeException e) {
+                if (reportTls) {
+                    out.report(ConnectionCheckStep.failed(STEP_TLS, describe(e)));
+                }
+                throw new ReportedException(e);
             }
-            connection.connect();
-            if (connection instanceof HttpsURLConnection && trust != null) {
-                HttpsURLConnection secure = (HttpsURLConnection) connection;
-                out.report(ConnectionCheckStep.ok(STEP_TLS, "TLS-Handshake mit " + target.getHost()
-                        + " erfolgreich (" + secure.getCipherSuite() + "); Serverzertifikat "
-                        + describeCertificates(secure.getServerCertificates()) + "; Vertrauensquellen: "
-                        + join(trust.sources()) + "."));
-            } else {
-                out.report(ConnectionCheckStep.info(STEP_TLS, "Verbindung steht; unverschlüsselt (http), "
-                        + "keine TLS-Prüfung."));
+            if (reportTls) {
+                if (connection instanceof HttpsURLConnection && trust != null) {
+                    HttpsURLConnection secure = (HttpsURLConnection) connection;
+                    out.report(ConnectionCheckStep.ok(STEP_TLS, "TLS-Handshake mit " + target.getHost()
+                            + " erfolgreich (" + secure.getCipherSuite() + "); Serverzertifikat "
+                            + describeCertificates(secure.getServerCertificates()) + "; Vertrauensquellen: "
+                            + join(trust.sources()) + "."));
+                } else {
+                    out.report(ConnectionCheckStep.info(STEP_TLS, "Verbindung steht; unverschlüsselt (http), "
+                            + "keine TLS-Prüfung."));
+                }
             }
-        } catch (AppConfigException e) {
-            out.report(ConnectionCheckStep.failed(STEP_TLS, "TLS-Vertrauensregel nicht baubar: "
-                    + join(SettingsMapper.describe(e.problems()))));
-            disconnect(connection);
-            return false;
-        } catch (IOException e) {
-            out.report(ConnectionCheckStep.failed(STEP_TLS, describe(e)));
-            disconnect(connection);
-            return false;
-        } catch (RuntimeException e) {
-            out.report(ConnectionCheckStep.failed(STEP_TLS, describe(e)));
-            disconnect(connection);
-            return false;
-        }
-
-        try {
             int code = connection.getResponseCode();
-            String body = readBody(connection, code);
-            ConnectionCheckStep step = evaluate(code, body, token, connection.getHeaderField("Location"));
-            out.report(step);
-            return !step.isFailure();
-        } catch (IOException e) {
-            out.report(ConnectionCheckStep.failed(STEP_HTTP, describe(e)));
-            return false;
-        } catch (RuntimeException e) {
-            out.report(ConnectionCheckStep.failed(STEP_HTTP, describe(e)));
-            return false;
+            return new Fetched(code, readBody(connection, code), connection.getHeaderField("Location"));
         } finally {
-            disconnect(connection);
+            connection.disconnect();
         }
     }
 
-    /** AUTO ohne PAC-Entscheidung: {@link ProxyPolicy#describeRoute} hängt dann die Systemeinstellungen an. */
-    private static boolean undecided(ProxyPolicy policy, String route) {
-        return policy.mode() == ProxyMode.AUTO && route.contains("; Systemeinstellungen:");
+    /** Markiert eine Ausnahme, deren Schritt schon gemeldet ist. */
+    private static final class ReportedException extends IOException {
+        ReportedException(Throwable cause) {
+            super(cause.getMessage(), cause);
+        }
+    }
+
+    private void checkEmbeddingModel(Fetched chatModels, HttpRoute chatRoute, String token, Reporter out) {
+        if (config.embedding() == null) {
+            return;
+        }
+        String model = config.embedding().model();
+        URI embeddingModels = modelsUrl(config.embedding().baseUrl());
+        List<String> ids;
+        if (embeddingModels.equals(target())) {
+            ids = modelIds(chatModels.body);
+        } else {
+            try {
+                HttpRoute route = network.routes().routeFor(embeddingModels);
+                if (route.isUnavailable()) {
+                    out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, embeddingModels + ": " + route.describe()));
+                    return;
+                }
+                // Den Chat-Key nur an den Embedding-Dienst schicken, wenn er derselbe Eintrag ist.
+                boolean sameKey = config.embedding().apiKeyRef() == null
+                        || config.embedding().apiKeyRef().equals(config.chat().apiKeyRef());
+                Fetched fetched = fetch(embeddingModels, route, sameKey ? token : null, out, false);
+                if (fetched.code != HttpURLConnection.HTTP_OK) {
+                    out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, "GET " + embeddingModels + ": HTTP "
+                            + fetched.code + "; Embedding-Modell nicht geprüft."));
+                    return;
+                }
+                ids = modelIds(fetched.body);
+            } catch (IOException | RuntimeException e) {
+                out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, embeddingModels + ": " + describe(e)));
+                return;
+            }
+        }
+        if (ids.isEmpty()) {
+            out.report(ConnectionCheckStep.info(STEP_EMBEDDING, "Keine Modellliste; „" + model + "“ nicht geprüft."));
+        } else if (ids.contains(model)) {
+            out.report(ConnectionCheckStep.ok(STEP_EMBEDDING, "„" + model + "“ ist vorhanden."));
+        } else {
+            out.report(ConnectionCheckStep.warning(STEP_EMBEDDING, "„" + model + "“ fehlt (embedding.model prüfen). "
+                    + "Verfügbar: " + listed(ids)));
+        }
     }
 
     private String lookupToken(Reporter out) {
@@ -279,9 +327,9 @@ public final class ConnectionProbe {
                     + MODELS_PATH + " nicht an, dann kann der Chat trotzdem gehen. Antwort: " + excerpt(body));
         }
         if (code == HttpURLConnection.HTTP_PROXY_AUTH) {
-            return ConnectionCheckStep.failed(STEP_HTTP, prefix + "Der Proxy verlangt eine Anmeldung. "
-                    + "Proxy-Authentifizierung unterstützt die Anwendung noch nicht; ein Proxy ohne Anmeldung "
-                    + "(MANUAL) oder eine direkte Verbindung (NONE) ist nötig.");
+            return ConnectionCheckStep.failed(STEP_HTTP, prefix + "Der Proxy verlangt eine Anmeldung. Im Reiter "
+                    + "Netzwerk „Proxy auth mode“ BASIC mit einem KeePass-Eintrag (Benutzername und Passwort) "
+                    + "einstellen; die Anmeldung gilt nach einem Neustart.");
         }
         if (code >= 300 && code < 400) {
             return ConnectionCheckStep.warning(STEP_HTTP, prefix + "Umleitung"
@@ -534,27 +582,6 @@ public final class ConnectionProbe {
         if (connection != null) {
             connection.disconnect();
         }
-    }
-
-    private static String hostOf(SocketAddress address) {
-        if (address instanceof InetSocketAddress) {
-            return ((InetSocketAddress) address).getHostString();
-        }
-        return String.valueOf(address);
-    }
-
-    private static String joinAddresses(InetAddress[] addresses) {
-        StringBuilder text = new StringBuilder();
-        for (int i = 0; i < addresses.length && i < 3; i++) {
-            if (i > 0) {
-                text.append(", ");
-            }
-            text.append(addresses[i].getHostAddress());
-        }
-        if (addresses.length > 3) {
-            text.append(", …");
-        }
-        return text.toString();
     }
 
     private static String join(List<String> parts) {

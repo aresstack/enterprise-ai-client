@@ -88,7 +88,6 @@ public final class SettingsDialogDemo {
                 .addSource(SourceForm.builder("confluence", SourceForm.TYPE_CONFLUENCE)
                         .url("https://confluence.intern.beispiel/confluence").credentialRef("keepass:Confluence")
                         .startPoints("space:DEV").maxDepth("3").maxResources("1000").searchSpaceKeys("DEV").build())
-                .nonProxyHosts("*.intern.beispiel")
                 .caCertificatesFile("C:/Zertifikate/firmen-ca.pem")
                 .build();
     }
@@ -150,7 +149,7 @@ public final class SettingsDialogDemo {
                         new DemoActions(), palette);
                 panel.selectTab(tab);
                 if (check) {
-                    panel.systemTab().connectionCheck().button().doClick();
+                    panel.serviceTab().connectionCheck().button().doClick();
                 }
                 JPanel content = new JPanel(new BorderLayout());
                 content.setBackground(palette.getSurface());

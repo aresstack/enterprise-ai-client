@@ -74,6 +74,6 @@ public class CompositionRootTest {
 
         List<String> withoutImplementation = CompositionRootRules.adaptersWithoutPortImplementation(REGISTRY,
                 ProductionClasses.of(FakeChatAdapter.class));
-        assertTrue(withoutImplementation.toString(), withoutImplementation.toString().contains("chat-openai implementiert kein Interface aus [chat-api]"));
+        assertTrue(withoutImplementation.toString(), withoutImplementation.toString().contains("chat-openai implementiert kein Interface aus [chat-api, http-api]"));
     }
 }

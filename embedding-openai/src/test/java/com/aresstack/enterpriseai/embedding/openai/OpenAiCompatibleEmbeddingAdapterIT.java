@@ -5,6 +5,8 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
+import com.aresstack.enterpriseai.http.api.HttpRoute;
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 import com.aresstack.enterpriseai.embedding.api.testing.EmbeddingPortContractTest;
 import org.junit.After;
 import org.junit.Before;
@@ -57,6 +59,61 @@ public class OpenAiCompatibleEmbeddingAdapterIT extends EmbeddingPortContractTes
                 return TOKEN.toCharArray();
             }
         });
+    }
+
+    private OpenAiCompatibleEmbeddingAdapter adapter(String baseUrl, HttpRoutePort routes, String userAgent) {
+        OpenAiCompatibleEmbeddingConfiguration config = OpenAiCompatibleEmbeddingConfiguration
+                .builder(baseUrl, "danielheinz/e5-base-sts-en-de", DIMENSION)
+                .routes(routes).userAgent(userAgent).readTimeoutMillis(5000).build();
+        return new OpenAiCompatibleEmbeddingAdapter(config, new BearerTokenSource() {
+            @Override
+            public char[] bearerToken() {
+                return TOKEN.toCharArray();
+            }
+        });
+    }
+
+    @Test
+    public void anUnavailableRouteFailsAsUnavailableBeforeAnyRequest() {
+        HttpRoutePort unavailable = new HttpRoutePort() {
+            @Override
+            public HttpRoute routeFor(java.net.URI target) {
+                return HttpRoute.unavailable("windows-native-proxy-settings-not-implemented", "Modus nicht umgesetzt");
+            }
+        };
+        try {
+            adapter(server.baseUrl(), unavailable, null).embed(Collections.singletonList("x"));
+            fail("expected EmbeddingException");
+        } catch (EmbeddingException e) {
+            assertEquals(EmbeddingFailureKind.UNAVAILABLE, e.kind());
+            assertTrue(e.getMessage(), e.getMessage().contains("windows-native-proxy-settings-not-implemented"));
+        }
+        assertTrue("keine Anfrage ohne Route", server.requests().isEmpty());
+    }
+
+    @Test
+    public void aProxyRouteSendsTheAbsoluteTargetUrlToTheProxyAndTheUserAgent() {
+        final java.net.URI proxy = java.net.URI.create(server.baseUrl());
+        HttpRoutePort viaProxy = new HttpRoutePort() {
+            @Override
+            public HttpRoute routeFor(java.net.URI target) {
+                return HttpRoute.proxy(proxy.getHost(), proxy.getPort(), "test");
+            }
+        };
+        EmbeddingBatch batch = adapter("http://ki.intern.invalid/v1", viaProxy, "EnterpriseAiClient/test")
+                .embed(Collections.singletonList("eins"));
+        assertEquals(1, batch.size());
+        FakeEmbeddingServer.Recorded request = server.requests().get(0);
+        assertEquals("http://ki.intern.invalid/v1/embeddings", request.path);
+        assertEquals("EnterpriseAiClient/test", request.userAgent);
+    }
+
+    @Test
+    public void aDirectRouteConnectsWithoutProxy() {
+        EmbeddingBatch batch = adapter(server.baseUrl(), HttpRoutePort.direct(), null)
+                .embed(Collections.singletonList("eins"));
+        assertEquals(1, batch.size());
+        assertEquals("/v1/embeddings", server.requests().get(0).path);
     }
 
     @Test

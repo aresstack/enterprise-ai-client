@@ -2,6 +2,8 @@ package com.aresstack.enterpriseai.source.mediawiki;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import com.aresstack.enterpriseai.http.api.HttpRoute;
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.After;
 import org.junit.Before;
@@ -29,6 +31,8 @@ public class UrlConnectionMediaWikiTransportTest {
     private HttpServer server;
     private final List<String> cookiesSeen = Collections.synchronizedList(new ArrayList<String>());
     private final List<String> bodiesSeen = Collections.synchronizedList(new ArrayList<String>());
+    private final List<String> urisSeen = Collections.synchronizedList(new ArrayList<String>());
+    private final List<String> agentsSeen = Collections.synchronizedList(new ArrayList<String>());
     private UrlConnectionMediaWikiTransport transport;
 
     @Before
@@ -38,6 +42,8 @@ public class UrlConnectionMediaWikiTransportTest {
             @Override
             public void handle(HttpExchange exchange) throws IOException {
                 cookiesSeen.add(exchange.getRequestHeaders().getFirst("Cookie"));
+                urisSeen.add(exchange.getRequestURI().toString());
+                agentsSeen.add(exchange.getRequestHeaders().getFirst("User-Agent"));
                 String body = read(exchange.getRequestBody());
                 bodiesSeen.add(body);
                 String query = exchange.getRequestURI().getRawQuery();
@@ -128,6 +134,53 @@ public class UrlConnectionMediaWikiTransportTest {
             assertTrue(expected.getMessage().contains("another origin"));
         }
         assertEquals(1, bodiesSeen.size());
+    }
+
+    @Test
+    public void aProxyRouteSendsTheAbsoluteUrlToTheProxy() throws IOException {
+        final int port = server.getAddress().getPort();
+        HttpRoutePort viaProxy = new HttpRoutePort() {
+            @Override
+            public HttpRoute routeFor(java.net.URI target) {
+                return HttpRoute.proxy("127.0.0.1", port, "test");
+            }
+        };
+        UrlConnectionMediaWikiTransport proxied = new UrlConnectionMediaWikiTransport(MediaWikiSiteConfig
+                .builder("intern", "http://wiki.intern.invalid/w/").userAgent("EnterpriseAiClient/test").build(),
+                viaProxy, null);
+        MediaWikiTransport.Response response = proxied.get("action=query");
+        assertEquals(200, response.status());
+        assertEquals("http://wiki.intern.invalid/w/api.php?action=query", urisSeen.get(urisSeen.size() - 1));
+        assertEquals("EnterpriseAiClient/test", agentsSeen.get(agentsSeen.size() - 1));
+    }
+
+    @Test
+    public void anUnavailableRouteFailsBeforeAnyRequest() {
+        HttpRoutePort unavailable = new HttpRoutePort() {
+            @Override
+            public HttpRoute routeFor(java.net.URI target) {
+                return HttpRoute.unavailable("pac-download-failed", "HTTP 404");
+            }
+        };
+        UrlConnectionMediaWikiTransport blocked = new UrlConnectionMediaWikiTransport(MediaWikiSiteConfig
+                .builder("local", "http://127.0.0.1:" + server.getAddress().getPort() + "/w/").build(),
+                unavailable, null);
+        try {
+            blocked.get("action=query");
+            fail("expected IOException");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("pac-download-failed"));
+        }
+        assertTrue(urisSeen.isEmpty());
+    }
+
+    @Test
+    public void aDirectRouteConnectsWithoutProxy() throws IOException {
+        UrlConnectionMediaWikiTransport direct = new UrlConnectionMediaWikiTransport(MediaWikiSiteConfig
+                .builder("local", "http://127.0.0.1:" + server.getAddress().getPort() + "/w/").build(),
+                HttpRoutePort.direct(), null);
+        assertEquals(200, direct.get("action=query").status());
+        assertEquals("/w/api.php?action=query", urisSeen.get(urisSeen.size() - 1));
     }
 
     @Test

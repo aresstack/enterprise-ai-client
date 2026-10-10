@@ -3,8 +3,10 @@ package com.aresstack.enterpriseai.app.settings;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
+import com.aresstack.enterpriseai.app.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
+import com.aresstack.winproxy.ProxyMode;
 import org.junit.Test;
 
 import java.io.StringReader;
@@ -49,7 +51,7 @@ public class SettingsMapperTest {
         p.setProperty("source.confluence.includeAttachments", "true");
         p.setProperty("source.confluence.allowInsecureHttp", "true");
         p.setProperty("security.keepass.enabled", "false");
-        p.setProperty("network.proxy.mode", "NONE");
+        p.setProperty("network.proxy.mode", "DISABLED");
         return p;
     }
 
@@ -70,7 +72,7 @@ public class SettingsMapperTest {
         assertEquals("8", form.embeddingDimension());
         assertFalse(form.indexOnStartup());
         assertFalse(form.keePassEnabled());
-        assertEquals(SettingsForm.PROXY_NONE, form.proxyMode());
+        assertEquals(SettingsForm.PROXY_DISABLED, form.proxyMode());
         assertEquals(2, form.sources().size());
         SourceForm wiki = form.sources().get(0);
         assertTrue(wiki.isMediaWiki());
@@ -106,8 +108,11 @@ public class SettingsMapperTest {
         expected.setProperty("security.keepass.port", "12546");
         expected.setProperty("security.keepass.clientDisplayName", "Enterprise AI Client");
         expected.setProperty("security.keepass.pairingKeyStore", "file");
-        expected.setProperty("network.proxy.pacDiscovery", "WINDOWS_SETTINGS");
-        expected.setProperty("network.tls.useWindowsCertificateStore", "true");
+        expected.setProperty("network.proxy.auth.mode", "NONE");
+        expected.setProperty("network.http.preferIPv6", "false");
+        expected.setProperty("network.tls.useJvmDefault", "true");
+        expected.setProperty("network.tls.useWindowsRoot", "true");
+        expected.setProperty("network.tls.useWindowsCaStores", "true");
         expected.setProperty("agent.enabled", "false");
         expected.setProperty("agent.requestTimeoutSeconds", "30");
         assertEquals(expected, added);
@@ -116,7 +121,7 @@ public class SettingsMapperTest {
     }
 
     @Test
-    public void proxyAutoAndTlsKeysRoundTripThroughTheLoader() {
+    public void legacyProxyAndTlsKeysAreMigratedAndRemovedOnSave() {
         Properties current = valid();
         current.setProperty("network.proxy.mode", "auto");
         current.setProperty("network.proxy.pacUrl", "file:///C:/wpad.dat");
@@ -124,32 +129,78 @@ public class SettingsMapperTest {
         current.setProperty("network.tls.useWindowsCertificateStore", "false");
         current.setProperty("network.tls.caCertificatesFile", "C:/Zertifikate/firmen-ca.pem");
         SettingsForm form = SettingsMapper.fromProperties(current);
-        assertEquals(SettingsForm.PROXY_AUTO, form.proxyMode());
+        assertEquals("AUTO mit PAC-URL wird PAC_URL_MANUAL", SettingsForm.PROXY_PAC_URL_MANUAL, form.proxyMode());
         assertEquals("file:///C:/wpad.dat", form.pacUrl());
-        assertEquals(SettingsForm.PAC_POWERSHELL, form.pacDiscovery());
-        assertFalse(form.useWindowsCertificateStore());
+        assertTrue(form.tlsJvmDefault());
+        assertFalse(form.tlsWindowsRoot());
+        assertFalse(form.tlsWindowsCaStores());
         assertEquals("C:/Zertifikate/firmen-ca.pem", form.caCertificatesFile());
 
+        Set<String> removals = SettingsMapper.removals(form, current);
+        assertTrue(removals.contains("network.proxy.pacDiscovery"));
+        assertTrue(removals.contains("network.tls.useWindowsCertificateStore"));
         Properties merged = SettingsMapper.merge(current, form);
+        for (String key : removals) {
+            merged.remove(key);
+        }
+        assertEquals("PAC_URL_MANUAL", merged.getProperty("network.proxy.mode"));
         AppConfig config = AppConfigLoader.fromProperties(merged);
+        assertEquals(ProxyMode.PAC_URL_MANUAL, config.network().proxyMode());
         assertEquals("file:///C:/wpad.dat", config.network().pacUrl());
-        assertEquals("POWERSHELL", config.network().pacDiscovery().name());
-        assertFalse(config.network().useWindowsCertificateStore());
+        assertFalse(config.network().tlsUseWindowsRoot());
         assertEquals("C:/Zertifikate/firmen-ca.pem", config.network().caCertificatesFile().toString());
+        for (String warning : config.warnings()) {
+            assertFalse("nach dem Speichern keine Altlast-Warnungen: " + warning, warning.startsWith("network."));
+        }
 
         SettingsForm cleared = form.toBuilder().pacUrl("").caCertificatesFile("").build();
-        Set<String> removals = SettingsMapper.removals(cleared, current);
+        removals = SettingsMapper.removals(cleared, current);
         assertTrue(removals.contains("network.proxy.pacUrl"));
         assertTrue(removals.contains("network.tls.caCertificatesFile"));
-        assertNull(AppConfigLoader.fromProperties(SettingsMapper.merge(current, cleared)).network().caCertificatesFile());
+    }
+
+    @Test
+    public void legacyModeNamesMapToLibraryModes() {
+        String[][] cases = {{"NONE", "DISABLED"}, {"MANUAL", "MANUAL_PROXY"}, {"SYSTEM", "WINDOWS_STATIC_PROXY"},
+                {"AUTO", "PAC_URL_POWERSHELL"}};
+        for (String[] c : cases) {
+            Properties p = valid();
+            p.setProperty("network.proxy.mode", c[0]);
+            assertEquals(c[0], c[1], SettingsMapper.fromProperties(p).proxyMode());
+        }
+    }
+
+    @Test
+    public void multiLineDiscoveryScriptAndProxyAuthRoundTrip() {
+        Properties current = valid();
+        SettingsForm form = SettingsMapper.fromProperties(current).toBuilder()
+                .proxyMode(SettingsForm.PROXY_PAC_URL_POWERSHELL)
+                .pacDiscoveryScript("$p = 'http://wpad.intern.example/wpad.dat'\nWrite-Output $p\n")
+                .proxyAuthMode(SettingsForm.PROXY_AUTH_BASIC).proxyCredentialRef("keepass:Firmen-Proxy")
+                .userAgent("Mozilla/5.0 Test").preferIpv6(true).build();
+        Properties merged = SettingsMapper.merge(current, form);
+        assertEquals("$p = 'http://wpad.intern.example/wpad.dat'\nWrite-Output $p\n",
+                merged.getProperty("network.proxy.pacDiscoveryScript"));
+        assertFalse("kein Secret in der Datei", merged.toString().toLowerCase().contains("password"));
+        AppConfig config = AppConfigLoader.fromProperties(merged);
+        assertEquals(ProxyAuthMode.BASIC, config.network().proxyAuthMode());
+        assertEquals("keepass:Firmen-Proxy", config.network().proxyCredentialRef().id());
+        assertEquals("Mozilla/5.0 Test", config.network().userAgent());
+        assertTrue(config.network().preferIpv6());
+        SettingsForm back = SettingsMapper.fromProperties(merged);
+        assertEquals(form.pacDiscoveryScript(), back.pacDiscoveryScript());
+        assertEquals(SettingsForm.PROXY_AUTH_BASIC, back.proxyAuthMode());
     }
 
     @Test
     public void emptyFileYieldsTheLoaderDefaultsForProxyAndTls() {
         SettingsForm form = SettingsMapper.fromProperties(new Properties());
-        assertEquals(SettingsForm.PROXY_AUTO, form.proxyMode());
-        assertEquals(SettingsForm.PAC_WINDOWS_SETTINGS, form.pacDiscovery());
-        assertTrue(form.useWindowsCertificateStore());
+        assertEquals(SettingsForm.PROXY_PAC_URL_POWERSHELL, form.proxyMode());
+        assertEquals("", form.pacDiscoveryScript());
+        assertEquals(SettingsForm.PROXY_AUTH_NONE, form.proxyAuthMode());
+        assertTrue(form.tlsJvmDefault());
+        assertTrue(form.tlsWindowsRoot());
+        assertTrue(form.tlsWindowsCaStores());
         assertEquals("", form.caCertificatesFile());
     }
 

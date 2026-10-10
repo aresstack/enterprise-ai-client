@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.app.security;
 
 import com.aresstack.enterpriseai.app.config.ClientCertificateConfig;
+import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.security.api.SecretFunction;
 import com.aresstack.enterpriseai.security.api.SecretMaterial;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
@@ -8,6 +9,7 @@ import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.confluence.ClientCertificates;
 
 import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
@@ -39,12 +41,22 @@ public final class ClientCertificateFactory {
      */
     public static SSLSocketFactory create(ClientCertificateConfig config, SecretProvider secrets)
             throws GeneralSecurityException, IOException, SecretUnavailableException {
+        return create(config, secrets, null);
+    }
+
+    /**
+     * Wie {@link #create(ClientCertificateConfig, SecretProvider)}; Serverzertifikate prüft {@code trust}
+     * (die Vertrauensregel der Anwendung), {@code null} = JVM-Standard.
+     */
+    public static SSLSocketFactory create(ClientCertificateConfig config, SecretProvider secrets,
+                                          final X509TrustManager trust)
+            throws GeneralSecurityException, IOException, SecretUnavailableException {
         requireConfig(config, secrets);
         if (config.usesWindowsStore()) {
-            return ClientCertificates.windowsMy(config.alias());
+            return ClientCertificates.windowsMy(config.alias(), trust);
         }
         if (config.keyStorePasswordRef() == null) {
-            return fromFile(config, null);
+            return fromFile(config, null, trust);
         }
         return secrets.<SSLSocketFactory, GeneralSecurityException>withSecret(config.keyStorePasswordRef(),
                 new SecretFunction<SSLSocketFactory, GeneralSecurityException>() {
@@ -52,7 +64,7 @@ public final class ClientCertificateFactory {
                     public SSLSocketFactory apply(SecretMaterial material) throws GeneralSecurityException {
                         char[] password = material.copySecret();
                         try {
-                            return fromFile(config, password);
+                            return fromFile(config, password, trust);
                         } catch (IOException e) {
                             throw new GeneralSecurityException("PKCS12-Datei nicht lesbar: " + config.keyStoreFile(), e);
                         } finally {
@@ -70,7 +82,20 @@ public final class ClientCertificateFactory {
      */
     public static SSLSocketFactory deferred(ClientCertificateConfig config, SecretProvider secrets) {
         requireConfig(config, secrets);
-        return new Deferred(config, secrets);
+        return new Deferred(config, secrets, null);
+    }
+
+    /**
+     * Wie {@link #deferred(ClientCertificateConfig, SecretProvider)}, mit der TLS-Vertrauensregel der Anwendung
+     * aus {@code network} im selben Kontext (sie wird ebenfalls erst beim ersten Verbindungsaufbau gebaut).
+     */
+    public static SSLSocketFactory deferred(ClientCertificateConfig config, SecretProvider secrets,
+                                            NetworkServices network) {
+        requireConfig(config, secrets);
+        if (network == null) {
+            throw new IllegalArgumentException("network must not be null");
+        }
+        return new Deferred(config, secrets, network);
     }
 
     private static void requireConfig(ClientCertificateConfig config, SecretProvider secrets) {
@@ -82,13 +107,13 @@ public final class ClientCertificateFactory {
         }
     }
 
-    private static SSLSocketFactory fromFile(ClientCertificateConfig config, char[] password)
+    private static SSLSocketFactory fromFile(ClientCertificateConfig config, char[] password, X509TrustManager trust)
             throws GeneralSecurityException, IOException {
         KeyStore store = KeyStore.getInstance("PKCS12");
         try (InputStream in = Files.newInputStream(config.keyStoreFile())) {
             store.load(in, password);
         }
-        return ClientCertificates.fromKeyStore(store, password, config.alias());
+        return ClientCertificates.fromKeyStore(store, password, config.alias(), trust);
     }
 
     /** Lädt die eigentliche Factory beim ersten {@code createSocket}; Cipher-Suites kommen bis dahin vom JDK-Default. */
@@ -96,19 +121,24 @@ public final class ClientCertificateFactory {
 
         private final ClientCertificateConfig config;
         private final SecretProvider secrets;
+        private final NetworkServices network;
         private SSLSocketFactory loaded;
 
-        Deferred(ClientCertificateConfig config, SecretProvider secrets) {
+        Deferred(ClientCertificateConfig config, SecretProvider secrets, NetworkServices network) {
             this.config = config;
             this.secrets = secrets;
+            this.network = network;
         }
 
         private synchronized SSLSocketFactory delegate() throws IOException {
             if (loaded == null) {
                 try {
-                    loaded = create(config, secrets);
+                    X509TrustManager trust = network == null ? null : network.trustManager();
+                    loaded = create(config, secrets, trust);
                 } catch (GeneralSecurityException | SecretUnavailableException e) {
                     throw new IOException("Client-Zertifikat nicht nutzbar: " + e.getMessage(), e);
+                } catch (RuntimeException e) {
+                    throw new IOException("TLS-Vertrauensquellen nicht nutzbar: " + e.getMessage(), e);
                 }
             }
             return loaded;

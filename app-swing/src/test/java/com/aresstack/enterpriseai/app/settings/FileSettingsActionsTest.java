@@ -147,7 +147,7 @@ public class FileSettingsActionsTest {
         SettingsForm form = SettingsMapper.firstStartDefaults().toBuilder()
                 .chatBaseUrl("http://127.0.0.1:9/v1").chatModel("test-chat")
                 .embeddingModel("test-embedding").embeddingDimension("8")
-                .keePassEnabled(false).proxyMode(SettingsForm.PROXY_NONE).build();
+                .keePassEnabled(false).proxyMode(SettingsForm.PROXY_DISABLED).build();
         assertTrue(actions.validate(form).toString(), actions.validate(form).isEmpty());
         assertFalse(file.exists());
         actions.save(form);

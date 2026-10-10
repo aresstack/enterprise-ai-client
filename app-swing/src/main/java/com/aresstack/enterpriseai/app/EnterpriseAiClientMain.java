@@ -7,11 +7,12 @@ import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
 import com.aresstack.enterpriseai.app.config.AppConfig;
-import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppPaths;
+import com.aresstack.enterpriseai.app.config.NetworkConfig;
+import com.aresstack.enterpriseai.app.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
-import com.aresstack.enterpriseai.app.net.ProxyPolicy;
-import com.aresstack.enterpriseai.app.net.TrustPolicy;
+import com.aresstack.enterpriseai.app.net.NetworkServices;
+import com.aresstack.enterpriseai.app.security.ProxyAuthenticator;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.app.settings.FileSourceActions;
@@ -43,10 +44,12 @@ import java.util.logging.Logger;
 /**
  * Einstiegspunkt der Desktop-Anwendung und Composition Root (AP23). Ablauf: Protokolldatei anhängen,
  * Konfiguration beschaffen (fehlt sie oder lädt sie nicht, öffnet sich mit Oberfläche der Einstellungen-Dialog;
- * ohne Display wird die Beispieldatei angelegt und erklärt), TLS-Vertrauen und Proxy-Regel installieren,
- * Adapter bauen, Graphen komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung
- * starten. Schließen des Fensters fährt geordnet herunter und beendet die JVM; der Shutdown-Hook deckt hartes
- * Beenden ab (beide idempotent).
+ * ohne Display wird die Beispieldatei angelegt und erklärt), Netzschicht bauen (Proxy-Route, TLS-Vertrauen und
+ * User-Agent als {@link NetworkServices}, ohne etwas aufzulösen; die erste Anfrage löst auf), Adapter bauen,
+ * Graphen komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten. Prozessweit
+ * gesetzt werden nur {@code java.net.preferIPv6Addresses} (Option) und bei Proxy-Anmeldung BASIC der
+ * {@link ProxyAuthenticator}. Schließen des Fensters fährt geordnet herunter und beendet die JVM; der
+ * Shutdown-Hook deckt hartes Beenden ab (beide idempotent).
  *
  * <p>Start: {@code ./gradlew :app-swing:run}; Konfigurationsdatei per {@code -Denterpriseai.config=<Pfad>},
  * Benutzerverzeichnis per {@code -Denterpriseai.home=<Pfad>} (siehe {@link AppPaths}). Protokoll:
@@ -84,37 +87,26 @@ public final class EnterpriseAiClientMain {
         }
         AppConfig config = outcome.config();
         LOG.info("Konfiguration aus " + file.path() + ": " + config);
-        TrustPolicy trust;
-        try {
-            trust = TrustPolicy.from(config.network());
-        } catch (AppConfigException e) {
-            // Die Datei hat die Prüfung in ConfigurationStartup bestanden; hier landet nur, was sich seither
-            // geändert hat (z. B. die CA-Datei gelöscht).
-            String message = ConfigurationStartup.problems(file, e);
-            LOG.severe(message);
-            showError("Konfiguration", message);
-            AppLogFile.uninstall(logFile);
-            System.exit(EXIT_CONFIG);
-            return;
+        NetworkConfig networkConfig = config.network();
+        if (networkConfig.preferIpv6() && System.getProperty("java.net.preferIPv6Addresses") == null) {
+            // Wie askai-java8: nur wirksam, bevor die erste Namensauflösung läuft.
+            System.setProperty("java.net.preferIPv6Addresses", "true");
         }
-
-        // Vertrauen und Proxy vor dem ersten Verbindungsaufbau prozessweit setzen (HttpURLConnection liest beides
-        // beim Öffnen einer Verbindung).
-        trust.install();
-        for (String notice : trust.notices()) {
-            LOG.info(notice);
-        }
-        LOG.info("TLS-Vertrauensquellen: " + trust.sources());
-        final ProxyPolicy proxy = new ProxyPolicy(config.network());
-        proxy.install();
-        LOG.info("Proxy-Regel: " + proxy);
-        LOG.info("Route zum KI-Dienst " + config.chat().baseUrl().getHost() + ": "
-                + proxy.describeRoute(config.chat().baseUrl()));
+        // Nichts wird prozessweit installiert: Route und Vertrauensregel bekommen die Adapter je Verbindung; die
+        // erste Anfrage löst die Route auf und baut die Regel (PowerShell-Export unter Windows), nicht der Start.
+        final NetworkServices network = NetworkServices.from(networkConfig);
+        LOG.info("Proxy-Regel: " + network.routes().describe());
+        LOG.info("TLS-Vertrauensquellen (werden bei der ersten HTTPS-Verbindung geladen): "
+                + networkConfig.describeTrust());
+        LOG.info("User-Agent: " + network.userAgent());
         final ApplicationPorts ports;
         final CompositionRoot root;
         try {
-            ports = AdapterAssembly.create(config, proxy, new SwingPairingCallback(
+            ports = AdapterAssembly.create(config, network, new SwingPairingCallback(
                     config.keePass().rpc().host() + ":" + config.keePass().rpc().port()));
+            if (networkConfig.proxyAuthMode() == ProxyAuthMode.BASIC && networkConfig.proxyCredentialRef() != null) {
+                ProxyAuthenticator.install(ports.secrets(), networkConfig.proxyCredentialRef());
+            }
             root = CompositionRoot.compose(config, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
                     null);
         } catch (RuntimeException e) {

@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.source.mediawiki;
 
+import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+
+import javax.net.ssl.SSLSocketFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,8 +25,10 @@ import java.util.Map;
  * <p>Übernommen aus MainframeMate {@code JwbfWikiContentService}: eigener {@link CookieManager} je Site
  * (keine globale {@code CookieHandler}-Einstellung), alle Cookies in genau einem {@code Cookie}-Header,
  * Redirects manuell, damit Session-Cookies über Weiterleitungen erhalten bleiben. Anders als dort werden
- * weder Cookies, Tokens noch Antwortkörper geloggt. Proxy-Auswahl bleibt Sache der JVM bzw. der
- * Composition Root ({@code ProxySelector}).
+ * weder Cookies, Tokens noch Antwortkörper geloggt. Die Proxy-Route liefert je Ziel der {@link HttpRoutePort}
+ * der Composition Root und wird jeder Verbindung ausdrücklich mitgegeben (kein prozessweiter
+ * {@code ProxySelector}); ohne Port gilt der JVM-Standard. Eine {@link SSLSocketFactory} (Vertrauensquellen
+ * der Anwendung) wird je HTTPS-Verbindung gesetzt, nie global.
  */
 final class UrlConnectionMediaWikiTransport implements MediaWikiTransport {
 
@@ -31,11 +36,19 @@ final class UrlConnectionMediaWikiTransport implements MediaWikiTransport {
 
     private final MediaWikiSiteConfig site;
     private final String endpoint;
+    private final HttpRoutePort routes;
+    private final SSLSocketFactory sslSocketFactory;
     private volatile CookieManager cookies = newCookieManager();
 
     UrlConnectionMediaWikiTransport(MediaWikiSiteConfig site) {
+        this(site, null, null);
+    }
+
+    UrlConnectionMediaWikiTransport(MediaWikiSiteConfig site, HttpRoutePort routes, SSLSocketFactory sslSocketFactory) {
         this.site = site;
         this.endpoint = site.apiEndpoint();
+        this.routes = routes;
+        this.sslSocketFactory = sslSocketFactory;
     }
 
     @Override
@@ -91,13 +104,12 @@ final class UrlConnectionMediaWikiTransport implements MediaWikiTransport {
     }
 
     private HttpURLConnection open(String url, String method) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        HttpURLConnection conn = RouteConnections.open(toUri(url), routes, sslSocketFactory, site.userAgent());
         conn.setRequestMethod(method);
         conn.setInstanceFollowRedirects(false);
         conn.setUseCaches(false);
         conn.setConnectTimeout(site.connectTimeoutMillis());
         conn.setReadTimeout(site.readTimeoutMillis());
-        conn.setRequestProperty("User-Agent", site.userAgent());
         conn.setRequestProperty("Accept", "application/json");
         conn.setRequestProperty("Accept-Charset", "UTF-8");
         String cookieHeader = cookieHeader(url);

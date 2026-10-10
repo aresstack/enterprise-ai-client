@@ -2,6 +2,8 @@ description = 'Adapter: OpenAI-kompatibler /embeddings-Client der internen Enter
 
 dependencies {
     api project(':embedding-api')
+    // Route je Anfrage (Proxy-Entscheidung) über den neutralen Port http-api aus der Composition Root.
+    api project(':http-api')
 
     implementation libs.gson
 

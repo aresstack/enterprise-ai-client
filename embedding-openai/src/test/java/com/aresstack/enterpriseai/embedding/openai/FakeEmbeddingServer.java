@@ -35,6 +35,7 @@ final class FakeEmbeddingServer implements AutoCloseable {
         final String contentType;
         final String authorization;
         final String accept;
+        final String userAgent;
         final byte[] body;
 
         Recorded(HttpExchange exchange, byte[] body) {
@@ -43,6 +44,7 @@ final class FakeEmbeddingServer implements AutoCloseable {
             this.contentType = exchange.getRequestHeaders().getFirst("Content-Type");
             this.authorization = exchange.getRequestHeaders().getFirst("Authorization");
             this.accept = exchange.getRequestHeaders().getFirst("Accept");
+            this.userAgent = exchange.getRequestHeaders().getFirst("User-Agent");
             this.body = body;
         }
 

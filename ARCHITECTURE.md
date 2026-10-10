@@ -339,8 +339,8 @@ Shutdown-Hook und zeigt das Fenster.
 enterprise-ai-client.properties ──AppConfigLoader──▶ AppConfig (Snapshots, ohne Secrets)
         │                                              │
         ▼                                              ▼
-TrustPolicy (Standard-SSLSocketFactory) AdapterAssembly ──▶ ApplicationPorts (Chat, Embedding, Index, Quellen,
-ProxyPolicy (JVM-ProxySelector)
+TrustPolicy (SSLSocketFactory je Verb.)   AdapterAssembly ──▶ ApplicationPorts (Chat, Embedding, Index, Quellen,
+NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
                                                             SecretProvider, AgentBackend, Schließreihenfolge)
                                                             │
                                        CompositionRoot ◀────┘  Use Cases (AP2/AP10/AP20), Bindings (AP22),
@@ -351,7 +351,7 @@ ProxyPolicy (JVM-ProxySelector)
 
 - **Pakete**: `app.config` (Snapshots `AppConfig`, `ChatConfig`, `EmbeddingConfig`, `KnowledgeConfig`,
   `SourceConfig`, `KeePassConfig`, `NetworkConfig`, `AgentConfig`; `AppConfigLoader`, `AppPaths`), `app.net`
-  (`ProxyPolicy`, `TrustPolicy`, `ConnectionDiagnosis`), `app.security` (Brücken zum Security-Port,
+  (`HttpRoutes`, `NetworkServices`, `TrustPolicy`, `ConnectionDiagnosis`), `app.security` (Brücken zum Security-Port,
   `FilePairingKeyStore`, `SwingPairingCallback`),
   `app.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `app.ui.settings` (Einstellungen-Dialog,
   reine Oberfläche über dem Formular `SettingsForm` und dem Vertrag `SettingsDialogActions`), `app.ui.workspace`
@@ -385,18 +385,12 @@ ProxyPolicy (JVM-ProxySelector)
   `UnavailableSecretProvider`, zeigt beim Start, dass Secrets fehlen, und jede Anfrage scheitert mit einem
   Authentifizierungsfehler. Bekannte Grenze: der Chat-Adapter verlangt den Token als `String`, der sich nicht
   überschreiben lässt; jede Anfrage holt den Key neu über KeePassRPC (kein Cache erlaubt).
-- **Netz**: `ProxyPolicy` (AUTO = PAC-/WPAD-Skript des Unternehmens über `PacProxyRoutes`, sonst
-  Systemeinstellungen; SYSTEM = Proxy-Einstellungen des Betriebssystems über `java.net.useSystemProxies`;
-  NONE; MANUAL mit Ausnahmen; Loopback nie über Proxy) als JVM-`ProxySelector` für Chat- und MediaWiki-Adapter
-  (`HttpURLConnection`) und als expliziter `Proxy` für Embedding- und Confluence-Adapter. `PacProxyRoutes`
-  wertet das Skript mit `com.aresstack:win-proxy-java` (GraalJS) aus, cached je Ziel-Host und fällt bei Fehlern
-  mit Grund im Protokoll auf die Systemeinstellungen zurück (die Bibliothek selbst meldet Fehler nie als
-  DIRECT; der Rückfall ist Entscheidung der Anwendung). Confluence zusätzlich
+- **Netz**: `HttpRoutes` implementiert den Port `HttpRoutePort` (Modul `http-api`) mit win-proxy-java 0.2.0: Route je Ziel, Cache, harter Timeout, nie auf dem EDT, NOT_IMPLEMENTED/ERROR als nicht verfügbare Route statt DIRECT. Jeder Adapter (Chat, Embeddings, MediaWiki, Confluence) übergibt Route, `SSLSocketFactory` (win-trust-java 0.1.0) und User-Agent je `HttpURLConnection`; kein globaler `ProxySelector`. Confluence zusätzlich
   mit Timeouts und optionalem Client-Zertifikat (Windows-MY per Alias oder PKCS12 mit Passwort über `SecretRef`,
-  `ClientCertificateFactory`). `TrustPolicy` (`network.tls.*`) vereint JVM-Truststore, unter Windows den
-  Windows-Zertifikatspeicher (`Windows-ROOT`) und optional eine CA-Datei zu einem Trust-Manager und installiert
-  ihn als Standard-`SSLSocketFactory` von `HttpsURLConnection` (gilt für alle Adapter ohne eigenen
-  SSL-Kontext; Confluence mit Client-Zertifikat bleibt beim JVM-Truststore). `ConnectionDiagnosis` macht aus
+  `ClientCertificateFactory`). `TrustPolicy` (`network.tls.*`) vereint über win-trust-java JVM-Truststore, unter Windows
+  Windows-ROOT und Windows Root+Intermediate sowie optional eine CA-Datei zu einem Trust-Manager; die
+  `SSLSocketFactory` wird je Verbindung gesetzt, nie global (Confluence mit Client-Zertifikat nutzt denselben
+  Trust-Manager). `ConnectionDiagnosis` macht aus
   der Ausnahmekette einer gescheiterten Anfrage die Zeilen `Technische Ursache:` und `Hinweis:` der Fehlerblase
   (Paketnamen entfernt, Tokens maskiert); die Bindings loggen jeden Fehler mit Stacktrace. Kein gemeinsamer
   Transport.
@@ -414,7 +408,7 @@ ProxyPolicy (JVM-ProxySelector)
   Quelle, In-Process-MCP-Registry, Fake-ACP-Connector) und prüft Indexierung, Chat- und RAG-Roundtrip durch die
   Shell, Agent-Werkzeuge und Shutdown-Reihenfolge; `AdapterAssemblyTest` baut die echten Adapter aus der
   Beispielkonfiguration ohne Netz; dazu `AppConfigLoaderTest`, `FilePairingKeyStoreTest`,
-  `SecretBackedTokenSourcesTest`, `ProxyPolicyTest`, `PacProxyRoutesTest` (lokales PAC-Skript mit
+  `SecretBackedTokenSourcesTest`, `HttpRoutesTest` (lokales PAC-Skript mit
   Sentinel-Proxy, Cache, Rückfall), `TrustPolicyTest` (lokaler HTTPS-Server mit selbstsigniertem Zertifikat),
   `ConnectionDiagnosisTest`, `AppLogFileTest`, `ShutdownSequenceTest`, `StartupIndexingTest`.
   Architekturregel `CompositionRootBoundaryTest`.
@@ -510,7 +504,7 @@ Kurzfassung; die ausführliche Tabelle je Arbeitspaket mit den Änderungen gegen
 | MCP-Werkzeugkatalog als Fabrik von `McpToolContribution`s mit Fehlern als Ergebnis statt Exception und Auflösung des Ziels vor dem Aufruf (`application.mcp`) | Miguel0888/askai-java8 (`ResearchBotDirectoryTools`, `ResearchBotSessionTools`) |
 | Parameter `query`/`maxResults`/`sources`, Snippet-Grenze und Gesamtgrenze 20.000 Zeichen der Wissenswerkzeuge | Miguel0888/MainframeMate (`SearchIndexTool`, `ReadChunksTool`) |
 | Konfiguration als Properties-Datei im Benutzerverzeichnis mit Pfad-Override per System-Property, unveränderliche Snapshots, Proxy-Modi System/keiner/manuell (`app.config`, `app.net`) | Miguel0888/askai-java8 (`AppConfigurationRepository`, `AskAiPaths`, `ProxyConfiguration`) |
-| PAC-/WPAD-Proxyskripte auswerten (`app.net.PacProxyRoutes`, Modus AUTO) | Bibliothek aresstack/win-proxy-java 0.1.0-beta.4 (wie in corenth `network-winproxy` und askai-java8 `ProxyConfiguration`); Cache je Host und Rückfall auf Systemeinstellungen sind neu |
+| Proxy-Auflösung (`app.net.HttpRoutes`, alle Modi) | Bibliothek aresstack/win-proxy-java 0.2.0 und win-trust-java 0.1.0 (wie in corenth `network-winproxy` und askai-java8 `ProxyConfiguration`); Cache je Host und Rückfall auf Systemeinstellungen sind neu |
 | Settings-Schlüssel für Proxy, Timeouts, mTLS (Windows-MY-Alias), KeePassRPC-Verdrahtung mit Pairing-Dialog und Zugangsdaten je Aufruf (`app.security`, `app.ui.security`) | Miguel0888/MainframeMate (`Settings`, `KeePassProvider`, `KeePassRpcPairingDialog`, `MvsBrowser`-Proxy) |
 | Composition Root als einziger Ort für Adapterkonstruktoren, Secret-Material verlässt den Aufruf nicht (`app.composition`, `CompositionRootBoundaryTest`) | aresstack/corenth (Composition Root, `adyton`) |
 
