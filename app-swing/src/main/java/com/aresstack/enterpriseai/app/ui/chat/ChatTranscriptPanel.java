@@ -11,14 +11,14 @@ import com.aresstack.enterpriseai.ui.comic.bubble.BubbleSide;
 import com.aresstack.enterpriseai.ui.comic.bubble.SpeechBubblePanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.TranscriptBubble;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
-import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
-import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
+import com.aresstack.enterpriseai.ui.comic.control.ReadAloudOrb;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
+import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollBar;
 import javax.swing.Scrollable;
@@ -28,11 +28,15 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
+import java.awt.LayoutManager;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -63,9 +67,11 @@ import java.util.Map;
  * Damit wächst die Zeit je Delta nicht mit der Textlänge. Abschluss, Abbruch, Fehler und Quellen werden sofort
  * angewendet; {@link #flushPendingUpdates()} wendet Gesammeltes auf Wunsch sofort an.
  *
- * <p>Mit einer {@link ReadAloudControl} steht unter jeder fertigen Antwort ein Lautsprecher-Knopf (Vorlesen/Stopp);
- * ohne verfügbare Sprachausgabe bleibt er deaktiviert und nennt im Tooltip den Grund. Ist automatisches Vorlesen
- * eingestellt, startet es, sobald eine live gestreamte Antwort fertig ist (nicht beim Laden gespeicherter Chats).
+ * <p>Mit einer {@link ReadAloudControl} liegt oben rechts über dem Verlauf der Play/Pause-Orb aus askai-java8
+ * {@code arch} ({@code ResearchOutOfScopeSky}, „Gemini-artig“): Play liest die letzte Antwort vor und bleibt aktiv,
+ * jede neue live gestreamte Antwort wird dann automatisch vorgelesen, bis Pause es beendet. Ist automatisches
+ * Vorlesen eingestellt, ist der Orb von Anfang an aktiv; beim Laden gespeicherter Chats wird nichts vorgelesen.
+ * Ohne verfügbare Sprachausgabe bleibt der Orb deaktiviert und nennt im Tooltip den Grund.
  *
  * <p>Zeilenlayout, Blasenbreite und Zeilenhöhe kommen unverändert aus der Comic-Bibliothek
  * ({@link BubbleMessageRow}), die Breitenführung durch den Viewport aus AskAIs {@code BubbleTranscriptPanel}.
@@ -80,8 +86,13 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     static final String STREAMING_PLACEHOLDER = "…";
     static final String SHOW_DETAILS_LABEL = "Details anzeigen";
     static final String HIDE_DETAILS_LABEL = "Details ausblenden";
-    static final String READ_ALOUD_LABEL = "Vorlesen";
-    static final String READ_ALOUD_STOP_LABEL = "Vorlesen beenden";
+    static final String READ_ALOUD_PLAY_TOOLTIP =
+            "Letzte Antwort vorlesen (neue Antworten werden automatisch vorgelesen)";
+    static final String READ_ALOUD_PAUSE_TOOLTIP = "Vorlesen pausieren";
+    static final String READ_ALOUD_UNAVAILABLE_TOOLTIP = "Vorlesen nicht verfügbar";
+
+    /** Abstand des Orbs vom oberen und rechten Rand des Verlaufs. */
+    private static final int ORB_INSET = 10;
 
     /** Höchstens eine Blasen-Aktualisierung je Intervall, solange eine Antwort streamt. */
     static final int FLUSH_INTERVAL_MILLIS = 30;
@@ -100,8 +111,10 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final Map<Long, RowState> rows = new HashMap<Long, RowState>();
     private final Map<Long, BubbleMessageRow> sourceRows = new HashMap<Long, BubbleMessageRow>();
     private final Map<Long, TranscriptEntry> pending = new LinkedHashMap<Long, TranscriptEntry>();
-    private final Map<Long, ComposerButton> readAloudButtons = new HashMap<Long, ComposerButton>();
+    private final ReadAloudOrb readAloudOrb = new ReadAloudOrb();
     private ReadAloudControl readAloud;
+    private boolean readAloudActive;
+    private String latestAnswer;
     private final Timer flushTimer;
     private long lastFlushNanos;
     private boolean flushedBefore;
@@ -141,7 +154,24 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER, comicPalette);
         scrollPane.getViewport().setBackground(bubblePalette.getTranscriptBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(18);
-        add(scrollPane, BorderLayout.CENTER);
+        final JLayeredPane layers = new JLayeredPane();
+        layers.setLayout(new OrbOverlayLayout());
+        scrollPane.getViewport().addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent event) {
+                layers.doLayout(); // Bildlaufleiste erscheint oder verschwindet: Orb bleibt links daneben
+            }
+        });
+        layers.add(scrollPane, JLayeredPane.DEFAULT_LAYER);
+        layers.add(readAloudOrb, JLayeredPane.PALETTE_LAYER);
+        readAloudOrb.setVisible(false);
+        readAloudOrb.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                toggleReadAloud();
+            }
+        });
+        add(layers, BorderLayout.CENTER);
         flushTimer = new Timer(FLUSH_INTERVAL_MILLIS, new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent event) {
@@ -170,12 +200,14 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         if (entry.hasSources()) {
             addSourcesRow(entry);
         }
-        addReadAloudRowIfComplete(entry);
+        if (isCompleteAnswer(entry)) {
+            latestAnswer = entry.getText(); // gezeigt oder geladen, aber nie von selbst vorgelesen
+        }
         refresh(true);
     }
 
     /**
-     * Schließt die Sprachausgabe an: Lautsprecher-Knöpfe unter allen fertigen Antworten, auch den schon gezeigten.
+     * Schließt die Sprachausgabe an und zeigt den Play/Pause-Orb; mit automatischem Vorlesen ist er sofort aktiv.
      * Einmal je Verlauf (UI-Thread).
      */
     public void setReadAloud(ReadAloudControl control) {
@@ -183,58 +215,58 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             throw new IllegalStateException("read-aloud control must be set exactly once");
         }
         readAloud = control;
+        readAloudActive = control.isAvailable() && control.autoStart();
+        readAloudOrb.setVisible(true);
+        styleReadAloudOrb();
         control.addListener(new ReadAloudControl.Listener() {
             @Override
             public void readAloudChanged() {
-                for (Map.Entry<Long, ComposerButton> button : readAloudButtons.entrySet()) {
-                    styleReadAloudButton(button.getValue(), button.getKey());
+                if (!readAloud.isAvailable()) {
+                    readAloudActive = false; // neue Stimme fehlt: der Orb fällt auf Play zurück
                 }
+                styleReadAloudOrb();
             }
         });
-        for (TranscriptEntry entry : model.getEntries()) {
-            addReadAloudRowIfComplete(entry);
-        }
-        refresh(false);
     }
 
-    /** Der Lautsprecher-Knopf einer Antwort (für Tests), oder {@code null}. */
-    ComposerButton readAloudButtonFor(long entryId) {
-        return readAloudButtons.get(entryId);
+    /** Der Bildlaufbereich des Verlaufs (für Tests). */
+    ComicScrollPane scrollPane() {
+        return scrollPane;
     }
 
-    private void addReadAloudRowIfComplete(final TranscriptEntry entry) {
-        if (readAloud == null || entry.getAuthor() != TranscriptEntry.Author.ASSISTANT
-                || entry.getState() != TranscriptEntry.State.COMPLETE || entry.getText().trim().isEmpty()
-                || readAloudButtons.containsKey(entry.getId()) || !rows.containsKey(entry.getId())) {
+    /** Der Play/Pause-Orb (für Tests). */
+    ReadAloudOrb readAloudOrb() {
+        return readAloudOrb;
+    }
+
+    /** Play liest die letzte Antwort sofort vor und bleibt aktiv; Pause beendet die laufende Ausgabe. */
+    private void toggleReadAloud() {
+        if (readAloud == null || !readAloud.isAvailable()) {
             return;
         }
-        final long id = entry.getId();
-        ComposerButton button = ComposerButton.iconButton(ComposerIcons.speaker(), READ_ALOUD_LABEL);
-        button.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent event) {
-                readAloud.toggle(id, entry.getText());
+        if (readAloudActive) {
+            readAloudActive = false;
+            readAloud.stop();
+        } else {
+            readAloudActive = true;
+            if (latestAnswer != null) {
+                readAloud.speak(latestAnswer);
             }
-        });
-        styleReadAloudButton(button, id);
-        JPanel holder = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        holder.setOpaque(false);
-        holder.add(button);
-        BubbleMessageRow row = new BubbleMessageRow(holder, BubbleSide.LEFT);
-        row.setAlignmentX(LEFT_ALIGNMENT);
-        int index = messageList.getComponentZOrder(rows.get(id).row) + 2; // hinter Blase und Abstand
-        messageList.add(row, index);
-        messageList.add(spacer(), index + 1);
-        readAloudButtons.put(id, button);
+        }
+        styleReadAloudOrb();
     }
 
-    private void styleReadAloudButton(ComposerButton button, long entryId) {
-        boolean reading = readAloud.isReading(entryId);
-        button.setEnabled(readAloud.isAvailable());
-        button.setIcon(reading ? ComposerIcons.stop() : ComposerIcons.speaker());
-        String label = reading ? READ_ALOUD_STOP_LABEL : READ_ALOUD_LABEL;
-        button.setToolTipText(label + " (" + readAloud.description() + ")");
-        button.getAccessibleContext().setAccessibleName(label);
+    private void styleReadAloudOrb() {
+        readAloudOrb.setEnabled(readAloud.isAvailable());
+        readAloudOrb.setActive(readAloudActive);
+        String tooltip = !readAloud.isAvailable() ? READ_ALOUD_UNAVAILABLE_TOOLTIP
+                : readAloudActive ? READ_ALOUD_PAUSE_TOOLTIP : READ_ALOUD_PLAY_TOOLTIP;
+        readAloudOrb.setToolTipText(tooltip + " (" + readAloud.description() + ")");
+    }
+
+    private static boolean isCompleteAnswer(TranscriptEntry entry) {
+        return entry.getAuthor() == TranscriptEntry.Author.ASSISTANT
+                && entry.getState() == TranscriptEntry.State.COMPLETE && !entry.getText().trim().isEmpty();
     }
 
     @Override
@@ -290,7 +322,10 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         pending.clear();
         rows.clear();
         sourceRows.clear();
-        readAloudButtons.clear();
+        latestAnswer = null;
+        if (readAloud != null) {
+            readAloud.stop(); // die Stimme überlebt ihren Chat nicht
+        }
         messageList.removeAll();
         refresh(false);
     }
@@ -339,11 +374,10 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         }
         boolean finishedLive = state.streamed && entry.getState() != TranscriptEntry.State.STREAMING;
         state.streamed = entry.getState() == TranscriptEntry.State.STREAMING;
-        if (readAloud != null && !readAloudButtons.containsKey(entry.getId())) {
-            addReadAloudRowIfComplete(entry);
-            if (finishedLive && readAloudButtons.containsKey(entry.getId()) && readAloud.autoStart()
-                    && readAloud.isAvailable()) {
-                readAloud.toggle(entry.getId(), entry.getText());
+        if (finishedLive && isCompleteAnswer(entry)) {
+            latestAnswer = entry.getText();
+            if (readAloudActive) {
+                readAloud.speak(latestAnswer); // eine neue Antwort, während Vorlesen aktiv ist
             }
         }
     }
@@ -539,6 +573,41 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             this.header = header;
             this.shownLength = shownLength;
             this.showsEntryText = showsEntryText;
+        }
+    }
+
+    /**
+     * Legt den Verlauf über die ganze Fläche und den Orb oben rechts darüber (wie askai {@code arch}: der Orb sitzt
+     * am rechten Rand über dem Verlauf), links neben einer sichtbaren Bildlaufleiste.
+     */
+    private final class OrbOverlayLayout implements LayoutManager {
+
+        @Override
+        public void addLayoutComponent(String name, Component component) {
+        }
+
+        @Override
+        public void removeLayoutComponent(Component component) {
+        }
+
+        @Override
+        public Dimension preferredLayoutSize(Container parent) {
+            return scrollPane.getPreferredSize();
+        }
+
+        @Override
+        public Dimension minimumLayoutSize(Container parent) {
+            return scrollPane.getMinimumSize();
+        }
+
+        @Override
+        public void layoutContainer(Container parent) {
+            int width = parent.getWidth();
+            scrollPane.setBounds(0, 0, width, parent.getHeight());
+            scrollPane.doLayout();
+            Rectangle viewport = scrollPane.getViewport().getBounds();
+            readAloudOrb.setBounds(viewport.x + viewport.width - ORB_INSET - ReadAloudOrb.SIZE,
+                    viewport.y + ORB_INSET, ReadAloudOrb.SIZE, ReadAloudOrb.SIZE);
         }
     }
 

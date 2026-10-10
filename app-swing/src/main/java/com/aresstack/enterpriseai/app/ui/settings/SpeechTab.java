@@ -17,9 +17,9 @@ final class SpeechTab {
     SpeechTab(ComicPalette palette) {
         FormRows speech = new FormRows(palette);
         speech.note("Vorgelesen wird über den optionalen lokalen Java-21-Sidecar mit der Stimme aus „Modelle“ "
-                + "(Kategorie TTS). Ohne Stimme bleibt der Lautsprecher-Knopf unter den Antworten aus.");
+                + "(Kategorie TTS). Ohne Stimme bleibt der Play/Pause-Orb über dem Verlauf aus.");
         readAloudAutoStart = speech.checkBox("Neue Antworten automatisch vorlesen",
-                "Jede fertige Antwort wird sofort vorgelesen (speech.readAloud.autoStart)");
+                "Der Orb ist beim Start aktiv: jede neue Antwort wird sofort vorgelesen (speech.readAloud.autoStart)");
         panel = FormRows.column(palette,
                 FormRows.plate("Sprachausgabe", palette.getAgentPetrol(), speech.panel(), palette));
     }

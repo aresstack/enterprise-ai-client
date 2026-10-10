@@ -8,7 +8,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Die Sprachausgabe des Verlaufs mit austauschbarer {@link ReadAloudBinding}: speichert der Benutzer ein anderes
  * TTS-Modell, gilt es wie die Chat-Auswahl sofort, ohne Neustart. {@link #replace} beendet die alte Bindung und
- * meldet den Wechsel, damit die Lautsprecher-Knöpfe Zustand und Tooltip neu zeichnen. Alles auf dem EDT.
+ * meldet den Wechsel, damit der Play/Pause-Orb Zustand und Tooltip neu zeichnet. Alles auf dem EDT.
  */
 public final class SwitchableReadAloud implements ReadAloudControl {
 
@@ -20,7 +20,6 @@ public final class SwitchableReadAloud implements ReadAloudControl {
             throw new IllegalArgumentException("initial must not be null");
         }
         this.current = initial;
-        attach(initial);
     }
 
     /** Ersetzt die Bindung (auf dem EDT); eine laufende Wiedergabe der alten endet. */
@@ -30,24 +29,12 @@ public final class SwitchableReadAloud implements ReadAloudControl {
         }
         ReadAloudBinding previous = current;
         current = next;
-        attach(next);
         previous.close();
         fireChanged();
     }
 
     public String currentDescription() {
         return current.description();
-    }
-
-    private void attach(final ReadAloudBinding binding) {
-        binding.addListener(new Listener() {
-            @Override
-            public void readAloudChanged() {
-                if (binding == current) {
-                    fireChanged();
-                }
-            }
-        });
     }
 
     @Override
@@ -61,13 +48,13 @@ public final class SwitchableReadAloud implements ReadAloudControl {
     }
 
     @Override
-    public boolean isReading(long entryId) {
-        return current.isReading(entryId);
+    public void speak(String markdown) {
+        current.speak(markdown);
     }
 
     @Override
-    public void toggle(long entryId, String markdown) {
-        current.toggle(entryId, markdown);
+    public void stop() {
+        current.stop();
     }
 
     @Override

@@ -135,7 +135,7 @@ public final class EnterpriseAiClientMain {
         }
         // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über die Quelle dieses Modells (Enterprise-API oder
         // lokaler Sidecar, derselbe Prozess wie der Katalog); ohne TTS-Modell oder ohne Java 21 für ein lokales
-        // bleibt sie aus und der Lautsprecher-Knopf nennt den Grund.
+        // bleibt sie aus und der Play/Pause-Orb nennt den Grund.
         final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
                 modelCatalogs.speech(config, config.models(), network, chatToken(config, ports))));
         LOG.info("Sprachausgabe: " + readAloud.currentDescription());
