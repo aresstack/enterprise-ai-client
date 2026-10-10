@@ -80,10 +80,18 @@ public final class ChatShellModel {
     }
 
     public TranscriptEntry addUserMessage(String text) {
+        return addUserMessage(text, Collections.<String>emptyList());
+    }
+
+    /** Eine Nutzernachricht mit den Dateinamen ihrer Anhänge (für die Anzeige in der Nutzerblase). */
+    public TranscriptEntry addUserMessage(String text, List<String> attachmentNames) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("text must not be blank");
         }
         TranscriptEntry entry = newEntry(TranscriptEntry.Author.USER, text, TranscriptEntry.State.COMPLETE);
+        if (attachmentNames != null && !attachmentNames.isEmpty()) {
+            entry.setAttachments(attachmentNames);
+        }
         fireEntryAdded(entry);
         return entry;
     }

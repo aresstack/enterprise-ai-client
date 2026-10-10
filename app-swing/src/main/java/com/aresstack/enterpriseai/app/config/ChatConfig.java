@@ -20,9 +20,11 @@ public final class ChatConfig {
     private final int readTimeoutMillis;
     private final DeveloperRolePolicy developerRolePolicy;
     private final ChatOptions defaultOptions;
+    private final boolean toolsEnabled;
 
     ChatConfig(URI baseUrl, String model, SecretRef apiKeyRef, String systemPrompt, int connectTimeoutMillis,
-               int readTimeoutMillis, DeveloperRolePolicy developerRolePolicy, ChatOptions defaultOptions) {
+               int readTimeoutMillis, DeveloperRolePolicy developerRolePolicy, ChatOptions defaultOptions,
+               boolean toolsEnabled) {
         this.baseUrl = baseUrl;
         this.model = model;
         this.apiKeyRef = apiKeyRef;
@@ -31,6 +33,7 @@ public final class ChatConfig {
         this.readTimeoutMillis = readTimeoutMillis;
         this.developerRolePolicy = developerRolePolicy;
         this.defaultOptions = defaultOptions;
+        this.toolsEnabled = toolsEnabled;
     }
 
     /** Basis der API, z. B. {@code https://ki.intern.example/v1}; der Adapter hängt {@code chat/completions} an. */
@@ -69,11 +72,19 @@ public final class ChatConfig {
         return defaultOptions;
     }
 
+    /**
+     * {@code chat.tools.enabled}: jede Frage läuft mit Werkzeugen über {@code /responses}. Ohne den Schalter nur
+     * Unterhaltungen mit Anhängen; alle anderen streamen wie bisher über {@code /chat/completions}.
+     */
+    public boolean toolsEnabled() {
+        return toolsEnabled;
+    }
+
     @Override
     public String toString() {
         return "ChatConfig[baseUrl=" + baseUrl + ", model=" + model + ", apiKeyRef="
                 + (apiKeyRef == null ? "keine" : apiKeyRef) + ", systemPrompt="
                 + (systemPrompt == null ? "keiner" : systemPrompt.length() + " Zeichen") + ", developerRolePolicy="
-                + developerRolePolicy + "]";
+                + developerRolePolicy + ", toolsEnabled=" + toolsEnabled + "]";
     }
 }

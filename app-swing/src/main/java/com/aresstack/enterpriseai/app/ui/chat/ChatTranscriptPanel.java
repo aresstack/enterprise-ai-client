@@ -63,6 +63,8 @@ import java.util.Map;
 public final class ChatTranscriptPanel extends JPanel implements ChatShellModelListener {
 
     static final String USER_HEADER = "Du";
+    /** Vor jedem Dateinamen in der Nutzerblase (Anhänge). */
+    static final String ATTACHMENT_PREFIX = "Anhang: ";
     static final String ASSISTANT_HEADER = "Assistent";
     static final String CANCELLED_SUFFIX = " · abgebrochen";
     static final String FAILED_HEADER = "Fehler";
@@ -284,6 +286,13 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     static String displayText(TranscriptEntry entry) {
         String text = entry.getText();
+        if (entry.getAuthor() == TranscriptEntry.Author.USER && !entry.getAttachments().isEmpty()) {
+            StringBuilder withAttachments = new StringBuilder(text).append('\n');
+            for (String name : entry.getAttachments()) {
+                withAttachments.append('\n').append(ATTACHMENT_PREFIX).append(name);
+            }
+            return withAttachments.toString();
+        }
         switch (entry.getState()) {
             case STREAMING:
                 if (!text.isEmpty()) {

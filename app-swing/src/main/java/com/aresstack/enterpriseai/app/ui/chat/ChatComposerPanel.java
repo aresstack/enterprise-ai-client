@@ -11,6 +11,7 @@ import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JFileChooser;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
@@ -34,6 +35,10 @@ import java.awt.event.FocusEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.geom.RoundRectangle2D;
+import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Der Composer nach askai-java8 (arch, {@code ChatComposerPanel}): EINE abgerundete Fläche, darin der rahmenlose
@@ -51,6 +56,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String SEND_LABEL = "Senden";
     static final String STOP_LABEL = "Stop";
     static final String RAG_LABEL = "RAG";
+    static final String ATTACH_TOOLTIP = "Dateien anhängen";
 
     private static final int ARC = 18;
     private static final int MIN_EDITOR_HEIGHT = 62;
@@ -68,6 +74,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final PlaceholderTextArea editor;
     private final ComposerButton sendButton;
     private final ComposerButton stopButton;
+    private final ComposerButton attachButton;
+    private final ChatAttachmentStrip attachmentStrip;
+    private File lastDirectory;
     private boolean editorFocused;
 
     public ChatComposerPanel(ChatShellModel model, ChatShellActions actions, ComicPalette palette) {
@@ -81,6 +90,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.editor = new PlaceholderTextArea(PLACEHOLDER, 2, 40);
         this.sendButton = ComposerButton.primary(ComposerIcons.send(), SEND_LABEL, PRIMARY, "Senden (Enter)");
         this.stopButton = ComposerButton.primary(ComposerIcons.stop(), STOP_LABEL, DANGER, "Antwort abbrechen");
+        this.attachButton = ComposerButton.iconButton(ComposerIcons.paperclip(), ATTACH_TOOLTIP);
+        attachButton.getAccessibleContext().setAccessibleName(ATTACH_TOOLTIP);
+        attachButton.setVisible(actions.supportsAttachments());
+        this.attachmentStrip = new ChatAttachmentStrip(() -> refreshAttachmentState());
         buildUi();
         wireBehaviour();
         model.addListener(this);
@@ -112,7 +125,59 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             return;
         }
         editor.setText("");
-        actions.sendRequested(draft.trim(), model.isRagEnabled());
+        List<Path> attachments = attachmentStrip.getAttachments();
+        attachmentStrip.clear();
+        if (attachments.isEmpty()) {
+            actions.sendRequested(draft.trim(), model.isRagEnabled());
+        } else {
+            actions.sendRequested(draft.trim(), model.isRagEnabled(), attachments);
+        }
+    }
+
+    /** Merkt Dateien für die nächste Nachricht vor (bereits vorgemerkte werden übergangen). */
+    public void addAttachments(List<Path> files) {
+        attachmentStrip.addAttachments(files);
+    }
+
+    /** Die vorgemerkten Anhänge. */
+    public List<Path> attachments() {
+        return attachmentStrip.getAttachments();
+    }
+
+    /** Die Büroklammer (nur sichtbar, wenn die Anbindung Anhänge annimmt). */
+    public ComposerButton attachButton() {
+        return attachButton;
+    }
+
+    private void chooseFiles() {
+        JFileChooser chooser = new JFileChooser(lastDirectory);
+        chooser.setDialogTitle(ATTACH_TOOLTIP);
+        chooser.setMultiSelectionEnabled(true);
+        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File[] selected = chooser.getSelectedFiles();
+        List<Path> files = new ArrayList<Path>();
+        if (selected != null && selected.length > 0) {
+            for (File file : selected) {
+                files.add(file.toPath());
+            }
+        } else if (chooser.getSelectedFile() != null) {
+            files.add(chooser.getSelectedFile().toPath());
+        }
+        if (!files.isEmpty()) {
+            lastDirectory = files.get(0).toFile().getParentFile();
+            attachmentStrip.addAttachments(files);
+        }
+        editor.requestFocusInWindow();
+    }
+
+    private void refreshAttachmentState() {
+        int count = attachmentStrip.count();
+        attachButton.setToolTipText(count > 0 ? ATTACH_TOOLTIP + " (" + count + " vorgemerkt)" : ATTACH_TOOLTIP);
+        revalidate();
+        repaint();
     }
 
     /**
@@ -202,6 +267,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         editorScroll.setViewportBorder(BorderFactory.createEmptyBorder());
         editorScroll.setPreferredSize(new Dimension(520, MIN_EDITOR_HEIGHT));
 
+        add(attachmentStrip, BorderLayout.NORTH);
         add(editorScroll, BorderLayout.CENTER);
         add(buildFooter(), BorderLayout.SOUTH);
         setMinimumSize(new Dimension(320, 104));
@@ -213,6 +279,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         footer.setBorder(new EmptyBorder(5, 0, 0, 0));
         JPanel west = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         west.setOpaque(false);
+        west.add(attachButton);
         west.add(ragToggle);
         footer.add(west, BorderLayout.WEST);
 
@@ -234,6 +301,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             }
         });
         ragToggle.addActionListener(event -> model.setRagEnabled(ragToggle.isSelected()));
+        attachButton.addActionListener(event -> chooseFiles());
 
         editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), SEND_ACTION);
         editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK),
@@ -282,6 +350,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         boolean busy = model.canStop();
         sendButton.setEnabled(model.canSend(editor.getText()));
         stopButton.setEnabled(busy);
+        attachButton.setEnabled(!busy);
         if (sendButton.isVisible() == busy || stopButton.isVisible() != busy) {
             sendButton.setVisible(!busy);
             stopButton.setVisible(busy);

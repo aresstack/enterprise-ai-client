@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.application.rag;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.application.chat.ChatTurn;
 import com.aresstack.enterpriseai.application.chat.ChatTurnListener;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.chat.ChatOptions;
 
@@ -67,6 +68,19 @@ public final class RagChatUseCase {
      */
     public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
                             ChatTurnListener listener) {
+        return send(id, userText, rag, options, listener, null, null);
+    }
+
+    /**
+     * Wie {@link #send(ChatConversationId, String, RagOptions, ChatOptions, ChatTurnListener)}, mit einem
+     * zusätzlichen System-Anteil (z. B. die Liste der Anhänge) und einem eigenen Port für diesen Turn (z. B. die
+     * Werkzeug-Schleife). Beides gelangt nicht in die Historie.
+     *
+     * @param extraContext zusätzlicher System-Anteil oder {@code null}; steht hinter dem RAG-Kontext
+     * @param via          Port nur für diesen Turn oder {@code null} für den Standard
+     */
+    public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
+                            ChatTurnListener listener, String extraContext, ChatCompletionPort via) {
         if (userText == null || userText.trim().isEmpty()) {
             throw new IllegalArgumentException("user text must not be blank");
         }
@@ -74,7 +88,9 @@ public final class RagChatUseCase {
             throw new IllegalArgumentException("listener must not be null");
         }
         if (rag == null || !rag.isEnabled()) {
-            ChatTurn turn = chat.send(id, userText, options, listener);
+            ChatTurn turn = extraContext == null && via == null
+                    ? chat.send(id, userText, options, listener)
+                    : chat.sendWithContext(id, userText, extraContext, options, listener, via);
             return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
                     false);
         }
@@ -84,7 +100,7 @@ public final class RagChatUseCase {
             }
         }
         try {
-            return sendWithRetrieval(id, userText, rag, options, listener);
+            return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via);
         } finally {
             synchronized (retrieving) {
                 retrieving.remove(id);
@@ -93,7 +109,8 @@ public final class RagChatUseCase {
     }
 
     private RagChatTurn sendWithRetrieval(ChatConversationId id, String userText, RagOptions rag,
-                                          ChatOptions options, ChatTurnListener listener) {
+                                          ChatOptions options, ChatTurnListener listener, String extraContext,
+                                          ChatCompletionPort via) {
         PromptContext context;
         List<RetrievalWarning> warnings;
         boolean failed = false;
@@ -106,7 +123,17 @@ public final class RagChatUseCase {
             warnings = e.warnings();
             failed = true;
         }
-        ChatTurn turn = chat.sendWithContext(id, userText, context.text(), options, listener);
+        String combined = join(context.text(), extraContext);
+        ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
         return new RagChatTurn(turn, true, context, warnings, failed);
+    }
+
+    private static String join(String first, String second) {
+        boolean hasFirst = first != null && !first.trim().isEmpty();
+        boolean hasSecond = second != null && !second.trim().isEmpty();
+        if (hasFirst && hasSecond) {
+            return first + "\n\n" + second;
+        }
+        return hasFirst ? first : hasSecond ? second : null;
     }
 }

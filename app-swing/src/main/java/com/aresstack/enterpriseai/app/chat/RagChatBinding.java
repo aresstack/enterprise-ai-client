@@ -4,6 +4,10 @@ import com.aresstack.enterpriseai.app.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.application.attachment.AttachmentException;
+import com.aresstack.enterpriseai.application.attachment.AttachmentTools;
+import com.aresstack.enterpriseai.application.attachment.ReadAttachmentTool;
+import com.aresstack.enterpriseai.application.attachment.SearchAttachmentTool;
 import com.aresstack.enterpriseai.application.chat.ChatTurn;
 import com.aresstack.enterpriseai.application.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.application.rag.RagChatTurn;
@@ -13,15 +17,20 @@ import com.aresstack.enterpriseai.application.rag.RagSource;
 import com.aresstack.enterpriseai.application.rag.RetrievalPath;
 import com.aresstack.enterpriseai.application.rag.RetrievalWarning;
 import com.aresstack.enterpriseai.application.rag.RetrievedChunk;
+import com.aresstack.enterpriseai.application.tool.ToolActivityListener;
+import com.aresstack.enterpriseai.application.tool.ToolCallingChatPort;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.chat.ChatResponse;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 
+import java.nio.file.Path;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -56,6 +65,12 @@ import java.util.logging.Logger;
  * {@code sendRequested} und {@code stopRequested} müssen auf dem UI-Thread gerufen werden. In Verlauf, Quellen
  * und Hinweisen stehen nur Titel, Orte (laut Domänenregel ohne Zugangsdaten), Stände und Scores, nie Tokens;
  * eine gescheiterte Antwort nennt ihre technische Ursache wie {@link ChatServiceBinding#describe}.
+ *
+ * <p><b>Werkzeuge und Anhänge</b> ({@link #enableTools}): Hat die Unterhaltung Anhänge (oder steht
+ * {@code chat.tools.enabled=true}), läuft die Nachricht über die Werkzeug-Schleife ({@code /responses}, ohne
+ * Streaming): neue Dateien werden auf dem Arbeits-Thread abgelegt, dem Modell werden nur Kennung und Name der
+ * Anhänge genannt, den Inhalt holt es sich über {@code read_attachment}/{@code search_attachment}. Die Blase zeigt
+ * währenddessen, welches Werkzeug läuft; die Antwort erscheint am Stück.
  */
 public final class RagChatBinding implements ChatShellActions {
 
@@ -71,6 +86,11 @@ public final class RagChatBinding implements ChatShellActions {
             "Die Volltextsuche ist ausgefallen; es wurde nur semantisch gesucht.";
     static final String SEMANTIC_PATH_FAILED_NOTICE =
             "Die semantische Suche ist ausgefallen; es wurde nur im Volltext gesucht.";
+    static final String STORING_ACTIVITY = "Anhang wird abgelegt …";
+    static final String TOOLS_ACTIVITY = "Antwort wird erstellt …";
+    static final String READING_ACTIVITY = "Liest Anhang …";
+    static final String SEARCHING_ACTIVITY = "Durchsucht Anhang …";
+    static final String ATTACHMENTS_UNAVAILABLE_NOTICE = "Dateianhänge sind in dieser Sitzung nicht verfügbar.";
     static final String NO_SOURCE_SELECTED_NOTICE = "Keine Wissensquelle ausgewählt (Häkchen im Reiter "
             + "„Wissensquellen“). Die Antwort entstand ohne Kontext aus der Wissensbasis.";
 
@@ -85,6 +105,8 @@ public final class RagChatBinding implements ChatShellActions {
     private final RagSourceFilter sources;
     private ChatTurn runningTurn;
     private Request retrieving; // die Anfrage, deren Suche gerade läuft (nur UI-Thread)
+    private ToolSupport tools;
+    private boolean conversationHasAttachments; // nur UI-Thread
 
     /**
      * @param uiExecutor   führt Model-Änderungen auf dem UI-Thread aus
@@ -132,33 +154,68 @@ public final class RagChatBinding implements ChatShellActions {
             throw new IllegalStateException("cannot start a new conversation while a response is running");
         }
         this.conversationId = conversation;
+        this.conversationHasAttachments = false;
+    }
+
+    /** Schaltet Tool-Calling und Dateianhänge ein (Composition Root); {@code null} schaltet sie aus. */
+    public void enableTools(ToolSupport support) {
+        this.tools = support;
+    }
+
+    @Override
+    public boolean supportsAttachments() {
+        return tools != null;
     }
 
     /** Muss auf dem UI-Thread gerufen werden (wie alle Model-Änderungen). */
     @Override
     public void sendRequested(final String text, boolean ragEnabled) {
+        sendRequested(text, ragEnabled, Collections.<Path>emptyList());
+    }
+
+    /** Muss auf dem UI-Thread gerufen werden; {@code files} werden der Unterhaltung als Anhänge hinzugefügt. */
+    @Override
+    public void sendRequested(final String text, boolean ragEnabled, List<Path> files) {
         if (!model.canSend(text)) {
             return;
         }
-        model.addUserMessage(text);
+        final List<Path> newFiles = files == null ? Collections.<Path>emptyList() : new ArrayList<Path>(files);
+        if (!newFiles.isEmpty() && tools == null) {
+            model.addNotice(ATTACHMENTS_UNAVAILABLE_NOTICE);
+            return;
+        }
+        List<String> names = new ArrayList<String>(newFiles.size());
+        for (Path file : newFiles) {
+            names.add(file.getFileName().toString());
+        }
+        model.addUserMessage(text, names);
         final TranscriptEntry answer = model.beginAssistantMessage();
         final TurnListener listener = new TurnListener();
-        if (!ragEnabled) {
+        final boolean toolPath = tools != null
+                && (tools.alwaysOn() || conversationHasAttachments || !newFiles.isEmpty());
+        if (!newFiles.isEmpty()) {
+            conversationHasAttachments = true;
+        }
+        RagOptions ragOptions = RagOptions.disabled();
+        if (ragEnabled) {
+            if (!sources.isRestricted()) {
+                ragOptions = RagOptions.enabled();
+            } else if (sources.allowedSources().isEmpty()) {
+                model.addNotice(NO_SOURCE_SELECTED_NOTICE);
+            } else {
+                ragOptions = RagOptions.enabled().restrictedTo(sources.allowedSources());
+            }
+        }
+        if (!ragOptions.isEnabled() && !toolPath) {
             startWithoutRetrieval(text, listener);
             return;
         }
-        final RagOptions options;
-        if (!sources.isRestricted()) {
-            options = RagOptions.enabled();
-        } else if (sources.allowedSources().isEmpty()) {
-            model.addNotice(NO_SOURCE_SELECTED_NOTICE);
-            startWithoutRetrieval(text, listener);
-            return;
-        } else {
-            options = RagOptions.enabled().restrictedTo(sources.allowedSources());
-        }
+        final RagOptions options = ragOptions;
+        final ToolSupport support = toolPath ? tools : null;
+        final ChatConversationId conversation = conversationId;
         final Request request = new Request(answer, listener);
-        model.setAssistantActivity(RETRIEVING_ACTIVITY);
+        model.setAssistantActivity(!newFiles.isEmpty() ? STORING_ACTIVITY
+                : options.isEnabled() ? RETRIEVING_ACTIVITY : TOOLS_ACTIVITY);
         retrieving = request;
         try {
             workExecutor.execute(new Runnable() {
@@ -166,13 +223,32 @@ public final class RagChatBinding implements ChatShellActions {
                 public void run() {
                     final RagChatTurn turn;
                     try {
-                        turn = rag.send(conversationId, text, options, listener);
+                        String extraContext = null;
+                        ChatCompletionPort via = null;
+                        if (support != null) {
+                            for (Path file : newFiles) {
+                                support.store().add(conversation, file);
+                            }
+                            AttachmentTools attachments = new AttachmentTools(support.store(), support.extractor(),
+                                    conversation);
+                            extraContext = attachments.context();
+                            via = new ToolCallingChatPort(support.responses(), attachments.registry(),
+                                    support.loopExecutor(), activity(listener), ToolCallingChatPort.DEFAULT_MAX_ROUNDS);
+                            if (options.isEnabled()) {
+                                showActivity(listener, RETRIEVING_ACTIVITY);
+                            } else {
+                                showActivity(listener, TOOLS_ACTIVITY);
+                            }
+                        }
+                        turn = rag.send(conversation, text, options, null, listener, extraContext, via);
                     } catch (final RuntimeException rejected) {
                         // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
+                        LOG.log(Level.WARNING, "Nachricht nicht gestartet: " + rejected.getMessage(), rejected);
+                        final String reason = rejected instanceof AttachmentException ? rejected.getMessage() : null;
                         uiExecutor.execute(new Runnable() {
                             @Override
                             public void run() {
-                                reject(request);
+                                reject(request, reason);
                             }
                         });
                         return;
@@ -187,7 +263,7 @@ public final class RagChatBinding implements ChatShellActions {
             });
         } catch (RuntimeException rejected) {
             // Der Arbeits-Executor nimmt nichts mehr an (z. B. beim Beenden): die Antwort darf nicht offen bleiben.
-            reject(request);
+            reject(request, null);
         }
     }
 
@@ -216,12 +292,35 @@ public final class RagChatBinding implements ChatShellActions {
     }
 
     /** Die Anfrage kam nie zu einem Turn (UI-Thread): Suche beenden, Antwort als gescheitert schließen. */
-    private void reject(Request request) {
+    private void reject(Request request, String reason) {
         if (retrieving == request) {
             retrieving = null;
         }
         request.listener.closed = true;
-        model.failAssistantMessage(SEND_REJECTED);
+        model.failAssistantMessage(reason == null ? SEND_REJECTED : SEND_REJECTED + " " + reason);
+    }
+
+    /** Zeigt in der laufenden Antwort, welches Werkzeug gerade läuft. */
+    private ToolActivityListener activity(final TurnListener listener) {
+        return new ToolActivityListener() {
+            @Override
+            public void onToolCall(String toolName) {
+                showActivity(listener, ReadAttachmentTool.NAME.equals(toolName) ? READING_ACTIVITY
+                        : SearchAttachmentTool.NAME.equals(toolName) ? SEARCHING_ACTIVITY
+                        : "Werkzeug " + toolName + " …");
+            }
+        };
+    }
+
+    private void showActivity(TurnListener listener, final String text) {
+        listener.onUi(new Runnable() {
+            @Override
+            public void run() {
+                if (model.isStreaming()) {
+                    model.setAssistantActivity(text);
+                }
+            }
+        });
     }
 
     /** Der RAG-Turn steht (UI-Thread): Quellen und Hinweise anbringen, Abbruchwunsch einlösen. */
@@ -230,7 +329,7 @@ public final class RagChatBinding implements ChatShellActions {
         if (!request.answer.hasSources()) {
             model.attachSources(request.answer, describe(ragTurn.sources()));
         }
-        String notice = notice(ragTurn);
+        String notice = ragTurn.retrievalRequested() ? notice(ragTurn) : null;
         if (notice != null) {
             model.addNotice(notice);
         }
@@ -387,7 +486,7 @@ public final class RagChatBinding implements ChatShellActions {
             });
         }
 
-        private void onUi(final Runnable update) {
+        void onUi(final Runnable update) {
             uiExecutor.execute(new Runnable() {
                 @Override
                 public void run() {

@@ -34,6 +34,7 @@ public final class TranscriptEntry {
     private String failureMessage = "";
     private String activity = "";
     private List<SourceReference> sources = Collections.emptyList();
+    private List<String> attachments = Collections.emptyList();
 
     TranscriptEntry(long id, Author author, long createdAtMillis, String text, State state) {
         this.id = id;
@@ -82,6 +83,15 @@ public final class TranscriptEntry {
      */
     public List<SourceReference> getSources() {
         return sources;
+    }
+
+    /** Dateinamen der Anhänge einer Nutzernachricht; leer, wenn sie keine hat. */
+    public List<String> getAttachments() {
+        return attachments;
+    }
+
+    void setAttachments(List<String> names) {
+        this.attachments = Collections.unmodifiableList(new java.util.ArrayList<String>(names));
     }
 
     public boolean hasSources() {

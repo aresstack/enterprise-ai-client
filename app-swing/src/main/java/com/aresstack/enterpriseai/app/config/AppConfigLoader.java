@@ -209,7 +209,8 @@ public final class AppConfigLoader {
         if (baseUrl == null || model == null) {
             return null;
         }
-        return new ChatConfig(baseUrl, model, apiKeyRef, systemPrompt, connect, read, policy, defaults);
+        boolean tools = r.bool("chat.tools.enabled", false);
+        return new ChatConfig(baseUrl, model, apiKeyRef, systemPrompt, connect, read, policy, defaults, tools);
     }
 
     /**

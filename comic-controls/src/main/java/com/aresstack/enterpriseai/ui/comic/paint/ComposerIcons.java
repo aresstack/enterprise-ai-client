@@ -26,6 +26,19 @@ public final class ComposerIcons {
         };
     }
 
+    /** AskAI's paperclip (attach files): an open hook curving up on the left and back down on the right. */
+    public static StrokeIcon paperclip() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawLine(4, 4, 4, 11);
+                g2.drawArc(4, 2, 6, 5, 90, 180);
+                g2.drawLine(10, 4, 10, 12);
+                g2.drawArc(3, 9, 7, 6, 0, -180);
+            }
+        };
+    }
+
     /** The filled "stop" square. */
     public static StrokeIcon stop() {
         return new StrokeIcon() {
