@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.app.ui.sidebar.ChatHistoryRow;
 import com.aresstack.enterpriseai.app.ui.sidebar.ChatSidebarPanel;
 import com.aresstack.enterpriseai.app.ui.sidebar.ChatSidebarTab;
 import com.aresstack.enterpriseai.app.ui.sidebar.SidebarTabRibbon;
+import com.aresstack.enterpriseai.ui.comic.control.ComicOverlayPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSearchBar;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSplitPane;
@@ -20,6 +21,7 @@ import com.aresstack.enterpriseai.ui.comic.control.ResearchPillDropdown;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPainter;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
@@ -33,13 +35,16 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
+import javax.swing.JTextField;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -48,6 +53,8 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.event.AWTEventListener;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.Instant;
@@ -522,7 +529,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             addChatRow(ShellMode.AGENT, agentShell.model(), AGENT_TITLE, "Agent", filter);
         }
         addSavedChats(filter);
-        if (chatRows.isEmpty()) {
+        if (chatRows.isEmpty() && renamingChatId == null) {
             JLabel none = new JLabel(filter.isEmpty() ? "Keine Chats" : "Keine passenden Chats"); // wie arch
             none.setEnabled(false);
             none.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -564,6 +571,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         if (mode == ShellMode.CHAT && currentId != null && count > 0) {
             final String rowTitle = title;
             menu = () -> deleteMenu(currentId, rowTitle);
+        }
+        if (menu != null && currentId.equals(renamingChatId)) {
+            chatListPanel.add(renameRow(currentId, title));
+            return;
         }
         ChatHistoryRow row = new ChatHistoryRow(title, meta, time, model.isStreaming(), modes.getMode() == mode,
                 () -> modes.select(mode), menu, palette);
@@ -611,6 +622,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         }
         chatListPanel.add(groupHeader(title));
         for (final SavedChatItem chat : group) {
+            if (chat.id().equals(renamingChatId)) {
+                chatListPanel.add(renameRow(chat.id(), chat.title()));
+                continue;
+            }
             ZonedDateTime at = Instant.ofEpochMilli(chat.modifiedAtMillis()).atZone(ZoneId.systemDefault());
             String time = chat.modifiedAtMillis() >= startOfToday ? TIME.format(at) : DAY.format(at);
             String meta = "Chat · " + (chat.messageCount() == 1 ? "1 Nachricht" : chat.messageCount() + " Nachrichten")
@@ -637,17 +652,65 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         }
     }
 
+    /** Der Chat, dessen Zeile gerade ein Umbenennen-Feld ist, oder {@code null}. */
+    private String renamingChatId;
+
+    /**
+     * Umbenennen wie askai arch ({@code buildRenameRow}): die Zeile wird zu [Feld | ✕]; Enter übernimmt, Escape oder
+     * ✕ bricht ab. Ein leerer Titel gilt als Abbruch.
+     */
+    private JComponent renameRow(final String chatId, String title) {
+        final JTextField field = new JTextField(title);
+        field.setFont(ResearchUiTypography.regular(13f));
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.5f)),
+                BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+        final Runnable cancel = () -> {
+            renamingChatId = null;
+            refreshChatList();
+        };
+        field.addActionListener(event -> {
+            String value = field.getText().trim();
+            renamingChatId = null;
+            if (!value.isEmpty() && actions != null) {
+                actions.renameChatRequested(chatId, value);
+            }
+            refreshChatList();
+        });
+        field.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent event) {
+                if (event.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    cancel.run();
+                }
+            }
+        });
+        JPanel row = new JPanel(new BorderLayout(4, 0));
+        row.setOpaque(false);
+        row.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        row.add(field, BorderLayout.CENTER);
+        ComicOverlayPanel.CloseButton close = new ComicOverlayPanel.CloseButton(palette, cancel);
+        close.setToolTipText("Abbrechen");
+        JPanel closeWrap = new JPanel(new GridBagLayout());
+        closeWrap.setOpaque(false);
+        closeWrap.add(close);
+        row.add(closeWrap, BorderLayout.EAST);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getPreferredSize().height));
+        row.setAlignmentX(LEFT_ALIGNMENT);
+        SwingUtilities.invokeLater(() -> {
+            field.requestFocusInWindow();
+            field.selectAll();
+        });
+        return row;
+    }
+
     /** Das Menü einer Chat-Zeile: Umbenennen und Löschen mit Rückfrage (Nachrichten und Anhänge gehen verloren). */
     private JPopupMenu deleteMenu(final String chatId, final String title) {
         JPopupMenu menu = new JPopupMenu();
         JMenuItem rename = new JMenuItem(RENAME_CHAT_LABEL);
         rename.addActionListener(event -> {
-            Object answer = JOptionPane.showInputDialog(this, "Neuer Titel des Chats:", "Chat umbenennen",
-                    JOptionPane.PLAIN_MESSAGE, null, null, title);
-            if (answer != null && !answer.toString().trim().isEmpty() && actions != null) {
-                actions.renameChatRequested(chatId, answer.toString().trim());
-                refreshChatList();
-            }
+            renamingChatId = chatId; // die Zeile verwandelt sich in ein Eingabefeld (arch), kein Dialog
+            refreshChatList();
         });
         menu.add(rename);
         JMenuItem delete = new JMenuItem(DELETE_CHAT_LABEL);
