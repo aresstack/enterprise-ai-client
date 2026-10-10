@@ -27,6 +27,7 @@ Produktionsabhängigkeiten auf andere Module; alles andere ist verboten und wird
 | `source-api` | PORT | `source.api` | domain | `KnowledgeSourcePort` (`discover(SourceScope)`, `load(id)`, `discoverLinks(id)`), optional `SearchableKnowledgeSource.search(SourceQuery)`, `SourceScope`, `SourceLink`, `SourceSearchHit`, `KnowledgeSourceException` (NOT_FOUND, UNAVAILABLE, ACCESS_DENIED, INVALID_RESPONSE, UNSUPPORTED). Testfixtures `source.api.testing.InMemoryKnowledgeSource` und `KnowledgeSourceContractTest`. | keine |
 | `source-mediawiki` | ADAPTER | `source.mediawiki` | domain, source-api, http-api | `MediaWikiKnowledgeSource`, `MediaWikiSiteConfig`, `MediaWikiCredentials`, `MediaWikiCredentialsProvider` (Callback). Action-API-Client, Crawler und HTML-Bereinigung paketintern. Ressourcen-IDs `wiki:<siteKey>/<Titel>`. | Gson, jsoup |
 | `source-confluence` | ADAPTER | `source.confluence` | domain, source-api, security-api, http-api | `ConfluenceKnowledgeSource`, `ConfluenceConfig`, Transport-Naht `ConfluenceHttpTransport` mit `UrlConnectionConfluenceTransport`, `ClientCertificates` (mTLS). Zugangsdaten nur über `SecretProvider`. IDs `confluence:<sourceId>/page/<id>`. | Gson, jsoup |
+| `source-ftp` | ADAPTER | `source.ftp` | domain, source-api, security-api | `FtpSourceProvider` (Typ `ftp`); paketintern Commons-Net-Sitzung, MVS-Pfade aus corenth, Satzstruktur aus MainframeMate. Zugangsdaten nur beim Verbindungsaufbau über `SecretProvider`. IDs `ftp:<sourceId>/<Dataset(Member)>`. | Apache Commons Net |
 | `security-api` | PORT | `security.api` | domain | `SecretProvider` (`resolve`, `withSecret`), `SecretMaterial` (`char[]`, `close()` löscht), `SecretFunction`, `SecretUnavailableException` mit `Reason`. | keine |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | `KeePassRpcSecretProvider`, `KeePassRpcConfig`, Nähte `KeePassPairingCallback` und `KeePassPairingKeyStore` (`InMemoryPairingKeyStore`). SRP-Pairing, verschlüsseltes JSON-RPC und WebSocket paketintern. | Java-WebSocket, Gson |
 | `acp-client-api` | PORT | `acp.api` | domain (nicht deklariert) | Neutrale ACP-Verträge: `AcpAgentConnector`, `AgentLaunchSpec`, `AgentProcessHandle`, `AcpConnection`, `AcpSession`, `PromptHandle`, `AcpUpdate`, `AcpUpdateListener`, `AcpEndpointDescriptor`, `AcpStates`, `PromptDispatcher`, `Redaction`. | keine |
@@ -97,6 +98,7 @@ Testbibliotheken, siehe [Einrichtung](einrichtung.md#fat-jar-version-und-release
 | org.noear solon, solon-boot-jdkhttp, solon-ai-mcp | 3.10.1 | mcp-solon-runtime |
 | Gson | 2.10.1 | chat-openai, embedding-openai, source-mediawiki, source-confluence, security-keepassrpc; app-swing und integration-tests nur im Test |
 | jsoup | 1.17.2 | source-mediawiki, source-confluence |
+| Apache Commons Net | 3.9.0 | source-ftp |
 | Java-WebSocket | 1.5.2 | security-keepassrpc; integration-tests nur im Test (Typ von `FakeKeePassRpcServer`) |
 | slf4j-nop | 2.0.17 | acp-demo-agent (runtime), security-keepassrpc und integration-tests (Test-Runtime) |
 

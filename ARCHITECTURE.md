@@ -60,6 +60,7 @@ Moduls liegen nur dort (geprüft).
 | `source-mediawiki` | ADAPTER | `source.mediawiki` | domain, source-api, http-api | E (AP12) |
 | `source-confluence` | ADAPTER | `source.confluence` | domain, source-api, security-api, http-api | F (AP15) |
 | `source-localfiles` | ADAPTER | `source.localfiles` | domain, source-api, document-api | Dateien (0.1.10) |
+| `source-ftp` | ADAPTER | `source.ftp` | domain, source-api, security-api | FTP/MVS-Quelle (COBOL in PDS-Membern; Commons Net, Anmeldung über KeePass) |
 | `resource-api` | PORT | `resource.api` | domain | Ressourcenschicht aus corenth: AcquisitionPort, Bronze (0.1.16) |
 | `resource-holkas` | ADAPTER | `resource.holkas` | domain, resource-api, source-api | Holkas-Connectoren über den Quellen (0.1.16) |
 | `document-api` | PORT | `document.api` | domain | Dokumente (corenth deigma) |
@@ -154,7 +155,7 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `RagBoundaryTest.*` | AP10: `application.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `application.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
 | `McpKnowledgeToolsBoundaryTest.*` | AP20: `application.mcp` sieht nur die Use-Case-Pakete `application.rag` und `application.knowledge`, Knowledge-Domain, aus `source.api` allein `KnowledgeSourceException` (Fehlerart) und den MCP-Port-Vertrag; Index-, Embedding- und Quell-Port (samt `SourceScope`) nur über Use Cases; kein Adapter, kein Chat, kein ACP, kein Security-Typ; Use Cases und Chat-Pfad kennen die Werkzeuge nicht |
 | `CompositionRootBoundaryTest.*` | AP23: Konstruktoren von Adaptern (Klassen eines Adaptermoduls, die einen Port implementieren) werden außerhalb der Adaptermodule nur in `app.composition` aufgerufen; Wert- und Konfigurationstypen der Adaptermodule bleiben überall baubar |
-| `SecretBoundaryTest.*` | AP13/AP23: Secret-Material nur in `security-api`, `security-keepassrpc`, `source-confluence` und, paketgenau, in `app.security` (Brücken der Composition Root); nie in Feldern |
+| `SecretBoundaryTest.*` | AP13/AP23: Secret-Material nur in `security-api`, `security-keepassrpc`, `source-confluence`, `source-ftp` und, paketgenau, in `app.security` (Brücken der Composition Root); nie in Feldern |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 | `CoreNamingTest.*` | Nachtrag 1/19: keine Provider-Namen (OpenAI, Ollama, Claude, llama.cpp ...) und keine Multi-Provider-Abstraktion in Klassennamen oder Enum-Konstanten des Kerns |
 | `TestCodeIsolationTest.*` | Produktionscode kennt weder JUnit/ArchUnit/Mockito noch Testfixture-Klassen oder Testpakete (`testing`, `testkit`, `fake`); keine `testFixtures(...)` in einer Produktionskonfiguration |

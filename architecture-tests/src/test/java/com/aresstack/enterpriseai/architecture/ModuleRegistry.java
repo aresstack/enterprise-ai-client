@@ -57,6 +57,9 @@ final class ModuleRegistry {
                 // Lokale Dateien: Verzeichnis als Quelle; Erkennung/Extraktion nur über den Port document-api.
                 .module("source-localfiles", "source.localfiles", ModuleKind.ADAPTER, "E",
                         "domain", "source-api", "document-api")
+                // FTP (MVS/z/OS): Datasets und PDS-Member; Commons Net adapterintern, Anmeldung über security-api.
+                .module("source-ftp", "source.ftp", ModuleKind.ADAPTER, "Quellen",
+                        "domain", "source-api", "security-api")
 
                 // Ressourcenschicht aus corenth: AcquisitionPort und Bronze-Typen (Port), Holkas-Connectoren über
                 // den Quellen-Ports (äußerer Adapterring, keine UI-API).
@@ -99,7 +102,7 @@ final class ModuleRegistry {
                         "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
-                        "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api")
+                        "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api", "source-ftp")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

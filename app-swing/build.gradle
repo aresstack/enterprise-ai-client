@@ -24,6 +24,8 @@ dependencies {
     implementation project(':source-confluence')
     // Lokale Dateien als Quelle; Extraktion über document-tika (Klartext/Markdown ohne Tika, sonst Apache Tika).
     implementation project(':source-localfiles')
+    // Mainframe über FTP (MVS-Datasets, COBOL), Anmeldung über KeePass.
+    implementation project(':source-ftp')
     implementation project(':resource-api')
     implementation project(':resource-holkas')
     implementation project(':document-tika')
