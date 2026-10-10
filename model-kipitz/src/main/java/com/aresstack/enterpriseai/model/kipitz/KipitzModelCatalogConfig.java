@@ -41,11 +41,16 @@ public final class KipitzModelCatalogConfig {
 
     /** {@code <baseUrl>/models}. */
     public URI modelsEndpoint() {
+        return endpoint("models");
+    }
+
+    /** {@code <baseUrl>/<path>}, etwa {@code audio/speech}. */
+    public URI endpoint(String path) {
         String text = baseUrl.toString();
         while (text.endsWith("/")) {
             text = text.substring(0, text.length() - 1);
         }
-        return URI.create(text + "/models");
+        return URI.create(text + "/" + path);
     }
 
     Supplier<String> bearerToken() {

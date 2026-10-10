@@ -71,8 +71,9 @@ final class ModuleRegistry {
                 // Modellverwaltung nach Kategorien: neutraler Katalog-Port, KIPITZ über GET /models, optionaler
                 // lokaler Java-21-Sidecar (askai-java8 arch, ohne Installer).
                 .module("model-api", "model.api", ModuleKind.PORT, "Modelle", "domain")
+                // Der KIPITZ-Adapter bedient Katalog und Sprachausgabe seiner TTS-Modelle.
                 .module("model-kipitz", "model.kipitz", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
-                        "http-api")
+                        "http-api", "speech-api")
                 // Der Sidecar-Adapter bedient Katalog und Sprachausgabe über denselben Prozess.
                 .module("model-sidecar", "model.sidecar", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
                         "speech-api")

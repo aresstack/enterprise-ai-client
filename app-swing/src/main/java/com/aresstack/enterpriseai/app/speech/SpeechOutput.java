@@ -4,47 +4,49 @@ import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.application.speech.ReadAloudService;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
-import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
 
-import java.util.function.Function;
+import java.util.List;
 
 /**
  * Entscheidet, ob und womit vorgelesen wird: das Modell kommt aus der Katalog-Kategorie TTS ({@code model.tts}),
- * gesprochen wird heute nur über den optionalen lokalen Java-21-Sidecar. Die Enterprise-API ({@code /audio/speech})
- * ist bewusst noch nicht angebunden. Fehlt etwas, bleibt die Sprachausgabe ruhig aus (deaktivierter Knopf mit Grund),
- * der Chat läuft unverändert.
+ * gesprochen wird über den {@link SpeechSynthesisPort} desselben Katalogs, lokal (optionaler Java-21-Sidecar) oder
+ * Enterprise-API ({@code /audio/speech}, UNVERIFIED) gleichwertig. Fehlt etwas, bleibt die Sprachausgabe ruhig aus
+ * (deaktivierter Knopf mit Grund), der Chat läuft unverändert.
  */
 public final class SpeechOutput {
 
     static final String NO_MODEL = "Sprachausgabe aus: kein TTS-Modell gewählt (Einstellungen → Modelle)";
-    static final String REMOTE_NOT_CONNECTED = "Sprachausgabe aus: das gewählte TTS-Modell der Enterprise-API ist noch "
-            + "nicht angebunden; ein lokales TTS-Modell wählen (Einstellungen → Modelle)";
     static final String NO_SIDECAR = "Sprachausgabe aus: Java 21 und Sidecar-Jar fehlen (Einstellungen → Lokale Modelle)";
+    static final String NO_PORT = "Sprachausgabe aus: die Quelle des gewählten TTS-Modells kann nicht sprechen";
 
     private SpeechOutput() {
     }
 
     /**
-     * @param models       Modellauswahl und lokaler Sidecar aus der Konfiguration
-     * @param localSpeech  liefert die Sprachausgabe des lokalen Sidecars für seine Pfade (geteilter Prozess)
+     * @param models Modellauswahl aus der Konfiguration
+     * @param ports  die Sprachausgabe je Modellquelle ({@link SpeechSynthesisPort#catalogId()})
      */
-    public static ReadAloudBinding readAloud(ModelsConfig models,
-                                             Function<LocalSidecarConfig, SpeechSynthesisPort> localSpeech) {
+    public static ReadAloudBinding readAloud(ModelsConfig models, List<SpeechSynthesisPort> ports) {
         ModelReference selected = models.selections().get(ModelCategory.TTS);
         if (selected == null) {
             return ReadAloudBinding.unavailable(NO_MODEL);
         }
-        if (!LocalSidecarModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId())) {
-            return ReadAloudBinding.unavailable(REMOTE_NOT_CONNECTED);
+        SpeechSynthesisPort port = null;
+        for (SpeechSynthesisPort candidate : ports) {
+            if (candidate.catalogId().equals(selected.catalogId())) {
+                port = candidate;
+                break;
+            }
         }
-        if (models.localSidecar() == null) {
-            return ReadAloudBinding.unavailable(NO_SIDECAR);
+        if (port == null) {
+            return ReadAloudBinding.unavailable(LocalSidecarModelCatalogAdapter.CATALOG_ID
+                    .equals(selected.catalogId()) ? NO_SIDECAR : NO_PORT);
         }
-        SpeechSynthesisPort port = localSpeech.apply(models.localSidecar());
         ReadAloudService service = new ReadAloudService(port, selected.modelId(), new JavaSoundAudioPlayback());
-        return ReadAloudBinding.available(service, "Stimme: " + selected.modelId() + " (lokal)",
-                models.readAloudAutoStart());
+        boolean local = LocalSidecarModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId());
+        return ReadAloudBinding.available(service, "Stimme: " + selected.modelId()
+                + (local ? " (lokal)" : " (Enterprise-API)"), models.readAloudAutoStart());
     }
 }
