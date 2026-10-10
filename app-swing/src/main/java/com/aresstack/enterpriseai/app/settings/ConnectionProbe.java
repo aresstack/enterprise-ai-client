@@ -167,9 +167,7 @@ public final class ConnectionProbe {
                     chatModels.add(choice);
                 }
             }
-            if (!chatModels.isEmpty() || !embeddingModels.isEmpty()) {
-                onModels.accept(chatModels, embeddingModels);
-            }
+            onModels.accept(chatModels, embeddingModels); // auch leer, damit alte Listen verschwinden
         }
         return true;
     }
