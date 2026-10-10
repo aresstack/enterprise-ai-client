@@ -137,7 +137,7 @@ public final class EnterpriseAiClientMain {
         // lokaler Sidecar, derselbe Prozess wie der Katalog); ohne TTS-Modell oder ohne Java 21 für ein lokales
         // bleibt sie aus und der Lautsprecher-Knopf nennt den Grund.
         final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
-                modelCatalogs.speech(config, network, chatToken(config, ports))));
+                modelCatalogs.speech(config, config.models(), network, chatToken(config, ports))));
         LOG.info("Sprachausgabe: " + readAloud.currentDescription());
         root.shutdown().then("read-aloud", new Runnable() {
             @Override
@@ -171,7 +171,7 @@ public final class EnterpriseAiClientMain {
                 view.setSettingsAction(settingsAction(frame, file, settingsActions, palette, new Runnable() {
                     @Override
                     public void run() {
-                        rebindSpeech(readAloud, file, modelCatalogs, network, ports);
+                        rebindSpeech(readAloud, file, started, modelCatalogs, network, ports);
                     }
                 }));
                 view.setChatModels(modelCatalogs::cached, modelId -> {
@@ -241,13 +241,16 @@ public final class EnterpriseAiClientMain {
      * Fragt die Modellquellen (KIPITZ {@code GET /models}, optional den lokalen Sidecar) einmal im Hintergrund ab,
      * damit der Reiter „Modelle“ aktuelle Listen hat; blockiert weder Start noch EDT. Fehler landen nur im Protokoll.
      */
-    /** Liest die gespeicherte Datei neu und bindet die Sprachausgabe an die neue TTS-Auswahl (auf dem EDT). */
-    private static void rebindSpeech(SwitchableReadAloud readAloud, ConfigurationFile file,
+    /**
+     * Liest die gespeicherte Datei neu und bindet die Sprachausgabe an die neue TTS-Auswahl (auf dem EDT). Nur die
+     * Modellwerte sind neu; Endpunkt, Netz und Token bleiben die des laufenden Graphen (gelten beim nächsten Start).
+     */
+    private static void rebindSpeech(SwitchableReadAloud readAloud, ConfigurationFile file, AppConfig running,
                                      ModelCatalogs catalogs, NetworkServices network, ApplicationPorts ports) {
         try {
-            AppConfig saved = AppConfigLoader.load(file.path());
-            readAloud.replace(SpeechOutput.readAloud(saved.models(),
-                    catalogs.speech(saved, network, chatToken(saved, ports))));
+            ModelsConfig saved = AppConfigLoader.load(file.path()).models();
+            readAloud.replace(SpeechOutput.readAloud(saved,
+                    catalogs.speech(running, saved, network, chatToken(running, ports))));
             LOG.info("Sprachausgabe: " + readAloud.currentDescription());
         } catch (RuntimeException e) {
             LOG.log(Level.WARNING, "Sprachausgabe nicht neu gebunden; sie gilt beim nächsten Start", e);

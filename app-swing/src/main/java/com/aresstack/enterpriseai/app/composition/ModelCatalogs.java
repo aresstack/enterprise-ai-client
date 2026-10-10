@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.settings.ModelCatalogCache;
 import com.aresstack.enterpriseai.app.settings.ModelCatalogLoader;
@@ -141,12 +142,16 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
      * Die Sprachausgabe je Modellquelle, wie die Quellen selbst: die Enterprise-API (KIPITZ) immer, der lokale
      * Sidecar nur, wenn er konfiguriert ist. Welcher Port spricht, entscheidet der Katalog des gewählten TTS-Modells
      * ({@code model.tts}); lokale und Enterprise-Modelle sind gleichwertig.
+     *
+     * @param connection Verbindung der Enterprise-API (die des laufenden Graphen, passend zu Netz und Token)
+     * @param models     Stimme und lokaler Sidecar, auch frisch gespeichert
      */
-    public List<SpeechSynthesisPort> speech(AppConfig config, NetworkServices network, Supplier<String> token) {
+    public List<SpeechSynthesisPort> speech(AppConfig connection, ModelsConfig models, NetworkServices network,
+                                            Supplier<String> token) {
         List<SpeechSynthesisPort> ports = new ArrayList<SpeechSynthesisPort>();
-        ports.add(new KipitzSpeechAdapter(kipitz(config, network, token), config.models().speechVoice()));
-        if (config.models().localSidecar() != null) {
-            ports.add(localSpeech(config.models().localSidecar()));
+        ports.add(new KipitzSpeechAdapter(kipitz(connection, network, token), models.speechVoice()));
+        if (models.localSidecar() != null) {
+            ports.add(localSpeech(models.localSidecar()));
         }
         return ports;
     }
