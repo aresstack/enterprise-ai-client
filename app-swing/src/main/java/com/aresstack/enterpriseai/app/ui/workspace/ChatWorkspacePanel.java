@@ -100,6 +100,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd.MM.", Locale.GERMANY);
     private static final long DAY_MILLIS = 24L * 60L * 60L * 1000L;
     static final String DELETE_CHAT_LABEL = "Chat löschen";
+    static final String RENAME_CHAT_LABEL = "Umbenennen …";
 
     private final ShellModeModel modes;
     private final ChatShellPanel chatShell;
@@ -541,6 +542,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             }
             lastMillis = Math.max(lastMillis, entry.getCreatedAtMillis());
         }
+        String renamed = mode == ShellMode.CHAT && actions != null ? actions.currentChatTitle() : null;
+        if (renamed != null && count > 0) {
+            title = renamed;
+        }
         if (!filter.isEmpty() && !title.toLowerCase(Locale.ROOT).contains(filter)) {
             return;
         }
@@ -625,9 +630,19 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         }
     }
 
-    /** Das Menü einer Chat-Zeile: Löschen mit Rückfrage (Nachrichten und Anhänge gehen verloren). */
+    /** Das Menü einer Chat-Zeile: Umbenennen und Löschen mit Rückfrage (Nachrichten und Anhänge gehen verloren). */
     private JPopupMenu deleteMenu(final String chatId, final String title) {
         JPopupMenu menu = new JPopupMenu();
+        JMenuItem rename = new JMenuItem(RENAME_CHAT_LABEL);
+        rename.addActionListener(event -> {
+            Object answer = JOptionPane.showInputDialog(this, "Neuer Titel des Chats:", "Chat umbenennen",
+                    JOptionPane.PLAIN_MESSAGE, null, null, title);
+            if (answer != null && !answer.toString().trim().isEmpty() && actions != null) {
+                actions.renameChatRequested(chatId, answer.toString().trim());
+                refreshChatList();
+            }
+        });
+        menu.add(rename);
         JMenuItem delete = new JMenuItem(DELETE_CHAT_LABEL);
         delete.setEnabled(!chatShell.model().isStreaming());
         delete.addActionListener(event -> {

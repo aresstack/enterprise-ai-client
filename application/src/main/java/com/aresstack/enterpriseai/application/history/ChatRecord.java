@@ -11,6 +11,8 @@ public final class ChatRecord {
 
     private String id;
     private String title;
+    /** Vom Nutzer umbenannt: der Titel folgt dann nicht mehr der ersten Nachricht. */
+    private boolean titleEdited;
     private long createdAt;
     private long modifiedAt;
     private List<ChatMessageRecord> messages = new ArrayList<ChatMessageRecord>();
@@ -35,6 +37,16 @@ public final class ChatRecord {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public boolean isTitleEdited() {
+        return titleEdited;
+    }
+
+    /** Setzt einen vom Nutzer gewählten Titel. */
+    public void rename(String newTitle) {
+        this.title = newTitle;
+        this.titleEdited = true;
     }
 
     public long getCreatedAt() {

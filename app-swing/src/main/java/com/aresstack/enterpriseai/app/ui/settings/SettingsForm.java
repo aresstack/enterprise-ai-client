@@ -71,6 +71,7 @@ public final class SettingsForm {
     private final boolean tlsWindowsCaStores;
     private final String caCertificatesFile;
     private final boolean agentEnabled;
+    private final boolean readAloudAutoStart;
     private final String agentCommand;
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
@@ -112,6 +113,7 @@ public final class SettingsForm {
         this.tlsWindowsCaStores = b.tlsWindowsCaStores;
         this.caCertificatesFile = b.caCertificatesFile;
         this.agentEnabled = b.agentEnabled;
+        this.readAloudAutoStart = b.readAloudAutoStart;
         this.agentCommand = b.agentCommand;
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
@@ -143,6 +145,7 @@ public final class SettingsForm {
                 .tlsJvmDefault(tlsJvmDefault).tlsWindowsRoot(tlsWindowsRoot).tlsWindowsCaStores(tlsWindowsCaStores)
                 .caCertificatesFile(caCertificatesFile)
                 .agentEnabled(agentEnabled).agentCommand(agentCommand).agentArgs(agentArgs)
+                .readAloudAutoStart(readAloudAutoStart)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .modelSelections(modelSelections)
                 .localJava(localJava).localSidecarJar(localSidecarJar).localModelRoot(localModelRoot);
@@ -294,6 +297,11 @@ public final class SettingsForm {
         return agentEnabled;
     }
 
+    /** Neue Antworten automatisch vorlesen ({@code speech.readAloud.autoStart}). */
+    public boolean readAloudAutoStart() {
+        return readAloudAutoStart;
+    }
+
     public String agentCommand() {
         return agentCommand;
     }
@@ -375,6 +383,7 @@ public final class SettingsForm {
         private boolean tlsWindowsCaStores = true;
         private String caCertificatesFile = "";
         private boolean agentEnabled;
+        private boolean readAloudAutoStart;
         private String agentCommand = "";
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
@@ -539,6 +548,11 @@ public final class SettingsForm {
 
         public Builder caCertificatesFile(String value) {
             this.caCertificatesFile = text(value);
+            return this;
+        }
+
+        public Builder readAloudAutoStart(boolean value) {
+            this.readAloudAutoStart = value;
             return this;
         }
 

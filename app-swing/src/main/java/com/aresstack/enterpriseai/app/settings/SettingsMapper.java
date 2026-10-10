@@ -124,6 +124,7 @@ public final class SettingsMapper {
         b.tlsWindowsCaStores(bool(p, KEY_TLS_WINDOWS_CA, legacyWindows));
         b.caCertificatesFile(text(p, KEY_TLS_CA_FILE, ""));
         b.agentEnabled(bool(p, KEY_AGENT_ENABLED, false));
+        b.readAloudAutoStart(bool(p, ModelsConfig.READ_ALOUD_AUTO_START_KEY, false));
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
         b.agentArgs(text(p, KEY_AGENT_ARGS, ""));
         b.agentRequestTimeoutSeconds(text(p, KEY_AGENT_TIMEOUT, "30"));
@@ -175,6 +176,8 @@ public final class SettingsMapper {
         set.put(KEY_TLS_WINDOWS_CA, String.valueOf(form.tlsWindowsCaStores()));
         put(set, KEY_TLS_CA_FILE, form.caCertificatesFile());
         set.put(KEY_AGENT_ENABLED, String.valueOf(form.agentEnabled()));
+        // Nur „an“ steht in der Datei; aus heißt Standard (Schlüssel entfernt).
+        put(set, ModelsConfig.READ_ALOUD_AUTO_START_KEY, form.readAloudAutoStart() ? "true" : "");
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
         put(set, KEY_AGENT_TIMEOUT, form.agentRequestTimeoutSeconds());

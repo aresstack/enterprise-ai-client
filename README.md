@@ -31,8 +31,9 @@ java -jar enterprise-ai-client-<version>.jar
 
 1. **Bauen**: `./gradlew build`. Ohne Netzwerk zu Maven Central schlägt der erste Lauf fehl; einfach
    wiederholen, sobald die Abhängigkeiten geladen sind.
-2. **Konfigurieren**: Der erste Start öffnet den Einstellungen-Dialog (Reiter KI-Dienst, KeePass, Netzwerk &
-   Agent). Pflicht sind Basis-URL und Modell des Chat-Dienstes, Modell und Dimension der Embeddings
+2. **Konfigurieren**: Der erste Start öffnet den Einstellungen-Dialog (Navigationsliste links wie askai arch:
+   KI-Dienst, KeePass, Netzwerk & Agent, Modelle, Sprachausgabe mit „Neue Antworten automatisch vorlesen“,
+   Technische Details mit Pfaden und dem Ende des Protokolls). Pflicht sind Basis-URL und Modell des Chat-Dienstes, Modell und Dimension der Embeddings
    sowie der Titel des KeePass-Eintrags mit dem API-Key; „In KeePass prüfen“ testet den Eintrag sofort (bei
    Bedarf mit Pairing). Speichern schreibt die kommentierte Datei `enterprise-ai-client.properties` im
    Anwendungsverzeichnis (`~/.enterprise-ai-client/`, unter Windows `%APPDATA%\.enterprise-ai-client\`), danach
@@ -89,7 +90,8 @@ java -jar enterprise-ai-client-<version>.jar
    der Konfigurationsdatei gespeichert, seine Anhänge im Ordner `chats/<chatId>/`. Der Drawer-Reiter „Chats“
    listet die gespeicherten Chats unter HEUTE, GESTERN, LETZTE 7 TAGE und ÄLTER; ein Klick öffnet einen Chat mit
    Verlauf und Anhang-Chips (das Modell bekommt den Verlauf wieder, die Werkzeuge finden die Anhänge), das
-   `…`-Menü einer Zeile (oder Rechtsklick) löscht ihn nach Rückfrage samt Anhängen. Agent-Unterhaltungen werden
+   `…`-Menü einer Zeile (oder Rechtsklick) benennt ihn um („Umbenennen …“, der Titel bleibt dann fest) oder löscht
+   ihn nach Rückfrage samt Anhängen. Agent-Unterhaltungen werden
    nicht gespeichert.
 8. **Agent-Modus**: `agent.enabled=true` und `agent.command`/`agent.args` auf einen ACP-fähigen Agenten setzen
    (zum Ausprobieren der Demo-Agent aus `./gradlew :acp-demo-agent:demoAgentJar`). Die Modus-Pille „Agent“ neben

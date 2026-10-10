@@ -18,6 +18,11 @@ import java.util.function.Consumer;
  */
 public interface SettingsDialogActions {
 
+    /** Technische Details für die gleichnamige Kategorie (Protokolldatei und ihre letzten Zeilen); leer: keine. */
+    default String technicalDetails() {
+        return "";
+    }
+
     /** Probleme des Entwurfs (Schlüssel und Erwartung, nie Werte); leer, wenn er sich speichern lässt. */
     List<String> validate(SettingsForm form);
 

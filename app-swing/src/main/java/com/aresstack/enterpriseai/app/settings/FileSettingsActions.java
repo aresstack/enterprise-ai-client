@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app.settings;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
+import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
@@ -19,7 +20,11 @@ import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -94,6 +99,40 @@ public final class FileSettingsActions implements SettingsDialogActions {
         this.worker = worker;
         this.ui = ui;
         this.models = models;
+    }
+
+    /** Wie viel vom Ende der Protokolldatei „Technische Details“ zeigt. */
+    static final int TECHNICAL_TAIL_BYTES = 64 * 1024;
+
+    /** Konfigurationsdatei, Protokolldatei und deren letzte Zeilen (askai arch: „Technical Details“). */
+    @Override
+    public String technicalDetails() {
+        Path log = AppPaths.defaultLogDirectory().resolve("enterprise-ai-client.0.log");
+        StringBuilder text = new StringBuilder();
+        text.append("Konfiguration: ").append(file.path().toAbsolutePath()).append('\n');
+        text.append("Protokoll: ").append(log.toAbsolutePath()).append('\n');
+        text.append("Java: ").append(System.getProperty("java.version")).append(" (")
+                .append(System.getProperty("java.vendor")).append(")\n\n");
+        if (!Files.isRegularFile(log)) {
+            return text.append("Keine Protokolldatei vorhanden.").toString();
+        }
+        try (RandomAccessFile in = new RandomAccessFile(log.toFile(), "r")) {
+            long length = in.length();
+            long start = Math.max(0L, length - TECHNICAL_TAIL_BYTES);
+            byte[] bytes = new byte[(int) (length - start)];
+            in.seek(start);
+            in.readFully(bytes);
+            String tail = new String(bytes, StandardCharsets.UTF_8);
+            if (start > 0) {
+                int firstLine = tail.indexOf('\n');
+                tail = firstLine < 0 ? tail : tail.substring(firstLine + 1);
+                text.append("… (gekürzt auf die letzten ").append(TECHNICAL_TAIL_BYTES / 1024).append(" KB)\n");
+            }
+            return text.append(tail).toString();
+        } catch (IOException | RuntimeException e) {
+            return text.append("Protokoll nicht lesbar: ").append(e.getClass().getSimpleName()).append(' ')
+                    .append(e.getMessage()).toString();
+        }
     }
 
     public ConfigurationFile file() {
