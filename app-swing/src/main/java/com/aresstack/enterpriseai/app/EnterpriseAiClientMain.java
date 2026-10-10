@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppPaths;
+import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
@@ -27,6 +28,7 @@ import com.aresstack.enterpriseai.app.ui.settings.IndexPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialog;
 import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
 import com.aresstack.enterpriseai.app.ui.settings.SourceDialog;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
@@ -152,6 +154,13 @@ public final class EnterpriseAiClientMain {
                     }
                 });
                 view.setSettingsAction(settingsAction(frame, file, settingsActions, palette));
+                view.setChatModels(modelCatalogs::cached, modelId -> {
+                    try {
+                        file.update(Collections.singletonMap(ModelsConfig.keyOf(ModelCategory.CHAT), modelId), null, null);
+                    } catch (IOException | RuntimeException e) {
+                        LOG.log(Level.WARNING, "Chat-Modell " + modelId + " nicht gespeichert; gilt bis zum Beenden", e);
+                    }
+                }, root.workExecutor());
                 attachSourceEditing(view, frame, file, palette);
                 frame.setVisible(true);
                 root.startBackgroundWork();

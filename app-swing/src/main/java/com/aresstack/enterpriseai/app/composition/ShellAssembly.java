@@ -9,10 +9,12 @@ import com.aresstack.enterpriseai.app.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.app.chat.RagChatBinding;
 import com.aresstack.enterpriseai.app.chat.ToolSupport;
 import com.aresstack.enterpriseai.app.config.AppPaths;
+import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
+import com.aresstack.enterpriseai.app.ui.chat.ChatComposerPanel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
@@ -23,9 +25,12 @@ import com.aresstack.enterpriseai.app.ui.workspace.WorkspaceActions;
 import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.application.history.ChatRecord;
+import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.document.tika.DocumentExtraction;
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelDescriptor;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
@@ -35,7 +40,10 @@ import javax.swing.SwingUtilities;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Baut die Oberfläche über dem Graphen aus {@link CompositionRoot}: die Arbeitsfläche
@@ -107,7 +115,7 @@ public final class ShellAssembly {
             drawer.setKnowledgeSources(items);
             chatModel.setRagEnabled(!items.isEmpty() && selection.isRestricted());
         });
-        final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources);
+        final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources, chatShell.composer());
         chatShell.composer().setModelAction(() -> {
             Runnable action = view.settingsAction();
             if (action != null) {
@@ -210,10 +218,14 @@ public final class ShellAssembly {
         private final RagChatBinding chatActions;
         private final AgentModeAssembly.AgentView agent;
         private final KnowledgeSourcesController sources;
+        private final ChatComposerPanel composer;
+        private final Object persistLock = new Object();
+        private volatile String latestModel;
         private Runnable settingsAction;
 
         ShellView(ChatWorkspacePanel workspace, ChatShellModel chatModel, RagChatBinding chatActions,
-                  AgentModeAssembly.AgentView agent, KnowledgeSourcesController sources) {
+                  AgentModeAssembly.AgentView agent, KnowledgeSourcesController sources, ChatComposerPanel composer) {
+            this.composer = composer;
             this.workspace = workspace;
             this.chatModel = chatModel;
             this.chatActions = chatActions;
@@ -259,6 +271,33 @@ public final class ShellAssembly {
 
         Runnable settingsAction() {
             return settingsAction;
+        }
+
+        /**
+         * Die Modellliste des Composers aus dem Modellkatalog: die Chat-Modelle (Kategorie CHAT) der Enterprise-API
+         * aus dem zuletzt abgefragten Stand. Eine Wahl gilt ab der nächsten Nachricht und wird als {@code chat.model}
+         * gespeichert ({@code persist}, läuft nicht auf dem EDT).
+         */
+        public void setChatModels(final Supplier<ModelCatalogSnapshot> catalog, final Consumer<String> persist,
+                                  final Executor worker) {
+            composer.setModelChoices(() -> {
+                List<String> ids = new ArrayList<String>();
+                for (ModelDescriptor model : catalog.get().modelsFor(ModelCategory.CHAT)) {
+                    if (ModelsConfig.defaultCatalogId().equals(model.catalogId()) && !ids.contains(model.modelId())) {
+                        ids.add(model.modelId());
+                    }
+                }
+                return ids;
+            }, id -> {
+                chatActions.modelChanged(id);
+                latestModel = id;
+                // Schreiben nacheinander und immer die letzte Wahl: so gewinnt nie eine ältere Auswahl.
+                worker.execute(() -> {
+                    synchronized (persistLock) {
+                        persist.accept(latestModel);
+                    }
+                });
+            });
         }
     }
 }

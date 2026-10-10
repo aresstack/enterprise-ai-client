@@ -111,6 +111,7 @@ public final class RagChatBinding implements ChatShellActions {
     private boolean conversationHasAttachments; // nur UI-Thread
     private ChatHistoryBinding history; // nur UI-Thread
     private String reasoningEffort; // nur UI-Thread; null = Standard des Modells
+    private String chatModel; // nur UI-Thread; im Composer gewählt, null = Modell der Konfiguration
 
     /**
      * @param uiExecutor   führt Model-Änderungen auf dem UI-Thread aus
@@ -187,9 +188,24 @@ public final class RagChatBinding implements ChatShellActions {
         this.reasoningEffort = effort;
     }
 
-    /** Optionen dieses Turns: nur der gewählte Denkaufwand, sonst {@code null} (Standard). */
+    /** Das im Composer gewählte Chat-Modell (Kategorie CHAT); gilt ab der nächsten Nachricht. */
+    public void modelChanged(String modelId) {
+        this.chatModel = modelId == null || modelId.trim().isEmpty() ? null : modelId.trim();
+    }
+
+    /** Optionen dieses Turns: gewähltes Modell und Denkaufwand, sonst {@code null} (Standard). */
     private ChatOptions turnOptions() {
-        return reasoningEffort == null ? null : ChatOptions.builder().reasoningEffort(reasoningEffort).build();
+        if (reasoningEffort == null && chatModel == null) {
+            return null;
+        }
+        ChatOptions.Builder options = ChatOptions.builder();
+        if (reasoningEffort != null) {
+            options.reasoningEffort(reasoningEffort);
+        }
+        if (chatModel != null) {
+            options.model(chatModel);
+        }
+        return options.build();
     }
 
     @Override

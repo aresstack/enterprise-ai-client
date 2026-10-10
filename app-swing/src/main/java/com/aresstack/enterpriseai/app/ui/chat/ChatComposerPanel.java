@@ -44,6 +44,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Der Composer nach askai-java8 (arch, {@code ChatComposerPanel}): EINE abgerundete Fläche, darin der rahmenlose
@@ -98,6 +100,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final ComposerButton microphoneButton;
     private final ChatAttachmentStrip attachmentStrip;
     private Runnable modelAction;
+    private Supplier<List<String>> modelChoices;
+    private Consumer<String> modelSelected;
     private String reasoningEffort;
     private File lastDirectory;
     private boolean editorFocused;
@@ -223,12 +227,21 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     /** Der Name des Chat-Modells im Modellknopf (leer: „Modell“). */
     public void setModelName(String name) {
         modelButton.setText(name == null || name.trim().isEmpty() ? MODEL_PLACEHOLDER : name.trim());
-        modelButton.setToolTipText("Chat-Modell: " + modelButton.getText() + " (Einstellungen → KI-Dienst)");
+        modelButton.setToolTipText("Chat-Modell: " + modelButton.getText());
     }
 
-    /** Was ein Klick auf den Modellknopf tut (bis zum Modellkatalog: die Einstellungen öffnen). */
+    /** „Modelle verwalten …“ am Ende der Modellliste (die Einstellungen, Reiter „Modelle“). */
     public void setModelAction(Runnable action) {
         this.modelAction = action;
+    }
+
+    /**
+     * Die Chat-Modelle aus dem Modellkatalog (Kategorie CHAT) für die Liste des Modellknopfs und was eine Wahl
+     * bewirkt. Ohne Liste öffnet der Knopf nur „Modelle verwalten …“.
+     */
+    public void setModelChoices(Supplier<List<String>> choices, Consumer<String> onSelect) {
+        this.modelChoices = choices;
+        this.modelSelected = onSelect;
     }
 
     public ComposerButton modelButton() {
@@ -380,6 +393,35 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         return footer;
     }
 
+    private void showModelMenu() {
+        JPopupMenu menu = new JPopupMenu();
+        List<String> choices = modelChoices == null ? null : modelChoices.get();
+        String current = modelButton.getText();
+        if (choices == null || choices.isEmpty()) {
+            JMenuItem empty = new JMenuItem("Noch keine Chat-Modelle abgefragt");
+            empty.setEnabled(false);
+            menu.add(empty);
+        } else {
+            for (final String id : choices) {
+                JMenuItem item = new JMenuItem((id.equals(current) ? "✓ " : "    ") + id);
+                item.addActionListener(event -> {
+                    setModelName(id);
+                    if (modelSelected != null) {
+                        modelSelected.accept(id);
+                    }
+                });
+                menu.add(item);
+            }
+        }
+        if (modelAction != null) {
+            menu.addSeparator();
+            JMenuItem manage = new JMenuItem("Modelle verwalten …");
+            manage.addActionListener(event -> modelAction.run());
+            menu.add(manage);
+        }
+        menu.show(modelButton, 0, modelButton.getHeight());
+    }
+
     private void showReasoningMenu() {
         JPopupMenu menu = new JPopupMenu();
         for (int i = 0; i < REASONING_LABELS.size(); i++) {
@@ -398,11 +440,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                 actions.stopRequested();
             }
         });
-        modelButton.addActionListener(event -> {
-            if (modelAction != null) {
-                modelAction.run();
-            }
-        });
+        modelButton.addActionListener(event -> showModelMenu());
         reasoningButton.addActionListener(event -> showReasoningMenu());
         attachButton.addActionListener(event -> chooseFiles());
 
