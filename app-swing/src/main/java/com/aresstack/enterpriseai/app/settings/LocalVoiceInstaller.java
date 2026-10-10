@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Lokale Stimmen für den Abschnitt „Lokale Stimmen“ im Reiter „Lokale Modelle“; produktiv verdrahtet
+ * Lokale Stimmen für den Abschnitt „Installiert und vorgeschlagen“ im Reiter „Lokale Modelle“; produktiv verdrahtet
  * {@code app.composition.LocalVoices} den Anwendungsfall mit der Netzroute des Entwurfs. Beide Methoden blockieren.
  */
 public interface LocalVoiceInstaller {

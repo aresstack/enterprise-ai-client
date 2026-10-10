@@ -42,6 +42,9 @@ dependencies {
     implementation project(':speech-runtime-api')
     implementation project(':speech-local')
     implementation project(':speech-onnx')
+    implementation project(':text-runtime-api')
+    implementation project(':text-local')
+    implementation project(':text-onnx')
     // Proxy je Ziel in den Modi von win-proxy-java (PAC per PowerShell/VBScript/Windows-Einstellungen, fester
     // Proxy, ...): app.net.HttpRoutes. Bringt GraalJS mit; das Fat Jar führt dessen ServiceLoader-Dateien zusammen.
     implementation libs.win.proxy.java

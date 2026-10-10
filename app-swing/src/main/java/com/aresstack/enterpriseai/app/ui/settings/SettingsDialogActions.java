@@ -93,7 +93,7 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * „Lokale Stimmen“ im Reiter „Lokale Modelle“: die angebotenen Stimmen mit Installationsstand im Modellverzeichnis des
+     * „Installiert und vorgeschlagen“ im Reiter „Lokale Modelle“: die angebotenen Stimmen mit Installationsstand im Modellverzeichnis des
      * Entwurfs, genau einmal auf dem EDT.
      */
     default void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {

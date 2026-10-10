@@ -39,9 +39,16 @@ public final class StartupNotices {
         }
         for (ModelCategory category : new ModelCategory[] {ModelCategory.CHAT, ModelCategory.EMBEDDING}) {
             ModelReference selected = config.models().selections().get(category);
-            if (selected != null && !KipitzModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId())) {
-                notices.add(category.displayName() + ": gewählt ist ein lokales Modell; lokal gibt es nur Stimmen. "
-                        + "Bitte unter Einstellungen → Modelle → Cloud-Modelle ein Modell wählen.");
+            if (selected == null || KipitzModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId())) {
+                continue;
+            }
+            if (category == ModelCategory.CHAT) {
+                notices.add("Chat: gewählt ist ein lokales Modell; lokal laufen bisher Stimmen und Embeddings. "
+                        + "Bitte unter Einstellungen → Modelle → Cloud-Modelle ein Chat-Modell wählen.");
+            } else if (!java.nio.file.Files.isDirectory(config.models().localModelRoot().resolve(
+                    selected.modelId()))) {
+                notices.add(category.displayName() + ": das lokale Modell " + selected.modelId() + " ist nicht "
+                        + "installiert (Einstellungen → Modelle → Lokale Modelle).");
             }
         }
         notices.addAll(config.warnings());

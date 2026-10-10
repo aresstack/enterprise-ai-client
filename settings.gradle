@@ -58,6 +58,11 @@ include 'speech-runtime-api'
 include 'speech-local'
 include 'speech-onnx'
 
+// Lokale Text-Modelle (Embeddings, Chat): Laufzeit-Port, Tokenizer/Pooling/Generierung, ONNX Runtime im Prozess
+include 'text-runtime-api'
+include 'text-local'
+include 'text-onnx'
+
 // Strang F – Security
 include 'security-api'
 include 'security-keepassrpc'

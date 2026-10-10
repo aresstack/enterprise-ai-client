@@ -74,6 +74,9 @@ Moduls liegen nur dort (geprüft).
 | `speech-runtime-api` | PORT | `speech.runtime` | domain | Inferenz-Laufzeit lokaler Stimmen (Token-Ids zu Audio), austauschbar |
 | `speech-local` | ADAPTER | `speech.local` | domain, speech-api, speech-runtime-api | Lokale Stimmen im Prozess (Piper, VITS aus dem Modellverzeichnis) |
 | `speech-onnx` | ADAPTER | `speech.onnx` | domain, speech-runtime-api | Pilot-Backend ONNX Runtime (Java-Bibliothek, kein externes Programm) |
+| `text-runtime-api` | PORT | `text.runtime` | domain | Inferenz-Laufzeit lokaler Text-Modelle (Encoder, Decoder mit KV-Cache), austauschbar |
+| `text-local` | ADAPTER | `text.local` | domain, embedding-api, chat-api, text-runtime-api | Lokale Embeddings und lokaler Chat im Prozess (Tokenizer aus tokenizer.json in Java, Pooling, Chat-Vorlage, Generierung) |
+| `text-onnx` | ADAPTER | `text.onnx` | domain, text-runtime-api | Pilot-Backend ONNX Runtime für Text-Modelle |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |
 | `acp-client-api` | PORT | `acp.api` | domain | G (AP16) |

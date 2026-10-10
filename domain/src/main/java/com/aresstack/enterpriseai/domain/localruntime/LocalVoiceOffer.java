@@ -1,8 +1,10 @@
 package com.aresstack.enterpriseai.domain.localruntime;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+
 /**
- * Eine lokale Stimme für die Sprachausgabe, die der Client installieren kann (kuratierte Liste aus der
- * Konfiguration), mit ihrem Installationsstand im Modellverzeichnis. Die Kennung ist zugleich der
+ * Ein lokales Modell, das der Client installieren kann (Stimme für die Sprachausgabe, Embedding- oder Chat-Modell;
+ * kuratiert oder aus der Hub-Suche), mit Kategorie und Installationsstand im Modellverzeichnis. Die Kennung ist zugleich der
  * Ordnername unter dem Modellverzeichnis und der Modellname, unter dem die Stimme gewählt wird.
  */
 public final class LocalVoiceOffer {
@@ -11,8 +13,15 @@ public final class LocalVoiceOffer {
     private final String displayName;
     private final String language;
     private final boolean installed;
+    private final ModelCategory category;
 
+    /** Eine Stimme (Kategorie TTS). */
     public LocalVoiceOffer(String id, String displayName, String language, boolean installed) {
+        this(id, displayName, language, installed, ModelCategory.TTS);
+    }
+
+    public LocalVoiceOffer(String id, String displayName, String language, boolean installed,
+                           ModelCategory category) {
         if (id == null || id.trim().isEmpty()) {
             throw new IllegalArgumentException("id must not be blank");
         }
@@ -20,6 +29,12 @@ public final class LocalVoiceOffer {
         this.displayName = displayName == null || displayName.trim().isEmpty() ? this.id : displayName.trim();
         this.language = language == null ? "" : language.trim();
         this.installed = installed;
+        this.category = category == null ? ModelCategory.TTS : category;
+    }
+
+    /** Wofür das Modell gewählt werden kann (TTS, EMBEDDING, CHAT). */
+    public ModelCategory category() {
+        return category;
     }
 
     public String id() {
@@ -49,7 +64,7 @@ public final class LocalVoiceOffer {
         }
         LocalVoiceOffer that = (LocalVoiceOffer) other;
         return id.equals(that.id) && displayName.equals(that.displayName) && language.equals(that.language)
-                && installed == that.installed;
+                && installed == that.installed && category == that.category;
     }
 
     @Override

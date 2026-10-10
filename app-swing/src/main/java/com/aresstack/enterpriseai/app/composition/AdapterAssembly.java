@@ -52,6 +52,8 @@ import com.aresstack.enterpriseai.source.ftp.JesSourceProvider;
 import com.aresstack.enterpriseai.source.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.source.ndv.NdvSourceProvider;
+import com.aresstack.enterpriseai.text.local.LocalEmbeddingAdapter;
+import com.aresstack.enterpriseai.text.onnx.OnnxTextEncoderRuntime;
 
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -102,8 +104,8 @@ public final class AdapterAssembly {
         SecretProvider secrets = secrets(config.keePass(), pairing, keyStore);
         ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
 
-        // Ausführung je Katalog der Modellauswahl: Chat und Embeddings laufen über die Enterprise-API; lokal gibt es
-        // nur Stimmen (Sprachausgabe im Prozess).
+        // Ausführung je Katalog der Modellauswahl: die Enterprise-API immer; lokal installierte Modelle laufen im
+        // Prozess über ONNX Runtime (Embeddings hier, Stimmen in ModelCatalogs).
         OpenAiCompatibleChatAdapter chatAdapter = chat(config.chat(), secrets, network);
         Map<String, ChatCompletionPort> chats = new LinkedHashMap<String, ChatCompletionPort>();
         chats.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
@@ -119,6 +121,24 @@ public final class AdapterAssembly {
         Map<String, EmbeddingPort> embeddingPorts = new LinkedHashMap<String, EmbeddingPort>();
         embeddingPorts.put(KipitzModelCatalogAdapter.CATALOG_ID, embeddings(config.embedding(), secrets, network));
         ModelReference embeddingModel = config.models().selections().get(ModelCategory.EMBEDDING);
+        String localEmbeddingProblem = null;
+        if (embeddingModel != null && ModelsConfig.LOCAL_CATALOG_ID.equals(embeddingModel.catalogId())) {
+            final OnnxTextEncoderRuntime encoder = new OnnxTextEncoderRuntime();
+            try {
+                embeddingPorts.put(ModelsConfig.LOCAL_CATALOG_ID, new LocalEmbeddingAdapter(
+                        ModelsConfig.LOCAL_CATALOG_ID, embeddingModel.modelId(), config.models().localModelRoot(),
+                        encoder));
+                ports.closing("local-embeddings", new Closeable() {
+                    @Override
+                    public void close() {
+                        encoder.close();
+                    }
+                });
+            } catch (IllegalArgumentException missing) {
+                localEmbeddingProblem = missing.getMessage();
+                LOG.log(Level.WARNING, "Lokales Embedding-Modell nicht nutzbar: {0}", missing.getMessage());
+            }
+        }
         EmbeddingModelExecutorRegistry embeddingModels = new EmbeddingModelExecutorRegistry(embeddingPorts);
         String embeddingCatalog = embeddingModel == null ? KipitzModelCatalogAdapter.CATALOG_ID
                 : embeddingModel.catalogId();
@@ -127,7 +147,7 @@ public final class AdapterAssembly {
                 ? embeddingModels.require(embeddingCatalog)
                 : unavailableEmbeddings(EmbeddingModelIdentity.of(embeddingModel.modelId(),
                 config.embedding().dimension()).withAttribute("encoding", "float")
-                .withAttribute("catalog", embeddingCatalog));
+                .withAttribute("catalog", embeddingCatalog), localEmbeddingProblem);
         ports.embeddings(embeddings, embeddings.modelIdentity());
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
@@ -155,7 +175,7 @@ public final class AdapterAssembly {
         return ports.build();
     }
 
-    private static EmbeddingPort unavailableEmbeddings(final EmbeddingModelIdentity identity) {
+    private static EmbeddingPort unavailableEmbeddings(final EmbeddingModelIdentity identity, final String problem) {
         return new EmbeddingPort() {
             @Override
             public EmbeddingModelIdentity modelIdentity() {
@@ -164,8 +184,9 @@ public final class AdapterAssembly {
 
             @Override
             public EmbeddingBatch embed(List<String> texts) {
-                throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "Lokales Embedding-Modell gewählt; "
-                        + "lokale Embeddings gibt es nicht mehr (Einstellungen → Modelle → Cloud-Modelle)");
+                throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "Lokales Embedding-Modell "
+                        + identity.modelId() + " nicht nutzbar" + (problem == null ? "" : ": " + problem)
+                        + " (Einstellungen → Modelle → Lokale Modelle)");
             }
         };
     }

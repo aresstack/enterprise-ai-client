@@ -198,6 +198,16 @@ im Tooltip den Grund. Für eine lokale Stimme:
    unter das Modellverzeichnis gelegt werden; der Ordnername ist der Modellname.
 2. Einstellungen → Modelle → „Lokale Modelle“ → TTS: die Stimme wählen, speichern, neu starten.
 
+### Lokale Embeddings
+
+Embedding-Modelle laufen ebenfalls im Client über ONNX Runtime (kein externes Programm, keine Umwandlung). Unter
+Einstellungen → Modelle → „Lokale Modelle“ → „Hugging Face durchsuchen“ erscheinen Embedding-Modelle mit ONNX-Export
+(`onnx/model.onnx` oder eine quantisierte Variante, dazu `config.json` und `tokenizer.json`). Der Tokenizer aus
+`tokenizer.json` (WordPiece, BPE, Unigram) läuft in reinem Java; Pooling und Normalisierung kommen aus `modules.json`
+und `1_Pooling/config.json`, fehlen sie, gilt Mittelwert mit L2-Normalisierung. Nach dem Installieren unter „Lokale
+Modelle“ → Embeddings wählen, speichern, neu starten und die Wissensquellen neu indexieren: ein anderes Modell ist eine
+andere Embedding-Welt. Präfixe wie `query:`/`passage:` (E5) setzt der Client nicht.
+
 `speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Spracheingabe (Mikrofon,
 Audiodatei) gehört nicht zum Enterprise-Client.
 

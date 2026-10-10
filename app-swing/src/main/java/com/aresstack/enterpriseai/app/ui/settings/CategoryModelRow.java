@@ -76,7 +76,7 @@ final class CategoryModelRow {
         });
         combo.getAccessibleContext().setAccessibleName((local ? "Lokales Modell für " : "Cloud-Modell für ")
                 + category.displayName());
-        String source = local ? "Installierte lokale Stimmen"
+        String source = local ? "Installierte lokale Modelle"
                 : "Passende Modelle aus GET /models der Enterprise-API";
         if (withTextField && !local) {
             field = rows.textField(category.displayName(), "Modellkennung, wie sie der Dienst nennt; optional mit "

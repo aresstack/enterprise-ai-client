@@ -13,9 +13,12 @@ import com.aresstack.huggingface.hub.download.ProgressListener;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -27,12 +30,12 @@ import java.util.Set;
 
 /**
  * {@link LocalVoiceProvisioning} über den Hugging Face Hub mit huggingface4j: bietet die kuratierten Stimmen, die
- * schon installierten und die Treffer der Hub-Suche ({@link HubVoiceSearch}, nur Formate, die der Client ohne
- * Umwandlung lädt) an. Installieren lädt die Dateien anonym nach {@code <Modellverzeichnis>/.<id>.download},
- * setzt abgebrochene Downloads fort ({@code .part}), prüft zuerst die kleine Konfigurationsdatei
- * ({@link VoiceConfigCheck}) und jede Datei gegen Größe und SHA-256 aus den Hub-Metadaten ({@link HubFileIndex}),
- * legt die Herkunft ab ({@link VoiceSource}) und verschiebt den fertigen Ordner nach
- * {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn die Sprachausgabe.
+ * schon installierten Modelle und die Treffer der Hub-Suche ({@link HubModelSearch}: Stimmen, Embedding- und
+ * Chat-Modelle, nur Formate, die der Client ohne Umwandlung lädt) an. Installieren lädt die Dateien anonym nach
+ * {@code <Modellverzeichnis>/.<id>.download}, setzt abgebrochene Downloads fort ({@code .part}), prüft zuerst die
+ * kleinen Konfigurationsdateien ({@link ModelConfigCheck}) und jede Datei gegen Größe und SHA-256 aus den
+ * Hub-Metadaten ({@link HubFileIndex}), legt die Herkunft ab ({@link VoiceSource}) und verschiebt den fertigen Ordner
+ * nach {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn der Client.
  */
 public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisioning {
 
@@ -82,7 +85,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         requireEndpoint();
         List<HuggingFaceVoice> found;
         try {
-            found = new HubVoiceSearch(hub(new RouteProxySelector(routes))).search(query);
+            found = new HubModelSearch(hub(new RouteProxySelector(routes))).search(query);
         } catch (HuggingFaceHubException e) {
             throw new LocalVoiceInstallException("Suche auf dem Hugging Face Hub fehlgeschlagen: " + e.getMessage(), e);
         } catch (RuntimeException e) {
@@ -117,7 +120,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
 
     private LocalVoiceOffer offer(HuggingFaceVoice voice, Path modelRoot) {
         return new LocalVoiceOffer(voice.id(), voice.displayName(), voice.language(),
-                complete(modelRoot.resolve(voice.id()), voice));
+                complete(modelRoot.resolve(voice.id()), voice), voice.category());
     }
 
     /** Installierte Stimmen mit Herkunftsdatei, nach Ordnername. */
@@ -171,8 +174,14 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         HubFileIndex index = new HubFileIndex(endpoint, proxies);
         for (String file : configFirst(voice.files())) {
             final String name = HuggingFaceVoice.fileName(file);
-            Path destination = staging.resolve(name);
+            Path destination = staging.resolve(voice.localName(file));
             HubFileIndex.Entry expected = expected(index, voice, file);
+            try {
+                Files.createDirectories(destination.getParent());
+            } catch (IOException e) {
+                throw new LocalVoiceInstallException("Modellverzeichnis nicht beschreibbar: " + modelRoot + " ("
+                        + e.getMessage() + ")", e);
+            }
             try {
                 hub.models().model(voice.repository()).file(file).revision(voice.revision())
                         .downloadTo(destination).resume(true).overwrite(false)
@@ -188,7 +197,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
                 throw new LocalVoiceInstallException("Download von " + name + " fehlgeschlagen: " + e, e);
             }
             verify(destination, expected);
-            VoiceConfigCheck.check(destination);
+            ModelConfigCheck.check(destination, voice.category());
         }
         try {
             VoiceSource.write(voice, staging);
@@ -197,11 +206,11 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         }
         moveIntoPlace(staging, target);
         if (!complete(target, voice)) {
-            throw new LocalVoiceInstallException("Stimme " + voice.id() + " ist nach dem Download unvollständig.");
+            throw new LocalVoiceInstallException("Modell " + voice.id() + " ist nach dem Download unvollständig.");
         }
     }
 
-    /** Nur Ordner der angebotenen Stimmen; Dateien darin werden gelöscht, Unterordner gibt es nicht. */
+    /** Nur Ordner der angebotenen Modelle; der Ordner wird samt Unterordnern gelöscht. */
     @Override
     public void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException {
         HuggingFaceVoice voice = find(voiceId, modelRoot);
@@ -210,14 +219,9 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
             return;
         }
         try {
-            try (DirectoryStream<Path> files = Files.newDirectoryStream(target)) {
-                for (Path file : files) {
-                    Files.delete(file);
-                }
-            }
-            Files.delete(target);
+            deleteTree(target);
         } catch (IOException e) {
-            throw new LocalVoiceInstallException("Stimme " + voice.id() + " ließ sich nicht entfernen: "
+            throw new LocalVoiceInstallException("Modell " + voice.id() + " ließ sich nicht entfernen: "
                     + e.getMessage(), e);
         }
     }
@@ -234,7 +238,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
             found = VoiceSource.read(modelRoot.resolve(voiceId));
         }
         if (found == null) {
-            throw new LocalVoiceInstallException("Unbekannte Stimme: " + voiceId);
+            throw new LocalVoiceInstallException("Unbekanntes Modell: " + voiceId);
         }
         return found;
     }
@@ -262,7 +266,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         }
         try {
             for (String file : voice.files()) {
-                Path present = directory.resolve(HuggingFaceVoice.fileName(file));
+                Path present = directory.resolve(voice.localName(file));
                 if (!Files.isRegularFile(present) || Files.size(present) == 0) {
                     return false;
                 }
@@ -340,21 +344,46 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         }
     }
 
+    private static void deleteTree(Path root) throws IOException {
+        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
+                if (failure != null) {
+                    throw failure;
+                }
+                Files.delete(directory);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
     private static void moveIntoPlace(Path staging, Path target) throws LocalVoiceInstallException {
         try {
             if (!Files.exists(target)) {
                 Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
                 return;
             }
-            // Ein unvollständiger Ordner von früher: Dateien einzeln ersetzen.
-            try (DirectoryStream<Path> files = Files.newDirectoryStream(staging)) {
-                for (Path file : files) {
-                    Files.move(file, target.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+            // Ein vorhandener Ordner (Aktualisieren oder unvollständig von früher): Dateien einzeln ersetzen.
+            final Path from = staging;
+            final Path to = target;
+            Files.walkFileTree(from, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                    Path destination = to.resolve(from.relativize(file).toString());
+                    Files.createDirectories(destination.getParent());
+                    Files.move(file, destination, StandardCopyOption.REPLACE_EXISTING);
+                    return FileVisitResult.CONTINUE;
                 }
-            }
-            Files.delete(staging);
+            });
+            deleteTree(staging);
         } catch (IOException e) {
-            throw new LocalVoiceInstallException("Stimme konnte nicht nach " + target + " verschoben werden: "
+            throw new LocalVoiceInstallException("Modell konnte nicht nach " + target + " verschoben werden: "
                     + e.getMessage(), e);
         }
     }

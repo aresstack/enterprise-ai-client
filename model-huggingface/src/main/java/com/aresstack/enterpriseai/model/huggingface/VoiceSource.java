@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -13,9 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Herkunft einer installierten Stimme ({@value #FILE_NAME} im Stimmenordner): Repository, Revision und Dateien.
- * Damit bleiben Stimmen aus der Hub-Suche nach einem Neustart sichtbar und lassen sich aktualisieren und
- * entfernen. Die Leser der Stimmenformate ignorieren die Datei.
+ * Herkunft eines installierten Modells ({@value #FILE_NAME} im Modellordner): Repository, Revision, Dateien und
+ * Kategorie. Damit bleiben Treffer der Hub-Suche nach einem Neustart sichtbar und lassen sich aktualisieren und
+ * entfernen. Die Leser der Modellformate ignorieren die Datei.
  */
 final class VoiceSource {
 
@@ -30,6 +31,7 @@ final class VoiceSource {
         source.addProperty("language", voice.language());
         source.addProperty("repository", voice.repository());
         source.addProperty("revision", voice.revision());
+        source.addProperty("category", voice.category().name());
         JsonArray files = new JsonArray();
         for (String file : voice.files()) {
             files.add(file);
@@ -53,8 +55,10 @@ final class VoiceSource {
                     files.add(entry.getAsString());
                 }
             }
+            String category = text(source, "category");
             return new HuggingFaceVoice(directory.getFileName().toString(), text(source, "name"),
-                    text(source, "language"), text(source, "repository"), text(source, "revision"), files);
+                    text(source, "language"), text(source, "repository"), text(source, "revision"), files,
+                    category == null ? ModelCategory.TTS : ModelCategory.valueOf(category));
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }

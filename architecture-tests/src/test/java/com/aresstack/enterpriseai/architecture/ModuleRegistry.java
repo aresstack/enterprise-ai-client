@@ -95,6 +95,16 @@ final class ModuleRegistry {
                 .module("speech-onnx", "speech.onnx", ModuleKind.ADAPTER, "Sprache", "domain",
                         "speech-runtime-api")
 
+                // Inferenz-Laufzeit lokaler Text-Modelle (Encoder für Embeddings, Decoder für Chat), austauschbar.
+                .module("text-runtime-api", "text.runtime", ModuleKind.PORT, "Lokale Modelle", "domain")
+                // Lokale Embeddings und lokaler Chat im Prozess: Tokenizer (tokenizer.json) in reinem Java, Pooling,
+                // Chat-Vorlage, Generierung; rechnet über text-runtime-api.
+                .module("text-local", "text.local", ModuleKind.ADAPTER, "Lokale Modelle", "domain", "embedding-api",
+                        "chat-api", "text-runtime-api")
+                // Pilot-Backend ONNX Runtime (Java-Bibliothek im Prozess); nur hier ONNX-Typen für Text-Modelle.
+                .module("text-onnx", "text.onnx", ModuleKind.ADAPTER, "Lokale Modelle", "domain",
+                        "text-runtime-api")
+
                 .module("security-api", "security.api", ModuleKind.PORT, "F", "domain")
                 .module("security-keepassrpc", "security.keepassrpc", ModuleKind.ADAPTER, "F", "domain", "security-api")
 
@@ -114,7 +124,8 @@ final class ModuleRegistry {
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
                         "resource-holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
-                        "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx")
+                        "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
+                        "text-runtime-api", "text-local", "text-onnx")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

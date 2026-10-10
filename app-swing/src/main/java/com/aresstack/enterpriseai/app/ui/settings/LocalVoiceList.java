@@ -22,7 +22,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * „Lokale Stimmen“ im Reiter „Lokale Modelle“: je vorgeschlagene oder installierte Stimme eine Zeile mit Installationsstand und
+ * „Installiert und vorgeschlagen“ im Reiter „Lokale Modelle“: je vorgeschlagene oder installierte Stimme eine Zeile mit Installationsstand und
  * „Installieren“ bzw. „Aktualisieren“ und „Entfernen“, darunter eine Statuszeile mit Fortschritt oder Fehlergrund. Installieren wählt
  * nichts aus: eine installierte Stimme steht danach in der TTS-Liste darüber und wird dort gewählt. Dazu die
  * Hugging-Face-Suche ({@link #searchPanel()}): Suchfeld und Treffer, nur Modelle, die der Client ohne Umwandlung

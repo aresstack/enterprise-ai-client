@@ -45,6 +45,8 @@ final class ModelsTab {
     static final String EMPTY_STATUS = "Noch keine Modellliste. „Modelle aktualisieren“ fragt GET /models ab.";
     static final String CLOUD_PAGE = "Cloud-Modelle";
     static final String LOCAL_PAGE = "Lokale Modelle";
+    /** Funktionen, für die der Client Modelle im Prozess rechnet. */
+    private static final ModelCategory[] LOCAL_CATEGORIES = {ModelCategory.EMBEDDING, ModelCategory.TTS};
 
     private final SettingsDialogActions actions;
     private final Supplier<SettingsForm> form;
@@ -100,9 +102,10 @@ final class ModelsTab {
         sources.component(null, sourceRow, null);
 
         FormRows localSelection = new FormRows(palette);
-        localSelection.note("Lokal läuft heute nur die Sprachausgabe: installierte Stimmen stehen unter TTS; "
-                + "eine Wahl hier ersetzt die Wahl unter „Cloud-Modelle“ und umgekehrt.");
-        for (ModelCategory category : new ModelCategory[] {ModelCategory.TTS}) {
+        localSelection.note("Installierte Modelle je Funktion, gerechnet im Client über ONNX Runtime; eine Wahl hier "
+                + "ersetzt die Wahl unter „Cloud-Modelle“ und umgekehrt. Ein anderes Embedding-Modell heißt: "
+                + "Wissensquellen neu indexieren.");
+        for (ModelCategory category : LOCAL_CATEGORIES) {
             localRows.add(new CategoryModelRow(localSelection, category, true, false, selections.get(category),
                     actions, palette));
         }
@@ -115,24 +118,25 @@ final class ModelsTab {
 
             @Override
             public void removed(String voiceId) {
-                ModelSelection tts = selections.get(ModelCategory.TTS);
                 ModelReference removed = ModelsTab.this.actions.parseModel(
                         ModelsTab.this.actions.localVoiceSelection(voiceId));
-                if (removed != null && removed.equals(ModelsTab.this.actions.parseModel(tts.get()))) {
-                    tts.set("");
+                for (ModelSelection selection : selections.values()) {
+                    if (removed != null && removed.equals(ModelsTab.this.actions.parseModel(selection.get()))) {
+                        selection.set("");
+                    }
                 }
             }
         }, palette);
         FormRows voiceNote = new FormRows(palette);
-        voiceNote.note("Vorgeschlagene und installierte Stimmen, geladen vom Hugging Face Hub über die "
-                + "Netzwerkeinstellungen ins Modellverzeichnis, ohne Umwandlung. Sie sprechen im Client selbst (ONNX "
-                + "Runtime), ohne externes Programm; die deutsche Aussprache ist regelbasiert. "
-                + "Installieren wählt nichts aus: gewählt wird unter TTS oben.");
+        voiceNote.note("Vorgeschlagene Stimmen und installierte Modelle, geladen vom Hugging Face Hub über die "
+                + "Netzwerkeinstellungen ins Modellverzeichnis, ohne Umwandlung. Sie laufen im Client selbst (ONNX "
+                + "Runtime), ohne externes Programm; die deutsche Aussprache der Stimmen ist regelbasiert. "
+                + "Installieren wählt nichts aus: gewählt wird oben je Funktion.");
         FormRows searchNote = new FormRows(palette);
         searchNote.note("Angeboten werden nur Modelle, die der Client ohne Umwandlung lädt: Sprachausgabe als "
                 + "Piper-Stimme (.onnx mit .onnx.json, deutsch oder Text-Eingabe) oder VITS (config.json, vocab.json, "
-                + "onnx/model.onnx). Chat- und Embedding-Modelle fehlen, bis es dafür eine Laufzeit gibt, die "
-                + "Hub-Dateien direkt lädt.");
+                + "onnx/model.onnx); Embeddings als ONNX-Export mit config.json und tokenizer.json (WordPiece, BPE "
+                + "oder Unigram).");
         JPanel searchContent = new JPanel(new BorderLayout(0, 4));
         searchContent.setOpaque(false);
         searchContent.add(searchNote.panel(), BorderLayout.NORTH);
@@ -152,7 +156,7 @@ final class ModelsTab {
         JPanel localPage = FormRows.column(palette,
                 FormRows.plate("Lokale Modelle je Funktion", palette.getNavigationBlue(), localSelection.panel(),
                         palette),
-                FormRows.plate("Lokale Stimmen", palette.getAccentOrange(), voiceContent, palette),
+                FormRows.plate("Installiert und vorgeschlagen", palette.getAccentOrange(), voiceContent, palette),
                 FormRows.plate("Hugging Face durchsuchen", palette.getAccentOrange(), searchContent, palette),
                 FormRows.plate("Modellverzeichnis", palette.getAgentPetrol(), local.panel(), palette));
         deck.setOpaque(false);
@@ -201,13 +205,16 @@ final class ModelsTab {
     }
 
     private void showInstalledVoices(List<LocalVoiceOffer> offers) {
-        List<ModelOption> installed = new ArrayList<ModelOption>();
-        for (LocalVoiceOffer offer : offers) {
-            if (offer.isInstalled()) {
-                installed.add(ModelOption.installed(actions.localVoiceSelection(offer.id()), offer.displayName()));
+        for (ModelCategory category : LOCAL_CATEGORIES) {
+            List<ModelOption> installed = new ArrayList<ModelOption>();
+            for (LocalVoiceOffer offer : offers) {
+                if (offer.isInstalled() && offer.category() == category) {
+                    installed.add(ModelOption.installed(actions.localVoiceSelection(offer.id()),
+                            offer.displayName()));
+                }
             }
+            localRow(category).showInstalled(installed);
         }
-        localRow(ModelCategory.TTS).showInstalled(installed);
     }
 
     JPanel panel() {
