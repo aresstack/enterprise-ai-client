@@ -63,6 +63,7 @@ Moduls liegen nur dort (geprüft).
 | `source-ftp` | ADAPTER | `source.ftp` | domain, source-api, security-api | FTP/MVS-Quelle (COBOL in PDS-Membern) und JES-Jobausgaben; Commons Net, Anmeldung über KeePass |
 | `source-ndv` | ADAPTER | `source.ndv` | domain, source-api, security-api | Natural-Quellen über NDV (NATSPOD/PAL aus MainframeMate, Anmeldung über KeePass) |
 | `source-sharepoint` | ADAPTER | `source.sharepoint` | domain, source-api, security-api, document-api | SharePoint-Bibliothek über WebDAV (UNC, SSO-first aus MainframeMate, Fallback KeePass) |
+| `source-outlook` | ADAPTER | `source.outlook` | domain, source-api | Outlook-Postfachdateien PST/OST (java-libpst, Auswahl aus MainframeMate) |
 | `resource-api` | PORT | `resource.api` | domain | Ressourcenschicht aus corenth: AcquisitionPort, Bronze (0.1.16) |
 | `resource-holkas` | ADAPTER | `resource.holkas` | domain, resource-api, source-api | Holkas-Connectoren über den Quellen (0.1.16) |
 | `document-api` | PORT | `document.api` | domain | Dokumente (corenth deigma) |

@@ -30,6 +30,8 @@ dependencies {
     implementation project(':source-ndv')
     // SharePoint über WebDAV (SSO, sonst KeePass).
     implementation project(':source-sharepoint')
+    // Outlook-Postfachdateien (PST/OST), lokal.
+    implementation project(':source-outlook')
     implementation project(':resource-api')
     implementation project(':resource-holkas')
     implementation project(':document-tika')

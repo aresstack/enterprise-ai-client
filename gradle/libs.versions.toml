@@ -20,6 +20,7 @@ flexmark = "0.62.2"
 mermaidJava = "0.2.0-beta.2"
 tika = "2.9.1"
 commonsNet = "3.9.0"
+javaLibpst = "0.9.3"
 
 [libraries]
 # Test
@@ -69,3 +70,4 @@ tika-parsers-standard = { module = "org.apache.tika:tika-parsers-standard-packag
 
 # source-ftp: FTP/MVS wie MainframeMate (Apache Commons Net); nur in source-ftp als implementation.
 commons-net = { module = "commons-net:commons-net", version.ref = "commonsNet" }
+java-libpst = { module = "com.pff:java-libpst", version.ref = "javaLibpst" }

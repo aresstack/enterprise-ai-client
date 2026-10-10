@@ -1,0 +1,6 @@
+description = 'Adapter: Outlook-Postfachdateien (PST/OST) als Knowledge Source. java-libpst nur adapterintern, Auswahl und Text aus MainframeMate (MailSourceScanner).'
+
+dependencies {
+    api project(':source-api')
+    implementation libs.java.libpst
+}
