@@ -109,7 +109,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     + e.getClass().getSimpleName() + ")");
         }
         try {
-            AppConfig config = AppConfigLoader.fromProperties(SettingsMapper.merge(current, form));
+            AppConfig config = AppConfigLoader.fromProperties(SettingsMapper.merge(current,
+                    repair(form, brokenIndexKeys(current))));
             check.verify(config);
             return Collections.emptyList();
         } catch (AppConfigException e) {
@@ -126,28 +127,71 @@ public final class FileSettingsActions implements SettingsDialogActions {
             throw new IllegalArgumentException("Entwurf hat Probleme: " + problems);
         }
         Properties current = current();
+        Set<String> broken = brokenIndexKeys(current);
+        SettingsForm repaired = repair(form, broken);
         // Leere Felder sind Entfernungen (Zeile auskommentieren), nie "schlüssel=" ohne Wert.
         // Quellen (FileSourceActions) und Index-Einstellungen (FileIndexActions) verwaltet der Drawer-Reiter
         // „Wissensquellen“; der Dialog schreibt sie nicht zurück, sonst würde eine fehlerhafte Quelle beim
-        // Speichern anderer Einstellungen umgeschrieben.
+        // Speichern anderer Einstellungen umgeschrieben. Ausnahme: ein Index-Schlüssel, der in der Datei ungültig
+        // steht. Dann läuft dieser Dialog beim Start vor dem Hauptfenster und ist die einzige Stelle, die ihn
+        // reparieren kann; sonst käme der Start nie über den Dialog hinaus.
         Map<String, String> writes = new LinkedHashMap<String, String>();
-        for (Map.Entry<String, String> entry : SettingsMapper.writes(form).entrySet()) {
-            if (!managedElsewhere(entry.getKey())) {
+        for (Map.Entry<String, String> entry : SettingsMapper.writes(repaired).entrySet()) {
+            if (!managedElsewhere(entry.getKey(), broken)) {
                 writes.put(entry.getKey(), entry.getValue());
             }
         }
         Set<String> removals = new LinkedHashSet<String>();
-        for (String key : SettingsMapper.removals(form, current)) {
-            if (!managedElsewhere(key)) {
+        for (String key : SettingsMapper.removals(repaired, current)) {
+            if (!managedElsewhere(key, broken)) {
                 removals.add(key);
             }
         }
         file.update(writes, removals, AppConfigLoader.exampleConfiguration());
     }
 
-    /** Schlüssel, die die Dialoge des Drawer-Reiters „Wissensquellen“ schreiben: Quellen und Index-Einstellungen. */
-    private static boolean managedElsewhere(String key) {
-        return FileSourceActions.isSourceKey(key) || FileIndexActions.isIndexKey(key);
+    /**
+     * Schlüssel, die die Dialoge des Drawer-Reiters „Wissensquellen“ schreiben: Quellen und Index-Einstellungen,
+     * letztere nur, solange sie in der Datei gültig stehen ({@code brokenIndexKeys}).
+     */
+    private static boolean managedElsewhere(String key, Set<String> brokenIndexKeys) {
+        return FileSourceActions.isSourceKey(key)
+                || (FileIndexActions.isIndexKey(key) && !brokenIndexKeys.contains(key));
+    }
+
+    /**
+     * Die Index-Schlüssel, die der Loader in der Datei selbst beanstandet (Problemzeilen {@code schlüssel: …} zu
+     * {@code knowledge.indexDirectory} oder {@code knowledge.indexOnStartup}); leer, wenn die Datei insoweit in
+     * Ordnung ist oder fehlt (dann zählt die Vorlage).
+     */
+    private static Set<String> brokenIndexKeys(Properties current) {
+        Set<String> broken = new LinkedHashSet<String>();
+        try {
+            AppConfigLoader.fromProperties(current);
+        } catch (AppConfigException e) {
+            for (String problem : e.problems()) {
+                int colon = problem.indexOf(':');
+                String key = (colon < 0 ? problem : problem.substring(0, colon)).trim();
+                if (FileIndexActions.isIndexKey(key)) {
+                    broken.add(key);
+                }
+            }
+        } catch (RuntimeException e) {
+            // Unklare Datei: hier wird nichts repariert; die Prüfung meldet das Problem.
+        }
+        return broken;
+    }
+
+    /**
+     * Das Formular, wie es gespeichert wird: ein in der Datei unbrauchbares Indexverzeichnis wird geleert (die
+     * Zeile auskommentiert, es gilt das Standardverzeichnis; der Index-Dialog der Seitenleiste setzt später ein
+     * neues). Ein unbrauchbares Häkchen trägt das Formular bereits normalisiert ({@link SettingsMapper#fromProperties}).
+     */
+    private static SettingsForm repair(SettingsForm form, Set<String> brokenIndexKeys) {
+        if (!brokenIndexKeys.contains(SettingsMapper.KEY_INDEX_DIRECTORY)) {
+            return form;
+        }
+        return form.toBuilder().indexDirectory("").build();
     }
 
     @Override
