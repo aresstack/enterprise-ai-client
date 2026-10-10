@@ -25,6 +25,10 @@ final class ModelConfigCheck {
     }
 
     static void check(Path file, ModelCategory category) throws LocalVoiceInstallException {
+        if (category == ModelCategory.STT) {
+            checkAudio(file);
+            return;
+        }
         if (category == ModelCategory.EMBEDDING || category == ModelCategory.CHAT) {
             checkText(file, category);
             return;
@@ -63,6 +67,31 @@ final class ModelConfigCheck {
         if (!normalized.equals("de") && !normalized.startsWith("de-") && !normalized.startsWith("de_")) {
             throw new LocalVoiceInstallException("Piper-Stimme für espeak-Sprache \"" + language
                     + "\": ohne externes Programm spricht der Client nur deutsche espeak-Stimmen.");
+        }
+    }
+
+    /**
+     * Spracheingabe: {@code config.json} eines Gemma-4-Modells mit Audio-Teil ({@code audio_config}); die
+     * Audio-Merkmale des Clients folgen Gemma 4. Tokenizer wie bei Text-Modellen.
+     */
+    private static void checkAudio(Path file) throws LocalVoiceInstallException {
+        String name = file.getFileName().toString();
+        if (name.equals("tokenizer.json")) {
+            checkText(file, ModelCategory.CHAT);
+            return;
+        }
+        if (!name.equals("config.json")) {
+            return;
+        }
+        JsonObject json = read(file, name);
+        String type = text(json, "model_type");
+        if (object(json, "audio_config") == null) {
+            throw new LocalVoiceInstallException("Modell \"" + type + "\" hat keinen Audio-Eingang (audio_config "
+                    + "fehlt in config.json).");
+        }
+        if (!"gemma4".equals(type)) {
+            throw new LocalVoiceInstallException("Spracheingabe mit model_type \"" + type + "\" wird nicht "
+                    + "unterstützt; der Client rechnet die Audio-Merkmale von Gemma 4.");
         }
     }
 

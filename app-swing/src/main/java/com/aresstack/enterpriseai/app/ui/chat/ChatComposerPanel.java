@@ -69,6 +69,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String ATTACH_TOOLTIP = "Dateien anhängen";
     static final String MODEL_PLACEHOLDER = "Modell";
     static final String STREAMING_STATUS = "Antwort wird erstellt …";
+    static final String DICTATE_TOOLTIP = "Diktieren";
+    static final String RECORDING_TOOLTIP = "Aufnahme beenden und erkennen";
+    static final String RECORDING_STATUS = "Aufnahme läuft … Mikrofon erneut klicken zum Erkennen";
+    static final String RECOGNIZING_STATUS = "Erkenne Sprache …";
     /** Denkaufwand: Anzeige und Wert ({@code null} = Standard des Modells), wie arch „Think: …“. */
     private static final List<String> REASONING_LABELS = Collections.unmodifiableList(Arrays.asList(
             "Denken: Standard", "Denken: niedrig", "Denken: mittel", "Denken: hoch"));
@@ -95,6 +99,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final ComposerButton sendButton;
     private final ComposerButton stopButton;
     private final ComposerButton attachButton;
+    private final ComposerButton micButton;
     private final ChatAttachmentStrip attachmentStrip;
     private Runnable modelAction;
     private Supplier<List<String>> modelChoices;
@@ -102,6 +107,14 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private String reasoningEffort;
     private File lastDirectory;
     private boolean editorFocused;
+    private DictationControl dictation;
+    private DictationPhase dictationPhase = DictationPhase.IDLE;
+    private String dictationNote;
+
+    /** Wo das Diktat steht; der Mikrofon-Knopf und die Statuszeile folgen ihm. */
+    private enum DictationPhase {
+        IDLE, RECORDING, RECOGNIZING
+    }
 
     public ChatComposerPanel(ChatShellModel model, ChatShellActions actions, ComicPalette palette) {
         if (model == null || actions == null || palette == null) {
@@ -121,6 +134,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.attachButton = ComposerButton.iconButton(ComposerIcons.paperclip(), ATTACH_TOOLTIP);
         attachButton.getAccessibleContext().setAccessibleName(ATTACH_TOOLTIP);
         attachButton.setVisible(actions.supportsAttachments());
+        this.micButton = ComposerButton.iconButton(ComposerIcons.microphone(), DICTATE_TOOLTIP);
+        micButton.getAccessibleContext().setAccessibleName(DICTATE_TOOLTIP);
+        micButton.setAccent(DANGER); // während der Aufnahme rot gefüllt
+        micButton.setVisible(false);
         this.attachmentStrip = new ChatAttachmentStrip(() -> refreshAttachmentState());
         buildUi();
         wireBehaviour();
@@ -277,6 +294,72 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         return stopButton;
     }
 
+    /**
+     * Bindet die Spracheingabe: der Mikrofon-Knopf erscheint, ist aber nur aktiv, wenn ein STT-Modell nutzbar ist
+     * (sonst nennt sein Tooltip den Grund). Einmal je Composer; auf dem EDT.
+     */
+    public void setDictation(DictationControl control) {
+        if (control == null || dictation != null) {
+            return;
+        }
+        dictation = control;
+        micButton.setVisible(true);
+        control.addListener(new DictationControl.Listener() {
+            @Override
+            public void dictationChanged() {
+                refreshControls();
+            }
+        });
+        refreshControls();
+        revalidate();
+    }
+
+    public ComposerButton micButton() {
+        return micButton;
+    }
+
+    private void toggleDictation() {
+        if (dictation == null) {
+            return;
+        }
+        if (dictationPhase == DictationPhase.RECORDING) {
+            dictationPhase = DictationPhase.RECOGNIZING;
+            refreshControls();
+            dictation.finish();
+            return;
+        }
+        if (dictationPhase != DictationPhase.IDLE || !dictation.isAvailable()) {
+            return;
+        }
+        dictationNote = null;
+        dictationPhase = DictationPhase.RECORDING;
+        refreshControls();
+        dictation.start(new DictationControl.Result() {
+            @Override
+            public void recognized(String text) {
+                dictationPhase = DictationPhase.IDLE;
+                if (text == null || text.trim().isEmpty()) {
+                    dictationNote = "Nichts erkannt";
+                } else {
+                    DictationInsertion insertion = DictationInsertion.insert(editor.getText(),
+                            editor.getSelectionStart(), editor.getSelectionEnd(), text);
+                    editor.setText(insertion.text);
+                    editor.setCaretPosition(insertion.caret);
+                    editor.requestFocusInWindow();
+                }
+                refreshControls();
+            }
+
+            @Override
+            public void failed(String message) {
+                dictationPhase = DictationPhase.IDLE;
+                dictationNote = "Spracheingabe: " + message;
+                micButton.setToolTipText(dictationNote);
+                refreshControls();
+            }
+        });
+    }
+
     /** Ob gerade eine Antwort läuft (dann zeigt die Fläche Stop und den Akzentrand). */
     public boolean isBusy() {
         return model.canStop();
@@ -364,6 +447,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         east.setOpaque(false);
         east.setLayout(new BoxLayout(east, BoxLayout.X_AXIS));
         east.add(Box.createHorizontalGlue());
+        east.add(micButton);
+        east.add(Box.createHorizontalStrut(2));
         east.add(attachButton);
         east.add(Box.createHorizontalStrut(4));
         east.add(sendButton);
@@ -422,6 +507,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         modelButton.addActionListener(event -> showModelMenu());
         reasoningButton.addActionListener(event -> showReasoningMenu());
         attachButton.addActionListener(event -> chooseFiles());
+        micButton.addActionListener(event -> toggleDictation());
 
         editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), SEND_ACTION);
         editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK),
@@ -471,6 +557,21 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         });
     }
 
+    private void refreshDictation(boolean busy) {
+        if (dictation == null) {
+            return;
+        }
+        boolean recording = dictationPhase == DictationPhase.RECORDING;
+        micButton.setEnabled(recording || (dictationPhase == DictationPhase.IDLE && !busy
+                && dictation.isAvailable()));
+        micButton.setEmphasized(recording);
+        if (recording) {
+            micButton.setToolTipText(RECORDING_TOOLTIP);
+        } else if (dictationNote == null || dictationPhase != DictationPhase.IDLE) {
+            micButton.setToolTipText(DICTATE_TOOLTIP + " (" + dictation.description() + ")");
+        }
+    }
+
     /** Send/Stop: genau einer sichtbar; Send nur mit sendbarem Entwurf aktiv, Stop nur während einer Antwort. */
     private void refreshControls() {
         boolean busy = model.canStop();
@@ -478,9 +579,13 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         stopButton.setEnabled(busy);
         attachButton.setEnabled(!busy);
         reasoningButton.setEnabled(!busy);
+        refreshDictation(busy);
         int pending = attachmentStrip.count();
         String status = busy ? STREAMING_STATUS
-                : pending == 1 ? "1 Anhang vorgemerkt" : pending > 1 ? pending + " Anhänge vorgemerkt" : " ";
+                : dictationPhase == DictationPhase.RECORDING ? RECORDING_STATUS
+                : dictationPhase == DictationPhase.RECOGNIZING ? RECOGNIZING_STATUS
+                : pending == 1 ? "1 Anhang vorgemerkt" : pending > 1 ? pending + " Anhänge vorgemerkt"
+                : dictationNote != null ? dictationNote : " ";
         if (!status.equals(statusLabel.getText())) {
             statusLabel.setText(status);
         }

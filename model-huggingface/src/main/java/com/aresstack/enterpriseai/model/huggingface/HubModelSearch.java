@@ -31,7 +31,11 @@ import java.util.regex.Pattern;
  * Embeddings ({@code feature-extraction}, {@code sentence-similarity}) und Chat ({@code text-generation}): ONNX-Export
  * mit {@code config.json} und {@code tokenizer.json}; Graph {@code model.onnx} bzw. eine quantisierte Variante (Chat
  * bevorzugt {@code model_q4.onnx}), samt externen Gewichten ({@code <graph>_data}) und den Dateien für Tokenizer,
- * Chat-Vorlage und Pooling. Ob Konfiguration und Tokenizer passen, prüft die Installation vor dem Graphen.
+ * Chat-Vorlage und Pooling. Spracheingabe ({@code automatic-speech-recognition}, {@code any-to-any},
+ * {@code image-text-to-text}, {@code audio-text-to-text}): Gemma-Export mit Audio-Eingang im Layout von
+ * transformers.js, je Graph {@code audio_encoder}, {@code embed_tokens} und {@code decoder_model_merged} eine Variante
+ * (bevorzugt {@code _q4}) samt externen Gewichten, ohne Bild-Encoder. Ob Konfiguration und Tokenizer passen, prüft die
+ * Installation vor dem Graphen.
  */
 final class HubModelSearch {
 
@@ -46,6 +50,14 @@ final class HubModelSearch {
     private static final String[] TEXT_EXTRAS = {"tokenizer_config.json", "generation_config.json",
             "special_tokens_map.json", "chat_template.jinja", "modules.json", "1_Pooling/config.json",
             "sentence_bert_config.json"};
+    /** Die Graphen eines Modells mit Audio-Eingang; der Bild-Encoder bleibt weg. */
+    private static final String[] AUDIO_GRAPHS = {"audio_encoder", "embed_tokens", "decoder_model_merged"};
+    /** Varianten je Graph, bevorzugt zuerst (wie der Leser im Client). */
+    private static final String[] AUDIO_VARIANTS = {"_q4", "_quantized", "_int8", "_uint8", "_q4f16", "_fp16", ""};
+    private static final String[] AUDIO_EXTRAS = {"tokenizer_config.json", "generation_config.json",
+            "special_tokens_map.json", "processor_config.json", "preprocessor_config.json"};
+    private static final String[] AUDIO_TASKS = {"automatic-speech-recognition", "any-to-any", "image-text-to-text",
+            "audio-text-to-text"};
     private static final Pattern PIPER_NAME = Pattern.compile("^([a-z]{2,3})_[A-Z]{2}-.+");
 
     private final HuggingFaceHub hub;
@@ -55,8 +67,8 @@ final class HubModelSearch {
     }
 
     /**
-     * Unterstützte Modelle zur Suche: Sprachausgabe, Embeddings und Chat, oder nur die genannte Kategorie
-     * ({@code null} = alle drei); leer, wenn nichts passt. Blockiert (Netz).
+     * Unterstützte Modelle zur Suche: Sprachausgabe, Embeddings, Chat und Spracheingabe, oder nur die genannte
+     * Kategorie ({@code null} = alle); leer, wenn nichts passt. Blockiert (Netz).
      */
     List<HuggingFaceVoice> search(String query, ModelCategory category) throws HuggingFaceHubException {
         List<HuggingFaceVoice> found = new ArrayList<HuggingFaceVoice>();
@@ -82,6 +94,19 @@ final class HubModelSearch {
         for (ModelSummary repository : chats.values()) {
             HuggingFaceVoice model = textModel(repository.getId(), paths(hub.models().model(repository.getId())
                     .files().execute()), ModelCategory.CHAT);
+            if (model != null) {
+                found.add(model);
+            }
+        }
+        Map<String, ModelSummary> audio = new LinkedHashMap<String, ModelSummary>();
+        if (category == null || category == ModelCategory.STT) {
+            for (String task : AUDIO_TASKS) {
+                collect(audio, request(query).task(task).filter("onnx"), TEXT_LIMIT);
+            }
+        }
+        for (ModelSummary repository : audio.values()) {
+            HuggingFaceVoice model = audioModel(repository.getId(), paths(hub.models().model(repository.getId())
+                    .files().execute()));
             if (model != null) {
                 found.add(model);
             }
@@ -216,6 +241,59 @@ final class HubModelSearch {
         String label = category == ModelCategory.CHAT ? "Chat" : "Embedding";
         return new HuggingFaceVoice(id, label + " · " + repository + " (" + variant + ")", "", repository, null,
                 files, category);
+    }
+
+    /**
+     * Ein Spracheingabe-Modell (Sprachmodell mit Audio-Eingang) aus den Dateien eines Repositorys; {@code null}, wenn
+     * Konfiguration, Tokenizer oder einer der drei Graphen fehlen. Je Graph die bevorzugte Variante samt
+     * {@code <graph>_data*}.
+     */
+    static HuggingFaceVoice audioModel(String repository, Set<String> paths) {
+        if (!paths.contains("config.json") || !paths.contains("tokenizer.json")) {
+            return null;
+        }
+        List<String> graphs = new ArrayList<String>();
+        String suffix = null;
+        for (String prefix : AUDIO_GRAPHS) {
+            String graph = null;
+            for (String variant : AUDIO_VARIANTS) {
+                for (String directory : new String[] {"onnx/", ""}) {
+                    if (graph == null && paths.contains(directory + prefix + variant + ".onnx")) {
+                        graph = directory + prefix + variant + ".onnx";
+                        if (suffix == null) {
+                            suffix = variant;
+                        }
+                    }
+                }
+            }
+            if (graph == null) {
+                return null;
+            }
+            graphs.add(graph);
+        }
+        List<String> files = new ArrayList<String>();
+        files.add("config.json");
+        files.add("tokenizer.json");
+        for (String extra : AUDIO_EXTRAS) {
+            if (paths.contains(extra)) {
+                files.add(extra);
+            }
+        }
+        for (String graph : graphs) {
+            files.add(graph);
+            for (String path : paths) {
+                if (path.startsWith(graph + "_data")) {
+                    files.add(path);
+                }
+            }
+        }
+        String id = directoryName(repository.replace("/", "--") + (suffix == null || suffix.isEmpty() ? ""
+                : "--audio" + suffix));
+        if (id == null) {
+            return null;
+        }
+        return new HuggingFaceVoice(id, "Spracheingabe · " + repository + " (" + HuggingFaceVoice.fileName(
+                graphs.get(graphs.size() - 1)) + ")", "", repository, null, files, ModelCategory.STT);
     }
 
     /** Ordnername unter dem Modellverzeichnis; {@code null}, wenn der Name keiner sein kann. */

@@ -1,9 +1,10 @@
-description = 'Adapter: lokale Embeddings und lokaler Chat im Prozess (Hugging-Face-Tokenizer in reinem Java, Pooling, Chat-Vorlage, Generierung) über den Port text-runtime-api; kein externes Programm.'
+description = 'Adapter: lokale Embeddings, lokaler Chat und lokale Spracheingabe im Prozess (Hugging-Face-Tokenizer in reinem Java, Pooling, Chat-Vorlage, Generierung, Log-Mel-Merkmale) über den Port text-runtime-api; kein externes Programm.'
 
 dependencies {
     api project(':embedding-api')
     api project(':chat-api')
     api project(':text-runtime-api')
+    api project(':speech-api')
     // JSON der Modellkonfiguration bleibt im Adapter (implementation, nicht api).
     implementation libs.gson
 }

@@ -97,10 +97,10 @@ final class ModuleRegistry {
 
                 // Inferenz-Laufzeit lokaler Text-Modelle (Encoder für Embeddings, Decoder für Chat), austauschbar.
                 .module("text-runtime-api", "text.runtime", ModuleKind.PORT, "Lokale Modelle", "domain")
-                // Lokale Embeddings und lokaler Chat im Prozess: Tokenizer (tokenizer.json) in reinem Java, Pooling,
+                // Lokale Embeddings, lokaler Chat und lokale Spracheingabe im Prozess: Tokenizer (tokenizer.json) in reinem Java, Pooling,
                 // Chat-Vorlage, Generierung; rechnet über text-runtime-api.
                 .module("text-local", "text.local", ModuleKind.ADAPTER, "Lokale Modelle", "domain", "embedding-api",
-                        "chat-api", "text-runtime-api")
+                        "chat-api", "text-runtime-api", "speech-api")
                 // Pilot-Backend ONNX Runtime (Java-Bibliothek im Prozess); nur hier ONNX-Typen für Text-Modelle.
                 .module("text-onnx", "text.onnx", ModuleKind.ADAPTER, "Lokale Modelle", "domain",
                         "text-runtime-api")

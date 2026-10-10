@@ -7,14 +7,18 @@ import com.aresstack.enterpriseai.app.settings.ModelCatalogCache;
 import com.aresstack.enterpriseai.app.settings.ModelCatalogLoader;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.application.modelcatalog.UnifiedModelCatalog;
+import com.aresstack.enterpriseai.application.speech.SpeechRecognitionRegistry;
 import com.aresstack.enterpriseai.application.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.model.api.ModelCatalogPort;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogConfig;
 import com.aresstack.enterpriseai.model.kipitz.KipitzSpeechAdapter;
+import com.aresstack.enterpriseai.speech.api.SpeechRecognitionPort;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
 import com.aresstack.enterpriseai.speech.local.LocalVoiceSpeechAdapter;
 import com.aresstack.enterpriseai.speech.onnx.OnnxSpeechRuntime;
+import com.aresstack.enterpriseai.text.local.LocalSpeechRecognitionAdapter;
+import com.aresstack.enterpriseai.text.onnx.OnnxAudioLanguageModelRuntime;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -42,6 +46,8 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
     private final TokenLookup dialogTokens;
     /** Pilot-Backend der lokalen Stimmen im Prozess; eins für die ganze Anwendung, geladen beim ersten Vorlesen. */
     private final OnnxSpeechRuntime localSpeechRuntime = new OnnxSpeechRuntime();
+    /** Pilot-Backend der lokalen Spracheingabe im Prozess; geladen beim ersten Diktat. */
+    private final OnnxAudioLanguageModelRuntime localRecognitionRuntime = new OnnxAudioLanguageModelRuntime();
     private final Object refreshLock = new Object();
 
     /**
@@ -120,9 +126,22 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
         return new SpeechSynthesisRegistry(ports);
     }
 
-    /** Gibt geladene Stimmen frei; idempotent. */
+    /**
+     * Die Spracheingabe je Modellquelle: lokal installierte Modelle mit Audio-Eingang im Prozess. Die Enterprise-API
+     * hat keine Spracheingabe; liefert ihr Katalog einmal ein STT-Modell, kommt hier ihr Adapter dazu. Welcher Port
+     * erkennt, entscheidet der Katalog des gewählten STT-Modells ({@code model.stt}).
+     */
+    public SpeechRecognitionRegistry speechRecognition(ModelsConfig models) {
+        List<SpeechRecognitionPort> ports = new ArrayList<SpeechRecognitionPort>();
+        ports.add(new LocalSpeechRecognitionAdapter(ModelsConfig.LOCAL_CATALOG_ID, models.localModelRoot(),
+                localRecognitionRuntime));
+        return new SpeechRecognitionRegistry(ports);
+    }
+
+    /** Gibt geladene Stimmen und Spracheingabe-Modelle frei; idempotent. */
     @Override
     public void close() {
         localSpeechRuntime.close();
+        localRecognitionRuntime.close();
     }
 }

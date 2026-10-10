@@ -220,12 +220,26 @@ Top-k bzw. `generation_config.json`. Installierte Chat-Modelle stehen im Compose
 „Lokale Modelle“ → Chat; es rechnet immer nur eine Antwort gleichzeitig. Werkzeug-Chat (Anhänge lesen) läuft nur über
 die Enterprise-API. Mit echten Hub-Modellen ist das ungeprüft.
 
-Über dem Suchfeld wählt „Alle Funktionen“, „Chat“, „Embeddings“ oder „Sprachausgabe (TTS)“, wonach gesucht wird;
+Über dem Suchfeld wählt „Alle Funktionen“, „Chat“, „Embeddings“, „Sprachausgabe (TTS)“ oder „Spracheingabe (STT)“,
+wonach gesucht wird;
 Treffer zeigen ihre Funktion vorn im Namen. Installierte Modelle stehen danach unter „Lokale Modelle“ in der Zeile ihrer
 Funktion zur Wahl.
 
-`speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Spracheingabe (Mikrofon,
-Audiodatei) gehört nicht zum Enterprise-Client.
+`speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus).
+
+### Spracheingabe (lokal)
+
+Der Mikrofon-Knopf im Eingabefeld nimmt über Java Sound auf (Klick: Aufnahme an, zweiter Klick: Aufnahme aus und
+erkennen); der erkannte Text landet am Cursor und wird nicht gesendet. Erkannt wird mit dem Modell aus `model.stt`.
+Die Enterprise-API meldet bisher kein STT-Modell, deshalb gibt es heute nur lokale Modelle: ein Gemma-4-Modell mit
+Audio-Eingang als ONNX-Export (Layout von transformers.js: `audio_encoder`, `embed_tokens`, `decoder_model_merged`,
+je bevorzugt `_q4`), gerechnet im Client über ONNX Runtime, ohne externes Programm und ohne Umwandlung. Unter
+Einstellungen → Modelle → „Lokale Modelle“ → „Hugging Face durchsuchen“ z. B. nach `gemma-4-E2B` suchen, den Treffer
+„Spracheingabe · …“ installieren, oben unter „Spracheingabe (STT)“ wählen und speichern (gilt sofort). Die
+Log-Mel-Merkmale rechnet der Client in Java nach `Gemma4AudioFeatureExtractor`; je Durchlauf höchstens 30 s Audio,
+längere Aufnahmen gehen in Stücken durch. Das Modell ist groß (mehrere GB Download, mehrere GB Arbeitsspeicher) und
+auf der CPU deutlich langsamer als Echtzeit-Diktat; Dauer je Aufnahme steht im Protokoll („Spracheingabe: … ms Audio
+in … ms erkannt“).
 
 ## Demos ohne Backend
 

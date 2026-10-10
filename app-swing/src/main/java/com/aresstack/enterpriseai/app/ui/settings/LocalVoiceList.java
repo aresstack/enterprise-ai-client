@@ -43,7 +43,7 @@ final class LocalVoiceList {
     static final String ALL_CATEGORIES = "Alle Funktionen";
     /** Kategorien der Suche, in der Reihenfolge der Auswahl nach „Alle Funktionen“. */
     private static final ModelCategory[] SEARCH_CATEGORIES = {ModelCategory.CHAT, ModelCategory.EMBEDDING,
-            ModelCategory.TTS};
+            ModelCategory.TTS, ModelCategory.STT};
 
     /** Rückmeldungen an den Reiter. */
     interface Listener {

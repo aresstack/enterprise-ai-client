@@ -47,7 +47,7 @@ final class ModelsTab {
     static final String LOCAL_PAGE = "Lokale Modelle";
     /** Funktionen, für die der Client Modelle im Prozess rechnet. */
     private static final ModelCategory[] LOCAL_CATEGORIES = {ModelCategory.CHAT, ModelCategory.EMBEDDING,
-            ModelCategory.TTS};
+            ModelCategory.TTS, ModelCategory.STT};
 
     private final SettingsDialogActions actions;
     private final Supplier<SettingsForm> form;
@@ -138,7 +138,8 @@ final class ModelsTab {
                 + "Piper-Stimme (.onnx mit .onnx.json, deutsch oder Text-Eingabe) oder VITS (config.json, vocab.json, "
                 + "onnx/model.onnx); Embeddings als ONNX-Export mit config.json und tokenizer.json (WordPiece, BPE "
                 + "oder Unigram); Chat als Decoder-ONNX-Export mit KV-Cache (past_key_values), config.json und "
-                + "tokenizer.json.");
+                + "tokenizer.json; Spracheingabe als Gemma-Export mit Audio-Eingang (audio_encoder, embed_tokens, "
+                + "decoder_model_merged).");
         JPanel searchContent = new JPanel(new BorderLayout(0, 4));
         searchContent.setOpaque(false);
         searchContent.add(searchNote.panel(), BorderLayout.NORTH);

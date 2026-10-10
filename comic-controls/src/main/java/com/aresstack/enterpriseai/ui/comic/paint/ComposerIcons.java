@@ -5,7 +5,7 @@ import java.awt.geom.Line2D;
 
 /**
  * AskAI's composer glyph set as reusable {@link StrokeIcon}s (send, stop, hamburger, gear, plus,
- * chevrons, close); pencil and refresh are own additions for list rows. The reference geometry is
+ * chevrons, close); pencil, refresh and microphone are own additions for list rows. The reference geometry is
  * verbatim — no icon assets, every glyph is drawn with the owning component's foreground.
  */
 public final class ComposerIcons {
@@ -45,6 +45,19 @@ public final class ComposerIcons {
             @Override
             protected void paint(Graphics2D g2) {
                 g2.fillRoundRect(4, 4, 8, 8, 2, 2);
+            }
+        };
+    }
+
+    /** A microphone (dictation): capsule, cradle arc, stem and foot. Own addition. */
+    public static StrokeIcon microphone() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawRoundRect(5, 1, 5, 8, 5, 5);
+                g2.drawArc(3, 4, 9, 8, 180, 180);
+                g2.drawLine(7, 12, 7, 14);
+                g2.drawLine(5, 14, 10, 14);
             }
         };
     }

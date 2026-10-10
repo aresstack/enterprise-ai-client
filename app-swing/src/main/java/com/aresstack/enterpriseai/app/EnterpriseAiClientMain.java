@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.app.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.app.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.app.composition.CompositionRoot;
 import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
+import com.aresstack.enterpriseai.app.speech.Dictation;
 import com.aresstack.enterpriseai.app.speech.SwitchableReadAloud;
 import com.aresstack.enterpriseai.app.speech.SpeechOutput;
 import com.aresstack.enterpriseai.app.composition.LocalVoices;
@@ -142,10 +143,16 @@ public final class EnterpriseAiClientMain {
         final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
                 modelCatalogs.speech(config, config.models(), network, chatToken(config, ports))));
         LOG.info("Sprachausgabe: " + readAloud.currentDescription());
+        // Spracheingabe: Modell aus der Kategorie STT, erkannt über die Quelle dieses Modells (heute lokal im Prozess);
+        // ohne STT-Modell bleibt der Mikrofon-Knopf deaktiviert und nennt den Grund.
+        final Dictation dictation = new Dictation();
+        dictation.bind(config.models(), modelCatalogs.speechRecognition(config.models()));
+        LOG.info("Spracheingabe: " + dictation.currentDescription());
         root.shutdown().then("read-aloud", new Runnable() {
             @Override
             public void run() {
                 readAloud.close();
+                dictation.close();
             }
         });
         root.shutdown().then("local-voices", new Runnable() {
@@ -174,7 +181,7 @@ public final class EnterpriseAiClientMain {
                 view.setSettingsAction(settingsAction(frame, file, settingsActions, palette, new Runnable() {
                     @Override
                     public void run() {
-                        rebindSpeech(readAloud, file, started, modelCatalogs, network, ports);
+                        rebindSpeech(readAloud, dictation, file, started, modelCatalogs, network, ports);
                     }
                 }));
                 view.setChatModels(modelCatalogs::cached, () -> installedLocalChats(localVoices,
@@ -186,6 +193,7 @@ public final class EnterpriseAiClientMain {
                     }
                 }, root.workExecutor());
                 view.workspace().chatShell().transcript().setReadAloud(readAloud);
+                view.workspace().chatShell().composer().setDictation(dictation);
                 attachSourceEditing(view, frame, file, palette);
                 frame.setVisible(true);
                 root.startBackgroundWork();
@@ -247,11 +255,11 @@ public final class EnterpriseAiClientMain {
                 if (saved == null) {
                     return;
                 }
-                LOG.info("Einstellungen gespeichert; sie gelten beim nächsten Start, die Sprachausgabe sofort");
+                LOG.info("Einstellungen gespeichert; sie gelten beim nächsten Start, Sprachaus- und -eingabe sofort");
                 afterSave.run();
                 offerRestart(frame, "Einstellungen gespeichert",
-                        "Die Einstellungen sind gespeichert. Die Sprachausgabe gilt sofort, alles andere beim "
-                                + "nächsten Start der Anwendung.");
+                        "Die Einstellungen sind gespeichert. Sprachausgabe und Spracheingabe gelten sofort, alles "
+                                + "andere beim nächsten Start der Anwendung.");
             }
         };
     }
@@ -264,13 +272,16 @@ public final class EnterpriseAiClientMain {
      * Liest die gespeicherte Datei neu und bindet die Sprachausgabe an die neue TTS-Auswahl (auf dem EDT). Nur die
      * Modellwerte sind neu; Endpunkt, Netz und Token bleiben die des laufenden Graphen (gelten beim nächsten Start).
      */
-    private static void rebindSpeech(SwitchableReadAloud readAloud, ConfigurationFile file, AppConfig running,
-                                     ModelCatalogs catalogs, NetworkServices network, ApplicationPorts ports) {
+    private static void rebindSpeech(SwitchableReadAloud readAloud, Dictation dictation, ConfigurationFile file,
+                                     AppConfig running, ModelCatalogs catalogs, NetworkServices network,
+                                     ApplicationPorts ports) {
         try {
             ModelsConfig saved = AppConfigLoader.load(file.path()).models();
             readAloud.replace(SpeechOutput.readAloud(saved,
                     catalogs.speech(running, saved, network, chatToken(running, ports))));
             LOG.info("Sprachausgabe: " + readAloud.currentDescription());
+            dictation.bind(saved, catalogs.speechRecognition(saved));
+            LOG.info("Spracheingabe: " + dictation.currentDescription());
         } catch (RuntimeException e) {
             LOG.log(Level.WARNING, "Sprachausgabe nicht neu gebunden; sie gilt beim nächsten Start", e);
         }

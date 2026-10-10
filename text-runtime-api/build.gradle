@@ -1,4 +1,4 @@
-description = 'Port: Inferenz-Laufzeit lokaler Text-Modelle (Encoder für Embeddings, Decoder für Chat), austauschbar (Pilot ONNX Runtime).'
+description = 'Port: Inferenz-Laufzeit lokaler Text-Modelle (Encoder für Embeddings, Decoder für Chat, Audio-Sprachmodell für Spracheingabe), austauschbar (Pilot ONNX Runtime).'
 
 dependencies {
     api project(':domain')

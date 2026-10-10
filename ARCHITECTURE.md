@@ -70,12 +70,12 @@ Moduls liegen nur dort (geprüft).
 | `model-api` | PORT | `model.api` | domain | Modellverwaltung |
 | `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api, speech-api | Modellverwaltung, Sprachausgabe |
 | `model-huggingface` | ADAPTER | `model.huggingface` | domain, model-api, http-api | Lokale Stimmen installieren und auf dem Hub suchen (huggingface4j, ohne Umwandlung) |
-| `speech-api` | PORT | `speech.api` | domain | Sprachausgabe (TTS über die Quelle des gewählten Modells: KIPITZ oder lokale Stimme im Prozess) |
+| `speech-api` | PORT | `speech.api` | domain | Sprachausgabe (TTS über die Quelle des gewählten Modells: KIPITZ oder lokale Stimme im Prozess) und Spracheingabe (STT, heute nur lokal im Prozess) |
 | `speech-runtime-api` | PORT | `speech.runtime` | domain | Inferenz-Laufzeit lokaler Stimmen (Token-Ids zu Audio), austauschbar |
 | `speech-local` | ADAPTER | `speech.local` | domain, speech-api, speech-runtime-api | Lokale Stimmen im Prozess (Piper, VITS aus dem Modellverzeichnis) |
 | `speech-onnx` | ADAPTER | `speech.onnx` | domain, speech-runtime-api | Pilot-Backend ONNX Runtime (Java-Bibliothek, kein externes Programm) |
-| `text-runtime-api` | PORT | `text.runtime` | domain | Inferenz-Laufzeit lokaler Text-Modelle (Encoder, Decoder mit KV-Cache), austauschbar |
-| `text-local` | ADAPTER | `text.local` | domain, embedding-api, chat-api, text-runtime-api | Lokale Embeddings und lokaler Chat im Prozess (Tokenizer aus tokenizer.json in Java, Pooling, Chat-Vorlage, Generierung) |
+| `text-runtime-api` | PORT | `text.runtime` | domain | Inferenz-Laufzeit lokaler Text-Modelle (Encoder, Decoder mit KV-Cache, Sprachmodell mit Audio-Eingang), austauschbar |
+| `text-local` | ADAPTER | `text.local` | domain, embedding-api, chat-api, text-runtime-api, speech-api | Lokale Embeddings, lokaler Chat und lokale Spracheingabe im Prozess (Tokenizer aus tokenizer.json in Java, Pooling, Chat-Vorlage, Generierung, Log-Mel-Merkmale für Gemma 4) |
 | `text-onnx` | ADAPTER | `text.onnx` | domain, text-runtime-api | Pilot-Backend ONNX Runtime für Text-Modelle |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |
