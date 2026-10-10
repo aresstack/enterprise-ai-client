@@ -51,6 +51,7 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.confluence.ConfluenceSourceProvider;
 import com.aresstack.enterpriseai.source.ftp.FtpSourceProvider;
+import com.aresstack.enterpriseai.source.ftp.JesSourceProvider;
 import com.aresstack.enterpriseai.source.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.source.ndv.NdvSourceProvider;
@@ -246,6 +247,7 @@ public final class AdapterAssembly {
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry()));
         providers.add(new FtpSourceProvider(secrets));
         providers.add(new NdvSourceProvider(secrets));
+        providers.add(new JesSourceProvider(secrets));
         return providers;
     }
 

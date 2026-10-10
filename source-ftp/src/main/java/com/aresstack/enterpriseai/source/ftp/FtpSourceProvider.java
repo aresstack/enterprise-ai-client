@@ -93,7 +93,7 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
             throw new IllegalArgumentException("FTP-Quelle " + sourceId + " ist fehlerhaft: " + reader.problems());
         }
         return new FtpKnowledgeSource(sourceId, connection,
-                new FtpSessionPool(sourceId, connection, secrets, CommonsNetFtpSession::open));
+                new FtpSessionPool<FtpClientSession>(sourceId, connection, secrets, CommonsNetFtpSession::open));
     }
 
     /** Verbindungsteil; auch für weitere Quelltypen über FTP (JES). */
