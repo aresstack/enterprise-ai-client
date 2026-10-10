@@ -80,7 +80,12 @@ public final class KnowledgeSourceRow extends JPanel {
         west.setOpaque(false);
         west.add(check, BorderLayout.NORTH);
 
-        JPanel text = new JPanel();
+        JPanel text = new JPanel() {
+            @Override
+            public Dimension getPreferredSize() {
+                return new Dimension(0, super.getPreferredSize().height); // Breite gibt der Drawer vor
+            }
+        };
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
         text.setOpaque(false);
         JLabel title = new JLabel(item.id());

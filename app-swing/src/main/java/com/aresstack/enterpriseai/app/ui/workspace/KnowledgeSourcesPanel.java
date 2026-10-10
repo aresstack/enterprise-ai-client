@@ -13,8 +13,11 @@ import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.Scrollable;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -37,7 +40,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
     private final ComicPalette palette;
     private final ResearchPillButton addWiki;
     private final ResearchPillButton addConfluence;
-    private final JPanel list = new JPanel();
+    private final JPanel list = new WidthTrackingPanel();
     private final List<KnowledgeSourceRow> rows = new ArrayList<KnowledgeSourceRow>();
     private List<KnowledgeSourceItem> items = Collections.emptyList();
     private KnowledgeSourceActions actions;
@@ -144,5 +147,33 @@ public final class KnowledgeSourcesPanel extends JPanel {
         list.add(Box.createVerticalGlue());
         list.revalidate();
         list.repaint();
+    }
+
+    /** Die Liste folgt der Breite des Drawers, damit lange Texte gekürzt werden und ⟳/✎ sichtbar bleiben. */
+    private static final class WidthTrackingPanel extends JPanel implements Scrollable {
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visible, int orientation, int direction) {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visible, int orientation, int direction) {
+            return Math.max(16, visible.height - 16);
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
     }
 }

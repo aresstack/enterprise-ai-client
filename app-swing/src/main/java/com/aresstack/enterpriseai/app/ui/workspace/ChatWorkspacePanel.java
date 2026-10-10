@@ -543,6 +543,12 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
 
     // ------------------------------------------------------------------ Drawer-Verhalten (arch)
 
+    /** Zeigt einen Drawer-Reiter samt Markierung in der Reiterleiste (wie ein Klick auf den Reiter). */
+    public void showSidebarTab(String title) {
+        sidebar.showTab(title);
+        refreshRibbonTabs();
+    }
+
     private void refreshRibbonTabs() {
         ribbon.setTabs(sidebar.tabTitles(), sidebar.activeTab());
     }
