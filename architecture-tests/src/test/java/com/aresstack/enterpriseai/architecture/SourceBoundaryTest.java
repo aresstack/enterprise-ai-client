@@ -34,7 +34,8 @@ public class SourceBoundaryTest {
 
     private static final String ROOT = ModuleRegistry.ROOT_PACKAGE;
     private static final List<String> SOURCE_ADAPTER_PACKAGES = Arrays.asList(
-            ROOT + ".source.mediawiki", ROOT + ".source.confluence", ROOT + ".source.ftp");
+            ROOT + ".source.mediawiki", ROOT + ".source.confluence", ROOT + ".source.ftp",
+            ROOT + ".source.ndv");
     private static final List<String> LEAKING_TYPE_PREFIXES = Arrays.asList(
             "com.google.gson.", "org.jsoup.", "net.sourceforge.jwbf.", "okhttp3.", "org.apache.http.",
             "org.apache.hc.", "java.net.URLConnection", "java.net.HttpURLConnection", "java.net.CookieManager",

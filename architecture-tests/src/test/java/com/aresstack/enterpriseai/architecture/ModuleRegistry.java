@@ -60,6 +60,9 @@ final class ModuleRegistry {
                 // FTP (MVS/z/OS): Datasets und PDS-Member; Commons Net adapterintern, Anmeldung über security-api.
                 .module("source-ftp", "source.ftp", ModuleKind.ADAPTER, "Quellen",
                         "domain", "source-api", "security-api")
+                // NDV (Natural Development Server): NATSPOD/PAL aus MainframeMate, Anmeldung über security-api.
+                .module("source-ndv", "source.ndv", ModuleKind.ADAPTER, "Quellen",
+                        "domain", "source-api", "security-api")
 
                 // Ressourcenschicht aus corenth: AcquisitionPort und Bronze-Typen (Port), Holkas-Connectoren über
                 // den Quellen-Ports (äußerer Adapterring, keine UI-API).
@@ -102,7 +105,8 @@ final class ModuleRegistry {
                         "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
-                        "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api", "source-ftp")
+                        "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api", "source-ftp",
+                        "source-ndv")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")
