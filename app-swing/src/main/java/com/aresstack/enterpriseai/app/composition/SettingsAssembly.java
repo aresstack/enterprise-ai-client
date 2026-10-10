@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.app.net.TrustPolicy;
 import com.aresstack.enterpriseai.app.settings.ConfigurationCheck;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.app.settings.FileSettingsActions;
+import com.aresstack.enterpriseai.app.settings.ModelCatalogLoader;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 
 import javax.swing.SwingUtilities;
@@ -28,6 +29,11 @@ public final class SettingsAssembly {
 
     /** Produktiv: Datei, Swing-Pairing, KeePass-Probe und Verbindungstest auf einem eigenen Daemon-Thread, EDT. */
     public static SettingsDialogActions create(ConfigurationFile file) {
+        return create(file, (ModelCatalogLoader) null);
+    }
+
+    /** Wie {@link #create(ConfigurationFile)}, dazu die Modellabfrage des Reiters „Modelle“ ({@code null}: keine). */
+    public static SettingsDialogActions create(ConfigurationFile file, final ModelCatalogLoader models) {
         ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -36,7 +42,7 @@ public final class SettingsAssembly {
                 return t;
             }
         });
-        return create(file, worker, new Executor() {
+        return create(file, models, worker, new Executor() {
             @Override
             public void execute(Runnable command) {
                 SwingUtilities.invokeLater(command);
@@ -45,8 +51,33 @@ public final class SettingsAssembly {
     }
 
     public static SettingsDialogActions create(ConfigurationFile file, Executor worker, Executor ui) {
+        return create(file, null, worker, ui);
+    }
+
+    public static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, Executor worker,
+                                               Executor ui) {
         return new FileSettingsActions(file, new KeePassSecretChecker(), new ServiceConnectionChecker(),
-                configurationCheck(), worker, ui);
+                configurationCheck(), models, worker, ui);
+    }
+
+    /**
+     * Die Modellquellen der Anwendung mit Zwischenspeicher im Anwendungsverzeichnis; Abfragen aus dem Dialog holen
+     * den API-Key wie der Verbindungstest (KeePass, Pairing-Dialog bei Bedarf).
+     */
+    public static ModelCatalogs modelCatalogs(java.nio.file.Path cacheFile) {
+        final KeePassSecretChecker.PairingCallbackFactory pairing = new KeePassSecretChecker.PairingCallbackFactory() {
+            @Override
+            public com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback forAddress(String address) {
+                return new com.aresstack.enterpriseai.app.security.SwingPairingCallback(address);
+            }
+        };
+        return new ModelCatalogs(new com.aresstack.enterpriseai.app.settings.ModelCatalogCache(cacheFile),
+                new ModelCatalogs.TokenLookup() {
+                    @Override
+                    public String token(AppConfig config) throws java.io.IOException {
+                        return ServiceConnectionChecker.chatToken(config, pairing);
+                    }
+                });
     }
 
     /**

@@ -123,7 +123,7 @@ public class SettingsPanelTest {
                 assertFalse(panel.securityTab().enabled().isSelected());
                 assertEquals(SettingsForm.PROXY_DISABLED, panel.systemTab().proxyMode().getSelectedItem());
 
-                panel.serviceTab().chatModel().setText("  anderes-modell ");
+                panel.modelsTab().chatModel().setText("  anderes-modell ");
                 panel.systemTab().windowTitle().setText("Mein Client");
                 panel.securityTab().enabled().setSelected(true);
                 panel.securityTab().port().setText("12999");
@@ -155,7 +155,7 @@ public class SettingsPanelTest {
                 assertEquals("http://127.0.0.1:9/w/api.php", form.sources().get(0).url());
 
                 panel.setForm(sample());
-                assertEquals("test-chat", panel.serviceTab().chatModel().getText());
+                assertEquals("test-chat", panel.modelsTab().chatModel().getText());
             }
         });
     }
@@ -236,7 +236,7 @@ public class SettingsPanelTest {
                         notified.add(form);
                     }
                 });
-                panel.serviceTab().chatModel().setText("gespeichert");
+                panel.modelsTab().chatModel().setText("gespeichert");
                 panel.saveButton().doClick();
                 assertEquals(1, actions.saved.size());
                 assertEquals("gespeichert", actions.saved.get(0).chatModel());
@@ -416,7 +416,7 @@ public class SettingsPanelTest {
             public void run() {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
-                assertEquals(3, SettingsPanel.tabCount());
+                assertEquals(4, SettingsPanel.tabCount());
                 for (int i = 0; i < SettingsPanel.tabCount(); i++) {
                     panel.tabButton(i).doClick();
                     assertTrue(panel.tabButton(i).isSelected());

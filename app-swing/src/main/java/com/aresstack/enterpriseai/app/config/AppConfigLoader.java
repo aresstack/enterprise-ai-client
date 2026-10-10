@@ -7,9 +7,13 @@ import com.aresstack.enterpriseai.chat.openai.DeveloperRolePolicy;
 import com.aresstack.enterpriseai.domain.chat.ChatOptions;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelSelections;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.embedding.openai.EmbeddingInputMode;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
+import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcConfig;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.confluence.ConfluenceConfig;
@@ -92,6 +96,7 @@ public final class AppConfigLoader {
         KeePassConfig keePass = keePass(reader);
         NetworkConfig network = network(reader, chat == null ? null : chat.baseUrl(), warnings);
         AgentConfig agent = agent(reader);
+        ModelsConfig models = models(reader, warnings);
 
         for (String unread : reader.unreadKeys()) {
             warnings.add("Unbekannter Konfigurationsschlüssel wird ignoriert: " + unread);
@@ -117,7 +122,8 @@ public final class AppConfigLoader {
         if (reader.hasProblems()) {
             throw new AppConfigException(reader.problems());
         }
-        return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, warnings);
+        return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models,
+                warnings);
     }
 
     /**
@@ -177,7 +183,7 @@ public final class AppConfigLoader {
 
     private static ChatConfig chat(ConfigReader r) {
         URI baseUrl = baseUrl(r, "chat.baseUrl", true);
-        String model = r.required("chat.model");
+        String model = modelId(r.required("chat.model"));
         SecretRef apiKeyRef = r.secretRef("chat.apiKeyRef");
         if (apiKeyRef == null && !r.has("chat.apiKeyRef")) {
             r.problem("chat.apiKeyRef", "fehlt (Titel des KeePass-Eintrags mit dem API-Key)");
@@ -233,7 +239,7 @@ public final class AppConfigLoader {
         if (baseUrl == null && chat != null && !r.has("embedding.baseUrl")) {
             baseUrl = chat.baseUrl();
         }
-        String model = r.required("embedding.model");
+        String model = modelId(r.required("embedding.model"));
         int dimension = r.integer("embedding.dimension", 0, 1, 65536);
         if (dimension == 0) {
             r.problem("embedding.dimension", "fehlt (Pflichtangabe, z. B. 768)");
@@ -252,6 +258,36 @@ public final class AppConfigLoader {
             return null;
         }
         return new EmbeddingConfig(baseUrl, model, dimension, apiKeyRef, inputMode, batch, connect, read);
+    }
+
+    /** Die Modellkennung ohne Katalogpräfix ({@code kipitz:x} → {@code x}); {@code null} bleibt {@code null}. */
+    private static String modelId(String text) {
+        ModelReference reference = ModelsConfig.parse(text);
+        return reference == null ? null : reference.modelId();
+    }
+
+    /**
+     * Modellverwaltung: eine Auswahl je Kategorie ({@code chat.model}, {@code embedding.model},
+     * {@code model.<kategorie>}) und der optionale lokale Sidecar ({@code models.local.*}). Ohne Java-Pfad bleibt
+     * der Sidecar aus; fehlt bei gesetztem Java-Pfad das Jar, gibt es einen Hinweis statt eines Fehlers.
+     */
+    private static ModelsConfig models(ConfigReader r, List<String> warnings) {
+        ModelSelections selections = ModelSelections.none();
+        for (ModelCategory category : ModelCategory.values()) {
+            ModelReference reference = ModelsConfig.parse(r.text(ModelsConfig.keyOf(category), null));
+            selections = selections.with(category, reference);
+        }
+        Path java = r.path("models.local.java", null);
+        Path jar = r.path("models.local.sidecarJar", null);
+        Path modelRoot = r.path("models.local.modelRoot", AppPaths.appDirectory().resolve("local-models"));
+        int readyTimeout = r.integer("models.local.readyTimeoutMillis", 60000, 1000, MAX_TIMEOUT);
+        LocalSidecarConfig local = null;
+        if (java != null && jar == null) {
+            warnings.add("models.local.java ist gesetzt, models.local.sidecarJar fehlt: lokale Modelle bleiben aus.");
+        } else if (java != null) {
+            local = new LocalSidecarConfig(java, jar, modelRoot, readyTimeout);
+        }
+        return new ModelsConfig(selections, local);
     }
 
     private static KnowledgeConfig knowledge(ConfigReader r) {

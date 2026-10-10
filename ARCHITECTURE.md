@@ -59,6 +59,9 @@ Moduls liegen nur dort (geprüft).
 | `source-api` | PORT | `source.api` | domain | E (AP11) |
 | `source-mediawiki` | ADAPTER | `source.mediawiki` | domain, source-api | E (AP12) |
 | `source-confluence` | ADAPTER | `source.confluence` | domain, source-api, security-api | F (AP15) |
+| `model-api` | PORT | `model.api` | domain | Modellverwaltung |
+| `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api | Modellverwaltung |
+| `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api | Modellverwaltung |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |
 | `acp-client-api` | PORT | `acp.api` | domain | G (AP16) |

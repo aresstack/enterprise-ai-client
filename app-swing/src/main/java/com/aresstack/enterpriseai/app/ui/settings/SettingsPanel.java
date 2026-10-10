@@ -38,7 +38,7 @@ import java.util.function.Supplier;
  * │ Einstellungen                          ✕  │  stille Überschrift; rechts Platz für das Fenster-✕
  * │ Hinweis zum Erststart bzw. zum Neustart   │
  * ├──────────────────────────────────────────┤
- * │ [KI-Dienst] KeePass  Netzwerk & Agent     │  Pillen wie die Reiterleiste des Drawers
+ * │ [KI-Dienst] KeePass  Netzwerk  Modelle    │  Pillen wie die Reiterleiste des Drawers
  * ├──────────────────────────────────────────┤
  * │ Platten mit Formularzeilen (scrollbar)    │  CardLayout, je Reiter eine Karte
  * ├──────────────────────────────────────────┤
@@ -65,9 +65,11 @@ public final class SettingsPanel extends JPanel {
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
     public static final String QUIT_LABEL = "Beenden";
-    private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent"};
+    private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle"};
+    /** Index des Reiters „Modelle“ (Auswahl je Kategorie). */
+    static final int MODELS_TAB = 3;
 
-    /** Die Reiter in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent. */
+    /** Die Reiter in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle. */
     public static int tabCount() {
         return TAB_LABELS.length;
     }
@@ -76,8 +78,8 @@ public final class SettingsPanel extends JPanel {
         return TAB_LABELS[index];
     }
     /** Hinweiszeilen unter dem Titel; {@code \n} trennt Zeilen (keine HTML-Umbrüche, die sind headless unzuverlässig). */
-    static final String FIRST_START_NOTE = "Willkommen. Für den ersten Start fehlen noch Basis-URL und Modell des "
-            + "KI-Dienstes\nsowie das Embedding-Modell mit seiner Dimension; der KeePass-Titel ist ein Vorschlag.\n"
+    static final String FIRST_START_NOTE = "Willkommen. Für den ersten Start fehlen noch Basis-URL und Embedding-Dimension "
+            + "(Reiter KI-Dienst)\nsowie Chat- und Embedding-Modell (Reiter Modelle); der KeePass-Titel ist ein Vorschlag.\n"
             + "Alles andere hat sinnvolle Vorgaben und lässt sich später ändern.";
     static final String EDIT_NOTE = "Gespeicherte Änderungen gelten beim nächsten Start der Anwendung.\n"
             + "Secrets bleiben in KeePass; hier stehen nur die Titel der Einträge.";
@@ -88,6 +90,7 @@ public final class SettingsPanel extends JPanel {
     private final ServiceTab serviceTab;
     private final SecurityTab securityTab;
     private final SystemTab systemTab;
+    private final ModelsTab modelsTab;
     private final List<ComposerToggleButton> tabButtons = new ArrayList<ComposerToggleButton>();
     private final JPanel header = new JPanel(new BorderLayout(8, 0));
     private final JPanel windowControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -120,6 +123,7 @@ public final class SettingsPanel extends JPanel {
         this.serviceTab = new ServiceTab(actions, current, palette);
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
+        this.modelsTab = new ModelsTab(actions, current, palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START
@@ -159,7 +163,7 @@ public final class SettingsPanel extends JPanel {
         tabs.setOpaque(false);
         tabs.setBorder(BorderFactory.createEmptyBorder(8, 12, 0, 12));
         ButtonGroup group = new ButtonGroup();
-        JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel()};
+        JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel(), modelsTab.panel()};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
             ComposerToggleButton button = new ComposerToggleButton(null, name, null);
@@ -168,7 +172,7 @@ public final class SettingsPanel extends JPanel {
             button.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
-                    cards.show(deck, name);
+                    showCard(name);
                 }
             });
             group.add(button);
@@ -252,6 +256,7 @@ public final class SettingsPanel extends JPanel {
         serviceTab.load(form);
         securityTab.load(form);
         systemTab.load(form);
+        modelsTab.load(form);
     }
 
     /** Der aktuelle Stand aller Felder als Formular, Quellen und Index-Einstellungen wie geladen. */
@@ -260,6 +265,7 @@ public final class SettingsPanel extends JPanel {
         serviceTab.store(b);
         securityTab.store(b);
         systemTab.store(b);
+        modelsTab.store(b);
         return b.build();
     }
 
@@ -325,6 +331,9 @@ public final class SettingsPanel extends JPanel {
             tab = 1;
         } else if (first.contains("(network.") || first.contains("(agent.") || first.contains("(ui.")) {
             tab = 2;
+        } else if (first.contains("(chat.model)") || first.contains("(embedding.model)") || first.contains("(model.")
+                || first.contains("(models.")) {
+            tab = MODELS_TAB;
         }
         selectTab(tab);
     }
@@ -332,7 +341,15 @@ public final class SettingsPanel extends JPanel {
     public void selectTab(int index) {
         ComposerToggleButton button = tabButtons.get(index);
         button.setSelected(true);
-        cards.show(deck, TAB_LABELS[index]);
+        showCard(TAB_LABELS[index]);
+    }
+
+    /** Zeigt eine Karte; der Reiter „Modelle“ fragt beim ersten Anzeigen die Modellquellen im Hintergrund ab. */
+    private void showCard(String name) {
+        cards.show(deck, name);
+        if (TAB_LABELS[MODELS_TAB].equals(name)) {
+            modelsTab.shown();
+        }
     }
 
     /** Setzt den Fokus in das erste Pflichtfeld (nach dem Öffnen). */
@@ -395,5 +412,9 @@ public final class SettingsPanel extends JPanel {
 
     SystemTab systemTab() {
         return systemTab;
+    }
+
+    ModelsTab modelsTab() {
+        return modelsTab;
     }
 }

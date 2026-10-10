@@ -2,6 +2,9 @@ package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.SourceConfig;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
+import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +36,14 @@ public final class StartupNotices {
             sb.append(". Anfragen scheitern mit einem Authentifizierungsfehler, bis security.keepass.enabled=true "
                     + "gesetzt ist und KeePass mit dem KeePassRPC-Plugin läuft.");
             notices.add(sb.toString());
+        }
+        for (ModelCategory category : new ModelCategory[] {ModelCategory.CHAT, ModelCategory.EMBEDDING}) {
+            ModelReference selected = config.models().selections().get(category);
+            if (selected != null && !KipitzModelCatalogAdapter.CATALOG_ID.equals(selected.catalogId())) {
+                notices.add(category.displayName() + ": gewählt ist ein lokales Modell. Chat und Embeddings laufen "
+                        + "bisher nur über die Enterprise-API; bitte unter Einstellungen → Modelle ein KIPITZ-Modell "
+                        + "wählen.");
+            }
         }
         notices.addAll(config.warnings());
         return notices;

@@ -1,0 +1,7 @@
+description = 'Adapter: Modellkatalog des optionalen lokalen Java-21-Sidecars (local-model-runtime-sidecar-java21 aus askai-java8 arch).'
+
+dependencies {
+    api project(':model-api')
+    // JSON-Mapping bleibt im Adapter (implementation, nicht api).
+    implementation libs.gson
+}

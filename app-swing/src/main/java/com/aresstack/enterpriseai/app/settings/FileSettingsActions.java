@@ -4,15 +4,18 @@ import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.net.HttpRoutes;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.app.ui.settings.NetworkLogListener;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
-import com.aresstack.enterpriseai.app.ui.settings.ModelChoice;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
+import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
+import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 
 import java.io.IOException;
@@ -25,7 +28,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
@@ -47,6 +49,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private final ConfigurationCheck check;
     private final Executor worker;
     private final Executor ui;
+    private final ModelCatalogLoader models;
 
     /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
@@ -70,6 +73,17 @@ public final class FileSettingsActions implements SettingsDialogActions {
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
                                ConnectionChecker connectionChecker, ConfigurationCheck check,
                                Executor worker, Executor ui) {
+        this(file, secretChecker, connectionChecker, check, null, worker, ui);
+    }
+
+    /**
+     * Wie oben, dazu die Modellabfrage des Reiters „Modelle“.
+     *
+     * @param models Zwischenspeicher und Abfrage der Modellquellen oder {@code null} (dann keine Listen)
+     */
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
+                               ConnectionChecker connectionChecker, ConfigurationCheck check,
+                               ModelCatalogLoader models, Executor worker, Executor ui) {
         if (file == null || check == null || worker == null || ui == null) {
             throw new IllegalArgumentException("file, check, worker and ui must not be null");
         }
@@ -79,6 +93,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
         this.check = check;
         this.worker = worker;
         this.ui = ui;
+        this.models = models;
     }
 
     public ConfigurationFile file() {
@@ -296,17 +311,6 @@ public final class FileSettingsActions implements SettingsDialogActions {
                                     }
                                 });
                             }
-                        }, new BiConsumer<List<ModelChoice>, List<ModelChoice>>() {
-                            @Override
-                            public void accept(final List<ModelChoice> chatModels,
-                                               final List<ModelChoice> embeddingModels) {
-                                ui.execute(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        listener.onModels(chatModels, embeddingModels);
-                                    }
-                                });
-                            }
                         });
                     } catch (RuntimeException e) {
                         final ConnectionCheckStep aborted = ConnectionCheckStep.failed(STEP_TEST,
@@ -331,6 +335,87 @@ public final class FileSettingsActions implements SettingsDialogActions {
         } catch (RuntimeException rejected) {
             finish(listener, ConnectionCheckStep.failed(STEP_TEST, "Der Verbindungstest konnte nicht gestartet werden."));
         }
+    }
+
+    @Override
+    public ModelCatalogSnapshot cachedModels() {
+        return models == null ? ModelCatalogSnapshot.empty() : models.cached();
+    }
+
+    /**
+     * Der Entwurf geht durch den Loader; fehlen nur Chat- oder Embedding-Modell (Erststart: die Liste soll ja erst
+     * bei der Wahl helfen), setzt die Abfrage Platzhalter dafür ein. Die Abfrage läuft auf dem Arbeits-Executor, das
+     * Ergebnis kommt über den UI-Executor.
+     */
+    @Override
+    public void refreshModels(SettingsForm form, final Consumer<ModelCatalogSnapshot> onResult) {
+        if (form == null || onResult == null) {
+            throw new IllegalArgumentException("form and onResult must not be null");
+        }
+        if (models == null) {
+            onResult.accept(failed("Modellabfrage in dieser Umgebung nicht verfügbar."));
+            return;
+        }
+        SettingsForm.Builder probe = form.toBuilder();
+        if (form.chatModel().isEmpty()) {
+            probe.chatModel("-");
+        }
+        if (form.embeddingModel().isEmpty()) {
+            probe.embeddingModel("-");
+        }
+        if (form.embeddingDimension().isEmpty()) {
+            probe.embeddingDimension("1");
+        }
+        final AppConfig config;
+        try {
+            config = AppConfigLoader.fromProperties(SettingsMapper.merge(current(), probe.build()));
+        } catch (AppConfigException e) {
+            onResult.accept(failed("Entwurf unvollständig: " + join(SettingsMapper.describe(e.problems()))));
+            return;
+        } catch (IOException | RuntimeException e) {
+            onResult.accept(failed("Entwurf nicht lesbar (" + e.getClass().getSimpleName() + ")."));
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    ModelCatalogSnapshot result;
+                    try {
+                        result = models.refresh(config);
+                    } catch (RuntimeException e) {
+                        result = failed("Abfrage fehlgeschlagen: " + e.getClass().getSimpleName());
+                    }
+                    final ModelCatalogSnapshot delivered = result;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            onResult.accept(delivered);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            onResult.accept(failed("Abfrage konnte nicht gestartet werden."));
+        }
+    }
+
+    /** Die zuletzt bekannten Modelle mit einer Meldung, warum diesmal nichts abgefragt wurde. */
+    private ModelCatalogSnapshot failed(String message) {
+        ModelCatalogSnapshot cached = cachedModels();
+        return new ModelCatalogSnapshot(cached.models(), java.util.Collections.singletonList(
+                new CatalogStatus(ModelsConfig.defaultCatalogId(), "Modellquellen", false, message)));
+    }
+
+    @Override
+    public ModelReference parseModel(String text) {
+        return ModelsConfig.parse(text);
+    }
+
+    /** Modelle der Enterprise-API ohne Präfix (wie bisher {@code chat.model}), lokale mit {@code local:}. */
+    @Override
+    public String storedModel(ModelReference reference) {
+        return ModelsConfig.defaultCatalogId().equals(reference.catalogId()) ? reference.modelId() : reference.key();
     }
 
     @Override

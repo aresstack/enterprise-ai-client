@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app;
 import com.aresstack.enterpriseai.app.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.app.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.app.composition.CompositionRoot;
+import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
@@ -13,6 +14,7 @@ import com.aresstack.enterpriseai.app.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.security.ProxyAuthenticator;
+import com.aresstack.enterpriseai.app.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.app.settings.FileIndexActions;
@@ -75,7 +77,9 @@ public final class EnterpriseAiClientMain {
                 + System.getProperty("os.version"));
         final ConfigurationFile file = new ConfigurationFile(AppPaths.configFile());
         final boolean headless = GraphicsEnvironment.isHeadless();
-        final SettingsDialogActions settingsActions = headless ? null : SettingsAssembly.create(file);
+        final ModelCatalogs modelCatalogs = SettingsAssembly.modelCatalogs(
+                AppPaths.appDirectory().resolve(AppPaths.MODEL_CATALOG_FILE_NAME));
+        final SettingsDialogActions settingsActions = headless ? null : SettingsAssembly.create(file, modelCatalogs);
         ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
                 headless ? null : new SwingSettingsUi(settingsActions), SettingsAssembly.configurationCheck());
         if (!outcome.isStarted()) {
@@ -121,7 +125,14 @@ public final class EnterpriseAiClientMain {
             System.exit(1);
             return;
         }
+        root.shutdown().then("model-sidecar", new Runnable() {
+            @Override
+            public void run() {
+                modelCatalogs.close();
+            }
+        });
         Runtime.getRuntime().addShutdownHook(root.shutdown().asShutdownHook());
+        refreshModelsInBackground(modelCatalogs, config, network, ports);
 
         final AppConfig started = config;
         SwingUtilities.invokeLater(new Runnable() {
@@ -186,6 +197,32 @@ public final class EnterpriseAiClientMain {
                         "Die Einstellungen sind gespeichert. Sie gelten beim nächsten Start der Anwendung.");
             }
         };
+    }
+
+    /**
+     * Fragt die Modellquellen (KIPITZ {@code GET /models}, optional den lokalen Sidecar) einmal im Hintergrund ab,
+     * damit der Reiter „Modelle“ aktuelle Listen hat; blockiert weder Start noch EDT. Fehler landen nur im Protokoll.
+     */
+    private static void refreshModelsInBackground(final ModelCatalogs catalogs, final AppConfig config,
+                                                  final NetworkServices network, final ApplicationPorts ports) {
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    catalogs.refresh(config, network, new java.util.function.Supplier<String>() {
+                        @Override
+                        public String get() {
+                            return config.chat().apiKeyRef() == null ? null
+                                    : new SecretBackedTokenSource(ports.secrets(), config.chat().apiKeyRef()).token();
+                        }
+                    });
+                } catch (RuntimeException e) {
+                    LOG.log(Level.WARNING, "Modellkatalog konnte nicht abgefragt werden", e);
+                }
+            }
+        }, "enterprise-ai-model-catalog");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     /** Nach dem Speichern: „Jetzt beenden“ schließt das Fenster, denn der laufende Graph hat den alten Stand. */

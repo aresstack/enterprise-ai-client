@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.app.settings;
 
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
+import com.aresstack.enterpriseai.app.config.ModelsConfig;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
 
@@ -62,6 +64,9 @@ public final class SettingsMapper {
     static final String KEY_AGENT_ARGS = "agent.args";
     static final String KEY_AGENT_TIMEOUT = "agent.requestTimeoutSeconds";
     static final String SOURCE_PREFIX = "source.";
+    static final String KEY_LOCAL_JAVA = "models.local.java";
+    static final String KEY_LOCAL_SIDECAR_JAR = "models.local.sidecarJar";
+    static final String KEY_LOCAL_MODEL_ROOT = "models.local.modelRoot";
 
     private SettingsMapper() {
     }
@@ -129,6 +134,14 @@ public final class SettingsMapper {
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
         b.agentArgs(text(p, KEY_AGENT_ARGS, ""));
         b.agentRequestTimeoutSeconds(text(p, KEY_AGENT_TIMEOUT, "30"));
+        for (ModelCategory category : ModelCategory.values()) {
+            if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
+                b.modelSelection(category.key(), text(p, ModelsConfig.keyOf(category), ""));
+            }
+        }
+        b.localJava(text(p, KEY_LOCAL_JAVA, ""));
+        b.localSidecarJar(text(p, KEY_LOCAL_SIDECAR_JAR, ""));
+        b.localModelRoot(text(p, KEY_LOCAL_MODEL_ROOT, ""));
         return b.build();
     }
 
@@ -237,6 +250,14 @@ public final class SettingsMapper {
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
         put(set, KEY_AGENT_TIMEOUT, form.agentRequestTimeoutSeconds());
+        for (ModelCategory category : ModelCategory.values()) {
+            if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
+                put(set, ModelsConfig.keyOf(category), form.modelSelection(category.key()));
+            }
+        }
+        put(set, KEY_LOCAL_JAVA, form.localJava());
+        put(set, KEY_LOCAL_SIDECAR_JAR, form.localSidecarJar());
+        put(set, KEY_LOCAL_MODEL_ROOT, form.localModelRoot());
         return set;
     }
 

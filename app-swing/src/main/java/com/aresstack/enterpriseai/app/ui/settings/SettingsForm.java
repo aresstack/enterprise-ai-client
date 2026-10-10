@@ -2,7 +2,9 @@ package com.aresstack.enterpriseai.app.ui.settings;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Der Inhalt des Einstellungen-Dialogs: alle Werte so, wie der Benutzer sie eingibt (Text, auch für Zahlen,
@@ -75,6 +77,10 @@ public final class SettingsForm {
     private final String agentCommand;
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
+    private final Map<String, String> modelSelections;
+    private final String localJava;
+    private final String localSidecarJar;
+    private final String localModelRoot;
 
     private SettingsForm(Builder b) {
         this.windowTitle = b.windowTitle;
@@ -113,6 +119,10 @@ public final class SettingsForm {
         this.agentCommand = b.agentCommand;
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
+        this.modelSelections = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.modelSelections));
+        this.localJava = b.localJava;
+        this.localSidecarJar = b.localSidecarJar;
+        this.localModelRoot = b.localModelRoot;
     }
 
     /** Leeres Formular mit den Standardwerten des Loaders (Fenstertitel, KeePass an, Proxy PAC_URL_POWERSHELL, alle TLS-Quellen an, Agent aus). */
@@ -137,7 +147,9 @@ public final class SettingsForm {
                 .tlsJvmDefault(tlsJvmDefault).tlsWindowsRoot(tlsWindowsRoot).tlsWindowsCaStores(tlsWindowsCaStores)
                 .caCertificatesFile(caCertificatesFile)
                 .agentEnabled(agentEnabled).agentCommand(agentCommand).agentArgs(agentArgs)
-                .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds);
+                .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
+                .modelSelections(modelSelections)
+                .localJava(localJava).localSidecarJar(localSidecarJar).localModelRoot(localModelRoot);
     }
 
     static String text(String value) {
@@ -302,6 +314,34 @@ public final class SettingsForm {
         return agentRequestTimeoutSeconds;
     }
 
+    /**
+     * Modellauswahl der Kategorien ohne eigenes Feld (Schlüssel = Kategorieschlüssel wie {@code rerank},
+     * {@code tts}; Wert {@code [<katalog>:]<modell>}). Chat und Embeddings stehen in {@link #chatModel()} und
+     * {@link #embeddingModel()}.
+     */
+    public Map<String, String> modelSelections() {
+        return modelSelections;
+    }
+
+    /** @return die Auswahl der Kategorie oder leer */
+    public String modelSelection(String categoryKey) {
+        String value = modelSelections.get(categoryKey);
+        return value == null ? "" : value;
+    }
+
+    /** Java-21-Programm des optionalen lokalen Sidecars; leer = keine lokalen Modelle. */
+    public String localJava() {
+        return localJava;
+    }
+
+    public String localSidecarJar() {
+        return localSidecarJar;
+    }
+
+    public String localModelRoot() {
+        return localModelRoot;
+    }
+
     @Override
     public String toString() {
         return "SettingsForm[chatBaseUrl=" + chatBaseUrl + ", chatModel=" + chatModel + ", chatApiKeyRef="
@@ -347,6 +387,10 @@ public final class SettingsForm {
         private String agentCommand = "";
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
+        private final Map<String, String> modelSelections = new LinkedHashMap<String, String>();
+        private String localJava = "";
+        private String localSidecarJar = "";
+        private String localModelRoot = "";
 
         private Builder() {
         }
@@ -536,6 +580,43 @@ public final class SettingsForm {
 
         public Builder agentRequestTimeoutSeconds(String value) {
             this.agentRequestTimeoutSeconds = text(value);
+            return this;
+        }
+
+        /** Ersetzt alle Kategorien ohne eigenes Feld. */
+        public Builder modelSelections(Map<String, String> values) {
+            modelSelections.clear();
+            if (values != null) {
+                for (Map.Entry<String, String> entry : values.entrySet()) {
+                    modelSelection(entry.getKey(), entry.getValue());
+                }
+            }
+            return this;
+        }
+
+        /** Leer entfernt die Auswahl der Kategorie. */
+        public Builder modelSelection(String categoryKey, String value) {
+            String trimmed = text(value);
+            if (trimmed.isEmpty()) {
+                modelSelections.remove(categoryKey);
+            } else {
+                modelSelections.put(categoryKey, trimmed);
+            }
+            return this;
+        }
+
+        public Builder localJava(String value) {
+            this.localJava = text(value);
+            return this;
+        }
+
+        public Builder localSidecarJar(String value) {
+            this.localSidecarJar = text(value);
+            return this;
+        }
+
+        public Builder localModelRoot(String value) {
+            this.localModelRoot = text(value);
             return this;
         }
 

@@ -18,11 +18,12 @@ public final class AppConfig {
     private final KeePassConfig keePass;
     private final NetworkConfig network;
     private final AgentConfig agent;
+    private final ModelsConfig models;
     private final List<String> warnings;
 
     AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
               List<SourceConfig> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
-              List<String> warnings) {
+              ModelsConfig models, List<String> warnings) {
         this.windowTitle = windowTitle;
         this.chat = chat;
         this.embedding = embedding;
@@ -31,6 +32,7 @@ public final class AppConfig {
         this.keePass = keePass;
         this.network = network;
         this.agent = agent;
+        this.models = models;
         this.warnings = Collections.unmodifiableList(new ArrayList<String>(warnings));
     }
 
@@ -67,6 +69,11 @@ public final class AppConfig {
         return agent;
     }
 
+    /** Modellauswahl je Kategorie und optionaler lokaler Sidecar. */
+    public ModelsConfig models() {
+        return models;
+    }
+
     /** Hinweise aus dem Laden (unbekannte Schlüssel, fehlendes KeePass trotz SecretRefs); keine Fehler. */
     public List<String> warnings() {
         return warnings;
@@ -75,6 +82,6 @@ public final class AppConfig {
     @Override
     public String toString() {
         return "AppConfig[" + chat + ", " + embedding + ", " + knowledge + ", sources=" + sources + ", " + keePass
-                + ", " + network + ", " + agent + "]";
+                + ", " + network + ", " + agent + ", " + models + "]";
     }
 }
