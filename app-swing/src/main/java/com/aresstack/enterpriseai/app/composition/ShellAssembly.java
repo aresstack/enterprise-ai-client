@@ -182,6 +182,16 @@ public final class ShellAssembly {
             }
 
             @Override
+            public void renameChatRequested(String chatId, String title) {
+                history.rename(chatId, title);
+            }
+
+            @Override
+            public String currentChatTitle() {
+                return history.currentTitle();
+            }
+
+            @Override
             public void settingsRequested() {
                 Runnable action = view.settingsAction();
                 if (action != null) {

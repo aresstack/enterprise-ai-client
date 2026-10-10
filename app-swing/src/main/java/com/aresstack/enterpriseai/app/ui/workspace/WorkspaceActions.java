@@ -35,4 +35,13 @@ public interface WorkspaceActions {
     /** Ein gespeicherter Chat soll samt Anhängen gelöscht werden (bestätigt ist das schon). */
     default void deleteSavedChatRequested(String chatId) {
     }
+
+    /** Ein Chat soll einen neuen Titel bekommen (askai arch: „Umbenennen“). */
+    default void renameChatRequested(String chatId, String title) {
+    }
+
+    /** Der vom Nutzer gewählte Titel des aktuellen Chats, oder {@code null} (dann die erste Nachricht). */
+    default String currentChatTitle() {
+        return null;
+    }
 }

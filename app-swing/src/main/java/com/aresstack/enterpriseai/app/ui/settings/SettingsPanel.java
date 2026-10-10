@@ -15,6 +15,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -38,9 +39,9 @@ import java.util.function.Supplier;
  * │ Einstellungen                          ✕  │  stille Überschrift; rechts Platz für das Fenster-✕
  * │ Hinweis zum Erststart bzw. zum Neustart   │
  * ├──────────────────────────────────────────┤
- * │ [KI-Dienst] KeePass  Netzwerk  Modelle    │  Pillen wie die Reiterleiste des Drawers
- * ├──────────────────────────────────────────┤
- * │ Platten mit Formularzeilen (scrollbar)    │  CardLayout, je Reiter eine Karte
+ * │ KI-Dienst  │ Platten mit Formularzeilen  │  Navigationsliste links wie askai arch
+ * │ KeePass    │ (scrollbar)                 │  (Outlook-Stil), rechts je Kategorie eine
+ * │ …          │                             │  Karte im CardLayout
  * ├──────────────────────────────────────────┤
  * │ Probleme (rote Platte, nur bei Bedarf)    │
  * │                     [Abbrechen] [Speichern]│
@@ -65,11 +66,14 @@ public final class SettingsPanel extends JPanel {
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
     public static final String QUIT_LABEL = "Beenden";
-    private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle"};
+    private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle",
+            "Technische Details"};
     /** Index des Reiters „Modelle“ (Auswahl je Kategorie). */
     static final int MODELS_TAB = 3;
+    /** Index der Kategorie „Technische Details“ (Protokoll). */
+    static final int TECHNICAL_TAB = 4;
 
-    /** Die Reiter in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle. */
+    /** Die Kategorien in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle, Technische Details. */
     public static int tabCount() {
         return TAB_LABELS.length;
     }
@@ -91,6 +95,7 @@ public final class SettingsPanel extends JPanel {
     private final SecurityTab securityTab;
     private final SystemTab systemTab;
     private final ModelsTab modelsTab;
+    private final JTextArea technicalText = new JTextArea();
     private final List<ComposerToggleButton> tabButtons = new ArrayList<ComposerToggleButton>();
     private final JPanel header = new JPanel(new BorderLayout(8, 0));
     private final JPanel windowControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -159,16 +164,17 @@ public final class SettingsPanel extends JPanel {
             note.add(label);
         }
         north.add(note, BorderLayout.CENTER);
-        JPanel tabs = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        JPanel tabs = new JPanel(new GridLayout(0, 1, 0, 4));
         tabs.setOpaque(false);
-        tabs.setBorder(BorderFactory.createEmptyBorder(8, 12, 0, 12));
         ButtonGroup group = new ButtonGroup();
-        JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel(), modelsTab.panel()};
+        JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel(), modelsTab.panel(),
+                technicalPage()};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
             ComposerToggleButton button = new ComposerToggleButton(null, name, null);
             button.setAccent(ResearchUiPalette.SECONDARY_SURFACE);
-            button.getAccessibleContext().setAccessibleName("Reiter " + name);
+            button.getAccessibleContext().setAccessibleName("Kategorie " + name);
+            button.setHorizontalAlignment(SwingConstants.LEFT);
             button.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
@@ -184,7 +190,10 @@ public final class SettingsPanel extends JPanel {
             scroll.getViewport().setBackground(palette.getSurface());
             deck.add(scroll, name);
         }
-        north.add(tabs, BorderLayout.SOUTH);
+        JPanel navigation = new JPanel(new BorderLayout());
+        navigation.setOpaque(false);
+        navigation.setBorder(BorderFactory.createEmptyBorder(8, 12, 0, 4));
+        navigation.add(tabs, BorderLayout.NORTH);
         tabButtons.get(0).setSelected(true);
         deck.setOpaque(false);
 
@@ -218,9 +227,41 @@ public final class SettingsPanel extends JPanel {
         south.add(problemsWrap, BorderLayout.CENTER);
         south.add(buttons, BorderLayout.SOUTH);
 
+        JPanel body = new JPanel(new BorderLayout(4, 0));
+        body.setOpaque(false);
+        body.add(navigation, BorderLayout.WEST);
+        body.add(deck, BorderLayout.CENTER);
         add(north, BorderLayout.NORTH);
-        add(deck, BorderLayout.CENTER);
+        add(body, BorderLayout.CENTER);
         add(south, BorderLayout.SOUTH);
+    }
+
+    /** Technische Details (askai arch): Protokolldatei und ihre letzten Zeilen, nur lesend. */
+    private JPanel technicalPage() {
+        JPanel page = new JPanel(new BorderLayout(0, 6));
+        page.setOpaque(false);
+        page.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        technicalText.setEditable(false);
+        technicalText.setLineWrap(true);
+        technicalText.setWrapStyleWord(false);
+        technicalText.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        technicalText.setForeground(palette.getInk());
+        technicalText.setBackground(palette.getSurface());
+        technicalText.getAccessibleContext().setAccessibleName("Technische Details");
+        ComposerButton reload = new ComposerButton(null, "Aktualisieren", false);
+        reload.addActionListener(event -> loadTechnicalDetails());
+        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        bar.setOpaque(false);
+        bar.add(reload);
+        page.add(bar, BorderLayout.NORTH);
+        page.add(technicalText, BorderLayout.CENTER);
+        return page;
+    }
+
+    private void loadTechnicalDetails() {
+        String text = actions.technicalDetails();
+        technicalText.setText(text == null || text.isEmpty() ? "Keine technischen Details verfügbar." : text);
+        technicalText.setCaretPosition(technicalText.getDocument().getLength());
     }
 
     private void wire() {
@@ -349,6 +390,8 @@ public final class SettingsPanel extends JPanel {
         cards.show(deck, name);
         if (TAB_LABELS[MODELS_TAB].equals(name)) {
             modelsTab.shown();
+        } else if (TAB_LABELS[TECHNICAL_TAB].equals(name)) {
+            loadTechnicalDetails();
         }
     }
 

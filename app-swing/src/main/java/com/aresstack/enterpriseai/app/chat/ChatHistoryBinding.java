@@ -50,6 +50,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     private final Map<Long, List<AttachmentRecord>> storedAttachments = new HashMap<Long, List<AttachmentRecord>>();
     private ChatConversationId recordedConversation;
     private long createdAt;
+    private String renamedTitle; // vom Nutzer gewählter Titel des aktuellen Chats, sonst null
     private boolean restoring;
 
     public ChatHistoryBinding(ChatHistoryStore store, ChatService chatService, RagChatBinding chat,
@@ -70,6 +71,11 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     /** Alle gespeicherten Chats, zuletzt geänderte zuerst. */
     public List<ChatRecord> savedChats() {
         return store.list();
+    }
+
+    /** Der vom Nutzer gewählte Titel des aktuellen Chats, oder {@code null}. */
+    public String currentTitle() {
+        return chat.conversationId().equals(recordedConversation) ? renamedTitle : null;
     }
 
     /** Die Kennung des Chats, in den gerade geschrieben wird. */
@@ -126,6 +132,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         }
         recordedConversation = target;
         createdAt = record.getCreatedAt();
+        renamedTitle = record.isTitleEdited() ? record.getTitle() : null;
         chatService.closeConversation(previous);
         return true;
     }
@@ -133,6 +140,25 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     /** Löscht einen gespeicherten Chat samt Anhängen (der aktuelle Chat wechselt vorher der Aufrufer). */
     public void delete(String chatId) {
         store.delete(chatId);
+    }
+
+    /**
+     * Benennt einen Chat um (askai arch: „Umbenennen“ im Menü der Zeile). Der Titel bleibt danach, auch wenn der
+     * Chat weiterläuft. Leere Titel werden ignoriert.
+     */
+    public void rename(String chatId, String newTitle) {
+        if (chatId == null || newTitle == null || newTitle.trim().isEmpty()) {
+            return;
+        }
+        String trimmed = newTitle.trim();
+        if (chatId.equals(currentChatId())) {
+            renamedTitle = trimmed;
+        }
+        ChatRecord record = store.load(chatId);
+        if (record != null) {
+            record.rename(trimmed);
+            store.save(record);
+        }
     }
 
     /**
@@ -203,6 +229,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         List<TranscriptEntry> entries = model.getEntries();
         if (!conversation.equals(recordedConversation)) {
             recordedConversation = conversation;
+            renamedTitle = null;
             createdAt = entries.isEmpty() ? clock.getAsLong() : entries.get(0).getCreatedAtMillis();
         }
         ChatRecord record = new ChatRecord(conversation.value(), createdAt);
@@ -220,7 +247,11 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         if (title == null) {
             return; // ohne Nutzernachricht gibt es nichts zu speichern
         }
-        record.setTitle(title);
+        if (renamedTitle != null) {
+            record.rename(renamedTitle);
+        } else {
+            record.setTitle(title);
+        }
         record.setModifiedAt(clock.getAsLong());
         store.save(record);
     }
