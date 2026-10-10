@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.app.config.AppConfig;
-import com.aresstack.enterpriseai.app.config.SourceConfig;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,8 +21,8 @@ public final class StartupNotices {
             StringBuilder sb = new StringBuilder("KeePassRPC ist deaktiviert. Ohne KeePass fehlen die Secrets: ");
             sb.append("der API-Key für Chat und Embeddings");
             boolean credentials = false;
-            for (SourceConfig source : config.sources()) {
-                if (source.credentialRef() != null) {
+            for (SourceDefinition source : config.sources()) {
+                if (source.settings().has("credentialRef")) {
                     credentials = true;
                     break;
                 }

@@ -1,16 +1,12 @@
 package com.aresstack.enterpriseai.app.settings;
 
-import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
-import com.aresstack.enterpriseai.app.config.SourceConfig;
-import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
-import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
-import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.source.api.SourceDefinitionStore;
 
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -20,12 +16,13 @@ import java.util.Properties;
 import java.util.Set;
 
 /**
- * {@link SourceActions} über der Konfigurationsdatei. Geschrieben werden nur {@code sources} und
- * {@code source.<id>.*}; alle übrigen Schlüssel, Kommentare und die Reihenfolge der Datei bleiben, wie sie sind
- * ({@link ConfigurationFile#update}). Geprüft wird ein Entwurf wie beim Start, aber streng nur für diese eine Quelle
- * ({@link AppConfigLoader#sourceSection}); entfernte Quellen werden auskommentiert, nicht gelöscht.
+ * Die Quellen in der Konfigurationsdatei ({@link SourceDefinitionStore}), typneutral: {@code sources} und je Quelle
+ * {@code source.<id>.type}, {@code .enabled} (nur {@code false} steht in der Datei) und die Schlüssel des Adapters.
+ * Alle übrigen Schlüssel, Kommentare und die Reihenfolge der Datei bleiben, wie sie sind
+ * ({@link ConfigurationFile#update}); entfernte Schlüssel werden auskommentiert, nicht gelöscht. Geprüft wird hier
+ * nichts, das tut der Quellen-Port des Adapters im Use Case.
  */
-public final class FileSourceActions implements SourceActions {
+public final class FileSourceActions implements SourceDefinitionStore {
 
     static final String KEY_SOURCES = SettingsMapper.KEY_SOURCES;
     static final String SOURCE_PREFIX = SettingsMapper.SOURCE_PREFIX;
@@ -44,69 +41,73 @@ public final class FileSourceActions implements SourceActions {
     }
 
     @Override
-    public List<SourceForm> sources() throws IOException {
-        return SettingsMapper.fromProperties(current()).sources();
-    }
-
-    /**
-     * Die gespeicherte Quelle als Konfiguration, damit die Anwendung sie ohne Neustart anbinden kann.
-     *
-     * @throws AppConfigException wenn die Quelle in der Datei fehlerhaft ist
-     */
-    public SourceConfig sourceConfig(String id) throws IOException {
-        return AppConfigLoader.sourceSection(current(), id);
+    public List<SourceDefinition> definitions() throws IOException {
+        return AppConfigLoader.sourceDefinitions(current());
     }
 
     @Override
-    public List<String> validate(SourceForm draft, String originalId) {
-        if (draft == null) {
-            throw new IllegalArgumentException("draft must not be null");
-        }
-        Properties current;
-        try {
-            current = current();
-        } catch (IOException e) {
-            return Collections.singletonList("Konfigurationsdatei nicht lesbar: " + file.path() + " ("
-                    + e.getClass().getSimpleName() + ")");
-        }
-        String id = draft.id();
-        if (id.isEmpty()) {
-            return Collections.singletonList("ID: fehlt (Kurzname der Quelle)");
-        }
-        for (SourceForm other : SettingsMapper.fromProperties(current).sources()) {
-            if (other.id().equals(id) && !id.equals(originalId)) {
-                return Collections.singletonList("ID: eine Quelle „" + id + "“ gibt es schon");
-            }
-        }
-        try {
-            AppConfigLoader.sourceSection(SettingsMapper.merge(current, with(current, draft, originalId)), id);
-            return Collections.emptyList();
-        } catch (AppConfigException e) {
-            return SettingsMapper.describe(e.problems());
-        }
-    }
-
-    @Override
-    public void save(SourceForm draft, String originalId) throws IOException {
-        List<String> problems = validate(draft, originalId);
-        if (!problems.isEmpty()) {
-            throw new IllegalArgumentException("Entwurf hat Probleme: " + problems);
+    public void save(SourceDefinition definition, String originalId) throws IOException {
+        if (definition == null || definition.id().isEmpty()) {
+            throw new IllegalArgumentException("definition with id required");
         }
         Properties current = current();
-        write(current, with(current, draft, originalId));
+        List<String> ids = ids(current);
+        List<String> next = new ArrayList<String>();
+        boolean replaced = false;
+        for (String id : ids) {
+            if (originalId != null && id.equals(originalId) && !replaced) {
+                next.add(definition.id());
+                replaced = true;
+            } else if (!id.equals(definition.id())) {
+                next.add(id);
+            }
+        }
+        if (!replaced) {
+            next.add(definition.id());
+        }
+        Set<String> known = new LinkedHashSet<String>(ids);
+        known.addAll(next);
+        Map<String, String> set = new LinkedHashMap<String, String>();
+        set.put(KEY_SOURCES, String.join(",", next));
+        String prefix = SOURCE_PREFIX + definition.id() + ".";
+        set.put(prefix + "type", definition.typeId());
+        if (!definition.enabled()) {
+            set.put(prefix + "enabled", "false");
+        }
+        for (Map.Entry<String, String> entry : definition.settings().asMap().entrySet()) {
+            set.put(prefix + entry.getKey(), entry.getValue());
+        }
+        Set<String> remove = new LinkedHashSet<String>();
+        for (String key : ownedKeys(current, definition.id(), known)) {
+            if (!set.containsKey(key)) {
+                remove.add(key);
+            }
+        }
+        if (originalId != null && !originalId.equals(definition.id())) {
+            remove.addAll(ownedKeys(current, originalId, known));
+            remove.removeAll(set.keySet());
+        }
+        file.update(set, remove, AppConfigLoader.exampleConfiguration());
     }
 
     @Override
     public void remove(String id) throws IOException {
         Properties current = current();
-        SettingsForm form = SettingsMapper.fromProperties(current);
-        List<SourceForm> remaining = new ArrayList<SourceForm>();
-        for (SourceForm source : form.sources()) {
-            if (!source.id().equals(id)) {
-                remaining.add(source);
+        List<String> ids = ids(current);
+        List<String> remaining = new ArrayList<String>();
+        for (String other : ids) {
+            if (!other.equals(id)) {
+                remaining.add(other);
             }
         }
-        write(current, form.toBuilder().sources(remaining).build());
+        Set<String> remove = new LinkedHashSet<String>(ownedKeys(current, id, ids));
+        Map<String, String> set = new LinkedHashMap<String, String>();
+        if (remaining.isEmpty()) {
+            remove.add(KEY_SOURCES);
+        } else {
+            set.put(KEY_SOURCES, String.join(",", remaining));
+        }
+        file.update(set, remove, AppConfigLoader.exampleConfiguration());
     }
 
     @Override
@@ -133,52 +134,41 @@ public final class FileSourceActions implements SourceActions {
         return template;
     }
 
-    /** Das Formular der Datei mit dem Entwurf an der Stelle von {@code originalId} (sonst hinten angefügt). */
-    private static SettingsForm with(Properties current, SourceForm draft, String originalId) {
-        SettingsForm form = SettingsMapper.fromProperties(current);
-        List<SourceForm> sources = new ArrayList<SourceForm>();
-        boolean replaced = false;
-        for (SourceForm source : form.sources()) {
-            if (originalId != null && source.id().equals(originalId)) {
-                sources.add(draft);
-                replaced = true;
-            } else {
-                sources.add(source);
+    private static List<String> ids(Properties current) {
+        List<String> ids = new ArrayList<String>();
+        String value = current.getProperty(KEY_SOURCES, "");
+        for (String item : value.split(",")) {
+            String trimmed = item.trim();
+            if (!trimmed.isEmpty() && !ids.contains(trimmed)) {
+                ids.add(trimmed);
             }
         }
-        if (!replaced) {
-            sources.add(draft);
-        }
-        return form.toBuilder().sources(sources).build();
+        return ids;
     }
 
-    /** Schreibt nur die Quell-Schlüssel des Formulars; der Rest der Datei bleibt unberührt. */
-    private void write(Properties current, SettingsForm form) throws IOException {
-        file.update(sourceKeys(SettingsMapper.writes(form)), sourceKeys(SettingsMapper.removals(form, current)),
-                AppConfigLoader.exampleConfiguration());
+    /** Die Schlüssel {@code source.<id>.*} der Datei, die keiner längeren bekannten ID gehören. */
+    private static Set<String> ownedKeys(Properties current, String id, Iterable<String> knownIds) {
+        Set<String> keys = new LinkedHashSet<String>();
+        for (String key : current.stringPropertyNames()) {
+            if (id.equals(SettingsMapper.sourceIdOf(key, withId(knownIds, id)))) {
+                keys.add(key);
+            }
+        }
+        return keys;
+    }
+
+    private static List<String> withId(Iterable<String> knownIds, String id) {
+        List<String> ids = new ArrayList<String>();
+        for (String known : knownIds) {
+            ids.add(known);
+        }
+        if (!ids.contains(id)) {
+            ids.add(id);
+        }
+        return ids;
     }
 
     static boolean isSourceKey(String key) {
         return KEY_SOURCES.equals(key) || key.startsWith(SOURCE_PREFIX);
-    }
-
-    private static Map<String, String> sourceKeys(Map<String, String> writes) {
-        Map<String, String> filtered = new LinkedHashMap<String, String>();
-        for (Map.Entry<String, String> entry : writes.entrySet()) {
-            if (isSourceKey(entry.getKey())) {
-                filtered.put(entry.getKey(), entry.getValue());
-            }
-        }
-        return filtered;
-    }
-
-    private static Set<String> sourceKeys(Collection<String> keys) {
-        Set<String> filtered = new LinkedHashSet<String>();
-        for (String key : keys) {
-            if (isSourceKey(key)) {
-                filtered.add(key);
-            }
-        }
-        return filtered;
     }
 }

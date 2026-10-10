@@ -2,7 +2,6 @@ package com.aresstack.enterpriseai.app.settings;
 
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
-import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -92,12 +91,6 @@ public final class SettingsMapper {
         b.embeddingApiKeyRef(text(p, KEY_EMBEDDING_API_KEY_REF, ""));
         b.indexDirectory(text(p, KEY_INDEX_DIRECTORY, ""));
         b.indexOnStartup(bool(p, KEY_INDEX_ON_STARTUP, true));
-        for (String id : list(text(p, KEY_SOURCES, ""))) {
-            SourceForm source = source(p, id);
-            if (source != null) {
-                b.addSource(source);
-            }
-        }
         b.keePassEnabled(bool(p, KEY_KEEPASS_ENABLED, true));
         b.keePassHost(text(p, KEY_KEEPASS_HOST, "127.0.0.1"));
         b.keePassPort(text(p, KEY_KEEPASS_PORT, "12546"));
@@ -132,43 +125,6 @@ public final class SettingsMapper {
         return b.build();
     }
 
-    private static SourceForm source(Properties p, String id) {
-        String prefix = SOURCE_PREFIX + id + ".";
-        String type = text(p, prefix + "type", "").toLowerCase(Locale.ROOT);
-        boolean wiki = SourceForm.TYPE_MEDIAWIKI.equals(type);
-        boolean confluence = SourceForm.TYPE_CONFLUENCE.equals(type);
-        if (SourceForm.TYPE_FILES.equals(type)) {
-            return SourceForm.builder(id, SourceForm.TYPE_FILES)
-                    .url(text(p, prefix + "directory", ""))
-                    .startPoints(text(p, prefix + "startPoints", "."))
-                    .maxDepth(text(p, prefix + "maxDepth", "20"))
-                    .maxResources(text(p, prefix + "maxResources", ""))
-                    .enabled(bool(p, prefix + "enabled", true))
-                    .build();
-        }
-        if (!wiki && !confluence) {
-            // Unbekannter oder fehlender Typ: der Dialog zeigt die Quelle als MediaWiki-Eintrag mit leerer URL,
-            // damit der Benutzer sie sieht und korrigieren oder entfernen kann.
-            wiki = true;
-        }
-        SourceForm.Builder b = SourceForm.builder(id, wiki ? SourceForm.TYPE_MEDIAWIKI : SourceForm.TYPE_CONFLUENCE)
-                .url(text(p, prefix + (wiki ? "apiUrl" : "baseUrl"), ""))
-                .credentialRef(text(p, prefix + "credentialRef", ""))
-                .startPoints(text(p, prefix + "startPoints", ""))
-                .maxDepth(text(p, prefix + "maxDepth", "1"))
-                .maxResources(text(p, prefix + "maxResources", ""))
-                .enabled(bool(p, prefix + "enabled", true));
-        if (wiki) {
-            b.siteKey(text(p, prefix + "siteKey", ""))
-                    .displayName(text(p, prefix + "displayName", ""))
-                    .requiresLogin(bool(p, prefix + "requiresLogin", !text(p, prefix + "credentialRef", "").isEmpty()));
-        } else {
-            b.searchSpaceKeys(text(p, prefix + "searchSpaceKeys", ""))
-                    .includeAttachments(bool(p, prefix + "includeAttachments", false));
-        }
-        return b.build();
-    }
-
     /** Die Schlüssel, die das Formular setzt (in Dateireihenfolge der Vorlage). */
     public static Map<String, String> changes(SettingsForm form) {
         Map<String, String> set = new LinkedHashMap<String, String>();
@@ -183,34 +139,6 @@ public final class SettingsMapper {
         put(set, KEY_EMBEDDING_API_KEY_REF, form.embeddingApiKeyRef());
         put(set, KEY_INDEX_DIRECTORY, form.indexDirectory());
         set.put(KEY_INDEX_ON_STARTUP, String.valueOf(form.indexOnStartup()));
-        List<String> ids = new ArrayList<String>();
-        for (SourceForm source : form.sources()) {
-            ids.add(source.id());
-        }
-        set.put(KEY_SOURCES, join(ids));
-        for (SourceForm source : form.sources()) {
-            String prefix = SOURCE_PREFIX + source.id() + ".";
-            set.put(prefix + "type", source.type());
-            put(set, prefix + (source.isConfluence() ? "baseUrl" : source.isFiles() ? "directory" : "apiUrl"),
-                    source.url());
-            put(set, prefix + "credentialRef", source.isFiles() ? "" : source.credentialRef());
-            put(set, prefix + "startPoints", source.startPoints());
-            put(set, prefix + "maxDepth", source.maxDepth());
-            put(set, prefix + "maxResources", source.maxResources());
-            // Nur das Abwählen steht in der Datei; aktiv ist der Standard (leer = Zeile auskommentieren).
-            put(set, prefix + "enabled", source.enabled() ? "" : "false");
-            if (source.isFiles()) {
-                continue;
-            }
-            if (source.isConfluence()) {
-                put(set, prefix + "searchSpaceKeys", source.searchSpaceKeys());
-                set.put(prefix + "includeAttachments", String.valueOf(source.includeAttachments()));
-            } else {
-                put(set, prefix + "siteKey", source.siteKey());
-                put(set, prefix + "displayName", source.displayName());
-                set.put(prefix + "requiresLogin", String.valueOf(source.requiresLogin()));
-            }
-        }
         set.put(KEY_KEEPASS_ENABLED, String.valueOf(form.keePassEnabled()));
         put(set, KEY_KEEPASS_HOST, form.keePassHost());
         put(set, KEY_KEEPASS_PORT, form.keePassPort());
@@ -263,29 +191,6 @@ public final class SettingsMapper {
         for (Map.Entry<String, String> entry : changes.entrySet()) {
             if (entry.getValue().isEmpty()) {
                 remove.add(entry.getKey());
-            }
-        }
-        Map<String, String> types = new LinkedHashMap<String, String>();
-        for (SourceForm source : form.sources()) {
-            types.put(source.id(), source.type());
-        }
-        if (current != null) {
-            Set<String> knownIds = new LinkedHashSet<String>(types.keySet());
-            knownIds.addAll(list(text(current, KEY_SOURCES, "")));
-            for (String key : current.stringPropertyNames()) {
-                String id = sourceIdOf(key, knownIds);
-                if (id == null) {
-                    continue;
-                }
-                String type = types.get(id);
-                if (type == null) {
-                    remove.add(key);
-                } else {
-                    String fileType = text(current, SOURCE_PREFIX + id + ".type", "").toLowerCase(Locale.ROOT);
-                    if (!type.equals(fileType) && !changes.containsKey(key)) {
-                        remove.add(key);
-                    }
-                }
             }
         }
         remove.add(KEY_LEGACY_PAC_DISCOVERY);

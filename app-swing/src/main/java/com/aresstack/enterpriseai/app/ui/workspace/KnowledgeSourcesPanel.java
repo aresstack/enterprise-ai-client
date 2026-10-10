@@ -24,21 +24,17 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Die Drawer-Seite „Wissensquellen“: oben „+ MediaWiki“ und „+ Confluence“ (wie „+ Neuer Chat“), darunter je
- * Quelle eine {@link KnowledgeSourceRow} mit Häkchen, Indexstand, „Jetzt indexieren“ und Bearbeiten, dann ein
+ * Die Drawer-Seite „Wissensquellen“: oben genau ein „+ Quelle“ (wie „+ Neuer Chat“; welche Quelltypen es gibt,
+ * entscheiden die angebundenen Adapter, nicht die Oberfläche), darunter je Quelle eine {@link KnowledgeSourceRow}
+ * mit Häkchen, Indexstand, „Jetzt indexieren“, Bearbeiten und Entfernen, dann ein
  * stiller Hinweis, was das Häkchen bewirkt, und unten der Bereich „Index“ mit „Index …“ für Indexverzeichnis
  * und Indexierung beim Start (öffnet den Index-Dialog; gilt beim nächsten Start). Ohne
  * {@link KnowledgeSourceActions} bzw. {@link #setIndexSettingsAction} bleiben die Knöpfe wirkungslos.
  */
 public final class KnowledgeSourcesPanel extends JPanel {
 
-    public static final String ADD_WIKI_LABEL = "+ MediaWiki";
-    public static final String ADD_CONFLUENCE_LABEL = "+ Confluence";
-    public static final String ADD_FILES_LABEL = "+ Dateien";
-    static final String TYPE_MEDIAWIKI = "mediawiki";
-    static final String TYPE_CONFLUENCE = "confluence";
-    static final String TYPE_FILES = "files";
-    static final String EMPTY_TEXT = "Noch keine Wissensquelle. „+ MediaWiki“, „+ Confluence“ oder „+ Dateien“ legt eine an.";
+    public static final String ADD_LABEL = "+ Quelle";
+    static final String EMPTY_TEXT = "Noch keine Wissensquelle. „+ Quelle“ legt eine an.";
     static final String HINT_TEXT = "<html>Der Chat durchsucht nur angehakte Quellen; abgewählte werden auch beim "
             + "Start nicht indexiert.</html>";
     public static final String INDEX_LABEL = "Index …";
@@ -47,9 +43,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
             + "nächsten Start.</html>";
 
     private final ComicPalette palette;
-    private final ResearchPillButton addWiki;
-    private final ResearchPillButton addConfluence;
-    private final ResearchPillButton addFiles;
+    private final ResearchPillButton addButton;
     private final ResearchPillButton indexButton;
     private final JPanel list = new WidthTrackingPanel();
     private final List<KnowledgeSourceRow> rows = new ArrayList<KnowledgeSourceRow>();
@@ -61,25 +55,11 @@ public final class KnowledgeSourcesPanel extends JPanel {
         super(new BorderLayout());
         this.palette = palette;
         setOpaque(false);
-        addWiki = pill(ADD_WIKI_LABEL, "Eine MediaWiki-Site als Wissensquelle hinzufügen", TYPE_MEDIAWIKI);
-        addConfluence = pill(ADD_CONFLUENCE_LABEL, "Einen Confluence-Bereich als Wissensquelle hinzufügen",
-                TYPE_CONFLUENCE);
-        addFiles = pill(ADD_FILES_LABEL, "Lokale Dateien (ein Verzeichnis mit PDF, Office, Text ...) als Wissensquelle "
-                + "hinzufügen", TYPE_FILES);
-        JPanel north = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        north.setOpaque(false);
-        north.setBorder(BorderFactory.createEmptyBorder(8, 2, 4, 8));
-        north.add(addWiki);
-        north.add(addConfluence);
-        // Eigene Zeile: drei Pillen passen im schmalen Drawer nicht sicher nebeneinander.
-        JPanel northFiles = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        northFiles.setOpaque(false);
-        northFiles.setBorder(BorderFactory.createEmptyBorder(0, 2, 4, 8));
-        northFiles.add(addFiles);
-        JPanel addRows = new JPanel(new BorderLayout());
+        addButton = pill(ADD_LABEL, "Eine Wissensquelle hinzufügen (Wiki, Confluence, Dateien ...)");
+        JPanel addRows = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         addRows.setOpaque(false);
-        addRows.add(north, BorderLayout.NORTH);
-        addRows.add(northFiles, BorderLayout.SOUTH);
+        addRows.setBorder(BorderFactory.createEmptyBorder(8, 2, 4, 8));
+        addRows.add(addButton);
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
@@ -138,14 +118,14 @@ public final class KnowledgeSourcesPanel extends JPanel {
         return header;
     }
 
-    private ResearchPillButton pill(String label, String tooltip, final String type) {
+    private ResearchPillButton pill(String label, String tooltip) {
         ResearchPillButton pill = new ResearchPillButton(label, ResearchUiMetrics.NEW_CHAT_HEIGHT - 4,
                 ResearchUiMetrics.RADIUS_CONTROL, ResearchUiMetrics.NEW_CHAT_PADDING_H - 2);
         pill.setFont(ResearchUiTypography.semiBold(12.5f));
         pill.setToolTipText(tooltip);
         pill.addActionListener(event -> {
             if (actions != null) {
-                actions.addRequested(type);
+                actions.addRequested();
             }
         });
         return pill;
@@ -177,16 +157,9 @@ public final class KnowledgeSourcesPanel extends JPanel {
         return Collections.unmodifiableList(new ArrayList<KnowledgeSourceRow>(rows));
     }
 
-    public ResearchPillButton addWikiButton() {
-        return addWiki;
-    }
-
-    public ResearchPillButton addConfluenceButton() {
-        return addConfluence;
-    }
-
-    public ResearchPillButton addFilesButton() {
-        return addFiles;
+    /** „+ Quelle“ oben. */
+    public ResearchPillButton addButton() {
+        return addButton;
     }
 
     /** „Index …“ im Bereich „Index“ unten. */
@@ -196,9 +169,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
 
     private void refresh() {
         boolean canAdd = actions != null && actions.canAdd();
-        addWiki.setEnabled(canAdd);
-        addConfluence.setEnabled(canAdd);
-        addFiles.setEnabled(canAdd);
+        addButton.setEnabled(canAdd);
         list.removeAll();
         rows.clear();
         JLabel header = sectionHeader("WISSENSQUELLEN");

@@ -5,7 +5,6 @@ import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
-import com.aresstack.enterpriseai.app.ui.settings.SourceForm;
 import com.aresstack.winproxy.ProxyMode;
 import org.junit.Test;
 
@@ -73,17 +72,6 @@ public class SettingsMapperTest {
         assertFalse(form.indexOnStartup());
         assertFalse(form.keePassEnabled());
         assertEquals(SettingsForm.PROXY_DISABLED, form.proxyMode());
-        assertEquals(2, form.sources().size());
-        SourceForm wiki = form.sources().get(0);
-        assertTrue(wiki.isMediaWiki());
-        assertEquals("http://127.0.0.1:9/w/api.php", wiki.url());
-        assertEquals("Hauptseite,Handbuch", wiki.startPoints());
-        assertEquals("2", wiki.maxDepth());
-        SourceForm confluence = form.sources().get(1);
-        assertTrue(confluence.isConfluence());
-        assertEquals("http://127.0.0.1:9/confluence", confluence.url());
-        assertEquals("DEV", confluence.searchSpaceKeys());
-        assertTrue(confluence.includeAttachments());
     }
 
     @Test
@@ -102,8 +90,6 @@ public class SettingsMapperTest {
             }
         }
         Properties expected = new Properties();
-        expected.setProperty("source.wiki.requiresLogin", "false");
-        expected.setProperty("source.confluence.maxDepth", "1");
         expected.setProperty("security.keepass.host", "127.0.0.1");
         expected.setProperty("security.keepass.port", "12546");
         expected.setProperty("security.keepass.clientDisplayName", "Enterprise AI Client");
@@ -212,8 +198,9 @@ public class SettingsMapperTest {
         for (String key : current.stringPropertyNames()) {
             if (current.getProperty(key).isEmpty()) {
                 // "sources=" (leer) der Vorlage: leer und fehlend sind für den Loader dasselbe; der Dialog
-                // kommentiert leere Werte aus.
-                assertNull(key, merged.getProperty(key));
+                // kommentiert leere Werte aus, die Quellen-Schlüssel verwaltet er nicht.
+                String value = merged.getProperty(key);
+                assertTrue(key, value == null || value.isEmpty());
                 continue;
             }
             assertEquals(key, current.getProperty(key), merged.getProperty(key));
@@ -238,58 +225,8 @@ public class SettingsMapperTest {
         }
         assertNull("Beispielquellen der Vorlage gehören nicht in die erste eigene Konfiguration",
                 merged.getProperty("source.wiki.type"));
-        assertNull(merged.getProperty("sources"));
-    }
-
-    @Test
-    public void removingASourceDropsAllOfItsKeys() {
-        Properties current = valid();
-        SettingsForm form = SettingsMapper.fromProperties(current).toBuilder()
-                .sources(java.util.Collections.<SourceForm>emptyList()).build();
-        Set<String> removals = SettingsMapper.removals(form, current);
-        assertTrue(removals.contains("source.wiki.type"));
-        assertTrue(removals.contains("source.wiki.connectTimeoutMillis"));
-        assertTrue(removals.contains("source.confluence.baseUrl"));
-        Properties merged = SettingsMapper.merge(current, form);
-        assertNull(merged.getProperty("sources"));
-        assertNull(merged.getProperty("source.wiki.apiUrl"));
-        assertEquals("5", merged.getProperty("retrieval.maxResults"));
-        AppConfigLoader.fromProperties(merged);
-    }
-
-    @Test
-    public void deselectedSourceRoundTripsAsEnabledFalse() {
-        Properties current = valid();
-        current.setProperty("source.confluence.enabled", "false");
-        SettingsForm form = SettingsMapper.fromProperties(current);
-        assertTrue(form.sources().get(0).enabled());
-        assertFalse(form.sources().get(1).enabled());
-        Properties merged = SettingsMapper.merge(current, form);
-        assertEquals("false", merged.getProperty("source.confluence.enabled"));
-        assertNull("angehakt ist der Standard und braucht keinen Schlüssel", merged.getProperty("source.wiki.enabled"));
-        assertFalse(AppConfigLoader.fromProperties(merged).sources().get(1).enabled());
-
-        SettingsForm ticked = form.toBuilder().sources(java.util.Arrays.asList(form.sources().get(0),
-                form.sources().get(1).toBuilder().enabled(true).build())).build();
-        assertNull(SettingsMapper.merge(current, ticked).getProperty("source.confluence.enabled"));
-    }
-
-    @Test
-    public void changingTheSourceTypeDropsKeysOfTheOldType() {
-        Properties current = valid();
-        SettingsForm form = SettingsMapper.fromProperties(current).toBuilder()
-                .sources(java.util.Collections.singletonList(
-                        SourceForm.builder("wiki", SourceForm.TYPE_CONFLUENCE).url("http://127.0.0.1:9/c")
-                                .startPoints("space:DEV").build()))
-                .build();
-        Map<String, String> changes = SettingsMapper.changes(form);
-        assertEquals("confluence", changes.get("source.wiki.type"));
-        assertEquals("http://127.0.0.1:9/c", changes.get("source.wiki.baseUrl"));
-        Set<String> removals = SettingsMapper.removals(form, current);
-        assertTrue(removals.contains("source.wiki.apiUrl"));
-        assertTrue(removals.contains("source.wiki.siteKey"));
-        assertTrue(removals.contains("source.wiki.connectTimeoutMillis"));
-        AppConfigLoader.fromProperties(SettingsMapper.merge(current, form));
+        String sources = merged.getProperty("sources");
+        assertTrue(sources == null || sources.isEmpty());
     }
 
     @Test
@@ -301,45 +238,9 @@ public class SettingsMapperTest {
     }
 
     @Test
-    public void unknownSourceTypeIsShownAsWikiSoTheUserCanFixIt() {
-        Properties current = valid();
-        current.setProperty("sources", "ftp");
-        current.setProperty("source.ftp.type", "ftp");
-        SettingsForm form = SettingsMapper.fromProperties(current);
-        assertEquals(1, form.sources().size());
-        assertTrue(form.sources().get(0).isMediaWiki());
-        assertEquals("", form.sources().get(0).url());
-    }
-
-    @Test
     public void dottedSourceIdsKeepTheirUnmanagedKeys() {
-        Properties current = valid();
-        current.setProperty("sources", "team.wiki,confluence");
-        current.setProperty("source.team.wiki.type", "mediawiki");
-        current.setProperty("source.team.wiki.apiUrl", "http://127.0.0.1:9/w/api.php");
-        current.setProperty("source.team.wiki.startPoints", "Hauptseite");
-        current.setProperty("source.team.wiki.connectTimeoutMillis", "15000");
-        current.setProperty("source.old.apiUrl", "http://127.0.0.1:9/alt");
-        SettingsForm form = SettingsMapper.fromProperties(current);
-        assertEquals("team.wiki", form.sources().get(0).id());
-        Set<String> removals = SettingsMapper.removals(form, current);
-        for (String key : current.stringPropertyNames()) {
-            if (key.startsWith("source.team.wiki.")) {
-                assertFalse("vorhandener Schlüssel der unveränderten Quelle: " + key, removals.contains(key));
-            }
-        }
-        assertFalse("nirgends gelistete Quellen bleiben unberührt", removals.contains("source.old.apiUrl"));
-        Properties merged = SettingsMapper.merge(current, form);
-        assertEquals("15000", merged.getProperty("source.team.wiki.connectTimeoutMillis"));
-        AppConfigLoader.fromProperties(merged);
-
-        SettingsForm without = form.toBuilder().sources(java.util.Collections.<SourceForm>emptyList()).build();
-        Set<String> gone = SettingsMapper.removals(without, current);
-        assertTrue(gone.contains("source.team.wiki.type"));
-        assertTrue(gone.contains("source.team.wiki.connectTimeoutMillis"));
-        assertTrue(gone.contains("sources"));
-        assertEquals("team.wiki", SettingsMapper.sourceIdOf("source.team.wiki.apiUrl", current.stringPropertyNames()
-                .contains("x") ? java.util.Collections.<String>emptySet() : java.util.Arrays.asList("team", "team.wiki")));
+        assertEquals("team.wiki", SettingsMapper.sourceIdOf("source.team.wiki.apiUrl",
+                java.util.Arrays.asList("team", "team.wiki")));
         assertNull(SettingsMapper.sourceIdOf("source.team.wiki.apiUrl", java.util.Collections.singleton("wiki")));
     }
 

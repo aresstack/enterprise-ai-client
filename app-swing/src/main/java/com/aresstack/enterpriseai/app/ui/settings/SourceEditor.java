@@ -1,151 +1,178 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
+import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
+import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.domain.source.SourceSettingField;
+import com.aresstack.enterpriseai.domain.source.SourceSettings;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 
 /**
- * Die Felder genau einer Wissensquelle (je nach Typ MediaWiki oder Confluence andere Zeilen), wie sie der
- * {@link SourceDialog} zeigt. Lädt einen {@link SourceForm} und liefert den bearbeiteten Stand zurück; Typ und
- * Häkchen ({@link SourceForm#enabled()}) übernimmt er unverändert.
+ * Die Felder genau einer Wissensquelle, gebaut aus den {@link SourceSettingField Feldern} ihres Quelltyps: der
+ * Editor kennt keinen Typ, er zeigt, was der Adapter beschreibt (Text, Zahl, Schalter, Verzeichnis mit Auswahl,
+ * KeePass-Eintrag). Beim Hinzufügen steht oben die Auswahl des Quelltyps; ein Wechsel baut die Felder neu.
+ * Schlüssel, die der Typ nicht als Feld zeigt (Timeouts, Zertifikat ...), bleiben beim Speichern unverändert.
  */
 final class SourceEditor {
 
-    private final JPanel panel;
-    private final JTextField id;
-    private final JLabel typeLabel = new JLabel();
-    private final JTextField url;
-    private final FormRows.Row urlRow;
-    private final JButton chooseDirectory;
-    private final FormRows.Row chooseDirectoryRow;
-    private final JTextField credentialRef;
-    private final FormRows.Row credentialRefRow;
-    private final JTextField startPoints;
-    private final JTextField maxDepth;
-    private final JTextField maxResources;
-    private final JCheckBox requiresLogin;
-    private final FormRows.Row requiresLoginRow;
-    private final JTextField siteKey;
-    private final FormRows.Row siteKeyRow;
-    private final JTextField displayName;
-    private final FormRows.Row displayNameRow;
-    private final JTextField searchSpaceKeys;
-    private final FormRows.Row searchSpaceKeysRow;
-    private final JCheckBox includeAttachments;
-    private final FormRows.Row includeAttachmentsRow;
-    private String type = SourceForm.TYPE_MEDIAWIKI;
-    private boolean enabled = true;
+    private final ComicPalette palette;
+    private final List<KnowledgeSourceType> types;
+    private final boolean typeSelectable;
+    private final Consumer<String> typeChanged;
+    private final JPanel panel = new JPanel(new BorderLayout());
+    private final Map<String, JComponent> inputs = new LinkedHashMap<String, JComponent>();
+    private JTextField id;
+    private JComboBox<String> typeChoice;
+    private KnowledgeSourceType type;
+    private SourceDefinition loaded;
 
-    SourceEditor(ComicPalette palette) {
-        FormRows rows = new FormRows(palette);
-        id = rows.textField("ID", "Kurzname der Quelle (Buchstaben, Ziffern, Punkt, Strich); Teil der Ressourcen-IDs");
-        rows.component("Typ", typeLabel, null);
-        typeLabel.setForeground(palette.getInk());
-        url = new JTextField(28);
-        urlRow = rows.textField(url, "URL", null);
-        chooseDirectory = new JButton("Verzeichnis wählen …");
-        chooseDirectory.setFocusPainted(false);
-        chooseDirectory.addActionListener(event -> chooseDirectory());
-        chooseDirectoryRow = rows.component(null, chooseDirectory,
-                "Lokale Dateien: Ordner mit Dokumenten (PDF, Word, Excel, PowerPoint, Text, Markdown, HTML ...)");
-        credentialRef = new JTextField(28);
-        credentialRefRow = rows.textField(credentialRef, "KeePass-Eintrag (optional)",
-                "Titel des KeePass-Eintrags mit Benutzername und Passwort; leer = anonym");
-        startPoints = rows.textField("Startpunkte",
-                "Kommagetrennt: Seitentitel (MediaWiki), space:KEY oder page:ID (Confluence) bzw. Unterordner (. = alles)");
-        maxDepth = rows.textField("Tiefe", "Wie viele Linkebenen ab den Startpunkten verfolgt werden (0 = nur Startpunkte)");
-        maxResources = rows.textField("Höchstzahl Seiten (optional)", "Obergrenze je Lauf; leer = Standard");
-        requiresLogin = new JCheckBox("Anmeldung erforderlich");
-        requiresLogin.setOpaque(false);
-        requiresLogin.setForeground(palette.getInk());
-        requiresLogin.setFocusPainted(false);
-        requiresLoginRow = rows.component(null, requiresLogin, "MediaWiki: vor dem Lesen anmelden");
-        siteKey = new JTextField(28);
-        siteKeyRow = rows.textField(siteKey, "Site-Schlüssel (optional)",
-                "Stabiler Schlüssel in den Ressourcen-IDs; nach dem ersten Indexieren nicht ändern");
-        displayName = new JTextField(28);
-        displayNameRow = rows.textField(displayName, "Anzeigename (optional)", "Name der Quelle in Quellenangaben");
-        searchSpaceKeys = new JTextField(28);
-        searchSpaceKeysRow = rows.textField(searchSpaceKeys, "Space-Schlüssel (optional)",
-                "Confluence: kommagetrennte Spaces, auf die Suche und Crawl beschränkt werden");
-        includeAttachments = new JCheckBox("Anhänge mitlesen");
-        includeAttachments.setOpaque(false);
-        includeAttachments.setForeground(palette.getInk());
-        includeAttachments.setFocusPainted(false);
-        includeAttachmentsRow = rows.component(null, includeAttachments, "Confluence: Anhänge als Dokumente indexieren");
-        rows.glue();
-        panel = rows.panel();
+    /**
+     * @param types          die Quelltypen; beim Bearbeiten nur der eine
+     * @param typeSelectable ob oben eine Typauswahl steht (Hinzufügen mit mehreren Typen)
+     * @param typeChanged    bekommt die Typ-ID, wenn der Benutzer den Typ wechselt
+     */
+    SourceEditor(ComicPalette palette, List<KnowledgeSourceType> types, boolean typeSelectable,
+                 Consumer<String> typeChanged) {
+        this.palette = palette;
+        this.types = new ArrayList<KnowledgeSourceType>(types);
+        this.typeSelectable = typeSelectable && types.size() > 1;
+        this.typeChanged = typeChanged;
+        panel.setOpaque(false);
     }
 
     JPanel panel() {
         return panel;
     }
 
-    void load(SourceForm source) {
-        type = source.isConfluence() ? SourceForm.TYPE_CONFLUENCE
-                : source.isFiles() ? SourceForm.TYPE_FILES : SourceForm.TYPE_MEDIAWIKI;
-        enabled = source.enabled();
-        boolean files = source.isFiles();
-        boolean wiki = !source.isConfluence() && !files;
+    /** Baut die Felder für den Typ der Quelle und füllt sie. */
+    void load(SourceDefinition source) {
+        this.loaded = source;
+        this.type = typeOf(source.typeId());
+        inputs.clear();
+        FormRows rows = new FormRows(palette);
+        id = rows.textField("ID", "Kurzname der Quelle (Buchstaben, Ziffern, Punkt, Strich); Teil der Ressourcen-IDs");
         id.setText(source.id());
-        typeLabel.setText(files ? "Lokale Dateien (Verzeichnis, rekursiv; PDF und Office über Apache Tika)"
-                : wiki ? "MediaWiki (API-URL, z. B. …/w/api.php)" : "Confluence (Basis-URL der Instanz)");
-        urlRow.setLabelText(files ? "Verzeichnis" : "URL");
-        url.setText(source.url());
-        url.setToolTipText(files ? "Ordner mit den Dokumenten, z. B. C:\\Daten\\Handbuch"
-                : wiki ? "Die api.php der MediaWiki-Installation" : "Basis-URL von Confluence, ohne /rest");
-        credentialRef.setText(source.credentialRef());
-        startPoints.setText(source.startPoints());
-        maxDepth.setText(source.maxDepth());
-        maxResources.setText(source.maxResources());
-        requiresLogin.setSelected(source.requiresLogin());
-        siteKey.setText(source.siteKey());
-        displayName.setText(source.displayName());
-        searchSpaceKeys.setText(source.searchSpaceKeys());
-        includeAttachments.setSelected(source.includeAttachments());
-        chooseDirectoryRow.setVisible(files);
-        credentialRefRow.setVisible(!files);
-        requiresLoginRow.setVisible(wiki);
-        siteKeyRow.setVisible(wiki);
-        displayNameRow.setVisible(wiki);
-        searchSpaceKeysRow.setVisible(source.isConfluence());
-        includeAttachmentsRow.setVisible(source.isConfluence());
+        if (typeSelectable) {
+            String[] names = new String[types.size()];
+            for (int i = 0; i < names.length; i++) {
+                names[i] = types.get(i).displayName();
+            }
+            typeChoice = rows.comboBox("Typ", "Welche Art von Quelle", names);
+            typeChoice.setSelectedIndex(Math.max(0, types.indexOf(type)));
+            typeChoice.addActionListener(event -> {
+                int index = typeChoice.getSelectedIndex();
+                if (index >= 0 && !types.get(index).equals(type) && typeChanged != null) {
+                    typeChanged.accept(types.get(index).id());
+                }
+            });
+        } else {
+            JLabel typeLabel = new JLabel(type == null ? "Unbekannter Typ „" + source.typeId() + "“"
+                    : type.displayName());
+            typeLabel.setForeground(palette.getInk());
+            rows.component("Typ", typeLabel, null);
+        }
+        if (type != null && !type.description().isEmpty()) {
+            rows.note(type.description());
+        }
+        if (type != null) {
+            for (SourceSettingField field : type.fields()) {
+                inputs.put(field.key(), input(rows, field, source.settings().get(field.key())));
+            }
+        }
+        rows.glue();
+        panel.removeAll();
+        panel.add(rows.panel(), BorderLayout.CENTER);
         panel.revalidate();
         panel.repaint();
     }
 
-    SourceForm toForm() {
-        return SourceForm.builder(id.getText(), type)
-                .url(url.getText())
-                .credentialRef(credentialRef.getText())
-                .startPoints(startPoints.getText())
-                .maxDepth(maxDepth.getText())
-                .maxResources(maxResources.getText())
-                .requiresLogin(requiresLogin.isSelected())
-                .siteKey(siteKey.getText())
-                .displayName(displayName.getText())
-                .searchSpaceKeys(searchSpaceKeys.getText())
-                .includeAttachments(includeAttachments.isSelected())
-                .enabled(enabled)
-                .build();
+    private JComponent input(FormRows rows, SourceSettingField field, String value) {
+        String label = field.label() + (field.isRequired() ? " *" : "");
+        String hint = field.hint().isEmpty() ? null : field.hint();
+        switch (field.kind()) {
+            case FLAG: {
+                JCheckBox box = rows.checkBox(field.label(), hint);
+                box.setSelected("true".equalsIgnoreCase(value));
+                return box;
+            }
+            case DIRECTORY: {
+                final JTextField text = new JTextField(28);
+                rows.textField(text, label, hint);
+                text.setText(value);
+                JButton choose = new JButton("Verzeichnis wählen …");
+                choose.setFocusPainted(false);
+                choose.addActionListener(event -> chooseDirectory(text));
+                rows.component(null, choose, hint);
+                return text;
+            }
+            default: {
+                JTextField text = rows.textField(label, hint);
+                text.setText(value);
+                return text;
+            }
+        }
     }
 
-    private void chooseDirectory() {
-        JFileChooser chooser = new JFileChooser(url.getText().trim().isEmpty() ? null : url.getText().trim());
+    /** Der bearbeitete Stand: geladene Einstellungen, überschrieben mit den Feldern des Typs. */
+    SourceDefinition toDefinition() {
+        SourceSettings settings = loaded == null ? SourceSettings.empty() : loaded.settings();
+        for (Map.Entry<String, JComponent> entry : inputs.entrySet()) {
+            JComponent input = entry.getValue();
+            String value = input instanceof JCheckBox ? (((JCheckBox) input).isSelected() ? "true" : "false")
+                    : ((JTextField) input).getText();
+            settings = settings.with(entry.getKey(), value);
+        }
+        String typeId = type == null ? (loaded == null ? "" : loaded.typeId()) : type.id();
+        boolean enabled = loaded == null || loaded.enabled();
+        return new SourceDefinition(id == null ? "" : id.getText(), typeId, enabled, settings);
+    }
+
+    String currentId() {
+        return id == null ? "" : id.getText().trim();
+    }
+
+    KnowledgeSourceType type() {
+        return type;
+    }
+
+    private KnowledgeSourceType typeOf(String typeId) {
+        for (KnowledgeSourceType candidate : types) {
+            if (candidate.id().equals(typeId)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private void chooseDirectory(JTextField target) {
+        String current = target.getText().trim();
+        JFileChooser chooser = new JFileChooser(current.isEmpty() ? null : current);
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         chooser.setDialogTitle("Verzeichnis mit Dokumenten wählen");
         if (chooser.showOpenDialog(panel) == JFileChooser.APPROVE_OPTION && chooser.getSelectedFile() != null) {
-            url.setText(chooser.getSelectedFile().getAbsolutePath());
+            target.setText(chooser.getSelectedFile().getAbsolutePath());
         }
     }
 
     void focusFirstField() {
-        id.requestFocusInWindow();
+        if (id != null) {
+            id.requestFocusInWindow();
+        }
     }
 
     // Für Tests.
@@ -154,23 +181,16 @@ final class SourceEditor {
         return id;
     }
 
-    JTextField urlField() {
-        return url;
+    JComboBox<String> typeChoice() {
+        return typeChoice;
     }
 
-    JTextField startPointsField() {
-        return startPoints;
+    /** Das Eingabefeld zum Schlüssel des Adapters oder {@code null}. */
+    JComponent input(String key) {
+        return inputs.get(key);
     }
 
-    JTextField credentialRefField() {
-        return credentialRef;
-    }
-
-    JTextField siteKeyField() {
-        return siteKey;
-    }
-
-    JTextField searchSpaceKeysField() {
-        return searchSpaceKeys;
+    static Color muted() {
+        return FormRows.MUTED;
     }
 }

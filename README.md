@@ -53,7 +53,13 @@ java -jar enterprise-ai-client-<version>.jar
    Confluence). Mit `knowledge.indexOnStartup=true` (Standard) indexiert die Anwendung beim Start im
    Hintergrund; die Statuszeile zeigt den Fortschritt und bietet Abbrechen an. Alternativ stößt ein Agent
    `refresh_knowledge_source` an.
-   **Lokale Dateien**: „+ Dateien“ im Drawer-Reiter „Wissensquellen“ legt eine Quelle `type=files` an
+   **„+ Quelle“**: Der Drawer-Reiter „Wissensquellen“ hat genau einen Knopf zum Hinzufügen. Welche Quelltypen
+   der Dialog anbietet und welche Felder sie haben, beschreibt jeder Adapter selbst über den Port
+   `KnowledgeSourceProvider` (`source-api`, nach corenth); der Use Case `KnowledgeSourceManagement` prüft,
+   speichert und entfernt. Das ✕ in einer Zeile entfernt die Quelle nach kurzer Rückfrage: sie verschwindet sofort,
+   ihre Zeilen in der Datei werden auskommentiert und ihr Index wird gelöscht. Gespeichert wird weiter als
+   `source.<id>.type` und `source.<id>.*`; bestehende Dateien laden unverändert.
+   **Lokale Dateien**: „+ Quelle“ mit Typ „Lokale Dateien“ legt eine Quelle `type=files` an
    („Verzeichnis wählen …“); das Verzeichnis wird rekursiv gelesen. Erkennung und Extraktion stammen aus corenth
    `deigma` (Module `document-api` und `document-tika`, Quelle `source-localfiles`): Text und Markdown direkt,
    PDF, Word, Excel, PowerPoint, OpenDocument, RTF, HTML und Mails über Apache Tika 2.9.1 wie in MainframeMate.
