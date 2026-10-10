@@ -68,6 +68,9 @@ java -jar enterprise-ai-client-<version>.jar
    (`function_call_output` mit `previous_response_id`, höchstens 8 Runden, kein `tool_choice`). Die Dateien liegen
    unter `attachments/<chatId>/` neben der Konfigurationsdatei; `chat.tools.enabled=true` nutzt den Werkzeugpfad
    für jede Frage. Gegen das echte Gateway UNVERIFIED.
+   Modellauswahl: Nach „Verbindung testen“ (Einstellungen → KI-Dienst) zeigen Auswahllisten unter Chat- und
+   Embedding-Modell die Modelle aus `GET /models`, getrennt nach `capabilities`; „(Tool-Calling)“ markiert Modelle mit
+   `tool_calling: true`, die Anhänge brauchen. Eine Wahl füllt nur das Textfeld, gespeichert wird wie bisher.
 8. **Agent-Modus**: `agent.enabled=true` und `agent.command`/`agent.args` auf einen ACP-fähigen Agenten setzen
    (zum Ausprobieren der Demo-Agent aus `./gradlew :acp-demo-agent:demoAgentJar`). Die Modus-Pille „Agent“ neben
    dem Hamburger wechselt in die Agent-Ansicht; der erste Auftrag startet

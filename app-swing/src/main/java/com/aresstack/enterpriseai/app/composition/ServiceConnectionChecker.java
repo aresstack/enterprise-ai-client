@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConnectionChecker;
 import com.aresstack.enterpriseai.app.settings.ConnectionProbe;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
+import com.aresstack.enterpriseai.app.ui.settings.ModelChoice;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
@@ -16,6 +17,8 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -47,7 +50,13 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
     }
 
     @Override
-    public boolean check(final AppConfig config, Consumer<ConnectionCheckStep> onStep) {
+    public boolean check(AppConfig config, Consumer<ConnectionCheckStep> onStep) {
+        return check(config, onStep, null);
+    }
+
+    @Override
+    public boolean check(final AppConfig config, Consumer<ConnectionCheckStep> onStep,
+                         BiConsumer<List<ModelChoice>, List<ModelChoice>> onModels) {
         if (config == null || onStep == null) {
             throw new IllegalArgumentException("config and onStep must not be null");
         }
@@ -72,6 +81,6 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
                 }
             }
         };
-        return new ConnectionProbe(config, tokens).run(onStep);
+        return new ConnectionProbe(config, tokens).run(onStep, onModels);
     }
 }
