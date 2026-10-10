@@ -12,7 +12,6 @@ import java.util.Map;
  */
 public final class SourceSettings {
 
-    private static final SourceSettings EMPTY = new SourceSettings(Collections.<String, String>emptyMap());
 
     private final Map<String, String> values;
 
@@ -21,7 +20,7 @@ public final class SourceSettings {
     }
 
     public static SourceSettings empty() {
-        return EMPTY;
+        return new SourceSettings(Collections.<String, String>emptyMap());
     }
 
     /** Übernimmt die nicht leeren Werte in der Reihenfolge der Map (getrimmt). */
@@ -32,7 +31,7 @@ public final class SourceSettings {
                 put(copy, entry.getKey(), entry.getValue());
             }
         }
-        return copy.isEmpty() ? EMPTY : new SourceSettings(Collections.unmodifiableMap(copy));
+        return copy.isEmpty() ? empty() : new SourceSettings(Collections.unmodifiableMap(copy));
     }
 
     /** Der Wert oder leer. */
@@ -50,7 +49,7 @@ public final class SourceSettings {
         Map<String, String> copy = new LinkedHashMap<String, String>(values);
         copy.remove(key);
         put(copy, key, value);
-        return copy.isEmpty() ? EMPTY : new SourceSettings(Collections.unmodifiableMap(copy));
+        return copy.isEmpty() ? empty() : new SourceSettings(Collections.unmodifiableMap(copy));
     }
 
     /** Alle gesetzten Werte in ihrer Reihenfolge (unveränderlich). */
