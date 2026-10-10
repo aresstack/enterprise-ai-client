@@ -21,12 +21,21 @@ public final class ModelsConfig {
     /** Präfix der Kategorien ohne eigenen Abschnitt ({@code model.rerank}, {@code model.tts}, ...). */
     public static final String KEY_PREFIX = "model.";
 
+    /** Neue Antworten automatisch vorlesen (askai arch {@code readAloudAutoStart}); braucht ein TTS-Modell. */
+    public static final String READ_ALOUD_AUTO_START_KEY = "speech.readAloud.autoStart";
+
     private final ModelSelections selections;
     private final LocalSidecarConfig localSidecar;
+    private final boolean readAloudAutoStart;
 
     ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar) {
+        this(selections, localSidecar, false);
+    }
+
+    ModelsConfig(ModelSelections selections, LocalSidecarConfig localSidecar, boolean readAloudAutoStart) {
         this.selections = selections == null ? ModelSelections.none() : selections;
         this.localSidecar = localSidecar;
+        this.readAloudAutoStart = readAloudAutoStart;
     }
 
     /** Die bekannten Kataloge (Präfixe einer Auswahl). */
@@ -66,8 +75,14 @@ public final class ModelsConfig {
         return localSidecar;
     }
 
+    /** Ob neue Antworten automatisch vorgelesen werden. */
+    public boolean readAloudAutoStart() {
+        return readAloudAutoStart;
+    }
+
     @Override
     public String toString() {
-        return "ModelsConfig[" + selections + ", local=" + localSidecar + "]";
+        return "ModelsConfig[" + selections + ", local=" + localSidecar + ", readAloudAutoStart="
+                + readAloudAutoStart + "]";
     }
 }

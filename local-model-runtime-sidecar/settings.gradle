@@ -1,0 +1,11 @@
+// Eigenständiger Gradle-Build (nicht Teil von settings.gradle im Wurzelverzeichnis): der lokale Sidecar ist ein
+// Java-21-Prozess, für den die Java-8- und Architekturregeln des Clients nicht gelten. Der Client spricht ihn nur
+// über den Adapter in model-sidecar (HTTP auf 127.0.0.1) an. Bauen: ./gradlew -p local-model-runtime-sidecar sidecarZip
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'local-model-runtime-sidecar'

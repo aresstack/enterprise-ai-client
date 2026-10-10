@@ -79,6 +79,20 @@ public final class ComposerIcons {
         };
     }
 
+    /** A loudspeaker with two sound arcs (read an answer aloud). */
+    public static StrokeIcon speaker() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                int[] x = {2, 5, 9, 9, 5, 2};
+                int[] y = {6, 6, 2, 14, 10, 10};
+                g2.drawPolygon(x, y, 6);
+                g2.drawArc(8, 5, 4, 6, -60, 120);
+                g2.drawArc(8, 2, 7, 12, -60, 120);
+            }
+        };
+    }
+
     /** The three-line hamburger. */
     public static StrokeIcon menu() {
         return new StrokeIcon() {

@@ -11,6 +11,8 @@ import com.aresstack.enterpriseai.ui.comic.bubble.BubbleSide;
 import com.aresstack.enterpriseai.ui.comic.bubble.SpeechBubblePanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.TranscriptBubble;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
+import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
+import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.BorderFactory;
@@ -27,6 +29,7 @@ import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -60,6 +63,10 @@ import java.util.Map;
  * Damit wächst die Zeit je Delta nicht mit der Textlänge. Abschluss, Abbruch, Fehler und Quellen werden sofort
  * angewendet; {@link #flushPendingUpdates()} wendet Gesammeltes auf Wunsch sofort an.
  *
+ * <p>Mit einer {@link ReadAloudControl} steht unter jeder fertigen Antwort ein Lautsprecher-Knopf (Vorlesen/Stopp);
+ * ohne verfügbare Sprachausgabe bleibt er deaktiviert und nennt im Tooltip den Grund. Ist automatisches Vorlesen
+ * eingestellt, startet es, sobald eine live gestreamte Antwort fertig ist (nicht beim Laden gespeicherter Chats).
+ *
  * <p>Zeilenlayout, Blasenbreite und Zeilenhöhe kommen unverändert aus der Comic-Bibliothek
  * ({@link BubbleMessageRow}), die Breitenführung durch den Viewport aus AskAIs {@code BubbleTranscriptPanel}.
  */
@@ -73,6 +80,8 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     static final String STREAMING_PLACEHOLDER = "…";
     static final String SHOW_DETAILS_LABEL = "Details anzeigen";
     static final String HIDE_DETAILS_LABEL = "Details ausblenden";
+    static final String READ_ALOUD_LABEL = "Vorlesen";
+    static final String READ_ALOUD_STOP_LABEL = "Vorlesen beenden";
 
     /** Höchstens eine Blasen-Aktualisierung je Intervall, solange eine Antwort streamt. */
     static final int FLUSH_INTERVAL_MILLIS = 30;
@@ -91,6 +100,8 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final Map<Long, RowState> rows = new HashMap<Long, RowState>();
     private final Map<Long, BubbleMessageRow> sourceRows = new HashMap<Long, BubbleMessageRow>();
     private final Map<Long, TranscriptEntry> pending = new LinkedHashMap<Long, TranscriptEntry>();
+    private final Map<Long, ComposerButton> readAloudButtons = new HashMap<Long, ComposerButton>();
+    private ReadAloudControl readAloud;
     private final Timer flushTimer;
     private long lastFlushNanos;
     private boolean flushedBefore;
@@ -148,6 +159,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     public void entryAdded(TranscriptEntry entry) {
         flushPendingUpdates();
         RowState state = createRow(entry);
+        state.streamed = entry.getState() == TranscriptEntry.State.STREAMING;
         rows.put(entry.getId(), state);
         state.row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.add(state.row);
@@ -158,7 +170,71 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         if (entry.hasSources()) {
             addSourcesRow(entry);
         }
+        addReadAloudRowIfComplete(entry);
         refresh(true);
+    }
+
+    /**
+     * Schließt die Sprachausgabe an: Lautsprecher-Knöpfe unter allen fertigen Antworten, auch den schon gezeigten.
+     * Einmal je Verlauf (UI-Thread).
+     */
+    public void setReadAloud(ReadAloudControl control) {
+        if (control == null || readAloud != null) {
+            throw new IllegalStateException("read-aloud control must be set exactly once");
+        }
+        readAloud = control;
+        control.addListener(new ReadAloudControl.Listener() {
+            @Override
+            public void readAloudChanged() {
+                for (Map.Entry<Long, ComposerButton> button : readAloudButtons.entrySet()) {
+                    styleReadAloudButton(button.getValue(), button.getKey());
+                }
+            }
+        });
+        for (TranscriptEntry entry : model.getEntries()) {
+            addReadAloudRowIfComplete(entry);
+        }
+        refresh(false);
+    }
+
+    /** Der Lautsprecher-Knopf einer Antwort (für Tests), oder {@code null}. */
+    ComposerButton readAloudButtonFor(long entryId) {
+        return readAloudButtons.get(entryId);
+    }
+
+    private void addReadAloudRowIfComplete(final TranscriptEntry entry) {
+        if (readAloud == null || entry.getAuthor() != TranscriptEntry.Author.ASSISTANT
+                || entry.getState() != TranscriptEntry.State.COMPLETE || entry.getText().trim().isEmpty()
+                || readAloudButtons.containsKey(entry.getId()) || !rows.containsKey(entry.getId())) {
+            return;
+        }
+        final long id = entry.getId();
+        ComposerButton button = ComposerButton.iconButton(ComposerIcons.speaker(), READ_ALOUD_LABEL);
+        button.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                readAloud.toggle(id, entry.getText());
+            }
+        });
+        styleReadAloudButton(button, id);
+        JPanel holder = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        holder.setOpaque(false);
+        holder.add(button);
+        BubbleMessageRow row = new BubbleMessageRow(holder, BubbleSide.LEFT);
+        row.setAlignmentX(LEFT_ALIGNMENT);
+        int index = messageList.getComponentZOrder(rows.get(id).row) + 2; // hinter Blase und Abstand
+        messageList.add(row, index);
+        messageList.add(spacer(), index + 1);
+        readAloudButtons.put(id, button);
+    }
+
+    private void styleReadAloudButton(ComposerButton button, long entryId) {
+        boolean reading = readAloud.isReading(entryId);
+        button.setEnabled(readAloud.isAvailable());
+        button.setIcon(reading ? ComposerIcons.stop() : ComposerIcons.speaker());
+        String label = reading ? READ_ALOUD_STOP_LABEL : READ_ALOUD_LABEL;
+        button.setToolTipText(label + " (" + readAloud.description() + ")");
+        button.getAccessibleContext().setAccessibleName(label);
     }
 
     @Override
@@ -214,6 +290,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         pending.clear();
         rows.clear();
         sourceRows.clear();
+        readAloudButtons.clear();
         messageList.removeAll();
         refresh(false);
     }
@@ -259,6 +336,15 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         }
         if (entry.hasSources() && !sourceRows.containsKey(entry.getId())) {
             addSourcesRow(entry);
+        }
+        boolean finishedLive = state.streamed && entry.getState() != TranscriptEntry.State.STREAMING;
+        state.streamed = entry.getState() == TranscriptEntry.State.STREAMING;
+        if (readAloud != null && !readAloudButtons.containsKey(entry.getId())) {
+            addReadAloudRowIfComplete(entry);
+            if (finishedLive && readAloudButtons.containsKey(entry.getId()) && readAloud.autoStart()
+                    && readAloud.isAvailable()) {
+                readAloud.toggle(entry.getId(), entry.getText());
+            }
         }
     }
 
@@ -444,6 +530,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         String header;
         int shownLength;
         boolean showsEntryText; // Blase zeigt den Eintragstext (nicht Platzhalter oder Aktivität)
+        boolean streamed; // zuletzt im Zustand STREAMING gesehen (Ende live erlebt → automatisches Vorlesen)
 
         RowState(BubbleMessageRow row, TranscriptBubble bubble, String header, int shownLength,
                  boolean showsEntryText) {

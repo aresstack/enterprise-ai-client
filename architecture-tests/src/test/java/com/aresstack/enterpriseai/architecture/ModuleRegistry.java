@@ -33,7 +33,7 @@ final class ModuleRegistry {
                 .module("domain", "domain", ModuleKind.DOMAIN, "Kern")
                 .module("application", "application", ModuleKind.APPLICATION, "Kern (AP10, AP20, AP21, AP23)",
                         "domain", "chat-api", "embedding-api", "knowledge-api", "source-api", "security-api",
-                        "acp-client-api", "mcp-runtime-api", "resource-api", "model-api")
+                        "acp-client-api", "mcp-runtime-api", "resource-api", "model-api", "speech-api")
 
                 .module("chat-api", "chat.api", ModuleKind.PORT, "A", "domain")
                 .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "domain", "chat-api", "http-api")
@@ -73,7 +73,12 @@ final class ModuleRegistry {
                 .module("model-api", "model.api", ModuleKind.PORT, "Modelle", "domain")
                 .module("model-kipitz", "model.kipitz", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
                         "http-api")
-                .module("model-sidecar", "model.sidecar", ModuleKind.ADAPTER, "Modelle", "domain", "model-api")
+                // Der Sidecar-Adapter bedient Katalog und Sprachausgabe über denselben Prozess.
+                .module("model-sidecar", "model.sidecar", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
+                        "speech-api")
+
+                // Sprachausgabe: neutraler Port (Modell aus der Katalog-Kategorie TTS, Audio als WAV).
+                .module("speech-api", "speech.api", ModuleKind.PORT, "Sprache", "domain")
 
                 .module("security-api", "security.api", ModuleKind.PORT, "F", "domain")
                 .module("security-keepassrpc", "security.keepassrpc", ModuleKind.ADAPTER, "F", "domain", "security-api")
@@ -93,7 +98,7 @@ final class ModuleRegistry {
                         "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
-                        "resource-holkas", "model-api", "model-kipitz", "model-sidecar")
+                        "resource-holkas", "model-api", "model-kipitz", "model-sidecar", "speech-api")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

@@ -176,6 +176,25 @@ Agent kann `refresh_knowledge_source` aufrufen ([MCP](mcp.md)).
    MCP-Endpoint mit den Wissenswerkzeugen. Beim Beenden wird der Endpoint abgemeldet und der Token ungültig.
    Erklärung: [ACP](acp.md), [MCP](mcp.md).
 
+### Sprachausgabe (Vorlesen)
+
+Unter jeder fertigen Antwort steht ein Lautsprecher-Knopf. Vorgelesen wird mit dem Modell der Kategorie **TTS**
+(Einstellungen → Modelle, Schlüssel `model.tts`), heute nur über den optionalen lokalen Java-21-Sidecar; ohne
+Java 21, Sidecar oder lokales TTS-Modell bleibt der Knopf deaktiviert und nennt im Tooltip den Grund. Die
+TTS-Modelle der Enterprise-API (`/audio/speech`) sind noch nicht angebunden.
+
+1. `local-model-runtime-sidecar-<version>.zip` aus dem Release entpacken.
+2. Einstellungen → Lokale Modelle: `java(.exe)` einer Java-21-Laufzeit und `local-model-runtime-sidecar.jar`
+   angeben (`models.local.java`, `models.local.sidecarJar`).
+3. Eine VITS-Stimme im ONNX-Format (Hugging-Face-Layout: `config.json` mit `"model_type": "vits"`, `vocab.json`,
+   optional `tokenizer_config.json`, `onnx/model.onnx` oder `model.onnx`; z. B. ein ONNX-Export von MMS-TTS Deutsch)
+   als eigenen Ordner unter das Modellverzeichnis legen (`models.local.modelRoot`, Standard
+   `<Anwendungsverzeichnis>/local-models`). Der Ordnername ist der Modellname. Es wird nichts heruntergeladen.
+4. Einstellungen → Modelle → TTS: die Stimme („Lokal (Java 21)“) wählen, neu starten.
+
+`speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Mikrofon und Audiodatei im
+Composer bleiben deaktiviert, solange kein STT-Modell verfügbar ist.
+
 ## Demos ohne Backend
 
 Die Demos liegen im Testumfang von `app-swing` und brauchen weder Enterprise-API noch KeePass:

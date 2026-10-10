@@ -78,6 +78,7 @@ jobs:
             echo "release=$release"
             echo "tag=$tag"
             echo "jar=app-swing/build/libs/enterprise-ai-client-$version.jar"
+            echo "sidecar=local-model-runtime-sidecar/build/distributions/local-model-runtime-sidecar-$version.zip"
           } >> "$GITHUB_OUTPUT"
           echo "Version $version, Tag $tag"
 
@@ -87,6 +88,19 @@ jobs:
           ./gradlew build --no-daemon --warning-mode all
           -Prelease=${{ steps.version.outputs.release }}
           -PbuildCommit=${{ github.sha }}
+
+      # Der optionale lokale Java-21-Sidecar (Sprachausgabe, lokale Modelle) ist ein eigener Gradle-Build und wird als
+      # Zip neben dem Fat Jar veröffentlicht. Erst nach dem Java-8-Build auf JDK 21 umschalten.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Lokalen Java-21-Sidecar bauen
+        shell: bash
+        run: >
+          ./gradlew -p local-model-runtime-sidecar sidecarZip --no-daemon --warning-mode all
+          -PprojectVersion=${{ steps.version.outputs.version }}
 
       - name: Manifest des Fat Jars anzeigen
         shell: bash
@@ -99,7 +113,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: enterprise-ai-client-${{ steps.version.outputs.version }}
-          path: ${{ steps.version.outputs.jar }}
+          path: |
+            ${{ steps.version.outputs.jar }}
+            ${{ steps.version.outputs.sidecar }}
           if-no-files-found: error
 
       - name: Release auf main anlegen
@@ -108,6 +124,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
           JAR: ${{ steps.version.outputs.jar }}
+          SIDECAR: ${{ steps.version.outputs.sidecar }}
         shell: bash
         run: |
           set -euo pipefail
@@ -125,10 +142,12 @@ jobs:
           {
             echo "Lauffähiges Jar der Swing-Anwendung (Java 8 oder neuer): \`java -jar $(basename "$JAR")\`"
             echo
+            echo "Optional: \`$(basename "$SIDECAR")\` ist der lokale Java-21-Sidecar (Sprachausgabe, lokale Modelle). Entpacken und unter Einstellungen → Lokale Modelle Java 21 und \`local-model-runtime-sidecar.jar\` angeben."
+            echo
             echo "Commit: $GITHUB_SHA · Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo
           } > "$notes"
-          gh release create "$TAG" "$JAR" \
+          gh release create "$TAG" "$JAR" "$SIDECAR" \
             --target "$GITHUB_SHA" \
             --title "enterprise-ai-client $VERSION" \
             --notes-file "$notes" \
@@ -145,6 +164,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
           JAR: ${{ steps.version.outputs.jar }}
+          SIDECAR: ${{ steps.version.outputs.sidecar }}
           BRANCH: ${{ github.ref_name }}
         shell: bash
         run: |
@@ -170,10 +190,10 @@ jobs:
             gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r asset; do
               [ -n "$asset" ] && gh release delete-asset "$TAG" "$asset" --yes || true
             done
-            gh release upload "$TAG" "$JAR"
+            gh release upload "$TAG" "$JAR" "$SIDECAR"
             gh release edit "$TAG" --prerelease --title "$title" --notes-file "$notes"
           else
-            gh release create "$TAG" "$JAR" --prerelease --title "$title" --notes-file "$notes"
+            gh release create "$TAG" "$JAR" "$SIDECAR" --prerelease --title "$title" --notes-file "$notes"
           fi
           {
             echo "## Snapshot $TAG aktualisiert"

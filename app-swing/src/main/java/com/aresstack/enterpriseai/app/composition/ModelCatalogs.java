@@ -11,6 +11,9 @@ import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogConfig;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarConfig;
 import com.aresstack.enterpriseai.model.sidecar.LocalSidecarModelCatalogAdapter;
+import com.aresstack.enterpriseai.speech.api.SpeechSynthesisException;
+import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
+import com.aresstack.enterpriseai.speech.api.SynthesizedSpeech;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -126,6 +129,31 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
         if (local != sidecar) {
             local.close();
         }
+    }
+
+    /**
+     * Die Sprachausgabe des lokalen Sidecars für diese Pfade: teilt sich den Prozess mit dem Katalog (ein Sidecar
+     * für die ganze Anwendung) und startet ihn erst beim ersten Vorlesen. Nach {@link #close()} scheitert sie.
+     */
+    public SpeechSynthesisPort localSpeech(final LocalSidecarConfig config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config must not be null");
+        }
+        return new SpeechSynthesisPort() {
+            @Override
+            public String catalogId() {
+                return LocalSidecarModelCatalogAdapter.CATALOG_ID;
+            }
+
+            @Override
+            public SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException {
+                LocalSidecarModelCatalogAdapter local = sidecar(config);
+                if (local == null) {
+                    throw new SpeechSynthesisException("Lokaler Sidecar ist beendet");
+                }
+                return local.speechSynthesis().synthesize(modelId, text);
+            }
+        };
     }
 
     /** Beendet den Sidecar-Prozess; idempotent. */
