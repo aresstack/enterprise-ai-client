@@ -70,6 +70,7 @@ Moduls liegen nur dort (geprüft).
 | `model-api` | PORT | `model.api` | domain | Modellverwaltung |
 | `model-kipitz` | ADAPTER | `model.kipitz` | domain, model-api, http-api, speech-api | Modellverwaltung, Sprachausgabe |
 | `model-sidecar` | ADAPTER | `model.sidecar` | domain, model-api, speech-api, chat-api, embedding-api | Modellverwaltung, lokaler Chat/Embeddings (`/api/chat`, `/api/embed`), Sprachausgabe |
+| `model-huggingface` | ADAPTER | `model.huggingface` | domain, model-api, http-api | Stimmen für den Sidecar installieren (huggingface4j, kuratiert) |
 | `speech-api` | PORT | `speech.api` | domain | Sprachausgabe (TTS über die Quelle des gewählten Modells: KIPITZ oder lokaler Sidecar) |
 | `security-api` | PORT | `security.api` | domain | F (AP13) |
 | `security-keepassrpc` | ADAPTER | `security.keepassrpc` | domain, security-api | F (AP14) |

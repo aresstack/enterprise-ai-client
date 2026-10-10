@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app.ui.settings;
 import com.aresstack.enterpriseai.application.localruntime.JavaRuntimeOverview;
 import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 
 import java.io.IOException;
@@ -98,6 +99,27 @@ public interface SettingsDialogActions {
     /** Das ohne Eintrag automatisch gefundene Sidecar-Jar; leer, wenn keins gefunden wurde. Blockiert kurz. */
     default String detectedSidecarJar(String modelRoot) {
         return "";
+    }
+
+    /**
+     * „Lokale Stimmen“ der Sprachausgabe: die angebotenen Stimmen mit Installationsstand im Modellverzeichnis des
+     * Entwurfs, genau einmal auf dem EDT.
+     */
+    default void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {
+        onResult.accept(Collections.<LocalVoiceOffer>emptyList());
+    }
+
+    /**
+     * Installiert eine Stimme ins Modellverzeichnis des Entwurfs (Download über die Netzwerkeinstellungen des
+     * Entwurfs); Fortschritt und Ende auf dem EDT.
+     */
+    default void installLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
+        progress.finished(false, "In dieser Umgebung nicht verfügbar.");
+    }
+
+    /** Der Wert für die TTS-Auswahl, unter dem der Sidecar eine installierte Stimme meldet. */
+    default String localVoiceSelection(String voiceId) {
+        return voiceId;
     }
 
     /** Das Standard-Ermittlungsskript der Bibliothek für einen Modus (PowerShell bzw. VBScript), sonst leer. */

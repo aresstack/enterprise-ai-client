@@ -81,7 +81,7 @@ final class ModelsTab {
         FormRows local = new FormRows(palette);
         local.note("Optional: lokale Modelle über den Java-21-Sidecar (local-model-runtime-sidecar-java21). Java 21 "
                 + "oder neuer wird automatisch gefunden; ohne Java 21 bleiben lokale Modelle aus, die Modelle der "
-                + "Enterprise-API funktionieren unabhängig davon. Es wird nichts heruntergeladen oder installiert.");
+                + "Enterprise-API funktionieren unabhängig davon. Stimmen installiert „Sprachausgabe“ → „Lokale Stimmen“.");
         localJava = new JavaRuntimeRow(local, actions, palette);
         localSidecarJar = local.textField("Sidecar-Jar (optional)", "Pfad zu local-model-runtime-sidecar.jar; leer = "
                 + "automatisch neben dem Client, im Anwendungs- oder Modellverzeichnis suchen");

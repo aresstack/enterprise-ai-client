@@ -1,0 +1,9 @@
+description = 'Adapter: Versorgung des lokalen Sidecars mit TTS-Stimmen vom Hugging Face Hub über huggingface4j (Download, Fortsetzen, Prüfung).'
+
+dependencies {
+    api project(':model-api')
+    // Proxy-Route je Anfrage über den neutralen Port http-api aus der Composition Root.
+    api project(':http-api')
+    // Angelos Java-8-Hub-Client; bleibt im Adapter (implementation, nicht api).
+    implementation libs.huggingface4j
+}

@@ -51,6 +51,7 @@ include 'document-tika'
 include 'model-api'
 include 'model-kipitz'
 include 'model-sidecar'
+include 'model-huggingface'
 
 // Sprachausgabe: neutraler Port; heute nur über den lokalen Sidecar (model-sidecar)
 include 'speech-api'
