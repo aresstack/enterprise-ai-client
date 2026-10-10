@@ -220,7 +220,8 @@ final class JavaRuntimeRow {
             if (installation == null) {
                 return path;
             }
-            return installation.displayName() + (installation.isCompatible() ? "" : "   nicht kompatibel");
+            return installation.displayName() + "   " + path
+                    + (installation.isCompatible() ? "" : "   nicht kompatibel");
         }
     }
 }

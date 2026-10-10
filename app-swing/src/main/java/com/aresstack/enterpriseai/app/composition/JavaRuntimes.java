@@ -48,8 +48,8 @@ public final class JavaRuntimes {
         for (String programFiles : new String[]{System.getenv("ProgramFiles"), System.getenv("ProgramW6432")}) {
             Path base = path(programFiles);
             if (base != null) {
-                for (String vendor : new String[]{"Java", "Zulu", "Eclipse Adoptium", "Eclipse Foundation",
-                        "Microsoft", "Amazon Corretto", "BellSoft", "RedHat", "SapMachine", "JetBrains",
+                for (String vendor : new String[]{"Java", "Zulu", "Azul", "Eclipse Adoptium", "Eclipse Foundation",
+                        "Microsoft", "Amazon Corretto", "BellSoft", "RedHat", "Red Hat", "SapMachine", "JetBrains",
                         "Semeru", "Oracle"}) {
                     add(roots, base.resolve(vendor));
                 }
