@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.app.settings;
 
+import com.aresstack.enterpriseai.application.localruntime.JavaRuntimeOverview;
+import com.aresstack.enterpriseai.application.localruntime.JavaRuntimeSelectionService;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
@@ -55,6 +57,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private final Executor worker;
     private final Executor ui;
     private final ModelCatalogLoader models;
+    private final JavaRuntimeSelectionService javaRuntimes;
 
     /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
@@ -89,6 +92,18 @@ public final class FileSettingsActions implements SettingsDialogActions {
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
                                ConnectionChecker connectionChecker, ConfigurationCheck check,
                                ModelCatalogLoader models, Executor worker, Executor ui) {
+        this(file, secretChecker, connectionChecker, check, models, null, worker, ui);
+    }
+
+    /**
+     * Wie oben, dazu die Java-Erkennung des Abschnitts „Lokale Modelle“.
+     *
+     * @param javaRuntimes Suche nach Java-Laufzeiten oder {@code null} (dann bleibt das Dropdown leer)
+     */
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
+                               ConnectionChecker connectionChecker, ConfigurationCheck check,
+                               ModelCatalogLoader models, JavaRuntimeSelectionService javaRuntimes,
+                               Executor worker, Executor ui) {
         if (file == null || check == null || worker == null || ui == null) {
             throw new IllegalArgumentException("file, check, worker and ui must not be null");
         }
@@ -99,6 +114,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
         this.worker = worker;
         this.ui = ui;
         this.models = models;
+        this.javaRuntimes = javaRuntimes;
     }
 
     /** Wie viel vom Ende der Protokolldatei „Technische Details“ zeigt. */
@@ -436,6 +452,39 @@ public final class FileSettingsActions implements SettingsDialogActions {
             });
         } catch (RuntimeException rejected) {
             onResult.accept(failed("Abfrage konnte nicht gestartet werden."));
+        }
+    }
+
+    @Override
+    public void discoverJavaRuntimes(final Consumer<JavaRuntimeOverview> onResult) {
+        if (onResult == null) {
+            throw new IllegalArgumentException("onResult must not be null");
+        }
+        if (javaRuntimes == null) {
+            onResult.accept(JavaRuntimeOverview.empty());
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    JavaRuntimeOverview result;
+                    try {
+                        result = javaRuntimes.discover();
+                    } catch (RuntimeException e) {
+                        result = JavaRuntimeOverview.empty();
+                    }
+                    final JavaRuntimeOverview delivered = result;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            onResult.accept(delivered);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            onResult.accept(JavaRuntimeOverview.empty());
         }
     }
 

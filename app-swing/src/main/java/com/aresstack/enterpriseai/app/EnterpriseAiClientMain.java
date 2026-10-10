@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app;
 import com.aresstack.enterpriseai.app.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.app.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.app.composition.CompositionRoot;
+import com.aresstack.enterpriseai.app.composition.JavaRuntimes;
 import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.app.speech.SwitchableReadAloud;
 import com.aresstack.enterpriseai.app.speech.SpeechOutput;
@@ -31,6 +32,7 @@ import com.aresstack.enterpriseai.app.ui.settings.IndexPanel;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialog;
 import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
 import com.aresstack.enterpriseai.app.ui.settings.SourceDialog;
+import com.aresstack.enterpriseai.domain.localruntime.JavaRuntimeInstallation;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
@@ -88,6 +90,7 @@ public final class EnterpriseAiClientMain {
         final ModelCatalogs modelCatalogs = SettingsAssembly.modelCatalogs(
                 AppPaths.appDirectory().resolve(AppPaths.MODEL_CATALOG_FILE_NAME));
         final SettingsDialogActions settingsActions = headless ? null : SettingsAssembly.create(file, modelCatalogs);
+        resolveJavaRuntime(file);
         ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
                 headless ? null : new SwingSettingsUi(settingsActions), SettingsAssembly.configurationCheck());
         if (!outcome.isStarted()) {
@@ -200,6 +203,23 @@ public final class EnterpriseAiClientMain {
                 }
             }
         });
+    }
+
+    /**
+     * Java 21+ für den optionalen Sidecar: gespeicherte Wahl nur prüfen, sonst suchen, automatisch wählen und in
+     * {@code models.local.java} speichern. Ohne gefundenes Java 21 bleibt der Sidecar aus; das ist kein Fehler.
+     */
+    private static void resolveJavaRuntime(ConfigurationFile file) {
+        if (!file.exists()) {
+            return;
+        }
+        try {
+            JavaRuntimeInstallation selected = JavaRuntimes.selectionService(file).resolveAtStartup();
+            LOG.info(selected == null ? "Kein Java 21 oder neuer gefunden; der lokale Sidecar bleibt aus."
+                    : "Java für den lokalen Sidecar: " + selected);
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Java-Erkennung für den lokalen Sidecar fehlgeschlagen", e);
+        }
     }
 
     /**

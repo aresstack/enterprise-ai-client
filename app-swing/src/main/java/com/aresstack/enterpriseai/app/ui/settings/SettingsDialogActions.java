@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
+import com.aresstack.enterpriseai.application.localruntime.JavaRuntimeOverview;
 import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
@@ -84,6 +85,14 @@ public interface SettingsDialogActions {
     /** Der Wert, unter dem ein Katalogmodell gespeichert wird. */
     default String storedModel(ModelReference reference) {
         return reference.key();
+    }
+
+    /**
+     * „Neu suchen“ im Abschnitt „Lokale Modelle“: sucht installierte Java-Laufzeiten und liefert sie genau einmal
+     * auf dem EDT, kompatible (Java 21+) zuerst, mit der automatischen Wahl.
+     */
+    default void discoverJavaRuntimes(Consumer<JavaRuntimeOverview> onResult) {
+        onResult.accept(JavaRuntimeOverview.empty());
     }
 
     /** Das Standard-Ermittlungsskript der Bibliothek für einen Modus (PowerShell bzw. VBScript), sonst leer. */

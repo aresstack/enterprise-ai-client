@@ -39,7 +39,7 @@ final class ModelsTab {
     private final List<CategoryModelRow> rows = new ArrayList<CategoryModelRow>();
     private final JPanel statusLines = new JPanel();
     private final ComicButton refresh;
-    private final JTextField localJava;
+    private final JavaRuntimeRow localJava;
     private final JTextField localSidecarJar;
     private final JTextField localModelRoot;
     private final JPanel panel;
@@ -78,10 +78,10 @@ final class ModelsTab {
         sources.component(null, sourceRow, null);
 
         FormRows local = new FormRows(palette);
-        local.note("Optional: lokale Modelle über den Java-21-Sidecar (local-model-runtime-sidecar-java21). Ohne "
-                + "Java-21-Pfad bleiben lokale Modelle aus; die Modelle der Enterprise-API funktionieren unabhängig "
-                + "davon. Es wird nichts heruntergeladen oder installiert.");
-        localJava = local.textField("Java 21", "Pfad zu java bzw. java.exe einer Java-21-Laufzeit; leer = aus");
+        local.note("Optional: lokale Modelle über den Java-21-Sidecar (local-model-runtime-sidecar-java21). Java 21 "
+                + "oder neuer wird automatisch gefunden; ohne Java 21 bleiben lokale Modelle aus, die Modelle der "
+                + "Enterprise-API funktionieren unabhängig davon. Es wird nichts heruntergeladen oder installiert.");
+        localJava = new JavaRuntimeRow(local, actions, palette);
         localSidecarJar = local.textField("Sidecar-Jar", "Pfad zu local-model-runtime-sidecar.jar");
         localModelRoot = local.textField("Modellverzeichnis (optional)",
                 "Verzeichnis der lokal installierten Modelle; leer = <Anwendungsverzeichnis>/local-models");
@@ -101,7 +101,7 @@ final class ModelsTab {
         for (CategoryModelRow row : rows) {
             row.load(valueOf(form, row.category()));
         }
-        localJava.setText(form.localJava());
+        localJava.load(form.localJava());
         localSidecarJar.setText(form.localSidecarJar());
         localModelRoot.setText(form.localModelRoot());
     }
@@ -119,7 +119,7 @@ final class ModelsTab {
                     b.modelSelection(row.category().key(), row.stored());
             }
         }
-        b.localJava(localJava.getText()).localSidecarJar(localSidecarJar.getText())
+        b.localJava(localJava.stored()).localSidecarJar(localSidecarJar.getText())
                 .localModelRoot(localModelRoot.getText());
     }
 
@@ -128,6 +128,7 @@ final class ModelsTab {
         if (!refreshedOnce) {
             refresh();
         }
+        localJava.shown();
     }
 
     void refresh() {

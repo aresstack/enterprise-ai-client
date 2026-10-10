@@ -188,8 +188,11 @@ Java-21-Sidecar. Ohne TTS-Modell, oder bei einem lokalen Modell ohne Java 21 und
 deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
 
 1. `local-model-runtime-sidecar-<version>.zip` aus dem Release entpacken.
-2. Einstellungen → Lokale Modelle: `java(.exe)` einer Java-21-Laufzeit und `local-model-runtime-sidecar.jar`
-   angeben (`models.local.java`, `models.local.sidecarJar`).
+2. Einstellungen → Lokale Modelle: `local-model-runtime-sidecar.jar` angeben (`models.local.sidecarJar`). Java 21
+   wird automatisch gefunden (`JAVA_HOME`, `PATH`, Program Files je Hersteller, `%USERPROFILE%\.jdks`, Scoop;
+   exakt Java 21 vor der kleinsten höheren Version) und in `models.local.java` gespeichert; das Dropdown
+   „Java-Runtime für Sidecar“ zeigt alle Funde, ältere Versionen ausgegraut, „Neu suchen“ sucht erneut. Beim Start
+   wird eine gespeicherte Wahl nur geprüft; gesucht wird nur, wenn sie fehlt oder ungültig ist.
 3. Eine VITS-Stimme im ONNX-Format (Hugging-Face-Layout: `config.json` mit `"model_type": "vits"`, `vocab.json`,
    optional `tokenizer_config.json`, `onnx/model.onnx` oder `model.onnx`; z. B. ein ONNX-Export von MMS-TTS Deutsch)
    als eigenen Ordner unter das Modellverzeichnis legen (`models.local.modelRoot`, Standard

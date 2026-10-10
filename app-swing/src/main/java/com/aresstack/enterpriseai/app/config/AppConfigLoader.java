@@ -269,7 +269,7 @@ public final class AppConfigLoader {
     /**
      * Modellverwaltung: eine Auswahl je Kategorie ({@code chat.model}, {@code embedding.model},
      * {@code model.<kategorie>}) und der optionale lokale Sidecar ({@code models.local.*}). Ohne Java-Pfad bleibt
-     * der Sidecar aus; fehlt bei gesetztem Java-Pfad das Jar, gibt es einen Hinweis statt eines Fehlers.
+     * der Sidecar aus, ebenso ohne Jar (der Java-Pfad wird beim Start automatisch erkannt, daher kein Hinweis).
      * {@code speech.readAloud.autoStart} liest neue Antworten automatisch vor (wie askai arch, Standard aus);
      * {@code speech.voice} ist die Stimme der Enterprise-Sprachausgabe.
      */
@@ -284,9 +284,8 @@ public final class AppConfigLoader {
         Path modelRoot = r.path("models.local.modelRoot", AppPaths.appDirectory().resolve("local-models"));
         int readyTimeout = r.integer("models.local.readyTimeoutMillis", 60000, 1000, MAX_TIMEOUT);
         LocalSidecarConfig local = null;
-        if (java != null && jar == null) {
-            warnings.add("models.local.java ist gesetzt, models.local.sidecarJar fehlt: lokale Modelle bleiben aus.");
-        } else if (java != null) {
+        // Java 21 wird automatisch erkannt und gespeichert; ohne Sidecar-Jar bleiben lokale Modelle still aus.
+        if (java != null && jar != null) {
             local = new LocalSidecarConfig(java, jar, modelRoot, readyTimeout);
         }
         return new ModelsConfig(selections, local, r.bool(ModelsConfig.READ_ALOUD_AUTO_START_KEY, false),
