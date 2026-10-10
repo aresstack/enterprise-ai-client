@@ -22,6 +22,13 @@ public interface LocalVoiceProvisioning {
     void install(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException;
 
+    /**
+     * Lädt alle Dateien der Stimme neu und ersetzt sie unter {@code modelRoot/<id>}; die Auswahl bleibt unberührt.
+     * Blockiert (Netz).
+     */
+    void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+            throws LocalVoiceInstallException;
+
     /** Entfernt die Stimme aus {@code modelRoot/<id>}; ist sie nicht da, passiert nichts. Blockiert. */
     void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException;
 }

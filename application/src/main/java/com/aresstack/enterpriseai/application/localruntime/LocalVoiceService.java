@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Lokale Stimmen für die Sprachausgabe anzeigen, installieren und entfernen. Ausgewählt wird eine installierte Stimme wie
+ * Lokale Stimmen für die Sprachausgabe anzeigen, installieren, aktualisieren und entfernen. Ausgewählt wird eine installierte Stimme wie
  * jedes andere Modell über die Katalog-Kategorie TTS; der Sidecar meldet sie unter ihrer Kennung. Blockiert.
  */
 public final class LocalVoiceService {
@@ -35,6 +35,20 @@ public final class LocalVoiceService {
             throw new IllegalArgumentException("voiceId must not be blank");
         }
         provisioning.install(voiceId.trim(), modelRoot, listener == null ? new LocalVoiceInstallListener() {
+            @Override
+            public void progress(String file, long done, long total) {
+                // niemand hört zu
+            }
+        } : listener);
+    }
+
+    public void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+            throws LocalVoiceInstallException {
+        requireRoot(modelRoot);
+        if (voiceId == null || voiceId.trim().isEmpty()) {
+            throw new IllegalArgumentException("voiceId must not be blank");
+        }
+        provisioning.update(voiceId.trim(), modelRoot, listener == null ? new LocalVoiceInstallListener() {
             @Override
             public void progress(String file, long done, long total) {
                 // niemand hört zu

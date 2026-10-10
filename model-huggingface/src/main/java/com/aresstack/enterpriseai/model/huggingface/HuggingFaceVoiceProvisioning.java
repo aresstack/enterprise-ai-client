@@ -68,6 +68,19 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         if (complete(target, voice)) {
             return;
         }
+        download(voice, modelRoot, target, listener);
+    }
+
+    /** Lädt alle Dateien neu; die bisherige Stimme bleibt nutzbar, bis die neuen Dateien geprüft da sind. */
+    @Override
+    public void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+            throws LocalVoiceInstallException {
+        HuggingFaceVoice voice = find(voiceId);
+        download(voice, modelRoot, modelRoot.resolve(voice.id()), listener);
+    }
+
+    private void download(HuggingFaceVoice voice, Path modelRoot, Path target,
+                          final LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
         Path staging = modelRoot.resolve("." + voice.id() + STAGING_SUFFIX);
         try {
             Files.createDirectories(staging);

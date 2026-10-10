@@ -21,5 +21,9 @@ public interface LocalVoiceInstaller {
     void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
             throws LocalVoiceInstallException;
 
+    /** Wie {@link #install}, lädt aber auch eine vollständige Stimme neu. */
+    void update(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
+                LocalVoiceInstallListener listener) throws LocalVoiceInstallException;
+
     void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException;
 }

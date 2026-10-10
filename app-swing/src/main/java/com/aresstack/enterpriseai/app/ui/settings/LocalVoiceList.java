@@ -22,13 +22,14 @@ import java.util.function.Supplier;
 
 /**
  * „Lokale Stimmen“ im Reiter „Lokale Modelle“: je kuratierte Stimme eine Zeile mit Installationsstand und
- * „Installieren“ bzw. „Entfernen“, darunter eine Statuszeile mit Fortschritt oder Fehlergrund. Installieren wählt
+ * „Installieren“ bzw. „Aktualisieren“ und „Entfernen“, darunter eine Statuszeile mit Fortschritt oder Fehlergrund. Installieren wählt
  * nichts aus: eine installierte Stimme steht danach in der TTS-Liste darüber und wird dort gewählt.
  */
 final class LocalVoiceList {
 
     static final String INSTALL_LABEL = "Installieren";
     static final String REMOVE_LABEL = "Entfernen";
+    static final String UPDATE_LABEL = "Aktualisieren";
     static final String NOT_INSTALLED = "Nicht installiert";
     static final String INSTALLED = "✓ installiert";
     static final String NONE = "Keine lokalen Stimmen konfiguriert.";
@@ -135,7 +136,7 @@ final class LocalVoiceList {
                 if (offer.isInstalled()) {
                     remove(offer);
                 } else {
-                    install(offer);
+                    download(offer, false);
                 }
             }
         });
@@ -143,6 +144,19 @@ final class LocalVoiceList {
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.setOpaque(false);
         right.add(state);
+        if (offer.isInstalled()) {
+            ComicButton update = new ComicButton(UPDATE_LABEL, null, ComicButton.Accent.ACTION, palette);
+            update.setToolTipText("Lädt die Dateien der Stimme neu vom Hugging Face Hub; die Auswahl bleibt");
+            update.getAccessibleContext().setAccessibleName(UPDATE_LABEL + ": " + offer.displayName());
+            update.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    download(offer, true);
+                }
+            });
+            buttons.add(update);
+            right.add(update);
+        }
         right.add(action);
         JPanel line = new JPanel(new BorderLayout(8, 0));
         line.setOpaque(false);
@@ -153,14 +167,14 @@ final class LocalVoiceList {
         return line;
     }
 
-    private void install(final LocalVoiceOffer offer) {
+    private void download(final LocalVoiceOffer offer, final boolean update) {
         if (busy) {
             return;
         }
         busy = true;
         updateButtons();
         show("Lade " + offer.displayName() + " …", true);
-        actions.installLocalVoice(form.get(), offer.id(), new LocalVoiceInstallProgress() {
+        LocalVoiceInstallProgress progress = new LocalVoiceInstallProgress() {
             @Override
             public void progress(String line) {
                 show(line, true);
@@ -170,14 +184,20 @@ final class LocalVoiceList {
             public void finished(boolean installed, String message) {
                 busy = false;
                 if (installed) {
-                    show("✓ " + offer.displayName() + " installiert; wählbar in der TTS-Liste oben.", true);
+                    show("✓ " + offer.displayName() + (update ? " aktualisiert."
+                            : " installiert; wählbar in der TTS-Liste oben."), true);
                     reload();
                 } else {
                     show(message, false);
                     updateButtons();
                 }
             }
-        });
+        };
+        if (update) {
+            actions.updateLocalVoice(form.get(), offer.id(), progress);
+        } else {
+            actions.installLocalVoice(form.get(), offer.id(), progress);
+        }
     }
 
     private void remove(final LocalVoiceOffer offer) {

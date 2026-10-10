@@ -91,6 +91,14 @@ public final class LocalVoices implements LocalVoiceInstaller {
     }
 
     @Override
+    public void update(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
+                       LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
+        installProxyAuthentication(network, keePass);
+        HttpRoutes routes = HttpRoutes.from(network);
+        new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, routes)).update(voiceId, modelRoot, listener);
+    }
+
+    @Override
     public void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException {
         new LocalVoiceService(new HuggingFaceVoiceProvisioning(curated, NO_NETWORK)).remove(voiceId, modelRoot);
     }

@@ -200,7 +200,7 @@ deaktiviert und nennt im Tooltip den Grund. Für eine lokale Stimme:
    als eigenen Ordner unter das Modellverzeichnis legen (`models.local.modelRoot`, Standard
    `<Anwendungsverzeichnis>/local-models`). Der Ordnername ist der Modellname. Es wird nichts heruntergeladen.
    Alternativ: Einstellungen → Modelle → „Lokale Modelle“ → „Lokale Stimmen“ → „Installieren“ lädt eine der
-   angebotenen Stimmen; „Entfernen“ löscht sie wieder.
+   angebotenen Stimmen; „Aktualisieren“ lädt sie neu, „Entfernen“ löscht sie wieder.
 4. Einstellungen → Modelle → „Lokale Modelle“ → TTS: die Stimme wählen, speichern, neu starten.
 
 `speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus). Spracheingabe (Mikrofon,

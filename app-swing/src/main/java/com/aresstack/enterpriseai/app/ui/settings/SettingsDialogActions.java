@@ -122,6 +122,11 @@ public interface SettingsDialogActions {
         progress.finished(false, "In dieser Umgebung nicht verfügbar.");
     }
 
+    /** Lädt eine installierte Stimme neu (wie {@link #installLocalVoice}); ändert keine Auswahl. */
+    default void updateLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
+        progress.finished(false, "In dieser Umgebung nicht verfügbar.");
+    }
+
     /** Entfernt eine installierte Stimme aus dem Modellverzeichnis des Entwurfs; Ende auf dem EDT. */
     default void removeLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
         progress.finished(false, "In dieser Umgebung nicht verfügbar.");

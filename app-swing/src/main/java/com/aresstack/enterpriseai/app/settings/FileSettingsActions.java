@@ -561,7 +561,17 @@ public final class FileSettingsActions implements SettingsDialogActions {
      * Fortschritt höchstens einmal je Prozentpunkt und Datei.
      */
     @Override
-    public void installLocalVoice(SettingsForm form, final String voiceId, final LocalVoiceInstallProgress progress) {
+    public void installLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
+        download(form, voiceId, progress, false);
+    }
+
+    @Override
+    public void updateLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
+        download(form, voiceId, progress, true);
+    }
+
+    private void download(SettingsForm form, final String voiceId, final LocalVoiceInstallProgress progress,
+                          final boolean update) {
         if (form == null || voiceId == null || progress == null) {
             throw new IllegalArgumentException("form, voiceId and progress must not be null");
         }
@@ -600,7 +610,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     boolean ok;
                     String message;
                     try {
-                        voices.install(network, keePass, voiceId, root, new LocalVoiceInstallListener() {
+                        LocalVoiceInstallListener listener = new LocalVoiceInstallListener() {
                             @Override
                             public void progress(String file, long done, long total) {
                                 final String line = total > 0
@@ -617,9 +627,14 @@ public final class FileSettingsActions implements SettingsDialogActions {
                                     }
                                 });
                             }
-                        });
+                        };
+                        if (update) {
+                            voices.update(network, keePass, voiceId, root, listener);
+                        } else {
+                            voices.install(network, keePass, voiceId, root, listener);
+                        }
                         ok = true;
-                        message = "Installiert in " + root.resolve(voiceId);
+                        message = (update ? "Aktualisiert in " : "Installiert in ") + root.resolve(voiceId);
                     } catch (LocalVoiceInstallException e) {
                         ok = false;
                         message = e.getMessage();
