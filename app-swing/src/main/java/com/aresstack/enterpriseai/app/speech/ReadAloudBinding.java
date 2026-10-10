@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.app.speech;
 import com.aresstack.enterpriseai.app.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.application.speech.ReadAloudService;
 
+import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -81,15 +83,23 @@ public final class ReadAloudBinding implements ReadAloudControl {
                 if (generation.get() != mine) {
                     return; // inzwischen pausiert oder von einer neueren Antwort abgelöst
                 }
+                final boolean[] reported = new boolean[1]; // eine Meldung je Vorlesen, nicht je Abschnitt
                 try {
                     service.speak(markdown, new ReadAloudService.Listener() {
                         @Override
                         public void failed(String message) {
                             LOG.warning("Vorlesen: " + message);
+                            if (!reported[0]) {
+                                reported[0] = true;
+                                showFailure(message);
+                            }
                         }
                     });
                 } catch (RuntimeException e) {
                     LOG.log(Level.WARNING, "Vorlesen fehlgeschlagen", e);
+                    if (!reported[0]) {
+                        showFailure(e.getClass().getSimpleName());
+                    }
                 }
             }
         });
@@ -107,6 +117,17 @@ public final class ReadAloudBinding implements ReadAloudControl {
         if (service != null) {
             service.stop();
         }
+    }
+
+    /** Ein Fehler beim Vorlesen verpufft nicht still: kurze Meldung mit dem Grund (EDT). */
+    private void showFailure(final String message) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                JOptionPane.showMessageDialog(null, "Die Antwort konnte nicht vorgelesen werden.\n" + message
+                        + "\n\n" + description, "Vorlesen", JOptionPane.WARNING_MESSAGE);
+            }
+        });
     }
 
     /** Beendet das Vorlesen beim Herunterfahren; idempotent. */
