@@ -21,9 +21,18 @@ public interface AgentTurnListener {
 
     /**
      * Ein Werkzeugaufruf des Agenten hat begonnen, sich geändert oder ist beendet (askai arch: gelbe Tool-Blasen,
-     * grüne Denkblasen). Standard: ignorieren.
+     * grüne Denkblasen). Auch Pläne ({@link AgentToolActivity#KIND_PLAN}, feste Kennung je Auftrag) und sonstige
+     * ACP-Ereignisse ({@link AgentToolActivity#KIND_EVENT}) kommen hier an; dieselbe Kennung aktualisiert dieselbe
+     * Aktivität. Standard: ignorieren.
      */
     default void onToolActivity(AgentToolActivity activity) {
+    }
+
+    /**
+     * Die nächsten {@link #onMessage}-Stücke gehören zu einer neuen Äußerung des Agenten (eigene Blase statt
+     * Anhängen an die vorige). Kommt nie vor der ersten Äußerung eines Auftrags. Standard: ignorieren.
+     */
+    default void onUtteranceStarted() {
     }
 
     void onCompleted();

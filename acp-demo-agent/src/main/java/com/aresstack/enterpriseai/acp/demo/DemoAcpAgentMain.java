@@ -108,6 +108,43 @@ public final class DemoAcpAgentMain {
             ctx.sendMessage("found " + query);
             return AcpSchema.PromptResponse.endTurn();
         }
+        if (text.startsWith("plan ")) {
+            // Plan (ACP plan, twice: whole plan each time), thoughts in several chunks, a tool result only as
+            // content (no rawOutput): what a richer agent sends besides text.
+            String goal = text.substring("plan ".length()).trim();
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.Plan("plan", java.util.Arrays.asList(
+                    new AcpSchema.PlanEntry("Quellen suchen: " + goal, AcpSchema.PlanEntryPriority.HIGH,
+                            AcpSchema.PlanEntryStatus.IN_PROGRESS),
+                    new AcpSchema.PlanEntry("Antwort schreiben", AcpSchema.PlanEntryPriority.MEDIUM,
+                            AcpSchema.PlanEntryStatus.PENDING))));
+            ctx.sendThought("Ich ");
+            ctx.sendThought("suche ");
+            ctx.sendThought("zuerst.");
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.ToolCall("tool_call", "call-plan", "Search",
+                    AcpSchema.ToolKind.SEARCH, AcpSchema.ToolCallStatus.IN_PROGRESS, null, null, goal, null, null));
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.ToolCallUpdateNotification("tool_call_update",
+                    "call-plan", null, null, AcpSchema.ToolCallStatus.COMPLETED,
+                    java.util.Collections.<AcpSchema.ToolCallContent>singletonList(new AcpSchema.ToolCallContentBlock(
+                            "content", new AcpSchema.TextContent("2 Treffer"))), null, null, null, null));
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.Plan("plan", java.util.Arrays.asList(
+                    new AcpSchema.PlanEntry("Quellen suchen: " + goal, AcpSchema.PlanEntryPriority.HIGH,
+                            AcpSchema.PlanEntryStatus.COMPLETED),
+                    new AcpSchema.PlanEntry("Antwort schreiben", AcpSchema.PlanEntryPriority.MEDIUM,
+                            AcpSchema.PlanEntryStatus.COMPLETED))));
+            ctx.sendMessage("fertig: " + goal);
+            return AcpSchema.PromptResponse.endTurn();
+        }
+        if (text.equals("utter")) {
+            // Two utterances, each marked as a new one in _meta (as the research agent does), streamed in two chunks.
+            java.util.Map<String, Object> start = java.util.Collections.<String, Object>singletonMap(
+                    "aresstack/utterance", "start");
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.AgentMessageChunk("agent_message_chunk",
+                    new AcpSchema.TextContent("Erstens"), start));
+            ctx.sendMessage(" und mehr.");
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.AgentMessageChunk("agent_message_chunk",
+                    new AcpSchema.TextContent("\n\nZweitens."), start));
+            return AcpSchema.PromptResponse.endTurn();
+        }
         if (text.contains("hang")) {
             // Silent for a while without any update: lets the host hit its request timeout while alive.
             try {

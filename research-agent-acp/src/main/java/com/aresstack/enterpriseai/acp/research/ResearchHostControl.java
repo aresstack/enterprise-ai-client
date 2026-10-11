@@ -62,7 +62,7 @@ final class ResearchHostControl implements ToolInvoker {
             current.started(callId, toolName, arguments);
         }
         try {
-            String result = client.callTool(toolName, arguments);
+            String result = callPublished(toolName, arguments);
             if (current != null) {
                 current.finished(callId, toolName, arguments, result, null);
             }
@@ -76,6 +76,63 @@ final class ResearchHostControl implements ToolInvoker {
                 throw new EndpointUnavailable(message);
             }
             throw new ToolFailure(message);
+        }
+    }
+
+    /**
+     * Ruft das Werkzeug; lehnt der Host es ab, weil sein Werkzeugsatz nach einem Zustandswechsel noch nicht neu
+     * veröffentlicht ist (der Host meldet {@code tools/list_changed} asynchron), wartet der Aufruf kurz, bis der
+     * Host es anbietet, und versucht es genau einmal neu. Ein Werkzeug, das der Host weiter nicht anbietet, bleibt
+     * der ursprüngliche Fehler.
+     */
+    private String callPublished(String toolName, Map<String, Object> arguments) throws McpToolCallException {
+        try {
+            return client.callTool(toolName, arguments);
+        } catch (McpToolCallException failed) {
+            if (failed.isEndpointUnavailable() || !awaitOffered(toolName)) {
+                throw failed;
+            }
+            return client.callTool(toolName, arguments);
+        }
+    }
+
+    /** Wartet höchstens {@link #PUBLISH_WAIT_MILLIS}, bis der Host das Werkzeug anbietet; war es schon da: nein. */
+    private boolean awaitOffered(String toolName) {
+        long deadline = System.currentTimeMillis() + PUBLISH_WAIT_MILLIS;
+        boolean offeredAtFirst = offers(toolName);
+        if (offeredAtFirst) {
+            return false; // angeboten und trotzdem gescheitert: ein echter Werkzeugfehler
+        }
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(PUBLISH_POLL_MILLIS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            if (offers(toolName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Wie lange ein Aufruf auf die Veröffentlichung eines gerade freigeschalteten Werkzeugs wartet (kippbar). */
+    static final long PUBLISH_WAIT_MILLIS = 3000L;
+    private static final long PUBLISH_POLL_MILLIS = 100L;
+
+    /**
+     * Bietet der Host dieses Werkzeug gerade an? Frisch per {@code tools/list} bei jedem Aufruf, nie beim
+     * Sitzungsstart eingefroren: im Reiter „Tools“ ab- oder eingeschaltete Werkzeuge gelten ohne Neustart.
+     * Ein nicht erreichbarer Endpoint heißt „nein“.
+     */
+    boolean offers(String toolName) {
+        try {
+            return client.listTools().containsKey(toolName);
+        } catch (McpToolCallException unavailable) {
+            return false;
+        } catch (RuntimeException unavailable) {
+            return false;
         }
     }
 

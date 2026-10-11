@@ -41,6 +41,9 @@ public final class AgentServiceBinding implements ChatShellActions {
     /** Stop, während die Anhänge noch gelesen werden (nur UI-Thread). */
     private boolean cancelBeforeStart;
 
+    /** Ergebniszeile eines fehlgeschlagenen Werkzeugaufrufs ohne Fehlertext. */
+    static final String FAILED_WITHOUT_TEXT = "fehlgeschlagen";
+
     /** Höchstens so viele Zeichen Text je Anhang gehen an den Agenten. */
     static final int MAX_ATTACHMENT_CHARS = 30000;
 
@@ -238,6 +241,17 @@ public final class AgentServiceBinding implements ChatShellActions {
             });
         }
 
+        @Override
+        public void onUtteranceStarted() {
+            onUi(new Runnable() {
+                @Override
+                public void run() {
+                    closeThinking();
+                    model.beginAnswerSection();
+                }
+            });
+        }
+
         /** Kennung der offenen Denkwolke für gestreamte Überlegungen (nur UI-Thread), sonst {@code null}. */
         private String thinkingKey;
         private int thoughtSeries;
@@ -262,15 +276,23 @@ public final class AgentServiceBinding implements ChatShellActions {
             onUi(new Runnable() {
                 @Override
                 public void run() {
-                    closeThinking();
+                    if (!model.hasActivity(activity.id())
+                            && !AgentToolActivity.KIND_PLAN.equals(activity.kind())
+                            && !AgentToolActivity.KIND_EVENT.equals(activity.kind())) {
+                        // Erst ein neuer Werkzeugschritt beendet die Denkwolke; Updates eines bekannten (Recherche-
+                        // Karte), Plan und Ereignisse dürfen gestreamte Überlegungen nicht auf viele Wolken verteilen.
+                        closeThinking();
+                    }
                     if (activity.status() == AgentToolActivity.Status.RUNNING) {
                         model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
                     } else {
-                        if (!model.isActivityRunning(activity.id())) {
-                            model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
-                        }
-                        model.finishActivity(activity.id(), activity.status() == AgentToolActivity.Status.COMPLETED,
-                                activity.output());
+                        // Auch das abschließende Update kann Titel oder Inhalt ändern (ein Plan trägt jedes Mal
+                        // den ganzen Plan); leere Felder lassen den bekannten Stand stehen.
+                        model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
+                        boolean succeeded = activity.status() == AgentToolActivity.Status.COMPLETED;
+                        // Ein Fehler zeigt immer eine Ergebniszeile, auch wenn der Agent keinen Text mitschickt.
+                        model.finishActivity(activity.id(), succeeded, succeeded || !activity.output().trim().isEmpty()
+                                ? activity.output() : FAILED_WITHOUT_TEXT);
                     }
                 }
             });

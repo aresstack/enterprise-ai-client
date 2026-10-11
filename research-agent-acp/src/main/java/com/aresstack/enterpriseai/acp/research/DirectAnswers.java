@@ -426,7 +426,7 @@ final class DirectAnswers {
             ResearchWriting.Passage passage = passages.get(i);
             text.append("[P").append(i + 1).append("] ")
                     .append(passage.title.isEmpty() ? passage.resource : passage.title).append(": ")
-                    .append(passage.text).append("\n\n");
+                    .append(passage.text.replaceAll("\\s*\\n\\s*", " ").trim()).append("\n\n");
         }
         return text.toString();
     }

@@ -106,9 +106,10 @@ public class AgentModeEndToEndTest {
                     "Meilenstein 1 von IAR ist die Fachkonzeption bis Juni."},
             {"confluence:wiki/page/1004", "IAR Betrieb",
                     "Den Betrieb von IAR übernimmt das Rechenzentrum."},
-            // Semantisch klar auf der OUT-Seite: der Weidezaun (askai SearchScopeGate) verwirft nie wegen eines
-            // einzelnen Wortes, nur nach dem Inhalt; mit dem Wortbeutel-Fake hieße "IAR Archiv" unentschieden.
-            {"confluence:wiki/page/1005", EXCLUDED + " Altakten",
+            // Semantisch klar auf der OUT-Seite: der Weidezaun (askai SearchScopeGate, Nähe 0,7) verwirft nie wegen
+            // eines einzelnen Wortes, nur nach dem Inhalt; mit dem Wortbeutel-Fake wäre "IAR Archiv" unentschieden.
+            // Der Test prüft die Verdrahtung des Zauns; seine Trennschärfe gehört dem echten Embedding.
+            {"confluence:wiki/page/1005", EXCLUDED,
                     "Das " + EXCLUDED + " enthält Altakten aus der Ablage."},
     };
 

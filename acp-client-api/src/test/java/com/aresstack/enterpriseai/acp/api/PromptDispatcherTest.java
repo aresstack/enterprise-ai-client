@@ -53,6 +53,41 @@ public class PromptDispatcherTest {
     }
 
     @Test
+    public void otherUpdatesKeepTheirTypeAndPlanInSequence() {
+        final List<AcpUpdate> seen = new ArrayList<AcpUpdate>();
+        PromptDispatcher d = new PromptDispatcher("s1", "p1", new AcpUpdateListener() {
+            public void onUpdate(AcpUpdate update) {
+                seen.add(update);
+            }
+
+            public void onTerminal(String promptId, AcpPromptState state, String detail) {
+            }
+        });
+        List<AcpPlanEntry> plan = new ArrayList<AcpPlanEntry>();
+        plan.add(new AcpPlanEntry("Quellen suchen", "high", "completed"));
+        plan.add(new AcpPlanEntry("Antwort schreiben", "medium", null));
+        assertTrue(d.update(AcpUpdate.Kind.MESSAGE, "a"));
+        assertTrue(d.updateOther(AcpUpdate.TYPE_PLAN, "", plan));
+        plan.clear(); // defensiv kopiert
+        assertTrue(d.updateOther("current_mode_update", "{mode=ask}", null));
+        assertTrue(d.terminal(AcpPromptState.COMPLETED, ""));
+        assertFalse(d.updateOther(AcpUpdate.TYPE_PLAN, "", null));
+
+        assertEquals(3, seen.size());
+        AcpUpdate planUpdate = seen.get(1);
+        assertEquals(AcpUpdate.Kind.OTHER, planUpdate.getKind());
+        assertTrue(planUpdate.isPlan());
+        assertEquals(2L, planUpdate.getSequenceNumber());
+        assertEquals(2, planUpdate.getPlan().size());
+        assertTrue(planUpdate.getPlan().get(0).isCompleted());
+        assertEquals(AcpPlanEntry.PENDING, planUpdate.getPlan().get(1).getStatus());
+        assertEquals("current_mode_update", seen.get(2).getType());
+        assertFalse(seen.get(2).isPlan());
+        assertEquals("", seen.get(0).getType());
+        assertTrue(seen.get(0).getPlan().isEmpty());
+    }
+
+    @Test
     public void cancelVersusCompletionRaceYieldsOneTerminal() {
         Rec rec = new Rec();
         PromptDispatcher d = new PromptDispatcher("s1", "p1", rec);

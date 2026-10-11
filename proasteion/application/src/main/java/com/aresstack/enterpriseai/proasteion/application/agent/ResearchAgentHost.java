@@ -1150,6 +1150,9 @@ public final class ResearchAgentHost {
     public int documentDraftSectionCount() {
         String outline = outline();
         synchronized (this) {
+            if (projectDirectory == null && existingProject() == null) {
+                return 0; // Anzeigen legen kein Projekt an
+            }
             return readDocumentDraft(outline).getAsJsonArray("sections").size();
         }
     }

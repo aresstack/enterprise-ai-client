@@ -97,7 +97,7 @@ public final class ResearchAgentMain {
             if (!tools.containsKey("research_status") || !tools.containsKey("main_model_complete")) {
                 throw new IllegalStateException("research control tools are not offered by the host endpoint");
             }
-            conceptTools = tools.containsKey("concept_read");
+            conceptTools = tools.containsKey(CONCEPT_READ);
             status = control.status();
         } catch (Exception unavailable) {
             control.close();
@@ -132,7 +132,9 @@ public final class ResearchAgentMain {
                 LOG.info("[research-agent] " + line);
             }
         });
-        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, () -> conceptTools,
+        // Die Konzeptwerkzeuge je Aufruf frisch vom Host (tools/list): im Reiter „Tools“ ab- oder eingeschaltet
+        // gilt ohne Neustart. Nur das Systemprompt-Profil des TeamAgents bleibt beim Sitzungsstart bestimmt.
+        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, conceptToolsOf(control),
                 new ResearchRun(control, System.getenv(), cancelled));
         this.host = control;
         this.turns = holder[0];
@@ -141,6 +143,18 @@ public final class ResearchAgentMain {
         return new AcpSchema.NewSessionResponse("research-acp-" + UUID.randomUUID(), null, null);
     }
 
+    /** Bietet der Host die Konzeptwerkzeuge gerade an? Bei jedem Aufruf neu gefragt, nie eingefroren. */
+    static java.util.function.BooleanSupplier conceptToolsOf(final ResearchHostControl control) {
+        return new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return control.offers(CONCEPT_READ);
+            }
+        };
+    }
+
+    static final String CONCEPT_READ = "concept_read";
+
     /** Ein Tool-Update; ein Fehler beim Senden hält den Turn nie an (die Blase fehlt dann nur). */
     private static void send(SyncPromptContext ctx, AcpSchema.SessionUpdate update) {
         try {
@@ -148,6 +162,29 @@ public final class ResearchAgentMain {
         } catch (RuntimeException lost) {
             LOG.fine("[research-agent] tool update not sent: " + lost.getMessage());
         }
+    }
+
+    /** {@code _meta}-Schlüssel und -Wert wie {@code AcpUpdate.META_UTTERANCE}/{@code UTTERANCE_START} des Clients. */
+    static final String META_UTTERANCE = "aresstack/utterance";
+    static final String UTTERANCE_START = "start";
+
+    /** Eine Äußerung als {@code agent_message_chunk}, markiert als Beginn einer neuen Äußerung. */
+    static AcpSchema.AgentMessageChunk utterance(String text) {
+        return new AcpSchema.AgentMessageChunk("agent_message_chunk", new AcpSchema.TextContent(text),
+                java.util.Collections.<String, Object>singletonMap(META_UTTERANCE, UTTERANCE_START));
+    }
+
+    /** {@code _meta}-Schlüssel wie {@code AcpToolCall.META_TOOL_KIND} des Clients: eigene Art neben {@code other}. */
+    static final String META_TOOL_KIND = "aresstack/toolKind";
+
+    /** Der {@code tool_call} eines sichtbaren Aufrufs; eine Art ohne ACP-Gegenstück reist in {@code _meta}. */
+    static AcpSchema.ToolCall toolCall(String callId, String title, String kind, String input) {
+        AcpSchema.ToolKind wire = toolKind(kind);
+        java.util.Map<String, Object> meta = wire == AcpSchema.ToolKind.OTHER && kind != null && !kind.isEmpty()
+                && !"other".equals(kind) ? java.util.Collections.<String, Object>singletonMap(META_TOOL_KIND, kind)
+                : null;
+        return new AcpSchema.ToolCall("tool_call", callId, title, wire, AcpSchema.ToolCallStatus.IN_PROGRESS, null,
+                null, input, null, meta);
     }
 
     static AcpSchema.ToolKind toolKind(String kind) {
@@ -196,14 +233,15 @@ public final class ResearchAgentMain {
             @Override
             public void message(String message) {
                 if (!cancelled.get() && message != null && !message.isEmpty()) {
-                    ctx.sendMessage(message);
+                    // Jede Äußerung des Turns eine eigene Blase (askai arch sayAsAgent); ein Host ohne diese
+                    // Markierung sieht die Äußerungen wie bisher als Absätze einer Antwort.
+                    send(ctx, utterance(message));
                 }
             }
 
             @Override
             public void toolStarted(String callId, String title, String kind, String input) {
-                send(ctx, new AcpSchema.ToolCall("tool_call", callId, title, toolKind(kind),
-                        AcpSchema.ToolCallStatus.IN_PROGRESS, null, null, input, null, null));
+                send(ctx, toolCall(callId, title, kind, input));
             }
 
             @Override
