@@ -198,8 +198,67 @@ final class ConfluenceRestClient {
         } catch (IllegalArgumentException e) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Bild: ungültiger Pfad");
         }
+        try {
+            return fetchImage(uri, session.headers(IMAGE_ACCEPT));
+        } catch (KnowledgeSourceException first) {
+            if (!needsSession(first)) {
+                throw first;
+            }
+            // Weder MainframeMate noch dieser Client hielten eine Sitzung: Jeder Bildabruf kam nur mit dem
+            // Authorization-Header. Instanzen, die Basic nur unter /rest/ annehmen (SSO), leiten /download/ ohne
+            // Sitzung auf die Anmeldung um. Darum einmal das Sitzungs-Cookie eines angemeldeten REST-Aufrufs holen
+            // und das Bild damit erneut laden; das Cookie lebt nur in diesem Aufruf und wird nie geloggt.
+            String cookie = sessionCookie(session);
+            if (cookie == null) {
+                throw new KnowledgeSourceException(first.kind(), first.getMessage()
+                        + "; Confluence setzt beim angemeldeten REST-Aufruf kein Sitzungs-Cookie", first);
+            }
+            Map<String, String> headers = new LinkedHashMap<String, String>(session.headers(IMAGE_ACCEPT));
+            headers.put("Cookie", cookie);
+            try {
+                return fetchImage(uri, Collections.unmodifiableMap(headers));
+            } catch (KnowledgeSourceException second) {
+                throw new KnowledgeSourceException(second.kind(), second.getMessage()
+                        + " (auch mit Sitzungs-Cookie aus der REST-Anmeldung)", second);
+            }
+        }
+    }
+
+    /** Weiterleitung, 401/403 oder HTML statt Bild: Anmeldung hat beim Download nicht gegriffen. */
+    private static boolean needsSession(KnowledgeSourceException e) {
+        return e.kind() == Kind.ACCESS_DENIED
+                || e.kind() == Kind.INVALID_RESPONSE && e.getMessage() != null && e.getMessage().contains("html");
+    }
+
+    /**
+     * Cookie-Header aus einem angemeldeten, leichten REST-Aufruf ({@code /rest/api/user/current}) oder {@code null},
+     * wenn Confluence keins setzt oder der Aufruf scheitert.
+     */
+    private String sessionCookie(Session session) {
+        URI uri = URI.create(config.baseUrl() + "/rest/api/user/current");
+        ConfluenceHttpResponse response;
+        try {
+            response = transport.get(uri, session.headers, config.maxResponseBytes());
+        } catch (IOException e) {
+            LOG.warning("[Confluence] Bild: REST-Anmeldung für Sitzungs-Cookie fehlgeschlagen (" + cause(e) + ")");
+            return null;
+        }
+        LOG.info("[Confluence] Bild: REST-Anmeldung für Sitzungs-Cookie: status=" + response.status() + " cookies="
+                + response.cookies().size());
+        if (!response.isSuccess() || response.cookies().isEmpty()) {
+            return null;
+        }
+        StringBuilder header = new StringBuilder();
+        for (String cookie : response.cookies()) {
+            header.append(header.length() == 0 ? "" : "; ").append(cookie);
+        }
+        return header.toString();
+    }
+
+    private byte[] fetchImage(URI requested, Map<String, String> initial) throws KnowledgeSourceException {
+        URI uri = requested;
+        Map<String, String> headers = initial;
         int max = config.maxAttachmentBytes();
-        Map<String, String> headers = session.headers(IMAGE_ACCEPT);
         ConfluenceHttpResponse response;
         for (int hop = 0; ; hop++) {
             try {
@@ -216,8 +275,8 @@ final class ConfluenceRestClient {
                 break;
             }
             // Weiterleitungen auf denselben Host folgt der Transport angemeldet; eine auf einen anderen Host (etwa
-            // einen Download-Host) folgt der Bildweg wie ein Browser, aber ohne Authorization: Anmeldedaten
-            // verlassen die eingestellte Confluence nie.
+            // einen Download-Host) folgt der Bildweg wie ein Browser, aber ohne Authorization und Cookie:
+            // Anmeldedaten verlassen die eingestellte Confluence nie.
             LOG.info("[Confluence] Bild: Weiterleitung von " + withoutQuery(uri.toString()) + " auf "
                     + withoutQuery(next.toString()) + ", ohne Anmeldung gefolgt");
             uri = next;
@@ -261,6 +320,7 @@ final class ConfluenceRestClient {
     private static Map<String, String> withoutAuthorization(Map<String, String> headers) {
         Map<String, String> copy = new LinkedHashMap<String, String>(headers);
         copy.remove("Authorization");
+        copy.remove("Cookie");
         return Collections.unmodifiableMap(copy);
     }
 

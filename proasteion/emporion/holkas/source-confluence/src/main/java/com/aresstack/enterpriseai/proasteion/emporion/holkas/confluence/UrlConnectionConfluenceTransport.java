@@ -58,12 +58,15 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
     @Override
     public ConfluenceHttpResponse get(URI uri, Map<String, String> headers, int maxBytes) throws IOException {
         URI current = uri;
+        java.util.List<String> cookies = new java.util.ArrayList<String>();
         for (int hop = 0; ; hop++) {
             String[] location = new String[1];
             ConfluenceHttpResponse response = getOnce(current, headers, maxBytes, location);
+            cookies.addAll(response.cookies());
             URI next = hop < 5 ? sameHostRedirect(current, response.status(), location[0]) : null;
             if (next == null) {
-                return response;
+                return hop == 0 ? response : new ConfluenceHttpResponse(response.status(), response.contentType(),
+                        response.body(), response.location(), cookies);
             }
             current = next;
         }
@@ -117,10 +120,28 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
             location[0] = connection.getHeaderField("Location");
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             byte[] body = stream == null ? new byte[0] : readLimited(stream, maxBytes);
-            return new ConfluenceHttpResponse(status, connection.getContentType(), body, location[0]);
+            return new ConfluenceHttpResponse(status, connection.getContentType(), body, location[0],
+                    setCookies(connection));
         } finally {
             connection.disconnect();
         }
+    }
+
+    /** {@code name=wert} jedes {@code Set-Cookie}-Headers, ohne Attribute wie Path oder Expires. */
+    static java.util.List<String> setCookies(HttpURLConnection connection) {
+        java.util.List<String> cookies = new java.util.ArrayList<String>();
+        for (Map.Entry<String, java.util.List<String>> header : connection.getHeaderFields().entrySet()) {
+            if (header.getKey() == null || !"Set-Cookie".equalsIgnoreCase(header.getKey())) {
+                continue;
+            }
+            for (String value : header.getValue()) {
+                String pair = value == null ? "" : value.split(";", 2)[0].trim();
+                if (pair.indexOf('=') > 0) {
+                    cookies.add(pair);
+                }
+            }
+        }
+        return cookies;
     }
 
     private HttpURLConnection open(URI uri) throws IOException {

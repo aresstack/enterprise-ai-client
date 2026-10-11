@@ -69,6 +69,8 @@ public class ConfluenceViewImageTest {
     private final List<Map<String, String>> sentHeaders = new ArrayList<Map<String, String>>();
     private final Map<String, ConfluenceHttpResponse> byHost = new java.util.HashMap<String, ConfluenceHttpResponse>();
     private ConfluenceHttpResponse response;
+    private ConfluenceHttpResponse restLogin;
+    private ConfluenceHttpResponse withSession;
     private IOException failure;
 
     @Before
@@ -94,6 +96,13 @@ public class ConfluenceViewImageTest {
             }
             if (uri.getRawPath().startsWith("/confluence/rest/api/content/7")) {
                 return new ConfluenceHttpResponse(200, "application/json", READING_PAGE.getBytes(StandardCharsets.UTF_8));
+            }
+            if (uri.getRawPath().endsWith("/rest/api/user/current")) {
+                return restLogin != null ? restLogin : new ConfluenceHttpResponse(200, "application/json",
+                        "{}".getBytes(StandardCharsets.UTF_8));
+            }
+            if (withSession != null && sent.containsKey("Cookie")) {
+                return withSession;
             }
             ConfluenceHttpResponse hosted = byHost.get(uri.getHost());
             return hosted != null ? hosted : response;
@@ -261,8 +270,55 @@ public class ConfluenceViewImageTest {
         KnowledgeSourceException e = failing();
 
         assertEquals(Kind.ACCESS_DENIED, e.kind());
-        assertEquals(1, requests.size());
+        for (URI request : requests) {
+            assertFalse(request.toString(), "files.invalid".equals(request.getHost()));
+        }
         assertTrue(logLines.get(0), logLines.get(0).contains("weiterleitung=http://files.invalid/a.png "));
+    }
+
+    @Test
+    public void aLoginRedirectIsRetriedOnceWithTheSessionCookieOfAnAuthenticatedRestCall() throws Exception {
+        response = new ConfluenceHttpResponse(302, "text/html", new byte[0], BASE + "/login.action?os_destination=x");
+        restLogin = new ConfluenceHttpResponse(200, "application/json", "{}".getBytes(StandardCharsets.UTF_8), null,
+                java.util.Arrays.asList("JSESSIONID=abc123", "seraph.confluence=xyz789"));
+        withSession = new ConfluenceHttpResponse(200, "image/png", PNG);
+
+        assertArrayEquals(PNG, source().loadViewImage(IMAGE));
+
+        URI last = requests.get(requests.size() - 1);
+        Map<String, String> lastHeaders = sentHeaders.get(sentHeaders.size() - 1);
+        assertEquals(URI.create(IMAGE), last);
+        assertEquals("JSESSIONID=abc123; seraph.confluence=xyz789", lastHeaders.get("Cookie"));
+        assertTrue("REST-Aufruf angemeldet", sentHeaders.get(requests.indexOf(
+                URI.create(BASE + "/rest/api/user/current"))).containsKey("Authorization"));
+        assertFalse("erster Versuch ohne Cookie", sentHeaders.get(0).containsKey("Cookie"));
+        for (String line : logLines) {
+            assertFalse(line, line.contains("abc123") || line.contains("xyz789"));
+        }
+    }
+
+    @Test
+    public void withoutASessionCookieTheReasonSaysSo() {
+        response = new ConfluenceHttpResponse(200, "text/html", "<html>Login</html>".getBytes(StandardCharsets.UTF_8));
+
+        KnowledgeSourceException e = failing();
+
+        assertTrue(e.getMessage(), e.getMessage().endsWith(
+                "; Confluence setzt beim angemeldeten REST-Aufruf kein Sitzungs-Cookie"));
+    }
+
+    @Test
+    public void whenTheSessionCookieDoesNotHelpEitherBothAttemptsAreNamed() {
+        response = new ConfluenceHttpResponse(302, "text/html", new byte[0], BASE + "/login.action");
+        restLogin = new ConfluenceHttpResponse(200, "application/json", "{}".getBytes(StandardCharsets.UTF_8), null,
+                java.util.Collections.singletonList("JSESSIONID=abc123"));
+        withSession = new ConfluenceHttpResponse(403, "text/html", new byte[0]);
+
+        KnowledgeSourceException e = failing();
+
+        assertEquals(Kind.ACCESS_DENIED, e.kind());
+        assertEquals("Bild: Zugriff verweigert (HTTP 403) (auch mit Sitzungs-Cookie aus der REST-Anmeldung)",
+                e.getMessage());
     }
 
     @Test
