@@ -11,6 +11,8 @@ dependencies {
     api project(':proasteion:platform:network')
     implementation libs.gson
     implementation libs.jsoup
+    // draw.io-Diagramme als SVG (DrawioDiagramRenderer); das SVG rastert der Lesebereich über Batik.
+    implementation libs.jgraphx
 
     testFixturesImplementation libs.gson
     testImplementation testFixtures(project(':source-api'))

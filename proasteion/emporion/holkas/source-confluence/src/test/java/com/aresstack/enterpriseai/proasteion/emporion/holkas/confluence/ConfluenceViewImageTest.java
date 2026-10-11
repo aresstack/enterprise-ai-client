@@ -71,6 +71,7 @@ public class ConfluenceViewImageTest {
     private final Map<String, ConfluenceHttpResponse> byHost = new java.util.HashMap<String, ConfluenceHttpResponse>();
     private ConfluenceHttpResponse response;
     private ConfluenceHttpResponse restLogin;
+    private ConfluenceHttpResponse drawio = new ConfluenceHttpResponse(404, "application/json", new byte[0]);
     private ConfluenceHttpResponse withSession;
     private IOException failure;
 
@@ -101,6 +102,9 @@ public class ConfluenceViewImageTest {
             }
             if (uri.getRawPath().startsWith("/confluence/rest/api/content/7")) {
                 return new ConfluenceHttpResponse(200, "application/json", READING_PAGE.getBytes(StandardCharsets.UTF_8));
+            }
+            if (uri.getRawPath().contains("/rest/drawio/")) {
+                return drawio;
             }
             if (uri.getRawPath().endsWith("/rest/api/user/current")) {
                 return restLogin != null ? restLogin : new ConfluenceHttpResponse(200, "application/json",
@@ -320,6 +324,64 @@ public class ConfluenceViewImageTest {
 
         assertTrue(e.getMessage(), e.getMessage().endsWith(
                 "; REST-Anmeldung für das Sitzungs-Cookie gescheitert (HTTP 401)"));
+    }
+
+    private static final String DIAGRAM_IMAGE = BASE + "/download/attachments/42/Bild%20A.png?version=3&api=v2"
+            + "#drawio=Bild%20A&page=42&revision=3";
+
+    private static ConfluenceHttpResponse diagram(String shape) {
+        com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+        json.addProperty("name", "Bild A");
+        json.addProperty("xml", "<mxfile><diagram id=\"d\"><mxGraphModel><root><mxCell id=\"0\"/>"
+                + "<mxCell id=\"1\" parent=\"0\"/><mxCell id=\"a\" value=\"Kasten\" style=\"shape=" + shape + ";\""
+                + " vertex=\"1\" parent=\"1\"><mxGeometry width=\"80\" height=\"40\" as=\"geometry\"/></mxCell>"
+                + "</root></mxGraphModel></diagram></mxfile>");
+        return new ConfluenceHttpResponse(200, "application/json", json.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void aDrawioDiagramIsDrawnFromItsXmlAsSvg() throws Exception {
+        drawio = diagram("rect");
+        response = new ConfluenceHttpResponse(200, "image/png", PNG);
+
+        String svg = new String(source().loadViewImage(DIAGRAM_IMAGE), StandardCharsets.UTF_8);
+
+        assertTrue(svg, svg.contains("<svg") && svg.contains("Kasten"));
+        assertEquals(1, requests.size());
+        assertEquals("/confluence/rest/drawio/1.0/diagram/crud/Bild%20A/42", requests.get(0).getRawPath());
+        assertEquals("revision=3", requests.get(0).getRawQuery());
+        assertTrue("angemeldet wie jeder REST-Aufruf", sentHeaders.get(0).containsKey("Authorization"));
+    }
+
+    @Test
+    public void anUnsupportedDiagramFallsBackToThePreviewPng() throws Exception {
+        drawio = diagram("mxgraph.arrows2.arrow");
+        response = new ConfluenceHttpResponse(200, "image/png", PNG);
+
+        assertArrayEquals(PNG, source().loadViewImage(DIAGRAM_IMAGE));
+
+        URI preview = requests.get(requests.size() - 1);
+        assertEquals("/confluence/download/attachments/42/Bild%20A.png", preview.getRawPath());
+        assertEquals("version=3&api=v2", preview.getRawQuery());
+        assertNull("das Fragment geht nicht über die Leitung", preview.getRawFragment());
+        assertTrue("Rückfall ist kein Fehler", logLines.isEmpty());
+    }
+
+    @Test
+    public void whenDiagramAndPreviewFailBothReasonsAreNamed() {
+        response = new ConfluenceHttpResponse(404, "application/json", new byte[0]);
+
+        KnowledgeSourceException e;
+        try {
+            source().loadViewImage(DIAGRAM_IMAGE);
+            fail("expected KnowledgeSourceException");
+            return;
+        } catch (KnowledgeSourceException failed) {
+            e = failed;
+        }
+
+        assertTrue(e.getMessage(), e.getMessage().startsWith("Bild: "));
+        assertTrue(e.getMessage(), e.getMessage().contains("; draw.io-Zeichnung: draw.io-Diagramm: "));
     }
 
     private void assertNoRestLogin() {

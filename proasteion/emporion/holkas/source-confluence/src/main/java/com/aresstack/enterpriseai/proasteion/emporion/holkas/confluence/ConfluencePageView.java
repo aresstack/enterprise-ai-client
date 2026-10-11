@@ -147,8 +147,13 @@ final class ConfluencePageView {
      * ({@code /rest/drawio/...}), im HTML steht nur ein Platzhalter mit verstecktem {@code data-diagramdata}
      * (Base64-JSON). Dieses nennt die Vorschaudatei, die das Plugin als Anhang der Seite ablegt
      * ({@code previewName}, {@code owningPageId}, {@code revision}; bei {@code inc-drawio} eine fremde Seite). Für jeden Platzhalter ohne eigenes Bild wird diese Vorschau als
-     * gewöhnliches Bild nach dem Makro eingefügt; sie lädt dann angemeldet wie jeder Anhang.
+     * gewöhnliches Bild nach dem Makro eingefügt; sie lädt dann angemeldet wie jeder Anhang. Der Fragmentteil der
+     * Adresse nennt dem Bildlader Diagrammname, Seite und Revision, damit er das Diagramm selbst zeichnen kann
+     * ({@link DrawioDiagramRenderer}) und nur im Zweifel die Vorschau nimmt.
      */
+    /** Fragmentschlüssel an der Vorschauadresse eines draw.io-Diagramms: {@code #drawio=<Name>&page=<Id>&revision=<n>}. */
+    static final String DRAWIO_FRAGMENT = "drawio";
+
     static void drawioPreviews(Document doc, String baseUri) {
         for (Element data : doc.select("[data-diagramdata]")) {
             JsonObject diagram;
@@ -177,6 +182,12 @@ final class ConfluencePageView {
             // Wie das Plugin selbst (drawio-reader.js): die Vorschau genau der eingebundenen Diagrammrevision.
             String query = revision.matches("\\d+") ? "?version=" + revision + "&api=v2" : "";
             String src = baseUri + "download/attachments/" + owner + "/" + encodeSegment(preview) + query;
+            if (!name.isEmpty()) {
+                // Für den Bildlader: das Diagramm selbst (REST des Plugins), die Vorschau bleibt der Rückfall.
+                // Der Fragmentteil geht nie über die Leitung.
+                src += "#" + DRAWIO_FRAGMENT + "=" + encodeSegment(name) + "&page=" + owner
+                        + (revision.matches("\\d+") ? "&revision=" + revision : "");
+            }
             String alt = name.isEmpty() ? preview : name;
             Elements present = anchor.select("img");
             if (!present.isEmpty()) {
@@ -249,7 +260,8 @@ final class ConfluencePageView {
         }
         String target = to.endsWith("/") ? to.substring(0, to.length() - 1) : to;
         return target + path.substring(context.length())
-                + (image.getRawQuery() == null ? "" : "?" + image.getRawQuery());
+                + (image.getRawQuery() == null ? "" : "?" + image.getRawQuery())
+                + (image.getRawFragment() == null ? "" : "#" + image.getRawFragment());
     }
 
     private static int port(URI uri) {

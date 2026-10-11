@@ -317,6 +317,82 @@ final class ConfluenceRestClient {
      * Content-Type, Größe und Fehlerart, nie Header.
      */
     byte[] viewImage(Session session, String path) throws KnowledgeSourceException {
+        int hash = path == null ? -1 : path.indexOf('#');
+        String fragment = hash < 0 ? null : path.substring(hash + 1);
+        String preview = hash < 0 ? path : path.substring(0, hash);
+        String drawio = null;
+        if (fragment != null && fragment.startsWith(ConfluencePageView.DRAWIO_FRAGMENT + "=")) {
+            // draw.io-Diagramm: erst die Zeichnung selbst (REST des Plugins, mxfile → SVG), sonst die PNG-Vorschau.
+            try {
+                return drawioSvg(session, fragment);
+            } catch (KnowledgeSourceException | DrawioDiagramRenderer.Unsupported e) {
+                drawio = e.getMessage();
+                LOG.info("[Confluence] draw.io: Vorschau-PNG statt Zeichnung (" + drawio + "): "
+                        + withoutQuery(preview == null ? "" : preview));
+            }
+        }
+        try {
+            return previewImage(session, preview);
+        } catch (KnowledgeSourceException e) {
+            if (drawio == null) {
+                throw e;
+            }
+            throw new KnowledgeSourceException(e.kind(), e.getMessage() + "; draw.io-Zeichnung: " + drawio, e);
+        }
+    }
+
+    /**
+     * Das draw.io-Diagramm als SVG: {@code /rest/drawio/1.0/diagram/crud/<Name>/<Seite>?revision=<n>} (wie der
+     * Browser) liefert JSON mit {@code xml} ({@code mxfile}); {@link DrawioDiagramRenderer} zeichnet es.
+     */
+    private byte[] drawioSvg(Session session, String fragment)
+            throws KnowledgeSourceException, DrawioDiagramRenderer.Unsupported {
+        Map<String, String> parameters = new LinkedHashMap<String, String>();
+        for (String pair : fragment.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0) {
+                parameters.put(pair.substring(0, eq), pair.substring(eq + 1));
+            }
+        }
+        String name = parameters.get(ConfluencePageView.DRAWIO_FRAGMENT);
+        String page = parameters.get("page");
+        String revision = parameters.get("revision");
+        if (name == null || name.isEmpty() || page == null || !page.matches("\\d+")) {
+            throw new DrawioDiagramRenderer.Unsupported("Diagrammangaben unvollständig");
+        }
+        URI uri;
+        try {
+            uri = URI.create(config.baseUrl() + "/rest/drawio/1.0/diagram/crud/" + encodeUnsafe(name) + "/" + page
+                    + (revision != null && revision.matches("\\d+") ? "?revision=" + revision : ""));
+        } catch (IllegalArgumentException e) {
+            throw new DrawioDiagramRenderer.Unsupported("Diagrammname nicht als Adresse darstellbar");
+        }
+        ConfluenceHttpResponse response;
+        try {
+            response = transport.get(uri, session.headers, config.maxResponseBytes());
+        } catch (IOException e) {
+            throw new KnowledgeSourceException(Kind.UNAVAILABLE,
+                    "draw.io-Diagramm: Confluence nicht erreichbar (" + cause(e) + ")", e);
+        }
+        if (!response.isSuccess()) {
+            throw statusFailure("draw.io-Diagramm", response.status());
+        }
+        String xml = null;
+        try {
+            JsonElement json = JsonParser.parseString(response.bodyAsUtf8());
+            JsonElement value = json.isJsonObject() ? json.getAsJsonObject().get("xml") : null;
+            xml = value != null && value.isJsonPrimitive() ? value.getAsString() : null;
+        } catch (RuntimeException e) {
+            xml = null;
+        }
+        if (xml == null || xml.trim().isEmpty()) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "draw.io-Diagramm: Antwort ohne Diagramm (xml)");
+        }
+        return DrawioDiagramRenderer.toSvg(xml).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** Die PNG-Vorschau bzw. jedes andere Bild der Lese-Ansicht. */
+    private byte[] previewImage(Session session, String path) throws KnowledgeSourceException {
         if (path == null || !path.startsWith("/") || path.startsWith("//")) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Bild ohne gültigen Pfad");
         }
@@ -579,7 +655,9 @@ final class ConfluenceRestClient {
     /** Adresse ohne Query (Logzeilen). */
     static String withoutQuery(String location) {
         int query = location.indexOf('?');
-        return query < 0 ? location : location.substring(0, query);
+        int fragment = location.indexOf('#');
+        int end = query < 0 ? fragment : fragment < 0 ? query : Math.min(query, fragment);
+        return end < 0 ? location : location.substring(0, end);
     }
 
     /**

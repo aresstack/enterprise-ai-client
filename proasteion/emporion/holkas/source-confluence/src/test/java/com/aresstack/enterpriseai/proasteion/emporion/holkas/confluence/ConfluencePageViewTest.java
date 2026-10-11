@@ -56,7 +56,8 @@ public class ConfluencePageViewTest {
         ConfluencePageView view = ConfluencePageView.of(body, BASE);
 
         assertEquals(1, view.images.size());
-        assertEquals(BASE + "download/attachments/42/%C3%9Cbersicht%20A.png?version=3&api=v2", view.images.get(0).src);
+        assertEquals(BASE + "download/attachments/42/%C3%9Cbersicht%20A.png?version=3&api=v2"
+                + "#drawio=%C3%9Cbersicht%20A&page=42&revision=3", view.images.get(0).src);
         assertEquals("Übersicht A", view.images.get(0).title);
         assertTrue(view.html, view.html.indexOf("%C3%9Cbersicht%20A.png") > view.html.indexOf("Text")
                 && view.html.indexOf("%C3%9Cbersicht%20A.png") < view.html.indexOf("Danach"));
@@ -73,8 +74,10 @@ public class ConfluencePageViewTest {
         ConfluencePageView view = ConfluencePageView.of(body, BASE);
 
         assertEquals(2, view.images.size());
-        assertEquals(BASE + "download/attachments/99/Fremd.png?version=1&api=v2", view.images.get(0).src);
-        assertEquals(BASE + "download/attachments/42/Eigen.png?version=7&api=v2", view.images.get(1).src);
+        assertEquals(BASE + "download/attachments/99/Fremd.png?version=1&api=v2#drawio=Fremd&page=99&revision=1",
+                view.images.get(0).src);
+        assertEquals(BASE + "download/attachments/42/Eigen.png?version=7&api=v2#drawio=Eigen&page=42&revision=7",
+                view.images.get(1).src);
     }
 
     @Test
@@ -92,7 +95,7 @@ public class ConfluencePageViewTest {
         assertEquals(4, view.images.size());
         for (int i = 0; i < 4; i++) {
             assertEquals(BASE + "download/attachments/" + (40 + i) + "/Bild%20" + i + ".png?version=" + (i + 1)
-                    + "&api=v2", view.images.get(i).src);
+                    + "&api=v2#drawio=Bild%20" + i + "&page=" + (40 + i) + "&revision=" + (i + 1), view.images.get(i).src);
             assertTrue(view.html, view.html.indexOf("Abschnitt " + i) < view.html.indexOf("/Bild%20" + i + ".png"));
         }
     }
@@ -105,7 +108,8 @@ public class ConfluencePageViewTest {
         ConfluencePageView view = ConfluencePageView.of(body, BASE);
 
         assertEquals(1, view.images.size());
-        assertEquals(BASE + "download/attachments/42/Ablauf.png?version=2&api=v2", view.images.get(0).src);
+        assertEquals(BASE + "download/attachments/42/Ablauf.png?version=2&api=v2#drawio=Ablauf&page=42&revision=2",
+                view.images.get(0).src);
         assertEquals("Ablauf", view.images.get(0).title);
     }
 
