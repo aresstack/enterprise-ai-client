@@ -292,7 +292,7 @@ public final class ImageSlideshowPanel extends JPanel {
     /** Der Grund aus der Quelle, umbrechend über die Breite des Overlays. */
     private static String failureText(String reason) {
         return "<html><div style='text-align:center;width:560px'>" + FAILED_TEXT
-                + (reason == null || reason.equals(FAILED_TEXT) ? "" : ":<br>" + escape(reason)) + "</div></html>";
+                + ":<br>" + escape(reason == null ? ReaderImageStore.Loaded.NO_REASON : reason) + "</div></html>";
     }
 
     private static String escape(String text) {

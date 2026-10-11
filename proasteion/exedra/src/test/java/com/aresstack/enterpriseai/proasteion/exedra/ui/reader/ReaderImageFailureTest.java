@@ -10,7 +10,6 @@ import java.util.Collections;
 import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Angelos Live-Fehler: statt „Bild konnte nicht geladen werden“ steht der Grund aus der Quelle im Overlay. */
@@ -54,7 +53,7 @@ public class ReaderImageFailureTest {
     }
 
     @Test
-    public void withoutAReasonTheGeneralTextStays() throws Exception {
+    public void withoutAReasonTheOverlaySaysSo() throws Exception {
         run(() -> {
             ImageSlideshowPanel show = open(new ReaderImageLoader() {
                 @Override
@@ -63,7 +62,7 @@ public class ReaderImageFailureTest {
                 }
             });
             assertTrue(show.statusText(), show.statusText().contains("Bild konnte nicht geladen werden"));
-            assertFalse(show.statusText(), show.statusText().contains(":<br>"));
+            assertTrue(show.statusText(), show.statusText().contains(ReaderImageStore.Loaded.NO_REASON));
         });
     }
 

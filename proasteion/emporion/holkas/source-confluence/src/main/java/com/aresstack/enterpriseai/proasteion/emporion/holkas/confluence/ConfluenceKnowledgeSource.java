@@ -186,7 +186,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 Page loaded = client.readingPage(session, parsed.contentId);
                 String base = config.baseUrl().toString();
                 base = base.endsWith("/") ? base : base + "/";
-                ConfluencePageView view = ConfluencePageView.of(loaded.html, base);
+                ConfluencePageView view = ConfluencePageView.of(loaded.html, base, loaded.serverBase);
                 List<PageView.Image> images = new ArrayList<PageView.Image>();
                 for (ConfluencePageView.InlineImage image : view.images) {
                     images.add(new PageView.Image(image.src, image.title, image.attachmentId == null ? null
@@ -199,15 +199,18 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
 
     /** Wie MainframeMates {@code ByteDownloader} im {@code ConfluenceReaderTab}: jede Adresse unter der Basis-URL. */
     @Override
-    public byte[] loadViewImage(String src) throws KnowledgeSourceException {
+    public byte[] loadViewImage(String requested) throws KnowledgeSourceException {
         String base = config.baseUrl().toString();
         base = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        // Gleicher Host in anderer Schreibweise (Groß-/Kleinschreibung, Standardport) ist nicht fremd.
+        final String src = ConfluencePageView.onBase(requested, base, base);
         if (src == null || !src.startsWith(base + "/")) {
             // Fremde Bilder werden nie geladen (Angelo); der Text nennt beide Adressen, damit eine abweichende
             // Basis (etwa die Server-Basis-URL in export_view) sofort sichtbar ist.
             String text = "Bild liegt nicht unter der eingestellten Confluence-Adresse " + base
-                    + " und wird nicht geladen: " + src;
-            LOG.warning("[Confluence] Bild nicht geladen: url=" + src + " status=- contentType=- bytes=- fehler="
+                    + " und wird nicht geladen: " + ConfluenceRestClient.withoutQuery(String.valueOf(src));
+            LOG.warning("[Confluence] Bild nicht geladen: url=" + ConfluenceRestClient.withoutQuery(String.valueOf(src))
+                    + " status=- contentType=- bytes=- fehler="
                     + Kind.UNSUPPORTED + ": " + text);
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, text);
         }

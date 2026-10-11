@@ -120,7 +120,8 @@ public final class ReaderImageStore {
         describing.put(image.key(), queue);
         request(image, loaded -> {
             if (!loaded.ok()) {
-                finishDescription(image, ReaderImageDescription.unavailable("Das Bild ist nicht ladbar."));
+                finishDescription(image, ReaderImageDescription.unavailable("Das Bild ist nicht ladbar: "
+                        + loaded.failure()));
                 return;
             }
             loader.describe(image, loaded.visionMediaType(), loaded.visionBytes(),
@@ -148,6 +149,8 @@ public final class ReaderImageStore {
     public static final class Loaded {
         /** Text, wenn die Quelle keinen Grund nennt. */
         static final String FAILED_TEXT = "Bild konnte nicht geladen werden";
+        /** Grund, wenn der Lader keinen nennt (alter Lader ohne Grund, {@code null}-Bytes). */
+        static final String NO_REASON = "Der Lader hat keinen Grund gemeldet (Protokoll).";
 
         private final byte[] bytes;
         private final BufferedImage image;
@@ -158,7 +161,7 @@ public final class ReaderImageStore {
             this.bytes = bytes;
             this.image = image;
             this.svg = svg;
-            this.failure = image != null ? null : failure == null || failure.trim().isEmpty() ? FAILED_TEXT : failure;
+            this.failure = image != null ? null : failure == null || failure.trim().isEmpty() ? NO_REASON : failure;
         }
 
         static Loaded of(byte[] bytes) {

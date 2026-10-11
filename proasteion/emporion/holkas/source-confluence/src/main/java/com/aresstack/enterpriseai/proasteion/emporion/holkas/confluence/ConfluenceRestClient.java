@@ -199,15 +199,29 @@ final class ConfluenceRestClient {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Bild: ungültiger Pfad");
         }
         int max = config.maxAttachmentBytes();
+        Map<String, String> headers = session.headers(IMAGE_ACCEPT);
         ConfluenceHttpResponse response;
-        try {
-            response = transport.get(uri, session.headers(IMAGE_ACCEPT), max);
-        } catch (ConfluenceResponseTooLargeException e) {
-            throw imageFailure(uri, null, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
-                    "Bild größer als " + max + " Bytes (Grenze maxAttachmentBytes)"));
-        } catch (IOException e) {
-            throw imageFailure(uri, null, new KnowledgeSourceException(Kind.UNAVAILABLE,
-                    "Bild: Confluence nicht erreichbar (" + cause(e) + ")", e));
+        for (int hop = 0; ; hop++) {
+            try {
+                response = transport.get(uri, headers, max);
+            } catch (ConfluenceResponseTooLargeException e) {
+                throw imageFailure(uri, null, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                        "Bild größer als " + max + " Bytes (Grenze maxAttachmentBytes)"));
+            } catch (IOException e) {
+                throw imageFailure(uri, null, new KnowledgeSourceException(Kind.UNAVAILABLE,
+                        "Bild: Confluence nicht erreichbar (" + cause(e) + ")", e));
+            }
+            URI next = hop < 5 ? foreignRedirect(uri, response) : null;
+            if (next == null) {
+                break;
+            }
+            // Weiterleitungen auf denselben Host folgt der Transport angemeldet; eine auf einen anderen Host (etwa
+            // einen Download-Host) folgt der Bildweg wie ein Browser, aber ohne Authorization: Anmeldedaten
+            // verlassen die eingestellte Confluence nie.
+            LOG.info("[Confluence] Bild: Weiterleitung von " + withoutQuery(uri.toString()) + " auf "
+                    + withoutQuery(next.toString()) + ", ohne Anmeldung gefolgt");
+            uri = next;
+            headers = withoutAuthorization(headers);
         }
         if (!response.isSuccess()) {
             throw imageFailure(uri, response, statusFailure("Bild", response.status()));
@@ -220,6 +234,34 @@ final class ConfluenceRestClient {
                             + body.length + " Bytes)"));
         }
         return body;
+    }
+
+    /** Ziel einer Weiterleitung, die der Transport nicht verfolgt hat (anderer Host); nie von https auf http. */
+    private static URI foreignRedirect(URI from, ConfluenceHttpResponse response) {
+        int status = response.status();
+        if (status != 301 && status != 302 && status != 303 && status != 307 && status != 308
+                || response.location() == null) {
+            return null;
+        }
+        URI target;
+        try {
+            target = from.resolve(response.location());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        String scheme = target.getScheme();
+        if (target.getHost() == null || target.getRawUserInfo() != null
+                || !"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)
+                || "https".equalsIgnoreCase(from.getScheme()) && !"https".equalsIgnoreCase(scheme)) {
+            return null;
+        }
+        return target;
+    }
+
+    private static Map<String, String> withoutAuthorization(Map<String, String> headers) {
+        Map<String, String> copy = new LinkedHashMap<String, String>(headers);
+        copy.remove("Authorization");
+        return Collections.unmodifiableMap(copy);
     }
 
     /** {@code null}, wenn die Antwort ein Bild ist; sonst, was stattdessen kam. */
@@ -253,14 +295,40 @@ final class ConfluenceRestClient {
                 && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P') {
             return true;
         }
-        String head = new String(data, 0, Math.min(data.length, 2048), java.nio.charset.StandardCharsets.UTF_8);
-        return head.contains("<svg");
+        return isSvgDocument(data);
+    }
+
+    /**
+     * SVG nur, wenn {@code <svg} das Wurzelelement ist: vor ihm stehen höchstens BOM, Leerraum, XML-Deklaration,
+     * Kommentare und DOCTYPE. Eine HTML-Seite mit eingebettetem SVG ist kein Bild.
+     */
+    static boolean isSvgDocument(byte[] data) {
+        String head = new String(data, 0, Math.min(data.length, 4096), java.nio.charset.StandardCharsets.UTF_8);
+        int i = head.startsWith("\uFEFF") ? 1 : 0;
+        while (true) {
+            while (i < head.length() && Character.isWhitespace(head.charAt(i))) {
+                i++;
+            }
+            String close = head.startsWith("<?", i) ? "?>" : head.startsWith("<!--", i) ? "-->"
+                    : head.regionMatches(true, i, "<!DOCTYPE", 0, 9) ? ">" : null;
+            if (close == null) {
+                break;
+            }
+            int end = head.indexOf(close, i);
+            if (end < 0) {
+                return false;
+            }
+            i = end + close.length();
+        }
+        return head.startsWith("<svg", i)
+                && (head.length() == i + 4 || !Character.isLetterOrDigit(head.charAt(i + 4)));
     }
 
     /** Schreibt die Logzeile zum fehlgeschlagenen Bild (ohne Header) und gibt den Fehler zurück. */
     private static KnowledgeSourceException imageFailure(URI uri, ConfluenceHttpResponse response,
                                                          KnowledgeSourceException error) {
-        StringBuilder line = new StringBuilder("[Confluence] Bild nicht geladen: url=").append(uri)
+        StringBuilder line = new StringBuilder("[Confluence] Bild nicht geladen: url=")
+                .append(withoutQuery(uri.toString()))
                 .append(" status=").append(response == null ? "-" : String.valueOf(response.status()))
                 .append(" contentType=").append(response == null || response.contentType().isEmpty() ? "-"
                         : response.contentType())
@@ -273,7 +341,8 @@ final class ConfluenceRestClient {
         return error;
     }
 
-    private static String withoutQuery(String location) {
+    /** Adresse ohne Query (Logzeilen). */
+    static String withoutQuery(String location) {
         int query = location.indexOf('?');
         return query < 0 ? location : location.substring(0, query);
     }
@@ -391,9 +460,6 @@ final class ConfluenceRestClient {
         ConfluenceHttpResponse response;
         try {
             response = transport.get(uri, session.headers, maxBytes);
-        } catch (ConfluenceResponseTooLargeException e) {
-            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
-                    what + ": Antwort größer als " + e.maxBytes() + " Bytes");
         } catch (IOException e) {
             throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence nicht erreichbar ("
                     + cause(e) + ")", e);
@@ -474,7 +540,8 @@ final class ConfluenceRestClient {
                 version == null ? null : string(version, "number"), version == null ? null : instant(string(version, "when")),
                 ancestors.isEmpty() ? null : ancestors.get(ancestors.size() - 1),
                 body == null ? null : string(body, "value"),
-                links == null ? null : string(links, "webui"), labels);
+                links == null ? null : string(links, "webui"), labels)
+                .withServerBase(links == null ? null : string(links, "base"));
     }
 
     private static Attachment toAttachment(JsonObject json, String containerId) throws KnowledgeSourceException {
@@ -625,14 +692,20 @@ final class ConfluenceRestClient {
         final List<String> labels;
         /** Klartext-Ausschnitt aus der Suche; leer außerhalb der Suche. */
         final String excerpt;
+        /**
+         * {@code _links.base} der Antwort: die Basis-URL, die Confluence selbst für sich eingestellt hat und mit der
+         * {@code export_view} absolute Bildadressen schreibt; {@code null}, wenn sie fehlt.
+         */
+        final String serverBase;
 
         Page(String id, String title, String spaceKey, String version, Instant modifiedAt,
              String parentId, String html, String webUi, List<String> labels) {
-            this(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, "");
+            this(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, "", null);
         }
 
         private Page(String id, String title, String spaceKey, String version, Instant modifiedAt,
-                     String parentId, String html, String webUi, List<String> labels, String excerpt) {
+                     String parentId, String html, String webUi, List<String> labels, String excerpt,
+                     String serverBase) {
             this.id = id;
             this.title = title;
             this.spaceKey = spaceKey;
@@ -643,10 +716,16 @@ final class ConfluenceRestClient {
             this.webUi = webUi;
             this.labels = Collections.unmodifiableList(labels);
             this.excerpt = excerpt;
+            this.serverBase = serverBase;
         }
 
         Page withExcerpt(String excerpt) {
-            return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt);
+            return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
+                    serverBase);
+        }
+
+        Page withServerBase(String base) {
+            return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt, base);
         }
     }
 

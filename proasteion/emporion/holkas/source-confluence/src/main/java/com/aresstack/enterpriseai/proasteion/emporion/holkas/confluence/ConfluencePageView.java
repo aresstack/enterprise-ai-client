@@ -4,6 +4,8 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -60,6 +62,18 @@ final class ConfluencePageView {
 
     /** @param baseUri Basis-URL der Confluence-Instanz mit abschließendem {@code /} */
     static ConfluencePageView of(String bodyHtml, String baseUri) {
+        return of(bodyHtml, baseUri, null);
+    }
+
+    /**
+     * @param baseUri    eingestellte Basis-URL mit abschließendem {@code /}
+     * @param serverBase {@code _links.base} der Antwort (die Basis, die Confluence selbst für sich eingestellt hat,
+     *                   etwa anderer Hostname, Schema oder Port) oder {@code null}; Bildadressen darunter gehören zu
+     *                   derselben Confluence und werden auf {@code baseUri} umgeschrieben (Pfad hinter dem
+     *                   Kontextpfad und Query bleiben), damit sie über die eingestellte Adresse angemeldet laden.
+     *                   Bilder anderer Hosts bleiben fremd.
+     */
+    static ConfluencePageView of(String bodyHtml, String baseUri, String serverBase) {
         Document doc = Jsoup.parseBodyFragment(bodyHtml == null ? "" : bodyHtml, baseUri);
         doc.select("script, noscript, iframe, object, embed, applet, form, input, button, select, textarea").remove();
         doc.select("style, svg").remove();
@@ -77,6 +91,7 @@ final class ConfluencePageView {
             if (src.isEmpty()) {
                 src = raw;
             }
+            src = onBase(onBase(src, serverBase, baseUri), baseUri, baseUri);
             img.attr("src", src);
             if (raw.startsWith("data:") || src.contains("/emoticons/") || src.contains("/icons/")) {
                 continue;
@@ -117,6 +132,49 @@ final class ConfluencePageView {
         }
         doc.outputSettings().prettyPrint(false);
         return new ConfluencePageView(doc.body().html(), images);
+    }
+
+    /**
+     * {@code src} unter {@code from} (gleiches Schema-unabhängiges Ziel: Host ohne Groß-/Kleinschreibung, Port mit
+     * Standardport gleichgesetzt, Pfad unter dem Kontextpfad von {@code from}) als Adresse unter {@code to}; sonst
+     * {@code src} unverändert. Ein Wechsel von https nach http wird nie übernommen: {@code to} bestimmt das Schema.
+     */
+    static String onBase(String src, String from, String to) {
+        if (src == null || from == null || from.trim().isEmpty()) {
+            return src;
+        }
+        URI image;
+        URI base;
+        try {
+            image = new URI(src);
+            base = new URI(from.trim());
+        } catch (URISyntaxException e) {
+            return src;
+        }
+        if (image.getHost() == null || base.getHost() == null || !image.getHost().equalsIgnoreCase(base.getHost())
+                || port(image) != port(base) && !(isDefaultPort(image) && isDefaultPort(base))) {
+            return src;
+        }
+        String context = base.getRawPath() == null ? "" : base.getRawPath();
+        context = context.endsWith("/") ? context.substring(0, context.length() - 1) : context;
+        String path = image.getRawPath() == null ? "" : image.getRawPath();
+        if (!path.startsWith(context + "/")) {
+            return src;
+        }
+        String target = to.endsWith("/") ? to.substring(0, to.length() - 1) : to;
+        return target + path.substring(context.length())
+                + (image.getRawQuery() == null ? "" : "?" + image.getRawQuery());
+    }
+
+    private static int port(URI uri) {
+        if (uri.getPort() >= 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
+    private static boolean isDefaultPort(URI uri) {
+        return uri.getPort() < 0 || uri.getPort() == 443 || uri.getPort() == 80;
     }
 
     /**

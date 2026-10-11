@@ -62,6 +62,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     static final String DESCRIPTION_FAILED = "Die Beschreibung ist fehlgeschlagen (Protokoll).";
     static final String DESCRIPTIONS_UNAVAILABLE = "Bildbeschreibung ist hier nicht verfügbar.";
     static final String IMAGE_FAILED_UNEXPECTEDLY = "Bild nicht ladbar: unerwarteter Fehler (Protokoll).";
+    static final String IMAGE_NOT_SCHEDULED = "Bild nicht ladbar: Hintergrundarbeit abgelehnt (Protokoll).";
 
     private final ChatWorkspacePanel workspace;
     private final Supplier<List<KnowledgeSourceRegistration>> enabledSources;
@@ -331,26 +332,36 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
             load(image, done, reason -> done.accept(null));
         }
 
-        /** Der Grund eines Fehlschlags geht an die Oberfläche (Diashow) und ins Protokoll, nicht nur auf FINE. */
+        /**
+         * Der Grund eines Fehlschlags geht an die Oberfläche (Diashow) und ins Protokoll; jeder Weg nennt einen Grund.
+         */
         @Override
         public void load(final ReaderImage image, final Consumer<byte[]> done, final Consumer<String> failed) {
+            final String address = withoutQuery(image.src());
             try {
                 workExecutor.execute(() -> {
                     try {
                         final byte[] bytes = browse.viewImage(port, image.src());
                         uiExecutor.execute(() -> done.accept(bytes));
                     } catch (KnowledgeSourceException e) {
-                        LOG.warning("Bild nicht ladbar (" + e.kind() + "): " + image.src() + ": " + e.getMessage());
-                        final String reason = e.getMessage();
+                        final String reason = e.getMessage() == null || e.getMessage().trim().isEmpty()
+                                ? "Bild nicht ladbar (" + e.kind() + ", ohne Meldung der Quelle)" : e.getMessage();
+                        LOG.warning("Bild nicht ladbar (" + e.kind() + "): " + address + ": " + reason);
                         uiExecutor.execute(() -> failed.accept(reason));
                     } catch (RuntimeException e) {
-                        LOG.log(Level.WARNING, "Bild nicht ladbar: " + image.src(), e);
+                        LOG.log(Level.WARNING, "Bild nicht ladbar: " + address, e);
                         uiExecutor.execute(() -> failed.accept(IMAGE_FAILED_UNEXPECTEDLY));
                     }
                 });
             } catch (RuntimeException rejected) {
-                failed.accept(null);
+                LOG.log(Level.WARNING, "Bild nicht ladbar, Hintergrundarbeit abgelehnt: " + address, rejected);
+                failed.accept(IMAGE_NOT_SCHEDULED);
             }
+        }
+
+        private String withoutQuery(String src) {
+            int query = src == null ? -1 : src.indexOf('?');
+            return query < 0 ? String.valueOf(src) : src.substring(0, query);
         }
 
         @Override
