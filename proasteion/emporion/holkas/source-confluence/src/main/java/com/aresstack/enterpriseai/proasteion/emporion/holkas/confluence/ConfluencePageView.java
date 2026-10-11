@@ -145,7 +145,7 @@ final class ConfluencePageView {
      * draw.io-Diagramme sind kein {@code <img>}: Der Browser zeichnet sie per Script aus den Diagrammdaten
      * ({@code /rest/drawio/...}), im HTML steht nur ein Platzhalter mit verstecktem {@code data-diagramdata}
      * (Base64-JSON). Dieses nennt die Vorschaudatei, die das Plugin als Anhang der Seite ablegt
-     * ({@code previewName}, {@code owningPageId}). Für jeden Platzhalter ohne eigenes Bild wird diese Vorschau als
+     * ({@code previewName}, {@code owningPageId}, {@code revision}; bei {@code inc-drawio} eine fremde Seite). Für jeden Platzhalter ohne eigenes Bild wird diese Vorschau als
      * gewöhnliches Bild nach dem Makro eingefügt; sie lädt dann angemeldet wie jeder Anhang.
      */
     static void drawioPreviews(Document doc, String baseUri) {
@@ -175,8 +175,11 @@ final class ConfluencePageView {
                 continue;
             }
             String name = text(diagram, "diagramName");
+            String revision = text(diagram, "revision");
+            // Wie das Plugin selbst (drawio-reader.js): die Vorschau genau der eingebundenen Diagrammrevision.
+            String query = revision.matches("\\d+") ? "?version=" + revision + "&api=v2" : "";
             Element image = new Element("img")
-                    .attr("src", baseUri + "download/attachments/" + owner + "/" + encodeSegment(preview))
+                    .attr("src", baseUri + "download/attachments/" + owner + "/" + encodeSegment(preview) + query)
                     .attr("alt", name.isEmpty() ? preview : name)
                     .attr("data-linked-resource-default-alias", preview);
             anchor.after(new Element("p").appendChild(image));

@@ -47,21 +47,40 @@ public class ConfluencePageViewTest {
 
     @Test
     public void aDrawioDiagramShowsItsPreviewAttachment() {
-        String data = java.util.Base64.getEncoder().encodeToString(("{\"diagramName\":\"Komponente Ü\","
-                + "\"previewName\":\"Komponente Ü.png\",\"owningPageId\":17025995,\"revision\":55}")
-                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String body = "<p>Text</p><p><div style=\"display:block;\" class=\"conf-macro output-block\""
-                + " data-macro-name=\"drawio-sketch\"><div style=\"display:none\">Komponente Ü</div>"
-                + "<div class=\"drawio-macro\" style=\"width:1651px;height:1079px;\"></div>"
-                + "<div style=\"display:none\" data-diagramdata=\"" + data + "\"></div></div></p>";
+                + " data-macro-name=\"drawio-sketch\"><div style=\"display:none\">Übersicht A</div>"
+                + "<div class=\"drawio-macro\" style=\"width:300px;height:200px;\"></div>"
+                + "<div style=\"display:none\" data-diagramdata=\"" + diagram("Übersicht A", 42, 3) + "\"></div>"
+                + "</div></p><p>Danach</p>";
 
         ConfluencePageView view = ConfluencePageView.of(body, BASE);
 
         assertEquals(1, view.images.size());
-        assertEquals(BASE + "download/attachments/17025995/Komponente%20%C3%9C.png", view.images.get(0).src);
-        assertEquals("Komponente Ü", view.images.get(0).title);
-        assertTrue(view.html, view.html.contains("Komponente%20%C3%9C.png"));
+        assertEquals(BASE + "download/attachments/42/%C3%9Cbersicht%20A.png?version=3&api=v2", view.images.get(0).src);
+        assertEquals("Übersicht A", view.images.get(0).title);
+        assertTrue(view.html, view.html.indexOf("%C3%9Cbersicht%20A.png") > view.html.indexOf("Text")
+                && view.html.indexOf("%C3%9Cbersicht%20A.png") < view.html.indexOf("Danach"));
         assertFalse("Diagrammdaten nicht in der Ansicht", view.html.contains("data-diagramdata"));
+    }
+
+    @Test
+    public void anIncludedDiagramLoadsFromItsOwningPage() {
+        String body = "<div data-macro-name=\"inc-drawio\"><div style=\"display:none\" data-diagramdata=\""
+                + diagram("Fremd", 99, 1) + "\"></div></div>"
+                + "<div data-macro-name=\"drawio\"><div style=\"display:none\" data-diagramdata=\""
+                + diagram("Eigen", 42, 7) + "\"></div></div>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE);
+
+        assertEquals(2, view.images.size());
+        assertEquals(BASE + "download/attachments/99/Fremd.png?version=1&api=v2", view.images.get(0).src);
+        assertEquals(BASE + "download/attachments/42/Eigen.png?version=7&api=v2", view.images.get(1).src);
+    }
+
+    private static String diagram(String name, int owningPageId, int revision) {
+        return java.util.Base64.getEncoder().encodeToString(("{\"diagramName\":\"" + name + "\",\"previewName\":\""
+                + name + ".png\",\"owningPageId\":" + owningPageId + ",\"revision\":" + revision + "}")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     @Test
