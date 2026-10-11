@@ -45,6 +45,11 @@ dependencies {
     implementation project(':text-runtime-api')
     implementation project(':text-local')
     implementation project(':text-onnx')
+    implementation project(':research-domain')
+    implementation project(':research-api')
+    implementation project(':research-scope')
+    implementation project(':research-store')
+    implementation project(':research-agent-runtime')
     // Proxy je Ziel in den Modi von win-proxy-java (PAC per PowerShell/VBScript/Windows-Einstellungen, fester
     // Proxy, ...): app.net.HttpRoutes. Bringt GraalJS mit; das Fat Jar führt dessen ServiceLoader-Dateien zusammen.
     implementation libs.win.proxy.java

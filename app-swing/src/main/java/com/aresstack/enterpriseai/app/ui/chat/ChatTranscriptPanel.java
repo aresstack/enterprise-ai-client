@@ -39,6 +39,8 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -96,6 +98,19 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     static final String READ_ALOUD_PAUSE_TOOLTIP = "Vorlesen pausieren";
     static final String READ_ALOUD_UNAVAILABLE_TOOLTIP = "Vorlesen nicht verfügbar";
 
+    /**
+     * Client-Property, die eine durchsichtige Ebene über dem Verlauf (der Wolkenhimmel des Agent-Modus) an sich
+     * setzt: so viel Platz braucht der Verlauf oben, damit die erste Nachricht bei Bildlauf 0 lesbar bleibt
+     * (askai-java8 {@code ComposerAccessory.TRANSCRIPT_TOP_INSET_PROPERTY}).
+     */
+    public static final String TRANSCRIPT_TOP_INSET_PROPERTY = "enterpriseai.transcriptTopInset";
+
+    /** Zwischen Verlauf (DEFAULT) und Orb (PALETTE), wie in askai-java8. */
+    private static final Integer TRANSCRIPT_SKY_LAYER = Integer.valueOf(50);
+
+    private static final int BASE_PADDING_TOP = 10;
+    private static final int BASE_PADDING_BOTTOM = 10;
+
     /** Abstand des Orbs vom oberen und rechten Rand des Verlaufs. */
     private static final int ORB_INSET = 10;
 
@@ -118,6 +133,16 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final Map<Long, BubbleMessageRow> sourceRows = new HashMap<Long, BubbleMessageRow>();
     private final Map<Long, TranscriptEntry> pending = new LinkedHashMap<Long, TranscriptEntry>();
     private final ReadAloudOrb readAloudOrb = new ReadAloudOrb();
+    private final JLayeredPane layers = new JLayeredPane();
+    private JComponent transcriptSkyAccessory;
+    private int topInset;
+    /** Beobachtet die Inset-Property der Ebene (an ihr und ihren direkten Kindern). */
+    private final PropertyChangeListener skyInsetListener = new PropertyChangeListener() {
+        @Override
+        public void propertyChange(PropertyChangeEvent event) {
+            applyTranscriptTopInsetFromSky();
+        }
+    };
     private ReadAloudControl readAloud;
     private boolean readAloudActive;
     private String latestAnswer;
@@ -155,12 +180,11 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         setBackground(bubblePalette.getTranscriptBackground());
         messageList.setLayout(new BoxLayout(messageList, BoxLayout.Y_AXIS));
         messageList.setBackground(bubblePalette.getTranscriptBackground());
-        messageList.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+        messageList.setBorder(BorderFactory.createEmptyBorder(BASE_PADDING_TOP, 0, BASE_PADDING_BOTTOM, 0));
         scrollPane = new ComicScrollPane(messageList, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER, comicPalette);
         scrollPane.getViewport().setBackground(bubblePalette.getTranscriptBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(18);
-        final JLayeredPane layers = new JLayeredPane();
         layers.setLayout(new OrbOverlayLayout());
         scrollPane.getViewport().addComponentListener(new ComponentAdapter() {
             @Override
@@ -214,6 +238,83 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             latestAnswer = entry.getText(); // gezeigt oder geladen, aber nie von selbst vorgelesen
         }
         refresh(true);
+    }
+
+    /**
+     * Legt eine DURCHSICHTIGE Ebene über den Verlauf (den Wolkenhimmel des Agent-Modus aus askai-java8) und ersetzt
+     * eine vorherige. Die Ebene füllt den Verlauf und beansprucht über {@code contains} nur ihre bedienbare Zone, so
+     * dass Klicks und Bildlauf darunter weiter beim Verlauf ankommen; den nötigen Platz oben meldet sie über
+     * {@link #TRANSCRIPT_TOP_INSET_PROPERTY}. Aus askai-java8 {@code OllamaChatPanel.setTranscriptSkyAccessory}.
+     * Nur auf dem EDT.
+     */
+    public void setTranscriptSkyAccessory(JComponent accessory) {
+        clearTranscriptSkyAccessory();
+        if (accessory != null) {
+            transcriptSkyAccessory = accessory;
+            layers.add(accessory, TRANSCRIPT_SKY_LAYER);
+            accessory.addPropertyChangeListener(TRANSCRIPT_TOP_INSET_PROPERTY, skyInsetListener);
+            for (Component child : accessory.getComponents()) {
+                if (child instanceof JComponent) {
+                    ((JComponent) child).addPropertyChangeListener(TRANSCRIPT_TOP_INSET_PROPERTY,
+                            skyInsetListener);
+                }
+            }
+            applyTranscriptTopInsetFromSky();
+            layers.revalidate();
+            layers.repaint();
+        }
+    }
+
+    /** Entfernt die Ebene über dem Verlauf (ohne Ebene nichts). Nur auf dem EDT. */
+    public void clearTranscriptSkyAccessory() {
+        if (transcriptSkyAccessory != null) {
+            transcriptSkyAccessory.removePropertyChangeListener(TRANSCRIPT_TOP_INSET_PROPERTY, skyInsetListener);
+            for (Component child : transcriptSkyAccessory.getComponents()) {
+                if (child instanceof JComponent) {
+                    ((JComponent) child).removePropertyChangeListener(TRANSCRIPT_TOP_INSET_PROPERTY,
+                            skyInsetListener);
+                }
+            }
+            layers.remove(transcriptSkyAccessory);
+            transcriptSkyAccessory = null;
+            setTopInset(0); // ohne Himmel bekommt der Verlauf seine volle Höhe zurück
+            layers.revalidate();
+            layers.repaint();
+        }
+    }
+
+    /** Der größte gemeldete Platzbedarf der Ebene und ihrer direkten Kinder. */
+    private void applyTranscriptTopInsetFromSky() {
+        int inset = 0;
+        if (transcriptSkyAccessory != null) {
+            inset = insetProperty(transcriptSkyAccessory);
+            for (Component child : transcriptSkyAccessory.getComponents()) {
+                if (child instanceof JComponent) {
+                    inset = Math.max(inset, insetProperty((JComponent) child));
+                }
+            }
+        }
+        setTopInset(inset);
+    }
+
+    private static int insetProperty(JComponent component) {
+        Object value = component.getClientProperty(TRANSCRIPT_TOP_INSET_PROPERTY);
+        return value instanceof Integer ? Math.max(0, (Integer) value) : 0;
+    }
+
+    /**
+     * Zusätzlicher Platz oben IN der Bildlauf-Geometrie (unter dem Wolkenhimmel): ganz nach oben gescrollt beginnt
+     * die erste Nachricht unterhalb der deckenden Ebene; {@code 0} stellt den normalen Rand wieder her.
+     */
+    void setTopInset(int pixels) {
+        int inset = Math.max(0, pixels);
+        if (inset == topInset) {
+            return;
+        }
+        topInset = inset;
+        messageList.setBorder(BorderFactory.createEmptyBorder(BASE_PADDING_TOP + topInset, 0, BASE_PADDING_BOTTOM, 0));
+        messageList.revalidate();
+        messageList.repaint();
     }
 
     /**
@@ -646,6 +747,11 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             Rectangle viewport = scrollPane.getViewport().getBounds();
             readAloudOrb.setBounds(viewport.x + viewport.width - ORB_INSET - ReadAloudOrb.SIZE,
                     viewport.y + ORB_INSET, ReadAloudOrb.SIZE, ReadAloudOrb.SIZE);
+            if (transcriptSkyAccessory != null) {
+                // Der Himmel liegt über dem Sichtbereich, die Bildlaufleiste bleibt frei.
+                transcriptSkyAccessory.setBounds(viewport.x, viewport.y, viewport.width, viewport.height);
+                transcriptSkyAccessory.doLayout();
+            }
         }
     }
 

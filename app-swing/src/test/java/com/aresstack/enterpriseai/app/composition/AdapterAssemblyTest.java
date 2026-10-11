@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -136,8 +137,8 @@ public class AdapterAssemblyTest {
         try {
             assertTrue(ports.secrets() instanceof UnavailableSecretProvider);
             assertTrue(StartupNotices.of(config).get(0).contains("KeePassRPC ist deaktiviert"));
-            assertFalse(root.hasAgent());
-            assertNull(root.agentService());
+            assertTrue("ohne Agent-Kommando der eingebaute Recherche-Agent", root.hasAgent());
+            assertNotNull(root.researchHost());
             try {
                 ports.embeddings().embed(Arrays.asList("Probe"));
                 fail("expected EmbeddingException");

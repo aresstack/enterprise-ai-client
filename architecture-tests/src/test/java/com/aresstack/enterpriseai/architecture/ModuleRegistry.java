@@ -115,6 +115,21 @@ final class ModuleRegistry {
                 .module("mcp-runtime-api", "mcp.api", ModuleKind.PORT, "H", "domain")
                 .module("mcp-solon-runtime", "mcp.solon", ModuleKind.ADAPTER, "H", "domain", "mcp-runtime-api")
 
+                // Research-Agent aus askai-java8 (Zweig arch): reiner Fachkern (Projekt, Quellen, Weidezaun).
+                .module("research-domain", "research.domain", ModuleKind.DOMAIN, "Research")
+                // Ports des Research-Agenten (Ablage des Projekts); Implementierung in research-store.
+                .module("research-api", "research.api", ModuleKind.PORT, "Research", "research-domain")
+                // Weidezaun auf der Host-Seite: Koordinator des Scope-Entwurfs, Zaun-Prüfung, Sweep (Use Cases).
+                .module("research-scope", "research.scope", ModuleKind.APPLICATION, "Research",
+                        "research-domain", "research-api")
+                // Gesprächs-Engine des Recherche-Agenten (TeamAgent): spricht das Hauptmodell über den eigenen Port
+                // MainModelChat an; läuft im Prozess des Clients, kein eigener Agentenprozess.
+                .module("research-agent-runtime", "research.runtime", ModuleKind.APPLICATION, "Research",
+                        "research-domain")
+                // Ablage des Research-Projekts (JSON-Dateien je Projektverzeichnis) hinter den Ports aus research-scope.
+                .module("research-store", "research.store", ModuleKind.ADAPTER, "Research",
+                        "research-domain", "research-api")
+
                 .module("comic-controls", "ui.comic", ModuleKind.UI_LIBRARY, "B")
                 .module("app-swing", "app", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
                         "domain", "application",
@@ -125,7 +140,8 @@ final class ModuleRegistry {
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
                         "resource-holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
-                        "text-runtime-api", "text-local", "text-onnx")
+                        "text-runtime-api", "text-local", "text-onnx", "research-domain", "research-api",
+                        "research-scope", "research-store", "research-agent-runtime")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

@@ -1,0 +1,5 @@
+description = 'Gespraechs-Engine des Recherche-Agenten aus askai-java8 (Zweig arch, research-agent-runtime/team): Scoping-Dialog mit dem Hauptmodell, Weidezaun-Updates.'
+
+dependencies {
+    api project(':research-domain')
+}

@@ -137,7 +137,7 @@ public class ApplicationCompositionTest {
                 view.get().chatActions().sendRequested("Hi", false);
             }
         });
-        assertNull("ohne Agent-Konfiguration keine Agent-Ansicht", view.get().agent());
+        assertNotNull("ohne Agent-Kommando der eingebaute Recherche-Agent", view.get().agent());
         assertFalse(view.get().workspace().chatShell() == null);
         TranscriptEntry answer = awaitAnswer(view.get());
         assertEquals("Hallo aus dem Fake.", answer.getText());

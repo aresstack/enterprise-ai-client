@@ -1,0 +1,6 @@
+description = 'Research-Anwendungsschicht aus askai-java8 (Zweig arch): Weidezaun-Koordinator, Zaun-Pruefung, Sweep.'
+
+dependencies {
+    api project(':research-domain')
+    api project(':research-api')
+}

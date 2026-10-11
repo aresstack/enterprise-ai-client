@@ -76,6 +76,13 @@ include 'acp-demo-agent'
 include 'mcp-runtime-api'
 include 'mcp-solon-runtime'
 
+// Research-Agent aus askai-java8 (Zweig arch): Fachkern mit Weidezaun
+include 'research-domain'
+include 'research-api'
+include 'research-scope'
+include 'research-store'
+include 'research-agent-runtime'
+
 // Strang B – Swing-Comic-UI und Composition Root
 include 'comic-controls'
 include 'app-swing'

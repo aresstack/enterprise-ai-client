@@ -175,6 +175,16 @@ public class ComicSearchBar extends JPanel {
         this(placeholder, null);
     }
 
+    /**
+     * THE search bar's natural height — the shared metric other slim bars align to (e.g. the
+     * research sky's collapsed status bar), so a later theme/font change keeps them in sync
+     * automatically. Computed from a reference bar's preferred size, never hardcoded (no static
+     * cache: global mutable state is forbidden here; callers keep the value per instance).
+     */
+    public static int standardHeight() {
+        return new ComicSearchBar("", null).getPreferredSize().height;
+    }
+
     @Override
     protected void paintComponent(Graphics g) {
         Graphics2D g2 = (Graphics2D) g.create();

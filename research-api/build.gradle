@@ -1,0 +1,5 @@
+description = 'Ports des Research-Agenten (Ablage von Scope-Entwurf und Projekt).'
+
+dependencies {
+    api project(':research-domain')
+}

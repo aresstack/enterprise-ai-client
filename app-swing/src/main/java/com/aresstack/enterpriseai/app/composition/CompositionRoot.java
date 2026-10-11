@@ -2,8 +2,11 @@ package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 import com.aresstack.enterpriseai.app.agent.AcpAgentLauncher;
+import com.aresstack.enterpriseai.app.agent.ResearchAgentHost;
+import com.aresstack.enterpriseai.app.agent.ResearchAgentLauncher;
 import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.KnowledgeConfig;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.app.knowledge.StartupIndexing;
@@ -27,6 +30,7 @@ import com.aresstack.enterpriseai.application.resource.policy.ClientResourceAcce
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
+import com.aresstack.enterpriseai.research.store.FileResearchScopeDraftStore;
 import com.aresstack.enterpriseai.resource.holkas.HolkasAcquisitionPort;
 import com.aresstack.enterpriseai.resource.holkas.KnowledgeSourceConnectorRegistry;
 
@@ -58,6 +62,8 @@ public final class CompositionRoot {
     private static final Logger LOG = Logger.getLogger(CompositionRoot.class.getName());
     /** Wartezeit beim Beenden auf eine laufende Indexierung (danach wird der Index geschlossen). */
     static final int INDEXING_SHUTDOWN_WAIT_SECONDS = 10;
+    /** Ordner der Research-Projekte des eingebauten Recherche-Agenten, neben der Konfigurationsdatei. */
+    static final String RESEARCH_DIRECTORY = "research";
 
     private final AppConfig config;
     private final ApplicationPorts ports;
@@ -71,6 +77,7 @@ public final class CompositionRoot {
     private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeMcpTools knowledgeTools;
     private final AgentService agentService;
+    private final ResearchAgentHost researchHost;
     private final ExecutorService agentStarts;
     private final ExecutorService workExecutor;
     private final Executor uiExecutor;
@@ -128,14 +135,19 @@ public final class CompositionRoot {
         this.startupIndexing = new StartupIndexing(indexingBinding, knowledgeStatus, ports.sources(), uiExecutor,
                 sourceSelection);
 
+        this.agentStarts = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-agent-start"));
         if (ports.hasAgent()) {
             AgentBackend agent = ports.agent();
-            this.agentStarts = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-agent-start"));
+            this.researchHost = null;
             this.agentService = new AgentService(new AcpAgentLauncher(agent.connector(), agent.launchSpec(),
                     agent.registry(), agent.endpoint(), agentTools()), agentStarts);
         } else {
-            this.agentStarts = null;
-            this.agentService = null;
+            // Ohne eigenes Agent-Kommando ist der Agent-Modus der eingebaute Recherche-Agent aus askai-java8
+            // (arch) samt Weidezaun; er läuft im Client auf dem Chat-Modell, Projekte neben der Konfiguration.
+            this.researchHost = new ResearchAgentHost(AppPaths.configFile().toAbsolutePath().getParent()
+                    .resolve(RESEARCH_DIRECTORY).toFile(), FileResearchScopeDraftStore::new);
+            this.agentService = new AgentService(new ResearchAgentLauncher(researchHost, ports.chat(),
+                    config.chat().defaultOptions()), agentStarts);
         }
         this.shutdown = buildShutdown();
     }
@@ -250,13 +262,18 @@ public final class CompositionRoot {
         return knowledgeTools;
     }
 
-    /** {@code null}, wenn kein Agent-Modus konfiguriert ist. */
+    /** Der Agent-Modus: das konfigurierte Agent-Kommando, sonst der eingebaute Recherche-Agent. */
     public AgentService agentService() {
         return agentService;
     }
 
     public boolean hasAgent() {
         return agentService != null;
+    }
+
+    /** Weidezaun des eingebauten Recherche-Agenten; {@code null}, wenn ein eigenes Agent-Kommando läuft. */
+    public ResearchAgentHost researchHost() {
+        return researchHost;
     }
 
     /** Die Häkchen der Wissensquellen: Start-Indexierung und RAG richten sich danach. */

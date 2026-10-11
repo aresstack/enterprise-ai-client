@@ -99,6 +99,9 @@ public final class ShellAssembly {
         if (root.hasAgent()) {
             agentService = root.agentService();
             agent = AgentModeAssembly.create(agentService, root.uiExecutor(), root.clock(), palette, bubbles);
+            if (root.researchHost() != null) {
+                AgentModeAssembly.attachResearchSky(agent, root.researchHost(), root.uiExecutor());
+            }
         } else {
             agentService = null;
             agent = null;
@@ -141,6 +144,9 @@ public final class ShellAssembly {
                 if (mode == ShellMode.AGENT && agent != null) {
                     if (!agent.model().isStreaming() && !agentService.isBusy()) {
                         agentService.endSession(); // der Agent behält sonst den alten Kontext in seiner Session
+                        if (root.researchHost() != null) {
+                            root.researchHost().startNewProject(); // neues Research-Projekt, frischer Weidezaun
+                        }
                         agent.model().clear();
                     }
                     return;

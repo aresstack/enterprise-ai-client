@@ -1,0 +1,7 @@
+description = 'Research-Ablage aus askai-java8 (Zweig arch): Scope-Entwurf und Anker-Vektoren als JSON-Dateien.'
+
+dependencies {
+    api project(':research-domain')
+    api project(':research-api')
+    implementation libs.gson
+}
