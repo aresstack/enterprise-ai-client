@@ -390,7 +390,7 @@ public class SettingsPanelTest {
             public void run() {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
-                assertEquals(7, SettingsPanel.tabCount());
+                assertEquals(8, SettingsPanel.tabCount());
                 for (int i = 0; i < SettingsPanel.tabCount(); i++) {
                     panel.tabButton(i).doClick();
                     assertTrue(panel.tabButton(i).isSelected());
@@ -402,6 +402,70 @@ public class SettingsPanelTest {
     }
 
     @Test
+    public void toolsTabListsEveryRegisteredToolWithAvailabilityAndOrigin() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        final List<ToolOverviewEntry> registry = new ArrayList<ToolOverviewEntry>();
+        registry.add(new ToolOverviewEntry("knowledge_search", "Sucht in den Wissensquellen.",
+                "Wissenswerkzeuge (KnowledgeMcpTools)", "Agent"));
+        registry.add(new ToolOverviewEntry("knowledge_read", "Liest ein Dokument.",
+                "Wissenswerkzeuge (KnowledgeMcpTools)", "Chat + Agent"));
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                assertEquals("Tools", SettingsPanel.tabLabel(SettingsPanel.TOOLS_TAB));
+                assertEquals("Technische Details", SettingsPanel.tabLabel(SettingsPanel.TOOLS_TAB + 1));
+                SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
+                        SettingsPanel.Mode.EDIT, actions, new ToolOverview() {
+                            @Override
+                            public List<ToolOverviewEntry> tools() {
+                                return new ArrayList<ToolOverviewEntry>(registry);
+                            }
+                        }, palette);
+                panel.tabButton(SettingsPanel.TOOLS_TAB).doClick();
+                String shown = texts(panel.toolsTab().lines());
+                assertTrue(shown, shown.contains("knowledge_search") && shown.contains("knowledge_read"));
+                assertTrue(shown, shown.contains("Chat + Agent") && shown.contains("Agent"));
+                assertTrue(shown, shown.contains(ToolsTab.ORIGIN_PREFIX + "Wissenswerkzeuge (KnowledgeMcpTools)"));
+                assertEquals(2, panel.toolsTab().lines().getComponentCount());
+                // Ein neu registriertes Werkzeug erscheint beim nächsten Anzeigen ohne Änderung der Oberfläche.
+                registry.add(new ToolOverviewEntry("future_tool", "Neu.", "Irgendwo", "Chat"));
+                panel.tabButton(0).doClick();
+                panel.tabButton(SettingsPanel.TOOLS_TAB).doClick();
+                assertEquals(3, panel.toolsTab().lines().getComponentCount());
+                assertTrue(texts(panel.toolsTab().lines()).contains("future_tool"));
+            }
+        });
+    }
+
+    @Test
+    public void toolsTabWithoutRunningApplicationSaysSo() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
+                        SettingsPanel.Mode.FIRST_START, actions, palette);
+                panel.selectTab(SettingsPanel.TOOLS_TAB);
+                assertTrue(texts(panel.toolsTab().lines()).contains("Keine Werkzeuge registriert"));
+            }
+        });
+    }
+
+    /** Alle Beschriftungstexte unter einer Komponente. */
+    private static String texts(java.awt.Container container) {
+        StringBuilder out = new StringBuilder();
+        for (java.awt.Component child : container.getComponents()) {
+            if (child instanceof javax.swing.JLabel) {
+                out.append(((javax.swing.JLabel) child).getText()).append('\n');
+            }
+            if (child instanceof java.awt.Container) {
+                out.append(texts((java.awt.Container) child));
+            }
+        }
+        return out.toString();
+    }
+
+    @Test
     public void indexTabSitsBeforeTechnicalDetailsAndEditsTheIndexDirectory() throws Exception {
         final ScriptedActions actions = new ScriptedActions();
         onEdt(new Runnable() {
@@ -409,7 +473,7 @@ public class SettingsPanelTest {
             public void run() {
                 assertEquals("Index", SettingsPanel.tabLabel(SettingsPanel.INDEX_TAB));
                 assertEquals("Sprachausgabe", SettingsPanel.tabLabel(SettingsPanel.INDEX_TAB - 1));
-                assertEquals("Technische Details", SettingsPanel.tabLabel(SettingsPanel.INDEX_TAB + 1));
+                assertEquals("Tools", SettingsPanel.tabLabel(SettingsPanel.INDEX_TAB + 1));
                 SettingsPanel panel = new SettingsPanel(sample().toBuilder().indexDirectory("C:/Daten/index").build(),
                         Collections.<String>emptyList(), SettingsPanel.Mode.EDIT, actions, palette);
                 assertEquals("C:/Daten/index", panel.indexTab().indexDirectory().getText());

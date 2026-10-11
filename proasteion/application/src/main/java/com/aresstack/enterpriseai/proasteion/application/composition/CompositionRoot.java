@@ -34,6 +34,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchServ
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.RefreshKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTools;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
@@ -56,6 +57,7 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -81,6 +83,11 @@ import java.util.logging.Logger;
  * einmal, auch wenn Fenster-Schließen und JVM-Shutdown-Hook beide zugreifen.
  */
 public final class CompositionRoot {
+
+    /** Herkunft der Werkzeuge im {@link ToolCatalog} (Anzeige im Einstellungen-Reiter „Tools“). */
+    static final String ORIGIN_KNOWLEDGE = "Wissenswerkzeuge (KnowledgeMcpTools)";
+    static final String ORIGIN_RESEARCH = "Recherche-Agent, je Phase (ResearchControlTools)";
+    static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
     static final String NAVIGATION_DIRECTORY = "navigation";
@@ -108,6 +115,7 @@ public final class CompositionRoot {
     private final LoadKnowledgeDocumentUseCase documents;
     private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeMcpTools knowledgeTools;
+    private final ToolCatalog toolCatalog = new ToolCatalog();
     private final AgentService agentService;
     private final ResearchAgentHost researchHost;
     private final AgentModelChoice agentModelChoice;
@@ -205,6 +213,14 @@ public final class CompositionRoot {
         final KnowledgeSourceSelection selection = sourceSelection;
         this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, searchIndexing,
                 id -> !selection.isRestricted() || selection.isEnabled(id), config.agent().toolSettings());
+        // Die zentrale Werkzeug-Registry: Chat, Agenten und der Einstellungen-Reiter „Tools“ lesen nur hier.
+        final KnowledgeMcpTools offered = knowledgeTools;
+        toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.AGENT),
+                () -> Collections.singletonList(offered.knowledgeSearch()));
+        toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.CHAT, ToolChannel.AGENT),
+                () -> Collections.singletonList(offered.knowledgeRead()));
+        toolCatalog.registerDefinitions(ORIGIN_ATTACHMENTS, EnumSet.of(ToolChannel.CHAT),
+                AttachmentTools::definitions);
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
         // Dokumentnavigation im Lesebereich: Passagen der Index-Pipeline (askai arch PassageSegmentation) + TopicClusterer,
         // ohne Vorrang in der Index-Warteschlange; ohne OpenNLP-Satzmodell nur Originalüberschriften. Analysierte Fassungen
@@ -231,6 +247,8 @@ public final class CompositionRoot {
         wireSourceProcessing(catalogForImages(ports));
         final ChatPortMainModelChat researchModel = new ChatPortMainModelChat(ports.chat(),
                 config.chat().defaultOptions(), agentModelChoice);
+        toolCatalog.register(ORIGIN_RESEARCH, EnumSet.of(ToolChannel.RESEARCH_AGENT),
+                () -> ResearchControlTools.toolsFor(researchHost, researchModel));
         // Der Werkzeugsatz des Agenten folgt der Phase (askai arch ResearchToolPolicy): neu berechnet und per
         // updateTools veröffentlicht, sobald der Host seinen Zustand ändert.
         final PhaseToolSetController researchToolSet = new PhaseToolSetController(
@@ -238,7 +256,7 @@ public final class CompositionRoot {
                     @Override
                     public List<McpToolContribution> get() {
                         List<McpToolContribution> tools = new ArrayList<McpToolContribution>(
-                                ResearchControlTools.toolsFor(researchHost, researchModel));
+                                toolCatalog.tools(EnumSet.of(ToolChannel.RESEARCH_AGENT)));
                         tools.addAll(agentTools());
                         return tools;
                     }
@@ -315,9 +333,14 @@ public final class CompositionRoot {
         };
     }
 
-    /** Die Werkzeuge am MCP-Endpoint des Agenten: AP20-Wissenswerkzeuge; weitere Beiträge hier ergänzen. */
+    /** Die Werkzeuge am MCP-Endpoint jedes Agenten: Kanal {@link ToolChannel#AGENT} im {@link #toolCatalog()}. */
     public List<McpToolContribution> agentTools() {
-        return new ArrayList<McpToolContribution>(knowledgeTools.contributions());
+        return toolCatalog.tools(EnumSet.of(ToolChannel.AGENT));
+    }
+
+    /** Die zentrale Werkzeug-Registry; neue Werkzeuge werden hier registriert, nicht in Chat oder Oberfläche. */
+    public ToolCatalog toolCatalog() {
+        return toolCatalog;
     }
 
     /**
@@ -424,7 +447,8 @@ public final class CompositionRoot {
      * Chat-Pfad sieht nur {@link com.aresstack.enterpriseai.astu.acropolis.tool.AiTool}.
      */
     public com.aresstack.enterpriseai.astu.acropolis.tool.AiTool knowledgeReadChatTool() {
-        return new McpChatTool(knowledgeTools.knowledgeRead());
+        McpToolContribution read = toolCatalog.find(KnowledgeMcpTools.KNOWLEDGE_READ, ToolChannel.CHAT);
+        return read == null ? null : new McpChatTool(read);
     }
 
     /** Der Agent-Modus: das konfigurierte Agent-Kommando, sonst der eingebaute Recherche-Agent. */

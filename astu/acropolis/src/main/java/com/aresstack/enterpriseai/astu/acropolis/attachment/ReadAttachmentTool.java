@@ -15,6 +15,12 @@ public final class ReadAttachmentTool implements AiTool {
             + "\"offset\":{\"type\":\"integer\",\"description\":\"Startzeichen für lange Dateien, Standard 0\"}},"
             + "\"required\":[\"attachment_id\"]}";
 
+    /** Name, Beschreibung und Schema für das Modell (auch für die Werkzeugübersicht der Einstellungen). */
+    static final ToolDefinition DEFINITION = ToolDefinition.function(NAME,
+            "Liest den Textinhalt einer vom Nutzer angehängten Datei "
+            + "(PDF, Word, Excel, PowerPoint, HTML, E-Mail, Text). Lange Dateien kommen abschnittsweise; "
+            + "der nächste Abschnitt über offset.", SCHEMA);
+
     private final AttachmentTexts texts;
 
     ReadAttachmentTool(AttachmentTexts texts) {
@@ -28,9 +34,7 @@ public final class ReadAttachmentTool implements AiTool {
 
     @Override
     public ToolDefinition definition() {
-        return ToolDefinition.function(NAME, "Liest den Textinhalt einer vom Nutzer angehängten Datei "
-                + "(PDF, Word, Excel, PowerPoint, HTML, E-Mail, Text). Lange Dateien kommen abschnittsweise; "
-                + "der nächste Abschnitt über offset.", SCHEMA);
+        return DEFINITION;
     }
 
     @Override

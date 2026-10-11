@@ -32,7 +32,9 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SourceDialog;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
+import com.aresstack.enterpriseai.proasteion.exedra.settings.CatalogToolOverview;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ToolOverview;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsPanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
@@ -186,7 +188,8 @@ public final class EnterpriseAiClientMain {
                         });
                     }
                 });
-                view.setSettingsAction(settingsAction(frame, file, settingsActions, palette, settings));
+                view.setSettingsAction(settingsAction(frame, file, settingsActions,
+                        new CatalogToolOverview(root.toolCatalog()), palette, settings));
                 view.setChatModels(modelCatalogs::cached, () -> installedLocalChats(localVoices,
                         settings.current().models().localModelRoot()), modelId -> {
                     try {
@@ -240,8 +243,8 @@ public final class EnterpriseAiClientMain {
      * der Settings-Service sie neu und seine Beobachter übernehmen die Änderungen sofort, ohne Neustart.
      */
     private static Runnable settingsAction(final JFrame frame, final ConfigurationFile file,
-                                           final SettingsDialogActions actions, final ComicPalette palette,
-                                           final SettingsService settings) {
+                                           final SettingsDialogActions actions, final ToolOverview tools,
+                                           final ComicPalette palette, final SettingsService settings) {
         return new Runnable() {
             @Override
             public void run() {
@@ -255,7 +258,7 @@ public final class EnterpriseAiClientMain {
                     return;
                 }
                 SettingsForm saved = SettingsDialog.show(frame, current, Collections.<String>emptyList(),
-                        SettingsPanel.Mode.EDIT, actions, palette);
+                        SettingsPanel.Mode.EDIT, actions, tools, palette);
                 if (saved == null) {
                     return;
                 }

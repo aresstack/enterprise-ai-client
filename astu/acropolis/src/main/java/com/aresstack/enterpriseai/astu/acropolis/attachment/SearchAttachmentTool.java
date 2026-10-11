@@ -23,6 +23,11 @@ public final class SearchAttachmentTool implements AiTool {
             + "\"attachment_id\":{\"type\":\"string\",\"description\":\"Kennung des Anhangs; ohne Angabe alle Anhänge\"}},"
             + "\"required\":[\"query\"]}";
 
+    /** Name, Beschreibung und Schema für das Modell (auch für die Werkzeugübersicht der Einstellungen). */
+    static final ToolDefinition DEFINITION = ToolDefinition.function(NAME,
+            "Sucht einen Begriff in den angehängten Dateien und liefert die "
+            + "passenden Absätze. Für gezielte Fragen zu großen Dateien.", SCHEMA);
+
     private final AttachmentTexts texts;
 
     SearchAttachmentTool(AttachmentTexts texts) {
@@ -36,8 +41,7 @@ public final class SearchAttachmentTool implements AiTool {
 
     @Override
     public ToolDefinition definition() {
-        return ToolDefinition.function(NAME, "Sucht einen Begriff in den angehängten Dateien und liefert die "
-                + "passenden Absätze. Für gezielte Fragen zu großen Dateien.", SCHEMA);
+        return DEFINITION;
     }
 
     @Override

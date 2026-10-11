@@ -1,5 +1,11 @@
 package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
+import com.aresstack.enterpriseai.astu.acropolis.attachment.SearchAttachmentTool;
+import com.aresstack.enterpriseai.astu.acropolis.attachment.ReadAttachmentTool;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ToolOverviewEntry;
+import com.aresstack.enterpriseai.proasteion.exedra.settings.CatalogToolOverview;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.proasteion.application.composition.StartupNotices;
@@ -197,6 +203,41 @@ public class ApplicationCompositionTest {
         });
         assertNotNull(view.get().agent());
         assertSame(view.get().workspace().chatShell(), view.get().agent().shell()); // ein Chat, zwei Modi
+    }
+
+    @Test
+    public void toolsTabShowsTheCentralRegistryWithCorrectAvailability() throws Exception {
+        CompositionRoot root = compose(true);
+        Map<String, ToolOverviewEntry> shown = new LinkedHashMap<String, ToolOverviewEntry>();
+        for (ToolOverviewEntry tool : new CatalogToolOverview(root.toolCatalog()).tools()) {
+            assertNull("doppelt: " + tool.name(), shown.put(tool.name(), tool));
+            assertFalse(tool.name(), tool.description().isEmpty());
+            assertFalse(tool.name(), tool.origin().isEmpty());
+        }
+        // Wissenswerkzeuge: Name und Beschreibung aus der McpToolContribution, Verfügbarkeit aus der Registrierung.
+        assertEquals("Agent", shown.get(KnowledgeMcpTools.KNOWLEDGE_SEARCH).availability());
+        assertEquals("Chat + Agent", shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).availability());
+        assertEquals(root.knowledgeTools().knowledgeRead().getDescription(),
+                shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).description());
+        assertTrue(shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).origin().contains("KnowledgeMcpTools"));
+        // Anhang-Werkzeuge nur im Chat, Recherche-Steuerung nur am eingebauten Agenten.
+        assertEquals("Chat", shown.get(ReadAttachmentTool.NAME).availability());
+        assertEquals("Chat", shown.get(SearchAttachmentTool.NAME).availability());
+        assertEquals("Recherche-Agent", shown.get("research_status").availability());
+        assertEquals("Recherche-Agent", shown.get("main_model_complete").availability());
+        // Die Anzeige und die tatsächlich angebotenen Sätze stammen aus derselben Registry.
+        List<String> agent = new ArrayList<String>();
+        for (McpToolContribution tool : root.agentTools()) {
+            agent.add(tool.getName());
+        }
+        List<String> shownForAgent = new ArrayList<String>();
+        for (ToolOverviewEntry tool : shown.values()) {
+            if (tool.availability().contains("Agent") && !tool.availability().contains("Recherche-Agent")) {
+                shownForAgent.add(tool.name());
+            }
+        }
+        assertEquals(shownForAgent, agent);
+        assertEquals(KnowledgeMcpTools.KNOWLEDGE_READ, root.knowledgeReadChatTool().name());
     }
 
     @Test

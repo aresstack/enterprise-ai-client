@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.attachment;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolRegistry;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
+import com.aresstack.enterpriseai.chat.api.ToolDefinition;
 
 import java.util.Arrays;
 import java.util.List;
@@ -21,6 +22,11 @@ public final class AttachmentTools {
             throw new IllegalArgumentException("store, extractor and conversation must not be null");
         }
         this.texts = new AttachmentTexts(store, extractor, conversation);
+    }
+
+    /** Name, Beschreibung und Schema beider Werkzeuge ohne Unterhaltung, z. B. für die Werkzeugübersicht. */
+    public static List<ToolDefinition> definitions() {
+        return Arrays.asList(ReadAttachmentTool.DEFINITION, SearchAttachmentTool.DEFINITION);
     }
 
     public ToolRegistry registry() {

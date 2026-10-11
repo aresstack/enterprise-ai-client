@@ -42,11 +42,11 @@ public final class SettingsDialog extends JDialog {
     private SettingsForm result;
 
     private SettingsDialog(Window owner, SettingsForm initial, List<String> problems, SettingsPanel.Mode mode,
-                           SettingsDialogActions actions, ComicPalette palette) {
+                           SettingsDialogActions actions, ToolOverview tools, ComicPalette palette) {
         super(owner, SettingsPanel.TITLE, ModalityType.APPLICATION_MODAL);
         setUndecorated(true);
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-        this.panel = new SettingsPanel(initial, problems, mode, actions, palette);
+        this.panel = new SettingsPanel(initial, problems, mode, actions, tools, palette);
         panel.setOnSaved(new Consumer<SettingsForm>() {
             @Override
             public void accept(SettingsForm saved) {
@@ -106,9 +106,17 @@ public final class SettingsDialog extends JDialog {
      */
     public static SettingsForm show(Window owner, SettingsForm initial, List<String> problems,
                                     SettingsPanel.Mode mode, SettingsDialogActions actions, ComicPalette palette) {
+        return show(owner, initial, problems, mode, actions, ToolOverview.none(), palette);
+    }
+
+    /** Wie oben, dazu die Werkzeuge der laufenden Anwendung für den Reiter „Tools“. */
+    public static SettingsForm show(Window owner, SettingsForm initial, List<String> problems,
+                                    SettingsPanel.Mode mode, SettingsDialogActions actions, ToolOverview tools,
+                                    ComicPalette palette) {
         ComicPalette colors = palette == null ? ComicPalette.defaultPalette() : palette;
         ComicTheme.installMenuDefaults(colors);
-        SettingsDialog dialog = new SettingsDialog(owner, initial, problems, mode, actions, colors);
+        SettingsDialog dialog = new SettingsDialog(owner, initial, problems, mode, actions,
+                tools == null ? ToolOverview.none() : tools, colors);
         dialog.setVisible(true);
         return dialog.result;
     }
