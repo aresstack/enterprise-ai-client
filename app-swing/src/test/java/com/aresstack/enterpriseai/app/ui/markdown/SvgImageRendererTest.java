@@ -52,6 +52,22 @@ public class SvgImageRendererTest {
         assertTrue(sanitized.contains("href=\"#a\""));
     }
 
+    @Test
+    public void dropsCanvasBackgroundSoTheBubbleShowsThrough() {
+        String svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\""
+                + " style=\"background:#f9f9f9\"><rect width=\"100%\" height=\"100%\" fill=\"white\"/>"
+                + "<rect x=\"40\" y=\"30\" width=\"120\" height=\"40\" fill=\"#e65100\"/></svg>";
+
+        String sanitized = SvgImageRenderer.sanitize(svg);
+        assertFalse(sanitized.contains("100%"));
+        assertFalse(sanitized.contains("background"));
+        assertTrue(sanitized.contains("<rect x=\"40\""));
+
+        BufferedImage image = new SvgImageRenderer().render(svg, 200);
+        assertNotNull(image);
+        assertEquals(0, image.getRGB(0, 0) >>> 24);
+    }
+
     private static String resource(String name) throws IOException {
         InputStream in = SvgImageRendererTest.class.getResourceAsStream(name);
         assertNotNull(name, in);

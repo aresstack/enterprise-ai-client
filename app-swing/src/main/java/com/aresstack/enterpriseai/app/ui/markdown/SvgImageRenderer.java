@@ -17,6 +17,10 @@ import java.util.regex.Pattern;
  * {@code <tspan>}) und entfernt alles, was den Renderer ans Netz oder an Skripte bringen könnte: DOCTYPE/Entitäten,
  * {@code <script>}, {@code <foreignObject>}, {@code on*}-Attribute, externe {@code href}s und {@code url(...)}-
  * Verweise sowie {@code @import}. Der Renderer bleibt offline.</p>
+ *
+ * <p>Das Bild bleibt transparent, damit die Farbe der Sprechblase durchscheint: Ein Rechteck, das als erstes
+ * gezeichnetes Element die ganze Fläche füllt (typischer Modell-Hintergrund), und {@code background} im Stil des
+ * {@code <svg>}-Elements werden entfernt.</p>
  */
 final class SvgImageRenderer implements MermaidImageRenderer {
 
@@ -37,6 +41,12 @@ final class SvgImageRenderer implements MermaidImageRenderer {
     private static final Pattern X_ATTRIBUTE = Pattern.compile("\\sx\\s*=\\s*(\"[^\"]*\"|'[^']*')", FLAGS);
     private static final Pattern BARE_AMPERSAND = Pattern.compile("&(?!#\\d+;|#x[0-9a-fA-F]+;|[a-zA-Z][a-zA-Z0-9]*;)");
     private static final Pattern NAMED_ENTITY = Pattern.compile("&([a-zA-Z][a-zA-Z0-9]*);");
+    private static final Pattern SVG_OPEN_TAG = Pattern.compile("<svg\\b([^>]*)>", FLAGS);
+    private static final Pattern NON_DRAWING_PREFIX = Pattern.compile("\\s*(?:<!--.*?-->|<(defs|title|desc|style|metadata)"
+            + "\\b[^>]*?(?:/>|>.*?</\\1\\s*>))", FLAGS);
+    private static final Pattern RECT_ELEMENT = Pattern.compile("\\s*<rect\\b([^>]*?)(?:/>|>\\s*</rect\\s*>)", FLAGS);
+    private static final Pattern STYLE_BACKGROUND = Pattern.compile("background(?:-color)?\\s*:[^;\"']*;?", FLAGS);
+    private static final Pattern NUMBER = Pattern.compile("\\s*(-?\\d+(?:\\.\\d+)?)\\s*(?:px)?\\s*");
 
     @Override
     public BufferedImage render(String svgSource, int width) {
@@ -94,7 +104,107 @@ final class SvgImageRenderer implements MermaidImageRenderer {
         svg = BARE_AMPERSAND.matcher(svg).replaceAll("&amp;");
         svg = splitTextLines(svg);
         svg = LINE_BREAK.matcher(svg).replaceAll(" ");
-        return svg;
+        return removeBackground(svg);
+    }
+
+    /** Entfernt einen flächenfüllenden Hintergrund, damit das Bild transparent bleibt. */
+    private static String removeBackground(String svg) {
+        Matcher open = SVG_OPEN_TAG.matcher(svg);
+        if (!open.find()) {
+            return svg;
+        }
+        String rootAttributes = open.group(1);
+        String cleanedRoot = removeStyleBackground(rootAttributes);
+        int position = open.end();
+        Matcher prefix = NON_DRAWING_PREFIX.matcher(svg);
+        prefix.region(position, svg.length());
+        while (prefix.lookingAt()) {
+            position = prefix.end();
+            prefix.region(position, svg.length());
+        }
+        Matcher rect = RECT_ELEMENT.matcher(svg);
+        rect.region(position, svg.length());
+        boolean dropRect = rect.lookingAt() && coversCanvas(rect.group(1), rootAttributes);
+        StringBuilder out = new StringBuilder(svg.length());
+        out.append(svg, 0, open.start()).append("<svg").append(cleanedRoot).append('>');
+        if (dropRect) {
+            out.append(svg, open.end(), rect.start()).append(svg, rect.end(), svg.length());
+        } else {
+            out.append(svg, open.end(), svg.length());
+        }
+        return out.toString();
+    }
+
+    private static String removeStyleBackground(String rootAttributes) {
+        Matcher style = attributeMatcher(rootAttributes, "style");
+        if (!style.find()) {
+            return rootAttributes;
+        }
+        String value = STYLE_BACKGROUND.matcher(attributeValue(style)).replaceAll("");
+        return rootAttributes.substring(0, style.start()) + "style=\"" + value + "\""
+                + rootAttributes.substring(style.end());
+    }
+
+    /** Liegt das Rechteck bei 0/0 und ist mindestens so groß wie die Zeichenfläche (oder 100 %)? */
+    private static boolean coversCanvas(String rectAttributes, String rootAttributes) {
+        if (!isZero(attribute(rectAttributes, "x")) || !isZero(attribute(rectAttributes, "y"))) {
+            return false;
+        }
+        double[] canvas = canvasSize(rootAttributes);
+        return covers(attribute(rectAttributes, "width"), canvas[0])
+                && covers(attribute(rectAttributes, "height"), canvas[1]);
+    }
+
+    private static double[] canvasSize(String rootAttributes) {
+        String viewBox = attribute(rootAttributes, "viewBox");
+        if (viewBox != null) {
+            String[] parts = viewBox.trim().split("[\\s,]+");
+            if (parts.length == 4) {
+                double width = number(parts[2]);
+                double height = number(parts[3]);
+                if (width > 0 && height > 0) {
+                    return new double[] {width, height};
+                }
+            }
+        }
+        return new double[] {number(attribute(rootAttributes, "width")), number(attribute(rootAttributes, "height"))};
+    }
+
+    private static boolean covers(String value, double canvas) {
+        if (value == null) {
+            return false;
+        }
+        if (value.trim().equals("100%")) {
+            return true;
+        }
+        double size = number(value);
+        return canvas > 0 && size >= canvas;
+    }
+
+    private static boolean isZero(String value) {
+        return value == null || value.trim().equals("0%") || number(value) == 0d;
+    }
+
+    /** @return die Zahl (optional mit {@code px}) oder {@code -1}, wenn der Wert keine solche Zahl ist */
+    private static double number(String value) {
+        if (value == null) {
+            return -1d;
+        }
+        Matcher matcher = NUMBER.matcher(value);
+        return matcher.matches() ? Double.parseDouble(matcher.group(1)) : -1d;
+    }
+
+    private static String attribute(String attributes, String name) {
+        Matcher matcher = attributeMatcher(attributes, name);
+        return matcher.find() ? attributeValue(matcher) : null;
+    }
+
+    private static Matcher attributeMatcher(String attributes, String name) {
+        return Pattern.compile("(?<![\\w:-])" + name + "\\s*=\\s*(\"([^\"]*)\"|'([^']*)')").matcher(attributes);
+    }
+
+    private static String attributeValue(Matcher matcher) {
+        return matcher.group(2) != null ? matcher.group(2) : matcher.group(3);
     }
 
     private static String removeExternalHrefs(String svg) {
