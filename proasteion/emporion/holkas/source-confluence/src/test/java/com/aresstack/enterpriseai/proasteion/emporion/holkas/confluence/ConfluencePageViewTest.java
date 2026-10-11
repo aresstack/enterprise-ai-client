@@ -113,6 +113,18 @@ public class ConfluencePageViewTest {
         assertEquals("Ablauf", view.images.get(0).title);
     }
 
+    @Test
+    public void withoutANumericRevisionTheLatestPreviewIsRequested() {
+        String data = java.util.Base64.getEncoder().encodeToString(
+                "{\"diagramName\":\"Ohne\",\"previewName\":\"Ohne.png\",\"owningPageId\":42,\"revision\":\"x\"}"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String body = "<div data-macro-name=\"drawio\"><div style=\"display:none\" data-diagramdata=\"" + data
+                + "\"></div></div>";
+
+        assertEquals(BASE + "download/attachments/42/Ohne.png#drawio=Ohne&page=42",
+                ConfluencePageView.of(body, BASE).images.get(0).src);
+    }
+
     private static String diagram(String name, int owningPageId, int revision) {
         return java.util.Base64.getEncoder().encodeToString(("{\"diagramName\":\"" + name + "\",\"previewName\":\""
                 + name + ".png\",\"owningPageId\":" + owningPageId + ",\"revision\":" + revision + "}")
