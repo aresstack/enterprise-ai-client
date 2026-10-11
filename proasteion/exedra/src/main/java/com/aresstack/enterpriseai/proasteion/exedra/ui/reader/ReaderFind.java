@@ -181,7 +181,17 @@ final class ReaderFind {
         } catch (BadLocationException ex) {
             return;
         }
-        String lower = content.toLowerCase(Locale.ROOT);
+        // Unsichtbare Umbruchstellen in langen Wörtern (ReaderHtmlView.BREAK) zählen beim Suchen nicht mit.
+        StringBuilder plain = new StringBuilder(content.length());
+        int[] offsets = new int[content.length() + 1];
+        for (int k = 0; k < content.length(); k++) {
+            if (content.charAt(k) != ReaderHtmlView.BREAK) {
+                offsets[plain.length()] = k;
+                plain.append(content.charAt(k));
+            }
+        }
+        offsets[plain.length()] = content.length();
+        String lower = plain.toString().toLowerCase(Locale.ROOT);
         int position = 0;
         while (position < lower.length()) {
             int index = lower.indexOf(needle, position);
@@ -189,7 +199,9 @@ final class ReaderFind {
                 break;
             }
             int end = index + needle.length();
-            hits.add(Hit.text(text, index, end, content.substring(index, end)));
+            int from = offsets[index];
+            int to = offsets[end - 1] + 1;
+            hits.add(Hit.text(text, from, to, plain.substring(index, end)));
             position = end;
         }
     }

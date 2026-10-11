@@ -258,7 +258,8 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
     }
 
     private JsonObject pageJson(FakePage page, String expand) {
-        boolean withBody = expand != null && expand.contains("body.view");
+        boolean withView = expand != null && expand.contains("body.view");
+        boolean withExport = expand != null && expand.contains("body.export_view");
         boolean withLabels = expand != null && expand.contains("metadata.labels");
         JsonObject json = new JsonObject();
         json.addProperty("id", page.id);
@@ -279,12 +280,21 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
             ancestors.add(ancestor);
         }
         json.add("ancestors", ancestors);
-        if (withBody) {
-            JsonObject view = new JsonObject();
-            view.addProperty("value", page.html);
-            view.addProperty("representation", "view");
+        if (withView || withExport) {
             JsonObject body = new JsonObject();
-            body.add("view", view);
+            if (withView) {
+                // Wie Confluence: body.view lässt asynchrone Makros (Jira) als Platzhalter stehen.
+                JsonObject view = new JsonObject();
+                view.addProperty("value", page.html);
+                view.addProperty("representation", "view");
+                body.add("view", view);
+            }
+            if (withExport) {
+                JsonObject export = new JsonObject();
+                export.addProperty("value", page.exportHtml == null ? page.html : page.exportHtml);
+                export.addProperty("representation", "export_view");
+                body.add("export_view", export);
+            }
             json.add("body", body);
         }
         if (withLabels) {
@@ -369,6 +379,8 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         final String title;
         final String spaceKey;
         final String html;
+        /** {@code body.export_view}, falls es von {@code body.view} abweicht (Makros server-seitig gerendert). */
+        String exportHtml;
         final List<String> children = new ArrayList<String>();
         final List<String> attachments = new ArrayList<String>();
         final List<String> labels = new ArrayList<String>();
@@ -381,6 +393,12 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
             this.title = title;
             this.spaceKey = spaceKey;
             this.html = html;
+        }
+
+        /** Setzt {@code body.export_view} abweichend von {@code body.view}. */
+        public FakePage exportView(String exportHtml) {
+            this.exportHtml = exportHtml;
+            return this;
         }
 
         FakePage labels(String... names) {

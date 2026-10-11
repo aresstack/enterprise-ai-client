@@ -1243,11 +1243,13 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     }
 
     private JScrollPane scroll(JComponent view) {
+        // Waagrecht nur, wenn etwas nicht umbrechen kann (breite Tabelle): rollen statt rechts abschneiden.
         JScrollPane scroll = new ComicScrollPane(view, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER, palette);
+                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED, palette);
         scroll.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
         scroll.getViewport().setBackground(palette.getSurface());
         scroll.getVerticalScrollBar().setUnitIncrement(18);
+        scroll.getHorizontalScrollBar().setUnitIncrement(18);
         return scroll;
     }
 
@@ -1499,11 +1501,18 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             WidthAwareHeight view = widthAwareView();
             if (view != null && getParent() != null && getParent().getWidth() > 0) {
                 Insets insets = getInsets();
-                int inner = getParent().getWidth() - insets.left - insets.right;
-                return new Dimension(getParent().getWidth(),
-                        view.preferredHeightForWidth(inner) + insets.top + insets.bottom);
+                int width = Math.max(getParent().getWidth(), minimumWidth());
+                int inner = width - insets.left - insets.right;
+                return new Dimension(width, view.preferredHeightForWidth(inner) + insets.top + insets.bottom);
             }
             return super.getPreferredSize();
+        }
+
+        /** Breiter als das, was nicht umbrechen kann (z. B. eine Tabelle mit festen Spalten), wird die Seite nie. */
+        private int minimumWidth() {
+            Insets insets = getInsets();
+            return getComponentCount() == 0 ? 0
+                    : getComponent(0).getMinimumSize().width + insets.left + insets.right;
         }
 
         /**
@@ -1546,9 +1555,10 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             return Math.max(18, visible.height - 18);
         }
 
+        /** Folgt der Breite, solange alles hineinpasst; sonst rollt der Lesebereich waagrecht statt abzuschneiden. */
         @Override
         public boolean getScrollableTracksViewportWidth() {
-            return true;
+            return widthAwareView() == null || getParent() == null || getParent().getWidth() >= minimumWidth();
         }
 
         @Override

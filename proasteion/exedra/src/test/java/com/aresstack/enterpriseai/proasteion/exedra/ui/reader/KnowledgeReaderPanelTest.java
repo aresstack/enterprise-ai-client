@@ -51,6 +51,50 @@ public class KnowledgeReaderPanelTest {
         });
     }
 
+    @Test
+    public void wideTableWithALongAddressIsNeverCutOnTheRight() throws Exception {
+        final KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette(), url -> {
+        }, (code, width) -> null);
+        final ReaderLink link = new ReaderLink("wiki", "wiki:page/3", "Tasks", "", "wiki:page/3");
+        final String url = "https://console.example.invalid/k8s/ns/devsecops/tekton.dev~v1beta1~Pipeline/update";
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            reader.open(link, false);
+            reader.showHtml(link.key(), "<table><tr><td>Deployment</td><td>Pipeline starten, Version angeben</td>"
+                            + "<td><a href=\"" + url + "\">" + url + "</a></td></tr></table><p>Ende des Satzes.</p>",
+                    "", java.util.Collections.emptyList(), (image, done) -> done.accept(null));
+            reader.setSize(500, 700);
+            layout(reader);
+            layout(reader);
+            JScrollPane scroll = find(reader);
+            List<JEditorPane> panes = new ArrayList<JEditorPane>();
+            collect(scroll.getViewport().getView(), panes);
+            JEditorPane pane = panes.get(0);
+            // Die Adresse bricht um, statt die Tabelle über den Rand zu schieben ...
+            String text;
+            try {
+                text = pane.getDocument().getText(0, pane.getDocument().getLength());
+            } catch (javax.swing.text.BadLocationException e) {
+                throw new AssertionError(e);
+            }
+            assertTrue(text, text.indexOf(ReaderHtmlView.BREAK) >= 0);
+            // ... und was trotzdem nicht passt, ist rollbar statt rechts abgeschnitten.
+            assertTrue("rechts abgeschnitten: " + pane.getWidth() + " < " + pane.getMinimumSize().width,
+                    pane.getWidth() >= pane.getMinimumSize().width);
+            assertNothingCut(reader);
+        });
+    }
+
+    @Test
+    public void longWordsGetBreaksButTagsEntitiesAndCodeStayIntact() {
+        String html = ReaderHtmlView.breakLongWords("<a href=\"https://a.invalid/x/y\">https://host.invalid/aa/bb/cc/dd"
+                + "?a=1&amp;b=2</a> kurz <pre>/very/long/path/that/stays/as/it/is</pre>");
+        String b = String.valueOf(ReaderHtmlView.BREAK);
+
+        assertTrue(html, html.startsWith("<a href=\"https://a.invalid/x/y\">https:" + b + "/" + b + "/" + b + "host."));
+        assertTrue(html, html.contains("&amp;" + b + "b=" + b + "2</a> kurz "));
+        assertTrue(html, html.contains("<pre>/very/long/path/that/stays/as/it/is</pre>"));
+    }
+
     private static String longHtml() {
         StringBuilder html = new StringBuilder("<h1>Roadmap</h1><h2>Meilensteine</h2>");
         for (int i = 0; i < 40; i++) {

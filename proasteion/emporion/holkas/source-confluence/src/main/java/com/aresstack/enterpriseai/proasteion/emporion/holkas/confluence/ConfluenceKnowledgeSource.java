@@ -53,8 +53,8 @@ import java.util.Set;
  *   <li>IDs: {@code confluence:<locator>/page/<id>} und {@code confluence:<locator>/attachment/<attId>} (Locator = kanonische Basis-URL ohne Schema).</li>
  *   <li>Revision: Versionsnummer und Änderungszeitpunkt aus Confluence.</li>
  *   <li>Inhalt: gerenderte Ansicht ({@code body.view}), in Text mit Markdown-Struktur überführt.</li>
- *   <li>Lese-Ansicht ({@link PageViewSource}): dasselbe {@code body.view} als HTML mit den Bildern an ihrer
- *       Stelle; deren Bytes lädt {@link #loadViewImage} angemeldet von dieser Confluence.</li>
+ *   <li>Lese-Ansicht ({@link PageViewSource}): {@code body.export_view} (Rückfall {@code body.view}) als HTML
+ *       mit den Bildern an ihrer Stelle; deren Bytes lädt {@link #loadViewImage} angemeldet von dieser Confluence.</li>
  *   <li>Suche: CQL {@code type=page AND text ~ "..."} über {@code /rest/api/content/search} (wie MainframeMate),
  *       optional auf konfigurierte Spaces beschränkt; dieser Endpunkt liefert keine Textausschnitte, Treffer
  *       haben deshalb einen leeren Snippet.</li>
@@ -180,7 +180,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         return withSession(new Operation<PageView>() {
             @Override
             public PageView run(Session session) throws KnowledgeSourceException {
-                Page loaded = client.page(session, parsed.contentId, true);
+                Page loaded = client.readingPage(session, parsed.contentId);
                 String base = config.baseUrl().toString();
                 base = base.endsWith("/") ? base : base + "/";
                 ConfluencePageView view = ConfluencePageView.of(loaded.html, base);

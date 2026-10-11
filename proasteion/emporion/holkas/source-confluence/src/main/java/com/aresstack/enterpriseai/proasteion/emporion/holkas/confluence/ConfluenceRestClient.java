@@ -40,6 +40,13 @@ final class ConfluenceRestClient {
     private static final Logger LOG = Logger.getLogger(ConfluenceRestClient.class.getName());
 
     private static final String PAGE_EXPAND = "body.view,version,space,ancestors,metadata.labels";
+    /**
+     * Für die Lese-Ansicht zusätzlich {@code body.export_view}: Confluence rendert dabei Makros, die
+     * {@code body.view} nur als Lade-Platzhalter liefert und erst im Browser per Script füllt (Jira-Vorgänge und
+     * Jira-Tabellen: „Getting issue details...“, nur die Kopfzeile). {@code body.view} bleibt Rückfall, falls
+     * {@code export_view} leer ist; der Index liest weiter {@code body.view}.
+     */
+    private static final String READING_EXPAND = "body.export_view," + PAGE_EXPAND;
     /** Felder für Seiten ohne Inhalt (Startpunkte, Kindseiten, Suchtreffer); Labels sind nicht Standard. */
     private static final String LIST_EXPAND = "version,space,metadata.labels";
     /** Confluence Data Center liefert Zeitstempel auch mit kompaktem Offset ({@code +1100}), kein ISO-8601. */
@@ -109,6 +116,15 @@ final class ConfluenceRestClient {
             throw new KnowledgeSourceException(Kind.NOT_FOUND, "Inhalt " + contentId + " ist keine Seite");
         }
         return toPage(json);
+    }
+
+    /** Die Seite für die Lese-Ansicht: {@code body.export_view}, leer oder fehlend {@code body.view}. */
+    Page readingPage(Session session, String contentId) throws KnowledgeSourceException {
+        JsonObject json = getJson(session, "/rest/api/content/" + contentId + "?expand=" + READING_EXPAND, "Seite");
+        if (!"page".equals(string(json, "type"))) {
+            throw new KnowledgeSourceException(Kind.NOT_FOUND, "Inhalt " + contentId + " ist keine Seite");
+        }
+        return toPage(json, true);
     }
 
     /** Direkte Kindseiten in Confluence-Reihenfolge, höchstens {@code max}. */
@@ -327,13 +343,21 @@ final class ConfluenceRestClient {
     // --- JSON-Abbildung -----------------------------------------------------------------------------------
 
     private Page toPage(JsonObject json) throws KnowledgeSourceException {
+        return toPage(json, false);
+    }
+
+    private Page toPage(JsonObject json, boolean exportView) throws KnowledgeSourceException {
         String id = string(json, "id");
         if (!ConfluenceIds.isContentId(id)) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Seite ohne gültige ID");
         }
         JsonObject space = object(json, "space");
         JsonObject version = object(json, "version");
-        JsonObject body = object(object(json, "body"), "view");
+        JsonObject bodies = object(json, "body");
+        JsonObject body = exportView ? object(bodies, "export_view") : null;
+        if (body == null || string(body, "value") == null || string(body, "value").trim().isEmpty()) {
+            body = object(bodies, "view");
+        }
         List<String> ancestors = new ArrayList<String>();
         JsonArray ancestorArray = array(json, "ancestors");
         if (ancestorArray != null) {

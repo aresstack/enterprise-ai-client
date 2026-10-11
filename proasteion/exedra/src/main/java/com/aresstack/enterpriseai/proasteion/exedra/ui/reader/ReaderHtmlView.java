@@ -269,9 +269,93 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
                 .append("  background: #fff3e0; border-left: 4px solid #ff9800; padding: 8px; margin: 8px 0; }")
                 .append("</style>")
                 .append("</head><body>")
-                .append(bodyHtml == null ? "" : bodyHtml)
+                .append(breakLongWords(bodyHtml == null ? "" : bodyHtml))
                 .append("</body></html>");
         return sb.toString();
+    }
+
+    /** Ab dieser Länge bekommt ein Wort Umbruchstellen (lange Adressen, Pfade, Bezeichner). */
+    static final int LONG_WORD = 24;
+    /** Unsichtbare Umbruchstelle; {@link ReaderFind} überspringt sie beim Suchen. */
+    static final char BREAK = '\u200B';
+    private static final String BREAK_AFTER = "/-_.~?=:,@+"; // ohne & # ;, die in Entities stehen
+
+    /**
+     * Setzt in langen Wörtern des Textes (nicht in Tags, Entities, {@code <pre>}, Styles oder Skripten) nach {@code / - _ . ~ ? =}
+     * usw. eine unsichtbare Umbruchstelle. Swing bricht ein Wort sonst nie um: Eine lange Adresse in einer
+     * Tabellenzelle machte die Tabelle breiter als den Lesebereich, und der Text war rechts abgeschnitten.
+     */
+    static String breakLongWords(String html) {
+        StringBuilder out = new StringBuilder(html.length() + html.length() / 16);
+        StringBuilder word = new StringBuilder();
+        int pre = 0;
+        int i = 0;
+        while (i < html.length()) {
+            char c = html.charAt(i);
+            if (c == '<') {
+                flushWord(word, out, pre > 0);
+                int end = html.indexOf('>', i);
+                end = end < 0 ? html.length() : end + 1;
+                String tag = html.substring(i, end).toLowerCase(java.util.Locale.ROOT);
+                if (tag.startsWith("<pre") || tag.startsWith("<style") || tag.startsWith("<script")) {
+                    pre++;
+                } else if ((tag.startsWith("</pre") || tag.startsWith("</style") || tag.startsWith("</script"))
+                        && pre > 0) {
+                    pre--;
+                }
+                out.append(html, i, end);
+                i = end;
+            } else if (Character.isWhitespace(c)) {
+                flushWord(word, out, pre > 0);
+                out.append(c);
+                i++;
+            } else if (c == '&') {
+                int end = i + 1;
+                while (end < html.length() && end - i <= 10 && (Character.isLetterOrDigit(html.charAt(end))
+                        || html.charAt(end) == '#')) {
+                    end++;
+                }
+                if (end < html.length() && html.charAt(end) == ';') {
+                    word.append(html, i, end + 1); // Entity bleibt ganz
+                    word.append(BREAK_MARK);
+                    i = end + 1;
+                } else {
+                    word.append(c);
+                    i++;
+                }
+            } else {
+                word.append(c);
+                i++;
+            }
+        }
+        flushWord(word, out, pre > 0);
+        return out.toString();
+    }
+
+    /** Markiert im Wortpuffer die Stelle nach einer Entity (z. B. {@code &amp;}) als mögliche Umbruchstelle. */
+    private static final char BREAK_MARK = '\uFFFF';
+
+    private static void flushWord(StringBuilder word, StringBuilder out, boolean keep) {
+        int visible = 0;
+        for (int k = 0; k < word.length(); k++) {
+            visible += word.charAt(k) == BREAK_MARK ? 0 : 1;
+        }
+        boolean split = !keep && visible >= LONG_WORD;
+        for (int k = 0; k < word.length(); k++) {
+            char c = word.charAt(k);
+            boolean last = k == word.length() - 1;
+            if (c == BREAK_MARK) {
+                if (split && !last) {
+                    out.append(BREAK);
+                }
+                continue;
+            }
+            out.append(c);
+            if (split && !last && BREAK_AFTER.indexOf(c) >= 0) {
+                out.append(BREAK);
+            }
+        }
+        word.setLength(0);
     }
 
     /**

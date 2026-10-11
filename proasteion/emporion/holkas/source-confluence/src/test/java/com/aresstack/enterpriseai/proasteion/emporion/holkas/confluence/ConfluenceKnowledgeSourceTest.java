@@ -231,6 +231,28 @@ public class ConfluenceKnowledgeSourceTest {
     }
 
     @Test
+    public void readingViewShowsJiraRowsFromTheExportViewInsteadOfTheBrowserPlaceholder() throws Exception {
+        String head = "<h2>Liefergegenstände</h2><table><tr><th>Key</th><th>Summary</th><th>Status</th></tr>";
+        confluence.page("110", "Roadmap", "DEV", head + "<tr><td>Getting issues...</td></tr></table>")
+                .exportView(head + "<tr><td>PRJ-1</td><td>Feinkonzept</td><td>Done</td></tr>"
+                        + "<tr><td>PRJ-2</td><td>Betriebskonzept</td><td>Open</td></tr></table>");
+
+        String html = source().pageView(page("110")).html();
+
+        assertTrue(html, html.contains("PRJ-1") && html.contains("PRJ-2"));
+        assertFalse(html, html.contains("Getting issues"));
+        // Der Index liest weiter body.view (Entscheidung: nicht blind global ersetzen).
+        assertTrue(source().load(page("110")).text().contains("Getting issues"));
+    }
+
+    @Test
+    public void readingViewFallsBackToTheViewWhenTheExportViewIsEmpty() throws Exception {
+        confluence.page("111", "Alt", "DEV", "<p>Nur body.view</p>").exportView("");
+
+        assertTrue(source().pageView(page("111")).html().contains("Nur body.view"));
+    }
+
+    @Test
     public void loadReportsLabelsAsMetadata() throws Exception {
         assertEquals("howto,java", source().load(page("100")).resource().metadata().get("confluence.labels").get());
     }
