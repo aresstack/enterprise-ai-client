@@ -47,7 +47,8 @@ java -jar enterprise-ai-client-<version>.jar
    KeePass startet die Anwendung trotzdem und meldet, welche Secrets fehlen; Anfragen scheitern dann mit einem
    Authentifizierungsfehler.
 4. **Chatten**: Frage eintippen, Senden (Enter; Umschalt+Enter für eine neue Zeile). Antworten streamen und
-   erscheinen als Markdown (Überschriften, Listen, Tabellen, Code mit Kopierknopf, Links; Mermaid-Diagramme als
+   erscheinen als Markdown (Überschriften, Listen, Tabellen, Code mit Kopierknopf, Links; Tabellenzellen zeigen Links,
+   Fett/Code und das Inline-HTML der Modelle wie `<ul><li>` und `<br>` formatiert; Mermaid-Diagramme als
    Bild, ein Klick vergrößert), „Stop“ im Composer bricht ab; der System-Prompt kommt aus `chat.systemPrompt`. „+ Neuer Chat“ im Drawer beginnt eine
    neue Unterhaltung. Das Fenster ist rahmenlos: die Kopfzeile zieht, der Rand vergrößert, das ✕ schließt.
 5. **Quelle anbinden**: Eine Quelle unter `sources` und `source.<n>.*` eintragen (MediaWiki oder
