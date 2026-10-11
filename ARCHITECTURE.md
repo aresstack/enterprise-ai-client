@@ -319,10 +319,10 @@ eigene Palette gibt es nicht.
   ohne Fenster).
 - Drawer (`proasteion.exedra.ui.sidebar`): Seite „Chats“ mit Suchleiste, „+ Neuer Chat“ (eröffnet eine neue Unterhaltung am
   `ChatService` und schließt die bisherige; im Agent-Modus beendet es die ACP-Session über
-  `AgentService.endSession()`; nicht während einer Antwort), Zeilen je Ansicht und Zahnrad für die Einstellungen; Seite
-  „Wissensquellen“ listet `sources` (Häkchen, Indexstand, ⟳, ✎-Dialog, „+ Quelle“, ✕ je Zeile) und öffnet
-  unten mit „Index …“ den Index-Dialog (`knowledge.indexDirectory`, `knowledge.indexOnStartup`; gilt beim nächsten
-  Start). Weitere Seiten kommen als `ChatSidebarTab` dazu.
+  `AgentService.endSession()`; nicht während einer Antwort) und Zeilen je Ansicht; Seite
+  „Wissensquellen“ listet `sources` (Häkchen, Indexstand, ⟳, ✎-Dialog, „+ Quelle“, ✕ je Zeile). Weitere Seiten
+  kommen als `ChatSidebarTab` dazu. Der Fuß von `ChatSidebarPanel` liegt außerhalb der Seiten und trägt auf jedem
+  Reiter das Zahnrad für die Einstellungen (dort Reiter „Index“ mit `knowledge.indexDirectory`).
 - Antworten des Assistenten sind Markdown-Blasen wie in askai-java8 `arch` (`proasteion.exedra.ui.chat.AssistantMarkdownBubble`
   mit `proasteion.exedra.ui.markdown.MarkdownMessageView`): flexmark 0.62.2 (Tabellen, Autolinks, Durchstreichen) wird auf native
   Swing-Komponenten abgebildet (Überschriften, Listen, Zitate, Codeblöcke mit Kopieraktion, Tabellen, Links über
@@ -464,12 +464,11 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   `FilePairingKeyStore`, `SwingPairingCallback`),
   `proasteion.exedra.ui.security` (`KeePassPairingDialog`, reine Oberfläche), `proasteion.exedra.ui.settings` (Einstellungen-Dialog,
   reine Oberfläche über dem Formular `SettingsForm` und dem Vertrag `SettingsDialogActions`; dazu `SourceDialog`
-  über `SourceForm`/`SourceActions` und `IndexDialog` über `IndexForm`/`IndexActions` für die Drawer-Seite
-  „Wissensquellen“), `proasteion.exedra.ui.workspace`
+  über `SourceForm`/`SourceActions` für die Drawer-Seite „Wissensquellen“), `proasteion.exedra.ui.workspace`
   (`ChatWorkspacePanel` mit Hamburger, Modus-Pille und Drawer, `ShellFrame` rahmenloses Hauptfenster,
   `WorkspaceActions`, `KnowledgeSourceItem`), `proasteion.exedra.ui.sidebar` (`ChatSidebarPanel`, `SidebarTabRibbon`,
   `ChatHistoryRow`, `ChatSidebarTab`; Ports aus askai-java8 `arch`), `proasteion.exedra.settings`
-  (`SettingsMapper`, `FileSettingsActions`, `FileIndexActions`; `ConfigurationFile` und `FileSourceActions` liegen in
+  (`SettingsMapper`, `FileSettingsActions`; `ConfigurationFile` und `FileSourceActions` liegen in
   `proasteion.application.settings`, weil der Start die Quellenadressen abgleicht;
   `ConfigurationStartup`, `ConfigurationCheck`:
   Dialog ↔ Datei ↔ `AppConfigLoader`; `ConnectionProbe` und `ConnectionChecker`: der Verbindungstest des Dialogs
@@ -517,8 +516,8 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   abbrechen → Agent-Modus beenden (`KnowledgeMcpTools.shutdown()`, `AgentService.close()`, Endpoint abgemeldet)
   → Startindexierung abbrechen und abwarten → Ports schließen (`SolonMcpServerRuntime.shutdown()` +
   `stopSharedServer()`, dann `LuceneKnowledgeIndex.close()`) → Executor stoppen.
-- **Indexierung**: `knowledge.indexOnStartup=true` indexiert alle konfigurierten Quellen nacheinander über die
-  `KnowledgeIndexingBinding` (AP22), sichtbar in der Statuszeile mit Abbrechen-Knopf; Berichte ins Log.
+- **Indexierung**: Beim Start wird nichts indexiert; die Suche füllt den Index mit ihren Treffern, ganze Quellen
+  indexiert ⟳ („Jetzt indexieren“) im Drawer. `knowledge.indexOnStartup` ist Altbestand und wird ignoriert.
 - **Tests**: `ApplicationCompositionTest` baut den ganzen Graphen headless mit Fakes (Chat, Embedding, Index,
   Quelle, In-Process-MCP-Registry, Fake-ACP-Connector) und prüft Indexierung, Chat- und RAG-Roundtrip durch die
   Shell, Agent-Werkzeuge und Shutdown-Reihenfolge; `AdapterAssemblyTest` baut die echten Adapter aus der

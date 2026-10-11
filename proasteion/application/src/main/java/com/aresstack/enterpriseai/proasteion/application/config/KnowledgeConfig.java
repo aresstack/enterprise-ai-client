@@ -8,14 +8,13 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import java.nio.file.Path;
 
 /**
- * Wissensbasis und RAG: Indexverzeichnis, Chunking, Retrieval- und Kontexteinstellungen (Defaults aus AP10) sowie
- * ob die konfigurierten Quellen beim Start im Hintergrund indexiert werden; dazu das Vorladen der Suchtreffer
+ * Wissensbasis und RAG: Indexverzeichnis, Chunking, Retrieval- und Kontexteinstellungen (Defaults aus AP10); dazu
+ * das Vorladen der Suchtreffer
  * ({@code knowledge.prefetch.*}, MainframeMate {@code confluencePrefetchMaxItems/Concurrency/CacheMaxMb}).
  */
 public final class KnowledgeConfig {
 
     private final Path indexDirectory;
-    private final boolean indexOnStartup;
     private final KnowledgeChunkingPolicy chunking;
     private final int embeddingBatchSize;
     private final RetrievalSettings retrieval;
@@ -23,11 +22,10 @@ public final class KnowledgeConfig {
     private final KnowledgePrefetchService.Settings prefetch;
     private final String passageLanguage;
 
-    KnowledgeConfig(Path indexDirectory, boolean indexOnStartup, KnowledgeChunkingPolicy chunking,
+    KnowledgeConfig(Path indexDirectory, KnowledgeChunkingPolicy chunking,
                     int embeddingBatchSize, RetrievalSettings retrieval, ContextSettings context,
                     KnowledgePrefetchService.Settings prefetch, String passageLanguage) {
         this.indexDirectory = indexDirectory;
-        this.indexOnStartup = indexOnStartup;
         this.chunking = chunking;
         this.embeddingBatchSize = embeddingBatchSize;
         this.retrieval = retrieval;
@@ -52,11 +50,6 @@ public final class KnowledgeConfig {
         return indexDirectory;
     }
 
-    /** {@code true}: alle Quellen werden nach dem Start in einem Hintergrund-Thread indexiert. */
-    public boolean indexOnStartup() {
-        return indexOnStartup;
-    }
-
     public KnowledgeChunkingPolicy chunking() {
         return chunking;
     }
@@ -76,7 +69,7 @@ public final class KnowledgeConfig {
 
     @Override
     public String toString() {
-        return "KnowledgeConfig[indexDirectory=" + indexDirectory + ", indexOnStartup=" + indexOnStartup
+        return "KnowledgeConfig[indexDirectory=" + indexDirectory
                 + ", chunking=" + chunking + ", embeddingBatchSize=" + embeddingBatchSize + ", retrieval=" + retrieval
                 + ", context=" + context + ", prefetch=" + prefetch + "]";
     }

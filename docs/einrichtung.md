@@ -98,12 +98,12 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | KeePass | `security.keepass.enabled`, `host`, `port`, `clientDisplayName`, `pairingKeyStore`; „In KeePass prüfen“ mit dem Eintrag des API-Keys |
 | Netzwerk & Agent | `ui.windowTitle`; Proxy-Auflösung wie AskAI (`network.proxy.mode` mit den Modi von win-proxy-java, PAC-URL/Ermittlungsskript, Host/Port, Test-URL, Timeout, „Proxy auflösen“, „HTTPS-Verbindung testen“); TLS-Quellen (`network.tls.*`); User-Agent, Prefer IPv6, Proxy-Anmeldung NONE/BASIC (KeePass-Eintrag); Agent-Modus. „Verbindung testen“ steht im Reiter KI-Dienst. |
 | Modelle | je Kategorie ein Modell: `chat.model`, `embedding.model`, `model.rerank`, `model.tts`, `model.stt`, `model.vision`, `model.documentOcr`, `model.imageEmbedding` (lokale mit Präfix `local:`); „Modelle aktualisieren“; Modellverzeichnis lokaler Stimmen `models.local.modelRoot` |
+| Index | `knowledge.indexDirectory` (mit „Wählen …“); leer heißt `index` im Anwendungsverzeichnis |
 
-- **Wissensquellen und Index** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet die Liste `source.<n>.*`, je
+- **Wissensquellen** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet die Liste `source.<n>.*`, je
   Quelle `source.<n>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki
   `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` (Häkchen, ⟳, ✎,
-  „+ MediaWiki“/„+ Confluence“) und über „Index …“ `knowledge.indexDirectory` (mit Verzeichnisauswahl) und
-  `knowledge.indexOnStartup`. Beides schreibt in dieselbe Datei; ein neues Indexverzeichnis gilt sofort.
+  „+ Quelle“) in derselben Datei.
 - **Prüfen** läuft durch denselben Loader wie der Start und baut wie dieser die TLS-Vertrauensregel (eine
   fehlende oder leere CA-Datei fällt also hier auf, nicht erst beim nächsten Start): Speichern geht nur ohne
   Probleme; Probleme stehen unter den Reitern mit Feldname und Schlüssel, der betroffene Reiter wird gewählt.
@@ -152,8 +152,8 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 
 1. Quellen im Reiter „Wissensquellen“ anlegen oder als Liste `source.<n>.*` konfigurieren ([MediaWiki](konfiguration-mediawiki.md),
    [Confluence](konfiguration-confluence.md)).
-2. Mit `knowledge.indexOnStartup=true` (Standard) indexiert die Anwendung beim Start alle Quellen nacheinander
-   im Hintergrund. Die Statuszeile über der Eingabezeile zeigt Fortschritt ("Indexierung: k von N Seiten · Titel")
+2. Beim Start wird nichts indexiert: Die Suche füllt den Index mit ihren Treffern, ⟳ („Jetzt indexieren“) an einer
+   Quelle indexiert sie ganz. Die Statuszeile über der Eingabezeile zeigt Fortschritt ("Indexierung: k von N Seiten · Titel")
    und Ergebnis ("Wissensbasis: n Seiten, m Abschnitte"); ein Knopf bricht ab.
 3. Den Schalter "RAG" in der Eingabezeile einschalten. Vor jeder Antwort sucht die Anwendung in der Wissensbasis
    (Volltext plus semantisch), gibt dem Modell nummerierte Auszüge als Kontext mit und hängt die Quellen

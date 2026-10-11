@@ -21,15 +21,11 @@ import com.aresstack.enterpriseai.proasteion.application.net.LiveNetwork;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.SourcePartitionSelection;
 import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
-import com.aresstack.enterpriseai.proasteion.exedra.settings.FileIndexActions;
 import com.aresstack.enterpriseai.proasteion.application.settings.FileSourceActions;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.ConfigurationStartup;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.SettingsMapper;
 import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ShellFrame;
-import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.IndexDialog;
-import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.IndexForm;
-import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.IndexPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialog;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SourceActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SourceDialog;
@@ -201,7 +197,7 @@ public final class EnterpriseAiClientMain {
                 }, root.workExecutor());
                 view.workspace().chatShell().transcript().setReadAloud(readAloud);
                 view.workspace().chatShell().composer().setDictation(dictation);
-                attachSourceEditing(view, frame, file, palette, settings);
+                attachSourceEditing(view, frame, file, palette);
                 view.knowledgeSources().setPartitionSelection(partitions);
                 ShellFrame.rememberBounds(frame, applicationState);
                 view.workspace().setApplicationState(applicationState);
@@ -313,12 +309,11 @@ public final class EnterpriseAiClientMain {
     }
 
     /**
-     * Der Drawer-Reiter „Wissensquellen“ bearbeitet die Quellen der Datei über den Quellen-Dialog und mit
-     * „Index …“ Indexverzeichnis und Indexierung beim Start über den Index-Dialog.
+     * Der Drawer-Reiter „Wissensquellen“ bearbeitet die Quellen der Datei über den Quellen-Dialog; das
+     * Indexverzeichnis steht im Einstellungen-Dialog (Reiter „Index“).
      */
     private static void attachSourceEditing(ShellAssembly.ShellView view, final JFrame frame,
-                                            ConfigurationFile file, final ComicPalette palette,
-                                            SettingsService settings) {
+                                            ConfigurationFile file, final ComicPalette palette) {
         view.knowledgeSources().setEditing(new FileSourceActions(file),
                 new KnowledgeSourcesController.SourceEditorLauncher() {
                     @Override
@@ -332,32 +327,6 @@ public final class EnterpriseAiClientMain {
                         return SourceDialog.confirmRemove(frame, id, typeName, palette);
                     }
                 });
-        view.workspace().knowledgeSources().setIndexSettingsAction(indexSettingsAction(frame, file, palette,
-                settings));
-    }
-
-    /**
-     * „Index …“ im Drawer-Reiter „Wissensquellen“: öffnet den Index-Dialog mit den Werten der Datei. Gespeichert
-     * wird in die Datei; danach übernimmt der Settings-Service das Indexverzeichnis sofort.
-     */
-    private static Runnable indexSettingsAction(final JFrame frame, final ConfigurationFile file,
-                                                final ComicPalette palette, final SettingsService settings) {
-        final FileIndexActions actions = new FileIndexActions(file);
-        return () -> {
-            IndexForm current;
-            try {
-                current = actions.current();
-            } catch (IOException io) {
-                LOG.log(Level.WARNING, "Konfigurationsdatei nicht lesbar", io);
-                showError(IndexPanel.TITLE, "Die Konfiguration unter\n" + file.path()
-                        + "\nist nicht lesbar (" + io.getClass().getSimpleName() + ").");
-                return;
-            }
-            if (IndexDialog.show(frame, current, actions, palette) == null) {
-                return;
-            }
-            reloadInBackground(settings, "Index-Einstellungen");
-        };
     }
 
     private static void shutdownAndExit(final CompositionRoot root) {

@@ -32,7 +32,6 @@ public final class SettingsMapper {
     static final String KEY_EMBEDDING_DIMENSION = "embedding.dimension";
     static final String KEY_EMBEDDING_API_KEY_REF = "embedding.apiKeyRef";
     static final String KEY_INDEX_DIRECTORY = "knowledge.indexDirectory";
-    static final String KEY_INDEX_ON_STARTUP = "knowledge.indexOnStartup";
     static final String KEY_KEEPASS_ENABLED = "security.keepass.enabled";
     static final String KEY_KEEPASS_HOST = "security.keepass.host";
     static final String KEY_KEEPASS_PORT = "security.keepass.port";
@@ -95,7 +94,6 @@ public final class SettingsMapper {
         b.embeddingDimension(text(p, KEY_EMBEDDING_DIMENSION, ""));
         b.embeddingApiKeyRef(text(p, KEY_EMBEDDING_API_KEY_REF, ""));
         b.indexDirectory(text(p, KEY_INDEX_DIRECTORY, ""));
-        b.indexOnStartup(bool(p, KEY_INDEX_ON_STARTUP, true));
         b.keePassEnabled(bool(p, KEY_KEEPASS_ENABLED, true));
         b.keePassHost(text(p, KEY_KEEPASS_HOST, "127.0.0.1"));
         b.keePassPort(text(p, KEY_KEEPASS_PORT, "12546"));
@@ -155,7 +153,6 @@ public final class SettingsMapper {
         put(set, KEY_EMBEDDING_DIMENSION, form.embeddingDimension());
         put(set, KEY_EMBEDDING_API_KEY_REF, form.embeddingApiKeyRef());
         put(set, KEY_INDEX_DIRECTORY, form.indexDirectory());
-        set.put(KEY_INDEX_ON_STARTUP, String.valueOf(form.indexOnStartup()));
         set.put(KEY_KEEPASS_ENABLED, String.valueOf(form.keePassEnabled()));
         put(set, KEY_KEEPASS_HOST, form.keePassHost());
         put(set, KEY_KEEPASS_PORT, form.keePassPort());

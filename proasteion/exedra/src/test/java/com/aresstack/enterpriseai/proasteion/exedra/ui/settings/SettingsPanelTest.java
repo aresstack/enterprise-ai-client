@@ -390,13 +390,34 @@ public class SettingsPanelTest {
             public void run() {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
-                assertEquals(6, SettingsPanel.tabCount());
+                assertEquals(7, SettingsPanel.tabCount());
                 for (int i = 0; i < SettingsPanel.tabCount(); i++) {
                     panel.tabButton(i).doClick();
                     assertTrue(panel.tabButton(i).isSelected());
                     assertEquals(SettingsPanel.tabLabel(i), panel.tabButton(i).getText());
                 }
                 assertNull(panel.problemsText().isEmpty() ? null : panel.problemsText());
+            }
+        });
+    }
+
+    @Test
+    public void indexTabSitsBeforeTechnicalDetailsAndEditsTheIndexDirectory() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                assertEquals("Index", SettingsPanel.tabLabel(SettingsPanel.INDEX_TAB));
+                assertEquals("Sprachausgabe", SettingsPanel.tabLabel(SettingsPanel.INDEX_TAB - 1));
+                assertEquals("Technische Details", SettingsPanel.tabLabel(SettingsPanel.INDEX_TAB + 1));
+                SettingsPanel panel = new SettingsPanel(sample().toBuilder().indexDirectory("C:/Daten/index").build(),
+                        Collections.<String>emptyList(), SettingsPanel.Mode.EDIT, actions, palette);
+                assertEquals("C:/Daten/index", panel.indexTab().indexDirectory().getText());
+                assertEquals(IndexEditor.CHOOSE_LABEL, panel.indexTab().chooseButton().getText());
+                panel.indexTab().indexDirectory().setText("  D:/neu  ");
+                assertEquals("D:/neu", panel.toForm().indexDirectory());
+                panel.indexTab().indexDirectory().setText("");
+                assertEquals("", panel.toForm().indexDirectory());
             }
         });
     }

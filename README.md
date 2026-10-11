@@ -37,9 +37,9 @@ java -jar enterprise-ai-client-<version>.jar
    sowie der Titel des KeePass-Eintrags mit dem API-Key; „In KeePass prüfen“ testet den Eintrag sofort (bei
    Bedarf mit Pairing). Speichern schreibt die kommentierte Datei `enterprise-ai-client.properties` im
    Anwendungsverzeichnis (`~/.enterprise-ai-client/`, unter Windows `%APPDATA%\.enterprise-ai-client\`), danach
-   startet die Anwendung. Später öffnet das Zahnrad im Drawer (Hamburger ☰ links oben, Seite „Chats“) denselben
-   Dialog; Änderungen gelten sofort, ohne Neustart. Wissensquellen sowie Indexverzeichnis und Indexierung beim Start
-   („Index …“) verwaltet die Drawer-Seite „Wissensquellen“ in derselben Datei. Secrets stehen nie in der Datei;
+   startet die Anwendung. Später öffnet das Zahnrad unten rechts im Drawer (Hamburger ☰ links oben, auf jedem Reiter)
+   denselben Dialog; Änderungen gelten sofort, ohne Neustart. Das Indexverzeichnis steht dort im Reiter „Index“;
+   Wissensquellen verwaltet die Drawer-Seite „Wissensquellen“ in derselben Datei. Secrets stehen nie in der Datei;
    sie kommen zur Laufzeit aus KeePass (Plugin
    KeePassRPC). Die Datei lässt sich weiterhin von Hand pflegen (Feineinstellungen wie Timeouts stehen nur
    dort). Alternativ: `-Denterpriseai.config=/pfad/zur/datei`.

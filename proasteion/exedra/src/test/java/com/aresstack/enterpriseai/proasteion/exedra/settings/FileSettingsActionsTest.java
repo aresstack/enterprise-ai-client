@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationF
 
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
@@ -118,9 +119,40 @@ public class FileSettingsActionsTest {
         assertTrue(text, text.startsWith("# Mein Kommentar bleibt\n"));
         assertTrue(text, text.contains("\nchat.model=neues-modell\n"));
         assertTrue(text, text.contains("retrieval.maxResults=5"));
+        assertFalse("kein Altschlüssel neu erzeugt", text.contains("knowledge.indexOnStartup"));
         AppConfig loaded = AppConfigLoader.load(file.path());
         assertEquals("neues-modell", loaded.chat().model());
         assertEquals("Mein Client", loaded.windowTitle());
+    }
+
+    @Test
+    public void indexDirectoryIsLoadedSavedAndClearedByTheSettingsDialog() throws Exception {
+        Path old = tmp.newFolder("alt").toPath();
+        Path changed = tmp.newFolder("neu-index").toPath();
+        ConfigurationFile file = fileWith(validText() + "knowledge.indexDirectory=" + slashes(old) + "
+"
+                + "knowledge.indexOnStartup=false
+");
+        FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);
+        SettingsForm form = SettingsMapper.fromProperties(file.read());
+        assertEquals(slashes(old), form.indexDirectory());
+
+        actions.save(form.toBuilder().indexDirectory(slashes(changed)).build());
+        String text = new String(Files.readAllBytes(file.path()), StandardCharsets.UTF_8);
+        assertTrue(text, text.contains("\nknowledge.indexDirectory=" + slashes(changed) + "\n"));
+        assertTrue("Altbestand bleibt unverändert", text.contains("\nknowledge.indexOnStartup=false\n"));
+        assertEquals(changed, AppConfigLoader.load(file.path()).knowledge().indexDirectory());
+
+        actions.save(SettingsMapper.fromProperties(file.read()).toBuilder().indexDirectory("").build());
+        text = new String(Files.readAllBytes(file.path()), StandardCharsets.UTF_8);
+        assertFalse(text, text.contains("\nknowledge.indexDirectory="));
+        assertFalse(file.read().containsKey("knowledge.indexDirectory"));
+        assertTrue("Altbestand bleibt unverändert", text.contains("\nknowledge.indexOnStartup=false\n"));
+        assertEquals(AppPaths.defaultIndexDirectory(), AppConfigLoader.load(file.path()).knowledge().indexDirectory());
+    }
+
+    private static String slashes(Path path) {
+        return path.toAbsolutePath().toString().replace('\\', '/');
     }
 
     @Test
@@ -158,6 +190,7 @@ public class FileSettingsActionsTest {
         AppConfig loaded = AppConfigLoader.load(file.path());
         assertEquals("test-chat", loaded.chat().model());
         assertTrue("Beispielquellen der Vorlage sind nicht aktiv", loaded.sources().isEmpty());
+        assertFalse("kein Altschlüssel aus der Vorlage", file.read().containsKey("knowledge.indexOnStartup"));
         for (String warning : loaded.warnings()) {
             assertFalse("keine verwaisten Quell-Schlüssel aus der Vorlage: " + warning, warning.contains("source."));
         }

@@ -308,7 +308,9 @@ public final class AppConfigLoader {
 
     private static KnowledgeConfig knowledge(ConfigReader r) {
         Path indexDirectory = r.path("knowledge.indexDirectory", AppPaths.defaultIndexDirectory());
-        boolean indexOnStartup = r.bool("knowledge.indexOnStartup", true);
+        // Altbestand: Eine Indexierung beim Start gibt es nicht mehr; der Schlüssel wird gelesen, damit er nicht als
+        // unbekannt gemeldet wird, aber weder geprüft noch verwendet.
+        r.text("knowledge.indexOnStartup", null);
         int maxTokens = r.integer("knowledge.chunk.maxTokens", KnowledgeChunkingPolicy.DEFAULT_MAX_TOKENS,
                 KnowledgeChunkingPolicy.MIN_MAX_TOKENS, 100000);
         int overlap = r.integer("knowledge.chunk.overlapSentences", KnowledgeChunkingPolicy.DEFAULT_OVERLAP_SENTENCES,
@@ -377,7 +379,7 @@ public final class AppConfigLoader {
             r.problem(KNOWLEDGE_PASSAGE_LANGUAGE_KEY, "Sprache der Passagen muss de oder en sein");
             passageLanguage = "de";
         }
-        return new KnowledgeConfig(indexDirectory, indexOnStartup, chunking, batch, retrieval, context, prefetch,
+        return new KnowledgeConfig(indexDirectory, chunking, batch, retrieval, context, prefetch,
                 passageLanguage);
     }
 

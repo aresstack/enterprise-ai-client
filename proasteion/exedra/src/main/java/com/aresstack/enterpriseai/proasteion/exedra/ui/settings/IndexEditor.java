@@ -11,8 +11,8 @@ import java.awt.BorderLayout;
 import java.io.File;
 
 /**
- * Das Feld des Index-Dialogs: Indexverzeichnis (mit „Wählen …“). Eine Indexierung beim Start gibt es nicht mehr;
- * die Suche füllt den Index mit ihren Treffern (wie MainframeMate). Lädt einen {@link IndexForm} und liefert den bearbeiteten Stand zurück.
+ * Kategorie „Index“ des Einstellungen-Dialogs: Indexverzeichnis ({@code knowledge.indexDirectory}, mit „Wählen …“).
+ * Eine Indexierung beim Start gibt es nicht mehr; die Suche füllt den Index mit ihren Treffern (wie MainframeMate).
  */
 final class IndexEditor {
 
@@ -23,8 +23,6 @@ final class IndexEditor {
 
     private final JTextField indexDirectory;
     private final ComicButton chooseDirectory;
-    /** Der gelesene Wert von {@code knowledge.indexOnStartup}, unverändert zurückgegeben (wirkt nicht mehr). */
-    private boolean indexOnStartup;
     private final JPanel panel;
 
     IndexEditor(ComicPalette palette) {
@@ -39,7 +37,7 @@ final class IndexEditor {
         directoryRow.add(chooseDirectory, BorderLayout.EAST);
         rows.component(DIRECTORY_LABEL, directoryRow, "Verzeichnis für Lucene-Index und Vektoren");
         chooseDirectory.addActionListener(event -> chooseDirectory());
-        panel = rows.panel();
+        panel = FormRows.column(palette, FormRows.plate("Index", palette.getNavigationBlue(), rows.panel(), palette));
     }
 
     private void chooseDirectory() {
@@ -60,17 +58,12 @@ final class IndexEditor {
         return panel;
     }
 
-    void load(IndexForm form) {
+    void load(SettingsForm form) {
         indexDirectory.setText(form.indexDirectory());
-        indexOnStartup = form.indexOnStartup();
     }
 
-    IndexForm toForm() {
-        return new IndexForm(indexDirectory.getText(), indexOnStartup);
-    }
-
-    void focusFirstField() {
-        indexDirectory.requestFocusInWindow();
+    void store(SettingsForm.Builder b) {
+        b.indexDirectory(indexDirectory.getText());
     }
 
     // Für Tests.

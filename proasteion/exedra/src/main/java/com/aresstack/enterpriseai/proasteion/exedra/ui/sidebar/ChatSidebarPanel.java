@@ -10,6 +10,7 @@ import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Dimension;
+import java.awt.GridBagLayout;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -26,12 +27,18 @@ import java.util.function.Supplier;
  * <p>Der Drawer hat keine eigenen Pin- oder Schließknöpfe: Reiterleiste und Drawer öffnen und schließen
  * gemeinsam, die Arbeitsfläche bestimmt die Regel. Die Kopfzeile trägt nur die Komponente der
  * Arbeitsfläche (die Chat-Suche) und ist allein auf der Standardseite sichtbar.</p>
+ *
+ * <p>Der Fuß liegt außerhalb der Karten und bleibt beim Wechsel der Reiter stehen: rechts genau eine
+ * Komponente der Arbeitsfläche (das Zahnrad der globalen Einstellungen), in Höhe und Abständen wie der
+ * Chats-Fuß aus askai-java8 (arch).</p>
  */
 public final class ChatSidebarPanel extends JPanel {
 
     private final CardLayout paneLayout = new CardLayout();
     private final JPanel panes = new JPanel(paneLayout);
     private final JPanel headerLeft = new JPanel(new BorderLayout());
+    private final JPanel footer = new JPanel(new BorderLayout(8, 0));
+    private final JPanel footerTrailing = new JPanel(new GridBagLayout());
     private JComponent header;
     private final String defaultTabTitle;
     private final JComponent defaultTabComponent;
@@ -59,6 +66,7 @@ public final class ChatSidebarPanel extends JPanel {
         panes.setOpaque(false);
         add(buildHeader(), BorderLayout.NORTH);
         add(panes, BorderLayout.CENTER);
+        add(buildFooter(), BorderLayout.SOUTH);
         rebuildTabs();
         setPreferredSize(new Dimension(360, 10));
     }
@@ -116,6 +124,16 @@ public final class ChatSidebarPanel extends JPanel {
         headerLeft.repaint();
     }
 
+    /** Rechts im Fuß aller Seiten, z. B. das Zahnrad der Einstellungen; {@code null} leert den Platz. */
+    public void setFooterTrailingComponent(JComponent component) {
+        footerTrailing.removeAll();
+        if (component != null) {
+            footerTrailing.add(component);
+        }
+        footerTrailing.revalidate();
+        footerTrailing.repaint();
+    }
+
     /** Baut die Seiten neu auf: Standardseite zuerst, dann die aktuellen Beiträge. */
     public void rebuildTabs() {
         panes.removeAll();
@@ -148,6 +166,17 @@ public final class ChatSidebarPanel extends JPanel {
         showTab(activeTitle);
         panes.revalidate();
         panes.repaint();
+    }
+
+    private JComponent buildFooter() {
+        footer.setOpaque(false);
+        footer.setBorder(BorderFactory.createEmptyBorder(
+                ResearchUiMetrics.FOOTER_PADDING_V, ResearchUiMetrics.FOOTER_PADDING_H,
+                ResearchUiMetrics.FOOTER_PADDING_V, ResearchUiMetrics.FOOTER_PADDING_H));
+        footer.setPreferredSize(new Dimension(10, ResearchUiMetrics.FOOTER_HEIGHT));
+        footerTrailing.setOpaque(false);
+        footer.add(footerTrailing, BorderLayout.EAST);
+        return footer;
     }
 
     private JComponent buildHeader() {

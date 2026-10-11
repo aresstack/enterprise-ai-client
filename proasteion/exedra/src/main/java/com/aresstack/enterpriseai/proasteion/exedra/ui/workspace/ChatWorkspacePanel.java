@@ -88,8 +88,9 @@ import java.util.Set;
  * Der Hamburger öffnet Reiterleiste und Drawer beim Überfahren und rastet mit einem Klick ein; ohne Rastung
  * falten beide zusammen weg, sobald der Zeiger den Bereich verlässt. Die Modus-Pille neben dem Hamburger
  * wechselt zwischen Chat und Agent (Navigation, kein Reiterband). Der Drawer trägt die Seite „Chats“ mit
- * „+ Neuer Chat“, der Chat-Suche, den Chat-Zeilen (laufender Chat, Agent, gespeicherte Chats) und dem Zahnrad für die Einstellungen im Fuß, sowie die
- * Seite „Wissensquellen“ ({@link KnowledgeSourcesPanel}: hinzufügen, bearbeiten, an- und abwählen, indexieren). Beide Ansichten sind vollständige, voneinander unabhängige {@link ChatShellPanel}s
+ * „+ Neuer Chat“, der Chat-Suche und den Chat-Zeilen (laufender Chat, Agent, gespeicherte Chats), die
+ * Seite „Wissensquellen“ ({@link KnowledgeSourcesPanel}: hinzufügen, bearbeiten, an- und abwählen, indexieren) und
+ * die weiteren Reiter; das Zahnrad für die Einstellungen steht einmal im Fuß des Drawers, auf allen Reitern. Beide Ansichten sind vollständige, voneinander unabhängige {@link ChatShellPanel}s
  * mit eigenem Model: eine im Hintergrund laufende Agent-Antwort schreibt nicht in den Chat.
  */
 public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.Listener {
@@ -185,6 +186,13 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         this.favoritesPane = new FavoritesPanel(palette);
         this.sidebar = new ChatSidebarPanel(CHATS_TAB, buildChatsTab(), palette);
         sidebar.setDefaultTabIcon(SidebarIcons.scroll());
+        // Das Zahnrad öffnet globale Einstellungen: einmal im Fuß des Drawers, auf allen Reitern sichtbar.
+        settingsButton.addActionListener(event -> {
+            if (actions != null) {
+                actions.settingsRequested();
+            }
+        });
+        sidebar.setFooterTrailingComponent(settingsButton);
         this.sidebarSplit = new ComicSplitPane(sidebar, deck, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH, palette);
         this.sidebarCloseTimer = new Timer(SIDEBAR_CLOSE_DELAY_MS, event -> onPointerLeftSidebarArea());
         sidebarCloseTimer.setRepeats(false);
@@ -594,28 +602,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         tab.setOpaque(false);
         tab.add(north, BorderLayout.NORTH);
         tab.add(scroll, BorderLayout.CENTER);
-        tab.add(buildChatsFooter(), BorderLayout.SOUTH);
         return tab;
-    }
-
-    /** Der Fuß der Chats-Seite: links Platz für Beiträge, rechts das Zahnrad für die Einstellungen. */
-    private JComponent buildChatsFooter() {
-        JPanel footer = new JPanel(new BorderLayout(8, 0));
-        footer.setOpaque(false);
-        footer.setBorder(BorderFactory.createEmptyBorder(
-                ResearchUiMetrics.FOOTER_PADDING_V, ResearchUiMetrics.FOOTER_PADDING_H,
-                ResearchUiMetrics.FOOTER_PADDING_V, ResearchUiMetrics.FOOTER_PADDING_H));
-        footer.setPreferredSize(new Dimension(10, ResearchUiMetrics.FOOTER_HEIGHT));
-        settingsButton.addActionListener(event -> {
-            if (actions != null) {
-                actions.settingsRequested();
-            }
-        });
-        JPanel gearWrap = new JPanel(new GridBagLayout());
-        gearWrap.setOpaque(false);
-        gearWrap.add(settingsButton);
-        footer.add(gearWrap, BorderLayout.EAST);
-        return footer;
     }
 
     private JLabel groupHeader(String text) {

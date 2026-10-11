@@ -236,7 +236,6 @@ public class AppConfigLoaderTest {
                 config.chat().baseUrl(), config.embedding().baseUrl());
         assertEquals(config.chat().apiKeyRef(), config.embedding().apiKeyRef());
         assertEquals(RetrievalSettings.DEFAULT_MAX_RESULTS, config.knowledge().retrieval().maxResults());
-        assertTrue(config.knowledge().indexOnStartup());
         assertNotNull(config.knowledge().indexDirectory());
         assertTrue(config.sources().isEmpty());
         assertFalse(config.keePass().enabled());

@@ -16,7 +16,6 @@ import com.aresstack.enterpriseai.ui.comic.control.ComicSearchBar;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -37,10 +36,9 @@ import java.awt.event.KeyEvent;
 /**
  * Die Drawer-Seite „Wissensquellen“: oben genau ein „+ Quelle“ (wie „+ Neuer Chat“; welche Quelltypen es gibt,
  * entscheiden die angebundenen Adapter, nicht die Oberfläche), darunter je Quelle eine {@link KnowledgeSourceRow}
- * mit Häkchen, Indexstand, „Jetzt indexieren“, Bearbeiten und Entfernen, dann ein
- * stiller Hinweis, was das Häkchen bewirkt, und unten der Bereich „Index“ mit „Index …“ für Indexverzeichnis
- * und Indexierung beim Start (öffnet den Index-Dialog; gilt sofort). Ohne
- * {@link KnowledgeSourceActions} bzw. {@link #setIndexSettingsAction} bleiben die Knöpfe wirkungslos.
+ * mit Häkchen, Indexstand, „Jetzt indexieren“, Bearbeiten und Entfernen, unten ein stiller Hinweis, was das
+ * Häkchen bewirkt. Das Indexverzeichnis steht im Einstellungen-Dialog (Reiter „Index“). Ohne
+ * {@link KnowledgeSourceActions} bleiben die Knöpfe wirkungslos.
  */
 public final class KnowledgeSourcesPanel extends JPanel {
 
@@ -48,15 +46,10 @@ public final class KnowledgeSourcesPanel extends JPanel {
     static final String SEARCH_PLACEHOLDER = "Quellen durchsuchen…";
     static final String SEARCH_TOOLTIP = "Alle angehakten Quellen gleichzeitig durchsuchen (Enter)";
     static final String EMPTY_TEXT = "Noch keine Wissensquelle. „+ Quelle“ legt eine an.";
-    static final String HINT_TEXT = "<html>Der Chat durchsucht nur angehakte Quellen; abgewählte werden auch beim "
-            + "Start nicht indexiert.</html>";
-    public static final String INDEX_LABEL = "Index …";
-    static final String INDEX_TOOLTIP = "Indexverzeichnis und Indexierung beim Start ändern";
-    static final String INDEX_HINT_TEXT = "<html>Indexverzeichnis und Indexierung beim Start.</html>";
+    static final String HINT_TEXT = "<html>Der Chat durchsucht nur angehakte Quellen.</html>";
 
     private final ComicPalette palette;
     private final ResearchPillButton addButton;
-    private final ResearchPillButton indexButton;
     private final JPanel list = new WidthTrackingPanel();
     private final List<KnowledgeSourceRow> rows = new ArrayList<KnowledgeSourceRow>();
     private final List<ReaderLinkRow> hitRows = new ArrayList<ReaderLinkRow>();
@@ -65,7 +58,6 @@ public final class KnowledgeSourcesPanel extends JPanel {
     private ReaderLink lastFirstVisible;
     private List<KnowledgeSourceItem> items = Collections.emptyList();
     private KnowledgeSourceActions actions;
-    private Runnable indexSettingsAction;
     private final ComicSearchBar searchBar;
     private SourceSearchState search;
 
@@ -135,32 +127,9 @@ public final class KnowledgeSourcesPanel extends JPanel {
 
         JLabel hint = mutedText(HINT_TEXT, 6, 6);
 
-        indexButton = new ResearchPillButton(INDEX_LABEL, ResearchUiMetrics.NEW_CHAT_HEIGHT - 4,
-                ResearchUiMetrics.RADIUS_CONTROL, ResearchUiMetrics.NEW_CHAT_PADDING_H - 2);
-        indexButton.setFont(ResearchUiTypography.semiBold(12.5f));
-        indexButton.setToolTipText(INDEX_TOOLTIP);
-        indexButton.setEnabled(false);
-        indexButton.addActionListener(event -> {
-            if (indexSettingsAction != null) {
-                indexSettingsAction.run();
-            }
-        });
-        JPanel indexRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        indexRow.setOpaque(false);
-        indexRow.setBorder(BorderFactory.createEmptyBorder(0, 2, 0, 8));
-        indexRow.add(indexButton);
-        JPanel south = new JPanel();
-        south.setLayout(new BoxLayout(south, BoxLayout.Y_AXIS));
-        south.setOpaque(false);
-        for (JComponent part : new JComponent[] {hint, sectionHeader("INDEX"), indexRow,
-                mutedText(INDEX_HINT_TEXT, 4, 10)}) {
-            part.setAlignmentX(LEFT_ALIGNMENT);
-            south.add(part);
-        }
-
         add(north, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
-        add(south, BorderLayout.SOUTH);
+        add(hint, BorderLayout.SOUTH);
         refresh();
     }
 
@@ -173,7 +142,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
         return label;
     }
 
-    /** Die stille Abschnittsüberschrift („WISSENSQUELLEN“, „INDEX“). */
+    /** Die stille Abschnittsüberschrift („WISSENSQUELLEN“, Treffer der Suche). */
     private static JLabel sectionHeader(String text) {
         JLabel header = new JLabel(text);
         header.setFont(ResearchUiTypography.semiBold(11f));
@@ -216,12 +185,6 @@ public final class KnowledgeSourcesPanel extends JPanel {
     /** Die Sterne der Trefferliste in Anzeigereihenfolge (für Tests). */
     public List<FavoriteStarButton> hitStars() {
         return Collections.unmodifiableList(new ArrayList<FavoriteStarButton>(hitStars));
-    }
-
-    /** Was „Index …“ tut (öffnet produktiv den Index-Dialog über der Konfigurationsdatei); {@code null} sperrt. */
-    public void setIndexSettingsAction(Runnable action) {
-        this.indexSettingsAction = action;
-        indexButton.setEnabled(action != null);
     }
 
     public void setItems(List<KnowledgeSourceItem> sources) {
@@ -268,11 +231,6 @@ public final class KnowledgeSourcesPanel extends JPanel {
     /** „+ Quelle“ oben. */
     public ResearchPillButton addButton() {
         return addButton;
-    }
-
-    /** „Index …“ im Bereich „Index“ unten. */
-    public ResearchPillButton indexButton() {
-        return indexButton;
     }
 
     private void refresh() {

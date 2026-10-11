@@ -49,7 +49,6 @@ public final class SettingsForm {
     private final String embeddingDimension;
     private final String embeddingApiKeyRef;
     private final String indexDirectory;
-    private final boolean indexOnStartup;
     private final boolean keePassEnabled;
     private final String keePassHost;
     private final String keePassPort;
@@ -94,7 +93,6 @@ public final class SettingsForm {
         this.embeddingDimension = b.embeddingDimension;
         this.embeddingApiKeyRef = b.embeddingApiKeyRef;
         this.indexDirectory = b.indexDirectory;
-        this.indexOnStartup = b.indexOnStartup;
         this.keePassEnabled = b.keePassEnabled;
         this.keePassHost = b.keePassHost;
         this.keePassPort = b.keePassPort;
@@ -141,7 +139,7 @@ public final class SettingsForm {
                 .chatSystemPrompt(chatSystemPrompt)
                 .embeddingBaseUrl(embeddingBaseUrl).embeddingModel(embeddingModel)
                 .embeddingDimension(embeddingDimension).embeddingApiKeyRef(embeddingApiKeyRef)
-                .indexDirectory(indexDirectory).indexOnStartup(indexOnStartup)
+                .indexDirectory(indexDirectory)
                 .keePassEnabled(keePassEnabled).keePassHost(keePassHost).keePassPort(keePassPort)
                 .keePassClientDisplayName(keePassClientDisplayName).keePassPairingKeyStore(keePassPairingKeyStore)
                 .proxyMode(proxyMode).pacUrl(pacUrl).pacDiscoveryScript(pacDiscoveryScript)
@@ -208,10 +206,6 @@ public final class SettingsForm {
     /** Leer: Standardverzeichnis unter dem Anwendungsverzeichnis. */
     public String indexDirectory() {
         return indexDirectory;
-    }
-
-    public boolean indexOnStartup() {
-        return indexOnStartup;
     }
 
     public boolean keePassEnabled() {
@@ -388,7 +382,6 @@ public final class SettingsForm {
         private String embeddingDimension = "";
         private String embeddingApiKeyRef = "";
         private String indexDirectory = "";
-        private boolean indexOnStartup = true;
         private boolean keePassEnabled = true;
         private String keePassHost = "127.0.0.1";
         private String keePassPort = "12546";
@@ -472,11 +465,6 @@ public final class SettingsForm {
 
         public Builder indexDirectory(String value) {
             this.indexDirectory = text(value);
-            return this;
-        }
-
-        public Builder indexOnStartup(boolean value) {
-            this.indexOnStartup = value;
             return this;
         }
 

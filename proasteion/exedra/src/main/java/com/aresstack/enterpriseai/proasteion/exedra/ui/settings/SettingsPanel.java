@@ -53,9 +53,9 @@ import java.util.function.Supplier;
  *
  * Speichern prüft über {@link SettingsDialogActions#validate}, zeigt Probleme mit Feldnamen und schreibt nur
  * fehlerfreie Entwürfe ({@link SettingsDialogActions#save}); danach ruft es den Erfolgs-Callback. Läuft
- * headless (Tests) ohne Fenster; der modale Rahmen ist {@link SettingsDialog}. Wissensquellen und
- * Index-Einstellungen haben keinen Reiter mehr (Drawer-Reiter „Wissensquellen“, {@link SourceDialog} und
- * {@link IndexDialog}); das Formular trägt sie unverändert weiter.
+ * headless (Tests) ohne Fenster; der modale Rahmen ist {@link SettingsDialog}. Wissensquellen haben keinen Reiter
+ * (Drawer-Reiter „Wissensquellen“ und {@link SourceDialog}); das Formular trägt sie unverändert weiter. Das
+ * Indexverzeichnis steht im Reiter „Index“.
  */
 public final class SettingsPanel extends JPanel {
 
@@ -70,15 +70,20 @@ public final class SettingsPanel extends JPanel {
     public static final String CANCEL_LABEL = "Abbrechen";
     public static final String QUIT_LABEL = "Beenden";
     private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle",
-            "Sprachausgabe", "Technische Details"};
+            "Sprachausgabe", "Index", "Technische Details"};
     /** Index des Reiters „Modelle“ (Auswahl je Kategorie). */
     static final int MODELS_TAB = 3;
     /** Index der Kategorie „Sprachausgabe“. */
     static final int SPEECH_TAB = 4;
+    /** Index der Kategorie „Index“ (Indexverzeichnis). */
+    static final int INDEX_TAB = 5;
     /** Index der Kategorie „Technische Details“ (Protokoll). */
-    static final int TECHNICAL_TAB = 5;
+    static final int TECHNICAL_TAB = 6;
 
-    /** Die Kategorien in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle, Sprachausgabe, Technische Details. */
+    /**
+     * Die Kategorien in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle, Sprachausgabe, Index,
+     * Technische Details.
+     */
     public static int tabCount() {
         return TAB_LABELS.length;
     }
@@ -101,6 +106,7 @@ public final class SettingsPanel extends JPanel {
     private final SystemTab systemTab;
     private final ModelsTab modelsTab;
     private final SpeechTab speechTab;
+    private final IndexEditor indexTab;
     private final JTextArea technicalText = new JTextArea();
     private final List<ComposerToggleButton> tabButtons = new ArrayList<ComposerToggleButton>();
     private final JPanel header = new JPanel(new BorderLayout(8, 0));
@@ -113,7 +119,7 @@ public final class SettingsPanel extends JPanel {
     private final ComposerButton cancelButton;
     private Consumer<SettingsForm> onSaved;
     private Runnable onCancel;
-    /** Der geladene Stand; liefert die Felder ohne Reiter (Quellen, Index) unverändert in {@link #toForm()}. */
+    /** Der geladene Stand; liefert die Felder ohne Reiter (Quellen) unverändert in {@link #toForm()}. */
     private SettingsForm loaded;
 
     public SettingsPanel(SettingsForm initial, List<String> problems, Mode mode, SettingsDialogActions actions,
@@ -136,6 +142,7 @@ public final class SettingsPanel extends JPanel {
         this.systemTab = new SystemTab(actions, current, palette);
         this.modelsTab = new ModelsTab(actions, current, palette);
         this.speechTab = new SpeechTab(palette);
+        this.indexTab = new IndexEditor(palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START
@@ -175,7 +182,7 @@ public final class SettingsPanel extends JPanel {
         tabs.setOpaque(false);
         ButtonGroup group = new ButtonGroup();
         JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel(), modelsTab.panel(),
-                speechTab.panel(), technicalPage()};
+                speechTab.panel(), indexTab.panel(), technicalPage()};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
             ComposerToggleButton button = new ComposerToggleButton(null, name, null);
@@ -295,7 +302,7 @@ public final class SettingsPanel extends JPanel {
         this.onCancel = callback;
     }
 
-    /** Füllt alle Reiter aus dem Formular; Quellen und Index-Einstellungen merkt es sich unverändert. */
+    /** Füllt alle Reiter aus dem Formular; die Quellen merkt es sich unverändert. */
     public void setForm(SettingsForm form) {
         if (form == null) {
             throw new IllegalArgumentException("form must not be null");
@@ -306,9 +313,10 @@ public final class SettingsPanel extends JPanel {
         systemTab.load(form);
         modelsTab.load(form);
         speechTab.load(form);
+        indexTab.load(form);
     }
 
-    /** Der aktuelle Stand aller Felder als Formular, Quellen und Index-Einstellungen wie geladen. */
+    /** Der aktuelle Stand aller Felder als Formular, Quellen wie geladen. */
     public SettingsForm toForm() {
         SettingsForm.Builder b = loaded.toBuilder();
         serviceTab.store(b);
@@ -316,6 +324,7 @@ public final class SettingsPanel extends JPanel {
         systemTab.store(b);
         modelsTab.store(b);
         speechTab.store(b);
+        indexTab.store(b);
         return b.build();
     }
 
@@ -373,7 +382,7 @@ public final class SettingsPanel extends JPanel {
         }
     }
 
-    /** Springt zu dem Reiter, zu dem das erste Problem gehört; ohne eigenen Reiter (Quellen, Index) zum ersten. */
+    /** Springt zu dem Reiter, zu dem das erste Problem gehört; ohne eigenen Reiter (Quellen) zum ersten. */
     private void selectTabFor(List<String> problems) {
         String first = problems.get(0);
         int tab = 0;
@@ -384,6 +393,8 @@ public final class SettingsPanel extends JPanel {
         } else if (first.contains("(chat.model)") || first.contains("(embedding.model)") || first.contains("(model.")
                 || first.contains("(models.")) {
             tab = MODELS_TAB;
+        } else if (first.contains("(knowledge.indexDirectory)")) {
+            tab = INDEX_TAB;
         }
         selectTab(tab);
     }
@@ -456,6 +467,11 @@ public final class SettingsPanel extends JPanel {
 
     ComposerToggleButton tabButton(int index) {
         return tabButtons.get(index);
+    }
+
+    /** Die Kategorie „Index“ (für Tests). */
+    IndexEditor indexTab() {
+        return indexTab;
     }
 
     JComponent deck() {

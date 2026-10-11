@@ -48,8 +48,7 @@ gesammelt; nur eine gescheiterte Discovery beendet den Lauf. `IndexingListener.i
 zwei Ressourcen geprüft. Der Index ist ausschließlich eine wiederherstellbare Projektion: Kanonisch sind die
 Dokumente der Quellen; `rebuild` baut ihn aus Einträgen neu auf.
 
-Auslöser: `knowledge.indexOnStartup=true` (Standard) indexiert beim Start alle Quellen nacheinander über die
-`KnowledgeIndexingBinding` (Statuszeile mit Abbrechen-Knopf, `proasteion.exedra.knowledge.StartupIndexing`); ein Agent kann
+Auslöser: ⟳ („Jetzt indexieren“) an einer Quelle im Drawer (beim Start wird nichts indexiert); ein Agent kann
 `refresh_knowledge_source` aufrufen ([MCP](mcp.md)). Berichte landen im Log, nicht im Chat.
 
 ## Namespaces
@@ -142,7 +141,6 @@ Konsequenzen:
 
 ```properties
 knowledge.indexDirectory=<Anwendungsverzeichnis>/index
-knowledge.indexOnStartup=true
 knowledge.chunk.maxTokens=350
 knowledge.chunk.overlapSentences=1
 knowledge.embeddingBatchSize=16

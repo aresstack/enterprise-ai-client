@@ -10,7 +10,13 @@ import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Test;
 
+import com.aresstack.enterpriseai.ui.comic.control.ResearchIconButton;
+
+import javax.swing.AbstractButton;
+import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Graphics2D;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
@@ -18,6 +24,7 @@ import java.awt.image.BufferedImage;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -386,6 +393,89 @@ public class ChatWorkspacePanelTest {
                 paint(workspace);
             }
         });
+    }
+
+    @Test
+    public void theDrawerHasOneSettingsGearThatStaysVisibleOnEveryTab() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                RecordingActions actions = new RecordingActions();
+                workspace.setActions(actions);
+                workspace.openDrawer();
+                workspace.ribbon().finishAnimation();
+                workspace.setSize(900, 620);
+                ResearchIconButton gear = workspace.settingsButton();
+                assertEquals("genau ein Zahnrad im Drawer", Collections.singletonList(gear),
+                        settingsGears(workspace.sidebar()));
+                for (String tab : Arrays.asList(ChatWorkspacePanel.CHATS_TAB, ChatWorkspacePanel.KNOWLEDGE_TAB,
+                        ChatWorkspacePanel.FAVORITES_TAB)) {
+                    workspace.sidebar().showTab(tab);
+                    workspace.validate();
+                    assertTrue("Zahnrad sichtbar auf " + tab, visibleUpTo(gear, workspace.sidebar()));
+                    assertEquals(Collections.singletonList(gear), settingsGears(workspace.sidebar()));
+                }
+                gear.doClick();
+                assertEquals(1, actions.settings);
+            }
+        });
+    }
+
+    @Test
+    public void theKnowledgePaneHasNoIndexSection() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                KnowledgeSourcesPanel pane = new KnowledgeSourcesPanel(comic);
+                List<String> texts = new ArrayList<String>();
+                collectTexts(pane, texts);
+                for (String text : texts) {
+                    assertFalse(text, text.contains("Index …") || text.equals("INDEX")
+                            || text.contains("beim Start"));
+                }
+                assertTrue(texts.toString(), texts.contains(KnowledgeSourcesPanel.HINT_TEXT));
+            }
+        });
+    }
+
+    private static List<ResearchIconButton> settingsGears(Container root) {
+        List<ResearchIconButton> gears = new ArrayList<ResearchIconButton>();
+        for (Component child : root.getComponents()) {
+            if (child instanceof ResearchIconButton
+                    && ChatWorkspacePanel.SETTINGS_TOOLTIP.equals(((ResearchIconButton) child).getToolTipText())) {
+                gears.add((ResearchIconButton) child);
+            }
+            if (child instanceof Container) {
+                gears.addAll(settingsGears((Container) child));
+            }
+        }
+        return gears;
+    }
+
+    private static boolean visibleUpTo(Component component, Component root) {
+        for (Component c = component; c != null; c = c.getParent()) {
+            if (!c.isVisible()) {
+                return false;
+            }
+            if (c == root) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void collectTexts(Container root, List<String> texts) {
+        for (Component child : root.getComponents()) {
+            if (child instanceof JLabel) {
+                texts.add(((JLabel) child).getText());
+            } else if (child instanceof AbstractButton) {
+                texts.add(((AbstractButton) child).getText());
+            }
+            if (child instanceof Container) {
+                collectTexts((Container) child, texts);
+            }
+        }
     }
 
     private ChatWorkspacePanel chatOnlyWorkspace() {

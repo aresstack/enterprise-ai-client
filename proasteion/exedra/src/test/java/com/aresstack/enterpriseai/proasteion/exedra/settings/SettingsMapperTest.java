@@ -67,7 +67,7 @@ public class SettingsMapperTest {
         assertEquals("keepass:Enterprise AI API", form.chatApiKeyRef());
         assertEquals("", form.embeddingBaseUrl());
         assertEquals("8", form.embeddingDimension());
-        assertFalse(form.indexOnStartup());
+        assertEquals("", form.indexDirectory());
         assertFalse(form.keePassEnabled());
         assertEquals(SettingsForm.PROXY_DISABLED, form.proxyMode());
     }
