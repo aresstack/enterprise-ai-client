@@ -10,6 +10,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchOutOfSco
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentTurnChatMirror;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ConversationLifecycle;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ModeSwitchingChatActions;
+import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchPhaseAttribution;
+import com.aresstack.enterpriseai.proasteion.exedra.agent.SavedChatHistory;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentServiceBinding;
 import com.aresstack.enterpriseai.proasteion.application.agent.AgentModelChoice;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchConceptViewAssembly;
@@ -127,8 +129,9 @@ public final class ShellAssembly {
                     root.toolCatalog()::isEnabled,
                     root.config().chat().toolsEnabled()));
         }
-        final ChatHistoryBinding history = new ChatHistoryBinding(new FileChatHistoryStore(chatsDirectory),
-                chatService, chatActions, chatModel, systemPrompt, root.clock());
+        final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
+        final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,
+                systemPrompt, root.clock());
         final AgentModeAssembly.AgentView agent;
         final AgentService agentService;
         final ShellModeModel modes = new ShellModeModel(root.hasAgent());
@@ -147,6 +150,9 @@ public final class ShellAssembly {
             // Ein Verlauf: abgeschlossene Agenten-Turns gehören auch zur Unterhaltung des Chats (askai arch).
             new AgentTurnChatMirror(chatService, chatActions::conversationId, modes, chatModel);
             if (root.researchHost() != null) {
+                // askai chat_history: der gespeicherte Verlauf des Chats, nach Phasen des Projekts gegliedert.
+                root.researchHost().setChatHistoryReader(new SavedChatHistory(chatStore));
+                new ResearchPhaseAttribution(root.researchHost(), modes, chatModel, root.clock());
                 final ResearchOutOfScopeSky sky = AgentModeAssembly.attachResearchSky(agent, root.researchHost(),
                         root.uiExecutor());
                 // Der Wolkenhimmel gehört zur Erscheinung des Agent-Modus.

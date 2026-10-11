@@ -109,6 +109,98 @@ public class ResearchProjectPerChatTest {
     }
 
     @Test
+    public void searchScopeHandlesDieWithTheProject() throws Exception {
+        ResearchAgentHost host = host(folder.newFolder("research"));
+        host.setScopeEmbedder(new ResearchScopeControl.Embedder() {
+            @Override
+            public String fingerprint() {
+                return "fake-embedding";
+            }
+
+            @Override
+            public java.util.List<float[]> embed(java.util.List<String> texts) {
+                java.util.List<float[]> vectors = new java.util.ArrayList<float[]>();
+                for (int i = 0; i < texts.size(); i++) {
+                    vectors.add(new float[]{1f, 0f});
+                }
+                return vectors;
+            }
+        });
+        host.openChat("chat-a");
+        fill(host, "Karte A", "page-a", "Quelle A");
+        String begun = host.scopeControl().begin();
+        assertTrue(begun, begun.startsWith("ACTIVE handle="));
+        String handle = begun.substring("ACTIVE handle=".length()).split(" ")[0];
+        assertFalse("UNKNOWN_HANDLE".equals(host.scopeControl().evaluate(handle, "web", "[]")));
+
+        host.openChat("chat-b");
+        assertEquals("UNKNOWN_HANDLE", host.scopeControl().evaluate(handle, "web", "[]"));
+    }
+
+    @Test
+    public void publishingTheToolSetCreatesNoProject() throws Exception {
+        File root = folder.newFolder("research");
+        ResearchAgentHost host = host(root);
+        host.openChat("chat-new");
+        java.util.List<String> fresh = names(ResearchControlTools.toolsFor(host, MODEL));
+        assertTrue(fresh.toString(), fresh.contains("concept_read"));
+        assertFalse(fresh.toString(), fresh.contains("concept_add_cards"));
+        String status = invoke(ResearchControlTools.toolsFor(host, MODEL), "research_status");
+        assertTrue(status, status.contains("\"searchTagsOffered\":false"));
+        assertFalse("Werkzeugsatz und Status legen kein Projekt an", new File(root, "chat-new").exists());
+
+        // derselbe Satz wie bei einem angelegten, frischen Projekt
+        host.openChat("chat-opened");
+        host.projectDirectory();
+        assertEquals(names(ResearchControlTools.toolsFor(host, MODEL)), fresh);
+
+        // ein Aufruf öffnet das Projekt
+        host.openChat("chat-new");
+        String concept = invoke(ResearchControlTools.toolsFor(host, MODEL), "concept_read", "path", "");
+        assertTrue(concept, concept.startsWith("revision="));
+        assertTrue(new File(root, "chat-new").isDirectory());
+    }
+
+    private static final com.aresstack.enterpriseai.research.runtime.team.MainModelChat MODEL =
+            new com.aresstack.enterpriseai.research.runtime.team.MainModelChat() {
+                @Override
+                public com.aresstack.enterpriseai.research.runtime.team.MainModelChatResult complete(
+                        java.util.List<com.aresstack.enterpriseai.research.runtime.team.ChatMessage> messages,
+                        double temperature, int maxOutputTokens) {
+                    return com.aresstack.enterpriseai.research.runtime.team.MainModelChatResult.ok("");
+                }
+
+                @Override
+                public String modelName() {
+                    return "fake";
+                }
+            };
+
+    private static java.util.List<String> names(
+            java.util.List<com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution> tools) {
+        java.util.List<String> names = new java.util.ArrayList<String>();
+        for (com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution tool : tools) {
+            names.add(tool.getName());
+        }
+        return names;
+    }
+
+    private static String invoke(java.util.List<com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution> tools,
+                                 String name, String... pairs) {
+        java.util.Map<String, Object> args = new java.util.LinkedHashMap<String, Object>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            args.put(pairs[i], pairs[i + 1]);
+        }
+        for (com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution tool : tools) {
+            if (tool.getName().equals(name)) {
+                return tool.getHandler().invoke(
+                        new com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall(name, args)).getText();
+            }
+        }
+        throw new AssertionError("kein Werkzeug " + name);
+    }
+
+    @Test
     public void chatIdsBecomeSafeFolderNames() {
         assertEquals("a_b_c", ResearchProjects.folderName("a/b\\c"));
         assertEquals("_x", ResearchProjects.folderName(".x"));

@@ -6,6 +6,12 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegist
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.proasteion.application.agent.ResearchAgentHost;
+import com.aresstack.enterpriseai.proasteion.application.agent.ResearchControlTools;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
+import com.aresstack.enterpriseai.research.runtime.team.ChatMessage;
+import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
+import com.aresstack.enterpriseai.research.runtime.team.MainModelChatResult;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
@@ -25,6 +31,9 @@ import javax.swing.SwingUtilities;
 import java.io.File;
 import java.time.ZoneId;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -104,6 +113,11 @@ public class ShellConversationLifecycleTest {
         assertTrue(concept(host).contains("Karte A"));
         assertFalse(concept(host).contains("Karte B"));
         assertEquals("Frage A", onEdt(() -> view.chatModel().getEntries().get(0).getText()));
+        // chat_history liest den gespeicherten Verlauf genau dieses Chats
+        String history = chatHistory(host);
+        assertTrue(history, history.contains("[user] Frage A"));
+        assertTrue(history, history.contains("[assistant] Antwort A"));
+        assertFalse(history, history.contains("Frage B"));
 
         // danach Chat B: keinerlei Research-Kontext von A
         assertTrue(onEdt(() -> view.lifecycle().openChat(chatB)));
@@ -153,6 +167,27 @@ public class ShellConversationLifecycleTest {
         assertNull(host.dispatch(ResearchCommandType.SUBMIT_SCOPE));
         assertNull(host.dispatch(ResearchCommandType.START_RESEARCH));
         assertTrue(host.acceptSource(page, title, "").startsWith("source_id="));
+    }
+
+    private static String chatHistory(ResearchAgentHost host) {
+        for (McpToolContribution tool : ResearchControlTools.toolsFor(host, new MainModelChat() {
+            @Override
+            public MainModelChatResult complete(List<ChatMessage> messages, double temperature, int maxTokens) {
+                return MainModelChatResult.ok("");
+            }
+
+            @Override
+            public String modelName() {
+                return "fake";
+            }
+        })) {
+            if (tool.getName().equals(ResearchControlTools.CHAT_HISTORY)) {
+                Map<String, Object> args = new HashMap<String, Object>();
+                args.put("raw", "true");
+                return tool.getHandler().invoke(new McpToolCall(tool.getName(), args)).getText();
+            }
+        }
+        throw new AssertionError("chat_history fehlt im Werkzeugsatz");
     }
 
     private static String concept(ResearchAgentHost host) {
