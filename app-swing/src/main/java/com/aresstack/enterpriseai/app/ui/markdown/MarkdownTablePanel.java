@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app.ui.markdown;
 import com.vladsch.flexmark.ext.tables.TableBlock;
 import com.vladsch.flexmark.ext.tables.TableCell;
 import com.vladsch.flexmark.ext.tables.TableRow;
+import com.vladsch.flexmark.ext.tables.TableSeparator;
 import com.vladsch.flexmark.util.ast.Node;
 
 import javax.swing.BorderFactory;
@@ -32,7 +33,13 @@ final class MarkdownTablePanel extends CappedScrollPane {
         table.setColumnSelectionAllowed(false);
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setFont(theme.getBodyFont());
+        // Blasenschrift ist auf dunklen Blasen hell: Zellen bekommen daher den Hintergrund der Codeblöcke statt Weiß.
         table.setForeground(theme.getForeground());
+        table.setBackground(theme.getCodeBackground());
+        table.setSelectionForeground(theme.getForeground());
+        table.setSelectionBackground(theme.getQuoteBorder());
+        table.setFillsViewportHeight(true);
+        getViewport().setBackground(theme.getCodeBackground());
         table.setGridColor(theme.getSeparatorColor());
         table.setShowGrid(true);
         table.setIntercellSpacing(new Dimension(8, 4));
@@ -90,6 +97,9 @@ final class MarkdownTablePanel extends CappedScrollPane {
     }
 
     private static void collectRows(Node node, List<List<String>> rows) {
+        if (node instanceof TableSeparator) {
+            return; // |---|---| ist keine Datenzeile
+        }
         if (node instanceof TableRow) {
             List<String> cells = new ArrayList<String>();
             Node cell = node.getFirstChild();
