@@ -57,6 +57,8 @@ include 'speech-api'
 include 'speech-runtime-api'
 include 'speech-local'
 include 'speech-onnx'
+// Satz- und Spracherkennung beim Vorlesen mit Apache OpenNLP (wie askai-java8 arch)
+include 'speech-opennlp'
 
 // Lokale Text-Modelle (Embeddings, Chat): Laufzeit-Port, Tokenizer/Pooling/Generierung, ONNX Runtime im Prozess
 include 'text-runtime-api'

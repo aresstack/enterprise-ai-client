@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.app.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.app.speech.Dictation;
 import com.aresstack.enterpriseai.app.speech.SwitchableReadAloud;
 import com.aresstack.enterpriseai.app.speech.SpeechOutput;
+import com.aresstack.enterpriseai.application.speech.TextAnalysisService;
 import com.aresstack.enterpriseai.app.composition.LocalVoices;
 import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
@@ -162,9 +163,11 @@ public final class EnterpriseAiClientMain {
         }
         // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über die Quelle dieses Modells (Enterprise-API oder
         // lokale Stimme im Prozess); ohne TTS-Modell bleibt sie aus und der Play/Pause-Orb nennt den Grund.
+        // Satz- und Spracherkennung beim Vorlesen (OpenNLP wie askai arch), über alle Neubindungen dieselbe.
+        final TextAnalysisService textAnalysis = SpeechOutput.textAnalysis();
         final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
                 modelCatalogs.speech(config, config.models(), network.current(), chatToken(settings, ports)),
-                ports.readAloudEmbeddings()));
+                textAnalysis));
         LOG.info("Sprachausgabe: " + readAloud.currentDescription());
         // Spracheingabe: Modell aus der Kategorie STT, erkannt über die Quelle dieses Modells (heute lokal im Prozess);
         // ohne STT-Modell bleibt der Mikrofon-Knopf deaktiviert und nennt den Grund.
@@ -218,7 +221,8 @@ public final class EnterpriseAiClientMain {
                             @Override
                             public void run() {
                                 frame.setTitle(current.windowTitle());
-                                rebindSpeech(readAloud, dictation, current, modelCatalogs, network, settings, ports);
+                                rebindSpeech(readAloud, textAnalysis, dictation, current, modelCatalogs, network,
+                                        settings, ports);
                             }
                         });
                     }
@@ -395,14 +399,14 @@ public final class EnterpriseAiClientMain {
     }
 
     /** Bindet Sprachausgabe und Spracheingabe an die gespeicherte TTS-/STT-Auswahl (auf dem EDT). */
-    private static void rebindSpeech(SwitchableReadAloud readAloud, Dictation dictation, AppConfig current,
+    private static void rebindSpeech(SwitchableReadAloud readAloud, TextAnalysisService textAnalysis,
+                                     Dictation dictation, AppConfig current,
                                      ModelCatalogs catalogs, LiveNetwork network, SettingsService settings,
                                      ApplicationPorts ports) {
         try {
             ModelsConfig saved = current.models();
             readAloud.replace(SpeechOutput.readAloud(saved,
-                    catalogs.speech(current, saved, network.current(), chatToken(settings, ports)),
-                    ports.readAloudEmbeddings()));
+                    catalogs.speech(current, saved, network.current(), chatToken(settings, ports)), textAnalysis));
             LOG.info("Sprachausgabe: " + readAloud.currentDescription());
             dictation.bind(saved, catalogs.speechRecognition(saved));
             LOG.info("Spracheingabe: " + dictation.currentDescription());

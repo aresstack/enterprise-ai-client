@@ -81,32 +81,6 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
         }
     };
 
-    private final EmbeddingPort readAloudEmbeddings = new EmbeddingPort() {
-        @Override
-        public EmbeddingModelIdentity modelIdentity() {
-            return current().modelIdentity();
-        }
-
-        @Override
-        public EmbeddingBatch embed(List<String> texts) {
-            return current().embed(texts);
-        }
-
-        private EmbeddingPort current() {
-            EmbeddingPort port = current.readAloud;
-            if (port == null) {
-                throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "kein Embedding-Modell für die "
-                        + "Absätze gewählt oder das lokale Modell fehlt (Einstellungen → Sprachausgabe)");
-            }
-            return port;
-        }
-
-        @Override
-        public String toString() {
-            return "LiveReadAloudEmbeddings[" + current.readAloud + "]";
-        }
-    };
-
     private final EmbeddingPort embeddings = new EmbeddingPort() {
         @Override
         public EmbeddingModelIdentity modelIdentity() {
@@ -148,11 +122,6 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
     /** Liefert je Aufruf die Welt des aktuellen Embedding-Modells; der Index-Namensraum folgt ihr. */
     EmbeddingPort embeddings() {
         return embeddings;
-    }
-
-    /** Das Embedding-Modell der Absätze beim Vorlesen, je Aufruf das aktuelle; ohne Wahl scheitert {@code embed}. */
-    EmbeddingPort readAloudEmbeddings() {
-        return readAloudEmbeddings;
     }
 
     @Override
@@ -207,33 +176,7 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
                 : unavailableEmbeddings(EmbeddingModelIdentity.of(embeddingModel.modelId(),
                 config.embedding().dimension()).withAttribute("encoding", "float")
                 .withAttribute("catalog", embeddingCatalog), localEmbeddingProblem);
-        return new Adapters(chatModels.chat(), chatModels.responses(), embeddingPort,
-                readAloudEmbeddings(config, network));
-    }
-
-    /**
-     * Absätze beim Vorlesen: lokal ({@code local:<ordner>}) im Prozess über dieselbe ONNX-Laufzeit, Cloud das
-     * Embedding-Modell der Wissensbasis über die Enterprise-API; ohne Wahl oder ohne lokales Modell {@code null}.
-     */
-    private EmbeddingPort readAloudEmbeddings(AppConfig config, NetworkServices network) {
-        String choice = config.models().readAloudEmbedding();
-        if (choice == null) {
-            return null;
-        }
-        if (ModelsConfig.READ_ALOUD_EMBEDDING_CLOUD.equals(choice)) {
-            return AdapterAssembly.embeddings(config.embedding(), secrets, network);
-        }
-        ModelReference local = ModelsConfig.parse(choice);
-        if (local == null || !ModelsConfig.LOCAL_CATALOG_ID.equals(local.catalogId())) {
-            return null;
-        }
-        try {
-            return new LocalEmbeddingAdapter(ModelsConfig.LOCAL_CATALOG_ID, local.modelId(),
-                    config.models().localModelRoot(), encoder);
-        } catch (IllegalArgumentException missing) {
-            LOG.log(Level.WARNING, "Lokales Embedding-Modell für die Absätze nicht nutzbar: {0}", missing.getMessage());
-            return null;
-        }
+        return new Adapters(chatModels.chat(), chatModels.responses(), embeddingPort);
     }
 
     private static EmbeddingPort unavailableEmbeddings(final EmbeddingModelIdentity identity, final String problem) {
@@ -256,10 +199,8 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
         final ChatCompletionPort chat;
         final ResponsesPort responses;
         final EmbeddingPort embeddings;
-        final EmbeddingPort readAloud;
 
-        Adapters(ChatCompletionPort chat, ResponsesPort responses, EmbeddingPort embeddings, EmbeddingPort readAloud) {
-            this.readAloud = readAloud;
+        Adapters(ChatCompletionPort chat, ResponsesPort responses, EmbeddingPort embeddings) {
             this.chat = chat;
             this.responses = responses;
             this.embeddings = embeddings;

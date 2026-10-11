@@ -37,7 +37,6 @@ public final class ApplicationPorts implements Closeable {
     private final ChatCompletionPort chat;
     private final ResponsesPort responses;
     private final EmbeddingPort embeddings;
-    private final EmbeddingPort readAloudEmbeddings;
     private final Supplier<EmbeddingModelIdentity> embeddingSpace;
     private final KnowledgeIndexPort index;
     private final KnowledgeSourceCatalog sources;
@@ -64,7 +63,6 @@ public final class ApplicationPorts implements Closeable {
         this.chat = builder.chat;
         this.responses = builder.responses;
         this.embeddings = builder.embeddings;
-        this.readAloudEmbeddings = builder.readAloudEmbeddings;
         this.embeddingSpace = builder.embeddingSpace;
         this.index = builder.index;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
@@ -93,14 +91,6 @@ public final class ApplicationPorts implements Closeable {
 
     public EmbeddingPort embeddings() {
         return embeddings;
-    }
-
-    /**
-     * Embeddings für die Absätze beim Vorlesen ({@code speech.readAloud.embeddingModel}), je Aufruf das gerade
-     * gespeicherte Modell; {@code null}: nicht verfügbar.
-     */
-    public EmbeddingPort readAloudEmbeddings() {
-        return readAloudEmbeddings;
     }
 
     /** Die Embedding-Welt (Index-Namensraum) des aktuellen Stands. */
@@ -229,7 +219,6 @@ public final class ApplicationPorts implements Closeable {
         private ChatCompletionPort chat;
         private ResponsesPort responses;
         private EmbeddingPort embeddings;
-        private EmbeddingPort readAloudEmbeddings;
         private Supplier<EmbeddingModelIdentity> embeddingSpace;
         private KnowledgeIndexPort index;
         private KnowledgeSourceCatalog sources;
@@ -275,12 +264,6 @@ public final class ApplicationPorts implements Closeable {
                     return value.modelIdentity();
                 }
             };
-            return this;
-        }
-
-        /** Embeddings für die Absätze beim Vorlesen. */
-        public Builder readAloudEmbeddings(EmbeddingPort value) {
-            this.readAloudEmbeddings = value;
             return this;
         }
 

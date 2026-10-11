@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -150,6 +151,22 @@ public interface SettingsDialogActions {
     /** Der Wert für die TTS-Auswahl, unter dem eine installierte Stimme gewählt wird. */
     default String localVoiceSelection(String voiceId) {
         return voiceId;
+    }
+
+    /**
+     * Die OpenNLP-Modelle des Vorlesens (Satz- und Spracherkennung wie askai arch) mit Installationsstand, genau
+     * einmal auf dem EDT.
+     */
+    default void nlpModels(Consumer<List<NlpModelOffer>> onResult) {
+        onResult.accept(Collections.<NlpModelOffer>emptyList());
+    }
+
+    /**
+     * Installiert ein OpenNLP-Modell (Download über die Netzwerkeinstellungen des Entwurfs, Größe und SHA-256
+     * geprüft); Ergebnis genau einmal auf dem EDT.
+     */
+    default void installNlpModel(SettingsForm form, String id, BiConsumer<Boolean, String> onFinished) {
+        onFinished.accept(Boolean.FALSE, "In dieser Umgebung nicht verfügbar.");
     }
 
     /** Das Standard-Ermittlungsskript der Bibliothek für einen Modus (PowerShell bzw. VBScript), sonst leer. */

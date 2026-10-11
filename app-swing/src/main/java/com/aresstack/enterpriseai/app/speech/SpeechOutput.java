@@ -5,7 +5,8 @@ import com.aresstack.enterpriseai.application.speech.ReadAloudService;
 import com.aresstack.enterpriseai.application.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
+import com.aresstack.enterpriseai.application.speech.TextAnalysisService;
+import com.aresstack.enterpriseai.app.config.AppPaths;
 
 /**
  * Entscheidet, ob und womit vorgelesen wird: das Modell kommt aus der Katalog-Kategorie TTS ({@code model.tts}),
@@ -23,13 +24,25 @@ public final class SpeechOutput {
     }
 
     /**
-     * @param models Modellauswahl aus der Konfiguration
-     * @param speech die Sprachausgabe je Modellkatalog
-     * @param paragraphEmbeddings Embeddings für die Absätze ({@code speech.readAloud.embeddingModel}), nur genutzt,
-     *                            wenn dort ein Modell gewählt ist
+     * Die Textanalyse des Vorlesens wie askai arch: OpenNLP-Modelle aus {@code <Anwendungsverzeichnis>/models/nlp},
+     * geladen beim ersten Vorlesen, entladen eine Minute nach dem letzten.
+     */
+    public static TextAnalysisService textAnalysis() {
+        return new TextAnalysisService(nlpModels().loader(), TextAnalysisService.DEFAULT_STOP_GRACE_MILLIS);
+    }
+
+    /** Die OpenNLP-Modelle des Vorlesens im Anwendungsverzeichnis. */
+    public static NlpModels nlpModels() {
+        return NlpModels.standard(AppPaths.appDirectory().resolve("models").resolve("nlp"));
+    }
+
+    /**
+     * @param models   Modellauswahl aus der Konfiguration
+     * @param speech   die Sprachausgabe je Modellkatalog
+     * @param analysis Satz- und Spracherkennung (OpenNLP) oder {@code null}
      */
     public static ReadAloudBinding readAloud(ModelsConfig models, SpeechSynthesisRegistry speech,
-                                             EmbeddingPort paragraphEmbeddings) {
+                                             TextAnalysisService analysis) {
         ModelReference selected = models.selections().get(ModelCategory.TTS);
         if (selected == null) {
             return ReadAloudBinding.unavailable(NO_MODEL);
@@ -39,7 +52,7 @@ public final class SpeechOutput {
         }
         ReadAloudService service = new ReadAloudService(speech.require(selected.catalogId()), selected.modelId(),
                 new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
-                models.readAloudEmbedding() == null ? null : paragraphEmbeddings);
+                analysis);
         return ReadAloudBinding.available(service, "Stimme: " + selected.modelId() + " (" + selected.catalogId()
                 + ")", models.readAloudAutoStart());
     }

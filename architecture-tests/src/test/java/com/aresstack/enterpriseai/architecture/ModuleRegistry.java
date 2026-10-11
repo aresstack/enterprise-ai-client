@@ -94,6 +94,8 @@ final class ModuleRegistry {
                 // Pilot-Backend ONNX Runtime (Java-Bibliothek im Prozess); nur hier ONNX-Typen.
                 .module("speech-onnx", "speech.onnx", ModuleKind.ADAPTER, "Sprache", "domain",
                         "speech-runtime-api")
+                // Satz- und Spracherkennung beim Vorlesen (Apache OpenNLP wie askai arch); nur hier OpenNLP-Typen.
+                .module("speech-opennlp", "speech.opennlp", ModuleKind.ADAPTER, "Sprache", "domain", "speech-api")
 
                 // Inferenz-Laufzeit lokaler Text-Modelle (Encoder für Embeddings, Decoder für Chat), austauschbar.
                 .module("text-runtime-api", "text.runtime", ModuleKind.PORT, "Lokale Modelle", "domain")
@@ -148,6 +150,7 @@ final class ModuleRegistry {
                         "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
                         "resource-holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
+                        "speech-opennlp",
                         "text-runtime-api", "text-local", "text-onnx", "research-domain", "research-api",
                         "research-scope", "research-store", "research-agent-runtime", "research-concept",
                         "research-agent-acp")

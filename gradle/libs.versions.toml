@@ -22,6 +22,7 @@ tika = "2.9.1"
 commonsNet = "3.9.0"
 huggingface4j = "0.1.1"
 onnxruntime = "1.30.0"
+opennlp = "1.9.4"
 
 [libraries]
 # Test
@@ -75,3 +76,6 @@ commons-net = { module = "commons-net:commons-net", version.ref = "commonsNet" }
 # model-huggingface: lokale Stimmen vom Hugging Face Hub (Angelos Bibliothek, Java 8, nur Gson).
 huggingface4j = { module = "com.aresstack:huggingface4j", version.ref = "huggingface4j" }
 onnxruntime = { module = "com.microsoft.onnxruntime:onnxruntime", version.ref = "onnxruntime" }
+
+# speech-opennlp: Satz- und Spracherkennung beim Vorlesen (wie askai-java8 arch; 1.9.x ist die letzte Java-8-Linie)
+opennlp-tools = { module = "org.apache.opennlp:opennlp-tools", version.ref = "opennlp" }

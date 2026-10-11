@@ -135,7 +135,7 @@ public final class SettingsPanel extends JPanel {
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
         this.modelsTab = new ModelsTab(actions, current, palette);
-        this.speechTab = new SpeechTab(modelsTab, actions, palette);
+        this.speechTab = new SpeechTab(palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START

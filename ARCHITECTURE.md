@@ -74,6 +74,7 @@ Moduls liegen nur dort (geprüft).
 | `speech-runtime-api` | PORT | `speech.runtime` | domain | Inferenz-Laufzeit lokaler Stimmen (Token-Ids zu Audio), austauschbar |
 | `speech-local` | ADAPTER | `speech.local` | domain, speech-api, speech-runtime-api | Lokale Stimmen im Prozess (Piper, VITS aus dem Modellverzeichnis) |
 | `speech-onnx` | ADAPTER | `speech.onnx` | domain, speech-runtime-api | Pilot-Backend ONNX Runtime (Java-Bibliothek, kein externes Programm) |
+| `speech-opennlp` | ADAPTER | `speech.opennlp` | domain, speech-api | Satz- und Spracherkennung beim Vorlesen mit Apache OpenNLP 1.9.4 (wie askai-java8 arch) |
 | `text-runtime-api` | PORT | `text.runtime` | domain | Inferenz-Laufzeit lokaler Text-Modelle (Encoder, Decoder mit KV-Cache, Sprachmodell mit Audio-Eingang), austauschbar |
 | `text-local` | ADAPTER | `text.local` | domain, embedding-api, chat-api, text-runtime-api, speech-api | Lokale Embeddings, lokaler Chat und lokale Spracheingabe im Prozess (Tokenizer aus tokenizer.json in Java, Pooling, Chat-Vorlage, Generierung, Log-Mel-Merkmale für Gemma 4) |
 | `text-onnx` | ADAPTER | `text.onnx` | domain, text-runtime-api | Pilot-Backend ONNX Runtime für Text-Modelle |

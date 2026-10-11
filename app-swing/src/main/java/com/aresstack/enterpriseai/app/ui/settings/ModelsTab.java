@@ -159,6 +159,14 @@ final class ModelsTab {
         voiceContent.add(voiceNote.panel(), BorderLayout.NORTH);
         voiceContent.add(voices.panel(), BorderLayout.CENTER);
 
+        FormRows nlpNote = new FormRows(palette);
+        nlpNote.note("Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache. Ohne "
+                + "diese Modelle wird an Satzzeichen geteilt.");
+        JPanel nlpContent = new JPanel(new BorderLayout(0, 4));
+        nlpContent.setOpaque(false);
+        nlpContent.add(nlpNote.panel(), BorderLayout.NORTH);
+        nlpContent.add(new NlpModelList(actions, form, palette).panel(), BorderLayout.CENTER);
+
         FormRows local = new FormRows(palette);
         localModelRoot = local.textField("Modellverzeichnis (optional)",
                 "Verzeichnis der lokal installierten Modelle; leer = <Anwendungsverzeichnis>/local-models");
@@ -172,6 +180,8 @@ final class ModelsTab {
                 FormRows.plate("Installiert", palette.getAccentOrange(), voiceContent, palette),
                 FormRows.plate("Vorschläge", palette.getAccentOrange(), suggestionContent, palette),
                 FormRows.plate("Hugging Face durchsuchen", palette.getAccentOrange(), searchContent, palette),
+                FormRows.plate("Satz- und Spracherkennung (Vorlesen)", palette.getAccentOrange(), nlpContent,
+                        palette),
                 FormRows.plate("Modellverzeichnis", palette.getAgentPetrol(), local.panel(), palette));
         deck.setOpaque(false);
         deck.add(cloudPage, CLOUD_PAGE);

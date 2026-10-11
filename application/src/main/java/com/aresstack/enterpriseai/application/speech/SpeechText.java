@@ -7,7 +7,8 @@ import java.util.regex.Pattern;
 /**
  * Bereitet eine Markdown-Antwort zum Vorlesen auf: Codeblöcke und Mermaid-Diagramme fallen weg, Links werden zu
  * ihrem Text, Formatierungszeichen verschwinden. {@link #chunks(String, SpeechChunking)} teilt nach der gewählten
- * {@link SpeechChunking} (Absatz-/Satz-Körnung aus askai arch, ohne NLP-Modelle).
+ * {@link SpeechChunking} (Absatz-/Satz-Körnung aus askai arch; ohne Textanalyse ein einfacher Schnitt an Satzzeichen, mit ihr
+ * schneidet {@link TextAnalysisService} die Sätze über OpenNLP).
  */
 public final class SpeechText {
 
@@ -86,26 +87,12 @@ public final class SpeechText {
         return chunks;
     }
 
-    /** Die Sätze je Absatz (Leerzeilen trennen Absätze), in Lesereihenfolge; leere Absätze fallen weg. */
-    static List<List<String>> paragraphSentences(String plainText) {
-        List<List<String>> paragraphs = new ArrayList<List<String>>();
-        if (plainText == null) {
-            return paragraphs;
-        }
-        for (String paragraph : plainText.split("\\n\\s*\\n")) {
-            String flat = paragraph.replace('\n', ' ').trim();
-            if (flat.isEmpty()) {
-                continue;
-            }
-            List<String> sentences = new ArrayList<String>();
-            for (String sentence : SENTENCE_END.split(flat)) {
-                addBounded(sentences, sentence.trim());
-            }
-            if (!sentences.isEmpty()) {
-                paragraphs.add(sentences);
-            }
-        }
-        return paragraphs;
+    /**
+     * Ein Stück der Textanalyse, begrenzt auf {@link #MAX_UNIT_CHARS} Zeichen (längere werden an Satzgrenzen geteilt,
+     * damit eine Äußerung im Token-Rahmen der Stimme bleibt); ohne sprechbares Zeichen leer.
+     */
+    static List<String> bounded(String chunk) {
+        return chunks(chunk, SpeechChunking.ANSWER);
     }
 
     /** Fasst Sätze zu Stücken bis {@link #MAX_UNIT_CHARS} zusammen. */

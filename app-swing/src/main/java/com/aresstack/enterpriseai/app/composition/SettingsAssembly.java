@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.app.settings.ConfigurationCheck;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.app.settings.FileSettingsActions;
 import com.aresstack.enterpriseai.app.settings.ModelCatalogLoader;
+import com.aresstack.enterpriseai.app.speech.SpeechOutput;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 
 import javax.swing.SwingUtilities;
@@ -68,7 +69,7 @@ public final class SettingsAssembly {
     private static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, LocalVoices voices,
                                                 Executor worker, Executor ui) {
         return new FileSettingsActions(file, new KeePassSecretChecker(), new ServiceConnectionChecker(),
-                configurationCheck(), models, voices, worker, ui);
+                configurationCheck(), models, voices, SpeechOutput.nlpModels(), worker, ui);
     }
 
     /**

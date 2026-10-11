@@ -1,0 +1,7 @@
+description = 'Adapter: Satz- und Spracherkennung für das Vorlesen mit Apache OpenNLP (wie askai-java8 arch), Modelle als Dateien im Anwendungsverzeichnis, kein externes Programm.'
+
+dependencies {
+    api project(':speech-api')
+    // OpenNLP bleibt im Adapter (implementation, nicht api); 1.9.x ist die letzte Java-8-Linie (wie arch).
+    implementation libs.opennlp.tools
+}

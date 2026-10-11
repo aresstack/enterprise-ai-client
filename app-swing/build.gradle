@@ -42,6 +42,7 @@ dependencies {
     implementation project(':speech-runtime-api')
     implementation project(':speech-local')
     implementation project(':speech-onnx')
+    implementation project(':speech-opennlp')
     implementation project(':text-runtime-api')
     implementation project(':text-local')
     implementation project(':text-onnx')

@@ -10,10 +10,13 @@ import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.config.VaultLocations;
 import com.aresstack.enterpriseai.app.net.HttpRoutes;
+import com.aresstack.enterpriseai.app.net.NetworkServices;
+import com.aresstack.enterpriseai.app.speech.NlpModels;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.app.ui.settings.LocalVoiceInstallProgress;
 import com.aresstack.enterpriseai.app.ui.settings.LocalVoiceSearchCallback;
 import com.aresstack.enterpriseai.app.ui.settings.NetworkLogListener;
+import com.aresstack.enterpriseai.app.ui.settings.NlpModelOffer;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
@@ -32,6 +35,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -40,6 +44,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
@@ -63,6 +68,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private final Executor ui;
     private final ModelCatalogLoader models;
     private final LocalVoiceInstaller voices;
+    private final NlpModels nlpModels;
 
     /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
@@ -108,6 +114,18 @@ public final class FileSettingsActions implements SettingsDialogActions {
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
                                ConnectionChecker connectionChecker, ConfigurationCheck check,
                                ModelCatalogLoader models, LocalVoiceInstaller voices, Executor worker, Executor ui) {
+        this(file, secretChecker, connectionChecker, check, models, voices, null, worker, ui);
+    }
+
+    /**
+     * Wie oben, dazu die OpenNLP-Modelle des Vorlesens.
+     *
+     * @param nlpModels Liste und Installation der OpenNLP-Modelle oder {@code null} (dann bleibt die Liste leer)
+     */
+    public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker,
+                               ConnectionChecker connectionChecker, ConfigurationCheck check,
+                               ModelCatalogLoader models, LocalVoiceInstaller voices, NlpModels nlpModels,
+                               Executor worker, Executor ui) {
         if (file == null || check == null || worker == null || ui == null) {
             throw new IllegalArgumentException("file, check, worker and ui must not be null");
         }
@@ -119,6 +137,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
         this.ui = ui;
         this.models = models;
         this.voices = voices;
+        this.nlpModels = nlpModels;
     }
 
     /** Wie viel vom Ende der Protokolldatei „Technische Details“ zeigt. */
@@ -649,6 +668,62 @@ public final class FileSettingsActions implements SettingsDialogActions {
             });
         } catch (RuntimeException rejected) {
             progress.finished(false, "Installation konnte nicht gestartet werden.");
+        }
+    }
+
+    @Override
+    public void nlpModels(Consumer<List<NlpModelOffer>> onResult) {
+        List<NlpModelOffer> offers = new ArrayList<NlpModelOffer>();
+        if (nlpModels != null) {
+            for (NlpModels.Entry entry : nlpModels.entries()) {
+                offers.add(new NlpModelOffer(entry.id(), entry.name(), nlpModels.isInstalled(entry)));
+            }
+        }
+        onResult.accept(offers);
+    }
+
+    /** Lädt mit den Netzwerkeinstellungen des Entwurfs; Ergebnis genau einmal auf dem EDT. */
+    @Override
+    public void installNlpModel(SettingsForm form, String id, final BiConsumer<Boolean, String> onFinished) {
+        final NlpModels.Entry entry = nlpModels == null ? null : nlpModels.entry(id);
+        if (entry == null) {
+            onFinished.accept(Boolean.FALSE, "In dieser Umgebung nicht verfügbar.");
+            return;
+        }
+        final NetworkConfig network;
+        try {
+            network = networkDraft(form).network;
+        } catch (IllegalStateException e) {
+            onFinished.accept(Boolean.FALSE, e.getMessage());
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    boolean ok;
+                    String message;
+                    try {
+                        nlpModels.install(entry, NetworkServices.from(network));
+                        ok = true;
+                        message = "✓ installiert";
+                    } catch (IOException | RuntimeException e) {
+                        ok = false;
+                        message = "Installation fehlgeschlagen: " + (e.getMessage() == null
+                                ? e.getClass().getSimpleName() : e.getMessage());
+                    }
+                    final boolean installed = ok;
+                    final String result = message;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            onFinished.accept(installed, result);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            onFinished.accept(Boolean.FALSE, "Installation konnte nicht gestartet werden.");
         }
     }
 

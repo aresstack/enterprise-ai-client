@@ -291,7 +291,6 @@ public final class AppConfigLoader {
                 SpeechChunking.parse(r.text(ModelsConfig.READ_ALOUD_CHUNKING_KEY, null), SpeechChunking.PARAGRAPHS),
                 r.integer(ModelsConfig.READ_ALOUD_WORKERS_KEY, ReadAloudService.DEFAULT_SYNTHESIS_WORKERS, 1,
                         ReadAloudService.MAX_SYNTHESIS_WORKERS),
-                r.text(ModelsConfig.READ_ALOUD_EMBEDDING_KEY, null),
                 r.text(ModelsConfig.SPEECH_VOICE_KEY, null), modelRoot);
     }
 
