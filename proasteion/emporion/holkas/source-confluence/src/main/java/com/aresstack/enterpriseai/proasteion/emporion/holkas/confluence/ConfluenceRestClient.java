@@ -307,7 +307,7 @@ final class ConfluenceRestClient {
         }
         URI uri;
         try {
-            uri = URI.create(config.baseUrl() + path);
+            uri = URI.create(config.baseUrl() + encodeUnsafe(path));
         } catch (IllegalArgumentException e) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Bild: ungültiger Pfad");
         }
@@ -335,6 +335,26 @@ final class ConfluenceRestClient {
                         + " (auch mit Sitzungs-Cookie aus der REST-Anmeldung)", second);
             }
         }
+    }
+
+    /**
+     * Kodiert, was in einer URI nicht roh stehen darf (Leerzeichen, Umlaute, Anführungszeichen …), als UTF-8-Prozent-
+     * kodierung; erlaubte Zeichen und vorhandene {@code %XX} bleiben. Confluence-Anhänge heißen oft mit Leerzeichen
+     * (draw.io-Vorschauen „Name des Diagramms.png“); roh scheiterte {@link URI#create} („ungültiger Pfad“), und
+     * MainframeMate schickte das Leerzeichen unkodiert.
+     */
+    static String encodeUnsafe(String value) {
+        StringBuilder out = new StringBuilder();
+        for (byte b : value.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+            int c = b & 0xFF;
+            if (c < 0x80 && (Character.isLetterOrDigit(c) || "-._~:/?#[]@!$&'()*+,;=%".indexOf(c) >= 0)) {
+                out.append((char) c);
+            } else {
+                out.append('%').append(Character.toUpperCase(Character.forDigit(c >> 4, 16)))
+                        .append(Character.toUpperCase(Character.forDigit(c & 0xF, 16)));
+            }
+        }
+        return out.toString();
     }
 
     /** Weiterleitung, 401/403 oder HTML statt Bild: Anmeldung hat beim Download nicht gegriffen. */

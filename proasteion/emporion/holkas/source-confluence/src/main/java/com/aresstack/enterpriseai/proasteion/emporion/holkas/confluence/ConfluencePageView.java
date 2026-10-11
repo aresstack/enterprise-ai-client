@@ -1,11 +1,16 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -75,6 +80,7 @@ final class ConfluencePageView {
      */
     static ConfluencePageView of(String bodyHtml, String baseUri, String serverBase) {
         Document doc = Jsoup.parseBodyFragment(bodyHtml == null ? "" : bodyHtml, baseUri);
+        drawioPreviews(doc, baseUri); // vor dem Entfernen versteckter Elemente: die Diagrammdaten sind versteckt
         doc.select("script, noscript, iframe, object, embed, applet, form, input, button, select, textarea").remove();
         doc.select("style, svg").remove();
         // Wie ConfluenceHtmlText: Versteckte Lade-/Platzhalterzeilen und Bedienelemente nicht zeigen; Swings
@@ -91,6 +97,7 @@ final class ConfluencePageView {
             if (src.isEmpty()) {
                 src = raw;
             }
+            src = ConfluenceRestClient.encodeUnsafe(src);
             src = onBase(onBase(src, serverBase, baseUri, true), baseUri, baseUri, false);
             img.attr("src", src);
             if (raw.startsWith("data:") || src.contains("/emoticons/") || src.contains("/icons/")) {
@@ -132,6 +139,68 @@ final class ConfluencePageView {
         }
         doc.outputSettings().prettyPrint(false);
         return new ConfluencePageView(doc.body().html(), images);
+    }
+
+    /**
+     * draw.io-Diagramme sind kein {@code <img>}: Der Browser zeichnet sie per Script aus den Diagrammdaten
+     * ({@code /rest/drawio/...}), im HTML steht nur ein Platzhalter mit verstecktem {@code data-diagramdata}
+     * (Base64-JSON). Dieses nennt die Vorschaudatei, die das Plugin als Anhang der Seite ablegt
+     * ({@code previewName}, {@code owningPageId}). Für jeden Platzhalter ohne eigenes Bild wird diese Vorschau als
+     * gewöhnliches Bild nach dem Makro eingefügt; sie lädt dann angemeldet wie jeder Anhang.
+     */
+    static void drawioPreviews(Document doc, String baseUri) {
+        for (Element data : doc.select("[data-diagramdata]")) {
+            JsonObject diagram;
+            try {
+                JsonElement parsed = JsonParser.parseString(new String(
+                        Base64.getMimeDecoder().decode(data.attr("data-diagramdata")), StandardCharsets.UTF_8));
+                if (!parsed.isJsonObject()) {
+                    continue;
+                }
+                diagram = parsed.getAsJsonObject();
+            } catch (RuntimeException e) {
+                continue; // keine lesbaren Diagrammdaten: Platzhalter bleibt leer wie bisher
+            }
+            String preview = text(diagram, "previewName");
+            String owner = text(diagram, "owningPageId");
+            if (owner.isEmpty()) {
+                owner = text(diagram, "ceoId");
+            }
+            if (preview.isEmpty() || !owner.matches("\\d+")) {
+                continue;
+            }
+            Element macro = data.closest("[data-macro-name]");
+            Element anchor = macro != null ? macro : data;
+            if (!anchor.select("img").isEmpty()) {
+                continue;
+            }
+            String name = text(diagram, "diagramName");
+            Element image = new Element("img")
+                    .attr("src", baseUri + "download/attachments/" + owner + "/" + encodeSegment(preview))
+                    .attr("alt", name.isEmpty() ? preview : name)
+                    .attr("data-linked-resource-default-alias", preview);
+            anchor.after(new Element("p").appendChild(image));
+        }
+    }
+
+    private static String text(JsonObject json, String key) {
+        JsonElement value = json.get(key);
+        return value != null && value.isJsonPrimitive() ? value.getAsString().trim() : "";
+    }
+
+    /** Ein Pfadsegment: alles außer A–Z, a–z, 0–9 und {@code -._~} prozentkodiert (UTF-8). */
+    static String encodeSegment(String segment) {
+        StringBuilder out = new StringBuilder();
+        for (byte b : segment.getBytes(StandardCharsets.UTF_8)) {
+            int c = b & 0xFF;
+            if (c < 0x80 && (Character.isLetterOrDigit(c) || "-._~".indexOf(c) >= 0)) {
+                out.append((char) c);
+            } else {
+                out.append('%').append(Character.toUpperCase(Character.forDigit(c >> 4, 16)))
+                        .append(Character.toUpperCase(Character.forDigit(c & 0xF, 16)));
+            }
+        }
+        return out.toString();
     }
 
     /**

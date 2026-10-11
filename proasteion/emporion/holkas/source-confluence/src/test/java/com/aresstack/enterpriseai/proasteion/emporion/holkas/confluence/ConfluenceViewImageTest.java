@@ -133,6 +133,15 @@ public class ConfluenceViewImageTest {
     }
 
     @Test
+    public void aFileNameWithSpacesIsRequestedEncoded() throws Exception {
+        response = new ConfluenceHttpResponse(200, "image/png", PNG);
+
+        assertArrayEquals(PNG, source().loadViewImage(BASE + "/download/attachments/7/Komponente IAP.png"));
+
+        assertEquals("/confluence/download/attachments/7/Komponente%20IAP.png", requested.getRawPath());
+    }
+
+    @Test
     public void anOctetStreamWithImageBytesIsAnImage() throws Exception {
         response = new ConfluenceHttpResponse(200, "application/octet-stream", PNG);
 
