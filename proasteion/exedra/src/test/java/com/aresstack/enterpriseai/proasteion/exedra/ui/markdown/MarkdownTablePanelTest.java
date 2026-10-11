@@ -63,6 +63,7 @@ public class MarkdownTablePanelTest {
         assertTrue(table.getRowHeight(0) >= 2 * lineHeight);
 
         table.setSize(table.getPreferredSize());
+        table.doLayout();
         Rectangle cell = table.getCellRect(0, 0, false);
         MarkdownTablePanel.RichCell link = (MarkdownTablePanel.RichCell) table.getValueAt(0, 0);
         link.pane.setBounds(0, 0, cell.width, cell.height);

@@ -175,7 +175,11 @@ final class MarkdownTablePanel extends CappedScrollPane {
                         .getPreferredSize().width;
                 width = Math.max(width, cellWidth + CELL_PADDING);
             }
-            table.getColumnModel().getColumn(column).setPreferredWidth(Math.min(MAX_COLUMN_WIDTH, width));
+            // Auch die aktuelle Breite setzen: die Zeilenhöhen werden gleich danach bei dieser Breite gemessen,
+            // nicht erst nach dem ersten Layout der Tabelle.
+            int fitted = Math.min(MAX_COLUMN_WIDTH, width);
+            table.getColumnModel().getColumn(column).setPreferredWidth(fitted);
+            table.getColumnModel().getColumn(column).setWidth(fitted);
         }
     }
 
