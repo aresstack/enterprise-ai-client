@@ -650,7 +650,27 @@ public class RagChatBindingTest {
 
         @Override
         public ChatTask stream(ChatRequest request, ChatStreamListener listener) {
-            throw new UnsupportedOperationException();
+            ChatResponse response = complete(request);
+            listener.onStart();
+            if (!response.content().isEmpty()) {
+                listener.onDelta(response.content());
+            }
+            listener.onComplete(response);
+            return new ChatTask() {
+                @Override
+                public void cancel() {
+                }
+
+                @Override
+                public boolean isDone() {
+                    return true;
+                }
+
+                @Override
+                public boolean isCancelled() {
+                    return false;
+                }
+            };
         }
     }
 

@@ -79,6 +79,45 @@ public class ChatCompletionsToolLoopTest {
         assertEquals("abc", second.get(second.size() - 1).toolCallId());
     }
 
+    /** Über stream() läuft jede Runde gestreamt; die Schlussantwort kommt in Stücken, nicht am Stück. */
+    @Test
+    public void streamDeliversTheFinalAnswerInDeltasAfterToolRounds() throws Exception {
+        chat.script.add(toolCall("a"));
+        chat.script.add(answer("Fertig"));
+        final List<String> deltas = new ArrayList<String>();
+        final ChatResponse[] completed = new ChatResponse[1];
+        loop(8).stream(request(), new ChatStreamListener() {
+            @Override
+            public void onStart() {
+            }
+
+            @Override
+            public void onDelta(String text) {
+                deltas.add(text);
+            }
+
+            @Override
+            public void onComplete(ChatResponse response) {
+                completed[0] = response;
+            }
+
+            @Override
+            public void onError(ChatCompletionException error) {
+                fail(error.getMessage());
+            }
+
+            @Override
+            public void onCancelled() {
+                fail("cancelled");
+            }
+        });
+        assertEquals(1, executed.size());
+        assertEquals("zwei Deltas der Schlussantwort", java.util.Arrays.asList("Fer", "tig"), deltas);
+        assertEquals("Fertig", completed[0].content());
+        assertEquals("tools auch in der gestreamten Runde", "knowledge_read",
+                chat.requests.get(1).tools().get(0).name());
+    }
+
     @Test
     public void stopsAfterMaxRounds() {
         for (int i = 0; i < 4; i++) {
@@ -159,9 +198,35 @@ public class ChatCompletionsToolLoopTest {
             return script.removeFirst();
         }
 
+        /** Streamt die nächste Antwort synchron: Text in zwei Deltas, dann onComplete (mit tool_calls). */
         @Override
         public ChatTask stream(ChatRequest request, ChatStreamListener listener) {
-            throw new UnsupportedOperationException();
+            ChatResponse response = complete(request);
+            listener.onStart();
+            String text = response.content();
+            if (!text.isEmpty()) {
+                int half = Math.max(1, text.length() / 2);
+                listener.onDelta(text.substring(0, half));
+                if (half < text.length()) {
+                    listener.onDelta(text.substring(half));
+                }
+            }
+            listener.onComplete(response);
+            return new ChatTask() {
+                @Override
+                public void cancel() {
+                }
+
+                @Override
+                public boolean isDone() {
+                    return true;
+                }
+
+                @Override
+                public boolean isCancelled() {
+                    return false;
+                }
+            };
         }
     }
 }

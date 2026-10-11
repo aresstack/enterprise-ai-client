@@ -12,6 +12,10 @@ final class ToolLoopTask implements ChatTask {
     private volatile boolean cancelRequested;
     private boolean finished;
     private boolean cancelled;
+    /** Die laufende Modellanfrage der aktuellen Runde (gestreamt); ein Abbruch bricht auch sie ab. */
+    private ChatTask round;
+    /** Schon als Delta weitergereichter Text; {@link #finish} schickt ihn nicht noch einmal. */
+    private final StringBuilder streamed = new StringBuilder();
 
     ToolLoopTask(ChatStreamListener listener) {
         this.listener = listener;
@@ -25,7 +29,42 @@ final class ToolLoopTask implements ChatTask {
             }
             cancelRequested = true;
         }
+        ChatTask running;
+        synchronized (this) {
+            running = round;
+        }
+        if (running != null) {
+            running.cancel();
+        }
         finish(null, null);
+    }
+
+    /** Merkt die laufende Runde; wurde schon abgebrochen, wird sie sofort abgebrochen. */
+    void round(ChatTask task) {
+        boolean cancelNow;
+        synchronized (this) {
+            round = task;
+            cancelNow = cancelRequested;
+        }
+        if (cancelNow && task != null) {
+            task.cancel();
+        }
+    }
+
+    /** Ein Textstück der laufenden Runde sofort an die Blase (solange der Lauf nicht beendet ist). */
+    void delta(String text) {
+        synchronized (this) {
+            if (finished || cancelRequested) {
+                return;
+            }
+            streamed.append(text);
+        }
+        listener.onDelta(text);
+    }
+
+    /** Alles bisher gestreamte, in Empfangsreihenfolge. */
+    synchronized String streamedText() {
+        return streamed.toString();
     }
 
     @Override
@@ -55,8 +94,10 @@ final class ToolLoopTask implements ChatTask {
         } else if (error != null) {
             listener.onError(error);
         } else {
-            if (!response.content().isEmpty()) {
-                listener.onDelta(response.content());
+            String content = response.content();
+            String already = streamedText();
+            if (content.startsWith(already) && content.length() > already.length()) {
+                listener.onDelta(content.substring(already.length()));
             }
             listener.onComplete(response);
         }

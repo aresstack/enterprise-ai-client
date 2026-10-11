@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatToolDefinition;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -22,7 +23,10 @@ import java.util.concurrent.RejectedExecutionException;
  * {@link ToolRegistry} als {@code tools} hinaus; solange die Antwort {@code tool_calls} enthält, führt die Schleife
  * sie aus, hängt Aufruf (assistant) und Ergebnis ({@code role=tool}) an den Verlauf dieser Anfrage und fragt erneut,
  * höchstens {@code maxRounds} Mal. Entscheidend sind die gelieferten {@code tool_calls}, nicht {@code finish_reason};
- * fehlt einem Aufruf die {@code id}, vergibt die Schleife {@code call_<runde>_<index>}. Die fertige Antwort kommt als ein Delta (kein Streaming auf diesem Pfad).
+ * fehlt einem Aufruf die {@code id}, vergibt die Schleife {@code call_<runde>_<index>}. Über {@link #stream} läuft
+ * jede Runde gestreamt ({@code stream:true}, die {@code tool_calls} setzt der Adapter aus den Deltas zusammen, wie
+ * MainframeMate {@code CloudChatManager}): Text erscheint sofort in der Blase, auch die Schlussantwort;
+ * {@link #complete} fragt ohne Streaming.
  *
  * <p>Werkzeugaufrufe und -ergebnisse bleiben in dieser Anfrage; in die Historie kommt nur die fertige Antwort.
  * Unbekannte Werkzeuge und Werkzeugfehler gehen als Text an das Modell zurück. Ein Abbruch meldet sofort
@@ -98,7 +102,10 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
                     definition.parametersSchema()));
         }
         List<ChatMessage> messages = new ArrayList<ChatMessage>(request.messages());
-        ChatResponse response = chat.complete(new ChatRequest(messages, request.options(), definitions));
+        ChatResponse response = ask(new ChatRequest(messages, request.options(), definitions), task);
+        if (response == null) {
+            return null;
+        }
         int round = 0;
         while (response.message().hasToolCalls()) {
             if (task != null && task.isCancelRequested()) {
@@ -123,8 +130,80 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
             if (task != null && task.isCancelRequested()) {
                 return null;
             }
-            response = chat.complete(new ChatRequest(messages, request.options(), definitions));
+            response = ask(new ChatRequest(messages, request.options(), definitions), task);
+            if (response == null) {
+                return null;
+            }
+        }
+        if (task != null) {
+            // Der Blase wurde alles gestreamte gezeigt (auch Text vor einem Werkzeugaufruf): die fertige Antwort ist
+            // genau dieser Text.
+            String shown = task.streamedText();
+            if (!shown.equals(response.content())) {
+                return new ChatResponse(ChatMessage.assistant(shown), response.finishReason(), response.usage(),
+                        response.model());
+            }
         }
         return response;
+    }
+
+    /**
+     * Eine Runde: ohne {@code task} per {@code complete}, sonst gestreamt (Text sofort über {@code task} an die
+     * Blase); wartet auf das Ende der Runde. {@code null} nach Abbruch.
+     */
+    private ChatResponse ask(ChatRequest request, final ToolLoopTask task) {
+        if (task == null) {
+            return chat.complete(request);
+        }
+        final CountDownLatch done = new CountDownLatch(1);
+        final ChatResponse[] result = new ChatResponse[1];
+        final ChatCompletionException[] failure = new ChatCompletionException[1];
+        final boolean[] streamed = new boolean[1];
+        ChatTask round = chat.stream(request, new ChatStreamListener() {
+            @Override
+            public void onStart() {
+            }
+
+            @Override
+            public void onDelta(String text) {
+                streamed[0] = true;
+                task.delta(text);
+            }
+
+            @Override
+            public void onComplete(ChatResponse response) {
+                result[0] = response;
+                done.countDown();
+            }
+
+            @Override
+            public void onError(ChatCompletionException error) {
+                failure[0] = error;
+                done.countDown();
+            }
+
+            @Override
+            public void onCancelled() {
+                done.countDown();
+            }
+        });
+        task.round(round);
+        try {
+            done.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            round.cancel();
+            return null;
+        }
+        if (failure[0] != null) {
+            throw failure[0];
+        }
+        if (task.isCancelRequested() || result[0] == null) {
+            return null;
+        }
+        if (!streamed[0] && !result[0].content().isEmpty()) {
+            task.delta(result[0].content()); // ein Port ohne Deltas: der Text kommt am Stück
+        }
+        return result[0];
     }
 }

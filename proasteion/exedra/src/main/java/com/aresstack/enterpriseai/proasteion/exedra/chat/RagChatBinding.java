@@ -77,14 +77,14 @@ import java.util.logging.Logger;
  * eine gescheiterte Antwort nennt ihre technische Ursache wie {@link ChatServiceBinding#describe}.
  *
  * <p><b>Werkzeuge, Anhänge und Seiten</b> ({@link #enableTools}): Hat die Unterhaltung Anhänge oder Seiten, ist
- * mindestens eine Wissensquelle angehakt (oder steht {@code chat.tools.enabled=true}), läuft die Nachricht über die Werkzeug-Schleife ({@code /chat/completions}
- * mit {@code tools}, ohne Streaming): neue Dateien werden auf dem Arbeits-Thread abgelegt, dem Modell werden nur
- * Kennung und Name der Anhänge genannt, den Inhalt holt es sich über {@code read_attachment}/{@code search_attachment}.
- * Seiten aus dem Lesebereich gehören ab der Nachricht, mit der sie kamen, zum Chat: das Modell kennt nur Titel und
- * Bookmark und liest den Inhalt mit {@code knowledge_read}. Mit angehakter Quelle oder Seiten bekommt das Modell den
- * Wissens-Werkzeugsatz des Agenten ({@code knowledge_search} über die angehakten Quellen, {@code knowledge_read}),
- * auch ohne Seite: so kann es selbst weitere Seiten suchen und lesen. Die Blase zeigt währenddessen, welches Werkzeug läuft;
- * die Antwort erscheint am Stück.
+ * mindestens eine Wissensquelle angehakt (oder steht {@code chat.tools.enabled=true}), läuft die Nachricht über die
+ * Werkzeug-Schleife ({@code /chat/completions} mit {@code tools}, gestreamt): neue Dateien werden auf dem
+ * Arbeits-Thread abgelegt, dem Modell werden nur Kennung und Name der Anhänge genannt, den Inhalt holt es sich über
+ * {@code read_attachment}/{@code search_attachment}. Seiten aus dem Lesebereich gehören ab der Nachricht, mit der sie
+ * kamen, zum Chat: das Modell kennt nur Titel und Bookmark und liest den Inhalt mit {@code knowledge_read}. Mit
+ * angehakter Quelle oder Seiten bekommt das Modell den Wissens-Werkzeugsatz des Agenten ({@code knowledge_search} über
+ * die angehakten Quellen, {@code knowledge_read}), auch ohne Seite: so kann es selbst weitere Seiten suchen und lesen.
+ * Die Blase zeigt währenddessen, welches Werkzeug läuft; die Antwort erscheint wie ohne Werkzeuge Stück für Stück.
  */
 public final class RagChatBinding implements ChatShellActions {
 
