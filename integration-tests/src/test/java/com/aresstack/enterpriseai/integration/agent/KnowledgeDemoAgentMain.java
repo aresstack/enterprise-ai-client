@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Testagent für Slice G: ein ACP-Agent (STDIO), der jede Frage über das MCP-Werkzeug {@code search_knowledge}
+ * Testagent für Slice G: ein ACP-Agent (STDIO), der jede Frage über das MCP-Werkzeug {@code knowledge_search}
  * in der Wissensbasis des Hosts nachschlägt und die Treffer als Antwort streamt. Er ist Testcode dieses Moduls
  * und läuft als eigener Kindprozess über den Test-Klassenpfad (siehe {@code SliceSupport.knowledgeAgentLaunchSpec}).
  *
@@ -111,8 +111,8 @@ public final class KnowledgeDemoAgentMain {
             client = clients.connect(endpoint.getUrl(), endpoint.getTransport());
             Map<String, Object> arguments = new LinkedHashMap<String, Object>();
             arguments.put("query", question);
-            arguments.put("max_results", MAX_RESULTS);
-            output = client.callTool(KnowledgeMcpTools.SEARCH_KNOWLEDGE, arguments);
+            arguments.put("limit", MAX_RESULTS);
+            output = client.callTool(KnowledgeMcpTools.KNOWLEDGE_SEARCH, arguments);
         } catch (McpToolCallException e) {
             // Nur die Art des Fehlers: Meldungen der Bibliothek könnten die URL samt Token enthalten.
             log("search_knowledge failed" + (e.isEndpointUnavailable() ? " (endpoint unavailable)" : ""));

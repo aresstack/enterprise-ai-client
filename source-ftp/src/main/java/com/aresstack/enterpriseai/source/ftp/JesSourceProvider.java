@@ -32,6 +32,7 @@ public final class JesSourceProvider implements KnowledgeSourceProvider {
                     "JES-Jobs (Mainframe)")
             .description("Ausgaben von JCL-Jobs (JCL, Systemmeldungen, SYSPRINT) über die JES-Schnittstelle des "
                     + "z/OS-FTP-Servers")
+            .fullIndexing(true)
             .idPrefix("jes")
             .summaryKey("host")
             .field(SourceSettingField.text("host", "Host", "Name oder Adresse des FTP-Servers, ohne ftp://").required()

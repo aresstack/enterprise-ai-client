@@ -608,7 +608,8 @@ public final class AppConfigLoader {
                 .withMaxResponseChars(r.integer("agent.tools.maxResponseChars", defaults.maxResponseChars(), 1000, 10000000))
                 .withSnippetChars(r.integer("agent.tools.snippetChars", defaults.snippetChars(), 80, 100000))
                 .withDefaultMaxResults(r.integer("agent.tools.defaultMaxResults", defaults.defaultMaxResults(), 1, 1000))
-                .withMaxFailuresListed(r.integer("agent.tools.maxFailuresListed", defaults.maxFailuresListed(), 0, 10000));
+                .withMaxFailuresListed(r.integer("agent.tools.maxFailuresListed", defaults.maxFailuresListed(), 0, 10000))
+                .withMaxPages(r.integer("agent.tools.maxPages", defaults.maxPages(), 0, 10000));
         return new AgentConfig(enabled, command, args, Duration.ofSeconds(timeoutSeconds), endpointId, displayName, tools);
     }
 }

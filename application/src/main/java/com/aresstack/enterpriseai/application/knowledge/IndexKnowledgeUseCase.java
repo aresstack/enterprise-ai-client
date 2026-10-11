@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
+import com.aresstack.enterpriseai.knowledge.api.IndexedResourceState;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexException;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexPort;
@@ -25,6 +26,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,6 +71,12 @@ import java.util.function.Supplier;
  * Discovery-Revision) und bereinigt nicht anhand der Discovery (es kennt keinen vollständigen Stand der Quelle).
  * Wie bisher entfernt es die Chunks einer genannten Ressource, die beim Laden {@code NOT_FOUND} meldet oder leer
  * ist.
+ *
+ * <p>{@link #indexIfChanged} und {@link #indexDocumentIfChanged} sind der suchgesteuerte Weg (MainframeMate): erst
+ * die Revision aus dem Suchtreffer mit der indexierten vergleichen, dann bei Bedarf laden und den
+ * {@link KnowledgeDocument#contentHash() Inhalts-Hash} vergleichen. Nur bei geändertem Text wird zerlegt, eingebettet
+ * und ersetzt; bei gleichem Text und neuer Revision wird nur der Stand an den vorhandenen Vektoren nachgetragen. Jede
+ * Indexierung legt den Hash in den Metadaten der Ressource ab ({@link IndexedResourceState#CONTENT_HASH_KEY}).
  *
  * <p>Blockiert für den ganzen Lauf; Aufrufer aus der Oberfläche starten ihn auf einem eigenen Thread und brechen
  * über {@link IndexingListener#isCancelled()} ab. Zustandslos und threadsicher, soweit die Ports es sind.
@@ -169,6 +177,103 @@ public final class IndexKnowledgeUseCase {
         List<KnowledgeResourceId> ids = new ArrayList<KnowledgeResourceId>(resourceIds);
         return run(source, ids, Collections.<KnowledgeResourceId, KnowledgeResource>emptyMap(), ids.size(),
                 listener == null ? IndexingListener.none() : listener, false);
+    }
+
+    /**
+     * Suchgesteuert: indexiert die genannten Treffer der Quelle nur, wenn sie neu oder geändert sind (Revision, dann
+     * Inhalts-Hash). Keine Discovery, keine Bereinigung.
+     *
+     * @param hits Ressourcen in Rangfolge mit der Revision laut Suche ({@link KnowledgeRevision#unknown()}, wenn
+     *             die Suche keine nennt)
+     */
+    public IndexingReport indexIfChanged(KnowledgeSourcePort source, Map<KnowledgeResourceId, KnowledgeRevision> hits,
+                                         IndexingListener listener) {
+        if (source == null || hits == null) {
+            throw new IllegalArgumentException("source und hits sind Pflicht");
+        }
+        IndexingListener observer = listener == null ? IndexingListener.none() : listener;
+        Map<KnowledgeResourceId, KnowledgeRevision> ordered = new LinkedHashMap<KnowledgeResourceId, KnowledgeRevision>(hits);
+        List<ResourceIndexingOutcome> outcomes = new ArrayList<ResourceIndexingOutcome>(ordered.size());
+        Set<KnowledgeResourceId> done = new HashSet<KnowledgeResourceId>();
+        boolean cancelled = false;
+        for (Map.Entry<KnowledgeResourceId, KnowledgeRevision> hit : ordered.entrySet()) {
+            if (observer.isCancelled()) {
+                cancelled = true;
+                break;
+            }
+            KnowledgeResourceId id = hit.getKey();
+            ResourceIndexingOutcome outcome;
+            if (isUnchanged(id, hit.getValue())) {
+                outcome = ResourceIndexingOutcome.done(id, "", IndexingStatus.UNCHANGED, 0);
+            } else {
+                KnowledgeDocument document;
+                try {
+                    document = source.load(id);
+                    outcome = indexLoadedIfChanged(id, document, done);
+                } catch (KnowledgeSourceException e) {
+                    outcome = loadFailed(id, e);
+                }
+            }
+            outcomes.add(outcome);
+            observer.onResource(outcome);
+        }
+        return new IndexingReport(source.sourceId(), ordered.size(), outcomes, cancelled, null, null);
+    }
+
+    /**
+     * Ein schon geladenes Dokument (z. B. beim Lesen eines Suchtreffers) indexieren, wenn sein Text neu oder geändert
+     * ist; sonst nur den Stand nachtragen.
+     */
+    public ResourceIndexingOutcome indexDocumentIfChanged(KnowledgeDocument document) {
+        if (document == null) {
+            throw new IllegalArgumentException("document ist Pflicht");
+        }
+        return indexLoadedIfChanged(document.id(), document, new HashSet<KnowledgeResourceId>());
+    }
+
+    /** Was der Index im aktuellen Namespace über die Ressource weiß (Revision, Inhalts-Hash). */
+    public Optional<IndexedResourceState> stateOf(KnowledgeResourceId id) {
+        try {
+            return index.stateOf(space(), id);
+        } catch (KnowledgeIndexException e) {
+            return Optional.empty();
+        }
+    }
+
+    private ResourceIndexingOutcome indexLoadedIfChanged(KnowledgeResourceId requested, KnowledgeDocument document,
+                                                         Set<KnowledgeResourceId> done) {
+        KnowledgeResource resource = document.resource();
+        Optional<IndexedResourceState> state = stateOf(resource.id());
+        if (state.isPresent() && state.get().hasContentHash()
+                && state.get().contentHash().equals(document.contentHash())) {
+            if (!state.get().revision().equals(resource.revision())) {
+                restamp(resource, document.contentHash());
+            }
+            done.add(resource.id());
+            return ResourceIndexingOutcome.done(resource.id(), resource.title(), IndexingStatus.UNCHANGED, 0);
+        }
+        return indexLoaded(requested, document, done);
+    }
+
+    /** Gleicher Text, neuer Stand: vorhandene Vektoren mit der neuen Revision neu ablegen, ohne zu embedden. */
+    private void restamp(KnowledgeResource resource, String contentHash) {
+        try {
+            KnowledgeResource stamped = withHash(resource, contentHash);
+            List<KnowledgeIndexEntry> entries = new ArrayList<KnowledgeIndexEntry>();
+            for (KnowledgeIndexEntry entry : index.entriesOf(space(), resource.id())) {
+                entries.add(KnowledgeIndexEntry.of(stamped, entry.chunk(), entry.embedding()));
+            }
+            if (!entries.isEmpty()) {
+                index.replace(space(), resource.id(), entries);
+            }
+        } catch (KnowledgeIndexException | IllegalArgumentException e) {
+            // Nur der Stand bleibt alt; der nächste Vergleich lädt die Seite dann erneut und spart wieder per Hash.
+        }
+    }
+
+    private static KnowledgeResource withHash(KnowledgeResource resource, String contentHash) {
+        return resource.toBuilder()
+                .metadata(resource.metadata().with(IndexedResourceState.CONTENT_HASH_KEY, contentHash)).build();
     }
 
     /** Entfernt alle Chunks einer Quelle aus dem Index, z. B. wenn sie aus der Konfiguration fällt. */
@@ -283,17 +388,27 @@ public final class IndexKnowledgeUseCase {
         try {
             document = source.load(requested);
         } catch (KnowledgeSourceException e) {
-            if (e.kind() == KnowledgeSourceException.Kind.NOT_FOUND) {
-                try {
-                    index.remove(requested);
-                } catch (KnowledgeIndexException ie) {
-                    return ResourceIndexingOutcome.failed(requested, "", IndexingStage.INDEXING, ie.getMessage());
-                }
-                return ResourceIndexingOutcome.done(requested, "", IndexingStatus.REMOVED, 0);
-            }
-            return ResourceIndexingOutcome.failed(requested, "", IndexingStage.LOADING, describe(e));
+            return loadFailed(requested, e);
         }
-        KnowledgeResource resource = document.resource();
+        return indexLoaded(requested, document, done);
+    }
+
+    /** {@code NOT_FOUND} entfernt die Ressource aus dem Index; jeder andere Ladefehler betrifft nur sie. */
+    private ResourceIndexingOutcome loadFailed(KnowledgeResourceId requested, KnowledgeSourceException e) {
+        if (e.kind() == KnowledgeSourceException.Kind.NOT_FOUND) {
+            try {
+                index.remove(requested);
+            } catch (KnowledgeIndexException ie) {
+                return ResourceIndexingOutcome.failed(requested, "", IndexingStage.INDEXING, ie.getMessage());
+            }
+            return ResourceIndexingOutcome.done(requested, "", IndexingStatus.REMOVED, 0);
+        }
+        return ResourceIndexingOutcome.failed(requested, "", IndexingStage.LOADING, describe(e));
+    }
+
+    private ResourceIndexingOutcome indexLoaded(KnowledgeResourceId requested, KnowledgeDocument document,
+                                                Set<KnowledgeResourceId> done) {
+        KnowledgeResource resource = withHash(document.resource(), document.contentHash());
         KnowledgeResourceId target = resource.id();
         if (done.contains(target)) {
             return dropAlias(requested, target, resource,

@@ -5,7 +5,7 @@ import com.aresstack.enterpriseai.application.knowledge.IndexingListener;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
-import com.aresstack.enterpriseai.application.knowledge.RefreshKnowledgeSourceUseCase;
+import com.aresstack.enterpriseai.application.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.application.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.application.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
@@ -45,8 +45,8 @@ import static org.junit.Assert.fail;
 
 /**
  * Slice F – MCP: MCP-Client (Port {@code McpToolClientFactory}, Adapter Solon) → MCP-Runtime (Solon-Server auf
- * 127.0.0.1, Token im Pfad) → Wissenswerkzeuge aus AP20 → Use Cases (Retrieval, Dokument laden, Quelle
- * auffrischen) → Lucene-Index. Solon ist prozessglobal; diese Klasse läuft in eigener JVM ({@code forkEvery 1}).
+ * 127.0.0.1, Token im Pfad) → knowledge_search/knowledge_read → Use Cases (Live-Suche, die Treffer indexiert,
+ * Retrieval, Dokument laden) → Lucene-Index. Solon ist prozessglobal; diese Klasse läuft in eigener JVM ({@code forkEvery 1}).
  */
 public class SliceFMcpTest {
 
@@ -74,9 +74,9 @@ public class SliceFMcpTest {
         indexing = new IndexKnowledgeUseCase(index, embeddings, space,
                 new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
         RetrieveKnowledgeUseCase retrieval = new RetrieveKnowledgeUseCase(index, embeddings, space, null);
-        LoadKnowledgeDocumentUseCase documents = new LoadKnowledgeDocumentUseCase(catalog, index, space);
-        RefreshKnowledgeSourceUseCase refresh = new RefreshKnowledgeSourceUseCase(indexing, catalog);
-        tools = new KnowledgeMcpTools(retrieval, documents, refresh, KnowledgeToolSettings.defaults());
+        LoadKnowledgeDocumentUseCase documents = new LoadKnowledgeDocumentUseCase(catalog);
+        tools = new KnowledgeMcpTools(retrieval, documents, new SearchDrivenIndexingUseCase(indexing),
+                KnowledgeToolSettings.defaults());
         indexing.indexSource(source, SampleKnowledge.scope(), IndexingListener.none());
 
         runtime = new SolonMcpServerRuntime();
@@ -122,51 +122,45 @@ public class SliceFMcpTest {
         assertTrue(url, url.contains(handle.getToken()));
 
         Map<String, String> listed = client.listTools();
-        assertTrue(listed.toString(), listed.keySet().containsAll(java.util.Arrays.asList(
-                KnowledgeMcpTools.SEARCH_KNOWLEDGE, KnowledgeMcpTools.GET_KNOWLEDGE_DOCUMENT,
-                KnowledgeMcpTools.REFRESH_KNOWLEDGE_SOURCE)));
+        assertEquals(listed.toString(), new java.util.HashSet<String>(java.util.Arrays.asList(
+                KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ)), listed.keySet());
 
-        String search = client.callTool(KnowledgeMcpTools.SEARCH_KNOWLEDGE, args("query", QUESTION, "max_results", 1));
-        assertTrue(search, search.startsWith("Treffer: 1"));
+        String search = client.callTool(KnowledgeMcpTools.KNOWLEDGE_SEARCH, args("query", QUESTION, "limit", 1));
         assertTrue(search, search.contains("[1] " + EXPECTED_TITLE));
-        assertTrue(search, search.contains("Id: " + source.idOf("kuendigung").value()));
-        assertTrue(search, search.contains("Quelle: " + SOURCE_ID));
+        assertTrue(search, search.contains("id: " + source.idOf("kuendigung").value()));
+        assertTrue(search, search.contains("source: " + SOURCE_ID));
         assertTrue(search, search.contains(EXPECTED_PHRASE));
 
-        String document = client.callTool(KnowledgeMcpTools.GET_KNOWLEDGE_DOCUMENT,
+        String document = client.callTool(KnowledgeMcpTools.KNOWLEDGE_READ,
                 args("id", source.idOf("kuendigung").value()));
-        assertTrue(document, document.contains("Titel: " + EXPECTED_TITLE));
-        assertTrue(document, document.contains("Quelle: " + SOURCE_ID));
+        assertTrue(document, document.contains("title: " + EXPECTED_TITLE));
+        assertTrue(document, document.contains("source: " + SOURCE_ID));
         assertTrue(document, document.contains(EXPECTED_PHRASE));
     }
 
     @Test
-    public void onlyIndexedDocumentsAreReadable() throws Exception {
-        source.add("intern", "Internes", "Nur intern, nicht im Umfang der Quelle.");
+    public void readingAnUnindexedPageIndexesIt() throws Exception {
+        source.add("intern", "Internes", "Nur intern, bisher nicht im Index.");
+        String document = client.callTool(KnowledgeMcpTools.KNOWLEDGE_READ, args("id", source.idOf("intern").value()));
+        assertTrue(document, document.contains("bisher nicht im Index"));
+        assertTrue(index.resourceIds(indexing.space(), source.sourceId()).contains(source.idOf("intern")));
         try {
-            client.callTool(KnowledgeMcpTools.GET_KNOWLEDGE_DOCUMENT, args("id", source.idOf("intern").value()));
-            fail("nicht indexierte Dokumente dürfen nicht lesbar sein (Index führt, AP20)");
+            client.callTool(KnowledgeMcpTools.KNOWLEDGE_READ, args("id", ""));
+            fail("leere id ist ein Werkzeugfehler");
         } catch (McpToolCallException expected) {
             assertFalse("ein Werkzeugfehler, kein Ausfall des Endpoints", expected.isEndpointUnavailable());
-            assertTrue(expected.getMessage(), expected.getMessage().contains("nicht in der Wissensbasis indexiert"));
+            assertTrue(expected.getMessage(), expected.getMessage().contains("example: id="));
         }
     }
 
     @Test
-    public void refreshPicksUpAChangedPageAndSearchSeesIt() throws Exception {
+    public void searchPicksUpAChangedPage() throws Exception {
         source.update("kuendigung", "Die Kündigungsfrist beträgt neuerdings sechs Wochen zum Monatsende. "
                 + "Eine Kündigung muss schriftlich erfolgen.");
 
-        String refresh = client.callTool(KnowledgeMcpTools.REFRESH_KNOWLEDGE_SOURCE, args("source_id", SOURCE_ID));
-        assertTrue(refresh, refresh.contains("Quelle: " + SOURCE_ID));
-        assertTrue(refresh, refresh.contains("Indexiert: 1"));
-        assertTrue(refresh, refresh.contains("Unverändert: 2"));
-
-        // Alle drei Chunks sind Treffer (der Semantikpfad liefert die nächsten Nachbarn der deterministischen
-        // Vektoren); entscheidend ist, dass der Index den neuen Text trägt und den alten nicht mehr.
-        String search = client.callTool(KnowledgeMcpTools.SEARCH_KNOWLEDGE,
-                args("query", QUESTION, "max_results", 3, "source_ids", SOURCE_ID));
-        assertTrue(search, search.contains("Id: " + source.idOf("kuendigung").value()));
+        // Die Live-Suche findet die geänderte Seite, der Inhalts-Hash weicht ab: neu zerlegt und eingebettet.
+        String search = client.callTool(KnowledgeMcpTools.KNOWLEDGE_SEARCH, args("query", "Kündigung", "limit", 3));
+        assertTrue(search, search.contains("id: " + source.idOf("kuendigung").value()));
         assertTrue(search, search.contains("sechs Wochen zum Monatsende"));
         assertFalse(search, search.contains(EXPECTED_PHRASE));
     }

@@ -31,6 +31,7 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
                     "FTP (Mainframe)")
             .description("COBOL- und andere Textquellen aus MVS-Datasets (PDS-Member) oder Dateien eines FTP-Servers")
             .idPrefix("ftp")
+            .fullIndexing(true)
             .summaryKey("host")
             .field(SourceSettingField.text("host", "Host", "Name oder Adresse des FTP-Servers, ohne ftp://").required()
                     .fromVault(SourceSettingField.VaultValue.HOST))

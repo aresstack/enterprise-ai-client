@@ -3,7 +3,6 @@ package com.aresstack.enterpriseai.app.ui.settings;
 import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
-import javax.swing.JCheckBox;
 import javax.swing.JFileChooser;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
@@ -12,9 +11,8 @@ import java.awt.BorderLayout;
 import java.io.File;
 
 /**
- * Die beiden Felder des Index-Dialogs: Indexverzeichnis (mit „Wählen …“) und das Häkchen für die Indexierung
- * beim Start, wie sie bis zum Umzug in die Seitenleiste der Reiter „Wissensbasis“ des Einstellungen-Dialogs
- * zeigte. Lädt einen {@link IndexForm} und liefert den bearbeiteten Stand zurück.
+ * Das Feld des Index-Dialogs: Indexverzeichnis (mit „Wählen …“). Eine Indexierung beim Start gibt es nicht mehr;
+ * die Suche füllt den Index mit ihren Treffern (wie MainframeMate). Lädt einen {@link IndexForm} und liefert den bearbeiteten Stand zurück.
  */
 final class IndexEditor {
 
@@ -22,11 +20,11 @@ final class IndexEditor {
             + "Anwendungsverzeichnis.";
     static final String DIRECTORY_LABEL = "Indexverzeichnis (optional)";
     static final String CHOOSE_LABEL = "Wählen …";
-    static final String ON_STARTUP_LABEL = "Alle Quellen beim Start im Hintergrund indexieren";
 
     private final JTextField indexDirectory;
     private final ComicButton chooseDirectory;
-    private final JCheckBox indexOnStartup;
+    /** Der gelesene Wert von {@code knowledge.indexOnStartup}, unverändert zurückgegeben (wirkt nicht mehr). */
+    private boolean indexOnStartup;
     private final JPanel panel;
 
     IndexEditor(ComicPalette palette) {
@@ -40,8 +38,6 @@ final class IndexEditor {
         directoryRow.add(indexDirectory, BorderLayout.CENTER);
         directoryRow.add(chooseDirectory, BorderLayout.EAST);
         rows.component(DIRECTORY_LABEL, directoryRow, "Verzeichnis für Lucene-Index und Vektoren");
-        indexOnStartup = rows.checkBox(ON_STARTUP_LABEL,
-                "Unveränderte Seiten werden übersprungen; die Statuszeile zeigt den Fortschritt");
         chooseDirectory.addActionListener(event -> chooseDirectory());
         panel = rows.panel();
     }
@@ -66,11 +62,11 @@ final class IndexEditor {
 
     void load(IndexForm form) {
         indexDirectory.setText(form.indexDirectory());
-        indexOnStartup.setSelected(form.indexOnStartup());
+        indexOnStartup = form.indexOnStartup();
     }
 
     IndexForm toForm() {
-        return new IndexForm(indexDirectory.getText(), indexOnStartup.isSelected());
+        return new IndexForm(indexDirectory.getText(), indexOnStartup);
     }
 
     void focusFirstField() {
@@ -81,10 +77,6 @@ final class IndexEditor {
 
     JTextField indexDirectory() {
         return indexDirectory;
-    }
-
-    JCheckBox indexOnStartup() {
-        return indexOnStartup;
     }
 
     ComicButton chooseButton() {

@@ -22,12 +22,26 @@ public final class BrowseKnowledgeSourceUseCase {
     public static final int MAX_LISTED = 200;
 
     private final KnowledgeDocumentReader reader;
+    private final IndexKnowledgeUseCase indexing;
 
     public BrowseKnowledgeSourceUseCase(KnowledgeDocumentReader reader) {
+        this(reader, null);
+    }
+
+    private BrowseKnowledgeSourceUseCase(KnowledgeDocumentReader reader, IndexKnowledgeUseCase indexing) {
         if (reader == null) {
             throw new IllegalArgumentException("reader must not be null");
         }
         this.reader = reader;
+        this.indexing = indexing;
+    }
+
+    /** Derselbe Use Case, der jede gelesene Ressource in den Index nimmt, falls neu oder geändert (On-Demand). */
+    public BrowseKnowledgeSourceUseCase withIndexing(IndexKnowledgeUseCase value) {
+        if (value == null) {
+            throw new IllegalArgumentException("indexing must not be null");
+        }
+        return new BrowseKnowledgeSourceUseCase(reader, value);
     }
 
     /** Die Ressourcen der Quelle im Umfang {@code scope}, ohne Inhalt, höchstens {@link #MAX_LISTED}. */
@@ -48,5 +62,20 @@ public final class BrowseKnowledgeSourceUseCase {
             throw new IllegalArgumentException("source and id must not be null");
         }
         return reader.read(source.sourceId(), source, id);
+    }
+
+    /**
+     * Ein gelesenes Dokument in den Index nehmen, falls neu oder geändert (nach dem Anzeigen aufrufen, es bettet
+     * ein); ohne {@link #withIndexing} nichts. Wirft nicht.
+     */
+    public void remember(KnowledgeDocument document) {
+        if (indexing == null || document == null) {
+            return;
+        }
+        try {
+            indexing.indexDocumentIfChanged(document);
+        } catch (RuntimeException e) {
+            // Lesen gelingt auch ohne Indexierung; die nächste Suche versucht es erneut.
+        }
     }
 }

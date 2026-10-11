@@ -12,23 +12,20 @@ public class SearchKnowledgeOutputTest {
 
     @Test
     public void readsTitleAndSnippetPerHit() {
-        String output = "Treffer: 2\n"
-                + "Anfrage: Kündigungsfrist\n"
+        String output = "Query: Kündigungsfrist\n"
                 + "\n"
                 + "[1] Kündigungsfrist – Allgemeines\n"
-                + "Id: memory:handbuch/kuendigung\n"
-                + "Chunk: memory:handbuch/kuendigung#0\n"
-                + "Quelle: handbuch\n"
-                + "Stand: unbekannt\n"
-                + "Score: 0.0328 (Volltext #1: 1.2 | Semantik #2: 0.4)\n"
-                + "Text:\n"
+                + "id: memory:handbuch/kuendigung\n"
+                + "source: handbuch\n"
                 + "Die Kündigungsfrist beträgt drei Monate zum Quartalsende.\n"
                 + "Die Frist gilt für beide Seiten.\n"
                 + "\n"
                 + "[2] Urlaubsregelung\n"
-                + "Id: memory:handbuch/urlaub\n"
-                + "Text:\n"
-                + "Dreißig Tage Urlaub …\n";
+                + "id: memory:handbuch/urlaub\n"
+                + "source: handbuch (not read yet)\n"
+                + "Dreißig Tage Urlaub …\n"
+                + "\n"
+                + "Read a hit completely with knowledge_read — example: id=\"memory:handbuch/kuendigung\"";
         List<SearchKnowledgeOutput.Hit> hits = SearchKnowledgeOutput.parse(output);
         assertEquals(2, hits.size());
         assertEquals("Kündigungsfrist – Allgemeines", hits.get(0).title());
@@ -40,16 +37,8 @@ public class SearchKnowledgeOutputTest {
 
     @Test
     public void noHitsAndEmptyOutputGiveNothing() {
-        assertTrue(SearchKnowledgeOutput.parse("Treffer: 0\nAnfrage: x\nKeine Treffer.").isEmpty());
+        assertTrue(SearchKnowledgeOutput.parse("Query: x\nNo hits. Try other words").isEmpty());
         assertTrue(SearchKnowledgeOutput.parse("").isEmpty());
         assertTrue(SearchKnowledgeOutput.parse(null).isEmpty());
-    }
-
-    @Test
-    public void omittedHitsNoteDoesNotBecomeSnippetText() {
-        String output = "Treffer: 2\nAnfrage: x\n\n[1] A\nText:\nText A\n\n… 1 weitere Treffer wegen der Antwortgröße ausgelassen.";
-        List<SearchKnowledgeOutput.Hit> hits = SearchKnowledgeOutput.parse(output);
-        assertEquals(1, hits.size());
-        assertEquals("Text A", hits.get(0).snippet());
     }
 }
