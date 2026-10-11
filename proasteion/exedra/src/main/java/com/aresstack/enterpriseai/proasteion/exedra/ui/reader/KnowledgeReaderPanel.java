@@ -740,6 +740,12 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         for (TabMenuContributor contributor : menuContributors) {
             contributor.contribute(menu, tab.link);
         }
+        if (tab.images != null && !tab.images.images().isEmpty()) {
+            menu.add(item("Bilder (" + tab.images.images().size() + ")", () -> {
+                select(tab.link.key());
+                openSlideshow(tab.link.key(), 0);
+            }));
+        }
         if (menu.getComponentCount() > 0) {
             menu.addSeparator();
         }

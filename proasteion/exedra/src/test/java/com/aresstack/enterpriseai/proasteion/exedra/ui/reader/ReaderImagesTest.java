@@ -48,6 +48,15 @@ public class ReaderImagesTest {
             assertTrue(reader.imagesButton().isVisible());
             assertEquals("Bilder (3)", reader.imagesButton().getText());
 
+            reader.addTabMenuContributor((popup, tabLink) -> popup.add(new javax.swing.JMenuItem("Zum aktuellen Chat")));
+            javax.swing.JPopupMenu menu = reader.tabMenu(link.key());
+            List<String> entries = new ArrayList<String>();
+            for (java.awt.Component entry : menu.getComponents()) {
+                entries.add(entry instanceof javax.swing.JMenuItem ? ((javax.swing.JMenuItem) entry).getText() : "|");
+            }
+            int chat = entries.indexOf("Zum aktuellen Chat");
+            assertEquals("Bilder-Eintrag neben dem Chat-Eintrag: " + entries, "Bilder (3)", entries.get(chat + 1));
+
             reader.openSlideshow(link.key(), 0);
             ImageSlideshowPanel show = reader.slideshow();
             assertNotNull(show);
