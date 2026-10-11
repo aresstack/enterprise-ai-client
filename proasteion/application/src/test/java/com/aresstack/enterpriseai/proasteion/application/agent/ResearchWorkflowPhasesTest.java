@@ -37,9 +37,12 @@ public class ResearchWorkflowPhasesTest {
     @Rule
     public final TemporaryFolder folder = new TemporaryFolder();
 
+    /** Jeder Host gehört zu einem Chat; ein Neustart bindet wieder an denselben Chat. */
     private static ResearchAgentHost host(File root) {
-        return new ResearchAgentHost(root, FileResearchScopeDraftStore::new,
+        ResearchAgentHost host = new ResearchAgentHost(root, FileResearchScopeDraftStore::new,
                 directory -> new ConceptBranchService(new FileConceptStore(directory)));
+        host.openChat("chat-iar");
+        return host;
     }
 
     private static McpToolResult call(ResearchAgentHost host, String name, Object... pairs) {
