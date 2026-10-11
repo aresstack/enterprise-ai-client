@@ -432,12 +432,6 @@ public final class ConceptTreeView extends JComponent implements javax.swing.Scr
                     RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            if (rows.isEmpty()) {
-                g2.setFont(ResearchUiTypography.regular(12.5f));
-                g2.setColor(new Color(0x888888));
-                g2.drawString("No concept cards yet — describe in the chat what you want to "
-                        + "research, or add the first card below.", MARGIN, MARGIN + 16);
-            }
             paintConnectors(g2);
             for (int index = 0; index < rows.size(); index++) {
                 paintRow(g2, index);
