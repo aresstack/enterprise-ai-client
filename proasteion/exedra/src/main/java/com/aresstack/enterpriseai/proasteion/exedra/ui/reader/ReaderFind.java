@@ -20,6 +20,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.IntSupplier;
 
 /**
  * Suchen im Inhalt EINES Lese-Reiters, wie {@code highlightSearch()} im {@code ConfluenceReaderTab} von MainframeMate:
@@ -46,6 +47,7 @@ final class ReaderFind {
     private final List<JTable> markedTables = new ArrayList<JTable>();
     private int current = -1;
     private boolean stepping;
+    private IntSupplier coveredTop = () -> 0;
 
     ReaderFind(JComponent root) {
         if (root == null) {
@@ -72,6 +74,11 @@ final class ReaderFind {
             reveal(hits.get(0));
         }
         return hits.size();
+    }
+
+    /** Wie hoch oben etwas über dem Inhalt liegt (der Navigationsbanner): Treffer landen darunter, nicht dahinter. */
+    void setCoveredTop(IntSupplier coveredTop) {
+        this.coveredTop = coveredTop == null ? () -> 0 : coveredTop;
     }
 
     /** Schrittmodus („Treffer einzeln durchgehen“): der aktuelle Treffer wird orange statt gelb. */
@@ -331,6 +338,9 @@ final class ReaderFind {
         if (SwingUtilities.isDescendingFrom(component, root) && component != root) {
             Rectangle inRoot = SwingUtilities.convertRectangle(component, area, root);
             inRoot.grow(0, 24);
+            int covered = Math.max(0, coveredTop.getAsInt());
+            inRoot.y -= covered;
+            inRoot.height += covered;
             root.scrollRectToVisible(inRoot);
         }
         if (hit.text != null && hit.text.isFocusable()) {

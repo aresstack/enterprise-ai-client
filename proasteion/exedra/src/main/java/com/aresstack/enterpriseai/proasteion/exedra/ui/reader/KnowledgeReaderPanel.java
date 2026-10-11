@@ -949,6 +949,11 @@ public final class KnowledgeReaderPanel extends JPanel {
     /** Der Inhalt im Rollbereich, darunter die Amber-Suchleiste, die nur diesen Reiter durchsucht. */
     private JComponent searchable(Tab tab, JComponent content, final JComponent view) {
         final ReaderFind find = new ReaderFind(view);
+        if (content instanceof NavigableDocumentPage) {
+            // Treffer unter dem Wolkenbanner der Dokumentnavigation anzeigen, nicht dahinter
+            final NavigableDocumentPage document = (NavigableDocumentPage) content;
+            find.setCoveredTop(() -> document.sky().coveredHeight());
+        }
         find.setStepping(stepSearch);
         final ComicFindBar bar = new ComicFindBar(FIND_PLACEHOLDER);
         bar.setStepSearchEnabled(stepSearch);

@@ -107,6 +107,27 @@ public class DocumentNavigationSkyTest {
     }
 
     @Test
+    public void findHitLandsBelowTheBannerAndKeepsItsPosition() throws Exception {
+        String markdown = markdown().replace("### Installation Details", "### Installation Zabak");
+        KnowledgeReaderPanel reader = reader(markdown, 700, 400);
+        SwingUtilities.invokeAndWait(() -> {
+            DocumentNavigationSky sky = reader.navigationSky(key());
+            JViewport viewport = reader.documentPage(key()).scroll().getViewport();
+            int covered = sky.coveredHeight();
+            // vom Ende her nach oben springen: der Treffer darf nicht hinter dem Banner landen
+            viewport.setViewPosition(new java.awt.Point(0,
+                    Math.max(0, viewport.getView().getHeight() - viewport.getExtentSize().height)));
+            assertTrue(viewport.getViewPosition().y > 0);
+            assertEquals(1, reader.searchFor("zabak"));
+            Component hit = reader.findHit(key(), 0);
+            int top = SwingUtilities.convertPoint(hit, 0, 0, viewport).y;
+            assertTrue("Treffer unter dem Banner: " + top + " vs " + covered, top >= covered);
+            assertTrue("Treffer im Bild", top < viewport.getExtentSize().height);
+            assertEquals("Banner bleibt oben", covered, sky.coveredHeight());
+        });
+    }
+
+    @Test
     public void wheelOverTheBannerScrollsSidewaysNotTheDocument() throws Exception {
         KnowledgeReaderPanel reader = reader(markdown(), 360, 400);
         SwingUtilities.invokeAndWait(() -> {
