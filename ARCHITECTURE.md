@@ -514,7 +514,7 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   Agentenprozess und wird nie geloggt. `KnowledgeToolSettings` kommen aus `agent.tools.*`.
 - **Shutdown** (`ShutdownSequence`, idempotent, Fenster-Schließen und JVM-Shutdown-Hook): laufende Chat-Turns
   abbrechen → Agent-Modus beenden (`KnowledgeMcpTools.shutdown()`, `AgentService.close()`, Endpoint abgemeldet)
-  → Startindexierung abbrechen und abwarten → Ports schließen (`SolonMcpServerRuntime.shutdown()` +
+  → Ports schließen (`SolonMcpServerRuntime.shutdown()` +
   `stopSharedServer()`, dann `LuceneKnowledgeIndex.close()`) → Executor stoppen.
 - **Indexierung**: Beim Start wird nichts indexiert; die Suche füllt den Index mit ihren Treffern, ganze Quellen
   indexiert ⟳ („Jetzt indexieren“) im Drawer. `knowledge.indexOnStartup` ist Altbestand und wird ignoriert.
@@ -524,7 +524,7 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   Beispielkonfiguration ohne Netz; dazu `AppConfigLoaderTest`, `FilePairingKeyStoreTest`,
   `SecretBackedTokenSourcesTest`, `HttpRoutesTest` (lokales PAC-Skript mit
   Sentinel-Proxy, Cache, Rückfall), `TrustPolicyTest` (lokaler HTTPS-Server mit selbstsigniertem Zertifikat),
-  `ConnectionDiagnosisTest`, `AppLogFileTest`, `ShutdownSequenceTest`, `StartupIndexingTest`.
+  `ConnectionDiagnosisTest`, `AppLogFileTest`, `ShutdownSequenceTest`.
   Architekturregel `CompositionRootBoundaryTest`.
 - **Start**: `./gradlew :proasteion:exedra:run` (optional `-Denterpriseai.config=<Datei>`); Demos mit Fakes:
   `runChatDemo`, `runRagDemo`, `runAgentDemo`.

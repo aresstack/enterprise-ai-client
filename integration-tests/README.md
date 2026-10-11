@@ -20,7 +20,7 @@ sind lokale Fakes auf `127.0.0.1`; ein getrennter Lauf gegen echte Dienste ist s
 | E – ACP | Host → ACP → Demo-Agent | `SliceEAcpTest` | `AgentService`, `AcpAgentLauncher`, `SolonAcpAgentConnector`, Demo-Agent als Kindprozess (`acp-demo-agent-all.jar`) | – |
 | F – MCP | MCP-Client → MCP-Runtime → Knowledge-Tool → Use Case | `SliceFMcpTest` | `SolonMcpToolClientFactory`, `SolonMcpServerRuntime`, `KnowledgeMcpTools`, Use Cases, `LuceneKnowledgeIndex` | `InMemoryKnowledgeSource`, `DeterministicEmbeddingPort` |
 | G – Agent + MCP | Chat-UI Agent-Modus → ACP-Agent → MCP `search_knowledge` → Wissensindex → Antwort | `SliceGAgentMcpTest` | `ShellAssembly`, `CompositionRoot`, `AgentService`, `AcpAgentLauncher`, `SolonAcpAgentConnector`, `SolonMcpServerRuntime`, `LuceneKnowledgeIndex`; Testagent `KnowledgeDemoAgentMain` (Testcode dieses Moduls) | `FakeChatCompletionPort`, `InMemoryKnowledgeSource`, `DeterministicEmbeddingPort` |
-| A–D aus Konfiguration | Properties → `AdapterAssembly` → Startindexierung → RAG-Frage über die Shell | `ConfiguredApplicationSliceTest` | alle echten Adapter aus `AdapterAssembly`, API-Key und Zugangsdaten nur aus KeePass | alle Fakes oben |
+| A–D aus Konfiguration | Properties → `AdapterAssembly` → Indexierung → RAG-Frage über die Shell | `ConfiguredApplicationSliceTest` | alle echten Adapter aus `AdapterAssembly`, API-Key und Zugangsdaten nur aus KeePass | alle Fakes oben |
 
 Vorhandene Tests der Stränge decken Teilketten derselben Slices ab und bleiben die Spezifikation der Details:
 AP9 `KnowledgeVerticalSliceTest` (B ohne HTTP), AP17 `SolonAcpRoundTripTest` (E auf Adapterebene),

@@ -51,7 +51,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * Slices A bis D zusammen, so wie die Anwendung startet: eine Properties-Konfiguration → {@code AdapterAssembly}
  * (echte Adapter: Chat, Embeddings, MediaWiki, Confluence, KeePassRPC, Lucene) → {@code CompositionRoot} →
- * Startindexierung → RAG-Frage über die Shell. Alle Gegenstellen sind lokale Fakes; der API-Key und beide
+ * Indexierung → RAG-Frage über die Shell. Alle Gegenstellen sind lokale Fakes; der API-Key und beide
  * Quell-Zugangsdaten kommen ausschließlich aus dem Fake-KeePass.
  */
 public class ConfiguredApplicationSliceTest {

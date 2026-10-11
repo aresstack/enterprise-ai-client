@@ -100,7 +100,7 @@ ausführliche Fassung.
 | Properties-Konfiguration im Benutzerverzeichnis, Pfad-Override, unveränderliche Snapshots, Proxy-Modi | askai-java8 `AppConfigurationRepository`, `AskAiPaths`, `ProxyConfiguration` | Schlüsselnamen neu, keine Secrets in der Datei |
 | Proxy-Auflösung und TLS-Vertrauen (`app.net.HttpRoutes`, `app.net.TrustPolicy`) | Bibliotheken aresstack/win-proxy-java 0.2.0 und win-trust-java 0.1.0, Oberfläche nach askai-java8 ProxyPanel, Einbindung wie corenth `WinProxyPlatformProxyRouteResolver` und askai-java8 `ProxyConfiguration` | Alle Modi der Bibliothek außer dem veralteten Legacy-Modus; Ergebnis je Ziel-Host gecacht; NOT_IMPLEMENTED und ERROR werden als nicht verfügbare Route gemeldet, ohne Rückfall auf DIRECT |
 | Settings-Schlüssel für Proxy, Timeouts, mTLS, KeePass-Verdrahtung mit Pairing-Dialog | MainframeMate `Settings`, `KeePassProvider`, `KeePassRpcPairingDialog`, `MvsBrowser`-Proxy | API-Key als `SecretRef` statt verschlüsselt in den Settings |
-| Shutdown-Reihenfolge, Hintergrund-Indexierung beim Start | MainframeMate `MainFrame`/`Main`, `IndexingService`; askai-java8 (Semantic Index beim Start) | `ShutdownSequence` mit fünf Stufen, `StartupIndexing` abschaltbar |
+| Shutdown-Reihenfolge | MainframeMate `MainFrame`/`Main` | `ShutdownSequence`; eine Indexierung beim Start gibt es nicht mehr |
 | Composition Root als einziger Ort für Adapterkonstruktoren | corenth | `CompositionRootBoundaryTest` |
 
 ## Neue Architekturentscheidungen (nicht aus einem Referenz-Repository)

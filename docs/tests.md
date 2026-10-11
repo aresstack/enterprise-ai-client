@@ -109,7 +109,7 @@ Build gegen lokale Fakes. Vollständige Zuordnung, Entscheidungen und Live-Param
 | E – ACP | `SliceEAcpTest` | `AgentService`, `AcpAgentLauncher`, `SolonAcpAgentConnector`, Demo-Agent als Kindprozess | – |
 | F – MCP | `SliceFMcpTest` | `SolonMcpToolClientFactory`, `SolonMcpServerRuntime`, `KnowledgeMcpTools`, Lucene | `InMemoryKnowledgeSource`, `DeterministicEmbeddingPort` |
 | G – Agent + MCP | `SliceGAgentMcpTest` | Shell im Agent-Modus, ACP, Solon-MCP-Server, Lucene, Testagent `KnowledgeDemoAgentMain` als Kindprozess | `FakeChatCompletionPort`, `InMemoryKnowledgeSource`, `DeterministicEmbeddingPort` |
-| A–D aus Konfiguration | `ConfiguredApplicationSliceTest` | `AdapterAssembly` aus Properties, Startindexierung, RAG-Frage über die Shell | alle Fakes, Secrets nur aus Fake-KeePass |
+| A–D aus Konfiguration | `ConfiguredApplicationSliceTest` | `AdapterAssembly` aus Properties, Indexierung, RAG-Frage über die Shell | alle Fakes, Secrets nur aus Fake-KeePass |
 
 Die Slices mit Secret prüfen außerdem, dass Token und Passwörter an den Stellen nicht auftauchen, die der jeweilige
 Slice erzeugt (`SliceSupport.assertNoSecret`): Sprechblasen und Transkript (A, G, Konfiguration), Indexierungs-

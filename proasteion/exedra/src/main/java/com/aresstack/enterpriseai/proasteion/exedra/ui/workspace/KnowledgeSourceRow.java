@@ -94,7 +94,7 @@ public final class KnowledgeSourceRow extends JPanel {
         check.setRolloverEnabled(true);
         check.setBorder(BorderFactory.createEmptyBorder(1, 0, 0, 0));
         check.setToolTipText(item.enabled() ? "Angehakt: der Chat durchsucht diese Quelle"
-                : "Abgewählt: weder Indexierung beim Start noch Suche im Chat");
+                : "Abgewählt: der Chat durchsucht diese Quelle nicht");
         check.getAccessibleContext().setAccessibleName("Quelle " + item.id() + " verwenden");
         check.addActionListener(event -> {
             if (actions != null) {
