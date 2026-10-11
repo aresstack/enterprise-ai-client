@@ -180,8 +180,11 @@ public final class SettingsMapper {
         set.put(KEY_AGENT_ENABLED, String.valueOf(form.agentEnabled()));
         // Nur „an“ steht in der Datei; aus heißt Standard (Schlüssel entfernt).
         put(set, ModelsConfig.READ_ALOUD_AUTO_START_KEY, form.readAloudAutoStart() ? "true" : "");
-        put(set, ModelsConfig.READ_ALOUD_CHUNKING_KEY, form.readAloudChunking());
-        put(set, ModelsConfig.READ_ALOUD_WORKERS_KEY, form.synthesisWorkers());
+        // Standardwerte (Absätze, 2 Worker) stehen nicht in der Datei.
+        put(set, ModelsConfig.READ_ALOUD_CHUNKING_KEY,
+                "PARAGRAPHS".equals(form.readAloudChunking()) ? "" : form.readAloudChunking());
+        put(set, ModelsConfig.READ_ALOUD_WORKERS_KEY,
+                "2".equals(form.synthesisWorkers()) ? "" : form.synthesisWorkers());
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
         put(set, KEY_AGENT_TIMEOUT, form.agentRequestTimeoutSeconds());
