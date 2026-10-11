@@ -62,9 +62,13 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
@@ -137,6 +141,7 @@ public final class EnterpriseAiClientMain {
         ProxyAuthenticator.allowBasicTunneling();
         // Anwendungszustand (askai arch / MainframeMate): Fenster, Drawer und die angehakten Spaces je Quelle.
         final ApplicationStateService applicationState = new ApplicationStateService(AppPaths.applicationStateFile());
+        dropLegacySourceEntries(config.knowledge().indexDirectory(), applicationState);
         final SourcePartitionSelection partitions = new SourcePartitionSelection(applicationState);
         final ApplicationPorts ports;
         final CompositionRoot root;
@@ -580,6 +585,64 @@ public final class EnterpriseAiClientMain {
             }
             return result.get();
         }
+    }
+
+    /** Markiert ein Indexverzeichnis, dessen Einträge schon Quellenadressen tragen (ab 0.1.104). */
+    private static final String SOURCE_ADDRESS_INDEX_MARKER = ".source-addresses";
+
+    /**
+     * Löscht beim ersten Start mit Quellenadressen, was noch an frei vergebenen Quellen-IDs hängt: den ganzen
+     * Wissensindex (Lucene und Vektoren, samt Passagen; er baut sich bei Bedarf neu auf) und die Space-Häkchen
+     * {@code source.<id>.spaces.*} im Anwendungszustand. Kein Produktivbetrieb: keine Umschlüsselung, keine Aliase.
+     * Favoriten mit alter ID verwirft der {@code FavoritesStore} beim Laden.
+     */
+    private static void dropLegacySourceEntries(Path indexDirectory, ApplicationStateService state) {
+        if (indexDirectory != null) {
+            Path root = indexDirectory.toAbsolutePath().normalize();
+            Path marker = root.resolve(SOURCE_ADDRESS_INDEX_MARKER);
+            try {
+                if (!Files.exists(marker)) {
+                    if (Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+                        for (String part : new String[]{"text", "vectors"}) {
+                            deleteRecursively(root.resolve(part));
+                        }
+                        LOG.info("Wissensindex mit alten Quellen-IDs gelöscht; er baut sich bei Bedarf neu auf");
+                    }
+                    Files.createDirectories(root);
+                    Files.createFile(marker);
+                }
+            } catch (IOException | RuntimeException e) {
+                LOG.log(Level.WARNING, "Alter Wissensindex nicht gelöscht (" + e.getClass().getSimpleName() + ")", e);
+            }
+        }
+        Map<String, String> stale = new LinkedHashMap<String, String>();
+        for (String key : state.withPrefix("source.").keySet()) {
+            if (key.contains(".spaces.") && !key.contains("://")) {
+                stale.put(key, null);
+            }
+        }
+        if (!stale.isEmpty()) {
+            state.putAllAndSave(stale);
+            LOG.info("Space-Häkchen alter Quellen-IDs gelöscht: " + stale.size());
+        }
+    }
+
+    private static void deleteRecursively(Path path) throws IOException {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+            List<Path> children = new ArrayList<Path>();
+            try (java.nio.file.DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
+                for (Path child : stream) {
+                    children.add(child);
+                }
+            }
+            for (Path child : children) {
+                deleteRecursively(child);
+            }
+        }
+        Files.delete(path);
     }
 
     /**

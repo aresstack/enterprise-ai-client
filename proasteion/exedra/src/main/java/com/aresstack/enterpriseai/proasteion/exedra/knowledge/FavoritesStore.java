@@ -31,6 +31,7 @@ public final class FavoritesStore {
     private final Path file;
     private final Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private final List<ReaderLink> favorites = new ArrayList<ReaderLink>();
+    private int dropped;
 
     public FavoritesStore(Path file) {
         if (file == null) {
@@ -38,6 +39,10 @@ public final class FavoritesStore {
         }
         this.file = file;
         favorites.addAll(load(file));
+        if (dropped > 0) {
+            // Favoriten mit frei vergebener Quellen-ID (vor 0.1.102): gelöscht, keine Umschlüsselung
+            save();
+        }
     }
 
     public synchronized List<ReaderLink> all() {
@@ -108,7 +113,9 @@ public final class FavoritesStore {
             List<Entry> entries = gson.fromJson(reader, new TypeToken<List<Entry>>() { }.getType());
             if (entries != null) {
                 for (Entry entry : entries) {
-                    if (entry != null && entry.sourceId != null && !entry.sourceId.trim().isEmpty()) {
+                    if (entry != null && entry.sourceId != null && !entry.sourceId.contains("://")) {
+                        dropped++;
+                    } else if (entry != null && entry.sourceId != null && !entry.sourceId.trim().isEmpty()) {
                         ReaderLink link = new ReaderLink(entry.sourceId, entry.resourceId, entry.title, "",
                                 entry.location);
                         if (!loaded.contains(link)) {
