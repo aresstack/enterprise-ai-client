@@ -61,7 +61,7 @@ import java.util.List;
 public final class ImageSlideshowPanel extends JPanel {
 
     static final String LOADING_TEXT = "Lade Bild …";
-    static final String FAILED_TEXT = "Bild konnte nicht geladen werden";
+    static final String FAILED_TEXT = ReaderImageStore.Loaded.FAILED_TEXT;
     static final String DESCRIBING_TEXT = "Beschreibung wird erzeugt …";
     static final String SAVED_PREFIX = "Bild gespeichert: ";
     static final String SAVE_FAILED_PREFIX = "Fehler beim Speichern: ";
@@ -276,7 +276,7 @@ public final class ImageSlideshowPanel extends JPanel {
                 return; // inzwischen weitergeblättert
             }
             if (!loaded.ok()) {
-                busy.setText(FAILED_TEXT);
+                busy.setText(failureText(loaded.failure()));
                 return;
             }
             busy.setVisible(false);
@@ -287,6 +287,21 @@ public final class ImageSlideshowPanel extends JPanel {
             }
             updateInfo();
         });
+    }
+
+    /** Der Grund aus der Quelle, umbrechend über die Breite des Overlays. */
+    private static String failureText(String reason) {
+        return "<html><div style='text-align:center;width:560px'>" + FAILED_TEXT
+                + (reason == null || reason.equals(FAILED_TEXT) ? "" : ":<br>" + escape(reason)) + "</div></html>";
+    }
+
+    private static String escape(String text) {
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /** Der Text über dem Bild (Laden oder Fehlschlag mit Grund). */
+    public String statusText() {
+        return busy.getText();
     }
 
     private void updateInfo() {

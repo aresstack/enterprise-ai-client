@@ -12,6 +12,21 @@ public interface ReaderImageLoader {
     void load(ReaderImage image, Consumer<byte[]> done);
 
     /**
+     * Wie {@link #load(ReaderImage, Consumer)}, meldet einen Fehlschlag aber mit Grund an {@code failed} (z. B.
+     * „Bild: erwartet Bild, erhalten application/json …“), damit die Oberfläche ihn statt eines allgemeinen Textes
+     * zeigt; {@code null} heißt: Grund unbekannt.
+     */
+    default void load(ReaderImage image, Consumer<byte[]> done, Consumer<String> failed) {
+        load(image, bytes -> {
+            if (bytes == null) {
+                failed.accept(null);
+            } else {
+                done.accept(bytes);
+            }
+        });
+    }
+
+    /**
      * Beschreibt genau dieses Bild (nur auf Abruf, nie beim Laden der Seite); {@code done} bekommt das Ergebnis.
      * Ohne Beschreibungsweg: ein Hinweis statt einer Beschreibung.
      *

@@ -117,7 +117,7 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
             location[0] = connection.getHeaderField("Location");
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             byte[] body = stream == null ? new byte[0] : readLimited(stream, maxBytes);
-            return new ConfluenceHttpResponse(status, connection.getContentType(), body);
+            return new ConfluenceHttpResponse(status, connection.getContentType(), body, location[0]);
         } finally {
             connection.disconnect();
         }
@@ -150,7 +150,7 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
             int read;
             while ((read = in.read(buffer)) != -1) {
                 if (out.size() + read > maxBytes) {
-                    throw new IOException("Antwort größer als " + maxBytes + " Bytes");
+                    throw new ConfluenceResponseTooLargeException(maxBytes);
                 }
                 out.write(buffer, 0, read);
             }

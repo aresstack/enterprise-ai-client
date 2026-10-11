@@ -81,16 +81,18 @@ public final class ReaderImageStore {
         queue = new ArrayList<Consumer<Loaded>>();
         queue.add(done);
         waiting.put(image.key(), queue);
-        loader.load(image, bytes -> {
-            Loaded result = Loaded.of(bytes);
-            loaded.put(image.key(), result);
-            List<Consumer<Loaded>> listeners = waiting.remove(image.key());
-            if (listeners != null) {
-                for (Consumer<Loaded> listener : listeners) {
-                    listener.accept(result);
-                }
+        loader.load(image, bytes -> finishLoading(image, Loaded.of(bytes)),
+                reason -> finishLoading(image, Loaded.failed(reason)));
+    }
+
+    private void finishLoading(ReaderImage image, Loaded result) {
+        loaded.put(image.key(), result);
+        List<Consumer<Loaded>> listeners = waiting.remove(image.key());
+        if (listeners != null) {
+            for (Consumer<Loaded> listener : listeners) {
+                listener.accept(result);
             }
-        });
+        }
     }
 
     /** Die schon vorliegende Beschreibung oder {@code null}. */
@@ -144,27 +146,44 @@ public final class ReaderImageStore {
      * {@code false}, wenn es nicht ladbar war.
      */
     public static final class Loaded {
+        /** Text, wenn die Quelle keinen Grund nennt. */
+        static final String FAILED_TEXT = "Bild konnte nicht geladen werden";
+
         private final byte[] bytes;
         private final BufferedImage image;
         private final boolean svg;
+        private final String failure;
 
-        private Loaded(byte[] bytes, BufferedImage image, boolean svg) {
+        private Loaded(byte[] bytes, BufferedImage image, boolean svg, String failure) {
             this.bytes = bytes;
             this.image = image;
             this.svg = svg;
+            this.failure = image != null ? null : failure == null || failure.trim().isEmpty() ? FAILED_TEXT : failure;
         }
 
         static Loaded of(byte[] bytes) {
             if (bytes == null || bytes.length == 0) {
-                return new Loaded(null, null, false);
+                return new Loaded(null, null, false, bytes == null ? null : "Bild: leere Antwort (0 Bytes)");
             }
             boolean svg = isSvg(bytes);
             BufferedImage image = svg ? renderSvg(bytes) : decode(bytes);
-            return new Loaded(image == null ? null : bytes, image, svg);
+            return new Loaded(image == null ? null : bytes, image, svg,
+                    "Bilddaten nicht lesbar (" + bytes.length + " Bytes, " + (svg ? "SVG nicht darstellbar)"
+                            : "kein PNG, JPEG, GIF oder SVG)"));
+        }
+
+        /** Nicht geladen, mit dem Grund der Quelle ({@code null}: unbekannt). */
+        static Loaded failed(String reason) {
+            return new Loaded(null, null, false, reason);
         }
 
         public boolean ok() {
             return image != null;
+        }
+
+        /** Warum das Bild fehlt (für die Oberfläche); {@code null}, wenn es geladen ist. */
+        public String failure() {
+            return failure;
         }
 
         public byte[] bytes() {

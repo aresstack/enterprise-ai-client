@@ -39,6 +39,9 @@ final class ConfluenceRestClient {
 
     private static final Logger LOG = Logger.getLogger(ConfluenceRestClient.class.getName());
 
+    /** {@code Accept} beim Bildrequest (statt {@code application/json} der REST-Aufrufe). */
+    static final String IMAGE_ACCEPT = "image/*,*/*;q=0.8";
+
     private static final String PAGE_EXPAND = "body.view,version,space,ancestors,metadata.labels";
     /**
      * Für die Lese-Ansicht zusätzlich {@code body.export_view}: Confluence rendert dabei Makros, die
@@ -178,18 +181,101 @@ final class ConfluenceRestClient {
     }
 
     /**
-     * Ein Bild der Lese-Ansicht über seinen Pfad unter der Basis-URL (wie MainframeMate {@code client.getBytes(path)});
-     * eine HTML-Antwort (Anmeldeseite) ist kein Bild.
+     * Ein Bild der Lese-Ansicht über seinen Pfad unter der Basis-URL (wie MainframeMate {@code client.getBytes(path)},
+     * dort mit {@code Accept: *}{@code /*}). Gesendet wird {@link #IMAGE_ACCEPT} statt {@code application/json}.
+     * Als Bild gilt eine Antwort mit {@code image/*} oder mit Bild-Signatur im Körper (PNG, JPEG, GIF, BMP, WebP,
+     * SVG), etwa bei {@code application/octet-stream}; alles andere (JSON, HTML-Anmeldeseite) wird unmittelbar nach
+     * HTTP mit dem erhaltenen Content-Type abgelehnt. Jeder Fehlschlag schreibt eine Logzeile mit URL, Status,
+     * Content-Type, Größe und Fehlerart, nie Header.
      */
     byte[] viewImage(Session session, String path) throws KnowledgeSourceException {
         if (path == null || !path.startsWith("/") || path.startsWith("//")) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Bild ohne gültigen Pfad");
         }
-        ConfluenceHttpResponse response = send(session, path, "Bild", config.maxAttachmentBytes());
-        if (response.contentType().toLowerCase(java.util.Locale.ROOT).contains("html")) {
-            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Bild: HTML statt Bild (Anmeldeseite?)");
+        URI uri;
+        try {
+            uri = URI.create(config.baseUrl() + path);
+        } catch (IllegalArgumentException e) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Bild: ungültiger Pfad");
         }
-        return response.body();
+        int max = config.maxAttachmentBytes();
+        ConfluenceHttpResponse response;
+        try {
+            response = transport.get(uri, session.headers(IMAGE_ACCEPT), max);
+        } catch (ConfluenceResponseTooLargeException e) {
+            throw imageFailure(uri, null, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                    "Bild größer als " + max + " Bytes (Grenze maxAttachmentBytes)"));
+        } catch (IOException e) {
+            throw imageFailure(uri, null, new KnowledgeSourceException(Kind.UNAVAILABLE,
+                    "Bild: Confluence nicht erreichbar (" + cause(e) + ")", e));
+        }
+        if (!response.isSuccess()) {
+            throw imageFailure(uri, response, statusFailure("Bild", response.status()));
+        }
+        byte[] body = response.body();
+        String received = notAnImage(response.contentType(), body);
+        if (received != null) {
+            throw imageFailure(uri, response, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                    "Bild: erwartet Bild, erhalten " + received + " (HTTP " + response.status() + ", "
+                            + body.length + " Bytes)"));
+        }
+        return body;
+    }
+
+    /** {@code null}, wenn die Antwort ein Bild ist; sonst, was stattdessen kam. */
+    static String notAnImage(String contentType, byte[] body) {
+        String media = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        int semicolon = media.indexOf(';');
+        media = (semicolon < 0 ? media : media.substring(0, semicolon)).trim();
+        if (media.startsWith("image/") || looksLikeImage(body)) {
+            return null;
+        }
+        if (media.isEmpty()) {
+            return "eine Antwort ohne Content-Type";
+        }
+        return media.contains("html") ? media + " (vermutlich eine Anmeldeseite)" : media;
+    }
+
+    private static boolean looksLikeImage(byte[] data) {
+        if (data.length > 3 && (data[0] & 0xFF) == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G') {
+            return true;
+        }
+        if (data.length > 2 && (data[0] & 0xFF) == 0xFF && (data[1] & 0xFF) == 0xD8) {
+            return true;
+        }
+        if (data.length > 3 && data[0] == 'G' && data[1] == 'I' && data[2] == 'F') {
+            return true;
+        }
+        if (data.length > 1 && data[0] == 'B' && data[1] == 'M') {
+            return true;
+        }
+        if (data.length > 11 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
+                && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P') {
+            return true;
+        }
+        String head = new String(data, 0, Math.min(data.length, 2048), java.nio.charset.StandardCharsets.UTF_8);
+        return head.contains("<svg");
+    }
+
+    /** Schreibt die Logzeile zum fehlgeschlagenen Bild (ohne Header) und gibt den Fehler zurück. */
+    private static KnowledgeSourceException imageFailure(URI uri, ConfluenceHttpResponse response,
+                                                         KnowledgeSourceException error) {
+        StringBuilder line = new StringBuilder("[Confluence] Bild nicht geladen: url=").append(uri)
+                .append(" status=").append(response == null ? "-" : String.valueOf(response.status()))
+                .append(" contentType=").append(response == null || response.contentType().isEmpty() ? "-"
+                        : response.contentType())
+                .append(" bytes=").append(response == null ? "-" : String.valueOf(response.length()));
+        if (response != null && response.location() != null) {
+            line.append(" weiterleitung=").append(withoutQuery(response.location()));
+        }
+        line.append(" fehler=").append(error.kind()).append(": ").append(error.getMessage());
+        LOG.warning(line.toString());
+        return error;
+    }
+
+    private static String withoutQuery(String location) {
+        int query = location.indexOf('?');
+        return query < 0 ? location : location.substring(0, query);
     }
 
     /**
@@ -305,28 +391,35 @@ final class ConfluenceRestClient {
         ConfluenceHttpResponse response;
         try {
             response = transport.get(uri, session.headers, maxBytes);
+        } catch (ConfluenceResponseTooLargeException e) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                    what + ": Antwort größer als " + e.maxBytes() + " Bytes");
         } catch (IOException e) {
             throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence nicht erreichbar ("
                     + cause(e) + ")", e);
         }
-        int status = response.status();
         if (response.isSuccess()) {
             return response;
         }
+        throw statusFailure(what, response.status());
+    }
+
+    /** Bildet einen Fehlerstatus auf {@link Kind} ab (siehe Klassenkommentar). */
+    private static KnowledgeSourceException statusFailure(String what, int status) {
         if (status == 401 || status == 403) {
-            throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Zugriff verweigert (HTTP " + status + ")");
+            return new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Zugriff verweigert (HTTP " + status + ")");
         }
         if (status >= 300 && status < 400) {
-            throw new KnowledgeSourceException(Kind.ACCESS_DENIED,
+            return new KnowledgeSourceException(Kind.ACCESS_DENIED,
                     what + ": Weiterleitung (HTTP " + status + "), vermutlich nicht angemeldet");
         }
         if (status == 404) {
-            throw new KnowledgeSourceException(Kind.NOT_FOUND, what + ": nicht gefunden (HTTP 404)");
+            return new KnowledgeSourceException(Kind.NOT_FOUND, what + ": nicht gefunden (HTTP 404)");
         }
         if (status == 429 || status >= 500) {
-            throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence antwortet mit HTTP " + status);
+            return new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence antwortet mit HTTP " + status);
         }
-        throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": unerwartete Antwort HTTP " + status);
+        return new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": unerwartete Antwort HTTP " + status);
     }
 
     /** Die tiefste Ursache in einer Zeile, z. B. {@code SSLHandshakeException: Received fatal alert: bad_certificate}. */
@@ -492,6 +585,13 @@ final class ConfluenceRestClient {
                 map.put("Authorization", authorization);
             }
             this.headers = Collections.unmodifiableMap(map);
+        }
+
+        /** Dieselben Header mit anderem {@code Accept} (Bilder statt JSON). */
+        Map<String, String> headers(String accept) {
+            Map<String, String> map = new LinkedHashMap<String, String>(headers);
+            map.put("Accept", accept);
+            return Collections.unmodifiableMap(map);
         }
 
         @Override

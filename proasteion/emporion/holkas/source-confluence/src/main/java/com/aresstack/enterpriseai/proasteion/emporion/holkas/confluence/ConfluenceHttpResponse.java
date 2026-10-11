@@ -3,17 +3,24 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-/** Antwort eines {@link ConfluenceHttpTransport}: Status, Content-Type und Körper. */
+/** Antwort eines {@link ConfluenceHttpTransport}: Status, Content-Type, Körper und gegebenenfalls Weiterleitungsziel. */
 public final class ConfluenceHttpResponse {
 
     private final int status;
     private final String contentType;
     private final byte[] body;
+    private final String location;
 
     public ConfluenceHttpResponse(int status, String contentType, byte[] body) {
+        this(status, contentType, body, null);
+    }
+
+    /** @param location {@code Location}-Header einer nicht verfolgten Weiterleitung oder {@code null} */
+    public ConfluenceHttpResponse(int status, String contentType, byte[] body, String location) {
         this.status = status;
         this.contentType = contentType == null ? "" : contentType;
         this.body = body == null ? new byte[0] : Arrays.copyOf(body, body.length);
+        this.location = location == null || location.trim().isEmpty() ? null : location.trim();
     }
 
     public int status() {
@@ -26,6 +33,16 @@ public final class ConfluenceHttpResponse {
 
     public byte[] body() {
         return Arrays.copyOf(body, body.length);
+    }
+
+    /** Länge des Körpers in Bytes. */
+    public int length() {
+        return body.length;
+    }
+
+    /** Ziel einer nicht verfolgten Weiterleitung oder {@code null}. */
+    public String location() {
+        return location;
     }
 
     /** Körper als UTF-8 (Confluence liefert JSON immer in UTF-8). */

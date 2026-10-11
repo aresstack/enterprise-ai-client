@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Confluence Data Center als {@link SearchableKnowledgeSource}.
@@ -67,6 +68,8 @@ import java.util.Set;
 public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource, PageViewSource {
 
     static final String PAGE_CONTENT_TYPE = "text/html";
+
+    private static final Logger LOG = Logger.getLogger(ConfluenceKnowledgeSource.class.getName());
 
     private final SourceAddress sourceId;
     /** Kanonische Basis-URL ohne Schema, Teil jeder Ressourcen-ID. */
@@ -200,7 +203,13 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         String base = config.baseUrl().toString();
         base = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
         if (src == null || !src.startsWith(base + "/")) {
-            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Bild liegt nicht in dieser Confluence: " + src);
+            // Fremde Bilder werden nie geladen (Angelo); der Text nennt beide Adressen, damit eine abweichende
+            // Basis (etwa die Server-Basis-URL in export_view) sofort sichtbar ist.
+            String text = "Bild liegt nicht unter der eingestellten Confluence-Adresse " + base
+                    + " und wird nicht geladen: " + src;
+            LOG.warning("[Confluence] Bild nicht geladen: url=" + src + " status=- contentType=- bytes=- fehler="
+                    + Kind.UNSUPPORTED + ": " + text);
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, text);
         }
         final String path = src.substring(base.length());
         return withSession(new Operation<byte[]>() {

@@ -17,7 +17,8 @@ public interface ConfluenceHttpTransport {
     /**
      * @param uri      absolute URI
      * @param headers  Request-Header (unveränderlich)
-     * @param maxBytes Obergrenze für den Antwortkörper; längere Antworten werden mit {@link IOException} abgelehnt
+     * @param maxBytes Obergrenze für den Antwortkörper; längere Antworten werden mit
+     *                 {@link ConfluenceResponseTooLargeException} abgelehnt
      * @return die Antwort; Fehlerstatus (4xx/5xx) sind normale Antworten, keine Ausnahme
      * @throws IOException bei Verbindungs-, Timeout- oder Größenfehlern
      */
