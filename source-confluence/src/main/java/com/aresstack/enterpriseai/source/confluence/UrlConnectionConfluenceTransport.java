@@ -45,8 +45,55 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
         return new Builder();
     }
 
+    /**
+     * Folgt Weiterleitungen wie MainframeMate ({@code setInstanceFollowRedirects(true)}), aber nur auf demselben
+     * Host und ohne Wechsel von https auf http, damit der Anmelde-Header den Server nicht verlässt; höchstens
+     * fünf Schritte. Andere Weiterleitungen (z. B. auf eine Anmeldeseite) kommen als Antwort zurück.
+     */
     @Override
     public ConfluenceHttpResponse get(URI uri, Map<String, String> headers, int maxBytes) throws IOException {
+        URI current = uri;
+        for (int hop = 0; ; hop++) {
+            String[] location = new String[1];
+            ConfluenceHttpResponse response = getOnce(current, headers, maxBytes, location);
+            URI next = hop < 5 ? sameHostRedirect(current, response.status(), location[0]) : null;
+            if (next == null) {
+                return response;
+            }
+            current = next;
+        }
+    }
+
+    static URI sameHostRedirect(URI from, int status, String location) {
+        if ((status != 301 && status != 302 && status != 303 && status != 307 && status != 308)
+                || location == null || location.trim().isEmpty()) {
+            return null;
+        }
+        URI target;
+        try {
+            target = from.resolve(location.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        if (target.getHost() == null || !target.getHost().equalsIgnoreCase(from.getHost())
+                || effectivePort(target) != effectivePort(from) || target.getRawUserInfo() != null) {
+            return null;
+        }
+        if ("https".equalsIgnoreCase(from.getScheme()) && !"https".equalsIgnoreCase(target.getScheme())) {
+            return null;
+        }
+        return target;
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() >= 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
+    private ConfluenceHttpResponse getOnce(URI uri, Map<String, String> headers, int maxBytes, String[] location)
+            throws IOException {
         String scheme = uri.getScheme();
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
             throw new IOException("nur http/https unterstützt: " + scheme);
@@ -62,6 +109,7 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
                 connection.setRequestProperty(header.getKey(), header.getValue());
             }
             int status = connection.getResponseCode();
+            location[0] = connection.getHeaderField("Location");
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             byte[] body = stream == null ? new byte[0] : readLimited(stream, maxBytes);
             return new ConfluenceHttpResponse(status, connection.getContentType(), body);

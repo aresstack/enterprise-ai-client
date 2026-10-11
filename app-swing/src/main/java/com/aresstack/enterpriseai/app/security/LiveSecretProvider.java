@@ -49,6 +49,11 @@ public final class LiveSecretProvider implements SecretProvider {
     }
 
     @Override
+    public java.util.Map<String, String> attributesOf(SecretRef ref) throws SecretUnavailableException {
+        return current.attributesOf(ref);
+    }
+
+    @Override
     public String toString() {
         return "LiveSecretProvider[" + current + "]";
     }

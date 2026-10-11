@@ -241,7 +241,8 @@ final class ConfluenceRestClient {
         try {
             response = transport.get(uri, session.headers, maxBytes);
         } catch (IOException e) {
-            throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence nicht erreichbar", e);
+            throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence nicht erreichbar ("
+                    + cause(e) + ")", e);
         }
         int status = response.status();
         if (response.isSuccess()) {
@@ -261,6 +262,17 @@ final class ConfluenceRestClient {
             throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence antwortet mit HTTP " + status);
         }
         throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": unerwartete Antwort HTTP " + status);
+    }
+
+    /** Die tiefste Ursache in einer Zeile, z. B. {@code SSLHandshakeException: Received fatal alert: bad_certificate}. */
+    static String cause(Throwable error) {
+        Throwable root = error;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String message = root.getMessage();
+        return root.getClass().getSimpleName() + (message == null || message.trim().isEmpty() ? ""
+                : ": " + message.trim().replace('\n', ' '));
     }
 
     // --- JSON-Abbildung -----------------------------------------------------------------------------------

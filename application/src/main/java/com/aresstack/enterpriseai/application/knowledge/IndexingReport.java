@@ -16,6 +16,12 @@ public final class IndexingReport {
     private final String discoveryFailure;
     private final String pruneFailure;
 
+    /** Ein Lauf, der schon vor oder bei der Discovery scheiterte (z. B. ein unerwarteter Fehler im Lauf selbst). */
+    public static IndexingReport failed(KnowledgeSourceId sourceId, String reason) {
+        return new IndexingReport(sourceId, 0, Collections.<ResourceIndexingOutcome>emptyList(), false,
+                reason == null || reason.trim().isEmpty() ? "unbekannter Fehler" : reason);
+    }
+
     IndexingReport(KnowledgeSourceId sourceId, int discovered, List<ResourceIndexingOutcome> outcomes,
                    boolean cancelled, String discoveryFailure) {
         this(sourceId, discovered, outcomes, cancelled, discoveryFailure, null);

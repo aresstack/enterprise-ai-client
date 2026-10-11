@@ -44,7 +44,8 @@ import java.util.logging.Logger;
  *
  * <ul>
  *   <li><b>Häkchen</b> wirken sofort: die {@link KnowledgeSourceSelection} entscheidet, was RAG durchsucht und was
- *       die Start-Indexierung überspringt; dauerhaft steht es über den Use Case in der Datei.</li>
+ *       die Start-Indexierung überspringt; dauerhaft steht es über den Use Case in der Datei. Wer eine Quelle
+ *       anhakt, die noch nichts im Index hat, startet ihre Indexierung.</li>
  *   <li><b>„+ Quelle“ und Bearbeiten</b> laufen über den Quellen-Dialog; welche Quelltypen es gibt und welche
  *       Felder sie haben, liefert {@link KnowledgeSourceManagement} aus den registrierten Adaptern. Die gespeicherte
  *       Quelle wird sofort angebunden und indexiert; bietet kein Adapter ihren Typ an, gilt die Änderung nach dem
@@ -189,6 +190,12 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     public void enabledChanged(String sourceId, boolean enabled) {
         selection.setEnabled(KnowledgeSourceId.of(sourceId), enabled);
         writeProblems.remove(sourceId);
+        Integer indexed = counts.get(sourceId);
+        if (enabled && (indexed == null || indexed == 0) && !lastRun.containsKey(sourceId)
+                && !binding.isRunning()) {
+            // Angehakt und noch nichts im Index: gleich indexieren, statt auf den nächsten Start zu warten.
+            indexRequested(sourceId);
+        }
         if (editing != null) {
             try {
                 editing.setEnabled(sourceId, enabled);
@@ -533,7 +540,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         String time = STAMP.format(Instant.ofEpochMilli(clock.getAsLong()).atZone(zone));
         if (report.discoveryFailed()) {
             failedRuns.add(id);
-            lastRun.put(id, "Indexierung " + time + " fehlgeschlagen: Quelle nicht lesbar (Protokoll)");
+            lastRun.put(id, "Indexierung " + time + " fehlgeschlagen: " + cause(report.discoveryFailure()));
             return;
         }
         int failed = report.count(IndexingStatus.FAILED);
@@ -547,6 +554,16 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             failedRuns.remove(id);
             lastRun.put(id, "Stand " + time);
         }
+    }
+
+    /** Die Ursache für die Statuszeile: ohne vorangestellte Fehlerart, eine Zeile, gekürzt; Details im Protokoll. */
+    static String cause(String failure) {
+        String text = failure == null ? "" : failure.replace('\n', ' ').trim();
+        text = text.replaceFirst("^[A-Z_]+: ", "");
+        if (text.isEmpty()) {
+            return "Quelle nicht lesbar (Protokoll)";
+        }
+        return text.length() > 220 ? text.substring(0, 219) + "…" : text;
     }
 
     /** Zählt die Seiten einer Quelle im Index auf dem Arbeits-Executor und meldet das Ergebnis auf dem UI-Thread. */

@@ -123,6 +123,11 @@ public final class AskedSecretProvider implements SecretProvider {
         return isAsked(ref) ? null : vault.locationOf(ref);
     }
 
+    @Override
+    public java.util.Map<String, String> attributesOf(SecretRef ref) throws SecretUnavailableException {
+        return isAsked(ref) ? java.util.Collections.<String, String>emptyMap() : vault.attributesOf(ref);
+    }
+
     private Answer askOnEdt(SecretRef ref, final String label) throws SecretUnavailableException {
         if (GraphicsEnvironment.isHeadless()) {
             throw new SecretUnavailableException(Reason.NOT_AVAILABLE, ref,

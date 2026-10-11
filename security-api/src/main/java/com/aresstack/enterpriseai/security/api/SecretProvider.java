@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.domain.security.SecretRef;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Neutraler Port zum Auflösen eines {@link SecretRef} in kurzlebiges {@link SecretMaterial}.
@@ -65,5 +66,16 @@ public interface SecretProvider {
      */
     default String locationOf(SecretRef ref) throws SecretUnavailableException {
         return null;
+    }
+
+    /**
+     * Weitere, nicht geheime Felder des Eintrags zur Referenz (Name → Wert), z. B. die von MainframeMate gepflegten
+     * {@code MM_CertAlias} und {@code MM_RequiresLogin}; nie Benutzername oder Passwort. Backends ohne solche
+     * Felder liefern eine leere Map.
+     *
+     * @throws SecretUnavailableException wenn das Backend nicht erreichbar ist oder der Eintrag fehlt
+     */
+    default Map<String, String> attributesOf(SecretRef ref) throws SecretUnavailableException {
+        return Collections.emptyMap();
     }
 }

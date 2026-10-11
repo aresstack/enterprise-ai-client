@@ -32,7 +32,7 @@ final class KeePassRpcEntries {
                     return new KeePassEntry(entryTitle,
                             firstNonNull(string(entry, "usernameValue"), string(entry, "username"),
                                     formField(entry, "FFTusername")),
-                            passwordChars, location(entry));
+                            passwordChars, location(entry), attributes(entry));
                 } finally {
                     java.util.Arrays.fill(passwordChars, '\0');
                 }
@@ -94,6 +94,35 @@ final class KeePassRpcEntries {
             }
         }
         return null;
+    }
+
+    /**
+     * Die benannten Felder aus {@code formFieldList} ohne Benutzer- und Passwortfeld, wie MainframeMate
+     * {@code KeePassRpcClient.formFieldByName} sie für {@code MM_CertAlias}, {@code MM_RequiresLogin} usw. liest.
+     */
+    static java.util.Map<String, String> attributes(JsonObject entry) {
+        java.util.Map<String, String> attributes = new java.util.LinkedHashMap<String, String>();
+        JsonElement fields = entry.get("formFieldList");
+        if (fields == null || !fields.isJsonArray()) {
+            return attributes;
+        }
+        for (JsonElement element : fields.getAsJsonArray()) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject field = element.getAsJsonObject();
+            String type = string(field, "type");
+            String name = string(field, "name");
+            String value = string(field, "value");
+            if (name == null || name.trim().isEmpty() || value == null
+                    || "FFTpassword".equals(type) || "FFTusername".equals(type)) {
+                continue;
+            }
+            if (!attributes.containsKey(name.trim())) {
+                attributes.put(name.trim(), value);
+            }
+        }
+        return attributes;
     }
 
     private static String formField(JsonObject entry, String type) {

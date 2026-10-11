@@ -7,12 +7,14 @@ import com.aresstack.enterpriseai.domain.source.SourceSettingField;
 import com.aresstack.enterpriseai.domain.source.SourceSettings;
 import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
+import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.SourceSettingsReader;
 
 import javax.net.ssl.SSLSocketFactory;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
@@ -131,15 +133,31 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
         if (userAgent != null) {
             transport.userAgent(userAgent);
         }
+        final VaultEntryOptions options = new VaultEntryOptions(secrets, config.credentialRef());
         if (certificate != null) {
             // Erst beim ersten Verbindungsaufbau geladen; ohne erreichbaren Tresor meldet die Quelle je Anfrage
             // UNAVAILABLE, bis das Zertifikat ladbar ist.
             transport.sslSocketFactory(certificates.socketFactory(certificate.alias, certificate.keyStoreFile,
                     certificate.passwordRef));
+        } else if (config.credentialRef() != null) {
+            // Wie MainframeMate: Das Client-Zertifikat steht als MM_CertAlias im KeePass-Eintrag (Windows-MY).
+            transport.sslSocketFactory(new LazySslSocketFactory(() -> {
+                String alias;
+                try {
+                    alias = options.certificateAlias();
+                } catch (SecretUnavailableException e) {
+                    throw new IOException("KeePass-Eintrag für das Client-Zertifikat nicht lesbar: "
+                            + e.getMessage(), e);
+                }
+                if (alias == null) {
+                    return sslSocketFactory;
+                }
+                return certificates.socketFactory(alias, null, null);
+            }));
         } else if (sslSocketFactory != null) {
             transport.sslSocketFactory(sslSocketFactory);
         }
-        return new ConfluenceKnowledgeSource(sourceId, config, transport.build(), secrets);
+        return new ConfluenceKnowledgeSource(sourceId, config, transport.build(), secrets, options);
     }
 
     private static ConfluenceConfig config(SourceSettingsReader r) {

@@ -117,7 +117,17 @@ public final class KnowledgeIndexingBinding {
             workExecutor.execute(new Runnable() {
                 @Override
                 public void run() {
-                    final IndexingReport report = indexing.indexSource(source, scope, new ProgressListener());
+                    IndexingReport result;
+                    try {
+                        result = indexing.indexSource(source, scope, new ProgressListener());
+                    } catch (RuntimeException e) {
+                        // Sonst bliebe der Lauf für immer „aktiv“ und die Quelle ohne Ergebnis.
+                        LOG.log(java.util.logging.Level.SEVERE, "Indexierung von " + source.sourceId().value()
+                                + " mit unerwartetem Fehler abgebrochen", e);
+                        result = IndexingReport.failed(source.sourceId(), e.getClass().getSimpleName()
+                                + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+                    }
+                    final IndexingReport report = result;
                     uiExecutor.execute(new Runnable() {
                         @Override
                         public void run() {

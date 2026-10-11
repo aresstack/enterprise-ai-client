@@ -66,6 +66,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     private final ConfluenceConfig config;
     private final ConfluenceRestClient client;
     private final SecretProvider secrets;
+    private final VaultEntryOptions options;
 
     /**
      * @param transport z. B. {@link UrlConnectionConfluenceTransport} mit Proxy/mTLS aus der Composition Root
@@ -73,6 +74,12 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
      */
     public ConfluenceKnowledgeSource(KnowledgeSourceId sourceId, ConfluenceConfig config,
                                      ConfluenceHttpTransport transport, SecretProvider secrets) {
+        this(sourceId, config, transport, secrets, new VaultEntryOptions(secrets, config == null ? null
+                : config.credentialRef()));
+    }
+
+    ConfluenceKnowledgeSource(KnowledgeSourceId sourceId, ConfluenceConfig config,
+                              ConfluenceHttpTransport transport, SecretProvider secrets, VaultEntryOptions options) {
         if (sourceId == null || config == null || transport == null) {
             throw new IllegalArgumentException("sourceId, config und transport sind Pflicht");
         }
@@ -83,6 +90,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         this.config = config;
         this.client = new ConfluenceRestClient(config, transport);
         this.secrets = secrets;
+        this.options = options;
     }
 
     @Override
@@ -435,11 +443,15 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
             return operation.run(new Session(null));
         }
         try {
+            if (!options.sendsLogin()) {
+                return operation.run(new Session(null)); // MM_RequiresLogin=false: nur Zertifikat, wie MainframeMate
+            }
             return secrets.withSecret(ref, material -> operation.run(new Session(ConfluenceAuthorization.header(material))));
         } catch (SecretUnavailableException e) {
             Kind kind = e.reason() == SecretUnavailableException.Reason.NOT_AVAILABLE ? Kind.UNAVAILABLE : Kind.ACCESS_DENIED;
             throw new KnowledgeSourceException(kind,
-                    "Anmeldedaten für Confluence-Quelle " + sourceId + " nicht verfügbar (" + e.reason() + ", " + ref + ")");
+                    "Anmeldedaten für Confluence-Quelle " + sourceId + " nicht verfügbar (" + e.reason() + ", " + ref
+                            + (e.getMessage() == null ? "" : ": " + e.getMessage()) + ")");
         }
     }
 

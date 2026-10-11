@@ -133,6 +133,32 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
         });
     }
 
+    /** Die benannten Textfelder des Eintrags zur Referenz (z. B. {@code MM_CertAlias}), nie Benutzer oder Passwort. */
+    @Override
+    public synchronized java.util.Map<String, String> attributesOf(final SecretRef ref)
+            throws SecretUnavailableException {
+        if (ref == null) {
+            throw new IllegalArgumentException("SecretRef darf nicht null sein");
+        }
+        final String title = entryTitleOf(ref);
+        return inSession(ref, new SessionCall<java.util.Map<String, String>>() {
+            @Override
+            public java.util.Map<String, String> run(KeePassRpcTransport.Session session)
+                    throws KeePassRpcException, SecretUnavailableException {
+                KeePassEntry entry = session.findEntryByTitle(title);
+                if (entry == null) {
+                    throw new SecretUnavailableException(Reason.NOT_FOUND, ref,
+                            "kein KeePass-Eintrag mit diesem Titel");
+                }
+                try {
+                    return entry.attributes();
+                } finally {
+                    entry.close();
+                }
+            }
+        });
+    }
+
     /** Eine Arbeit in einer authentifizierten Sitzung. */
     private interface SessionCall<T> {
         T run(KeePassRpcTransport.Session session) throws KeePassRpcException, SecretUnavailableException;
