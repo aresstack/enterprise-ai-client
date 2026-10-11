@@ -174,8 +174,12 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         RouteProxySelector proxies = new RouteProxySelector(routes);
         HuggingFaceHub hub = hub(proxies);
         HubFileIndex index = new HubFileIndex(endpoint, proxies);
-        for (String file : configFirst(voice.files())) {
+        List<String> files = configFirst(voice.files());
+        for (int i = 0; i < files.size(); i++) {
+            String file = files.get(i);
             final String name = HuggingFaceVoice.fileName(file);
+            final int number = i + 1;
+            final int count = files.size();
             Path destination = staging.resolve(voice.localName(file));
             HubFileIndex.Entry expected = expected(index, voice, file);
             try {
@@ -190,7 +194,8 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
                         .onProgress(new ProgressListener() {
                             @Override
                             public void onProgress(DownloadProgress progress) {
-                                listener.progress(name, progress.getBytesDownloaded(), progress.getTotalBytes());
+                                listener.progress(name, number, count, progress.getBytesDownloaded(),
+                                        progress.getTotalBytes());
                             }
                         }).execute();
             } catch (HuggingFaceHubException e) {

@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.app.config;
 
+import com.aresstack.enterpriseai.domain.localruntime.HubSearchSuggestion;
+import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoice;
 
 import java.io.IOException;
@@ -32,6 +34,25 @@ public final class LocalVoicesConfig {
     /** Basis-URL des Hugging Face Hubs; leer, wenn die Datei fehlt (dann scheitert nur der Download). */
     public static String hubEndpoint() {
         return load().getProperty("hub.endpoint", "").trim();
+    }
+
+    /** Vorschläge für das Dropdown der Hub-Suche; ein Eintrag mit unbekannter Funktion fällt weg. */
+    public static List<HubSearchSuggestion> searchSuggestions() {
+        return parseSuggestions(load());
+    }
+
+    static List<HubSearchSuggestion> parseSuggestions(Properties properties) {
+        List<HubSearchSuggestion> suggestions = new ArrayList<HubSearchSuggestion>();
+        for (String id : split(properties.getProperty("search.suggestions", ""))) {
+            String prefix = "suggestion." + id + ".";
+            try {
+                suggestions.add(new HubSearchSuggestion(properties.getProperty(prefix + "query"),
+                        ModelCategory.valueOf(properties.getProperty(prefix + "category", "").trim())));
+            } catch (IllegalArgumentException invalid) {
+                // unvollständiger Eintrag: nicht vorschlagen
+            }
+        }
+        return suggestions;
     }
 
     private static Properties load() {

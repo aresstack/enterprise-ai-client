@@ -44,7 +44,7 @@ public final class LocalVoiceService {
         }
         provisioning.install(voiceId.trim(), modelRoot, listener == null ? new LocalVoiceInstallListener() {
             @Override
-            public void progress(String file, long done, long total) {
+            public void progress(String file, int number, int count, long done, long total) {
                 // niemand hört zu
             }
         } : listener);
@@ -58,7 +58,7 @@ public final class LocalVoiceService {
         }
         provisioning.update(voiceId.trim(), modelRoot, listener == null ? new LocalVoiceInstallListener() {
             @Override
-            public void progress(String file, long done, long total) {
+            public void progress(String file, int number, int count, long done, long total) {
                 // niemand hört zu
             }
         } : listener);

@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app.ui.settings;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.domain.localruntime.HubSearchSuggestion;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 
@@ -117,6 +118,11 @@ public interface SettingsDialogActions {
     default void searchLocalVoices(SettingsForm form, String query, ModelCategory category,
                                    LocalVoiceSearchCallback callback) {
         callback.failed("In dieser Umgebung nicht verfügbar.");
+    }
+
+    /** Vorschläge für das Dropdown der Hub-Suche (Suchbegriff und Funktion), in der Reihenfolge der Konfiguration. */
+    default List<HubSearchSuggestion> hubSearchSuggestions() {
+        return Collections.<HubSearchSuggestion>emptyList();
     }
 
     /** Lädt eine installierte Stimme neu (wie {@link #installLocalVoice}); ändert keine Auswahl. */
