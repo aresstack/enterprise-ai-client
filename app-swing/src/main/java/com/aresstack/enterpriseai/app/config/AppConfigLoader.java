@@ -609,6 +609,13 @@ public final class AppConfigLoader {
                 .withDefaultMaxResults(r.integer("agent.tools.defaultMaxResults", defaults.defaultMaxResults(), 1, 1000))
                 .withMaxFailuresListed(r.integer("agent.tools.maxFailuresListed", defaults.maxFailuresListed(), 0, 10000))
                 .withMaxPages(r.integer("agent.tools.maxPages", defaults.maxPages(), 0, 10000));
-        return new AgentConfig(enabled, command, args, Duration.ofSeconds(timeoutSeconds), endpointId, displayName, tools);
+        // Recherche-Budget (arch: besuchte Seiten pro Lauf); bisherige Dateien mit agent.tools.maxPages behalten
+        // ihren Wert, bis agent.research.maxPages gesetzt ist.
+        int fallbackPages = r.has("agent.tools.maxPages")
+                ? r.integer("agent.tools.maxPages", AgentConfig.DEFAULT_RESEARCH_MAX_PAGES, 0, 10000)
+                : AgentConfig.DEFAULT_RESEARCH_MAX_PAGES;
+        int researchMaxPages = r.integer("agent.research.maxPages", fallbackPages, 0, 10000);
+        return new AgentConfig(enabled, command, args, Duration.ofSeconds(timeoutSeconds), endpointId, displayName, tools,
+                researchMaxPages);
     }
 }

@@ -221,12 +221,13 @@ public final class CompositionRoot {
                 if (research == null) {
                     throw new AcpException(AcpException.Phase.SPAWN, "research agent is not available", null);
                 }
-                // Das Seitenbudget des Laufs ist dieselbe Einstellung wie das der Wissenswerkzeuge
-                // (agent.tools.maxPages, 0 = unbegrenzt); der Agentenprozess liest es aus seiner Umgebung.
+                // Recherche-Budget wie in arch: höchstens so viele geöffnete Seiten (knowledge_read) pro Lauf
+                // (agent.research.maxPages, 0 = unbegrenzt); Vorladen zählt nicht. Der Agentenprozess liest
+                // es aus seiner Umgebung.
                 java.util.Map<String, String> env = new java.util.LinkedHashMap<String, String>(
                         research.launchSpec().getEnv());
                 env.put(com.aresstack.enterpriseai.research.runtime.loop.EnvironmentRunBudget.ENV_MAX_PAGES,
-                        Integer.toString(settings.current().agent().toolSettings().maxPages()));
+                        Integer.toString(settings.current().agent().researchMaxPages()));
                 com.aresstack.enterpriseai.acp.api.AgentLaunchSpec spec =
                         new com.aresstack.enterpriseai.acp.api.AgentLaunchSpec(research.launchSpec().getCommand(),
                                 research.launchSpec().getArgs(), env);

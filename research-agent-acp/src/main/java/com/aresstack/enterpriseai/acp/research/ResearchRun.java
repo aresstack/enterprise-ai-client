@@ -23,7 +23,7 @@ import java.util.logging.Logger;
 
 /**
  * Ein autonomer Recherche-Lauf (askai arch {@code runResearchLoop}): der {@link ResearchLoop} sucht über die
- * Wissenssuche des Hosts statt im Web, öffnet höchstens {@code research.maxPages} Treffer (Budget aus der
+ * Wissenssuche des Hosts statt im Web, öffnet höchstens {@code agent.research.maxPages} Treffer per knowledge_read (Budget aus der
  * Umgebung, 0 = unbegrenzt) und übernimmt passende Seiten über {@code source_accept} als Quellen. Rangfolge
  * lexikalisch (BM25), solange der Client kein RERANK-Modell ausführt.
  */

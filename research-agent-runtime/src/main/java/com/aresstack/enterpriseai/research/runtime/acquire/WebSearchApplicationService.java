@@ -1087,18 +1087,19 @@ public final class WebSearchApplicationService {
         }
     }
 
-    /** Lässt die Seitenwerkzeuge die ausgewählten Treffer parallel laden, höchstens so viele, wie das Budget erlaubt. */
+    /**
+     * Lässt die Seitenwerkzeuge die ausgewählten Treffer im Hintergrund vorladen (Cache wie in MainframeMate).
+     * Vorladen verbraucht kein Budget; gezählt wird erst, wenn der Lauf eine Seite öffnet.
+     */
     private void prefetchFrontier(List<FrontierEntry> frontier) {
         if (!(browser instanceof PagePrefetch) || frontier.isEmpty()) {
             return;
         }
-        int remaining = budget.getMaxPagesVisited() == ResearchRunBudget.UNLIMITED
-                ? Integer.MAX_VALUE : Math.max(0, budget.getMaxPagesVisited() - progress.getPagesVisited());
         List<String> urls = new ArrayList<String>();
         for (FrontierEntry entry : frontier) {
             urls.add(entry.getUrl());
         }
-        ((PagePrefetch) browser).prefetch(urls, remaining);
+        ((PagePrefetch) browser).prefetch(urls);
     }
 
     /**

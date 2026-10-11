@@ -20,9 +20,17 @@ public final class AgentConfig {
     private final String mcpEndpointId;
     private final String mcpDisplayName;
     private final KnowledgeToolSettings toolSettings;
+    private final int researchMaxPages;
 
     AgentConfig(boolean enabled, String command, List<String> args, Duration requestTimeout, String mcpEndpointId,
                 String mcpDisplayName, KnowledgeToolSettings toolSettings) {
+        this(enabled, command, args, requestTimeout, mcpEndpointId, mcpDisplayName, toolSettings,
+                DEFAULT_RESEARCH_MAX_PAGES);
+    }
+
+    AgentConfig(boolean enabled, String command, List<String> args, Duration requestTimeout, String mcpEndpointId,
+                String mcpDisplayName, KnowledgeToolSettings toolSettings, int researchMaxPages) {
+        this.researchMaxPages = researchMaxPages;
         this.enabled = enabled;
         this.command = command;
         this.args = Collections.unmodifiableList(new ArrayList<String>(args));
@@ -61,6 +69,19 @@ public final class AgentConfig {
     public KnowledgeToolSettings toolSettings() {
         return toolSettings;
     }
+
+    /**
+     * {@code agent.research.maxPages}: wie in arch („Seiten“, maximal besuchte Seiten pro Suchlauf) zählt das
+     * Recherche-Budget die Seiten, die der Agent tatsächlich öffnet ({@code knowledge_read}); jede Suche
+     * ({@code knowledge_search}) zählt als Werkzeugaufruf. Vorladen im Hintergrund verbraucht nie Budget.
+     * {@code 0} = unbegrenzt.
+     */
+    public int researchMaxPages() {
+        return researchMaxPages;
+    }
+
+    /** Standard des Recherche-Seitenbudgets. */
+    public static final int DEFAULT_RESEARCH_MAX_PAGES = 4;
 
     @Override
     public String toString() {

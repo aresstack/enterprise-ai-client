@@ -58,18 +58,13 @@ final class KnowledgePages implements ToolInvoker,
     }
 
     @Override
-    public void prefetch(List<String> urls, int maxPages) {
+    public void prefetch(List<String> urls) {
         if (pool == null || urls == null) {
             return;
         }
-        int submitted = 0;
         for (String url : urls) {
-            if (submitted >= maxPages) {
-                return;
-            }
             final String id = idFor(url);
             if (prefetched.containsKey(id)) {
-                submitted++;
                 continue;
             }
             prefetched.put(id, pool.submit(new Callable<String>() {
@@ -78,7 +73,6 @@ final class KnowledgePages implements ToolInvoker,
                     return read(id);
                 }
             }));
-            submitted++;
         }
     }
 
