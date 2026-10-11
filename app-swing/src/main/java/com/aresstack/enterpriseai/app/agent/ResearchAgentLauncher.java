@@ -27,20 +27,27 @@ public final class ResearchAgentLauncher implements AgentLauncher {
     private final ResearchAgentHost host;
     private final ChatCompletionPort chat;
     private final ChatOptions defaults;
+    private final AgentModelChoice choice;
 
     public ResearchAgentLauncher(ResearchAgentHost host, ChatCompletionPort chat, ChatOptions defaults) {
+        this(host, chat, defaults, null);
+    }
+
+    public ResearchAgentLauncher(ResearchAgentHost host, ChatCompletionPort chat, ChatOptions defaults,
+                                 AgentModelChoice choice) {
         if (host == null || chat == null) {
             throw new IllegalArgumentException("host and chat must not be null");
         }
         this.host = host;
         this.chat = chat;
         this.defaults = defaults;
+        this.choice = choice;
     }
 
     @Override
     public AcpConnection launch() {
         final ResearchAgentConnection[] connection = new ResearchAgentConnection[1];
-        MainModelChat mainModelChat = new ChatPortMainModelChat(chat, defaults);
+        MainModelChat mainModelChat = new ChatPortMainModelChat(chat, defaults, choice);
         ResearchTeamAgent teamAgent = new ResearchTeamAgent(mainModelChat,
                 PhaseAssistantProfileRegistry.defaults(false, true),
                 new PhaseContextAssembler(new PhaseContextAssembler.CurrentLanguage() {

@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 import com.aresstack.enterpriseai.app.agent.AcpAgentLauncher;
+import com.aresstack.enterpriseai.app.agent.AgentModelChoice;
 import com.aresstack.enterpriseai.app.agent.ResearchAgentHost;
 import com.aresstack.enterpriseai.app.agent.ResearchAgentLauncher;
 import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
@@ -80,6 +81,7 @@ public final class CompositionRoot {
     private final KnowledgeMcpTools knowledgeTools;
     private final AgentService agentService;
     private final ResearchAgentHost researchHost;
+    private final AgentModelChoice agentModelChoice;
     private final ExecutorService agentStarts;
     private final ExecutorService workExecutor;
     private final Executor uiExecutor;
@@ -141,6 +143,7 @@ public final class CompositionRoot {
         if (ports.hasAgent()) {
             AgentBackend agent = ports.agent();
             this.researchHost = null;
+            this.agentModelChoice = null;
             this.agentService = new AgentService(new AcpAgentLauncher(agent.connector(), agent.launchSpec(),
                     agent.registry(), agent.endpoint(), agentTools()), agentStarts);
         } else {
@@ -149,8 +152,9 @@ public final class CompositionRoot {
             this.researchHost = new ResearchAgentHost(AppPaths.configFile().toAbsolutePath().getParent()
                     .resolve(RESEARCH_DIRECTORY).toFile(), FileResearchScopeDraftStore::new,
                     directory -> new ConceptBranchService(new FileConceptStore(directory)));
+            this.agentModelChoice = new AgentModelChoice();
             this.agentService = new AgentService(new ResearchAgentLauncher(researchHost, ports.chat(),
-                    config.chat().defaultOptions()), agentStarts);
+                    config.chat().defaultOptions(), agentModelChoice), agentStarts);
         }
         this.shutdown = buildShutdown();
     }
@@ -277,6 +281,11 @@ public final class CompositionRoot {
     /** Weidezaun des eingebauten Recherche-Agenten; {@code null}, wenn ein eigenes Agent-Kommando läuft. */
     public ResearchAgentHost researchHost() {
         return researchHost;
+    }
+
+    /** Modell und Denkaufwand aus dem Composer des eingebauten Recherche-Agenten; {@code null} bei externem Agenten. */
+    public AgentModelChoice agentModelChoice() {
+        return agentModelChoice;
     }
 
     /** Die Häkchen der Wissensquellen: Start-Indexierung und RAG richten sich danach. */

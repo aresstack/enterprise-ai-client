@@ -138,7 +138,7 @@ public class ChatWorkspacePanelTest {
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void agentShellMustMatchAvailability() throws Throwable {
+    public void agentShellNeedsTheAgentMode() throws Throwable {
         try {
             onEdt(new Runnable() {
                 @Override
@@ -146,7 +146,8 @@ public class ChatWorkspacePanelTest {
                     ChatShellModel chatModel = new ChatShellModel(() -> 0L);
                     ChatShellPanel chatShell = new ChatShellPanel(chatModel, new EchoActions(chatModel, "ok"),
                             comic, bubbles);
-                    new ChatWorkspacePanel(new ShellModeModel(true), chatShell, null, comic);
+                    // Ohne eigene Agent-Ansicht ist der Agent-Modus erlaubt (ein Chat, zwei Modi), umgekehrt nicht.
+                    new ChatWorkspacePanel(new ShellModeModel(false), chatShell, chatShell, comic);
                 }
             });
         } catch (InvocationTargetException e) {

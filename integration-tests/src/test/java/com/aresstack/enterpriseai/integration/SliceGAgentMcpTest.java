@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.app.composition.CompositionRoot;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
+import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.chat.ChatComposerPanel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
@@ -58,6 +59,7 @@ import static com.aresstack.enterpriseai.integration.SliceSupport.runOnEdt;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -143,10 +145,11 @@ public class SliceGAgentMcpTest {
         }
     }
 
-    /** Wie eine Nutzerin im Agent-Modus: Frage in den Composer der Agent-Karte, Senden. */
+    /** Wie eine Nutzerin im Agent-Modus: Pille auf „Agent“, Frage in den Composer, Senden. */
     private void ask(final String question) throws Exception {
         final ChatComposerPanel composer = view.agent().shell().composer();
         runOnEdt(() -> {
+            assertTrue(view.workspace().modes().select(ShellMode.AGENT));
             composer.editor().setText(question);
             assertTrue(composer.sendButton().isEnabled());
             composer.sendButton().doClick();
@@ -183,8 +186,8 @@ public class SliceGAgentMcpTest {
         assertTrue(exchange.thoughts(), exchange.thoughts().contains(KnowledgeDemoAgentMain.THOUGHT_PREFIX + QUESTION));
         assertFalse("Überlegungen bleiben aus der Blase", reply.getText().contains(KnowledgeDemoAgentMain.THOUGHT_PREFIX));
 
-        // Der Chat-Verlauf ist unberührt; der Agent hat seine eigene Karte.
-        assertTrue(entries(view.chatModel()).isEmpty());
+        // Ein Chat, zwei Modi (askai arch): der Agent antwortet im selben Verlauf.
+        assertSame(view.chatModel(), agentModel);
 
         // Der Endpoint kam per Umgebung (AP21) und erscheint nirgends: nicht in der Blase, nicht im Transkript,
         // nicht im STDERR des Agenten, den der Host mitliest.

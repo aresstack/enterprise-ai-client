@@ -2,6 +2,10 @@ package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.app.agent.AgentModeAssembly;
+import com.aresstack.enterpriseai.app.ui.research.ResearchOutOfScopeSky;
+import com.aresstack.enterpriseai.app.agent.ModeSwitchingChatActions;
+import com.aresstack.enterpriseai.app.agent.AgentServiceBinding;
+import com.aresstack.enterpriseai.app.agent.AgentModelChoice;
 import com.aresstack.enterpriseai.app.agent.ResearchConceptViewAssembly;
 import com.aresstack.enterpriseai.app.chat.ChatHistoryBinding;
 import com.aresstack.enterpriseai.app.chat.DocumentAttachmentTextExtractor;
@@ -94,24 +98,40 @@ public final class ShellAssembly {
         }
         final ChatHistoryBinding history = new ChatHistoryBinding(new FileChatHistoryStore(chatsDirectory),
                 chatService, chatActions, chatModel, systemPrompt, root.clock());
-        ChatShellPanel chatShell = new ChatShellPanel(chatModel, chatActions, root.knowledgeStatus(), palette, bubbles);
-        chatShell.composer().setModelName(root.config().chat().model());
-
         final AgentModeAssembly.AgentView agent;
         final AgentService agentService;
+        final ShellModeModel modes = new ShellModeModel(root.hasAgent());
+        final ChatShellPanel chatShell;
         if (root.hasAgent()) {
+            // Ein Chat, zwei Fähigkeiten (askai arch): die Modus-Pille schaltet nur Verhalten und Erscheinung um.
             agentService = root.agentService();
-            agent = AgentModeAssembly.create(agentService, root.uiExecutor(), root.clock(), palette, bubbles);
+            AgentServiceBinding agentBinding = AgentModeAssembly.sharedBinding(agentService, chatModel,
+                    root.uiExecutor(), root.agentModelChoice());
+            chatShell = new ChatShellPanel(chatModel,
+                    new ModeSwitchingChatActions(chatActions, agentBinding, modes, chatModel),
+                    root.knowledgeStatus(), palette, bubbles);
+            agent = AgentModeAssembly.sharedView(chatShell, agentBinding);
             if (root.researchHost() != null) {
-                AgentModeAssembly.attachResearchSky(agent, root.researchHost(), root.uiExecutor());
+                final ResearchOutOfScopeSky sky = AgentModeAssembly.attachResearchSky(agent, root.researchHost(),
+                        root.uiExecutor());
+                // Der Wolkenhimmel gehört zur Erscheinung des Agent-Modus.
+                final ShellModeModel.Listener skyByMode = mode -> {
+                    if (mode == ShellMode.AGENT) {
+                        chatShell.transcript().setTranscriptSkyAccessory(sky);
+                    } else {
+                        chatShell.transcript().clearTranscriptSkyAccessory();
+                    }
+                };
+                modes.addListener(skyByMode);
+                skyByMode.modeChanged(modes.getMode());
             }
         } else {
             agentService = null;
             agent = null;
+            chatShell = new ChatShellPanel(chatModel, chatActions, root.knowledgeStatus(), palette, bubbles);
         }
-        ShellModeModel modes = new ShellModeModel(agent != null);
-        ChatWorkspacePanel workspace = new ChatWorkspacePanel(modes, chatShell, agent == null ? null : agent.shell(),
-                palette);
+        chatShell.composer().setModelName(root.config().chat().model());
+        ChatWorkspacePanel workspace = new ChatWorkspacePanel(modes, chatShell, null, palette);
         workspace.setWindowTitle(root.config().windowTitle());
         if (agent != null && root.researchHost() != null) {
             // askai: die Artefakt-Ansicht „Konzept“ (Konzeptbaum mit Inseln) als Drawer-Reiter im Agent-Modus
@@ -149,17 +169,16 @@ public final class ShellAssembly {
         workspace.setActions(new WorkspaceActions() {
             @Override
             public void newChatRequested(ShellMode mode) {
-                if (mode == ShellMode.AGENT && agent != null) {
-                    if (!agent.model().isStreaming() && !agentService.isBusy()) {
-                        agentService.endSession(); // der Agent behält sonst den alten Kontext in seiner Session
-                        if (root.researchHost() != null) {
-                            root.researchHost().startNewProject(); // neues Research-Projekt, frischer Weidezaun
-                        }
-                        agent.model().clear();
-                    }
-                    return;
+                // „Neuer Chat“ gilt unabhängig vom Modus: derselbe Chat, frisch (askai arch).
+                if (agent != null && agentService.isBusy()) {
+                    return; // der Agent arbeitet noch
                 }
-                startNewChat();
+                if (startNewChat() && agent != null) {
+                    agentService.endSession(); // der Agent behält sonst den alten Kontext in seiner Session
+                    if (root.researchHost() != null) {
+                        root.researchHost().startNewProject(); // neues Research-Projekt, frischer Weidezaun
+                    }
+                }
             }
 
             /** Neue Unterhaltung im Chat; {@code false}, solange eine Antwort oder Suche läuft. */
@@ -324,7 +343,7 @@ public final class ShellAssembly {
         public void setChatModels(final Supplier<ModelCatalogSnapshot> catalog,
                                   final Supplier<List<String>> localChats, final Consumer<String> persist,
                                   final Executor worker) {
-            composer.setModelChoices(() -> {
+            final Supplier<List<String>> choices = () -> {
                 List<String> ids = new ArrayList<String>();
                 // Enterprise-Modelle ohne Präfix, alle anderen als <katalog>:<modell>; ausgeführt wird über den
                 // Katalog des Eintrags (ChatModelExecutorRegistry).
@@ -342,8 +361,8 @@ public final class ShellAssembly {
                     }
                 }
                 return ids;
-            }, id -> {
-                chatActions.modelChanged(id);
+            };
+            final Consumer<String> remember = id -> {
                 latestModel = id;
                 // Schreiben nacheinander und immer die letzte Wahl: so gewinnt nie eine ältere Auswahl.
                 worker.execute(() -> {
@@ -351,6 +370,15 @@ public final class ShellAssembly {
                         persist.accept(latestModel);
                     }
                 });
+            };
+            // Ein Composer für beide Modi (askai arch): die Wahl gilt für Chat und Agent.
+            final AgentModelChoice agentChoice = agent == null ? null : agent.binding().modelChoice();
+            composer.setModelChoices(choices, id -> {
+                chatActions.modelChanged(id);
+                if (agentChoice != null) {
+                    agentChoice.modelChanged(id);
+                }
+                remember.accept(id);
             });
         }
     }

@@ -25,14 +25,35 @@ public final class AgentServiceBinding implements ChatShellActions {
     private final ChatShellModel model;
     private final Executor uiExecutor;
     private AgentTurn runningTurn;
+    private final AgentModelChoice choice;
 
     public AgentServiceBinding(AgentService agentService, ChatShellModel model, Executor uiExecutor) {
+        this(agentService, model, uiExecutor, null);
+    }
+
+    /** @param choice Modell und Denkaufwand des eingebauten Agenten; {@code null} bei einem externen Agenten */
+    public AgentServiceBinding(AgentService agentService, ChatShellModel model, Executor uiExecutor,
+                               AgentModelChoice choice) {
         if (agentService == null || model == null || uiExecutor == null) {
             throw new IllegalArgumentException("agentService, model and uiExecutor must not be null");
         }
         this.agentService = agentService;
         this.model = model;
         this.uiExecutor = uiExecutor;
+        this.choice = choice;
+    }
+
+    /** Der Denkaufwand aus dem Composer gilt ab der nächsten Modellanfrage des eingebauten Agenten. */
+    @Override
+    public void reasoningChanged(String effort) {
+        if (choice != null) {
+            choice.reasoningChanged(effort);
+        }
+    }
+
+    /** Das im Composer gewählte Modell; {@code null} bei einem externen Agenten. */
+    public AgentModelChoice modelChoice() {
+        return choice;
     }
 
     /** Muss auf dem UI-Thread gerufen werden (wie alle Model-Änderungen). */

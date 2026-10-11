@@ -39,6 +39,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -205,7 +206,7 @@ public class ApplicationCompositionTest {
             }
         });
         assertNotNull(view.get().agent());
-        assertNotNull(view.get().workspace().agentShell());
+        assertSame(view.get().workspace().chatShell(), view.get().agent().shell()); // ein Chat, zwei Modi
     }
 
     @Test

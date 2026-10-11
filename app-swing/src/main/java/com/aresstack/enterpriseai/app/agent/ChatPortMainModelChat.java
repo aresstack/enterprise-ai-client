@@ -25,13 +25,24 @@ public final class ChatPortMainModelChat implements MainModelChat {
 
     private final ChatCompletionPort chat;
     private final ChatOptions defaults;
+    private final AgentModelChoice choice;
 
     public ChatPortMainModelChat(ChatCompletionPort chat, ChatOptions defaults) {
+        this(chat, defaults, null);
+    }
+
+    /** @param choice Modell und Denkaufwand aus dem Composer des Agent-Modus; {@code null}: nur die Standardwerte */
+    public ChatPortMainModelChat(ChatCompletionPort chat, ChatOptions defaults, AgentModelChoice choice) {
         if (chat == null) {
             throw new IllegalArgumentException("chat must not be null");
         }
         this.chat = chat;
         this.defaults = defaults == null ? ChatOptions.defaults() : defaults;
+        this.choice = choice;
+    }
+
+    private ChatOptions current() {
+        return choice == null ? defaults : choice.applyTo(defaults);
     }
 
     @Override
@@ -51,7 +62,7 @@ public final class ChatPortMainModelChat implements MainModelChat {
                     break;
             }
         }
-        ChatOptions options = defaults.toBuilder()
+        ChatOptions options = current().toBuilder()
                 .temperature(Double.valueOf(temperature))
                 .maxTokens(maxOutputTokens > 0 ? Integer.valueOf(maxOutputTokens) : null)
                 .build();
@@ -74,7 +85,7 @@ public final class ChatPortMainModelChat implements MainModelChat {
 
     @Override
     public String modelName() {
-        String model = defaults.model();
+        String model = current().model();
         return model == null ? "" : model;
     }
 }

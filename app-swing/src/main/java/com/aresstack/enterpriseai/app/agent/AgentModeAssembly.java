@@ -24,11 +24,34 @@ public final class AgentModeAssembly {
     /** Muss auf dem UI-Thread gerufen werden. */
     public static AgentView create(AgentService agentService, Executor uiExecutor, LongSupplier clock,
                                    ComicPalette comicPalette, BubblePalette bubblePalette) {
+        return create(agentService, uiExecutor, clock, comicPalette, bubblePalette, null);
+    }
+
+    /**
+     * @param choice Modell und Denkaufwand des eingebauten Recherche-Agenten: dann zeigt der Composer Modell und
+     *               „Denken“ wie im Chat; {@code null} bei einem externen Agenten (der wählt sein Modell selbst)
+     */
+    public static AgentView create(AgentService agentService, Executor uiExecutor, LongSupplier clock,
+                                   ComicPalette comicPalette, BubblePalette bubblePalette, AgentModelChoice choice) {
         ChatShellModel model = new ChatShellModel(clock);
-        AgentServiceBinding binding = new AgentServiceBinding(agentService, model, uiExecutor);
+        AgentServiceBinding binding = new AgentServiceBinding(agentService, model, uiExecutor, choice);
         ChatShellPanel shell = new ChatShellPanel(model, binding, comicPalette, bubblePalette);
-        shell.composer().setModelControlsVisible(false);
+        shell.composer().setModelControlsVisible(choice != null);
         return new AgentView(shell, model, binding);
+    }
+
+    /**
+     * Die Agent-Anbindung für den EINEN Chat (askai arch: die Modus-Pille schaltet nur Fähigkeiten und Erscheinung
+     * desselben Chats um); Senden im Agent-Modus läuft über sie, Model und Verlauf sind die des Chats.
+     */
+    public static AgentServiceBinding sharedBinding(AgentService agentService, ChatShellModel model,
+                                                    Executor uiExecutor, AgentModelChoice choice) {
+        return new AgentServiceBinding(agentService, model, uiExecutor, choice);
+    }
+
+    /** Die Agent-Sicht auf den gemeinsamen Chat ({@link #sharedBinding}). */
+    public static AgentView sharedView(ChatShellPanel shell, AgentServiceBinding binding) {
+        return new AgentView(shell, shell.model(), binding);
     }
 
     /**

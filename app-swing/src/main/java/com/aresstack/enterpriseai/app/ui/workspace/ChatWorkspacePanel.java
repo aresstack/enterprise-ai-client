@@ -142,15 +142,18 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private boolean menuLocked;
     private WorkspaceActions actions;
 
-    /** @param agentShell die Agent-Ansicht oder {@code null}, wenn kein Agent konfiguriert ist */
+    /**
+     * @param agentShell eine eigene Agent-Ansicht oder {@code null}: dann schaltet der Agent-Modus nur Fähigkeiten und
+     *                   Erscheinung desselben Chats um (askai arch)
+     */
     public ChatWorkspacePanel(ShellModeModel modes, ChatShellPanel chatShell, ChatShellPanel agentShell,
                               ComicPalette palette) {
         super(new BorderLayout());
         if (modes == null || chatShell == null || palette == null) {
             throw new IllegalArgumentException("modes, chatShell and palette must not be null");
         }
-        if (modes.isAgentAvailable() != (agentShell != null)) {
-            throw new IllegalArgumentException("agentShell must be given exactly when the agent mode is available");
+        if (agentShell != null && !modes.isAgentAvailable()) {
+            throw new IllegalArgumentException("agentShell needs the agent mode");
         }
         this.modes = modes;
         this.chatShell = chatShell;
@@ -240,7 +243,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     public void modeChanged(ShellMode mode) {
         sidebar.rebuildTabs();
         refreshRibbonTabs();
-        cards.show(deck, mode.name());
+        cards.show(deck, mode == ShellMode.AGENT && agentShell != null ? mode.name() : ShellMode.CHAT.name());
         int index = Arrays.asList(ShellMode.values()).indexOf(mode);
         if (modePill.getSelectedIndex() != index) {
             modePill.setSelectedIndex(index);
