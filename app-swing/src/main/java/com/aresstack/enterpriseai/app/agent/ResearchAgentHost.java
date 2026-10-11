@@ -49,12 +49,16 @@ public final class ResearchAgentHost {
     private static final String STATE_FILE = "research-state";
     private static final String SOURCES_FILE = "sources.tsv";
     private static final String PARKED_FILE = "parked.tsv";
+    private static final String IMAGES_DIRECTORY = "images";
+    private static final String PASSAGES_DIRECTORY = "passages";
 
     private final File projectsRoot;
     private final Function<File, ResearchScopeDraftStore> stores;
     private final Function<File, ConceptBranchService> concepts;
     private final List<Runnable> stateListeners = new CopyOnWriteArrayList<Runnable>();
     private volatile Consumer<String> problemSink;
+    /** Wer nach einer neuen Quelle weiterarbeitet (Bilder auswerten); bekommt die Dokument-ID. */
+    private volatile Consumer<String> sourceAcceptedListener;
     private File projectDirectory;
     private ResearchScopeCoordinator coordinator;
     private ResearchConceptHost conceptHost;
@@ -271,7 +275,170 @@ public final class ResearchAgentHost {
         appendLine(new File(projectDirectory, SOURCES_FILE), id + "\t" + clean(title) + "\t" + clean(url));
         LOG.info("[research-sources] accepted " + id + " " + clean(title));
         fireStateChangedLater();
+        Consumer<String> listener = sourceAcceptedListener;
+        if (listener != null) {
+            listener.accept(id);
+        }
         return "source_id=" + id;
+    }
+
+    /** Wird nach jeder neu übernommenen Quelle mit ihrer Dokument-ID gerufen (darf nicht blockieren). */
+    public void setSourceAcceptedListener(Consumer<String> listener) {
+        this.sourceAcceptedListener = listener;
+    }
+
+    // ------------------------------------------------------------------ images of sources (OCR + Beschreibung)
+
+    /** Ablage der Bildauswertungen im aktuellen Projekt, je Bild und Version eine Datei. */
+    public com.aresstack.enterpriseai.application.image.ImageAnalysisCache imageCache() {
+        return new com.aresstack.enterpriseai.application.image.ImageAnalysisCache() {
+            @Override
+            public com.aresstack.enterpriseai.application.image.ImageAnalysis get(String cacheKey) {
+                List<String> lines = readLines(imageFile("cache", cacheKey));
+                return lines.size() < 3 ? null : parseAnalysis(lines);
+            }
+
+            @Override
+            public void put(String cacheKey, com.aresstack.enterpriseai.application.image.ImageAnalysis analysis) {
+                writeText(imageFile("cache", cacheKey), renderAnalysis(analysis));
+            }
+        };
+    }
+
+    /** Speichert die Bildauswertungen einer Quelle (OCR und Beschreibung getrennt) für {@code source_images}. */
+    public void saveImageAnalyses(String sourceId,
+                                  List<com.aresstack.enterpriseai.application.image.ImageAnalysis> analyses) {
+        StringBuilder text = new StringBuilder();
+        for (com.aresstack.enterpriseai.application.image.ImageAnalysis analysis : analyses) {
+            text.append(renderAnalysis(analysis)).append("\n");
+        }
+        writeText(imageFile("source", sourceId), text.toString());
+        LOG.info("[research-images] " + analyses.size() + " Bilder ausgewertet für " + sourceId);
+    }
+
+    /** Die Bildauswertungen einer Quelle als Text; leer, solange keine vorliegen. */
+    public String imageAnalysesOf(String sourceId) {
+        List<String> lines = readLines(imageFile("source", sourceId));
+        StringBuilder text = new StringBuilder();
+        for (String line : lines) {
+            text.append(line).append('\n');
+        }
+        return text.toString().trim();
+    }
+
+    // ------------------------------------------------------------------ passages of sources (Absatzbildung)
+
+    /** Speichert die semantischen Passagen einer Quelle samt Embedding (eine JSON-Zeile je Passage). */
+    public void savePassages(String sourceId,
+                             List<com.aresstack.enterpriseai.application.passage.SourcePassage> passages) {
+        StringBuilder lines = new StringBuilder();
+        for (com.aresstack.enterpriseai.application.passage.SourcePassage passage : passages) {
+            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+            json.addProperty("id", passage.passageId());
+            json.addProperty("source", passage.sourceId());
+            json.addProperty("heading", passage.headingPath());
+            json.addProperty("first", passage.firstSentence());
+            json.addProperty("embedding", passage.embeddingFingerprint());
+            json.addProperty("text", passage.text());
+            com.google.gson.JsonArray vector = new com.google.gson.JsonArray();
+            for (float value : passage.vector()) {
+                vector.add(value);
+            }
+            json.add("vector", vector);
+            lines.append(json.toString()).append('\n');
+        }
+        writeText(passageFile(sourceId), lines.toString());
+        LOG.info("[research-passages] " + passages.size() + " Passagen für " + sourceId);
+    }
+
+    /** Die Passagen einer Quelle als Text (Abschnitt und Inhalt); leer, solange keine vorliegen. */
+    public String passagesOf(String sourceId) {
+        StringBuilder text = new StringBuilder();
+        int number = 0;
+        for (String line : readLines(passageFile(sourceId))) {
+            if (line.trim().isEmpty()) {
+                continue;
+            }
+            com.google.gson.JsonObject json = com.google.gson.JsonParser.parseString(line).getAsJsonObject();
+            text.append('[').append(++number).append("] ");
+            String heading = json.get("heading").getAsString();
+            if (!heading.isEmpty()) {
+                text.append(heading).append(": ");
+            }
+            text.append(json.get("text").getAsString()).append("\n\n");
+        }
+        return text.toString().trim();
+    }
+
+    private synchronized File passageFile(String sourceId) {
+        ensureOpen();
+        File directory = new File(projectDirectory, PASSAGES_DIRECTORY);
+        if (!directory.isDirectory() && !directory.mkdirs()) {
+            LOG.warning("Passagenordner nicht anlegbar: " + directory);
+        }
+        return new File(directory, sha256(sourceId) + ".jsonl");
+    }
+
+    private synchronized File imageFile(String kind, String key) {
+        ensureOpen();
+        File directory = new File(new File(projectDirectory, IMAGES_DIRECTORY), kind);
+        if (!directory.isDirectory() && !directory.mkdirs()) {
+            LOG.warning("Bildordner nicht anlegbar: " + directory);
+        }
+        return new File(directory, sha256(key) + ".txt");
+    }
+
+    private static String renderAnalysis(com.aresstack.enterpriseai.application.image.ImageAnalysis analysis) {
+        return "image: " + clean(analysis.imageId()) + "\n" + "title: " + clean(analysis.title()) + "\n"
+                + "version: " + clean(analysis.version()) + "\n" + "--- OCR ---\n" + analysis.ocrText().trim()
+                + "\n--- Beschreibung ---\n" + analysis.description().trim() + "\n";
+    }
+
+    private static com.aresstack.enterpriseai.application.image.ImageAnalysis parseAnalysis(List<String> lines) {
+        String id = valueOf(lines.get(0), "image: ");
+        String title = valueOf(lines.get(1), "title: ");
+        String version = valueOf(lines.get(2), "version: ");
+        StringBuilder ocr = new StringBuilder();
+        StringBuilder description = new StringBuilder();
+        StringBuilder current = null;
+        for (int i = 3; i < lines.size(); i++) {
+            String line = lines.get(i);
+            if ("--- OCR ---".equals(line)) {
+                current = ocr;
+            } else if ("--- Beschreibung ---".equals(line)) {
+                current = description;
+            } else if (current != null) {
+                current.append(line).append('\n');
+            }
+        }
+        return new com.aresstack.enterpriseai.application.image.ImageAnalysis(id, title, version,
+                ocr.toString().trim(), description.toString().trim());
+    }
+
+    private static String valueOf(String line, String prefix) {
+        return line.startsWith(prefix) ? line.substring(prefix.length()) : "";
+    }
+
+    private static String sha256(String key) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 16; i++) {
+                hex.append(String.format("%02x", digest[i] & 0xff));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            return Integer.toHexString(key.hashCode());
+        }
+    }
+
+    private static void writeText(File file, String text) {
+        try {
+            java.nio.file.Files.write(file.toPath(), text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (IOException notWritten) {
+            LOG.warning("Nicht gespeichert: " + file.getName() + ": " + notWritten.getMessage());
+        }
     }
 
     /** Merkt eine nicht gelesene oder nicht passende Seite vor (askai {@code source_park}). */

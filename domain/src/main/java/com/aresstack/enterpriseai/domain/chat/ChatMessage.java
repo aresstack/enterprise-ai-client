@@ -16,12 +16,18 @@ public final class ChatMessage {
     private final String content;
     private final List<ChatToolCall> toolCalls;
     private final String toolCallId;
+    private final List<ChatImage> images;
 
     public ChatMessage(ChatRole role, String content) {
         this(role, content, Collections.<ChatToolCall>emptyList(), null);
     }
 
     private ChatMessage(ChatRole role, String content, List<ChatToolCall> toolCalls, String toolCallId) {
+        this(role, content, toolCalls, toolCallId, Collections.<ChatImage>emptyList());
+    }
+
+    private ChatMessage(ChatRole role, String content, List<ChatToolCall> toolCalls, String toolCallId,
+                        List<ChatImage> images) {
         if (role == null) {
             throw new IllegalArgumentException("role must not be null");
         }
@@ -32,6 +38,21 @@ public final class ChatMessage {
         this.content = content;
         this.toolCalls = Collections.unmodifiableList(new ArrayList<ChatToolCall>(toolCalls));
         this.toolCallId = toolCallId;
+        this.images = Collections.unmodifiableList(new ArrayList<ChatImage>(images));
+    }
+
+    /** Eine Nutzernachricht mit Bildern (Bildbeschreibung, OCR). */
+    public static ChatMessage userWithImages(String content, List<ChatImage> images) {
+        if (images == null || images.isEmpty()) {
+            throw new IllegalArgumentException("images must not be empty");
+        }
+        return new ChatMessage(ChatRole.USER, content == null ? "" : content,
+                Collections.<ChatToolCall>emptyList(), null, images);
+    }
+
+    /** Die Bilder einer Nutzernachricht; leer bei allen anderen. */
+    public List<ChatImage> images() {
+        return images;
     }
 
     /** Eine Assistant-Nachricht mit Werkzeugaufrufen ({@code tool_calls}); der Text darf leer sein. */
@@ -99,7 +120,8 @@ public final class ChatMessage {
         }
         ChatMessage that = (ChatMessage) other;
         return role == that.role && content.equals(that.content) && toolCalls.equals(that.toolCalls)
-                && (toolCallId == null ? that.toolCallId == null : toolCallId.equals(that.toolCallId));
+                && (toolCallId == null ? that.toolCallId == null : toolCallId.equals(that.toolCallId))
+                && images.equals(that.images);
     }
 
     @Override
@@ -110,6 +132,7 @@ public final class ChatMessage {
     @Override
     public String toString() {
         return "ChatMessage[" + role + ", " + content.length() + " chars"
-                + (toolCalls.isEmpty() ? "" : ", " + toolCalls.size() + " tool calls") + "]";
+                + (toolCalls.isEmpty() ? "" : ", " + toolCalls.size() + " tool calls")
+                + (images.isEmpty() ? "" : ", " + images.size() + " images") + "]";
     }
 }

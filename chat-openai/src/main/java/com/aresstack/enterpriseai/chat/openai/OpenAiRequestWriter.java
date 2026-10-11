@@ -32,7 +32,28 @@ final class OpenAiRequestWriter {
         for (ChatMessage message : request.messages()) {
             JsonObject json = new JsonObject();
             json.addProperty("role", roleOf(message));
-            json.addProperty("content", message.content());
+            if (message.images().isEmpty()) {
+                json.addProperty("content", message.content());
+            } else {
+                // Bilder als Inhaltsteile: Text und je Bild eine image_url mit Data-URL (Base64)
+                JsonArray parts = new JsonArray();
+                if (!message.content().isEmpty()) {
+                    JsonObject text = new JsonObject();
+                    text.addProperty("type", "text");
+                    text.addProperty("text", message.content());
+                    parts.add(text);
+                }
+                for (com.aresstack.enterpriseai.domain.chat.ChatImage image : message.images()) {
+                    JsonObject url = new JsonObject();
+                    url.addProperty("url", "data:" + image.mediaType() + ";base64,"
+                            + java.util.Base64.getEncoder().encodeToString(image.bytes()));
+                    JsonObject part = new JsonObject();
+                    part.addProperty("type", "image_url");
+                    part.add("image_url", url);
+                    parts.add(part);
+                }
+                json.add("content", parts);
+            }
             if (message.hasToolCalls()) {
                 JsonArray calls = new JsonArray();
                 for (ChatToolCall call : message.toolCalls()) {

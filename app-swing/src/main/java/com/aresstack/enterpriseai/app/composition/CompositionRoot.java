@@ -107,6 +107,7 @@ public final class CompositionRoot {
     private volatile KnowledgeSourceCatalog liveSources;
     private final SearchDrivenIndexingUseCase searchIndexing;
     private final ShutdownSequence shutdown;
+    private java.util.concurrent.ExecutorService imagePool;
 
     private CompositionRoot(final SettingsService settings, final ApplicationPorts ports, Executor uiExecutor,
                             LongSupplier clock, ZoneId zone) {
@@ -185,6 +186,7 @@ public final class CompositionRoot {
                 .resolve(RESEARCH_DIRECTORY).toFile(), FileResearchScopeDraftStore::new,
                 directory -> new ConceptBranchService(new FileConceptStore(directory)));
         this.agentModelChoice = new AgentModelChoice();
+        wireSourceProcessing(catalogForImages(ports));
         final ChatPortMainModelChat researchModel = new ChatPortMainModelChat(ports.chat(),
                 config.chat().defaultOptions(), agentModelChoice);
         // Der Werkzeugsatz des Agenten folgt der Phase (askai arch ResearchToolPolicy): neu berechnet und per
@@ -415,6 +417,85 @@ public final class CompositionRoot {
         return shutdown;
     }
 
+    /** Bilder je Quelle: höchstens so viele werden je übernommener Seite ausgewertet. */
+    private static final int MAX_IMAGES_PER_SOURCE = 8;
+
+    private static java.util.function.Supplier<java.util.Collection<
+            com.aresstack.enterpriseai.source.api.KnowledgeSourcePort>> catalogForImages(final ApplicationPorts ports) {
+        return new java.util.function.Supplier<java.util.Collection<
+                com.aresstack.enterpriseai.source.api.KnowledgeSourcePort>>() {
+            @Override
+            public java.util.Collection<com.aresstack.enterpriseai.source.api.KnowledgeSourcePort> get() {
+                return ports.sources().ports();
+            }
+        };
+    }
+
+    /**
+     * Nach jeder übernommenen Quelle arbeitet ein eigener Pool aus vier Threads (GPT-Plan): die semantische
+     * Absatzbildung des Textes ({@code source_passages}) und der Binärpfad für Bilder, OCR (Modell DOCUMENT_OCR)
+     * und Beschreibung (Modell VISION) getrennt über KIPITZ, je Bild und Version einmal ({@code source_images}).
+     */
+    private void wireSourceProcessing(
+            java.util.function.Supplier<java.util.Collection<com.aresstack.enterpriseai.source.api.KnowledgeSourcePort>>
+                    sources) {
+        final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4,
+                daemonThreads("research-images"));
+        imagePool = pool;
+        final com.aresstack.enterpriseai.application.image.SourceImageAnalysisUseCase images =
+                new com.aresstack.enterpriseai.application.image.SourceImageAnalysisUseCase(sources, ports.chat(),
+                        modelKey(com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory.DOCUMENT_OCR),
+                        modelKey(com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory.VISION),
+                        researchHost.imageCache());
+        final com.aresstack.enterpriseai.application.passage.PassageSegmentation passages =
+                new com.aresstack.enterpriseai.application.passage.PassageSegmentation(ports.embeddings());
+        researchHost.setSourceAcceptedListener(new java.util.function.Consumer<String>() {
+            @Override
+            public void accept(final String sourceId) {
+                // Absatzbildung (askai arch SourceProcessingWorker): Text der Quelle → semantische Passagen
+                pool.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument document = documents.load(
+                                    com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId.of(sourceId));
+                            researchHost.savePassages(sourceId, passages.segment(sourceId, document.text()));
+                        } catch (Exception failed) {
+                            java.util.logging.Logger.getLogger(CompositionRoot.class.getName()).warning(
+                                    "[research-passages] " + sourceId + ": " + failed.getMessage());
+                        }
+                    }
+                });
+                pool.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            researchHost.saveImageAnalyses(sourceId, images.analyze(
+                                    com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId.of(sourceId),
+                                    MAX_IMAGES_PER_SOURCE));
+                        } catch (RuntimeException failed) {
+                            java.util.logging.Logger.getLogger(CompositionRoot.class.getName()).warning(
+                                    "[research-images] " + sourceId + ": " + failed.getMessage());
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /** Die gewählte Modellkennung einer Kategorie ({@code katalog:id}), bei jedem Aufruf aus den Einstellungen. */
+    private java.util.function.Supplier<String> modelKey(
+            final com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory category) {
+        return new java.util.function.Supplier<String>() {
+            @Override
+            public String get() {
+                com.aresstack.enterpriseai.domain.modelcatalog.ModelReference selected =
+                        config().models().selections().get(category);
+                return selected == null ? null : selected.key();
+            }
+        };
+    }
+
     private ShutdownSequence buildShutdown() {
         ShutdownSequence sequence = new ShutdownSequence();
         sequence.then("cancel-chat-turns", new Runnable() {
@@ -428,6 +509,9 @@ public final class CompositionRoot {
         sequence.then("end-agent-mode", new Runnable() {
             @Override
             public void run() {
+                if (imagePool != null) {
+                    imagePool.shutdownNow(); // Absatzbildung und Bilder der Quellen
+                }
                 knowledgeTools.shutdown();
                 if (agentService != null) {
                     agentService.cancel();

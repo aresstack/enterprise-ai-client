@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
+import com.aresstack.enterpriseai.source.api.ImageSource;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourcePartition;
@@ -58,7 +59,7 @@ import java.util.Set;
  * HTTP-Request, weil z. B. KeePassRPC dafür eine Verbindung aufbaut) und vergisst sie mit dem Ende des Aufrufs.
  * Ohne {@link ConfluenceConfig#credentialRef()} fragt er keine an (z. B. reine mTLS-Anmeldung).
  */
-public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource {
+public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource {
 
     static final String PAGE_CONTENT_TYPE = "text/html";
 
@@ -117,6 +118,56 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 return parsed.attachment ? loadAttachment(session, parsed.contentId) : loadPage(session, parsed.contentId);
             }
         });
+    }
+
+    @Override
+    public List<KnowledgeResource> imagesOf(KnowledgeResourceId page, final int max) throws KnowledgeSourceException {
+        final ConfluenceIds.Parsed parsed = parse(page);
+        if (parsed.attachment || max <= 0) {
+            return new ArrayList<KnowledgeResource>();
+        }
+        return withSession(new Operation<List<KnowledgeResource>>() {
+            @Override
+            public List<KnowledgeResource> run(Session session) throws KnowledgeSourceException {
+                List<KnowledgeResource> images = new ArrayList<KnowledgeResource>();
+                for (Attachment attachment : client.attachments(session, parsed.contentId, max,
+                        new java.util.function.Predicate<Attachment>() {
+                            @Override
+                            public boolean test(Attachment candidate) {
+                                return isLoadableImage(candidate);
+                            }
+                        })) {
+                    images.add(attachmentResource(attachment));
+                }
+                return images;
+            }
+        });
+    }
+
+    @Override
+    public byte[] loadImage(KnowledgeResourceId image) throws KnowledgeSourceException {
+        final ConfluenceIds.Parsed parsed = parse(image);
+        if (!parsed.attachment) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Kein Anhang: " + image.value());
+        }
+        return withSession(new Operation<byte[]>() {
+            @Override
+            public byte[] run(Session session) throws KnowledgeSourceException {
+                Attachment attachment = client.attachment(session, parsed.contentId);
+                if (!isLoadableImage(attachment)) {
+                    throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Anhang " + parsed.contentId
+                            + " ist kein ladbares Bild (" + attachment.mediaType + ")");
+                }
+                return client.download(session, attachment);
+            }
+        });
+    }
+
+    /** Bilder: {@code image/*} außer SVG (kein Rasterbild für OCR/Bildverständnis), höchstens so groß wie Anhänge. */
+    private boolean isLoadableImage(Attachment attachment) {
+        String type = baseType(attachment.mediaType);
+        return type.startsWith("image/") && !type.contains("svg")
+                && (attachment.size < 0 || attachment.size <= config.maxAttachmentBytes());
     }
 
     @Override

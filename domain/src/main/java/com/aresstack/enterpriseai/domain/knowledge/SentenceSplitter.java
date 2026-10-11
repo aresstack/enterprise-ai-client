@@ -21,7 +21,7 @@ import java.util.Set;
  * identisch sein; Buchstaben, Ziffern und Großbuchstaben kommen aus {@link UnicodeClasses}. Prinzip übernommen aus askai-java8
  * {@code RegexSentenceSegmenter}, um Abkürzungen, Ordinalzahlen und Unicode erweitert.
  */
-final class SentenceSplitter {
+public final class SentenceSplitter {
 
     private static final Set<String> ABBREVIATIONS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
             "abb", "abs", "abschn", "allg", "anm", "art", "bd", "bspw", "bzgl", "bzw", "ca", "d.h", "dgl", "dr",
@@ -29,7 +29,8 @@ final class SentenceSplitter {
             "min", "mio", "mr", "mrs", "ms", "mrd", "nr", "o.ä", "prof", "s", "sog", "sr", "st", "str", "tel",
             "u.a", "u.ä", "usw", "vgl", "vs", "z.b", "z.t", "zb", "zzgl")));
 
-    List<String> split(String text) {
+    /** Die Sätze des Textes in Reihenfolge, ohne leere. */
+    public List<String> split(String text) {
         List<String> sentences = new ArrayList<String>();
         if (text == null) {
             return sentences;

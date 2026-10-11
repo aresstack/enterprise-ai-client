@@ -144,7 +144,9 @@ public final class ChatModelExecutorRegistry {
 
     private static ChatRequest rewrite(ChatRequest request, Target target) {
         ChatOptions options = withModel(request.options(), target);
-        return options == request.options() ? request : new ChatRequest(request.messages(), options);
+        // Werkzeuge bleiben erhalten (Tool-Calls über /chat/completions)
+        return options == request.options() ? request
+                : new ChatRequest(request.messages(), options, request.tools());
     }
 
     private static ChatOptions withModel(ChatOptions options, Target target) {

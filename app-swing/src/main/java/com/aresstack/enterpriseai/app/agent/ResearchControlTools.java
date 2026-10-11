@@ -135,6 +135,42 @@ public final class ResearchControlTools {
                 }, McpToolParameter.string("messages_json", true, "Nachrichten als JSON-Array {role, content}"),
                 McpToolParameter.string("temperature", false, "Temperatur als Dezimalzahl"),
                 McpToolParameter.integer("max_output_tokens", false, "Ausgabebudget, 0 = Standard")));
+        if (ResearchStateIds.RESEARCH.equals(host.phaseId())) {
+            tools.add(McpToolContribution.of("source_passages",
+                    "Liest eine übernommene Quelle in semantischen Passagen (nach Thema zerlegt). "
+                            + "Beispiel: capture_id=\"123456\"",
+                    new McpToolHandler() {
+                        @Override
+                        public McpToolResult invoke(McpToolCall call) {
+                            String id = call.getString("capture_id");
+                            if (id == null || id.trim().isEmpty()) {
+                                return McpToolResult.error("Missing argument: capture_id — example: "
+                                        + "capture_id=\"123456\"");
+                            }
+                            String text = host.passagesOf(id.trim());
+                            return McpToolResult.ok(text.isEmpty()
+                                    ? "No passages yet for " + id.trim() + " (still running or not accepted)."
+                                    : text);
+                        }
+                    }, McpToolParameter.string("capture_id", true, "Die Quelle aus source_accept")));
+            tools.add(McpToolContribution.of("source_images",
+                    "Liest die Bilder einer übernommenen Quelle: erkannter Text (OCR) und Beschreibung getrennt. "
+                            + "Beispiel: capture_id=\"123456\"",
+                    new McpToolHandler() {
+                        @Override
+                        public McpToolResult invoke(McpToolCall call) {
+                            String id = call.getString("capture_id");
+                            if (id == null || id.trim().isEmpty()) {
+                                return McpToolResult.error("Missing argument: capture_id — example: "
+                                        + "capture_id=\"123456\"");
+                            }
+                            String text = host.imageAnalysesOf(id.trim());
+                            return McpToolResult.ok(text.isEmpty()
+                                    ? "No image analysis yet for " + id.trim() + " (no images, no model chosen, "
+                                    + "or still running)." : text);
+                        }
+                    }, McpToolParameter.string("capture_id", true, "Die Quelle aus source_accept")));
+        }
         if (host.isWritable(ResearchStateIds.RESEARCH)) {
             tools.add(McpToolContribution.of("source_accept",
                     "Übernimmt eine gelesene Seite als Quelle des Projekts. Beispiel: capture_id=\"123456\" "
