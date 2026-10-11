@@ -355,25 +355,35 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
             final PageView.Image source = byKey.get(image.key());
             try {
                 workExecutor.execute(() -> {
-                    ReaderImageDescription result;
-                    try {
+                    final ReaderImageDescription described = describeOne(() -> {
                         boolean known = source != null && source.resource() != null;
-                        ImageAnalysis analysis = descriptions.describe(
+                        return descriptions.describe(
                                 known ? source.resource().id().value() : image.src(), image.title(),
                                 known ? source.resource().revision().version() : "", mediaType, bytes);
-                        result = analysis == null ? ReaderImageDescription.unavailable(NO_VISION_MODEL)
-                                : analysis.description().isEmpty() ? ReaderImageDescription.unavailable(EMPTY_DESCRIPTION)
-                                : ReaderImageDescription.of(analysis.description());
-                    } catch (RuntimeException e) {
-                        LOG.log(Level.WARNING, "Bildbeschreibung für " + image.src() + " fehlgeschlagen", e);
-                        result = ReaderImageDescription.unavailable(DESCRIPTION_FAILED);
-                    }
-                    final ReaderImageDescription described = result;
+                    }, image.src());
                     uiExecutor.execute(() -> done.accept(described));
                 });
             } catch (RuntimeException rejected) {
                 done.accept(ReaderImageDescription.unavailable(DESCRIPTION_FAILED));
             }
+        }
+    }
+
+    /**
+     * Ruft die Beschreibung ab und bildet das Ergebnis auf die Anzeige ab: ohne Bildmodell ({@code null}) der Hinweis
+     * auf die Einstellungen, leere Antwort und Fehler je als eigener Hinweis.
+     */
+    static ReaderImageDescription describeOne(java.util.function.Supplier<ImageAnalysis> call, String src) {
+        try {
+            ImageAnalysis analysis = call.get();
+            if (analysis == null) {
+                return ReaderImageDescription.unavailable(NO_VISION_MODEL);
+            }
+            return analysis.description().isEmpty() ? ReaderImageDescription.unavailable(EMPTY_DESCRIPTION)
+                    : ReaderImageDescription.of(analysis.description());
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Bildbeschreibung für " + src + " fehlgeschlagen", e);
+            return ReaderImageDescription.unavailable(DESCRIPTION_FAILED);
         }
     }
 

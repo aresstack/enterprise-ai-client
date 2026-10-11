@@ -47,9 +47,12 @@ import java.util.List;
  * Die Diashow der Bilder einer Seite im Comic-Overlay über dem Lesebereich (wie der Mermaid-Betrachter), mit der
  * Bedienung von MainframeMates {@code ImageStripPanel.openOverlay}: links/rechts blättern (Knöpfe, nur wo es ein
  * vorheriges bzw. nächstes Bild gibt, und ← →), Mausrad-Zoom am Cursor (×1,15), Ziehen verschiebt, + − 0 zoomen bzw.
- * einpassen (×1,25), oben rechts Herunterladen, unten die Infozeile „n / m — Titel (B × H) | Zoom: x %“, „Lade
- * Bild …“ bis das Bild da ist; animierte GIFs laufen. Die Knöpfe sind immer sichtbar (das Overlay hat keine
- * Glasscheibe für Hover).
+ * einpassen (×1,25), oben rechts Herunterladen (mit Meldung „Bild gespeichert: …“), unten die Infozeile „n / m —
+ * Titel (B × H) | Zoom: x %“, „Lade Bild …“ bis das Bild da ist; animierte GIFs laufen. Die Knöpfe erscheinen wie
+ * dort nur, solange die Maus in ihrer Zone steht (Herunterladen oben rechts, Zoom unten rechts, Pfeile im mittleren
+ * Drittel links bzw. rechts, nur wo es ein vorheriges bzw. nächstes Bild gibt). Abweichung: kein modaler Dialog,
+ * sondern das Comic-Overlay über dem Lesebereich (Angelo: „wie beim Mermaid Diagramm“), daher Maus-Listener an
+ * Fläche und Knöpfen statt einer Glasscheibe.
  *
  * <p>Unten links schaltet „Bild | Beschreibung“ um, Standard Bild. Erst der Wechsel auf Beschreibung fordert sie an,
  * genau für das gezeigte Bild („Beschreibung wird erzeugt …“); zurück auf Bild zeigt sofort wieder das Original.
@@ -60,6 +63,8 @@ public final class ImageSlideshowPanel extends JPanel {
     static final String LOADING_TEXT = "Lade Bild …";
     static final String FAILED_TEXT = "Bild konnte nicht geladen werden";
     static final String DESCRIBING_TEXT = "Beschreibung wird erzeugt …";
+    static final String SAVED_PREFIX = "Bild gespeichert: ";
+    static final String SAVE_FAILED_PREFIX = "Fehler beim Speichern: ";
     private static final int BUTTON = 36;
     private static final int ARROW_W = 48;
 
@@ -73,6 +78,12 @@ public final class ImageSlideshowPanel extends JPanel {
     private final JScrollPane descriptionPane;
     private final ViewerButton previous;
     private final ViewerButton next;
+    private final ViewerButton download;
+    private final ViewerButton zoomOut;
+    private final ViewerButton zoomIn;
+    private final ViewerButton zoomFit;
+    /** Letzte Mausposition über dem Bild (in {@code layers}) oder {@code null}, wenn die Maus nicht darüber steht. */
+    private Point pointer;
     private final ComposerButton imageMode = new ComposerButton(null, "Bild", false, "Das Bild zeigen");
     private final ComposerButton descriptionMode = new ComposerButton(null, "Beschreibung", false,
             "Das Bild per KI beschreiben lassen");
@@ -104,10 +115,10 @@ public final class ImageSlideshowPanel extends JPanel {
 
         previous = new ViewerButton(new ScaledIcon(ComposerIcons.chevronLeft(), 2), "Vorheriges Bild (←)");
         next = new ViewerButton(new ScaledIcon(ComposerIcons.chevronRight(), 2), "Nächstes Bild (→)");
-        final ViewerButton download = new ViewerButton(ComposerIcons.download(), "Herunterladen");
-        final ViewerButton zoomOut = new ViewerButton(ComposerIcons.minus(15), "Verkleinern (−)");
-        final ViewerButton zoomIn = new ViewerButton(ComposerIcons.plus(15), "Vergrößern (+)");
-        final ViewerButton zoomFit = new ViewerButton(ComposerIcons.refresh(), "Einpassen (0)");
+        download = new ViewerButton(ComposerIcons.download(), "Herunterladen");
+        zoomOut = new ViewerButton(ComposerIcons.minus(15), "Verkleinern (−)");
+        zoomIn = new ViewerButton(ComposerIcons.plus(15), "Vergrößern (+)");
+        zoomFit = new ViewerButton(ComposerIcons.refresh(), "Einpassen (0)");
         previous.onClick(this::previous);
         next.onClick(this::next);
         download.onClick(this::saveImage);
@@ -161,6 +172,7 @@ public final class ImageSlideshowPanel extends JPanel {
         add(bar, BorderLayout.SOUTH);
 
         installCanvasInteractions();
+        installHover();
         installKeyBindings();
         loadCurrent();
     }
@@ -254,8 +266,7 @@ public final class ImageSlideshowPanel extends JPanel {
     private void loadCurrent() {
         final ReaderImage image = current();
         showImage();
-        previous.setVisible(hasPrevious());
-        next.setVisible(hasNext());
+        hover(pointer);
         canvas.setStaticImage(null);
         busy.setText(LOADING_TEXT);
         busy.setVisible(true);
@@ -294,6 +305,58 @@ public final class ImageSlideshowPanel extends JPanel {
     private void fit() {
         canvas.resetView();
         updateInfo();
+    }
+
+    /**
+     * Blendet die Knöpfe ein, deren Zone die Maus berührt, wie MainframeMates Glasscheibe ({@code mouseMoved}):
+     * Herunterladen oben rechts, Zoom unten rechts, Pfeile im mittleren Drittel; {@code null} blendet alle aus.
+     *
+     * @param p Mausposition in Koordinaten der Bildfläche
+     */
+    void hover(Point p) {
+        pointer = p;
+        int w = layers.getWidth();
+        int h = layers.getHeight();
+        boolean inImage = p != null && p.x >= 0 && p.x < w && p.y >= 0 && p.y < h;
+        boolean showDownload = inImage && p.x >= w - BUTTON - 20 && p.y <= BUTTON + 20;
+        int zoomY = h - BUTTON - 10;
+        int zoomX = w - (3 * BUTTON + 8) - 10;
+        boolean showZoom = inImage && p.x >= zoomX - 10 && p.y >= zoomY - 10;
+        int arrowTop = h / 3;
+        boolean inArrowBand = inImage && p.y >= arrowTop - 20 && p.y <= arrowTop + h / 3 + 20;
+        previous.setVisible(inArrowBand && !showDownload && !showZoom && hasPrevious() && p.x < ARROW_W);
+        next.setVisible(inArrowBand && !showDownload && !showZoom && hasNext() && p.x >= w - ARROW_W);
+        download.setVisible(showDownload);
+        zoomOut.setVisible(showZoom);
+        zoomIn.setVisible(showZoom);
+        zoomFit.setVisible(showZoom);
+    }
+
+    /** Für Tests: welche Knöpfe gerade zu sehen sind. */
+    boolean[] visibleButtons() {
+        return new boolean[] {previous.isVisible(), next.isVisible(), download.isVisible(), zoomOut.isVisible()};
+    }
+
+    private void installHover() {
+        MouseAdapter tracker = new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                hover(SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), layers));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), layers);
+                if (p.x < 0 || p.y < 0 || p.x >= layers.getWidth() || p.y >= layers.getHeight()) {
+                    hover(null); // nur beim Verlassen der Fläche, nicht beim Wechsel auf einen Knopf
+                }
+            }
+        };
+        for (JComponent component : new JComponent[] {canvas, previous, next, download, zoomOut, zoomIn, zoomFit}) {
+            component.addMouseMotionListener(tracker);
+            component.addMouseListener(tracker);
+        }
+        hover(null);
     }
 
     private void installKeyBindings() {
@@ -363,19 +426,38 @@ public final class ImageSlideshowPanel extends JPanel {
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
+        String message = saveTo(chooser.getSelectedFile());
+        boolean saved = message.startsWith(SAVED_PREFIX);
+        // Wie MainframeMate downloadImage: Bestätigung bzw. Fehler als Meldung
+        JOptionPane.showMessageDialog(this, message, saved ? "Download" : "Download-Fehler",
+                saved ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.ERROR_MESSAGE);
+    }
+
+    /**
+     * Schreibt die Original-Bytes des gezeigten Bildes nach {@code target}.
+     *
+     * @return die Meldung für den Benutzer: „Bild gespeichert: name“ oder „Fehler beim Speichern: …“
+     */
+    String saveTo(File target) {
+        ReaderImageStore.Loaded loaded = store.loaded(current());
+        if (loaded == null || !loaded.ok()) {
+            return SAVE_FAILED_PREFIX + "Das Bild ist nicht geladen.";
+        }
         OutputStream out = null;
         try {
-            out = new FileOutputStream(chooser.getSelectedFile());
+            out = new FileOutputStream(target);
             out.write(loaded.bytes());
+            out.close();
+            out = null;
+            return SAVED_PREFIX + target.getName();
         } catch (IOException ex) {
-            JOptionPane.showMessageDialog(this, "Das Bild konnte nicht gespeichert werden: " + ex.getMessage(),
-                    "Speichern fehlgeschlagen", JOptionPane.WARNING_MESSAGE);
+            return SAVE_FAILED_PREFIX + ex.getMessage();
         } finally {
             if (out != null) {
                 try {
                     out.close();
                 } catch (IOException ignored) {
-                    // schon gemeldet oder geschrieben
+                    // der Fehler ist schon gemeldet
                 }
             }
         }

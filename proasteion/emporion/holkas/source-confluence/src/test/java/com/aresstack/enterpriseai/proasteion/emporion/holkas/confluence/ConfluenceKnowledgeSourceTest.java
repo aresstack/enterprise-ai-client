@@ -67,6 +67,24 @@ public class ConfluenceKnowledgeSourceTest {
         return KnowledgeResourceId.of("confluence", "confluence.example.org/wiki/attachment/" + id);
     }
 
+    // --- Lese-Ansicht: nur Bilder dieser Confluence -----------------------------------------------------------
+
+    @Test
+    public void viewImagesFromElsewhereAreNeverFetched() throws Exception {
+        ConfluenceKnowledgeSource source = source();
+        for (String foreign : new String[] {"https://evil.invalid/wiki/x.png",
+                "https://confluence.example.org/wikix/a.png", "https://confluence.example.org/other/a.png",
+                "http://confluence.example.org/wiki/a.png", null}) {
+            try {
+                source.loadViewImage(foreign);
+                fail("geladen: " + foreign);
+            } catch (KnowledgeSourceException e) {
+                assertEquals(foreign, Kind.UNSUPPORTED, e.kind());
+            }
+        }
+        assertTrue("keine Anfrage", confluence.requests().isEmpty());
+    }
+
     // --- discover -----------------------------------------------------------------------------------------
 
     @Test

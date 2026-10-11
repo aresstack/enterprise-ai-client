@@ -274,10 +274,22 @@ public final class ReaderImageStore {
         return image;
     }
 
-    /** Aus MainframeMate {@code ImageStripPanel.isAnimatedGif}: mehr als ein Image-Descriptor-Block. */
+    /**
+     * Aus MainframeMate {@code ImageStripPanel.isAnimatedGif}: mehr als ein Image-Descriptor-Block. Zwei Fehler des
+     * Vorbilds behoben (dort wurde ein mit ImageIO geschriebenes animiertes GIF nie erkannt): der Lauf beginnt hinter
+     * Logical Screen Descriptor und globaler Farbtabelle statt mitten darin, und der Image Descriptor ist 10 statt 9
+     * Bytes lang (das gepackte Feld ist sein letztes Byte).
+     */
     static boolean isAnimatedGif(byte[] data) {
+        if (data.length < 13) {
+            return false;
+        }
         int imageCount = 0;
-        int i = 6; // "GIF89a" / "GIF87a"
+        int i = 13; // "GIF89a" / "GIF87a" und Logical Screen Descriptor
+        int screen = data[10] & 0xFF;
+        if ((screen & 0x80) != 0) {
+            i += 3 * (1 << ((screen & 0x07) + 1)); // globale Farbtabelle
+        }
         while (i < data.length) {
             int b = data[i] & 0xFF;
             if (b == 0x2C) { // Image Descriptor
@@ -285,8 +297,8 @@ public final class ReaderImageStore {
                 if (imageCount > 1) {
                     return true;
                 }
-                i += 9;
-                if (i >= data.length) {
+                i += 10;
+                if (i > data.length) {
                     break;
                 }
                 int packed = data[i - 1] & 0xFF;
