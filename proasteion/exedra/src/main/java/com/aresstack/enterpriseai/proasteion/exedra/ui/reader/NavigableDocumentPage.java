@@ -40,7 +40,8 @@ final class NavigableDocumentPage extends JLayeredPane {
     static final int TARGET_GAP = 8;
 
     private final JScrollPane scroll;
-    private final MarkdownMessageView view;
+    /** {@link MarkdownMessageView} oder die HTML-Lese-Ansicht ({@link ReaderHtmlView}). */
+    private final JComponent view;
     private final JComponent page;
     private final int basePaddingTop;
     private final DocumentNavigationSky sky = new DocumentNavigationSky();
@@ -57,7 +58,7 @@ final class NavigableDocumentPage extends JLayeredPane {
      * @param page           die Seite in der Bildlauffläche (enthält {@code view})
      * @param basePaddingTop oberer Innenabstand der Seite ohne Banner
      */
-    NavigableDocumentPage(JScrollPane scroll, JComponent page, MarkdownMessageView view, int basePaddingTop) {
+    NavigableDocumentPage(JScrollPane scroll, JComponent page, JComponent view, int basePaddingTop) {
         this.scroll = scroll;
         this.page = page;
         this.view = view;
@@ -213,12 +214,18 @@ final class NavigableDocumentPage extends JLayeredPane {
 
     /** Block oberster Ebene zur Startposition, darin die Zeile des Ankers. */
     private int locate(SourcePosition position) {
-        List<JComponent> blocks = view.renderedBlocks();
+        if (!(view instanceof MarkdownMessageView)) {
+            // HTML-Lese-Ansicht: ein Textdokument ohne Quell-Offsets, also über den Anker im ganzen Dokument.
+            Integer y = anchorY(view, normalize(position.anchor()));
+            return y == null ? 0 : y;
+        }
+        MarkdownMessageView markdown = (MarkdownMessageView) view;
+        List<JComponent> blocks = markdown.renderedBlocks();
         if (blocks.isEmpty()) {
             return 0;
         }
         JComponent block = null;
-        if (view.sourceOffsetsExact()) {
+        if (markdown.sourceOffsetsExact()) {
             for (JComponent candidate : blocks) {
                 Object start = candidate.getClientProperty(MarkdownMessageView.SOURCE_START);
                 if (start instanceof Integer && (Integer) start <= position.start()) {

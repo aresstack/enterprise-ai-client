@@ -162,6 +162,21 @@ final class ConfluenceRestClient {
     }
 
     /**
+     * Ein Bild der Lese-Ansicht über seinen Pfad unter der Basis-URL (wie MainframeMate {@code client.getBytes(path)});
+     * eine HTML-Antwort (Anmeldeseite) ist kein Bild.
+     */
+    byte[] viewImage(Session session, String path) throws KnowledgeSourceException {
+        if (path == null || !path.startsWith("/") || path.startsWith("//")) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Bild ohne gültigen Pfad");
+        }
+        ConfluenceHttpResponse response = send(session, path, "Bild", config.maxAttachmentBytes());
+        if (response.contentType().toLowerCase(java.util.Locale.ROOT).contains("html")) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Bild: HTML statt Bild (Anmeldeseite?)");
+        }
+        return response.body();
+    }
+
+    /**
      * CQL-Suche über {@code /rest/api/content/search}, blättert bis {@code limit} Seiten-Treffer. Wie MainframeMate
      * ({@code ConfluenceSearchProvider.search()}) kommt ein Treffer entweder als Seite selbst oder als Such-Hülle
      * {@code {content: {...}, excerpt: "..."}}; der Ausschnitt der Hülle wird übernommen.

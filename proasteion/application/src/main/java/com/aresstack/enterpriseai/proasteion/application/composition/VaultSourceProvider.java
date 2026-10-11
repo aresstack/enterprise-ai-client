@@ -12,6 +12,8 @@ import com.aresstack.enterpriseai.astu.source.SourceSettingField;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
+import com.aresstack.enterpriseai.source.api.PageView;
+import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
@@ -156,7 +158,7 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
     }
 
     /** Öffnet die eigentliche Quelle beim ersten Zugriff, nachdem KeePass die Adresse geliefert hat. */
-    private final class Deferred implements SearchableKnowledgeSource {
+    private final class Deferred implements SearchableKnowledgeSource, PageViewSource {
 
         private final SourceAddress sourceId;
         private final SourceSettings settings;
@@ -213,6 +215,16 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
         @Override
         public List<SourcePartition> partitions() throws KnowledgeSourceException {
             return port().partitions();
+        }
+
+        @Override
+        public PageView pageView(KnowledgeResourceId page) throws KnowledgeSourceException {
+            return SourceCapabilities.pageView(port(), page);
+        }
+
+        @Override
+        public byte[] loadViewImage(String src) throws KnowledgeSourceException {
+            return SourceCapabilities.loadViewImage(port(), src);
         }
 
         @Override

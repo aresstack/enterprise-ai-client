@@ -5,6 +5,8 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.PageView;
+import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.util.ArrayList;
@@ -15,6 +17,7 @@ import java.util.List;
  * Use Case „Wissensquelle lesen“ für den Lesebereich (wie der Lese-Tab in MainframeMate): listet die Ressourcen einer
  * Quelle im konfigurierten Umfang (höchstens {@link #MAX_LISTED}) und lädt eine Ressource zum Lesen über einen
  * {@link KnowledgeDocumentReader}. Kennt Quellen nur über ihren Port; blockiert für die Dauer des Aufrufs.
+ * Quellen mit {@link PageViewSource} liefern zusätzlich ihre Lese-Ansicht (HTML mit Bildern).
  */
 public final class BrowseKnowledgeSourceUseCase {
 
@@ -52,5 +55,33 @@ public final class BrowseKnowledgeSourceUseCase {
             throw new IllegalArgumentException("source and id must not be null");
         }
         return reader.read(source.sourceId(), source, id);
+    }
+
+    /**
+     * Die Lese-Ansicht der Seite, wenn die Quelle eine hat; sonst {@code null} (dann zeigt der Lesebereich den Text).
+     */
+    public PageView view(KnowledgeSourcePort source, KnowledgeResourceId id) throws KnowledgeSourceException {
+        if (source == null || id == null) {
+            throw new IllegalArgumentException("source and id must not be null");
+        }
+        if (!(source instanceof PageViewSource)) {
+            return null;
+        }
+        try {
+            return ((PageViewSource) source).pageView(id);
+        } catch (KnowledgeSourceException e) {
+            if (e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED) {
+                return null; // gehüllte Quelle ohne Lese-Ansicht
+            }
+            throw e;
+        }
+    }
+
+    /** Die Bytes eines Bildes aus {@link PageView#images()} über die Quelle (mit deren Anmeldung). */
+    public byte[] viewImage(KnowledgeSourcePort source, String src) throws KnowledgeSourceException {
+        if (!(source instanceof PageViewSource)) {
+            throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Lese-Ansicht");
+        }
+        return ((PageViewSource) source).loadViewImage(src);
     }
 }

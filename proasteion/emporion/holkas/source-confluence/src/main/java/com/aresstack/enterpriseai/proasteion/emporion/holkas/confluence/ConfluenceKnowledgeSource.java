@@ -13,6 +13,8 @@ import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.ImageSource;
+import com.aresstack.enterpriseai.source.api.PageView;
+import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourcePartition;
@@ -51,6 +53,8 @@ import java.util.Set;
  *   <li>IDs: {@code confluence:<locator>/page/<id>} und {@code confluence:<locator>/attachment/<attId>} (Locator = kanonische Basis-URL ohne Schema).</li>
  *   <li>Revision: Versionsnummer und Änderungszeitpunkt aus Confluence.</li>
  *   <li>Inhalt: gerenderte Ansicht ({@code body.view}), in Text mit Markdown-Struktur überführt.</li>
+ *   <li>Lese-Ansicht ({@link PageViewSource}): dasselbe {@code body.view} als HTML mit den Bildern an ihrer
+ *       Stelle; deren Bytes lädt {@link #loadViewImage} angemeldet von dieser Confluence.</li>
  *   <li>Suche: CQL {@code type=page AND text ~ "..."} über {@code /rest/api/content/search} (wie MainframeMate),
  *       optional auf konfigurierte Spaces beschränkt; dieser Endpunkt liefert keine Textausschnitte, Treffer
  *       haben deshalb einen leeren Snippet.</li>
@@ -60,7 +64,7 @@ import java.util.Set;
  * HTTP-Request, weil z. B. KeePassRPC dafür eine Verbindung aufbaut) und vergisst sie mit dem Ende des Aufrufs.
  * Ohne {@link ConfluenceConfig#credentialRef()} fragt er keine an (z. B. reine mTLS-Anmeldung).
  */
-public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource {
+public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource, PageViewSource {
 
     static final String PAGE_CONTENT_TYPE = "text/html";
 
@@ -165,6 +169,61 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 return client.download(session, attachment);
             }
         });
+    }
+
+    @Override
+    public PageView pageView(KnowledgeResourceId page) throws KnowledgeSourceException {
+        final ConfluenceIds.Parsed parsed = parse(page);
+        if (parsed.attachment) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Keine Seite: " + page.value());
+        }
+        return withSession(new Operation<PageView>() {
+            @Override
+            public PageView run(Session session) throws KnowledgeSourceException {
+                Page loaded = client.page(session, parsed.contentId, true);
+                String base = config.baseUrl().toString();
+                base = base.endsWith("/") ? base : base + "/";
+                ConfluencePageView view = ConfluencePageView.of(loaded.html, base);
+                List<PageView.Image> images = new ArrayList<PageView.Image>();
+                for (ConfluencePageView.InlineImage image : view.images) {
+                    images.add(new PageView.Image(image.src, image.title, image.attachmentId == null ? null
+                            : inlineImageResource(image, loaded.id)));
+                }
+                return new PageView(view.html, base, images);
+            }
+        });
+    }
+
+    /** Wie MainframeMates {@code ByteDownloader} im {@code ConfluenceReaderTab}: jede Adresse unter der Basis-URL. */
+    @Override
+    public byte[] loadViewImage(String src) throws KnowledgeSourceException {
+        String base = config.baseUrl().toString();
+        base = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        if (src == null || !src.startsWith(base + "/")) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Bild liegt nicht in dieser Confluence: " + src);
+        }
+        final String path = src.substring(base.length());
+        return withSession(new Operation<byte[]>() {
+            @Override
+            public byte[] run(Session session) throws KnowledgeSourceException {
+                return client.viewImage(session, path);
+            }
+        });
+    }
+
+    private KnowledgeResource inlineImageResource(ConfluencePageView.InlineImage image, String pageId) {
+        Map<String, String> metadata = new LinkedHashMap<String, String>();
+        metadata.put("confluence.contentId", image.attachmentId);
+        metadata.put("confluence.type", "attachment");
+        String container = ConfluenceIds.isContentId(image.containerId) ? image.containerId : pageId;
+        return KnowledgeResource.builder(ConfluenceIds.attachment(locator, image.attachmentId), sourceId)
+                .title(image.title)
+                .contentType(image.mediaType.isEmpty() ? null : image.mediaType)
+                .revision(image.version.isEmpty() ? KnowledgeRevision.unknown()
+                        : KnowledgeRevision.version(image.version))
+                .parentId(ConfluenceIds.page(locator, container))
+                .metadata(KnowledgeMetadata.of(metadata))
+                .build();
     }
 
     /** Bilder: {@code image/*} außer SVG (kein Rasterbild für OCR/Bildverständnis), höchstens so groß wie Anhänge. */

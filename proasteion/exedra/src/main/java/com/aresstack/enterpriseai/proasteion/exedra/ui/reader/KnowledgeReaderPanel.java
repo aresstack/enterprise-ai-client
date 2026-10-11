@@ -4,11 +4,14 @@ import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.CopyrightFooter;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DiagramOverlayHost;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownMessageView;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidImageRenderer;
 import com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight;
 import com.aresstack.enterpriseai.ui.comic.control.ComicFindBar;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidViewerPanel;
+import com.aresstack.enterpriseai.ui.comic.control.ComicOverlayPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
@@ -30,12 +33,14 @@ import javax.swing.Icon;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
+import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.JScrollPane;
+import javax.swing.KeyStroke;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -83,8 +88,11 @@ import java.util.function.Consumer;
  * farbigen Gruppen mit optionalem Namen zusammenfassen ({@link ReaderTabGroup}); Vorschau/Angeheftet bleibt dabei am
  * Reiter. Rechtsklick auf einen Reiter öffnet sein Kontextmenü, das andere Teile über
  * {@link #addTabMenuContributor} ergänzen.</p>
+ *
+ * <p>Seiten mit Original-HTML ({@link #showHtml}) zeigen ihre Bilder inline; ein Klick auf ein Bild oder „Bilder (n)“
+ * im Kopf öffnet die Diashow aller Bilder der Seite als Comic-Overlay über dem Inhalt (wie der Mermaid-Betrachter).</p>
  */
-public final class KnowledgeReaderPanel extends JPanel {
+public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlayHost {
 
     /** Was der Lesebereich nach außen meldet; alle Aufrufe auf dem EDT. */
     public interface Listener extends FavoriteMarker {
@@ -119,8 +127,10 @@ public final class KnowledgeReaderPanel extends JPanel {
     static final String FAVORITE_ADD = "Als Favorit merken";
     static final String FAVORITE_REMOVE = "Aus den Favoriten entfernen";
     static final String FIND_PLACEHOLDER = "Im Dokument suchen\u2026";
+    static final String IMAGES_TOOLTIP = "Alle Bilder der Seite als Diashow";
     private static final String EMPTY_CARD = "empty";
     private static final int PAGE_PADDING_TOP = 14;
+    private static final String CLOSE_OVERLAY_ACTION = "reader.closeOverlay";
 
     private final ComicPalette palette;
     private final MarkdownTheme theme;
@@ -151,6 +161,9 @@ public final class KnowledgeReaderPanel extends JPanel {
     private final JLabel locationLabel = new JLabel();
     private final ComposerButton favoriteButton;
     private final ComposerButton pinButton;
+    private final ComposerButton imagesButton;
+    private final JLayeredPane layers = new JLayeredPane();
+    private ComicOverlayPanel overlay;
     private final CardLayout cards = new CardLayout();
     private final JPanel deck = new JPanel(cards);
     private final Map<String, Tab> tabs = new LinkedHashMap<String, Tab>();
@@ -189,6 +202,9 @@ public final class KnowledgeReaderPanel extends JPanel {
         pinButton = new ComposerButton(null, "Anheften", false, PIN_TOOLTIP);
         pinButton.setFont(ResearchUiTypography.semiBold(12f));
         pinButton.addActionListener(event -> pin(activeKey));
+        imagesButton = new ComposerButton(ComposerIcons.picture(), "Bilder", false, IMAGES_TOOLTIP);
+        imagesButton.setFont(ResearchUiTypography.semiBold(12f));
+        imagesButton.addActionListener(event -> openSlideshow(activeKey, 0));
 
         titleLabel.setFont(ResearchUiTypography.semiBold(16f));
         titleLabel.setForeground(palette.getInk());
@@ -201,6 +217,7 @@ public final class KnowledgeReaderPanel extends JPanel {
         titles.add(locationLabel);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         buttons.setOpaque(false);
+        buttons.add(imagesButton);
         buttons.add(pinButton);
         buttons.add(favoriteButton);
         JPanel header = new JPanel(new BorderLayout(8, 0));
@@ -217,7 +234,9 @@ public final class KnowledgeReaderPanel extends JPanel {
         deck.setOpaque(false);
         deck.add(message(EMPTY_TEXT), EMPTY_CARD);
         add(north, BorderLayout.NORTH);
-        add(deck, BorderLayout.CENTER);
+        layers.setLayout(new FillLayout());
+        layers.add(deck, JLayeredPane.DEFAULT_LAYER);
+        add(layers, BorderLayout.CENTER);
         add(CopyrightFooter.placedLikeChat(), BorderLayout.SOUTH);
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK),
                 "reader.find");
@@ -380,6 +399,110 @@ public final class KnowledgeReaderPanel extends JPanel {
     NavigableDocumentPage documentPage(String key) {
         Tab tab = tabs.get(key);
         return tab == null ? null : tab.document;
+    }
+
+    /**
+     * Die Seite als Original-HTML mit ihren Bildern an ihrer Stelle; {@code images} sind alle Bilder der Seite in
+     * Dokumentreihenfolge (die Liste der Diashow), {@code loader} holt deren Bytes und Beschreibungen.
+     */
+    public void showHtml(final String key, String bodyHtml, String baseUri, List<ReaderImage> images,
+                         ReaderImageLoader loader) {
+        final Tab tab = tabs.get(key);
+        if (tab == null) {
+            return;
+        }
+        final ReaderImageStore store = new ReaderImageStore(images, loader);
+        ReaderHtmlView view = new ReaderHtmlView(bodyHtml, baseUri, store, linkOpener,
+                image -> openSlideshow(key, store.images().indexOf(image)));
+        // Wie showDocument: Seite mit Innenabstand, Höhe je Breite, Navigationsbanner darüber ({@link
+        // #updateNavigation} setzt ihn, sobald das Dokument aufbereitet ist).
+        WidthTracking page = new WidthTracking(new BorderLayout());
+        page.setBackground(ResearchUiPalette.LIGHT_CONTROL_BG);
+        page.setOpaque(true);
+        page.setBorder(BorderFactory.createEmptyBorder(PAGE_PADDING_TOP, 20, 20, 20));
+        page.add(view, BorderLayout.NORTH);
+        NavigableDocumentPage document = new NavigableDocumentPage(scroll(page), page, view, PAGE_PADDING_TOP);
+        tab.document = document;
+        replace(tab, searchable(tab, document, page), store);
+    }
+
+    /** Öffnet die Diashow des Reiters bei Bild {@code index} (ohne Bilder nichts). */
+    public void openSlideshow(String key, int index) {
+        Tab tab = key == null ? null : tabs.get(key);
+        if (tab == null || tab.images == null || tab.images.images().isEmpty()) {
+            return;
+        }
+        showTranscriptOverlay(new ImageSlideshowPanel(tab.images, Math.max(0, index)),
+                "Bilder · " + tab.link.title());
+    }
+
+    /** Die offene Diashow oder {@code null}. */
+    public ImageSlideshowPanel slideshow() {
+        if (overlay == null) {
+            return null;
+        }
+        java.awt.Component found = find(overlay, ImageSlideshowPanel.class);
+        return found == null ? null : (ImageSlideshowPanel) found;
+    }
+
+    /** Die HTML-Ansicht des Reiters oder {@code null} (Markdown, Liste, Meldung). */
+    public ReaderHtmlView htmlView(String key) {
+        Tab tab = tabs.get(key);
+        java.awt.Component found = tab == null || tab.content == null ? null : find(tab.content, ReaderHtmlView.class);
+        return found == null ? null : (ReaderHtmlView) found;
+    }
+
+    public ComposerButton imagesButton() {
+        return imagesButton;
+    }
+
+    // ------------------------------------------------------------------ Overlay (wie über dem Chatverlauf)
+
+    @Override
+    public void showTranscriptOverlay(JComponent content, String title) {
+        closeTranscriptOverlay();
+        overlay = new ComicOverlayPanel(title, content, this::closeTranscriptOverlay, palette);
+        overlay.getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), CLOSE_OVERLAY_ACTION);
+        overlay.getActionMap().put(CLOSE_OVERLAY_ACTION, new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                closeTranscriptOverlay();
+            }
+        });
+        layers.add(overlay, JLayeredPane.MODAL_LAYER);
+        layers.revalidate();
+        layers.repaint();
+    }
+
+    @Override
+    public void showDiagramOverlay(String mermaidSource, String title) {
+        showTranscriptOverlay(new MermaidViewerPanel(mermaidSource, mermaid), title);
+    }
+
+    @Override
+    public void closeTranscriptOverlay() {
+        if (overlay != null) {
+            layers.remove(overlay);
+            overlay = null;
+            layers.revalidate();
+            layers.repaint();
+        }
+    }
+
+    private static java.awt.Component find(java.awt.Component root, Class<?> type) {
+        if (type.isInstance(root)) {
+            return root;
+        }
+        if (root instanceof java.awt.Container) {
+            for (java.awt.Component child : ((java.awt.Container) root).getComponents()) {
+                java.awt.Component found = find(child, type);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     /** Die Ressourcen einer Quelle; ein Klick öffnet sie als Vorschau, ein Doppelklick heftet an. */
@@ -886,6 +1009,11 @@ public final class KnowledgeReaderPanel extends JPanel {
     }
 
     private void replace(Tab tab, JComponent content) {
+        replace(tab, content, null);
+    }
+
+    private void replace(Tab tab, JComponent content, ReaderImageStore images) {
+        tab.images = images;
         for (java.awt.Component component : deck.getComponents()) {
             if (tab.card.equals(component.getName())) {
                 deck.remove(component);
@@ -931,6 +1059,9 @@ public final class KnowledgeReaderPanel extends JPanel {
                 ? titleFont.deriveFont(titleFont.getStyle() | Font.ITALIC) : titleFont);
         locationLabel.setText(active == null ? " " : active.link.location().isEmpty() ? " " : active.link.location());
         pinButton.setVisible(active != null && !active.pinned);
+        int imageCount = active == null || active.images == null ? 0 : active.images.images().size();
+        imagesButton.setVisible(imageCount > 0);
+        imagesButton.setText("Bilder (" + imageCount + ")");
         boolean favorite = active != null && listener != null && listener.isFavorite(active.link);
         favoriteButton.setVisible(active != null && listener != null && listener.canFavorite());
         favoriteButton.setIcon(SidebarIcons.star(favorite));
@@ -1023,6 +1154,8 @@ public final class KnowledgeReaderPanel extends JPanel {
         ComicFindBar findBar;
         ReaderFind find;
         ReaderTabGroup group;
+        /** Die Bilder der Seite, nur bei {@link #showHtml}. */
+        ReaderImageStore images;
 
         Tab(ReaderLink link, boolean pinned, String card) {
             this.link = link;
@@ -1209,6 +1342,40 @@ public final class KnowledgeReaderPanel extends JPanel {
 
     private static String shorten(String title) {
         return title.length() <= 28 ? title : title.substring(0, 27).trim() + "…";
+    }
+
+    /** Jede Ebene (Inhalt, Overlay) füllt den Lesebereich. */
+    private static final class FillLayout implements java.awt.LayoutManager {
+        @Override
+        public void addLayoutComponent(String name, java.awt.Component comp) {
+        }
+
+        @Override
+        public void removeLayoutComponent(java.awt.Component comp) {
+        }
+
+        @Override
+        public Dimension preferredLayoutSize(java.awt.Container parent) {
+            Dimension size = new Dimension();
+            for (java.awt.Component child : parent.getComponents()) {
+                Dimension preferred = child.getPreferredSize();
+                size.width = Math.max(size.width, preferred.width);
+                size.height = Math.max(size.height, preferred.height);
+            }
+            return size;
+        }
+
+        @Override
+        public Dimension minimumLayoutSize(java.awt.Container parent) {
+            return new Dimension();
+        }
+
+        @Override
+        public void layoutContainer(java.awt.Container parent) {
+            for (java.awt.Component child : parent.getComponents()) {
+                child.setBounds(0, 0, parent.getWidth(), parent.getHeight());
+            }
+        }
     }
 
     /** Folgt der Breite des Sichtbereichs, damit lange Zeilen umbrechen statt horizontal zu rollen. */

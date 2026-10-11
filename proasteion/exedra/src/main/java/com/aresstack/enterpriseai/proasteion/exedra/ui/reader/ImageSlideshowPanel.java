@@ -1,0 +1,581 @@
+package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
+
+import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
+import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
+
+import javax.swing.AbstractAction;
+import javax.swing.BorderFactory;
+import javax.swing.Icon;
+import javax.swing.JComponent;
+import javax.swing.JFileChooser;
+import javax.swing.JLabel;
+import javax.swing.JLayeredPane;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.KeyStroke;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import java.awt.AlphaComposite;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.RenderingHints;
+import java.awt.event.ActionEvent;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.List;
+
+/**
+ * Die Diashow der Bilder einer Seite im Comic-Overlay über dem Lesebereich (wie der Mermaid-Betrachter), mit der
+ * Bedienung von MainframeMates {@code ImageStripPanel.openOverlay}: links/rechts blättern (Knöpfe, nur wo es ein
+ * vorheriges bzw. nächstes Bild gibt, und ← →), Mausrad-Zoom am Cursor (×1,15), Ziehen verschiebt, + − 0 zoomen bzw.
+ * einpassen (×1,25), oben rechts Herunterladen, unten die Infozeile „n / m — Titel (B × H) | Zoom: x %“, „Lade
+ * Bild …“ bis das Bild da ist; animierte GIFs laufen. Die Knöpfe sind immer sichtbar (das Overlay hat keine
+ * Glasscheibe für Hover).
+ *
+ * <p>Unten links schaltet „Bild | Beschreibung“ um, Standard Bild. Erst der Wechsel auf Beschreibung fordert sie an,
+ * genau für das gezeigte Bild („Beschreibung wird erzeugt …“); zurück auf Bild zeigt sofort wieder das Original.
+ * Beim Blättern ist wieder das Bild zu sehen.</p>
+ */
+public final class ImageSlideshowPanel extends JPanel {
+
+    static final String LOADING_TEXT = "Lade Bild …";
+    static final String FAILED_TEXT = "Bild konnte nicht geladen werden";
+    static final String DESCRIBING_TEXT = "Beschreibung wird erzeugt …";
+    private static final int BUTTON = 36;
+    private static final int ARROW_W = 48;
+
+    private final ReaderImageStore store;
+    private final List<ReaderImage> images;
+    private final Canvas canvas = new Canvas();
+    private final JLayeredPane layers = new JLayeredPane();
+    private final JLabel busy = new JLabel(LOADING_TEXT, SwingConstants.CENTER);
+    private final JLabel info = new JLabel(" ", SwingConstants.CENTER);
+    private final JTextArea descriptionText = new JTextArea();
+    private final JScrollPane descriptionPane;
+    private final ViewerButton previous;
+    private final ViewerButton next;
+    private final ComposerButton imageMode = new ComposerButton(null, "Bild", false, "Das Bild zeigen");
+    private final ComposerButton descriptionMode = new ComposerButton(null, "Beschreibung", false,
+            "Das Bild per KI beschreiben lassen");
+    private int index;
+    private boolean describing;
+
+    public ImageSlideshowPanel(ReaderImageStore store, int startIndex) {
+        super(new BorderLayout(0, 4));
+        if (store == null || store.images().isEmpty()) {
+            throw new IllegalArgumentException("store with at least one image required");
+        }
+        this.store = store;
+        this.images = store.images();
+        this.index = Math.max(0, Math.min(startIndex, images.size() - 1));
+        setOpaque(false);
+
+        busy.setForeground(new Color(255, 255, 255, 210));
+        busy.setFont(busy.getFont().deriveFont(Font.ITALIC, 14f));
+
+        descriptionText.setEditable(false);
+        descriptionText.setLineWrap(true);
+        descriptionText.setWrapStyleWord(true);
+        descriptionText.setFont(ResearchUiTypography.regular(13f));
+        descriptionText.setBackground(ResearchUiPalette.LIGHT_CONTROL_BG);
+        descriptionText.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
+        descriptionPane = new JScrollPane(descriptionText);
+        descriptionPane.setBorder(BorderFactory.createEmptyBorder());
+        descriptionPane.setVisible(false);
+
+        previous = new ViewerButton(new ScaledIcon(ComposerIcons.chevronLeft(), 2), "Vorheriges Bild (←)");
+        next = new ViewerButton(new ScaledIcon(ComposerIcons.chevronRight(), 2), "Nächstes Bild (→)");
+        final ViewerButton download = new ViewerButton(ComposerIcons.download(), "Herunterladen");
+        final ViewerButton zoomOut = new ViewerButton(ComposerIcons.minus(15), "Verkleinern (−)");
+        final ViewerButton zoomIn = new ViewerButton(ComposerIcons.plus(15), "Vergrößern (+)");
+        final ViewerButton zoomFit = new ViewerButton(ComposerIcons.refresh(), "Einpassen (0)");
+        previous.onClick(this::previous);
+        next.onClick(this::next);
+        download.onClick(this::saveImage);
+        zoomOut.onClick(() -> zoomBy(1.0 / 1.25));
+        zoomIn.onClick(() -> zoomBy(1.25));
+        zoomFit.onClick(this::fit);
+
+        layers.setLayout(null);
+        layers.add(canvas, JLayeredPane.DEFAULT_LAYER);
+        layers.add(busy, JLayeredPane.MODAL_LAYER);
+        for (JComponent button : new JComponent[] {previous, next, download, zoomOut, zoomIn, zoomFit}) {
+            layers.add(button, JLayeredPane.PALETTE_LAYER);
+        }
+        // über „Lade Bild …“, aber neben den Blätter-Knöpfen: auch in der Beschreibung lässt sich blättern
+        layers.add(descriptionPane, Integer.valueOf(JLayeredPane.MODAL_LAYER.intValue() + 10));
+        layers.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                int w = layers.getWidth();
+                int h = layers.getHeight();
+                canvas.setBounds(0, 0, w, h);
+                busy.setBounds(0, 0, w, h);
+                descriptionPane.setBounds(ARROW_W + 8, 8, Math.max(0, w - 2 * (ARROW_W + 8)),
+                        Math.max(0, h - 16));
+                previous.setBounds(0, h / 3, ARROW_W, h / 3);
+                next.setBounds(w - ARROW_W, h / 3, ARROW_W, h / 3);
+                download.setBounds(w - BUTTON - 8, 8, BUTTON, BUTTON);
+                int zoomY = h - BUTTON - 10;
+                int zoomX = w - (3 * BUTTON + 8) - 10;
+                zoomOut.setBounds(zoomX, zoomY, BUTTON, BUTTON);
+                zoomIn.setBounds(zoomX + BUTTON + 4, zoomY, BUTTON, BUTTON);
+                zoomFit.setBounds(zoomX + 2 * (BUTTON + 4), zoomY, BUTTON, BUTTON);
+            }
+        });
+        add(layers, BorderLayout.CENTER);
+
+        imageMode.setFont(ResearchUiTypography.semiBold(12f));
+        descriptionMode.setFont(ResearchUiTypography.semiBold(12f));
+        imageMode.addActionListener(event -> showImage());
+        descriptionMode.addActionListener(event -> showDescription());
+        JPanel toggle = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        toggle.setOpaque(false);
+        toggle.add(imageMode);
+        toggle.add(descriptionMode);
+        info.setFont(info.getFont().deriveFont(Font.ITALIC, 11f));
+        info.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
+        JPanel bar = new JPanel(new BorderLayout());
+        bar.setOpaque(false);
+        bar.add(toggle, BorderLayout.WEST);
+        bar.add(info, BorderLayout.CENTER);
+        add(bar, BorderLayout.SOUTH);
+
+        installCanvasInteractions();
+        installKeyBindings();
+        loadCurrent();
+    }
+
+    // ------------------------------------------------------------------ Bedienung (auch für Tests)
+
+    public int index() {
+        return index;
+    }
+
+    public ReaderImage current() {
+        return images.get(index);
+    }
+
+    public boolean hasPrevious() {
+        return index > 0;
+    }
+
+    public boolean hasNext() {
+        return index < images.size() - 1;
+    }
+
+    public void previous() {
+        if (hasPrevious()) {
+            index--;
+            loadCurrent();
+        }
+    }
+
+    public void next() {
+        if (hasNext()) {
+            index++;
+            loadCurrent();
+        }
+    }
+
+    /** Ob gerade die Beschreibung statt des Bildes zu sehen ist. */
+    public boolean isShowingDescription() {
+        return describing;
+    }
+
+    /** Der gezeigte Beschreibungstext (auch „Beschreibung wird erzeugt …“ oder ein Hinweis). */
+    public String descriptionText() {
+        return descriptionText.getText();
+    }
+
+    public String infoText() {
+        return info.getText();
+    }
+
+    /** Zurück auf das Bild: sofort das Original, ohne Anfrage. */
+    public void showImage() {
+        describing = false;
+        descriptionPane.setVisible(false);
+        refreshMode();
+    }
+
+    /** Auf die Beschreibung: liegt sie nicht vor, wird sie jetzt für genau dieses Bild angefordert. */
+    public void showDescription() {
+        describing = true;
+        descriptionPane.setVisible(true);
+        refreshMode();
+        final ReaderImage image = current();
+        ReaderImageDescription known = store.description(image);
+        if (known != null) {
+            setDescription(known);
+            return;
+        }
+        descriptionText.setText(DESCRIBING_TEXT);
+        store.describe(image, result -> {
+            if (describing && current() == image) {
+                setDescription(result);
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ intern
+
+    private void setDescription(ReaderImageDescription description) {
+        descriptionText.setText(description.available() ? description.text() : description.problem());
+        descriptionText.setCaretPosition(0);
+    }
+
+    private void refreshMode() {
+        imageMode.setEmphasized(!describing);
+        descriptionMode.setEmphasized(describing);
+        layers.revalidate();
+        layers.repaint();
+    }
+
+    private void loadCurrent() {
+        final ReaderImage image = current();
+        showImage();
+        previous.setVisible(hasPrevious());
+        next.setVisible(hasNext());
+        canvas.setStaticImage(null);
+        busy.setText(LOADING_TEXT);
+        busy.setVisible(true);
+        info.setText((index + 1) + " / " + images.size() + "  —  " + image.label());
+        store.request(image, loaded -> {
+            if (current() != image) {
+                return; // inzwischen weitergeblättert
+            }
+            if (!loaded.ok()) {
+                busy.setText(FAILED_TEXT);
+                return;
+            }
+            busy.setVisible(false);
+            if (loaded.isAnimatedGif()) {
+                canvas.setAnimatedImage(loaded.bytes(), loaded.image());
+            } else {
+                canvas.setStaticImage(loaded.image());
+            }
+            updateInfo();
+        });
+    }
+
+    private void updateInfo() {
+        ReaderImage image = current();
+        BufferedImage bitmap = canvas.staticImage;
+        String dims = bitmap != null ? "  (" + bitmap.getWidth() + " × " + bitmap.getHeight() + ")" : "";
+        info.setText((index + 1) + " / " + images.size() + "  —  " + image.label() + dims
+                + "  |  Zoom: " + canvas.getZoomPercent() + " %");
+    }
+
+    private void zoomBy(double factor) {
+        canvas.zoomAt(factor, null);
+        updateInfo();
+    }
+
+    private void fit() {
+        canvas.resetView();
+        updateInfo();
+    }
+
+    private void installKeyBindings() {
+        canvas.setFocusable(true);
+        bind("LEFT", "previous", this::previous);
+        bind("RIGHT", "next", this::next);
+        bind("PLUS", "zoomIn", () -> zoomBy(1.25));
+        bind("EQUALS", "zoomIn2", () -> zoomBy(1.25));
+        bind("ADD", "zoomIn3", () -> zoomBy(1.25));
+        bind("MINUS", "zoomOut", () -> zoomBy(1.0 / 1.25));
+        bind("SUBTRACT", "zoomOut2", () -> zoomBy(1.0 / 1.25));
+        bind("0", "fit", this::fit);
+        bind("NUMPAD0", "fit2", this::fit);
+    }
+
+    private void bind(String key, String name, final Runnable action) {
+        getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), name);
+        getActionMap().put(name, new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                action.run();
+            }
+        });
+    }
+
+    private void installCanvasInteractions() {
+        MouseAdapter mouse = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                canvas.requestFocusInWindow();
+                canvas.dragStart = e.getPoint();
+                canvas.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                canvas.dragStart = null;
+                canvas.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (canvas.dragStart != null) {
+                    canvas.offsetX += e.getX() - canvas.dragStart.x;
+                    canvas.offsetY += e.getY() - canvas.dragStart.y;
+                    canvas.dragStart = e.getPoint();
+                    canvas.repaint();
+                }
+            }
+        };
+        canvas.addMouseListener(mouse);
+        canvas.addMouseMotionListener(mouse);
+        canvas.addMouseWheelListener(e -> {
+            canvas.zoomAt(e.getWheelRotation() < 0 ? 1.15 : 1.0 / 1.15, e.getPoint());
+            updateInfo();
+        });
+    }
+
+    private void saveImage() {
+        ReaderImageStore.Loaded loaded = store.loaded(current());
+        if (loaded == null || !loaded.ok()) {
+            return;
+        }
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Bild speichern");
+        chooser.setSelectedFile(new File(fileName(current())));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        OutputStream out = null;
+        try {
+            out = new FileOutputStream(chooser.getSelectedFile());
+            out.write(loaded.bytes());
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this, "Das Bild konnte nicht gespeichert werden: " + ex.getMessage(),
+                    "Speichern fehlgeschlagen", JOptionPane.WARNING_MESSAGE);
+        } finally {
+            if (out != null) {
+                try {
+                    out.close();
+                } catch (IOException ignored) {
+                    // schon gemeldet oder geschrieben
+                }
+            }
+        }
+    }
+
+    /** Wie MainframeMate {@code guessFileName}: der letzte Pfadteil der Adresse, sonst der Titel. */
+    static String fileName(ReaderImage image) {
+        String path = image.src();
+        int query = path.indexOf('?');
+        if (query > 0) {
+            path = path.substring(0, query);
+        }
+        int slash = path.lastIndexOf('/');
+        if (slash >= 0 && slash < path.length() - 1) {
+            return path.substring(slash + 1);
+        }
+        return image.title().isEmpty() ? "bild.png" : image.title();
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        SwingUtilities.invokeLater(canvas::requestFocusInWindow);
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        return new Dimension(700, 460);
+    }
+
+    // ------------------------------------------------------------------ Teile
+
+    /** Dunkle Fläche (wie MainframeMate), einpassen, Zoom am Cursor, verschieben; animierte GIFs laufen. */
+    private static final class Canvas extends JPanel {
+        private BufferedImage staticImage;
+        private javax.swing.ImageIcon animatedIcon;
+        private int imgW;
+        private int imgH;
+        private double zoom = 1.0;
+        double offsetX;
+        double offsetY;
+        Point dragStart;
+        private boolean fitted;
+
+        Canvas() {
+            setBackground(new Color(30, 30, 30));
+            addComponentListener(new ComponentAdapter() {
+                @Override
+                public void componentResized(ComponentEvent e) {
+                    if (!fitted) {
+                        resetView();
+                    }
+                }
+            });
+        }
+
+        /** Wie MainframeMate {@code setAnimatedImage}: {@link javax.swing.ImageIcon} spielt das GIF ab. */
+        void setAnimatedImage(byte[] gif, BufferedImage firstFrame) {
+            setStaticImage(firstFrame);
+            animatedIcon = new javax.swing.ImageIcon(gif);
+            animatedIcon.setImageObserver(this);
+        }
+
+        void setStaticImage(BufferedImage img) {
+            this.animatedIcon = null;
+            this.staticImage = img;
+            this.imgW = img != null ? img.getWidth() : 0;
+            this.imgH = img != null ? img.getHeight() : 0;
+            this.fitted = false;
+            resetView();
+        }
+
+        void resetView() {
+            zoom = 1.0;
+            if (imgW > 0 && imgH > 0 && getWidth() > 0 && getHeight() > 0) {
+                zoom = Math.min(getWidth() / (double) imgW, getHeight() / (double) imgH);
+                offsetX = (getWidth() - imgW * zoom) / 2.0;
+                offsetY = (getHeight() - imgH * zoom) / 2.0;
+                fitted = true;
+            } else {
+                offsetX = 0;
+                offsetY = 0;
+            }
+            repaint();
+        }
+
+        void zoomAt(double factor, Point pivot) {
+            if (imgW <= 0) {
+                return;
+            }
+            double oldZoom = zoom;
+            zoom = Math.max(0.05, Math.min(zoom * factor, 20.0));
+            double px = pivot != null ? pivot.x : getWidth() / 2.0;
+            double py = pivot != null ? pivot.y : getHeight() / 2.0;
+            offsetX = px - (px - offsetX) * (zoom / oldZoom);
+            offsetY = py - (py - offsetY) * (zoom / oldZoom);
+            repaint();
+        }
+
+        int getZoomPercent() {
+            return (int) Math.round(zoom * 100);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (staticImage == null) {
+                return;
+            }
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, zoom < 1.0
+                        ? RenderingHints.VALUE_INTERPOLATION_BILINEAR
+                        : RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+                int x = (int) Math.round(offsetX);
+                int y = (int) Math.round(offsetY);
+                int w = (int) Math.round(imgW * zoom);
+                int h = (int) Math.round(imgH * zoom);
+                if (animatedIcon != null) {
+                    g2.drawImage(animatedIcon.getImage(), x, y, w, h, this);
+                } else {
+                    g2.drawImage(staticImage, x, y, w, h, null);
+                }
+            } finally {
+                g2.dispose();
+            }
+        }
+    }
+
+    /** Halbtransparenter runder Knopf mit gezeichnetem Symbol. */
+    private static final class ViewerButton extends JPanel {
+        private Runnable action;
+
+        ViewerButton(Icon icon, String tooltip) {
+            super(new BorderLayout());
+            setOpaque(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setToolTipText(tooltip);
+            JLabel label = new JLabel(icon, SwingConstants.CENTER);
+            label.setForeground(new Color(255, 255, 255, 220));
+            add(label, BorderLayout.CENTER);
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (action != null) {
+                        action.run();
+                    }
+                }
+            });
+        }
+
+        void onClick(Runnable action) {
+            this.action = action;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
+                g2.setColor(Color.BLACK);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+            } finally {
+                g2.dispose();
+            }
+            super.paintComponent(g);
+        }
+    }
+
+    /** Ein gezeichnetes Symbol in größerem Maßstab (die Blätter-Pfeile). */
+    private static final class ScaledIcon implements Icon {
+        private final Icon icon;
+        private final int scale;
+
+        ScaledIcon(Icon icon, int scale) {
+            this.icon = icon;
+            this.scale = scale;
+        }
+
+        @Override
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.translate(x, y);
+                g2.scale(scale, scale);
+                icon.paintIcon(c, g2, 0, 0);
+            } finally {
+                g2.dispose();
+            }
+        }
+
+        @Override
+        public int getIconWidth() {
+            return icon.getIconWidth() * scale;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return icon.getIconHeight() * scale;
+        }
+    }
+}

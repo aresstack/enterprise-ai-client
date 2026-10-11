@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * gezeichnetes Element die ganze Fläche füllt (typischer Modell-Hintergrund), und {@code background} im Stil des
  * {@code <svg>}-Elements werden entfernt.</p>
  */
-final class SvgImageRenderer implements MermaidImageRenderer {
+public final class SvgImageRenderer implements MermaidImageRenderer {
 
     private static final int FLAGS = Pattern.CASE_INSENSITIVE | Pattern.DOTALL;
     private static final Pattern DOCTYPE = Pattern.compile("<!DOCTYPE(?:[^\\[>]*\\[.*?\\])?[^>]*>", FLAGS);
@@ -48,6 +48,10 @@ final class SvgImageRenderer implements MermaidImageRenderer {
     private static final Pattern STYLE_BACKGROUND = Pattern.compile("background(?:-color)?\\s*:[^;\"']*;?", FLAGS);
     private static final Pattern NUMBER = Pattern.compile("\\s*(-?\\d+(?:\\.\\d+)?)\\s*(?:px)?\\s*");
 
+    /** Auch der Lesebereich rastert SVG-Bilder einer Seite damit (MainframeMate: {@code SvgRenderer} über Batik). */
+    public SvgImageRenderer() {
+    }
+
     @Override
     public BufferedImage render(String svgSource, int width) {
         String svg = sanitize(svgSource);
@@ -55,7 +59,7 @@ final class SvgImageRenderer implements MermaidImageRenderer {
     }
 
     /** @return {@code true}, wenn der Text (nach optionalem XML-Prolog und Kommentaren) mit {@code <svg} beginnt */
-    static boolean looksLikeSvg(String source) {
+    public static boolean looksLikeSvg(String source) {
         if (source == null) {
             return false;
         }

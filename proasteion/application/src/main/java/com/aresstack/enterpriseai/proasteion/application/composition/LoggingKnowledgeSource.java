@@ -4,6 +4,8 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.source.api.PageView;
+import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
@@ -24,7 +26,7 @@ import java.util.logging.Logger;
  * lesbar“ ohne den eigentlichen Grund. Secrets gehören laut Vorgabe in keine Ausnahmemeldung, deshalb darf die
  * Meldung der Quelle unverändert ins Protokoll.
  */
-public final class LoggingKnowledgeSource implements SearchableKnowledgeSource {
+public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, PageViewSource {
 
     private static final Logger LOG = Logger.getLogger(LoggingKnowledgeSource.class.getName());
 
@@ -104,6 +106,28 @@ public final class LoggingKnowledgeSource implements SearchableKnowledgeSource {
             throw logged("partitions", e);
         } catch (RuntimeException e) {
             throw unexpected("partitions", e);
+        }
+    }
+
+    @Override
+    public PageView pageView(KnowledgeResourceId page) throws KnowledgeSourceException {
+        try {
+            return SourceCapabilities.pageView(delegate, page);
+        } catch (KnowledgeSourceException e) {
+            throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e : logged("pageView " + value(page), e);
+        } catch (RuntimeException e) {
+            throw unexpected("pageView " + value(page), e);
+        }
+    }
+
+    @Override
+    public byte[] loadViewImage(String src) throws KnowledgeSourceException {
+        try {
+            return SourceCapabilities.loadViewImage(delegate, src);
+        } catch (KnowledgeSourceException e) {
+            throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e : logged("loadViewImage " + src, e);
+        } catch (RuntimeException e) {
+            throw unexpected("loadViewImage " + src, e);
         }
     }
 

@@ -7,6 +7,8 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
+import com.aresstack.enterpriseai.source.api.PageView;
+import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
@@ -70,7 +72,7 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
         return "PartitionSelectingSourceProvider[" + delegate + "]";
     }
 
-    private final class Selecting implements SearchableKnowledgeSource {
+    private final class Selecting implements SearchableKnowledgeSource, PageViewSource {
 
         private final KnowledgeSourcePort port;
 
@@ -118,6 +120,16 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
         @Override
         public List<SourcePartition> partitions() throws KnowledgeSourceException {
             return port.partitions();
+        }
+
+        @Override
+        public PageView pageView(KnowledgeResourceId page) throws KnowledgeSourceException {
+            return SourceCapabilities.pageView(port, page);
+        }
+
+        @Override
+        public byte[] loadViewImage(String src) throws KnowledgeSourceException {
+            return SourceCapabilities.loadViewImage(port, src);
         }
 
         @Override

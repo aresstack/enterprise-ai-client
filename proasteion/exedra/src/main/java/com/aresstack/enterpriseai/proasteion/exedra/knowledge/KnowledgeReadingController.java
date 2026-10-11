@@ -1,10 +1,15 @@
 package com.aresstack.enterpriseai.proasteion.exedra.knowledge;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.KnowledgeReaderPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImage;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImageDescription;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImageLoader;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatWorkspacePanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.FavoritesPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.SourceSearchState;
+import com.aresstack.enterpriseai.astu.acropolis.image.ImageAnalysis;
+import com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.FoundResource;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
@@ -18,11 +23,15 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -38,12 +47,20 @@ import java.util.logging.Logger;
  * die Treffer ab Position 0 vor, nach jeder Auswahl und beim Scrollen ab der gewählten bzw. obersten sichtbaren Zeile
  * (die laufende Serie bricht ab). Ein Klick liest über den Priority-Lader: aus dem Cache, sonst sofort, nie hinter der
  * Vorlade-Warteschlange; die gelesene Seite wird danach indexiert.
+ *
+ * <p>Hat die Quelle eine Lese-Ansicht ({@link PageView}, z. B. Confluence), zeigt der Reiter das Original-HTML mit den
+ * Bildern an ihrer Stelle; die Bilder lädt er über die Quelle, eine Beschreibung erst, wenn die Diashow auf
+ * „Beschreibung“ umschaltet ({@link SourceImageAnalysisUseCase#describe}, Modell der Kategorie VISION).</p>
  */
 public final class KnowledgeReadingController implements KnowledgeReaderPanel.Listener, FavoritesPanel.Actions {
 
     private static final Logger LOG = Logger.getLogger(KnowledgeReadingController.class.getName());
     /** Kanal der Vorlade-Serie des Drawers. */
     static final String PREFETCH_CHANNEL = "drawer";
+    static final String NO_VISION_MODEL = "Kein Modell für Bildverständnis gewählt (Einstellungen → Modelle).";
+    static final String EMPTY_DESCRIPTION = "Das Modell hat keine Beschreibung geliefert.";
+    static final String DESCRIPTION_FAILED = "Die Beschreibung ist fehlgeschlagen (Protokoll).";
+    static final String DESCRIPTIONS_UNAVAILABLE = "Bildbeschreibung ist hier nicht verfügbar.";
 
     private final ChatWorkspacePanel workspace;
     private final Supplier<List<KnowledgeSourceRegistration>> enabledSources;
@@ -60,6 +77,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     private List<KnowledgePrefetchService.Candidate> hitCandidates = new ArrayList<KnowledgePrefetchService.Candidate>();
     private List<String> hitKeys = new ArrayList<String>();
     private int prefetchedFrom = -1;
+    private volatile SourceImageAnalysisUseCase imageDescriptions;
 
     /**
      * @param enabledSources die angebundenen, angehakten Quellen (frisch je Suche gelesen)
@@ -88,6 +106,11 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         this.navigation = navigation;
         this.uiExecutor = uiExecutor;
         this.workExecutor = workExecutor;
+    }
+
+    /** Der Weg für Bildbeschreibungen auf Abruf; ohne ihn meldet die Diashow, dass es keine gibt. */
+    public void describeImagesWith(SourceImageAnalysisUseCase descriptions) {
+        this.imageDescriptions = descriptions;
     }
 
     /** Hängt sich an Lesebereich und Favoriten-Seite; auf dem UI-Thread. */
@@ -218,23 +241,30 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 uiExecutor.execute(() -> reader.showLinks(link.key(), entries, "Diese Quelle meldet keine Einträge."));
             } else {
                 final KnowledgeResourceId id = KnowledgeResourceId.of(link.resourceId());
+                final PageView view = browse.view(registration.port(), id);
+                if (view != null) {
+                    final List<ReaderImage> images = new ArrayList<ReaderImage>();
+                    final Map<String, PageView.Image> byKey = new LinkedHashMap<String, PageView.Image>();
+                    for (PageView.Image image : view.images()) {
+                        images.add(new ReaderImage(image.src(), image.src(), image.title()));
+                        byKey.put(image.src(), image);
+                    }
+                    final ReaderImageLoader loader = new SourceImages(registration.port(), byKey);
+                    uiExecutor.execute(() -> reader.showHtml(link.key(), view.html(), view.baseUri(), images, loader));
+                    // Danach wie bisher aufbereiten (Index); der Banner zieht auf der Lese-Ansicht nach.
+                    KnowledgeDocument viewed = indexAfterViewing(registration.port(), id, link);
+                    if (viewed != null && navigation != null) {
+                        navigate(link, viewed, false);
+                    }
+                    return;
+                }
                 // Priority-Thread: Cache oder sofort, nie hinter dem Vorladen; die Seite wird sofort aufbereitet.
                 final KnowledgeDocument document = prefetch.openSelected(registration.port(), id);
                 if (navigation == null) {
                     uiExecutor.execute(() -> reader.showMarkdown(link.key(), document.text()));
                     return;
                 }
-                // Sofort: Text und Originalüberschriften (oder die schon analysierte Navigation dieser Fassung). Der
-                // Banner zieht nach, sobald die Index-Pipeline genau diese Fassung aufbereitet hat (ohne Vorrang).
-                final DocumentNavigation outline = navigation.outline(document);
-                uiExecutor.execute(() -> reader.showDocument(link.key(), document.text(), outline));
-                if (outline.analysis() != DocumentNavigation.Analysis.SEMANTIC) {
-                    navigation.analyze(document).thenAccept(analyzed -> {
-                        if (analyzed != outline) {
-                            uiExecutor.execute(() -> reader.updateNavigation(link.key(), analyzed));
-                        }
-                    });
-                }
+                navigate(link, document, true);
             }
         } catch (KnowledgeSourceException e) {
             LOG.log(Level.WARNING, "Lesen von " + link.key() + " fehlgeschlagen (" + e.kind() + ")", e);
@@ -243,6 +273,107 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         } catch (RuntimeException e) {
             LOG.log(Level.WARNING, "Lesen von " + link.key() + " fehlgeschlagen", e);
             uiExecutor.execute(() -> reader.showProblem(link.key(), "Nicht lesbar (Protokoll)."));
+        }
+    }
+
+    /**
+     * Sofort: Text und Originalüberschriften (oder die schon analysierte Navigation dieser Fassung). Der Banner zieht
+     * nach, sobald die Index-Pipeline genau diese Fassung aufbereitet hat (ohne Vorrang). {@code show}: das Dokument
+     * als Text zeigen; sonst steht schon die Lese-Ansicht (HTML), und nur der Banner kommt dazu.
+     */
+    private void navigate(final ReaderLink link, final KnowledgeDocument document, boolean show) {
+        final KnowledgeReaderPanel reader = workspace.reader();
+        final DocumentNavigation outline = navigation.outline(document);
+        if (show) {
+            uiExecutor.execute(() -> reader.showDocument(link.key(), document.text(), outline));
+        } else {
+            uiExecutor.execute(() -> reader.updateNavigation(link.key(), outline));
+        }
+        if (outline.analysis() != DocumentNavigation.Analysis.SEMANTIC) {
+            navigation.analyze(document).thenAccept(analyzed -> {
+                if (analyzed != outline) {
+                    uiExecutor.execute(() -> reader.updateNavigation(link.key(), analyzed));
+                }
+            });
+        }
+    }
+
+    /**
+     * Wie bisher nach jedem Lesen: die Seite über den Priority-Lader aufbereiten (Index), die Anzeige steht schon.
+     *
+     * @return das aufbereitete Dokument oder {@code null}, wenn das fehlschlug
+     */
+    private KnowledgeDocument indexAfterViewing(KnowledgeSourcePort port, KnowledgeResourceId id, ReaderLink link) {
+        try {
+            return prefetch.openSelected(port, id);
+        } catch (KnowledgeSourceException | RuntimeException e) {
+            LOG.log(Level.FINE, "Aufbereiten von " + link.key() + " nach dem Anzeigen fehlgeschlagen", e);
+            return null;
+        }
+    }
+
+    /**
+     * Bilder einer Lese-Ansicht: Bytes über die Quelle, Beschreibung auf Abruf über das VISION-Modell (Cache je Bild
+     * und Version im Use Case). Blockierendes auf dem Arbeits-Executor, Rückrufe auf dem UI-Executor.
+     */
+    private final class SourceImages implements ReaderImageLoader {
+        private final KnowledgeSourcePort port;
+        private final Map<String, PageView.Image> byKey;
+
+        SourceImages(KnowledgeSourcePort port, Map<String, PageView.Image> byKey) {
+            this.port = port;
+            this.byKey = byKey;
+        }
+
+        @Override
+        public void load(final ReaderImage image, final Consumer<byte[]> done) {
+            try {
+                workExecutor.execute(() -> {
+                    byte[] bytes;
+                    try {
+                        bytes = browse.viewImage(port, image.src());
+                    } catch (KnowledgeSourceException | RuntimeException e) {
+                        LOG.log(Level.FINE, "Bild nicht ladbar: " + image.src(), e);
+                        bytes = null;
+                    }
+                    final byte[] loaded = bytes;
+                    uiExecutor.execute(() -> done.accept(loaded));
+                });
+            } catch (RuntimeException rejected) {
+                done.accept(null);
+            }
+        }
+
+        @Override
+        public void describe(final ReaderImage image, final String mediaType, final byte[] bytes,
+                             final Consumer<ReaderImageDescription> done) {
+            final SourceImageAnalysisUseCase descriptions = imageDescriptions;
+            if (descriptions == null) {
+                done.accept(ReaderImageDescription.unavailable(DESCRIPTIONS_UNAVAILABLE));
+                return;
+            }
+            final PageView.Image source = byKey.get(image.key());
+            try {
+                workExecutor.execute(() -> {
+                    ReaderImageDescription result;
+                    try {
+                        boolean known = source != null && source.resource() != null;
+                        ImageAnalysis analysis = descriptions.describe(
+                                known ? source.resource().id().value() : image.src(), image.title(),
+                                known ? source.resource().revision().version() : "", mediaType, bytes);
+                        result = analysis == null ? ReaderImageDescription.unavailable(NO_VISION_MODEL)
+                                : analysis.description().isEmpty() ? ReaderImageDescription.unavailable(EMPTY_DESCRIPTION)
+                                : ReaderImageDescription.of(analysis.description());
+                    } catch (RuntimeException e) {
+                        LOG.log(Level.WARNING, "Bildbeschreibung für " + image.src() + " fehlgeschlagen", e);
+                        result = ReaderImageDescription.unavailable(DESCRIPTION_FAILED);
+                    }
+                    final ReaderImageDescription described = result;
+                    uiExecutor.execute(() -> done.accept(described));
+                });
+            } catch (RuntimeException rejected) {
+                done.accept(ReaderImageDescription.unavailable(DESCRIPTION_FAILED));
+            }
         }
     }
 

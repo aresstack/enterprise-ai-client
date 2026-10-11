@@ -4,7 +4,7 @@ import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Test;
 
 import javax.swing.JScrollPane;
-import javax.swing.JTextPane;
+import javax.swing.JEditorPane;
 import javax.swing.text.View;
 import java.awt.Component;
 import java.awt.Container;
@@ -34,14 +34,40 @@ public class KnowledgeReaderPanelTest {
         });
     }
 
+    @Test
+    public void readingViewWithImagesStaysCompleteWhenTheReaderGetsNarrower() throws Exception {
+        final KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette(), url -> {
+        }, (code, width) -> null);
+        final ReaderLink link = new ReaderLink("wiki", "wiki:page/2", "Roadmap", "", "wiki:page/2");
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            reader.open(link, false);
+            reader.showHtml(link.key(), longHtml(), "https://confluence.invalid/", java.util.Collections.emptyList(),
+                    (image, done) -> done.accept(null));
+            reader.setSize(1400, 700);
+            layout(reader);
+            reader.setSize(600, 700);
+            layout(reader);
+            assertNothingCut(reader);
+        });
+    }
+
+    private static String longHtml() {
+        StringBuilder html = new StringBuilder("<h1>Roadmap</h1><h2>Meilensteine</h2>");
+        for (int i = 0; i < 40; i++) {
+            html.append("<p>MS").append(i).append(" Betriebsübergabe der Container-Infrastruktur: alle Dienste sind ")
+                    .append("bereitgestellt und werden vom Team betrieben, die Bereitstellung wird koordiniert.</p>");
+        }
+        return html.append("<p>Letzte Zeile</p>").toString();
+    }
+
     private static void assertNothingCut(KnowledgeReaderPanel reader) {
-        List<JTextPane> panes = new ArrayList<JTextPane>();
+        List<JEditorPane> panes = new ArrayList<JEditorPane>();
         JScrollPane scroll = find(reader);
         assertNotNull(scroll);
         Component page = scroll.getViewport().getView();
         collect(page, panes);
         assertFalse(panes.isEmpty());
-        for (JTextPane pane : panes) {
+        for (JEditorPane pane : panes) {
             View root = pane.getUI().getRootView(pane);
             root.setSize(pane.getWidth(), Integer.MAX_VALUE);
             int needed = (int) Math.ceil(root.getPreferredSpan(View.Y_AXIS));
@@ -76,9 +102,9 @@ public class KnowledgeReaderPanelTest {
         }
     }
 
-    private static void collect(Component component, List<JTextPane> panes) {
-        if (component instanceof JTextPane) {
-            panes.add((JTextPane) component);
+    private static void collect(Component component, List<JEditorPane> panes) {
+        if (component instanceof JEditorPane) {
+            panes.add((JEditorPane) component);
         }
         if (component instanceof Container) {
             for (Component child : ((Container) component).getComponents()) {

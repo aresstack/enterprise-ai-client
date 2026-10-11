@@ -481,6 +481,20 @@ public final class CompositionRoot {
         return searchIndexing;
     }
 
+    /**
+     * Bildbeschreibungen auf Abruf für den Lesebereich: genau ein Bild, Modell der Kategorie VISION (bei jedem Aufruf
+     * aus den Einstellungen, KIPITZ oder lokal über den Chat-Port), Ergebnis je Bild und Version als Datei in
+     * {@code directory}.
+     */
+    public com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase readerImageDescriptions(
+            java.nio.file.Path directory) {
+        return new com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase(
+                () -> java.util.Collections.<com.aresstack.enterpriseai.source.api.KnowledgeSourcePort>emptyList(),
+                ports.chat(), modelKey(com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.DOCUMENT_OCR),
+                modelKey(com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.VISION),
+                new FileImageAnalysisCache(directory));
+    }
+
     public ShutdownSequence shutdown() {
         return shutdown;
     }

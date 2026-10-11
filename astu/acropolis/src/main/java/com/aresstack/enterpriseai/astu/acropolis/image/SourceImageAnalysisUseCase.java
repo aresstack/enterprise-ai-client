@@ -16,6 +16,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 
 /**
@@ -23,6 +25,10 @@ import java.util.function.Supplier;
  * Beschreibung (Kategorie VISION), beides über den Chat-Port. Je Bild-ID und Version nur einmal (Cache); ein Bild
  * ohne gewähltes Modell bleibt in diesem Teil leer, ein Modellfehler ebenso (das nächste Mal wird es erneut
  * versucht). Ohne Quelle, die Bilder liefert ({@link ImageSource}), gibt es nichts zu tun.
+ *
+ * <p>{@link #describe} ist der Einzelbild-Weg des Lesebereichs: nur die Beschreibung (VISION, keine OCR), genau für
+ * ein Bild und erst auf Abruf. {@link #describeAll} ruft denselben Weg für alle Bilder einer Seite parallel auf
+ * (vorbereitet für den späteren Zugriff über MCP/Bookmark, heute von niemandem ausgelöst).</p>
  */
 public final class SourceImageAnalysisUseCase {
 
@@ -30,6 +36,9 @@ public final class SourceImageAnalysisUseCase {
             + "Nur den Text, keine Erklärung. Ohne Text im Bild: leere Antwort.";
     static final String DESCRIPTION_PROMPT = "Beschreibe dieses Bild sachlich auf Deutsch in höchstens fünf "
             + "Sätzen: was es zeigt und welche Aussage es trägt (Diagramm, Screenshot, Foto, Skizze).";
+
+    /** Cache-Präfix der reinen Beschreibungen ({@link #describe}), getrennt von den vollen Auswertungen. */
+    static final String DESCRIPTION_PREFIX = "description:";
 
     private final Supplier<Collection<KnowledgeSourcePort>> sources;
     private final ChatCompletionPort chat;
@@ -81,6 +90,76 @@ public final class SourceImageAnalysisUseCase {
             return results;
         }
         return Collections.emptyList();
+    }
+
+    /**
+     * Beschreibt genau dieses eine Bild über das VISION-Modell, je Bild-ID und Version einmal: aus dem Cache, wenn
+     * schon beschrieben (auch von {@link #analyze}), sonst jetzt. OCR läuft hier nicht.
+     *
+     * @param imageId   stabile Kennung des Bildes (Ressourcen-ID oder Adresse)
+     * @param version   Version des Bildes, leer wenn unbekannt
+     * @param mediaType Medientyp der Bytes ({@code image/png} …)
+     * @return die Auswertung mit Beschreibung, oder {@code null}, wenn kein VISION-Modell gewählt ist
+     * @throws RuntimeException wenn das Modell scheitert (dann wird nichts gespeichert)
+     */
+    public ImageAnalysis describe(String imageId, String title, String version, String mediaType, byte[] bytes) {
+        if (isBlank(imageId) || bytes == null || bytes.length == 0 || mediaType == null
+                || !mediaType.startsWith("image/")) {
+            throw new IllegalArgumentException("imageId, image bytes and an image media type are required");
+        }
+        String key = ImageAnalysis.cacheKey(imageId, version);
+        ImageAnalysis analyzed = cache.get(key);
+        if (analyzed != null && !analyzed.description().isEmpty()) {
+            return analyzed;
+        }
+        ImageAnalysis described = cache.get(DESCRIPTION_PREFIX + key);
+        if (described != null) {
+            return described;
+        }
+        String vision = visionModel.get();
+        if (isBlank(vision)) {
+            return null;
+        }
+        ChatRequest request = new ChatRequest(
+                Arrays.asList(ChatMessage.userWithImages(DESCRIPTION_PROMPT,
+                        Collections.singletonList(new ChatImage(mediaType, bytes)))),
+                ChatOptions.builder().model(vision).build());
+        String description = chat.complete(request).content().trim();
+        ImageAnalysis result = new ImageAnalysis(imageId, title, version, "", description);
+        cache.put(DESCRIPTION_PREFIX + key, result);
+        return result;
+    }
+
+    /**
+     * Beschreibt alle Bilder einer Seite parallel über denselben Einzelbild-Weg ({@link #describe}); fertig, wenn
+     * alle fertig sind. Ein Bild, das nicht ladbar ist oder dessen Beschreibung scheitert, fehlt im Ergebnis.
+     */
+    public CompletableFuture<List<ImageAnalysis>> describeAll(final ImageSource source, KnowledgeResourceId page,
+                                                              int maxImages, Executor pool)
+            throws KnowledgeSourceException {
+        List<CompletableFuture<ImageAnalysis>> pending = new ArrayList<CompletableFuture<ImageAnalysis>>();
+        for (final KnowledgeResource image : source.imagesOf(page, maxImages)) {
+            pending.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                    byte[] bytes = source.loadImage(image.id());
+                    String mediaType = image.contentType() == null ? "" : image.contentType().split(";")[0].trim();
+                    return describe(image.id().value(), image.title(), image.revision().version(), mediaType, bytes);
+                } catch (KnowledgeSourceException | RuntimeException failed) {
+                    return null;
+                }
+            }, pool));
+        }
+        final List<CompletableFuture<ImageAnalysis>> all = pending;
+        return CompletableFuture.allOf(all.toArray(new CompletableFuture<?>[0])).thenApply(done -> {
+            List<ImageAnalysis> results = new ArrayList<ImageAnalysis>();
+            for (CompletableFuture<ImageAnalysis> future : all) {
+                ImageAnalysis analysis = future.join();
+                if (analysis != null) {
+                    results.add(analysis);
+                }
+            }
+            return results;
+        });
     }
 
     private ImageAnalysis analyzeOne(ImageSource source, KnowledgeResource image, String ocr, String vision) {

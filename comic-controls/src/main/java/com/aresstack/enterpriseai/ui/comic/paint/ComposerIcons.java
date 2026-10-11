@@ -191,4 +191,45 @@ public final class ComposerIcons {
             }
         };
     }
+
+    /** A "−" of the given size (zoom out), the counterpart of {@link #plus(int)}. Own addition. */
+    public static StrokeIcon minus(final int size) {
+        return new StrokeIcon(size, size) {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.setStroke(new java.awt.BasicStroke(Math.max(1.6f, size / 8f),
+                        java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+                double pad = size * 0.22;
+                double center = size / 2.0;
+                g2.draw(new Line2D.Double(pad, center, size - pad, center));
+            }
+        };
+    }
+
+    /** Download (save): an arrow pointing down into an open tray. Own addition. */
+    public static StrokeIcon download() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawLine(7, 2, 7, 9);
+                g2.drawLine(4, 6, 7, 9);
+                g2.drawLine(10, 6, 7, 9);
+                g2.drawLine(2, 10, 2, 13);
+                g2.drawLine(2, 13, 12, 13);
+                g2.drawLine(12, 13, 12, 10);
+            }
+        };
+    }
+
+    /** A picture (images of a page): frame, a mountain and a sun. Own addition. */
+    public static StrokeIcon picture() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawRoundRect(1, 2, 13, 11, 3, 3);
+                g2.drawPolyline(new int[] {2, 6, 9, 11, 13}, new int[] {12, 7, 10, 8, 11}, 5);
+                g2.drawOval(9, 4, 2, 2);
+            }
+        };
+    }
 }

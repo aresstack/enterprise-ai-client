@@ -86,6 +86,8 @@ public final class ShellAssembly {
     static final String CONCEPT_TAB = "Konzept";
     /** Die Favoriten des Lesebereichs, neben der Konfigurationsdatei. */
     static final String FAVORITES_FILE = "favorites.json";
+    /** Bildbeschreibungen des Lesebereichs (je Bild und Version eine Datei), neben den Favoriten. */
+    static final String IMAGE_DESCRIPTIONS = "image-descriptions";
 
     private static final Logger LOG = Logger.getLogger(ShellAssembly.class.getName());
 
@@ -194,6 +196,7 @@ public final class ShellAssembly {
                 new BrowseKnowledgeSourceUseCase(KnowledgeDocumentReader.direct()), root.prefetch(),
                 new FavoritesStore(chatsDirectory.resolveSibling(FAVORITES_FILE)), root.documentNavigation(),
                 root.uiExecutor(), root.workExecutor());
+        reading.describeImagesWith(root.readerImageDescriptions(chatsDirectory.resolveSibling(IMAGE_DESCRIPTIONS)));
         sources.setReading(reading);
         // Rechtsklick auf einen Reiter: „Zum aktuellen Chat hinzufügen“ legt nur Titel und Bookmark in den Composer.
         workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));
