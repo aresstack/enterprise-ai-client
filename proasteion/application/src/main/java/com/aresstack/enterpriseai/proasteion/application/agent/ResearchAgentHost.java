@@ -55,11 +55,17 @@ public final class ResearchAgentHost {
     private static final String RUN_FILE = "run-status";
     private static final String OUTLINE_FILE = "outline.md";
     private static final String DOCUMENT_FILE = "document.json";
+    /** askai arch: die Phasenzuordnung der Chatnachrichten, neben dem Projekt (kein zweiter Verlauf). */
+    private static final String JOURNAL_FILE = "phase-journal.json";
 
     private final File projectsRoot;
     private final ResearchProjects projects;
     /** Der Chat, dem das Projekt gehört; {@code null}, bis {@link #openChat} oder der erste Zugriff ihn setzt. */
     private String chatId;
+    /** Welche Nachricht des Chats zu welcher Phase gehört (askai {@code ResearchPhaseJournal}). */
+    private ResearchPhaseJournal journal = new ResearchPhaseJournal();
+    /** Die gespeicherten Nachrichten je Chat (Host-Wahrheit für {@code chat_history}); {@code null} ohne Ablage. */
+    private volatile ChatSessionHistoryReader chatHistoryReader;
     private final Function<File, ResearchScopeDraftStore> stores;
     private final Function<File, ConceptBranchService> concepts;
     private final List<Runnable> stateListeners = new CopyOnWriteArrayList<Runnable>();
@@ -119,6 +125,7 @@ public final class ResearchAgentHost {
             }
             closeProject();
             this.chatId = chatId;
+            journal = readJournal(existingProject());
         }
         fireStateChanged();
     }
@@ -169,6 +176,56 @@ public final class ResearchAgentHost {
         state = null;
         runStatus = ResearchRunStatus.idle();
         scopeControl.clear(); // Such-Handles des alten Zauns gelten im neuen Projekt nicht
+        journal = new ResearchPhaseJournal();
+    }
+
+    // ------------------------------------------------------------------ chat_history (askai arch)
+
+    /** Die Ablage der gespeicherten Chats (Composition Root); ohne sie meldet {@code chat_history} das ehrlich. */
+    public void setChatHistoryReader(ChatSessionHistoryReader reader) {
+        this.chatHistoryReader = reader;
+    }
+
+    /**
+     * askai {@code attributeToCurrentPhase}: ordnet eine Nachricht des Chats der laufenden Phase zu. Legt kein
+     * Projekt an; ohne Projekt wird die Zuordnung mit dem Anlegen gespeichert.
+     */
+    public void attributeMessage(String messageId) {
+        synchronized (this) {
+            if (journal.attribute(messageId, peekState().getPhaseId())) {
+                File directory = existingProject();
+                if (directory != null) {
+                    writeText(new File(directory, JOURNAL_FILE), journal.toJson());
+                }
+            }
+        }
+    }
+
+    /**
+     * askai {@code describeChatHistory}: der GESPEICHERTE Verlauf des Chats, an den das Projekt gebunden ist (eine
+     * Wahrheit, dieselbe, die der Nutzer sieht, auch von vor dem Start dieses Prozesses), nach Phasen gegliedert.
+     *
+     * @param raw {@code true} = jede Nachricht jeder Phase, sonst abgeschlossene Phasen als eine Zusammenfassung
+     */
+    public String describeChatHistory(boolean raw) {
+        ChatSessionHistoryReader reader = chatHistoryReader;
+        String chat;
+        ResearchPhaseJournal attribution;
+        String phase;
+        synchronized (this) {
+            chat = chatId;
+            attribution = journal;
+            phase = peekState().getPhaseId();
+        }
+        if (reader == null || chat == null) {
+            return "(this host does not expose the persisted chat history to plugins)";
+        }
+        return ResearchChatHistoryProjection.render(reader.readMessages(chat), attribution, phase, raw);
+    }
+
+    private static ResearchPhaseJournal readJournal(File directory) {
+        return directory == null ? new ResearchPhaseJournal()
+                : ResearchPhaseJournal.fromJson(readText(new File(directory, JOURNAL_FILE)));
     }
 
     public synchronized File projectDirectory() {
@@ -215,6 +272,9 @@ public final class ResearchAgentHost {
         machine = new OoResearchStateMachine(directory.getName());
         state = readState(directory);
         runStatus = readRunStatus(directory);
+        if (!journal.isEmpty()) {
+            writeText(new File(directory, JOURNAL_FILE), journal.toJson()); // vor dem Anlegen Zugeordnetes
+        }
     }
 
     private File newProjectDirectory() {

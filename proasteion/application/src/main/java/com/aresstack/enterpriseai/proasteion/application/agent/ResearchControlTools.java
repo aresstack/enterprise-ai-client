@@ -34,6 +34,15 @@ public final class ResearchControlTools {
     }
 
     /** Alle Werkzeuge des Endpoints; die Konzeptwerkzeuge gehen je Aufruf an das aktuelle Projekt. */
+    /** askai {@code chat_history}: der gespeicherte Verlauf des Chats, an den das Projekt gebunden ist. */
+    public static final String CHAT_HISTORY = "chat_history";
+
+    /** Die Beschreibung aus askai arch ({@code ResearchBotSessionTools.CHAT_HISTORY_DESCRIPTION}). */
+    static final String CHAT_HISTORY_DESCRIPTION =
+            "The chat record of this session, attributed to research phases: finished phases as ONE "
+            + "summary (outcome + message count), the current phase in detail. Pass raw=true "
+            + "for every recorded message of every phase.";
+
     public static List<McpToolContribution> toolsFor(final ResearchAgentHost host, final MainModelChat model) {
         if (host == null || model == null) {
             throw new IllegalArgumentException("host and model must not be null");
@@ -54,6 +63,16 @@ public final class ResearchControlTools {
                         return McpToolResult.ok(status.toString());
                     }
                 }));
+        // askai arch ResearchBotSessionTools.chatHistoryTool: der gespeicherte Verlauf des Chats dieses Projekts.
+        tools.add(McpToolContribution.of(CHAT_HISTORY, CHAT_HISTORY_DESCRIPTION,
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        return McpToolResult.ok(host.describeChatHistory(call.getBoolean("raw", false)));
+                    }
+                },
+                McpToolParameter.string("raw", false,
+                        "true = every recorded message of every phase (default: phase summaries)")));
         tools.add(McpToolContribution.of("research_turn_begin",
                 "Beginnt einen Turn: vermerkt den Auftrag, beantwortet ein eindeutiges Ja/Nein auf eine offene "
                         + "Konfliktfrage selbst (Antworttext, sonst leer) und frischt die Gesprächsführung auf.",
