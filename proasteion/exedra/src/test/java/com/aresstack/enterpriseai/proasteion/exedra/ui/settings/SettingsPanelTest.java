@@ -470,6 +470,8 @@ public class SettingsPanelTest {
         for (java.awt.Component child : container.getComponents()) {
             if (child instanceof javax.swing.JLabel) {
                 out.append(((javax.swing.JLabel) child).getText()).append('\n');
+            } else if (child instanceof javax.swing.AbstractButton) {
+                out.append(((javax.swing.AbstractButton) child).getText()).append('\n');
             }
             if (child instanceof java.awt.Container) {
                 out.append(texts((java.awt.Container) child));
