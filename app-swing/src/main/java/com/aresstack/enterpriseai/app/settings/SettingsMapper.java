@@ -127,6 +127,8 @@ public final class SettingsMapper {
         b.caCertificatesFile(text(p, KEY_TLS_CA_FILE, ""));
         b.agentEnabled(bool(p, KEY_AGENT_ENABLED, false));
         b.readAloudAutoStart(bool(p, ModelsConfig.READ_ALOUD_AUTO_START_KEY, false));
+        b.readAloudChunking(text(p, ModelsConfig.READ_ALOUD_CHUNKING_KEY, "PARAGRAPHS").toUpperCase(Locale.ROOT));
+        b.synthesisWorkers(text(p, ModelsConfig.READ_ALOUD_WORKERS_KEY, "2"));
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
         b.agentArgs(text(p, KEY_AGENT_ARGS, ""));
         b.agentRequestTimeoutSeconds(text(p, KEY_AGENT_TIMEOUT, "30"));
@@ -178,6 +180,11 @@ public final class SettingsMapper {
         set.put(KEY_AGENT_ENABLED, String.valueOf(form.agentEnabled()));
         // Nur „an“ steht in der Datei; aus heißt Standard (Schlüssel entfernt).
         put(set, ModelsConfig.READ_ALOUD_AUTO_START_KEY, form.readAloudAutoStart() ? "true" : "");
+        // Standardwerte (Absätze, 2 Worker) stehen nicht in der Datei.
+        put(set, ModelsConfig.READ_ALOUD_CHUNKING_KEY,
+                "PARAGRAPHS".equals(form.readAloudChunking()) ? "" : form.readAloudChunking());
+        put(set, ModelsConfig.READ_ALOUD_WORKERS_KEY,
+                "2".equals(form.synthesisWorkers()) ? "" : form.synthesisWorkers());
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
         put(set, KEY_AGENT_TIMEOUT, form.agentRequestTimeoutSeconds());

@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.app.config;
 import com.aresstack.enterpriseai.application.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.application.rag.ContextSettings;
 import com.aresstack.enterpriseai.application.rag.RetrievalSettings;
+import com.aresstack.enterpriseai.application.speech.ReadAloudService;
+import com.aresstack.enterpriseai.application.speech.SpeechChunking;
 import com.aresstack.enterpriseai.chat.openai.DeveloperRolePolicy;
 import com.aresstack.enterpriseai.domain.chat.ChatOptions;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkingPolicy;
@@ -270,8 +272,9 @@ public final class AppConfigLoader {
     /**
      * Modellverwaltung: eine Auswahl je Kategorie ({@code chat.model}, {@code embedding.model},
      * {@code model.<kategorie>}) und das Modellverzeichnis der lokalen Stimmen ({@code models.local.modelRoot}).
-     * {@code speech.readAloud.autoStart} liest neue Antworten automatisch vor (wie askai arch, Standard aus);
-     * {@code speech.voice} ist die Stimme der Enterprise-Sprachausgabe.
+     * {@code speech.readAloud.autoStart} liest neue Antworten automatisch vor (wie askai arch, Standard aus),
+     * {@code speech.readAloud.chunking} und {@code speech.readAloud.synthesisWorkers} wie {@code tts.chunking} und
+     * {@code tts.synthesisWorkers} in arch (Standard Absätze, 2); {@code speech.voice} ist die Stimme der Enterprise-Sprachausgabe.
      */
     private static ModelsConfig models(ConfigReader r, List<String> warnings) {
         ModelSelections selections = ModelSelections.none();
@@ -281,6 +284,9 @@ public final class AppConfigLoader {
         }
         Path modelRoot = r.path("models.local.modelRoot", AppPaths.appDirectory().resolve(DEFAULT_LOCAL_MODEL_DIRECTORY));
         return new ModelsConfig(selections, r.bool(ModelsConfig.READ_ALOUD_AUTO_START_KEY, false),
+                SpeechChunking.parse(r.text(ModelsConfig.READ_ALOUD_CHUNKING_KEY, null), SpeechChunking.PARAGRAPHS),
+                r.integer(ModelsConfig.READ_ALOUD_WORKERS_KEY, ReadAloudService.DEFAULT_SYNTHESIS_WORKERS, 1,
+                        ReadAloudService.MAX_SYNTHESIS_WORKERS),
                 r.text(ModelsConfig.SPEECH_VOICE_KEY, null), modelRoot);
     }
 

@@ -34,7 +34,7 @@ public final class SpeechOutput {
             return ReadAloudBinding.unavailable(NO_PORT);
         }
         ReadAloudService service = new ReadAloudService(speech.require(selected.catalogId()), selected.modelId(),
-                new JavaSoundAudioPlayback());
+                new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers());
         return ReadAloudBinding.available(service, "Stimme: " + selected.modelId() + " (" + selected.catalogId()
                 + ")", models.readAloudAutoStart());
     }

@@ -72,6 +72,8 @@ public final class SettingsForm {
     private final String caCertificatesFile;
     private final boolean agentEnabled;
     private final boolean readAloudAutoStart;
+    private final String readAloudChunking;
+    private final String synthesisWorkers;
     private final String agentCommand;
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
@@ -112,6 +114,8 @@ public final class SettingsForm {
         this.caCertificatesFile = b.caCertificatesFile;
         this.agentEnabled = b.agentEnabled;
         this.readAloudAutoStart = b.readAloudAutoStart;
+        this.readAloudChunking = b.readAloudChunking;
+        this.synthesisWorkers = b.synthesisWorkers;
         this.agentCommand = b.agentCommand;
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
@@ -142,6 +146,8 @@ public final class SettingsForm {
                 .caCertificatesFile(caCertificatesFile)
                 .agentEnabled(agentEnabled).agentCommand(agentCommand).agentArgs(agentArgs)
                 .readAloudAutoStart(readAloudAutoStart)
+                .readAloudChunking(readAloudChunking)
+                .synthesisWorkers(synthesisWorkers)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .modelSelections(modelSelections)
                 .localModelRoot(localModelRoot);
@@ -298,6 +304,16 @@ public final class SettingsForm {
         return readAloudAutoStart;
     }
 
+    /** Einheit je Synthese ({@code speech.readAloud.chunking}): ANSWER, PARAGRAPHS oder SENTENCES. */
+    public String readAloudChunking() {
+        return readAloudChunking;
+    }
+
+    /** Parallele Synthesen beim Vorlesen ({@code speech.readAloud.synthesisWorkers}). */
+    public String synthesisWorkers() {
+        return synthesisWorkers;
+    }
+
     public String agentCommand() {
         return agentCommand;
     }
@@ -371,6 +387,8 @@ public final class SettingsForm {
         private String caCertificatesFile = "";
         private boolean agentEnabled;
         private boolean readAloudAutoStart;
+        private String readAloudChunking = "PARAGRAPHS";
+        private String synthesisWorkers = "2";
         private String agentCommand = "";
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
@@ -538,6 +556,16 @@ public final class SettingsForm {
 
         public Builder readAloudAutoStart(boolean value) {
             this.readAloudAutoStart = value;
+            return this;
+        }
+
+        public Builder readAloudChunking(String value) {
+            this.readAloudChunking = value;
+            return this;
+        }
+
+        public Builder synthesisWorkers(String value) {
+            this.synthesisWorkers = value;
             return this;
         }
 

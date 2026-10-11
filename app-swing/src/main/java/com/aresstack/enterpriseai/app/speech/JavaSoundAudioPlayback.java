@@ -13,12 +13,17 @@ import java.io.IOException;
 
 /**
  * Spielt WAV über eine {@link SourceDataLine} des Standardausgabegeräts ab (wie {@code playWav} in askai arch, ohne
- * Audio-DSP). {@link #stop()} bricht die laufende Wiedergabe ab und verwirft den Puffer.
+ * Audio-DSP). Aufeinanderfolgende Stücke gleichen Formats laufen über dieselbe offene Leitung: kein Öffnen, Leerlaufen
+ * und Schließen je Stück, also keine Lücke zwischen Absätzen oder Sätzen. {@link #finish()} lässt die Folge
+ * ausklingen und schließt die Leitung, {@link #stop()} bricht ab und verwirft den Puffer.
  */
 public final class JavaSoundAudioPlayback implements AudioPlayback {
 
     private final Object lock = new Object();
-    private SourceDataLine current;
+    private SourceDataLine line;
+    private AudioFormat lineFormat;
+    /** Die Leitung, die {@link #finish()} gerade ausklingen lässt; {@link #stop()} hält auch sie an. */
+    private SourceDataLine draining;
     private boolean stopped;
 
     @Override
@@ -31,41 +36,44 @@ public final class JavaSoundAudioPlayback implements AudioPlayback {
         }
         try {
             AudioFormat format = audio.getFormat();
-            SourceDataLine line;
-            try {
-                line = AudioSystem.getSourceDataLine(format);
-                line.open(format);
-            } catch (LineUnavailableException | IllegalArgumentException e) {
-                throw new IOException("Kein Audioausgabegerät verfügbar", e);
-            }
-            synchronized (lock) {
-                current = line;
-                stopped = false;
-            }
-            try {
-                line.start();
-                byte[] buffer = new byte[Math.max(4096, format.getFrameSize() * 1024)];
-                int read;
-                while ((read = audio.read(buffer)) > 0) {
-                    if (isStopped()) {
-                        line.flush();
-                        return;
-                    }
-                    line.write(buffer, 0, read);
+            SourceDataLine target = open(format);
+            byte[] buffer = new byte[Math.max(4096, format.getFrameSize() * 1024)];
+            int read;
+            while ((read = audio.read(buffer)) > 0) {
+                if (isStopped()) {
+                    return;
                 }
-                if (!isStopped()) {
-                    line.drain();
-                }
-            } finally {
-                synchronized (lock) {
-                    current = null;
-                }
-                line.stop();
-                line.close();
+                target.write(buffer, 0, read); // blockiert nur, solange der Puffer der Leitung voll ist
             }
         } finally {
             audio.close();
         }
+    }
+
+    /** Die offene Leitung, wenn das Format passt; sonst wird die alte ausgespielt und eine neue geöffnet. */
+    private SourceDataLine open(AudioFormat format) throws IOException {
+        synchronized (lock) {
+            stopped = false;
+            if (line != null && line.isOpen() && lineFormat != null && lineFormat.matches(format)) {
+                line.start();
+                return line;
+            }
+        }
+        finish();
+        SourceDataLine opened;
+        try {
+            opened = AudioSystem.getSourceDataLine(format);
+            opened.open(format);
+        } catch (LineUnavailableException | IllegalArgumentException e) {
+            throw new IOException("Kein Audioausgabegerät verfügbar", e);
+        }
+        synchronized (lock) {
+            line = opened;
+            lineFormat = format;
+            stopped = false;
+            opened.start();
+        }
+        return opened;
     }
 
     private boolean isStopped() {
@@ -75,12 +83,43 @@ public final class JavaSoundAudioPlayback implements AudioPlayback {
     }
 
     @Override
+    public void finish() {
+        SourceDataLine current;
+        boolean drain;
+        synchronized (lock) {
+            current = line;
+            drain = !stopped;
+            line = null;
+            lineFormat = null;
+            draining = drain ? current : null;
+        }
+        if (current == null) {
+            return;
+        }
+        try {
+            if (drain) {
+                current.drain(); // endet auch, wenn stop() die Leitung anhält
+            }
+        } finally {
+            synchronized (lock) {
+                draining = null;
+            }
+            current.stop();
+            current.close();
+        }
+    }
+
+    @Override
     public void stop() {
         synchronized (lock) {
             stopped = true;
-            if (current != null) {
-                current.stop();
-                current.flush();
+            if (line != null) {
+                line.stop();
+                line.flush();
+            }
+            if (draining != null) {
+                draining.stop();
+                draining.flush();
             }
         }
     }

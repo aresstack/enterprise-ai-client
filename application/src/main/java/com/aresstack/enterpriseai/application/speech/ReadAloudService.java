@@ -14,16 +14,20 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * Vorlese-Ablauf aus askai-java8 arch ({@code PiperReadAloudService}, Batch-Pipeline): jedes Stück wird sofort an
- * einen kleinen Worker-Pool zur Synthese gegeben, die Wiedergabe läuft strikt in Lesereihenfolge; kein Stück wartet
- * mit seiner Synthese auf das Abspielen des vorherigen. Ein neues {@link #speak} oder {@link #stop()} beendet das
- * laufende (Generationszähler wie in arch). Ohne piper.exe, ohne Windows-Stimme und ohne NLP-Sprachtrennung: die
- * eine Stimme ist das gewählte TTS-Modell.
+ * Vorlese-Ablauf aus askai-java8 arch ({@code PiperReadAloudService}, Batch-Pipeline): die Antwort wird in der
+ * gewählten {@link SpeechChunking} geteilt, die Stücke rechnet ein kleiner Worker-Pool, die Wiedergabe läuft strikt in
+ * Lesereihenfolge über eine durchgehende Ausgabe. Das erste Stück rechnet allein, damit es nicht mit den folgenden um
+ * die CPU konkurriert; sobald es fertig ist, beginnt seine Wiedergabe und alle weiteren Stücke rechnen währenddessen.
+ * Ein neues {@link #speak} oder {@link #stop()} beendet das laufende (Generationszähler wie in arch). Ohne piper.exe,
+ * ohne Windows-Stimme und ohne NLP-Sprachtrennung: die eine Stimme ist das gewählte TTS-Modell.
  */
 public final class ReadAloudService {
 
     /** Parallele Synthese wie {@code TextToSpeechSettings.DEFAULT_SYNTHESIS_WORKERS} in arch. */
-    static final int SYNTHESIS_WORKERS = 2;
+    public static final int DEFAULT_SYNTHESIS_WORKERS = 2;
+
+    /** Obergrenze der Worker wie der Regler in arch (1 bis 8). */
+    public static final int MAX_SYNTHESIS_WORKERS = 8;
 
     /** Rückmeldung eines Vorlesevorgangs; läuft im Vorlese-Thread. */
     public interface Listener {
@@ -35,6 +39,8 @@ public final class ReadAloudService {
     private final SpeechSynthesisPort synthesis;
     private final String modelId;
     private final AudioPlayback playback;
+    private final SpeechChunking chunking;
+    private final int workers;
     private final Object lock = new Object();
     private long generation;
 
@@ -44,12 +50,23 @@ public final class ReadAloudService {
      * @param playback  die Wiedergabe
      */
     public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, AudioPlayback playback) {
+        this(synthesis, modelId, playback, SpeechChunking.PARAGRAPHS, DEFAULT_SYNTHESIS_WORKERS);
+    }
+
+    /**
+     * @param chunking Einheit je Synthese (Standard Absätze)
+     * @param workers  parallele Synthesen, 1 bis {@link #MAX_SYNTHESIS_WORKERS}
+     */
+    public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, AudioPlayback playback,
+                            SpeechChunking chunking, int workers) {
         if (synthesis == null || modelId == null || modelId.trim().isEmpty() || playback == null) {
             throw new IllegalArgumentException("synthesis, modelId and playback must be set");
         }
         this.synthesis = synthesis;
         this.modelId = modelId;
         this.playback = playback;
+        this.chunking = chunking == null ? SpeechChunking.PARAGRAPHS : chunking;
+        this.workers = Math.max(1, Math.min(MAX_SYNTHESIS_WORKERS, workers));
     }
 
     public String modelId() {
@@ -66,11 +83,11 @@ public final class ReadAloudService {
         synchronized (lock) {
             myGeneration = ++generation;
         }
-        List<String> chunks = SpeechText.chunks(SpeechText.plainText(markdown));
+        List<String> chunks = SpeechText.chunks(SpeechText.plainText(markdown), chunking);
         if (chunks.isEmpty()) {
             return false;
         }
-        ExecutorService pool = Executors.newFixedThreadPool(SYNTHESIS_WORKERS, new ThreadFactory() {
+        ExecutorService pool = Executors.newFixedThreadPool(workers, new ThreadFactory() {
             @Override
             public Thread newThread(Runnable runnable) {
                 Thread thread = new Thread(runnable, "enterprise-ai-tts-worker");
@@ -80,20 +97,14 @@ public final class ReadAloudService {
         });
         List<Future<byte[]>> prepared = new ArrayList<Future<byte[]>>();
         try {
-            for (final String chunk : chunks) {
-                prepared.add(pool.submit(new Callable<byte[]>() {
-                    @Override
-                    public byte[] call() throws SpeechSynthesisException {
-                        return synthesis.synthesize(modelId, chunk).wav();
-                    }
-                }));
-            }
+            prepared.add(submit(pool, chunks.get(0)));
             boolean anySpoken = false;
             String reported = null;
-            for (Future<byte[]> future : prepared) {
+            for (int i = 0; i < chunks.size(); i++) {
                 if (!isCurrent(myGeneration)) {
                     return anySpoken;
                 }
+                Future<byte[]> future = prepared.get(i);
                 byte[] wav;
                 try {
                     wav = future.get();
@@ -102,6 +113,16 @@ public final class ReadAloudService {
                     return anySpoken;
                 } catch (ExecutionException failed) {
                     reported = report(listener, reported, message(failed.getCause()));
+                    wav = null;
+                } finally {
+                    if (i == 0) {
+                        // das erste Stück ist fertig: alle weiteren rechnen, während es klingt
+                        for (int next = 1; next < chunks.size(); next++) {
+                            prepared.add(submit(pool, chunks.get(next)));
+                        }
+                    }
+                }
+                if (wav == null) {
                     continue;
                 }
                 if (!isCurrent(myGeneration)) {
@@ -117,7 +138,17 @@ public final class ReadAloudService {
             return anySpoken;
         } finally {
             pool.shutdownNow();
+            playback.finish();
         }
+    }
+
+    private Future<byte[]> submit(ExecutorService pool, final String chunk) {
+        return pool.submit(new Callable<byte[]>() {
+            @Override
+            public byte[] call() throws SpeechSynthesisException {
+                return synthesis.synthesize(modelId, chunk).wav();
+            }
+        });
     }
 
     /** Beendet das laufende Vorlesen sofort (die laufende Wiedergabe bricht ab, weitere Stücke entfallen). */
