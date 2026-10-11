@@ -15,10 +15,9 @@ import java.util.concurrent.ThreadFactory;
 
 /**
  * Vorlese-Ablauf aus askai-java8 arch ({@code PiperReadAloudService}, Batch-Pipeline): die Antwort wird in der
- * gewählten {@link SpeechChunking} geteilt, die Stücke rechnet ein kleiner Worker-Pool, die Wiedergabe läuft strikt in
- * Lesereihenfolge über eine durchgehende Ausgabe. Das erste Stück rechnet allein, damit es nicht mit den folgenden um
- * die CPU konkurriert; sobald es fertig ist, beginnt seine Wiedergabe und alle weiteren Stücke rechnen währenddessen.
- * Ein neues {@link #speak} oder {@link #stop()} beendet das laufende (Generationszähler wie in arch). Ohne piper.exe,
+ * gewählten {@link SpeechChunking} geteilt, JEDES Stück geht sofort an einen kleinen Worker-Pool, die Wiedergabe läuft
+ * strikt in Lesereihenfolge über eine durchgehende Ausgabe; kein Stück wartet mit seiner Synthese auf ein anderes
+ * (wie arch). Ein neues {@link #speak} oder {@link #stop()} beendet das laufende (Generationszähler wie in arch). Ohne piper.exe,
  * ohne Windows-Stimme und ohne NLP-Sprachtrennung: die eine Stimme ist das gewählte TTS-Modell.
  */
 public final class ReadAloudService {
@@ -97,7 +96,9 @@ public final class ReadAloudService {
         });
         List<Future<byte[]>> prepared = new ArrayList<Future<byte[]>>();
         try {
-            prepared.add(submit(pool, chunks.get(0)));
+            for (String chunk : chunks) {
+                prepared.add(submit(pool, chunk));
+            }
             boolean anySpoken = false;
             String reported = null;
             for (int i = 0; i < chunks.size(); i++) {
@@ -114,13 +115,6 @@ public final class ReadAloudService {
                 } catch (ExecutionException failed) {
                     reported = report(listener, reported, message(failed.getCause()));
                     wav = null;
-                } finally {
-                    if (i == 0) {
-                        // das erste Stück ist fertig: alle weiteren rechnen, während es klingt
-                        for (int next = 1; next < chunks.size(); next++) {
-                            prepared.add(submit(pool, chunks.get(next)));
-                        }
-                    }
                 }
                 if (wav == null) {
                     continue;

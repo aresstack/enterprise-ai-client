@@ -56,6 +56,9 @@ final class ModelsTab {
             new EnumMap<ModelCategory, ModelSelection>(ModelCategory.class);
     private final List<CategoryModelRow> rows = new ArrayList<CategoryModelRow>();
     private final List<CategoryModelRow> localRows = new ArrayList<CategoryModelRow>();
+    /** Sichten anderer Reiter auf dieselben Auswahlen (Sprachausgabe), gefüllt wie die eigenen. */
+    private final List<CategoryModelRow> mirrorRows = new ArrayList<CategoryModelRow>();
+    private final List<CategoryModelRow> localMirrorRows = new ArrayList<CategoryModelRow>();
     private final JPanel statusLines = new JPanel();
     private final ComicButton refresh;
     private final JTextField localModelRoot;
@@ -66,6 +69,7 @@ final class ModelsTab {
     private final ComposerToggleButton localButton;
     private final JPanel panel;
     private boolean refreshedOnce;
+    private ModelCatalogSnapshot lastSnapshot = ModelCatalogSnapshot.empty();
     private boolean localShown;
 
     ModelsTab(SettingsDialogActions actions, Supplier<SettingsForm> form, ComicPalette palette) {
@@ -224,7 +228,29 @@ final class ModelsTab {
                 }
             }
             localRow(category).showInstalled(installed);
+            for (CategoryModelRow mirror : localMirrorRows) {
+                if (mirror.category() == category) {
+                    mirror.showInstalled(installed);
+                }
+            }
         }
+    }
+
+    /** Eine Sicht eines anderen Reiters auf {@link #selection}; sie bekommt dieselben Listen wie die eigenen. */
+    void mirror(CategoryModelRow row, boolean local) {
+        mirrorRows.add(row);
+        if (local) {
+            localMirrorRows.add(row);
+        }
+        row.show(lastSnapshot);
+    }
+
+    /** Ein anderer Reiter zeigt eine Sicht: Modellquellen und installierte Modelle wie beim Anzeigen laden. */
+    void mirrorShown() {
+        if (!refreshedOnce) {
+            refresh();
+        }
+        voices.shown();
     }
 
     JPanel panel() {
@@ -290,6 +316,10 @@ final class ModelsTab {
 
     private void apply(ModelCatalogSnapshot snapshot) {
         ModelCatalogSnapshot shown = snapshot == null ? ModelCatalogSnapshot.empty() : snapshot;
+        lastSnapshot = shown;
+        for (CategoryModelRow row : mirrorRows) {
+            row.show(shown);
+        }
         for (CategoryModelRow row : rows) {
             row.show(shown);
         }

@@ -135,7 +135,7 @@ public final class SettingsPanel extends JPanel {
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
         this.modelsTab = new ModelsTab(actions, current, palette);
-        this.speechTab = new SpeechTab(palette);
+        this.speechTab = new SpeechTab(modelsTab, actions, palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START
@@ -405,6 +405,8 @@ public final class SettingsPanel extends JPanel {
         cards.show(deck, name);
         if (TAB_LABELS[MODELS_TAB].equals(name)) {
             modelsTab.shown();
+        } else if (TAB_LABELS[SPEECH_TAB].equals(name)) {
+            modelsTab.mirrorShown();
         } else if (TAB_LABELS[TECHNICAL_TAB].equals(name)) {
             loadTechnicalDetails();
         }

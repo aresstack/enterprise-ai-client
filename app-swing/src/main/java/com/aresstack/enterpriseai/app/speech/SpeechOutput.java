@@ -14,7 +14,7 @@ import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
  */
 public final class SpeechOutput {
 
-    static final String NO_MODEL = "Sprachausgabe aus: kein TTS-Modell gewählt (Einstellungen → Modelle)";
+    static final String NO_MODEL = "Sprachausgabe aus: kein TTS-Modell gewählt (Einstellungen → Sprachausgabe)";
     static final String NO_PORT = "Sprachausgabe aus: die Quelle des gewählten TTS-Modells ist nicht verfügbar "
             + "(lokale Stimme installiert? Einstellungen → Modelle → Lokale Modelle)";
 
