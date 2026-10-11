@@ -265,9 +265,18 @@ public class ConfluenceKnowledgeSourceTest {
 
     @Test
     public void readingViewFallsBackToTheViewWhenTheExportViewIsEmpty() throws Exception {
-        confluence.page("111", "Alt", "DEV", "<p>Nur body.view</p>").exportView("");
+        confluence.page("111", "Alt", "DEV", "<p>Nur body.view: <span class=\"jira-issue\" data-jira-key=\"PRJ-7\">"
+                + "<a class=\"jira-issue-key\" href=\"https://jira.invalid/browse/PRJ-7\">PRJ-7</a> - "
+                + "<span class=\"summary\">Getting issue details...</span>"
+                + "<span class=\"aui-lozenge\">STATUS</span></span></p>").exportView("");
 
-        assertTrue(source().pageView(page("111")).html().contains("Nur body.view"));
+        String html = source().pageView(page("111")).html();
+
+        assertTrue(html, html.contains("Nur body.view"));
+        // Der Lade-Platzhalter des Jira-Makros bleibt nicht stehen, der Vorgangsschlüssel mit Link schon.
+        assertFalse(html, html.contains("Getting issue details"));
+        assertFalse(html, html.contains("STATUS"));
+        assertTrue(html, html.contains(">PRJ-7</a>"));
     }
 
     @Test

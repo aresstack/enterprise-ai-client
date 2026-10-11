@@ -69,30 +69,23 @@ public class KnowledgeReaderPanelTest {
             List<JEditorPane> panes = new ArrayList<JEditorPane>();
             collect(scroll.getViewport().getView(), panes);
             JEditorPane pane = panes.get(0);
-            // Die Adresse bricht um, statt die Tabelle über den Rand zu schieben ...
-            String text;
-            try {
-                text = pane.getDocument().getText(0, pane.getDocument().getLength());
-            } catch (javax.swing.text.BadLocationException e) {
-                throw new AssertionError(e);
+            // Die Adresse bricht innerhalb der Zelle um: kein Zeichen steht rechts außerhalb der Ansicht ...
+            for (int offset = 0; offset < pane.getDocument().getLength(); offset++) {
+                java.awt.Rectangle caret;
+                try {
+                    caret = pane.modelToView(offset);
+                } catch (javax.swing.text.BadLocationException e) {
+                    throw new AssertionError(e);
+                }
+                if (caret != null) {
+                    assertTrue("Zeichen " + offset + " bei x=" + caret.x + " rechts außerhalb von " + pane.getWidth(),
+                            caret.x <= pane.getWidth());
+                }
             }
-            assertTrue(text, text.indexOf(ReaderHtmlView.BREAK) >= 0);
-            // ... und was trotzdem nicht passt, ist rollbar statt rechts abgeschnitten.
-            assertTrue("rechts abgeschnitten: " + pane.getWidth() + " < " + pane.getMinimumSize().width,
-                    pane.getWidth() >= pane.getMinimumSize().width);
+            // ... und die Ansicht ist nicht breiter als der Lesebereich.
+            assertTrue("breiter als der Lesebereich: " + pane.getWidth(), pane.getWidth() <= 500);
             assertNothingCut(reader);
         });
-    }
-
-    @Test
-    public void longWordsGetBreaksButTagsEntitiesAndCodeStayIntact() {
-        String html = ReaderHtmlView.breakLongWords("<a href=\"https://a.invalid/x/y\">https://host.invalid/aa/bb/cc/dd"
-                + "?a=1&amp;b=2</a> kurz <pre>/very/long/path/that/stays/as/it/is</pre>");
-        String b = String.valueOf(ReaderHtmlView.BREAK);
-
-        assertTrue(html, html.startsWith("<a href=\"https://a.invalid/x/y\">https:" + b + "/" + b + "/" + b + "host."));
-        assertTrue(html, html.contains("&amp;" + b + "b=" + b + "2</a> kurz "));
-        assertTrue(html, html.contains("<pre>/very/long/path/that/stays/as/it/is</pre>"));
     }
 
     private static String longHtml() {

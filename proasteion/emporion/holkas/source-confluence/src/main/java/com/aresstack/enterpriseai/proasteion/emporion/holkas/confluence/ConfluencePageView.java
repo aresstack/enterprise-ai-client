@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Bereitet {@code body.view} für die Lese-Ansicht auf (paketintern), mit den Regeln aus MainframeMate
@@ -29,6 +30,34 @@ final class ConfluencePageView {
         this.images = images;
     }
 
+    private static final Pattern JIRA_PLACEHOLDER =
+            Pattern.compile("(?i)^\\s*Getting issue details\\s*(\\.\\.\\.|\u2026)?\\s*$");
+
+    /**
+     * Jira-Makros, die Confluence nur im Browser per Script füllt ({@code body.view}, Rückfall ohne
+     * {@code export_view}): „KEY - Getting issue details... STATUS“ wird zum Vorgangsschlüssel mit seinem Link,
+     * ein Platzhalter ohne Vorgang fällt weg.
+     */
+    static void dropJiraPlaceholders(Document doc) {
+        for (Element placeholder : doc.body().getElementsMatchingOwnText(JIRA_PLACEHOLDER)) {
+            if (placeholder.parent() == null) {
+                continue; // schon mit seinem Vorgang ersetzt
+            }
+            Element issue = placeholder.closest(".jira-issue, [data-jira-key]");
+            if (issue == null) {
+                placeholder.remove();
+                continue;
+            }
+            Element key = issue.selectFirst("a.jira-issue-key, a[href*=/browse/]");
+            issue.empty();
+            if (key != null) {
+                issue.appendChild(key);
+            } else if (!issue.attr("data-jira-key").isEmpty()) {
+                issue.appendText(issue.attr("data-jira-key"));
+            }
+        }
+    }
+
     /** @param baseUri Basis-URL der Confluence-Instanz mit abschließendem {@code /} */
     static ConfluencePageView of(String bodyHtml, String baseUri) {
         Document doc = Jsoup.parseBodyFragment(bodyHtml == null ? "" : bodyHtml, baseUri);
@@ -38,6 +67,7 @@ final class ConfluencePageView {
         // HTML-Darstellung kennt display:none nicht zuverlässig.
         doc.select(".expand-control, .aui-icon, .hidden").remove();
         doc.select("[style~=(?i)display:\\s*none]").remove();
+        dropJiraPlaceholders(doc);
         List<InlineImage> images = new ArrayList<InlineImage>();
         Set<String> seen = new LinkedHashSet<String>();
         for (Element img : doc.select("img")) {
