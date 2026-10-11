@@ -7,6 +7,10 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
+import com.aresstack.enterpriseai.app.ui.reader.ReaderLink;
+import com.aresstack.enterpriseai.app.ui.reader.ReaderLinkRow;
+import com.aresstack.enterpriseai.ui.comic.control.ComicSearchBar;
+
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -22,6 +26,11 @@ import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 
 /**
  * Die Drawer-Seite „Wissensquellen“: oben genau ein „+ Quelle“ (wie „+ Neuer Chat“; welche Quelltypen es gibt,
@@ -34,6 +43,8 @@ import java.util.List;
 public final class KnowledgeSourcesPanel extends JPanel {
 
     public static final String ADD_LABEL = "+ Quelle";
+    static final String SEARCH_PLACEHOLDER = "Quellen durchsuchen…";
+    static final String SEARCH_TOOLTIP = "Alle angehakten Quellen gleichzeitig durchsuchen (Enter)";
     static final String EMPTY_TEXT = "Noch keine Wissensquelle. „+ Quelle“ legt eine an.";
     static final String HINT_TEXT = "<html>Der Chat durchsucht nur angehakte Quellen; abgewählte werden auch beim "
             + "Start nicht indexiert.</html>";
@@ -49,6 +60,8 @@ public final class KnowledgeSourcesPanel extends JPanel {
     private List<KnowledgeSourceItem> items = Collections.emptyList();
     private KnowledgeSourceActions actions;
     private Runnable indexSettingsAction;
+    private final ComicSearchBar searchBar;
+    private SourceSearchState search;
 
     public KnowledgeSourcesPanel(ComicPalette palette) {
         super(new BorderLayout());
@@ -59,6 +72,49 @@ public final class KnowledgeSourcesPanel extends JPanel {
         addRows.setOpaque(false);
         addRows.setBorder(BorderFactory.createEmptyBorder(8, 2, 4, 8));
         addRows.add(addButton);
+
+        searchBar = new ComicSearchBar(SEARCH_PLACEHOLDER, SEARCH_TOOLTIP, palette);
+        searchBar.addSearchAction(event -> {
+            String text = searchBar.getText().trim();
+            if (text.isEmpty()) {
+                clearSearch();
+            } else if (actions != null) {
+                actions.searchRequested(text);
+            }
+        });
+        searchBar.getTextField().getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                if (searchBar.getText().trim().isEmpty() && search != null) {
+                    clearSearch();
+                }
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+            }
+        });
+        searchBar.getTextField().addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent event) {
+                if (event.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    searchBar.setText("");
+                    clearSearch();
+                }
+            }
+        });
+        JPanel searchRow = new JPanel(new BorderLayout());
+        searchRow.setOpaque(false);
+        searchRow.setBorder(BorderFactory.createEmptyBorder(ResearchUiMetrics.SLIM_BAR_TOP_GAP, 8, 4, 4));
+        searchRow.add(searchBar, BorderLayout.CENTER);
+        JPanel north = new JPanel(new BorderLayout());
+        north.setOpaque(false);
+        north.add(searchRow, BorderLayout.NORTH);
+        north.add(addRows, BorderLayout.CENTER);
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
@@ -93,7 +149,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
             south.add(part);
         }
 
-        add(addRows, BorderLayout.NORTH);
+        add(north, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
         add(south, BorderLayout.SOUTH);
         refresh();
@@ -147,6 +203,32 @@ public final class KnowledgeSourcesPanel extends JPanel {
         refresh();
     }
 
+    /**
+     * Zeigt das Ergebnis der Suchleiste statt der Quellen (wie die globale Suche in MainframeMate, mit wenigen Details:
+     * Titel, Auszug, Fundstelle); {@code null} zeigt wieder die Quellen.
+     */
+    public void setSearchState(SourceSearchState state) {
+        this.search = state;
+        refresh();
+    }
+
+    public SourceSearchState searchState() {
+        return search;
+    }
+
+    public ComicSearchBar searchBar() {
+        return searchBar;
+    }
+
+    private void clearSearch() {
+        boolean wasSearching = search != null;
+        search = null;
+        refresh();
+        if (wasSearching && actions != null) {
+            actions.searchCleared();
+        }
+    }
+
     public List<KnowledgeSourceItem> items() {
         return Collections.unmodifiableList(items);
     }
@@ -171,6 +253,10 @@ public final class KnowledgeSourcesPanel extends JPanel {
         addButton.setEnabled(canAdd);
         list.removeAll();
         rows.clear();
+        if (search != null) {
+            showHits(search);
+            return;
+        }
         JLabel header = sectionHeader("WISSENSQUELLEN");
         header.setAlignmentX(LEFT_ALIGNMENT);
         list.add(header);
@@ -187,6 +273,43 @@ public final class KnowledgeSourcesPanel extends JPanel {
             row.setAlignmentX(LEFT_ALIGNMENT);
             rows.add(row);
             list.add(row);
+        }
+        list.add(Box.createVerticalGlue());
+        list.revalidate();
+        list.repaint();
+    }
+
+    /** Die Trefferliste: je Quelle eine Überschrift, darunter ihre Treffer; Quellen ohne Antwort stehen rot darunter. */
+    private void showHits(SourceSearchState state) {
+        JLabel summary = sectionHeader(state.summary().toUpperCase(Locale.GERMANY));
+        summary.setAlignmentX(LEFT_ALIGNMENT);
+        list.add(summary);
+        String currentSource = null;
+        for (ReaderLink hit : state.hits()) {
+            if (!hit.sourceId().equals(currentSource)) {
+                currentSource = hit.sourceId();
+                JLabel source = new JLabel(currentSource);
+                source.setFont(ResearchUiTypography.semiBold(11.5f));
+                source.setForeground(ResearchUiPalette.ACCENT_BLUE);
+                source.setBorder(BorderFactory.createEmptyBorder(8, 10, 2, 8));
+                source.setAlignmentX(LEFT_ALIGNMENT);
+                list.add(source);
+            }
+            ReaderLinkRow row = new ReaderLinkRow(hit, (link, pin) -> {
+                if (actions != null) {
+                    actions.linkOpened(link, pin);
+                }
+            }, null, palette);
+            row.setAlignmentX(LEFT_ALIGNMENT);
+            list.add(row);
+        }
+        for (String problem : state.problems()) {
+            JLabel line = new JLabel(problem);
+            line.setFont(ResearchUiTypography.regular(11f));
+            line.setForeground(ResearchUiPalette.DANGER_RED);
+            line.setBorder(BorderFactory.createEmptyBorder(6, 10, 2, 8));
+            line.setAlignmentX(LEFT_ALIGNMENT);
+            list.add(line);
         }
         list.add(Box.createVerticalGlue());
         list.revalidate();

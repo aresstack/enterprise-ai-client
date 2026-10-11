@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceActions;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceItem;
 import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.application.knowledge.IndexingStatus;
+import com.aresstack.enterpriseai.app.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
@@ -96,6 +97,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private SourceEditorLauncher launcher;
     private volatile Supplier<List<String>> vaultTitles;
     private String running;
+    private KnowledgeReadingController reading;
 
     /**
      * @param startupSources die beim Start geladenen Quellen (Anzeige, solange keine Datei angeschlossen ist)
@@ -281,6 +283,51 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             writeProblems.put(sourceId, "Entfernen fehlgeschlagen; bitte erneut versuchen");
             publish();
         }
+    }
+
+    // ------------------------------------------------------------------ Suche und Lesebereich
+
+    /** Wohin Suchleiste und Klicks auf Quellen und Treffer gehen (ohne: wirkungslos). */
+    public void setReading(KnowledgeReadingController value) {
+        this.reading = value;
+    }
+
+    @Override
+    public void searchRequested(String text) {
+        if (reading != null) {
+            reading.searchRequested(text);
+        }
+    }
+
+    @Override
+    public void searchCleared() {
+        if (reading != null) {
+            reading.searchCleared();
+        }
+    }
+
+    @Override
+    public void linkOpened(ReaderLink link, boolean pin) {
+        if (reading != null) {
+            reading.open(link, pin);
+        }
+    }
+
+    /** Die angebundenen, angehakten Quellen in Anzeigereihenfolge (die Suchleiste durchsucht genau diese). */
+    public List<KnowledgeSourceRegistration> enabledRegistrations() {
+        List<KnowledgeSourceRegistration> enabled = new ArrayList<KnowledgeSourceRegistration>();
+        for (Map.Entry<String, KnowledgeSourceRegistration> entry : live.entrySet()) {
+            if (!pendingRestart.contains(entry.getKey()) && !removing.contains(entry.getKey())
+                    && selection.isEnabled(entry.getValue().sourceId())) {
+                enabled.add(entry.getValue());
+            }
+        }
+        return enabled;
+    }
+
+    /** Die angebundene Quelle zur ID oder {@code null}. */
+    public KnowledgeSourceRegistration registration(String sourceId) {
+        return sourceId == null || pendingRestart.contains(sourceId) ? null : live.get(sourceId);
     }
 
     @Override

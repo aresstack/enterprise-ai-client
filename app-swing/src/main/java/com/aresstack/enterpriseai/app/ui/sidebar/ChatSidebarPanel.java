@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
 
 import javax.swing.BorderFactory;
+import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
@@ -35,6 +36,8 @@ public final class ChatSidebarPanel extends JPanel {
     private final String defaultTabTitle;
     private final JComponent defaultTabComponent;
     private final List<String> titles = new ArrayList<String>();
+    private final Map<String, Icon> icons = new LinkedHashMap<String, Icon>();
+    private Icon defaultTabIcon;
 
     private String activeTitle;
     private Supplier<List<ChatSidebarTab>> extraTabsSupplier;
@@ -68,6 +71,17 @@ public final class ChatSidebarPanel extends JPanel {
     /** Die Seitentitel in Reihenfolge — Standardseite zuerst, dann die Beiträge. */
     public List<String> tabTitles() {
         return Collections.unmodifiableList(new ArrayList<String>(titles));
+    }
+
+    /** Die Symbole der Seiten, die eines haben (Titel → Symbol). */
+    public Map<String, Icon> tabIcons() {
+        return Collections.unmodifiableMap(new LinkedHashMap<String, Icon>(icons));
+    }
+
+    /** Das Symbol der Standardseite in der Reiterleiste ({@code null} = Titel als Text). */
+    public void setDefaultTabIcon(Icon icon) {
+        this.defaultTabIcon = icon;
+        rebuildTabs();
     }
 
     /** Der Titel der sichtbaren Seite. */
@@ -106,6 +120,10 @@ public final class ChatSidebarPanel extends JPanel {
     public void rebuildTabs() {
         panes.removeAll();
         titles.clear();
+        icons.clear();
+        if (defaultTabIcon != null) {
+            icons.put(defaultTabTitle, defaultTabIcon);
+        }
         Map<String, JComponent> byTitle = new LinkedHashMap<String, JComponent>();
         byTitle.put(defaultTabTitle, defaultTabComponent);
         List<ChatSidebarTab> extras = extraTabsSupplier == null
@@ -114,6 +132,9 @@ public final class ChatSidebarPanel extends JPanel {
             for (ChatSidebarTab tab : extras) {
                 if (tab != null && tab.getTitle() != null && !byTitle.containsKey(tab.getTitle())) {
                     byTitle.put(tab.getTitle(), tab.getComponent());
+                    if (tab.getIcon() != null) {
+                        icons.put(tab.getTitle(), tab.getIcon());
+                    }
                 }
             }
         }

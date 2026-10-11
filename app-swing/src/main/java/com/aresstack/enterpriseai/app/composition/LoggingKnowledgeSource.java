@@ -6,6 +6,9 @@ import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.SourceQuery;
+import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
@@ -20,7 +23,7 @@ import java.util.logging.Logger;
  * lesbar“ ohne den eigentlichen Grund. Secrets gehören laut Vorgabe in keine Ausnahmemeldung, deshalb darf die
  * Meldung der Quelle unverändert ins Protokoll.
  */
-final class LoggingKnowledgeSource implements KnowledgeSourcePort {
+final class LoggingKnowledgeSource implements SearchableKnowledgeSource {
 
     private static final Logger LOG = Logger.getLogger(LoggingKnowledgeSource.class.getName());
 
@@ -73,6 +76,22 @@ final class LoggingKnowledgeSource implements KnowledgeSourcePort {
             throw logged("discoverLinks " + value(resourceId), e);
         } catch (RuntimeException e) {
             throw unexpected("discoverLinks " + value(resourceId), e);
+        }
+    }
+
+    /** Reicht die Suche der Quelle durch; eine Quelle ohne eigene Suche meldet {@code UNSUPPORTED}. */
+    @Override
+    public List<SourceSearchHit> search(SourceQuery query) throws KnowledgeSourceException {
+        if (!(delegate instanceof SearchableKnowledgeSource)) {
+            throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED,
+                    "Quelle " + sourceId().value() + " hat keine eigene Suche");
+        }
+        try {
+            return ((SearchableKnowledgeSource) delegate).search(query);
+        } catch (KnowledgeSourceException e) {
+            throw logged("search", e);
+        } catch (RuntimeException e) {
+            throw unexpected("search", e);
         }
     }
 

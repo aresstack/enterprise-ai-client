@@ -14,6 +14,9 @@ import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.SourceQuery;
+import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourceScope;
@@ -147,7 +150,7 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
     }
 
     /** Öffnet die eigentliche Quelle beim ersten Zugriff, nachdem KeePass die Adresse geliefert hat. */
-    private final class Deferred implements KnowledgeSourcePort {
+    private final class Deferred implements SearchableKnowledgeSource {
 
         private final KnowledgeSourceId sourceId;
         private final SourceSettings settings;
@@ -189,6 +192,16 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
         @Override
         public List<SourceLink> discoverLinks(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
             return port().discoverLinks(resourceId);
+        }
+
+        @Override
+        public List<SourceSearchHit> search(SourceQuery query) throws KnowledgeSourceException {
+            KnowledgeSourcePort port = port();
+            if (!(port instanceof SearchableKnowledgeSource)) {
+                throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED,
+                        "Quelle " + sourceId.value() + " hat keine eigene Suche");
+            }
+            return ((SearchableKnowledgeSource) port).search(query);
         }
 
         @Override

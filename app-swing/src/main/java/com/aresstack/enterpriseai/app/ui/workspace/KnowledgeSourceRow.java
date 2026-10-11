@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.app.ui.workspace;
 
+import com.aresstack.enterpriseai.app.ui.reader.ReaderLink;
+
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.paint.ResearchCheckIcon;
@@ -34,14 +36,15 @@ import java.awt.event.MouseEvent;
  *     34 Seiten im Index · Stand 00:12
  * </pre>
  *
- * Das Häkchen schaltet die Quelle für Chat und Indexierung an und ab, ⟳ indexiert sie jetzt, ✎ und ein Klick auf
- * den Text öffnen den Quellen-Dialog, ✕ entfernt die Quelle (nach kurzer Rückfrage). Transparent in Ruhe, heller blauer Hauch beim Überfahren (wie die Chat-Zeilen);
+ * Das Häkchen schaltet die Quelle für Chat und Indexierung an und ab, ⟳ indexiert sie jetzt, ✎ öffnet den
+ * Quellen-Dialog, ein Klick auf den Text zeigt die Quelle im Lesebereich (Doppelklick heftet an), ✕ entfernt die Quelle (nach kurzer Rückfrage). Transparent in Ruhe, heller blauer Hauch beim Überfahren (wie die Chat-Zeilen);
  * abgewählte Quellen stehen gedämpft, ein Problem steht rot in der Statuszeile.
  */
 public final class KnowledgeSourceRow extends JPanel {
 
     static final String INDEX_TOOLTIP = "Jetzt indexieren";
     static final String EDIT_TOOLTIP = "Bearbeiten";
+    static final String OPEN_TOOLTIP = "Im Lesebereich zeigen (Doppelklick heftet an)";
     static final String REMOVE_TOOLTIP = "Quelle entfernen";
     private static final Color HOVER_WASH = ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.94f);
 
@@ -140,10 +143,8 @@ public final class KnowledgeSourceRow extends JPanel {
         add(text, BorderLayout.CENTER);
         add(eastTop, BorderLayout.EAST);
 
-        if (item.editable()) {
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            setToolTipText(EDIT_TOOLTIP);
-        }
+        setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        setToolTipText(OPEN_TOOLTIP);
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent event) {
@@ -159,8 +160,9 @@ public final class KnowledgeSourceRow extends JPanel {
 
             @Override
             public void mouseClicked(MouseEvent event) {
-                if (SwingUtilities.isLeftMouseButton(event) && item.editable() && actions != null) {
-                    actions.editRequested(item.id());
+                if (SwingUtilities.isLeftMouseButton(event) && actions != null) {
+                    actions.linkOpened(ReaderLink.source(item.id(), item.description()),
+                            event.getClickCount() >= 2);
                 }
             }
         });
@@ -203,7 +205,7 @@ public final class KnowledgeSourceRow extends JPanel {
 
     @Override
     protected void paintComponent(Graphics graphics) {
-        if (hovered && item.editable()) {
+        if (hovered) {
             Graphics2D g2 = ResearchUiPainter.prepare(graphics);
             try {
                 ResearchUiPainter.fillRound(g2, 0, 0, getWidth(), getHeight(), ResearchUiMetrics.CHAT_ROW_RADIUS,

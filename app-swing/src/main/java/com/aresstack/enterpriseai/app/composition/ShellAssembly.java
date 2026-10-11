@@ -16,7 +16,12 @@ import com.aresstack.enterpriseai.app.chat.ToolSupport;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
+import com.aresstack.enterpriseai.app.knowledge.FavoritesStore;
+import com.aresstack.enterpriseai.app.knowledge.KnowledgeReadingController;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
+import com.aresstack.enterpriseai.application.knowledge.BrowseKnowledgeSourceUseCase;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeDocumentReader;
+import com.aresstack.enterpriseai.application.knowledge.SearchKnowledgeSourcesUseCase;
 import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatComposerPanel;
@@ -75,6 +80,8 @@ public final class ShellAssembly {
     static final String CHATS_DIRECTORY = "chats";
     /** Drawer-Reiter des Konzeptpapiers im Agent-Modus (askai: Artefakt-Ansicht „Concept“). */
     static final String CONCEPT_TAB = "Konzept";
+    /** Die Favoriten des Lesebereichs, neben der Konfigurationsdatei. */
+    static final String FAVORITES_FILE = "favorites.json";
 
     private ShellAssembly() {
     }
@@ -164,6 +171,16 @@ public final class ShellAssembly {
             drawer.setKnowledgeSources(items);
             chatModel.setRagEnabled(!items.isEmpty() && selection.isRestricted());
         });
+        // Suchleiste, Lesebereich und Favoriten (wie globale Suche, Lese-Tab und Lesezeichen in MainframeMate).
+        KnowledgeReadingController reading = new KnowledgeReadingController(workspace, sources::enabledRegistrations,
+                sources::registration,
+                new SearchKnowledgeSourcesUseCase(root.ports().index(), root.ports().embeddingSpaceSource(),
+                        root.workExecutor()),
+                new BrowseKnowledgeSourceUseCase(KnowledgeDocumentReader.direct()),
+                new FavoritesStore(chatsDirectory.resolveSibling(FAVORITES_FILE)), root.uiExecutor(),
+                root.workExecutor());
+        sources.setReading(reading);
+        reading.attach();
         final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources, chatShell.composer());
         chatShell.composer().setModelAction(() -> {
             Runnable action = view.settingsAction();

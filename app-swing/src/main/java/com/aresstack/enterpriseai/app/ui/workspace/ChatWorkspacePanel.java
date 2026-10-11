@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModelListener;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellPanel;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.app.ui.reader.KnowledgeReaderPanel;
 import com.aresstack.enterpriseai.app.ui.sidebar.ChatHistoryRow;
 import com.aresstack.enterpriseai.app.ui.sidebar.ChatSidebarPanel;
 import com.aresstack.enterpriseai.app.ui.sidebar.ChatSidebarTab;
@@ -20,6 +21,7 @@ import com.aresstack.enterpriseai.ui.comic.control.ResearchIconButton;
 import com.aresstack.enterpriseai.ui.comic.control.ResearchPillButton;
 import com.aresstack.enterpriseai.ui.comic.control.ResearchPillDropdown;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
+import com.aresstack.enterpriseai.ui.comic.paint.SidebarIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPainter;
@@ -94,6 +96,9 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
 
     public static final String CHATS_TAB = "Chats";
     public static final String KNOWLEDGE_TAB = "Wissensquellen";
+    public static final String FAVORITES_TAB = "Favoriten";
+    /** Die Karte des Lesebereichs neben Chat und Agent im Deck. */
+    static final String READER_CARD = "READER";
     private final List<ChatSidebarTab> agentTabs = new ArrayList<ChatSidebarTab>();
     static final String NEW_CHAT_LABEL = "+ Neuer Chat";
     static final String SETTINGS_TOOLTIP = "Einstellungen";
@@ -138,6 +143,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private final ResearchPillButton newChatButton;
     private final ResearchIconButton settingsButton;
     private final KnowledgeSourcesPanel knowledgePane;
+    private final KnowledgeReaderPanel reader;
+    private final FavoritesPanel favoritesPane;
     private final List<ChatHistoryRow> chatRows = new ArrayList<ChatHistoryRow>();
 
     private final Timer sidebarCloseTimer;
@@ -174,7 +181,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                 ResearchUiMetrics.RADIUS_CONTROL, ResearchUiMetrics.NEW_CHAT_PADDING_H);
         this.settingsButton = new ResearchIconButton(ComposerIcons.gear(), SETTINGS_TOOLTIP);
         this.knowledgePane = new KnowledgeSourcesPanel(palette);
+        this.reader = new KnowledgeReaderPanel(palette);
+        this.favoritesPane = new FavoritesPanel(palette);
         this.sidebar = new ChatSidebarPanel(CHATS_TAB, buildChatsTab(), palette);
+        sidebar.setDefaultTabIcon(SidebarIcons.scroll());
         this.sidebarSplit = new ComicSplitPane(sidebar, deck, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH, palette);
         this.sidebarCloseTimer = new Timer(SIDEBAR_CLOSE_DELAY_MS, event -> onPointerLeftSidebarArea());
         sidebarCloseTimer.setRepeats(false);
@@ -193,6 +203,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         if (agentShell != null) {
             deck.add(agentShell, ShellMode.AGENT.name());
         }
+        deck.add(reader, READER_CARD);
         buildTopLevelLayout();
         watchModels();
         modes.addListener(this);
@@ -287,11 +298,40 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         refreshRibbonTabs();
     }
 
+    /** Die Drawer-Seite „Favoriten“. */
+    public FavoritesPanel favorites() {
+        return favoritesPane;
+    }
+
+    /** Der Lesebereich (Karte statt des Chats). */
+    public KnowledgeReaderPanel reader() {
+        return reader;
+    }
+
+    /** Macht den Chatbereich zum Lesebereich (wie der Lese-Tab in MainframeMate). */
+    public void showReader() {
+        readerShowing = true;
+        cards.show(deck, READER_CARD);
+    }
+
+    /** Zurück vom Lesebereich zur Chat- bzw. Agent-Ansicht. */
+    public void showChatArea() {
+        readerShowing = false;
+        ShellMode mode = modes.getMode();
+        cards.show(deck, mode == ShellMode.AGENT && agentShell != null ? mode.name() : ShellMode.CHAT.name());
+    }
+
+    public boolean isReaderShowing() {
+        return readerShowing;
+    }
+
+    private boolean readerShowing;
+
     @Override
     public void modeChanged(ShellMode mode) {
         sidebar.rebuildTabs();
         refreshRibbonTabs();
-        cards.show(deck, mode == ShellMode.AGENT && agentShell != null ? mode.name() : ShellMode.CHAT.name());
+        showChatArea();
         int index = Arrays.asList(ShellMode.values()).indexOf(mode);
         if (modePill.getSelectedIndex() != index) {
             modePill.setSelectedIndex(index);
@@ -431,6 +471,12 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             }
             sidebar.showTab(title);
             refreshRibbonTabs();
+            // Chats zeigt den Chat, Quellen und Favoriten machen den Chatbereich zum Lesebereich.
+            if (CHATS_TAB.equals(title)) {
+                showChatArea();
+            } else if (KNOWLEDGE_TAB.equals(title) || FAVORITES_TAB.equals(title)) {
+                showReader();
+            }
         });
 
         topBar.setOpaque(false);
@@ -462,6 +508,27 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                 @Override
                 public JComponent getComponent() {
                     return knowledgePane;
+                }
+
+                @Override
+                public javax.swing.Icon getIcon() {
+                    return SidebarIcons.flask();
+                }
+            });
+            tabs.add(new ChatSidebarTab() {
+                @Override
+                public String getTitle() {
+                    return FAVORITES_TAB;
+                }
+
+                @Override
+                public JComponent getComponent() {
+                    return favoritesPane;
+                }
+
+                @Override
+                public javax.swing.Icon getIcon() {
+                    return SidebarIcons.star(true);
                 }
             });
             // askai AgentArtifactTabs: die Artefakt-Ansichten des Agenten nur, solange der Agent-Modus aktiv ist.
@@ -511,6 +578,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             if (actions != null) {
                 actions.newChatRequested(modes.getMode());
             }
+            showChatArea();
             if (menuLocked) {
                 refreshChatList();
             } else {
@@ -661,7 +729,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             return;
         }
         ChatHistoryRow row = new ChatHistoryRow(title, meta, time, model.isStreaming(), modes.getMode() == mode,
-                () -> modes.select(mode), menu, palette);
+                () -> {
+                    modes.select(mode);
+                    showChatArea();
+                }, menu, palette);
         row.setAlignmentX(LEFT_ALIGNMENT);
         chatRows.add(row);
         chatListPanel.add(row);
@@ -732,6 +803,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             return;
         }
         modes.select(ShellMode.CHAT);
+        showChatArea();
         actions.openSavedChatRequested(chatId);
         if (menuLocked) {
             refreshChatList();
@@ -849,7 +921,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     }
 
     private void refreshRibbonTabs() {
-        ribbon.setTabs(sidebar.tabTitles(), sidebar.activeTab());
+        ribbon.setTabs(sidebar.tabTitles(), sidebar.tabIcons(), sidebar.activeTab());
     }
 
     private void openMenuAndSidebar() {

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.ui.sidebar;
 
+import javax.swing.Icon;
 import javax.swing.JComponent;
 
 /**
@@ -14,4 +15,9 @@ public interface ChatSidebarTab {
 
     /** Der Inhalt; wird auf dem EDT gerufen, wenn der Drawer seine Seiten (neu) aufbaut. */
     JComponent getComponent();
+
+    /** Das Symbol in der Reiterleiste statt des Titels (der Titel wird Tooltip); {@code null} = Titel als Text. */
+    default Icon getIcon() {
+        return null;
+    }
 }

@@ -174,8 +174,8 @@ public class ChatWorkspacePanelTest {
                 assertTrue(workspace.burger().isEmphasized());
                 assertTrue(workspace.ribbon().isOpen());
                 assertFalse(workspace.splitPane().isLeftCollapsed());
-                assertEquals(Arrays.asList(ChatWorkspacePanel.CHATS_TAB, ChatWorkspacePanel.KNOWLEDGE_TAB),
-                        workspace.sidebar().tabTitles());
+                assertEquals(Arrays.asList(ChatWorkspacePanel.CHATS_TAB, ChatWorkspacePanel.KNOWLEDGE_TAB,
+                        ChatWorkspacePanel.FAVORITES_TAB), workspace.sidebar().tabTitles());
                 assertEquals(ChatWorkspacePanel.CHATS_TAB, workspace.sidebar().activeTab());
                 workspace.doLayout();
                 paint(workspace);

@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.app.ui.sidebar;
 
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.Timer;
@@ -9,7 +10,9 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Die aufklappende Reiterleiste neben dem Hamburger (askai-java8 arch): je Drawer-Seite ein Eintrag im
@@ -70,9 +73,16 @@ public final class SidebarTabRibbon extends JPanel {
 
     /** Baut die Einträge neu (der aktive ist hervorgehoben); der Entfaltungszustand bleibt. */
     public void setTabs(List<String> titles, String activeTitle) {
+        setTabs(titles, Collections.<String, Icon>emptyMap(), activeTitle);
+    }
+
+    /** Wie oben; Einträge mit Symbol zeigen nur das Symbol, ihr Titel wird zum Tooltip. */
+    public void setTabs(List<String> titles, Map<String, Icon> icons, String activeTitle) {
         content.removeAll();
         for (final String title : titles) {
-            JButton entry = ComposerButton.ribbonEntry(title, title.equals(activeTitle));
+            Icon icon = icons == null ? null : icons.get(title);
+            JButton entry = icon == null ? ComposerButton.ribbonEntry(title, title.equals(activeTitle))
+                    : ComposerButton.ribbonIconEntry(icon, title, title.equals(activeTitle));
             entry.addActionListener(event -> {
                 if (listener != null) {
                     listener.tabSelected(title);

@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.app.ui.workspace;
 
+import com.aresstack.enterpriseai.app.ui.reader.ReaderLink;
+
 /**
  * Was der Drawer-Reiter „Wissensquellen“ auslöst. Die Oberfläche kennt weder Datei noch Index; produktiv
  * verdrahtet {@code app.knowledge.KnowledgeSourcesController} beides. Alle Aufrufe auf dem EDT.
@@ -26,4 +28,16 @@ public interface KnowledgeSourceActions {
 
     /** Ob Hinzufügen geht (ohne Konfigurationsdatei nicht). */
     boolean canAdd();
+
+    /** Suchleiste: alle angehakten Quellen gleichzeitig durchsuchen; das Ergebnis kommt über {@code setSearchState}. */
+    default void searchRequested(String text) {
+    }
+
+    /** Suchleiste geleert: wieder die Quellen statt der Treffer. */
+    default void searchCleared() {
+    }
+
+    /** Eine Quelle oder ein Treffer angeklickt: im Lesebereich zeigen (Vorschau, mit {@code pin} angeheftet). */
+    default void linkOpened(ReaderLink link, boolean pin) {
+    }
 }

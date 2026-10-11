@@ -45,6 +45,11 @@ public final class ResearchUiPalette {
     public static final Color RECORDING_SURFACE = new Color(0xFFF8E1);
     /** The comic dark green of the recording waveform over the composer editor (arch). */
     public static final Color WAVE_GREEN = new Color(0x2E7D32);
+    /** The favorite star (MainframeMate's bookmarked ★ in the tab header) and its darker rim on bright surfaces. */
+    public static final Color FAVORITE_YELLOW = new Color(0xFFC800);
+    public static final Color FAVORITE_YELLOW_EDGE = new Color(0xC99A00);
+    /** The paper of the "Chats" scroll glyph in the drawer ribbon. */
+    public static final Color SCROLL_PAPER = Color.WHITE;
 
     /** Light-chrome tokens for design-study controls embedded in the BRIGHT AskAI surfaces. */
     public static final Color LIGHT_CONTROL_BG = Color.WHITE;

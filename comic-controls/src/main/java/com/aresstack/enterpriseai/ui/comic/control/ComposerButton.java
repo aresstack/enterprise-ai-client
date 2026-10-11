@@ -107,6 +107,16 @@ public class ComposerButton extends JButton {
         return button;
     }
 
+    /** A ribbon entry shown as a glyph only; the tab's name is the tooltip (and the accessible name). */
+    public static ComposerButton ribbonIconEntry(Icon icon, String title, boolean active) {
+        ComposerButton button = new ComposerButton(icon, null, false, title);
+        button.getAccessibleContext().setAccessibleName(title);
+        button.setAccent(ResearchUiPalette.SECONDARY_SURFACE);
+        button.setEmphasized(active);
+        button.setPreferredSize(new Dimension(34, 28));
+        return button;
+    }
+
     /** A slim ‹/› scroll arrow for the sidebar tab ribbon. */
     public static ComposerButton ribbonArrow(boolean leftDirection, String tooltip) {
         ComposerButton button = new ComposerButton(
