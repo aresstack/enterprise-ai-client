@@ -71,10 +71,45 @@ public class DrawioDiagramRendererTest {
 
     @Test
     public void anUnknownStencilIsReportedByNameInsteadOfGuessed() {
-        String xml = mxfile(model("<mxCell id=\"s\" value=\"Pfeil\" style=\"shape=mxgraph.arrows2.arrow;\" vertex=\"1\""
+        String xml = mxfile(model("<mxCell id=\"s\" value=\"Pfeil\" style=\"shape=mxgraph.unbekannt.form;\" vertex=\"1\""
                 + " parent=\"1\"><mxGeometry width=\"80\" height=\"40\" as=\"geometry\"/></mxCell>"));
 
-        assertEquals("nicht unterstützt: shape=mxgraph.arrows2.arrow", unsupported(xml));
+        assertEquals("nicht unterstützt: shape=mxgraph.unbekannt.form", unsupported(xml));
+    }
+
+    @Test
+    public void aBlockArrowIsDrawnAsOutline() throws Exception {
+        String svg = DrawioDiagramRenderer.toSvg(mxfile(model("<mxCell id=\"p\" value=\"\" style=\"shape=mxgraph.arrows2.arrow;"
+                + "dy=0.65;dx=25;notch=0;strokeWidth=2;fillColor=#FFFFFF;strokeColor=#333333;direction=south;\""
+                + " vertex=\"1\" parent=\"1\"><mxGeometry x=\"10\" y=\"10\" width=\"40\" height=\"100\" as=\"geometry\"/>"
+                + "</mxCell>")));
+
+        assertTrue(svg, svg.contains("<path"));
+        assertTrue(svg, svg.contains("#333333"));
+    }
+
+    @Test
+    public void aRotatedInterfaceSymbolIsDrawnAsBallAndSocket() throws Exception {
+        String svg = DrawioDiagramRenderer.toSvg(mxfile(model("<mxCell id=\"s\" value=\"Schnittstelle\""
+                + " style=\"shape=providedRequiredInterface;html=1;verticalLabelPosition=bottom;rotation=-90;\""
+                + " vertex=\"1\" parent=\"1\"><mxGeometry x=\"10\" y=\"10\" width=\"20\" height=\"20\" as=\"geometry\"/>"
+                + "</mxCell>")));
+
+        assertTrue(svg, svg.contains("rotate(-90.0 "));
+        assertTrue(svg, svg.contains(" A 10.0 10.0 0 0 1 ") && svg.contains(" A 6.0 6.0 0 1 1 "));
+        assertTrue(svg, svg.contains("Schnittstelle"));
+    }
+
+    @Test
+    public void theBlockArrowFollowsDrawioGeometry() {
+        java.util.Map<String, Object> style = new java.util.HashMap<String, Object>();
+        style.put("dy", "0.5");
+        style.put("dx", "20");
+        assertEquals("M 0.0 10.0 L 80.0 10.0 L 80.0 0.0 L 100.0 20.0 L 80.0 40.0 L 80.0 30.0 L 0.0 30.0 L 0.0 20.0 Z",
+                DrawioDiagramRenderer.blockArrowPath(0, 0, 100, 40, style));
+        style.put("direction", "south");
+        assertEquals("M 30.0 0.0 L 30.0 80.0 L 40.0 80.0 L 20.0 100.0 L 0.0 80.0 L 10.0 80.0 L 10.0 0.0 L 20.0 0.0 Z",
+                DrawioDiagramRenderer.blockArrowPath(0, 0, 40, 100, style));
     }
 
     @Test

@@ -333,7 +333,7 @@ final class ConfluenceRestClient {
                 return drawioSvg(session, fragment);
             } catch (KnowledgeSourceException | DrawioDiagramRenderer.Unsupported e) {
                 drawio = e.getMessage();
-                LOG.info("[Confluence] draw.io: Vorschau-PNG statt Zeichnung (" + drawio + "): "
+                LOG.info("[Confluence] draw.io: JGraphX nicht möglich (" + drawio + "), verwende PNG-Vorschau: "
                         + withoutQuery(preview == null ? "" : preview));
             }
         }
@@ -373,6 +373,8 @@ final class ConfluenceRestClient {
         } catch (IllegalArgumentException e) {
             throw new DrawioDiagramRenderer.Unsupported("Diagrammname nicht als Adresse darstellbar");
         }
+        LOG.info("[Confluence] draw.io: rendere Diagramm name=" + decoded(name) + " page=" + page + " revision="
+                + (revision == null ? "-" : revision));
         ConfluenceHttpResponse response;
         try {
             response = transport.get(uri, session.headers, config.maxResponseBytes());
@@ -394,7 +396,17 @@ final class ConfluenceRestClient {
         if (xml == null || xml.trim().isEmpty()) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "draw.io-Diagramm: Antwort ohne Diagramm (xml)");
         }
-        return DrawioDiagramRenderer.toSvg(xml).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] svg = DrawioDiagramRenderer.toSvg(xml).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        LOG.info("[Confluence] draw.io: SVG erzeugt (" + svg.length + " Bytes)");
+        return svg;
+    }
+
+    private static String decoded(String encoded) {
+        try {
+            return java.net.URLDecoder.decode(encoded.replace("+", "%2B"), "UTF-8");
+        } catch (java.io.UnsupportedEncodingException | IllegalArgumentException e) {
+            return encoded;
+        }
     }
 
     /** Die PNG-Vorschau bzw. jedes andere Bild der Lese-Ansicht. */

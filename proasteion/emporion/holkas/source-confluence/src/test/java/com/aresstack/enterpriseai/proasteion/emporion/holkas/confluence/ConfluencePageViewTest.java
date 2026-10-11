@@ -141,6 +141,36 @@ public class ConfluencePageViewTest {
         assertEquals(1, ConfluencePageView.of(body, BASE).images.size());
     }
 
+    /** Wie Confluence es liefert: das Makro bringt sein Vorschau-PNG schon mit, die Zeichnung zählt trotzdem. */
+    @Test
+    public void aDeliveredPreviewImageInsideTheMacroIsStillMarkedAsDrawio() {
+        String body = "<div class=\"drawio-macro\" data-macro-name=\"drawio\">"
+                + "<img src=\"/confluence/download/attachments/42/Bild%20A.png?version=55&amp;modificationDate=1700000000000"
+                + "&amp;api=v2\" srcset=\"/confluence/download/attachments/42/Bild%20A.png?version=55 2x\">"
+                + "<div style=\"display:none\" data-diagramdata=\"" + diagram("Bild A", 42, 55) + "\"></div></div>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE);
+
+        assertEquals(1, view.images.size());
+        assertEquals(BASE + "download/attachments/42/Bild%20A.png?version=55&api=v2#drawio=Bild%20A&page=42&revision=55",
+                view.images.get(0).src);
+    }
+
+    @Test
+    public void aDeliveredPreviewImageNextToTheMacroIsStillMarkedAsDrawio() {
+        String body = "<p><span class=\"confluence-embedded-file-wrapper\"><img class=\"confluence-embedded-image\""
+                + " src=\"/confluence/download/attachments/42/Bild%20A.png?version=55&amp;modificationDate=1700000000000"
+                + "&amp;api=v2\"></span></p>"
+                + "<div data-macro-name=\"drawio\"><div style=\"display:none\" data-diagramdata=\""
+                + diagram("Bild A", 42, 55) + "\"></div></div>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE);
+
+        assertEquals(1, view.images.size());
+        assertEquals(BASE + "download/attachments/42/Bild%20A.png?version=55&api=v2#drawio=Bild%20A&page=42&revision=55",
+                view.images.get(0).src);
+    }
+
     @Test
     public void spacesAndUmlautsInImageAddressesAreEncoded() {
         ConfluencePageView view = ConfluencePageView.of(
