@@ -35,10 +35,13 @@ import java.util.function.Supplier;
  *       {@code loadPriority}); wartet nie hinter der Prefetch-Warteschlange und nie hinter einem Agenten.</li>
  *   <li><b>Agent</b>: {@code knowledge_read} liest über {@link #read}/{@link #refresh} auf seinem eigenen Thread, wie
  *       in MainframeMate, wo der Priority-Thread nur der Oberfläche gehört.</li>
- *   <li><b>Index-Thread</b>: ein serieller Verarbeitungs-Thread (askai {@code KnowledgeProcessingRunner}) für
- *       Zerlegen, Embeddings und Index. Sofort verarbeitet er nur, worauf jemand wartet (Auswahl des Benutzers,
- *       {@link #indexNow}, {@link Series#awaitIndexed}); alles nur Vorgeladene erst bei Leerlauf, also wenn kein Abruf
- *       läuft und seit {@value #IDLE_QUIET_MILLIS} ms keiner endete.</li>
+ *   <li><b>Index-Thread</b>: ein serieller Verarbeitungs-Thread (MainframeMate {@code autoIndexExecutor}, askai
+ *       {@code KnowledgeProcessingRunner}) für Zerlegen, Embeddings und Index, getrennt vom UI- und Abrufpfad. Jede
+ *       geladene Seite wird sofort eingereiht und weckt ihn; nach jeder Aufbereitung pausiert er
+ *       {@value #INDEX_PAUSE_MILLIS} ms (MainframeMate), damit Suchen nicht verhungern. Reihenfolge FIFO; nur ein
+ *       Auftrag, auf dessen fertige Aufbereitung ein Aufrufer jetzt tatsächlich wartet ({@link #indexNow},
+ *       {@link Series#awaitIndexed}), kommt vor die noch nicht begonnenen übrigen. Die Herkunft (Klick, Suche,
+ *       Vorladen) allein bevorzugt nichts.</li>
  * </ul>
  * Aufbereitet wird für Vorladen und Lesen über denselben Weg: ist die Revision laut Suche bekannt und so indexiert,
  * passiert nichts; sonst entscheidet der Inhalts-Hash ({@link IndexKnowledgeUseCase#indexDocumentIfChanged}), ob
@@ -52,10 +55,10 @@ public final class KnowledgePrefetchService {
 
     /** Wie lange ein Lesen auf Anforderung höchstens wartet (MainframeMate {@code loadPriority}). */
     static final long PRIORITY_TIMEOUT_SECONDS = 30;
-    /** Kleine Pause nach jeder Leerlauf-Aufbereitung, damit Suchen nicht verhungern (MainframeMate). */
-    private static final long INDEX_PAUSE_MILLIS = 100;
-    /** Leerlauf: kein Abruf läuft und seit so vielen Millisekunden endete keiner. */
-    public static final long IDLE_QUIET_MILLIS = 2000;
+    /** Pause nach jeder Aufbereitung, damit Suchen nicht verhungern (MainframeMate {@code Thread.sleep(100)}). */
+    static final long INDEX_PAUSE_MILLIS = 100;
+    /** Wie lange der Index-Thread bei leerer Warteschlange höchstens schläft (askai {@code idlePollMillis}). */
+    private static final long IDLE_POLL_MILLIS = 1000;
     private static final int SEEN_LIMIT = 10000;
 
     /** Wie eine Seite auf Anforderung geladen wird (z. B. {@code documents.load(id)}). */
@@ -68,12 +71,8 @@ public final class KnowledgePrefetchService {
     private final Supplier<Settings> settings;
     private final ExecutorService priorityThread;
     private final Thread indexThread;
-    private final long idleQuietMillis;
     /** Wartende Aufbereitungen in Ankunftsreihenfolge; geschützt durch sich selbst. */
     private final java.util.LinkedList<IndexJob> indexQueue = new java.util.LinkedList<IndexJob>();
-    private final java.util.concurrent.atomic.AtomicInteger activeLoads =
-            new java.util.concurrent.atomic.AtomicInteger();
-    private volatile long lastLoadEndNanos = System.nanoTime();
     private final Map<KnowledgeResourceId, KnowledgeDocument> cache =
             new LinkedHashMap<KnowledgeResourceId, KnowledgeDocument>();
     private final Map<String, Series> running = new HashMap<String, Series>();
@@ -99,19 +98,12 @@ public final class KnowledgePrefetchService {
      */
     public KnowledgePrefetchService(IndexKnowledgeUseCase indexing, KnowledgeDocumentReader reader,
                                     Supplier<Settings> settings) {
-        this(indexing, reader, settings, IDLE_QUIET_MILLIS);
-    }
-
-    /** Wie oben mit eigener Leerlauf-Schwelle (Tests). */
-    KnowledgePrefetchService(IndexKnowledgeUseCase indexing, KnowledgeDocumentReader reader,
-                             Supplier<Settings> settings, long idleQuietMillis) {
         if (indexing == null || reader == null || settings == null) {
             throw new IllegalArgumentException("indexing, reader und settings sind Pflicht");
         }
         this.indexing = indexing;
         this.reader = reader;
         this.settings = settings;
-        this.idleQuietMillis = Math.max(0, idleQuietMillis);
         this.priorityThread = Executors.newSingleThreadExecutor(threads("enterprise-ai-prefetch-priority"));
         this.indexThread = threads("enterprise-ai-prefetch-index").newThread(this::indexLoop);
         this.indexThread.start();
@@ -173,7 +165,6 @@ public final class KnowledgePrefetchService {
             series.wake = this::wakeIndex;
             running.put(channel, series);
         }
-        lastLoadEndNanos = System.nanoTime(); // eine neue Suche ist Aktivität: der Leerlauf beginnt neu
         return series;
     }
 
@@ -192,7 +183,7 @@ public final class KnowledgePrefetchService {
             if (document == null) {
                 document = remember(loadCurrent(candidate.source(), candidate.id(), candidate.revision()));
             }
-            // Nur Rohcache; zerlegt und eingebettet wird bei Leerlauf oder sobald jemand darauf wartet.
+            // Rohcache zuerst; zerlegt und eingebettet wird auf dem Index-Thread, unabhängig vom Abrufpfad.
             enqueueIndex(document, indexed, pending.urgent);
         } catch (KnowledgeSourceException | RuntimeException e) {
             indexed.completeExceptionally(e); // nur ein Vorladen; Lesen auf Anforderung versucht es erneut
@@ -205,23 +196,12 @@ public final class KnowledgePrefetchService {
      */
     private KnowledgeDocument loadCurrent(KnowledgeSourcePort source, KnowledgeResourceId id, KnowledgeRevision seen)
             throws KnowledgeSourceException {
-        activeLoads.incrementAndGet();
-        try {
-            if (seen != null && seen.isKnown()) {
-                KnowledgeDocument document = reader.read(source.sourceId(), source, id);
-                return isSameRevision(document, seen) ? document : reader.refresh(source.sourceId(), source, id);
-            }
-            // Suche ohne Revision: nur die Quelle weiß, ob sich etwas geändert hat; der Hash spart das Aufbereiten
-            return reader.refresh(source.sourceId(), source, id);
-        } finally {
-            loadEnded();
+        if (seen != null && seen.isKnown()) {
+            KnowledgeDocument document = reader.read(source.sourceId(), source, id);
+            return isSameRevision(document, seen) ? document : reader.refresh(source.sourceId(), source, id);
         }
-    }
-
-    private void loadEnded() {
-        activeLoads.decrementAndGet();
-        lastLoadEndNanos = System.nanoTime();
-        wakeIndex();
+        // Suche ohne Revision: nur die Quelle weiß, ob sich etwas geändert hat; der Hash spart das Aufbereiten
+        return reader.refresh(source.sourceId(), source, id);
     }
 
     /**
@@ -252,7 +232,8 @@ public final class KnowledgePrefetchService {
     /**
      * Liest die Seite, die der Benutzer gerade ausgewählt hat, sofort auf dem Priority-Thread (MainframeMate
      * {@code loadPriority}), an der Prefetch-Warteschlange und am Agenten vorbei; aus dem Cache, wenn schon vorgeladen
-     * und nicht älter als die zuletzt gemeldete Revision. Die Seite wird sofort aufbereitet (nicht erst bei Leerlauf).
+     * und nicht älter als die zuletzt gemeldete Revision. Aufbereitet wird sie im Hintergrund in normaler Reihenfolge,
+     * weil der Aufrufer nur den Text braucht.
      *
      * @throws KnowledgeSourceException {@code UNAVAILABLE} nach {@value #PRIORITY_TIMEOUT_SECONDS} s; sonst der Fehler
      *                                  der Quelle
@@ -264,14 +245,14 @@ public final class KnowledgePrefetchService {
         }
         KnowledgeDocument cached = cachedCurrent(id, null);
         if (cached != null) {
-            enqueueIndex(cached, null, URGENT);
+            enqueueIndex(cached, null, new java.util.concurrent.atomic.AtomicBoolean());
             return cached;
         }
         Future<KnowledgeDocument> task;
         try {
             task = priorityThread.submit(() -> {
                 KnowledgeDocument document = remember(loadCurrent(source, id, seenRevision(id)));
-                enqueueIndex(document, null, URGENT);
+                enqueueIndex(document, null, new java.util.concurrent.atomic.AtomicBoolean());
                 return document;
             });
         } catch (RuntimeException rejected) { // beendet: direkt lesen
@@ -317,12 +298,7 @@ public final class KnowledgePrefetchService {
         if (cached != null) {
             return cached;
         }
-        activeLoads.incrementAndGet();
-        try {
-            return remember(load.load());
-        } finally {
-            loadEnded();
-        }
+        return remember(load.load());
     }
 
     /** Der Index-Pfad, über den jedes Laden indexiert. */
@@ -450,17 +426,10 @@ public final class KnowledgePrefetchService {
         }
     }
 
-    /** {@code true}, wenn kein Abruf läuft und seit {@link #idleQuietMillis} keiner endete. */
-    boolean isIdle() {
-        return activeLoads.get() == 0 && idleLeftMillis() == 0;
-    }
-
-    private long idleLeftMillis() {
-        long quiet = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lastLoadEndNanos);
-        return Math.max(0, idleQuietMillis - quiet);
-    }
-
-    /** Der serielle Verarbeitungs-Thread (askai {@code KnowledgeProcessingRunner}): wartet, statt zu pollen. */
+    /**
+     * Der serielle Verarbeitungs-Thread (MainframeMate {@code autoIndexExecutor}, askai
+     * {@code KnowledgeProcessingRunner}): arbeitet die Warteschlange sofort ab und schläft nur, wenn sie leer ist.
+     */
     private void indexLoop() {
         while (!shutdown) {
             IndexJob job;
@@ -468,8 +437,7 @@ public final class KnowledgePrefetchService {
                 job = nextJob();
                 if (job == null) {
                     try {
-                        long left = activeLoads.get() == 0 ? idleLeftMillis() : 0;
-                        indexQueue.wait(indexQueue.isEmpty() || left == 0 ? 1000 : left);
+                        indexQueue.wait(IDLE_POLL_MILLIS);
                     } catch (InterruptedException e) {
                         return;
                     }
@@ -487,17 +455,15 @@ public final class KnowledgePrefetchService {
                     job.indexed.completeExceptionally(e);
                 }
             }
-            if (!job.urgent.get()) {
-                try {
-                    Thread.sleep(INDEX_PAUSE_MILLIS);
-                } catch (InterruptedException e) {
-                    return;
-                }
+            try {
+                Thread.sleep(INDEX_PAUSE_MILLIS);
+            } catch (InterruptedException e) {
+                return;
             }
         }
     }
 
-    /** Zuerst, worauf jemand wartet; Vorgeladenes nur bei Leerlauf. Unter {@code indexQueue}. */
+    /** FIFO; zuerst nur, worauf ein Aufrufer gerade wartet. Unter {@code indexQueue}. */
     private IndexJob nextJob() {
         for (Iterator<IndexJob> it = indexQueue.iterator(); it.hasNext(); ) {
             IndexJob job = it.next();
@@ -506,14 +472,7 @@ public final class KnowledgePrefetchService {
                 return job;
             }
         }
-        return !indexQueue.isEmpty() && isIdle() ? indexQueue.removeFirst() : null;
-    }
-
-    /** Wie viele Seiten auf ihre Aufbereitung warten (Tests, Diagnose). */
-    int pendingIndexJobs() {
-        synchronized (indexQueue) {
-            return indexQueue.size();
-        }
+        return indexQueue.isEmpty() ? null : indexQueue.removeFirst();
     }
 
     private static final class IndexJob {
@@ -649,7 +608,7 @@ public final class KnowledgePrefetchService {
         }
 
         /**
-         * Macht die ersten {@code count} Treffer dringend (aufbereitet wird sofort, nicht erst bei Leerlauf) und wartet
+         * Macht die ersten {@code count} Treffer dringend (vor übrigem Vorgeladenem aufbereitet) und wartet
          * höchstens {@code timeoutMillis}, bis sie indexiert (oder unverändert,
          * gescheitert, abgebrochen) sind; z. B. damit der Chat seine Frage danach im Index findet.
          *
@@ -660,7 +619,7 @@ public final class KnowledgePrefetchService {
                     new ArrayList<CompletableFuture<ResourceIndexingOutcome>>();
             synchronized (this) {
                 for (Pending entry : pending.subList(0, Math.min(Math.max(0, count), pending.size()))) {
-                    entry.urgent.set(true); // jemand wartet: nicht erst bei Leerlauf aufbereiten
+                    entry.urgent.set(true); // jemand wartet: vor übrigem Vorgeladenem aufbereiten
                     first.add(entry.indexed);
                 }
             }

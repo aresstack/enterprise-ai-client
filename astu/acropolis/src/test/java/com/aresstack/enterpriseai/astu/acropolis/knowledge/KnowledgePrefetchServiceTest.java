@@ -24,7 +24,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Vorladen wie MainframeMate: Abbruch, Fenster ab Cursor, Priority-Lesen, veraltete Revision, Leerlauf. */
+/** Vorladen wie MainframeMate: Abbruch, Fenster ab Cursor, Priority-Lesen, veraltete Revision, Index-Thread. */
 public class KnowledgePrefetchServiceTest {
 
     private final DeterministicEmbeddingPort embeddings = DeterministicEmbeddingPort.withDimension(16);
@@ -59,10 +59,10 @@ public class KnowledgePrefetchServiceTest {
         }
     };
 
-    private KnowledgePrefetchService service(int maxItems, int concurrency, long idleMillis) {
+    private KnowledgePrefetchService service(int maxItems, int concurrency) {
         final KnowledgePrefetchService.Settings settings = KnowledgePrefetchService.Settings.of(maxItems, concurrency,
                 10);
-        prefetch = new KnowledgePrefetchService(indexing, reader, () -> settings, idleMillis);
+        prefetch = new KnowledgePrefetchService(indexing, reader, () -> settings);
         return prefetch;
     }
 
@@ -85,7 +85,7 @@ public class KnowledgePrefetchServiceTest {
 
     @Test
     public void loadsOnlyTheWindowFromTheCursor() throws Exception {
-        service(2, 1, 0);
+        service(2, 1);
         KnowledgePrefetchService.Series series = prefetch.prefetch("drawer", candidates("A", "B", "C", "D", "E"), 2);
         assertEquals(2, series.size());
         series.awaitIndexed(2, 10_000L);
@@ -95,7 +95,7 @@ public class KnowledgePrefetchServiceTest {
 
     @Test
     public void newPrefetchOfTheSameChannelCancelsTheOldSeries() throws Exception {
-        service(5, 1, 0);
+        service(5, 1);
         blocked = wiki.idOf("A").value();
         prefetch.prefetch("drawer", candidates("A", "B", "C"), 0);
         waitUntil(() -> loaded.contains(blocked));
@@ -109,7 +109,7 @@ public class KnowledgePrefetchServiceTest {
 
     @Test
     public void selectionIsLoadedOnThePriorityThreadNotBehindThePrefetchPool() throws Exception {
-        service(5, 1, 0);
+        service(5, 1);
         blocked = wiki.idOf("A").value();
         prefetch.prefetch("drawer", candidates("A", "B"), 0);
         waitUntil(() -> loaded.contains(blocked));
@@ -122,7 +122,7 @@ public class KnowledgePrefetchServiceTest {
 
     @Test
     public void staleCachedRevisionIsNeverDeliveredAfterTheSearchSawANewOne() throws Exception {
-        service(5, 1, 0);
+        service(5, 1);
         KnowledgeResourceId a = wiki.idOf("A");
         assertTrue(prefetch.openSelected(wiki, a).text().contains("Drucker"));
         wiki.update("A", "Seite A über Drucker, jetzt mit IPP.");
@@ -136,25 +136,11 @@ public class KnowledgePrefetchServiceTest {
     }
 
     @Test
-    public void prefetchedPagesAreProcessedOnIdleUnlessSomeoneWaits() throws Exception {
-        service(5, 2, 60_000L);
-        KnowledgePrefetchService.Series series = prefetch.prefetch("drawer", candidates("A", "B"), 0);
-        waitUntil(() -> loaded.size() == 2 && prefetch.pendingIndexJobs() == 2);
-        Thread.sleep(300);
-        assertEquals("ohne Leerlauf nur Rohcache", 2, prefetch.pendingIndexJobs());
-        assertTrue(index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).isEmpty());
-
-        List<ResourceIndexingOutcome> first = series.awaitIndexed(1, 10_000L);
-        assertEquals("wer wartet, bekommt sofort", 1, first.size());
-        assertTrue(index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).contains(wiki.idOf("A")));
-        assertFalse(index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).contains(wiki.idOf("B")));
-    }
-
-    @Test
-    public void idleProcessingStartsOnceNoLoadIsRunning() throws Exception {
-        service(5, 2, 200L);
-        prefetch.prefetch("drawer", candidates("A"), 0);
-        waitUntil(() -> index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).contains(wiki.idOf("A")));
+    public void prefetchedPagesAreIndexedInTheBackgroundWithoutAnyoneWaiting() throws Exception {
+        service(5, 2);
+        prefetch.prefetch("drawer", candidates("A", "B"), 0);
+        waitUntil(() -> index.resourceIds(embeddings.modelIdentity(), wiki.sourceId())
+                .containsAll(java.util.Arrays.asList(wiki.idOf("A"), wiki.idOf("B"))));
     }
 
     private static void waitUntil(java.util.function.BooleanSupplier condition) throws InterruptedException {
