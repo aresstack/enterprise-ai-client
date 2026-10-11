@@ -23,18 +23,30 @@ final class KnowledgePages implements ToolInvoker {
     static final String READ_TOOL = "knowledge_read";
     private static final String SCHEME = "knowledge:";
 
-    /** Ein Treffer der Wissenssuche. */
+    /**
+     * Ein Treffer der Wissenssuche. {@code id} ist die opake Ressourcen-ID für {@code knowledge_read}, {@code url}
+     * die echte Adresse zum Öffnen und Zitieren (leer, wenn die Quelle keine hat), {@code passage} die Passage-ID
+     * und {@code source} die Quelle — alles Metadaten, nie Teil des Auszugs.
+     */
     static final class Hit {
         final String id;
         final String title;
         final String snippet;
         final String url;
+        final String passage;
+        final String source;
 
         Hit(String id, String title, String snippet, String url) {
+            this(id, title, snippet, url, "", "");
+        }
+
+        Hit(String id, String title, String snippet, String url, String passage, String source) {
             this.id = id;
             this.title = title;
             this.snippet = snippet;
             this.url = url;
+            this.passage = passage;
+            this.source = source;
         }
     }
 
@@ -62,7 +74,7 @@ final class KnowledgePages implements ToolInvoker {
             idsByUrl.put(url, hit.id);
             titlesById.put(captureId(hit.id), hit.title);
             urlsById.put(captureId(hit.id), url);
-            remembered.add(new Hit(hit.id, hit.title, hit.snippet, url));
+            remembered.add(new Hit(hit.id, hit.title, hit.snippet, url, hit.passage, hit.source));
         }
         return remembered;
     }
@@ -144,9 +156,10 @@ final class KnowledgePages implements ToolInvoker {
     }
 
     /**
-     * Liest die Treffer von {@code knowledge_search}: Blöcke {@code [n] Titel – Abschnitt}, {@code id: …},
-     * {@code source: …}, danach der Auszug. Tolerant auch für JSON (Array oder {@code hits}/{@code results} mit
-     * {@code id}, {@code title}, {@code snippet}, {@code url}).
+     * Liest die Treffer von {@code knowledge_search}: Blöcke {@code [n] Titel – Abschnitt}, direkt darunter die
+     * Metadatenzeilen {@code id: …}, {@code url: …}, {@code passage: …}, {@code source: …} (nur {@code id:} ist
+     * Pflicht), danach der Auszug. Metadaten gehen nie in den Auszug. Tolerant auch für JSON (Array oder {@code
+     * hits}/{@code results} mit {@code id}, {@code title}, {@code snippet}, {@code url}).
      */
     static List<Hit> parseHits(String text) {
         String trimmed = text == null ? "" : text.trim();
@@ -158,35 +171,80 @@ final class KnowledgePages implements ToolInvoker {
             }
         }
         List<Hit> hits = new ArrayList<Hit>();
-        String title = null;
-        String id = null;
-        StringBuilder snippet = new StringBuilder();
+        HitLines current = null;
         for (String line : trimmed.split("\\r?\\n")) {
             java.util.regex.Matcher header = HIT_HEADER.matcher(line);
             if (header.matches()) {
-                addHit(hits, id, title, snippet);
-                title = header.group(1).trim();
-                id = null;
-                snippet.setLength(0);
-            } else if (title != null && id == null && line.startsWith("id: ")) {
-                id = line.substring("id: ".length()).trim();
-            } else if (title != null && id != null && !line.startsWith("source: ")
-                    && !line.startsWith("Read a hit completely")) {
-                if (snippet.length() > 0 && !line.trim().isEmpty()) {
-                    snippet.append(' ');
-                }
-                snippet.append(line.trim());
+                addHit(hits, current);
+                current = new HitLines(header.group(1).trim());
+            } else if (current != null) {
+                current.accept(line);
             }
         }
-        addHit(hits, id, title, snippet);
+        addHit(hits, current);
         return hits;
     }
 
     private static final java.util.regex.Pattern HIT_HEADER = java.util.regex.Pattern.compile("^\\[\\d+\\]\\s+(.*)$");
 
-    private static void addHit(List<Hit> hits, String id, String title, StringBuilder snippet) {
-        if (id != null && !id.isEmpty()) {
-            hits.add(new Hit(id, title == null ? "" : title, snippet.toString().trim(), ""));
+    /** Die Zeilen eines Treffers: erst der Metadatenkopf, ab der ersten anderen Zeile der Auszug. */
+    private static final class HitLines {
+        final String title;
+        String id = "";
+        String url = "";
+        String passage = "";
+        String source = "";
+        boolean inSnippet;
+        final StringBuilder snippet = new StringBuilder();
+
+        HitLines(String title) {
+            this.title = title;
+        }
+
+        void accept(String line) {
+            if (line.startsWith("Read a hit completely")) {
+                return;
+            }
+            if (!inSnippet) {
+                if (line.startsWith("id: ")) {
+                    id = value(line, "id: ");
+                    return;
+                }
+                if (line.startsWith("url: ")) {
+                    url = value(line, "url: ");
+                    return;
+                }
+                if (line.startsWith("passage: ")) {
+                    passage = value(line, "passage: ");
+                    return;
+                }
+                if (line.startsWith("source: ")) {
+                    source = value(line, "source: ");
+                    return;
+                }
+                if (id.isEmpty() || line.trim().isEmpty()) {
+                    return;
+                }
+                inSnippet = true;
+            }
+            if (line.trim().isEmpty()) {
+                return;
+            }
+            if (snippet.length() > 0) {
+                snippet.append(' ');
+            }
+            snippet.append(line.trim());
+        }
+
+        private static String value(String line, String key) {
+            return line.substring(key.length()).trim();
+        }
+    }
+
+    private static void addHit(List<Hit> hits, HitLines lines) {
+        if (lines != null && !lines.id.isEmpty()) {
+            hits.add(new Hit(lines.id, lines.title, lines.snippet.toString(), lines.url, lines.passage,
+                    lines.source));
         }
     }
 
@@ -211,7 +269,7 @@ final class KnowledgePages implements ToolInvoker {
                 continue;
             }
             hits.add(new Hit(id, first(hit, "title", "name"), first(hit, "snippet", "excerpt", "text"),
-                    first(hit, "url", "link")));
+                    first(hit, "url", "link"), first(hit, "passage", "passageId"), first(hit, "source", "sourceId")));
         }
         return hits;
     }

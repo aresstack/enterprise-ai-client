@@ -178,15 +178,28 @@ public final class WebAcquisitionText {
         return hosts;
     }
 
+    /**
+     * The host of a URL, lower case. An address without a host ({@code file:///…}, a {@code knowledge:} fallback
+     * of a source without its own address) counts under its scheme, so sources of one such kind form one "host"
+     * instead of none; a Windows path ({@code C:\…}) or text without a scheme stays without a host.
+     */
     public static String hostOf(String url) {
         int i = url.indexOf("://");
-        if (i < 0) {
-            return "";
+        if (i >= 0) {
+            String rest = url.substring(i + 3);
+            int slash = rest.indexOf('/');
+            String host = (slash < 0 ? rest : rest.substring(0, slash)).toLowerCase(Locale.ROOT);
+            if (!host.isEmpty()) {
+                return host;
+            }
         }
-        String rest = url.substring(i + 3);
-        int slash = rest.indexOf('/');
-        return (slash < 0 ? rest : rest.substring(0, slash)).toLowerCase(Locale.ROOT);
+        java.util.regex.Matcher scheme = HOSTLESS_SCHEME.matcher(url);
+        return scheme.find() ? scheme.group(1).toLowerCase(Locale.ROOT) : "";
     }
+
+    /** A URI scheme of at least two characters (a single letter is a Windows drive). */
+    private static final java.util.regex.Pattern HOSTLESS_SCHEME =
+            java.util.regex.Pattern.compile("^([A-Za-z][A-Za-z0-9+.-]+):");
 
     public static String join(Set<String> terms) {
         StringBuilder sb = new StringBuilder();
