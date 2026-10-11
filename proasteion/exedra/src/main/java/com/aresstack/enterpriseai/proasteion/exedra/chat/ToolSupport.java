@@ -65,7 +65,7 @@ public final class ToolSupport {
     private static Supplier<List<AiTool>> fixed(List<AiTool> knowledgeTools) {
         List<AiTool> tools = new ArrayList<AiTool>();
         if (knowledgeTools != null) {
-            for (AiTool tool : knowledgeTools()) {
+            for (AiTool tool : knowledgeTools) {
                 if (tool != null) {
                     tools.add(tool);
                 }
@@ -100,7 +100,7 @@ public final class ToolSupport {
 
     /** Das Wissens-Werkzeug {@code name} oder {@code null}. */
     public AiTool knowledgeTool(String name) {
-        for (AiTool tool : knowledgeTools) {
+        for (AiTool tool : knowledgeTools()) {
             if (tool.name().equals(name)) {
                 return tool;
             }
