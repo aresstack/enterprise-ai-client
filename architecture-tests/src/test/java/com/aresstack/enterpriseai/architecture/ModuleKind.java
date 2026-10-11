@@ -26,6 +26,13 @@ enum ModuleKind {
     /** Separater Prozess bzw. Testfixture; darf von keinem Modul referenziert werden. */
     TEST_FIXTURE,
 
+    /**
+     * Eigener Agentenprozess mit {@code main} (eingebauter Recherche-Agent über ACP): sieht Kern, Ports und
+     * Adapter, die er selbst zusammensetzt; die Composition Root nimmt ihn nur zur Laufzeit ins Jar
+     * ({@code runtimeOnly}) und startet ihn über den Klassennamen.
+     */
+    AGENT_PROCESS,
+
     /** Dieses Modul selbst; enthält keine Produktionsklassen. */
     ARCHITECTURE_TESTS,
 

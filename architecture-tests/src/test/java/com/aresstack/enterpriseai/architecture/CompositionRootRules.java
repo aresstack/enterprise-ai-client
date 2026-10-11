@@ -34,7 +34,8 @@ final class CompositionRootRules {
         return noClasses()
                 .that().resideInAPackage(ModuleRegistry.ROOT_PACKAGE + "..")
                 .and().resideOutsideOfPackages(registry.module("app-swing").packagePattern(),
-                        registry.module("acp-demo-agent").packagePattern())
+                        registry.module("acp-demo-agent").packagePattern(),
+                        registry.module("research-agent-acp").packagePattern())
                 .should().callMethodWhere(LoggingRules.call(System.class, "getenv"))
                 .orShould().dependOnClassesThat().resideInAPackage("java.util.prefs..")
                 .orShould().callMethodWhere(LoggingRules.callAny(Properties.class, "load", "loadFromXML"))

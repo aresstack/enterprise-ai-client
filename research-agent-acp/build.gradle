@@ -1,0 +1,9 @@
+description = 'Der eingebaute Recherche-Agent als eigener Prozess (askai-java8 arch: ResearchAgentMain): spricht ACP über STDIO mit dem Client und ruft die Research-Steuerung und das Hauptmodell über den MCP-Endpoint des Hosts. Der Client startet ihn mit derselben Java-Laufzeit aus demselben Fat Jar.'
+
+dependencies {
+    implementation project(':research-domain')
+    implementation project(':research-agent-runtime')
+    implementation project(':mcp-runtime-api')
+    implementation project(':mcp-solon-runtime')
+    implementation libs.acp.sdk
+}

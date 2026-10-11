@@ -44,6 +44,7 @@ public final class ApplicationPorts implements Closeable {
     private final SecretProvider secrets;
     private final AgentBackend agent;
     private final Function<AgentConfig, AgentBackend> agents;
+    private final AgentBackend researchAgent;
     private final List<KnowledgeSourceProvider> sourceProviders;
     private final List<String> sourceWarnings;
     private final List<NamedResource> resources;
@@ -70,6 +71,7 @@ public final class ApplicationPorts implements Closeable {
         this.secrets = builder.secrets;
         this.agent = builder.agent;
         this.agents = builder.agents;
+        this.researchAgent = builder.researchAgent;
         this.sourceProviders = Collections.unmodifiableList(new ArrayList<KnowledgeSourceProvider>(builder.sourceProviders));
         this.sourceWarnings = Collections.unmodifiableList(new ArrayList<String>(builder.sourceWarnings));
         this.resources = Collections.unmodifiableList(new ArrayList<NamedResource>(builder.resources));
@@ -167,6 +169,14 @@ public final class ApplicationPorts implements Closeable {
      * Das eigene Agent-Kommando nach den aktuellen Agent-Einstellungen, gebaut je Agent-Sitzung ({@code null}:
      * ausgeschaltet, der eingebaute Recherche-Agent übernimmt). Ohne Fabrik das Agent-Kommando des Starts.
      */
+    /**
+     * Der eingebaute Recherche-Agent als eigener Prozess über ACP (askai-java8 arch: {@code ResearchAgentMain}),
+     * gestartet mit derselben Java-Laufzeit aus demselben Jar; {@code null}: nicht angebunden (Tests).
+     */
+    public AgentBackend researchAgent() {
+        return researchAgent;
+    }
+
     public AgentBackend agentFor(AgentConfig settings) {
         if (agents == null) {
             return agent;
@@ -226,6 +236,7 @@ public final class ApplicationPorts implements Closeable {
         private SecretProvider secrets;
         private AgentBackend agent;
         private Function<AgentConfig, AgentBackend> agents;
+        private AgentBackend researchAgent;
         private final List<KnowledgeSourceProvider> sourceProviders = new ArrayList<KnowledgeSourceProvider>();
         private final List<String> sourceWarnings = new ArrayList<String>();
         private final List<NamedResource> resources = new ArrayList<NamedResource>();
@@ -303,6 +314,11 @@ public final class ApplicationPorts implements Closeable {
         }
 
         /** Baut das eigene Agent-Kommando je Sitzung aus den aktuellen Einstellungen (siehe {@link #agentFor}). */
+        public Builder researchAgent(AgentBackend value) {
+            this.researchAgent = value;
+            return this;
+        }
+
         public Builder agents(Function<AgentConfig, AgentBackend> value) {
             this.agents = value;
             return this;

@@ -139,7 +139,9 @@ public class ModuleRegistryTest {
                 return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT);
             case COMPOSITION_ROOT:
                 return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT, ModuleKind.APPLICATION,
-                        ModuleKind.ADAPTER, ModuleKind.UI_LIBRARY);
+                        ModuleKind.ADAPTER, ModuleKind.UI_LIBRARY, ModuleKind.AGENT_PROCESS);
+            case AGENT_PROCESS:
+                return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT, ModuleKind.APPLICATION, ModuleKind.ADAPTER);
             default:
                 throw new IllegalStateException("Unbekannte Modulrolle " + kind);
         }

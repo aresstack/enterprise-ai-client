@@ -51,6 +51,9 @@ dependencies {
     implementation project(':research-store')
     implementation project(':research-agent-runtime')
     implementation project(':research-concept')
+    // Der eingebaute Recherche-Agent als eigener Prozess über ACP (askai-java8 arch: ResearchAgentMain). Nur zur
+    // Laufzeit: der Client startet ihn mit derselben Java-Laufzeit aus demselben Fat Jar (java -cp <jar> <Klasse>).
+    runtimeOnly project(':research-agent-acp')
     // Proxy je Ziel in den Modi von win-proxy-java (PAC per PowerShell/VBScript/Windows-Einstellungen, fester
     // Proxy, ...): app.net.HttpRoutes. Bringt GraalJS mit; das Fat Jar führt dessen ServiceLoader-Dateien zusammen.
     implementation libs.win.proxy.java
@@ -111,6 +114,8 @@ tasks.named('test') {
     systemProperty 'acp.agent.java.home', System.getProperty('java.home')
     // Im Gradle-Build darf der Agent-Roundtrip nicht still übersprungen werden.
     systemProperty 'acp.roundtrip.required', 'true'
+    // Der eingebaute Recherche-Agent startet im Roundtrip-Test als Kindprozess auf dem Testklassenpfad.
+    systemProperty 'research.agent.classpath', sourceSets.test.runtimeClasspath.asPath
     // Solon (MCP-Endpoint des Agenten) ist prozessglobal: jede Testklasse in eigener JVM.
     forkEvery = 1
 }

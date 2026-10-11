@@ -176,6 +176,7 @@ public final class AdapterAssembly {
         if (config.agent().enabled()) {
             ports.agent(agent(config.agent(), mcp));
         }
+        ports.researchAgent(researchAgent(mcp));
         // Reihenfolge beim Beenden: erst der MCP-Server (Endpoints weg, Token ungültig), dann der Index.
         ports.closing("mcp-server", new Closeable() {
             @Override
@@ -279,6 +280,57 @@ public final class AdapterAssembly {
             }
         }
         return new KnowledgeSourceCatalog(registrations);
+    }
+
+    /**
+     * Der eingebaute Recherche-Agent (askai-java8 arch: eigener Prozess über ACP): dieselbe Java-Laufzeit
+     * ({@code java.home}), derselbe Klassenpfad (das Fat Jar bzw. der Klassenpfad des Starts), Hauptklasse
+     * {@link #RESEARCH_AGENT_MAIN}. Keine fremde EXE, kein zweites Artefakt. Ein Turn darf so lange dauern wie
+     * Modell und Recherche brauchen; abgebrochen wird über den Stopp-Knopf.
+     */
+    static AgentBackend researchAgent(SolonMcpServerRuntime mcp) {
+        Consumer<String> hostLog = new Consumer<String>() {
+            @Override
+            public void accept(String line) {
+                LOG.log(Level.INFO, "research-agent: " + line);
+            }
+        };
+        List<String> args = new ArrayList<String>();
+        args.add("-Dfile.encoding=UTF-8");
+        args.add("-Djava.awt.headless=true");
+        args.add("-cp");
+        args.add(ownClassPath());
+        args.add(RESEARCH_AGENT_MAIN);
+        return new AgentBackend(new SolonAcpAgentConnector(RESEARCH_AGENT_TURN_TIMEOUT, hostLog),
+                new AgentLaunchSpec(javaExecutable(), args, null), mcp,
+                new McpEndpointDefinition(RESEARCH_ENDPOINT_ID, "Recherche-Steuerung"));
+    }
+
+    /** Hauptklasse des eingebauten Recherche-Agenten (Modul research-agent-acp, nur zur Laufzeit im Jar). */
+    static final String RESEARCH_AGENT_MAIN = "com.aresstack.enterpriseai.acp.research.ResearchAgentMain";
+    static final String RESEARCH_ENDPOINT_ID = "research-control";
+    private static final java.time.Duration RESEARCH_AGENT_TURN_TIMEOUT = java.time.Duration.ofMinutes(30);
+
+    private static String javaExecutable() {
+        java.io.File bin = new java.io.File(System.getProperty("java.home"), "bin");
+        java.io.File exe = new java.io.File(bin, "java.exe");
+        return (exe.isFile() ? exe : new java.io.File(bin, "java")).getAbsolutePath();
+    }
+
+    /** Das Jar, aus dem der Client läuft; ohne Jar (Start aus Klassenverzeichnissen) der Klassenpfad des Starts. */
+    private static String ownClassPath() {
+        try {
+            java.security.CodeSource source = AdapterAssembly.class.getProtectionDomain().getCodeSource();
+            if (source != null && source.getLocation() != null) {
+                java.io.File location = new java.io.File(source.getLocation().toURI());
+                if (location.isFile() && location.getName().endsWith(".jar")) {
+                    return location.getAbsolutePath();
+                }
+            }
+        } catch (Exception unknown) {
+            // Klassenpfad des Starts
+        }
+        return System.getProperty("java.class.path");
     }
 
     static AgentBackend agent(AgentConfig agent, SolonMcpServerRuntime mcp) {

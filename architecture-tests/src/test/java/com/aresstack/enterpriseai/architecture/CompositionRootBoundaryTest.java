@@ -69,9 +69,12 @@ public class CompositionRootBoundaryTest {
     static ArchRule adapterConstructorsOnlyCalledFromCompositionRoot(ModuleRegistry registry) {
         String[] adapters = adapterPackages(registry).toArray(new String[0]);
         String[] ports = packagesOfKind(registry, ModuleKind.PORT).toArray(new String[0]);
+        // Ein eigener Agentenprozess (AGENT_PROCESS) ist die Composition Root seiner JVM.
+        String[] agentProcesses = packagesOfKind(registry, ModuleKind.AGENT_PROCESS).toArray(new String[0]);
         return noClasses()
                 .that().resideOutsideOfPackages(adapters)
                 .and().resideOutsideOfPackage(COMPOSITION_PACKAGE)
+                .and().resideOutsideOfPackages(agentProcesses)
                 .should().callConstructorWhere(target(owner(
                         resideInAnyPackage(adapters).and(assignableTo(resideInAnyPackage(ports))))))
                 .because("Adapter (Klassen eines Adaptermoduls, die einen Port implementieren) entstehen nur in "

@@ -48,7 +48,7 @@ final class ArchitectureRules {
         Map<Technology, List<String>> confinement = new LinkedHashMap<Technology, List<String>>();
         confinement.put(Technology.SWING, Arrays.asList("app-swing", "comic-controls"));
         confinement.put(Technology.LUCENE, Arrays.asList("knowledge-lucene"));
-        confinement.put(Technology.ACP_SDK, Arrays.asList("acp-solon-client", "acp-demo-agent"));
+        confinement.put(Technology.ACP_SDK, Arrays.asList("acp-solon-client", "acp-demo-agent", "research-agent-acp"));
         confinement.put(Technology.SOLON, Arrays.asList("acp-solon-client", "acp-demo-agent", "mcp-solon-runtime"));
         confinement.put(Technology.MCP_SDK, Arrays.asList("mcp-solon-runtime"));
         confinement.put(Technology.JWBF, Arrays.asList("source-mediawiki"));
@@ -134,7 +134,7 @@ final class ArchitectureRules {
                 .that().haveName("main").and().areStatic()
                 .and().areDeclaredInClassesThat().resideInAPackage(ModuleRegistry.ROOT_PACKAGE + "..")
                 .and().areDeclaredInClassesThat().resideOutsideOfPackages(packagePatterns(registry,
-                        Arrays.asList("app-swing", "acp-demo-agent")))
+                        Arrays.asList("app-swing", "acp-demo-agent", "research-agent-acp")))
                 .should().haveRawParameterTypes(String[].class)
                 .because("die Anwendung wird ausschließlich in app-swing zusammengesetzt und gestartet")
                 .allowEmptyShould(true);

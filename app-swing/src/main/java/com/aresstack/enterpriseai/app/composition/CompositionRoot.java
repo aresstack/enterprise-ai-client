@@ -4,7 +4,8 @@ import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 import com.aresstack.enterpriseai.app.agent.AcpAgentLauncher;
 import com.aresstack.enterpriseai.app.agent.AgentModelChoice;
 import com.aresstack.enterpriseai.app.agent.ResearchAgentHost;
-import com.aresstack.enterpriseai.app.agent.ResearchAgentLauncher;
+import com.aresstack.enterpriseai.app.agent.ChatPortMainModelChat;
+import com.aresstack.enterpriseai.app.agent.ResearchControlTools;
 import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.app.config.AgentConfig;
 import com.aresstack.enterpriseai.app.config.AppConfig;
@@ -151,24 +152,34 @@ public final class CompositionRoot {
                 sourceSelection);
 
         this.agentStarts = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-agent-start"));
-        // Der eingebaute Recherche-Agent aus askai-java8 (arch) samt Weidezaun läuft im Client auf dem Chat-Modell,
-        // Projekte neben der Konfiguration. Ist ein eigenes Agent-Kommando eingeschaltet, startet stattdessen dieses;
-        // entschieden wird je Agent-Sitzung aus den aktuellen Einstellungen, ein Neustart ist nicht nötig.
+        // Der eingebaute Recherche-Agent aus askai-java8 (arch) samt Weidezaun, Projekte neben der Konfiguration.
+        // Ist ein eigenes Agent-Kommando eingeschaltet, startet stattdessen dieses; entschieden wird je
+        // Agent-Sitzung aus den aktuellen Einstellungen, ein Neustart ist nicht nötig.
         this.researchHost = new ResearchAgentHost(AppPaths.configFile().toAbsolutePath().getParent()
                 .resolve(RESEARCH_DIRECTORY).toFile(), FileResearchScopeDraftStore::new,
                 directory -> new ConceptBranchService(new FileConceptStore(directory)));
         this.agentModelChoice = new AgentModelChoice();
-        final ResearchAgentLauncher research = new ResearchAgentLauncher(researchHost, ports.chat(),
+        final ChatPortMainModelChat researchModel = new ChatPortMainModelChat(ports.chat(),
                 config.chat().defaultOptions(), agentModelChoice);
         this.agentService = new AgentService(new AgentLauncher() {
             @Override
             public AcpConnection launch() throws AcpException {
                 AgentBackend external = ports.agentFor(settings.current().agent());
-                if (external == null) {
-                    return research.launch();
+                if (external != null) {
+                    return new AcpAgentLauncher(external.connector(), external.launchSpec(), external.registry(),
+                            external.endpoint(), agentTools()).launch();
                 }
-                return new AcpAgentLauncher(external.connector(), external.launchSpec(), external.registry(),
-                        external.endpoint(), agentTools()).launch();
+                // Der eingebaute Recherche-Agent wie in askai-java8 arch: eigener Prozess über ACP, die
+                // Research-Steuerung, das Konzeptpapier und das Hauptmodell über seinen MCP-Endpoint.
+                AgentBackend research = ports.researchAgent();
+                if (research == null) {
+                    throw new AcpException(AcpException.Phase.SPAWN, "research agent is not available", null);
+                }
+                List<McpToolContribution> tools = new ArrayList<McpToolContribution>(
+                        ResearchControlTools.toolsFor(researchHost, researchModel));
+                tools.addAll(agentTools());
+                return new AcpAgentLauncher(research.connector(), research.launchSpec(), research.registry(),
+                        research.endpoint(), tools).launch();
             }
         }, agentStarts);
         this.shutdown = buildShutdown();

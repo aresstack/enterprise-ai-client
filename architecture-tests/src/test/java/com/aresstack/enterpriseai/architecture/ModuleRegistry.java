@@ -123,7 +123,7 @@ final class ModuleRegistry {
                 .module("research-scope", "research.scope", ModuleKind.APPLICATION, "Research",
                         "research-domain", "research-api")
                 // Gesprächs-Engine des Recherche-Agenten (TeamAgent): spricht das Hauptmodell über den eigenen Port
-                // MainModelChat an; läuft im Prozess des Clients, kein eigener Agentenprozess.
+                // MainModelChat an; läuft im Agentenprozess (research-agent-acp).
                 .module("research-agent-runtime", "research.runtime", ModuleKind.APPLICATION, "Research",
                         "research-domain")
                 // Ablage des Research-Projekts (JSON-Dateien je Projektverzeichnis) hinter den Ports aus research-scope.
@@ -133,6 +133,10 @@ final class ModuleRegistry {
                 // hinter dem Lese-Port aus research-api; gson bleibt im Modul.
                 .module("research-concept", "research.concept", ModuleKind.ADAPTER, "Research",
                         "research-domain", "research-api")
+                // Der eingebaute Recherche-Agent als eigener Prozess (askai-java8 arch: ResearchAgentMain): ACP über
+                // STDIO zum Client, Research-Steuerung und Hauptmodell über den MCP-Endpoint des Hosts.
+                .module("research-agent-acp", "acp.research", ModuleKind.AGENT_PROCESS, "Research",
+                        "research-domain", "research-agent-runtime", "mcp-runtime-api", "mcp-solon-runtime")
 
                 .module("comic-controls", "ui.comic", ModuleKind.UI_LIBRARY, "B")
                 .module("app-swing", "app", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
@@ -145,7 +149,8 @@ final class ModuleRegistry {
                         "resource-holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "research-domain", "research-api",
-                        "research-scope", "research-store", "research-agent-runtime", "research-concept")
+                        "research-scope", "research-store", "research-agent-runtime", "research-concept",
+                        "research-agent-acp")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

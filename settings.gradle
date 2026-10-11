@@ -83,6 +83,7 @@ include 'research-scope'
 include 'research-store'
 include 'research-concept'
 include 'research-agent-runtime'
+include 'research-agent-acp'
 
 // Strang B – Swing-Comic-UI und Composition Root
 include 'comic-controls'

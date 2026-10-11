@@ -82,6 +82,7 @@ Moduls liegen nur dort (geprüft).
 | `acp-client-api` | PORT | `acp.api` | domain | G (AP16) |
 | `acp-solon-client` | ADAPTER | `acp.solon` | domain, acp-client-api | G (AP17) |
 | `acp-demo-agent` | TEST_FIXTURE | `acp.demo` | – (nur externe Bibliotheken) | G (AP17) |
+| `research-agent-acp` | AGENT_PROCESS | `acp.research` | research-domain, research-agent-runtime, mcp-runtime-api, mcp-solon-runtime | Research |
 | `mcp-runtime-api` | PORT | `mcp.api` | domain | H (AP18) |
 | `mcp-solon-runtime` | ADAPTER | `mcp.solon` | domain, mcp-runtime-api | H (AP19) |
 | `comic-controls` | UI_LIBRARY | `ui.comic` | – | B (AP4) |
@@ -93,7 +94,13 @@ Abweichungen von der Modulliste des Auftrags, beide ohne Aufweichung der fachlic
 
 - **`acp-demo-agent`** (zusätzlich): der Demo-Agent aus AP17 ist ein eigener Kindprozess und Testfixture.
   Kein Modul darf von ihm abhängen; `acp-solon-client` startet ihn im Test nur als Jar (wie in askai-java8).
-  Er ist neben `app-swing` das einzige Modul mit einer `main`-Methode.
+  Er ist neben `app-swing` und `research-agent-acp` eines der Module mit einer `main`-Methode.
+- **`research-agent-acp`** (Rolle AGENT_PROCESS): der eingebaute Recherche-Agent wie in askai-java8 arch
+  (`ResearchAgentMain`) als eigener Prozess über ACP. Der Client startet ihn mit derselben Java-Laufzeit aus
+  demselben Fat Jar (`java -cp <jar> com.aresstack.enterpriseai.acp.research.ResearchAgentMain`; app-swing
+  bindet das Modul nur `runtimeOnly`). Research-Steuerung, Konzeptwerkzeuge und das Hauptmodell
+  (`main_model_complete`) erreicht er über den MCP-Endpoint des Hosts; Zugangsdaten bekommt er nie. Er darf
+  wie der Demo-Agent `System.getenv` lesen (MCP-Endpoint) und das ACP SDK verwenden.
 - **`comic-controls`** (zusätzlich): die generischen Java2D-Comic-Komponenten aus askai-java8
   (`comic-controls`) bleiben eine abhängigkeitsfreie Swing-Bibliothek; die Chat-Shell selbst lebt in
   `app-swing`. Damit bleibt die Wiederverwendung sauber getrennt von der Anwendung.
@@ -130,7 +137,7 @@ askai-java8 übernommenen Verträge sind bewusst eigenständig.
 |---|---|---|
 | Swing/AWT | `javax.swing..`, `java.awt..` | app-swing, comic-controls |
 | Lucene | `org.apache.lucene..` | knowledge-lucene |
-| ACP SDK, Reactor | `com.agentclientprotocol..`, `reactor..` | acp-solon-client, acp-demo-agent |
+| ACP SDK, Reactor | `com.agentclientprotocol..`, `reactor..` | acp-solon-client, acp-demo-agent, research-agent-acp |
 | Solon | `org.noear.solon..` | acp-solon-client, acp-demo-agent, mcp-solon-runtime |
 | Solon MCP / MCP SDK | `org.noear.solon.ai.mcp..`, `io.modelcontextprotocol..` | mcp-solon-runtime |
 | JWBF | `net.sourceforge.jwbf..` | source-mediawiki |
