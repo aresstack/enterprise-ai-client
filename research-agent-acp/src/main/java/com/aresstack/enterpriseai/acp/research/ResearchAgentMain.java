@@ -45,6 +45,7 @@ public final class ResearchAgentMain {
     private ResearchAgentTurns turns;
 
     public static void main(String[] args) {
+        AgentStdio.install();
         LOG.info("[research-agent] starting");
         AcpAgentSupport.create(new ResearchAgentMain())
                 .transport(new StdioAcpAgentTransport())
@@ -140,6 +141,34 @@ public final class ResearchAgentMain {
         return new AcpSchema.NewSessionResponse("research-acp-" + UUID.randomUUID(), null, null);
     }
 
+    /** Ein Tool-Update; ein Fehler beim Senden hält den Turn nie an (die Blase fehlt dann nur). */
+    private static void send(SyncPromptContext ctx, AcpSchema.SessionUpdate update) {
+        try {
+            ctx.sendUpdate(ctx.getSessionId(), update);
+        } catch (RuntimeException lost) {
+            LOG.fine("[research-agent] tool update not sent: " + lost.getMessage());
+        }
+    }
+
+    static AcpSchema.ToolKind toolKind(String kind) {
+        if ("search".equals(kind)) {
+            return AcpSchema.ToolKind.SEARCH;
+        }
+        if ("read".equals(kind)) {
+            return AcpSchema.ToolKind.READ;
+        }
+        if ("edit".equals(kind)) {
+            return AcpSchema.ToolKind.EDIT;
+        }
+        if ("move".equals(kind)) {
+            return AcpSchema.ToolKind.MOVE;
+        }
+        if ("think".equals(kind)) {
+            return AcpSchema.ToolKind.THINK;
+        }
+        return AcpSchema.ToolKind.OTHER;
+    }
+
     @Cancel
     public void cancel() {
         LOG.info("[research-agent] cancel");
@@ -169,6 +198,25 @@ public final class ResearchAgentMain {
                 if (!cancelled.get() && message != null && !message.isEmpty()) {
                     ctx.sendMessage(message);
                 }
+            }
+
+            @Override
+            public void toolStarted(String callId, String title, String kind, String input) {
+                send(ctx, new AcpSchema.ToolCall("tool_call", callId, title, toolKind(kind),
+                        AcpSchema.ToolCallStatus.IN_PROGRESS, null, null, input, null, null));
+            }
+
+            @Override
+            public void toolUpdated(String callId, String title, String input) {
+                send(ctx, new AcpSchema.ToolCallUpdateNotification("tool_call_update", callId, title, null,
+                        AcpSchema.ToolCallStatus.IN_PROGRESS, null, null, input, null, null));
+            }
+
+            @Override
+            public void toolFinished(String callId, boolean succeeded, String summary) {
+                send(ctx, new AcpSchema.ToolCallUpdateNotification("tool_call_update", callId, null, null,
+                        succeeded ? AcpSchema.ToolCallStatus.COMPLETED : AcpSchema.ToolCallStatus.FAILED, null, null,
+                        null, summary, null));
             }
         });
         return cancelled.get()

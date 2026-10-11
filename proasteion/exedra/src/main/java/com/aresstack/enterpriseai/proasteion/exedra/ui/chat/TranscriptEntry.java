@@ -15,7 +15,12 @@ public final class TranscriptEntry {
         USER,
         ASSISTANT,
         /** Ein Hinweis der Anwendung (z. B. ausgefallene Wissenssuche), weder Nutzer noch Modell. */
-        NOTICE
+        NOTICE,
+        /**
+         * Ein Arbeitsschritt des Agenten (askai arch): Werkzeugaufruf (gelbe Gedankenwolke) oder Denkschritt des
+         * Modells (grüne Wolke). Der Text ist die Eingabe bzw. Erläuterung; läuft, solange {@link State#STREAMING}.
+         */
+        ACTIVITY
     }
 
     /** Lebenszyklus einer Nachricht. Nutzernachrichten und Hinweise sind sofort {@link #COMPLETE}. */
@@ -36,6 +41,10 @@ public final class TranscriptEntry {
     private List<SourceReference> sources = Collections.emptyList();
     private List<String> attachments = Collections.emptyList();
     private List<ChatPage> pages = Collections.emptyList();
+    private String activityKey = "";
+    private String activityTitle = "";
+    private String activityKind = "";
+    private String activitySummary = "";
 
     TranscriptEntry(long id, Author author, long createdAtMillis, String text, State state) {
         this.id = id;
@@ -104,8 +113,50 @@ public final class TranscriptEntry {
         this.pages = Collections.unmodifiableList(new java.util.ArrayList<ChatPage>(values));
     }
 
+    /** Kennung des Werkzeugaufrufs (nur {@link Author#ACTIVITY}). */
+    public String getActivityKey() {
+        return activityKey;
+    }
+
+    /** Überschrift der Wolke, z. B. „Suche in den Wissensquellen“ (nur {@link Author#ACTIVITY}). */
+    public String getActivityTitle() {
+        return activityTitle;
+    }
+
+    /** ACP-Art des Aufrufs ({@code search}, {@code read}, {@code think} …; nur {@link Author#ACTIVITY}). */
+    public String getActivityKind() {
+        return activityKind;
+    }
+
+    /** Ein Denkschritt (grüne Wolke) statt eines Werkzeugs (gelbe Wolke). */
+    public boolean isThinking() {
+        return "think".equals(activityKind);
+    }
+
+    /** Die Ergebniszeile eines beendeten Aufrufs, sonst leer (nur {@link Author#ACTIVITY}). */
+    public String getActivitySummary() {
+        return activitySummary;
+    }
+
+    void setActivityHead(String key, String title, String kind) {
+        this.activityKey = key == null ? "" : key;
+        this.activityTitle = title == null ? "" : title;
+        this.activityKind = kind == null ? "" : kind;
+    }
+
+    void finishActivity(State finalState, String summary) {
+        this.state = finalState;
+        this.activitySummary = summary == null ? "" : summary.trim();
+    }
+
     public boolean hasSources() {
         return !sources.isEmpty();
+    }
+
+    /** Neuer Inhalt eines laufenden Arbeitsschritts (die Recherche-Karte wird in place aktualisiert). */
+    void replaceText(String newText) {
+        text.setLength(0);
+        text.append(newText == null ? "" : newText);
     }
 
     void append(String delta) {

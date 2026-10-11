@@ -32,18 +32,46 @@ final class ResearchHostControl implements ToolInvoker {
         }
     }
 
+    /** Sieht jeden Werkzeugaufruf an den Host (für die sichtbaren Tool-Blasen des Turns). */
+    interface ToolObserver {
+        void started(String callId, String toolName, Map<String, Object> args);
+
+        /** @param failure {@code null} bei Erfolg, sonst die Fehlermeldung */
+        void finished(String callId, String toolName, Map<String, Object> args, String result, String failure);
+    }
+
     private final McpToolClient client;
+    private final java.util.concurrent.atomic.AtomicLong calls = new java.util.concurrent.atomic.AtomicLong();
+    private volatile ToolObserver observer;
 
     ResearchHostControl(McpToolClient client) {
         this.client = client;
     }
 
+    /** Der Beobachter des laufenden Turns; {@code null} schaltet ihn ab. */
+    void setObserver(ToolObserver observer) {
+        this.observer = observer;
+    }
+
     @Override
     public String call(String toolName, Map<String, Object> args) throws ToolFailure, EndpointUnavailable {
+        Map<String, Object> arguments = args == null ? Collections.<String, Object>emptyMap() : args;
+        ToolObserver current = observer;
+        String callId = "call-" + calls.incrementAndGet();
+        if (current != null) {
+            current.started(callId, toolName, arguments);
+        }
         try {
-            return client.callTool(toolName, args == null ? Collections.<String, Object>emptyMap() : args);
+            String result = client.callTool(toolName, arguments);
+            if (current != null) {
+                current.finished(callId, toolName, arguments, result, null);
+            }
+            return result;
         } catch (McpToolCallException failed) {
             String message = failed.getMessage() == null ? failed.toString() : failed.getMessage();
+            if (current != null) {
+                current.finished(callId, toolName, arguments, null, message);
+            }
             if (failed.isEndpointUnavailable()) {
                 throw new EndpointUnavailable(message);
             }

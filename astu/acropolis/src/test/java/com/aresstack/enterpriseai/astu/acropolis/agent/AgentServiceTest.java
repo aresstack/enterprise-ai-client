@@ -85,6 +85,32 @@ public class AgentServiceTest {
     }
 
     @Test
+    public void toolCallsReachTheListenerInOrderWithMessagesAndThoughts() {
+        AgentService service = new AgentService(launcher, DIRECT);
+        RecordingAgentListener listener = new RecordingAgentListener();
+        service.send("Was ist IAR?", listener);
+
+        launcher.lastPrompt().tool(new com.aresstack.enterpriseai.acp.api.AcpToolCall("call-1",
+                "Suche in den Wissensquellen", "search",
+                com.aresstack.enterpriseai.acp.api.AcpToolCall.Status.IN_PROGRESS, "IAR", null));
+        launcher.lastPrompt().tool(new com.aresstack.enterpriseai.acp.api.AcpToolCall("call-1", null, null,
+                com.aresstack.enterpriseai.acp.api.AcpToolCall.Status.COMPLETED, null, "1 Treffer: IAR Übersicht"));
+        launcher.lastPrompt().tool(new com.aresstack.enterpriseai.acp.api.AcpToolCall("call-2", "Denke nach",
+                "think", com.aresstack.enterpriseai.acp.api.AcpToolCall.Status.IN_PROGRESS, "", null));
+        launcher.lastPrompt().tool(new com.aresstack.enterpriseai.acp.api.AcpToolCall("call-2", null, null,
+                com.aresstack.enterpriseai.acp.api.AcpToolCall.Status.FAILED, null, "Modell nicht erreichbar"));
+        launcher.lastPrompt().message("IAR bündelt die Auswertung.");
+        launcher.lastPrompt().complete();
+
+        assertEquals(Arrays.asList(
+                "tool:call-1:search:RUNNING:Suche in den Wissensquellen:IAR:",
+                "tool:call-1::COMPLETED:::1 Treffer: IAR Übersicht",
+                "tool:call-2:think:RUNNING:Denke nach::",
+                "tool:call-2::FAILED:::Modell nicht erreichbar",
+                "message:IAR bündelt die Auswertung.", "completed"), listener.events);
+    }
+
+    @Test
     public void followUpPromptsReuseProcessAndSession() {
         AgentService service = new AgentService(launcher, DIRECT);
         service.send("eins", new RecordingAgentListener());

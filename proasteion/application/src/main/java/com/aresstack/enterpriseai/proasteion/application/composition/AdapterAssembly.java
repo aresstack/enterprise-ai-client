@@ -382,6 +382,9 @@ public final class AdapterAssembly {
         };
         List<String> args = new ArrayList<String>();
         args.add("-Dfile.encoding=UTF-8");
+        // Das ACP-SDK liest STDERR des Agenten mit der Standardkodierung des Clients; der Agent schreibt seine
+        // Logzeilen in ihr (STDOUT ist ohnehin reines ASCII, siehe research-agent-acp AgentStdio).
+        args.add("-Denterpriseai.agent.stderrCharset=" + java.nio.charset.Charset.defaultCharset().name());
         args.add("-Djava.awt.headless=true");
         args.add("-cp");
         args.add(ownClassPath());

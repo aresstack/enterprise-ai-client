@@ -690,7 +690,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                     && !entry.getText().trim().isEmpty()) {
                 title = entry.getText().trim();
             }
-            if (entry.getAuthor() != TranscriptEntry.Author.NOTICE) {
+            if (entry.getAuthor() != TranscriptEntry.Author.NOTICE
+                    && entry.getAuthor() != TranscriptEntry.Author.ACTIVITY) {
                 count++;
             }
             lastMillis = Math.max(lastMillis, entry.getCreatedAtMillis());

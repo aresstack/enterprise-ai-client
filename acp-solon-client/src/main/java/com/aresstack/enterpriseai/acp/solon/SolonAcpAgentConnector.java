@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.acp.api.AcpPromptState;
 import com.aresstack.enterpriseai.acp.api.AcpSession;
 import com.aresstack.enterpriseai.acp.api.AcpSessionState;
 import com.aresstack.enterpriseai.acp.api.AcpStates;
+import com.aresstack.enterpriseai.acp.api.AcpToolCall;
 import com.aresstack.enterpriseai.acp.api.AcpUpdate;
 import com.aresstack.enterpriseai.acp.api.AcpUpdateListener;
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
@@ -55,6 +56,8 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
     private static final String SESSION_UPDATE = "session/update";
     private static final String AGENT_MESSAGE_CHUNK = "agent_message_chunk";
     private static final String AGENT_THOUGHT_CHUNK = "agent_thought_chunk";
+    private static final String TOOL_CALL = "tool_call";
+    private static final String TOOL_CALL_UPDATE = "tool_call_update";
     /** Upper bound on a connection close: a graceful transport shutdown must never wedge the caller. */
     private static final long CLOSE_TIMEOUT_MILLIS = 2500L;
 
@@ -176,6 +179,15 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
             }
             Object update = notification.get("update");
             Object kind = update instanceof Map ? ((Map<?, ?>) update).get("sessionUpdate") : null;
+            if (TOOL_CALL.equals(kind) || TOOL_CALL_UPDATE.equals(kind)) {
+                final AcpToolCall call = toolCallOf((Map<?, ?>) update);
+                deliver(new Runnable() {
+                    public void run() {
+                        dispatcher.update(call);
+                    }
+                });
+                return;
+            }
             final AcpUpdate.Kind mapped;
             final String text;
             if (AGENT_MESSAGE_CHUNK.equals(kind)) {
@@ -196,6 +208,24 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
             });
         }
 
+        /** ACP {@code tool_call}/{@code tool_call_update} → neutral; rawInput/rawOutput as plain text. */
+        private AcpToolCall toolCallOf(Map<?, ?> update) {
+            Object status = update.get("status");
+            AcpToolCall.Status mapped = null;
+            if ("pending".equals(status)) {
+                mapped = AcpToolCall.Status.PENDING;
+            } else if ("in_progress".equals(status)) {
+                mapped = AcpToolCall.Status.IN_PROGRESS;
+            } else if ("completed".equals(status)) {
+                mapped = AcpToolCall.Status.COMPLETED;
+            } else if ("failed".equals(status)) {
+                mapped = AcpToolCall.Status.FAILED;
+            }
+            return new AcpToolCall(stringOf(update.get("toolCallId")), stringOf(update.get("title")),
+                    stringOf(update.get("kind")), mapped, stringOf(update.get("rawInput")),
+                    stringOf(update.get("rawOutput")));
+        }
+
         /** Runs a listener-facing step on the callback thread; after close() directly (it is then a no-op). */
         void deliver(Runnable step) {
             try {
@@ -211,6 +241,10 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                 return text == null ? "" : text.toString();
             }
             return String.valueOf(content);
+        }
+
+        private String stringOf(Object value) {
+            return value == null ? "" : value.toString();
         }
 
         public AcpConnectionState getState() {

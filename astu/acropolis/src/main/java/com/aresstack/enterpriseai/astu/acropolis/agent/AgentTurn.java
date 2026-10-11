@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.astu.acropolis.agent;
 
 import com.aresstack.enterpriseai.acp.api.AcpPromptState;
 import com.aresstack.enterpriseai.acp.api.AcpSession;
+import com.aresstack.enterpriseai.acp.api.AcpToolCall;
 import com.aresstack.enterpriseai.acp.api.AcpUpdate;
 import com.aresstack.enterpriseai.acp.api.AcpUpdateListener;
 import com.aresstack.enterpriseai.acp.api.PromptHandle;
@@ -108,7 +109,14 @@ public final class AgentTurn {
         @Override
         public void onUpdate(AcpUpdate update) {
             synchronized (AgentTurn.this) {
-                if (state.isTerminal() || update.getText().isEmpty()) {
+                if (state.isTerminal()) {
+                    return;
+                }
+                if (update.getKind() == AcpUpdate.Kind.TOOL_CALL && update.getToolCall() != null) {
+                    listener.onToolActivity(activityOf(update.getToolCall()));
+                    return;
+                }
+                if (update.getText().isEmpty()) {
                     return;
                 }
                 if (update.getKind() == AcpUpdate.Kind.MESSAGE) {
@@ -118,8 +126,19 @@ public final class AgentTurn {
                     thoughts.append(update.getText());
                     listener.onThought(update.getText());
                 }
-                // OTHER (Tool-Aufrufe, Pläne ...) zeigt der Agent-Modus in AP21 noch nicht an.
+                // OTHER (Pläne, unbekannte Erweiterungen) zeigt der Agent-Modus nicht an.
             }
+        }
+
+        private AgentToolActivity activityOf(AcpToolCall call) {
+            AgentToolActivity.Status status = null;
+            if (call.getStatus() == AcpToolCall.Status.COMPLETED) {
+                status = AgentToolActivity.Status.COMPLETED;
+            } else if (call.getStatus() == AcpToolCall.Status.FAILED) {
+                status = AgentToolActivity.Status.FAILED;
+            }
+            return new AgentToolActivity(call.getId(), call.getTitle(), call.getKind(), status, call.getInput(),
+                    call.getOutput());
         }
 
         @Override

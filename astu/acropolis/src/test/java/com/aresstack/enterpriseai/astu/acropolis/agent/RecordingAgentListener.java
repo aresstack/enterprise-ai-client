@@ -22,6 +22,12 @@ final class RecordingAgentListener implements AgentTurnListener {
     }
 
     @Override
+    public void onToolActivity(AgentToolActivity activity) {
+        events.add("tool:" + activity.id() + ":" + activity.kind() + ":" + activity.status() + ":"
+                + activity.title() + ":" + activity.input() + ":" + activity.output());
+    }
+
+    @Override
     public void onCompleted() {
         events.add("completed");
         terminal.countDown();

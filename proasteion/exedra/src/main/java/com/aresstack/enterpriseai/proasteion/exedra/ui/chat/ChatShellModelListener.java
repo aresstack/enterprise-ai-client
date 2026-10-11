@@ -11,6 +11,10 @@ public interface ChatShellModelListener {
     /** Streaming-Zustand oder RAG-Schalter haben sich geändert; Send/Stop neu bewerten. */
     void stateChanged();
 
+    /** Ein Eintrag wurde entfernt (der leere Platzhalter einer Agentenantwort rückt hinter eine Tool-Wolke). */
+    default void entryRemoved(TranscriptEntry entry) {
+    }
+
     /** Der Verlauf wurde geleert („Neuer Chat“); Ansichten verwerfen alle Zeilen. */
     default void entriesCleared() {
     }

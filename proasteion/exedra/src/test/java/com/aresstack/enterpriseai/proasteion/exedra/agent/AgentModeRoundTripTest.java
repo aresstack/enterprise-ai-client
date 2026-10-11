@@ -183,7 +183,18 @@ public class AgentModeRoundTripTest {
             }
         });
         awaitIdle(shell.agentModel);
-        List<TranscriptEntry> agentEntries = entries(shell.agentModel);
+        List<TranscriptEntry> withClouds = entries(shell.agentModel);
+        // Die Überlegung des Demo-Agenten steht als grüne Denkwolke im Verlauf (askai arch), nicht in der Antwort.
+        List<TranscriptEntry> agentEntries = new java.util.ArrayList<TranscriptEntry>();
+        boolean thoughtCloud = false;
+        for (TranscriptEntry entry : withClouds) {
+            if (entry.getAuthor() == TranscriptEntry.Author.ACTIVITY) {
+                thoughtCloud |= entry.isThinking();
+            } else {
+                agentEntries.add(entry);
+            }
+        }
+        assertTrue(withClouds.toString(), thoughtCloud);
         assertEquals(2, agentEntries.size());
         assertEquals("hello agent", agentEntries.get(0).getText());
         TranscriptEntry reply = agentEntries.get(1);
@@ -250,7 +261,7 @@ public class AgentModeRoundTripTest {
                 return null;
             }
         });
-        agentEntries = entries(shell.agentModel);
+        agentEntries = messages(shell.agentModel);
         assertEquals(TranscriptEntry.State.CANCELLED, agentEntries.get(3).getState());
 
         // Moduswechsel zurück; ein weiterer Auftrag läuft in derselben ACP-Session.
@@ -263,7 +274,7 @@ public class AgentModeRoundTripTest {
             }
         });
         awaitIdle(shell.agentModel);
-        assertEquals(TranscriptEntry.State.COMPLETE, entries(shell.agentModel).get(5).getState());
+        assertEquals(TranscriptEntry.State.COMPLETE, messages(shell.agentModel).get(5).getState());
         assertEquals(agentSession, agentService.sessionId());
         assertEquals("chat transcript untouched by the agent", 2, entries(shell.chatModel).size());
     }
@@ -345,6 +356,17 @@ public class AgentModeRoundTripTest {
 
     private static void runOnEdt(Runnable runnable) {
         SwingUtilities.invokeLater(runnable);
+    }
+
+    /** Der Verlauf ohne die Wolken der Agentenschritte (Werkzeug- und Denkwolken). */
+    private static List<TranscriptEntry> messages(final ChatShellModel model) throws Exception {
+        List<TranscriptEntry> messages = new java.util.ArrayList<TranscriptEntry>();
+        for (TranscriptEntry entry : entries(model)) {
+            if (entry.getAuthor() != TranscriptEntry.Author.ACTIVITY) {
+                messages.add(entry);
+            }
+        }
+        return messages;
     }
 
     private static List<TranscriptEntry> entries(final ChatShellModel model) throws Exception {

@@ -253,6 +253,17 @@ final class SliceSupport {
     }
 
     /** Eine Momentaufnahme des Verlaufs vom EDT. */
+    /** Der Verlauf ohne die Wolken der Agentenschritte (Werkzeug- und Denkwolken). */
+    static List<TranscriptEntry> messages(final ChatShellModel model) throws Exception {
+        List<TranscriptEntry> messages = new java.util.ArrayList<TranscriptEntry>();
+        for (TranscriptEntry entry : entries(model)) {
+            if (entry.getAuthor() != TranscriptEntry.Author.ACTIVITY) {
+                messages.add(entry);
+            }
+        }
+        return messages;
+    }
+
     static List<TranscriptEntry> entries(final ChatShellModel model) throws Exception {
         return onEdt(new Callable<List<TranscriptEntry>>() {
             @Override

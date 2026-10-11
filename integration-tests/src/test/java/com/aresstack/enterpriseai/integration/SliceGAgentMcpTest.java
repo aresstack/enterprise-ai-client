@@ -52,6 +52,7 @@ import static com.aresstack.enterpriseai.integration.SampleKnowledge.QUESTION;
 import static com.aresstack.enterpriseai.integration.SliceSupport.assertNoSecret;
 import static com.aresstack.enterpriseai.integration.SliceSupport.assertNoSecretInTranscript;
 import static com.aresstack.enterpriseai.integration.SliceSupport.awaitIdle;
+import static com.aresstack.enterpriseai.integration.SliceSupport.messages;
 import static com.aresstack.enterpriseai.integration.SliceSupport.entries;
 import static com.aresstack.enterpriseai.integration.SliceSupport.onEdt;
 import static com.aresstack.enterpriseai.integration.SliceSupport.runOnEdt;
@@ -168,8 +169,15 @@ public class SliceGAgentMcpTest {
         awaitIdle(agentModel);
 
         // Die Sprechblase trägt die Antwort des Agenten, zusammengesetzt aus dem MCP-Suchergebnis.
-        List<TranscriptEntry> transcript = entries(agentModel);
-        assertEquals(transcript.toString(), 2, transcript.size());
+        List<TranscriptEntry> withClouds = entries(agentModel);
+        // Überlegungen erscheinen als Denkwolke im Verlauf (askai arch); die Antwortblase bleibt frei davon.
+        List<TranscriptEntry> transcript = new java.util.ArrayList<TranscriptEntry>();
+        for (TranscriptEntry entry : withClouds) {
+            if (entry.getAuthor() != TranscriptEntry.Author.ACTIVITY) {
+                transcript.add(entry);
+            }
+        }
+        assertEquals(withClouds.toString(), 2, transcript.size());
         assertEquals(QUESTION, transcript.get(0).getText());
         TranscriptEntry reply = transcript.get(1);
         assertEquals(reply.getFailureMessage(), TranscriptEntry.State.COMPLETE, reply.getState());
@@ -233,7 +241,7 @@ public class SliceGAgentMcpTest {
         ask(QUESTION);
         awaitIdle(agentModel);
 
-        TranscriptEntry reply = entries(agentModel).get(1);
+        TranscriptEntry reply = messages(agentModel).get(1);
         assertEquals(TranscriptEntry.State.COMPLETE, reply.getState());
         assertEquals(KnowledgeDemoAgentMain.NO_KNOWLEDGE_BASE, reply.getText());
         assertEquals(null, AgentMcpEnvironment.read(connector.spec.get().getEnv() == null

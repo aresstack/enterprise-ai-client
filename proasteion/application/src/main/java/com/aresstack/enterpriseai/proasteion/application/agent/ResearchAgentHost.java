@@ -693,7 +693,8 @@ public final class ResearchAgentHost {
      * {@code source_accept}.
      */
     public String addFollowUpSource(String captureId, String title, String url) {
-        if (!ResearchStateIds.DRAFT.equals(phaseId())) {
+        // Konzeptphase: der direkte Suchauftrag notiert seine gelesenen Seiten; Dokument: Nachfragen.
+        if (!ResearchStateIds.DRAFT.equals(phaseId()) && !ResearchStateIds.SCOPING.equals(phaseId())) {
             return "Not allowed in the current state (" + phaseId() + "/" + stateId() + ").";
         }
         return acceptSource(captureId, title, url);

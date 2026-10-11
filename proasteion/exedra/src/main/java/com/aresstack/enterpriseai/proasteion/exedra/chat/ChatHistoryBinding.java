@@ -289,6 +289,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             case NOTICE:
                 return new ChatMessageRecord(ChatMessageRecord.ROLE_INFO, entry.getText(),
                         entry.getCreatedAtMillis(), null);
+            case ACTIVITY:
+                return null; // Werkzeugwolken gehören zum Lauf, nicht zum gespeicherten Gespräch
             default:
                 boolean finished = entry.getState() == TranscriptEntry.State.COMPLETE
                         || entry.getState() == TranscriptEntry.State.CANCELLED;

@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.acp.api.AcpException;
 import com.aresstack.enterpriseai.acp.api.AcpPromptState;
 import com.aresstack.enterpriseai.acp.api.AcpSession;
 import com.aresstack.enterpriseai.acp.api.AcpSessionState;
+import com.aresstack.enterpriseai.acp.api.AcpToolCall;
 import com.aresstack.enterpriseai.acp.api.AcpUpdate;
 import com.aresstack.enterpriseai.acp.api.AcpUpdateListener;
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
@@ -161,6 +162,37 @@ public class SolonAcpRoundTripTest {
         assertEquals(AcpConnectionState.CLOSED, connection.getState());
         // Shutdown really ended the child JVM: its shutdown hook wrote the marker.
         assertTrue("agent process did not exit after close", awaitFile(exitMarker, 15000));
+    }
+
+    @Test
+    public void toolCallsArriveAsToolCallUpdatesBetweenMessages() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            AcpSession session = connection.newSession();
+            Collecting listener = new Collecting();
+            session.prompt("tool IAR", listener);
+            assertTrue("prompt did not terminate", listener.terminated.await(30, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.COMPLETED, listener.terminal.get());
+
+            List<AcpUpdate> updates = listener.updates;
+            assertEquals(3, updates.size());
+            assertEquals(AcpUpdate.Kind.TOOL_CALL, updates.get(0).getKind());
+            AcpToolCall started = updates.get(0).getToolCall();
+            assertEquals("call-1", started.getId());
+            assertEquals("Search", started.getTitle());
+            assertEquals("search", started.getKind());
+            assertEquals(AcpToolCall.Status.IN_PROGRESS, started.getStatus());
+            assertEquals("IAR", started.getInput());
+            AcpToolCall finished = updates.get(1).getToolCall();
+            assertEquals("call-1", finished.getId());
+            assertEquals(AcpToolCall.Status.COMPLETED, finished.getStatus());
+            assertEquals("1 hit", finished.getOutput());
+            assertEquals(AcpUpdate.Kind.MESSAGE, updates.get(2).getKind());
+            assertEquals("found IAR", updates.get(2).getText());
+        } finally {
+            connection.close();
+        }
     }
 
     @Test

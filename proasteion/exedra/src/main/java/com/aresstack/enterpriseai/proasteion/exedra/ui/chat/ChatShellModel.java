@@ -28,6 +28,9 @@ public final class ChatShellModel {
     private final List<ChatShellModelListener> listeners = new CopyOnWriteArrayList<ChatShellModelListener>();
     private long nextId = 1;
     private TranscriptEntry streamingEntry;
+    /** Die Arbeitsschritte des laufenden Agent-Auftrags nach Kennung (leer außerhalb eines Auftrags). */
+    private final java.util.Map<String, TranscriptEntry> activities =
+            new java.util.LinkedHashMap<String, TranscriptEntry>();
     private boolean ragEnabled;
 
     /** @param clock liefert Epoch-Millisekunden für die Zeitstempel der Bubbles (im Test fest). */
@@ -120,6 +123,13 @@ public final class ChatShellModel {
         if (delta == null || delta.isEmpty()) {
             return; // Null-/Leer-Chunks sind im Streaming zulässig und ändern nichts.
         }
+        if (entry.getText().isEmpty() && !activities.isEmpty()) {
+            // Ein neuer Abschnitt hinter einer Tool-Wolke beginnt nicht mit den Absatz-Leerzeilen des Agenten.
+            delta = delta.replaceFirst("^[\\r\\n]+", "");
+            if (delta.isEmpty()) {
+                return;
+            }
+        }
         entry.append(delta);
         fireEntryUpdated(entry);
     }
@@ -131,6 +141,82 @@ public final class ChatShellModel {
     /** Die Antwort wurde abgebrochen; bereits empfangener Text bleibt sichtbar. */
     public void cancelAssistantMessage() {
         finishStreaming(TranscriptEntry.State.CANCELLED, null);
+    }
+
+    /**
+     * Ein Arbeitsschritt des Agenten beginnt (askai arch: Tool-Wolke bzw. Denkwolke). Die Wolke steht im Verlauf an
+     * der Stelle, an der der Agent gerade ist: eine noch leere Antwort rückt hinter sie, eine angefangene endet als
+     * eigener Abschnitt und der weitere Text kommt in eine neue Antwortblase hinter der Wolke. Ein zweiter Start mit
+     * derselben Kennung ersetzt Titel und Inhalt (die Recherche-Karte zählt so in place mit).
+     */
+    public TranscriptEntry startActivity(String key, String title, String kind, String detail) {
+        if (key == null || key.isEmpty()) {
+            throw new IllegalArgumentException("key must not be empty");
+        }
+        TranscriptEntry known = activities.get(key);
+        if (known != null) {
+            known.setActivityHead(key, title == null || title.isEmpty() ? known.getActivityTitle() : title,
+                    kind == null || kind.isEmpty() ? known.getActivityKind() : kind);
+            if (detail != null && !detail.isEmpty()) {
+                known.replaceText(detail);
+            }
+            fireEntryUpdated(known);
+            return known;
+        }
+        TranscriptEntry answer = streamingEntry;
+        boolean reuseAnswer = false;
+        if (answer != null) {
+            if (answer.getText().isEmpty()) {
+                entries.remove(answer);
+                fireEntryRemoved(answer);
+                reuseAnswer = true;
+            } else {
+                answer.finish(TranscriptEntry.State.COMPLETE, null);
+                fireEntryUpdated(answer);
+            }
+        }
+        TranscriptEntry activity = newEntry(TranscriptEntry.Author.ACTIVITY, detail == null ? "" : detail,
+                TranscriptEntry.State.STREAMING);
+        activity.setActivityHead(key, title, kind);
+        activities.put(key, activity);
+        fireEntryAdded(activity);
+        if (answer != null) {
+            if (reuseAnswer) {
+                entries.add(answer);
+                fireEntryAdded(answer);
+            } else {
+                streamingEntry = newEntry(TranscriptEntry.Author.ASSISTANT, "", TranscriptEntry.State.STREAMING);
+                fireEntryAdded(streamingEntry);
+            }
+        }
+        return activity;
+    }
+
+    /** Hängt Text an die Erläuterung eines laufenden Schritts (gestreamte Überlegungen in der Denkwolke). */
+    public void appendActivityText(String key, String delta) {
+        TranscriptEntry activity = activities.get(key);
+        if (activity == null || delta == null || delta.isEmpty()
+                || activity.getState() != TranscriptEntry.State.STREAMING) {
+            return;
+        }
+        activity.append(delta);
+        fireEntryUpdated(activity);
+    }
+
+    /** Ein Arbeitsschritt ist beendet; die Wolke platzt und zeigt ihre Ergebniszeile. Unbekannte Kennung: nichts. */
+    public void finishActivity(String key, boolean succeeded, String summary) {
+        TranscriptEntry activity = activities.get(key);
+        if (activity == null || activity.getState() != TranscriptEntry.State.STREAMING) {
+            return;
+        }
+        activity.finishActivity(succeeded ? TranscriptEntry.State.COMPLETE : TranscriptEntry.State.FAILED, summary);
+        fireEntryUpdated(activity);
+    }
+
+    /** Ob ein Arbeitsschritt mit dieser Kennung noch läuft. */
+    public boolean isActivityRunning(String key) {
+        TranscriptEntry activity = activities.get(key);
+        return activity != null && activity.getState() == TranscriptEntry.State.STREAMING;
     }
 
     /**
@@ -244,6 +330,22 @@ public final class ChatShellModel {
     private void finishStreaming(TranscriptEntry.State state, String failure) {
         TranscriptEntry entry = requireStreaming();
         streamingEntry = null;
+        // Schritte, die beim Ende des Auftrags noch laufen, enden mit ihm (keine ewig drehende Wolke).
+        for (TranscriptEntry activity : activities.values()) {
+            if (activity.getState() == TranscriptEntry.State.STREAMING) {
+                activity.finishActivity(TranscriptEntry.State.CANCELLED, "");
+                fireEntryUpdated(activity);
+            }
+        }
+        boolean hadActivities = !activities.isEmpty();
+        activities.clear();
+        if (hadActivities && state != TranscriptEntry.State.FAILED && entry.getText().isEmpty()) {
+            // Der leere Platzhalter hinter der letzten Wolke: die Antwort steht schon in früheren Abschnitten.
+            entries.remove(entry);
+            fireEntryRemoved(entry);
+            fireStateChanged();
+            return;
+        }
         entry.finish(state, failure);
         fireEntryUpdated(entry);
         fireStateChanged();
@@ -265,6 +367,12 @@ public final class ChatShellModel {
     private void fireEntryAdded(TranscriptEntry entry) {
         for (ChatShellModelListener listener : listeners) {
             listener.entryAdded(entry);
+        }
+    }
+
+    private void fireEntryRemoved(TranscriptEntry entry) {
+        for (ChatShellModelListener listener : listeners) {
+            listener.entryRemoved(entry);
         }
     }
 

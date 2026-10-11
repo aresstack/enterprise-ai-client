@@ -57,6 +57,23 @@ public final class PromptDispatcher {
         }
     }
 
+    /** A tool call update; same ordering and terminal rules as {@link #update(AcpUpdate.Kind, String)}. */
+    public boolean update(AcpToolCall toolCall) {
+        synchronized (deliveryLock) {
+            if (state.get().isTerminal() || toolCall == null) {
+                return false;
+            }
+            lastUpdateNanos = System.nanoTime();
+            AcpUpdate update = new AcpUpdate(sessionId, promptId, sequence.incrementAndGet(), toolCall);
+            try {
+                listener.onUpdate(update);
+            } catch (RuntimeException ignored) {
+                // a broken consumer must not kill the reader
+            }
+            return true;
+        }
+    }
+
     /**
      * Nanoseconds since the last delivered update, or {@link Long#MAX_VALUE} when none arrived. Used to
      * DRAIN before the terminal: the prompt response and the update notifications travel on different

@@ -19,6 +19,13 @@ public interface AgentTurnListener {
     /** Ein Stück der Überlegungen des Agenten (nicht Teil der Antwort). */
     void onThought(String text);
 
+    /**
+     * Ein Werkzeugaufruf des Agenten hat begonnen, sich geändert oder ist beendet (askai arch: gelbe Tool-Blasen,
+     * grüne Denkblasen). Standard: ignorieren.
+     */
+    default void onToolActivity(AgentToolActivity activity) {
+    }
+
     void onCompleted();
 
     void onCancelled();

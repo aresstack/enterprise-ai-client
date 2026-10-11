@@ -265,7 +265,8 @@ public final class ResearchControlTools {
                     }
                 }, McpToolParameter.string("document_json", true, "Das Dokument als JSON")));
         tools.add(McpToolContribution.of("project_source_add",
-                "Übernimmt bei einer Nachfrage eine weitere gelesene Seite ins Projekt; nur in der Phase Dokument. "
+                "Notiert eine gelesene Seite als Quelle des Projekts: beim direkten Suchauftrag in der Konzeptphase "
+                        + "und bei Nachfragen in der Phase Dokument. "
                         + "Beispiel: capture_id=\"123456\" title=\"Betriebshandbuch\"",
                 new McpToolHandler() {
                     @Override

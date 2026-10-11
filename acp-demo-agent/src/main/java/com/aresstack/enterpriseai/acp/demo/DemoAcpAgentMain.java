@@ -98,6 +98,16 @@ public final class DemoAcpAgentMain {
             }
             return AcpSchema.PromptResponse.endTurn();
         }
+        if (text.startsWith("tool ")) {
+            // A visible tool call (ACP tool_call + tool_call_update) around a message, as the research agent sends.
+            String query = text.substring("tool ".length()).trim();
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.ToolCall("tool_call", "call-1", "Search", AcpSchema.ToolKind.SEARCH,
+                    AcpSchema.ToolCallStatus.IN_PROGRESS, null, null, query, null, null));
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.ToolCallUpdateNotification("tool_call_update", "call-1", null,
+                    null, AcpSchema.ToolCallStatus.COMPLETED, null, null, null, "1 hit", null));
+            ctx.sendMessage("found " + query);
+            return AcpSchema.PromptResponse.endTurn();
+        }
         if (text.contains("hang")) {
             // Silent for a while without any update: lets the host hit its request timeout while alive.
             try {

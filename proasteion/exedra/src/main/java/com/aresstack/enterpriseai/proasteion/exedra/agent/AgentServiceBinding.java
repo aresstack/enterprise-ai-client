@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentFailure;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentService;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentTurn;
+import com.aresstack.enterpriseai.astu.acropolis.agent.AgentToolActivity;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentTurnListener;
 
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtractor;
@@ -23,9 +24,10 @@ import java.util.concurrent.Executor;
  * nie berührt.
  *
  * <p>Senden hängt Auftrag und leere Agentenblase an; die Blase zeigt bis zur ersten Antwortzeile den
- * Platzhalter (auch während der Agent startet). Überlegungen des Agenten erscheinen nicht in der Blase, sie
- * bleiben im Transkript des Service. Stop bricht den Auftrag ab; die Blase endet, wenn der Agent den Abbruch
- * bestätigt. Der RAG-Schalter spielt im Agent-Modus keine Rolle.
+ * Platzhalter (auch während der Agent startet). Wie in askai-java8 {@code arch} zeigt der Verlauf, woran der Agent
+ * arbeitet: jeder Werkzeugaufruf ist eine gelbe Gedankenwolke mit Titel und Eingabe, die mit ihrer Ergebniszeile
+ * platzt; Denkschritte und gestreamte Überlegungen des Agenten stehen in einer grünen Wolke. Stop bricht den Auftrag
+ * ab; die Blase endet, wenn der Agent den Abbruch bestätigt. Der RAG-Schalter spielt im Agent-Modus keine Rolle.
  */
 public final class AgentServiceBinding implements ChatShellActions {
 
@@ -230,14 +232,56 @@ public final class AgentServiceBinding implements ChatShellActions {
             onUi(new Runnable() {
                 @Override
                 public void run() {
+                    closeThinking();
                     model.appendAssistantDelta(text);
                 }
             });
         }
 
+        /** Kennung der offenen Denkwolke für gestreamte Überlegungen (nur UI-Thread), sonst {@code null}. */
+        private String thinkingKey;
+        private int thoughtSeries;
+
         @Override
-        public void onThought(String text) {
-            // Überlegungen stehen im Transkript des AgentService, nicht in der Antwortblase.
+        public void onThought(final String text) {
+            onUi(new Runnable() {
+                @Override
+                public void run() {
+                    if (thinkingKey == null || !model.isActivityRunning(thinkingKey)) {
+                        thinkingKey = "thought-" + (++thoughtSeries);
+                        model.startActivity(thinkingKey, "Überlegungen", "think", text);
+                    } else {
+                        model.appendActivityText(thinkingKey, text);
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void onToolActivity(final AgentToolActivity activity) {
+            onUi(new Runnable() {
+                @Override
+                public void run() {
+                    closeThinking();
+                    if (activity.status() == AgentToolActivity.Status.RUNNING) {
+                        model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
+                    } else {
+                        if (!model.isActivityRunning(activity.id())) {
+                            model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
+                        }
+                        model.finishActivity(activity.id(), activity.status() == AgentToolActivity.Status.COMPLETED,
+                                activity.output());
+                    }
+                }
+            });
+        }
+
+        /** Mit der nächsten Antwortzeile oder dem nächsten Werkzeug endet die Denkwolke. */
+        private void closeThinking() {
+            if (thinkingKey != null) {
+                model.finishActivity(thinkingKey, true, "");
+                thinkingKey = null;
+            }
         }
 
         @Override

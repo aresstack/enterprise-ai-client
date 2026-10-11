@@ -36,6 +36,18 @@ final class ResearchAgentTurns {
         boolean isCancelled();
 
         void message(String text);
+
+        /** Ein sichtbarer Werkzeugaufruf beginnt (ACP {@code tool_call}); {@code kind} wie ACP {@code ToolKind}. */
+        default void toolStarted(String callId, String title, String kind, String input) {
+        }
+
+        /** Ein laufender Aufruf ändert Titel oder Inhalt (ACP {@code tool_call_update}, in Arbeit). */
+        default void toolUpdated(String callId, String title, String input) {
+        }
+
+        /** Der Aufruf ist beendet (ACP {@code tool_call_update}) mit seiner Ergebniszeile. */
+        default void toolFinished(String callId, boolean succeeded, String summary) {
+        }
     }
 
     private final ResearchHostControl host;
@@ -44,6 +56,8 @@ final class ResearchAgentTurns {
     private final boolean conceptTools;
     private final ResearchRun research;
     private final ResearchWriting writing;
+    private final DirectAnswers direct;
+    private final ToolNarration narration = new ToolNarration();
 
     ResearchAgentTurns(ResearchHostControl host, ResearchTeamAgent teamAgent, MainModelChat mainModelChat,
                        boolean conceptTools, ResearchRun research) {
@@ -53,6 +67,7 @@ final class ResearchAgentTurns {
         this.mainModelChat = mainModelChat;
         this.conceptTools = conceptTools;
         this.writing = research == null ? null : new ResearchWriting(host, mainModelChat);
+        this.direct = research == null ? null : new DirectAnswers(host, mainModelChat);
     }
 
     /**
@@ -99,6 +114,7 @@ final class ResearchAgentTurns {
 
     void run(String text, Output output) {
         Turn turn = new Turn(output);
+        host.setObserver(observerFor(turn.output()));
         try {
             runTurn(turn, text);
         } catch (ToolInvoker.EndpointUnavailable dead) {
@@ -107,7 +123,37 @@ final class ResearchAgentTurns {
         } catch (ToolInvoker.ToolFailure failed) {
             LOG.warning("[research-agent] host tool failed: " + failed.getMessage());
             turn.message("Der Client hat den Auftrag abgelehnt: " + failed.getMessage());
+        } finally {
+            host.setObserver(null);
         }
+    }
+
+    /** Jeder sichtbare Host-Aufruf des Turns wird zur Tool-Blase (askai arch: gelb Werkzeug, grün Denken). */
+    private ResearchHostControl.ToolObserver observerFor(final Output output) {
+        final java.util.Set<String> visible = java.util.Collections.newSetFromMap(
+                new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
+        return new ResearchHostControl.ToolObserver() {
+            @Override
+            public void started(String callId, String toolName, Map<String, Object> args) {
+                ToolNarration.Visible shown = narration.describe(toolName, args);
+                if (shown != null && !output.isCancelled()) {
+                    visible.add(callId);
+                    output.toolStarted(callId, shown.title, shown.kind, shown.input);
+                }
+            }
+
+            @Override
+            public void finished(String callId, String toolName, Map<String, Object> args, String result,
+                                 String failure) {
+                String summary = narration.summarize(toolName, result);
+                if (!visible.remove(callId)) {
+                    return;
+                }
+                boolean failed = failure != null || ToolNarration.isFailureText(result);
+                output.toolFinished(callId, !failed, failed
+                        ? ToolNarration.shorten(failure != null ? failure : result) : summary);
+            }
+        };
     }
 
     private void runTurn(Turn turn, String text) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
@@ -139,6 +185,14 @@ final class ResearchAgentTurns {
         boolean greeted = !"new".equalsIgnoreCase(status.state);
         TeamAgentStateView view = new TeamAgentStateView(status.phase, status.state,
                 Collections.<String>emptyList());
+        if (direct != null && beforeResearch(status) && !isActionPrompt(text)
+                && ConceptTurnPolicy.modeFor(text) == ConceptTurnPolicy.Mode.FULL && offersKnowledgeSearch()) {
+            java.util.List<String> queries = direct.plan(text, currentConceptRendered(), host.scopeFence());
+            if (!queries.isEmpty() && !turn.isCancelled()) {
+                directTurn(turn, view, text, status, greeted, queries);
+                return;
+            }
+        }
         if (!teamAgent.hasGreeted() && !greeted) {
             TeamAgentResult greeting = teamAgent.greet(view);
             emit(turn, greeting);
@@ -152,6 +206,52 @@ final class ResearchAgentTurns {
             }
         } else {
             emit(turn, conceptAwareRespond(view, text, status.searchTagsOffered));
+        }
+    }
+
+    /**
+     * Ob der Host die Wissenssuche gerade anbietet (Werkzeug aktiv und im Werkzeugsatz der Phase); ohne sie bleibt der
+     * Turn beim Konzeptgespräch.
+     */
+    private boolean offersKnowledgeSearch() {
+        try {
+            return host.tools().containsKey(KnowledgePages.SEARCH_TOOL);
+        } catch (ToolInvoker.EndpointUnavailable unavailable) {
+            return false;
+        }
+    }
+
+    /** Vor dem autonomen Lauf: Konzeptphase, oder der Auftrag ist übergeben, aber noch nicht gestartet. */
+    static boolean beforeResearch(ResearchHostControl.Status status) {
+        String phase = status.phase == null ? "" : status.phase.toLowerCase(java.util.Locale.ROOT);
+        String state = status.state == null ? "" : status.state.toLowerCase(java.util.Locale.ROOT);
+        return "scoping".equals(phase) || ("research".equals(phase) && "waiting".equals(state));
+    }
+
+    /**
+     * Der direkte Suchauftrag (ohne Konzeptpflicht): das Konzept wird wie in jedem Turn ergänzt, seine Antwort bleibt
+     * aber unsichtbar; sichtbar ist die Antwort aus den gelesenen Quellen. Die Quellen landen im Projekt, der
+     * geführte Workflow bleibt über „Recherche starten“ erreichbar.
+     */
+    private void directTurn(Turn turn, TeamAgentStateView view, String text, ResearchHostControl.Status status,
+                            boolean greeted, java.util.List<String> queries)
+            throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
+        if (!teamAgent.hasGreeted() && !greeted) {
+            TeamAgentResult greeting = teamAgent.greet(view);
+            emit(turn, greeting);
+            if (greeting.isOk()) {
+                host.greeted();
+            }
+        }
+        if (conceptTools && !turn.isCancelled()) {
+            TeamAgentResult concept = conceptAwareRespond(view, text, status.searchTagsOffered);
+            if (concept.getStatus() == TeamAgentResult.Status.OK
+                    && concept.getOutput() instanceof ScopingAssistantOutput) {
+                applyScopeUpdate((ScopingAssistantOutput) concept.getOutput());
+            }
+        }
+        if (!turn.isCancelled()) {
+            turn.message(direct.answer(text, queries, turn.output()));
         }
     }
 
@@ -393,6 +493,25 @@ final class ResearchAgentTurns {
                 @Override
                 public void message(String text) {
                     Turn.this.message(text);
+                }
+
+                @Override
+                public void toolStarted(String callId, String title, String kind, String input) {
+                    if (!output.isCancelled()) {
+                        output.toolStarted(callId, title, kind, input);
+                    }
+                }
+
+                @Override
+                public void toolUpdated(String callId, String title, String input) {
+                    if (!output.isCancelled()) {
+                        output.toolUpdated(callId, title, input);
+                    }
+                }
+
+                @Override
+                public void toolFinished(String callId, boolean succeeded, String summary) {
+                    output.toolFinished(callId, succeeded, summary);
                 }
             };
         }

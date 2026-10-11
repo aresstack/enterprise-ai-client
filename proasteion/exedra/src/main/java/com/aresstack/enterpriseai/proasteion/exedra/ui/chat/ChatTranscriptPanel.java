@@ -7,6 +7,9 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownMessageV
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidViewerPanel;
+import com.aresstack.enterpriseai.ui.comic.bubble.AgentActivityBubblePanel;
+import com.aresstack.enterpriseai.ui.comic.bubble.AnimatedThoughtBubblePanel;
+import com.aresstack.enterpriseai.ui.comic.bubble.AssistantThinkingBubblePanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubbleMessageRow;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubbleSide;
@@ -83,6 +86,12 @@ import java.util.Map;
  * jede neue live gestreamte Antwort wird dann automatisch vorgelesen, bis Pause es beendet. Ist automatisches
  * Vorlesen eingestellt, ist der Orb von Anfang an aktiv; beim Laden gespeicherter Chats wird nichts vorgelesen.
  * Ohne verfügbare Sprachausgabe bleibt der Orb deaktiviert und nennt im Tooltip den Grund.
+ *
+ * <p>Arbeitsschritte des Agenten ({@link TranscriptEntry.Author#ACTIVITY}) sind die animierten Gedankenwolken aus
+ * askai-java8 {@code arch}: Werkzeugaufrufe gelb ({@link AgentActivityBubblePanel}), Denkschritte des Modells grün
+ * ({@link AssistantThinkingBubblePanel}). Ist ein Schritt beendet, platzt die Wolke und ihre Ergebniszeile steigt auf;
+ * danach bleibt von einem Werkzeugaufruf eine schmale Ergebniszeile in seiner Farbe (gelb, bei Fehler rot) stehen,
+ * ein Denkschritt verschwindet wie in arch.
  *
  * <p>Zeilenlayout, Blasenbreite und Zeilenhöhe kommen unverändert aus der Comic-Bibliothek
  * ({@link BubbleMessageRow}), die Breitenführung durch den Viewport aus AskAIs {@code BubbleTranscriptPanel}.
@@ -224,6 +233,53 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             entryAdded(entry);
         }
         model.addListener(this);
+    }
+
+    @Override
+    public void entryRemoved(TranscriptEntry entry) {
+        flushPendingUpdates();
+        pending.remove(entry.getId());
+        RowState state = rows.remove(entry.getId());
+        if (state == null) {
+            return;
+        }
+        if (state.thought != null) {
+            state.thought.stopAnimation();
+        }
+        removeRowAndSpacer(state.row);
+        BubbleMessageRow sources = sourceRows.remove(entry.getId());
+        if (sources != null) {
+            removeRowAndSpacer(sources);
+        }
+        if (messageList.getComponentCount() == 0) {
+            messageList.add(emptyState);
+        }
+        refresh(false);
+    }
+
+    private void removeRowAndSpacer(JComponent row) {
+        int index = messageList.getComponentZOrder(row);
+        if (index < 0) {
+            return;
+        }
+        messageList.remove(index);
+        if (index < messageList.getComponentCount()
+                && !(messageList.getComponent(index) instanceof BubbleMessageRow)
+                && !(messageList.getComponent(index) instanceof JLabel)) {
+            messageList.remove(index); // der Abstand hinter der Zeile
+        }
+    }
+
+    /** Die Gedankenwolke eines laufenden Arbeitsschritts (für Tests), sonst {@code null}. */
+    AnimatedThoughtBubblePanel thoughtFor(long entryId) {
+        RowState state = rows.get(entryId);
+        return state == null ? null : state.thought;
+    }
+
+    /** Die Ergebniszeile eines beendeten Werkzeugaufrufs (für Tests), sonst {@code null}. */
+    JLabel activityLineFor(long entryId) {
+        RowState state = rows.get(entryId);
+        return state == null || state.thought != null || !(state.row instanceof JLabel) ? null : (JLabel) state.row;
     }
 
     @Override
@@ -513,6 +569,10 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     /** Bringt die Blase eines Eintrags auf seinen aktuellen Stand; Streaming-Text wird nur angehängt. */
     private void apply(TranscriptEntry entry) {
         RowState state = rows.get(entry.getId());
+        if (state != null && entry.getAuthor() == TranscriptEntry.Author.ACTIVITY) {
+            applyActivity(state, entry);
+            return;
+        }
         if (state == null || state.bubble == null) {
             return; // Hinweiszeilen ändern sich nicht
         }
@@ -626,7 +686,96 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         }
     }
 
+    /**
+     * Läuft der Schritt noch, zeigt die Wolke Titel und Erläuterung; ist er beendet, platzt sie (Erfolg in der
+     * Akzentfarbe, Fehler rot) und wird danach zur Ergebniszeile bzw. verschwindet (Denkschritt).
+     */
+    private void applyActivity(final RowState state, final TranscriptEntry entry) {
+        final AnimatedThoughtBubblePanel thought = state.thought;
+        if (thought == null) {
+            return; // schon zur Ergebniszeile geworden
+        }
+        if (entry.getState() == TranscriptEntry.State.STREAMING) {
+            thought.updateActivity(entry.getActivityTitle(), entry.getText());
+            return;
+        }
+        if (thought.getVisualState() != AnimatedThoughtBubblePanel.VisualState.RUNNING) {
+            return;
+        }
+        Runnable settle = new Runnable() {
+            @Override
+            public void run() {
+                settleActivity(entry);
+            }
+        };
+        String summary = entry.getActivitySummary().isEmpty() ? entry.getActivityTitle() : entry.getActivitySummary();
+        if (entry.getState() == TranscriptEntry.State.FAILED) {
+            thought.completeWithFailure(summary, settle);
+        } else if (entry.getState() == TranscriptEntry.State.CANCELLED) {
+            thought.cancel(summary, settle);
+        } else {
+            thought.completeSuccessfully(summary, settle);
+        }
+    }
+
+    /** Nach dem Platzen: Denkschritte verschwinden, Werkzeugaufrufe bleiben als schmale Ergebniszeile. */
+    private void settleActivity(TranscriptEntry entry) {
+        RowState state = rows.get(entry.getId());
+        if (state == null || state.thought == null) {
+            return;
+        }
+        if (entry.isThinking() || entry.getState() == TranscriptEntry.State.CANCELLED) {
+            rows.remove(entry.getId());
+            removeRowAndSpacer(state.row);
+        } else {
+            replaceRow(state, entry);
+        }
+        refresh(isNearBottom());
+    }
+
+    /** Die schmale Ergebniszeile eines beendeten Werkzeugaufrufs: „Titel „Eingabe“: Ergebnis“ in Wolkenfarbe. */
+    private JLabel activityLine(TranscriptEntry entry) {
+        StringBuilder text = new StringBuilder(entry.getActivityTitle());
+        // Die Recherche-Karte trägt mehrere Zeilen und einen Balken-Marker; als Zeile bleibt nur ihre Bilanz.
+        String input = "research".equals(entry.getActivityKind()) ? ""
+                : entry.getText().replaceAll("\\s*\\[\\[bar:\\d+/\\d+\\]\\]\\s*", " ").trim();
+        if (!input.isEmpty()) {
+            int newline = input.indexOf('\n');
+            text.append(" \u201E").append(newline < 0 ? input : input.substring(0, newline)).append("\u201C");
+        }
+        if (!entry.getActivitySummary().isEmpty()) {
+            text.append(": ").append(entry.getActivitySummary());
+        }
+        JLabel line = new JLabel(text.toString(), SwingConstants.LEFT);
+        line.putClientProperty("html.disable", Boolean.TRUE);
+        line.setName("transcript.activityLine");
+        line.setFont(line.getFont().deriveFont(Font.BOLD, Math.max(11f, line.getFont().getSize2D() - 1f)));
+        boolean failed = entry.getState() == TranscriptEntry.State.FAILED;
+        line.setForeground(failed ? bubblePalette.getFailureAccent()
+                : bubblePalette.getActivityAccent().darker());
+        line.setBorder(BorderFactory.createEmptyBorder(2, 22, 2, 12));
+        line.setAlignmentX(LEFT_ALIGNMENT);
+        line.setToolTipText(text.toString());
+        line.setMaximumSize(new Dimension(Integer.MAX_VALUE, line.getPreferredSize().height));
+        return line;
+    }
+
     private RowState createRow(TranscriptEntry entry) {
+        if (entry.getAuthor() == TranscriptEntry.Author.ACTIVITY) {
+            if (entry.getState() != TranscriptEntry.State.STREAMING) {
+                JLabel line = activityLine(entry);
+                return new RowState(line, null, "", 0, true);
+            }
+            AnimatedThoughtBubblePanel thought = entry.isThinking()
+                    ? new AssistantThinkingBubblePanel(BubbleSide.LEFT, bubblePalette, entry.getActivityTitle(),
+                    entry.getText())
+                    : new AgentActivityBubblePanel(BubbleSide.LEFT, bubblePalette, entry.getActivityTitle(),
+                    entry.getText());
+            thought.setHeaderTimestamp(entry.getCreatedAtMillis());
+            RowState state = new RowState(new BubbleMessageRow(thought, BubbleSide.LEFT), null, "", 0, true);
+            state.thought = thought;
+            return state;
+        }
         boolean user = entry.getAuthor() == TranscriptEntry.Author.USER;
         boolean notice = entry.getAuthor() == TranscriptEntry.Author.NOTICE;
         boolean failed = entry.getState() == TranscriptEntry.State.FAILED;
@@ -722,6 +871,9 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     }
 
     private void replaceRow(RowState old, TranscriptEntry entry) {
+        if (old.thought != null) {
+            old.thought.stopAnimation();
+        }
         int index = messageList.getComponentZOrder(old.row);
         RowState replacement = createRow(entry);
         replacement.row.setAlignmentX(LEFT_ALIGNMENT);
@@ -757,6 +909,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         int shownLength;
         boolean showsEntryText; // Blase zeigt den Eintragstext (nicht Platzhalter oder Aktivität)
         boolean streamed; // zuletzt im Zustand STREAMING gesehen (Ende live erlebt → automatisches Vorlesen)
+        AnimatedThoughtBubblePanel thought; // die Wolke eines laufenden Arbeitsschritts, sonst null
 
         RowState(JComponent row, TranscriptBubble bubble, String header, int shownLength,
                  boolean showsEntryText) {
