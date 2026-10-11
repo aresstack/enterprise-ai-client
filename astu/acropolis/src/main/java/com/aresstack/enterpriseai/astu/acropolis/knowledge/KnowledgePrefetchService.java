@@ -73,6 +73,10 @@ public final class KnowledgePrefetchService {
     private final Thread indexThread;
     /** Wartende Aufbereitungen in Ankunftsreihenfolge; geschützt durch sich selbst. */
     private final java.util.LinkedList<IndexJob> indexQueue = new java.util.LinkedList<IndexJob>();
+    /** Der Auftrag, den der Index-Thread gerade aufbereitet, oder {@code null}. Unter {@code indexQueue}. */
+    private IndexJob inProgress;
+    /** Wie viele Aufträge der Index-Thread begonnen hat (Tests). Unter {@code indexQueue}. */
+    private int indexRuns;
     private final Map<KnowledgeResourceId, KnowledgeDocument> cache =
             new LinkedHashMap<KnowledgeResourceId, KnowledgeDocument>();
     private final Map<String, Series> running = new HashMap<String, Series>();
@@ -439,9 +443,35 @@ public final class KnowledgePrefetchService {
                 }
                 return;
             }
-            indexQueue.add(new IndexJob(document, indexed, urgent));
+            // Dieselbe Fassung wartet schon oder wird gerade aufbereitet: anhängen statt ein zweites Mal einreihen.
+            IndexJob same = sameCapture(document);
+            if (same != null) {
+                same.join(indexed, urgent);
+            } else {
+                indexQueue.add(new IndexJob(document, indexed, urgent));
+            }
             indexQueue.notifyAll();
         }
+    }
+
+    /** Begonnene Aufbereitungen; eine Fassung, die mehrere Aufrufer wollen, zählt einmal. */
+    int indexRunsForTest() {
+        synchronized (indexQueue) {
+            return indexRuns;
+        }
+    }
+
+    /** Der Auftrag für genau diese Fassung (gleiche ID, gleicher Inhalt) in Arbeit oder Warteschlange. Unter Lock. */
+    private IndexJob sameCapture(KnowledgeDocument document) {
+        if (inProgress != null && inProgress.covers(document)) {
+            return inProgress;
+        }
+        for (IndexJob job : indexQueue) {
+            if (job.covers(document)) {
+                return job;
+            }
+        }
+        return null;
     }
 
     private void wakeIndex() {
@@ -458,6 +488,7 @@ public final class KnowledgePrefetchService {
         while (!shutdown) {
             IndexJob job;
             synchronized (indexQueue) {
+                inProgress = null;
                 job = nextJob();
                 if (job == null) {
                     try {
@@ -467,17 +498,21 @@ public final class KnowledgePrefetchService {
                     }
                     continue;
                 }
+                inProgress = job;
+                indexRuns++;
             }
             try {
                 ResourceIndexingOutcome outcome = indexing.indexDocumentIfChanged(job.document);
-                if (job.indexed != null) {
-                    job.indexed.complete(outcome);
+                synchronized (indexQueue) {
+                    inProgress = null; // ab hier angehängte Aufrufer bekämen das Ergebnis nicht mehr
                 }
+                job.complete(outcome, null);
             } catch (RuntimeException e) {
-                if (job.indexed != null) {
-                    // Lesen gelingt auch ohne Index; die nächste Suche versucht es erneut
-                    job.indexed.completeExceptionally(e);
+                synchronized (indexQueue) {
+                    inProgress = null;
                 }
+                // Lesen gelingt auch ohne Index; die nächste Suche versucht es erneut
+                job.complete(null, e);
             }
             try {
                 Thread.sleep(INDEX_PAUSE_MILLIS);
@@ -491,7 +526,7 @@ public final class KnowledgePrefetchService {
     private IndexJob nextJob() {
         for (Iterator<IndexJob> it = indexQueue.iterator(); it.hasNext(); ) {
             IndexJob job = it.next();
-            if (job.urgent.get()) {
+            if (job.isUrgent()) {
                 it.remove();
                 return job;
             }
@@ -499,16 +534,59 @@ public final class KnowledgePrefetchService {
         return indexQueue.isEmpty() ? null : indexQueue.removeFirst();
     }
 
+    /** Ein Auftrag je Fassung; weitere Aufrufer derselben Fassung hängen sich an (Ergebnis und Vorrang). */
     private static final class IndexJob {
         final KnowledgeDocument document;
-        final CompletableFuture<ResourceIndexingOutcome> indexed;
-        final java.util.concurrent.atomic.AtomicBoolean urgent;
+        final List<CompletableFuture<ResourceIndexingOutcome>> waiting =
+                new ArrayList<CompletableFuture<ResourceIndexingOutcome>>();
+        final List<java.util.concurrent.atomic.AtomicBoolean> urgency =
+                new ArrayList<java.util.concurrent.atomic.AtomicBoolean>();
 
         IndexJob(KnowledgeDocument document, CompletableFuture<ResourceIndexingOutcome> indexed,
                  java.util.concurrent.atomic.AtomicBoolean urgent) {
             this.document = document;
-            this.indexed = indexed;
-            this.urgent = urgent;
+            join(indexed, urgent);
+        }
+
+        void join(CompletableFuture<ResourceIndexingOutcome> indexed,
+                  java.util.concurrent.atomic.AtomicBoolean urgent) {
+            if (indexed != null) {
+                waiting.add(indexed);
+            }
+            if (urgent != null) {
+                urgency.add(urgent);
+            }
+        }
+
+        boolean covers(KnowledgeDocument other) {
+            return document.id().equals(other.id()) && document.contentHash().equals(other.contentHash());
+        }
+
+        /** Dringend, solange irgendein angehängter Aufrufer noch wartet. */
+        boolean isUrgent() {
+            for (java.util.concurrent.atomic.AtomicBoolean urgent : urgency) {
+                if (urgent.get()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void complete(ResourceIndexingOutcome outcome, RuntimeException failure) {
+            // Nach dem Ende hängt sich niemand mehr an (inProgress ist schon leer).
+            for (CompletableFuture<ResourceIndexingOutcome> target : waiting) {
+                if (failure != null) {
+                    target.completeExceptionally(failure);
+                } else {
+                    target.complete(outcome);
+                }
+            }
+        }
+
+        void cancel() {
+            for (CompletableFuture<ResourceIndexingOutcome> target : waiting) {
+                target.cancel(false);
+            }
         }
     }
 
@@ -535,9 +613,7 @@ public final class KnowledgePrefetchService {
         priorityThread.shutdownNow();
         synchronized (indexQueue) {
             for (IndexJob job : indexQueue) {
-                if (job.indexed != null) {
-                    job.indexed.cancel(false);
-                }
+                job.cancel();
             }
             indexQueue.clear();
             indexQueue.notifyAll();

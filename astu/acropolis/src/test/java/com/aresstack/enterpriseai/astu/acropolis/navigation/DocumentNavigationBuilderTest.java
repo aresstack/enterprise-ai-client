@@ -151,6 +151,22 @@ public class DocumentNavigationBuilderTest {
         assertFalse(navigation.fallbackReason().isEmpty());
     }
 
+    @Test
+    public void oneTopicRunIsNoSubdivision() {
+        String[] receipts = {PASSAGES[0], PASSAGES[1], "Jeder Beleg geht durch den Import.", "Der Import meldet jeden Beleg."};
+        String text = String.join("\n\n", receipts);
+        DocumentNavigation flat = builder.build("doc", "cap", "Notiz", text, passages("p", receipts),
+                AnalysisLabels.KEEP);
+        assertEquals("ein Thema über das ganze Dokument: nichts zu navigieren", DocumentNavigation.Analysis.HEADINGS,
+                flat.analysis());
+        assertTrue(flat.chapters().isEmpty());
+
+        String chaptered = "## Import\n\n" + text + "\n\n## Urlaub\n\n" + PASSAGES[4];
+        DocumentNavigation navigation = builder.build("doc", "cap", "Notiz", chaptered, passages("q", receipts),
+                AnalysisLabels.KEEP);
+        assertEquals("Kapitel mit nur einem Lauf bleibt ungeteilt", 0, navigation.chapters().get(0).children().size());
+    }
+
     private static List<String> labels(List<NavigationSection> sections) {
         List<String> out = new ArrayList<String>();
         for (NavigationSection section : sections) {

@@ -170,4 +170,129 @@ public class DocumentNavigationSkyTest {
             assertTrue("Banner lässt Platz für das Dokument", sky.coveredHeight() < 220 / 2);
         });
     }
+
+    private static String manySteps() {
+        StringBuilder md = new StringBuilder("# Handbuch\n\n## Einleitung\n\n").append(LONG).append("\n\n");
+        md.append("## Installation\n\n").append(LONG).append("\n\n");
+        for (int i = 1; i <= 12; i++) {
+            md.append("### Schritt ").append(i).append("\n\n").append(LONG).append(LONG).append("\n\n");
+        }
+        md.append("## Betrieb\n\n").append(LONG).append("\n");
+        return md.toString();
+    }
+
+    private static KnowledgeReaderPanel reader(String markdown, DocumentNavigation navigation, int width, int height)
+            throws Exception {
+        final KnowledgeReaderPanel[] holder = new KnowledgeReaderPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette());
+            ReaderLink link = ReaderLink.source("wiki", "Handbuch");
+            reader.open(link, true);
+            reader.showDocument(link.key(), markdown, navigation);
+            reader.setSize(width, height);
+            for (int i = 0; i < 4; i++) {
+                reader.validate();
+                layout(reader);
+            }
+            holder[0] = reader;
+        });
+        return holder[0];
+    }
+
+    private static void relayout(Component component) {
+        for (int i = 0; i < 3; i++) {
+            ((Container) component).validate();
+            layout(component);
+        }
+    }
+
+    @Test
+    public void expandedOutlineIsCappedScrollsInsideAndClickJumpsToTheSubsection() throws Exception {
+        String markdown = manySteps();
+        KnowledgeReaderPanel reader = reader(markdown, navigation(markdown), 700, 420);
+        SwingUtilities.invokeAndWait(() -> {
+            DocumentNavigationSky sky = reader.navigationSky(key());
+            NavigableDocumentPage page = reader.documentPage(key());
+            JViewport document = page.scroll().getViewport();
+            sky.clickChapterForTest(1); // Installation
+            sky.setExpanded(true);
+            relayout(reader);
+            int documentY = document.getViewPosition().y;
+
+            // FA-13: begrenzte Höhe, innen rollen
+            javax.swing.JScrollPane outline = sky.outlineScrollForTest();
+            assertEquals(12, sky.outlineSectionsForTest().size());
+            int natural = outline.getViewport().getView().getPreferredSize().height;
+            assertTrue("Gliederung begrenzt: " + outline.getHeight() + " < " + natural, outline.getHeight() < natural);
+            int row = natural / 12;
+            int cap = Math.max(2 * row, sky.getHeight() * com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics
+                    .SKY_EXPANDED_MAX_PERCENT / 100 - outline.getY());
+            assertTrue("Höhe höchstens " + cap + ": " + outline.getHeight(), outline.getHeight() <= cap);
+            MouseWheelEvent wheel = new MouseWheelEvent(outline, MouseWheelEvent.MOUSE_WHEEL, 0L, 0, 20, 20, 0,
+                    false, MouseWheelEvent.WHEEL_UNIT_SCROLL, 3, 2);
+            outline.dispatchEvent(wheel);
+            assertTrue("innen gerollt", outline.getVerticalScrollBar().getValue() > 0);
+            assertEquals("Dokument steht", documentY, document.getViewPosition().y);
+
+            // FA-12: Klick auf einen Unterabschnitt springt dorthin, der Abschnitt wird aktiv
+            NavigationSection step8 = sky.outlineSectionsForTest().get(7);
+            assertEquals("Schritt 8", step8.label());
+            Component cloud = ((Container) outline.getViewport().getView()).getComponent(7);
+            cloud.dispatchEvent(new java.awt.event.MouseEvent(cloud, java.awt.event.MouseEvent.MOUSE_PRESSED, 0L,
+                    0, 5, 5, 1, false));
+            assertEquals(step8.id(), sky.activeSectionId());
+            assertEquals(sky.navigation().chapters().get(1).id(), sky.activeChapterId());
+            int below = page.positionOf(step8) - document.getViewPosition().y;
+            assertTrue("Unterabschnitt direkt unter dem Banner: " + below + " vs " + sky.coveredHeight(),
+                    below >= sky.coveredHeight() && below <= sky.coveredHeight() + 3 * NavigableDocumentPage.TARGET_GAP);
+        });
+    }
+
+    @Test
+    public void detectedTopicSectionsAreJumpable() throws Exception {
+        String[] passages = {
+                "Die Anwendung übernimmt Belege über die Import-Schnittstelle. Der Import prüft jeden Beleg. " + LONG,
+                "Belege werden validiert. Danach wird jeder Beleg vom Import verarbeitet. " + LONG,
+                "Ein Urlaubsantrag ist etwas anderes. Der Antrag auf Urlaub geht an die Personalstelle. " + LONG,
+                "Urlaub muss genehmigt werden. Der Antrag wird geprüft. " + LONG};
+        StringBuilder text = new StringBuilder();
+        for (String passage : passages) {
+            for (int i = 0; i < 4; i++) {
+                text.append(passage).append("\n\n");
+            }
+        }
+        String markdown = text.toString();
+        com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity world =
+                com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity.of("test", 2);
+        java.util.List<com.aresstack.enterpriseai.astu.acropolis.navigation.NavigationPassage> located =
+                new java.util.ArrayList<com.aresstack.enterpriseai.astu.acropolis.navigation.NavigationPassage>();
+        int n = 0;
+        for (String passage : passages) {
+            boolean receipts = passage.contains("Beleg");
+            for (int i = 0; i < 4; i++) {
+                located.add(new com.aresstack.enterpriseai.astu.acropolis.navigation.NavigationPassage(
+                        "doc@cap#p" + n++, passage, com.aresstack.enterpriseai.astu.embedding.EmbeddingVector.of(
+                        world, receipts ? new float[]{1f, 0f} : new float[]{0f, 1f})));
+            }
+        }
+        DocumentNavigation semantic = new DocumentNavigationBuilder().build("doc", "cap", "Notiz", markdown, located,
+                (title, texts) -> null);
+        assertEquals(DocumentNavigation.Analysis.SEMANTIC, semantic.analysis());
+        assertEquals(2, semantic.chapters().size());
+
+        KnowledgeReaderPanel reader = reader(markdown, semantic, 700, 400);
+        SwingUtilities.invokeAndWait(() -> {
+            DocumentNavigationSky sky = reader.navigationSky(key());
+            NavigableDocumentPage page = reader.documentPage(key());
+            JViewport document = page.scroll().getViewport();
+            NavigationSection holiday = sky.navigation().chapters().get(1);
+            assertTrue(holiday.isGenerated());
+            sky.clickChapterForTest(1);
+            assertEquals(holiday.id(), sky.activeChapterId());
+            assertTrue("gerollt", document.getViewPosition().y > 0);
+            int below = page.positionOf(holiday) - document.getViewPosition().y;
+            assertTrue("Themenabschnitt direkt unter dem Banner: " + below,
+                    below >= sky.coveredHeight() && below <= sky.coveredHeight() + 3 * NavigableDocumentPage.TARGET_GAP);
+        });
+    }
 }

@@ -190,6 +190,17 @@ public class KnowledgePrefetchServiceTest {
                 java.util.Arrays.asList("Drucker", "Netze", "Kaffee", "Urlaub"), order);
     }
 
+    @Test
+    public void sameCaptureIsPreparedOnceForClickAndNavigation() throws Exception {
+        service(5, 1);
+        KnowledgeDocument opened = prefetch.openSelected(wiki, wiki.idOf("D")); // Klick reiht D ein
+        java.util.concurrent.CompletableFuture<?> first = prefetch.whenIndexed(opened); // Navigation will dieselbe
+        java.util.concurrent.CompletableFuture<?> second = prefetch.whenIndexed(opened);
+        first.get(10, TimeUnit.SECONDS);
+        second.get(10, TimeUnit.SECONDS);
+        assertEquals("eine Fassung, ein Auftrag", 1, prefetch.indexRunsForTest());
+    }
+
     private static void waitUntil(java.util.function.BooleanSupplier condition) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 10_000L;
         while (!condition.getAsBoolean()) {
