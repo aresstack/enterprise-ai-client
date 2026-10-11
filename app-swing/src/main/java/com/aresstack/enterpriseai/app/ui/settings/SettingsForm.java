@@ -74,6 +74,9 @@ public final class SettingsForm {
     private final boolean readAloudAutoStart;
     private final String readAloudChunking;
     private final String synthesisWorkers;
+    private final String prefetchMaxItems;
+    private final String prefetchConcurrency;
+    private final String prefetchCacheMaxMb;
     private final String agentCommand;
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
@@ -116,6 +119,9 @@ public final class SettingsForm {
         this.readAloudAutoStart = b.readAloudAutoStart;
         this.readAloudChunking = b.readAloudChunking;
         this.synthesisWorkers = b.synthesisWorkers;
+        this.prefetchMaxItems = b.prefetchMaxItems;
+        this.prefetchConcurrency = b.prefetchConcurrency;
+        this.prefetchCacheMaxMb = b.prefetchCacheMaxMb;
         this.agentCommand = b.agentCommand;
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
@@ -148,6 +154,9 @@ public final class SettingsForm {
                 .readAloudAutoStart(readAloudAutoStart)
                 .readAloudChunking(readAloudChunking)
                 .synthesisWorkers(synthesisWorkers)
+                .prefetchMaxItems(prefetchMaxItems)
+                .prefetchConcurrency(prefetchConcurrency)
+                .prefetchCacheMaxMb(prefetchCacheMaxMb)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .modelSelections(modelSelections)
                 .localModelRoot(localModelRoot);
@@ -314,6 +323,21 @@ public final class SettingsForm {
         return synthesisWorkers;
     }
 
+    /** Vorladen: höchstens so viele Treffer ab der Cursorposition ({@code knowledge.prefetch.maxItems}). */
+    public String prefetchMaxItems() {
+        return prefetchMaxItems;
+    }
+
+    /** Vorladen: parallele Abrufe im Hintergrund ({@code knowledge.prefetch.concurrency}). */
+    public String prefetchConcurrency() {
+        return prefetchConcurrency;
+    }
+
+    /** Vorladen: Speicher-Cache in MB ({@code knowledge.prefetch.cacheMaxMb}). */
+    public String prefetchCacheMaxMb() {
+        return prefetchCacheMaxMb;
+    }
+
     public String agentCommand() {
         return agentCommand;
     }
@@ -389,6 +413,9 @@ public final class SettingsForm {
         private boolean readAloudAutoStart;
         private String readAloudChunking = "PARAGRAPHS";
         private String synthesisWorkers = "2";
+        private String prefetchMaxItems = "100";
+        private String prefetchConcurrency = "4";
+        private String prefetchCacheMaxMb = "50";
         private String agentCommand = "";
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
@@ -566,6 +593,21 @@ public final class SettingsForm {
 
         public Builder synthesisWorkers(String value) {
             this.synthesisWorkers = value;
+            return this;
+        }
+
+        public Builder prefetchMaxItems(String value) {
+            this.prefetchMaxItems = value;
+            return this;
+        }
+
+        public Builder prefetchConcurrency(String value) {
+            this.prefetchConcurrency = value;
+            return this;
+        }
+
+        public Builder prefetchCacheMaxMb(String value) {
+            this.prefetchCacheMaxMb = value;
             return this;
         }
 

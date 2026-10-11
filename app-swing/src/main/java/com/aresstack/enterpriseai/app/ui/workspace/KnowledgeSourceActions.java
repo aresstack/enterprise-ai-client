@@ -45,6 +45,10 @@ public interface KnowledgeSourceActions {
     default void searchCleared() {
     }
 
+    /** Die Trefferliste gescrollt: {@code firstVisible} ist der oberste sichtbare Treffer (Vorladen ab dort). */
+    default void hitsScrolled(ReaderLink firstVisible) {
+    }
+
     /** Eine Quelle oder ein Treffer angeklickt: im Lesebereich zeigen (Vorschau, mit {@code pin} angeheftet). */
     default void linkOpened(ReaderLink link, boolean pin) {
     }

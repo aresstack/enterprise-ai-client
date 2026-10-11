@@ -15,7 +15,10 @@ public final class KnowledgeToolSettings {
     public static final int MIN_SNIPPET_CHARS = 80;
     public static final int DEFAULT_MAX_RESULTS = 5;
     public static final int DEFAULT_MAX_FAILURES_LISTED = 20;
-    /** Recherchebudget: so viele Treffer lädt und indexiert eine knowledge_search höchstens; 0 = unbegrenzt. */
+    /**
+     * Seitenbudget eines Recherche-Laufs des Agenten ({@code agent.tools.maxPages}, 0 = unbegrenzt); gezählt im
+     * Agentenprozess. Die Werkzeuge selbst verbrauchen nichts davon, das Vorladen hat eigene Einstellungen.
+     */
     public static final int DEFAULT_MAX_PAGES = 4;
 
     private final int maxResponseChars;
@@ -75,7 +78,7 @@ public final class KnowledgeToolSettings {
         return new KnowledgeToolSettings(maxResponseChars, snippetChars, defaultMaxResults, count, maxPages);
     }
 
-    /** Recherchebudget je Suche: höchstens so viele Seiten laden und indexieren, {@code 0} = unbegrenzt. */
+    /** Seitenbudget eines Recherche-Laufs (an den Agentenprozess übergeben), {@code 0} = unbegrenzt. */
     public KnowledgeToolSettings withMaxPages(int pages) {
         if (pages < 0) {
             throw new IllegalArgumentException("maxPages muss >= 0 sein (0 = unbegrenzt): " + pages);

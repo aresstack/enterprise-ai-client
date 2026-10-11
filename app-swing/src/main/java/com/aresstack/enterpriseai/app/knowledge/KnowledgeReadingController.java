@@ -7,6 +7,8 @@ import com.aresstack.enterpriseai.app.ui.workspace.FavoritesPanel;
 import com.aresstack.enterpriseai.app.ui.workspace.SourceSearchState;
 import com.aresstack.enterpriseai.application.knowledge.BrowseKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.application.knowledge.FoundResource;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeDocumentNotIndexedException;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.knowledge.SearchKnowledgeSourcesUseCase;
 import com.aresstack.enterpriseai.application.knowledge.SourceSearchOutcome;
@@ -29,20 +31,32 @@ import java.util.logging.Logger;
  * durchsucht alle angehakten Quellen parallel ({@link SearchKnowledgeSourcesUseCase}), ein Klick auf eine Quelle, einen
  * Treffer oder einen Favoriten zeigt ihn im Lesebereich ({@link BrowseKnowledgeSourceUseCase}), ★ merkt ihn in den
  * Favoriten. Blockierende Arbeit läuft auf dem Arbeits-Executor, alles an der Oberfläche auf dem UI-Executor.
+ *
+ * <p>Vorladen wie MainframeMate {@code ConfluenceConnectionTab}: nach der Suche lädt der {@link KnowledgePrefetchService}
+ * die Treffer ab Position 0 vor, nach jeder Auswahl und beim Scrollen ab der gewählten bzw. obersten sichtbaren Zeile
+ * (die laufende Serie bricht ab). Ein Klick liest über den Priority-Lader: aus dem Cache, sonst sofort, nie hinter der
+ * Vorlade-Warteschlange; die gelesene Seite wird danach indexiert.
  */
 public final class KnowledgeReadingController implements KnowledgeReaderPanel.Listener, FavoritesPanel.Actions {
 
     private static final Logger LOG = Logger.getLogger(KnowledgeReadingController.class.getName());
+    /** Kanal der Vorlade-Serie des Drawers. */
+    static final String PREFETCH_CHANNEL = "drawer";
 
     private final ChatWorkspacePanel workspace;
     private final Supplier<List<KnowledgeSourceRegistration>> enabledSources;
     private final Function<String, KnowledgeSourceRegistration> lookup;
     private final SearchKnowledgeSourcesUseCase search;
     private final BrowseKnowledgeSourceUseCase browse;
+    private final KnowledgePrefetchService prefetch;
     private final FavoritesStore favorites;
     private final Executor uiExecutor;
     private final Executor workExecutor;
     private int searchGeneration;
+    /** Die Treffer der letzten Suche in Anzeigereihenfolge (nur auf dem UI-Thread). */
+    private List<KnowledgePrefetchService.Candidate> hitCandidates = new ArrayList<KnowledgePrefetchService.Candidate>();
+    private List<String> hitKeys = new ArrayList<String>();
+    private int prefetchedFrom = -1;
 
     /**
      * @param enabledSources die angebundenen, angehakten Quellen (frisch je Suche gelesen)
@@ -53,9 +67,10 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                                       Supplier<List<KnowledgeSourceRegistration>> enabledSources,
                                       Function<String, KnowledgeSourceRegistration> lookup,
                                       SearchKnowledgeSourcesUseCase search, BrowseKnowledgeSourceUseCase browse,
-                                      FavoritesStore favorites, Executor uiExecutor, Executor workExecutor) {
+                                      KnowledgePrefetchService prefetch, FavoritesStore favorites,
+                                      Executor uiExecutor, Executor workExecutor) {
         if (workspace == null || enabledSources == null || lookup == null || search == null || browse == null
-                || uiExecutor == null || workExecutor == null) {
+                || prefetch == null || uiExecutor == null || workExecutor == null) {
             throw new IllegalArgumentException("only favorites may be null");
         }
         this.workspace = workspace;
@@ -63,6 +78,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         this.lookup = lookup;
         this.search = search;
         this.browse = browse;
+        this.prefetch = prefetch;
         this.favorites = favorites;
         this.uiExecutor = uiExecutor;
         this.workExecutor = workExecutor;
@@ -97,6 +113,8 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                         return; // inzwischen neu gesucht oder geleert
                     }
                     List<ReaderLink> hits = new ArrayList<ReaderLink>();
+                    List<KnowledgePrefetchService.Candidate> candidates =
+                            new ArrayList<KnowledgePrefetchService.Candidate>();
                     List<String> problems = new ArrayList<String>();
                     if (failure != null) {
                         LOG.log(Level.WARNING, "Quellensuche fehlgeschlagen", failure);
@@ -106,18 +124,52 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                             if (outcome.failed()) {
                                 problems.add(outcome.sourceId().value() + ": " + outcome.problem());
                             }
+                            KnowledgeSourceRegistration owner = lookup.apply(outcome.sourceId().value());
                             for (FoundResource found : outcome.hits()) {
-                                hits.add(new ReaderLink(found.sourceId().value(), found.resourceId().value(),
-                                        found.title(), found.snippet(), found.location()));
+                                ReaderLink link = new ReaderLink(found.sourceId().value(), found.resourceId().value(),
+                                        found.title(), found.snippet(), found.location());
+                                hits.add(link);
+                                if (owner != null) {
+                                    candidates.add(new KnowledgePrefetchService.Candidate(owner.port(),
+                                            found.resourceId(), found.revision()));
+                                }
                             }
                         }
                     }
                     workspace.knowledgeSources().setSearchState(SourceSearchState.done(text, count, hits, problems));
+                    // Wie MainframeMate nach der Suche: alle Treffer ab Position 0 im Hintergrund vorladen.
+                    hitCandidates = candidates;
+                    hitKeys = new ArrayList<String>();
+                    for (KnowledgePrefetchService.Candidate candidate : candidates) {
+                        hitKeys.add(candidate.id().value());
+                    }
+                    prefetchFrom(0, true);
                 }));
     }
 
     public void searchCleared() {
         searchGeneration++;
+        hitCandidates = new ArrayList<KnowledgePrefetchService.Candidate>();
+        hitKeys = new ArrayList<String>();
+        prefetchedFrom = -1;
+        prefetch.prefetch(PREFETCH_CHANNEL, hitCandidates, 0); // bricht das Vorladen der alten Treffer ab
+    }
+
+    /** Die Trefferliste wurde gescrollt: ab der obersten sichtbaren Zeile weiter vorladen. Auf dem UI-Thread. */
+    public void hitsScrolled(ReaderLink firstVisible) {
+        if (firstVisible != null && !firstVisible.isSource()) {
+            prefetchFrom(hitKeys.indexOf(firstVisible.resourceId()), false);
+        }
+    }
+
+    /** Vorladen ab {@code index} (MainframeMate {@code prefetchPages(ids, fromIndex)}); gleiche Position: nichts. */
+    private void prefetchFrom(int index, boolean force) {
+        if (hitCandidates.isEmpty() || index < 0 || index >= hitCandidates.size()
+                || (!force && index == prefetchedFrom)) {
+            return;
+        }
+        prefetchedFrom = index;
+        prefetch.prefetch(PREFETCH_CHANNEL, hitCandidates, index);
     }
 
     // ------------------------------------------------------------------ Lesebereich
@@ -128,6 +180,10 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         final KnowledgeReaderPanel reader = workspace.reader();
         if (!reader.open(link, pin)) {
             return;
+        }
+        // Wie MainframeMate nach jeder Auswahl: ab der gewählten Zeile weiter vorladen.
+        if (!link.isSource()) {
+            prefetchFrom(hitKeys.indexOf(link.resourceId()), false);
         }
         final KnowledgeSourceRegistration registration = lookup.apply(link.sourceId());
         if (registration == null) {
@@ -152,11 +208,13 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 }
                 uiExecutor.execute(() -> reader.showLinks(link.key(), entries, "Diese Quelle meldet keine Einträge."));
             } else {
-                final KnowledgeDocument document = browse.read(registration.port(),
-                        KnowledgeResourceId.of(link.resourceId()));
+                final KnowledgeResourceId id = KnowledgeResourceId.of(link.resourceId());
+                // Priority-Lader: Cache oder sofort, nie hinter dem Vorladen; danach wird die Seite indexiert.
+                final KnowledgeDocument document = prefetch.read(id, () -> browse.read(registration.port(), id));
                 uiExecutor.execute(() -> reader.showMarkdown(link.key(), document.text()));
-                browse.remember(document); // Lesen füllt den Index (MainframeMate: Öffnen indexiert die Seite)
             }
+        } catch (KnowledgeDocumentNotIndexedException e) {
+            uiExecutor.execute(() -> reader.showProblem(link.key(), "Nicht lesbar (Protokoll)."));
         } catch (KnowledgeSourceException e) {
             LOG.log(Level.WARNING, "Lesen von " + link.key() + " fehlgeschlagen (" + e.kind() + ")", e);
             final String text = problemText(e);

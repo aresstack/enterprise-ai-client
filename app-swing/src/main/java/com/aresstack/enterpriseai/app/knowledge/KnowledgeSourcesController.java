@@ -410,6 +410,13 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     }
 
     @Override
+    public void hitsScrolled(ReaderLink firstVisible) {
+        if (reading != null) {
+            reading.hitsScrolled(firstVisible);
+        }
+    }
+
+    @Override
     public void linkOpened(ReaderLink link, boolean pin) {
         if (reading != null) {
             reading.open(link, pin);

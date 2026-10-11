@@ -202,8 +202,14 @@ public class ApplicationCompositionTest {
         McpToolResult read = invokeTool(root, KnowledgeMcpTools.KNOWLEDGE_READ, page.value());
         assertFalse(read.getText(), read.isError());
         assertTrue(read.getText(), read.getText().contains("Resturlaub"));
-        assertTrue("gelesen heißt indexiert", root.ports().index()
-                .resourceIds(root.indexing().space(), wiki.sourceId()).contains(page));
+        boolean indexed = false;
+        for (long deadline = System.currentTimeMillis() + 10_000L; !indexed && System.currentTimeMillis() < deadline; ) {
+            indexed = root.ports().index().resourceIds(root.indexing().space(), wiki.sourceId()).contains(page);
+            if (!indexed) {
+                Thread.sleep(20); // indexiert wird im eigenen Index-Thread
+            }
+        }
+        assertTrue("gelesen heißt indexiert", indexed);
         root.shutdown().run();
     }
 
@@ -222,14 +228,14 @@ public class ApplicationCompositionTest {
         CompositionRoot root = compose(true);
         root.startBackgroundWork();
         root.shutdown().run();
-        assertEquals(Arrays.asList("cancel-chat-turns", "end-agent-mode", "stop-indexing", "close-ports",
+        assertEquals(Arrays.asList("stop-prefetch", "cancel-chat-turns", "end-agent-mode", "stop-indexing", "close-ports",
                 "stop-executors"), root.shutdown().executedSteps());
         assertTrue(indexClosed.get());
         assertTrue(root.knowledgeTools().isShutdown());
         Thread hook = root.shutdown().asShutdownHook();
         hook.start();
         hook.join();
-        assertEquals(5, root.shutdown().executedSteps().size());
+        assertEquals(6, root.shutdown().executedSteps().size());
         try {
             agent.registry.registerEndpoint(agent.endpoint);
             assertTrue("Registry nach Shutdown nimmt keine Endpoints mehr an", false);

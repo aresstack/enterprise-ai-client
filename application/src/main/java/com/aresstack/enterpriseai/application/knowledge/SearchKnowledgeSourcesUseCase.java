@@ -1,7 +1,6 @@
 package com.aresstack.enterpriseai.application.knowledge;
 
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexPort;
@@ -15,11 +14,9 @@ import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -33,9 +30,10 @@ import java.util.function.Supplier;
  * wird live gefragt; meldet sie {@link KnowledgeSourceException.Kind#UNSUPPORTED} oder kann sie nicht suchen, sucht der
  * Use Case im Wissensindex (BM25), beschränkt auf diese Quelle. Ein Fehler einer Quelle betrifft nur ihr Ergebnis.
  *
- * <p>Suche füllt den Index (MainframeMate): Mit {@link #withIndexing} werden die ersten Live-Treffer einer Quelle danach
- * im Hintergrund indexiert, falls neu oder geändert, und die Treffer werden um passende Abschnitte aus dem Index
- * derselben Quelle ergänzt.
+ * <p>Mit {@link #withIndexedHits} werden die Live-Treffer um passende Abschnitte aus dem Index derselben Quelle
+ * ergänzt. Vorladen und Indexieren der Treffer übernimmt der Aufrufer über den {@link KnowledgePrefetchService}
+ * (MainframeMate: nach der Suche ab Position 0, nach jeder Auswahl ab der gewählten Zeile); die Live-Treffer tragen
+ * dafür ihre Revision.
  *
  * <p>Kennt Quellen und Index nur über ihre Ports; blockiert nicht, die Arbeit läuft auf dem übergebenen Executor.
  */
@@ -47,8 +45,7 @@ public final class SearchKnowledgeSourcesUseCase {
     private final KnowledgeIndexPort index;
     private final Supplier<EmbeddingModelIdentity> space;
     private final Executor executor;
-    private final IndexKnowledgeUseCase indexing;
-    private final int indexPages;
+    private final boolean mergeIndexed;
 
     /**
      * @param index    Wissensindex für Quellen ohne eigene Suche; {@code null}: solche Quellen liefern nichts
@@ -66,28 +63,19 @@ public final class SearchKnowledgeSourcesUseCase {
         this.index = index;
         this.space = space;
         this.executor = executor;
-        this.indexing = null;
-        this.indexPages = 0;
+        this.mergeIndexed = false;
     }
 
-    private SearchKnowledgeSourcesUseCase(SearchKnowledgeSourcesUseCase base, IndexKnowledgeUseCase indexing,
-                                          int indexPages) {
+    private SearchKnowledgeSourcesUseCase(SearchKnowledgeSourcesUseCase base) {
         this.index = base.index;
         this.space = base.space;
         this.executor = base.executor;
-        this.indexing = indexing;
-        this.indexPages = indexPages;
+        this.mergeIndexed = true;
     }
 
-    /**
-     * Dieselbe Suche, die danach die ersten {@code pages} Live-Treffer je Quelle im Hintergrund indexiert (nur neue
-     * oder geänderte, siehe {@link IndexKnowledgeUseCase#indexIfChanged}).
-     */
-    public SearchKnowledgeSourcesUseCase withIndexing(IndexKnowledgeUseCase value, int pages) {
-        if (value == null || pages < 1) {
-            throw new IllegalArgumentException("indexing ist Pflicht, pages >= 1");
-        }
-        return new SearchKnowledgeSourcesUseCase(this, value, pages);
+    /** Dieselbe Suche, die Live-Treffer um passende Ressourcen derselben Quelle aus dem Index ergänzt. */
+    public SearchKnowledgeSourcesUseCase withIndexedHits() {
+        return new SearchKnowledgeSourcesUseCase(this);
     }
 
     /**
@@ -125,7 +113,6 @@ public final class SearchKnowledgeSourcesUseCase {
             if (source instanceof SearchableKnowledgeSource) {
                 try {
                     List<SourceSearchHit> hits = ((SearchableKnowledgeSource) source).search(new SourceQuery(text, limit));
-                    indexLater(source, hits);
                     return SourceSearchOutcome.found(sourceId, withIndexed(sourceId, live(sourceId, hits, text, limit),
                             text, limit));
                 } catch (KnowledgeSourceException e) {
@@ -140,35 +127,10 @@ public final class SearchKnowledgeSourcesUseCase {
         }
     }
 
-    /** Die ersten Live-Treffer im Hintergrund in den Index nehmen (nur neue oder geänderte). */
-    private void indexLater(final KnowledgeSourcePort source, List<SourceSearchHit> hits) {
-        if (indexing == null || hits.isEmpty()) {
-            return;
-        }
-        final Map<KnowledgeResourceId, KnowledgeRevision> ids = new LinkedHashMap<KnowledgeResourceId, KnowledgeRevision>();
-        for (SourceSearchHit hit : hits) {
-            if (ids.size() >= indexPages) {
-                break;
-            }
-            ids.put(hit.resourceId(), hit.revision());
-        }
-        try {
-            executor.execute(() -> {
-                try {
-                    indexing.indexIfChanged(source, ids, null);
-                } catch (RuntimeException ignored) {
-                    // Nur ein Vorabladen; die nächste Suche versucht es erneut.
-                }
-            });
-        } catch (RuntimeException ignored) {
-            // Executor beendet (Programmende): nichts nachladen.
-        }
-    }
-
     /** Live-Treffer zuerst, dann passende Ressourcen derselben Quelle aus dem Index, die die Live-Suche nicht nannte. */
     private List<FoundResource> withIndexed(KnowledgeSourceId sourceId, List<FoundResource> live, String text,
                                             int limit) {
-        if (indexing == null || index == null || live.size() >= limit) {
+        if (!mergeIndexed || index == null || live.size() >= limit) {
             return live;
         }
         List<FoundResource> merged = new ArrayList<FoundResource>(live);
@@ -196,7 +158,7 @@ public final class SearchKnowledgeSourcesUseCase {
         List<FoundResource> found = new ArrayList<FoundResource>();
         for (SourceSearchHit hit : hits) {
             found.add(new FoundResource(sourceId, hit.resourceId(), hit.title(), shorten(hit.snippet(), text),
-                    hit.resourceId().value(), FoundResource.Origin.SOURCE));
+                    hit.resourceId().value(), FoundResource.Origin.SOURCE, hit.revision()));
             if (found.size() >= limit) {
                 break;
             }

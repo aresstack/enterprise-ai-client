@@ -25,10 +25,11 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * {@code knowledge_search(query, limit)}: Quellen live durchsuchen, neue oder geänderte Treffer im Rahmen von
- * {@link KnowledgeToolSettings#maxPages()} indexieren, dann hybrid im Index suchen. Treffer, die nur die Live-Suche
- * kennt (außerhalb des Budgets), stehen mit ihrer Id darunter, damit das Modell sie mit {@code knowledge_read} lesen
- * kann.
+ * {@code knowledge_search(query, limit)}: Quellen live durchsuchen und hybrid im Index suchen; die Live-Treffer lädt
+ * der Vorlader (MainframeMate {@code ConfluencePrefetchService}) im Hintergrund vor und indexiert sie, ohne dass die
+ * Suche darauf wartet. Die Antwort nennt Index- und Live-Treffer unabhängig davon, was schon geladen ist; jeder
+ * Treffer ist mit {@code knowledge_read} lesbar. Ein Seitenbudget gibt es hier nicht: das Recherche-Budget zählt der
+ * Agent (ein Aufruf = eine Recherche-Aktion), Vorladen verbraucht keines.
  */
 final class KnowledgeSearchTool implements McpToolHandler {
 
@@ -37,6 +38,10 @@ final class KnowledgeSearchTool implements McpToolHandler {
     static final String PARAM_LIMIT = "limit";
 
     private static final int TITLE_CHARS = 200;
+    /** So viele Treffer je Quelle holt die Live-Suche mindestens (billige Metadaten; das Vorladen braucht ein Fenster). */
+    static final int LIVE_HITS = 20;
+    /** Kanal der Vorlade-Serie: eine neue Suche des Agenten bricht das Vorladen der vorigen ab. */
+    static final String PREFETCH_CHANNEL = "agent";
 
     private final RetrieveKnowledgeUseCase retrieval;
     private final SearchDrivenIndexingUseCase live;
@@ -56,8 +61,8 @@ final class KnowledgeSearchTool implements McpToolHandler {
 
     McpToolContribution contribution() {
         return McpToolContribution.of(NAME,
-                "Search the knowledge sources (e.g. Confluence, wiki) and the local knowledge index. New or changed "
-                        + "pages from the live search are loaded and indexed automatically. Use this first when you "
+                "Search the knowledge sources (e.g. Confluence, wiki) and the local knowledge index. Hits are "
+                        + "loaded and indexed in the background automatically. Use this first when you "
                         + "need information about a topic, then read a hit with knowledge_read. "
                         + "Example: query=\"RSL in IAR\", limit=4. "
                         + "Example: query=\"Was bedeutet Rückmeldeschlüssel bei IAR?\".",
@@ -97,7 +102,7 @@ final class KnowledgeSearchTool implements McpToolHandler {
 
         SearchDrivenIndexingUseCase.Result found;
         try {
-            found = live.searchAndIndex(catalog, sources, text, Math.max(limit, 1), settings.maxPages());
+            found = live.search(PREFETCH_CHANNEL, catalog, sources, text, Math.max(limit, LIVE_HITS));
         } catch (RuntimeException e) {
             found = null; // Live-Suche ist eine Ergänzung; der Index antwortet trotzdem.
         }

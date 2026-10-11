@@ -15,9 +15,10 @@ import java.util.function.Predicate;
  * Die MCP-Wissenswerkzeuge für einen Endpoint eines {@code McpServerRegistry} – bewusst nur zwei, klein und mit
  * Beispielen (askai arch, {@code ResearchConceptTools}):
  * <ul>
- *   <li>{@value #KNOWLEDGE_SEARCH}: Quellen live durchsuchen, neue oder geänderte Treffer im Rahmen des Budgets
- *       indexieren, dann hybride Suche im Index (Parameter {@code query}, optional {@code limit}),</li>
- *   <li>{@value #KNOWLEDGE_READ}: ein Dokument aus einem Treffer lesen; es wird bei Bedarf indexiert
+ *   <li>{@value #KNOWLEDGE_SEARCH}: Quellen live durchsuchen (die Treffer lädt der Vorlader im Hintergrund
+ *       und indexiert sie), dazu hybride Suche im Index (Parameter {@code query}, optional {@code limit}),</li>
+ *   <li>{@value #KNOWLEDGE_READ}: ein Dokument aus einem Treffer lesen (Priority-Lader, auch nicht indexierte
+ *       Treffer); es wird bei Bedarf indexiert
  *       (Parameter {@code id}).</li>
  * </ul>
  * Kein Werkzeug zum Neuindexieren ganzer Quellen: Vollindexierung ist eine Funktion der Oberfläche, kein Werkzeug
@@ -36,8 +37,8 @@ public final class KnowledgeMcpTools {
     /**
      * @param retrieval hybride Suche im Index
      * @param documents Dokumentzugriff; sein Katalog bestimmt die Quellen beider Werkzeuge
-     * @param live      Live-Suche, die Treffer indexiert
-     * @param settings  Grenzen und Budget; {@code null} für {@link KnowledgeToolSettings#defaults()}
+     * @param live      Live-Suche mit Vorlader (Cache, Priority-Lesen, Indexierung)
+     * @param settings  Grenzen der Antworten; {@code null} für {@link KnowledgeToolSettings#defaults()}
      */
     public KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
                              SearchDrivenIndexingUseCase live, KnowledgeToolSettings settings) {

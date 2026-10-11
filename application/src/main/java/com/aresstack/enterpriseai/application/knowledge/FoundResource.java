@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.application.knowledge;
 
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 
 /**
@@ -21,9 +22,16 @@ public final class FoundResource {
     private final String snippet;
     private final String location;
     private final Origin origin;
+    private final KnowledgeRevision revision;
 
     public FoundResource(KnowledgeSourceId sourceId, KnowledgeResourceId resourceId, String title, String snippet,
                          String location, Origin origin) {
+        this(sourceId, resourceId, title, snippet, location, origin, KnowledgeRevision.unknown());
+    }
+
+    /** Wie oben, mit der Revision laut Suche (für das Vorladen: unverändert indexierte Treffer werden nicht geladen). */
+    public FoundResource(KnowledgeSourceId sourceId, KnowledgeResourceId resourceId, String title, String snippet,
+                         String location, Origin origin, KnowledgeRevision revision) {
         if (sourceId == null || resourceId == null || origin == null) {
             throw new IllegalArgumentException("sourceId, resourceId and origin must not be null");
         }
@@ -33,6 +41,12 @@ public final class FoundResource {
         this.snippet = snippet == null ? "" : snippet.trim();
         this.location = location == null || location.trim().isEmpty() ? resourceId.value() : location.trim();
         this.origin = origin;
+        this.revision = revision == null ? KnowledgeRevision.unknown() : revision;
+    }
+
+    /** Die Revision laut Suche; {@link KnowledgeRevision#unknown()}, wenn die Suche keine nennt. */
+    public KnowledgeRevision revision() {
+        return revision;
     }
 
     public KnowledgeSourceId sourceId() {

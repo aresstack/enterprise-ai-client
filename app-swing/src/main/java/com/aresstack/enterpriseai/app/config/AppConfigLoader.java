@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.config;
 
+import com.aresstack.enterpriseai.application.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.application.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.application.rag.ContextSettings;
 import com.aresstack.enterpriseai.application.rag.RetrievalSettings;
@@ -56,6 +57,12 @@ public final class AppConfigLoader {
     public static final String EXAMPLE_RESOURCE = "enterprise-ai-client.example.properties";
     /** Modellverzeichnis der lokalen Stimmen unter dem Anwendungsverzeichnis, wenn {@code models.local.modelRoot} fehlt. */
     public static final String DEFAULT_LOCAL_MODEL_DIRECTORY = "local-models";
+    /** Vorladen: höchstens so viele Treffer ab der Cursorposition (MainframeMate confluencePrefetchMaxItems). */
+    public static final String KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY = "knowledge.prefetch.maxItems";
+    /** Vorladen: parallele Abrufe im Hintergrund (MainframeMate confluencePrefetchConcurrency). */
+    public static final String KNOWLEDGE_PREFETCH_CONCURRENCY_KEY = "knowledge.prefetch.concurrency";
+    /** Vorladen: Größe des Speicher-Caches in MB (MainframeMate confluencePrefetchCacheMaxMb). */
+    public static final String KNOWLEDGE_PREFETCH_CACHE_MB_KEY = "knowledge.prefetch.cacheMaxMb";
 
     private static final Pattern SOURCE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
     private static final String SOURCE_ID_RULE = "Quell-ID muss dem Muster [A-Za-z0-9][A-Za-z0-9._-]* entsprechen";
@@ -353,7 +360,14 @@ public final class AppConfigLoader {
             r.problem("context.*", "Kontext-Einstellung ungültig (siehe Beispielkonfiguration)");
             context = ContextSettings.defaults();
         }
-        return new KnowledgeConfig(indexDirectory, indexOnStartup, chunking, batch, retrieval, context);
+        KnowledgePrefetchService.Settings prefetch = KnowledgePrefetchService.Settings.of(
+                r.integer(KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, KnowledgePrefetchService.Settings.DEFAULT_MAX_ITEMS, 1,
+                        KnowledgePrefetchService.Settings.MAX_ITEMS_LIMIT),
+                r.integer(KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, KnowledgePrefetchService.Settings.DEFAULT_CONCURRENCY, 1,
+                        KnowledgePrefetchService.Settings.MAX_CONCURRENCY),
+                r.integer(KNOWLEDGE_PREFETCH_CACHE_MB_KEY, KnowledgePrefetchService.Settings.DEFAULT_CACHE_MAX_MB, 1,
+                        KnowledgePrefetchService.Settings.CACHE_MAX_MB_LIMIT));
+        return new KnowledgeConfig(indexDirectory, indexOnStartup, chunking, batch, retrieval, context, prefetch);
     }
 
     /**

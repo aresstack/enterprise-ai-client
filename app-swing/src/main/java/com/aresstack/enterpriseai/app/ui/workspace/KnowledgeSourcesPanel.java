@@ -57,6 +57,8 @@ public final class KnowledgeSourcesPanel extends JPanel {
     private final ResearchPillButton indexButton;
     private final JPanel list = new WidthTrackingPanel();
     private final List<KnowledgeSourceRow> rows = new ArrayList<KnowledgeSourceRow>();
+    private final List<ReaderLinkRow> hitRows = new ArrayList<ReaderLinkRow>();
+    private ReaderLink lastFirstVisible;
     private List<KnowledgeSourceItem> items = Collections.emptyList();
     private KnowledgeSourceActions actions;
     private Runnable indexSettingsAction;
@@ -123,6 +125,9 @@ public final class KnowledgeSourcesPanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
         scroll.getViewport().setBackground(palette.getSurface());
         scroll.getVerticalScrollBar().setUnitIncrement(16);
+        // Beim Scrollen der Treffer ab der obersten sichtbaren Zeile weiter vorladen (MainframeMate).
+        final javax.swing.JViewport viewport = scroll.getViewport();
+        viewport.addChangeListener(event -> reportFirstVisibleHit(viewport.getViewRect()));
 
         JLabel hint = mutedText(HINT_TEXT, 6, 6);
 
@@ -279,11 +284,30 @@ public final class KnowledgeSourcesPanel extends JPanel {
         list.repaint();
     }
 
+    /** Meldet den obersten sichtbaren Treffer, sobald er wechselt. */
+    private void reportFirstVisibleHit(Rectangle visible) {
+        if (search == null || actions == null) {
+            return;
+        }
+        for (ReaderLinkRow row : hitRows) {
+            if (row.getY() + row.getHeight() > visible.y) {
+                ReaderLink first = row.link();
+                if (first != lastFirstVisible) {
+                    lastFirstVisible = first;
+                    actions.hitsScrolled(first);
+                }
+                return;
+            }
+        }
+    }
+
     /** Die Trefferliste: je Quelle eine Überschrift, darunter ihre Treffer; Quellen ohne Antwort stehen rot darunter. */
     private void showHits(SourceSearchState state) {
         JLabel summary = sectionHeader(state.summary().toUpperCase(Locale.GERMANY));
         summary.setAlignmentX(LEFT_ALIGNMENT);
         list.add(summary);
+        hitRows.clear();
+        lastFirstVisible = null;
         String currentSource = null;
         for (ReaderLink hit : state.hits()) {
             if (!hit.sourceId().equals(currentSource)) {
@@ -301,6 +325,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
                 }
             }, null, palette);
             row.setAlignmentX(LEFT_ALIGNMENT);
+            hitRows.add(row);
             list.add(row);
         }
         for (String problem : state.problems()) {

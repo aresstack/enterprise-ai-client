@@ -158,11 +158,20 @@ public class SliceFMcpTest {
         source.update("kuendigung", "Die Kündigungsfrist beträgt neuerdings sechs Wochen zum Monatsende. "
                 + "Eine Kündigung muss schriftlich erfolgen.");
 
-        // Die Live-Suche findet die geänderte Seite, der Inhalts-Hash weicht ab: neu zerlegt und eingebettet.
+        // Die Live-Suche findet die geänderte Seite; das Vorladen holt sie im Hintergrund, der Inhalts-Hash weicht ab:
+        // neu zerlegt und eingebettet. knowledge_read liefert danach die neuen Passagen aus dem Index.
         String search = client.callTool(KnowledgeMcpTools.KNOWLEDGE_SEARCH, args("query", "Kündigung", "limit", 3));
         assertTrue(search, search.contains("id: " + source.idOf("kuendigung").value()));
-        assertTrue(search, search.contains("sechs Wochen zum Monatsende"));
-        assertFalse(search, search.contains(EXPECTED_PHRASE));
+        String document = "";
+        for (long deadline = System.currentTimeMillis() + 10_000L; System.currentTimeMillis() < deadline; ) {
+            document = client.callTool(KnowledgeMcpTools.KNOWLEDGE_READ, args("id", source.idOf("kuendigung").value()));
+            if (document.contains("sechs Wochen zum Monatsende")) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+        assertTrue(document, document.contains("sechs Wochen zum Monatsende"));
+        assertFalse(document, document.contains(EXPECTED_PHRASE));
     }
 
     @Test

@@ -85,8 +85,6 @@ public final class ShellAssembly {
     static final String CONCEPT_TAB = "Konzept";
     /** Die Favoriten des Lesebereichs, neben der Konfigurationsdatei. */
     static final String FAVORITES_FILE = "favorites.json";
-    /** Drawer-Suche: so viele Live-Treffer je Quelle danach im Hintergrund indexieren (MainframeMate-Vorabladen). */
-    static final int DRAWER_SEARCH_PAGES = 4;
     /** Zusatzfeld, in dem MainframeMate den Alias des Client-Zertifikats im KeePass-Eintrag ablegt. */
     static final String MM_CERT_ALIAS = "MM_CertAlias";
 
@@ -186,8 +184,8 @@ public final class ShellAssembly {
         KnowledgeReadingController reading = new KnowledgeReadingController(workspace, sources::enabledRegistrations,
                 sources::registration,
                 new SearchKnowledgeSourcesUseCase(root.ports().index(), root.ports().embeddingSpaceSource(),
-                        root.workExecutor()).withIndexing(root.indexing(), DRAWER_SEARCH_PAGES),
-                new BrowseKnowledgeSourceUseCase(KnowledgeDocumentReader.direct()).withIndexing(root.indexing()),
+                        root.workExecutor()).withIndexedHits(),
+                new BrowseKnowledgeSourceUseCase(KnowledgeDocumentReader.direct()), root.prefetch(),
                 new FavoritesStore(chatsDirectory.resolveSibling(FAVORITES_FILE)), root.uiExecutor(),
                 root.workExecutor());
         sources.setReading(reading);

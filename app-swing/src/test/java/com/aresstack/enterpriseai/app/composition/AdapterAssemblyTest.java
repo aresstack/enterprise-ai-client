@@ -149,7 +149,7 @@ public class AdapterAssemblyTest {
         } finally {
             root.shutdown().run();
         }
-        assertEquals(Arrays.asList("cancel-chat-turns", "end-agent-mode", "stop-indexing", "close-ports",
+        assertEquals(Arrays.asList("stop-prefetch", "cancel-chat-turns", "end-agent-mode", "stop-indexing", "close-ports",
                 "stop-executors"), root.shutdown().executedSteps());
     }
 

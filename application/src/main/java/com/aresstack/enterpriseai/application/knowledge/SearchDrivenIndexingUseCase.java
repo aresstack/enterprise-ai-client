@@ -1,8 +1,6 @@
 package com.aresstack.enterpriseai.application.knowledge;
 
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -21,38 +19,49 @@ import java.util.Set;
 
 /**
  * Use Case „Suche füllt die Wissensbasis“ (Betriebsmodell aus MainframeMate {@code SearchService} +
- * {@code ConfluenceSearchProvider}): Die Quellen werden live durchsucht, die Treffer zusammengeführt, und nur die
- * ersten {@code maxPages} Treffer werden – falls neu oder geändert – geladen, zerlegt, eingebettet und indexiert
- * ({@link IndexKnowledgeUseCase#indexIfChanged}). Unveränderte Seiten (gleiche Revision oder gleicher Inhalts-Hash)
- * werden nie neu verarbeitet. Der Index wächst so mit der Nutzung; einen Vollindex beim Start gibt es nicht.
+ * {@code ConfluenceSearchProvider.preloadResults}): Die Quellen werden live durchsucht und die Treffer
+ * zusammengeführt; die vollständige Trefferliste geht an den {@link KnowledgePrefetchService}, der sie ab Position 0
+ * im Hintergrund vorlädt und jede geladene Seite – falls neu oder geändert (Revision, dann Inhalts-Hash) – zerlegt,
+ * einbettet und indexiert. Der Index wächst so mit der Nutzung; einen Vollindex beim Start gibt es nicht.
+ *
+ * <p>Die Suche wartet nicht auf das Vorladen ({@link #search}); wer den Index danach braucht (Chat-RAG), wartet
+ * gezielt auf die ersten Treffer ({@link #searchAndIndex}). Ein Recherche-Budget kennt der Use Case nicht: wie viele
+ * Seiten vorgeladen werden, bestimmen die Prefetch-Einstellungen.
  *
  * <p>Durchsucht werden nur Quellen mit eigener Suche ({@link SearchableKnowledgeSource}); alle anderen liegen nur
  * über ihren Index vor (Vollindex auf Knopfdruck, wie NDV in MainframeMate). Ein Fehler einer Quelle betrifft nur
- * sie und steht in {@link Result#failures()}. Blockiert für Suche und Indexierung.
+ * sie und steht in {@link Result#failures()}. Blockiert für die Live-Suche.
  */
 public final class SearchDrivenIndexingUseCase {
 
-    /** {@code maxPages = 0}: alle Treffer laden und indexieren. */
-    public static final int UNLIMITED = 0;
+    /** Kanal der Vorlade-Serie, wenn der Aufrufer keinen nennt. */
+    public static final String DEFAULT_CHANNEL = "search";
+    /** So lange wartet {@link #searchAndIndex} höchstens auf die ersten Treffer. */
+    public static final long INDEX_WAIT_MILLIS = 60_000L;
 
-    private final IndexKnowledgeUseCase indexing;
+    private final KnowledgePrefetchService prefetch;
 
+    /** Mit eigenem Vorlader (direktes Lesen aus der Quelle, Standard-Einstellungen). */
     public SearchDrivenIndexingUseCase(IndexKnowledgeUseCase indexing) {
-        if (indexing == null) {
-            throw new IllegalArgumentException("indexing ist Pflicht");
+        this(new KnowledgePrefetchService(indexing, KnowledgeDocumentReader.direct(),
+                KnowledgePrefetchService.Settings::defaults));
+    }
+
+    public SearchDrivenIndexingUseCase(KnowledgePrefetchService prefetch) {
+        if (prefetch == null) {
+            throw new IllegalArgumentException("prefetch ist Pflicht");
         }
-        this.indexing = indexing;
+        this.prefetch = prefetch;
     }
 
-    /** Wie {@link #searchAndIndex(Collection, String, int, int)} über alle Quellen des Katalogs. */
-    public Result searchAndIndex(KnowledgeSourceCatalog catalog, String query, int hitLimit, int maxPages) {
-        return searchAndIndex(catalog == null ? Collections.<KnowledgeSourcePort>emptyList() : catalog.ports(), query,
-                hitLimit, maxPages);
+    /** Der Vorlader (Cache, Priority-Lesen) dieser Suche. */
+    public KnowledgePrefetchService prefetch() {
+        return prefetch;
     }
 
-    /** Wie {@link #searchAndIndex(KnowledgeSourceCatalog, String, int, int)}, aber nur über die Quellen {@code only}. */
-    public Result searchAndIndex(KnowledgeSourceCatalog catalog, Collection<KnowledgeSourceId> only, String query,
-                                 int hitLimit, int maxPages) {
+    /** Wie {@link #search(String, Collection, String, int)} über die Quellen {@code only} des Katalogs. */
+    public Result search(String channel, KnowledgeSourceCatalog catalog, Collection<KnowledgeSourceId> only,
+                         String query, int hitLimit) {
         List<KnowledgeSourcePort> sources = new ArrayList<KnowledgeSourcePort>();
         if (catalog != null && only != null) {
             for (KnowledgeSourcePort port : catalog.ports()) {
@@ -61,19 +70,21 @@ public final class SearchDrivenIndexingUseCase {
                 }
             }
         }
-        return searchAndIndex(sources, query, hitLimit, maxPages);
+        return search(channel, sources, query, hitLimit);
     }
 
     /**
+     * Sucht live, führt die Treffer zusammen und stößt das Vorladen ab Position 0 an; wartet nicht darauf.
+     *
+     * @param channel  wessen Vorlade-Serie (eine neue Suche desselben Kanals bricht die alte ab)
      * @param hitLimit höchstens so viele Treffer je Quelle (Suche ist billig, Laden nicht)
-     * @param maxPages höchstens so viele Treffer laden und indexieren; {@link #UNLIMITED} = alle
      */
-    public Result searchAndIndex(Collection<KnowledgeSourcePort> sources, String query, int hitLimit, int maxPages) {
+    public Result search(String channel, Collection<KnowledgeSourcePort> sources, String query, int hitLimit) {
         if (query == null || query.trim().isEmpty()) {
             throw new IllegalArgumentException("query must not be blank");
         }
-        if (hitLimit < 1 || maxPages < 0) {
-            throw new IllegalArgumentException("hitLimit >= 1 und maxPages >= 0 erwartet");
+        if (hitLimit < 1) {
+            throw new IllegalArgumentException("hitLimit >= 1 erwartet");
         }
         Map<KnowledgeSourceId, String> failures = new LinkedHashMap<KnowledgeSourceId, String>();
         List<List<SourceSearchHit>> perSource = new ArrayList<List<SourceSearchHit>>();
@@ -96,10 +107,8 @@ public final class SearchDrivenIndexingUseCase {
 
         // Zusammenführen wie MainframeMate: abwechselnd je Quelle, doppelte Ressourcen nur einmal.
         List<FoundResource> found = new ArrayList<FoundResource>();
-        Map<KnowledgeSourcePort, Map<KnowledgeResourceId, KnowledgeRevision>> toIndex =
-                new LinkedHashMap<KnowledgeSourcePort, Map<KnowledgeResourceId, KnowledgeRevision>>();
+        List<KnowledgePrefetchService.Candidate> candidates = new ArrayList<KnowledgePrefetchService.Candidate>();
         Set<KnowledgeResourceId> seen = new LinkedHashSet<KnowledgeResourceId>();
-        int selected = 0;
         for (int rank = 0; ; rank++) {
             boolean any = false;
             for (int s = 0; s < perSource.size(); s++) {
@@ -114,56 +123,68 @@ public final class SearchDrivenIndexingUseCase {
                 }
                 KnowledgeSourcePort source = searched.get(s);
                 found.add(new FoundResource(source.sourceId(), hit.resourceId(), hit.title(), hit.snippet(),
-                        hit.resourceId().value(), FoundResource.Origin.SOURCE));
-                if (maxPages == UNLIMITED || selected < maxPages) {
-                    Map<KnowledgeResourceId, KnowledgeRevision> ids = toIndex.get(source);
-                    if (ids == null) {
-                        ids = new LinkedHashMap<KnowledgeResourceId, KnowledgeRevision>();
-                        toIndex.put(source, ids);
-                    }
-                    ids.put(hit.resourceId(), hit.revision());
-                    selected++;
-                }
+                        hit.resourceId().value(), FoundResource.Origin.SOURCE, hit.revision()));
+                candidates.add(new KnowledgePrefetchService.Candidate(source, hit.resourceId(), hit.revision()));
             }
             if (!any) {
                 break;
             }
         }
-
-        List<ResourceIndexingOutcome> outcomes = new ArrayList<ResourceIndexingOutcome>();
-        for (Map.Entry<KnowledgeSourcePort, Map<KnowledgeResourceId, KnowledgeRevision>> batch : toIndex.entrySet()) {
-            try {
-                outcomes.addAll(indexing.indexIfChanged(batch.getKey(), batch.getValue(), null).outcomes());
-            } catch (RuntimeException e) {
-                failures.put(batch.getKey().sourceId(), "Indexierung fehlgeschlagen ("
-                        + e.getClass().getSimpleName() + ")");
-            }
-        }
-        return new Result(found, outcomes, failures);
+        KnowledgePrefetchService.Series series = prefetch.prefetch(channel == null ? DEFAULT_CHANNEL : channel,
+                candidates, 0);
+        return new Result(found, series, failures);
     }
 
-    /** Ein gelesenes Dokument in den Index nehmen, falls neu oder geändert (On-Demand wie beim Öffnen in MainframeMate). */
-    public ResourceIndexingOutcome indexRead(KnowledgeDocument document) {
-        return indexing.indexDocumentIfChanged(document);
+    /** Wie {@link #searchAndIndex(Collection, String, int, int)} über alle Quellen des Katalogs. */
+    public Result searchAndIndex(KnowledgeSourceCatalog catalog, String query, int hitLimit, int waitFor) {
+        return searchAndIndex(catalog == null ? Collections.<KnowledgeSourcePort>emptyList() : catalog.ports(), query,
+                hitLimit, waitFor);
     }
 
-    /** Ergebnis einer Suche: Treffer der Quellen in Rangfolge, was indexiert wurde, und Fehler je Quelle. */
+    /**
+     * Sucht wie {@link #search} und wartet danach, bis die ersten {@code waitFor} Treffer indexiert sind (höchstens
+     * {@link #INDEX_WAIT_MILLIS}); für Aufrufer, die gleich danach im Index suchen (Chat-RAG). Die übrigen Treffer
+     * lädt der Vorlader weiter im Hintergrund.
+     */
+    public Result searchAndIndex(Collection<KnowledgeSourcePort> sources, String query, int hitLimit, int waitFor) {
+        return searchAndIndex(DEFAULT_CHANNEL, sources, query, hitLimit, waitFor);
+    }
+
+    public Result searchAndIndex(String channel, Collection<KnowledgeSourcePort> sources, String query, int hitLimit,
+                                 int waitFor) {
+        Result result = search(channel, sources, query, hitLimit);
+        result.outcomes = result.series.awaitIndexed(waitFor, INDEX_WAIT_MILLIS);
+        return result;
+    }
+
+    /**
+     * Ergebnis einer Suche: alle Treffer der Quellen in Rangfolge, die Vorlade-Serie, Fehler je Quelle und – nach
+     * {@link #searchAndIndex} – was beim Warten indexiert wurde.
+     */
     public static final class Result {
 
         private final List<FoundResource> hits;
-        private final List<ResourceIndexingOutcome> outcomes;
+        private final KnowledgePrefetchService.Series series;
         private final Map<KnowledgeSourceId, String> failures;
+        private volatile List<ResourceIndexingOutcome> outcomes = Collections.emptyList();
 
-        Result(List<FoundResource> hits, List<ResourceIndexingOutcome> outcomes, Map<KnowledgeSourceId, String> failures) {
+        Result(List<FoundResource> hits, KnowledgePrefetchService.Series series,
+               Map<KnowledgeSourceId, String> failures) {
             this.hits = Collections.unmodifiableList(new ArrayList<FoundResource>(hits));
-            this.outcomes = Collections.unmodifiableList(new ArrayList<ResourceIndexingOutcome>(outcomes));
+            this.series = series;
             this.failures = Collections.unmodifiableMap(new LinkedHashMap<KnowledgeSourceId, String>(failures));
+        }
+
+        /** Die Vorlade-Serie der Treffer. */
+        public KnowledgePrefetchService.Series series() {
+            return series;
         }
 
         public List<FoundResource> hits() {
             return hits;
         }
 
+        /** Was {@link #searchAndIndex} abgewartet hat; nach {@link #search} leer. */
         public List<ResourceIndexingOutcome> outcomes() {
             return outcomes;
         }

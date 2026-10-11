@@ -69,8 +69,7 @@ public class KnowledgeMcpToolsTest {
         String text = call(tools.knowledgeSearch(), "query", "Drucker").getText();
         assertTrue(text, text.contains("Drucker einrichten"));
         assertTrue(text, text.contains(wiki.idOf("Drucker").value()));
-        assertTrue("Treffer ist indexiert",
-                index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).contains(wiki.idOf("Drucker")));
+        assertTrue("Treffer wird im Hintergrund vorgeladen und indexiert", indexedSoon("Drucker"));
         assertFalse("nur Treffer, kein Vollindex",
                 index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).contains(wiki.idOf("Kaffee")));
 
@@ -86,6 +85,23 @@ public class KnowledgeMcpToolsTest {
         McpToolResult read = call(tools.knowledgeRead(), "id", wiki.idOf("Kaffee").value());
         assertFalse(read.getText(), read.isError());
         assertTrue(read.getText().contains("monatlich entkalkt"));
-        assertTrue(index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).contains(wiki.idOf("Kaffee")));
+        assertTrue(indexedSoon("Kaffee"));
+    }
+
+    /** Vorladen und Indexieren laufen im Hintergrund; höchstens 10 s warten. */
+    private boolean indexedSoon(String page) {
+        long deadline = System.currentTimeMillis() + 10_000L;
+        while (System.currentTimeMillis() < deadline) {
+            if (index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).contains(wiki.idOf(page))) {
+                return true;
+            }
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
     }
 }

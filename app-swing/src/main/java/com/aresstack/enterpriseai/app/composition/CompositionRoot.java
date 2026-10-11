@@ -24,6 +24,7 @@ import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeRelations;
 import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.application.knowledge.RefreshKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.application.knowledge.SearchDrivenIndexingUseCase;
@@ -76,8 +77,12 @@ public final class CompositionRoot {
     private static final Logger LOG = Logger.getLogger(CompositionRoot.class.getName());
     /** Wartezeit beim Beenden auf eine laufende Indexierung (danach wird der Index geschlossen). */
     static final int INDEXING_SHUTDOWN_WAIT_SECONDS = 10;
-    /** Chat: so viele Treffer der Live-Suche je Frage höchstens laden und indexieren (MainframeMate-Vorabladen). */
+    /** Chat: auf so viele der ersten Live-Treffer wartet eine Frage, bis sie indexiert sind (der Rest lädt weiter). */
     static final int LIVE_SEARCH_PAGES = 4;
+    /** Chat: so viele Treffer je Quelle holt die Live-Suche (gehen alle an den Vorlader). */
+    static final int LIVE_SEARCH_HITS = 10;
+    /** Kanal der Vorlade-Serie des Chats. */
+    static final String CHAT_PREFETCH_CHANNEL = "chat";
     /** Ordner der Research-Projekte des eingebauten Recherche-Agenten, neben der Konfigurationsdatei. */
     static final String RESEARCH_DIRECTORY = "research";
 
@@ -106,6 +111,7 @@ public final class CompositionRoot {
     /** Die angebundenen Quellen von jetzt; ersetzt, nie verändert (siehe {@link #publishSources}). */
     private volatile KnowledgeSourceCatalog liveSources;
     private final SearchDrivenIndexingUseCase searchIndexing;
+    private final KnowledgePrefetchService prefetch;
     private final ShutdownSequence shutdown;
     private java.util.concurrent.ExecutorService imagePool;
 
@@ -143,9 +149,12 @@ public final class CompositionRoot {
         this.documents = new LoadKnowledgeDocumentUseCase(ports.sources())
                 .withReader(resourceDocuments).withCatalog(() -> liveSources);
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
-        // Suche füllt den Index (MainframeMate): Quellen live durchsuchen, nur neue oder geänderte Treffer laden,
-        // zerlegen und einbetten (Revision, dann Inhalts-Hash). Kein Vollindex beim Start.
-        this.searchIndexing = new SearchDrivenIndexingUseCase(indexing);
+        // Suche füllt den Index (MainframeMate): Quellen live durchsuchen, die Treffer lädt der Vorlader (Pool,
+        // Priority-Thread, eigener Index-Thread wie ConfluencePrefetchService) und indexiert nur neue oder geänderte
+        // (Revision, dann Inhalts-Hash). Kein Vollindex beim Start. Fenster, Worker und Cache gelten ohne Neustart.
+        this.prefetch = new KnowledgePrefetchService(indexing, resourceDocuments,
+                () -> settings.current().knowledge().prefetch());
+        this.searchIndexing = new SearchDrivenIndexingUseCase(prefetch);
         this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler, (query, sources) -> {
             List<KnowledgeSourcePort> chosen = new ArrayList<KnowledgeSourcePort>();
             for (KnowledgeSourceRegistration registration : liveSources.registrations()) {
@@ -153,8 +162,8 @@ public final class CompositionRoot {
                     chosen.add(registration.port());
                 }
             }
-            SearchDrivenIndexingUseCase.Result result = searchIndexing.searchAndIndex(chosen, query,
-                    LIVE_SEARCH_PAGES, LIVE_SEARCH_PAGES);
+            SearchDrivenIndexingUseCase.Result result = searchIndexing.searchAndIndex(CHAT_PREFETCH_CHANNEL, chosen,
+                    query, LIVE_SEARCH_HITS, LIVE_SEARCH_PAGES);
             if (!result.failures().isEmpty()) {
                 LOG.info("Live-Suche für den Chat: " + result.failures());
             }
@@ -410,6 +419,11 @@ public final class CompositionRoot {
     }
 
     /** Live-Suche, die ihre Treffer indexiert (Drawer, Chat, Agent). */
+    /** Vorlader der Suchtreffer (Cache, Priority-Lesen, Indexierung als Nebenwirkung). */
+    public KnowledgePrefetchService prefetch() {
+        return prefetch;
+    }
+
     public SearchDrivenIndexingUseCase searchIndexing() {
         return searchIndexing;
     }
@@ -547,6 +561,12 @@ public final class CompositionRoot {
 
     private ShutdownSequence buildShutdown() {
         ShutdownSequence sequence = new ShutdownSequence();
+        sequence.then("stop-prefetch", new Runnable() {
+            @Override
+            public void run() {
+                prefetch.shutdown();
+            }
+        });
         sequence.then("cancel-chat-turns", new Runnable() {
             @Override
             public void run() {

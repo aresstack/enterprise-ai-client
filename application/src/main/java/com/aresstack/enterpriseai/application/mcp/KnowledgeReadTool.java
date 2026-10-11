@@ -14,8 +14,9 @@ import com.aresstack.enterpriseai.mcp.api.McpToolResult;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 
 /**
- * {@code knowledge_read(id)}: liest ein Dokument aus einem Suchtreffer vollständig aus seiner Quelle und nimmt es –
- * falls neu oder geändert – in den Index auf (On-Demand wie beim Öffnen einer Seite in MainframeMate).
+ * {@code knowledge_read(id)}: liest ein Dokument aus einem Suchtreffer vollständig – auch einen noch nicht indexierten
+ * Live-Treffer – über den Priority-Lader des Vorladers (MainframeMate {@code loadPriority}: aus dem Cache, sonst sofort
+ * an der Vorlade-Warteschlange vorbei). Die Seite wird danach im Hintergrund indexiert, falls neu oder geändert.
  */
 final class KnowledgeReadTool implements McpToolHandler {
 
@@ -58,8 +59,9 @@ final class KnowledgeReadTool implements McpToolHandler {
                     + "': copy the id of a knowledge_search hit — example: " + EXAMPLE);
         }
         KnowledgeDocument document;
+        final KnowledgeResourceId requested = id;
         try {
-            document = documents.load(id);
+            document = live.prefetch().read(id, () -> documents.load(requested));
         } catch (KnowledgeDocumentNotIndexedException e) {
             return McpToolResult.error("Document '" + id.value() + "' is not available. Search first, then read a "
                     + "hit — example: knowledge_search query=\"Urlaubsantrag\", then knowledge_read " + EXAMPLE);
@@ -68,11 +70,6 @@ final class KnowledgeReadTool implements McpToolHandler {
         } catch (RuntimeException e) {
             return McpToolResult.error("Reading '" + id.value() + "' failed. Try again or read another hit — "
                     + "example: " + EXAMPLE);
-        }
-        try {
-            live.indexRead(document);
-        } catch (RuntimeException e) {
-            // Lesen gelingt auch ohne Indexierung; die nächste Suche versucht es erneut.
         }
         return McpToolResult.ok(render(document));
     }

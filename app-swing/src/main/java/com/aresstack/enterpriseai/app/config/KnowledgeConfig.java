@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.config;
 
+import com.aresstack.enterpriseai.application.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.application.rag.ContextSettings;
 import com.aresstack.enterpriseai.application.rag.RetrievalSettings;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkingPolicy;
@@ -8,7 +9,8 @@ import java.nio.file.Path;
 
 /**
  * Wissensbasis und RAG: Indexverzeichnis, Chunking, Retrieval- und Kontexteinstellungen (Defaults aus AP10) sowie
- * ob die konfigurierten Quellen beim Start im Hintergrund indexiert werden.
+ * ob die konfigurierten Quellen beim Start im Hintergrund indexiert werden; dazu das Vorladen der Suchtreffer
+ * ({@code knowledge.prefetch.*}, MainframeMate {@code confluencePrefetchMaxItems/Concurrency/CacheMaxMb}).
  */
 public final class KnowledgeConfig {
 
@@ -18,15 +20,23 @@ public final class KnowledgeConfig {
     private final int embeddingBatchSize;
     private final RetrievalSettings retrieval;
     private final ContextSettings context;
+    private final KnowledgePrefetchService.Settings prefetch;
 
     KnowledgeConfig(Path indexDirectory, boolean indexOnStartup, KnowledgeChunkingPolicy chunking,
-                    int embeddingBatchSize, RetrievalSettings retrieval, ContextSettings context) {
+                    int embeddingBatchSize, RetrievalSettings retrieval, ContextSettings context,
+                    KnowledgePrefetchService.Settings prefetch) {
         this.indexDirectory = indexDirectory;
         this.indexOnStartup = indexOnStartup;
         this.chunking = chunking;
         this.embeddingBatchSize = embeddingBatchSize;
         this.retrieval = retrieval;
         this.context = context;
+        this.prefetch = prefetch == null ? KnowledgePrefetchService.Settings.defaults() : prefetch;
+    }
+
+    /** Vorladen der Suchtreffer: Fenster ab der Cursorposition, parallele Abrufe, Cache-Größe. */
+    public KnowledgePrefetchService.Settings prefetch() {
+        return prefetch;
     }
 
     /** Verzeichnis des Lucene-/Vektorindex; eine Instanz je Verzeichnis und Prozess. */
@@ -60,6 +70,6 @@ public final class KnowledgeConfig {
     public String toString() {
         return "KnowledgeConfig[indexDirectory=" + indexDirectory + ", indexOnStartup=" + indexOnStartup
                 + ", chunking=" + chunking + ", embeddingBatchSize=" + embeddingBatchSize + ", retrieval=" + retrieval
-                + ", context=" + context + "]";
+                + ", context=" + context + ", prefetch=" + prefetch + "]";
     }
 }

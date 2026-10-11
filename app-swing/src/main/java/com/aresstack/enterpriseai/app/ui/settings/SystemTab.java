@@ -55,6 +55,9 @@ final class SystemTab {
     private final JTextField agentCommand;
     private final JTextField agentArgs;
     private final JTextField agentTimeout;
+    private final JComboBox<String> prefetchMaxItems;
+    private final JComboBox<String> prefetchConcurrency;
+    private final JComboBox<String> prefetchCacheMaxMb;
     private final JPanel panel;
 
     private String activeMode;
@@ -123,12 +126,31 @@ final class SystemTab {
         agentArgs = agent.textField("Argumente", "Shell-ähnlich, Anführungszeichen erlaubt, z. B. -jar \"C:/Pfad/agent.jar\"");
         agentTimeout = agent.textField("Timeout je Anfrage (Sekunden)", "Wartezeit auf Antworten des Agenten");
 
+        // Wie MainframeMate „Vorabladen (Prefetch)“: Suchtreffer im Hintergrund laden und indexieren.
+        FormRows prefetch = new FormRows(palette);
+        prefetch.note("Suchtreffer werden im Hintergrund vorgeladen und indexiert, ab dem gewählten bzw. obersten "
+                + "sichtbaren Treffer. Ein Klick oder knowledge_read lädt sofort, nie hinter dem Vorladen. Das "
+                + "Recherche-Budget des Agenten bleibt davon unberührt.");
+        prefetchMaxItems = prefetch.comboBox("Max. Seiten vorladen",
+                "Höchstens so viele Treffer ab der Cursorposition (knowledge.prefetch.maxItems, 1–1000)",
+                "20", "50", "100", "200", "500");
+        prefetchConcurrency = prefetch.comboBox("Parallele Requests",
+                "Abrufe gleichzeitig im Hintergrund (knowledge.prefetch.concurrency, 1–8)",
+                "1", "2", "3", "4", "5", "6", "7", "8");
+        prefetchCacheMaxMb = prefetch.comboBox("Max. Cache-Größe (MB)",
+                "Speicher-Cache der vorgeladenen Seiten (knowledge.prefetch.cacheMaxMb, 1–500)",
+                "10", "50", "100", "200", "500");
+        prefetchMaxItems.setEditable(true);
+        prefetchConcurrency.setEditable(true);
+        prefetchCacheMaxMb.setEditable(true);
+
         panel = FormRows.column(palette,
                 FormRows.plate("Allgemein", palette.getNavigationBlue(), general.panel(), palette),
                 FormRows.plate("Proxy resolution", palette.getAccentOrange(), proxy.panel(), palette),
                 FormRows.plate("TLS certificate trust", palette.getAccentYellow(), tls.panel(), palette),
                 FormRows.plate("HTTP client & proxy authentication", palette.getAccentRed(), http.panel(), palette),
-                FormRows.plate("Agent-Modus (ACP)", palette.getAgentPetrol(), agent.panel(), palette));
+                FormRows.plate("Agent-Modus (ACP)", palette.getAgentPetrol(), agent.panel(), palette),
+                FormRows.plate("Vorabladen (Prefetch)", palette.getNavigationBlue(), prefetch.panel(), palette));
 
         activeMode = SettingsForm.PROXY_PAC_URL_POWERSHELL;
         append("PAC_URL_POWERSHELL: field contains a PowerShell discovery script.");
@@ -370,6 +392,9 @@ final class SystemTab {
         agentCommand.setText(form.agentCommand());
         agentArgs.setText(form.agentArgs());
         agentTimeout.setText(form.agentRequestTimeoutSeconds());
+        prefetchMaxItems.setSelectedItem(form.prefetchMaxItems());
+        prefetchConcurrency.setSelectedItem(form.prefetchConcurrency());
+        prefetchCacheMaxMb.setSelectedItem(form.prefetchCacheMaxMb());
         updateProxyAuthEnabled();
         updateFieldVisibility();
         appendModeHelp(mode);
@@ -410,7 +435,10 @@ final class SystemTab {
                 .proxyCredentialRef(proxyCredentialRef.getText())
                 .preferIpv6(preferIpv6.isSelected())
                 .agentEnabled(agentEnabled.isSelected()).agentCommand(agentCommand.getText())
-                .agentArgs(agentArgs.getText()).agentRequestTimeoutSeconds(agentTimeout.getText());
+                .agentArgs(agentArgs.getText()).agentRequestTimeoutSeconds(agentTimeout.getText())
+                .prefetchMaxItems(String.valueOf(prefetchMaxItems.getEditor().getItem()))
+                .prefetchConcurrency(String.valueOf(prefetchConcurrency.getEditor().getItem()))
+                .prefetchCacheMaxMb(String.valueOf(prefetchCacheMaxMb.getEditor().getItem()));
     }
 
     JTextField windowTitle() {

@@ -231,6 +231,14 @@ public final class IndexKnowledgeUseCase {
         return indexLoadedIfChanged(document.id(), document, new HashSet<KnowledgeResourceId>());
     }
 
+    /**
+     * {@code true}, wenn die Ressource im aktuellen Namespace mit genau dieser (bekannten) Revision indexiert ist: dann
+     * muss sie weder geladen noch neu indexiert werden.
+     */
+    public boolean isCurrent(KnowledgeResourceId id, KnowledgeRevision revision) {
+        return id != null && isUnchanged(id, revision);
+    }
+
     /** Was der Index im aktuellen Namespace über die Ressource weiß (Revision, Inhalts-Hash). */
     public Optional<IndexedResourceState> stateOf(KnowledgeResourceId id) {
         try {

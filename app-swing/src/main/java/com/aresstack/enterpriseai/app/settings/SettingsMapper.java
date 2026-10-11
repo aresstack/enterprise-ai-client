@@ -129,6 +129,9 @@ public final class SettingsMapper {
         b.readAloudAutoStart(bool(p, ModelsConfig.READ_ALOUD_AUTO_START_KEY, false));
         b.readAloudChunking(text(p, ModelsConfig.READ_ALOUD_CHUNKING_KEY, "PARAGRAPHS").toUpperCase(Locale.ROOT));
         b.synthesisWorkers(text(p, ModelsConfig.READ_ALOUD_WORKERS_KEY, "2"));
+        b.prefetchMaxItems(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100"));
+        b.prefetchConcurrency(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4"));
+        b.prefetchCacheMaxMb(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CACHE_MB_KEY, "50"));
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
         b.agentArgs(text(p, KEY_AGENT_ARGS, ""));
         b.agentRequestTimeoutSeconds(text(p, KEY_AGENT_TIMEOUT, "30"));
@@ -185,6 +188,10 @@ public final class SettingsMapper {
                 "PARAGRAPHS".equals(form.readAloudChunking()) ? "" : form.readAloudChunking());
         put(set, ModelsConfig.READ_ALOUD_WORKERS_KEY,
                 "2".equals(form.synthesisWorkers()) ? "" : form.synthesisWorkers());
+        // Vorladen: Standardwerte (100 Treffer, 4 Abrufe, 50 MB) stehen nicht in der Datei.
+        put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100".equals(form.prefetchMaxItems().trim()) ? "" : form.prefetchMaxItems().trim());
+        put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4".equals(form.prefetchConcurrency().trim()) ? "" : form.prefetchConcurrency().trim());
+        put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_CACHE_MB_KEY, "50".equals(form.prefetchCacheMaxMb().trim()) ? "" : form.prefetchCacheMaxMb().trim());
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
         put(set, KEY_AGENT_TIMEOUT, form.agentRequestTimeoutSeconds());
