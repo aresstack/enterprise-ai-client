@@ -57,23 +57,9 @@ import java.util.Map;
 public final class KnowledgeReaderPanel extends JPanel {
 
     /** Was der Lesebereich nach außen meldet; alle Aufrufe auf dem EDT. */
-    public interface Listener {
+    public interface Listener extends FavoriteMarker {
         /** Ein Eintrag der Quellenübersicht wurde angeklickt. */
         void linkOpened(ReaderLink link, boolean pin);
-
-        /** ★ geklickt: den Verweis als Favorit merken bzw. vergessen. */
-        default void favoriteToggled(ReaderLink link) {
-        }
-
-        /** Ob der Verweis schon ein Favorit ist (für den Zustand von ★). */
-        default boolean isFavorite(ReaderLink link) {
-            return false;
-        }
-
-        /** Ob ★ angeboten wird (nur mit einer Ablage für Favoriten). */
-        default boolean canFavorite() {
-            return false;
-        }
 
         /** Der letzte Reiter ist zu. */
         default void allClosed() {
@@ -240,12 +226,18 @@ public final class KnowledgeReaderPanel extends JPanel {
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
         list.setBorder(BorderFactory.createEmptyBorder(4, 10, 10, 10));
+        tab.stars.clear();
         for (ReaderLink link : links) {
+            // rechtsbündig je Eintrag der Stern: direkt in den gewählten Favoritenordner übernehmen
+            FavoriteStarButton star = FavoriteStarButton.forLink(link, listener);
+            if (star != null) {
+                tab.stars.add(star);
+            }
             ReaderLinkRow row = new ReaderLinkRow(link, (opened, pin) -> {
                 if (listener != null) {
                     listener.linkOpened(opened, pin);
                 }
-            }, null, palette);
+            }, star == null ? null : star.component(), palette);
             row.setAlignmentX(LEFT_ALIGNMENT);
             list.add(row);
         }
@@ -301,6 +293,16 @@ public final class KnowledgeReaderPanel extends JPanel {
     /** Nach einer Änderung der Favoriten von außen: ★ neu zeichnen. */
     public void refreshFavorite() {
         refreshHeader();
+        for (Tab tab : tabs.values()) {
+            FavoriteStarButton.refreshAll(tab.stars);
+        }
+    }
+
+    /** Die Sterne der Ressourcenliste im aktiven Reiter (für Tests). */
+    public List<FavoriteStarButton> listStars() {
+        Tab active = tabs.get(activeKey);
+        return active == null ? Collections.<FavoriteStarButton>emptyList()
+                : Collections.unmodifiableList(new ArrayList<FavoriteStarButton>(active.stars));
     }
 
     public boolean hasTabs() {
@@ -422,6 +424,7 @@ public final class KnowledgeReaderPanel extends JPanel {
         final String card;
         boolean pinned;
         JComponent content;
+        final List<FavoriteStarButton> stars = new ArrayList<FavoriteStarButton>();
 
         Tab(ReaderLink link, boolean pinned, String card) {
             this.link = link;

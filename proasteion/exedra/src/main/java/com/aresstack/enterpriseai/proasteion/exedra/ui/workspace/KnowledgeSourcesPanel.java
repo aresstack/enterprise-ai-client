@@ -7,6 +7,8 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.FavoriteMarker;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.FavoriteStarButton;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLinkRow;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSearchBar;
@@ -58,6 +60,8 @@ public final class KnowledgeSourcesPanel extends JPanel {
     private final JPanel list = new WidthTrackingPanel();
     private final List<KnowledgeSourceRow> rows = new ArrayList<KnowledgeSourceRow>();
     private final List<ReaderLinkRow> hitRows = new ArrayList<ReaderLinkRow>();
+    private final List<FavoriteStarButton> hitStars = new ArrayList<FavoriteStarButton>();
+    private FavoriteMarker favoriteMarker;
     private ReaderLink lastFirstVisible;
     private List<KnowledgeSourceItem> items = Collections.emptyList();
     private KnowledgeSourceActions actions;
@@ -196,6 +200,24 @@ public final class KnowledgeSourcesPanel extends JPanel {
         refresh();
     }
 
+    /** Der Stern rechts an jedem Treffer; {@code null} = ohne Stern. */
+    public void setFavoriteMarker(FavoriteMarker marker) {
+        this.favoriteMarker = marker;
+        refresh();
+    }
+
+    /** Nach einer Änderung der Favoriten: die Sterne der Treffer neu zeichnen. */
+    public void refreshFavorites() {
+        for (FavoriteStarButton star : hitStars) {
+            star.refresh();
+        }
+    }
+
+    /** Die Sterne der Trefferliste in Anzeigereihenfolge (für Tests). */
+    public List<FavoriteStarButton> hitStars() {
+        return Collections.unmodifiableList(new ArrayList<FavoriteStarButton>(hitStars));
+    }
+
     /** Was „Index …“ tut (öffnet produktiv den Index-Dialog über der Konfigurationsdatei); {@code null} sperrt. */
     public void setIndexSettingsAction(Runnable action) {
         this.indexSettingsAction = action;
@@ -307,6 +329,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
         summary.setAlignmentX(LEFT_ALIGNMENT);
         list.add(summary);
         hitRows.clear();
+        hitStars.clear();
         lastFirstVisible = null;
         String currentSource = null;
         for (ReaderLink hit : state.hits()) {
@@ -319,11 +342,15 @@ public final class KnowledgeSourcesPanel extends JPanel {
                 source.setAlignmentX(LEFT_ALIGNMENT);
                 list.add(source);
             }
+            FavoriteStarButton star = FavoriteStarButton.forLink(hit, favoriteMarker);
+            if (star != null) {
+                hitStars.add(star);
+            }
             ReaderLinkRow row = new ReaderLinkRow(hit, (link, pin) -> {
                 if (actions != null) {
                     actions.linkOpened(link, pin);
                 }
-            }, null, palette);
+            }, star == null ? null : star.component(), palette);
             row.setAlignmentX(LEFT_ALIGNMENT);
             hitRows.add(row);
             list.add(row);

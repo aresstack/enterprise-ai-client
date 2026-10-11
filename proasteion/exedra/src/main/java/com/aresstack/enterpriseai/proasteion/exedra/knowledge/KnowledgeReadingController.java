@@ -88,6 +88,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     public void attach() {
         workspace.reader().setListener(this);
         workspace.favorites().setActions(this);
+        workspace.knowledgeSources().setFavoriteMarker(this);
         publishFavorites();
     }
 
@@ -257,29 +258,59 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         return favorites != null && favorites.contains(link);
     }
 
+    /** ★ an einer Zeile oder im Kopf: in den Ordner, den die Favoritenseite gerade vorgibt (MainframeMate). */
     @Override
     public void favoriteToggled(ReaderLink link) {
         if (favorites != null) {
-            favorites.toggle(link);
+            String added = favorites.toggle(link, workspace.favorites().targetFolderId());
             publishFavorites();
+            if (added != null) {
+                workspace.favorites().select(added); // der nächste Favorit landet daneben
+            }
         }
     }
 
     @Override
-    public void opened(ReaderLink favorite, boolean pin) {
+    public void favoriteOpened(ReaderLink favorite, boolean pin) {
         open(favorite, pin);
     }
 
     @Override
-    public void removed(ReaderLink favorite) {
-        if (favorites != null) {
-            favorites.remove(favorite);
+    public void entryRemoveRequested(String id) {
+        if (favorites != null && favorites.remove(id)) {
             publishFavorites();
         }
     }
 
+    @Override
+    public String folderCreateRequested(String parentId, String name) {
+        if (favorites == null) {
+            return null;
+        }
+        String id = favorites.createFolder(name, parentId);
+        publishFavorites();
+        return id;
+    }
+
+    @Override
+    public void folderRenameRequested(String id, String name) {
+        if (favorites != null && favorites.renameFolder(id, name)) {
+            publishFavorites();
+        }
+    }
+
+    @Override
+    public boolean moveRequested(String id, String targetFolderId, int index) {
+        if (favorites == null || !favorites.move(id, targetFolderId, index)) {
+            return false;
+        }
+        publishFavorites();
+        return true;
+    }
+
     private void publishFavorites() {
-        workspace.favorites().setFavorites(favorites == null ? null : favorites.all());
+        workspace.favorites().setFavorites(favorites == null ? null : favorites.tree());
         workspace.reader().refreshFavorite();
+        workspace.knowledgeSources().refreshFavorites();
     }
 }

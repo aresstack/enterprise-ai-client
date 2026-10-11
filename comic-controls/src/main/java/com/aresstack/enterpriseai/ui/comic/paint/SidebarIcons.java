@@ -109,4 +109,29 @@ public final class SidebarIcons {
             }
         };
     }
+
+    /** Der Ordner der Favoriten (MainframeMates Lesezeichen-Ordner): Mappe mit Reiter, Papier hell, Linien in Tinte. */
+    public static StrokeIcon folder() {
+        return new StrokeIcon(16, 16) {
+            @Override
+            protected void paint(Graphics2D g2) {
+                Path2D.Float folder = new Path2D.Float();
+                folder.moveTo(1.5f, 3.5f);
+                folder.lineTo(6f, 3.5f);
+                folder.lineTo(7.5f, 5f);
+                folder.lineTo(14.5f, 5f);
+                folder.lineTo(14.5f, 13f);
+                folder.lineTo(1.5f, 13f);
+                folder.closePath();
+                g2.setColor(FOLDER_PAPER);
+                g2.fill(folder);
+                g2.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+                g2.draw(folder);
+                g2.draw(new Line2D.Float(1.5f, 7f, 14.5f, 7f));
+            }
+        };
+    }
+
+    private static final Color FOLDER_PAPER = new Color(0xFFF1C2);
 }
