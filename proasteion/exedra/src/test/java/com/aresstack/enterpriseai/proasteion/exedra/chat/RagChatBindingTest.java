@@ -3,15 +3,20 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
 
 import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
+import com.aresstack.enterpriseai.chat.api.ToolDefinition;
+import com.aresstack.enterpriseai.astu.chat.ChatToolDefinition;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
@@ -43,13 +48,16 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKno
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.After;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -91,6 +99,9 @@ public class RagChatBindingTest {
                     + "am 31. März des Folgejahres.")
             .add("kuendigung", "Kündigungsfrist", "Die Kündigungsfrist beträgt drei Monate zum Quartalsende. Sie "
                     + "gilt für beide Seiten.");
+
+    @Rule
+    public final TemporaryFolder folder = new TemporaryFolder();
 
     @After
     public void tearDown() {
@@ -134,6 +145,67 @@ public class RagChatBindingTest {
         assertEquals("Kontext nicht in der Historie", 2, history.size());
         assertEquals(ChatRole.USER, history.get(0).role());
         assertEquals("Drei Monate [1].", history.get(1).content());
+    }
+
+    @Test
+    public void pageBookmarkJoinsTheChatWithoutPageText() throws Exception {
+        port.enqueueAnswer("Gelesen");
+        final Fixture fixture = fixture(index, embeddings);
+        final AiTool knowledgeRead = new AiTool() {
+            @Override
+            public String name() {
+                return ChatBookmark.READ_TOOL;
+            }
+
+            @Override
+            public ToolDefinition definition() {
+                return ToolDefinition.function(ChatBookmark.READ_TOOL, "liest",
+                        "{\"type\":\"object\",\"properties\":{}}");
+            }
+
+            @Override
+            public String execute(String arguments) {
+                return "SEITENTEXT";
+            }
+        };
+        final String bookmark = "confluence://cf.intern/confluence/page/17025995";
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.enableTools(new ToolSupport(port, new FileAttachmentStore(folder.getRoot().toPath()),
+                        (name, content) -> "", knowledgeRead, false));
+                fixture.binding.sendRequested("Was steht da?", false, Collections.<java.nio.file.Path>emptyList(),
+                        Collections.singletonList(new ChatPage("Betriebshandbuch", bookmark)));
+            }
+        });
+        awaitIdle(fixture.model);
+
+        TranscriptEntry question = entries(fixture.model).get(0);
+        assertEquals(1, question.getPages().size());
+        assertEquals(bookmark, question.getPages().get(0).bookmark());
+        List<ChatBookmark> pages = onEdt(new Callable<List<ChatBookmark>>() {
+            @Override
+            public List<ChatBookmark> call() {
+                return fixture.binding.bookmarks();
+            }
+        });
+        assertEquals(1, pages.size());
+        assertEquals(bookmark, pages.get(0).uri().toString());
+
+        String system = port.lastRequest().messages().get(0).content();
+        assertTrue(system, system.contains("Betriebshandbuch: " + bookmark));
+        assertTrue(system, system.contains(ChatBookmark.READ_TOOL));
+        boolean offered = false;
+        for (ChatToolDefinition tool : port.lastRequest().tools()) {
+            offered |= ChatBookmark.READ_TOOL.equals(tool.name());
+        }
+        assertTrue("knowledge_read über /chat/completions angeboten", offered);
+        for (ChatMessage message : port.lastRequest().messages()) {
+            assertFalse("kein Seitentext im Modellkontext", message.content().contains("SEITENTEXT"));
+        }
+        for (ChatMessage message : chat.conversation(conversation).messages()) {
+            assertFalse("Bookmark nicht in der Historie", message.content().contains(bookmark));
+        }
     }
 
     @Test

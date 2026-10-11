@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
@@ -11,6 +12,7 @@ import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentException;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTools;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.ReadAttachmentTool;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.SearchAttachmentTool;
+import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatTurn;
@@ -20,8 +22,10 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RagSource;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPath;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalWarning;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
+import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
-import com.aresstack.enterpriseai.astu.acropolis.tool.ToolCallingChatPort;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolRegistry;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
@@ -29,6 +33,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
+import com.aresstack.enterpriseai.astu.resource.BookmarkUri;
 
 import java.nio.file.Path;
 import java.time.ZoneId;
@@ -70,11 +75,13 @@ import java.util.logging.Logger;
  * und Hinweisen stehen nur Titel, Orte (laut Domänenregel ohne Zugangsdaten), Stände und Scores, nie Tokens;
  * eine gescheiterte Antwort nennt ihre technische Ursache wie {@link ChatServiceBinding#describe}.
  *
- * <p><b>Werkzeuge und Anhänge</b> ({@link #enableTools}): Hat die Unterhaltung Anhänge (oder steht
- * {@code chat.tools.enabled=true}), läuft die Nachricht über die Werkzeug-Schleife ({@code /responses}, ohne
- * Streaming): neue Dateien werden auf dem Arbeits-Thread abgelegt, dem Modell werden nur Kennung und Name der
- * Anhänge genannt, den Inhalt holt es sich über {@code read_attachment}/{@code search_attachment}. Die Blase zeigt
- * währenddessen, welches Werkzeug läuft; die Antwort erscheint am Stück.
+ * <p><b>Werkzeuge, Anhänge und Seiten</b> ({@link #enableTools}): Hat die Unterhaltung Anhänge oder Seiten (oder
+ * steht {@code chat.tools.enabled=true}), läuft die Nachricht über die Werkzeug-Schleife ({@code /chat/completions}
+ * mit {@code tools}, ohne Streaming): neue Dateien werden auf dem Arbeits-Thread abgelegt, dem Modell werden nur
+ * Kennung und Name der Anhänge genannt, den Inhalt holt es sich über {@code read_attachment}/{@code search_attachment}.
+ * Seiten aus dem Lesebereich gehören ab der Nachricht, mit der sie kamen, zum Chat: das Modell kennt nur Titel und
+ * Bookmark und liest den Inhalt mit {@code knowledge_read}. Die Blase zeigt währenddessen, welches Werkzeug läuft;
+ * die Antwort erscheint am Stück.
  */
 public final class RagChatBinding implements ChatShellActions {
 
@@ -94,7 +101,9 @@ public final class RagChatBinding implements ChatShellActions {
     static final String TOOLS_ACTIVITY = "Antwort wird erstellt …";
     static final String READING_ACTIVITY = "Liest Anhang …";
     static final String SEARCHING_ACTIVITY = "Durchsucht Anhang …";
+    static final String READING_PAGE_ACTIVITY = "Liest Seite …";
     static final String ATTACHMENTS_UNAVAILABLE_NOTICE = "Dateianhänge sind in dieser Sitzung nicht verfügbar.";
+    static final String PAGES_UNAVAILABLE_NOTICE = "Seiten können in dieser Sitzung nicht zum Chat hinzugefügt werden.";
 
     private static final DateTimeFormatter REVISION_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -109,6 +118,7 @@ public final class RagChatBinding implements ChatShellActions {
     private Request retrieving; // die Anfrage, deren Suche gerade läuft (nur UI-Thread)
     private ToolSupport tools;
     private boolean conversationHasAttachments; // nur UI-Thread
+    private final List<ChatBookmark> bookmarks = new ArrayList<ChatBookmark>(); // Seiten des Chats, nur UI-Thread
     private ChatHistoryBinding history; // nur UI-Thread
     private String reasoningEffort; // nur UI-Thread; null = Standard des Modells
     private String chatModel; // nur UI-Thread; im Composer gewählt, null = Modell der Konfiguration
@@ -163,6 +173,17 @@ public final class RagChatBinding implements ChatShellActions {
      * @throws IllegalStateException während eine Antwort oder eine Suche läuft
      */
     public void startConversation(ChatConversationId conversation, boolean hasAttachments) {
+        startConversation(conversation, hasAttachments, Collections.<ChatBookmark>emptyList());
+    }
+
+    /**
+     * Wie {@link #startConversation(ChatConversationId, boolean)}, mit den Seiten (Bookmarks), die der gespeicherte
+     * Chat schon hat.
+     *
+     * @throws IllegalStateException während eine Antwort oder eine Suche läuft
+     */
+    public void startConversation(ChatConversationId conversation, boolean hasAttachments,
+                                  List<ChatBookmark> pages) {
         if (conversation == null) {
             throw new IllegalArgumentException("conversation must not be null");
         }
@@ -171,6 +192,19 @@ public final class RagChatBinding implements ChatShellActions {
         }
         this.conversationId = conversation;
         this.conversationHasAttachments = hasAttachments;
+        this.bookmarks.clear();
+        if (pages != null) {
+            for (ChatBookmark page : pages) {
+                if (page != null && !bookmarks.contains(page)) {
+                    bookmarks.add(page);
+                }
+            }
+        }
+    }
+
+    /** Die Seiten (Bookmarks) der aktuellen Unterhaltung (nur UI-Thread). */
+    public List<ChatBookmark> bookmarks() {
+        return Collections.unmodifiableList(new ArrayList<ChatBookmark>(bookmarks));
     }
 
     /** Die Chat-Historie, die abgelegte Anhänge mit ihren Kennungen erfährt ({@code null}: keine). */
@@ -222,7 +256,32 @@ public final class RagChatBinding implements ChatShellActions {
     /** Muss auf dem UI-Thread gerufen werden; {@code files} werden der Unterhaltung als Anhänge hinzugefügt. */
     @Override
     public void sendRequested(final String text, boolean ragEnabled, List<Path> files) {
+        sendRequested(text, ragEnabled, files, Collections.<ChatPage>emptyList());
+    }
+
+    /**
+     * Muss auf dem UI-Thread gerufen werden; {@code files} werden der Unterhaltung als Anhänge hinzugefügt,
+     * {@code pages} als Seiten (nur Titel und Bookmark, nie ihr Text).
+     */
+    @Override
+    public void sendRequested(final String text, boolean ragEnabled, List<Path> files, List<ChatPage> pages) {
         if (!model.canSend(text)) {
+            return;
+        }
+        final List<ChatPage> newPages = new ArrayList<ChatPage>();
+        final List<ChatBookmark> newBookmarks = new ArrayList<ChatBookmark>();
+        if (pages != null) {
+            for (ChatPage page : pages) {
+                try {
+                    newBookmarks.add(new ChatBookmark(page.title(), BookmarkUri.parse(page.bookmark())));
+                    newPages.add(page);
+                } catch (IllegalArgumentException invalid) {
+                    LOG.warning("Seite ohne gültiges Bookmark übergangen: " + page);
+                }
+            }
+        }
+        if (!newBookmarks.isEmpty() && (tools == null || tools.knowledgeRead() == null)) {
+            model.addNotice(PAGES_UNAVAILABLE_NOTICE);
             return;
         }
         final List<Path> newFiles = files == null ? Collections.<Path>emptyList() : new ArrayList<Path>(files);
@@ -234,11 +293,17 @@ public final class RagChatBinding implements ChatShellActions {
         for (Path file : newFiles) {
             names.add(file.getFileName().toString());
         }
-        final TranscriptEntry question = model.addUserMessage(text, names);
+        final TranscriptEntry question = model.addUserMessage(text, names, newPages);
+        for (ChatBookmark bookmark : newBookmarks) {
+            if (!bookmarks.contains(bookmark)) {
+                bookmarks.add(bookmark);
+            }
+        }
+        final List<ChatBookmark> chatPages = new ArrayList<ChatBookmark>(bookmarks);
         final TranscriptEntry answer = model.beginAssistantMessage();
         final TurnListener listener = new TurnListener();
         final boolean toolPath = tools != null
-                && (tools.alwaysOn() || conversationHasAttachments || !newFiles.isEmpty());
+                && (tools.alwaysOn() || conversationHasAttachments || !newFiles.isEmpty() || !chatPages.isEmpty());
         RagOptions ragOptions = RagOptions.disabled();
         if (ragEnabled) {
             if (!sources.isRestricted()) {
@@ -286,9 +351,16 @@ public final class RagChatBinding implements ChatShellActions {
                             }
                             AttachmentTools attachments = new AttachmentTools(support.store(), support.extractor(),
                                     conversation);
-                            extraContext = attachments.context();
-                            via = new ToolCallingChatPort(support.responses(), attachments.registry(),
-                                    support.loopExecutor(), activity(listener), ToolCallingChatPort.DEFAULT_MAX_ROUNDS);
+                            extraContext = join(attachments.context(), ChatBookmark.context(chatPages));
+                            List<AiTool> available = new ArrayList<AiTool>();
+                            available.add(attachments.registry().find(ReadAttachmentTool.NAME));
+                            available.add(attachments.registry().find(SearchAttachmentTool.NAME));
+                            if (!chatPages.isEmpty() && support.knowledgeRead() != null) {
+                                available.add(support.knowledgeRead());
+                            }
+                            via = new ChatCompletionsToolLoop(support.chat(), new ToolRegistry(available),
+                                    support.loopExecutor(), activity(listener),
+                                    ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
                             if (options.isEnabled()) {
                                 showActivity(listener, RETRIEVING_ACTIVITY);
                             } else {
@@ -320,6 +392,14 @@ public final class RagChatBinding implements ChatShellActions {
             // Der Arbeits-Executor nimmt nichts mehr an (z. B. beim Beenden): die Antwort darf nicht offen bleiben.
             reject(request, null);
         }
+    }
+
+    /** Zwei System-Anteile hintereinander; {@code null}, wenn beide fehlen. */
+    private static String join(String first, String second) {
+        if (first == null) {
+            return second;
+        }
+        return second == null ? first : first + "\n\n" + second;
     }
 
     /** Muss auf dem UI-Thread gerufen werden. */
@@ -362,6 +442,7 @@ public final class RagChatBinding implements ChatShellActions {
             public void onToolCall(String toolName) {
                 showActivity(listener, ReadAttachmentTool.NAME.equals(toolName) ? READING_ACTIVITY
                         : SearchAttachmentTool.NAME.equals(toolName) ? SEARCHING_ACTIVITY
+                        : ChatBookmark.READ_TOOL.equals(toolName) ? READING_PAGE_ACTIVITY
                         : "Werkzeug " + toolName + " …");
             }
         };

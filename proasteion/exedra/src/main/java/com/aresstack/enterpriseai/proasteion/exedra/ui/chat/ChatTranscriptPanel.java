@@ -236,7 +236,8 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         state.row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.add(state.row);
         messageList.add(spacer());
-        if (entry.getAuthor() == TranscriptEntry.Author.USER && !entry.getAttachments().isEmpty()) {
+        if (entry.getAuthor() == TranscriptEntry.Author.USER
+                && (!entry.getAttachments().isEmpty() || !entry.getPages().isEmpty())) {
             addAttachmentsRow(entry);
         }
         if (entry.hasSources()) {
@@ -687,7 +688,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     /** Hängt die Anhang-Chips einer Nutzernachricht als eigene, rechts ausgerichtete Zeile unter ihre Blase. */
     private void addAttachmentsRow(TranscriptEntry entry) {
-        AttachmentChipsPanel chips = new AttachmentChipsPanel(entry.getAttachments());
+        AttachmentChipsPanel chips = new AttachmentChipsPanel(entry.getAttachments(), entry.getPages());
         BubbleMessageRow row = new BubbleMessageRow(chips, BubbleSide.RIGHT);
         row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.add(row);

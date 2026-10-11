@@ -1,16 +1,20 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModelListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.Attachment;
+import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.history.AttachmentRecord;
+import com.aresstack.enterpriseai.astu.acropolis.history.BookmarkRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatHistoryStore;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.resource.BookmarkUri;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,7 +35,7 @@ import java.util.function.Supplier;
  *       Kennungen nach, sobald die {@link RagChatBinding} sie abgelegt hat ({@link #attachmentsStored}).</li>
  *   <li><b>Öffnen</b>: der gespeicherte Verlauf wird im {@link ChatService} unter derselben Kennung wieder
  *       eröffnet, die Anbindung schreibt ab dann dorthin, das Transkript zeigt die Nachrichten samt
- *       Anhang-Chips. Die Anhänge liegen unverändert im Ordner des Chats, die Werkzeuge finden sie wieder.</li>
+ *       Anhang- und Seiten-Chips; die Seiten (Bookmarks) gehören wieder zur Unterhaltung. Die Anhänge liegen unverändert im Ordner des Chats, die Werkzeuge finden sie wieder.</li>
  *   <li><b>Löschen</b>: Chat-Datei und Anhang-Ordner ({@link ChatHistoryStore#delete}).</li>
  * </ul>
  *
@@ -130,7 +134,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             return false;
         }
         try {
-            chat.startConversation(target, record.attachmentCount() > 0);
+            chat.startConversation(target, record.attachmentCount() > 0, bookmarksOf(record));
         } catch (IllegalStateException busy) {
             chatService.closeConversation(target);
             return false;
@@ -224,8 +228,14 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             for (AttachmentRecord attachment : message.getAttachments()) {
                 names.add(attachment.getFileName());
             }
+            List<ChatPage> pages = new ArrayList<ChatPage>();
+            for (BookmarkRecord bookmark : message.getBookmarks()) {
+                if (!bookmark.getUri().isEmpty()) {
+                    pages.add(new ChatPage(bookmark.getTitle(), bookmark.getUri()));
+                }
+            }
             TranscriptEntry entry = model.restoreEntry(TranscriptEntry.Author.USER, message.getText(),
-                    message.getCreatedAt(), names);
+                    message.getCreatedAt(), names, pages);
             if (!message.getAttachments().isEmpty()) {
                 storedAttachments.put(entry.getId(), new ArrayList<AttachmentRecord>(message.getAttachments()));
             }
@@ -275,7 +285,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         switch (entry.getAuthor()) {
             case USER:
                 return new ChatMessageRecord(ChatMessageRecord.ROLE_USER, entry.getText(),
-                        entry.getCreatedAtMillis(), attachmentsOf(entry));
+                        entry.getCreatedAtMillis(), attachmentsOf(entry)).withBookmarks(bookmarksOf(entry));
             case NOTICE:
                 return new ChatMessageRecord(ChatMessageRecord.ROLE_INFO, entry.getText(),
                         entry.getCreatedAtMillis(), null);
@@ -302,6 +312,30 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             names.add(new AttachmentRecord(null, name, 0L));
         }
         return names;
+    }
+
+    /** Die Seiten einer Nutzernachricht: nur Bookmark und Titel. */
+    private static List<BookmarkRecord> bookmarksOf(TranscriptEntry entry) {
+        List<BookmarkRecord> records = new ArrayList<BookmarkRecord>(entry.getPages().size());
+        for (ChatPage page : entry.getPages()) {
+            records.add(new BookmarkRecord(page.bookmark(), page.title()));
+        }
+        return records;
+    }
+
+    /** Alle Seiten eines gespeicherten Chats; ungültige Bookmarks werden übergangen. */
+    private static List<ChatBookmark> bookmarksOf(ChatRecord record) {
+        List<ChatBookmark> bookmarks = new ArrayList<ChatBookmark>();
+        for (ChatMessageRecord message : record.getMessages()) {
+            for (BookmarkRecord bookmark : message.getBookmarks()) {
+                try {
+                    bookmarks.add(new ChatBookmark(bookmark.getTitle(), BookmarkUri.parse(bookmark.getUri())));
+                } catch (IllegalArgumentException invalid) {
+                    // ohne gültiges Bookmark kann das Modell die Seite nicht lesen
+                }
+            }
+        }
+        return bookmarks;
     }
 
     static String title(String text) {

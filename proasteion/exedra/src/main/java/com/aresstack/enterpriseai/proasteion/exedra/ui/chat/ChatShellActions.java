@@ -23,6 +23,14 @@ public interface ChatShellActions {
         sendRequested(text, ragEnabled);
     }
 
+    /**
+     * Wie {@link #sendRequested(String, boolean, List)}, dazu Seiten aus dem Lesebereich (nur Titel und Bookmark),
+     * die dem Chat hinzugefügt werden. Ohne eigene Umsetzung gehen die Seiten verloren.
+     */
+    default void sendRequested(String text, boolean ragEnabled, List<Path> attachments, List<ChatPage> pages) {
+        sendRequested(text, ragEnabled, attachments);
+    }
+
     /** Ob die Anbindung Dateianhänge annimmt (dann zeigt der Composer die Büroklammer). */
     default boolean supportsAttachments() {
         return false;

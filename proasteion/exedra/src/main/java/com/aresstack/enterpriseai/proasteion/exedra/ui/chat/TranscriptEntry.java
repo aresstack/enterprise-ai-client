@@ -35,6 +35,7 @@ public final class TranscriptEntry {
     private String activity = "";
     private List<SourceReference> sources = Collections.emptyList();
     private List<String> attachments = Collections.emptyList();
+    private List<ChatPage> pages = Collections.emptyList();
 
     TranscriptEntry(long id, Author author, long createdAtMillis, String text, State state) {
         this.id = id;
@@ -92,6 +93,15 @@ public final class TranscriptEntry {
 
     void setAttachments(List<String> names) {
         this.attachments = Collections.unmodifiableList(new java.util.ArrayList<String>(names));
+    }
+
+    /** Seiten (Bookmarks), die mit einer Nutzernachricht in den Chat kamen; leer, wenn sie keine hat. */
+    public List<ChatPage> getPages() {
+        return pages;
+    }
+
+    void setPages(List<ChatPage> values) {
+        this.pages = Collections.unmodifiableList(new java.util.ArrayList<ChatPage>(values));
     }
 
     public boolean hasSources() {

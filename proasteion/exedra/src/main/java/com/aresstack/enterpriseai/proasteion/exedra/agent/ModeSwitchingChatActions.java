@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.agent;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellModeModel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 
@@ -51,6 +52,23 @@ public final class ModeSwitchingChatActions implements ChatShellActions {
         } else {
             chat.sendRequested(text, ragEnabled, attachments);
         }
+    }
+
+    /**
+     * Seiten aus dem Lesebereich: im Chat als Bookmarks des Chats, im Agent-Modus als Zeilen „Seite: Titel
+     * (Bookmark)“ an der Nachricht; der Agent liest sie selbst mit {@code knowledge_read}.
+     */
+    @Override
+    public void sendRequested(String text, boolean ragEnabled, List<Path> attachments, List<ChatPage> pages) {
+        if (!agentMode()) {
+            chat.sendRequested(text, ragEnabled, attachments, pages);
+            return;
+        }
+        StringBuilder withPages = new StringBuilder(text);
+        for (ChatPage page : pages) {
+            withPages.append("\nSeite: ").append(page.title()).append(" (").append(page.bookmark()).append(')');
+        }
+        agent.sendRequested(withPages.toString(), ragEnabled, attachments);
     }
 
     @Override

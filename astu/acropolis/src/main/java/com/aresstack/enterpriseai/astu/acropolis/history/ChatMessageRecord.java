@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.history;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Eine gespeicherte Nachricht (aus askai-java8 arch): Rolle, Text, Zeitpunkt und Anhänge. */
+/** Eine gespeicherte Nachricht (aus askai-java8 arch): Rolle, Text, Zeitpunkt, Anhänge und Seiten. */
 public final class ChatMessageRecord {
 
     public static final String ROLE_USER = "user";
@@ -17,6 +17,8 @@ public final class ChatMessageRecord {
     /** Abgebrochene Antwort: wird angezeigt, geht aber nicht in den Verlauf für das Modell (wie im ChatService). */
     private boolean cancelled;
     private List<AttachmentRecord> attachments = new ArrayList<AttachmentRecord>();
+    /** Seiten, die mit dieser Nachricht in den Chat kamen (nur Bookmark und Titel). */
+    private List<BookmarkRecord> bookmarks = new ArrayList<BookmarkRecord>();
 
     /** Für die Deserialisierung. */
     public ChatMessageRecord() {
@@ -54,6 +56,16 @@ public final class ChatMessageRecord {
 
     public List<AttachmentRecord> getAttachments() {
         return attachments != null ? attachments : new ArrayList<AttachmentRecord>();
+    }
+
+    public List<BookmarkRecord> getBookmarks() {
+        return bookmarks != null ? bookmarks : new ArrayList<BookmarkRecord>();
+    }
+
+    /** Hängt die Seiten dieser Nachricht an. */
+    public ChatMessageRecord withBookmarks(List<BookmarkRecord> pages) {
+        this.bookmarks = pages != null ? new ArrayList<BookmarkRecord>(pages) : new ArrayList<BookmarkRecord>();
+        return this;
     }
 
     public boolean isUser() {

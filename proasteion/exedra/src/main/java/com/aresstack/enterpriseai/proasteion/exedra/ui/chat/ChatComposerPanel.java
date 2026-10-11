@@ -235,8 +235,11 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         setDictationNote(null, ComposerStatusLine.Tone.MUTED); // die Diktat-Meldung endet spätestens mit dem Senden
         editor.setText("");
         List<Path> attachments = attachmentStrip.getAttachments();
+        List<ChatPage> pages = attachmentStrip.getPages();
         attachmentStrip.clear();
-        if (attachments.isEmpty()) {
+        if (!pages.isEmpty()) {
+            actions.sendRequested(draft.trim(), model.isRagEnabled(), attachments, pages);
+        } else if (attachments.isEmpty()) {
             actions.sendRequested(draft.trim(), model.isRagEnabled());
         } else {
             actions.sendRequested(draft.trim(), model.isRagEnabled(), attachments);
@@ -246,6 +249,16 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     /** Merkt Dateien für die nächste Nachricht vor (bereits vorgemerkte werden übergangen). */
     public void addAttachments(List<Path> files) {
         attachmentStrip.addAttachments(files);
+    }
+
+    /** Merkt eine Seite (Titel und Bookmark) für die nächste Nachricht vor; dieselbe Seite nur einmal. */
+    public void addPage(ChatPage page) {
+        attachmentStrip.addPage(page);
+    }
+
+    /** Die vorgemerkten Seiten. */
+    public List<ChatPage> pages() {
+        return attachmentStrip.getPages();
     }
 
     /** Die vorgemerkten Anhänge. */

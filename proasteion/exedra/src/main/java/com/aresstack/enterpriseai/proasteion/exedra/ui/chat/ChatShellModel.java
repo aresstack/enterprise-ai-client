@@ -85,12 +85,20 @@ public final class ChatShellModel {
 
     /** Eine Nutzernachricht mit den Dateinamen ihrer Anhänge (für die Anzeige in der Nutzerblase). */
     public TranscriptEntry addUserMessage(String text, List<String> attachmentNames) {
+        return addUserMessage(text, attachmentNames, Collections.<ChatPage>emptyList());
+    }
+
+    /** Wie oben, dazu die Seiten (Bookmarks), die mit der Nachricht in den Chat kommen. */
+    public TranscriptEntry addUserMessage(String text, List<String> attachmentNames, List<ChatPage> pages) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("text must not be blank");
         }
         TranscriptEntry entry = newEntry(TranscriptEntry.Author.USER, text, TranscriptEntry.State.COMPLETE);
         if (attachmentNames != null && !attachmentNames.isEmpty()) {
             entry.setAttachments(attachmentNames);
+        }
+        if (pages != null && !pages.isEmpty()) {
+            entry.setPages(pages);
         }
         fireEntryAdded(entry);
         return entry;
@@ -202,6 +210,12 @@ public final class ChatShellModel {
      */
     public TranscriptEntry restoreEntry(TranscriptEntry.Author author, String text, long createdAtMillis,
                                         List<String> attachmentNames) {
+        return restoreEntry(author, text, createdAtMillis, attachmentNames, Collections.<ChatPage>emptyList());
+    }
+
+    /** Wie oben, dazu die Seiten einer Nutzernachricht. */
+    public TranscriptEntry restoreEntry(TranscriptEntry.Author author, String text, long createdAtMillis,
+                                        List<String> attachmentNames, List<ChatPage> pages) {
         if (author == null || text == null) {
             throw new IllegalArgumentException("author and text must not be null");
         }
@@ -213,6 +227,9 @@ public final class ChatShellModel {
         entries.add(entry);
         if (attachmentNames != null && !attachmentNames.isEmpty()) {
             entry.setAttachments(attachmentNames);
+        }
+        if (pages != null && !pages.isEmpty()) {
+            entry.setPages(pages);
         }
         fireEntryAdded(entry);
         return entry;

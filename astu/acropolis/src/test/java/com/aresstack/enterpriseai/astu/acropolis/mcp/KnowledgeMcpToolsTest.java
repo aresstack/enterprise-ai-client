@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingU
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
+import com.aresstack.enterpriseai.astu.resource.KnowledgeBookmarks;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
@@ -100,6 +101,16 @@ public class KnowledgeMcpToolsTest {
         String passage = again.substring(start, again.indexOf(']', start));
         String one = call(tools.knowledgeRead(), "id", passage).getText();
         assertTrue(one, one.contains("passage: " + passage));
+    }
+
+    @Test
+    public void readResolvesBookmarkUri() {
+        String bookmark = KnowledgeBookmarks.of(wiki.idOf("Kaffee")).toString();
+        assertTrue(bookmark, bookmark.startsWith("wiki://"));
+        McpToolResult read = call(tools.knowledgeRead(), "id", bookmark);
+        assertFalse(read.getText(), read.isError());
+        assertTrue(read.getText(), read.getText().contains("id: " + wiki.idOf("Kaffee").value()));
+        assertTrue(read.getText(), read.getText().contains("monatlich entkalkt"));
     }
 
     /** Vorladen und Indexieren laufen im Hintergrund; höchstens 10 s warten. */

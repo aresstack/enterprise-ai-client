@@ -45,4 +45,27 @@ public final class ToolRegistry {
     public boolean isEmpty() {
         return tools.isEmpty();
     }
+
+    /**
+     * Führt einen Werkzeugaufruf des Modells aus. Unbekannte Werkzeuge und Fehler werden zum Ergebnistext
+     * ({@code Fehler: …}), damit das Modell reagieren kann.
+     *
+     * @param activity erfährt den Namen vor der Ausführung; darf {@code null} sein
+     */
+    public String execute(String name, String arguments, ToolActivityListener activity) {
+        AiTool tool = find(name);
+        if (tool == null) {
+            return "Fehler: unbekanntes Werkzeug " + name;
+        }
+        if (activity != null) {
+            activity.onToolCall(name);
+        }
+        try {
+            String output = tool.execute(arguments);
+            return output == null ? "" : output;
+        } catch (RuntimeException e) {
+            String message = e.getMessage();
+            return "Fehler: " + (message == null || message.trim().isEmpty() ? e.getClass().getSimpleName() : message);
+        }
+    }
 }

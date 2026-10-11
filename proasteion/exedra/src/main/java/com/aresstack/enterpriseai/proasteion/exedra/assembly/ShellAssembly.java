@@ -111,11 +111,13 @@ public final class ShellAssembly {
                 root.uiExecutor(), root.workExecutor(), root.zone(), root.sourceSelection());
         // Chat-Historie neben der Konfigurationsdatei: chats/<chatId>.json, Anhänge im Ordner chats/<chatId>/.
         final Path chatsDirectory = AppPaths.configFile().toAbsolutePath().getParent().resolve(CHATS_DIRECTORY);
-        if (root.ports().responses() != null) {
-            // Tool-Calling und Dateianhänge: /responses, Ablage im Ordner des Chats, Text über document-tika.
-            chatActions.enableTools(new ToolSupport(root.ports().responses(),
+        if (root.ports().chat() != null) {
+            // Tool-Calling, Dateianhänge und Seiten: /chat/completions mit tools, Ablage im Ordner des Chats, Text
+            // über document-tika, Seiten-Bookmarks über dasselbe knowledge_read wie im Agent-Modus.
+            chatActions.enableTools(new ToolSupport(root.ports().chat(),
                     new FileAttachmentStore(chatsDirectory),
                     root.attachmentText(),
+                    root.knowledgeTools().knowledgeReadChatTool(),
                     root.config().chat().toolsEnabled()));
         }
         final ChatHistoryBinding history = new ChatHistoryBinding(new FileChatHistoryStore(chatsDirectory),

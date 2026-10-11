@@ -22,7 +22,8 @@ import java.util.List;
 
 /**
  * Die Reihe der vorgemerkten Anhänge über dem Editor (nach askai-java8 arch, {@code ChatAttachmentStrip}): je
- * Datei ein Chip mit Namen und ✕. Hält nur Pfade, nie Dateiinhalte; doppelte Dateien werden übergangen.
+ * Datei ein Chip mit Namen und ✕, je Seite aus dem Lesebereich ein Chip mit ihrem Titel und ✕. Hält nur Pfade und
+ * Bookmarks, nie Inhalte; doppelte Dateien und Seiten werden übergangen.
  */
 final class ChatAttachmentStrip extends JPanel {
 
@@ -35,6 +36,7 @@ final class ChatAttachmentStrip extends JPanel {
     private static final Color CHIP_BORDER = ResearchUiPalette.LIGHT_CONTROL_BORDER;
 
     private final List<Path> attachments = new ArrayList<Path>();
+    private final List<ChatPage> pages = new ArrayList<ChatPage>();
     private final ChangeListener changeListener;
 
     ChatAttachmentStrip(ChangeListener changeListener) {
@@ -58,6 +60,23 @@ final class ChatAttachmentStrip extends JPanel {
         }
     }
 
+    void addPage(ChatPage page) {
+        if (page != null && !pages.contains(page)) {
+            pages.add(page);
+            rebuild();
+        }
+    }
+
+    void removePage(ChatPage page) {
+        if (pages.remove(page)) {
+            rebuild();
+        }
+    }
+
+    List<ChatPage> getPages() {
+        return Collections.unmodifiableList(new ArrayList<ChatPage>(pages));
+    }
+
     void removeAttachment(Path file) {
         if (attachments.remove(file)) {
             rebuild();
@@ -65,8 +84,9 @@ final class ChatAttachmentStrip extends JPanel {
     }
 
     void clear() {
-        if (!attachments.isEmpty()) {
+        if (!attachments.isEmpty() || !pages.isEmpty()) {
             attachments.clear();
+            pages.clear();
             rebuild();
         }
     }
@@ -76,7 +96,7 @@ final class ChatAttachmentStrip extends JPanel {
     }
 
     int count() {
-        return attachments.size();
+        return attachments.size() + pages.size();
     }
 
     private void rebuild() {
@@ -84,7 +104,10 @@ final class ChatAttachmentStrip extends JPanel {
         for (Path file : attachments) {
             add(createChip(file));
         }
-        setVisible(!attachments.isEmpty());
+        for (ChatPage page : pages) {
+            add(createChip(page));
+        }
+        setVisible(count() > 0);
         revalidate();
         repaint();
         if (changeListener != null) {
@@ -94,17 +117,33 @@ final class ChatAttachmentStrip extends JPanel {
 
     private Component createChip(final Path file) {
         String fileName = file.getFileName().toString();
+        JButton remove = removeButton(fileName);
+        remove.addActionListener(event -> removeAttachment(file));
+        return chip(fileName, file.toString(), remove);
+    }
+
+    private Component createChip(final ChatPage page) {
+        JButton remove = removeButton(page.title());
+        remove.addActionListener(event -> removePage(page));
+        return chip(page.title(), pageTooltip(page), remove);
+    }
+
+    /** Tooltip eines Seiten-Chips: das Bookmark, unter dem das Modell die Seite liest. */
+    static String pageTooltip(ChatPage page) {
+        return "Seite: " + page.bookmark();
+    }
+
+    private static JButton removeButton(String name) {
         JButton remove = new JButton("\u00D7");
-        remove.setToolTipText(fileName + " entfernen");
-        remove.getAccessibleContext().setAccessibleName(fileName + " entfernen");
+        remove.setToolTipText(name + " entfernen");
+        remove.getAccessibleContext().setAccessibleName(name + " entfernen");
         remove.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
         remove.setRequestFocusEnabled(false); // per Tab erreichbar, ein Klick nimmt dem Editor nicht den Fokus
         remove.setBorderPainted(false);
         remove.setContentAreaFilled(false);
         remove.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         remove.setMargin(new Insets(0, 4, 0, 2));
-        remove.addActionListener(event -> removeAttachment(file));
-        return chip(fileName, file.toString(), remove);
+        return remove;
     }
 
     /**

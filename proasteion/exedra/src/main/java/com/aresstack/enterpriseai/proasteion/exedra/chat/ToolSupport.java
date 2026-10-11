@@ -2,31 +2,36 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentStore;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtractor;
-import com.aresstack.enterpriseai.chat.api.ResponsesPort;
+import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 
 import java.util.concurrent.Executor;
 
 /**
- * Was die {@link RagChatBinding} für Tool-Calling und Dateianhänge braucht: den {@code /responses}-Port, die
- * Ablage und die Textextraktion der Anhänge, den Schalter {@code chat.tools.enabled} und einen Executor für die
- * Werkzeug-Schleife (ein Daemon-Thread je Anfrage).
+ * Was die {@link RagChatBinding} für Tool-Calling, Dateianhänge und Seiten-Bookmarks braucht: den gerouteten
+ * Chat-Port ({@code /chat/completions} mit {@code tools}), die Ablage und die Textextraktion der Anhänge, das
+ * Werkzeug {@code knowledge_read} für Seiten des Chats, den Schalter {@code chat.tools.enabled} und einen Executor
+ * für die Werkzeug-Schleife (ein Daemon-Thread je Anfrage).
  */
 public final class ToolSupport {
 
-    private final ResponsesPort responses;
+    private final ChatCompletionPort chat;
     private final AttachmentStore store;
     private final AttachmentTextExtractor extractor;
+    private final AiTool knowledgeRead;
     private final boolean alwaysOn;
     private final Executor loopExecutor;
 
-    public ToolSupport(ResponsesPort responses, AttachmentStore store, AttachmentTextExtractor extractor,
-                       boolean alwaysOn) {
-        if (responses == null || store == null || extractor == null) {
-            throw new IllegalArgumentException("responses, store and extractor must not be null");
+    /** @param knowledgeRead liest Seiten-Bookmarks des Chats; {@code null}: Seiten bleiben ohne Werkzeug */
+    public ToolSupport(ChatCompletionPort chat, AttachmentStore store, AttachmentTextExtractor extractor,
+                       AiTool knowledgeRead, boolean alwaysOn) {
+        if (chat == null || store == null || extractor == null) {
+            throw new IllegalArgumentException("chat, store and extractor must not be null");
         }
-        this.responses = responses;
+        this.chat = chat;
         this.store = store;
         this.extractor = extractor;
+        this.knowledgeRead = knowledgeRead;
         this.alwaysOn = alwaysOn;
         this.loopExecutor = command -> {
             Thread thread = new Thread(command, "tool-loop");
@@ -35,8 +40,8 @@ public final class ToolSupport {
         };
     }
 
-    public ResponsesPort responses() {
-        return responses;
+    public ChatCompletionPort chat() {
+        return chat;
     }
 
     public AttachmentStore store() {
@@ -47,7 +52,12 @@ public final class ToolSupport {
         return extractor;
     }
 
-    /** {@code chat.tools.enabled}: jede Frage über {@code /responses}, nicht nur mit Anhängen. */
+    /** {@code knowledge_read} oder {@code null}. */
+    public AiTool knowledgeRead() {
+        return knowledgeRead;
+    }
+
+    /** {@code chat.tools.enabled}: jede Frage über die Werkzeug-Schleife, nicht nur mit Anhängen oder Seiten. */
     public boolean alwaysOn() {
         return alwaysOn;
     }

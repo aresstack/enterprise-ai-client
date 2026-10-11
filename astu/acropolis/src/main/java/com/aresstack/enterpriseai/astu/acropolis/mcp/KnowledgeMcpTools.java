@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.mcp;
 
+import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
@@ -77,7 +78,12 @@ public final class KnowledgeMcpTools {
         return read.contribution();
     }
 
-    /** Merkt das Abmelden des Endpoints; die Werkzeuge sind zustandslos. Idempotent. */
+    /** {@code knowledge_read} als Werkzeug des normalen Chats (Seiten-Bookmarks), derselbe Handler wie über MCP. */
+    public AiTool knowledgeReadChatTool() {
+        return new McpChatTool(knowledgeRead());
+    }
+
+        /** Merkt das Abmelden des Endpoints; die Werkzeuge sind zustandslos. Idempotent. */
     public void shutdown() {
         shutdown = true;
     }

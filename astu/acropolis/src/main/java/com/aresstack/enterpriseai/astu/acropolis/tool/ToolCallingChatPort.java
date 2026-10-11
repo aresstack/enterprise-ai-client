@@ -70,7 +70,7 @@ public final class ToolCallingChatPort implements ChatCompletionPort {
         if (listener == null) {
             throw new IllegalArgumentException("listener must not be null");
         }
-        final Task task = new Task(listener);
+        final ToolLoopTask task = new ToolLoopTask(listener);
         try {
             executor.execute(new Runnable() {
                 @Override
@@ -97,7 +97,7 @@ public final class ToolCallingChatPort implements ChatCompletionPort {
         return task;
     }
 
-    private ChatResponse run(ChatRequest request, Task task) {
+    private ChatResponse run(ChatRequest request, ToolLoopTask task) {
         List<ToolDefinition> definitions = tools.definitions();
         StringBuilder instructions = new StringBuilder();
         List<ChatMessage> input = new ArrayList<ChatMessage>();
@@ -141,77 +141,6 @@ public final class ToolCallingChatPort implements ChatCompletionPort {
     }
 
     private String execute(FunctionCall call) {
-        AiTool tool = tools.find(call.name());
-        if (tool == null) {
-            return "Fehler: unbekanntes Werkzeug " + call.name();
-        }
-        if (activity != null) {
-            activity.onToolCall(call.name());
-        }
-        try {
-            String output = tool.execute(call.arguments());
-            return output == null ? "" : output;
-        } catch (RuntimeException e) {
-            String message = e.getMessage();
-            return "Fehler: " + (message == null || message.trim().isEmpty() ? e.getClass().getSimpleName() : message);
-        }
-    }
-
-    /** Handle eines Laufs; garantiert genau einen Abschluss-Callback. */
-    private static final class Task implements ChatTask {
-
-        private final ChatStreamListener listener;
-        private volatile boolean cancelRequested;
-        private boolean finished;
-        private boolean cancelled;
-
-        Task(ChatStreamListener listener) {
-            this.listener = listener;
-        }
-
-        @Override
-        public void cancel() {
-            synchronized (this) {
-                if (finished || cancelRequested) {
-                    return;
-                }
-                cancelRequested = true;
-            }
-            finish(null, null);
-        }
-
-        @Override
-        public synchronized boolean isDone() {
-            return finished;
-        }
-
-        @Override
-        public synchronized boolean isCancelled() {
-            return cancelled;
-        }
-
-        boolean isCancelRequested() {
-            return cancelRequested;
-        }
-
-        void finish(ChatResponse response, ChatCompletionException error) {
-            synchronized (this) {
-                if (finished) {
-                    return;
-                }
-                finished = true;
-                cancelled = cancelRequested || (response == null && error == null);
-            }
-            if (cancelled) {
-                listener.onCancelled();
-            } else if (error != null) {
-                listener.onError(error);
-            } else {
-                if (!response.content().isEmpty()) {
-                    listener.onDelta(response.content());
-                }
-                listener.onComplete(response);
-            }
-        }
+        return tools.execute(call.name(), call.arguments(), activity);
     }
 }
