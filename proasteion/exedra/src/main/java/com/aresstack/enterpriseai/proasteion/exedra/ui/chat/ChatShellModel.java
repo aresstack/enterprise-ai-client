@@ -213,6 +213,11 @@ public final class ChatShellModel {
         fireEntryUpdated(activity);
     }
 
+    /** Ob der laufende Auftrag einen Arbeitsschritt mit dieser Kennung kennt (laufend oder beendet). */
+    public boolean hasActivity(String key) {
+        return activities.containsKey(key);
+    }
+
     /** Ob ein Arbeitsschritt mit dieser Kennung noch läuft. */
     public boolean isActivityRunning(String key) {
         TranscriptEntry activity = activities.get(key);

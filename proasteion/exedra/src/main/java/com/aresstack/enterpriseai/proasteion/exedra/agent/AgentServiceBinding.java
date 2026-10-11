@@ -262,13 +262,19 @@ public final class AgentServiceBinding implements ChatShellActions {
             onUi(new Runnable() {
                 @Override
                 public void run() {
-                    closeThinking();
+                    if (!model.hasActivity(activity.id())
+                            && !AgentToolActivity.KIND_PLAN.equals(activity.kind())
+                            && !AgentToolActivity.KIND_EVENT.equals(activity.kind())) {
+                        // Erst ein neuer Werkzeugschritt beendet die Denkwolke; Updates eines bekannten (Recherche-
+                        // Karte), Plan und Ereignisse dürfen gestreamte Überlegungen nicht auf viele Wolken verteilen.
+                        closeThinking();
+                    }
                     if (activity.status() == AgentToolActivity.Status.RUNNING) {
                         model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
                     } else {
-                        if (!model.isActivityRunning(activity.id())) {
-                            model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
-                        }
+                        // Auch das abschließende Update kann Titel oder Inhalt ändern (ein Plan trägt jedes Mal
+                        // den ganzen Plan); leere Felder lassen den bekannten Stand stehen.
+                        model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
                         model.finishActivity(activity.id(), activity.status() == AgentToolActivity.Status.COMPLETED,
                                 activity.output());
                     }
