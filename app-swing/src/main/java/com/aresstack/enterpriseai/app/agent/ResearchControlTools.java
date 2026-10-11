@@ -5,6 +5,8 @@ import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
 import com.aresstack.enterpriseai.mcp.api.McpToolHandler;
 import com.aresstack.enterpriseai.mcp.api.McpToolParameter;
 import com.aresstack.enterpriseai.mcp.api.McpToolResult;
+import com.aresstack.enterpriseai.research.domain.state.ResearchCommandType;
+import com.aresstack.enterpriseai.research.domain.state.oo.ResearchStateIds;
 import com.aresstack.enterpriseai.research.runtime.team.ChatMessage;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChatResult;
@@ -28,8 +30,6 @@ import java.util.List;
  */
 public final class ResearchControlTools {
 
-    static final String PHASE_SCOPING = "scoping";
-
     private ResearchControlTools() {
     }
 
@@ -46,8 +46,8 @@ public final class ResearchControlTools {
                     public McpToolResult invoke(McpToolCall call) {
                         JsonObject status = new JsonObject();
                         boolean greeted = host.isGreeted();
-                        status.addProperty("phase", PHASE_SCOPING);
-                        status.addProperty("state", greeted ? "scoping" : "new");
+                        status.addProperty("phase", host.phaseId());
+                        status.addProperty("state", host.stateId());
                         status.addProperty("greeted", greeted);
                         status.addProperty("searchTagsOffered", host.conceptHost().searchTagsOffered());
                         status.addProperty("model", model.modelName());
@@ -61,6 +61,10 @@ public final class ResearchControlTools {
                     @Override
                     public McpToolResult invoke(McpToolCall call) {
                         String text = call.getString("text");
+                        String started = startResearchIfAsked(host, text);
+                        if (started != null) {
+                            return McpToolResult.ok(started);
+                        }
                         ResearchConceptHost concept = host.conceptHost();
                         if (text != null && !text.trim().isEmpty()) {
                             concept.recordMissionIfAbsent(text);
@@ -131,6 +135,45 @@ public final class ResearchControlTools {
                 }, McpToolParameter.string("messages_json", true, "Nachrichten als JSON-Array {role, content}"),
                 McpToolParameter.string("temperature", false, "Temperatur als Dezimalzahl"),
                 McpToolParameter.integer("max_output_tokens", false, "Ausgabebudget, 0 = Standard")));
+        if (host.isWritable(ResearchStateIds.RESEARCH)) {
+            tools.add(McpToolContribution.of("source_accept",
+                    "Übernimmt eine gelesene Seite als Quelle des Projekts. Beispiel: capture_id=\"123456\" "
+                            + "title=\"Betriebshandbuch\" url=\"Wiki-Adresse der Seite\"",
+                    new McpToolHandler() {
+                        @Override
+                        public McpToolResult invoke(McpToolCall call) {
+                            if (!host.isWritable(ResearchStateIds.RESEARCH)) {
+                                return notAllowed(host);
+                            }
+                            String id = call.getString("capture_id");
+                            if (id == null || id.trim().isEmpty()) {
+                                return McpToolResult.error("Missing argument: capture_id — example: "
+                                        + "capture_id=\"123456\"");
+                            }
+                            return McpToolResult.ok(host.acceptSource(id, call.getString("title"),
+                                    call.getString("url")));
+                        }
+                    }, McpToolParameter.string("capture_id", true, "Die capture_id aus web_open"),
+                    McpToolParameter.string("title", false, "Titel der Seite"),
+                    McpToolParameter.string("url", false, "Adresse der Seite")));
+            tools.add(McpToolContribution.of("source_park",
+                    "Merkt eine Seite vor, die nicht übernommen wurde. Beispiel: url=\"Wiki-Adresse der Seite\" "
+                            + "title=\"Altes Konzept\" excerpt=\"…\"",
+                    new McpToolHandler() {
+                        @Override
+                        public McpToolResult invoke(McpToolCall call) {
+                            if (!host.isWritable(ResearchStateIds.RESEARCH)) {
+                                return notAllowed(host);
+                            }
+                            host.parkSource(call.getString("url"), call.getString("title"),
+                                    call.getString("excerpt"), call.getString("score"));
+                            return McpToolResult.ok("parked");
+                        }
+                    }, McpToolParameter.string("url", true, "Adresse der Seite"),
+                    McpToolParameter.string("title", false, "Titel der Seite"),
+                    McpToolParameter.string("excerpt", false, "Auszug"),
+                    McpToolParameter.string("score", false, "Relevanz als Dezimalzahl")));
+        }
         for (final McpToolContribution concept : host.conceptHost().tools()) {
             tools.add(new McpToolContribution(concept.getName(), concept.getDescription(), concept.getParameters(),
                     new McpToolHandler() {
@@ -144,6 +187,45 @@ public final class ResearchControlTools {
                     }));
         }
         return tools;
+    }
+
+    /**
+     * Der Startbefehl des Nutzers (askai arch: das {@code research:}-Präfix; dazu „Recherche starten“): der Host
+     * schließt das Konzept ab und startet die Phase Quellen. Das Modell kann keine Phase wechseln.
+     *
+     * @return {@code null}, wenn der Text kein Startbefehl ist; sonst leer (der Agent recherchiert weiter) oder
+     *         der Grund, warum nicht gestartet wurde
+     */
+    static String startResearchIfAsked(ResearchAgentHost host, String text) {
+        String lower = text == null ? "" : text.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!(lower.startsWith("research:") || lower.startsWith("recherche:")
+                || lower.startsWith("recherche starten"))) {
+            return null;
+        }
+        if (host.isWritable(ResearchStateIds.RESEARCH)) {
+            return "";
+        }
+        if (ResearchStateIds.SCOPING.equals(host.phaseId())) {
+            if (ResearchStateIds.NEW.equals(host.stateId())) {
+                host.dispatch(ResearchCommandType.START);
+            }
+            String rejected = host.dispatch(ResearchCommandType.SUBMIT_SCOPE);
+            if (rejected == null) {
+                rejected = host.dispatch(ResearchCommandType.START_RESEARCH);
+            }
+            return rejected == null ? "" : "Die Recherche kann nicht starten: " + rejected;
+        }
+        if (ResearchStateIds.RESEARCH.equals(host.phaseId())
+                && ResearchStateIds.WAITING.equals(host.stateId())) {
+            String rejected = host.dispatch(ResearchCommandType.START_RESEARCH);
+            return rejected == null ? "" : "Die Recherche kann nicht starten: " + rejected;
+        }
+        return "Die Recherche kann in der Phase " + host.phaseId() + "/" + host.stateId() + " nicht starten.";
+    }
+
+    private static McpToolResult notAllowed(ResearchAgentHost host) {
+        return McpToolResult.error("Not allowed in the current state (" + host.phaseId() + "/"
+                + host.stateId() + ").");
     }
 
     static List<ChatMessage> parseMessages(String json) {

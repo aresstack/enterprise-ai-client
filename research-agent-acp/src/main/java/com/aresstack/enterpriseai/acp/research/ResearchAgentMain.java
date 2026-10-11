@@ -83,6 +83,9 @@ public final class ResearchAgentMain {
         if (host != null) {
             host.close();
         }
+        if (turns != null) {
+            turns.close();
+        }
         McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(15), MCP_REQUEST_TIMEOUT)
                 .connect(environment.researchUrl(), environment.researchTransport());
         ResearchHostControl control = new ResearchHostControl(client);
@@ -128,7 +131,8 @@ public final class ResearchAgentMain {
                 LOG.info("[research-agent] " + line);
             }
         });
-        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, conceptTools);
+        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, conceptTools,
+                new ResearchRun(control, System.getenv(), cancelled));
         this.host = control;
         this.turns = holder[0];
         LOG.info("[research-agent] ready: phase=" + status.phase + " state=" + status.state

@@ -7,6 +7,12 @@ import com.aresstack.enterpriseai.research.domain.scope.ScopeFacet;
 import com.aresstack.enterpriseai.research.domain.scope.ScopePatch;
 import com.aresstack.enterpriseai.research.domain.scope.ScopePatchOperations;
 import com.aresstack.enterpriseai.research.domain.scope.UnresolvedScopeIssue;
+import com.aresstack.enterpriseai.research.domain.state.ResearchCommand;
+import com.aresstack.enterpriseai.research.domain.state.ResearchCommandType;
+import com.aresstack.enterpriseai.research.domain.state.oo.OoResearchStateMachine;
+import com.aresstack.enterpriseai.research.domain.state.oo.ResearchStateIds;
+import com.aresstack.enterpriseai.research.domain.state.oo.ResearchStateMemento;
+import com.aresstack.enterpriseai.research.domain.state.oo.ResearchStateTransitionResult;
 import com.aresstack.enterpriseai.research.api.ResearchScopeDraftStore;
 import com.aresstack.enterpriseai.research.scope.ResearchScopeCoordinator;
 import com.aresstack.enterpriseai.research.scope.ScopeUpdateResult;
@@ -40,6 +46,9 @@ public final class ResearchAgentHost {
     private static final String GREETED_MARKER = "greeted";
     private static final String CURRENT_PROJECT_FILE = "current-project";
     private static final String CONCEPT_DIRECTORY = "concept";
+    private static final String STATE_FILE = "research-state";
+    private static final String SOURCES_FILE = "sources.tsv";
+    private static final String PARKED_FILE = "parked.tsv";
 
     private final File projectsRoot;
     private final Function<File, ResearchScopeDraftStore> stores;
@@ -49,6 +58,9 @@ public final class ResearchAgentHost {
     private File projectDirectory;
     private ResearchScopeCoordinator coordinator;
     private ResearchConceptHost conceptHost;
+    /** Die Zustandsmaschine der Phasen aus askai arch (Konzept → Quellen → Gliederung → Dokument). */
+    private OoResearchStateMachine machine;
+    private ResearchStateMemento state;
 
     /**
      * @param projectsRoot Wurzel der Research-Projekte (je Projekt ein Unterverzeichnis)
@@ -113,7 +125,19 @@ public final class ResearchAgentHost {
                     public boolean isGerman() {
                         return true;
                     }
+
+                    @Override
+                    public boolean scopingWritable() {
+                        return ResearchAgentHost.this.isWritable(ResearchStateIds.SCOPING);
+                    }
+
+                    @Override
+                    public String stateDescription() {
+                        return ResearchAgentHost.this.phaseId() + "/" + ResearchAgentHost.this.stateId();
+                    }
                 });
+        machine = new OoResearchStateMachine(directory.getName());
+        state = readState(directory);
         writeCurrentProject(directory);
     }
 
@@ -161,17 +185,194 @@ public final class ResearchAgentHost {
         return new File(projectDirectory, GREETED_MARKER).isFile();
     }
 
-    /** askai {@code handleGreetingDone}: die Begrüßung wird nie wiederholt. */
-    public synchronized void markGreeted() {
-        ensureOpen();
-        try {
-            File marker = new File(projectDirectory, GREETED_MARKER);
-            if (!marker.isFile()) {
-                java.nio.file.Files.write(marker.toPath(), new byte[0]);
+    /** askai {@code handleGreetingDone}: die Begrüßung wird nie wiederholt; der Zustand geht scoping/new → running. */
+    public void markGreeted() {
+        synchronized (this) {
+            ensureOpen();
+            try {
+                File marker = new File(projectDirectory, GREETED_MARKER);
+                if (!marker.isFile()) {
+                    java.nio.file.Files.write(marker.toPath(), new byte[0]);
+                }
+            } catch (IOException notWritten) {
+                LOG.warning("Begrüßung nicht vermerkt: " + notWritten.getMessage());
             }
-        } catch (IOException notWritten) {
-            LOG.warning("Begrüßung nicht vermerkt: " + notWritten.getMessage());
         }
+        if (ResearchStateIds.NEW.equals(stateId()) && ResearchStateIds.SCOPING.equals(phaseId())) {
+            dispatch(ResearchCommandType.START);
+        }
+    }
+
+    // ------------------------------------------------------------------ phases (askai arch ResearchStateGraph)
+
+    /** Die aktuelle Phase ({@code scoping}, {@code research}, {@code outline}, {@code draft}). */
+    public synchronized String phaseId() {
+        ensureOpen();
+        return state.getPhaseId();
+    }
+
+    /** Der Laufzustand in der Phase ({@code new}, {@code running}, {@code waiting}, …). */
+    public synchronized String stateId() {
+        ensureOpen();
+        return state.getStateId();
+    }
+
+    /** askai {@code ResearchToolPolicy.writable}: Schreibwerkzeuge einer Phase nur in ihr und nur „running“. */
+    public synchronized boolean isWritable(String requiredPhaseId) {
+        ensureOpen();
+        return requiredPhaseId.equals(state.getPhaseId()) && ResearchStateIds.RUNNING.equals(state.getStateId());
+    }
+
+    /**
+     * Ein Übergang der Zustandsmaschine; nur der Host (Nutzer und Host-Logik) löst ihn aus, nie das Modell
+     * (askai: kein advance_phase-Werkzeug). Ändert sich der Zustand, hören Werkzeugsatz und Ansicht mit.
+     *
+     * @return {@code null} bei Erfolg, sonst der Ablehnungsgrund
+     */
+    public String dispatch(ResearchCommandType command) {
+        String rejection;
+        synchronized (this) {
+            ensureOpen();
+            ResearchStateTransitionResult result = machine.dispatch(state,
+                    ResearchCommand.of(command, java.util.UUID.randomUUID().toString()));
+            if (result.isAccepted()) {
+                state = result.getNextMemento();
+                writeState(projectDirectory, state);
+                LOG.info("[research-state] " + command + " -> " + state.getPhaseId() + "/" + state.getStateId());
+                rejection = null;
+            } else {
+                rejection = result.getRejectionReason();
+                LOG.info("[research-state] " + command + " abgelehnt: " + rejection);
+            }
+        }
+        if (rejection == null) {
+            fireStateChanged();
+        }
+        return rejection;
+    }
+
+    // ------------------------------------------------------------------ sources (askai source_accept/source_park)
+
+    /**
+     * Übernimmt eine gelesene Seite als Quelle des Projekts (askai {@code source_accept}); nur in Phase Quellen
+     * und „running“. Eine Seite zählt einmal.
+     *
+     * @return {@code source_id=…}, bei Wiederholung mit {@code ALREADY_ACCEPTED}
+     */
+    public synchronized String acceptSource(String captureId, String title, String url) {
+        ensureOpen();
+        String id = clean(captureId);
+        List<String> lines = readLines(new File(projectDirectory, SOURCES_FILE));
+        for (String line : lines) {
+            if (line.startsWith(id + "\t")) {
+                return "ALREADY_ACCEPTED source_id=" + id;
+            }
+        }
+        appendLine(new File(projectDirectory, SOURCES_FILE), id + "\t" + clean(title) + "\t" + clean(url));
+        LOG.info("[research-sources] accepted " + id + " " + clean(title));
+        fireStateChangedLater();
+        return "source_id=" + id;
+    }
+
+    /** Merkt eine nicht gelesene oder nicht passende Seite vor (askai {@code source_park}). */
+    public synchronized void parkSource(String url, String title, String excerpt, String score) {
+        ensureOpen();
+        appendLine(new File(projectDirectory, PARKED_FILE),
+                clean(url) + "\t" + clean(title) + "\t" + clean(score) + "\t" + clean(excerpt));
+    }
+
+    /** Die übernommenen Quellen des Projekts als {@code id, Titel, URL}. */
+    public synchronized List<String[]> acceptedSources() {
+        if (projectDirectory == null && readCurrentProject() == null) {
+            return Collections.emptyList();
+        }
+        ensureOpen();
+        List<String[]> sources = new ArrayList<String[]>();
+        for (String line : readLines(new File(projectDirectory, SOURCES_FILE))) {
+            String[] parts = line.split("\t", -1);
+            sources.add(new String[]{parts[0], parts.length > 1 ? parts[1] : "", parts.length > 2 ? parts[2] : ""});
+        }
+        return sources;
+    }
+
+    private void fireStateChangedLater() {
+        // Nie unter dem Monitor des Hosts benachrichtigen: Hörer lesen den Host wieder.
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                fireStateChanged();
+            }
+        }, "research-state-changed").start();
+    }
+
+    private static String clean(String value) {
+        return value == null ? "" : value.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim();
+    }
+
+    private static List<String> readLines(File file) {
+        if (!file.isFile()) {
+            return Collections.emptyList();
+        }
+        try {
+            return java.nio.file.Files.readAllLines(file.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IOException unreadable) {
+            LOG.warning("Nicht lesbar: " + file.getName() + ": " + unreadable.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private static void appendLine(File file, String line) {
+        try {
+            java.nio.file.Files.write(file.toPath(), (line + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException notWritten) {
+            LOG.warning("Nicht gespeichert: " + file.getName() + ": " + notWritten.getMessage());
+        }
+    }
+
+    private ResearchStateMemento readState(File directory) {
+        File file = new File(directory, STATE_FILE);
+        if (file.isFile()) {
+            try {
+                List<String> lines = java.nio.file.Files.readAllLines(file.toPath(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                if (lines.size() >= 4) {
+                    return new ResearchStateMemento(lines.get(0).trim(), lines.get(1).trim(),
+                            emptyToNull(lines.get(2).trim()), Long.parseLong(lines.get(3).trim()),
+                            lines.size() > 4 ? emptyToNull(lines.get(4).trim()) : null);
+                }
+            } catch (IOException | RuntimeException unreadable) {
+                LOG.warning("Research-Zustand nicht lesbar, beginne beim Konzept: " + unreadable.getMessage());
+            }
+        }
+        ResearchStateMemento initial = machine.initialMemento();
+        if (new File(directory, GREETED_MARKER).isFile()) {
+            // Projekte von vor der Zustandsmaschine: begrüßt heißt Konzept läuft
+            ResearchStateTransitionResult started = machine.dispatch(initial,
+                    ResearchCommand.of(ResearchCommandType.START, "migrated"));
+            return started.isAccepted() ? started.getNextMemento() : initial;
+        }
+        return initial;
+    }
+
+    private static void writeState(File directory, ResearchStateMemento memento) {
+        String text = memento.getPhaseId() + "\n" + memento.getStateId() + "\n"
+                + nullToEmpty(memento.getContinuationStateId()) + "\n" + memento.getRevision() + "\n"
+                + nullToEmpty(memento.getPendingApprovalId()) + "\n";
+        try {
+            java.nio.file.Files.write(new File(directory, STATE_FILE).toPath(),
+                    text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (IOException notWritten) {
+            LOG.warning("Research-Zustand nicht gespeichert: " + notWritten.getMessage());
+        }
+    }
+
+    private static String emptyToNull(String value) {
+        return value == null || value.isEmpty() ? null : value;
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     // ------------------------------------------------------------------ listeners
