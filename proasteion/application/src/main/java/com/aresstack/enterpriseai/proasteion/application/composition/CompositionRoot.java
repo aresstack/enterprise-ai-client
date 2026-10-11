@@ -246,6 +246,7 @@ public final class CompositionRoot {
                 directory -> new ConceptBranchService(new FileConceptStore(directory)));
         this.agentModelChoice = new AgentModelChoice();
         wireSourceProcessing(catalogForImages(ports));
+        wireResearchCorpus();
         final ChatPortMainModelChat researchModel = new ChatPortMainModelChat(ports.chat(),
                 config.chat().defaultOptions(), agentModelChoice);
         toolCatalog.register(ORIGIN_RESEARCH, EnumSet.of(ToolChannel.RESEARCH_AGENT),
@@ -654,6 +655,72 @@ public final class CompositionRoot {
                         }
                     }
                 });
+            }
+        });
+    }
+
+    /**
+     * Weidezaun-Filter und Projektsuche des Recherche-Agenten über den Embedding-Port und den Wissensindex: der Zaun
+     * misst Trefferauszüge gegen die Posten aus Konzept und Ausschlüssen, die Projektsuche durchsucht nur die
+     * Passagen der übernommenen Quellen (Nachfragen nach der Recherche, Belege des Dokuments).
+     */
+    private void wireResearchCorpus() {
+        final com.aresstack.enterpriseai.embedding.api.EmbeddingPort embeddings = ports.embeddings();
+        if (embeddings != null) {
+            researchHost.setScopeEmbedder(new com.aresstack.enterpriseai.proasteion.application.agent
+                    .ResearchScopeControl.Embedder() {
+                @Override
+                public String fingerprint() {
+                    try {
+                        return embeddings.modelIdentity().fingerprint();
+                    } catch (RuntimeException unavailable) {
+                        return null;
+                    }
+                }
+
+                @Override
+                public List<float[]> embed(List<String> texts) {
+                    List<float[]> vectors = new ArrayList<float[]>();
+                    for (com.aresstack.enterpriseai.astu.embedding.EmbeddingVector vector
+                            : embeddings.embed(texts).vectors()) {
+                        vectors.add(vector.values());
+                    }
+                    return vectors;
+                }
+            });
+        }
+        final com.aresstack.enterpriseai.astu.acropolis.rag.SearchResourceCorpusUseCase corpus =
+                new com.aresstack.enterpriseai.astu.acropolis.rag.SearchResourceCorpusUseCase(ports.index(),
+                        embeddings, ports.embeddingSpaceSource());
+        researchHost.setCorpusSearch(new ResearchAgentHost.CorpusSearch() {
+            @Override
+            public String search(List<String> resourceIds, String query, int limit) {
+                List<com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId> resources =
+                        new ArrayList<com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId>();
+                for (String id : resourceIds) {
+                    try {
+                        resources.add(com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId.of(id));
+                    } catch (IllegalArgumentException notAResource) {
+                        // keine Ressource des Index
+                    }
+                }
+                StringBuilder text = new StringBuilder();
+                for (com.aresstack.enterpriseai.astu.acropolis.rag.SearchResourceCorpusUseCase.Hit hit
+                        : corpus.search(resources, query, limit)) {
+                    com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry entry = hit.entry();
+                    java.util.Optional<com.aresstack.enterpriseai.astu.knowledge.KnowledgePassageId> passage =
+                            indexing.passageId(entry);
+                    text.append("passage: ").append(passage.isPresent() ? passage.get().value()
+                            : entry.chunkId().value()).append('\n');
+                    text.append("resource: ").append(entry.chunk().resourceId().value()).append('\n');
+                    text.append("title: ").append(entry.resource().title()).append('\n');
+                    String heading = entry.chunk().headingLine();
+                    if (!heading.isEmpty()) {
+                        text.append(heading).append(": ");
+                    }
+                    text.append(entry.chunk().text().replace('\n', ' ')).append("\n\n");
+                }
+                return text.toString().trim();
             }
         });
     }

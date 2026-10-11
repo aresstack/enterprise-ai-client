@@ -11,6 +11,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.agent.ModeSwitchingChatActio
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentServiceBinding;
 import com.aresstack.enterpriseai.proasteion.application.agent.AgentModelChoice;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchConceptViewAssembly;
+import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchWorkflowAssembly;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatHistoryBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileAttachmentStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.KnowledgeIndexingBinding;
@@ -203,6 +205,27 @@ public final class ShellAssembly {
         // Rechtsklick auf einen Reiter: „Zum aktuellen Chat hinzufügen“ legt nur Titel und Bookmark in den Composer.
         workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));
         reading.attach();
+        if (agent != null && root.researchHost() != null) {
+            // Geführter Recherche-Workflow: Phasenleiste über dem Composer, Reiter Quellen/Gliederung/Dokument.
+            final KnowledgeReadingController reader = reading;
+            final ResearchWorkflowAssembly.Parts research = ResearchWorkflowAssembly.create(root.researchHost(),
+                    agent.binding()::sendAction, chatModel, root.uiExecutor(),
+                    (resourceId, title) -> reader.open(new ReaderLink(researchSourceId(root, sources, resourceId),
+                            resourceId, title, "", resourceId), true),
+                    drawer::showSidebarTab);
+            workspace.addAgentTab(ResearchWorkflowAssembly.SOURCES_TAB, research.sources());
+            workspace.addAgentTab(ResearchWorkflowAssembly.OUTLINE_TAB, research.outline());
+            workspace.addAgentTab(ResearchWorkflowAssembly.DOCUMENT_TAB, research.document());
+            final ShellModeModel.Listener stripByMode = mode -> {
+                if (mode == ShellMode.AGENT && root.usesBuiltInAgent()) {
+                    shell.setComposerAccessory(research.strip());
+                } else {
+                    shell.setComposerAccessory(null);
+                }
+            };
+            modes.addListener(stripByMode);
+            stripByMode.modeChanged(modes.getMode());
+        }
         final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources, chatShell.composer(),
                 knowledgeStatus);
         chatShell.composer().setModelAction(() -> {
@@ -463,5 +486,30 @@ public final class ShellAssembly {
                 remember.accept(id);
             });
         }
+    }
+
+    /**
+     * Die Wissensquelle einer Projektquelle für den Lesebereich: aus dem Index (die Ressource trägt ihre Quelle),
+     * sonst die erste angebundene Quelle derselben Art (gleiches Präfix der Adresse).
+     */
+    static String researchSourceId(CompositionRoot root, KnowledgeSourcesController sources, String resourceId) {
+        try {
+            for (com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry entry : root.ports().index()
+                    .entriesOf(root.ports().embeddingSpaceSource().get(),
+                            com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId.of(resourceId))) {
+                return entry.resource().sourceId().value();
+            }
+        } catch (Exception notIndexed) {
+            // weiter mit der Art der Adresse
+        }
+        int colon = resourceId.indexOf(':');
+        String kind = colon < 0 ? resourceId : resourceId.substring(0, colon + 1);
+        for (com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration registration
+                : sources.enabledRegistrations()) {
+            if (registration.sourceId().value().startsWith(kind)) {
+                return registration.sourceId().value();
+            }
+        }
+        return "";
     }
 }

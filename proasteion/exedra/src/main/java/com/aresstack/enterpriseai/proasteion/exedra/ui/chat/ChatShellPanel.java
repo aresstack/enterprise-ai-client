@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.BorderFactory;
+import javax.swing.JComponent;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
 
@@ -34,6 +35,8 @@ public final class ChatShellPanel extends JPanel {
     private final ChatTranscriptPanel transcript;
     private final KnowledgeStatusBar statusBar;
     private final ChatComposerPanel composer;
+    /** Platz über dem Composer, z. B. die Phasenleiste des Recherche-Workflows; leer unsichtbar. */
+    private final JPanel composerAccessory = new JPanel(new BorderLayout());
 
     /** Shell ohne Statuszeile zur Wissensbasis (z. B. die Agent-Ansicht). */
     public ChatShellPanel(ChatShellModel model, ChatShellActions actions,
@@ -63,7 +66,15 @@ public final class ChatShellPanel extends JPanel {
         composerWrap.add(composer, BorderLayout.CENTER);
         CopyrightFooter footer = new CopyrightFooter();
         composerWrap.add(footer, BorderLayout.SOUTH);
-        south.add(statusBar, BorderLayout.NORTH);
+        composerAccessory.setOpaque(false);
+        composerAccessory.setBorder(BorderFactory.createEmptyBorder(0, CopyrightFooter.SIDE_MARGIN, 0,
+                CopyrightFooter.SIDE_MARGIN));
+        composerAccessory.setVisible(false);
+        JPanel above = new JPanel(new BorderLayout());
+        above.setOpaque(false);
+        above.add(composerAccessory, BorderLayout.NORTH);
+        above.add(statusBar, BorderLayout.SOUTH);
+        south.add(above, BorderLayout.NORTH);
         south.add(composerWrap, BorderLayout.CENTER);
 
         add(transcript, BorderLayout.CENTER);
@@ -81,6 +92,17 @@ public final class ChatShellPanel extends JPanel {
 
     public ChatComposerPanel composer() {
         return composer;
+    }
+
+    /** Setzt die Fläche über dem Composer ({@code null} entfernt sie). Nur auf dem EDT. */
+    public void setComposerAccessory(JComponent accessory) {
+        composerAccessory.removeAll();
+        if (accessory != null) {
+            composerAccessory.add(accessory, BorderLayout.CENTER);
+        }
+        composerAccessory.setVisible(accessory != null);
+        revalidate();
+        repaint();
     }
 
     /** Die Statuszeile zur Wissensbasis; ohne Text unsichtbar. */

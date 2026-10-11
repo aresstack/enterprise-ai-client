@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.acp.research;
 
+import com.aresstack.enterpriseai.research.runtime.acquire.ServiceSearchScopeControlPort;
 import com.aresstack.enterpriseai.research.runtime.loop.EnvironmentRunBudget;
 import com.aresstack.enterpriseai.research.runtime.loop.ResearchLoop;
 import com.aresstack.enterpriseai.research.runtime.loop.ResearchLoopClock;
@@ -14,6 +15,7 @@ import com.aresstack.enterpriseai.research.runtime.search.SingleProviderSearchSt
 import com.aresstack.enterpriseai.research.runtime.search.provider.SearchEngine;
 import com.aresstack.enterpriseai.research.runtime.support.HostDomainKeyResolver;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -78,6 +80,8 @@ final class ResearchRun {
                 } else if (ResearchRunActivity.READING_PAGE.equals(activity.getToken())) {
                     LOG.info("[research-run] lese " + label(activity));
                 }
+                report(activity.getToken(), activity.getSearchQuery(), activity.getPageTitle(), activity.getUrl(),
+                        progress);
             }
 
             @Override
@@ -90,15 +94,83 @@ final class ResearchRun {
                 LOG.info("[research-run] attention " + reason + " " + url);
             }
         }, cancelled);
-        loop.setSearchStrategy(new SingleProviderSearchStrategy(new KnowledgeSearchProvider(pages),
-                SearchEngine.PROVIDER_DEFAULT), "Wissensquellen");
+        KnowledgeSearchProvider provider = new KnowledgeSearchProvider(pages);
+        final ResearchLoop running = loop;
+        provider.setPlan(searchPlan(), new java.util.function.Consumer<String>() {
+            @Override
+            public void accept(String query) {
+                report("SEARCHING", query, "", "", running.getProgress());
+            }
+        });
+        loop.setSearchStrategy(new SingleProviderSearchStrategy(provider, SearchEngine.PROVIDER_DEFAULT),
+                "Wissensquellen");
         loop.setSourceAcceptancePort(pages.acceptance());
         loop.setReranker(new Bm25CandidateReranker());
         loop.setDomainKeyResolver(new HostDomainKeyResolver());
+        // Der Weidezaun begrenzt den Lauf (askai arch SC1): der Host friert ihn ein und misst die Treffer dagegen.
+        loop.setScopeControl(new ServiceSearchScopeControlPort(host));
         LOG.info("[research-run] start pages<=" + limit(budget.getMaxPagesVisited())
                 + " sources<=" + limit(budget.getMaxAcceptedSources()));
+        report("STARTED", firstLine(task), "", "", loop.getProgress());
         ResearchStopReason reason = loop.run(task);
         return loop.outcome(reason);
+    }
+
+    /**
+     * Meldet dem Host das Ende des Laufs: er geht in die Freigabe der Quellen (REQUEST_EVIDENCE_REVIEW) und
+     * liefert die Zusammenfassung für den Nutzer; ohne Host bleibt die eigene Abschlusszeile.
+     */
+    String finish(ResearchRunOutcome outcome) {
+        Map<String, Object> args = new LinkedHashMap<String, Object>();
+        args.put("reason", outcome.getStopReason().name());
+        args.put("pages", Integer.valueOf(outcome.getPagesVisited()));
+        args.put("accepted", Integer.valueOf(outcome.getAcceptedSources()));
+        try {
+            String summary = host.call("research_run_finished", args);
+            return summary == null || summary.trim().isEmpty() ? summary(outcome) : summary;
+        } catch (Exception unavailable) {
+            LOG.warning("[research-run] Ende nicht gemeldet: " + unavailable.getMessage());
+            return summary(outcome);
+        }
+    }
+
+    /** Die Suchen aus Konzept und Weidezaun; leer, wenn der Host keine liefert (dann sucht der Auftrag selbst). */
+    private java.util.List<String> searchPlan() {
+        java.util.List<String> queries = new java.util.ArrayList<String>();
+        try {
+            for (String line : host.call("research_search_plan", null).split("\r?\n")) {
+                if (!line.trim().isEmpty()) {
+                    queries.add(line.trim());
+                }
+            }
+        } catch (Exception unavailable) {
+            LOG.info("[research-run] kein Suchplan: " + unavailable.getMessage());
+        }
+        LOG.info("[research-run] Suchen: " + queries);
+        return queries;
+    }
+
+    /** Fortschritt an den Host (Anzeige im Client); ein Fehler hier hält den Lauf nie an. */
+    private void report(String activity, String query, String title, String url, ResearchRunProgress progress) {
+        Map<String, Object> args = new LinkedHashMap<String, Object>();
+        args.put("activity", activity == null ? "" : activity);
+        args.put("query", query == null ? "" : query);
+        args.put("title", title == null ? "" : title);
+        args.put("url", url == null ? "" : url);
+        args.put("pages", Integer.valueOf(progress.getPagesVisited()));
+        args.put("accepted", Integer.valueOf(progress.getAcceptedSources()));
+        try {
+            host.call("research_progress", args);
+        } catch (Exception unavailable) {
+            LOG.fine("[research-run] Fortschritt nicht gemeldet: " + unavailable.getMessage());
+        }
+    }
+
+    private static String firstLine(String text) {
+        String line = text == null ? "" : text.trim();
+        int end = line.indexOf('\n');
+        line = end < 0 ? line : line.substring(0, end);
+        return line.length() > 160 ? line.substring(0, 160) + "…" : line;
     }
 
     /** Die Abschlusszeile für den Chat. */

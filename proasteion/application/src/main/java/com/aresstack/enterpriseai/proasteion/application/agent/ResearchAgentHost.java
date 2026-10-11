@@ -50,6 +50,9 @@ public final class ResearchAgentHost {
     private static final String SOURCES_FILE = "sources.tsv";
     private static final String PARKED_FILE = "parked.tsv";
     private static final String IMAGES_DIRECTORY = "images";
+    private static final String RUN_FILE = "run-status";
+    private static final String OUTLINE_FILE = "outline.md";
+    private static final String DOCUMENT_FILE = "document.json";
 
     private final File projectsRoot;
     private final Function<File, ResearchScopeDraftStore> stores;
@@ -60,12 +63,16 @@ public final class ResearchAgentHost {
     private volatile Consumer<String> sourceAcceptedListener;
     private volatile Function<String, String> passageReader;
     private volatile Function<String, String[]> resourceReferences;
+    private volatile CorpusSearch corpusSearch;
     private File projectDirectory;
     private ResearchScopeCoordinator coordinator;
     private ResearchConceptHost conceptHost;
     /** Die Zustandsmaschine der Phasen aus askai arch (Konzept → Quellen → Gliederung → Dokument). */
     private OoResearchStateMachine machine;
     private ResearchStateMemento state;
+    /** Der Stand des autonomen Laufs der Phase Quellen (askai ResearchRunProgress/Activity/StopReason). */
+    private volatile ResearchRunStatus runStatus = ResearchRunStatus.idle();
+    private final ResearchScopeControl scopeControl = new ResearchScopeControl(this);
 
     /**
      * @param projectsRoot Wurzel der Research-Projekte (je Projekt ein Unterverzeichnis)
@@ -143,6 +150,7 @@ public final class ResearchAgentHost {
                 });
         machine = new OoResearchStateMachine(directory.getName());
         state = readState(directory);
+        runStatus = readRunStatus(directory);
         writeCurrentProject(directory);
     }
 
@@ -433,6 +441,307 @@ public final class ResearchAgentHost {
             sources.add(new String[]{parts[0], parts.length > 1 ? parts[1] : "", parts.length > 2 ? parts[2] : ""});
         }
         return sources;
+    }
+
+    /** Die übernommenen Quellen mit allen Feldern aus {@code sources.tsv} (Reiter „Quellen“). */
+    public synchronized List<ResearchSourceRef> sourceRefs() {
+        if (projectDirectory == null && readCurrentProject() == null) {
+            return Collections.emptyList();
+        }
+        ensureOpen();
+        List<ResearchSourceRef> sources = new ArrayList<ResearchSourceRef>();
+        for (String line : readLines(new File(projectDirectory, SOURCES_FILE))) {
+            if (!line.trim().isEmpty()) {
+                sources.add(ResearchSourceRef.parse(line));
+            }
+        }
+        return sources;
+    }
+
+    /** Wie viele Treffer vorgemerkt, aber nicht übernommen wurden ({@code parked.tsv}). */
+    public synchronized int parkedCount() {
+        if (projectDirectory == null && readCurrentProject() == null) {
+            return 0;
+        }
+        ensureOpen();
+        return readLines(new File(projectDirectory, PARKED_FILE)).size();
+    }
+
+    // ------------------------------------------------------------------ run progress (Phase Quellen)
+
+    /** Der Stand des Recherche-Laufs; nach einem Neustart der zuletzt gespeicherte (nie „aktiv“). */
+    public ResearchRunStatus runStatus() {
+        synchronized (this) {
+            if (projectDirectory == null && readCurrentProject() != null) {
+                ensureOpen();
+            }
+        }
+        return runStatus;
+    }
+
+    /**
+     * Der Agentenprozess meldet eine Tätigkeit des Laufs ({@code research_progress}): Suche, gelesene Seite,
+     * übernommene Quelle, Zähler. Die Oberfläche hört über den Zustandshörer mit.
+     */
+    public void reportProgress(String activity, String query, String title, String url, int pages, int accepted) {
+        synchronized (this) {
+            ensureOpen();
+            runStatus = runStatus.next(activity, query, title, url, pages, accepted);
+            writeRunStatus(projectDirectory, runStatus);
+        }
+        fireStateChangedLater();
+    }
+
+    /**
+     * Ende des Laufs ({@code research_run_finished}): der Host vermerkt Grund und Zähler und geht in den
+     * Freigabe-Übergang der Phase Quellen (RESEARCH/RUNNING → REQUEST_EVIDENCE_REVIEW → WAITING_APPROVAL).
+     *
+     * @return die Zusammenfassung der gefundenen Quellen für den Chat
+     */
+    public String reportRunFinished(String stopReason, int pages, int accepted) {
+        synchronized (this) {
+            ensureOpen();
+            runStatus = runStatus.finished(stopReason, pages, accepted);
+            writeRunStatus(projectDirectory, runStatus);
+        }
+        if (isWritable(ResearchStateIds.RESEARCH)) {
+            dispatch(ResearchCommandType.REQUEST_EVIDENCE_REVIEW);
+        } else {
+            fireStateChangedLater();
+        }
+        return evidenceSummary();
+    }
+
+    /** Die verständliche Zusammenfassung der Phase Quellen (Punkt 8 der Anforderung). */
+    public String evidenceSummary() {
+        List<ResearchSourceRef> sources = sourceRefs();
+        ResearchRunStatus run = runStatus();
+        StringBuilder text = new StringBuilder();
+        String why = ResearchRunStatus.reasonText(run.stopReason());
+        text.append("Die Quellensuche ist abgeschlossen").append(why.isEmpty() ? "" : " (" + why + ")").append(": ")
+                .append(run.pagesVisited()).append(run.pagesVisited() == 1 ? " Seite" : " Seiten")
+                .append(" gelesen, ").append(sources.size()).append(sources.size() == 1 ? " Quelle" : " Quellen")
+                .append(" im Projekt.");
+        if (sources.isEmpty()) {
+            text.append("\n\nEs wurde noch keine passende Quelle übernommen. Mit „Weiter recherchieren“ sucht der "
+                    + "Agent erneut; schärfe dazu gern vorher das Konzept oder den Weidezaun.");
+            return text.toString();
+        }
+        text.append("\n");
+        for (ResearchSourceRef source : sources) {
+            text.append("\n- ").append(source.title());
+        }
+        text.append("\n\nDie Seiten stehen im Reiter „Quellen“. Mit „Quellen freigeben“ erstelle ich daraus die "
+                + "Gliederung, mit „Weiter recherchieren“ suche ich weitere Seiten.");
+        return text.toString();
+    }
+
+    private static ResearchRunStatus readRunStatus(File directory) {
+        List<String> lines = readLines(new File(directory, RUN_FILE));
+        if (lines.size() < 8) {
+            return ResearchRunStatus.idle();
+        }
+        try {
+            // Nach einem Neustart läuft nichts mehr: ein unterbrochener Lauf erscheint als beendet ohne Grund.
+            return new ResearchRunStatus(false, ResearchRunStatus.FINISHED, lines.get(1), lines.get(2),
+                    lines.get(3), Integer.parseInt(lines.get(4).trim()), Integer.parseInt(lines.get(5).trim()),
+                    lines.get(6), lines.get(7));
+        } catch (NumberFormatException unreadable) {
+            return ResearchRunStatus.idle();
+        }
+    }
+
+    private static void writeRunStatus(File directory, ResearchRunStatus run) {
+        writeText(new File(directory, RUN_FILE), run.activity() + "\n" + run.query() + "\n" + run.pageTitle()
+                + "\n" + run.url() + "\n" + run.pagesVisited() + "\n" + run.acceptedSources() + "\n"
+                + run.stopReason() + "\n" + run.lastAccepted() + "\n");
+    }
+
+    // ------------------------------------------------------------------ Gliederung (Phase Outline)
+
+    /** Die Gliederung des Projekts ({@code outline.md}); leer, solange keine erstellt ist. */
+    public synchronized String outline() {
+        if (projectDirectory == null && readCurrentProject() == null) {
+            return "";
+        }
+        ensureOpen();
+        return readText(new File(projectDirectory, OUTLINE_FILE));
+    }
+
+    public boolean hasOutline() {
+        return !outline().trim().isEmpty();
+    }
+
+    /**
+     * Der Agent legt die Gliederung vor (nur in Phase Gliederung/„running“): gespeichert, danach
+     * PROPOSE_OUTLINE → Freigabe.
+     *
+     * @return {@code null} bei Erfolg, sonst der Grund
+     */
+    public String proposeOutline(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return "die Gliederung ist leer";
+        }
+        if (!isWritable(ResearchStateIds.OUTLINE)) {
+            return "Not allowed in the current state (" + phaseId() + "/" + stateId() + ").";
+        }
+        synchronized (this) {
+            writeText(new File(projectDirectory, OUTLINE_FILE), text.trim() + "\n");
+        }
+        LOG.info("[research-outline] proposed");
+        return dispatch(ResearchCommandType.PROPOSE_OUTLINE);
+    }
+
+    /**
+     * Der Nutzer korrigiert die Gliederung im Reiter (solange die Phase Gliederung läuft oder auf Freigabe
+     * wartet); kein Übergang.
+     *
+     * @return {@code null} bei Erfolg, sonst der Grund
+     */
+    public String saveOutline(String text) {
+        synchronized (this) {
+            ensureOpen();
+            if (!ResearchStateIds.OUTLINE.equals(state.getPhaseId())) {
+                return "Die Gliederung ist nur in der Phase Gliederung änderbar.";
+            }
+            writeText(new File(projectDirectory, OUTLINE_FILE), (text == null ? "" : text.trim()) + "\n");
+        }
+        LOG.info("[research-outline] edited by user");
+        fireStateChanged();
+        return null;
+    }
+
+    // ------------------------------------------------------------------ Dokument (Phase Document)
+
+    /** Das Research-Dokument; {@code null}, solange keins geschrieben ist oder es unlesbar ist. */
+    public ResearchDocument document() {
+        String json;
+        synchronized (this) {
+            if (projectDirectory == null && readCurrentProject() == null) {
+                return null;
+            }
+            ensureOpen();
+            json = readText(new File(projectDirectory, DOCUMENT_FILE));
+        }
+        if (json.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return ResearchDocument.fromJson(json);
+        } catch (RuntimeException unreadable) {
+            LOG.warning("Research-Dokument nicht lesbar: " + unreadable.getMessage());
+            return null;
+        }
+    }
+
+    public boolean hasDocument() {
+        return document() != null;
+    }
+
+    /**
+     * Der Agent liefert das Dokument (nur in Phase Dokument/„running“): Belege werden auf die übernommenen Quellen
+     * nummeriert und als Aussagen gespeichert, danach REQUEST_DRAFT_REVIEW.
+     *
+     * @return {@code null} bei Erfolg, sonst der Grund
+     */
+    public String saveDocument(String title, List<ResearchDocument.Section> sections,
+                               java.util.Map<String, String> resourceByPassage) {
+        if (sections == null || sections.isEmpty()) {
+            return "das Dokument ist leer";
+        }
+        if (!isWritable(ResearchStateIds.DRAFT)) {
+            return "Not allowed in the current state (" + phaseId() + "/" + stateId() + ").";
+        }
+        ResearchDocument document = ResearchDocument.fromDraft(title, outline(), sections, resourceByPassage,
+                sourceRefs());
+        synchronized (this) {
+            writeText(new File(projectDirectory, DOCUMENT_FILE), document.toJson());
+        }
+        LOG.info("[research-document] saved: " + document.sections().size() + " sections, "
+                + document.sources().size() + " sources, " + document.claims().size() + " claims");
+        return dispatch(ResearchCommandType.REQUEST_DRAFT_REVIEW);
+    }
+
+    // ------------------------------------------------------------------ Projektsuche (Nachfragen)
+
+    /** Sucht in den Passagen der übernommenen Quellen (hybrid, aus dem Wissensindex); leer ohne Quellen. */
+    public String projectSearch(String query, int limit) {
+        CorpusSearch search = corpusSearch;
+        List<String> ids = new ArrayList<String>();
+        for (ResearchSourceRef source : sourceRefs()) {
+            ids.add(source.resourceId());
+        }
+        if (search == null || ids.isEmpty() || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        String result = search.search(ids, query.trim(), Math.max(1, limit));
+        return result == null ? "" : result;
+    }
+
+    /** Die Suche über einen festen Korpus von Ressourcen (Composition Root, über den Wissensindex). */
+    public interface CorpusSearch {
+        /** Treffer als Text: je Passage {@code passage:}, {@code resource:}, {@code title:} und der Passagentext. */
+        String search(List<String> resourceIds, String query, int limit);
+    }
+
+    public void setCorpusSearch(CorpusSearch search) {
+        this.corpusSearch = search;
+    }
+
+    /**
+     * Eine bei einer Nachfrage gefundene weitere Seite kommt ins Projekt (Phase Dokument); dieselbe Ablage wie
+     * {@code source_accept}.
+     */
+    public String addFollowUpSource(String captureId, String title, String url) {
+        if (!ResearchStateIds.DRAFT.equals(phaseId())) {
+            return "Not allowed in the current state (" + phaseId() + "/" + stateId() + ").";
+        }
+        return acceptSource(captureId, title, url);
+    }
+
+    private static String readText(File file) {
+        if (!file.isFile()) {
+            return "";
+        }
+        try {
+            return new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IOException unreadable) {
+            LOG.warning("Nicht lesbar: " + file.getName() + ": " + unreadable.getMessage());
+            return "";
+        }
+    }
+
+    // ------------------------------------------------------------------ Weidezaun als Filter (SC1)
+
+    /** Der Weidezaun-Filter des autonomen Laufs ({@code search_scope_begin/evaluate/end}). */
+    ResearchScopeControl scopeControl() {
+        return scopeControl;
+    }
+
+    /** Embedding für den Weidezaun-Filter; ohne Embedding-Modell begrenzen nur IN-freie Läufe nicht. */
+    public void setScopeEmbedder(ResearchScopeControl.Embedder embedder) {
+        scopeControl.setEmbedder(embedder);
+    }
+
+    /** Die Suchen des nächsten Laufs aus Konzept, Auftrag und Ausschlüssen ({@link ResearchSearchPlan}). */
+    public List<String> searchPlan() {
+        List<String> excluded = new ArrayList<String>(exclusionsProjection());
+        excluded.addAll(blacklistTermsForDisplay());
+        return ResearchSearchPlan.queries(conceptDocumentJson(), currentScopeDraft().getMission(), excluded);
+    }
+
+    /** Das Konzeptpapier des aktuellen Projekts als JSON (leer, wenn es noch keins gibt). */
+    String conceptDocumentJson() {
+        ConceptBranchService service = existingConceptService();
+        if (service == null) {
+            return null;
+        }
+        try {
+            return service.snapshot().getDocumentJson();
+        } catch (RuntimeException unreadable) {
+            LOG.warning("Konzept nicht lesbar: " + unreadable.getMessage());
+            return null;
+        }
     }
 
     private void fireStateChangedLater() {

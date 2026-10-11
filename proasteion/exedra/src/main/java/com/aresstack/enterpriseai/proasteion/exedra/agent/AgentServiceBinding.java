@@ -157,6 +157,24 @@ public final class AgentServiceBinding implements ChatShellActions {
         start(text, new TurnListener());
     }
 
+    /**
+     * Eine Workflow-Aktion (roter Tag): im Verlauf steht ihr Name, der Agent bekommt den Auftrag dahinter. Muss auf
+     * dem UI-Thread gerufen werden.
+     */
+    public void sendAction(String visibleText, String prompt) {
+        if (!model.canSend(visibleText)) {
+            return;
+        }
+        model.addUserMessage(visibleText);
+        model.beginAssistantMessage();
+        start(prompt, new TurnListener());
+    }
+
+    /** Ob gerade ein Auftrag läuft (die Workflow-Tags warten dann). */
+    public boolean isBusy() {
+        return agentService.isBusy();
+    }
+
     private void start(String prompt, TurnListener listener) {
         try {
             AgentTurn turn = agentService.send(prompt, listener);

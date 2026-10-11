@@ -43,6 +43,7 @@ final class ResearchAgentTurns {
     private final MainModelChat mainModelChat;
     private final boolean conceptTools;
     private final ResearchRun research;
+    private final ResearchWriting writing;
 
     ResearchAgentTurns(ResearchHostControl host, ResearchTeamAgent teamAgent, MainModelChat mainModelChat,
                        boolean conceptTools, ResearchRun research) {
@@ -51,6 +52,42 @@ final class ResearchAgentTurns {
         this.teamAgent = teamAgent;
         this.mainModelChat = mainModelChat;
         this.conceptTools = conceptTools;
+        this.writing = research == null ? null : new ResearchWriting(host, mainModelChat);
+    }
+
+    /**
+     * Die Phasen nach der Quellensuche: Gliederung/running erstellt oder überarbeitet die Gliederung, Dokument/running
+     * schreibt das Dokument, und nach der Quellensuche beantwortet jede Nachricht eine Nachfrage aus dem
+     * Projektkorpus (in der Phase Dokument mit Nachsuchen und Übernahme neuer Quellen).
+     */
+    private boolean writingTurn(Turn turn, String text, ResearchHostControl.Status status)
+            throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
+        String phase = status.phase == null ? "" : status.phase.toLowerCase(java.util.Locale.ROOT);
+        String state = status.state == null ? "" : status.state.toLowerCase(java.util.Locale.ROOT);
+        if ("outline".equals(phase) && "running".equals(state)) {
+            String feedback = isActionPrompt(text) ? "" : text;
+            turn.message(writing.outline(currentConceptRendered(), host.call("research_scope_fence", null),
+                    feedback));
+            return true;
+        }
+        if ("draft".equals(phase) && "running".equals(state)) {
+            turn.message(writing.document(turn.output()));
+            return true;
+        }
+        boolean afterSources = "draft".equals(phase) || "outline".equals(phase)
+                || ("research".equals(phase) && "waiting_approval".equals(state));
+        if (afterSources && !text.trim().isEmpty() && !isActionPrompt(text)) {
+            turn.message(writing.answer(text.trim(), "draft".equals(phase), turn.output()));
+            return true;
+        }
+        return false;
+    }
+
+    /** Die Texte der Workflow-Knöpfe tragen keinen eigenen Auftrag. */
+    static boolean isActionPrompt(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        return trimmed.isEmpty() || "Gliederung erstellen".equalsIgnoreCase(trimmed)
+                || "Dokument erstellen".equalsIgnoreCase(trimmed);
     }
 
     /** Sitzungsende: der Seitenpool des Recherche-Laufs wird beendet. */
@@ -93,7 +130,10 @@ final class ResearchAgentTurns {
                 task = currentConceptRendered();
             }
             turn.message("Ich suche in den Wissensquellen nach: " + firstLine(task));
-            turn.message(ResearchRun.summary(research.run(task, turn.output())));
+            turn.message(research.finish(research.run(task, turn.output())));
+            return;
+        }
+        if (writing != null && writingTurn(turn, text, status)) {
             return;
         }
         boolean greeted = !"new".equalsIgnoreCase(status.state);
