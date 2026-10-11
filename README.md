@@ -79,8 +79,8 @@ java -jar enterprise-ai-client-<version>.jar
    `reasoning.effort`, gegen das Gateway UNVERIFIED), rechts Büroklammer und Senden/Stop; dazwischen eine Statuszeile.
 7. **Dateianhänge und Tool-Calls**: Die Büroklammer im Composer hängt Dateien an (Chips mit ✕ über dem Editor,
    nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen, Seiten oder angehakter
-   Wissensquelle laufen über `POST <chat.baseUrl>/chat/completions` mit `tools`, gestreamt (`ChatCompletionsToolLoop`
-   setzt die `tool_calls` aus den Deltas zusammen). Mit angehakter Quelle oder Seiten bekommt das Modell den
+   Wissensquelle laufen über `POST <chat.baseUrl>/chat/completions` mit `tools`, gestreamt: `ChatCompletionsToolLoop`
+   fragt jede Runde gestreamt, die `tool_calls` setzt der Chat-Adapter aus den Stream-Deltas zusammen. Mit angehakter Quelle oder Seiten bekommt das Modell den
    Wissens-Werkzeugsatz des Agenten (`knowledge_search` über die angehakten Quellen, `knowledge_read`) aus dem
    `ToolCatalog`, auch ohne Seite. Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
    und holt sich den Inhalt selbst über die Werkzeuge `read_attachment` und `search_attachment`; der Client führt
