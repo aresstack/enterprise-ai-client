@@ -24,6 +24,8 @@ public final class AppPaths {
     public static final String LOG_DIRECTORY_NAME = "logs";
     /** Zwischenspeicher der letzten Modellabfrage (Reiter „Modelle“). */
     public static final String MODEL_CATALOG_FILE_NAME = "model-catalog.properties";
+    /** Anwendungszustand der Oberfläche (Fenster, Drawer), getrennt von der Konfiguration. */
+    public static final String APPLICATION_STATE_FILE_NAME = "application-state.json";
 
     private AppPaths() {
     }
@@ -59,5 +61,10 @@ public final class AppPaths {
     /** Protokolldateien: {@code <appDirectory>/logs/enterprise-ai-client.<n>.log}. */
     public static Path defaultLogDirectory() {
         return appDirectory().resolve(LOG_DIRECTORY_NAME);
+    }
+
+    /** Der Anwendungszustand liegt neben der Konfigurationsdatei (wie die Chat-Historie). */
+    public static Path applicationStateFile() {
+        return configFile().toAbsolutePath().getParent().resolve(APPLICATION_STATE_FILE_NAME);
     }
 }

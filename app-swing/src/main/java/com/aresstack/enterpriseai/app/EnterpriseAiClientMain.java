@@ -23,10 +23,12 @@ import com.aresstack.enterpriseai.app.security.ProxyAuthenticator;
 import com.aresstack.enterpriseai.app.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
+import com.aresstack.enterpriseai.app.state.ApplicationStateService;
 import com.aresstack.enterpriseai.app.settings.FileIndexActions;
 import com.aresstack.enterpriseai.app.settings.FileSourceActions;
 import com.aresstack.enterpriseai.app.settings.ConfigurationStartup;
 import com.aresstack.enterpriseai.app.settings.SettingsMapper;
+import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.app.ui.settings.IndexDialog;
 import com.aresstack.enterpriseai.app.ui.settings.IndexForm;
 import com.aresstack.enterpriseai.app.ui.settings.IndexPanel;
@@ -195,6 +197,10 @@ public final class EnterpriseAiClientMain {
                 view.workspace().chatShell().transcript().setReadAloud(readAloud);
                 view.workspace().chatShell().composer().setDictation(dictation);
                 attachSourceEditing(view, frame, file, palette);
+                // Anwendungszustand (askai arch / MainframeMate): Fenster und Drawer überleben den Neustart.
+                ApplicationStateService applicationState = new ApplicationStateService(AppPaths.applicationStateFile());
+                ShellFrame.rememberBounds(frame, applicationState);
+                view.workspace().setApplicationState(applicationState);
                 frame.setVisible(true);
                 root.startBackgroundWork();
                 List<String> notices = new ArrayList<String>();
