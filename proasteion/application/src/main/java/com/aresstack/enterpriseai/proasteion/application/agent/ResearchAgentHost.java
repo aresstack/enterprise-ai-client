@@ -371,6 +371,9 @@ public final class ResearchAgentHost {
                 LOG.info("[research-state] " + command + " abgelehnt: " + rejection);
             }
         }
+        if (rejection == null && command == ResearchCommandType.APPROVE_OUTLINE) {
+            recordOutcome(ResearchStateIds.OUTLINE, outlineOutcome());
+        }
         if (rejection == null) {
             fireStateChanged();
         }
@@ -623,21 +626,58 @@ public final class ResearchAgentHost {
         boolean running = isWritable(ResearchStateIds.RESEARCH);
         if (running && USER_CANCELLED.equals(stopReason)) {
             dispatch(ResearchCommandType.PAUSE);
-            return "Die Quellensuche ist angehalten (" + pages + (pages == 1 ? " Seite" : " Seiten") + " gelesen, "
-                    + sourceRefs().size() + " Quellen im Projekt). Mit „Recherche fortsetzen“ geht sie weiter; "
-                    + "Fragen beantworte ich auch so.";
+            return recordOutcome(ResearchStateIds.RESEARCH, "Die Quellensuche ist angehalten (" + pages
+                    + (pages == 1 ? " Seite" : " Seiten") + " gelesen, " + sourceRefs().size()
+                    + " Quellen im Projekt). Mit „Recherche fortsetzen“ geht sie weiter; Fragen beantworte ich "
+                    + "auch so.");
         }
         if (running && FAILED_STOPS.contains(stopReason)) {
             fireStateChangedLater();
-            return "Die Quellensuche ist fehlgeschlagen (" + ResearchRunStatus.reasonText(stopReason) + "). Die "
-                    + "bisher übernommenen Quellen bleiben im Projekt; mit „Recherche fortsetzen“ starte ich neu.";
+            return recordOutcome(ResearchStateIds.RESEARCH, "Die Quellensuche ist fehlgeschlagen ("
+                    + ResearchRunStatus.reasonText(stopReason) + "). Die bisher übernommenen Quellen bleiben im "
+                    + "Projekt; mit „Recherche fortsetzen“ starte ich neu.");
         }
         if (running) {
             dispatch(ResearchCommandType.REQUEST_EVIDENCE_REVIEW);
         } else {
             fireStateChangedLater();
         }
-        return evidenceSummary();
+        // askai applyRunOutcome: die Erzählung zum Laufende IST die Zusammenfassung der Phase für chat_history.
+        return recordOutcome(ResearchStateIds.RESEARCH, evidenceSummary());
+    }
+
+    /**
+     * askai {@code journal.recordOutcome}: die EINE Ergebnis-Zusammenfassung einer Phase (die letzte gilt), die
+     * {@code chat_history} für abgeschlossene Phasen statt der Einzelnachrichten zeigt.
+     *
+     * @return {@code summary}, damit der Aufrufer denselben Text in den Chat gibt
+     */
+    private String recordOutcome(String phaseId, String summary) {
+        synchronized (this) {
+            if (journal.recordOutcome(phaseId, summary)) {
+                File directory = existingProject();
+                if (directory != null) {
+                    writeText(new File(directory, JOURNAL_FILE), journal.toJson());
+                }
+            }
+        }
+        return summary;
+    }
+
+    /** Die Zusammenfassung der freigegebenen Gliederung: Zahl und Titel der Kapitel. */
+    private String outlineOutcome() {
+        List<String> chapters = new ArrayList<String>();
+        for (String line : outline().split("\n")) {
+            if (line.startsWith("## ")) {
+                chapters.add(line.substring(3).trim());
+            }
+        }
+        StringBuilder text = new StringBuilder("Gliederung freigegeben (").append(chapters.size())
+                .append(" Kapitel)");
+        for (int i = 0; i < chapters.size(); i++) {
+            text.append(i == 0 ? ": " : "; ").append(chapters.get(i));
+        }
+        return text.append('.').toString();
     }
 
     private static final String USER_CANCELLED = "USER_CANCELLED";
@@ -793,6 +833,10 @@ public final class ResearchAgentHost {
         }
         LOG.info("[research-document] saved: " + document.sections().size() + " sections, "
                 + document.sources().size() + " sources, " + document.claims().size() + " claims");
+        recordOutcome(ResearchStateIds.DRAFT, "Dokument „" + document.title() + "“ gespeichert: "
+                + document.sections().size() + " Kapitel, " + document.sources().size()
+                + (document.sources().size() == 1 ? " Quelle, " : " Quellen, ") + document.claims().size()
+                + (document.claims().size() == 1 ? " belegte Aussage." : " belegte Aussagen."));
         return dispatch(ResearchCommandType.REQUEST_DRAFT_REVIEW);
     }
 
