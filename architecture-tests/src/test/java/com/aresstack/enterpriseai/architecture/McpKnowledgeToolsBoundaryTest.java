@@ -123,7 +123,7 @@ public class McpKnowledgeToolsBoundaryTest {
         assertTrue(productionClasses.contain(ROOT + ".application.knowledge.LoadKnowledgeDocumentUseCase"));
         assertTrue(productionClasses.contain(ROOT + ".application.knowledge.RefreshKnowledgeSourceUseCase"));
         // Die Werkzeuge nutzen die erlaubte Fehlerart tatsächlich; die Ausnahme in der Regel ist also nicht leer.
-        assertTrue(productionClasses.get(ROOT + ".application.mcp.GetKnowledgeDocumentTool")
+        assertTrue(productionClasses.get(ROOT + ".application.mcp.KnowledgeReadTool")
                 .getDirectDependenciesFromSelf().toString().contains(SOURCE_EXCEPTION));
     }
 

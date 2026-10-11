@@ -44,11 +44,11 @@ import java.util.logging.Logger;
  *
  * <ul>
  *   <li><b>Häkchen</b> wirken sofort: die {@link KnowledgeSourceSelection} entscheidet, was RAG durchsucht und was
- *       die Start-Indexierung überspringt; dauerhaft steht es über den Use Case in der Datei. Wer eine Quelle
- *       anhakt, die noch nichts im Index hat, startet ihre Indexierung.</li>
+ *       was die Suche live fragt; dauerhaft steht es über den Use Case in der Datei. Anhaken indexiert nichts:
+ *       der Index wächst mit den Treffern der Suche (MainframeMate).</li>
  *   <li><b>„+ Quelle“ und Bearbeiten</b> laufen über den Quellen-Dialog; welche Quelltypen es gibt und welche
  *       Felder sie haben, liefert {@link KnowledgeSourceManagement} aus den registrierten Adaptern. Die gespeicherte
- *       Quelle wird sofort angebunden und indexiert; bietet kein Adapter ihren Typ an, gilt die Änderung nach dem
+ *       Quelle wird sofort angebunden (nicht indexiert); bietet kein Adapter ihren Typ an, gilt die Änderung nach dem
  *       nächsten Start, und die Zeile sagt das.</li>
  *   <li><b>Entfernen</b> fragt kurz nach, nimmt die Zeile sofort aus der Liste und lässt den Use Case die Quelle
  *       aus der Datei nehmen und ihren Index zurückziehen (auf dem Arbeits-Executor).</li>
@@ -69,6 +69,8 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
 
     static final String RUNNING_TEXT = "Wird indexiert …";
     static final String NOT_INDEXED_TEXT = "Noch nicht indexiert";
+    /** Quellen ohne Vollindex: der Index wächst mit der Suche, „leer“ ist kein Hindernis. */
+    static final String GROWS_WITH_SEARCH_TEXT = "Wird bei der Suche live gefragt; Treffer kommen in den Index";
     static final String DISABLED_TEXT = "Abgewählt: wird nicht indexiert und nicht durchsucht";
     static final String RESTART_TEXT = "Gespeichert; gilt nach dem nächsten Start";
     static final String COUNTING_TEXT = "Indexstand wird gelesen …";
@@ -190,12 +192,6 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     public void enabledChanged(String sourceId, boolean enabled) {
         selection.setEnabled(KnowledgeSourceId.of(sourceId), enabled);
         writeProblems.remove(sourceId);
-        Integer indexed = counts.get(sourceId);
-        if (enabled && (indexed == null || indexed == 0) && !lastRun.containsKey(sourceId)
-                && !binding.isRunning()) {
-            // Angehakt und noch nichts im Index: gleich indexieren, statt auf den nächsten Start zu warten.
-            indexRequested(sourceId);
-        }
         if (editing != null) {
             try {
                 editing.setEnabled(sourceId, enabled);
@@ -212,8 +208,8 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     public void indexRequested(String sourceId) {
         KnowledgeSourceRegistration registration = live.get(sourceId);
         if (registration == null || pendingRestart.contains(sourceId)
-                || !selection.isEnabled(registration.sourceId())) {
-            return;
+                || !selection.isEnabled(registration.sourceId()) || !fullIndexing(sourceId)) {
+            return; // ganze Quellen nur, wo der Typ es anbietet (NDV, FTP, Dateien); sonst füllt die Suche den Index
         }
         try {
             binding.indexSource(registration.port(), registration.scope(), null);
@@ -262,11 +258,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         }
         if (!expanded) {
             expandedPartitions.remove(sourceId);
-            if (partitionsChanged.remove(sourceId)) {
-                if (selection.isEnabled(registration.sourceId()) && !binding.isRunning()) {
-                    indexRequested(sourceId);
-                }
-            }
+            partitionsChanged.remove(sourceId); // gilt ab der nächsten Suche, nichts neu indexieren
             publish();
             return;
         }
@@ -505,11 +497,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         forgetPartitions(id);
         live.put(id, registration);
         selection.register(registration.sourceId(), config.enabled());
-        if (config.enabled() && !binding.isRunning()) {
-            indexRequested(id);
-        } else {
-            count(id);
-        }
+        count(id);
     }
 
     /** Die Quelle ist nicht mehr konfiguriert: nicht mehr anbieten und nicht mehr durchsuchen. */
@@ -683,7 +671,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
                 state = KnowledgeSourceItem.State.PROBLEM;
             }
         }
-        boolean indexable = connected && enabled && !binding.isRunning();
+        boolean indexable = connected && enabled && !binding.isRunning() && fullIndexing(id);
         boolean removable = editable && !id.equals(running);
         return new KnowledgeSourceItem(id, kind, scope, enabled, status, state, indexable, editable, removable);
     }
@@ -691,15 +679,27 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private String indexText(String id) {
         Integer count = counts.get(id);
         String run = lastRun.get(id);
+        String empty = fullIndexing(id) ? NOT_INDEXED_TEXT : GROWS_WITH_SEARCH_TEXT;
         String pages = count == null ? (indexCount == null ? "" : COUNTING_TEXT)
-                : count == 0 ? NOT_INDEXED_TEXT : count == 1 ? "1 Seite im Index" : count + " Seiten im Index";
+                : count == 0 ? empty : count == 1 ? "1 Seite im Index" : count + " Seiten im Index";
         if (run == null) {
-            return pages.isEmpty() ? NOT_INDEXED_TEXT : pages;
+            return pages.isEmpty() ? empty : pages;
         }
         if (failedRuns.contains(id) && run.startsWith("Indexierung")) {
             return run;
         }
         return pages.isEmpty() || pages.equals(COUNTING_TEXT) ? run : pages + " · " + run;
+    }
+
+    /** {@code true}, wenn der Typ der Quelle „Alles indexieren“ auf Knopfdruck anbietet (NDV, FTP, Dateien). */
+    private boolean fullIndexing(String id) {
+        for (SourceDefinition source : editing == null ? startupSources : fileSources()) {
+            if (source.id().equals(id)) {
+                KnowledgeSourceType type = management.type(source.typeId());
+                return type != null && type.fullIndexing();
+            }
+        }
+        return false;
     }
 
     /** Typ für die Anzeige: der Name, den der Adapter beschreibt, sonst die Typ-ID aus der Datei. */

@@ -36,7 +36,6 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.aresstack.enterpriseai.integration.SliceSupport.assertNoSecret;
@@ -139,7 +138,6 @@ public class ConfiguredApplicationSliceTest {
         p.setProperty("embedding.model", "danielheinz/e5-base-sts-en-de");
         p.setProperty("embedding.dimension", "16");
         p.setProperty("knowledge.indexDirectory", temp.getRoot().toPath().resolve("index").toString());
-        p.setProperty("knowledge.indexOnStartup", "true");
         p.setProperty("retrieval.maxResults", "5");
         p.setProperty("sources", "wiki,confluence");
         p.setProperty("source.wiki.type", "mediawiki");
@@ -176,11 +174,13 @@ public class ConfiguredApplicationSliceTest {
 
         root = CompositionRoot.compose(config, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
                 ZoneId.of("Europe/Berlin"));
-        root.startBackgroundWork();
-        assertTrue("Startindexierung beendet", root.startupIndexing().awaitTermination(60, TimeUnit.SECONDS));
-
-        // Beide Quellen wurden mit Zugangsdaten aus KeePass gelesen und über den echten Embedding-Adapter indexiert.
-        List<IndexingReport> reports = root.startupIndexing().reports();
+        // Kein Startindex mehr: beide Quellen hier ausdrücklich ganz indexieren (wie „Alles indexieren“), mit
+        // Zugangsdaten aus KeePass und über den echten Embedding-Adapter.
+        List<IndexingReport> reports = new java.util.ArrayList<IndexingReport>();
+        for (com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration registration
+                : root.ports().sources().registrations()) {
+            reports.add(root.indexing().indexSource(registration.port(), registration.scope(), null));
+        }
         assertEquals(reports.toString(), 2, reports.size());
         int discovered = 0;
         for (IndexingReport report : reports) {
@@ -203,8 +203,6 @@ public class ConfiguredApplicationSliceTest {
         for (FakeEmbeddingsServer.Recorded request : embeddingsServer.requests()) {
             assertEquals("Bearer " + API_KEY, request.authorization());
         }
-        String status = onEdt(() -> root.knowledgeStatus().getText());
-        assertTrue(status, status.startsWith("Wissensbasis: "));
 
         // RAG-Frage über die Shell: Kontext aus dem Index, Antwort mit Quellenangabe.
         final ShellAssembly.ShellView view = onEdt(() -> ShellAssembly.createShell(root,
@@ -237,6 +235,7 @@ public class ConfiguredApplicationSliceTest {
 
         // Kein Secret in Oberfläche, Statuszeile, Anfrage oder toString() der Ports.
         assertNoSecretInTranscript(model, API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
+        String status = onEdt(() -> root.knowledgeStatus().getText());
         assertNoSecret(status, API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
         assertNoSecret(request.systemContent(), API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
         assertNoSecret(ports.toString(), API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);

@@ -37,16 +37,24 @@ public final class RagChatUseCase {
     private final ChatService chat;
     private final RetrieveKnowledgeUseCase retrieval;
     private final PromptContextAssembler assembler;
+    private final RetrievalPreparation preparation;
     /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
     private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
 
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler) {
+        this(chat, retrieval, assembler, RetrievalPreparation.none());
+    }
+
+    /** @param preparation läuft vor jedem Retrieval (z. B. Live-Suche der Quellen, die Treffer indexiert) */
+    public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
+                          RetrievalPreparation preparation) {
         if (chat == null || retrieval == null) {
             throw new IllegalArgumentException("chat und retrieval sind Pflicht");
         }
         this.chat = chat;
         this.retrieval = retrieval;
         this.assembler = assembler == null ? new PromptContextAssembler(ContextSettings.defaults()) : assembler;
+        this.preparation = preparation == null ? RetrievalPreparation.none() : preparation;
     }
 
     /** Der gemeinsame Chat-Use-Case, über den Konversationen verwaltet werden. */
@@ -114,6 +122,11 @@ public final class RagChatUseCase {
         PromptContext context;
         List<RetrievalWarning> warnings;
         boolean failed = false;
+        try {
+            preparation.prepare(userText, rag.sources());
+        } catch (RuntimeException e) {
+            // Die Live-Suche ist eine Ergänzung; ohne sie antwortet der Turn aus dem vorhandenen Index.
+        }
         try {
             RetrievalResult result = retrieval.retrieve(userText, rag.sources());
             context = assembler.assemble(result.hits());

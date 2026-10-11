@@ -45,7 +45,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 
 import static com.aresstack.enterpriseai.integration.SampleKnowledge.EXPECTED_PHRASE;
 import static com.aresstack.enterpriseai.integration.SampleKnowledge.EXPECTED_TITLE;
@@ -111,7 +110,6 @@ public class SliceGAgentMcpTest {
         p.setProperty("embedding.model", "test-embedding");
         p.setProperty("embedding.dimension", "8");
         p.setProperty("knowledge.indexDirectory", temp.getRoot().toString());
-        p.setProperty("knowledge.indexOnStartup", "true");
         p.setProperty("security.keepass.enabled", "false");
         p.setProperty("network.proxy.mode", "DISABLED");
         p.setProperty("agent.enabled", "true");
@@ -120,9 +118,9 @@ public class SliceGAgentMcpTest {
         p.setProperty("agent.tools.defaultMaxResults", "3");
         root = CompositionRoot.compose(AppConfigLoader.fromProperties(p), ports.build(), SwingUtilities::invokeLater,
                 System::currentTimeMillis, ZoneId.of("Europe/Berlin"));
-        root.startBackgroundWork();
-        assertTrue("Startindexierung beendet", root.startupIndexing().awaitTermination(60, TimeUnit.SECONDS));
-        assertEquals(3, root.startupIndexing().reports().get(0).discovered());
+        // Kein Startindex mehr: der Bestand wird hier ausdrücklich indexiert (wie „Alles indexieren“).
+        KnowledgeSourceRegistration registration = root.ports().sources().registrations().iterator().next();
+        assertEquals(3, root.indexing().indexSource(registration.port(), registration.scope(), null).discovered());
         view = onEdt(() -> ShellAssembly.createShell(root, ComicPalette.defaultPalette(),
                 BubblePalette.windowsPhoneInspired()));
         assertNotNull("Agent-Karte vorhanden", view.agent());

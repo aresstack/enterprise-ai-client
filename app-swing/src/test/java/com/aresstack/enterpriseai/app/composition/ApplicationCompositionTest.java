@@ -3,9 +3,8 @@ package com.aresstack.enterpriseai.app.composition;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
-import com.aresstack.enterpriseai.application.knowledge.KnowledgeDocumentNotIndexedException;
-import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.application.rag.RetrievalResult;
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
@@ -31,7 +30,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -95,34 +93,24 @@ public class ApplicationCompositionTest {
                 System::currentTimeMillis, ZoneId.of("Europe/Berlin"));
     }
 
+    /** Füllt den Index ausdrücklich (wie „Alles indexieren“); beim Start indexiert nichts mehr. */
+    private static void indexAll(CompositionRoot root) {
+        for (KnowledgeSourceRegistration registration : root.ports().sources().registrations()) {
+            assertTrue(root.indexing().indexSource(registration.port(), registration.scope(), null).isComplete());
+        }
+    }
+
     @Test
-    public void startupIndexingFillsTheIndexAndRetrievalFindsIt() throws Exception {
+    public void searchFillsTheIndexAndRetrievalFindsIt() throws Exception {
         CompositionRoot root = compose(false);
         root.startBackgroundWork();
-        root.startBackgroundWork();
-        assertTrue(root.startupIndexing().awaitTermination(10, TimeUnit.SECONDS));
-        assertTrue(root.startupIndexing().isDone());
-        assertEquals(1, root.startupIndexing().reports().size());
-        assertEquals(2, root.startupIndexing().reports().get(0).discovered());
-        assertTrue(root.startupIndexing().reports().get(0).isComplete());
-        String status = statusText(root);
-        assertTrue(status, status.startsWith("Wissensbasis: 2 Seiten"));
+        assertTrue("beim Start wird nichts indexiert", root.retrieval().retrieve("Resturlaub").isEmpty());
+        root.searchIndexing().searchAndIndex(root.ports().sources(), "Resturlaub", 4, 4);
 
         RetrievalResult result = root.retrieval().retrieve("Wann verfällt der Resturlaub?");
         assertFalse(result.isEmpty());
         assertEquals("Urlaubsregelung", result.hits().get(0).resource().title());
         assertEquals(5, root.retrieval().settings().maxResults());
-    }
-
-    @Test
-    public void startupIndexingStaysOffWhenConfiguredOff() throws Exception {
-        java.util.Properties p = TestConfigs.base(temp.getRoot().toPath());
-        p.setProperty("knowledge.indexOnStartup", "false");
-        CompositionRoot root = CompositionRoot.compose(com.aresstack.enterpriseai.app.config.AppConfigLoader
-                .fromProperties(p), ports(false), SwingUtilities::invokeLater, System::currentTimeMillis, null);
-        root.startBackgroundWork();
-        assertFalse(root.startupIndexing().isStarted());
-        assertTrue(root.retrieval().retrieve("Urlaub").isEmpty());
     }
 
     @Test
@@ -162,8 +150,7 @@ public class ApplicationCompositionTest {
     @Test
     public void ragQuestionCarriesSourcesAndContextAfterIndexing() throws Exception {
         final CompositionRoot root = compose(false);
-        root.startBackgroundWork();
-        assertTrue(root.startupIndexing().awaitTermination(10, TimeUnit.SECONDS));
+        indexAll(root);
         chatPort.enqueueAnswer("Am 31. März.");
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
         SwingUtilities.invokeAndWait(new Runnable() {
@@ -193,8 +180,7 @@ public class ApplicationCompositionTest {
         for (McpToolContribution tool : root.agentTools()) {
             names.add(tool.getName());
         }
-        assertEquals(Arrays.asList(KnowledgeMcpTools.SEARCH_KNOWLEDGE, KnowledgeMcpTools.GET_KNOWLEDGE_DOCUMENT,
-                KnowledgeMcpTools.REFRESH_KNOWLEDGE_SOURCE), names);
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ), names);
         assertEquals(3, root.knowledgeTools().settings().defaultMaxResults());
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
         final CompositionRoot composed = root;
@@ -210,30 +196,14 @@ public class ApplicationCompositionTest {
     }
 
     @Test
-    public void knowledgeToolsReadOnlyIndexedDocuments() throws Exception {
+    public void knowledgeReadLoadsAndIndexesOnDemand() throws Exception {
         CompositionRoot root = compose(false);
-        root.startBackgroundWork();
-        assertTrue(root.startupIndexing().awaitTermination(10, TimeUnit.SECONDS));
-        assertTrue("Komposition nutzt die indexgeführte Variante aus #32", root.documents().isIndexGated());
-
-        KnowledgeResourceId hidden = wiki.idOf("Geheim");
-        assertEquals("die Quelle selbst kennt die Seite", "Interner Entwurf", wiki.load(hidden).resource().title());
-        try {
-            root.documents().load(hidden);
-            assertTrue("nicht indexiertes Dokument darf nicht geladen werden", false);
-        } catch (KnowledgeDocumentNotIndexedException expected) {
-            assertEquals(hidden, expected.resourceId());
-        }
-
-        McpToolResult refused = invokeTool(root, KnowledgeMcpTools.GET_KNOWLEDGE_DOCUMENT, hidden.value());
-        assertTrue(refused.getText(), refused.isError());
-        assertTrue(refused.getText(), refused.getText().contains("nicht in der Wissensbasis indexiert"));
-        assertFalse("kein Inhalt eines nicht indexierten Dokuments", refused.getText().contains("Entwurfstext"));
-
-        McpToolResult indexed = invokeTool(root, KnowledgeMcpTools.GET_KNOWLEDGE_DOCUMENT,
-                wiki.idOf("Urlaub").value());
-        assertFalse(indexed.getText(), indexed.isError());
-        assertTrue(indexed.getText(), indexed.getText().contains("Resturlaub"));
+        KnowledgeResourceId page = wiki.idOf("Urlaub");
+        McpToolResult read = invokeTool(root, KnowledgeMcpTools.KNOWLEDGE_READ, page.value());
+        assertFalse(read.getText(), read.isError());
+        assertTrue(read.getText(), read.getText().contains("Resturlaub"));
+        assertTrue("gelesen heißt indexiert", root.ports().index()
+                .resourceIds(root.indexing().space(), wiki.sourceId()).contains(page));
         root.shutdown().run();
     }
 
@@ -256,7 +226,6 @@ public class ApplicationCompositionTest {
                 "stop-executors"), root.shutdown().executedSteps());
         assertTrue(indexClosed.get());
         assertTrue(root.knowledgeTools().isShutdown());
-        assertTrue(root.startupIndexing().isDone());
         Thread hook = root.shutdown().asShutdownHook();
         hook.start();
         hook.join();

@@ -155,6 +155,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 final KnowledgeDocument document = browse.read(registration.port(),
                         KnowledgeResourceId.of(link.resourceId()));
                 uiExecutor.execute(() -> reader.showMarkdown(link.key(), document.text()));
+                browse.remember(document); // Lesen füllt den Index (MainframeMate: Öffnen indexiert die Seite)
             }
         } catch (KnowledgeSourceException e) {
             LOG.log(Level.WARNING, "Lesen von " + link.key() + " fehlgeschlagen (" + e.kind() + ")", e);

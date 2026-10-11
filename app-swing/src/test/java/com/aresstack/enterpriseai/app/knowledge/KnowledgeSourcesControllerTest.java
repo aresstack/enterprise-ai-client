@@ -113,7 +113,7 @@ public class KnowledgeSourcesControllerTest {
 
     @Test
     public void indexingASourceShowsItsPagesAndTime() {
-        KnowledgeSourcesController controller = controller(false);
+        KnowledgeSourcesController controller = controller(true);
         assertEquals(KnowledgeSourcesController.NOT_INDEXED_TEXT, last("wiki").status());
         assertTrue(last("wiki").indexable());
         assertFalse("ohne Datei kein Bearbeiten", last("wiki").editable());
@@ -130,7 +130,7 @@ public class KnowledgeSourcesControllerTest {
 
     @Test
     public void checkboxSwitchesRetrievalAndIndexingAndIsSaved() {
-        KnowledgeSourcesController controller = controller(false);
+        KnowledgeSourcesController controller = controller(true);
         controller.setEditing(file, launcher((initial, originalId, actions) -> null, false));
         controller.enabledChanged("wiki", false);
         assertFalse(selection.isEnabled(wiki.sourceId()));
@@ -147,10 +147,20 @@ public class KnowledgeSourcesControllerTest {
         controller.enabledChanged("wiki", true);
         assertTrue(last("wiki").enabled());
         assertTrue(last("wiki").indexable());
+        assertTrue("Anhaken indexiert nichts", index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).isEmpty());
     }
 
     @Test
-    public void addedSourceIsConnectedAndIndexedWithoutRestart() {
+    public void searchDrivenSourceOffersNoFullIndex() {
+        KnowledgeSourcesController controller = controller(false); // Typ ohne Vollindex (wie Confluence/MediaWiki)
+        assertEquals(KnowledgeSourcesController.GROWS_WITH_SEARCH_TEXT, last("wiki").status());
+        assertFalse(last("wiki").indexable());
+        controller.indexRequested("wiki");
+        assertTrue(index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).isEmpty());
+    }
+
+    @Test
+    public void addedSourceIsConnectedWithoutRestartAndIndexedOnRequest() {
         final InMemoryKnowledgeSource handbook = new InMemoryKnowledgeSource("wiki2")
                 .add("9", "Homeoffice", "Zwei Tage pro Woche.");
         provider.sources.put("wiki2", handbook);
@@ -171,6 +181,9 @@ public class KnowledgeSourcesControllerTest {
 
         assertEquals("die nächste freie ID wird vorgeschlagen", Collections.singletonList("wiki2/null"), offered);
         assertTrue(selection.isEnabled(handbook.sourceId()));
+        assertTrue("Hinzufügen indexiert nichts",
+                index.resourceIds(embeddings.modelIdentity(), handbook.sourceId()).isEmpty());
+        controller.indexRequested("wiki2");
         assertEquals(1, index.resourceIds(embeddings.modelIdentity(), handbook.sourceId()).size());
         assertEquals("1 Seite im Index · Stand 12:00", last("wiki2").status());
         assertTrue(last("wiki2").editable());
@@ -253,7 +266,7 @@ public class KnowledgeSourcesControllerTest {
     private static final class FakeProvider implements KnowledgeSourceProvider {
         final Map<String, KnowledgeSourcePort> sources = new HashMap<String, KnowledgeSourcePort>();
         private final KnowledgeSourceType type = KnowledgeSourceType.builder("mediawiki", "wiki", "MediaWiki")
-                .idPrefix("wiki").summaryKey("startPoints")
+                .idPrefix("wiki").summaryKey("startPoints").fullIndexing(true)
                 .field(SourceSettingField.text("apiUrl", "API-URL", "").required())
                 .field(SourceSettingField.text("startPoints", "Startseiten", ""))
                 .build();
