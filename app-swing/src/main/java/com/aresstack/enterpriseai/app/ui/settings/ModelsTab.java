@@ -129,10 +129,16 @@ final class ModelsTab {
             }
         }, palette);
         FormRows voiceNote = new FormRows(palette);
-        voiceNote.note("Vorgeschlagene Stimmen und installierte Modelle, geladen vom Hugging Face Hub über die "
-                + "Netzwerkeinstellungen ins Modellverzeichnis, ohne Umwandlung. Sie laufen im Client selbst (ONNX "
-                + "Runtime), ohne externes Programm; die deutsche Aussprache der Stimmen ist regelbasiert. "
-                + "Installieren wählt nichts aus: gewählt wird oben je Funktion.");
+        voiceNote.note("Installierte Modelle im Modellverzeichnis, geladen vom Hugging Face Hub ohne Umwandlung. Sie "
+                + "laufen im Client selbst (ONNX Runtime), ohne externes Programm. Installieren wählt nichts aus: "
+                + "gewählt wird oben je Funktion.");
+        FormRows suggestionNote = new FormRows(palette);
+        suggestionNote.note("Vorgeschlagene Modelle zum Installieren über die Netzwerkeinstellungen: deutsche Stimmen "
+                + "(Aussprache regelbasiert) und Gemma 4 E2B für die Spracheingabe. Installiert stehen sie oben.");
+        JPanel suggestionContent = new JPanel(new BorderLayout(0, 4));
+        suggestionContent.setOpaque(false);
+        suggestionContent.add(suggestionNote.panel(), BorderLayout.NORTH);
+        suggestionContent.add(voices.suggestionsPanel(), BorderLayout.CENTER);
         FormRows searchNote = new FormRows(palette);
         searchNote.note("Angeboten werden nur Modelle, die der Client ohne Umwandlung lädt: Sprachausgabe als "
                 + "Piper-Stimme (.onnx mit .onnx.json, deutsch oder Text-Eingabe) oder VITS (config.json, vocab.json, "
@@ -159,7 +165,8 @@ final class ModelsTab {
         JPanel localPage = FormRows.column(palette,
                 FormRows.plate("Lokale Modelle je Funktion", palette.getNavigationBlue(), localSelection.panel(),
                         palette),
-                FormRows.plate("Installiert und vorgeschlagen", palette.getAccentOrange(), voiceContent, palette),
+                FormRows.plate("Installiert", palette.getAccentOrange(), voiceContent, palette),
+                FormRows.plate("Vorschläge", palette.getAccentOrange(), suggestionContent, palette),
                 FormRows.plate("Hugging Face durchsuchen", palette.getAccentOrange(), searchContent, palette),
                 FormRows.plate("Modellverzeichnis", palette.getAgentPetrol(), local.panel(), palette));
         deck.setOpaque(false);

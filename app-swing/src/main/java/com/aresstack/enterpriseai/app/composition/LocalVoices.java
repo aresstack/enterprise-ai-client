@@ -16,6 +16,7 @@ import com.aresstack.enterpriseai.http.api.HttpRoute;
 import com.aresstack.enterpriseai.http.api.HttpRoutePort;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
+import com.aresstack.enterpriseai.model.huggingface.HubRepositorySuggestion;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoice;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoiceProvisioning;
 import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
@@ -23,6 +24,7 @@ import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,6 +47,7 @@ public final class LocalVoices implements LocalVoiceInstaller {
     };
 
     private final List<HuggingFaceVoice> curated;
+    private final List<HubRepositorySuggestion> suggested;
     private final String hubEndpoint;
     /** Treffer der Hub-Suchen dieses Prozesses, damit „Installieren“ sie über die Kennung findet. */
     private final Map<String, HuggingFaceVoice> discovered = new ConcurrentHashMap<String, HuggingFaceVoice>();
@@ -52,11 +55,16 @@ public final class LocalVoices implements LocalVoiceInstaller {
     private final AtomicBoolean proxyAuthenticated = new AtomicBoolean();
 
     public LocalVoices() {
-        this(LocalVoicesConfig.curated(), LocalVoicesConfig.hubEndpoint());
+        this(LocalVoicesConfig.curated(), LocalVoicesConfig.suggestions(), LocalVoicesConfig.hubEndpoint());
     }
 
     LocalVoices(List<HuggingFaceVoice> curated, String hubEndpoint) {
+        this(curated, Collections.<HubRepositorySuggestion>emptyList(), hubEndpoint);
+    }
+
+    LocalVoices(List<HuggingFaceVoice> curated, List<HubRepositorySuggestion> suggested, String hubEndpoint) {
         this.curated = curated;
+        this.suggested = suggested;
         this.hubEndpoint = hubEndpoint;
     }
 
@@ -118,6 +126,6 @@ public final class LocalVoices implements LocalVoiceInstaller {
     }
 
     private HuggingFaceVoiceProvisioning provisioning(HttpRoutePort routes) {
-        return new HuggingFaceVoiceProvisioning(curated, discovered, hubEndpoint, routes);
+        return new HuggingFaceVoiceProvisioning(curated, suggested, discovered, hubEndpoint, routes);
     }
 }

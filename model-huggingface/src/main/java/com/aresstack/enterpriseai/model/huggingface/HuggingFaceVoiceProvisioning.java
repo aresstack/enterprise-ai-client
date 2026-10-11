@@ -43,6 +43,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     private static final String STAGING_SUFFIX = ".download";
 
     private final List<HuggingFaceVoice> voices;
+    private final List<HubRepositorySuggestion> suggested;
     private final Map<String, HuggingFaceVoice> discovered;
     private final String endpoint;
     private final HttpRoutePort routes;
@@ -55,16 +56,29 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
      */
     public HuggingFaceVoiceProvisioning(List<HuggingFaceVoice> voices, Map<String, HuggingFaceVoice> discovered,
                                         String endpoint, HttpRoutePort routes) {
-        if (voices == null || discovered == null || endpoint == null || routes == null) {
-            throw new IllegalArgumentException("voices, discovered, endpoint and routes must not be null");
+        this(voices, Collections.<HubRepositorySuggestion>emptyList(), discovered, endpoint, routes);
+    }
+
+    /**
+     * @param suggested vorgeschlagene Repositorys (Spracheingabe, Chat, Embedding), Dateien erst beim Installieren
+     */
+    public HuggingFaceVoiceProvisioning(List<HuggingFaceVoice> voices, List<HubRepositorySuggestion> suggested,
+                                        Map<String, HuggingFaceVoice> discovered, String endpoint,
+                                        HttpRoutePort routes) {
+        if (voices == null || suggested == null || discovered == null || endpoint == null || routes == null) {
+            throw new IllegalArgumentException("voices, suggested, discovered, endpoint and routes must not be null");
         }
         this.voices = Collections.unmodifiableList(new ArrayList<HuggingFaceVoice>(voices));
+        this.suggested = Collections.unmodifiableList(new ArrayList<HubRepositorySuggestion>(suggested));
         this.discovered = discovered;
         this.endpoint = endpoint.trim();
         this.routes = routes;
     }
 
-    /** Kuratierte Stimmen, danach alle anderen installierten (mit Herkunftsdatei). */
+    /**
+     * Kuratierte Stimmen, die vorgeschlagenen Repositorys (nicht installiert; installiert erscheinen sie unter ihrem
+     * Ordner), danach alle anderen installierten (mit Herkunftsdatei).
+     */
     @Override
     public List<LocalVoiceOffer> offers(Path modelRoot) {
         List<LocalVoiceOffer> offers = new ArrayList<LocalVoiceOffer>();
@@ -73,12 +87,28 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
             offers.add(offer(voice, modelRoot));
             listed.add(voice.id());
         }
-        for (HuggingFaceVoice voice : installed(modelRoot)) {
+        List<HuggingFaceVoice> installed = installed(modelRoot);
+        for (HubRepositorySuggestion suggestion : suggested) {
+            if (!installedFrom(installed, suggestion) && listed.add(suggestion.id())) {
+                offers.add(new LocalVoiceOffer(suggestion.id(), suggestion.displayName(), "", false,
+                        suggestion.category()));
+            }
+        }
+        for (HuggingFaceVoice voice : installed) {
             if (listed.add(voice.id())) {
                 offers.add(offer(voice, modelRoot));
             }
         }
         return offers;
+    }
+
+    private static boolean installedFrom(List<HuggingFaceVoice> installed, HubRepositorySuggestion suggestion) {
+        for (HuggingFaceVoice voice : installed) {
+            if (voice.repository().equals(suggestion.repository()) && voice.category() == suggestion.category()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -174,8 +204,12 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         RouteProxySelector proxies = new RouteProxySelector(routes);
         HuggingFaceHub hub = hub(proxies);
         HubFileIndex index = new HubFileIndex(endpoint, proxies);
-        for (String file : configFirst(voice.files())) {
+        List<String> files = configFirst(voice.files());
+        for (int i = 0; i < files.size(); i++) {
+            String file = files.get(i);
             final String name = HuggingFaceVoice.fileName(file);
+            final int number = i + 1;
+            final int count = files.size();
             Path destination = staging.resolve(voice.localName(file));
             HubFileIndex.Entry expected = expected(index, voice, file);
             try {
@@ -190,7 +224,8 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
                         .onProgress(new ProgressListener() {
                             @Override
                             public void onProgress(DownloadProgress progress) {
-                                listener.progress(name, progress.getBytesDownloaded(), progress.getTotalBytes());
+                                listener.progress(name, number, count, progress.getBytesDownloaded(),
+                                        progress.getTotalBytes());
                             }
                         }).execute();
             } catch (HuggingFaceHubException e) {
@@ -235,6 +270,11 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
                 return voice;
             }
         }
+        for (HubRepositorySuggestion suggestion : suggested) {
+            if (suggestion.id().equals(voiceId)) {
+                return resolve(suggestion);
+            }
+        }
         HuggingFaceVoice found = discovered.get(voiceId);
         if (found == null && voiceId != null && voiceId.matches("[A-Za-z0-9._-]+") && !voiceId.startsWith(".")) {
             found = VoiceSource.read(modelRoot.resolve(voiceId));
@@ -243,6 +283,27 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
             throw new LocalVoiceInstallException("Unbekanntes Modell: " + voiceId);
         }
         return found;
+    }
+
+    /** Die Dateien eines vorgeschlagenen Repositorys aus seinem Dateibaum, wie bei einem Treffer der Suche. */
+    private HuggingFaceVoice resolve(HubRepositorySuggestion suggestion) throws LocalVoiceInstallException {
+        requireEndpoint();
+        HuggingFaceVoice model;
+        try {
+            model = new HubModelSearch(hub(new RouteProxySelector(routes))).resolve(suggestion.repository(),
+                    suggestion.category());
+        } catch (HuggingFaceHubException e) {
+            throw new LocalVoiceInstallException("Dateiliste von " + suggestion.repository()
+                    + " nicht lesbar: " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw new LocalVoiceInstallException("Dateiliste von " + suggestion.repository()
+                    + " nicht lesbar: " + e, e);
+        }
+        if (model == null) {
+            throw new LocalVoiceInstallException(suggestion.repository()
+                    + " enthält keine Dateien, die der Client ohne Umwandlung lädt.");
+        }
+        return model;
     }
 
     /** Konfigurationsdateien (JSON) zuerst: passt die Stimme nicht, wird das große Modell gar nicht geladen. */

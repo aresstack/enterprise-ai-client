@@ -114,6 +114,18 @@ final class HubModelSearch {
         return found;
     }
 
+    /**
+     * Ein Repository als ladbares Modell der Kategorie (Spracheingabe, Chat oder Embedding), aus seinem Dateibaum
+     * bestimmt wie ein Treffer der Suche; {@code null}, wenn es der Client nicht ohne Umwandlung lädt.
+     */
+    HuggingFaceVoice resolve(String repository, ModelCategory category) throws HuggingFaceHubException {
+        Set<String> paths = paths(hub.models().model(repository).files().execute());
+        if (category == ModelCategory.STT) {
+            return audioModel(repository, paths);
+        }
+        return textModel(repository, paths, category);
+    }
+
     private List<HuggingFaceVoice> voices(String query) throws HuggingFaceHubException {
         Map<String, ModelSummary> repositories = new LinkedHashMap<String, ModelSummary>();
         collect(repositories, request(query).task("text-to-speech"), LIMIT * 2);

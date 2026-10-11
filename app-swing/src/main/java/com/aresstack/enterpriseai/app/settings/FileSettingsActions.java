@@ -537,10 +537,11 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     try {
                         LocalVoiceInstallListener listener = new LocalVoiceInstallListener() {
                             @Override
-                            public void progress(String file, long done, long total) {
-                                final String line = total > 0
-                                        ? file + ": " + (done * 100 / total) + " % von " + megabytes(total)
-                                        : file + ": " + megabytes(done);
+                            public void progress(final String file, final int number, final int count,
+                                                 final long done, final long total) {
+                                // nur bei geändertem Prozent (bzw. MB ohne Größe) an den EDT, nicht je Puffer
+                                final String line = number + "/" + count + ":" + file + ":"
+                                        + (total > 0 ? done * 100 / total : done / (1024L * 1024L));
                                 if (line.equals(lastLine)) {
                                     return;
                                 }
@@ -548,7 +549,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
                                 ui.execute(new Runnable() {
                                     @Override
                                     public void run() {
-                                        progress.progress(line);
+                                        progress.file(file, number, count, done, total);
                                     }
                                 });
                             }
@@ -713,12 +714,23 @@ public final class FileSettingsActions implements SettingsDialogActions {
     }
 
     @Override
-    public String localVoiceSelection(String voiceId) {
-        return ModelsConfig.LOCAL_CATALOG_ID + ":" + voiceId;
+    public List<String> hubSearchHistory() {
+        return HubSearchHistory.read(historyFile());
     }
 
-    private static String megabytes(long bytes) {
-        return String.format(java.util.Locale.GERMAN, "%.1f MB", bytes / (1024.0 * 1024.0));
+    @Override
+    public List<String> rememberHubSearch(String query) {
+        return HubSearchHistory.remember(historyFile(), query);
+    }
+
+    /** Neben der Konfigurationsdatei. */
+    private Path historyFile() {
+        return file.path().toAbsolutePath().resolveSibling(HubSearchHistory.FILE_NAME);
+    }
+
+    @Override
+    public String localVoiceSelection(String voiceId) {
+        return ModelsConfig.LOCAL_CATALOG_ID + ":" + voiceId;
     }
 
     /** Modellverzeichnis des Entwurfs; leer heißt wie beim Start {@code <Anwendungsverzeichnis>/local-models}. */
