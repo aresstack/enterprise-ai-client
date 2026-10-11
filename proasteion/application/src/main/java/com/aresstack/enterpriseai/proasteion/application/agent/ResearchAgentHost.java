@@ -37,14 +37,16 @@ import java.util.logging.Logger;
  * sieht ({@code publishScopeFence}). In askai liefen Agent und Host in zwei Prozessen über ACP/MCP; hier laufen
  * beide im Client, der Host wird direkt gerufen.
  *
- * <p>Ein Projekt ist ein Verzeichnis ({@code scope-draft.json} usw.). „+ Neuer Chat“ im Agent-Modus beginnt ein
- * neues Projekt ({@link #startNewProject}), beim Start wird das zuletzt benutzte fortgesetzt.
+ * <p>Ein Projekt ist ein Verzeichnis ({@code scope-draft.json} usw.) und gehört genau einem Chat (askai arch: die
+ * Projekt-Kennung einer Research-Session ist der Scope ihres Chat-Tabs). Welches Projekt gilt, bestimmt allein
+ * {@link #openChat}: Chat öffnen lädt dessen Projekt (Phase, Konzept, Quellen, Gliederung, Dokument), ein neuer
+ * Chat beginnt ein leeres, {@link #deleteChatProject} löscht es mit dem Chat. Einen globalen Zeiger auf ein
+ * „aktuelles“ Projekt gibt es nicht; ohne {@link #openChat} arbeitet der Host in einem eigenen, frischen Projekt.
  */
 public final class ResearchAgentHost {
 
     private static final Logger LOG = Logger.getLogger(ResearchAgentHost.class.getName());
     private static final String GREETED_MARKER = "greeted";
-    private static final String CURRENT_PROJECT_FILE = "current-project";
     private static final String CONCEPT_DIRECTORY = "concept";
     private static final String STATE_FILE = "research-state";
     private static final String SOURCES_FILE = "sources.tsv";
@@ -55,6 +57,9 @@ public final class ResearchAgentHost {
     private static final String DOCUMENT_FILE = "document.json";
 
     private final File projectsRoot;
+    private final ResearchProjects projects;
+    /** Der Chat, dem das Projekt gehört; {@code null}, bis {@link #openChat} oder der erste Zugriff ihn setzt. */
+    private String chatId;
     private final Function<File, ResearchScopeDraftStore> stores;
     private final Function<File, ConceptBranchService> concepts;
     private final List<Runnable> stateListeners = new CopyOnWriteArrayList<Runnable>();
@@ -85,26 +90,84 @@ public final class ResearchAgentHost {
             throw new IllegalArgumentException("projectsRoot, stores and concepts must not be null");
         }
         this.projectsRoot = projectsRoot;
+        this.projects = new ResearchProjects(projectsRoot);
         this.stores = stores;
         this.concepts = concepts;
     }
 
-    /** Öffnet das zuletzt benutzte Projekt erst bei Bedarf: ohne Agent-Turn wird nichts angelegt. */
+    /** Öffnet das Projekt des Chats erst bei Bedarf; ohne Chat ein eigenes, frisches Projekt. */
     private void ensureOpen() {
         if (coordinator == null) {
-            File current = readCurrentProject();
-            openProject(current != null ? current : newProjectDirectory());
+            if (chatId == null) {
+                chatId = newProjectDirectory().getName();
+            }
+            openProject(projects.directoryFor(chatId));
         }
     }
 
-    // ------------------------------------------------------------------ project
+    // ------------------------------------------------------------------ project (je Chat genau eines)
 
-    /** Beginnt ein neues, leeres Research-Projekt (frischer Weidezaun); „+ Neuer Chat“ im Agent-Modus. */
-    public void startNewProject() {
+    /**
+     * Bindet den Host an das Research-Projekt eines Chats: das bisherige Projekt wird geschlossen, das des Chats
+     * beim nächsten Zugriff geladen (oder, für einen neuen Chat, angelegt). Für denselben Chat ohne Wirkung.
+     */
+    public void openChat(String chatId) {
+        ResearchProjects.folderName(chatId); // prüft die Kennung
         synchronized (this) {
-            openProject(newProjectDirectory());
+            if (chatId.equals(this.chatId)) {
+                return;
+            }
+            closeProject();
+            this.chatId = chatId;
         }
         fireStateChanged();
+    }
+
+    /** Der Chat, dem das offene Projekt gehört, oder {@code null}. */
+    public synchronized String chatId() {
+        return chatId;
+    }
+
+    /**
+     * Löscht das Research-Projekt eines Chats. Ist es das offene, ist der Host danach an keinen Chat gebunden; der
+     * Aufrufer öffnet den Chat, der stattdessen gilt.
+     */
+    public void deleteChatProject(String chatId) {
+        boolean current;
+        synchronized (this) {
+            current = chatId.equals(this.chatId);
+            if (current) {
+                closeProject();
+                this.chatId = null;
+            }
+            projects.delete(chatId);
+        }
+        if (current) {
+            fireStateChanged();
+        }
+    }
+
+    /**
+     * Verwirft alle Projekte ohne gespeicherten Chat (Reste nie gespeicherter Chats und der früheren Ablage mit
+     * {@code current-project}); das offene Projekt bleibt immer.
+     */
+    public void retainProjectsOf(java.util.Collection<String> savedChatIds) {
+        synchronized (this) {
+            List<String> keep = new ArrayList<String>(savedChatIds);
+            if (chatId != null) {
+                keep.add(chatId);
+            }
+            projects.retainOnly(keep);
+        }
+    }
+
+    private void closeProject() {
+        projectDirectory = null;
+        coordinator = null;
+        conceptHost = null;
+        machine = null;
+        state = null;
+        runStatus = ResearchRunStatus.idle();
     }
 
     public synchronized File projectDirectory() {
@@ -151,7 +214,6 @@ public final class ResearchAgentHost {
         machine = new OoResearchStateMachine(directory.getName());
         state = readState(directory);
         runStatus = readRunStatus(directory);
-        writeCurrentProject(directory);
     }
 
     private File newProjectDirectory() {
@@ -164,36 +226,16 @@ public final class ResearchAgentHost {
         return candidate;
     }
 
-    private File readCurrentProject() {
-        File pointer = new File(projectsRoot, CURRENT_PROJECT_FILE);
-        if (!pointer.isFile()) {
-            return null;
-        }
-        try {
-            String name = new String(java.nio.file.Files.readAllBytes(pointer.toPath()), "UTF-8").trim();
-            File directory = new File(projectsRoot, name);
-            return name.isEmpty() || name.contains("/") || name.contains("\\") || !directory.isDirectory()
-                    ? null : directory;
-        } catch (IOException unreadable) {
-            LOG.warning("Aktuelles Research-Projekt nicht lesbar: " + unreadable.getMessage());
-            return null;
-        }
-    }
-
-    private void writeCurrentProject(File directory) {
-        try {
-            if (!projectsRoot.isDirectory() && !projectsRoot.mkdirs()) {
-                return;
-            }
-            java.nio.file.Files.write(new File(projectsRoot, CURRENT_PROJECT_FILE).toPath(),
-                    directory.getName().getBytes("UTF-8"));
-        } catch (IOException notWritten) {
-            LOG.warning("Aktuelles Research-Projekt nicht gespeichert: " + notWritten.getMessage());
-        }
+    /** Das Projektverzeichnis des gebundenen Chats, falls es schon existiert (legt nichts an). */
+    private File existingProject() {
+        return chatId != null && projects.exists(chatId) ? projects.directoryFor(chatId) : null;
     }
 
     /** Ob der Agent dieses Projekt schon begrüßt hat (askai: Zustand scoping/new → weiter). */
     public synchronized boolean isGreeted() {
+        if (coordinator == null && existingProject() == null) {
+            return false;
+        }
         ensureOpen();
         return new File(projectDirectory, GREETED_MARKER).isFile();
     }
@@ -220,20 +262,30 @@ public final class ResearchAgentHost {
 
     /** Die aktuelle Phase ({@code scoping}, {@code research}, {@code outline}, {@code draft}). */
     public synchronized String phaseId() {
-        ensureOpen();
-        return state.getPhaseId();
+        return peekState().getPhaseId();
     }
 
     /** Der Laufzustand in der Phase ({@code new}, {@code running}, {@code waiting}, …). */
     public synchronized String stateId() {
-        ensureOpen();
-        return state.getStateId();
+        return peekState().getStateId();
     }
 
     /** askai {@code ResearchToolPolicy.writable}: Schreibwerkzeuge einer Phase nur in ihr und nur „running“. */
     public synchronized boolean isWritable(String requiredPhaseId) {
+        ResearchStateMemento current = peekState();
+        return requiredPhaseId.equals(current.getPhaseId()) && ResearchStateIds.RUNNING.equals(current.getStateId());
+    }
+
+    /**
+     * Der Zustand, ohne ein Projekt anzulegen: ein Chat ohne Projekt steht am Anfang (Konzept/neu). Angelegt wird
+     * das Projekt erst, wenn der Agent-Modus schreibt (Begrüßung, Übergang, Werkzeug), nicht schon durch Anzeigen.
+     */
+    private ResearchStateMemento peekState() {
+        if (coordinator == null && existingProject() == null) {
+            return new OoResearchStateMachine("unopened").initialMemento();
+        }
         ensureOpen();
-        return requiredPhaseId.equals(state.getPhaseId()) && ResearchStateIds.RUNNING.equals(state.getStateId());
+        return state;
     }
 
     /**
@@ -431,7 +483,7 @@ public final class ResearchAgentHost {
 
     /** Die übernommenen Quellen des Projekts als {@code id, Titel, URL}. */
     public synchronized List<String[]> acceptedSources() {
-        if (projectDirectory == null && readCurrentProject() == null) {
+        if (projectDirectory == null && existingProject() == null) {
             return Collections.emptyList();
         }
         ensureOpen();
@@ -445,7 +497,7 @@ public final class ResearchAgentHost {
 
     /** Die übernommenen Quellen mit allen Feldern aus {@code sources.tsv} (Reiter „Quellen“). */
     public synchronized List<ResearchSourceRef> sourceRefs() {
-        if (projectDirectory == null && readCurrentProject() == null) {
+        if (projectDirectory == null && existingProject() == null) {
             return Collections.emptyList();
         }
         ensureOpen();
@@ -460,7 +512,7 @@ public final class ResearchAgentHost {
 
     /** Wie viele Treffer vorgemerkt, aber nicht übernommen wurden ({@code parked.tsv}). */
     public synchronized int parkedCount() {
-        if (projectDirectory == null && readCurrentProject() == null) {
+        if (projectDirectory == null && existingProject() == null) {
             return 0;
         }
         ensureOpen();
@@ -472,7 +524,7 @@ public final class ResearchAgentHost {
     /** Der Stand des Recherche-Laufs; nach einem Neustart der zuletzt gespeicherte (nie „aktiv“). */
     public ResearchRunStatus runStatus() {
         synchronized (this) {
-            if (projectDirectory == null && readCurrentProject() != null) {
+            if (projectDirectory == null && existingProject() != null) {
                 ensureOpen();
             }
         }
@@ -561,7 +613,7 @@ public final class ResearchAgentHost {
 
     /** Die Gliederung des Projekts ({@code outline.md}); leer, solange keine erstellt ist. */
     public synchronized String outline() {
-        if (projectDirectory == null && readCurrentProject() == null) {
+        if (projectDirectory == null && existingProject() == null) {
             return "";
         }
         ensureOpen();
@@ -617,7 +669,7 @@ public final class ResearchAgentHost {
     public ResearchDocument document() {
         String json;
         synchronized (this) {
-            if (projectDirectory == null && readCurrentProject() == null) {
+            if (projectDirectory == null && existingProject() == null) {
                 return null;
             }
             ensureOpen();
@@ -850,7 +902,7 @@ public final class ResearchAgentHost {
 
     /** Nur lesen: öffnet ein vorhandenes Projekt, legt aber keins an ({@code null}, solange es keins gibt). */
     private synchronized ResearchScopeCoordinator existingCoordinator() {
-        if (coordinator == null && readCurrentProject() != null) {
+        if (coordinator == null && existingProject() != null) {
             ensureOpen();
         }
         return coordinator;
@@ -870,7 +922,7 @@ public final class ResearchAgentHost {
     /** Das Konzeptpapier, nur wenn schon ein Projekt existiert (für die Anzeige; legt nichts an). */
     public ConceptBranchService existingConceptService() {
         synchronized (this) {
-            if (conceptHost == null && readCurrentProject() != null) {
+            if (conceptHost == null && existingProject() != null) {
                 ensureOpen();
             }
             return conceptHost == null ? null : conceptHost.service();
@@ -881,7 +933,7 @@ public final class ResearchAgentHost {
     public List<String> blacklistTermsForDisplay() {
         ResearchConceptHost concept;
         synchronized (this) {
-            if (conceptHost == null && readCurrentProject() != null) {
+            if (conceptHost == null && existingProject() != null) {
                 ensureOpen();
             }
             concept = conceptHost;

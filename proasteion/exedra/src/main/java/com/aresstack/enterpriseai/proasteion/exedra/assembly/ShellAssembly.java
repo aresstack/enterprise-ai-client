@@ -7,6 +7,8 @@ import com.aresstack.enterpriseai.proasteion.application.composition.ConfluenceE
 import com.aresstack.enterpriseai.astu.acropolis.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentModeAssembly;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchOutOfScopeSky;
+import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentTurnChatMirror;
+import com.aresstack.enterpriseai.proasteion.exedra.agent.ConversationLifecycle;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ModeSwitchingChatActions;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentServiceBinding;
 import com.aresstack.enterpriseai.proasteion.application.agent.AgentModelChoice;
@@ -57,10 +59,7 @@ import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -71,10 +70,11 @@ import java.util.logging.Logger;
  * Baut die Oberfläche über dem Graphen aus {@link CompositionRoot}: die Arbeitsfläche
  * ({@link ChatWorkspacePanel}: Hamburger, Modus-Pille, Drawer) mit der Chat-Ansicht samt
  * {@link RagChatBinding} (AP22: RAG-Schalter, Quellen, Hinweise) und Statuszeile der Wissensbasis, dazu, falls
- * konfiguriert, der Agent-Ansicht (AP21). „+ Neuer Chat“ eröffnet im Chat-Modus eine neue Unterhaltung am
- * {@link ChatService}, schließt die bisherige dort und leert das Transkript; im Agent-Modus beendet es die
- * ACP-Session samt Agentenprozess
- * ({@link AgentService#endSession()}), damit der nächste Auftrag ohne den alten Kontext startet. Die Chat-Historie
+ * konfiguriert, der Agent-Ansicht (AP21). Chat, Agentensitzung und Research-Projekt gehören zusammen
+ * ({@link ConversationLifecycle}): „+ Neuer Chat“ eröffnet eine neue Unterhaltung am {@link ChatService}, schließt
+ * die bisherige dort, leert das Transkript, beendet die ACP-Session samt Agentenprozess
+ * ({@link AgentService#endSession()}) und beginnt ein neues Research-Projekt; ein gespeicherter Chat öffnet sich mit
+ * seinem Research-Projekt in einer frischen Agentensitzung. Die Chat-Historie
  * ({@link ChatHistoryBinding}) speichert jeden Chat samt Anhängen unter {@code chats/} neben der
  * Konfigurationsdatei; der Drawer listet, öffnet und löscht die gespeicherten Chats. Das Zahnrad reicht
  * die Composition Root als {@link WorkspaceActions#settingsRequested()} an den Einstellungen-Dialog weiter.
@@ -144,6 +144,8 @@ public final class ShellAssembly {
                     new ModeSwitchingChatActions(chatActions, agentBinding, modes, chatModel),
                     knowledgeStatus, palette, bubbles);
             agent = AgentModeAssembly.sharedView(chatShell, agentBinding);
+            // Ein Verlauf: abgeschlossene Agenten-Turns gehören auch zur Unterhaltung des Chats (askai arch).
+            new AgentTurnChatMirror(chatService, chatActions::conversationId, modes, chatModel);
             if (root.researchHost() != null) {
                 final ResearchOutOfScopeSky sky = AgentModeAssembly.attachResearchSky(agent, root.researchHost(),
                         root.uiExecutor());
@@ -234,33 +236,26 @@ public final class ShellAssembly {
                 action.run();
             }
         });
-        // Löschen wie askai arch: bis zum Beenden nur vorgemerkt (↩ holt den Chat zurück), erst dann samt Anhängen weg.
-        final Set<String> pendingDeletes = Collections.synchronizedSet(new LinkedHashSet<String>());
-        root.shutdown().then("chat-history-deletes", () -> {
-            synchronized (pendingDeletes) {
-                for (String chatId : pendingDeletes) {
-                    history.delete(chatId);
-                }
-                pendingDeletes.clear();
-            }
-        });
-        workspace.setActions(new WorkspaceActions() {
+        // Ein Chat, eine Agentensitzung, ein Research-Projekt (askai arch): Neuer Chat, Öffnen und Löschen schalten
+        // alle drei gemeinsam um. Löschen wie askai arch: bis zum Beenden nur vorgemerkt (↩ holt den Chat zurück),
+        // erst dann samt Anhängen und Research-Projekt weg.
+        final ConversationLifecycle lifecycle = new ConversationLifecycle(new ConversationLifecycle.Chats() {
             @Override
-            public void newChatRequested(ShellMode mode) {
-                // „Neuer Chat“ gilt unabhängig vom Modus: derselbe Chat, frisch (askai arch).
-                if (agent != null && agentService.isBusy()) {
-                    return; // der Agent arbeitet noch
-                }
-                if (startNewChat() && agent != null) {
-                    agentService.endSession(); // der Agent behält sonst den alten Kontext in seiner Session
-                    if (root.researchHost() != null) {
-                        root.researchHost().startNewProject(); // neues Research-Projekt, frischer Weidezaun
-                    }
-                }
+            public String currentChatId() {
+                return history.currentChatId();
             }
 
-            /** Neue Unterhaltung im Chat; {@code false}, solange eine Antwort oder Suche läuft. */
-            private boolean startNewChat() {
+            @Override
+            public List<String> savedChatIds() {
+                List<String> ids = new ArrayList<String>();
+                for (ChatRecord record : history.savedChats()) {
+                    ids.add(record.getId());
+                }
+                return ids;
+            }
+
+            @Override
+            public boolean startNewConversation() {
                 if (chatModel.isStreaming()) {
                     return false; // der Knopf ist während einer Antwort deaktiviert; zur Sicherheit auch hier
                 }
@@ -275,6 +270,36 @@ public final class ShellAssembly {
                 chatModel.clear();
                 chatService.closeConversation(previous); // gespeichert ist er; der ChatService braucht ihn nicht mehr
                 return true;
+            }
+
+            @Override
+            public boolean open(String chatId) {
+                return history.open(chatId);
+            }
+
+            @Override
+            public void delete(String chatId) {
+                history.delete(chatId);
+            }
+        }, agentService == null ? null : new ConversationLifecycle.AgentSessions() {
+            @Override
+            public boolean isBusy() {
+                return agentService.isBusy();
+            }
+
+            @Override
+            public void endSession() {
+                agentService.endSession();
+            }
+        }, root.researchHost());
+        lifecycle.start();
+        view.setLifecycle(lifecycle);
+        root.shutdown().then("chat-history-deletes", lifecycle::purgeDeleted);
+        workspace.setActions(new WorkspaceActions() {
+            @Override
+            public void newChatRequested(ShellMode mode) {
+                // „Neuer Chat“ gilt unabhängig vom Modus: derselbe Chat, frisch (askai arch).
+                lifecycle.newChat();
             }
 
             @Override
@@ -294,20 +319,17 @@ public final class ShellAssembly {
 
             @Override
             public void openSavedChatRequested(String chatId) {
-                history.open(chatId);
+                lifecycle.openChat(chatId);
             }
 
             @Override
             public void deleteSavedChatRequested(String chatId) {
-                if (chatId.equals(history.currentChatId()) && !startNewChat()) {
-                    return; // der laufende Chat lässt sich gerade nicht verlassen
-                }
-                pendingDeletes.add(chatId);
+                lifecycle.deleteChat(chatId); // der laufende Chat lässt sich während einer Antwort nicht verlassen
             }
 
             @Override
             public void restoreSavedChatRequested(String chatId) {
-                pendingDeletes.remove(chatId);
+                lifecycle.restoreChat(chatId);
             }
 
             @Override
@@ -381,6 +403,7 @@ public final class ShellAssembly {
         private final Object persistLock = new Object();
         private volatile String latestModel;
         private Runnable settingsAction;
+        private ConversationLifecycle lifecycle;
 
         ShellView(ChatWorkspacePanel workspace, ChatShellModel chatModel, RagChatBinding chatActions,
                   AgentModeAssembly.AgentView agent, KnowledgeSourcesController sources, ChatComposerPanel composer,
@@ -428,6 +451,15 @@ public final class ShellAssembly {
         /** {@code null} ohne Agent-Modus. */
         public AgentModeAssembly.AgentView agent() {
             return agent;
+        }
+
+        /** Neuer Chat, Öffnen und Löschen samt Agentensitzung und Research-Projekt. */
+        public ConversationLifecycle lifecycle() {
+            return lifecycle;
+        }
+
+        void setLifecycle(ConversationLifecycle lifecycle) {
+            this.lifecycle = lifecycle;
         }
 
         /** Was das Zahnrad im Drawer tut (die Composition Root hängt den Einstellungen-Dialog an). */

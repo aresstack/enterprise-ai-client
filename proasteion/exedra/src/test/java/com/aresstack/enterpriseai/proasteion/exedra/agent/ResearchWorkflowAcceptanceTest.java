@@ -52,6 +52,7 @@ public class ResearchWorkflowAcceptanceTest {
     public void wholeResearchFlowRunsThroughUiActionsAndHostTransitions() throws Exception {
         File root = folder.newFolder("research");
         final ResearchAgentHost host = host(root);
+        host.openChat("chat-iar");
         host.setCorpusSearch((resources, query, limit) -> resources.contains(PAGE)
                 ? "passage: " + PASSAGE + "\nresource: " + PAGE + "\ntitle: IAR Übersicht\n"
                 + "Überblick: IAR bündelt die Auswertung der Anträge.\n\n" : "");
@@ -150,8 +151,9 @@ public class ResearchWorkflowAcceptanceTest {
         perform(parts, ResearchWorkflow.FINISH_DOCUMENT);
         assertEquals("completed", host.stateId());
 
-        // Neustart: dasselbe Projekt mit Zustand, Quellen, Gliederung und Dokument
+        // Neustart, derselbe Chat: dasselbe Projekt mit Zustand, Quellen, Gliederung und Dokument
         ResearchAgentHost restarted = host(root);
+        restarted.openChat("chat-iar");
         assertEquals("draft", restarted.phaseId());
         assertEquals("completed", restarted.stateId());
         assertEquals(2, restarted.sourceRefs().size());
