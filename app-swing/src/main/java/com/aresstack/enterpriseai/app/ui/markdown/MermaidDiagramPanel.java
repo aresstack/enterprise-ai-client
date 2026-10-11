@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.app.ui.markdown;
 
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
@@ -36,11 +37,12 @@ import java.awt.image.BufferedImage;
 public final class MermaidDiagramPanel extends JPanel {
 
     private static final int PADDING = 12;
-    private static final String VIEWER_TITLE = "Mermaid-Diagramm";
     private static final int MIN_RENDER_WIDTH = 640;
     private static final int MAX_RENDER_WIDTH = 2400;
 
     private final String diagramCode;
+    private final String kindLabel;
+    private final boolean showSourceOnFailure;
     private final MarkdownTheme theme;
     private final MermaidImageRenderer imageRenderer;
     private final DiagramCanvas canvas;
@@ -51,6 +53,21 @@ public final class MermaidDiagramPanel extends JPanel {
 
     public MermaidDiagramPanel(String diagramCode, MarkdownTheme theme,
                                MermaidImageRenderer imageRenderer) {
+        this(diagramCode, theme, imageRenderer, "Mermaid-Diagramm", false);
+    }
+
+    /**
+     * Ein SVG-Bild aus der Antwort: gleicher Bild- und Overlay-Weg wie Mermaid; scheitert das Rendern, zeigt die
+     * Blase den SVG-Quelltext als Codeblock mit einer kurzen Fehlerzeile.
+     */
+    static MermaidDiagramPanel svg(String svgSource, MarkdownTheme theme, MermaidImageRenderer svgRenderer) {
+        return new MermaidDiagramPanel(svgSource, theme, svgRenderer, "SVG-Grafik", true);
+    }
+
+    private MermaidDiagramPanel(String diagramCode, MarkdownTheme theme, MermaidImageRenderer imageRenderer,
+                                String kindLabel, boolean showSourceOnFailure) {
+        this.kindLabel = kindLabel;
+        this.showSourceOnFailure = showSourceOnFailure;
         this.diagramCode = diagramCode == null ? "" : diagramCode;
         this.theme = theme;
         this.imageRenderer = imageRenderer;
@@ -76,7 +93,7 @@ public final class MermaidDiagramPanel extends JPanel {
 
     private JComponent buildToolbar() {
         MarkdownActionButton copyCodeButton = new MarkdownActionButton(new MarkdownActionButton.CopyIcon(),
-                "Mermaid-Code kopieren", theme.getMutedForeground(), this::copyCodeToClipboard);
+                kindLabel.startsWith("SVG") ? "SVG-Code kopieren" : "Mermaid-Code kopieren", theme.getMutedForeground(), this::copyCodeToClipboard);
         copyCodeButton.setEnabled(diagramCode.trim().length() > 0);
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
@@ -91,7 +108,7 @@ public final class MermaidDiagramPanel extends JPanel {
             return;
         }
         if (diagramCode.trim().isEmpty()) {
-            errorMessage = "Das Mermaid-Diagramm ist leer.";
+            errorMessage = "Das " + kindLabel + " ist leer.";
             canvas.repaint();
             return;
         }
@@ -110,11 +127,14 @@ public final class MermaidDiagramPanel extends JPanel {
                 try {
                     image = get();
                     if (image == null) {
-                        errorMessage = "Das Mermaid-Diagramm konnte nicht gerendert werden.";
+                        errorMessage = kindLabel + " konnte nicht gerendert werden.";
                     }
                 } catch (Exception ex) {
-                    errorMessage = "Mermaid-Fehler: " + ex.getMessage();
+                    errorMessage = kindLabel + ": Fehler beim Rendern: " + ex.getMessage();
                 } finally {
+                    if (image == null && showSourceOnFailure) {
+                        showSourceInstead();
+                    }
                     rendering = false;
                     copyImageButton.setEnabled(image != null);
                     canvas.setCursor(Cursor.getPredefinedCursor(
@@ -127,12 +147,26 @@ public final class MermaidDiagramPanel extends JPanel {
         }.execute();
     }
 
+    /** Ersetzt die Bildfläche durch eine Fehlerzeile und den Quelltext als Codeblock. */
+    private void showSourceInstead() {
+        removeAll();
+        setBorder(null);
+        JLabel error = new JLabel(errorMessage);
+        error.putClientProperty("html.disable", Boolean.TRUE);
+        error.setFont(theme.getBodyFont());
+        error.setForeground(theme.getErrorForeground());
+        add(error, BorderLayout.NORTH);
+        add(new CodeBlockPanel("svg", diagramCode, theme), BorderLayout.CENTER);
+        revalidate();
+        repaint();
+    }
+
     /** Öffnet den vergrößerten, zoombaren Betrachter; er rendert das Diagramm aus dem Mermaid-Quelltext neu. */
     private void openEnlargedViewer() {
         Container host = SwingUtilities.getAncestorOfClass(DiagramOverlayHost.class, this);
         if (host instanceof DiagramOverlayHost) {
             ((DiagramOverlayHost) host).showTranscriptOverlay(
-                    new MermaidViewerPanel(diagramCode, imageRenderer, image), VIEWER_TITLE);
+                    new MermaidViewerPanel(diagramCode, imageRenderer, image, kindLabel), kindLabel);
             return;
         }
         Window owner = SwingUtilities.getWindowAncestor(this);
@@ -231,7 +265,7 @@ public final class MermaidDiagramPanel extends JPanel {
                     paintImage(g2);
                     return;
                 }
-                paintStatus(g2, errorMessage == null ? "Mermaid wird gerendert …" : errorMessage,
+                paintStatus(g2, errorMessage == null ? kindLabel + " wird gerendert …" : errorMessage,
                         errorMessage == null ? theme.getMutedForeground() : theme.getErrorForeground());
             } finally {
                 g2.dispose();

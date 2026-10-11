@@ -37,6 +37,7 @@ final class FlexmarkSwingRenderer {
     private final MarkdownTheme theme;
     private final InlineMarkdownRenderer inlineRenderer;
     private final MermaidImageRenderer mermaidImageRenderer;
+    private final MermaidImageRenderer svgImageRenderer = new SvgImageRenderer();
 
     FlexmarkSwingRenderer(MarkdownTheme theme, DesktopLinkOpener linkOpener,
                           MermaidImageRenderer mermaidImageRenderer) {
@@ -52,7 +53,7 @@ final class FlexmarkSwingRenderer {
     }
 
     JPanel render(String markdown, boolean renderMermaid) {
-        Node document = parser.parse(markdown == null ? "" : markdown);
+        Node document = parser.parse(markdown == null ? "" : SvgMarkdownBlocks.fence(markdown));
         return renderContainer(document, renderMermaid, true);
     }
 
@@ -133,6 +134,11 @@ final class FlexmarkSwingRenderer {
         if ("mermaid".equalsIgnoreCase(language) && renderMermaid) {
             return new MermaidDiagramPanel(code, theme, mermaidImageRenderer);
         }
+        // Rohes SVG (```svg, oder ```xml/```html mit <svg als Wurzel, oder nacktes <svg> — siehe SvgMarkdownBlocks)
+        // geht über denselben Bildweg wie Mermaid; während des Streamings bleibt es ein Codeblock.
+        if (renderMermaid && isSvgBlock(language, code)) {
+            return MermaidDiagramPanel.svg(code, theme, svgImageRenderer);
+        }
         // Ein Modell packt einen echten Mermaid-Zaun manchmal in einen zusätzlichen ```markdown-Block. Dieser eine
         // Behälter wird ausgepackt (höchstens eine Ebene, nur bei vollständiger Antwort), damit das Diagramm
         // erscheint — ein gewöhnlicher Codeblock (java/json/…) oder ein Doku-Ausschnitt ohne vollständigen inneren
@@ -144,6 +150,15 @@ final class FlexmarkSwingRenderer {
             return null; // für einen leeren Zaun keinen großen leeren Kasten zeichnen
         }
         return new CodeBlockPanel(language, code, theme);
+    }
+
+    private static boolean isSvgBlock(String language, String code) {
+        String normalized = language == null ? "" : language.trim().toLowerCase(Locale.ROOT);
+        if (normalized.equals("svg")) {
+            return code.toLowerCase(Locale.ROOT).contains("<svg");
+        }
+        return (normalized.equals("xml") || normalized.equals("html") || normalized.isEmpty())
+                && SvgImageRenderer.looksLikeSvg(code);
     }
 
     private static boolean isContainerLanguage(String language) {

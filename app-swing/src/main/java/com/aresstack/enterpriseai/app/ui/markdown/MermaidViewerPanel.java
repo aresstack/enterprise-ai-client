@@ -54,6 +54,7 @@ public final class MermaidViewerPanel extends JPanel {
 
     private final String diagramCode;
     private final MermaidImageRenderer renderer;
+    private final String kindLabel;
     private final Canvas canvas = new Canvas();
     private final JLabel info = new JLabel(" ", SwingConstants.CENTER);
     private final JLayeredPane layers = new JLayeredPane();
@@ -69,7 +70,14 @@ public final class MermaidViewerPanel extends JPanel {
      *                {@code null} sein
      */
     public MermaidViewerPanel(String diagramCode, MermaidImageRenderer renderer, BufferedImage initial) {
+        this(diagramCode, renderer, initial, "Mermaid-Diagramm");
+    }
+
+    /** @param kindLabel Art der Grafik für Infozeile und Fehleransicht, etwa „Mermaid-Diagramm“ oder „SVG-Grafik“ */
+    public MermaidViewerPanel(String diagramCode, MermaidImageRenderer renderer, BufferedImage initial,
+                              String kindLabel) {
         super(new BorderLayout(0, 0));
+        this.kindLabel = kindLabel == null ? "Mermaid-Diagramm" : kindLabel;
         if (renderer == null) {
             throw new IllegalArgumentException("renderer must not be null");
         }
@@ -320,7 +328,7 @@ public final class MermaidViewerPanel extends JPanel {
         removeAll();
         JTextArea details = new JTextArea(
                 "Das Diagramm konnte nicht gerendert werden.\n\n"
-                        + "Mermaid-Quelltext:\n" + diagramCode);
+                        + "Quelltext:\n" + diagramCode);
         details.setEditable(false);
         details.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         JScrollPane scroll = new JScrollPane(details);
@@ -333,7 +341,7 @@ public final class MermaidViewerPanel extends JPanel {
     private void updateInfo() {
         BufferedImage image = canvas.staticImage;
         String dims = image != null ? "  (" + image.getWidth() + " × " + image.getHeight() + ")" : "";
-        info.setText("Mermaid-Diagramm" + dims + "  |  Zoom: " + canvas.getZoomPercent() + " %");
+        info.setText(kindLabel + dims + "  |  Zoom: " + canvas.getZoomPercent() + " %");
     }
 
     private void copyImage() {
