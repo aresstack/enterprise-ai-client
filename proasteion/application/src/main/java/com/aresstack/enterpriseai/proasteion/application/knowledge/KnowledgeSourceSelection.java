@@ -51,6 +51,14 @@ public final class KnowledgeSourceSelection implements RagSourceFilter {
         return Boolean.TRUE.equals(sources.get(id));
     }
 
+    /**
+     * Darf {@code knowledge_search} die Quelle durchsuchen? Solange die Auswahl nichts verwaltet, ja; sonst nur mit
+     * Häkchen. Dieselbe Regel für Agent und normalen Chat.
+     */
+    public synchronized boolean isSearchable(SourceAddress id) {
+        return !managed || isEnabled(id);
+    }
+
     @Override
     public synchronized boolean isRestricted() {
         return managed;

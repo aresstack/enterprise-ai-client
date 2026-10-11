@@ -215,7 +215,7 @@ public class ApplicationCompositionTest {
             assertFalse(tool.name(), tool.origin().isEmpty());
         }
         // Wissenswerkzeuge: Name und Beschreibung aus der McpToolContribution, Verfügbarkeit aus der Registrierung.
-        assertEquals("Agent", shown.get(KnowledgeMcpTools.KNOWLEDGE_SEARCH).availability());
+        assertEquals("Chat + Agent", shown.get(KnowledgeMcpTools.KNOWLEDGE_SEARCH).availability());
         assertEquals("Chat + Agent", shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).availability());
         assertEquals(root.knowledgeTools().knowledgeRead().getDescription(),
                 shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).description());
@@ -237,7 +237,12 @@ public class ApplicationCompositionTest {
             }
         }
         assertEquals(shownForAgent, agent);
-        assertEquals(KnowledgeMcpTools.KNOWLEDGE_READ, root.knowledgeReadChatTool().name());
+        // Der Chat bekommt den Wissens-Werkzeugsatz aus derselben Registry (Bug 1: auch knowledge_search).
+        List<String> chat = new ArrayList<String>();
+        for (com.aresstack.enterpriseai.astu.acropolis.tool.AiTool tool : root.knowledgeChatTools()) {
+            chat.add(tool.name());
+        }
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ), chat);
     }
 
     @Test

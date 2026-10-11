@@ -212,13 +212,12 @@ public final class CompositionRoot {
         // Nur zwei Werkzeuge (knowledge_search, knowledge_read); durchsucht werden nur die angehakten Quellen.
         final KnowledgeSourceSelection selection = sourceSelection;
         this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, searchIndexing,
-                id -> !selection.isRestricted() || selection.isEnabled(id), config.agent().toolSettings());
-        // Die zentrale Werkzeug-Registry: Chat, Agenten und der Einstellungen-Reiter „Tools“ lesen nur hier.
+                selection::isSearchable, config.agent().toolSettings());
+        // Die zentrale Werkzeug-Registry: Chat, Agenten und der Einstellungen-Reiter „Tools“ lesen nur hier. Der
+        // Wissens-Werkzeugsatz (knowledge_search, knowledge_read) steht als ein Satz für Chat und Agent darin.
         final KnowledgeMcpTools offered = knowledgeTools;
-        toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.AGENT),
-                () -> Collections.singletonList(offered.knowledgeSearch()));
         toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.CHAT, ToolChannel.AGENT),
-                () -> Collections.singletonList(offered.knowledgeRead()));
+                offered::contributions);
         toolCatalog.registerDefinitions(ORIGIN_ATTACHMENTS, EnumSet.of(ToolChannel.CHAT),
                 AttachmentTools::definitions);
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
@@ -443,12 +442,13 @@ public final class CompositionRoot {
     }
 
     /**
-     * {@code knowledge_read} als Werkzeug des normalen Chats (Seiten-Bookmarks): derselbe Handler wie über MCP; der
-     * Chat-Pfad sieht nur {@link com.aresstack.enterpriseai.astu.acropolis.tool.AiTool}.
+     * Die ausführbaren Werkzeuge des Kanals {@link ToolChannel#CHAT} aus dem {@link #toolCatalog()}, heute der
+     * Wissens-Werkzeugsatz ({@code knowledge_search}, {@code knowledge_read}): dieselben Handler, Beschreibungen und
+     * Schemas wie über MCP für den Agenten; {@code knowledge_search} durchsucht nur die
+     * angehakten Quellen von jetzt. Der Chat-Pfad sieht nur {@link com.aresstack.enterpriseai.astu.acropolis.tool.AiTool}.
      */
-    public com.aresstack.enterpriseai.astu.acropolis.tool.AiTool knowledgeReadChatTool() {
-        McpToolContribution read = toolCatalog.find(KnowledgeMcpTools.KNOWLEDGE_READ, ToolChannel.CHAT);
-        return read == null ? null : new McpChatTool(read);
+    public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> knowledgeChatTools() {
+        return McpChatTool.all(toolCatalog.tools(EnumSet.of(ToolChannel.CHAT)));
     }
 
     /** Der Agent-Modus: das konfigurierte Agent-Kommando, sonst der eingebaute Recherche-Agent. */

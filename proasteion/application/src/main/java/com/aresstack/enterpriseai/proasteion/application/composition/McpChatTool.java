@@ -9,12 +9,15 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolParameter;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolType;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Ein MCP-Werkzeug als Werkzeug des normalen Chats ({@link AiTool}): dieselbe Beschreibung, dasselbe Schema, derselbe
- * Handler. So gibt es {@code knowledge_read} nur einmal, ob der Agent es über MCP ruft oder das Chat-Modell über
+ * Handler. So gibt es {@code knowledge_search} und {@code knowledge_read} nur einmal, ob der Agent sie über MCP ruft oder das Chat-Modell über
  * {@code tool_calls}. Ein Fehlerergebnis geht als {@code Fehler: …} an das Modell zurück.
  */
 final class McpChatTool implements AiTool {
@@ -28,6 +31,15 @@ final class McpChatTool implements AiTool {
         }
         this.tool = tool;
         this.definition = ToolDefinition.function(tool.getName(), tool.getDescription(), schema(tool));
+    }
+
+    /** Alle {@code tools} als Chat-Werkzeuge, in derselben Reihenfolge. */
+    static List<AiTool> all(List<McpToolContribution> tools) {
+        List<AiTool> chatTools = new ArrayList<AiTool>(tools.size());
+        for (McpToolContribution tool : tools) {
+            chatTools.add(new McpChatTool(tool));
+        }
+        return Collections.unmodifiableList(chatTools);
     }
 
     @Override

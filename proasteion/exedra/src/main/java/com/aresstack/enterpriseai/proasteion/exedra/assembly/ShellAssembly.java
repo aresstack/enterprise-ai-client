@@ -116,11 +116,11 @@ public final class ShellAssembly {
         final Path chatsDirectory = AppPaths.configFile().toAbsolutePath().getParent().resolve(CHATS_DIRECTORY);
         if (root.ports().chat() != null) {
             // Tool-Calling, Dateianhänge und Seiten: /chat/completions mit tools, Ablage im Ordner des Chats, Text
-            // über document-tika, Seiten-Bookmarks über dasselbe knowledge_read wie im Agent-Modus.
+            // über document-tika, Suche und Seiten über dieselben knowledge_search/knowledge_read wie im Agent-Modus.
             chatActions.enableTools(new ToolSupport(root.ports().chat(),
                     new FileAttachmentStore(chatsDirectory),
                     root.attachmentText(),
-                    root.knowledgeReadChatTool(),
+                    root.knowledgeChatTools(),
                     root.config().chat().toolsEnabled()));
         }
         final ChatHistoryBinding history = new ChatHistoryBinding(new FileChatHistoryStore(chatsDirectory),

@@ -5,12 +5,15 @@ import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtrac
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
  * Was die {@link RagChatBinding} für Tool-Calling, Dateianhänge und Seiten-Bookmarks braucht: den gerouteten
  * Chat-Port ({@code /chat/completions} mit {@code tools}), die Ablage und die Textextraktion der Anhänge, das
- * Werkzeug {@code knowledge_read} für Seiten des Chats, den Schalter {@code chat.tools.enabled} und einen Executor
+ * Wissens-Werkzeuge ({@code knowledge_search}, {@code knowledge_read}; dieselben wie im Agent-Modus), den Schalter {@code chat.tools.enabled} und einen Executor
  * für die Werkzeug-Schleife (ein Daemon-Thread je Anfrage).
  */
 public final class ToolSupport {
@@ -18,20 +21,31 @@ public final class ToolSupport {
     private final ChatCompletionPort chat;
     private final AttachmentStore store;
     private final AttachmentTextExtractor extractor;
-    private final AiTool knowledgeRead;
+    private final List<AiTool> knowledgeTools;
     private final boolean alwaysOn;
     private final Executor loopExecutor;
 
-    /** @param knowledgeRead liest Seiten-Bookmarks des Chats; {@code null}: Seiten bleiben ohne Werkzeug */
+    /**
+     * @param knowledgeTools der Wissens-Werkzeugsatz des Chats (Suche in den angehakten Quellen, Lesen von Treffern
+     *                       und Seiten-Bookmarks); {@code null} oder leer: Chat ohne Wissens-Werkzeuge
+     */
     public ToolSupport(ChatCompletionPort chat, AttachmentStore store, AttachmentTextExtractor extractor,
-                       AiTool knowledgeRead, boolean alwaysOn) {
+                       List<AiTool> knowledgeTools, boolean alwaysOn) {
         if (chat == null || store == null || extractor == null) {
             throw new IllegalArgumentException("chat, store and extractor must not be null");
         }
         this.chat = chat;
         this.store = store;
         this.extractor = extractor;
-        this.knowledgeRead = knowledgeRead;
+        List<AiTool> tools = new ArrayList<AiTool>();
+        if (knowledgeTools != null) {
+            for (AiTool tool : knowledgeTools) {
+                if (tool != null) {
+                    tools.add(tool);
+                }
+            }
+        }
+        this.knowledgeTools = Collections.unmodifiableList(tools);
         this.alwaysOn = alwaysOn;
         this.loopExecutor = command -> {
             Thread thread = new Thread(command, "tool-loop");
@@ -52,9 +66,19 @@ public final class ToolSupport {
         return extractor;
     }
 
-    /** {@code knowledge_read} oder {@code null}. */
-    public AiTool knowledgeRead() {
-        return knowledgeRead;
+    /** Der Wissens-Werkzeugsatz in fester Reihenfolge, leer ohne Wissens-Werkzeuge. */
+    public List<AiTool> knowledgeTools() {
+        return knowledgeTools;
+    }
+
+    /** Das Wissens-Werkzeug {@code name} oder {@code null}. */
+    public AiTool knowledgeTool(String name) {
+        for (AiTool tool : knowledgeTools) {
+            if (tool.name().equals(name)) {
+                return tool;
+            }
+        }
+        return null;
     }
 
     /** {@code chat.tools.enabled}: jede Frage über die Werkzeug-Schleife, nicht nur mit Anhängen oder Seiten. */

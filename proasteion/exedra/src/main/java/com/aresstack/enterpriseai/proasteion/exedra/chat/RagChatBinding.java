@@ -22,6 +22,7 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RagSource;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPath;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalWarning;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
@@ -75,12 +76,14 @@ import java.util.logging.Logger;
  * und Hinweisen stehen nur Titel, Orte (laut Domänenregel ohne Zugangsdaten), Stände und Scores, nie Tokens;
  * eine gescheiterte Antwort nennt ihre technische Ursache wie {@link ChatServiceBinding#describe}.
  *
- * <p><b>Werkzeuge, Anhänge und Seiten</b> ({@link #enableTools}): Hat die Unterhaltung Anhänge oder Seiten (oder
- * steht {@code chat.tools.enabled=true}), läuft die Nachricht über die Werkzeug-Schleife ({@code /chat/completions}
+ * <p><b>Werkzeuge, Anhänge und Seiten</b> ({@link #enableTools}): Hat die Unterhaltung Anhänge oder Seiten, ist
+ * mindestens eine Wissensquelle angehakt (oder steht {@code chat.tools.enabled=true}), läuft die Nachricht über die Werkzeug-Schleife ({@code /chat/completions}
  * mit {@code tools}, ohne Streaming): neue Dateien werden auf dem Arbeits-Thread abgelegt, dem Modell werden nur
  * Kennung und Name der Anhänge genannt, den Inhalt holt es sich über {@code read_attachment}/{@code search_attachment}.
  * Seiten aus dem Lesebereich gehören ab der Nachricht, mit der sie kamen, zum Chat: das Modell kennt nur Titel und
- * Bookmark und liest den Inhalt mit {@code knowledge_read}. Die Blase zeigt währenddessen, welches Werkzeug läuft;
+ * Bookmark und liest den Inhalt mit {@code knowledge_read}. Mit angehakter Quelle oder Seiten bekommt das Modell den
+ * Wissens-Werkzeugsatz des Agenten ({@code knowledge_search} über die angehakten Quellen, {@code knowledge_read}),
+ * auch ohne Seite: so kann es selbst weitere Seiten suchen und lesen. Die Blase zeigt währenddessen, welches Werkzeug läuft;
  * die Antwort erscheint am Stück.
  */
 public final class RagChatBinding implements ChatShellActions {
@@ -102,6 +105,7 @@ public final class RagChatBinding implements ChatShellActions {
     static final String READING_ACTIVITY = "Liest Anhang …";
     static final String SEARCHING_ACTIVITY = "Durchsucht Anhang …";
     static final String READING_PAGE_ACTIVITY = "Liest Seite …";
+    static final String SEARCHING_KNOWLEDGE_ACTIVITY = "Durchsucht Wissensquellen …";
     static final String ATTACHMENTS_UNAVAILABLE_NOTICE =
             "Dateianhänge sind in dieser Sitzung nicht verfügbar; die Nachricht ging ohne sie hinaus.";
     static final String PAGES_UNAVAILABLE_NOTICE =
@@ -284,7 +288,7 @@ public final class RagChatBinding implements ChatShellActions {
         }
         // Ohne Werkzeuge gehen Seiten und Dateien nicht mit; die Nachricht selbst darf nicht verloren gehen (der
         // Composer hat Text und Chips schon geleert).
-        if (!newBookmarks.isEmpty() && (tools == null || tools.knowledgeRead() == null)) {
+        if (!newBookmarks.isEmpty() && (tools == null || tools.knowledgeTool(ChatBookmark.READ_TOOL) == null)) {
             model.addNotice(PAGES_UNAVAILABLE_NOTICE);
             newBookmarks.clear();
             newPages.clear();
@@ -306,8 +310,6 @@ public final class RagChatBinding implements ChatShellActions {
         final List<ChatBookmark> chatPages = new ArrayList<ChatBookmark>(bookmarks);
         final TranscriptEntry answer = model.beginAssistantMessage();
         final TurnListener listener = new TurnListener();
-        final boolean toolPath = tools != null
-                && (tools.alwaysOn() || conversationHasAttachments || !newFiles.isEmpty() || !chatPages.isEmpty());
         RagOptions ragOptions = RagOptions.disabled();
         if (ragEnabled) {
             if (!sources.isRestricted()) {
@@ -316,6 +318,12 @@ public final class RagChatBinding implements ChatShellActions {
                 ragOptions = RagOptions.enabled().restrictedTo(sources.allowedSources());
             }
         }
+        // Wissens-Werkzeuge, sobald es etwas zu suchen (angehakte Quelle) oder zu lesen (Seite) gibt; ein Bookmark
+        // ist keine Voraussetzung für die Suche. Keine Quelle angehakt und keine Seite: normaler Chat.
+        final boolean knowledgeTools = tools != null && !tools.knowledgeTools().isEmpty()
+                && (ragOptions.isEnabled() || !chatPages.isEmpty());
+        final boolean toolPath = tools != null && (tools.alwaysOn() || conversationHasAttachments
+                || !newFiles.isEmpty() || !chatPages.isEmpty() || knowledgeTools);
         if (!ragOptions.isEnabled() && !toolPath) {
             startWithoutRetrieval(text, listener);
             return;
@@ -359,8 +367,8 @@ public final class RagChatBinding implements ChatShellActions {
                             List<AiTool> available = new ArrayList<AiTool>();
                             available.add(attachments.registry().find(ReadAttachmentTool.NAME));
                             available.add(attachments.registry().find(SearchAttachmentTool.NAME));
-                            if (!chatPages.isEmpty() && support.knowledgeRead() != null) {
-                                available.add(support.knowledgeRead());
+                            if (knowledgeTools) {
+                                available.addAll(support.knowledgeTools());
                             }
                             via = new ChatCompletionsToolLoop(support.chat(), new ToolRegistry(available),
                                     support.loopExecutor(), activity(listener),
@@ -447,6 +455,7 @@ public final class RagChatBinding implements ChatShellActions {
                 showActivity(listener, ReadAttachmentTool.NAME.equals(toolName) ? READING_ACTIVITY
                         : SearchAttachmentTool.NAME.equals(toolName) ? SEARCHING_ACTIVITY
                         : ChatBookmark.READ_TOOL.equals(toolName) ? READING_PAGE_ACTIVITY
+                        : KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) ? SEARCHING_KNOWLEDGE_ACTIVITY
                         : "Werkzeug " + toolName + " …");
             }
         };

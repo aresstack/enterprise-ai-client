@@ -173,7 +173,8 @@ public class RagChatBindingTest {
             @Override
             public void run() {
                 fixture.binding.enableTools(new ToolSupport(port, new FileAttachmentStore(folder.getRoot().toPath()),
-                        (name, content) -> "", knowledgeRead, false));
+                        (name, content) -> "", java.util.Arrays.asList(recordingTool("knowledge_search",
+                                new ArrayList<String>(), "TREFFER"), knowledgeRead), false));
                 fixture.binding.sendRequested("Was steht da?", false, Collections.<java.nio.file.Path>emptyList(),
                         Collections.singletonList(new ChatPage("Betriebshandbuch", bookmark)));
             }
@@ -195,17 +196,69 @@ public class RagChatBindingTest {
         String system = port.lastRequest().messages().get(0).content();
         assertTrue(system, system.contains("Betriebshandbuch: " + bookmark));
         assertTrue(system, system.contains(ChatBookmark.READ_TOOL));
-        boolean offered = false;
-        for (ChatToolDefinition tool : port.lastRequest().tools()) {
-            offered |= ChatBookmark.READ_TOOL.equals(tool.name());
-        }
-        assertTrue("knowledge_read über /chat/completions angeboten", offered);
+        List<String> offered = toolNames(port.lastRequest());
+        assertTrue("knowledge_read über /chat/completions angeboten", offered.contains(ChatBookmark.READ_TOOL));
+        // Akzeptanztest 3: mit Bookmark sind Suche und Lesen gleichzeitig verfügbar.
+        assertTrue("knowledge_search neben knowledge_read: " + offered, offered.contains("knowledge_search"));
         for (ChatMessage message : port.lastRequest().messages()) {
             assertFalse("kein Seitentext im Modellkontext", message.content().contains("SEITENTEXT"));
         }
         for (ChatMessage message : chat.conversation(conversation).messages()) {
             assertFalse("Bookmark nicht in der Historie", message.content().contains(bookmark));
         }
+    }
+
+    /**
+     * Akzeptanztest 1 (und 5): ohne Bookmark, mit angehakter Quelle bietet der Chat knowledge_search an, das Modell
+     * ruft es über die Werkzeug-Schleife; die Anhang-Werkzeuge bleiben daneben bestehen.
+     */
+    @Test
+    public void tickedSourceOffersKnowledgeSearchWithoutBookmark() throws Exception {
+        final List<String> searches = new ArrayList<String>();
+        final SearchingChat toolChat = new SearchingChat();
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(source.sourceId(), true);
+        final Fixture fixture = fixture(index, embeddings, selection);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.enableTools(new ToolSupport(toolChat,
+                        new FileAttachmentStore(folder.getRoot().toPath()), (name, content) -> "",
+                        java.util.Arrays.asList(recordingTool("knowledge_search", searches, "id: wiki:sonar"),
+                                recordingTool(ChatBookmark.READ_TOOL, new ArrayList<String>(), "SEITE")), false));
+                fixture.binding.sendRequested("Suche Seiten zu SonarQube.", true);
+            }
+        });
+        awaitIdle(fixture.model);
+
+        List<String> offered = toolNames(toolChat.requests.get(0));
+        assertTrue(offered.toString(), offered.contains("knowledge_search"));
+        assertTrue(offered.toString(), offered.contains(ChatBookmark.READ_TOOL));
+        assertTrue("Anhang-Werkzeuge bleiben: " + offered, offered.contains("read_attachment")
+                && offered.contains("search_attachment"));
+        assertEquals(Collections.singletonList("{\"query\":\"SonarQube\"}"), searches);
+        assertEquals("Gefunden", entries(fixture.model).get(1).getText());
+    }
+
+    /** Keine Quelle angehakt und keine Seite: normaler Chat, keine Wissens-Werkzeuge. */
+    @Test
+    public void noTickedSourceAndNoPageOffersNoKnowledgeTools() throws Exception {
+        port.enqueueAnswer("Normal");
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(source.sourceId(), false);
+        final Fixture fixture = fixture(index, embeddings, selection);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.enableTools(new ToolSupport(port, new FileAttachmentStore(folder.getRoot().toPath()),
+                        (name, content) -> "", Collections.singletonList(recordingTool("knowledge_search",
+                                new ArrayList<String>(), "")), false));
+                fixture.binding.sendRequested("Hallo", true);
+            }
+        });
+        awaitIdle(fixture.model);
+        assertEquals("Normal", entries(fixture.model).get(1).getText());
+        assertTrue(toolNames(port.lastRequest()).isEmpty());
     }
 
     @Test
@@ -542,6 +595,63 @@ public class RagChatBindingTest {
         assertEquals(TranscriptEntry.Author.NOTICE, entries.get(2).getAuthor());
         assertEquals(RagChatBinding.SEMANTIC_PATH_FAILED_NOTICE + " " + RagChatBinding.NO_SOURCES_NOTICE,
                 entries.get(2).getText());
+    }
+
+    private static AiTool recordingTool(final String name, final List<String> calls, final String result) {
+        return new AiTool() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public ToolDefinition definition() {
+                return ToolDefinition.function(name, name, "{\"type\":\"object\",\"properties\":{}}");
+            }
+
+            @Override
+            public String execute(String arguments) {
+                synchronized (calls) {
+                    calls.add(arguments);
+                }
+                return result;
+            }
+        };
+    }
+
+    private static List<String> toolNames(ChatRequest request) {
+        List<String> names = new ArrayList<String>();
+        if (request.tools() != null) {
+            for (ChatToolDefinition tool : request.tools()) {
+                names.add(tool.name());
+            }
+        }
+        return names;
+    }
+
+    /** Das Modell ruft zuerst knowledge_search(query="SonarQube") und antwortet dann. */
+    private static final class SearchingChat implements ChatCompletionPort {
+        final List<ChatRequest> requests = new java.util.concurrent.CopyOnWriteArrayList<ChatRequest>();
+
+        @Override
+        public ChatResponse complete(ChatRequest request) {
+            requests.add(request);
+            if (requests.size() == 1) {
+                return new ChatResponse(ChatMessage.assistantToolCalls("", Collections.singletonList(
+                        new com.aresstack.enterpriseai.astu.chat.ChatToolCall("c1", "knowledge_search",
+                                "{\"query\":\"SonarQube\"}"))),
+                        com.aresstack.enterpriseai.astu.chat.ChatFinishReason.TOOL_CALLS,
+                        com.aresstack.enterpriseai.astu.chat.ChatUsage.notReported(), "m");
+            }
+            return new ChatResponse(ChatMessage.assistant("Gefunden"),
+                    com.aresstack.enterpriseai.astu.chat.ChatFinishReason.STOP,
+                    com.aresstack.enterpriseai.astu.chat.ChatUsage.notReported(), "m");
+        }
+
+        @Override
+        public ChatTask stream(ChatRequest request, ChatStreamListener listener) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private void indexAll() {
