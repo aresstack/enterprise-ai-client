@@ -107,8 +107,10 @@ public final class ResearchAgentMain {
         mainModel.setModelName(status.model);
         final ResearchAgentTurns[] holder = new ResearchAgentTurns[1];
         final ResearchHostControl fence = control;
+        // Konzeptwerkzeuge je Turn frisch vom Host: Systemprompt und Vertrag folgen dem Reiter „Tools“ ohne Neustart.
+        final java.util.function.BooleanSupplier conceptToolsNow = conceptToolsOf(control);
         ResearchTeamAgent teamAgent = new ResearchTeamAgent(mainModel,
-                PhaseAssistantProfileRegistry.defaults(false, conceptTools),
+                PhaseAssistantProfileRegistry.defaults(false, conceptToolsNow),
                 new PhaseContextAssembler(new PhaseContextAssembler.CurrentLanguage() {
                     @Override
                     public String displayName() {
@@ -133,8 +135,8 @@ public final class ResearchAgentMain {
             }
         });
         // Die Konzeptwerkzeuge je Aufruf frisch vom Host (tools/list): im Reiter „Tools“ ab- oder eingeschaltet
-        // gilt ohne Neustart. Nur das Systemprompt-Profil des TeamAgents bleibt beim Sitzungsstart bestimmt.
-        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, conceptToolsOf(control),
+        // gilt ohne Neustart, für die Turns wie für das Systemprompt-Profil des TeamAgents.
+        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, conceptToolsNow,
                 new ResearchRun(control, System.getenv(), cancelled));
         this.host = control;
         this.turns = holder[0];

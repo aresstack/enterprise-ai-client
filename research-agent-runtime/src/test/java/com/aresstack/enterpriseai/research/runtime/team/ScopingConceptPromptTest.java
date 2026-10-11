@@ -218,4 +218,24 @@ public class ScopingConceptPromptTest {
         assertFalse(PhaseAssistantProfileRegistry.defaults(false, false)
                 .forPhase("scoping").getSystemPrompt().contains("conceptAction"));
     }
+
+    /** The concept tools are asked on every lookup, not frozen when the session starts. */
+    @Test
+    public void aSuppliedFlagIsAskedOnEveryLookup() {
+        final boolean[] offered = {false};
+        PhaseAssistantProfileRegistry registry = PhaseAssistantProfileRegistry.defaults(false,
+                new java.util.function.BooleanSupplier() {
+                    @Override
+                    public boolean getAsBoolean() {
+                        return offered[0];
+                    }
+                });
+        assertFalse(registry.forPhase("scoping").getSystemPrompt().contains("conceptAction"));
+        offered[0] = true;
+        assertTrue(registry.forPhase("scoping").getSystemPrompt().contains("conceptAction"));
+        assertTrue(registry.forPhase("SCOPING").getOutputContract().outputSchemaJson().contains("conceptAction"));
+        offered[0] = false;
+        assertFalse(registry.forPhase("scoping").getSystemPrompt().contains("conceptAction"));
+        assertFalse(registry.forPhase("draft").getSystemPrompt().contains("conceptAction"));
+    }
 }

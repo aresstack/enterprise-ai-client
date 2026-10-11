@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 /**
  * Selects the {@link PhaseAssistantProfile} for the active phase (RA-P6 §6/§48). The active phase is decided
@@ -19,6 +20,10 @@ public final class PhaseAssistantProfileRegistry {
 
     private final Map<String, PhaseAssistantProfile> byPhaseId;
     private final PhaseAssistantProfile fallback;
+    /** Only for {@link #defaults(boolean, BooleanSupplier)}: picks one of the two registries on every lookup. */
+    private final BooleanSupplier conceptTools;
+    private final PhaseAssistantProfileRegistry withConceptTools;
+    private final PhaseAssistantProfileRegistry withoutConceptTools;
 
     public PhaseAssistantProfileRegistry(Map<String, PhaseAssistantProfile> profiles,
                                          PhaseAssistantProfile fallback) {
@@ -35,6 +40,39 @@ public final class PhaseAssistantProfileRegistry {
         }
         this.byPhaseId = Collections.unmodifiableMap(copy);
         this.fallback = fallback;
+        this.conceptTools = null;
+        this.withConceptTools = null;
+        this.withoutConceptTools = null;
+    }
+
+    private PhaseAssistantProfileRegistry(BooleanSupplier conceptTools, PhaseAssistantProfileRegistry with,
+                                          PhaseAssistantProfileRegistry without) {
+        this.byPhaseId = Collections.emptyMap();
+        this.fallback = without.fallback;
+        this.conceptTools = conceptTools;
+        this.withConceptTools = with;
+        this.withoutConceptTools = without;
+    }
+
+    /**
+     * Like {@link #defaults(boolean, boolean)}, but asks {@code conceptToolsAvailable} on every lookup instead of
+     * once at session start: switching the Konzeptpapier tools on or off in the host (Tools tab, phase) changes
+     * the scoping prompt and contract from the next turn on, without restarting the agent.
+     */
+    public static PhaseAssistantProfileRegistry defaults(boolean alwaysOfferSuggestions,
+                                                         BooleanSupplier conceptToolsAvailable) {
+        if (conceptToolsAvailable == null) {
+            throw new IllegalArgumentException("conceptToolsAvailable must not be null");
+        }
+        return new PhaseAssistantProfileRegistry(conceptToolsAvailable,
+                defaults(alwaysOfferSuggestions, true), defaults(alwaysOfferSuggestions, false));
+    }
+
+    private PhaseAssistantProfileRegistry current() {
+        if (conceptTools == null) {
+            return this;
+        }
+        return conceptTools.getAsBoolean() ? withConceptTools : withoutConceptTools;
     }
 
     /**
@@ -83,11 +121,17 @@ public final class PhaseAssistantProfileRegistry {
      * (there is no topic yet, so no scoping brief can exist) and therefore keeps the generic contract.
      */
     public PhaseAssistantProfile fallback() {
+        if (conceptTools != null) {
+            return current().fallback();
+        }
         return fallback;
     }
 
     /** The profile for {@code phaseId} (case-insensitive), or the neutral fallback when none is registered. */
     public PhaseAssistantProfile forPhase(String phaseId) {
+        if (conceptTools != null) {
+            return current().forPhase(phaseId);
+        }
         if (phaseId == null) {
             return fallback;
         }
