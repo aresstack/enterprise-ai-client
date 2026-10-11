@@ -159,6 +159,30 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
         });
     }
 
+    /**
+     * Setzt ein Zusatzfeld des bestehenden Eintrags als Formularfeld {@code FFTtext} im {@code formFieldList}, wie
+     * MainframeMate {@code MM_CertAlias} ablegt; so lesen beide Anwendungen denselben Eintrag.
+     */
+    @Override
+    public synchronized void setAttribute(final SecretRef ref, final String name, final String value)
+            throws SecretUnavailableException {
+        if (ref == null || name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("SecretRef und Feldname müssen gesetzt sein");
+        }
+        final String title = entryTitleOf(ref);
+        inSession(ref, new SessionCall<Boolean>() {
+            @Override
+            public Boolean run(KeePassRpcTransport.Session session)
+                    throws KeePassRpcException, SecretUnavailableException {
+                if (!session.setFormField(title, name.trim(), value == null ? "" : value)) {
+                    throw new SecretUnavailableException(Reason.NOT_FOUND, ref,
+                            "kein KeePass-Eintrag mit diesem Titel");
+                }
+                return Boolean.TRUE;
+            }
+        });
+    }
+
     /** Eine Arbeit in einer authentifizierten Sitzung. */
     private interface SessionCall<T> {
         T run(KeePassRpcTransport.Session session) throws KeePassRpcException, SecretUnavailableException;

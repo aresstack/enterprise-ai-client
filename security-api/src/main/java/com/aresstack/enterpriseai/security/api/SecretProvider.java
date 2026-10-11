@@ -78,4 +78,17 @@ public interface SecretProvider {
     default Map<String, String> attributesOf(SecretRef ref) throws SecretUnavailableException {
         return Collections.emptyMap();
     }
+
+    /**
+     * Setzt ein nicht geheimes Zusatzfeld des bestehenden Eintrags zur Referenz (z. B. {@code MM_CertAlias} wie
+     * MainframeMate); Benutzer, Passwort, URL und die übrigen Felder bleiben unverändert. Ein leerer Wert leert das
+     * Feld. Backends ohne Schreibweg melden {@link SecretUnavailableException.Reason#NOT_AVAILABLE}.
+     *
+     * @throws SecretUnavailableException wenn das Backend nicht erreichbar ist, nicht schreiben kann oder der Eintrag
+     *                                    fehlt
+     */
+    default void setAttribute(SecretRef ref, String name, String value) throws SecretUnavailableException {
+        throw new SecretUnavailableException(SecretUnavailableException.Reason.NOT_AVAILABLE, ref,
+                "dieser Tresor kann keine Zusatzfelder schreiben");
+    }
 }

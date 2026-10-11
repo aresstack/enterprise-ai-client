@@ -31,6 +31,11 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
     private final String userAgent;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
+    private final java.util.concurrent.atomic.AtomicBoolean factoryLogged =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    private static final java.util.logging.Logger LOG =
+            java.util.logging.Logger.getLogger(UrlConnectionConfluenceTransport.class.getName());
 
     private UrlConnectionConfluenceTransport(Builder builder) {
         this.proxy = builder.proxy;
@@ -119,6 +124,10 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
     }
 
     private HttpURLConnection open(URI uri) throws IOException {
+        if (sslSocketFactory != null && "https".equalsIgnoreCase(uri.getScheme())
+                && factoryLogged.compareAndSet(false, true)) {
+            LOG.info("[Confluence] TLS für " + uri.getHost() + ": " + sslSocketFactory);
+        }
         if (routes != null) {
             return RouteConnections.open(uri, routes, sslSocketFactory, userAgent);
         }

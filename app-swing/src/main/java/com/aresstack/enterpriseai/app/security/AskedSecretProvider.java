@@ -128,6 +128,15 @@ public final class AskedSecretProvider implements SecretProvider {
         return isAsked(ref) ? java.util.Collections.<String, String>emptyMap() : vault.attributesOf(ref);
     }
 
+    @Override
+    public void setAttribute(SecretRef ref, String name, String value) throws SecretUnavailableException {
+        if (isAsked(ref)) {
+            throw new SecretUnavailableException(Reason.NOT_AVAILABLE, ref,
+                    "manuelle Zugangsdaten haben keinen KeePass-Eintrag");
+        }
+        vault.setAttribute(ref, name, value);
+    }
+
     private Answer askOnEdt(SecretRef ref, final String label) throws SecretUnavailableException {
         if (GraphicsEnvironment.isHeadless()) {
             throw new SecretUnavailableException(Reason.NOT_AVAILABLE, ref,

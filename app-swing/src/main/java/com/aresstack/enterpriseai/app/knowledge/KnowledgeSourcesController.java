@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.logging.Level;
@@ -105,6 +106,8 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private KnowledgeSourceManagement editing;
     private SourceEditorLauncher launcher;
     private volatile Supplier<List<String>> vaultTitles;
+    private volatile Function<String, String> vaultCertificateAliases;
+    private volatile BiConsumer<String, String> vaultCertificateAliasWriter;
     private String running;
     private SourcePartitionSelection partitionSelection;
     private final Set<String> expandedPartitions = new HashSet<String>();
@@ -184,6 +187,16 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
 
     public void setVaultTitles(Supplier<List<String>> titles) {
         this.vaultTitles = titles;
+    }
+
+    /** Zum Titel eines KeePass-Eintrags dessen {@code MM_CertAlias} (Vorbelegung des Zertifikats im Quellen-Dialog). */
+    public void setVaultCertificateAliases(Function<String, String> aliases) {
+        this.vaultCertificateAliases = aliases;
+    }
+
+    /** Schreibt zum Titel eines KeePass-Eintrags dessen {@code MM_CertAlias} (Auswahl im Quellen-Dialog). */
+    public void setVaultCertificateAliasWriter(BiConsumer<String, String> writer) {
+        this.vaultCertificateAliasWriter = writer;
     }
 
     // ------------------------------------------------------------------ Aktionen des Reiters
@@ -469,6 +482,42 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
                     });
                 } catch (RuntimeException rejected) {
                     onResult.accept(Collections.<String>emptyList());
+                }
+            }
+
+            @Override
+            public void storeVaultCertificateAlias(final String entryTitle, final String alias) {
+                final BiConsumer<String, String> writer = vaultCertificateAliasWriter;
+                if (writer == null || entryTitle == null || entryTitle.trim().isEmpty()) {
+                    return;
+                }
+                try {
+                    workExecutor.execute(() -> writer.accept(entryTitle.trim(), alias == null ? "" : alias));
+                } catch (RuntimeException rejected) {
+                    // Executor beendet: die Auswahl steht trotzdem in der Quelle
+                }
+            }
+
+            @Override
+            public void vaultCertificateAlias(final String entryTitle, final Consumer<String> onResult) {
+                final Function<String, String> aliases = vaultCertificateAliases;
+                if (aliases == null || entryTitle == null || entryTitle.trim().isEmpty()) {
+                    onResult.accept("");
+                    return;
+                }
+                try {
+                    workExecutor.execute(() -> {
+                        String found;
+                        try {
+                            found = aliases.apply(entryTitle.trim());
+                        } catch (RuntimeException e) {
+                            found = ""; // KeePass zu: das Feld bleibt leer und wird wählbar
+                        }
+                        final String delivered = found == null ? "" : found;
+                        uiExecutor.execute(() -> onResult.accept(delivered));
+                    });
+                } catch (RuntimeException rejected) {
+                    onResult.accept("");
                 }
             }
         };

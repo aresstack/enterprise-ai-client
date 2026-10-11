@@ -28,6 +28,9 @@ import java.security.cert.X509Certificate;
  */
 public final class ClientCertificates {
 
+    private static final java.util.logging.Logger LOG =
+            java.util.logging.Logger.getLogger(ClientCertificates.class.getName());
+
     private ClientCertificates() {
     }
 
@@ -79,10 +82,15 @@ public final class ClientCertificates {
 
     static X509KeyManager forceAlias(X509KeyManager delegate, String alias) throws GeneralSecurityException {
         X509Certificate[] chain = delegate.getCertificateChain(alias);
-        if (chain == null || chain.length == 0) {
+        boolean chainFound = chain != null && chain.length > 0;
+        boolean keyFound = delegate.getPrivateKey(alias) != null;
+        // Diagnose wie gewünscht: nur Alias und Booleans, nie Schlüsselmaterial.
+        LOG.info("[Confluence] Zertifikat '" + alias + "': windowsMyChainFound=" + chainFound
+                + " windowsMyPrivateKeyFound=" + keyFound);
+        if (!chainFound) {
             throw new GeneralSecurityException("keine Zertifikatskette für Alias '" + alias + "'");
         }
-        if (delegate.getPrivateKey(alias) == null) {
+        if (!keyFound) {
             throw new GeneralSecurityException("kein privater Schlüssel für Alias '" + alias + "'");
         }
         return new AliasForcingKeyManager(delegate, alias);

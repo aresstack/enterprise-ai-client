@@ -10,12 +10,14 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
 import javax.swing.ScrollPaneConstants;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
 import java.io.IOException;
 import java.util.Collections;
@@ -88,7 +90,8 @@ public final class SourcePanel extends JPanel {
         this.actions = actions;
         this.originalId = originalId;
         this.palette = palette;
-        this.editor = new SourceEditor(palette, types, originalId == null, this::typeChanged, actions::vaultEntries);
+        this.editor = new SourceEditor(palette, types, originalId == null, this::typeChanged, actions::vaultEntries,
+                actions::vaultCertificateAlias);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = new ComposerButton(null, CANCEL_LABEL, false);
@@ -223,6 +226,9 @@ public final class SourcePanel extends JPanel {
 
     /** Prüft und speichert; bei Erfolg endet der Dialog mit {@link Outcome#SAVED}. */
     public boolean save() {
+        if (editor.certificateMissing() && !GraphicsEnvironment.isHeadless() && !confirmWithoutCertificate()) {
+            return false;
+        }
         SourceDefinition draft = editor.toDefinition();
         List<String> problems;
         try {
@@ -240,9 +246,32 @@ public final class SourcePanel extends JPanel {
             showProblems(Collections.singletonList("Speichern fehlgeschlagen: " + e.getClass().getSimpleName()));
             return false;
         }
+        String certificate = editor.certificateChoice();
+        String entryTitle = editor.vaultEntryTitle();
+        if (certificate != null && !entryTitle.isEmpty()) {
+            // Wie MainframeMate: die Auswahl steht auch im KeePass-Eintrag (MM_CertAlias).
+            actions.storeVaultCertificateAlias(entryTitle, certificate);
+        }
         showProblems(Collections.<String>emptyList());
         finish(Outcome.SAVED, draft);
         return true;
+    }
+
+    /** Hinweis wie MainframeMate, wenn „Zertifikat verwenden“ an ist, aber keins gewählt wurde (nicht blockierend). */
+    private boolean confirmWithoutCertificate() {
+        int choice = JOptionPane.showOptionDialog(this,
+                "Sie haben \u201eZertifikat verwenden\u201c aktiviert,\n"
+                        + "aber kein Zertifikat ausgew\u00e4hlt.\n\n"
+                        + "Ohne mTLS-Zertifikat kann die Verbindung zu\n"
+                        + "Confluence fehlschlagen, wenn der Server eines erfordert.\n\n"
+                        + "M\u00f6chten Sie trotzdem ohne Zertifikat speichern?",
+                "Hinweis: Kein Zertifikat",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.INFORMATION_MESSAGE,
+                null,
+                new String[] {"Ohne Zertifikat speichern", "Zur\u00fcck zum Bearbeiten"},
+                "Zur\u00fcck zum Bearbeiten");
+        return choice == 0;
     }
 
     public void cancel() {

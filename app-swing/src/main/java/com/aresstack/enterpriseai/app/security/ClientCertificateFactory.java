@@ -196,7 +196,7 @@ public final class ClientCertificateFactory {
 
         @Override
         public synchronized String toString() {
-            return "DeferredClientCertificate[loaded=" + (loaded != null) + "]";
+            return "DeferredClientCertificate[alias=" + config.alias() + ", loaded=" + (loaded != null) + "]";
         }
     }
 }

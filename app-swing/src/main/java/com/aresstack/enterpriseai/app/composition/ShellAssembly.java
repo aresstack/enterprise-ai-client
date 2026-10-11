@@ -41,6 +41,7 @@ import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelDescriptor;
+import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.security.api.SecretEntry;
@@ -55,11 +56,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.logging.Logger;
 
 /**
  * Baut die Oberfläche über dem Graphen aus {@link CompositionRoot}: die Arbeitsfläche
@@ -84,6 +87,10 @@ public final class ShellAssembly {
     static final String FAVORITES_FILE = "favorites.json";
     /** Drawer-Suche: so viele Live-Treffer je Quelle danach im Hintergrund indexieren (MainframeMate-Vorabladen). */
     static final int DRAWER_SEARCH_PAGES = 4;
+    /** Zusatzfeld, in dem MainframeMate den Alias des Client-Zertifikats im KeePass-Eintrag ablegt. */
+    static final String MM_CERT_ALIAS = "MM_CertAlias";
+
+    private static final Logger LOG = Logger.getLogger(ShellAssembly.class.getName());
 
     private ShellAssembly() {
     }
@@ -306,6 +313,9 @@ public final class ShellAssembly {
                 root.workExecutor(),
                 root.clock(), root.zone());
         controller.setVaultTitles(() -> vaultTitles(ports.secrets()));
+        controller.setVaultCertificateAliases(title -> vaultCertificateAlias(ports.secrets(), title));
+        controller.setVaultCertificateAliasWriter((title, alias) -> storeVaultCertificateAlias(ports.secrets(), title,
+                alias));
         return controller;
     }
 
@@ -324,6 +334,35 @@ public final class ShellAssembly {
         }
         Collections.sort(titles, String.CASE_INSENSITIVE_ORDER);
         return titles;
+    }
+
+    /** {@code MM_CertAlias} des KeePass-Eintrags (wie MainframeMate ihn ablegt); leer, wenn keiner oder KeePass zu. */
+    static String vaultCertificateAlias(SecretProvider secrets, String title) {
+        if (secrets == null || title == null || title.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            Map<String, String> attributes = secrets.attributesOf(SecretRef.of(title.trim()));
+            String alias = attributes == null ? null : attributes.get(MM_CERT_ALIAS);
+            return alias == null ? "" : alias.trim();
+        } catch (SecretUnavailableException | IllegalArgumentException e) {
+            return "";
+        }
+    }
+
+    /** Schreibt {@code MM_CertAlias} in den KeePass-Eintrag wie MainframeMate; ein Fehler kommt ins Protokoll. */
+    static void storeVaultCertificateAlias(SecretProvider secrets, String title, String alias) {
+        if (secrets == null || title == null || title.trim().isEmpty()) {
+            return;
+        }
+        try {
+            secrets.setAttribute(SecretRef.of(title.trim()), MM_CERT_ALIAS, alias == null ? "" : alias.trim());
+            LOG.info("KeePass: " + MM_CERT_ALIAS + " im Eintrag „" + title.trim() + "“ gesetzt: "
+                    + (alias == null || alias.trim().isEmpty() ? "(ohne Zertifikat)" : alias.trim()));
+        } catch (SecretUnavailableException | IllegalArgumentException e) {
+            LOG.warning("KeePass: " + MM_CERT_ALIAS + " im Eintrag „" + title.trim() + "“ nicht geschrieben: "
+                    + e.getMessage());
+        }
     }
 
     /** Die gebaute Oberfläche mit ihren Modellen. */

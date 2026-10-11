@@ -41,6 +41,55 @@ final class KeePassRpcEntries {
         return null;
     }
 
+    /** Das rohe Login-DTO des ersten Eintrags mit genau diesem Titel oder {@code null} (zum Zurückschreiben). */
+    static JsonObject exactTitleObject(JsonElement result, String title) {
+        if (result == null || !result.isJsonArray()) {
+            return null;
+        }
+        String wanted = title.trim();
+        for (JsonElement element : result.getAsJsonArray()) {
+            if (element.isJsonObject()) {
+                String entryTitle = string(element.getAsJsonObject(), "title");
+                if (entryTitle != null && wanted.equalsIgnoreCase(entryTitle.trim())) {
+                    return element.getAsJsonObject();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Kopie des Login-DTOs mit gesetztem Formularfeld {@code name}: ein vorhandenes Feld dieses Namens bekommt den
+     * Wert, sonst kommt eines dazu, wie MainframeMate {@code KeePassRpcClient.addCustomFormField} es anlegt
+     * ({@code name}, {@code displayName}, {@code value}, {@code type=FFTtext}, {@code id=""}, {@code page=-1}).
+     */
+    static JsonObject withFormField(JsonObject entry, String name, String value) {
+        JsonObject copy = entry.deepCopy();
+        String text = value == null ? "" : value;
+        JsonElement listElement = copy.get("formFieldList");
+        com.google.gson.JsonArray fields = listElement != null && listElement.isJsonArray()
+                ? listElement.getAsJsonArray() : new com.google.gson.JsonArray();
+        boolean found = false;
+        for (JsonElement element : fields) {
+            if (element.isJsonObject() && name.equals(string(element.getAsJsonObject(), "name"))) {
+                element.getAsJsonObject().addProperty("value", text);
+                found = true;
+            }
+        }
+        if (!found) {
+            JsonObject field = new JsonObject();
+            field.addProperty("name", name);
+            field.addProperty("displayName", name);
+            field.addProperty("value", text);
+            field.addProperty("type", "FFTtext");
+            field.addProperty("id", "");
+            field.addProperty("page", -1);
+            fields.add(field);
+        }
+        copy.add("formFieldList", fields);
+        return copy;
+    }
+
     /** Alle Einträge mit Titel und Adresse, ohne Benutzer und Passwort (Auswahlliste). */
     static java.util.List<KeePassEntry> withoutSecrets(JsonElement result) {
         java.util.List<KeePassEntry> entries = new java.util.ArrayList<KeePassEntry>();

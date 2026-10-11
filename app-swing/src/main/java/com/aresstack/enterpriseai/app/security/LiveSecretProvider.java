@@ -54,6 +54,11 @@ public final class LiveSecretProvider implements SecretProvider {
     }
 
     @Override
+    public void setAttribute(SecretRef ref, String name, String value) throws SecretUnavailableException {
+        current.setAttribute(ref, name, value);
+    }
+
+    @Override
     public String toString() {
         return "LiveSecretProvider[" + current + "]";
     }

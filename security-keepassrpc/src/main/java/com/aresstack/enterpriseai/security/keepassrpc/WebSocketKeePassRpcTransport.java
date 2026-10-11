@@ -228,8 +228,64 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
 
         @Override
         public KeePassEntry findEntryByTitle(String title) throws KeePassRpcException {
-            // FindLogins(unsanitizedURLs, actionURL, httpRealm, loginSearchType, requireFullURLMatches,
-            //            uniqueID, dbFileName, freeTextSearch, username)
+            KeePassEntry entry = KeePassRpcEntries.exactTitleMatch(findLogins(title), title);
+            if (entry != null) {
+                return entry;
+            }
+            // FindLogins sucht über URLs und Freitext; Einträge ohne passende URL findet erst GetAllEntries.
+            return KeePassRpcEntries.exactTitleMatch(call("GetAllEntries", new JsonArray()), title);
+        }
+
+        /**
+         * Wie MainframeMate {@code KeePassRpcClient.updateLogin}: den vollständigen Eintrag holen, im
+         * {@code formFieldList} nur das eine Feld setzen und per {@code UpdateLogin(login, uniqueID, 2, dbFileName)}
+         * zurückschreiben; Benutzer, Passwort, URLs und übrige Felder bleiben, wie sie sind.
+         */
+        @Override
+        public boolean setFormField(String title, String name, String value) throws KeePassRpcException {
+            JsonObject existing = KeePassRpcEntries.exactTitleObject(findLogins(title), title);
+            if (existing == null) {
+                existing = KeePassRpcEntries.exactTitleObject(call("GetAllEntries", new JsonArray()), title);
+            }
+            if (existing == null) {
+                return false;
+            }
+            String uniqueId = string(existing, "uniqueID");
+            if (uniqueId == null || uniqueId.trim().isEmpty()) {
+                throw protocol("KeePass-Eintrag ohne uniqueID");
+            }
+            JsonObject login = KeePassRpcEntries.withFormField(existing, name, value);
+            String dbFile = string(existing, "dbFileName");
+            if (dbFile == null || dbFile.isEmpty()) {
+                dbFile = databaseFileName();
+            }
+            JsonArray params = new JsonArray();
+            params.add(login);
+            params.add(uniqueId);
+            params.add(2); // urlMergeMode 2 = ersetzen (die URLs des Eintrags gehen unverändert mit)
+            params.add(dbFile.isEmpty() ? "*" : dbFile); // der Server verlangt einen nicht leeren Namen
+            callAny("UpdateLogin", params);
+            return true;
+        }
+
+        /** Wie MainframeMate {@code getDatabaseFileName}: GetDatabaseFileName, sonst GetDatabaseName, sonst leer. */
+        private String databaseFileName() {
+            for (String method : new String[] {"GetDatabaseFileName", "GetDatabaseName"}) {
+                try {
+                    JsonElement result = callAny(method, new JsonArray());
+                    if (result != null && result.isJsonPrimitive() && !result.getAsString().isEmpty()) {
+                        return result.getAsString();
+                    }
+                } catch (KeePassRpcException e) {
+                    // nächster Versuch
+                }
+            }
+            return "";
+        }
+
+        // FindLogins(unsanitizedURLs, actionURL, httpRealm, loginSearchType, requireFullURLMatches,
+        //            uniqueID, dbFileName, freeTextSearch, username)
+        private JsonArray findLogins(String title) throws KeePassRpcException {
             JsonArray params = new JsonArray();
             JsonArray urls = new JsonArray();
             urls.add(title);
@@ -242,12 +298,7 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
             params.add("");
             params.add(title);
             params.add("");
-            KeePassEntry entry = KeePassRpcEntries.exactTitleMatch(call("FindLogins", params), title);
-            if (entry != null) {
-                return entry;
-            }
-            // FindLogins sucht über URLs und Freitext; Einträge ohne passende URL findet erst GetAllEntries.
-            return KeePassRpcEntries.exactTitleMatch(call("GetAllEntries", new JsonArray()), title);
+            return call("FindLogins", params);
         }
 
         @Override
@@ -256,6 +307,14 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
         }
 
         private JsonArray call(String method, JsonArray params) throws KeePassRpcException {
+            JsonElement result = callAny(method, params);
+            if (result == null || !result.isJsonArray()) {
+                throw protocol("Antwort auf " + method + " ohne Ergebnisliste");
+            }
+            return result.getAsJsonArray();
+        }
+
+        private JsonElement callAny(String method, JsonArray params) throws KeePassRpcException {
             int id = ids.getAndIncrement();
             long deadline = channel.newDeadline();
             channel.send(gson.toJson(wrapper(rpc(method, params, id))), method);
@@ -267,11 +326,7 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
                 if (response.has("error") && !response.get("error").isJsonNull()) {
                     throw protocol("KeePassRPC-Fehler bei " + method + " (" + errorCode(response.get("error")) + ")");
                 }
-                JsonElement result = response.get("result");
-                if (result == null || !result.isJsonArray()) {
-                    throw protocol("Antwort auf " + method + " ohne Ergebnisliste");
-                }
-                return result.getAsJsonArray();
+                return response.get("result");
             }
         }
 

@@ -18,20 +18,28 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * Quelltyp „Confluence“ ({@code source.<id>.type=confluence}, Ressourcenschema {@code confluence}): Felder,
  * Prüfung und Aufbau einer {@link ConfluenceKnowledgeSource} samt Transport. Im Dialog: {@code title},
- * {@code baseUrl}, {@code credentialRef}. Wie in MainframeMate gibt es keine Startpunkte: indexiert werden alle
- * Seiten der Spaces, die der Benutzer unter Wissensquellen angehakt hat ({@link SourceScope#excludedPartitions()}).
+ * {@code baseUrl}, {@code credentialRef} und das Client-Zertifikat ({@code clientCertificate.alias}, Auswahl
+ * aus dem Windows-Zertifikatspeicher wie MainframeMate; ohne Angabe gilt {@code MM_CertAlias} aus dem
+ * KeePass-Eintrag, {@code clientCertificate.use=false} schaltet es ab). Wie in MainframeMate gibt es keine
+ * Startpunkte: indexiert werden alle Seiten der Spaces, die der Benutzer unter Wissensquellen angehakt hat
+ * ({@link SourceScope#excludedPartitions()}).
  * Nur noch in der Datei: {@code startPoints}, {@code maxDepth}, {@code maxResources}, {@code searchSpaceKeys},
  * {@code includeAttachments}, {@code pageSize}, {@code maxAttachmentBytes},
  * {@code maxResponseBytes}, {@code allowInsecureHttp}, {@code connectTimeoutMillis}, {@code readTimeoutMillis} und
- * {@code clientCertificate.alias}/{@code .keyStoreFile}/{@code .keyStorePasswordRef}.
+ * {@code clientCertificate.keyStoreFile}/{@code .keyStorePasswordRef}.
  */
 public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
 
     public static final String TYPE_ID = "confluence";
+
+    /** Alias des Client-Zertifikats; der Schalter „Zertifikat verwenden“ steht unter {@code clientCertificate.use}. */
+    static final String CERTIFICATE_ALIAS = "clientCertificate.alias";
+    static final String CERTIFICATE_USE = "clientCertificate.use";
 
     private static final KnowledgeSourceType TYPE = KnowledgeSourceType.builder(TYPE_ID, "confluence", "Confluence")
             .description("Alle Spaces von Confluence Data Center über die REST-API; welche durchsucht werden, "
@@ -46,7 +54,11 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
                     .fromVault(SourceSettingField.VaultValue.LOCATION))
             .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
                     "KeePass-Eintrag", "Eintrag mit Benutzername, Passwort und URL von Confluence; leer = anonym"))
+            .field(SourceSettingField.of(CERTIFICATE_ALIAS, SourceSettingField.Kind.CLIENT_CERTIFICATE,
+                    "Zertifikat", "Windows-Zertifikat für mTLS-Authentifizierung auswählen"))
             .build();
+
+    private static final Logger LOG = Logger.getLogger(ConfluenceSourceProvider.class.getName());
 
     private static final int MAX_TIMEOUT = 600000;
 
@@ -107,6 +119,7 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
         config(reader);
         timeouts(reader);
         certificate(reader);
+        reader.bool(CERTIFICATE_USE, true);
         reader.scope(ALL_SPACES, 1, UNLIMITED);
         return reader.problems();
     }
@@ -134,13 +147,25 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
             transport.userAgent(userAgent);
         }
         final VaultEntryOptions options = new VaultEntryOptions(secrets, config.credentialRef());
-        if (certificate != null) {
+        final boolean credentialRefPresent = config.credentialRef() != null;
+        boolean useCertificate = reader.bool(CERTIFICATE_USE, true);
+        if (!useCertificate) {
+            // „Zertifikat verwenden“ abgewählt: wie MainframeMate ohne mTLS, auch wenn KeePass MM_CertAlias trägt.
+            LOG.info("[Confluence] " + sourceId + ": Kein Zertifikat konfiguriert — ohne mTLS");
+            if (sslSocketFactory != null) {
+                transport.sslSocketFactory(sslSocketFactory);
+            }
+        } else if (certificate != null) {
             // Erst beim ersten Verbindungsaufbau geladen; ohne erreichbaren Tresor meldet die Quelle je Anfrage
             // UNAVAILABLE, bis das Zertifikat ladbar ist.
+            LOG.info("[Confluence] " + sourceId + ": credentialRefPresent=" + credentialRefPresent
+                    + " clientCertificate.alias=" + certificate.alias
+                    + (certificate.keyStoreFile == null ? " (Windows-MY)" : " (" + certificate.keyStoreFile + ")"));
             transport.sslSocketFactory(certificates.socketFactory(certificate.alias, certificate.keyStoreFile,
                     certificate.passwordRef));
         } else if (config.credentialRef() != null) {
             // Wie MainframeMate: Das Client-Zertifikat steht als MM_CertAlias im KeePass-Eintrag (Windows-MY).
+            final KnowledgeSourceId id = sourceId;
             transport.sslSocketFactory(new LazySslSocketFactory(() -> {
                 String alias;
                 try {
@@ -149,13 +174,22 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
                     throw new IOException("KeePass-Eintrag für das Client-Zertifikat nicht lesbar: "
                             + e.getMessage(), e);
                 }
+                LOG.info("[Confluence] " + id + ": credentialRefPresent=true " + VaultEntryOptions.CERT_ALIAS + "="
+                        + (alias == null ? "" : alias));
                 if (alias == null) {
+                    LOG.info("[Confluence] " + id + ": Kein Zertifikat konfiguriert (weder in der Quelle noch als "
+                            + VaultEntryOptions.CERT_ALIAS + " im KeePass-Eintrag) — ohne mTLS");
                     return sslSocketFactory;
                 }
+                LOG.info("[Confluence] " + id + ": Client-Zertifikat '" + alias + "' aus dem KeePass-Eintrag "
+                        + "(Windows-MY)");
                 return certificates.socketFactory(alias, null, null);
             }));
-        } else if (sslSocketFactory != null) {
-            transport.sslSocketFactory(sslSocketFactory);
+        } else {
+            LOG.info("[Confluence] " + sourceId + ": Kein Zertifikat konfiguriert — ohne mTLS");
+            if (sslSocketFactory != null) {
+                transport.sslSocketFactory(sslSocketFactory);
+            }
         }
         return new ConfluenceKnowledgeSource(sourceId, config, transport.build(), secrets, options);
     }
@@ -197,12 +231,12 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
     }
 
     private static Certificate certificate(SourceSettingsReader r) {
-        String alias = r.text("clientCertificate.alias", null);
+        String alias = r.text(CERTIFICATE_ALIAS, null);
         Path keyStore = r.path("clientCertificate.keyStoreFile", null);
         SecretRef passwordRef = r.secretRef("clientCertificate.keyStorePasswordRef");
         if (alias == null) {
             if (keyStore != null || passwordRef != null) {
-                r.problem("clientCertificate.alias", "fehlt, obwohl ein Client-Zertifikat konfiguriert ist");
+                r.problem(CERTIFICATE_ALIAS, "fehlt, obwohl ein Client-Zertifikat konfiguriert ist");
             }
             return null;
         }

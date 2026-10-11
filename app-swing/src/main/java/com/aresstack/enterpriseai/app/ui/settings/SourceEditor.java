@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -39,6 +40,7 @@ final class SourceEditor {
     private final boolean typeSelectable;
     private final Consumer<String> typeChanged;
     private final Consumer<Consumer<List<String>>> vaultEntries;
+    private final BiConsumer<String, Consumer<String>> vaultCertificateAlias;
     private final JPanel panel = new JPanel(new BorderLayout());
     private final Map<String, JComponent> inputs = new LinkedHashMap<String, JComponent>();
     private JTextField id;
@@ -53,6 +55,10 @@ final class SourceEditor {
     private boolean expanded;
     private boolean configured;
     private List<String> entries;
+    private SourceSettingField certificateField;
+    private JCheckBox certificateUse;
+    private JTextField certificateAlias;
+    private JButton certificateChoose;
 
     /**
      * @param types          die Quelltypen; beim Bearbeiten nur der eine
@@ -70,7 +76,18 @@ final class SourceEditor {
      */
     SourceEditor(ComicPalette palette, List<KnowledgeSourceType> types, boolean typeSelectable,
                  Consumer<String> typeChanged, Consumer<Consumer<List<String>>> vaultEntries) {
+        this(palette, types, typeSelectable, typeChanged, vaultEntries, null);
+    }
+
+    /**
+     * @param vaultCertificateAlias liefert zum Titel eines KeePass-Eintrags dessen {@code MM_CertAlias} (asynchron,
+     *                              auf dem EDT); {@code null} = keine Vorbelegung des Zertifikats
+     */
+    SourceEditor(ComicPalette palette, List<KnowledgeSourceType> types, boolean typeSelectable,
+                 Consumer<String> typeChanged, Consumer<Consumer<List<String>>> vaultEntries,
+                 BiConsumer<String, Consumer<String>> vaultCertificateAlias) {
         this.palette = palette;
+        this.vaultCertificateAlias = vaultCertificateAlias;
         this.types = new ArrayList<KnowledgeSourceType>(types);
         this.typeSelectable = typeSelectable && types.size() > 1;
         this.typeChanged = typeChanged;
@@ -105,6 +122,10 @@ final class SourceEditor {
         advancedRows.clear();
         accessChoice = null;
         entryChoice = null;
+        certificateField = null;
+        certificateUse = null;
+        certificateAlias = null;
+        certificateChoose = null;
         FormRows rows = new FormRows(palette);
         if (typeSelectable) {
             String[] names = new String[types.size()];
@@ -162,9 +183,14 @@ final class SourceEditor {
                 rows.component("KeePass-Eintrag", entryChoice, secret.hint().isEmpty() ? null : secret.hint());
                 VaultAccess.setEntries(entryChoice, entries == null ? Collections.<String>emptyList() : entries);
                 VaultAccess.setText(entryChoice, VaultAccess.title(source.settings().get(secret.key())));
+                entryChoice.addActionListener(event -> requestCertificateAlias());
             }
         }
         for (SourceSettingField field : main) {
+            if (field.kind() == SourceSettingField.Kind.CLIENT_CERTIFICATE) {
+                certificate(rows, field, source);
+                continue;
+            }
             boolean fromVault = field.vaultValue() != SourceSettingField.VaultValue.NONE && secret != null;
             inputs.put(field.key(), input(rows, field, source.settings().get(field.key()), field.isRequired() || fromVault,
                     null));
@@ -193,6 +219,80 @@ final class SourceEditor {
         panel.add(rows.panel(), BorderLayout.CENTER);
         panel.revalidate();
         panel.repaint();
+    }
+
+    /**
+     * Zertifikat wie im Passwortmanager von MainframeMate: Häkchen „Zertifikat verwenden“ (Vorgabe an), daneben das
+     * schreibgeschützte Feld mit dem Alias und „🔒 Zertifikat…“, das die Auswahl aus dem Windows-Zertifikatspeicher
+     * öffnet.
+     */
+    private void certificate(FormRows rows, SourceSettingField field, SourceDefinition source) {
+        certificateField = field;
+        String use = source.settings().get(field.certificateUseKey()).trim();
+        certificateUse = rows.checkBox("Zertifikat verwenden", "mTLS-Zertifikat für die Verbindung verwenden");
+        certificateUse.setSelected(!"false".equalsIgnoreCase(use));
+        certificateAlias = new JTextField(source.settings().get(field.key()), 25);
+        certificateAlias.setEditable(false);
+        certificateChoose = new JButton("🔒 Zertifikat…");
+        certificateChoose.setFocusPainted(false);
+        certificateChoose.setToolTipText(field.hint().isEmpty() ? null : field.hint());
+        certificateChoose.addActionListener(event -> {
+            String chosen = CertificateChooser.showChooserDialog(panel, certificateAlias.getText().trim());
+            if (chosen != null) {
+                certificateAlias.setText(chosen);
+            }
+        });
+        JPanel line = new JPanel(new BorderLayout(4, 0));
+        line.setOpaque(false);
+        line.add(certificateAlias, BorderLayout.CENTER);
+        line.add(certificateChoose, BorderLayout.EAST);
+        rows.component(field.label(), line, null);
+        certificateUse.addActionListener(event -> enableCertificate());
+        enableCertificate();
+        requestCertificateAlias();
+    }
+
+    private void enableCertificate() {
+        boolean use = certificateUse.isSelected();
+        certificateAlias.setEnabled(use);
+        certificateChoose.setEnabled(use);
+    }
+
+    /** Belegt ein leeres Zertifikatsfeld mit {@code MM_CertAlias} des gewählten KeePass-Eintrags vor. */
+    private void requestCertificateAlias() {
+        if (certificateAlias == null || entryChoice == null || vaultCertificateAlias == null
+                || !certificateAlias.getText().trim().isEmpty()) {
+            return;
+        }
+        final String title = VaultAccess.text(entryChoice);
+        if (title.isEmpty()) {
+            return;
+        }
+        final JTextField target = certificateAlias;
+        vaultCertificateAlias.accept(title, alias -> {
+            if (target == certificateAlias && alias != null && !alias.trim().isEmpty()
+                    && target.getText().trim().isEmpty() && title.equals(VaultAccess.text(entryChoice))) {
+                target.setText(alias.trim());
+            }
+        });
+    }
+
+    /** Der gewählte KeePass-Eintrag; leer bei „Manuell“ oder ohne Eintrag. */
+    String vaultEntryTitle() {
+        return entryChoice == null || manual ? "" : VaultAccess.text(entryChoice);
+    }
+
+    /** Der Zertifikat-Alias zum Speichern ({@code ""} = ohne Zertifikat) oder {@code null}, wenn der Typ keins hat. */
+    String certificateChoice() {
+        if (certificateUse == null) {
+            return null;
+        }
+        return certificateUse.isSelected() ? certificateAlias.getText().trim() : "";
+    }
+
+    /** {@code true}, wenn „Zertifikat verwenden“ an ist, aber kein Zertifikat gewählt wurde (Hinweis beim Speichern). */
+    boolean certificateMissing() {
+        return certificateUse != null && certificateUse.isSelected() && certificateAlias.getText().trim().isEmpty();
     }
 
     private void showAdvanced() {
@@ -235,6 +335,7 @@ final class SourceEditor {
                 VaultAccess.setText(entryChoice, match);
             }
         }
+        requestCertificateAlias();
     }
 
     private static SourceSettingField secretField(KnowledgeSourceType type) {
@@ -311,6 +412,11 @@ final class SourceEditor {
                     : ((JTextField) input).getText();
             settings = settings.with(entry.getKey(), value);
         }
+        if (certificateField != null) {
+            boolean use = certificateUse.isSelected();
+            settings = settings.with(certificateField.key(), use ? certificateAlias.getText().trim() : "")
+                    .with(certificateField.certificateUseKey(), use ? "" : "false");
+        }
         SourceSettingField secret = secretField(type);
         String sourceId = id == null ? "" : id.getText().trim();
         if (secret != null) {
@@ -379,6 +485,14 @@ final class SourceEditor {
 
     JButton advancedToggle() {
         return advancedToggle;
+    }
+
+    JCheckBox certificateUse() {
+        return certificateUse;
+    }
+
+    JTextField certificateAlias() {
+        return certificateAlias;
     }
 
     /** Das Eingabefeld zum Schlüssel des Adapters oder {@code null}. */

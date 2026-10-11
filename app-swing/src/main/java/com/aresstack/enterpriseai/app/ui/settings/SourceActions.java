@@ -35,4 +35,20 @@ public interface SourceActions {
     default void vaultEntries(Consumer<List<String>> onResult) {
         onResult.accept(Collections.<String>emptyList());
     }
+
+    /**
+     * Der Zertifikat-Alias, den MainframeMate im KeePass-Eintrag ablegt ({@code MM_CertAlias}), zur Vorbelegung des
+     * Felds „Zertifikat“; das Ergebnis kommt später auf dem EDT, leer, wenn der Eintrag keinen trägt oder KeePass
+     * nicht erreichbar ist.
+     */
+    default void vaultCertificateAlias(String entryTitle, Consumer<String> onResult) {
+        onResult.accept("");
+    }
+
+    /**
+     * Schreibt nach dem Speichern den gewählten Zertifikat-Alias in den KeePass-Eintrag ({@code MM_CertAlias}, leer =
+     * ohne Zertifikat), wie MainframeMate ihn dort ablegt; läuft im Hintergrund, ein Fehler landet im Protokoll.
+     */
+    default void storeVaultCertificateAlias(String entryTitle, String alias) {
+    }
 }

@@ -27,6 +27,16 @@ interface KeePassRpcTransport {
          */
         KeePassEntry findEntryByTitle(String title) throws KeePassRpcException;
 
+        /**
+         * Setzt im Eintrag mit exakt diesem Titel das Formularfeld {@code name} (Typ {@code FFTtext}, wie MainframeMate
+         * {@code KeePassRpcClient.addCustomFormField}) und lässt alles andere unverändert.
+         *
+         * @return {@code false}, wenn kein Eintrag mit dem Titel existiert
+         */
+        default boolean setFormField(String title, String name, String value) throws KeePassRpcException {
+            throw new KeePassRpcException(KeePassRpcException.Kind.PROTOCOL, "Schreiben nicht unterstützt");
+        }
+
         /** Alle Einträge mit Titel und Adresse, ohne Benutzer und Passwort. */
         default java.util.List<KeePassEntry> allEntries() throws KeePassRpcException {
             return java.util.Collections.emptyList();

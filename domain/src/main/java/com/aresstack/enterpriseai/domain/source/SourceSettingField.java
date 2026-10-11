@@ -19,7 +19,13 @@ public final class SourceSettingField {
         /** Verzeichnispfad mit Auswahlknopf. */
         DIRECTORY,
         /** Titel eines Eintrags im Tresor (KeePass), nie das Secret selbst. */
-        SECRET_REF
+        SECRET_REF,
+        /**
+         * Alias eines Client-Zertifikats (mTLS) aus dem Windows-Zertifikatspeicher mit Auswahl wie in MainframeMate;
+         * der private Schlüssel bleibt im Speicher. Dazu gehört der Schalter {@link #certificateUseKey()}
+         * („Zertifikat verwenden“, {@code false} = ohne Zertifikat).
+         */
+        CLIENT_CERTIFICATE
     }
 
     /**
@@ -117,6 +123,15 @@ public final class SourceSettingField {
     /** {@code true}, wenn das Formular das Feld erst unter „Erweitert“ zeigt. */
     public boolean isAdvanced() {
         return advanced;
+    }
+
+    /**
+     * Schlüssel des Schalters „Zertifikat verwenden“ zu einem {@link Kind#CLIENT_CERTIFICATE}-Feld: aus
+     * {@code clientCertificate.alias} wird {@code clientCertificate.use}.
+     */
+    public String certificateUseKey() {
+        int dot = key.lastIndexOf('.');
+        return (dot < 0 ? key : key.substring(0, dot)) + ".use";
     }
 
     /** Wie der Wert aus dem Tresoreintrag kommt; {@link VaultValue#NONE}, wenn nie. */

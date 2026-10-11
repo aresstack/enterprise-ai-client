@@ -82,6 +82,7 @@ final class LazySslSocketFactory extends SSLSocketFactory {
 
     @Override
     public String toString() {
-        return "LazySslSocketFactory[" + (resolved == null ? "offen" : resolved) + "]";
+        return "LazySslSocketFactory[Client-Zertifikat aus MM_CertAlias, "
+                + (resolved == null ? "beim ersten Verbindungsaufbau" : resolved) + "]";
     }
 }

@@ -47,4 +47,20 @@ public class KeePassRpcEntriesTest {
         assertArrayEquals(new char[] {'\0', '\0'}, entry.password());
         assertEquals("KeePassEntry[A, ***]", entry.toString());
     }
+
+    @Test
+    public void setsCertificateAliasAsMainframeMateFormFieldAndKeepsTheRest() {
+        com.google.gson.JsonObject entry = JsonParser.parseString("{\"title\":\"Confluence\",\"uniqueID\":\"u1\","
+                + "\"formFieldList\":[{\"type\":\"FFTusername\",\"value\":\"bob\"},"
+                + "{\"type\":\"FFTpassword\",\"value\":\"pw\"}]}").getAsJsonObject();
+        com.google.gson.JsonObject added = KeePassRpcEntries.withFormField(entry, "MM_CertAlias", "Max Muster");
+        assertEquals("Max Muster", KeePassRpcEntries.attributes(added).get("MM_CertAlias"));
+        assertEquals(3, added.getAsJsonArray("formFieldList").size());
+        assertEquals(2, entry.getAsJsonArray("formFieldList").size());
+        com.google.gson.JsonObject changed = KeePassRpcEntries.withFormField(added, "MM_CertAlias", "Neu");
+        assertEquals("Neu", KeePassRpcEntries.attributes(changed).get("MM_CertAlias"));
+        assertEquals(3, changed.getAsJsonArray("formFieldList").size());
+        assertEquals("bob", KeePassRpcEntries.exactTitleMatch(JsonParser.parseString("[" + changed + "]"),
+                "Confluence").userName());
+    }
 }
