@@ -213,6 +213,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         if (!model.canSend(draft)) {
             return;
         }
+        setDictationNote(null, ComposerStatusLine.Tone.MUTED); // die Diktat-Meldung endet spätestens mit dem Senden
         editor.setText("");
         List<Path> attachments = attachmentStrip.getAttachments();
         attachmentStrip.clear();
@@ -748,6 +749,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
 
             @Override
             public void removeUpdate(DocumentEvent event) {
+                // Wer den Entwurf leert, braucht den Hinweis „Abschrift eingefügt“ nicht mehr (Fehler bleiben).
+                if (editor.getText().isEmpty() && dictationNoteTone != ComposerStatusLine.Tone.ERROR) {
+                    setDictationNote(null, ComposerStatusLine.Tone.MUTED);
+                }
                 refreshControls();
             }
 
