@@ -141,6 +141,7 @@ public class ReaderTabActionsTest {
             assertNotNull("kopieren immer", item(other, ReaderPageInfo.COPY));
             assertNull("kein Browser ohne http/https", item(other, ReaderPageInfo.OPEN_IN_BROWSER));
 
+            reader.showMarkdown(file.key(), "# Datei\n\nText");
             reader.toolbar().open();
             assertFalse("offene Suche verdrängt das Info-Symbol", reader.infoButton().isVisible());
             reader.toolbar().close();

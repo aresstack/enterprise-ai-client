@@ -33,7 +33,10 @@ public class ReaderToolbarTest {
             ReaderToolbar toolbar = reader.toolbar();
             assertFalse(toolbar.isSearchOpen());
             assertTrue(toolbar.isBrandingVisible());
-            assertEquals(1, toolbar.tools().getComponentCount());
+            // Lupe ganz links, daneben das Info-Symbol (Seiteninformationen)
+            assertEquals(2, toolbar.tools().getComponentCount());
+            assertTrue(toolbar.tools().getComponent(0) == toolbar.findButton());
+            assertTrue(toolbar.tools().getComponent(1) == reader.infoButton());
             assertTrue(toolbar.findButton().isEnabled());
             assertFalse(toolbar.findButton().isEmphasized());
 
