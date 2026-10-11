@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpene
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownMessageView;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidImageRenderer;
+import com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
@@ -499,19 +500,39 @@ public final class KnowledgeReaderPanel extends JPanel {
 
         @Override
         public Dimension getPreferredSize() {
-            Dimension size = super.getPreferredSize();
-            if (getParent() != null && getParent().getWidth() > 0 && getComponentCount() > 0
-                    && getLayout() instanceof BorderLayout) {
+            WidthAwareHeight view = widthAwareView();
+            if (view != null && getParent() != null && getParent().getWidth() > 0) {
                 Insets insets = getInsets();
                 int inner = getParent().getWidth() - insets.left - insets.right;
-                java.awt.Component view = getComponent(0);
-                if (view instanceof com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight) {
-                    int height = ((com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight) view)
-                            .preferredHeightForWidth(inner);
-                    return new Dimension(getParent().getWidth(), height + insets.top + insets.bottom);
-                }
+                return new Dimension(getParent().getWidth(),
+                        view.preferredHeightForWidth(inner) + insets.top + insets.bottom);
             }
-            return size;
+            return super.getPreferredSize();
+        }
+
+        /**
+         * Gibt dem Dokument die Höhe, die es bei der aktuellen Breite braucht. Das BorderLayout nähme dafür dessen
+         * Wunschhöhe, die noch bei der vorigen Breite gemessen ist: Wird der Lesebereich schmaler (Fenster, Drawer),
+         * brechen die Zeilen öfter um, das Dokument bliebe aber so hoch wie vorher und wäre unten abgeschnitten.
+         */
+        @Override
+        public void doLayout() {
+            WidthAwareHeight view = widthAwareView();
+            if (view == null) {
+                super.doLayout();
+                return;
+            }
+            Insets insets = getInsets();
+            int inner = Math.max(0, getWidth() - insets.left - insets.right);
+            getComponent(0).setBounds(insets.left, insets.top, inner, view.preferredHeightForWidth(inner));
+        }
+
+        private WidthAwareHeight widthAwareView() {
+            if (getComponentCount() == 1 && getLayout() instanceof BorderLayout
+                    && getComponent(0) instanceof WidthAwareHeight) {
+                return (WidthAwareHeight) getComponent(0);
+            }
+            return null;
         }
 
         @Override
