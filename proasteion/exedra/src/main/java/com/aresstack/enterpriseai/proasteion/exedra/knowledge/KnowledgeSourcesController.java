@@ -114,7 +114,8 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private volatile BiConsumer<String, String> vaultCertificateAliasWriter;
     private String running;
     private SourcePartitionSelection partitionSelection;
-    private final Set<String> expandedPartitions = new HashSet<String>();
+    /** Quellen, deren Bereiche gerade im Hintergrund geladen werden (nur auf dem UI-Thread). */
+    private final Set<String> loadingPartitions = new HashSet<String>();
     private final Map<String, List<SourcePartition>> partitionCache = new HashMap<String, List<SourcePartition>>();
     private final Map<String, String> partitionProblems = new HashMap<String, String>();
     private final Set<String> partitionsChanged = new HashSet<String>();
@@ -278,13 +279,12 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         if (registration == null || partitionSelection == null) {
             return;
         }
+        partitionSelection.setExpanded(sourceId, expanded);
         if (!expanded) {
-            expandedPartitions.remove(sourceId);
             partitionsChanged.remove(sourceId); // gilt ab der nächsten Suche, nichts neu indexieren
             publish();
             return;
         }
-        expandedPartitions.add(sourceId);
         if (!partitionCache.containsKey(sourceId)) {
             partitionProblems.remove(sourceId);
             loadPartitions(sourceId, registration);
@@ -302,6 +302,9 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     }
 
     private void loadPartitions(final String sourceId, final KnowledgeSourceRegistration registration) {
+        if (!loadingPartitions.add(sourceId)) {
+            return; // läuft schon
+        }
         try {
             workExecutor.execute(() -> {
                 List<SourcePartition> found = null;
@@ -316,6 +319,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
                 final List<SourcePartition> result = found;
                 final String failure = problem;
                 uiExecutor.execute(() -> {
+                    loadingPartitions.remove(sourceId);
                     if (live.get(sourceId) != registration) {
                         return; // inzwischen neu angebunden oder entfernt
                     }
@@ -328,6 +332,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
                 });
             });
         } catch (RuntimeException rejected) {
+            loadingPartitions.remove(sourceId);
             partitionProblems.put(sourceId, "Nicht ladbar; bitte erneut aufklappen");
         }
     }
@@ -600,7 +605,6 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         failedRuns.remove(id);
         writeProblems.remove(id);
         forgetPartitions(id);
-        expandedPartitions.remove(id);
     }
 
     private void forgetPartitions(String id) {
@@ -727,17 +731,34 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
                 || pendingRestart.contains(id)) {
             return titled;
         }
+        boolean expanded = partitionSelection.isExpanded(id);
+        if (expanded && !partitionCache.containsKey(id) && !partitionProblems.containsKey(id)) {
+            loadPartitions(id, live.get(id)); // nach dem Start wieder aufgeklappt: Bereiche gleich laden
+        }
         List<KnowledgeSourcePartitionItem> partitions = null;
         List<SourcePartition> cached = partitionCache.get(id);
         if (cached != null) {
             partitions = new ArrayList<KnowledgeSourcePartitionItem>();
             for (SourcePartition partition : cached) {
                 partitions.add(new KnowledgeSourcePartitionItem(partition.key(), partition.title(),
-                        partitionSelection.isSelected(id, partition.key())));
+                        partitionSelection.isSelected(id, partition.key()), partitionLink(id, partition)));
             }
         }
-        return titled.withPartitions(type.partitionsLabel(), expandedPartitions.contains(id), partitions,
-                partitionProblems.get(id));
+        return titled.withPartitions(type.partitionsLabel(), expanded, partitions, partitionProblems.get(id));
+    }
+
+    /**
+     * Wohin der Name eines Bereichs führt (wie MainframeMate): die Startseite unter ihrer kanonischen Ressourcen-ID,
+     * dieselbe wie in Suche, Index und {@code knowledge_read}; ohne Startseite die Ressourcen des Bereichs.
+     */
+    static ReaderLink partitionLink(String sourceId, SourcePartition partition) {
+        String label = partition.title().equals(partition.key()) ? partition.key()
+                : partition.key() + " – " + partition.title();
+        if (partition.homeResource() != null) {
+            String resourceId = partition.homeResource().value();
+            return new ReaderLink(sourceId, resourceId, label, "", resourceId);
+        }
+        return partition.startPoint().isEmpty() ? null : ReaderLink.partition(sourceId, partition.startPoint(), label);
     }
 
     private KnowledgeSourceItem item(String id, String kind, String scope, SourceDefinition form) {

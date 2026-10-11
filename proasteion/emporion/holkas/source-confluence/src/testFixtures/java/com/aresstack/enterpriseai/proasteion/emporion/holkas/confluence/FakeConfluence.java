@@ -11,8 +11,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * In-Memory-Confluence hinter {@link ConfluenceHttpTransport}: beantwortet die REST-Endpunkte, die der Adapter
@@ -25,6 +27,8 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
 
     final Map<String, FakePage> pages = new LinkedHashMap<String, FakePage>();
     final Map<String, String> spaceHomepages = new LinkedHashMap<String, String>();
+    /** Spaces mit Namen für {@code /rest/api/space}; ohne Eintrag in {@link #spaceHomepages} ohne Startseite. */
+    final Map<String, String> spaceNames = new LinkedHashMap<String, String>();
     final Map<String, FakeAttachment> attachments = new LinkedHashMap<String, FakeAttachment>();
     final List<URI> requests = new ArrayList<URI>();
     final List<Map<String, String>> requestHeaders = new ArrayList<Map<String, String>>();
@@ -64,6 +68,11 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
     /** Startseite eines Bereichs ({@code /rest/api/space/<key>} liefert sie als {@code homepage}). */
     public void homepage(String spaceKey, String pageId) {
         spaceHomepages.put(spaceKey, pageId);
+    }
+
+    /** Ein Space mit Namen (Startseite optional über {@link #homepage}). */
+    public void space(String spaceKey, String name) {
+        spaceNames.put(spaceKey, name);
     }
 
     /** Ergebnis-IDs der nächsten CQL-Suche; Anhang-IDs erscheinen als Nicht-Seiten-Treffer. */
@@ -117,15 +126,37 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         String[] parts = path.split("/");
         if (path.startsWith("/rest/api/space/") && parts.length == 5) {
             String key = decode(parts[4]);
-            if (!spaceHomepages.containsKey(key)) {
+            if (!spaceHomepages.containsKey(key) && !spaceNames.containsKey(key)) {
                 return notFound();
             }
-            JsonObject space = new JsonObject();
-            space.addProperty("key", key);
-            JsonObject home = new JsonObject();
-            home.addProperty("id", spaceHomepages.get(key));
-            space.add("homepage", home);
-            return json(space);
+            return json(spaceJson(key));
+        }
+        if (path.equals("/rest/api/space")) {
+            Set<String> keys = new LinkedHashSet<String>(spaceNames.keySet());
+            keys.addAll(spaceHomepages.keySet());
+            List<String> all = new ArrayList<String>(keys);
+            int start = Integer.parseInt(query.getOrDefault("start", "0"));
+            int limit = Integer.parseInt(query.getOrDefault("limit", "25"));
+            JsonArray results = new JsonArray();
+            for (int i = start; i < all.size() && results.size() < limit; i++) {
+                results.add(spaceJson(all.get(i)));
+            }
+            return json(page(results, nextLink(uri, start + results.size(), all.size())));
+        }
+        if (path.equals("/rest/api/content") && query.containsKey("spaceKey")) {
+            List<FakePage> inSpace = new ArrayList<FakePage>();
+            for (FakePage page : pages.values()) {
+                if (page.spaceKey.equals(query.get("spaceKey"))) {
+                    inSpace.add(page);
+                }
+            }
+            int start = Integer.parseInt(query.getOrDefault("start", "0"));
+            int limit = Integer.parseInt(query.getOrDefault("limit", "25"));
+            JsonArray results = new JsonArray();
+            for (int i = start; i < inSpace.size() && results.size() < limit; i++) {
+                results.add(pageJson(inSpace.get(i), query.get("expand")));
+            }
+            return json(page(results, nextLink(uri, start + results.size(), inSpace.size())));
         }
         if (path.equals("/rest/api/content/search")) {
             lastCql = query.get("cql");
@@ -185,6 +216,18 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         }
         return uri.getRawPath().substring(BASE.getPath().length()) + "?"
                 + uri.getRawQuery().replaceAll("start=\\d+", "start=" + nextStart);
+    }
+
+    private JsonObject spaceJson(String key) {
+        JsonObject space = new JsonObject();
+        space.addProperty("key", key);
+        space.addProperty("name", spaceNames.containsKey(key) ? spaceNames.get(key) : key + " Space");
+        if (spaceHomepages.containsKey(key)) {
+            JsonObject home = new JsonObject();
+            home.addProperty("id", spaceHomepages.get(key));
+            space.add("homepage", home);
+        }
+        return space;
     }
 
     private static JsonObject page(JsonArray results, String next) {

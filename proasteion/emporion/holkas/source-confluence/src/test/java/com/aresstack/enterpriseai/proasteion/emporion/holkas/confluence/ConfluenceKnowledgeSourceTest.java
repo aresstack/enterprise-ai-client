@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.adyton.SecretUnavailableException.Reason;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.SourceLink;
+import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
@@ -27,6 +28,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -89,6 +91,27 @@ public class ConfluenceKnowledgeSourceTest {
     public void unusableStartPointsAreSkipped() throws Exception {
         assertTrue(source().discover(SourceScope.of("space:NOPE", "999", "kein gültiger ? Startpunkt",
                 "confluence:other-source/page/100")).isEmpty());
+    }
+
+    @Test
+    public void spacesKeepTheHomepageAsCanonicalResourceId() throws Exception {
+        confluence.space("DEV", "Entwicklung");
+        confluence.space("OPS", "Betrieb");
+        List<SourcePartition> spaces = source().partitions();
+        assertEquals(2, spaces.size());
+        assertEquals("Entwicklung", spaces.get(0).title());
+        assertEquals(page("100"), spaces.get(0).homeResource());
+        assertEquals("space:DEV", spaces.get(0).startPoint());
+        assertNull(spaces.get(1).homeResource());
+    }
+
+    @Test
+    public void spaceWithoutHomepageListsAllItsPages() throws Exception {
+        confluence.space("OPS", "Betrieb");
+        confluence.page("200", "Runbook", "OPS", "<p>Ops</p>");
+        List<KnowledgeResource> resources = source().discover(SourceScope.of("space:OPS"));
+        assertEquals(1, resources.size());
+        assertEquals(page("200"), resources.get(0).id());
     }
 
     @Test

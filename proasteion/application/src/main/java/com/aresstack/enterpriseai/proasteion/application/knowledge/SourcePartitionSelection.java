@@ -12,6 +12,8 @@ import java.util.Set;
  * MainframeMate je Bereich ein Häkchen: {@code source.<n>.spaces.<schlüssel>=true|false} in der
  * {@code application-state.json}, nicht in der Konfiguration. Ein Bereich ohne gemerkten Wert ist angehakt, neue
  * Spaces sind also dabei. Wirkt ohne Neustart: Indexierung und Suche fragen bei jedem Lauf {@link #excluded} ab.
+ * Ob die Bereiche im Drawer aufgeklappt sind, steht daneben unter {@code source.<n>.partitionsExpanded}, bewusst
+ * nicht unter {@code .spaces.}, damit {@link #excluded} es nicht als Bereich liest.
  */
 public final class SourcePartitionSelection {
 
@@ -42,6 +44,19 @@ public final class SourcePartitionSelection {
 
     public void setSelected(String sourceId, String key, boolean selected) {
         state.putAndSave(prefix(sourceId) + key, Boolean.toString(selected));
+    }
+
+    /** Ob die Bereiche der Quelle im Drawer aufgeklappt sind; ohne gemerkten Wert zugeklappt. */
+    public boolean isExpanded(String sourceId) {
+        return state.getBoolean(expandedKey(sourceId), false);
+    }
+
+    public void setExpanded(String sourceId, boolean expanded) {
+        state.putAndSave(expandedKey(sourceId), Boolean.toString(expanded));
+    }
+
+    private static String expandedKey(String sourceId) {
+        return "source." + sourceId + ".partitionsExpanded";
     }
 
     private static String prefix(String sourceId) {

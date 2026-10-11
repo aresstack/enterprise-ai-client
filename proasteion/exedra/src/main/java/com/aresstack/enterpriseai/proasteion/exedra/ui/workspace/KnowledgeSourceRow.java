@@ -25,14 +25,18 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.font.TextAttribute;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Eine Quelle im Drawer-Reiter „Wissensquellen“:
@@ -41,13 +45,15 @@ import java.util.List;
  * [✓] wiki                                ⟳ ✎ ✕
  *     MediaWiki · Hauptseite, Handbuch
  *     34 Seiten im Index · Stand 00:12
- *     ▸ Spaces · 3 von 12                  (nur bei Quellen mit Bereichen, z. B. Confluence)
+ *     › Spaces · 3 von 12                  (nur bei Quellen mit Bereichen, z. B. Confluence)
  * </pre>
  *
  * Das Häkchen schaltet die Quelle für Chat und Indexierung an und ab, ⟳ indexiert sie jetzt, ✎ öffnet den
  * Quellen-Dialog, ein Klick auf den Text zeigt die Quelle im Lesebereich (Doppelklick heftet an), ✕ entfernt die Quelle (nach kurzer Rückfrage). Transparent in Ruhe, heller blauer Hauch beim Überfahren (wie die Chat-Zeilen);
- * abgewählte Quellen stehen gedämpft, ein Problem steht rot in der Statuszeile. „▸ Spaces“ klappt die Bereiche der
- * Quelle mit Häkchen auf (wie MainframeMate); Aufklappen und Häkchen öffnen nicht den Lesebereich.
+ * abgewählte Quellen stehen gedämpft, ein Problem steht rot in der Statuszeile. „Spaces“ (Pfeil als gezeichnetes
+ * Chevron-Icon, nie als Schriftzeichen) klappt die Bereiche der Quelle auf. Jeder Bereich ist wie in MainframeMate
+ * ein Häkchen plus ein eigener Name: das Häkchen legt nur fest, ob der Bereich durchsucht wird; der Name wird beim
+ * Überfahren zum Link und öffnet seine Startseite (ohne sie: seine Seiten) im Lesebereich.
  */
 public final class KnowledgeSourceRow extends JPanel {
 
@@ -67,6 +73,7 @@ public final class KnowledgeSourceRow extends JPanel {
     private final JLabel statusLabel = new JLabel();
     private final JLabel partitionsToggle = new JLabel();
     private final List<JCheckBox> partitionBoxes = new ArrayList<JCheckBox>();
+    private final List<JLabel> partitionLinks = new ArrayList<JLabel>();
     private boolean hovered;
 
     public KnowledgeSourceRow(final KnowledgeSourceItem item, final KnowledgeSourceActions actions,
@@ -187,8 +194,10 @@ public final class KnowledgeSourceRow extends JPanel {
         });
     }
 
-    /** „▸ Spaces“: klappt die Bereiche der Quelle auf und zu, ohne den Lesebereich zu öffnen. */
+    /** „Spaces“ mit Chevron: klappt die Bereiche der Quelle auf und zu, ohne den Lesebereich zu öffnen. */
     private JLabel partitionsToggle(final KnowledgeSourceActions actions) {
+        partitionsToggle.setIcon(item.partitionsExpanded() ? ComposerIcons.chevronDown() : ComposerIcons.chevronRight());
+        partitionsToggle.setIconTextGap(2);
         partitionsToggle.setText(toggleText());
         partitionsToggle.setFont(ResearchUiTypography.semiBold(11f));
         partitionsToggle.setForeground(ResearchUiPalette.ACCENT_BLUE);
@@ -208,7 +217,7 @@ public final class KnowledgeSourceRow extends JPanel {
     }
 
     private String toggleText() {
-        String text = (item.partitionsExpanded() ? "▾ " : "▸ ") + item.partitionsLabel();
+        String text = item.partitionsLabel();
         List<KnowledgeSourcePartitionItem> partitions = item.partitions();
         if (partitions == null || partitions.isEmpty()) {
             return text;
@@ -242,17 +251,18 @@ public final class KnowledgeSourceRow extends JPanel {
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
         for (final KnowledgeSourcePartitionItem partition : partitions) {
-            final JCheckBox box = new JCheckBox(partition.title().equals(partition.key()) ? partition.key()
-                    : partition.key() + " – " + partition.title());
+            String name = partition.title().equals(partition.key()) ? partition.key()
+                    : partition.key() + " – " + partition.title();
+            final JCheckBox box = new JCheckBox();
             box.setIcon(new ResearchCheckIcon());
             box.setSelectedIcon(new ResearchCheckIcon());
             box.setSelected(partition.selected());
             box.setOpaque(false);
             box.setFocusPainted(false);
-            box.setFont(ResearchUiTypography.regular(11f));
-            box.setForeground(palette.getInk());
-            box.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
-            box.setToolTipText(partition.key() + " — " + partition.title());
+            box.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 4));
+            box.setToolTipText(partition.selected() ? "Angehakt: " + partition.key() + " wird durchsucht"
+                    : "Abgewählt: " + partition.key() + " wird nicht durchsucht");
+            box.getAccessibleContext().setAccessibleName(partition.key() + " durchsuchen");
             box.addActionListener(event -> {
                 partitionsToggle.setText(toggleText());
                 if (actions != null) {
@@ -260,7 +270,19 @@ public final class KnowledgeSourceRow extends JPanel {
                 }
             });
             partitionBoxes.add(box);
-            list.add(box);
+            JLabel link = partitionLink(name, partition.link(), actions, palette);
+            partitionLinks.add(link);
+            JPanel line = new JPanel(new BorderLayout()) {
+                @Override
+                public Dimension getMaximumSize() {
+                    return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+                }
+            };
+            line.setOpaque(false);
+            line.setAlignmentX(Component.LEFT_ALIGNMENT);
+            line.add(box, BorderLayout.WEST);
+            line.add(link, BorderLayout.CENTER);
+            list.add(line);
         }
         partitionsToggle.setText(toggleText());
         JScrollPane scroll = new JScrollPane(list, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -282,6 +304,51 @@ public final class KnowledgeSourceRow extends JPanel {
         scroll.getVerticalScrollBar().setUnitIncrement(16);
         scroll.setAlignmentX(Component.LEFT_ALIGNMENT);
         return scroll;
+    }
+
+    /**
+     * Der Name eines Bereichs: in Ruhe normaler Text, beim Überfahren Link (blau, unterstrichen, Handcursor); ein
+     * Klick öffnet {@code link} im Lesebereich (Doppelklick heftet an). Ohne Ziel bleibt er reiner Text.
+     */
+    private static JLabel partitionLink(String name, final ReaderLink link, final KnowledgeSourceActions actions,
+                                        final ComicPalette palette) {
+        final JLabel label = new JLabel(name);
+        final Font plain = ResearchUiTypography.regular(11f);
+        Map<TextAttribute, Object> underline = new HashMap<TextAttribute, Object>();
+        underline.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
+        final Font underlined = plain.deriveFont(underline);
+        label.setFont(plain);
+        label.setForeground(palette.getInk());
+        label.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
+        if (link == null) {
+            label.setToolTipText(name);
+            return label;
+        }
+        label.setToolTipText(name + (link.isSource() ? " (Seiten anzeigen)" : " (Startseite öffnen)"));
+        label.getAccessibleContext().setAccessibleName(name + " im Lesebereich öffnen");
+        label.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent event) {
+                label.setFont(underlined);
+                label.setForeground(ResearchUiPalette.ACCENT_BLUE);
+                label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent event) {
+                label.setFont(plain);
+                label.setForeground(palette.getInk());
+                label.setCursor(Cursor.getDefaultCursor());
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent event) {
+                if (SwingUtilities.isLeftMouseButton(event) && actions != null) {
+                    actions.linkOpened(link, event.getClickCount() >= 2);
+                }
+            }
+        });
+        return label;
     }
 
     static Color statusColor(KnowledgeSourceItem.State state, ComicPalette palette) {
@@ -315,7 +382,7 @@ public final class KnowledgeSourceRow extends JPanel {
         return removeButton;
     }
 
-    /** „▸ Spaces“ (Tests); ohne Bereiche nicht im Bild. */
+    /** „Spaces“ mit Chevron (Tests); ohne Bereiche nicht im Bild. */
     public JLabel partitionsToggle() {
         return partitionsToggle;
     }
@@ -323,6 +390,11 @@ public final class KnowledgeSourceRow extends JPanel {
     /** Die Häkchen der aufgeklappten Bereiche (Tests). */
     public List<JCheckBox> partitionBoxes() {
         return Collections.unmodifiableList(partitionBoxes);
+    }
+
+    /** Die Namen der aufgeklappten Bereiche (Tests). */
+    public List<JLabel> partitionLinks() {
+        return Collections.unmodifiableList(partitionLinks);
     }
 
     public String statusText() {

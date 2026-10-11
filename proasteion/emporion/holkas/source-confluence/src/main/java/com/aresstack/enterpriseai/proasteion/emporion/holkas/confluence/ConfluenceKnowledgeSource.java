@@ -199,7 +199,13 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         return withSession(new Operation<List<SourcePartition>>() {
             @Override
             public List<SourcePartition> run(Session session) throws KnowledgeSourceException {
-                return client.spaces(session, Integer.MAX_VALUE);
+                List<SourcePartition> partitions = new ArrayList<SourcePartition>();
+                for (ConfluenceRestClient.Space space : client.spaces(session, Integer.MAX_VALUE)) {
+                    KnowledgeResourceId home = ConfluenceIds.isContentId(space.homepageId)
+                            ? ConfluenceIds.page(locator, space.homepageId) : null;
+                    partitions.add(new SourcePartition(space.key, space.name, home, "space:" + space.key));
+                }
+                return partitions;
             }
         });
     }
@@ -238,7 +244,25 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 }
                 continue;
             }
-            Page start = startPage(session, raw);
+            ConfluenceIds.StartPoint point = ConfluenceIds.startPoint(locator, raw);
+            if (point == null) {
+                continue;
+            }
+            Page start;
+            if (point.spaceKey != null) {
+                ConfluenceRestClient.Space space = client.space(session, point.spaceKey);
+                if (space == null || scope.excludedPartitions().contains(space.key)) {
+                    continue;
+                }
+                if (!ConfluenceIds.isContentId(space.homepageId)) {
+                    // Space ohne Startseite: wie MainframeMate (space="KEY" AND type=page) alle Seiten des Space.
+                    allPagesOf(session, space.key, scope.maxResources(), found);
+                    continue;
+                }
+                start = existingPage(session, space.homepageId);
+            } else {
+                start = existingPage(session, point.pageId);
+            }
             if (start != null && !scope.excludedPartitions().contains(start.spaceKey)) {
                 queue.add(new Node(pageResource(start, start.parentId), start.id, 0));
             }
@@ -277,8 +301,8 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     private List<String> spaceKeys(Session session, SourceScope scope) throws KnowledgeSourceException {
         List<String> keys = new ArrayList<String>();
         if (config.searchSpaceKeys().isEmpty()) {
-            for (SourcePartition space : client.spaces(session, Integer.MAX_VALUE)) {
-                keys.add(space.key());
+            for (ConfluenceRestClient.Space space : client.spaces(session, Integer.MAX_VALUE)) {
+                keys.add(space.key);
             }
         } else {
             keys.addAll(config.searchSpaceKeys());
@@ -309,16 +333,9 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         }
     }
 
-    private Page startPage(Session session, String raw) throws KnowledgeSourceException {
-        ConfluenceIds.StartPoint start = ConfluenceIds.startPoint(locator, raw);
-        if (start == null) {
-            return null;
-        }
-        if (start.spaceKey != null) {
-            return client.spaceHomepage(session, start.spaceKey);
-        }
+    private Page existingPage(Session session, String pageId) throws KnowledgeSourceException {
         try {
-            return client.page(session, start.pageId, false);
+            return client.page(session, pageId, false);
         } catch (KnowledgeSourceException e) {
             if (e.kind() == Kind.NOT_FOUND) {
                 return null;

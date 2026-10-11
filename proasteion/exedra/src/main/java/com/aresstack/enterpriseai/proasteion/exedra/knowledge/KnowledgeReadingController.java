@@ -16,6 +16,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -201,7 +202,9 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         try {
             if (link.isSource()) {
                 final List<ReaderLink> entries = new ArrayList<ReaderLink>();
-                for (KnowledgeResource resource : browse.list(registration.port(), registration.scope())) {
+                SourceScope scope = link.startPoint().isEmpty() ? registration.scope()
+                        : SourceScope.of(link.startPoint());
+                for (KnowledgeResource resource : browse.list(registration.port(), scope)) {
                     entries.add(new ReaderLink(link.sourceId(), resource.id().value(), resource.title(), "",
                             resource.id().value()));
                 }

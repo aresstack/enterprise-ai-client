@@ -1,7 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
-import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -55,8 +54,8 @@ final class ConfluenceRestClient {
         this.transport = transport;
     }
 
-    /** Startseite eines Space oder {@code null}, wenn der Space nicht existiert oder keine hat. */
-    Page spaceHomepage(Session session, String spaceKey) throws KnowledgeSourceException {
+    /** Der Space mit Startseiten-ID oder {@code null}, wenn es ihn nicht gibt. */
+    Space space(Session session, String spaceKey) throws KnowledgeSourceException {
         JsonObject space;
         try {
             space = getJson(session, "/rest/api/space/" + pathSegment(spaceKey) + "?expand=homepage", "Space");
@@ -67,16 +66,23 @@ final class ConfluenceRestClient {
             throw e;
         }
         JsonObject home = object(space, "homepage");
-        return home == null || string(home, "id") == null ? null : page(session, string(home, "id"), false);
+        return new Space(spaceKey, string(space, "name"), home == null ? null : string(home, "id"));
     }
 
-    /** Alle Spaces (wie MainframeMate, auch persönliche) mit Schlüssel und Namen, in Confluence-Reihenfolge. */
-    List<SourcePartition> spaces(Session session, int max) throws KnowledgeSourceException {
-        return paged(session, "/rest/api/space?expand=homepage", "Spaces", max, new Item<SourcePartition>() {
+    /**
+     * Alle Spaces (wie MainframeMate, auch persönliche) mit Schlüssel, Namen und Startseiten-ID (MainframeMate
+     * {@code SpaceItem.homepageId}), in Confluence-Reihenfolge.
+     */
+    List<Space> spaces(Session session, int max) throws KnowledgeSourceException {
+        return paged(session, "/rest/api/space?expand=homepage", "Spaces", max, new Item<Space>() {
             @Override
-            public SourcePartition map(JsonObject space) {
+            public Space map(JsonObject space) {
                 String key = string(space, "key");
-                return key == null || key.trim().isEmpty() ? null : new SourcePartition(key, string(space, "name"));
+                if (key == null || key.trim().isEmpty()) {
+                    return null;
+                }
+                JsonObject home = object(space, "homepage");
+                return new Space(key.trim(), string(space, "name"), home == null ? null : string(home, "id"));
             }
         });
     }
@@ -452,6 +458,19 @@ final class ConfluenceRestClient {
         @Override
         public String toString() {
             return "Session[***]";
+        }
+    }
+
+    static final class Space {
+        final String key;
+        final String name;
+        /** Content-ID der Startseite oder {@code null}. */
+        final String homepageId;
+
+        Space(String key, String name, String homepageId) {
+            this.key = key;
+            this.name = name;
+            this.homepageId = homepageId;
         }
     }
 
