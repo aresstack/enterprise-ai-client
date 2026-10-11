@@ -30,13 +30,13 @@ import java.util.function.IntSupplier;
  * (Absätze und Überschriften als Textflächen, Codeblöcke, Tabellen, Beschriftungen). Gesucht wird deshalb in allen
  * Textkomponenten unterhalb der Wurzel in Bildschirmreihenfolge. Textflächen bekommen je Fundstelle eine gelbe
  * Markierung; Tabellenzellen und Beschriftungen haben keinen Highlighter und werden als Ganzes gelb hinterlegt.
- * Im Schrittmodus ist der aktuelle Treffer orange statt gelb.</p>
+ * Der aktuelle Treffer ist orange statt gelb.</p>
  */
 final class ReaderFind {
 
     /** MainframeMate: {@code Color.YELLOW}. */
     static final Color HIT = Color.YELLOW;
-    /** Der aktuelle Treffer beim Durchgehen (eigene Ergänzung, MainframeMates Amber 0xFFB74D). */
+    /** Der aktuelle Treffer (eigene Ergänzung, MainframeMates Amber 0xFFB74D). */
     static final Color CURRENT_HIT = new Color(0xFFB74D);
 
     private static final String TABLE_HITS = ReaderFind.class.getName() + ".tableHits";
@@ -46,7 +46,6 @@ final class ReaderFind {
     private final Map<JLabel, LabelLook> markedLabels = new IdentityHashMap<JLabel, LabelLook>();
     private final List<JTable> markedTables = new ArrayList<JTable>();
     private int current = -1;
-    private boolean stepping;
     private IntSupplier coveredTop = () -> 0;
 
     ReaderFind(JComponent root) {
@@ -79,14 +78,6 @@ final class ReaderFind {
     /** Wie hoch oben etwas über dem Inhalt liegt (der Navigationsbanner): Treffer landen darunter, nicht dahinter. */
     void setCoveredTop(IntSupplier coveredTop) {
         this.coveredTop = coveredTop == null ? () -> 0 : coveredTop;
-    }
-
-    /** Schrittmodus („Treffer einzeln durchgehen“): der aktuelle Treffer wird orange statt gelb. */
-    void setStepping(boolean stepping) {
-        this.stepping = stepping;
-        if (!hits.isEmpty()) {
-            paint();
-        }
     }
 
     /** Springt zum nächsten Treffer (nach dem letzten wieder zum ersten). */
@@ -244,11 +235,11 @@ final class ReaderFind {
         return value != null && String.valueOf(value).toLowerCase(Locale.ROOT).contains(needle);
     }
 
-    /** Zeichnet alle Treffer neu: gelb, der aktuelle im Schrittmodus orange. */
+    /** Zeichnet alle Treffer neu: gelb, der aktuelle orange. */
     private void paint() {
         for (int i = 0; i < hits.size(); i++) {
             Hit hit = hits.get(i);
-            Color color = stepping && i == current ? CURRENT_HIT : HIT;
+            Color color = i == current ? CURRENT_HIT : HIT;
             if (hit.text != null) {
                 markText(hit, color);
             } else if (hit.label != null) {
@@ -260,7 +251,7 @@ final class ReaderFind {
             for (int i = 0; i < hits.size(); i++) {
                 Hit hit = hits.get(i);
                 if (hit.table == table) {
-                    Color color = stepping && i == current ? CURRENT_HIT : HIT;
+                    Color color = i == current ? CURRENT_HIT : HIT;
                     Color known = colors.get(hit.cell);
                     colors.put(hit.cell, CURRENT_HIT.equals(known) ? known : color);
                 }

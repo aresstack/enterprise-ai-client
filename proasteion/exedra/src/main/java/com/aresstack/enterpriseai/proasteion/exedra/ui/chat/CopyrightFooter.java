@@ -7,7 +7,6 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import java.awt.BorderLayout;
 import java.awt.Cursor;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -81,19 +80,6 @@ public final class CopyrightFooter extends JPanel {
         add(copyright);
         add(link);
         setBorder(BorderFactory.createEmptyBorder(TOP_GAP, 0, 0, 0));
-    }
-
-    /**
-     * Die Fußzeile mit den Rändern der Chat-Ansicht, für Ansichten ohne Composer (Lesebereich): unten rechts in
-     * {@link BorderLayout#SOUTH} eingehängt steht sie pixelgenau dort, wo sie im Chat steht, solange beide Ansichten
-     * Karten desselben Decks sind.
-     */
-    public static JPanel placedLikeChat() {
-        JPanel wrap = new JPanel(new BorderLayout());
-        wrap.setOpaque(false);
-        wrap.setBorder(BorderFactory.createEmptyBorder(0, SIDE_MARGIN, BOTTOM_MARGIN, SIDE_MARGIN));
-        wrap.add(new CopyrightFooter(), BorderLayout.CENTER);
-        return wrap;
     }
 
     JLabel link() {

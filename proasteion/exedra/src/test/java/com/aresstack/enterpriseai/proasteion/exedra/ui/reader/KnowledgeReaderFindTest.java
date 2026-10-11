@@ -13,10 +13,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-/** Lesebereich: die Amber-Suchleiste durchsucht nur den aktiven Reiter; Umsortieren und Gruppen erhalten Vorschau/Angeheftet. */
+/** Lesebereich: die Suche der Leiste unten durchsucht nur den aktiven Reiter; Umsortieren und Gruppen erhalten Vorschau/Angeheftet. */
 public class KnowledgeReaderFindTest {
 
     @Test
@@ -31,7 +30,7 @@ public class KnowledgeReaderFindTest {
             reader.showMarkdown(second.key(), "Hier steht Zabak nur einmal.");
 
             assertEquals(second.key(), reader.activeKey());
-            assertNotNull(reader.findBar(second.key()));
+            assertTrue(reader.toolbar().findButton().isEnabled());
             assertEquals(1, reader.searchFor("zabak"));
             assertEquals(1, reader.findHitCount(second.key()));
             assertEquals(0, reader.findHitCount(first.key()));
@@ -55,7 +54,7 @@ public class KnowledgeReaderFindTest {
             reader.showHtml(page.key(), "<h2>Zabak</h2><p>Zabak steht hier</p><table><tr><td>und zabak</td></tr>"
                     + "</table>", "https://confluence.invalid/", java.util.Collections.emptyList(),
                     (image, done) -> done.accept(null));
-            assertNotNull(reader.findBar(page.key()));
+            assertTrue(reader.toolbar().findButton().isEnabled());
             assertEquals(3, reader.searchFor("zabak"));
             ReaderHtmlView view = reader.htmlView(page.key());
             assertSame(view, reader.findHit(page.key(), 0));

@@ -43,6 +43,8 @@ public final class ResearchUiPalette {
     /** Dictation (arch {@code ChatComposerPanel}): orange border and stop fill while recording, warm surface. */
     public static final Color RECORDING_ORANGE = new Color(0xF57C00);
     public static final Color RECORDING_SURFACE = new Color(0xFFF8E1);
+    /** Accent of the active find in the reader: MainframeMate's amber focus border of its find bar (amber-700). */
+    public static final Color FIND_AMBER = new Color(0xF57C00);
     /** The comic dark green of the recording waveform over the composer editor (arch). */
     public static final Color WAVE_GREEN = new Color(0x2E7D32);
     /** The favorite star (MainframeMate's bookmarked ★ in the tab header) and its darker rim on bright surfaces. */

@@ -5,8 +5,8 @@ import java.awt.geom.Line2D;
 
 /**
  * AskAI's composer glyph set as reusable {@link StrokeIcon}s (send, stop, hamburger, gear, plus,
- * chevrons, close); pencil, refresh and microphone are own additions for list rows, the return arrow replaces
- * MainframeMate's find-bar glyph ↵. The reference geometry is
+ * chevrons, close); pencil, refresh and microphone are own additions for list rows, the magnifier is the
+ * reader toolbar's find button. The reference geometry is
  * verbatim — no icon assets, every glyph is drawn with the owning component's foreground.
  */
 public final class ComposerIcons {
@@ -122,6 +122,17 @@ public final class ComposerIcons {
         };
     }
 
+    /** The mirror image of {@link #chevronDown()} (previous match). Own addition. */
+    public static StrokeIcon chevronUp() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawLine(3, 10, 7, 6);
+                g2.drawLine(7, 6, 11, 10);
+            }
+        };
+    }
+
     public static StrokeIcon chevronLeft() {
         return new StrokeIcon() {
             @Override
@@ -179,15 +190,16 @@ public final class ComposerIcons {
         };
     }
 
-    /** The return arrow (MainframeMate's find-bar ↵, "start search"): a hook down from the top right to an arrow. */
-    public static StrokeIcon enter() {
+    /**
+     * The magnifying glass (find in the reader): ring and handle with the geometry of
+     * {@code ComicSearchBar.paintMagnifyingGlass} (AskAI), as an icon for the reader toolbar.
+     */
+    public static StrokeIcon magnifier() {
         return new StrokeIcon() {
             @Override
             protected void paint(Graphics2D g2) {
-                g2.drawLine(12, 3, 12, 9);
-                g2.drawLine(12, 9, 4, 9);
-                g2.drawLine(4, 9, 7, 6);
-                g2.drawLine(4, 9, 7, 12);
+                g2.drawOval(2, 2, 10, 10);
+                g2.drawLine(10, 10, 14, 14);
             }
         };
     }

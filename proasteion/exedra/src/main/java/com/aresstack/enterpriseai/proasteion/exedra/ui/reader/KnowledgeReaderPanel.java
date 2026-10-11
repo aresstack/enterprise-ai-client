@@ -1,7 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 
 import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
-import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.CopyrightFooter;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DiagramOverlayHost;
@@ -9,7 +8,6 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownMessageV
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidImageRenderer;
 import com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight;
-import com.aresstack.enterpriseai.ui.comic.control.ComicFindBar;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidViewerPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComicOverlayPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
@@ -69,7 +67,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.function.Consumer;
 
 /**
  * Der Lesebereich statt des Chats, wie der Lese-Tab in MainframeMate: oben die Lese-Reiter, darunter Titel, Fundstelle,
@@ -80,9 +77,10 @@ import java.util.function.Consumer;
  * kursiv), den der nächste einfache Klick ersetzt. Ein Doppelklick, „Anheften“ oder ein Doppelklick auf den Reiter
  * heftet ihn fest an; angeheftete Reiter bleiben, bis man sie mit ✕ schließt.</p>
  *
- * <p>Unten in jedem Reiter mit Inhalt liegt die Amber-Suchleiste aus MainframeMates {@code ConfluenceReaderTab}
- * („Im Dokument suchen…“): Enter markiert alle Fundstellen im eigenen Reiter gelb und zeigt die erste; Rechtsklick
- * schaltet „Treffer einzeln durchgehen“ (◀ ▶) ein. Strg+F setzt den Cursor in die Leiste des aktiven Reiters.</p>
+ * <p>Unten liegt eine einzige Zeile ({@link ReaderToolbar}): links die Lupe, rechts das Branding an derselben Stelle
+ * wie unter dem Chat. Lupe oder Strg+F klappt die Suche in derselben Zeile auf; gesucht wird wie in MainframeMates
+ * {@code ConfluenceReaderTab} nur im aktiven Reiter (alle Fundstellen gelb, die aktuelle orange), Begriff und
+ * Auf/Zu merkt sich jeder Reiter.</p>
  *
  * <p>Neue Enterprise-Funktion (kein Port): Reiter lassen sich per Drag and Drop umsortieren und wie in Firefox zu
  * farbigen Gruppen mit optionalem Namen zusammenfassen ({@link ReaderTabGroup}); Vorschau/Angeheftet bleibt dabei am
@@ -126,7 +124,6 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     static final String PIN_TOOLTIP = "Anheften (bleibt offen, bis du ihn schließt)";
     static final String FAVORITE_ADD = "Als Favorit merken";
     static final String FAVORITE_REMOVE = "Aus den Favoriten entfernen";
-    static final String FIND_PLACEHOLDER = "Im Dokument suchen\u2026";
     static final String IMAGES_TOOLTIP = "Alle Bilder der Seite als Diashow";
     private static final String EMPTY_CARD = "empty";
     private static final int PAGE_PADDING_TOP = 14;
@@ -170,8 +167,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private String activeKey;
     private int cardCounter;
     private Listener listener;
-    private boolean stepSearch;
-    private Consumer<Boolean> stepSearchChanged;
+    private final ReaderToolbar toolbar = new ReaderToolbar();
 
     public KnowledgeReaderPanel(ComicPalette palette) {
         this(palette, DesktopLinkOpener.systemDefault(), CachingMermaidImageRenderer.forChat());
@@ -237,57 +233,33 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         layers.setLayout(new FillLayout());
         layers.add(deck, JLayeredPane.DEFAULT_LAYER);
         add(layers, BorderLayout.CENTER);
-        add(CopyrightFooter.placedLikeChat(), BorderLayout.SOUTH);
+        add(toolbar, BorderLayout.SOUTH);
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK),
                 "reader.find");
         getActionMap().put("reader.find", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent event) {
                 if (isShowing()) {
-                    focusFindBar();
+                    toolbar.open();
                 }
             }
         });
         refresh();
     }
 
-    /**
-     * Ob „Treffer einzeln durchgehen“ eingeschaltet ist und wer die Änderung per Rechtsklick erfährt (MainframeMate
-     * merkt sich das im Anwendungszustand).
-     */
-    public void setStepSearch(boolean enabled, Consumer<Boolean> changed) {
-        this.stepSearch = enabled;
-        this.stepSearchChanged = changed;
-        for (Tab tab : tabs.values()) {
-            if (tab.findBar != null) {
-                tab.findBar.setStepSearchEnabled(enabled);
-                tab.find.setStepping(enabled);
-            }
-        }
-    }
-
-    /** Setzt den Cursor in die Suchleiste des aktiven Reiters (wie {@code focusSearchField()} in MainframeMate). */
+    /** Klappt die Suche des aktiven Reiters auf und setzt den Cursor ins Feld (Strg+F). */
     public void focusFindBar() {
-        Tab tab = tabs.get(activeKey);
-        if (tab != null && tab.findBar != null) {
-            tab.findBar.focusAndSelectAll();
-        }
+        toolbar.open();
     }
 
-    /** Sucht im aktiven Reiter wie Enter in der Suchleiste ({@code searchFor} in MainframeMate). */
+    /** Sucht im aktiven Reiter, als hätte man {@code query} eingetippt und Enter gedrückt. */
     public int searchFor(String query) {
-        Tab tab = tabs.get(activeKey);
-        if (tab == null || tab.findBar == null) {
-            return 0;
-        }
-        tab.findBar.setText(query == null ? "" : query);
-        return tab.find.search(query);
+        return toolbar.searchFor(query);
     }
 
-    /** Die Suchleiste des Reiters oder {@code null}, solange er nichts zum Durchsuchen hat. */
-    public ComicFindBar findBar(String key) {
-        Tab tab = tabs.get(key);
-        return tab == null ? null : tab.findBar;
+    /** Die Leiste unter dem Lesebereich (Lupe, Suche, Branding). */
+    ReaderToolbar toolbar() {
+        return toolbar;
     }
 
     /** Die Komponente, in der der Reiter {@code key} gerade Fundstelle {@code index} markiert hat (für Tests). */
@@ -544,7 +516,6 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         if (tab != null) {
             JLabel label = message(text);
             label.setForeground(ResearchUiPalette.DANGER_RED);
-            tab.findBar = null;
             tab.find = null;
             replace(tab, label);
         }
@@ -1028,7 +999,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         content.setName(tab.card);
         tab.content = content;
         if (tab.document != null && !SwingUtilities.isDescendingFrom(tab.document, content)) {
-            tab.document = null; // die Suchleiste legt das Dokument in einen Rahmen, das Dokument bleibt dasselbe
+            tab.document = null; // etwas anderes als das Dokument (Liste, Meldung)
         }
         deck.add(content, tab.card);
         refresh();
@@ -1050,6 +1021,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         strip.setVisible(!tabs.isEmpty());
         Tab active = tabs.get(activeKey);
         cards.show(deck, active == null ? EMPTY_CARD : active.card);
+        toolbar.bind(active == null ? null : active.find, active == null ? null : active.findState);
         refreshHeader();
         strip.revalidate();
         strip.repaint();
@@ -1083,7 +1055,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         return label;
     }
 
-    /** Der Inhalt im Rollbereich, darunter die Amber-Suchleiste, die nur diesen Reiter durchsucht. */
+    /** Der Inhalt; die Suche der Leiste unten durchsucht nur diesen Reiter. */
     private JComponent searchable(Tab tab, JComponent content, final JComponent view) {
         final ReaderFind find = new ReaderFind(view);
         if (content instanceof NavigableDocumentPage) {
@@ -1091,53 +1063,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             final NavigableDocumentPage document = (NavigableDocumentPage) content;
             find.setCoveredTop(() -> document.sky().coveredHeight());
         }
-        find.setStepping(stepSearch);
-        final ComicFindBar bar = new ComicFindBar(FIND_PLACEHOLDER);
-        bar.setStepSearchEnabled(stepSearch);
-        bar.addSearchAction(event -> find.search(bar.getText()));
-        bar.setPrevAction(event -> find.previous());
-        bar.setNextAction(event -> find.next());
-        bar.setStepSearchModeListener(enabled -> {
-            stepSearch = enabled;
-            for (Tab other : tabs.values()) {
-                if (other.findBar != null) {
-                    other.findBar.setStepSearchEnabled(enabled);
-                    other.find.setStepping(enabled);
-                }
-            }
-            if (stepSearchChanged != null) {
-                stepSearchChanged.accept(enabled);
-            }
-        });
-        bar.setExitListener(new ComicFindBar.FindBarExitListener() {
-            @Override
-            public void onExitUp() {
-                view.scrollRectToVisible(new Rectangle(0, 0, 1, 1));
-                view.requestFocusInWindow();
-            }
-
-            @Override
-            public void onExitDown() {
-                view.scrollRectToVisible(new Rectangle(0, Math.max(0, view.getHeight() - 1), 1, 1));
-                view.requestFocusInWindow();
-            }
-
-            @Override
-            public void onDismiss() {
-                view.requestFocusInWindow();
-            }
-        });
-        tab.findBar = bar;
         tab.find = find;
-        JPanel south = new JPanel(new BorderLayout());
-        south.setOpaque(false);
-        south.setBorder(BorderFactory.createEmptyBorder(0, 12, 8, 12));
-        south.add(bar, BorderLayout.CENTER);
-        JPanel page = new JPanel(new BorderLayout());
-        page.setOpaque(false);
-        page.add(content, BorderLayout.CENTER);
-        page.add(south, BorderLayout.SOUTH);
-        return page;
+        tab.findState.searched = null; // neuer Inhalt, noch nichts markiert
+        return content;
     }
 
     private JScrollPane scroll(JComponent view) {
@@ -1157,8 +1085,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         JComponent content;
         final List<FavoriteStarButton> stars = new ArrayList<FavoriteStarButton>();
         NavigableDocumentPage document;
-        ComicFindBar findBar;
         ReaderFind find;
+        final ReaderToolbar.FindState findState = new ReaderToolbar.FindState();
         ReaderTabGroup group;
         /** Die Bilder der Seite, nur bei {@link #showHtml}. */
         ReaderImageStore images;
