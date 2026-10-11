@@ -518,11 +518,12 @@ public final class SettingsPanel extends JPanel {
         return tabButtons.get(index);
     }
 
-    /** Die Kategorie „Index“ (für Tests). */
+    /** Die Kategorie „Tools“ (für Tests). */
     ToolsTab toolsTab() {
         return toolsTab;
     }
 
+    /** Die Kategorie „Index“ (für Tests). */
     IndexEditor indexTab() {
         return indexTab;
     }

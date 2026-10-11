@@ -240,6 +240,87 @@ public class RagChatBindingTest {
         assertEquals("Gefunden", entries(fixture.model).get(1).getText());
     }
 
+    /**
+     * Reiter „Tools“: was der Katalog als aktiv mit Kanal „Chat“ anzeigt, ist genau das, was die Werkzeug-Schleife
+     * anbietet. Abgeschaltete Wissens- und Anhang-Werkzeuge fehlen, ohne Neustart wieder eingeschaltet sind sie da.
+     */
+    @Test
+    public void chatOffersExactlyTheToolsTheCatalogShowsAsActive() throws Exception {
+        final java.util.Set<String> disabled = new java.util.concurrent.CopyOnWriteArraySet<String>();
+        final com.aresstack.enterpriseai.proasteion.application.composition.ToolCatalog catalog =
+                new com.aresstack.enterpriseai.proasteion.application.composition.ToolCatalog(
+                        name -> !disabled.contains(name));
+        final List<AiTool> knowledge = java.util.Arrays.asList(
+                recordingTool("knowledge_search", new ArrayList<String>(), ""),
+                recordingTool(ChatBookmark.READ_TOOL, new ArrayList<String>(), ""));
+        final java.util.EnumSet<com.aresstack.enterpriseai.proasteion.application.composition.ToolChannel> chatOnly =
+                java.util.EnumSet.of(com.aresstack.enterpriseai.proasteion.application.composition.ToolChannel.CHAT);
+        catalog.registerDefinitions("Wissen", chatOnly, () -> {
+            List<ToolDefinition> definitions = new ArrayList<ToolDefinition>();
+            for (AiTool tool : knowledge) {
+                definitions.add(tool.definition());
+            }
+            return definitions;
+        });
+        catalog.registerDefinitions("Anhänge", chatOnly,
+                com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTools::definitions);
+        final java.util.function.Supplier<List<AiTool>> activeKnowledge = () -> {
+            List<AiTool> active = new ArrayList<AiTool>();
+            for (AiTool tool : knowledge) {
+                if (catalog.isEnabled(tool.name())) {
+                    active.add(tool);
+                }
+            }
+            return active;
+        };
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(source.sourceId(), true);
+        final Fixture fixture = fixture(index, embeddings, selection);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.enableTools(new ToolSupport(port, new FileAttachmentStore(folder.getRoot().toPath()),
+                        (name, content) -> "", activeKnowledge, catalog::isEnabled, true));
+            }
+        });
+
+        disabled.add("knowledge_search");
+        disabled.add("read_attachment");
+        List<String> offered = ask(fixture, "Erste Frage");
+        assertFalse(offered.toString(), offered.contains("knowledge_search"));
+        assertFalse(offered.toString(), offered.contains("read_attachment"));
+        assertEquals(shownAsActiveInChat(catalog), new java.util.TreeSet<String>(offered));
+
+        disabled.clear();
+        offered = ask(fixture, "Zweite Frage");
+        assertTrue(offered.toString(), offered.contains("knowledge_search") && offered.contains("read_attachment"));
+        assertEquals(shownAsActiveInChat(catalog), new java.util.TreeSet<String>(offered));
+    }
+
+    private List<String> ask(final Fixture fixture, final String question) throws Exception {
+        port.enqueueAnswer("ok");
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested(question, true);
+            }
+        });
+        awaitIdle(fixture.model);
+        return toolNames(port.lastRequest());
+    }
+
+    private static java.util.Set<String> shownAsActiveInChat(
+            com.aresstack.enterpriseai.proasteion.application.composition.ToolCatalog catalog) {
+        java.util.Set<String> names = new java.util.TreeSet<String>();
+        for (com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ToolOverviewEntry entry
+                : new com.aresstack.enterpriseai.proasteion.exedra.settings.CatalogToolOverview(catalog).tools()) {
+            if (entry.enabled() && entry.availability().contains("Chat")) {
+                names.add(entry.name());
+            }
+        }
+        return names;
+    }
+
     /** Keine Quelle angehakt und keine Seite: normaler Chat, keine Wissens-Werkzeuge. */
     @Test
     public void noTickedSourceAndNoPageOffersNoKnowledgeTools() throws Exception {
