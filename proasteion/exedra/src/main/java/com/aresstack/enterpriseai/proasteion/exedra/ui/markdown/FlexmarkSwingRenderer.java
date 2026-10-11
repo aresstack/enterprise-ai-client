@@ -36,6 +36,7 @@ final class FlexmarkSwingRenderer {
     private final Parser parser;
     private final MarkdownTheme theme;
     private final InlineMarkdownRenderer inlineRenderer;
+    private final DesktopLinkOpener linkOpener;
     private final MermaidImageRenderer mermaidImageRenderer;
     private final MermaidImageRenderer svgImageRenderer = new SvgImageRenderer();
 
@@ -43,6 +44,7 @@ final class FlexmarkSwingRenderer {
                           MermaidImageRenderer mermaidImageRenderer) {
         this.theme = theme;
         this.inlineRenderer = new InlineMarkdownRenderer(theme, linkOpener);
+        this.linkOpener = linkOpener;
         this.mermaidImageRenderer = mermaidImageRenderer;
         MutableDataSet options = new MutableDataSet();
         options.set(Parser.EXTENSIONS, Arrays.asList(
@@ -117,7 +119,7 @@ final class FlexmarkSwingRenderer {
             return renderQuote(node, renderMermaid, allowUnwrap);
         }
         if (node instanceof TableBlock) {
-            return new MarkdownTablePanel((TableBlock) node, theme);
+            return new MarkdownTablePanel((TableBlock) node, theme, inlineRenderer, linkOpener);
         }
         if (node instanceof ThematicBreak) {
             JSeparator separator = new JSeparator();
