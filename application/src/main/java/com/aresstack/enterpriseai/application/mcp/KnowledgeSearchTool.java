@@ -1,0 +1,184 @@
+package com.aresstack.enterpriseai.application.mcp;
+
+import com.aresstack.enterpriseai.application.knowledge.FoundResource;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
+import com.aresstack.enterpriseai.application.knowledge.SearchDrivenIndexingUseCase;
+import com.aresstack.enterpriseai.application.rag.RetrievalResult;
+import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
+import com.aresstack.enterpriseai.application.rag.RetrievedChunk;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.mcp.api.McpToolCall;
+import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
+import com.aresstack.enterpriseai.mcp.api.McpToolHandler;
+import com.aresstack.enterpriseai.mcp.api.McpToolParameter;
+import com.aresstack.enterpriseai.mcp.api.McpToolResult;
+
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * {@code knowledge_search(query, limit)}: Quellen live durchsuchen, neue oder geänderte Treffer im Rahmen von
+ * {@link KnowledgeToolSettings#maxPages()} indexieren, dann hybrid im Index suchen. Treffer, die nur die Live-Suche
+ * kennt (außerhalb des Budgets), stehen mit ihrer Id darunter, damit das Modell sie mit {@code knowledge_read} lesen
+ * kann.
+ */
+final class KnowledgeSearchTool implements McpToolHandler {
+
+    static final String NAME = "knowledge_search";
+    static final String PARAM_QUERY = "query";
+    static final String PARAM_LIMIT = "limit";
+
+    private static final int TITLE_CHARS = 200;
+
+    private final RetrieveKnowledgeUseCase retrieval;
+    private final SearchDrivenIndexingUseCase live;
+    private final KnowledgeSourceCatalog catalog;
+    private final KnowledgeToolSettings settings;
+
+    KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
+                        KnowledgeSourceCatalog catalog, KnowledgeToolSettings settings) {
+        this.retrieval = retrieval;
+        this.live = live;
+        this.catalog = catalog;
+        this.settings = settings;
+    }
+
+    McpToolContribution contribution() {
+        return McpToolContribution.of(NAME,
+                "Search the knowledge sources (e.g. Confluence, wiki) and the local knowledge index. New or changed "
+                        + "pages from the live search are loaded and indexed automatically. Use this first when you "
+                        + "need information about a topic, then read a hit with knowledge_read. "
+                        + "Example: query=\"RSL in IAR\", limit=4. "
+                        + "Example: query=\"Was bedeutet Rückmeldeschlüssel bei IAR?\".",
+                this,
+                McpToolParameter.string(PARAM_QUERY, true,
+                        "What to look for, natural language or keywords. Example: query=\"Urlaubsantrag Ablauf\""),
+                McpToolParameter.integer(PARAM_LIMIT, false, "How many hits to return (default "
+                        + settings.defaultMaxResults() + "). Example: limit=4"));
+    }
+
+    @Override
+    public McpToolResult invoke(McpToolCall call) {
+        String query = call.getString(PARAM_QUERY);
+        if (ToolText.isBlank(query)) {
+            return McpToolResult.error("Missing argument: query — example: query=\"RSL in IAR\", limit=4");
+        }
+        long requested = call.getInteger(PARAM_LIMIT, settings.defaultMaxResults());
+        if (requested < 1) {
+            return McpToolResult.error("limit must be at least 1 — example: query=\"" + ToolText.oneLine(query, 80)
+                    + "\", limit=4");
+        }
+        int limit = (int) Math.min(requested, Math.max(1, retrieval.settings().maxResults()));
+        String text = query.trim();
+
+        SearchDrivenIndexingUseCase.Result found;
+        try {
+            found = live.searchAndIndex(catalog, text, Math.max(limit, 1), settings.maxPages());
+        } catch (RuntimeException e) {
+            found = null; // Live-Suche ist eine Ergänzung; der Index antwortet trotzdem.
+        }
+        List<RetrievedChunk> hits;
+        boolean indexFailed = false;
+        try {
+            RetrievalResult result = retrieval.retrieve(text, catalog.ids());
+            hits = result.hits();
+        } catch (RuntimeException e) { // auch KnowledgeRetrievalException: alle Suchpfade ausgefallen
+            hits = Collections.emptyList();
+            indexFailed = true;
+        }
+        return McpToolResult.ok(render(text, limit, hits, found, indexFailed));
+    }
+
+    private String render(String query, int limit, List<RetrievedChunk> hits, SearchDrivenIndexingUseCase.Result found,
+                          boolean indexFailed) {
+        StringBuilder out = new StringBuilder();
+        out.append("Query: ").append(ToolText.oneLine(query, 200)).append('\n');
+        if (found != null) {
+            for (Map.Entry<KnowledgeSourceId, String> failure : found.failures().entrySet()) {
+                out.append("Note: source ").append(failure.getKey().value()).append(" could not be searched (")
+                        .append(failure.getValue()).append(").\n");
+            }
+        }
+        if (indexFailed) {
+            out.append("Note: the local index could not be searched; only live hits are listed.\n");
+        }
+        int maxChars = settings.maxResponseChars() - ToolText.MARKER_RESERVE;
+        Set<KnowledgeResourceId> listed = new HashSet<KnowledgeResourceId>();
+        int shown = 0;
+        for (RetrievedChunk hit : hits) {
+            if (shown >= limit) {
+                break;
+            }
+            String block = renderHit(shown + 1, hit);
+            if (out.length() + block.length() > maxChars) {
+                break;
+            }
+            out.append(block);
+            listed.add(hit.resource().id());
+            shown++;
+        }
+        if (found != null) {
+            for (FoundResource resource : found.hits()) {
+                if (shown >= limit) {
+                    break;
+                }
+                if (!listed.add(resource.resourceId())) {
+                    continue;
+                }
+                String block = renderLive(shown + 1, resource);
+                if (out.length() + block.length() > maxChars) {
+                    break;
+                }
+                out.append(block);
+                shown++;
+            }
+        }
+        if (shown == 0) {
+            out.append("No hits. Try other words — example: query=\"").append(ToolText.oneLine(query, 60))
+                    .append(" Anleitung\"");
+        } else {
+            out.append("\nRead a hit completely with knowledge_read — example: id=\"")
+                    .append(firstId(hits, found)).append("\"");
+        }
+        return ToolText.truncate(out.toString(), settings.maxResponseChars());
+    }
+
+    private String renderHit(int number, RetrievedChunk hit) {
+        KnowledgeResource resource = hit.resource();
+        StringBuilder block = new StringBuilder();
+        block.append('\n').append('[').append(number).append("] ")
+                .append(ToolText.oneLine(resource.title(), TITLE_CHARS));
+        String heading = hit.chunk().headingLine();
+        if (!heading.isEmpty()) {
+            block.append(" – ").append(ToolText.oneLine(heading, TITLE_CHARS));
+        }
+        block.append('\n').append("id: ").append(resource.id().value()).append('\n');
+        block.append("source: ").append(resource.sourceId().value()).append('\n');
+        block.append(ToolText.snippet(hit.chunk().text(), settings.snippetChars())).append('\n');
+        return block.toString();
+    }
+
+    private String renderLive(int number, FoundResource resource) {
+        StringBuilder block = new StringBuilder();
+        block.append('\n').append('[').append(number).append("] ")
+                .append(ToolText.oneLine(resource.title(), TITLE_CHARS)).append('\n');
+        block.append("id: ").append(resource.resourceId().value()).append('\n');
+        block.append("source: ").append(resource.sourceId().value()).append(" (not read yet)\n");
+        if (!resource.snippet().isEmpty()) {
+            block.append(ToolText.snippet(resource.snippet(), settings.snippetChars())).append('\n');
+        }
+        return block.toString();
+    }
+
+    private static String firstId(List<RetrievedChunk> hits, SearchDrivenIndexingUseCase.Result found) {
+        if (!hits.isEmpty()) {
+            return hits.get(0).resource().id().value();
+        }
+        return found.hits().get(0).resourceId().value();
+    }
+}

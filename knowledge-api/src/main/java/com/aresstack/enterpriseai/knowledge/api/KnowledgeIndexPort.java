@@ -91,6 +91,21 @@ public interface KnowledgeIndexPort {
         return Collections.emptyList();
     }
 
+    /**
+     * Revision und Inhalts-Hash einer indexierten Ressource im Namespace {@code space}; leer, wenn sie dort nicht
+     * (sauber) indexiert ist. Der Hash stammt aus den Metadaten ({@link IndexedResourceState#CONTENT_HASH_KEY}).
+     */
+    default Optional<IndexedResourceState> stateOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+        Optional<KnowledgeRevision> revision = revisionOf(space, resourceId);
+        if (!revision.isPresent()) {
+            return Optional.empty();
+        }
+        List<KnowledgeIndexEntry> entries = entriesOf(space, resourceId);
+        String hash = entries.isEmpty() ? ""
+                : entries.get(0).resource().metadata().get(IndexedResourceState.CONTENT_HASH_KEY).orElse("");
+        return Optional.of(new IndexedResourceState(revision.get(), hash));
+    }
+
     /** Entfernt alle Chunks der Ressource aus allen Namespaces. */
     void remove(KnowledgeResourceId resourceId);
 

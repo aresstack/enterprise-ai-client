@@ -12,7 +12,6 @@ import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.KnowledgeConfig;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
-import com.aresstack.enterpriseai.app.knowledge.StartupIndexing;
 import com.aresstack.enterpriseai.app.settings.SettingsService;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AcpException;
@@ -22,9 +21,11 @@ import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
 import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeRelations;
 import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeUseCase;
+import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.application.knowledge.RefreshKnowledgeSourceUseCase;
+import com.aresstack.enterpriseai.application.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.application.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.application.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.application.rag.RagChatUseCase;
@@ -43,6 +44,7 @@ import com.aresstack.enterpriseai.research.concept.FileConceptStore;
 import com.aresstack.enterpriseai.research.store.FileResearchScopeDraftStore;
 import com.aresstack.enterpriseai.resource.holkas.HolkasAcquisitionPort;
 import com.aresstack.enterpriseai.resource.holkas.KnowledgeSourceConnectorRegistry;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -51,7 +53,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import java.util.logging.Logger;
 
@@ -72,6 +73,8 @@ public final class CompositionRoot {
     private static final Logger LOG = Logger.getLogger(CompositionRoot.class.getName());
     /** Wartezeit beim Beenden auf eine laufende Indexierung (danach wird der Index geschlossen). */
     static final int INDEXING_SHUTDOWN_WAIT_SECONDS = 10;
+    /** Chat: so viele Treffer der Live-Suche je Frage höchstens laden und indexieren (MainframeMate-Vorabladen). */
+    static final int LIVE_SEARCH_PAGES = 4;
     /** Ordner der Research-Projekte des eingebauten Recherche-Agenten, neben der Konfigurationsdatei. */
     static final String RESEARCH_DIRECTORY = "research";
 
@@ -97,7 +100,7 @@ public final class CompositionRoot {
     private final KnowledgeStatusModel knowledgeStatus;
     private final KnowledgeIndexingBinding indexingBinding;
     private final KnowledgeSourceSelection sourceSelection;
-    private final StartupIndexing startupIndexing;
+    private final SearchDrivenIndexingUseCase searchIndexing;
     private final ShutdownSequence shutdown;
 
     private CompositionRoot(final SettingsService settings, final ApplicationPorts ports, Executor uiExecutor,
@@ -118,11 +121,9 @@ public final class CompositionRoot {
                 knowledge.retrieval()).withRelations(new IndexKnowledgeRelations(ports.index()),
                 settings.get(c -> c.knowledge().retrieval()));
         this.contextAssembler = new PromptContextAssembler(knowledge.context());
-        this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler);
         this.indexing = new IndexKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
                 new KnowledgeChunker(knowledge.chunking()), knowledge.embeddingBatchSize());
-        // Der Index führt (AP20-Folge #32): get_knowledge_document liefert nur Dokumente, die im konfigurierten
-        // Namespace indexiert sind; der Agent sieht ausschließlich den freigegebenen Korpus.
+        // Lesen lädt aus der Quelle, die die ID kennt (knowledge_read); das Gelesene kommt danach in den Index.
         // Gelesen wird nach corenth vermittelt: Tamias (Regel) → Chalcotheca (Archiv) → AcquisitionPort → Holkas-
         // Connector der Quelle; der Use Case fragt den Quellen-Port nicht mehr direkt.
         MediatedResourceService resourceAccess = new MediatedResourceService(new ClientResourceAccessPolicy(),
@@ -130,10 +131,29 @@ public final class CompositionRoot {
                 new InMemoryResourceArchive());
         this.resourceDocuments = new MediatedKnowledgeDocuments(resourceAccess,
                 new ActorIdentity("enterprise-ai-client-user", ActorType.HUMAN));
-        this.documents = new LoadKnowledgeDocumentUseCase(ports.sources(), ports.index(), ports.embeddingSpaceSource())
+        this.documents = new LoadKnowledgeDocumentUseCase(ports.sources())
                 .withReader(resourceDocuments);
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
-        this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, refresh, config.agent().toolSettings());
+        // Suche füllt den Index (MainframeMate): Quellen live durchsuchen, nur neue oder geänderte Treffer laden,
+        // zerlegen und einbetten (Revision, dann Inhalts-Hash). Kein Vollindex beim Start.
+        this.searchIndexing = new SearchDrivenIndexingUseCase(indexing);
+        final KnowledgeSourceCatalog catalog = ports.sources();
+        this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler, (query, sources) -> {
+            List<KnowledgeSourcePort> chosen = new ArrayList<KnowledgeSourcePort>();
+            for (KnowledgeSourceRegistration registration : catalog.registrations()) {
+                if (sources.isEmpty() || sources.contains(registration.sourceId())) {
+                    chosen.add(registration.port());
+                }
+            }
+            SearchDrivenIndexingUseCase.Result result = searchIndexing.searchAndIndex(chosen, query,
+                    LIVE_SEARCH_PAGES, LIVE_SEARCH_PAGES);
+            if (!result.failures().isEmpty()) {
+                LOG.info("Live-Suche für den Chat: " + result.failures());
+            }
+        });
+        // Nur zwei Werkzeuge (knowledge_search, knowledge_read); welche Quellen, sagt der Katalog.
+        this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, searchIndexing,
+                config.agent().toolSettings());
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
         this.knowledgeStatus = new KnowledgeStatusModel();
         this.indexingBinding = new KnowledgeIndexingBinding(indexing, knowledgeStatus, uiExecutor, workExecutor,
@@ -148,8 +168,6 @@ public final class CompositionRoot {
             }
             sourceSelection.register(registration.sourceId(), enabled);
         }
-        this.startupIndexing = new StartupIndexing(indexingBinding, knowledgeStatus, ports.sources(), uiExecutor,
-                sourceSelection);
 
         this.agentStarts = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-agent-start"));
         // Der eingebaute Recherche-Agent aus askai-java8 (arch) samt Weidezaun, Projekte neben der Konfiguration.
@@ -225,11 +243,12 @@ public final class CompositionRoot {
         return new ArrayList<McpToolContribution>(knowledgeTools.contributions());
     }
 
-    /** Startet die Hintergrundarbeit (Indexierung, falls konfiguriert). Idempotent. */
+    /**
+     * Startet die Hintergrundarbeit. Eine Indexierung beim Start gibt es nicht mehr: Die Suche (Drawer, Chat,
+     * {@code knowledge_search}) füllt den Index mit ihren Treffern; ganze Quellen nur auf Knopfdruck. Idempotent.
+     */
     public void startBackgroundWork() {
-        if (config().knowledge().indexOnStartup() && !ports.sources().isEmpty()) {
-            startupIndexing.start();
-        }
+        // bewusst leer
     }
 
     /** Der aktuelle Stand der Einstellungen, bei jedem Aufruf frisch (nicht in Feldern ablegen). */
@@ -340,8 +359,9 @@ public final class CompositionRoot {
         return sourceSelection;
     }
 
-    public StartupIndexing startupIndexing() {
-        return startupIndexing;
+    /** Live-Suche, die ihre Treffer indexiert (Drawer, Chat, Agent). */
+    public SearchDrivenIndexingUseCase searchIndexing() {
+        return searchIndexing;
     }
 
     public ShutdownSequence shutdown() {
@@ -371,19 +391,12 @@ public final class CompositionRoot {
         sequence.then("stop-indexing", new Runnable() {
             @Override
             public void run() {
-                startupIndexing.cancel();
+                // Eine vom Nutzer gestartete Vollindexierung zwischen zwei Ressourcen anhalten; der Index wird danach
+                // geschlossen und weist weitere Schreibzugriffe ab.
                 try {
-                    if (!startupIndexing.awaitTermination(INDEXING_SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)) {
-                        // Bewusst begrenzt, damit das Beenden nicht an einem blockierten Quell- oder
-                        // Embedding-Aufruf hängt (Abbruch greift nur zwischen zwei Ressourcen). Der Index wird
-                        // danach geschlossen; er ist vollständig synchronisiert und weist jeden weiteren
-                        // Schreibzugriff mit IllegalStateException ab, ein Schreibvorgang wird also nie halb
-                        // ausgeführt, nur der noch laufende Schritt scheitert.
-                        LOG.warning("Indexierung läuft beim Beenden noch nach " + INDEXING_SHUTDOWN_WAIT_SECONDS
-                                + " s; der Wissensindex wird geschlossen, der laufende Schritt bricht ab");
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                    uiExecutor.execute(knowledgeStatus::requestCancel);
+                } catch (RuntimeException e) {
+                    // UI schon fort: nichts anzuhalten
                 }
             }
         });

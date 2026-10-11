@@ -29,6 +29,7 @@ public final class KnowledgeSourceType {
     private final String summaryKey;
     private final String titleKey;
     private final String partitionsLabel;
+    private final boolean fullIndexing;
     private final List<SourceSettingField> fields;
 
     private KnowledgeSourceType(Builder b) {
@@ -40,6 +41,7 @@ public final class KnowledgeSourceType {
         this.summaryKey = b.summaryKey;
         this.titleKey = b.titleKey;
         this.partitionsLabel = b.partitionsLabel;
+        this.fullIndexing = b.fullIndexing;
         this.fields = Collections.unmodifiableList(new ArrayList<SourceSettingField>(b.fields));
     }
 
@@ -94,6 +96,14 @@ public final class KnowledgeSourceType {
     }
 
     /** Die Felder in Anzeigereihenfolge. */
+    /**
+     * {@code true}: Die Quelle bietet „Alles indexieren“ auf Knopfdruck (begrenzter Bestand wie NDV-Bibliotheken
+     * in MainframeMate). Sonst wächst ihr Index nur mit der Suche; automatisch indexiert wird nie.
+     */
+    public boolean fullIndexing() {
+        return fullIndexing;
+    }
+
     public List<SourceSettingField> fields() {
         return fields;
     }
@@ -143,6 +153,7 @@ public final class KnowledgeSourceType {
         private String summaryKey = "";
         private String titleKey = "";
         private String partitionsLabel = "";
+        private boolean fullIndexing;
         private final List<SourceSettingField> fields = new ArrayList<SourceSettingField>();
 
         private Builder(String id, String scheme, String displayName) {
@@ -186,6 +197,12 @@ public final class KnowledgeSourceType {
 
         public Builder partitionsLabel(String value) {
             this.partitionsLabel = value == null ? "" : value.trim();
+            return this;
+        }
+
+        /** Vollindexierung auf Knopfdruck anbieten (siehe {@link KnowledgeSourceType#fullIndexing()}). */
+        public Builder fullIndexing(boolean value) {
+            this.fullIndexing = value;
             return this;
         }
 

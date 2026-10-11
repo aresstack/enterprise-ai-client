@@ -7,14 +7,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Liest die Textantwort von {@code search_knowledge} (AP20) so weit, wie der Testagent sie braucht: je Treffer die
- * Kopfzeile {@code [n] Titel – Überschrift} und den Textauszug hinter {@code Text:}. Alles andere (Id, Chunk,
- * Quelle, Score) wird überlesen.
+ * Liest die Textantwort von {@code knowledge_search} so weit, wie der Testagent sie braucht: je Treffer die
+ * Kopfzeile {@code [n] Titel – Überschrift} und den Textauszug darunter. Die Zeilen {@code id:} und
+ * {@code source:} werden überlesen; eine Leerzeile beendet den Treffer.
  */
 final class SearchKnowledgeOutput {
 
     private static final Pattern HEAD = Pattern.compile("^\\[(\\d+)\\] (.*)$");
-    private static final String TEXT_MARKER = "Text:";
+    private static final Pattern FIELD = Pattern.compile("^(id|source): .*$");
 
     private SearchKnowledgeOutput() {
     }
@@ -26,33 +26,30 @@ final class SearchKnowledgeOutput {
         List<Hit> hits = new ArrayList<Hit>();
         String title = null;
         StringBuilder snippet = null;
-        boolean inText = false;
+        boolean inHit = false;
         for (String line : output.split("\n", -1)) {
             Matcher head = HEAD.matcher(line);
             if (head.matches()) {
                 flush(hits, title, snippet);
                 title = head.group(2).trim();
                 snippet = new StringBuilder();
-                inText = false;
+                inHit = true;
                 continue;
             }
-            if (title == null) {
+            if (!inHit) {
                 continue;
             }
-            if (TEXT_MARKER.equals(line.trim())) {
-                inText = true;
+            if (line.trim().isEmpty()) {
+                inHit = false;
                 continue;
             }
-            if (inText) {
-                if (line.trim().isEmpty() || line.startsWith("… ")) {
-                    inText = false;
-                    continue;
-                }
-                if (snippet.length() > 0) {
-                    snippet.append(' ');
-                }
-                snippet.append(line.trim());
+            if (FIELD.matcher(line).matches()) {
+                continue;
             }
+            if (snippet.length() > 0) {
+                snippet.append(' ');
+            }
+            snippet.append(line.trim());
         }
         flush(hits, title, snippet);
         return hits;

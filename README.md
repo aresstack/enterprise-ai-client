@@ -50,10 +50,12 @@ java -jar enterprise-ai-client-<version>.jar
    erscheinen als Markdown (Überschriften, Listen, Tabellen, Code mit Kopierknopf, Links; Mermaid-Diagramme als
    Bild, ein Klick vergrößert), „Stop“ im Composer bricht ab; der System-Prompt kommt aus `chat.systemPrompt`. „+ Neuer Chat“ im Drawer beginnt eine
    neue Unterhaltung. Das Fenster ist rahmenlos: die Kopfzeile zieht, der Rand vergrößert, das ✕ schließt.
-5. **Quelle indexieren**: Eine Quelle unter `sources` und `source.<id>.*` eintragen (MediaWiki oder
-   Confluence). Mit `knowledge.indexOnStartup=true` (Standard) indexiert die Anwendung beim Start im
-   Hintergrund; die Statuszeile zeigt den Fortschritt und bietet Abbrechen an. Alternativ stößt ein Agent
-   `refresh_knowledge_source` an.
+5. **Quelle anbinden**: Eine Quelle unter `sources` und `source.<id>.*` eintragen (MediaWiki oder
+   Confluence). Indexiert wird nie beim Start, sondern wie in MainframeMate über die Suche: Drawer-Suche,
+   Chat-Frage und das Agenten-Werkzeug `knowledge_search` fragen die angehakten Quellen live, laden höchstens
+   einige Treffer (Agent: `agent.tools.maxPages`, Standard 4, 0 = unbegrenzt) und indexieren sie nur, wenn
+   Revision oder Inhalts-Hash sich geändert haben; `knowledge_read` und das Öffnen im Lesebereich nehmen das
+   gelesene Dokument ebenso auf. „Alles indexieren“ auf Knopfdruck gibt es nur bei NDV, FTP/JES und Dateien.
    **„+ Quelle“**: Der Drawer-Reiter „Wissensquellen“ hat genau einen Knopf zum Hinzufügen. Welche Quelltypen
    der Dialog anbietet und welche Felder sie haben, beschreibt jeder Adapter selbst über den Port
    `KnowledgeSourceProvider` (`source-api`, nach corenth); der Use Case `KnowledgeSourceManagement` prüft,

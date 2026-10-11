@@ -181,10 +181,9 @@ public class AdapterAssemblyTest {
     }
 
     @Test
-    public void startupIndexingWithoutKeePassFinishesWithAuthenticationFailuresInsteadOfHanging()
+    public void indexingWithoutKeePassFinishesWithAuthenticationFailuresInsteadOfHanging()
             throws Exception {
         Properties p = exampleProperties(false);
-        p.setProperty("knowledge.indexOnStartup", "true");
         AppConfig config = AppConfigLoader.fromProperties(p);
         UnavailableSecretProvider secrets = new UnavailableSecretProvider("Test ohne KeePass");
         OpenAiCompatibleEmbeddingAdapter embeddings = AdapterAssembly.embeddings(config.embedding(), secrets,
@@ -203,10 +202,21 @@ public class AdapterAssemblyTest {
         final CompositionRoot root = CompositionRoot.compose(config, ports, SwingUtilities::invokeLater,
                 System::currentTimeMillis, null);
         try {
-            root.startBackgroundWork();
+            final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            final AtomicReference<IndexingReport> finished = new AtomicReference<IndexingReport>();
+            final InMemoryKnowledgeSource source = wiki;
+            SwingUtilities.invokeAndWait(new Runnable() {
+                @Override
+                public void run() {
+                    root.indexingBinding().indexSource(source, SourceScope.of("Urlaub", "Reisen"), r -> {
+                        finished.set(r);
+                        done.countDown();
+                    });
+                }
+            });
             assertTrue("Indexierung muss ohne Secret abschließen statt als laufend hängen zu bleiben",
-                    root.startupIndexing().awaitTermination(10, TimeUnit.SECONDS));
-            IndexingReport report = root.startupIndexing().reports().get(0);
+                    done.await(10, TimeUnit.SECONDS));
+            IndexingReport report = finished.get();
             assertEquals(2, report.discovered());
             assertEquals(2, report.count(IndexingStatus.FAILED));
             for (ResourceIndexingOutcome outcome : report.outcomes()) {

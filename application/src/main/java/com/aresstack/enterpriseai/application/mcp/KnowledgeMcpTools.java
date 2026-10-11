@@ -1,8 +1,7 @@
 package com.aresstack.enterpriseai.application.mcp;
 
-import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
-import com.aresstack.enterpriseai.application.knowledge.RefreshKnowledgeSourceUseCase;
+import com.aresstack.enterpriseai.application.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
 
@@ -11,89 +10,61 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Die MCP-Wissenswerkzeuge als Tool-Contributions für einen Endpoint eines {@code McpServerRegistry}:
+ * Die MCP-Wissenswerkzeuge für einen Endpoint eines {@code McpServerRegistry} – bewusst nur zwei, klein und mit
+ * Beispielen (askai arch, {@code ResearchConceptTools}):
  * <ul>
- *   <li>{@value #SEARCH_KNOWLEDGE}: hybride Suche über {@link RetrieveKnowledgeUseCase}
- *       (Parameter {@code query}, optional {@code max_results}, {@code source_ids}),</li>
- *   <li>{@value #GET_KNOWLEDGE_DOCUMENT}: vollständiges Dokument über {@link LoadKnowledgeDocumentUseCase}
- *       (Parameter {@code id}, optional {@code source_id}),</li>
- *   <li>{@value #REFRESH_KNOWLEDGE_SOURCE}: Neuindexierung einer konfigurierten Quelle über
- *       {@link RefreshKnowledgeSourceUseCase} (Parameter {@code source_id}).</li>
+ *   <li>{@value #KNOWLEDGE_SEARCH}: Quellen live durchsuchen, neue oder geänderte Treffer im Rahmen des Budgets
+ *       indexieren, dann hybride Suche im Index (Parameter {@code query}, optional {@code limit}),</li>
+ *   <li>{@value #KNOWLEDGE_READ}: ein Dokument aus einem Treffer lesen; es wird bei Bedarf indexiert
+ *       (Parameter {@code id}).</li>
  * </ul>
- *
- * <p>Alle Abhängigkeiten kommen per Konstruktor; die Werkzeuge kennen die Quellen nur über die IDs im
- * {@link KnowledgeSourceCatalog} der Use Cases (Suche und Dokument über den Katalog des Dokument-Use-Cases,
- * Aktualisierung über den des Aktualisierungs-Use-Cases), nie über Port oder Scope. Die Composition Root (AP23)
- * baut die Use Cases, erzeugt eine Instanz und registriert {@link #contributions()} mit
- * {@code McpServerRegistry.updateTools} am Endpoint des Agenten; beim Abmelden des Endpoints ruft sie
- * {@link #shutdown()}, damit laufende Aktualisierungen zwischen zwei Ressourcen abbrechen.
- *
- * <p>Threadsicher: die Handler sind zustandslos bis auf die Sperre je Quelle in der Aktualisierung und den
- * Abbruchschalter; Aufrufe aus mehreren Server-Threads sind zulässig, soweit die Ports es sind.
+ * Kein Werkzeug zum Neuindexieren ganzer Quellen: Vollindexierung ist eine Funktion der Oberfläche, kein Werkzeug
+ * für das Modell. Die verfügbaren Quellen sind die des Katalogs von {@code documents}.
  */
 public final class KnowledgeMcpTools {
 
-    public static final String SEARCH_KNOWLEDGE = SearchKnowledgeTool.NAME;
-    public static final String GET_KNOWLEDGE_DOCUMENT = GetKnowledgeDocumentTool.NAME;
-    public static final String REFRESH_KNOWLEDGE_SOURCE = RefreshKnowledgeSourceTool.NAME;
+    public static final String KNOWLEDGE_SEARCH = KnowledgeSearchTool.NAME;
+    public static final String KNOWLEDGE_READ = KnowledgeReadTool.NAME;
 
     private final KnowledgeToolSettings settings;
-    private final SearchKnowledgeTool search;
-    private final GetKnowledgeDocumentTool document;
-    private final RefreshKnowledgeSourceTool refresh;
+    private final KnowledgeSearchTool search;
+    private final KnowledgeReadTool read;
     private volatile boolean shutdown;
 
     /**
-     * @param retrieval hybride Suche
-     * @param documents Dokumentzugriff; sein Katalog bestimmt die bekannten Quellen von Suche und Dokumentzugriff
-     * @param refresh   Neuindexierung einer konfigurierten Quelle
-     * @param settings  Grenzen; {@code null} für {@link KnowledgeToolSettings#defaults()}
+     * @param retrieval hybride Suche im Index
+     * @param documents Dokumentzugriff; sein Katalog bestimmt die Quellen beider Werkzeuge
+     * @param live      Live-Suche, die Treffer indexiert
+     * @param settings  Grenzen und Budget; {@code null} für {@link KnowledgeToolSettings#defaults()}
      */
     public KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
-                             RefreshKnowledgeSourceUseCase refresh, KnowledgeToolSettings settings) {
-        if (retrieval == null || documents == null || refresh == null) {
-            throw new IllegalArgumentException("retrieval, documents und refresh sind Pflicht");
+                             SearchDrivenIndexingUseCase live, KnowledgeToolSettings settings) {
+        if (retrieval == null || documents == null || live == null) {
+            throw new IllegalArgumentException("retrieval, documents und live sind Pflicht");
         }
         this.settings = settings == null ? KnowledgeToolSettings.defaults() : settings;
-        KnowledgeSourceCatalog catalog = documents.catalog();
-        this.search = new SearchKnowledgeTool(retrieval, catalog, this.settings);
-        this.document = new GetKnowledgeDocumentTool(documents, this.settings);
-        this.refresh = new RefreshKnowledgeSourceTool(refresh, this.settings,
-                new RefreshKnowledgeSourceTool.ShutdownSignal() {
-                    @Override
-                    public boolean isShutdown() {
-                        return shutdown;
-                    }
-                });
+        this.search = new KnowledgeSearchTool(retrieval, live, documents.catalog(), this.settings);
+        this.read = new KnowledgeReadTool(documents, live, this.settings);
     }
 
     public KnowledgeToolSettings settings() {
         return settings;
     }
 
-    /** Alle drei Werkzeuge in fester Reihenfolge: Suche, Dokument, Aktualisierung. */
+    /** Beide Werkzeuge in fester Reihenfolge: Suche, Lesen. */
     public List<McpToolContribution> contributions() {
-        return Collections.unmodifiableList(Arrays.asList(searchKnowledge(), getKnowledgeDocument(),
-                refreshKnowledgeSource()));
+        return Collections.unmodifiableList(Arrays.asList(knowledgeSearch(), knowledgeRead()));
     }
 
-    public McpToolContribution searchKnowledge() {
+    public McpToolContribution knowledgeSearch() {
         return search.contribution();
     }
 
-    public McpToolContribution getKnowledgeDocument() {
-        return document.contribution();
+    public McpToolContribution knowledgeRead() {
+        return read.contribution();
     }
 
-    public McpToolContribution refreshKnowledgeSource() {
-        return refresh.contribution();
-    }
-
-    /**
-     * Beendet die Werkzeuge: Eine laufende Aktualisierung bricht nach der aktuellen Ressource ab, neue
-     * Aktualisierungen werden abgewiesen. Suche und Dokumentzugriff sind zustandslos und bleiben aufrufbar, bis die
-     * Composition Root den Endpoint abmeldet. Idempotent.
-     */
+    /** Merkt das Abmelden des Endpoints; die Werkzeuge sind zustandslos. Idempotent. */
     public void shutdown() {
         shutdown = true;
     }

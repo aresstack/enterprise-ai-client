@@ -27,6 +27,7 @@ public final class NdvSourceProvider implements KnowledgeSourceProvider {
                     "Natural (NDV)")
             .description("Natural-Quellen (Programme, Subprogramme, Copycodes ...) aus Bibliotheken eines NDV-Servers")
             .idPrefix("natural")
+            .fullIndexing(true)
             .summaryKey("host")
             .field(SourceSettingField.text("host", "Host", "Name oder Adresse des NDV-Servers").required()
                     .fromVault(SourceSettingField.VaultValue.HOST))
