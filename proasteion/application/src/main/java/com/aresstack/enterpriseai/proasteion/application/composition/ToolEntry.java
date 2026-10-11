@@ -12,13 +12,21 @@ public final class ToolEntry {
     private final String origin;
     private final Set<ToolChannel> channels;
     private final boolean enabled;
+    private final boolean required;
 
-    ToolEntry(String name, String description, String origin, Set<ToolChannel> channels, boolean enabled) {
+    ToolEntry(String name, String description, String origin, Set<ToolChannel> channels, boolean enabled,
+              boolean required) {
         this.name = name;
         this.description = description == null ? "" : description;
         this.origin = origin;
         this.channels = Collections.unmodifiableSet(EnumSet.copyOf(channels));
         this.enabled = enabled;
+        this.required = required;
+    }
+
+    /** Pflichtwerkzeug: immer aktiv, im Reiter „Tools“ nicht abwählbar. */
+    public boolean required() {
+        return required;
     }
 
     /** Aktiv, also Chat bzw. Agenten angeboten; abgeschaltet bleibt es registriert. */
@@ -54,6 +62,7 @@ public final class ToolEntry {
 
     @Override
     public String toString() {
-        return "ToolEntry[" + name + ", " + origin + ", " + availability() + (enabled ? "" : ", aus") + "]";
+        return "ToolEntry[" + name + ", " + origin + ", " + availability() + (enabled ? "" : ", aus")
+                + (required ? ", Pflicht" : "") + "]";
     }
 }

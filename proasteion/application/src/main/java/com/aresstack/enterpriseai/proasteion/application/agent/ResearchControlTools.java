@@ -396,7 +396,51 @@ public final class ResearchControlTools {
                         }
                     }));
         }
-        return tools;
+        return offeredNow(tools, host);
+    }
+
+    /**
+     * Die Pflichtwerkzeuge des eingebauten Agenten: ohne sie startet er nicht ({@code research_status},
+     * {@code main_model_complete} prüft er bei {@code session/new}) bzw. kann er keinen Turn steuern (die übrigen
+     * {@code research_*}-Steuerwerkzeuge). Sie lassen sich im Reiter „Tools“ nicht abschalten.
+     */
+    public static boolean isRequired(String name) {
+        return name != null && (name.startsWith("research_") || MAIN_MODEL_COMPLETE.equals(name));
+    }
+
+    static final String MAIN_MODEL_COMPLETE = "main_model_complete";
+
+    /**
+     * Die zentrale Sichtbarkeit nach Phase und Zustand (askai arch {@code ResearchToolPolicy.toolsFor}): Schreib-
+     * werkzeuge nur, wo ihr Handler sie erlaubt; {@code research_status} und {@code main_model_complete} immer.
+     * Sichtbarkeit ist keine Erlaubnis: jeder Handler prüft beim Aufruf erneut.
+     */
+    static List<McpToolContribution> offeredNow(List<McpToolContribution> tools, ResearchAgentHost host) {
+        String phase = host.phaseId();
+        List<McpToolContribution> offered = new ArrayList<McpToolContribution>(tools.size());
+        for (McpToolContribution tool : tools) {
+            if (isOffered(tool.getName(), phase, host)) {
+                offered.add(tool);
+            }
+        }
+        return offered;
+    }
+
+    private static boolean isOffered(String name, String phase, ResearchAgentHost host) {
+        if ("outline_propose".equals(name)) {
+            return host.isWritable(ResearchStateIds.OUTLINE);
+        }
+        if ("document_save".equals(name)) {
+            return host.isWritable(ResearchStateIds.DRAFT);
+        }
+        if ("project_source_add".equals(name)) {
+            // Wie addFollowUpSource: direkter Suchauftrag in der Konzeptphase, Nachfragen in der Phase Dokument.
+            return ResearchStateIds.SCOPING.equals(phase) || ResearchStateIds.DRAFT.equals(phase);
+        }
+        if ("research_progress".equals(name) || "research_run_finished".equals(name)) {
+            return host.isWritable(ResearchStateIds.RESEARCH);
+        }
+        return true;
     }
 
     /**

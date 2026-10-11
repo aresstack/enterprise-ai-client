@@ -32,6 +32,8 @@ final class ToolsTab {
     static final String ACTIVE_TOOLTIP = "Aktiv: dem Chat bzw. den Agenten anbieten";
     static final String EMPTY = "Keine Werkzeuge registriert. Die Übersicht füllt sich, sobald die Anwendung läuft.";
     static final String ORIGIN_PREFIX = "Herkunft: ";
+    static final String REQUIRED_TOOLTIP = "Pflichtwerkzeug: ohne es startet bzw. arbeitet der Agent nicht; "
+            + "es lässt sich nicht abschalten";
 
     private final ToolOverview overview;
     private final ComicPalette palette;
@@ -39,6 +41,8 @@ final class ToolsTab {
     private final Map<String, JCheckBox> boxes = new LinkedHashMap<String, JCheckBox>();
     /** Der Entwurf: abgeschaltete Werkzeuge, in Reihenfolge. */
     private final Set<String> disabled = new LinkedHashSet<String>();
+    /** Pflichtwerkzeuge der zuletzt geladenen Registry: nie im Entwurf abgeschaltet. */
+    private final Set<String> required = new LinkedHashSet<String>();
     private final JPanel panel;
 
     ToolsTab(ToolOverview overview, ComicPalette palette) {
@@ -61,6 +65,13 @@ final class ToolsTab {
         List<ToolOverviewEntry> tools = overview.tools();
         lines.removeAll();
         boxes.clear();
+        required.clear();
+        for (ToolOverviewEntry tool : tools) {
+            if (tool.required()) {
+                required.add(tool.name());
+            }
+        }
+        disabled.removeAll(required);
         if (tools.isEmpty()) {
             JLabel empty = new WrappingLabel(FormRows.flow(EMPTY));
             empty.setForeground(FormRows.MUTED);
@@ -81,8 +92,12 @@ final class ToolsTab {
         name.setFocusPainted(false);
         name.setForeground(palette.getInk());
         name.setFont(name.getFont().deriveFont(Font.BOLD));
-        name.setToolTipText(ACTIVE_TOOLTIP);
+        name.setToolTipText(tool.required() ? REQUIRED_TOOLTIP : ACTIVE_TOOLTIP);
         name.getAccessibleContext().setAccessibleName("aktiv: " + tool.name());
+        if (tool.required()) {
+            name.setSelected(true);
+            name.setEnabled(false);
+        }
         name.addActionListener(event -> {
             if (name.isSelected()) {
                 disabled.remove(tool.name());
@@ -120,7 +135,7 @@ final class ToolsTab {
     void load(SettingsForm form) {
         disabled.clear();
         for (String item : form.disabledTools().split(",")) {
-            if (!item.trim().isEmpty()) {
+            if (!item.trim().isEmpty() && !required.contains(item.trim())) {
                 disabled.add(item.trim());
             }
         }
@@ -132,6 +147,9 @@ final class ToolsTab {
     void store(SettingsForm.Builder b) {
         StringBuilder text = new StringBuilder();
         for (String name : disabled) {
+            if (required.contains(name)) {
+                continue; // ein Pflichtwerkzeug wird nie abgeschaltet gespeichert
+            }
             text.append(text.length() == 0 ? "" : ",").append(name);
         }
         b.disabledTools(text.toString());

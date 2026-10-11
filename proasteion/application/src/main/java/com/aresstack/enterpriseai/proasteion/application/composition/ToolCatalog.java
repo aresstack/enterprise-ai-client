@@ -28,6 +28,10 @@ import java.util.function.Supplier;
  * <p>Aktiv oder abgeschaltet entscheidet allein {@code enabled} (produktiv {@code tools.disabled} der aktuellen
  * Einstellungen, bei jedem Aufruf frisch): {@link #tools}, {@link #find} und {@link #isEnabled} liefern nur aktive
  * Werkzeuge, {@link #entries()} alle mit ihrem Zustand. Ein abgeschaltetes Werkzeug bleibt registriert.
+ *
+ * <p>Pflichtwerkzeuge (bei der Registrierung benannt, z. B. {@code research_status} und {@code main_model_complete}
+ * des Recherche-Agenten) sind nie abgeschaltet: ohne sie startet der Agent nicht. Ein Eintrag in
+ * {@code tools.disabled} wird für sie ignoriert, der Reiter „Tools“ zeigt sie als nicht abwählbar.
  */
 public final class ToolCatalog {
 
@@ -47,18 +51,40 @@ public final class ToolCatalog {
         this.enabled = enabled;
     }
 
-    /** Ist das Werkzeug aktiv (nicht abgeschaltet)? Unbekannte Namen gelten als aktiv. */
+    /** Ist das Werkzeug aktiv (nicht abgeschaltet)? Unbekannte Namen und Pflichtwerkzeuge gelten als aktiv. */
     public boolean isEnabled(String name) {
-        return enabled.test(name);
+        return isRequired(name) || enabled.test(name);
+    }
+
+    /** Ist das Werkzeug ein Pflichtwerkzeug einer Registrierung (nicht abschaltbar)? */
+    public boolean isRequired(String name) {
+        if (name == null) {
+            return false;
+        }
+        for (Registration registration : registrations) {
+            if (registration.required.test(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Registriert einen Werkzeugsatz; Reihenfolge der Registrierung = Reihenfolge der Werkzeuge. */
     public void register(String origin, Set<ToolChannel> channels,
                          final Supplier<? extends List<McpToolContribution>> tools) {
+        register(origin, channels, tools, null);
+    }
+
+    /**
+     * Wie oben; {@code required} benennt die Pflichtwerkzeuge dieses Satzes, die sich nicht abschalten lassen
+     * ({@code null}: keine).
+     */
+    public void register(String origin, Set<ToolChannel> channels,
+                         final Supplier<? extends List<McpToolContribution>> tools, Predicate<String> required) {
         if (tools == null) {
             throw new IllegalArgumentException("tools must not be null");
         }
-        registrations.add(new Registration(origin, channels, tools, null));
+        registrations.add(new Registration(origin, channels, tools, null, required));
     }
 
     /** Registriert Werkzeuge, die nur als {@link ToolDefinition} vorliegen (ausgeführt werden sie anderswo). */
@@ -67,7 +93,7 @@ public final class ToolCatalog {
         if (definitions == null) {
             throw new IllegalArgumentException("definitions must not be null");
         }
-        registrations.add(new Registration(origin, channels, null, definitions));
+        registrations.add(new Registration(origin, channels, null, definitions, null));
     }
 
     /** Die aktiven ausführbaren Werkzeuge, die in mindestens einem der Kanäle angeboten werden, ohne doppelte Namen. */
@@ -79,7 +105,7 @@ public final class ToolCatalog {
                 continue;
             }
             for (McpToolContribution tool : registration.tools.get()) {
-                if (enabled.test(tool.getName()) && names.add(tool.getName())) {
+                if (isEnabled(tool.getName()) && names.add(tool.getName())) {
                     result.add(tool);
                 }
             }
@@ -129,8 +155,9 @@ public final class ToolCatalog {
         }
         List<ToolEntry> entries = new ArrayList<ToolEntry>(order.size());
         for (String name : order) {
+            boolean required = isRequired(name);
             entries.add(new ToolEntry(name, descriptions.get(name), origins.get(name), channels.get(name),
-                    enabled.test(name)));
+                    required || enabled.test(name), required));
         }
         return entries;
     }
@@ -141,9 +168,10 @@ public final class ToolCatalog {
         final Set<ToolChannel> channels;
         final Supplier<? extends List<McpToolContribution>> tools;
         final Supplier<? extends List<ToolDefinition>> definitions;
+        final Predicate<String> required;
 
         Registration(String origin, Set<ToolChannel> channels, Supplier<? extends List<McpToolContribution>> tools,
-                     Supplier<? extends List<ToolDefinition>> definitions) {
+                     Supplier<? extends List<ToolDefinition>> definitions, Predicate<String> required) {
             if (origin == null || origin.trim().isEmpty() || channels == null || channels.isEmpty()) {
                 throw new IllegalArgumentException("origin and channels must not be empty");
             }
@@ -151,6 +179,7 @@ public final class ToolCatalog {
             this.channels = Collections.unmodifiableSet(EnumSet.copyOf(channels));
             this.tools = tools;
             this.definitions = definitions;
+            this.required = required == null ? name -> false : required;
         }
     }
 }

@@ -56,7 +56,8 @@ final class ResearchAgentTurns {
     private final ResearchHostControl host;
     private final ResearchTeamAgent teamAgent;
     private final MainModelChat mainModelChat;
-    private final boolean conceptTools;
+    /** Bietet der Host die Konzeptwerkzeuge an? Je Aufruf frisch (Reiter „Tools“ gilt ohne Neustart). */
+    private final java.util.function.BooleanSupplier conceptTools;
     private final ResearchRun research;
     private final ResearchWriting writing;
     private final DirectAnswers direct;
@@ -64,6 +65,11 @@ final class ResearchAgentTurns {
 
     ResearchAgentTurns(ResearchHostControl host, ResearchTeamAgent teamAgent, MainModelChat mainModelChat,
                        boolean conceptTools, ResearchRun research) {
+        this(host, teamAgent, mainModelChat, () -> conceptTools, research);
+    }
+
+    ResearchAgentTurns(ResearchHostControl host, ResearchTeamAgent teamAgent, MainModelChat mainModelChat,
+                       java.util.function.BooleanSupplier conceptTools, ResearchRun research) {
         this.host = host;
         this.research = research;
         this.teamAgent = teamAgent;
@@ -251,7 +257,7 @@ final class ResearchAgentTurns {
                 host.greeted();
             }
         }
-        if (conceptTools && !turn.isCancelled()) {
+        if (conceptTools.getAsBoolean() && !turn.isCancelled()) {
             TeamAgentResult concept = conceptAwareRespond(view, text, status.searchTagsOffered);
             if (concept.getStatus() == TeamAgentResult.Status.OK
                     && concept.getOutput() instanceof ScopingAssistantOutput) {
@@ -284,7 +290,7 @@ final class ResearchAgentTurns {
 
     private TeamAgentResult conceptAwareRespond(final TeamAgentStateView view, String text,
                                                 boolean searchTagsOffered) {
-        if (!conceptTools) {
+        if (!conceptTools.getAsBoolean()) {
             return teamAgent.respond(text, view);
         }
         if (ConceptTurnPolicy.modeFor(text) == ConceptTurnPolicy.Mode.MOVE_TRUTH) {
@@ -360,7 +366,7 @@ final class ResearchAgentTurns {
 
     /** Das sichtbare Konzeptpapier vor jeder Inferenz (askai K2e: CURRENT_CONCEPT); leer bei Fehlern. */
     String currentConceptRendered() {
-        if (!conceptTools) {
+        if (!conceptTools.getAsBoolean()) {
             return "";
         }
         try {

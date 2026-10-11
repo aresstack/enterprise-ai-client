@@ -451,6 +451,39 @@ public class SettingsPanelTest {
     }
 
     @Test
+    public void requiredToolsCannotBeSwitchedOffInTheToolsTab() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        final List<ToolOverviewEntry> registry = new ArrayList<ToolOverviewEntry>();
+        registry.add(new ToolOverviewEntry("research_status", "Zustand.", "Recherche-Agent", "Recherche-Agent",
+                true, true));
+        registry.add(new ToolOverviewEntry("knowledge_search", "Sucht.", "Wissenswerkzeuge", "Agent"));
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                SettingsPanel panel = new SettingsPanel(sample().toBuilder()
+                        .disabledTools("research_status,knowledge_search").build(), Collections.<String>emptyList(),
+                        SettingsPanel.Mode.EDIT, actions, new ToolOverview() {
+                            @Override
+                            public List<ToolOverviewEntry> tools() {
+                                return new ArrayList<ToolOverviewEntry>(registry);
+                            }
+                        }, palette);
+                panel.tabButton(SettingsPanel.TOOLS_TAB).doClick();
+                javax.swing.JCheckBox required = panel.toolsTab().activeBox("research_status");
+                assertTrue("Pflichtwerkzeug immer aktiv", required.isSelected());
+                assertFalse("nicht abwählbar", required.isEnabled());
+                assertEquals(ToolsTab.REQUIRED_TOOLTIP, required.getToolTipText());
+                assertFalse(panel.toolsTab().activeBox("knowledge_search").isSelected());
+                // Ein alter Eintrag für das Pflichtwerkzeug wird nicht wieder gespeichert.
+                assertEquals("knowledge_search", panel.toForm().disabledTools());
+                panel.setForm(sample().toBuilder().disabledTools("research_status").build());
+                assertTrue(panel.toolsTab().activeBox("research_status").isSelected());
+                assertEquals("", panel.toForm().disabledTools());
+            }
+        });
+    }
+
+    @Test
     public void toolsTabWithoutRunningApplicationSaysSo() throws Exception {
         final ScriptedActions actions = new ScriptedActions();
         onEdt(new Runnable() {

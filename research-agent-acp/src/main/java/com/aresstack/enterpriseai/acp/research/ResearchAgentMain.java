@@ -97,7 +97,7 @@ public final class ResearchAgentMain {
             if (!tools.containsKey("research_status") || !tools.containsKey("main_model_complete")) {
                 throw new IllegalStateException("research control tools are not offered by the host endpoint");
             }
-            conceptTools = tools.containsKey("concept_read");
+            conceptTools = tools.containsKey(CONCEPT_READ);
             status = control.status();
         } catch (Exception unavailable) {
             control.close();
@@ -132,7 +132,9 @@ public final class ResearchAgentMain {
                 LOG.info("[research-agent] " + line);
             }
         });
-        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, conceptTools,
+        // Die Konzeptwerkzeuge je Aufruf frisch vom Host (tools/list): im Reiter „Tools“ ab- oder eingeschaltet
+        // gilt ohne Neustart. Nur das Systemprompt-Profil des TeamAgents bleibt beim Sitzungsstart bestimmt.
+        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, conceptToolsOf(control),
                 new ResearchRun(control, System.getenv(), cancelled));
         this.host = control;
         this.turns = holder[0];
@@ -140,6 +142,18 @@ public final class ResearchAgentMain {
                 + " model=" + status.model + " conceptTools=" + conceptTools);
         return new AcpSchema.NewSessionResponse("research-acp-" + UUID.randomUUID(), null, null);
     }
+
+    /** Bietet der Host die Konzeptwerkzeuge gerade an? Bei jedem Aufruf neu gefragt, nie eingefroren. */
+    static java.util.function.BooleanSupplier conceptToolsOf(final ResearchHostControl control) {
+        return new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return control.offers(CONCEPT_READ);
+            }
+        };
+    }
+
+    static final String CONCEPT_READ = "concept_read";
 
     /** Ein Tool-Update; ein Fehler beim Senden hält den Turn nie an (die Blase fehlt dann nur). */
     private static void send(SyncPromptContext ctx, AcpSchema.SessionUpdate update) {

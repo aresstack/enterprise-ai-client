@@ -8,6 +8,7 @@ public final class ToolOverviewEntry {
     private final String origin;
     private final String availability;
     private final boolean enabled;
+    private final boolean required;
 
     /** Wie unten, aktiv. */
     public ToolOverviewEntry(String name, String description, String origin, String availability) {
@@ -20,6 +21,12 @@ public final class ToolOverviewEntry {
      * @param enabled      aktiv laut Registry (gespeicherter Stand)
      */
     public ToolOverviewEntry(String name, String description, String origin, String availability, boolean enabled) {
+        this(name, description, origin, availability, enabled, false);
+    }
+
+    /** @param required Pflichtwerkzeug: immer aktiv, das Häkchen lässt sich nicht abwählen */
+    public ToolOverviewEntry(String name, String description, String origin, String availability, boolean enabled,
+                             boolean required) {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
         }
@@ -27,7 +34,12 @@ public final class ToolOverviewEntry {
         this.description = description == null ? "" : description;
         this.origin = origin == null ? "" : origin;
         this.availability = availability == null ? "" : availability;
-        this.enabled = enabled;
+        this.enabled = enabled || required;
+        this.required = required;
+    }
+
+    public boolean required() {
+        return required;
     }
 
     public boolean enabled() {
