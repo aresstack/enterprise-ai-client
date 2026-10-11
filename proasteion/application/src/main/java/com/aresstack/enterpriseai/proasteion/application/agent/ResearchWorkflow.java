@@ -250,13 +250,16 @@ public final class ResearchWorkflow {
         String state = host.stateId();
         List<Action> actions = new ArrayList<Action>();
         if (ResearchStateIds.SCOPING.equals(phase)) {
-            actions.add(new Action(START_RESEARCH, "Recherche starten",
-                    "Konzept abschließen und die aktivierten Wissensquellen durchsuchen", true));
+            String gap = host.researchBriefGap();
+            actions.add(new Action(START_RESEARCH, "Recherche starten", gap == null
+                    ? "Konzept abschließen und die aktivierten Wissensquellen autonom durchsuchen"
+                    : "Erst einen Auftrag beschreiben oder eine Konzeptkarte anlegen", true));
         } else if (ResearchStateIds.RESEARCH.equals(phase)) {
             if (ResearchStateIds.WAITING.equals(state)) {
                 actions.add(new Action(START_RESEARCH, "Recherche starten",
                         "Die aktivierten Wissensquellen durchsuchen", true));
-            } else if (ResearchStateIds.RUNNING.equals(state) && !host.runStatus().isActive()) {
+            } else if ((ResearchStateIds.RUNNING.equals(state) && !host.runStatus().isActive())
+                    || ResearchStateIds.PAUSED.equals(state)) {
                 actions.add(new Action(START_RESEARCH, "Recherche fortsetzen",
                         "Den unterbrochenen Lauf neu starten", true));
             } else if (ResearchStateIds.WAITING_APPROVAL.equals(state)) {
@@ -278,7 +281,13 @@ public final class ResearchWorkflow {
                         "Die Gliederung aus Konzept und Quellen erstellen", true));
             }
         } else if (ResearchStateIds.DRAFT.equals(phase)) {
-            if (ResearchStateIds.WAITING.equals(state)
+            int saved = ResearchStateIds.RUNNING.equals(state) ? host.documentDraftSectionCount() : 0;
+            if (saved > 0) {
+                // ein abgebrochener Schreiblauf: die gespeicherten Kapitel bleiben, es geht beim nächsten weiter
+                actions.add(new Action(APPROVE_OUTLINE, "Dokument fortsetzen", saved
+                        + (saved == 1 ? " Kapitel ist" : " Kapitel sind") + " gespeichert; ab Kapitel " + (saved + 1)
+                        + " weiterschreiben", true));
+            } else if (ResearchStateIds.WAITING.equals(state)
                     || (ResearchStateIds.RUNNING.equals(state) && !host.hasDocument())) {
                 actions.add(new Action(APPROVE_OUTLINE, "Dokument erstellen",
                         "Das Dokument aus Gliederung und Quellen schreiben", true));
@@ -299,10 +308,11 @@ public final class ResearchWorkflow {
         String phase = host.phaseId();
         String state = host.stateId();
         if (START_RESEARCH.equals(actionId)) {
-            String rejection = startResearch(phase, state);
+            // nur mit sinnvollem Auftrag; sonst bleibt die Phase Konzept mit einem Hinweis
+            String rejection = host.startAutonomousResearch();
             return rejection != null ? Result.rejected(rejection) : Result.prompt(RESEARCH_PROMPT,
-                    ResearchStateIds.RUNNING.equals(state) && ResearchStateIds.RESEARCH.equals(phase)
-                            ? "Recherche fortsetzen" : "Recherche starten");
+                    ResearchStateIds.RESEARCH.equals(phase) && (ResearchStateIds.RUNNING.equals(state)
+                            || ResearchStateIds.PAUSED.equals(state)) ? "Recherche fortsetzen" : "Recherche starten");
         } else if (CONTINUE_RESEARCH.equals(actionId)) {
             String rejection = host.dispatch(ResearchCommandType.REQUEST_REVISION);
             return rejection != null ? Result.rejected(rejection)
@@ -324,7 +334,7 @@ public final class ResearchWorkflow {
                 state = host.stateId();
                 phase = host.phaseId();
             } else {
-                visible = "Dokument erstellen";
+                visible = host.documentDraftSectionCount() > 0 ? "Dokument fortsetzen" : "Dokument erstellen";
             }
             if (rejection == null && ResearchStateIds.DRAFT.equals(phase) && ResearchStateIds.WAITING.equals(state)) {
                 rejection = host.dispatch(ResearchCommandType.START_DRAFTING);
@@ -341,23 +351,5 @@ public final class ResearchWorkflow {
             return rejection != null ? Result.rejected(rejection) : Result.done();
         }
         return Result.rejected("Unbekannte Aktion: " + actionId);
-    }
-
-    /** Konzept abschließen und Quellen starten (dieselben Übergänge wie der Textbefehl). */
-    private String startResearch(String phase, String state) {
-        if (ResearchStateIds.SCOPING.equals(phase)) {
-            if (ResearchStateIds.NEW.equals(state)) {
-                host.markGreeted(); // ohne Begrüßung gilt das Konzept als begonnen (scoping/new → running)
-            }
-            String rejection = host.dispatch(ResearchCommandType.SUBMIT_SCOPE);
-            return rejection != null ? rejection : host.dispatch(ResearchCommandType.START_RESEARCH);
-        }
-        if (ResearchStateIds.RESEARCH.equals(phase) && ResearchStateIds.WAITING.equals(state)) {
-            return host.dispatch(ResearchCommandType.START_RESEARCH);
-        }
-        if (ResearchStateIds.RESEARCH.equals(phase) && ResearchStateIds.RUNNING.equals(state)) {
-            return null; // läuft schon; der Auftrag startet den Lauf neu
-        }
-        return "Die Recherche kann in der Phase " + titleOf(phase) + " nicht starten.";
     }
 }

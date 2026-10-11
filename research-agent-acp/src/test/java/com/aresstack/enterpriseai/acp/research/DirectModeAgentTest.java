@@ -154,7 +154,7 @@ public class DirectModeAgentTest {
                         return "German";
                     }
                 }));
-        return new ResearchAgentTurns(control, team, model, false,
+        return new ResearchAgentTurns(control, team, model, () -> false,
                 new ResearchRun(control, Collections.<String, String>emptyMap(), new AtomicBoolean(false)));
     }
 

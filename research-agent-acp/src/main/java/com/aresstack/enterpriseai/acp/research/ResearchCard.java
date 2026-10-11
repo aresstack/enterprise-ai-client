@@ -12,7 +12,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * Websuche, {@code ResearchAgentSession.applyRunProgress} mit {@code ResearchPlaybook.progress*} und dem
  * Balken-Marker {@code [[bar:aktuell/gesamt]]} aus {@code ResearchAgentMain}). Sie zeigt, wonach in welcher
  * Wissensquelle gesucht wird, die Treffer, Seiten gelesen gegen das Seitenbudget, übernommene Quellen, die gerade
- * gelesene Seite und die zuletzt verarbeiteten Seiten; am Ende platzt sie mit der Bilanz.
+ * gelesene Seite und die zuletzt verarbeiteten Seiten; am Ende platzt sie mit der Bilanz. Dieselbe Karte zeigt den
+ * autonomen Lauf der Phase Quellen ({@link #forRun}): dort kommen die Suchen nacheinander, Treffer zählt der Lauf
+ * nicht, das Seitenbudget ist das des Laufs.
  */
 final class ResearchCard {
 
@@ -23,6 +25,8 @@ final class ResearchCard {
     private final String id = "research-" + IDS.incrementAndGet();
     private final int pageBudget;
     private final List<String> queries;
+    /** Im autonomen Lauf gibt es keine Trefferzahl; die Zeile entfällt. */
+    private final boolean showHits;
     private final Set<String> sources = new LinkedHashSet<String>();
     private final List<String> history = new ArrayList<String>();
     private String activity = "Suche läuft …";
@@ -33,9 +37,69 @@ final class ResearchCard {
     private boolean open;
 
     ResearchCard(ResearchAgentTurns.Output output, List<String> queries, int pageBudget) {
+        this(output, queries, pageBudget, true);
+    }
+
+    private ResearchCard(ResearchAgentTurns.Output output, List<String> queries, int pageBudget, boolean showHits) {
         this.output = output;
-        this.queries = queries;
+        this.queries = new ArrayList<String>(queries);
         this.pageBudget = pageBudget;
+        this.showHits = showHits;
+    }
+
+    /** Die Karte des autonomen Laufs; {@code pageBudget} 0 heißt unbegrenzt. */
+    static ResearchCard forRun(ResearchAgentTurns.Output output, int pageBudget) {
+        ResearchCard card = new ResearchCard(output, new ArrayList<String>(), pageBudget, false);
+        card.activity = "Recherche startet …";
+        return card;
+    }
+
+    /** Der Lauf sucht mit einer (weiteren) Anfrage. */
+    void query(String query) {
+        String trimmed = query == null ? "" : query.trim();
+        if (!trimmed.isEmpty() && !queries.contains(trimmed)) {
+            queries.add(trimmed);
+        }
+        current = "";
+        activity = "Suche läuft …";
+        update();
+    }
+
+    /** Der Lauf hat eine Seite übernommen. */
+    void accepted(String title, String id) {
+        noteSource(id);
+        remember("übernommen: „" + title + "“");
+        current = "";
+        activity = "Nächste Seite …";
+        update();
+    }
+
+    /** Der Lauf hat eine Seite gelesen und als nicht passend verworfen. */
+    void rejected(String title, String id) {
+        noteSource(id);
+        remember("nicht passend: „" + title + "“");
+        current = "";
+        activity = "Nächste Seite …";
+        update();
+    }
+
+    /** Die Zähler des Laufs (gelesene Seiten, übernommene Quellen). */
+    void counts(int pages, int acceptedSources) {
+        pagesRead = pages;
+        accepted = acceptedSources;
+    }
+
+    /** Der Lauf liest eine Seite; ihre Kennung verrät die Wissensquelle. */
+    void reading(String title, String id) {
+        noteSource(id);
+        reading(title);
+    }
+
+    private void noteSource(String id) {
+        String source = sourceNameOf(id);
+        if (!source.isEmpty()) {
+            sources.add(source);
+        }
     }
 
     void searching() {
@@ -92,6 +156,10 @@ final class ResearchCard {
 
     /** Die Bilanz der fertigen Recherche. */
     String summary() {
+        if (!showHits) {
+            return "abgeschlossen: " + pagesRead + (pagesRead == 1 ? " Seite" : " Seiten") + " gelesen, "
+                    + accepted + (accepted == 1 ? " Quelle" : " Quellen") + " übernommen";
+        }
         return "abgeschlossen: " + pagesRead + (pagesRead == 1 ? " Seite" : " Seiten") + " gelesen, "
                 + Math.max(hits, 0) + " Treffer, " + accepted + (accepted == 1 ? " Quelle" : " Quellen")
                 + " übernommen";
@@ -126,9 +194,16 @@ final class ResearchCard {
         if (!sources.isEmpty()) {
             text.append("\nWissensquelle: ").append(join(sources));
         }
-        text.append("\nTreffer: ").append(hits < 0 ? "…" : String.valueOf(hits));
+        if (showHits) {
+            text.append("\nTreffer: ").append(hits < 0 ? "…" : String.valueOf(hits));
+        }
         int budget = hits < 0 ? pageBudget : Math.min(pageBudget, hits);
-        text.append("\nSeiten: ").append(pagesRead).append(" / ").append(budget);
+        text.append("\nSeiten: ").append(pagesRead);
+        if (budget > 0) {
+            text.append(" / ").append(budget);
+        } else {
+            budget = Math.max(pagesRead, 1); // unbegrenzt: der Balken zeigt nur, dass gelesen wird
+        }
         text.append("\nQuellen: ").append(accepted).append(" übernommen");
         if (!current.isEmpty()) {
             text.append("\nAktuell: „").append(current).append('“');
@@ -146,9 +221,16 @@ final class ResearchCard {
 
     /** Die Wissensquelle eines Treffers aus seiner Kennung ({@code confluence:…}, {@code mediawiki:…}). */
     static String sourceName(KnowledgePages.Hit hit) {
-        String id = hit.id == null ? "" : hit.id.toLowerCase(Locale.ROOT);
-        String source = hit.source == null ? "" : hit.source.toLowerCase(Locale.ROOT);
-        String probe = source.isEmpty() ? id : source;
+        String source = hit.source == null ? "" : hit.source;
+        return sourceNameOf(source.isEmpty() ? hit.id : source);
+    }
+
+    /** Die Wissensquelle aus einer Kennung oder Adresse ({@code knowledge:confluence:…}, {@code confluence:…}). */
+    static String sourceNameOf(String idOrUrl) {
+        String probe = idOrUrl == null ? "" : idOrUrl.trim().toLowerCase(Locale.ROOT);
+        if (probe.startsWith("knowledge:")) {
+            probe = probe.substring("knowledge:".length());
+        }
         if (probe.startsWith("confluence")) {
             return "Confluence";
         }

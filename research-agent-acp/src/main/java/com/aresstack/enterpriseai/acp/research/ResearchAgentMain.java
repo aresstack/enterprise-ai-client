@@ -132,7 +132,7 @@ public final class ResearchAgentMain {
                 LOG.info("[research-agent] " + line);
             }
         });
-        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, conceptTools,
+        holder[0] = new ResearchAgentTurns(control, teamAgent, mainModel, () -> conceptTools,
                 new ResearchRun(control, System.getenv(), cancelled));
         this.host = control;
         this.turns = holder[0];
