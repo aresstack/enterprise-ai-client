@@ -294,6 +294,33 @@ public final class AdapterAssembly {
                 new SecretBackedBearerTokenSource(secrets, embedding.apiKeyRef()));
     }
 
+    /** Obergrenze der Messung im Einrichtungsassistenten; begrenzt nur die Antwortgröße, nie das Ergebnis. */
+    static final int DIMENSION_PROBE_LIMIT = 16384;
+    /** Der Text des Embedding-Tests im Einrichtungsassistenten. */
+    static final String DIMENSION_PROBE_TEXT = "Einrichtungstest";
+
+    /**
+     * Der Embedding-Test des Einrichtungsassistenten: ein echter kleiner Aufruf von {@code POST /embeddings} über
+     * denselben Adapter, dieselbe Route und dieselben TLS-Quellen wie die Anwendung; die Dimension ist die Länge des
+     * zurückgegebenen Vektors. Die konfigurierte Dimension spielt keine Rolle (sie ist ja gerade unbekannt).
+     *
+     * @param token API-Key oder {@code null} (dann ohne Authorization)
+     */
+    public static int embeddingDimension(EmbeddingConfig embedding, final String token, NetworkServices network) {
+        OpenAiCompatibleEmbeddingConfiguration adapterConfig = OpenAiCompatibleEmbeddingConfiguration
+                .builder(embedding.baseUrl().toString(), embedding.model(), DIMENSION_PROBE_LIMIT)
+                .inputMode(embedding.inputMode())
+                .maxBatchSize(embedding.maxBatchSize())
+                .connectTimeoutMillis(embedding.connectTimeoutMillis())
+                .readTimeoutMillis(embedding.readTimeoutMillis())
+                .routes(network.routes())
+                .sslSocketFactory(network.tls())
+                .userAgent(network.userAgent())
+                .build();
+        return new OpenAiCompatibleEmbeddingAdapter(adapterConfig,
+                () -> token == null ? null : token.toCharArray()).measureDimension(DIMENSION_PROBE_TEXT);
+    }
+
     /**
      * Die Quelltypen der Anwendung in der Reihenfolge des Dialogs „+ Quelle“. Ein neuer Adapter (SharePoint, Mail,
      * FTP ...) kommt hier als weiterer Provider hinzu; Kern, Use Cases und Oberfläche bleiben unverändert.

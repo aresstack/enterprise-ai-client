@@ -76,6 +76,33 @@ public final class SettingsAssembly {
     }
 
     /**
+     * Die Seite des Einrichtungsassistenten über denselben Einstellungen-Aktionen: gleiche Datei, gleiche
+     * KeePass-Probe mit Swing-Pairing, gleicher Verbindungstest; eigener Daemon-Thread, Ergebnisse auf dem EDT.
+     */
+    public static com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions setup(
+            SettingsDialogActions settings, com.aresstack.enterpriseai.ui.comic.theme.ComicPalette palette) {
+        if (!(settings instanceof FileSettingsActions)) {
+            throw new IllegalArgumentException("settings must be the file-backed settings actions");
+        }
+        ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "enterprise-ai-setup");
+                t.setDaemon(true);
+                return t;
+            }
+        });
+        return new com.aresstack.enterpriseai.proasteion.exedra.settings.FileSetupActions(
+                (FileSettingsActions) settings, new KeePassSecretChecker(), new ServiceConnectionChecker(),
+                configurationCheck(), worker, new Executor() {
+                    @Override
+                    public void execute(Runnable command) {
+                        SwingUtilities.invokeLater(command);
+                    }
+                }, palette);
+    }
+
+    /**
      * Die Modellquellen der Anwendung mit Zwischenspeicher im Anwendungsverzeichnis; Abfragen aus dem Dialog holen
      * den API-Key wie der Verbindungstest (KeePass, Pairing-Dialog bei Bedarf).
      */

@@ -375,7 +375,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
      * Arbeits-Executor, KeePass kann blockieren).
      */
     private AppConfig located(AppConfig config, Properties merged) {
-        if (config.chat() == null || config.chat().baseUrl() != null) {
+        // Ohne eingetragene URL lädt der Loader den Chat-Abschnitt gar nicht (chat() == null); genau dann fehlt sie.
+        if (VaultLocations.pendingChatRef(merged) == null) {
             return config;
         }
         if (secretChecker == null) {

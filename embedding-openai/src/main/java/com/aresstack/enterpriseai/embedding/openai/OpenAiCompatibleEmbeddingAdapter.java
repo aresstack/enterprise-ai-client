@@ -81,6 +81,29 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         return EmbeddingBatch.of(identity, inputs.size(), vectors);
     }
 
+    /**
+     * Misst die Vektordimension des Modells mit einem einzigen kleinen Text (Einrichtungsassistent: die Dimension
+     * steht in keinem Modellkatalog). Anders als {@link #embed} prüft er nicht gegen die konfigurierte Dimension;
+     * die dient hier nur als Obergrenze für die Antwortgröße.
+     *
+     * @return die Länge des zurückgegebenen Vektors
+     * @throws EmbeddingException wie {@link #embed}
+     */
+    public int measureDimension(String sample) {
+        List<String> inputs = EmbeddingInputs.requireValid(Collections.singletonList(sample));
+        HttpResult result = post(EmbeddingRequestWriter.singleInput(configuration.modelId(), inputs.get(0)),
+                maxResponseBytes(1));
+        if (result.status != 200) {
+            throw EmbeddingErrorMapper.fromStatus(configuration.endpoint().toString(), result.status, result.body);
+        }
+        float[] vector = EmbeddingResponseParser.parse(result.body, 1).get(0);
+        if (vector == null || vector.length == 0) {
+            throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE,
+                    "embedding of model " + configuration.modelId() + " is empty");
+        }
+        return vector.length;
+    }
+
     private List<EmbeddingVector> call(String requestBody, int expectedCount) {
         HttpResult result = post(requestBody, maxResponseBytes(expectedCount));
         if (result.status != 200) {

@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationF
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 
 import java.io.IOException;
@@ -22,12 +23,54 @@ import java.util.List;
  * headless wird wie bisher gemeldet. Der Dialog speichert selbst (über {@code SettingsDialogActions}); hier
  * wird nach jeder Runde neu geladen, bis die Datei lädt (und die {@link ConfigurationCheck} besteht) oder der
  * Benutzer abbricht.
+ *
+ * <p>Mit Oberfläche und Einrichtungsassistent ({@link SetupUi}) gilt der Zustand {@value #SETUP_COMPLETED} im
+ * Anwendungszustand: fehlt die Datei, öffnet sich immer der Assistent und der Zustand wird {@code false} (das hat
+ * Vorrang vor einem alten {@code true}); nur ein erfolgreich beendeter Assistent, dessen Datei danach lädt, setzt
+ * {@code true}. Abbruch oder Beenden während der Einrichtung lässt {@code false} stehen, sodass der nächste Start den
+ * unterbrochenen Assistenten wieder öffnet. Eine vorhandene Datei ohne den Schlüssel ist eine bestehende Installation
+ * und startet wie bisher.
  */
 public final class ConfigurationStartup {
 
     /** Die Oberfläche, die den Entwurf bearbeiten lässt; {@code null} als Rückgabe heißt Abbruch. */
     public interface SettingsUi {
         SettingsForm edit(SettingsForm initial, List<String> problems, boolean firstStart);
+    }
+
+    /** Der Schlüssel des Einrichtungsstands im Anwendungszustand ({@code application-state.json}). */
+    public static final String SETUP_COMPLETED = "setup.completed";
+
+    /** Der Einrichtungsassistent; {@code true} heißt „Fertig“ nach bestandener Abschlussprüfung, sonst Abbruch. */
+    public interface SetupUi {
+        boolean run(SettingsForm initial);
+    }
+
+    /** Wo der Einrichtungsstand steht; produktiv der {@link ApplicationStateService}. */
+    public interface SetupState {
+        /** @return der gespeicherte Stand oder {@code null}, wenn der Schlüssel fehlt */
+        Boolean completed();
+
+        void setCompleted(boolean completed);
+    }
+
+    /** Der Einrichtungsstand im Anwendungszustand unter {@value #SETUP_COMPLETED}. */
+    public static SetupState setupState(final ApplicationStateService state) {
+        if (state == null) {
+            throw new IllegalArgumentException("state must not be null");
+        }
+        return new SetupState() {
+            @Override
+            public Boolean completed() {
+                String value = state.get(SETUP_COMPLETED, null);
+                return value == null ? null : Boolean.valueOf(value.trim());
+            }
+
+            @Override
+            public void setCompleted(boolean completed) {
+                state.putAndSave(SETUP_COMPLETED, Boolean.toString(completed));
+            }
+        };
     }
 
     /** Ergebnis: geladene Konfiguration, oder ein Grund, warum die Anwendung nicht startet. */
@@ -118,6 +161,65 @@ public final class ConfigurationStartup {
                         + io.getClass().getSimpleName() + ").");
             }
             return editUntilLoadable(file, ui, check, form, SettingsMapper.describe(e.problems()), false);
+        }
+    }
+
+    /**
+     * Wie {@link #obtain(ConfigurationFile, SettingsUi, ConfigurationCheck)}, mit Einrichtungsassistent nach den
+     * Regeln der Klasse. Ohne Oberfläche ({@code ui == null}) oder ohne Assistent bleibt alles wie bisher.
+     */
+    public static Outcome obtain(ConfigurationFile file, SettingsUi ui, ConfigurationCheck check, SetupState state,
+                                 SetupUi setup) {
+        if (file == null || check == null) {
+            throw new IllegalArgumentException("file and check must not be null");
+        }
+        if (ui == null || setup == null || state == null) {
+            return obtain(file, ui, check);
+        }
+        if (!file.exists()) {
+            state.setCompleted(false);
+            return runSetup(file, ui, check, state, setup, SettingsMapper.firstStartDefaults());
+        }
+        if (Boolean.FALSE.equals(state.completed())) {
+            SettingsForm form;
+            try {
+                form = SettingsMapper.fromProperties(file.read());
+            } catch (IOException | RuntimeException unreadable) {
+                form = SettingsMapper.firstStartDefaults();
+            }
+            if (form.chatApiKeyRef().isEmpty()) {
+                form = form.toBuilder().chatApiKeyRef(SettingsMapper.firstStartDefaults().chatApiKeyRef()).build();
+            }
+            return runSetup(file, ui, check, state, setup, form);
+        }
+        return obtain(file, ui, check);
+    }
+
+    private static Outcome runSetup(ConfigurationFile file, SettingsUi ui, ConfigurationCheck check, SetupState state,
+                                    SetupUi setup, SettingsForm initial) {
+        if (!setup.run(initial)) {
+            return Outcome.cancelled("Die Einrichtung wurde abgebrochen (" + file.path() + "). Der nächste Start "
+                    + "öffnet den Einrichtungsassistenten erneut.");
+        }
+        try {
+            AppConfig config = load(file, check);
+            state.setCompleted(true);
+            return Outcome.started(config);
+        } catch (AppConfigException e) {
+            // Die Abschlussprüfung des Assistenten lädt die Datei schon; landet hier, was danach nicht mehr lädt
+            // (z. B. parallel geändert): reparieren wie bei einer fehlerhaften Datei.
+            SettingsForm form;
+            try {
+                form = SettingsMapper.fromProperties(file.read());
+            } catch (IOException io) {
+                return Outcome.failed("Die Konfiguration unter\n" + file.path() + "\nist nicht lesbar ("
+                        + io.getClass().getSimpleName() + ").");
+            }
+            Outcome repaired = editUntilLoadable(file, ui, check, form, SettingsMapper.describe(e.problems()), false);
+            if (repaired.isStarted()) {
+                state.setCompleted(true);
+            }
+            return repaired;
         }
     }
 

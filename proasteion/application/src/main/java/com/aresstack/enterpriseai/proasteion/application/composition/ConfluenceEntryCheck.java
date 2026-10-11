@@ -6,6 +6,8 @@ import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.application.security.ClientCertificateFactory;
 import com.aresstack.enterpriseai.proasteion.application.security.EnteredSecretProvider;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.astu.source.SourceDefinition;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourcePartition;
@@ -23,6 +25,34 @@ public final class ConfluenceEntryCheck {
     private static final String REF = "eintragseditor";
 
     private ConfluenceEntryCheck() {
+    }
+
+    /**
+     * Die kanonische Adresse einer Confluence-Quelle zu einer Basis-URL (wie {@code KnowledgeSourceManagement.addressOf}
+     * aus Typ und Locator), für den Einrichtungsassistenten, der vor der Komposition speichert; {@code ""} ohne URL.
+     */
+    public static String address(String baseUrl) {
+        return ConfluenceSourceProvider.sourceType().addressFor(SourceLocators.url(baseUrl));
+    }
+
+    /**
+     * Die aktivierte Confluence-Quelle des Einrichtungsassistenten: Titel, Basis-URL, KeePass-Eintrag und
+     * Zertifikat (Alias, oder {@code clientCertificate.use=false}, wenn der Benutzer ohne Zertifikat fortfährt).
+     * Ohne Startpunkte: alle Spaces sind Partitionen, ausgewählt wird später unter Wissensquellen.
+     */
+    public static SourceDefinition definition(String title, String baseUrl, String credentialRef, String certAlias) {
+        String url = baseUrl == null ? "" : baseUrl.trim();
+        SourceSettings settings = SourceSettings.empty().with("title", title == null || title.trim().isEmpty()
+                ? ConfluenceSourceProvider.sourceType().displayName() : title.trim()).with("baseUrl", url);
+        if (credentialRef != null && !credentialRef.trim().isEmpty()) {
+            settings = settings.with("credentialRef", credentialRef.trim());
+        }
+        if (certAlias != null && !certAlias.trim().isEmpty()) {
+            settings = settings.with("clientCertificate.alias", certAlias.trim());
+        } else {
+            settings = settings.with("clientCertificate.use", "false");
+        }
+        return new SourceDefinition(address(url), ConfluenceSourceProvider.TYPE_ID, true, settings);
     }
 
     /** Meldung bei Erfolg; wirft mit der Ursache, wenn die Verbindung scheitert. Nie auf dem EDT. */

@@ -15,4 +15,13 @@ public interface ConnectionChecker {
 
     /** @return {@code true}, wenn kein Schritt fehlgeschlagen ist */
     boolean check(AppConfig config, Consumer<ConnectionCheckStep> onStep);
+
+    /**
+     * Der Embedding-Test des Einrichtungsassistenten: ein echter kleiner Aufruf mit {@code embedding.model}; die
+     * Dimension ist die Länge des zurückgegebenen Vektors ({@code embedding.dimension} der Konfiguration zählt nicht).
+     * Blockiert; wirft mit der Ursache, wenn der Aufruf scheitert.
+     */
+    default int embeddingDimension(AppConfig config) throws Exception {
+        throw new UnsupportedOperationException("Embedding-Test in dieser Umgebung nicht verfügbar");
+    }
 }

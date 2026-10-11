@@ -121,6 +121,33 @@ public final class SettingsDialog extends JDialog {
         return dialog.result;
     }
 
+    /**
+     * Wie {@link #show(Window, SettingsForm, List, SettingsPanel.Mode, SettingsDialogActions, ToolOverview,
+     * ComicPalette)}, mit
+     * gewählter Kategorie und dem Knopf „Einrichtungsassistent“ ({@code setupWizard == null}: ohne Knopf); der Knopf
+     * schließt den Dialog ohne zu speichern und öffnet danach den Assistenten.
+     */
+    public static SettingsForm show(Window owner, SettingsForm initial, List<String> problems,
+                                    SettingsPanel.Mode mode, SettingsDialogActions actions, ToolOverview tools,
+                                    ComicPalette palette, int tab, Runnable setupWizard) {
+        ComicPalette colors = palette == null ? ComicPalette.defaultPalette() : palette;
+        ComicTheme.installMenuDefaults(colors);
+        SettingsDialog dialog = new SettingsDialog(owner, initial, problems, mode, actions,
+                tools == null ? ToolOverview.none() : tools, colors);
+        final Runnable[] requested = new Runnable[1];
+        if (setupWizard != null) {
+            dialog.panel.setSetupWizardAction(() -> requested[0] = setupWizard);
+        }
+        if (tab > 0 && tab < SettingsPanel.tabCount()) {
+            dialog.panel.selectTab(tab);
+        }
+        dialog.setVisible(true);
+        if (requested[0] != null) {
+            requested[0].run();
+        }
+        return dialog.result;
+    }
+
     public SettingsPanel panel() {
         return panel;
     }

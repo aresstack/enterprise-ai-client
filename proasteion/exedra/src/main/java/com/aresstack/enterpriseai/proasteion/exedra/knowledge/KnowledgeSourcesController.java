@@ -351,6 +351,19 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         publish();
     }
 
+    /**
+     * Eine Quelle, die außerhalb des Dialogs in die Datei geschrieben wurde (Einrichtungsassistent), sofort anbinden
+     * oder neu anbinden, ohne Neustart. Nur auf dem UI-Thread.
+     */
+    public void sourceSaved(String address) {
+        if (editing == null || address == null || address.trim().isEmpty()) {
+            return;
+        }
+        pendingRestart.remove(address);
+        connect(address);
+        publish();
+    }
+
     @Override
     public void removeRequested(final String sourceId) {
         if (!canAdd() || removing.contains(sourceId) || sourceId.equals(running)) {

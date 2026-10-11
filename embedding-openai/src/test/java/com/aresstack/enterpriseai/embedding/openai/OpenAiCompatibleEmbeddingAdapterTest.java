@@ -31,6 +31,14 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
     }
 
     @Test
+    public void measureDimensionReturnsTheVectorLengthWithoutCheckingTheConfiguredDimension() {
+        RecordingTransport transport = new RecordingTransport("{\"data\":[{\"embedding\":[0.1,0.2,0.3,0.4,0.5]}]}");
+        int dimension = new OpenAiCompatibleEmbeddingAdapter(CONFIG, tokens(), transport).measureDimension("probe");
+        assertEquals(5, dimension);
+        assertEquals(1, transport.bodies.size());
+    }
+
+    @Test
     public void tokenIsReadPerRequestAndWipedAfterwards() {
         final List<char[]> handedOut = new ArrayList<char[]>();
         BearerTokenSource source = new BearerTokenSource() {

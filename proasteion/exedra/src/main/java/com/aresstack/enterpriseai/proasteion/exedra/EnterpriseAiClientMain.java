@@ -37,6 +37,10 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogAc
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ToolOverview;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatTranscriptPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardWindow;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
@@ -88,8 +92,16 @@ public final class EnterpriseAiClientMain {
         final LocalVoices localVoices = new LocalVoices(new SwingUserPrompts());
         final SettingsDialogActions settingsActions = headless ? null
                 : SettingsAssembly.create(file, modelCatalogs, localVoices);
+        final SetupActions setupActions = headless ? null
+                : SettingsAssembly.setup(settingsActions, ComicPalette.defaultPalette());
+        // Anwendungszustand (askai arch / MainframeMate): Fenster, Drawer, angehakte Spaces je Quelle und der
+        // Einrichtungsstand (setup.completed). Er liegt neben der Konfigurationsdatei und braucht sie nicht, deshalb
+        // entsteht er vor ihr: der Erststart entscheidet mit ihm, ob der Einrichtungsassistent erscheint.
+        final ApplicationStateService applicationState = new ApplicationStateService(AppPaths.applicationStateFile());
+        final ConfigurationStartup.SetupState setupState = ConfigurationStartup.setupState(applicationState);
         ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
-                headless ? null : new SwingSettingsUi(settingsActions), SettingsAssembly.configurationCheck());
+                headless ? null : new SwingSettingsUi(settingsActions), SettingsAssembly.configurationCheck(),
+                setupState, headless ? null : new SwingSetupUi(settingsActions, setupActions));
         if (!outcome.isStarted()) {
             if (outcome.isCancelled()) {
                 LOG.info(outcome.message());
@@ -103,8 +115,6 @@ public final class EnterpriseAiClientMain {
         }
         AppConfig config = outcome.config();
         LOG.info("Konfiguration aus " + file.path() + ": " + config);
-        // Anwendungszustand (askai arch / MainframeMate): Fenster, Drawer und die angehakten Spaces je Quelle.
-        final ApplicationStateService applicationState = new ApplicationStateService(AppPaths.applicationStateFile());
         ApplicationStart.dropLegacySourceEntries(config.knowledge().indexDirectory(), applicationState);
         final SourcePartitionSelection partitions = new SourcePartitionSelection(applicationState);
         // Zusammengesetzt wird im Kompositionspunkt ohne Oberfläche (proasteion:application, corenth ADR-0001);
@@ -189,7 +199,8 @@ public final class EnterpriseAiClientMain {
                     }
                 });
                 view.setSettingsAction(settingsAction(frame, file, settingsActions,
-                        new CatalogToolOverview(root.toolCatalog()), palette, settings));
+                        new CatalogToolOverview(root.toolCatalog()), palette, settings,
+                        setupAction(view, file, settingsActions, setupActions, palette, settings, setupState)));
                 view.setChatModels(modelCatalogs::cached, () -> installedLocalChats(localVoices,
                         settings.current().models().localModelRoot()), modelId -> {
                     try {
@@ -242,9 +253,55 @@ public final class EnterpriseAiClientMain {
      * Das Zahnrad im Drawer: öffnet den Dialog mit den Werten der Datei. Gespeichert wird in die Datei; danach lädt
      * der Settings-Service sie neu und seine Beobachter übernehmen die Änderungen sofort, ohne Neustart.
      */
+    /**
+     * Der Einrichtungsassistent aus der laufenden Anwendung (Knopf „Einrichtungsassistent“ im Einstellungen-Dialog):
+     * dieselbe Komponente wie beim Erststart, hier als Comic-Overlay über dem Antwortfenster wie der
+     * Mermaid-Betrachter. „Fertig“ setzt den Einrichtungsstand, lädt die Einstellungen ohne Neustart neu und bindet
+     * die Confluence-Quelle sofort an; Abbrechen oder das ✕ schließen nur das Overlay.
+     */
+    private static Runnable setupAction(final ShellAssembly.ShellView view, final ConfigurationFile file,
+                                        final SettingsDialogActions actions, final SetupActions setup,
+                                        final ComicPalette palette, final SettingsService settings,
+                                        final ConfigurationStartup.SetupState setupState) {
+        return new Runnable() {
+            @Override
+            public void run() {
+                SettingsForm current;
+                try {
+                    current = SettingsMapper.fromProperties(file.read());
+                } catch (IOException io) {
+                    LOG.log(Level.WARNING, "Konfigurationsdatei nicht lesbar", io);
+                    current = SettingsMapper.firstStartDefaults();
+                }
+                final ChatTranscriptPanel transcript = view.workspace().chatShell().transcript();
+                final SetupWizardPanel wizard = new SetupWizardPanel(current, actions, setup, palette);
+                wizard.setOnCancel(transcript::closeTranscriptOverlay);
+                wizard.setOnFinished(new Runnable() {
+                    @Override
+                    public void run() {
+                        transcript.closeTranscriptOverlay();
+                        setupState.setCompleted(true);
+                        reloadInBackground(settings, "Einstellungen");
+                        try {
+                            for (SourceDefinition source : new FileSourceActions(file).definitions()) {
+                                if ("confluence".equals(source.typeId())) {
+                                    view.knowledgeSources().sourceSaved(source.address());
+                                }
+                            }
+                        } catch (IOException | RuntimeException e) {
+                            LOG.log(Level.WARNING, "Confluence-Quelle nicht sofort angebunden", e);
+                        }
+                    }
+                });
+                transcript.showTranscriptOverlay(wizard, SetupWizardPanel.TITLE);
+            }
+        };
+    }
+
     private static Runnable settingsAction(final JFrame frame, final ConfigurationFile file,
                                            final SettingsDialogActions actions, final ToolOverview tools,
-                                           final ComicPalette palette, final SettingsService settings) {
+                                           final ComicPalette palette, final SettingsService settings,
+                                           final Runnable setupWizard) {
         return new Runnable() {
             @Override
             public void run() {
@@ -258,7 +315,7 @@ public final class EnterpriseAiClientMain {
                     return;
                 }
                 SettingsForm saved = SettingsDialog.show(frame, current, Collections.<String>emptyList(),
-                        SettingsPanel.Mode.EDIT, actions, tools, palette);
+                        SettingsPanel.Mode.EDIT, actions, tools, palette, 0, setupWizard);
                 if (saved == null) {
                     return;
                 }
@@ -375,6 +432,44 @@ public final class EnterpriseAiClientMain {
                     JOptionPane.WARNING_MESSAGE);
         } catch (RuntimeException e) {
             LOG.log(Level.FINE, "Hinweisdialog nicht anzeigbar", e);
+        }
+    }
+
+    /** Zeigt den Einrichtungsassistenten vom Hauptthread aus modal auf dem EDT (Erststart, unterbrochene Einrichtung). */
+    static final class SwingSetupUi implements ConfigurationStartup.SetupUi {
+
+        private final SettingsDialogActions settings;
+        private final SetupActions setup;
+
+        SwingSetupUi(SettingsDialogActions settings, SetupActions setup) {
+            this.settings = settings;
+            this.setup = setup;
+        }
+
+        @Override
+        public boolean run(final SettingsForm initial) {
+            final boolean[] completed = new boolean[1];
+            Runnable show = new Runnable() {
+                @Override
+                public void run() {
+                    completed[0] = SetupWizardWindow.show(null, initial, settings, setup,
+                            ComicPalette.defaultPalette());
+                }
+            };
+            try {
+                if (SwingUtilities.isEventDispatchThread()) {
+                    show.run();
+                } else {
+                    SwingUtilities.invokeAndWait(show);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            } catch (InvocationTargetException e) {
+                LOG.log(Level.SEVERE, "Einrichtungsassistent nicht anzeigbar", e.getCause());
+                return false;
+            }
+            return completed[0];
         }
     }
 

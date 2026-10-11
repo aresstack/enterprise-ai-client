@@ -12,6 +12,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.settings.ConnectionProbe;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 
+import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
+
 import java.io.IOException;
 import java.util.function.Consumer;
 
@@ -54,6 +56,28 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
             }
         };
         return new ConnectionProbe(config, tokens).run(onStep);
+    }
+
+    /**
+     * Der Embedding-Test: der API-Key des Embedding-Dienstes kommt wie bei der Anwendung aus KeePass (ohne eigenen
+     * Eintrag der des Chats), dann ein Aufruf über den Adapter des Kompositionspunkts.
+     */
+    @Override
+    public int embeddingDimension(AppConfig config) throws Exception {
+        if (config == null || config.embedding() == null) {
+            throw new IllegalArgumentException("config with embedding section required");
+        }
+        SecretRef ref = config.embedding().apiKeyRef() == null ? config.chat().apiKeyRef() : config.embedding().apiKeyRef();
+        String token = null;
+        if (config.keePass().enabled() && ref != null) {
+            try {
+                token = AdapterAssembly.keePassAccess(config.keePass(), pairing.forAddress(config.keePass().address()),
+                        new DialogCredentialPrompt()).token(ref);
+            } catch (KeePassAccess.Failure e) {
+                throw new IOException(e.getMessage());
+            }
+        }
+        return AdapterAssembly.embeddingDimension(config.embedding(), token, NetworkServices.from(config.network()));
     }
 
     /**

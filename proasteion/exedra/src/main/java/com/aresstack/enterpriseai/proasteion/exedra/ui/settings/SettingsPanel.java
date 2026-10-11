@@ -120,6 +120,8 @@ public final class SettingsPanel extends JPanel {
     private final JTextArea problemsText = new JTextArea();
     private final ComposerButton saveButton;
     private final ComposerButton cancelButton;
+    private final ComposerButton setupWizardButton = new ComposerButton(null, "Einrichtungsassistent", false,
+            "Den Einrichtungsassistenten erneut öffnen (KeePass, KI-Dienst, Modelle, Confluence)");
     private Consumer<SettingsForm> onSaved;
     private Runnable onCancel;
     /** Der geladene Stand; liefert die Felder ohne Reiter (Quellen) unverändert in {@link #toForm()}. */
@@ -244,6 +246,8 @@ public final class SettingsPanel extends JPanel {
         saveButton.setToolTipText(mode == Mode.FIRST_START ? "Konfiguration schreiben und die Anwendung starten"
                 : "Konfiguration schreiben; gilt sofort");
         cancelButton.setToolTipText(mode == Mode.FIRST_START ? "Ohne Konfiguration beenden" : "Änderungen verwerfen");
+        setupWizardButton.setVisible(false);
+        buttons.add(setupWizardButton);
         buttons.add(cancelButton);
         buttons.add(saveButton);
         JPanel south = new JPanel(new BorderLayout(0, 6));
@@ -301,6 +305,37 @@ public final class SettingsPanel extends JPanel {
                 cancel();
             }
         });
+    }
+
+    /**
+     * Zeigt den Knopf „Einrichtungsassistent“ (nur im Modus {@link Mode#EDIT}): er verwirft den Dialog wie Abbrechen
+     * und führt danach {@code action} aus; {@code null} blendet ihn aus.
+     */
+    public void setSetupWizardAction(final Runnable action) {
+        for (java.awt.event.ActionListener listener : setupWizardButton.getActionListeners()) {
+            setupWizardButton.removeActionListener(listener);
+        }
+        setupWizardButton.setVisible(action != null && mode == Mode.EDIT);
+        if (action != null) {
+            setupWizardButton.addActionListener(e -> {
+                cancel();
+                action.run();
+            });
+        }
+    }
+
+    public ComposerButton setupWizardButton() {
+        return setupWizardButton;
+    }
+
+    /** Index der ersten Kategorie, deren Name mit {@code prefix} beginnt, sonst 0. */
+    public static int tabIndexStartingWith(String prefix) {
+        for (int i = 0; i < TAB_LABELS.length; i++) {
+            if (prefix != null && TAB_LABELS[i].startsWith(prefix)) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     /** Nach erfolgreichem Speichern (auf dem EDT). */
