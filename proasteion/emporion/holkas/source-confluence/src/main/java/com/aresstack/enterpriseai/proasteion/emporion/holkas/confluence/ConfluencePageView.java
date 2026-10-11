@@ -13,7 +13,8 @@ import java.util.Set;
 /**
  * Bereitet {@code body.view} für die Lese-Ansicht auf (paketintern), mit den Regeln aus MainframeMate
  * {@code HtmlImageExtractor}/{@code ConfluenceReaderTab}: Bilder bleiben an ihrer Stelle, die Bildliste folgt der
- * Dokumentreihenfolge (jede Adresse einmal), {@code data:}-Bilder und Emoticons/Icons zählen nicht. Anders als
+ * Dokumentreihenfolge (jede Adresse einmal), {@code data:}-Bilder und Emoticons/Icons zählen nicht. Versteckte
+ * Elemente ({@code .hidden}, {@code display:none}) fallen weg wie in {@link ConfluenceHtmlText}. Anders als
  * dort liest jsoup die Attribute; ist das Bild ein Anhang ({@code data-linked-resource-id}), kommen Anhang-ID,
  * Version und Medientyp mit. Entfernt werden Skripte, Formulare und eingebettete Objekte; Überschriften ohne
  * {@code id} bekommen eine aus ihrem Text (MainframeMate {@code injectHeadingAnchors}).
@@ -32,7 +33,11 @@ final class ConfluencePageView {
     static ConfluencePageView of(String bodyHtml, String baseUri) {
         Document doc = Jsoup.parseBodyFragment(bodyHtml == null ? "" : bodyHtml, baseUri);
         doc.select("script, noscript, iframe, object, embed, applet, form, input, button, select, textarea").remove();
-        doc.select(".expand-control, .aui-icon").remove();
+        doc.select("style, svg").remove();
+        // Wie ConfluenceHtmlText: Versteckte Lade-/Platzhalterzeilen und Bedienelemente nicht zeigen; Swings
+        // HTML-Darstellung kennt display:none nicht zuverlässig.
+        doc.select(".expand-control, .aui-icon, .hidden").remove();
+        doc.select("[style~=(?i)display:\\s*none]").remove();
         List<InlineImage> images = new ArrayList<InlineImage>();
         Set<String> seen = new LinkedHashSet<String>();
         for (Element img : doc.select("img")) {

@@ -21,7 +21,8 @@ public class ConfluencePageViewTest {
                 + " data-linked-resource-content-type=\"image/png\" data-linked-resource-container-id=\"7\"> nachher</p>"
                 + "<p><img src=\"/confluence/images/icons/emoticons/smile.svg\" alt=\"(smile)\"></p>"
                 + "<p><img src=\"https://other.invalid/logo.gif\"></p>"
-                + "<script>alert(1)</script>";
+                + "<script>alert(1)</script>"
+                + "<div class=\"hidden\">Lade Vorgänge</div><p style=\"display: none\">Platzhalter</p>";
 
         ConfluencePageView view = ConfluencePageView.of(body, BASE);
 
@@ -29,6 +30,8 @@ public class ConfluencePageViewTest {
         assertTrue(view.html, view.html.contains("src=\"https://confluence.invalid/confluence/download/attachments/7/a.png"));
         assertTrue(view.html, view.html.contains("smile.svg")); // Emoticons bleiben im Text, nur nicht in der Liste
         assertFalse(view.html, view.html.contains("<script"));
+        assertFalse(view.html, view.html.contains("Lade Vorgänge"));
+        assertFalse(view.html, view.html.contains("Platzhalter"));
         assertTrue(view.html, view.html.contains("id=\"überblick\""));
 
         assertEquals(2, view.images.size());
