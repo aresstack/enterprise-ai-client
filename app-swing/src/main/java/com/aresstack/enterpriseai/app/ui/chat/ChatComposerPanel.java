@@ -84,6 +84,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String DISCARD_TOOLTIP = "Aufnahme verwerfen (Esc)";
     static final String RETRY_TOOLTIP = "Letzte Aufnahme erneut erkennen";
     static final String RECOGNIZING_STATUS = "Erkenne Sprache …";
+    static final String RECOGNIZING_SEND_STATUS = "Erkenne Sprache … danach wird gesendet";
+    private static final String SEND_DICTATION_TOOLTIP = "Aufnahme beenden, erkennen und direkt senden";
     static final String RECOGNIZED_STATUS = "Abschrift eingefügt. Text prüfen und senden.";
     static final String EMPTY_STATUS = "Das Modell hat keinen Text geliefert – bitte noch einmal sprechen.";
     static final String DISCARDED_STATUS = "Diktat verworfen.";
@@ -138,6 +140,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private ComposerStatusLine.Tone dictationNoteTone = ComposerStatusLine.Tone.MUTED;
     private long recordingStartedMillis;
 
+    private boolean sendAfterRecognition;
     private StatusKind currentStatus;
     private StatusKind dismissedStatus;
 
@@ -209,6 +212,22 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
 
     /** Sendet den Entwurf, wenn das Model es erlaubt; der Editor wird danach geleert. */
     void submit() {
+        if (isDictationActive()) {
+            // Senden während der Aufnahme: Aufnahme beenden, erkennen und die Nachricht danach direkt abschicken.
+            if (model.canStop()) {
+                return;
+            }
+            sendAfterRecognition = true;
+            if (dictationPhase == DictationPhase.RECORDING) {
+                dictationPhase = DictationPhase.RECOGNIZING;
+                stopLevelMeter();
+                refreshControls();
+                dictation.finish();
+            } else {
+                refreshControls();
+            }
+            return;
+        }
         String draft = editor.getText();
         if (!model.canSend(draft)) {
             return;
@@ -408,6 +427,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             return;
         }
         boolean recording = dictationPhase == DictationPhase.RECORDING;
+        sendAfterRecognition = false;
         dictation.cancel();
         dictationPhase = DictationPhase.IDLE;
         stopLevelMeter();
@@ -431,6 +451,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             public void recognized(String text) {
                 dictationPhase = DictationPhase.IDLE;
                 stopLevelMeter();
+                boolean send = sendAfterRecognition;
+                sendAfterRecognition = false;
                 if (text == null || text.trim().isEmpty()) {
                     setDictationNote(EMPTY_STATUS, ComposerStatusLine.Tone.MUTED);
                 } else {
@@ -440,6 +462,11 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                     editor.setCaretPosition(insertion.caret);
                     editor.requestFocusInWindow();
                     setDictationNote(RECOGNIZED_STATUS, ComposerStatusLine.Tone.MUTED);
+                    if (send) {
+                        refreshControls();
+                        submit();
+                        return;
+                    }
                 }
                 refreshControls();
             }
@@ -447,6 +474,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             @Override
             public void failed(String message) {
                 dictationPhase = DictationPhase.IDLE;
+                sendAfterRecognition = false; // bei einem Fehler wird nichts gesendet
                 stopLevelMeter();
                 String reason = message == null || message.trim().isEmpty() ? "unbekannter Fehler" : message.trim();
                 setDictationNote(FAILED_STATUS + reason, ComposerStatusLine.Tone.ERROR);
@@ -516,7 +544,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         String signal = dictation.clipping() ? "ÜBERSTEUERT"
                 : levelBar.getValue() >= waveform.thresholdPercent() ? "Signal" : "kein Signal";
         return "● Aufnahme " + (seconds / 60) + ":" + String.format("%02d", seconds % 60) + " · " + signal
-                + "  (Stopp: erkennen · ✕/Esc: verwerfen)";
+                + "  (Stopp: erkennen · Senden: erkennen und senden · ✕/Esc: verwerfen)";
     }
 
     /** Ob gerade eine Antwort läuft (dann zeigt die Fläche Stop und den Akzentrand). */
@@ -811,7 +839,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     /** Send/Stop: genau einer sichtbar; Send nur mit sendbarem Entwurf aktiv, Stop nur während einer Antwort. */
     private void refreshControls() {
         boolean busy = model.canStop();
-        sendButton.setEnabled(model.canSend(editor.getText()) && !isDictationActive());
+        // Während des Diktats bleibt Senden aktiv: es beendet die Aufnahme und schickt die Abschrift direkt ab.
+        sendButton.setEnabled(isDictationActive() ? !busy && !sendAfterRecognition : model.canSend(editor.getText()));
+        sendButton.setToolTipText(isDictationActive() ? SEND_DICTATION_TOOLTIP : "Senden (Enter)");
         stopButton.setEnabled(busy);
         attachButton.setEnabled(!busy);
         reasoningButton.setEnabled(!busy);
@@ -840,7 +870,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             tone = ComposerStatusLine.Tone.DICTATION;
         } else if (dictationPhase == DictationPhase.RECOGNIZING) {
             kind = StatusKind.RECOGNIZING;
-            text = RECOGNIZING_STATUS;
+            text = sendAfterRecognition ? RECOGNIZING_SEND_STATUS : RECOGNIZING_STATUS;
             tone = ComposerStatusLine.Tone.DICTATION;
         } else if (dictationNote != null && dictationNoteTone == ComposerStatusLine.Tone.ERROR) {
             kind = StatusKind.NOTE;
