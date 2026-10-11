@@ -129,10 +129,8 @@ public class FileSettingsActionsTest {
     public void indexDirectoryIsLoadedSavedAndClearedByTheSettingsDialog() throws Exception {
         Path old = tmp.newFolder("alt").toPath();
         Path changed = tmp.newFolder("neu-index").toPath();
-        ConfigurationFile file = fileWith(validText() + "knowledge.indexDirectory=" + slashes(old) + "
-"
-                + "knowledge.indexOnStartup=false
-");
+        ConfigurationFile file = fileWith(validText() + "knowledge.indexDirectory=" + slashes(old) + "\n"
+                + "knowledge.indexOnStartup=false\n");
         FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);
         SettingsForm form = SettingsMapper.fromProperties(file.read());
         assertEquals(slashes(old), form.indexDirectory());

@@ -467,10 +467,10 @@ public class ChatWorkspacePanelTest {
 
     private static void collectTexts(Container root, List<String> texts) {
         for (Component child : root.getComponents()) {
-            if (child instanceof JLabel) {
-                texts.add(((JLabel) child).getText());
-            } else if (child instanceof AbstractButton) {
-                texts.add(((AbstractButton) child).getText());
+            String text = child instanceof JLabel ? ((JLabel) child).getText()
+                    : child instanceof AbstractButton ? ((AbstractButton) child).getText() : null;
+            if (text != null) {
+                texts.add(text);
             }
             if (child instanceof Container) {
                 collectTexts((Container) child, texts);
