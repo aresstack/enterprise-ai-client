@@ -45,8 +45,6 @@ public class ReaderImagesTest {
             assertEquals(Arrays.asList(A, B, C), srcs(view.inlineImages()));
             assertTrue(view.getText().contains("Vorher"));
             assertNotNull("Banner auch über der Lese-Ansicht", reader.navigationSky(link.key()));
-            assertTrue(reader.imagesButton().isVisible());
-            assertEquals("Bilder (3)", reader.imagesButton().getText());
 
             reader.addTabMenuContributor((popup, tabLink) -> popup.add(new javax.swing.JMenuItem("Zum aktuellen Chat")));
             javax.swing.JPopupMenu menu = reader.tabMenu(link.key());

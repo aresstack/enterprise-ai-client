@@ -244,4 +244,32 @@ public final class ComposerIcons {
             }
         };
     }
+
+    /**
+     * The push pin (pin a preview tab in the reader): round head, collar, a slanted needle. Own addition, AskAI and
+     * MainframeMate have no pin glyph.
+     */
+    public static StrokeIcon pin() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawOval(7, 1, 6, 6);
+                g2.drawLine(8, 6, 7, 7);
+                g2.drawLine(4, 6, 9, 11);
+                g2.drawLine(6, 9, 2, 13);
+            }
+        };
+    }
+
+    /** The "i" in a circle (page information in the reader toolbar). Own addition. */
+    public static StrokeIcon info() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawOval(1, 1, 13, 13);
+                g2.fillOval(7, 3, 2, 2);
+                g2.drawLine(8, 7, 8, 11);
+            }
+        };
+    }
 }

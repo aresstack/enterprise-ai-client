@@ -74,15 +74,18 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 
 /**
- * Der Lesebereich statt des Chats, wie der Lese-Tab in MainframeMate: oben die Lese-Reiter, darunter Titel, Fundstelle,
- * ★ (als Favorit merken) und „Anheften“, darunter der Inhalt (das Dokument als Markdown oder die Ressourcen einer
- * Quelle als Liste).
+ * Der Lesebereich statt des Chats, wie der Lese-Tab in MainframeMate: oben die Lese-Reiter, darunter der Inhalt (das
+ * Dokument als Markdown oder die Ressourcen einer Quelle als Liste). Jeder Reiter trägt seine Aktionen selbst:
+ * {@code Titel | Stecknadel | Stern | Schließen} (Stern wie in MainframeMates {@code TabbedPaneManager}); eine
+ * Kopfzeile mit Titel und Fundstelle gibt es nicht mehr.
  *
  * <p>Ein einfacher Klick öffnet einen Verweis als <b>Vorschau</b>: Es gibt höchstens einen Vorschau-Reiter (Titel
- * kursiv), den der nächste einfache Klick ersetzt. Ein Doppelklick, „Anheften“ oder ein Doppelklick auf den Reiter
- * heftet ihn fest an; angeheftete Reiter bleiben, bis man sie mit ✕ schließt.</p>
+ * kursiv), den der nächste einfache Klick ersetzt. Ein Doppelklick, die Stecknadel (nur am Vorschau-Reiter) oder ein
+ * Doppelklick auf den Reiter heftet ihn fest an; angeheftete Reiter bleiben, bis man sie schließt. Der Tooltip des
+ * Reiters zeigt den ungekürzten Titel.</p>
  *
- * <p>Unten liegt eine einzige Zeile ({@link ReaderToolbar}): links die Lupe, rechts das Branding an derselben Stelle
+ * <p>Unten liegt eine einzige Zeile ({@link ReaderToolbar}): links die Lupe und daneben das Info-Symbol
+ * ({@link ReaderPageInfo}: vollständige Adresse, kopieren, im Browser öffnen), rechts das Branding an derselben Stelle
  * wie unter dem Chat. Lupe oder Strg+F klappt die Suche in derselben Zeile auf; gesucht wird wie in MainframeMates
  * {@code ConfluenceReaderTab} nur im aktiven Reiter (alle Fundstellen gelb, die aktuelle orange), Begriff und
  * Auf/Zu merkt sich jeder Reiter.</p>
@@ -93,7 +96,7 @@ import java.util.Map;
  * {@link #addTabMenuContributor} ergänzen.</p>
  *
  * <p>Seiten mit Original-HTML ({@link #showHtml}) zeigen ihre Bilder inline; ein Klick auf ein Bild oder „Bilder (n)“
- * im Kopf öffnet die Diashow aller Bilder der Seite als Comic-Overlay über dem Inhalt (wie der Mermaid-Betrachter).</p>
+ * im Kontextmenü des Reiters öffnet die Diashow aller Bilder der Seite als Comic-Overlay über dem Inhalt (wie der Mermaid-Betrachter).</p>
  */
 public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlayHost {
 
@@ -127,9 +130,11 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             + "ein Klick zeigt die Vorschau, ein Doppelklick heftet an.";
     static final String LOADING_TEXT = "Lade …";
     static final String PIN_TOOLTIP = "Anheften (bleibt offen, bis du ihn schließt)";
+    static final String PREVIEW_HINT = "Vorschau – mit der Stecknadel anheften";
     static final String FAVORITE_ADD = "Als Favorit merken";
     static final String FAVORITE_REMOVE = "Aus den Favoriten entfernen";
-    static final String IMAGES_TOOLTIP = "Alle Bilder der Seite als Diashow";
+    static final String CLOSE_TOOLTIP = "Schließen";
+    private static final int TAB_BUTTON_SIZE = 22;
     private static final String EMPTY_CARD = "empty";
     /** MainframeMate {@code TabbedPaneManager}: Maustasten Zurück und Vor. */
     static final int MOUSE_BACK_BUTTON = 4;
@@ -162,11 +167,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private Point dragStart;
     private boolean dragging;
     private int dropX = -1;
-    private final JLabel titleLabel = new JLabel();
-    private final JLabel locationLabel = new JLabel();
-    private final ComposerButton favoriteButton;
-    private final ComposerButton pinButton;
-    private final ComposerButton imagesButton;
+    private final ComposerButton infoButton;
+    private java.util.function.Consumer<String> clipboard = ReaderPageInfo.SYSTEM_CLIPBOARD;
     private final JLayeredPane layers = new JLayeredPane();
     private ComicOverlayPanel overlay;
     private final CardLayout cards = new CardLayout();
@@ -204,51 +206,19 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         setBackground(palette.getSurface());
 
         strip.setOpaque(false);
-        strip.setBorder(BorderFactory.createEmptyBorder(6, 10, 0, 10));
 
-        favoriteButton = ComposerButton.iconButton(SidebarIcons.star(false), FAVORITE_ADD);
-        favoriteButton.addActionListener(event -> {
-            Tab tab = tabs.get(activeKey);
-            if (tab != null && listener != null) {
-                listener.favoriteToggled(tab.link);
-                refreshHeader();
+        strip.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+        infoButton = toolbar.addTool(ComposerIcons.info(), ReaderPageInfo.TOOLTIP);
+        infoButton.addActionListener(event -> {
+            JPopupMenu info = pageInfoMenu();
+            if (info != null) {
+                info.show(infoButton, 0, -info.getPreferredSize().height);
             }
         });
-        pinButton = new ComposerButton(null, "Anheften", false, PIN_TOOLTIP);
-        pinButton.setFont(ResearchUiTypography.semiBold(12f));
-        pinButton.addActionListener(event -> pin(activeKey));
-        imagesButton = new ComposerButton(ComposerIcons.picture(), "Bilder", false, IMAGES_TOOLTIP);
-        imagesButton.setFont(ResearchUiTypography.semiBold(12f));
-        imagesButton.addActionListener(event -> openSlideshow(activeKey, 0));
-
-        titleLabel.setFont(ResearchUiTypography.semiBold(16f));
-        titleLabel.setForeground(palette.getInk());
-        locationLabel.setFont(ResearchUiTypography.regular(11f));
-        locationLabel.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
-        JPanel titles = new JPanel();
-        titles.setLayout(new BoxLayout(titles, BoxLayout.Y_AXIS));
-        titles.setOpaque(false);
-        titles.add(titleLabel);
-        titles.add(locationLabel);
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        buttons.setOpaque(false);
-        buttons.add(imagesButton);
-        buttons.add(pinButton);
-        buttons.add(favoriteButton);
-        JPanel header = new JPanel(new BorderLayout(8, 0));
-        header.setOpaque(false);
-        header.setBorder(BorderFactory.createEmptyBorder(10, 18, 8, 12));
-        header.add(titles, BorderLayout.CENTER);
-        header.add(buttons, BorderLayout.EAST);
-
-        JPanel north = new JPanel(new BorderLayout());
-        north.setOpaque(false);
-        north.add(strip, BorderLayout.NORTH);
-        north.add(header, BorderLayout.CENTER);
 
         deck.setOpaque(false);
         deck.add(message(EMPTY_TEXT), EMPTY_CARD);
-        add(north, BorderLayout.NORTH);
+        add(strip, BorderLayout.NORTH);
         layers.setLayout(new FillLayout());
         layers.add(deck, JLayeredPane.DEFAULT_LAYER);
         add(layers, BorderLayout.CENTER);
@@ -430,7 +400,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
 
     public void setListener(Listener listener) {
         this.listener = listener;
-        refreshHeader();
+        refresh();
     }
 
     // ------------------------------------------------------------------ Reiter
@@ -577,10 +547,6 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         Tab tab = tabs.get(key);
         java.awt.Component found = tab == null || tab.content == null ? null : find(tab.content, ReaderHtmlView.class);
         return found == null ? null : (ReaderHtmlView) found;
-    }
-
-    public ComposerButton imagesButton() {
-        return imagesButton;
     }
 
     // ------------------------------------------------------------------ Overlay (wie über dem Chatverlauf)
@@ -940,9 +906,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         }
     }
 
-    /** Nach einer Änderung der Favoriten von außen: ★ neu zeichnen. */
+    /** Nach einer Änderung der Favoriten von außen: die Sterne neu zeichnen. */
     public void refreshFavorite() {
-        refreshHeader();
+        refresh();
         for (Tab tab : tabs.values()) {
             FavoriteStarButton.refreshAll(tab.stars);
         }
@@ -978,12 +944,48 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         return preview == null ? null : preview.link.key();
     }
 
-    public ComposerButton favoriteButton() {
-        return favoriteButton;
+    /** Das Info-Symbol unten. */
+    ComposerButton infoButton() {
+        return infoButton;
     }
 
-    public ComposerButton pinButton() {
-        return pinButton;
+    /** Das Popup des Info-Symbols für den aktiven Reiter oder {@code null} (kein Reiter). */
+    JPopupMenu pageInfoMenu() {
+        Tab active = tabs.get(activeKey);
+        return active == null ? null : ReaderPageInfo.menu(active.link, linkOpener, clipboard);
+    }
+
+    /** Ersetzt die Zwischenablage des Systems (für Tests). */
+    void setClipboard(java.util.function.Consumer<String> clipboard) {
+        this.clipboard = clipboard == null ? ReaderPageInfo.SYSTEM_CLIPBOARD : clipboard;
+    }
+
+    /** Die Kopfzeile des Reiters {@code key} (Titel, Stecknadel, Stern, Schließen) oder {@code null}. */
+    JComponent tabChip(String key) {
+        for (java.awt.Component component : strip.getComponents()) {
+            if (component instanceof TabChip && ((TabChip) component).key.equals(key)) {
+                return (TabChip) component;
+            }
+        }
+        return null;
+    }
+
+    /** Stecknadel im Reiter {@code key}, {@code null} bei angehefteten Reitern. */
+    ComposerButton tabPinButton(String key) {
+        JComponent chip = tabChip(key);
+        return chip == null ? null : ((TabChip) chip).pin;
+    }
+
+    /** Stern im Reiter {@code key}, {@code null} ohne Favoriten. */
+    ComposerButton tabFavoriteButton(String key) {
+        JComponent chip = tabChip(key);
+        return chip == null ? null : ((TabChip) chip).favorite;
+    }
+
+    /** Schließen im Reiter {@code key}. */
+    ComposerButton tabCloseButton(String key) {
+        JComponent chip = tabChip(key);
+        return chip == null ? null : ((TabChip) chip).close;
     }
 
     // ------------------------------------------------------------------ intern
@@ -1197,28 +1199,11 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         }
         toolbar.updateNavigation(canGoBack(), canGoForward());
         toolbar.bind(active == null ? null : active.find, active == null ? null : active.findState);
-        refreshHeader();
+        infoButton.setEnabled(active != null);
         strip.revalidate();
         strip.repaint();
         deck.revalidate();
         deck.repaint();
-    }
-
-    private void refreshHeader() {
-        Tab active = tabs.get(activeKey);
-        titleLabel.setText(active == null ? "Lesebereich" : active.link.title());
-        Font titleFont = ResearchUiTypography.semiBold(16f);
-        titleLabel.setFont(active != null && !active.pinned
-                ? titleFont.deriveFont(titleFont.getStyle() | Font.ITALIC) : titleFont);
-        locationLabel.setText(active == null ? " " : active.link.location().isEmpty() ? " " : active.link.location());
-        pinButton.setVisible(active != null && !active.pinned);
-        int imageCount = active == null || active.images == null ? 0 : active.images.images().size();
-        imagesButton.setVisible(imageCount > 0);
-        imagesButton.setText("Bilder (" + imageCount + ")");
-        boolean favorite = active != null && listener != null && listener.isFavorite(active.link);
-        favoriteButton.setVisible(active != null && listener != null && listener.canFavorite());
-        favoriteButton.setIcon(SidebarIcons.star(favorite));
-        favoriteButton.setToolTipText(favorite ? FAVORITE_REMOVE : FAVORITE_ADD);
     }
 
     private JLabel message(String text) {
@@ -1277,11 +1262,17 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         }
     }
 
-    /** Ein Reiter oben: Titel (kursiv als Vorschau) und ✕; Klick wählt, Doppelklick heftet an. */
+    /**
+     * Ein Reiter oben: Titel (kursiv als Vorschau), Stecknadel (nur Vorschau), Stern (Favorit), Schließen ganz rechts;
+     * Klick wählt, Doppelklick heftet an.
+     */
     private final class TabChip extends JPanel {
         private final boolean active;
         private final String key;
         private final ReaderTabGroup group;
+        private final ComposerButton pin;
+        private final ComposerButton favorite;
+        private final ComposerButton close;
 
         TabChip(final Tab tab, boolean active) {
             super(new FlowLayout(FlowLayout.LEFT, 4, 0));
@@ -1291,14 +1282,34 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             setOpaque(false);
             setBorder(BorderFactory.createEmptyBorder(3, 10, 3, 2));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            setToolTipText(tab.pinned ? tab.link.location() : "Vorschau: Doppelklick heftet an");
+            setToolTipText(tabTooltip(tab));
             JLabel title = new JLabel(shorten(tab.link.title()));
             Font font = ResearchUiTypography.regular(12f);
             title.setFont(tab.pinned ? font : font.deriveFont(Font.ITALIC));
             title.setForeground(active ? palette.getInk() : ResearchUiPalette.LIGHT_CONTROL_TEXT);
+            title.setToolTipText(getToolTipText());
             add(title);
-            ComposerButton close = ComposerButton.iconButton(ComposerIcons.close(), "Schließen");
-            close.setPreferredSize(new Dimension(22, 22));
+            if (tab.pinned) {
+                pin = null;
+            } else {
+                pin = tabButton(ComposerIcons.pin(), PIN_TOOLTIP);
+                pin.addActionListener(event -> pin(tab.link.key()));
+                add(pin);
+            }
+            if (listener != null && listener.canFavorite()) {
+                boolean isFavorite = listener.isFavorite(tab.link);
+                favorite = tabButton(SidebarIcons.star(isFavorite), isFavorite ? FAVORITE_REMOVE : FAVORITE_ADD);
+                favorite.addActionListener(event -> {
+                    if (listener != null) {
+                        listener.favoriteToggled(tab.link);
+                        refresh();
+                    }
+                });
+                add(favorite);
+            } else {
+                favorite = null;
+            }
+            close = tabButton(ComposerIcons.close(), CLOSE_TOOLTIP);
             close.addActionListener(event -> close(tab.link.key()));
             add(close);
             MouseAdapter mouse = new MouseAdapter() {
@@ -1451,6 +1462,22 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         public int getIconHeight() {
             return 14;
         }
+    }
+
+    private static ComposerButton tabButton(Icon icon, String tooltip) {
+        ComposerButton button = ComposerButton.iconButton(icon, tooltip);
+        button.setPreferredSize(new Dimension(TAB_BUTTON_SIZE, TAB_BUTTON_SIZE));
+        return button;
+    }
+
+    /** Ungekürzter Titel; beim Vorschau-Reiter mit dem Hinweis auf die Stecknadel. */
+    static String tabTooltip(String title, boolean pinned) {
+        String escaped = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        return pinned ? "<html>" + escaped + "</html>" : "<html>" + escaped + "<br><i>" + PREVIEW_HINT + "</i></html>";
+    }
+
+    private static String tabTooltip(Tab tab) {
+        return tabTooltip(tab.link.title(), tab.pinned);
     }
 
     private static String shorten(String title) {

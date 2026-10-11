@@ -217,6 +217,17 @@ final class ReaderToolbar extends JPanel {
         return find.hitCount();
     }
 
+    /**
+     * Legt ein weiteres Werkzeug rechts neben die Lupe (gleiche Größe); es tritt zurück, solange die Suche offen ist.
+     */
+    ComposerButton addTool(javax.swing.Icon icon, String tooltip) {
+        ComposerButton tool = small(icon, tooltip);
+        tools.add(tool);
+        tool.setVisible(state == null || !state.open);
+        revalidate();
+        return tool;
+    }
+
     /** Was Zurück und Vor auslösen. */
     void setNavigation(Runnable back, Runnable forward) {
         backButton.addActionListener(event -> back.run());
