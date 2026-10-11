@@ -7,12 +7,16 @@ import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.SecretChecker;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
+import com.aresstack.enterpriseai.security.api.SecretEntry;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 
 
@@ -74,6 +78,32 @@ public final class KeePassSecretChecker implements SecretChecker {
         }
     }
 
+    @Override
+    public String locationOf(KeePassConfig keePass, SecretRef ref) throws Exception {
+        return provider(keePass).locationOf(ref);
+    }
+
+    @Override
+    public List<String> entryTitles(KeePassConfig keePass) throws Exception {
+        List<String> titles = new ArrayList<String>();
+        if (keePass == null || !keePass.enabled()) {
+            return titles;
+        }
+        for (SecretEntry entry : provider(keePass).entries()) {
+            titles.add(entry.title());
+        }
+        Collections.sort(titles, String.CASE_INSENSITIVE_ORDER);
+        return titles;
+    }
+
+    private SecretProvider provider(KeePassConfig keePass) {
+        String address = keePass.rpc().host() + ":" + keePass.rpc().port();
+        KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
+                ? new InMemoryPairingKeyStore()
+                : new FilePairingKeyStore(keePass.pairingKeyFile());
+        return AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore);
+    }
+
     /** Der Titel, wie KeePass ihn kennt: die Referenz ohne das optionale Präfix {@code keepass:}. */
     static String title(SecretRef ref) {
         String id = ref.id();
@@ -93,7 +123,7 @@ public final class KeePassSecretChecker implements SecretChecker {
         switch (reason) {
             case NOT_FOUND:
                 return "Kein KeePass-Eintrag mit dem Titel „" + title(ref) + "“. Der Titel muss genau "
-                        + "übereinstimmen (ohne das Präfix keepass:).";
+                        + "übereinstimmen.";
             case NOT_AVAILABLE:
                 return "KeePass ist unter " + address + " nicht erreichbar. Läuft KeePass mit dem Plugin KeePassRPC, "
                         + "und ist die Datenbank entsperrt?";

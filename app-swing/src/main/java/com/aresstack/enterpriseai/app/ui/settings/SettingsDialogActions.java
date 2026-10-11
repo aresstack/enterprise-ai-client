@@ -38,6 +38,14 @@ public interface SettingsDialogActions {
     void checkSecret(SettingsForm form, String secretRef, Consumer<SecretCheckResult> onResult);
 
     /**
+     * Die Titel der KeePass-Einträge zur Auswahl (Zugang „KeePass“); stößt bei Bedarf das Pairing an. Das Ergebnis
+     * kommt später auf dem EDT, leer, wenn KeePass nicht erreichbar ist.
+     */
+    default void keePassEntries(SettingsForm form, Consumer<List<String>> onResult) {
+        onResult.accept(Collections.<String>emptyList());
+    }
+
+    /**
      * Prüft mit dem Entwurf Schritt für Schritt den Weg zum KI-Dienst (API-Key aus KeePass, Proxy-Route,
      * HTTPS-Verbindung, {@code GET /models}, Chat- und Embedding-Modell) und meldet jeden Schritt, sobald er feststeht, danach genau einmal
      * {@link ConnectionCheckListener#onFinished}; alles auf dem EDT. Ohne Verdrahtung meldet die Vorgabe, dass der

@@ -33,23 +33,28 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
             .description("Seiten eines Confluence-Data-Center-Bereichs über die REST-API, wahlweise mit Anhängen")
             .idPrefix("confluence")
             .summaryKey("baseUrl")
-            .field(SourceSettingField.text("baseUrl", "Basis-URL", "Basis-URL von Confluence, ohne /rest").required())
+            .field(SourceSettingField.text("baseUrl", "Basis-URL", "Basis-URL von Confluence, ohne /rest").required()
+                    .fromVault(SourceSettingField.VaultValue.LOCATION))
             .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
-                    "KeePass-Eintrag (optional)", "Titel des KeePass-Eintrags mit Benutzername und Passwort; leer = anonym"))
+                    "KeePass-Eintrag", "Eintrag mit Benutzername, Passwort und URL von Confluence; leer = anonym"))
             .field(SourceSettingField.text("startPoints", "Startpunkte",
-                    "Kommagetrennt: space:KEY oder page:ID").required())
+                    "Wo das Lesen beginnt, kommagetrennt: space:KEY (Startseite eines Space) oder page:ID (eine "
+                            + "Seite). Leer = alle Space-Schlüssel unten, ohne sie alle Spaces").advanced())
             .field(SourceSettingField.of("maxDepth", SourceSettingField.Kind.NUMBER, "Tiefe",
                     "Wie viele Ebenen Kindseiten ab den Startpunkten verfolgt werden (0 = nur Startpunkte)")
-                    .withDefault("1"))
+                    .withDefault("1").advanced())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
-                    "Höchstzahl Seiten (optional)", "Obergrenze je Lauf; leer = Standard"))
-            .field(SourceSettingField.text("searchSpaceKeys", "Space-Schlüssel (optional)",
-                    "Kommagetrennte Spaces, auf die Suche und Crawl beschränkt werden"))
+                    "Höchstzahl Seiten", "Obergrenze je Lauf; leer = Standard").advanced())
+            .field(SourceSettingField.text("searchSpaceKeys", "Space-Schlüssel",
+                    "Kommagetrennte Spaces, auf die Suche und Crawl beschränkt werden; leer = alle").advanced())
             .field(SourceSettingField.of("includeAttachments", SourceSettingField.Kind.FLAG, "Anhänge mitlesen",
-                    "Anhänge als Dokumente indexieren"))
+                    "Anhänge als Dokumente indexieren").advanced())
             .build();
 
     private static final int MAX_TIMEOUT = 600000;
+
+    /** Startpunkt ohne Angabe: die Space-Schlüssel der Quelle, ohne sie alle Spaces. */
+    static final String ALL_SPACES = "space:*";
 
     /** Baut den TLS-Kontext für ein Client-Zertifikat (mTLS); die Composition Root kennt Tresor und Vertrauen. */
     public interface ClientCertificateSockets {
@@ -102,13 +107,13 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
         config(reader);
         timeouts(reader);
         certificate(reader);
-        reader.scope(null, 1, SourceScope.DEFAULT_MAX_RESOURCES);
+        reader.scope(ALL_SPACES, 1, SourceScope.DEFAULT_MAX_RESOURCES);
         return reader.problems();
     }
 
     @Override
     public SourceScope scope(SourceSettings settings) {
-        return new SourceSettingsReader(TYPE, settings).scope(null, 1, SourceScope.DEFAULT_MAX_RESOURCES);
+        return new SourceSettingsReader(TYPE, settings).scope(ALL_SPACES, 1, SourceScope.DEFAULT_MAX_RESOURCES);
     }
 
     @Override

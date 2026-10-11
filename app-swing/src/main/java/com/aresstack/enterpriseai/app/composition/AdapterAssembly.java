@@ -4,11 +4,13 @@ import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
 import com.aresstack.enterpriseai.acp.solon.SolonAcpAgentConnector;
 import com.aresstack.enterpriseai.app.config.AgentConfig;
 import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.ChatConfig;
 import com.aresstack.enterpriseai.app.config.ClientCertificateConfig;
 import com.aresstack.enterpriseai.app.config.EmbeddingConfig;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
+import com.aresstack.enterpriseai.app.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.app.security.ClientCertificateFactory;
 import com.aresstack.enterpriseai.app.security.FilePairingKeyStore;
 import com.aresstack.enterpriseai.app.security.SecretBackedBearerTokenSource;
@@ -19,6 +21,7 @@ import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
+import com.aresstack.enterpriseai.app.config.VaultLocations;
 import com.aresstack.enterpriseai.application.modelexecution.ChatModelExecutorRegistry;
 import com.aresstack.enterpriseai.application.modelexecution.EmbeddingModelExecutorRegistry;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
@@ -40,6 +43,7 @@ import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointDefinition;
 import com.aresstack.enterpriseai.mcp.solon.SolonMcpServerRuntime;
+import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
@@ -62,6 +66,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -90,11 +95,37 @@ public final class AdapterAssembly {
      * erneut pairen).
      */
     public static ApplicationPorts create(AppConfig config, NetworkServices network, KeePassPairingCallback pairing) {
+        return createWith(config, network, secrets(config, pairing));
+    }
+
+    /**
+     * Der Security-Port der Anwendung (KeePass bzw. „Manuell“) mit der Schlüsselablage der Konfiguration; einmal je
+     * Start, damit ein Pairing für Adresse und Secrets gilt.
+     */
+    public static SecretProvider secrets(AppConfig config, KeePassPairingCallback pairing) {
         KeePassConfig keePass = config.keePass();
         KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
                 ? new InMemoryPairingKeyStore()
                 : new FilePairingKeyStore(keePass.pairingKeyFile());
-        return create(config, network, pairing, keyStore);
+        return secrets(keePass, pairing, keyStore);
+    }
+
+    /**
+     * Ergänzt die Basis-URL des KI-Dienstes aus dem KeePass-Eintrag, wenn sie in der Datei leer ist (Zugang
+     * „KeePass“). Liest KeePass nur in diesem Fall.
+     *
+     * @throws com.aresstack.enterpriseai.app.config.AppConfigException wenn KeePass die URL nicht liefert
+     */
+    public static AppConfig withVaultLocations(AppConfig config, Properties properties, final SecretProvider secrets) {
+        if (config.chat() == null || config.chat().baseUrl() != null) {
+            return config;
+        }
+        return AppConfigLoader.fromProperties(VaultLocations.complete(properties, new VaultLocations.Lookup() {
+            @Override
+            public String locationOf(SecretRef ref) throws Exception {
+                return secrets.locationOf(ref);
+            }
+        }));
     }
 
     /** Mit eigener Schlüsselablage (Tests: {@code InMemoryPairingKeyStore}). */
@@ -103,7 +134,14 @@ public final class AdapterAssembly {
         if (config == null || network == null) {
             throw new IllegalArgumentException("config and network must not be null");
         }
-        SecretProvider secrets = secrets(config.keePass(), pairing, keyStore);
+        return createWith(config, network, secrets(config.keePass(), pairing, keyStore));
+    }
+
+    /** Mit fertigem Security-Port (Start: derselbe, der vorher die Basis-URL aus KeePass gelesen hat). */
+    public static ApplicationPorts createWith(AppConfig config, NetworkServices network, SecretProvider secrets) {
+        if (config == null || network == null || secrets == null) {
+            throw new IllegalArgumentException("config, network and secrets must not be null");
+        }
         ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
 
         // Ausführung je Katalog der Modellauswahl: die Enterprise-API immer; lokal installierte Modelle laufen im
@@ -163,7 +201,7 @@ public final class AdapterAssembly {
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
         for (KnowledgeSourceProvider provider : sourceProviders(secrets, network)) {
-            ports.sourceProvider(new LoggingSourceProvider(provider));
+            ports.sourceProvider(new LoggingSourceProvider(new VaultSourceProvider(provider, secrets)));
         }
         ports.sources(startupSources(config.sources(), ports));
 
@@ -204,6 +242,12 @@ public final class AdapterAssembly {
 
     static SecretProvider secrets(KeePassConfig keePass, KeePassPairingCallback pairing,
                                   KeePassPairingKeyStore keyStore) {
+        // „Manuell“ (ask:…) fragt die Anwendung selbst ab; alles andere geht an KeePass.
+        return new AskedSecretProvider(vault(keePass, pairing, keyStore), AskedSecretProvider.dialog());
+    }
+
+    private static SecretProvider vault(KeePassConfig keePass, KeePassPairingCallback pairing,
+                                        KeePassPairingKeyStore keyStore) {
         if (!keePass.enabled()) {
             return new UnavailableSecretProvider(
                     "KeePassRPC ist deaktiviert (security.keepass.enabled=false); Secrets können nicht gelesen werden");

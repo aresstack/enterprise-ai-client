@@ -151,7 +151,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     private List<KnowledgeResource> crawl(Session session, SourceScope scope) throws KnowledgeSourceException {
         Map<KnowledgeResourceId, KnowledgeResource> found = new LinkedHashMap<KnowledgeResourceId, KnowledgeResource>();
         Deque<Node> queue = new ArrayDeque<Node>();
-        for (String raw : scope.startPoints()) {
+        for (String raw : startPoints(session, scope)) {
             Page start = startPage(session, raw);
             if (start != null) {
                 queue.add(new Node(pageResource(start, start.parentId), start.id, 0));
@@ -182,6 +182,23 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
             }
         }
         return new ArrayList<KnowledgeResource>(found.values());
+    }
+
+    /** Die Startpunkte; {@code space:*} steht für die Space-Schlüssel der Quelle oder, ohne sie, alle Spaces. */
+    private List<String> startPoints(Session session, SourceScope scope) throws KnowledgeSourceException {
+        List<String> points = new ArrayList<String>();
+        for (String raw : scope.startPoints()) {
+            if (!ConfluenceSourceProvider.ALL_SPACES.equals(raw.trim())) {
+                points.add(raw);
+                continue;
+            }
+            List<String> keys = config.searchSpaceKeys().isEmpty()
+                    ? client.spaceKeys(session, scope.maxResources()) : config.searchSpaceKeys();
+            for (String key : keys) {
+                points.add("space:" + key);
+            }
+        }
+        return points;
     }
 
     private Page startPage(Session session, String raw) throws KnowledgeSourceException {

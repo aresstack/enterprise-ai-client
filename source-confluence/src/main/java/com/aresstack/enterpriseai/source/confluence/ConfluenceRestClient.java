@@ -66,6 +66,16 @@ final class ConfluenceRestClient {
         return home == null || string(home, "id") == null ? null : page(session, string(home, "id"), false);
     }
 
+    /** Schlüssel der globalen Spaces, höchstens {@code max} Stück, in Confluence-Reihenfolge. */
+    List<String> spaceKeys(Session session, int max) throws KnowledgeSourceException {
+        return paged(session, "/rest/api/space?type=global", "Spaces", max, new Item<String>() {
+            @Override
+            public String map(JsonObject space) {
+                return string(space, "key");
+            }
+        });
+    }
+
     /**
      * @param withBody {@code true} lädt den gerenderten Inhalt ({@code body.view}) mit
      * @throws KnowledgeSourceException {@code NOT_FOUND}, wenn die Seite nicht existiert oder keine Seite ist

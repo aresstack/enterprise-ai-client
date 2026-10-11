@@ -2,6 +2,9 @@ package com.aresstack.enterpriseai.security.api;
 
 import com.aresstack.enterpriseai.domain.security.SecretRef;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Neutraler Port zum Auflösen eines {@link SecretRef} in kurzlebiges {@link SecretMaterial}.
  *
@@ -42,5 +45,25 @@ public interface SecretProvider {
         } finally {
             material.close();
         }
+    }
+
+    /**
+     * Die Einträge, die das Backend zur Auswahl anbietet (Titel und Adresse, nie Secrets). Backends ohne
+     * Verzeichnis liefern eine leere Liste.
+     *
+     * @throws SecretUnavailableException wenn das Backend nicht erreichbar ist oder der Zugriff scheitert
+     */
+    default List<SecretEntry> entries() throws SecretUnavailableException {
+        return Collections.emptyList();
+    }
+
+    /**
+     * Die im Eintrag zur Referenz hinterlegte Adresse (z. B. die Basis-URL eines Dienstes) oder {@code null},
+     * wenn das Backend keine kennt.
+     *
+     * @throws SecretUnavailableException wenn das Backend nicht erreichbar ist oder der Eintrag fehlt
+     */
+    default String locationOf(SecretRef ref) throws SecretUnavailableException {
+        return null;
     }
 }

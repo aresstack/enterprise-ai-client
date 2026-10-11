@@ -59,7 +59,7 @@ public final class SourcePanel extends JPanel {
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
     static final String NOTE = "Gespeichert wird in die Konfigurationsdatei; danach wird die Quelle indexiert.\n"
-            + "Zugangsdaten bleiben in KeePass; hier steht nur der Titel des Eintrags.";
+            + "Mit KeePass genügt der Eintrag: Benutzer, Passwort und URL stehen dort.";
 
     private final SourceActions actions;
     private final String originalId;
@@ -88,7 +88,7 @@ public final class SourcePanel extends JPanel {
         this.actions = actions;
         this.originalId = originalId;
         this.palette = palette;
-        this.editor = new SourceEditor(palette, types, originalId == null, this::typeChanged);
+        this.editor = new SourceEditor(palette, types, originalId == null, this::typeChanged, actions::vaultEntries);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = new ComposerButton(null, CANCEL_LABEL, false);

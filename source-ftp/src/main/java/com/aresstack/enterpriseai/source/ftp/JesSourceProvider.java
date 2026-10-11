@@ -34,21 +34,22 @@ public final class JesSourceProvider implements KnowledgeSourceProvider {
                     + "z/OS-FTP-Servers")
             .idPrefix("jes")
             .summaryKey("host")
-            .field(SourceSettingField.text("host", "Host", "Name oder Adresse des FTP-Servers, ohne ftp://").required())
+            .field(SourceSettingField.text("host", "Host", "Name oder Adresse des FTP-Servers, ohne ftp://").required()
+                    .fromVault(SourceSettingField.VaultValue.HOST))
             .field(SourceSettingField.of("port", SourceSettingField.Kind.NUMBER, "Port", "Standard 21")
-                    .withDefault("21"))
+                    .withDefault("21").advanced())
             .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
-                    "KeePass-Eintrag", "Titel des KeePass-Eintrags mit Benutzer und Passwort").required())
+                    "KeePass-Eintrag", "Eintrag mit Benutzer, Passwort und Adresse des FTP-Servers").required())
             .field(SourceSettingField.text("startPoints", "Jobnamen",
-                    "Kommagetrennte Filter, z. B. * oder PAY*").withDefault("*"))
+                    "Kommagetrennte Filter, z. B. * oder PAY*").withDefault("*").advanced())
             .field(SourceSettingField.text("owner", "Besitzer (optional)",
-                    "Jobs dieses Besitzers, * = alle; leer = eigene"))
+                    "Jobs dieses Besitzers, * = alle; leer = eigene").advanced())
             .field(SourceSettingField.text("status", "Status", "OUTPUT (fertige Jobs), ALL, ACTIVE oder INPUT")
-                    .withDefault("OUTPUT"))
+                    .withDefault("OUTPUT").advanced())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
-                    "Höchstzahl Jobs (optional)", "Obergrenze je Lauf; leer = 200"))
+                    "Höchstzahl Jobs (optional)", "Obergrenze je Lauf; leer = 200").advanced())
             .field(SourceSettingField.text("encoding", "Zeichensatz", "Zeichensatz der Textübertragung")
-                    .withDefault("ISO-8859-1"))
+                    .withDefault("ISO-8859-1").advanced())
             .build();
 
     private static final int DEFAULT_MAX_RESOURCES = 200;

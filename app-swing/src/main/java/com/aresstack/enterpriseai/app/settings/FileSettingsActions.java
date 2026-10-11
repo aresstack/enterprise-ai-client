@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
+import com.aresstack.enterpriseai.app.config.VaultLocations;
 import com.aresstack.enterpriseai.app.net.HttpRoutes;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.app.ui.settings.LocalVoiceInstallProgress;
@@ -322,6 +323,66 @@ public final class FileSettingsActions implements SettingsDialogActions {
         }
     }
 
+    @Override
+    public void keePassEntries(SettingsForm form, final Consumer<List<String>> onResult) {
+        if (form == null || onResult == null) {
+            throw new IllegalArgumentException("form and onResult must not be null");
+        }
+        final KeePassConfig keePass;
+        try {
+            keePass = AppConfigLoader.keePassSection(SettingsMapper.merge(current(), form));
+        } catch (IOException | RuntimeException e) {
+            onResult.accept(Collections.<String>emptyList());
+            return;
+        }
+        if (secretChecker == null) {
+            onResult.accept(Collections.<String>emptyList());
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    List<String> titles;
+                    try {
+                        titles = secretChecker.entryTitles(keePass);
+                    } catch (Exception e) {
+                        titles = Collections.emptyList(); // KeePass zu: das Feld bleibt eine freie Eingabe
+                    }
+                    final List<String> delivered = titles;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            onResult.accept(delivered);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            onResult.accept(Collections.<String>emptyList());
+        }
+    }
+
+    /**
+     * Zugang „KeePass“ ohne eingetragene URL: die Basis-URL kommt aus dem KeePass-Eintrag (nur auf dem
+     * Arbeits-Executor, KeePass kann blockieren).
+     */
+    private AppConfig located(AppConfig config, Properties merged) {
+        if (config.chat() == null || config.chat().baseUrl() != null) {
+            return config;
+        }
+        if (secretChecker == null) {
+            throw new AppConfigException("Basis-URL des KI-Dienstes fehlt (KeePass ist hier nicht verfügbar).");
+        }
+        final KeePassConfig keePass = config.keePass();
+        return AppConfigLoader.fromProperties(VaultLocations.complete(merged, new VaultLocations.Lookup() {
+            @Override
+            public String locationOf(SecretRef ref) throws Exception {
+                return secretChecker.locationOf(keePass, ref);
+            }
+        }));
+    }
+
     /**
      * Der Entwurf geht durch den Loader (ein ungültiger Entwurf endet hier mit einem Schritt „Konfiguration“); mit
      * der geladenen Konfiguration läuft der {@link ConnectionChecker} auf dem Arbeits-Executor, jeder Schritt und
@@ -333,8 +394,10 @@ public final class FileSettingsActions implements SettingsDialogActions {
             throw new IllegalArgumentException("form and listener must not be null");
         }
         final AppConfig config;
+        final Properties merged;
         try {
-            config = AppConfigLoader.fromProperties(SettingsMapper.merge(current(), form));
+            merged = SettingsMapper.merge(current(), form);
+            config = AppConfigLoader.fromProperties(merged);
         } catch (AppConfigException e) {
             finish(listener, ConnectionCheckStep.failed(STEP_CONFIGURATION, "Der Entwurf ist ungültig: "
                     + join(SettingsMapper.describe(e.problems()))));
@@ -359,7 +422,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
                 public void run() {
                     boolean success;
                     try {
-                        success = connectionChecker.check(config, new Consumer<ConnectionCheckStep>() {
+                        AppConfig located = located(config, merged);
+                        success = connectionChecker.check(located, new Consumer<ConnectionCheckStep>() {
                             @Override
                             public void accept(final ConnectionCheckStep step) {
                                 ui.execute(new Runnable() {
@@ -371,8 +435,9 @@ public final class FileSettingsActions implements SettingsDialogActions {
                             }
                         });
                     } catch (RuntimeException e) {
-                        final ConnectionCheckStep aborted = ConnectionCheckStep.failed(STEP_TEST,
-                                "Abgebrochen: " + e.getClass().getSimpleName());
+                        final ConnectionCheckStep aborted = e instanceof AppConfigException
+                                ? ConnectionCheckStep.failed(STEP_CONFIGURATION, e.getMessage())
+                                : ConnectionCheckStep.failed(STEP_TEST, "Abgebrochen: " + e.getClass().getSimpleName());
                         ui.execute(new Runnable() {
                             @Override
                             public void run() {
@@ -425,8 +490,10 @@ public final class FileSettingsActions implements SettingsDialogActions {
             probe.embeddingDimension("1");
         }
         final AppConfig config;
+        final Properties merged;
         try {
-            config = AppConfigLoader.fromProperties(SettingsMapper.merge(current(), probe.build()));
+            merged = SettingsMapper.merge(current(), probe.build());
+            config = AppConfigLoader.fromProperties(merged);
         } catch (AppConfigException e) {
             onResult.accept(failed("Entwurf unvollständig: " + join(SettingsMapper.describe(e.problems()))));
             return;
@@ -440,7 +507,9 @@ public final class FileSettingsActions implements SettingsDialogActions {
                 public void run() {
                     ModelCatalogSnapshot result;
                     try {
-                        result = models.refresh(config);
+                        result = models.refresh(located(config, merged));
+                    } catch (AppConfigException e) {
+                        result = failed(e.getMessage());
                     } catch (RuntimeException e) {
                         result = failed("Abfrage fehlgeschlagen: " + e.getClass().getSimpleName());
                     }

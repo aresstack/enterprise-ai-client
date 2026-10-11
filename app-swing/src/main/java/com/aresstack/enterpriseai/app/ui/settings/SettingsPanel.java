@@ -87,11 +87,11 @@ public final class SettingsPanel extends JPanel {
         return TAB_LABELS[index];
     }
     /** Hinweiszeilen unter dem Titel; {@code \n} trennt Zeilen (keine HTML-Umbrüche, die sind headless unzuverlässig). */
-    static final String FIRST_START_NOTE = "Willkommen. Für den ersten Start fehlen noch Basis-URL und Embedding-Dimension "
-            + "(Reiter KI-Dienst)\nsowie Chat- und Embedding-Modell (Reiter Modelle); der KeePass-Titel ist ein Vorschlag.\n"
+    static final String FIRST_START_NOTE = "Willkommen. Für den ersten Start fehlen noch der KeePass-Eintrag mit API-Key und "
+            + "URL sowie die Embedding-Dimension\n(Reiter KI-Dienst) und Chat- und Embedding-Modell (Reiter Modelle).\n"
             + "Alles andere hat sinnvolle Vorgaben und lässt sich später ändern.";
     static final String EDIT_NOTE = "Gespeicherte Änderungen gelten beim nächsten Start der Anwendung.\n"
-            + "Secrets bleiben in KeePass; hier stehen nur die Titel der Einträge.";
+            + "Mit KeePass stehen API-Key und URL im Eintrag; hier steht nur sein Titel.";
 
     private final Mode mode;
     private final SettingsDialogActions actions;
@@ -415,7 +415,7 @@ public final class SettingsPanel extends JPanel {
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
-                serviceTab.chatBaseUrl().requestFocusInWindow();
+                serviceTab.focusFirstField();
             }
         });
     }

@@ -8,8 +8,14 @@ final class KeePassEntry implements AutoCloseable {
     private final String title;
     private final String userName;
     private final char[] password;
+    private final String location;
 
     KeePassEntry(String title, String userName, char[] password) {
+        this(title, userName, password, null);
+    }
+
+    KeePassEntry(String title, String userName, char[] password, String location) {
+        this.location = location;
         this.title = title == null ? "" : title;
         this.userName = userName == null ? "" : userName;
         this.password = password == null ? new char[0] : Arrays.copyOf(password, password.length);
@@ -25,6 +31,11 @@ final class KeePassEntry implements AutoCloseable {
 
     char[] password() {
         return password;
+    }
+
+    /** Die erste http(s)-Adresse des Eintrags oder {@code null}. */
+    String location() {
+        return location;
     }
 
     @Override

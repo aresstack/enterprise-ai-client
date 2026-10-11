@@ -250,6 +250,11 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
             return KeePassRpcEntries.exactTitleMatch(call("GetAllEntries", new JsonArray()), title);
         }
 
+        @Override
+        public java.util.List<KeePassEntry> allEntries() throws KeePassRpcException {
+            return KeePassRpcEntries.withoutSecrets(call("GetAllEntries", new JsonArray()));
+        }
+
         private JsonArray call(String method, JsonArray params) throws KeePassRpcException {
             int id = ids.getAndIncrement();
             long deadline = channel.newDeadline();

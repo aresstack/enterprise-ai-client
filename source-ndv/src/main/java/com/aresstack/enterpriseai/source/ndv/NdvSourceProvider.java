@@ -28,15 +28,16 @@ public final class NdvSourceProvider implements KnowledgeSourceProvider {
             .description("Natural-Quellen (Programme, Subprogramme, Copycodes ...) aus Bibliotheken eines NDV-Servers")
             .idPrefix("natural")
             .summaryKey("host")
-            .field(SourceSettingField.text("host", "Host", "Name oder Adresse des NDV-Servers").required())
+            .field(SourceSettingField.text("host", "Host", "Name oder Adresse des NDV-Servers").required()
+                    .fromVault(SourceSettingField.VaultValue.HOST))
             .field(SourceSettingField.of("port", SourceSettingField.Kind.NUMBER, "Port", "Standard 2700")
-                    .withDefault("2700"))
+                    .withDefault("2700").advanced())
             .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
-                    "KeePass-Eintrag", "Titel des KeePass-Eintrags mit Benutzer und Passwort").required())
+                    "KeePass-Eintrag", "Eintrag mit Benutzer, Passwort und Adresse des NDV-Servers").required())
             .field(SourceSettingField.text("startPoints", "Bibliotheken",
                     "Kommagetrennt, optional mit Filter: MYLIB oder MYLIB/CUST*").required())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
-                    "Höchstzahl Objekte (optional)", "Obergrenze je Lauf; leer = 5000"))
+                    "Höchstzahl Objekte (optional)", "Obergrenze je Lauf; leer = 5000").advanced())
             .build();
 
     private static final int DEFAULT_PORT = 2700;

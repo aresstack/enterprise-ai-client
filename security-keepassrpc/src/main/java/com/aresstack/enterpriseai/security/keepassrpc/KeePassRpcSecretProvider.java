@@ -1,12 +1,17 @@
 package com.aresstack.enterpriseai.security.keepassrpc;
 
 import com.aresstack.enterpriseai.domain.security.SecretRef;
+import com.aresstack.enterpriseai.security.api.SecretEntry;
 import com.aresstack.enterpriseai.security.api.SecretMaterial;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException.Reason;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -58,18 +63,93 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
     }
 
     @Override
-    public synchronized SecretMaterial resolve(SecretRef ref) throws SecretUnavailableException {
+    public synchronized SecretMaterial resolve(final SecretRef ref) throws SecretUnavailableException {
         if (ref == null) {
             throw new IllegalArgumentException("SecretRef darf nicht null sein");
         }
-        String title = entryTitleOf(ref);
+        final String title = entryTitleOf(ref);
+        return inSession(ref, new SessionCall<SecretMaterial>() {
+            @Override
+            public SecretMaterial run(KeePassRpcTransport.Session session)
+                    throws KeePassRpcException, SecretUnavailableException {
+                KeePassEntry entry = session.findEntryByTitle(title);
+                if (entry == null) {
+                    throw new SecretUnavailableException(Reason.NOT_FOUND, ref,
+                            "kein KeePass-Eintrag mit diesem Titel");
+                }
+                try {
+                    return new SecretMaterial(ref, entry.userName(), entry.password());
+                } finally {
+                    entry.close();
+                }
+            }
+        });
+    }
+
+    /** Titel und Adresse aller Einträge, wie KeePassRPC sie liefert; nie Benutzer oder Passwort. */
+    @Override
+    public synchronized List<SecretEntry> entries() throws SecretUnavailableException {
+        return inSession(SecretRef.of("keepass:*"), new SessionCall<List<SecretEntry>>() {
+            @Override
+            public List<SecretEntry> run(KeePassRpcTransport.Session session) throws KeePassRpcException {
+                List<SecretEntry> entries = new ArrayList<SecretEntry>();
+                Set<String> seen = new HashSet<String>();
+                for (KeePassEntry entry : session.allEntries()) {
+                    try {
+                        if (!entry.title().trim().isEmpty() && seen.add(entry.title().trim())) {
+                            entries.add(new SecretEntry(entry.title(), entry.location()));
+                        }
+                    } finally {
+                        entry.close();
+                    }
+                }
+                return entries;
+            }
+        });
+    }
+
+    /** Die URL im Eintrag zur Referenz (erstes http(s)-Feld der URL-Liste) oder {@code null}. */
+    @Override
+    public synchronized String locationOf(final SecretRef ref) throws SecretUnavailableException {
+        if (ref == null) {
+            throw new IllegalArgumentException("SecretRef darf nicht null sein");
+        }
+        final String title = entryTitleOf(ref);
+        return inSession(ref, new SessionCall<String>() {
+            @Override
+            public String run(KeePassRpcTransport.Session session)
+                    throws KeePassRpcException, SecretUnavailableException {
+                KeePassEntry entry = session.findEntryByTitle(title);
+                if (entry == null) {
+                    throw new SecretUnavailableException(Reason.NOT_FOUND, ref,
+                            "kein KeePass-Eintrag mit diesem Titel");
+                }
+                try {
+                    return entry.location();
+                } finally {
+                    entry.close();
+                }
+            }
+        });
+    }
+
+    /** Eine Arbeit in einer authentifizierten Sitzung. */
+    private interface SessionCall<T> {
+        T run(KeePassRpcTransport.Session session) throws KeePassRpcException, SecretUnavailableException;
+    }
+
+    /**
+     * Gespeicherten Pairing-Schlüssel laden (fehlt er: pairen), Sitzung öffnen und {@code call} ausführen; lehnt
+     * KeePass den Schlüssel ab, genau einmal neu pairen.
+     */
+    private <T> T inSession(SecretRef ref, SessionCall<T> call) throws SecretUnavailableException {
         char[] key = keyStore.load();
         try {
             if (key == null || key.length == 0) {
                 key = pair(ref);
             }
             try {
-                return lookup(ref, title, key);
+                return run(key, call);
             } catch (KeePassRpcException e) {
                 if (e.kind() != KeePassRpcException.Kind.AUTH_FAILED) {
                     throw unavailable(ref, e);
@@ -79,7 +159,7 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
                 wipe(key);
                 key = pair(ref);
                 try {
-                    return lookup(ref, title, key);
+                    return run(key, call);
                 } catch (KeePassRpcException retry) {
                     if (retry.kind() != KeePassRpcException.Kind.AUTH_FAILED) {
                         throw unavailable(ref, retry);
@@ -91,6 +171,12 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
             }
         } finally {
             wipe(key);
+        }
+    }
+
+    private <T> T run(char[] key, SessionCall<T> call) throws KeePassRpcException, SecretUnavailableException {
+        try (KeePassRpcTransport.Session session = transport.open(key)) {
+            return call.run(session);
         }
     }
 
@@ -128,21 +214,6 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
         }
         LOG.info("KeePassRPC-Pairing erfolgreich");
         return key;
-    }
-
-    private SecretMaterial lookup(SecretRef ref, String title, char[] key)
-            throws KeePassRpcException, SecretUnavailableException {
-        try (KeePassRpcTransport.Session session = transport.open(key)) {
-            KeePassEntry entry = session.findEntryByTitle(title);
-            if (entry == null) {
-                throw new SecretUnavailableException(Reason.NOT_FOUND, ref, "kein KeePass-Eintrag mit diesem Titel");
-            }
-            try {
-                return new SecretMaterial(ref, entry.userName(), entry.password());
-            } finally {
-                entry.close();
-            }
-        }
     }
 
     private static SecretUnavailableException unavailable(SecretRef ref, KeePassRpcException e) {

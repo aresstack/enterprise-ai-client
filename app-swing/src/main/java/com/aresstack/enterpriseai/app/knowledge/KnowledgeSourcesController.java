@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.logging.Level;
@@ -93,6 +94,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private Consumer<List<KnowledgeSourceItem>> view;
     private KnowledgeSourceManagement editing;
     private SourceEditorLauncher launcher;
+    private volatile Supplier<List<String>> vaultTitles;
     private String running;
 
     /**
@@ -153,6 +155,14 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         this.editing = store == null ? null : management.withStore(store);
         this.launcher = editor;
         publish();
+    }
+
+    /**
+     * Liefert die Titel der KeePass-Einträge für das Feld „KeePass-Eintrag“ im Quellen-Dialog; darf blockieren
+     * (läuft auf dem Arbeits-Executor), {@code null} = keine Liste.
+     */
+    public void setVaultTitles(Supplier<List<String>> titles) {
+        this.vaultTitles = titles;
     }
 
     // ------------------------------------------------------------------ Aktionen des Reiters
@@ -295,6 +305,29 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             @Override
             public SourceDefinition draft(String typeId) {
                 return target.draft(typeId, taken());
+            }
+
+            @Override
+            public void vaultEntries(final Consumer<List<String>> onResult) {
+                final Supplier<List<String>> titles = vaultTitles;
+                if (titles == null) {
+                    onResult.accept(Collections.<String>emptyList());
+                    return;
+                }
+                try {
+                    workExecutor.execute(() -> {
+                        List<String> found;
+                        try {
+                            found = titles.get();
+                        } catch (RuntimeException e) {
+                            found = Collections.emptyList(); // KeePass zu: das Feld bleibt eine freie Eingabe
+                        }
+                        final List<String> delivered = found == null ? Collections.<String>emptyList() : found;
+                        uiExecutor.execute(() -> onResult.accept(delivered));
+                    });
+                } catch (RuntimeException rejected) {
+                    onResult.accept(Collections.<String>emptyList());
+                }
             }
         };
     }

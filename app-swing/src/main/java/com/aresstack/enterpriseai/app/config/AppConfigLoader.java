@@ -106,14 +106,15 @@ public final class AppConfigLoader {
         }
         if (!keePass.enabled()) {
             List<String> refs = new ArrayList<String>();
-            if (chat != null && chat.apiKeyRef() != null) {
+            if (chat != null && VaultLocations.isVault(chat.apiKeyRef())) {
                 refs.add("chat.apiKeyRef");
             }
             if (embedding != null && embedding.apiKeyRef() != null && !reader.text("embedding.apiKeyRef", "").isEmpty()) {
                 refs.add("embedding.apiKeyRef");
             }
             for (SourceDefinition source : sources) {
-                if (source.settings().has("credentialRef")) {
+                if (source.settings().has("credentialRef") && !source.settings().get("credentialRef").trim()
+                        .regionMatches(true, 0, VaultLocations.ASK_SCHEME, 0, VaultLocations.ASK_SCHEME.length())) {
                     refs.add("source." + source.id() + ".credentialRef");
                 }
             }
@@ -185,9 +186,10 @@ public final class AppConfigLoader {
     // ------------------------------------------------------------------ Abschnitte
 
     private static ChatConfig chat(ConfigReader r) {
-        URI baseUrl = baseUrl(r, "chat.baseUrl", true);
-        String model = modelId(r.required("chat.model"));
         SecretRef apiKeyRef = r.secretRef("chat.apiKeyRef");
+        // Mit KeePass-Eintrag darf die URL fehlen: dann gilt die URL des Eintrags (VaultLocations).
+        URI baseUrl = baseUrl(r, "chat.baseUrl", !VaultLocations.isVault(apiKeyRef));
+        String model = modelId(r.required("chat.model"));
         if (apiKeyRef == null && !r.has("chat.apiKeyRef")) {
             r.problem("chat.apiKeyRef", "fehlt (Titel des KeePass-Eintrags mit dem API-Key)");
         }
@@ -257,7 +259,9 @@ public final class AppConfigLoader {
                 OpenAiCompatibleEmbeddingConfiguration.DEFAULT_CONNECT_TIMEOUT_MILLIS, 1, MAX_TIMEOUT);
         int read = r.integer("embedding.readTimeoutMillis",
                 OpenAiCompatibleEmbeddingConfiguration.DEFAULT_READ_TIMEOUT_MILLIS, 1, MAX_TIMEOUT);
-        if (baseUrl == null || model == null || dimension == 0) {
+        // wie der Chat: ohne URL kommt sie aus dem KeePass-Eintrag des Chats (VaultLocations)
+        boolean fromVault = baseUrl == null && chat != null && chat.baseUrl() == null && !r.has("embedding.baseUrl");
+        if ((baseUrl == null && !fromVault) || model == null || dimension == 0) {
             return null;
         }
         return new EmbeddingConfig(baseUrl, model, dimension, apiKeyRef, inputMode, batch, connect, read);

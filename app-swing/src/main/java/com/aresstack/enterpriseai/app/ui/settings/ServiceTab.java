@@ -2,43 +2,88 @@ package com.aresstack.enterpriseai.app.ui.settings;
 
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
+import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.text.JTextComponent;
+import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Reiter „KI-Dienst“: Chat-Endpunkt, KeePass-Eintrag, System-Prompt; darunter Embeddings und „Verbindung testen“.
- * Die Modelle selbst wählt der Reiter „Modelle“ ({@link ModelsTab}) je Kategorie.
+ * Reiter „KI-Dienst“: Zugang (KeePass oder manuell), KeePass-Eintrag, System-Prompt; darunter Embeddings und
+ * „Verbindung testen“. Mit KeePass genügt der Eintrag: API-Key und URL stehen dort (wie MainframeMate); die URL
+ * lässt sich unter „Erweitert“ überschreiben. Die Modelle selbst wählt der Reiter „Modelle“ ({@link ModelsTab}).
  */
 final class ServiceTab {
 
-    private final JTextField chatBaseUrl;
-    private final JTextField chatApiKeyRef;
+    /** Name der manuellen Zugangsdaten des KI-Dienstes im Abfrage-Dialog. */
+    private static final String MANUAL_NAME = "KI-Dienst";
+
+    private final SettingsDialogActions actions;
+    private final Supplier<SettingsForm> form;
+    private final JComboBox<String> access;
+    private final JComboBox<String> entry;
+    private final FormRows.Row entryRow;
     private final SecretCheckRow secretCheck;
+    private final FormRows.Row secretCheckRow;
+    private final JTextField manualUrl = new JTextField(28);
+    private final FormRows.Row manualUrlRow;
+    private final JTextField overrideUrl = new JTextField(28);
+    private final FormRows.Row overrideUrlRow;
+    private final JButton advancedToggle;
     private final JTextArea chatSystemPrompt;
     private final JTextField embeddingBaseUrl;
     private final JTextField embeddingDimension;
     private final JTextField embeddingApiKeyRef;
     private final ConnectionCheckRow connectionCheck;
     private final JPanel panel;
+    private boolean expanded;
+    private boolean configured;
 
     ServiceTab(SettingsDialogActions actions, Supplier<SettingsForm> form, ComicPalette palette) {
+        this.actions = actions;
+        this.form = form;
         FormRows chat = new FormRows(palette);
-        chat.note("Die Enterprise-API im OpenAI-kompatiblen Format. Die Basis-URL endet ohne Endpunkt (meist auf "
-                + "/v1); die Anwendung hängt /chat/completions, /embeddings und /models selbst an. Die Modelle wählt der Reiter "
+        chat.note("Die Enterprise-API im OpenAI-kompatiblen Format. Mit KeePass genügt der Eintrag: API-Key "
+                + "(Passwortfeld) und Basis-URL (URL-Feld, meist auf /v1) stehen dort. Die Modelle wählt der Reiter "
                 + "„Modelle“.");
-        chatBaseUrl = chat.textField("Basis-URL", "Absolute http(s)-URL ohne Zugangsdaten, Query oder Fragment");
-        chatApiKeyRef = chat.textField("KeePass-Eintrag mit API-Key",
-                "Titel des KeePass-Eintrags; der API-Key steht in dessen Passwortfeld. Präfix keepass: ist erlaubt.");
+        access = VaultAccess.modeChoice(palette);
+        chat.component("Zugang", access, "KeePass: API-Key und URL aus dem KeePass-Eintrag. Manuell: URL hier "
+                + "angeben, der API-Key wird beim ersten Zugriff abgefragt und nicht gespeichert.");
+        entry = VaultAccess.entryChoice(palette);
+        entryRow = chat.component("KeePass-Eintrag", entry, "Eintrag mit dem API-Key im Passwortfeld und der "
+                + "Basis-URL im URL-Feld");
         secretCheck = new SecretCheckRow(actions, form, new Supplier<String>() {
             @Override
             public String get() {
-                return chatApiKeyRef.getText();
+                return VaultAccess.text(entry);
             }
         }, palette);
-        chat.component(null, secretCheck, null);
+        secretCheckRow = chat.component(null, secretCheck, null);
+        manualUrlRow = chat.textField(manualUrl, "Basis-URL *",
+                "Absolute http(s)-URL ohne Zugangsdaten, Query oder Fragment; meist bis /v1");
         chatSystemPrompt = chat.textArea("System-Prompt", 3, "Optional: erste Nachricht jeder Konversation");
+        advancedToggle = VaultAccess.advancedToggle(palette);
+        chat.component(null, advancedToggle, null);
+        overrideUrlRow = chat.textField(overrideUrl, "Basis-URL (sonst aus KeePass)",
+                "Leer: die URL des KeePass-Eintrags; sonst überschreibt dieser Wert sie");
+        advancedToggle.addActionListener(event -> {
+            expanded = !expanded;
+            showRows();
+        });
+        access.addActionListener(event -> {
+            boolean manual = isManual();
+            // die URL wandert mit: Pflichtfeld bei „Manuell“, Überschreibung bei „KeePass“
+            if (manual && manualUrl.getText().trim().isEmpty()) {
+                manualUrl.setText(overrideUrl.getText());
+            } else if (!manual && overrideUrl.getText().trim().isEmpty()) {
+                overrideUrl.setText(manualUrl.getText());
+            }
+            showRows();
+        });
 
         FormRows embedding = new FormRows(palette);
         embedding.note("Embeddings vektorisieren die Wissensbasis. Basis-URL und KeePass-Eintrag dürfen leer "
@@ -55,34 +100,85 @@ final class ServiceTab {
                 FormRows.plate("Chat", palette.getNavigationBlue(), chat.panel(), palette),
                 FormRows.plate("Embeddings", palette.getAgentPetrol(), embedding.panel(), palette),
                 FormRows.plate("Verbindung", palette.getAccentRed(), connection.panel(), palette));
+        showRows();
     }
 
     JPanel panel() {
         return panel;
     }
 
-    void load(SettingsForm form) {
-        chatBaseUrl.setText(form.chatBaseUrl());
-        chatApiKeyRef.setText(form.chatApiKeyRef());
-        chatSystemPrompt.setText(form.chatSystemPrompt());
-        embeddingBaseUrl.setText(form.embeddingBaseUrl());
-        embeddingDimension.setText(form.embeddingDimension());
-        embeddingApiKeyRef.setText(form.embeddingApiKeyRef());
+    void load(SettingsForm loaded) {
+        String stored = loaded.chatApiKeyRef();
+        boolean manual = VaultAccess.isManual(stored);
+        configured = stored != null && !stored.trim().isEmpty();
+        access.setSelectedItem(manual ? VaultAccess.MODE_MANUAL : VaultAccess.MODE_KEEPASS);
+        VaultAccess.setText(entry, VaultAccess.title(stored));
+        manualUrl.setText(manual ? loaded.chatBaseUrl() : "");
+        overrideUrl.setText(manual ? "" : loaded.chatBaseUrl());
+        chatSystemPrompt.setText(loaded.chatSystemPrompt());
+        embeddingBaseUrl.setText(loaded.embeddingBaseUrl());
+        embeddingDimension.setText(loaded.embeddingDimension());
+        embeddingApiKeyRef.setText(loaded.embeddingApiKeyRef());
+        showRows();
+        requestEntries(loaded);
     }
 
     void store(SettingsForm.Builder b) {
-        b.chatBaseUrl(chatBaseUrl.getText()).chatApiKeyRef(chatApiKeyRef.getText())
+        boolean manual = isManual();
+        b.chatBaseUrl(manual ? manualUrl.getText() : overrideUrl.getText())
+                .chatApiKeyRef(VaultAccess.stored(manual, VaultAccess.text(entry), MANUAL_NAME))
                 .chatSystemPrompt(chatSystemPrompt.getText())
                 .embeddingBaseUrl(embeddingBaseUrl.getText())
                 .embeddingDimension(embeddingDimension.getText()).embeddingApiKeyRef(embeddingApiKeyRef.getText());
     }
 
-    JTextField chatBaseUrl() {
-        return chatBaseUrl;
+    private boolean isManual() {
+        return VaultAccess.MODE_MANUAL.equals(access.getSelectedItem());
     }
 
-    JTextField chatApiKeyRef() {
-        return chatApiKeyRef;
+    private void showRows() {
+        boolean manual = isManual();
+        entryRow.setVisible(!manual);
+        secretCheckRow.setVisible(!manual);
+        manualUrlRow.setVisible(manual);
+        overrideUrlRow.setVisible(!manual && expanded);
+        advancedToggle.setVisible(!manual);
+        advancedToggle.setText(expanded ? VaultAccess.ADVANCED_OPEN : VaultAccess.ADVANCED_CLOSED);
+        panel().revalidate();
+        panel().repaint();
+    }
+
+    /** KeePass-Titel zur Auswahl; ein eindeutiger passender Eintrag wird vorgewählt, solange nichts gesetzt ist. */
+    private void requestEntries(SettingsForm loaded) {
+        if (actions == null || loaded == null) {
+            return;
+        }
+        actions.keePassEntries(loaded, new Consumer<List<String>>() {
+            @Override
+            public void accept(List<String> titles) {
+                VaultAccess.setEntries(entry, titles);
+                if (!configured && VaultAccess.text(entry).isEmpty()) {
+                    String match = VaultAccess.unique(titles, "Enterprise AI", "KIPITZ", "KI-Dienst");
+                    if (match != null) {
+                        VaultAccess.setText(entry, match);
+                    }
+                }
+            }
+        });
+    }
+
+    /** Das Feld, das gerade die Basis-URL trägt (Pflichtfeld bei „Manuell“, Überschreibung bei „KeePass“). */
+    JTextField chatBaseUrl() {
+        return isManual() ? manualUrl : overrideUrl;
+    }
+
+    /** Eingabefeld des KeePass-Eintrags. */
+    JTextComponent chatApiKeyRef() {
+        return VaultAccess.editorField(entry);
+    }
+
+    JComboBox<String> access() {
+        return access;
     }
 
     JTextField embeddingDimension() {
@@ -95,5 +191,14 @@ final class ServiceTab {
 
     SecretCheckRow secretCheck() {
         return secretCheck;
+    }
+
+    /** Fokus beim Öffnen: der KeePass-Eintrag bzw. bei „Manuell“ die URL. */
+    void focusFirstField() {
+        if (isManual()) {
+            manualUrl.requestFocusInWindow();
+        } else {
+            entry.requestFocusInWindow();
+        }
     }
 }

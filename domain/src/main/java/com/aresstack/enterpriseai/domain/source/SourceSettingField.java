@@ -22,15 +22,31 @@ public final class SourceSettingField {
         SECRET_REF
     }
 
+    /**
+     * Ob und wie der Wert aus dem Tresoreintrag ({@link Kind#SECRET_REF}) kommen kann: KeePass speichert zu
+     * jedem Eintrag eine URL. Ist ein Eintrag gewählt und das Feld leer, gilt die Adresse des Eintrags; ein
+     * eingetragener Wert überschreibt sie. Ohne Tresor (manuelle Konfiguration) ist das Feld eine normale Angabe.
+     */
+    public enum VaultValue {
+        /** Nie aus dem Tresor. */
+        NONE,
+        /** Die URL des Eintrags, unverändert. */
+        LOCATION,
+        /** Nur der Hostname aus der URL des Eintrags (oder der Wert selbst, wenn er keine URL ist). */
+        HOST
+    }
+
     private final String key;
     private final String label;
     private final String hint;
     private final Kind kind;
     private final String defaultValue;
     private final boolean required;
+    private final boolean advanced;
+    private final VaultValue vaultValue;
 
     private SourceSettingField(String key, String label, String hint, Kind kind, String defaultValue,
-                               boolean required) {
+                               boolean required, boolean advanced, VaultValue vaultValue) {
         if (key == null || key.trim().isEmpty() || label == null || label.trim().isEmpty() || kind == null) {
             throw new IllegalArgumentException("key, label and kind must be set");
         }
@@ -40,10 +56,12 @@ public final class SourceSettingField {
         this.kind = kind;
         this.defaultValue = defaultValue == null ? "" : defaultValue.trim();
         this.required = required;
+        this.advanced = advanced;
+        this.vaultValue = vaultValue == null ? VaultValue.NONE : vaultValue;
     }
 
     public static SourceSettingField of(String key, Kind kind, String label, String hint) {
-        return new SourceSettingField(key, label, hint, kind, "", false);
+        return new SourceSettingField(key, label, hint, kind, "", false, false, VaultValue.NONE);
     }
 
     public static SourceSettingField text(String key, String label, String hint) {
@@ -52,12 +70,22 @@ public final class SourceSettingField {
 
     /** Dasselbe Feld als Pflichtangabe. */
     public SourceSettingField required() {
-        return new SourceSettingField(key, label, hint, kind, defaultValue, true);
+        return new SourceSettingField(key, label, hint, kind, defaultValue, true, advanced, vaultValue);
+    }
+
+    /** Dasselbe Feld unter „Erweitert“: nicht nötig für den ersten Lauf, Vorgaben des Adapters genügen. */
+    public SourceSettingField advanced() {
+        return new SourceSettingField(key, label, hint, kind, defaultValue, required, true, vaultValue);
+    }
+
+    /** Dasselbe Feld mit Wert aus der URL des Tresoreintrags, wenn es leer bleibt. */
+    public SourceSettingField fromVault(VaultValue value) {
+        return new SourceSettingField(key, label, hint, kind, defaultValue, required, advanced, value);
     }
 
     /** Dasselbe Feld mit Vorgabe für neue Quellen. */
     public SourceSettingField withDefault(String value) {
-        return new SourceSettingField(key, label, hint, kind, value, required);
+        return new SourceSettingField(key, label, hint, kind, value, required, advanced, vaultValue);
     }
 
     public String key() {
@@ -84,6 +112,16 @@ public final class SourceSettingField {
 
     public boolean isRequired() {
         return required;
+    }
+
+    /** {@code true}, wenn das Formular das Feld erst unter „Erweitert“ zeigt. */
+    public boolean isAdvanced() {
+        return advanced;
+    }
+
+    /** Wie der Wert aus dem Tresoreintrag kommt; {@link VaultValue#NONE}, wenn nie. */
+    public VaultValue vaultValue() {
+        return vaultValue;
     }
 
     @Override

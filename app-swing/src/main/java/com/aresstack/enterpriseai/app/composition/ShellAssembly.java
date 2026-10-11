@@ -38,6 +38,9 @@ import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelDescriptor;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
+import com.aresstack.enterpriseai.security.api.SecretEntry;
+import com.aresstack.enterpriseai.security.api.SecretProvider;
+import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 
 import javax.swing.JComponent;
 import javax.swing.JFrame;
@@ -266,12 +269,31 @@ public final class ShellAssembly {
         final ApplicationPorts ports = root.ports();
         Function<KnowledgeSourceId, Integer> count = sourceId ->
                 ports.index().resourceIds(ports.embeddingSpace(), sourceId).size();
-        return new KnowledgeSourcesController(root.config().sources(), ports.sources(), root.sourceSelection(),
-                root.indexingBinding(), count,
+        KnowledgeSourcesController controller = new KnowledgeSourcesController(root.config().sources(),
+                ports.sources(), root.sourceSelection(), root.indexingBinding(), count,
                 new KnowledgeSourceManagement(ports.sourceProviders(), null, ports.index())
                         .withWithdrawal(root.resourceDocuments()::withdraw), root.uiExecutor(),
                 root.workExecutor(),
                 root.clock(), root.zone());
+        controller.setVaultTitles(() -> vaultTitles(ports.secrets()));
+        return controller;
+    }
+
+    /** Titel der KeePass-Einträge, sortiert; leer, wenn KeePass nicht erreichbar ist. */
+    static List<String> vaultTitles(SecretProvider secrets) {
+        List<String> titles = new ArrayList<String>();
+        if (secrets == null) {
+            return titles;
+        }
+        try {
+            for (SecretEntry entry : secrets.entries()) {
+                titles.add(entry.title());
+            }
+        } catch (SecretUnavailableException e) {
+            return titles;
+        }
+        Collections.sort(titles, String.CASE_INSENSITIVE_ORDER);
+        return titles;
     }
 
     /** Die gebaute Oberfläche mit ihren Modellen. */

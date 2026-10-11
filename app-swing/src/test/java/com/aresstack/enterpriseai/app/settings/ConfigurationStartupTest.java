@@ -176,7 +176,7 @@ public class ConfigurationStartupTest {
     @Test
     public void brokenFileOpensTheDialogWithItsValuesAndProblems() throws Exception {
         Files.createDirectories(configPath().getParent());
-        Files.write(configPath(), ("chat.model=altes-modell\nchat.apiKeyRef=keepass:Enterprise AI API\n"
+        Files.write(configPath(), ("chat.baseUrl=keine-url\nchat.model=altes-modell\nchat.apiKeyRef=keepass:Enterprise AI API\n"
                 + "embedding.model=e\nembedding.dimension=8\n"
                 + "security.keepass.enabled=false\nnetwork.proxy.mode=NONE\n").getBytes(StandardCharsets.UTF_8));
         ConfigurationFile file = new ConfigurationFile(configPath());

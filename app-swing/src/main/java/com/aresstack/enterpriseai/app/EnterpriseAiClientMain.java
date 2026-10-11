@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.app.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.app.composition.ShellAssembly;
 import com.aresstack.enterpriseai.app.composition.StartupNotices;
 import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
@@ -36,6 +37,7 @@ import com.aresstack.enterpriseai.app.ui.settings.SourceDialog;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsPanel;
@@ -122,14 +124,23 @@ public final class EnterpriseAiClientMain {
         final ApplicationPorts ports;
         final CompositionRoot root;
         try {
-            ports = AdapterAssembly.create(config, network, new SwingPairingCallback(
+            SecretProvider secrets = AdapterAssembly.secrets(config, new SwingPairingCallback(
                     config.keePass().rpc().host() + ":" + config.keePass().rpc().port()));
+            // Zugang „KeePass“ ohne eingetragene URL: die Basis-URL steht im KeePass-Eintrag des API-Keys.
+            config = AdapterAssembly.withVaultLocations(config, file.read(), secrets);
+            ports = AdapterAssembly.createWith(config, network, secrets);
             if (networkConfig.proxyAuthMode() == ProxyAuthMode.BASIC && networkConfig.proxyCredentialRef() != null) {
                 ProxyAuthenticator.install(ports.secrets(), networkConfig.proxyCredentialRef());
                 localVoices.proxyAuthenticationInstalled();
             }
             root = CompositionRoot.compose(config, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
                     null);
+        } catch (AppConfigException | IOException e) {
+            LOG.log(Level.SEVERE, "Konfiguration unvollständig", e);
+            showError("Konfiguration", e.getMessage());
+            AppLogFile.uninstall(logFile);
+            System.exit(EXIT_CONFIG);
+            return;
         } catch (RuntimeException e) {
             LOG.log(Level.SEVERE, "Anwendung konnte nicht zusammengesetzt werden", e);
             showError("Start fehlgeschlagen", "Die Anwendung konnte nicht gestartet werden: "

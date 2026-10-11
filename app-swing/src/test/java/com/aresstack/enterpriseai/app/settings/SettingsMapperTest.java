@@ -216,7 +216,8 @@ public class SettingsMapperTest {
             fail("leere Pflichtfelder müssen Probleme ergeben");
         } catch (AppConfigException e) {
             List<String> described = SettingsMapper.describe(e.problems());
-            assertTrue(described.toString(), described.toString().contains("(chat.baseUrl)"));
+            // mit KeePass-Eintrag kommt die Basis-URL aus KeePass: keine Pflichtangabe
+            assertFalse(described.toString(), described.toString().contains("(chat.baseUrl)"));
             assertTrue(described.toString(), described.toString().contains("(chat.model)"));
             for (String problem : described) {
                 assertFalse(problem, problem.contains("(source."));

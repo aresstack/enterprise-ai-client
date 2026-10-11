@@ -32,20 +32,21 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
             .description("COBOL- und andere Textquellen aus MVS-Datasets (PDS-Member) oder Dateien eines FTP-Servers")
             .idPrefix("ftp")
             .summaryKey("host")
-            .field(SourceSettingField.text("host", "Host", "Name oder Adresse des FTP-Servers, ohne ftp://").required())
+            .field(SourceSettingField.text("host", "Host", "Name oder Adresse des FTP-Servers, ohne ftp://").required()
+                    .fromVault(SourceSettingField.VaultValue.HOST))
             .field(SourceSettingField.of("port", SourceSettingField.Kind.NUMBER, "Port", "Standard 21")
-                    .withDefault("21"))
+                    .withDefault("21").advanced())
             .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
-                    "KeePass-Eintrag (optional)", "Titel des KeePass-Eintrags mit Benutzer und Passwort; leer = anonym"))
+                    "KeePass-Eintrag", "Eintrag mit Benutzer, Passwort und Adresse des FTP-Servers; leer = anonym"))
             .field(SourceSettingField.text("startPoints", "Startpunkte",
                     "Kommagetrennt: Datasets/PDS wie HLQ.COBOL.SRC oder Member wie HLQ.COBOL.SRC(PGM1)").required())
             .field(SourceSettingField.of("maxDepth", SourceSettingField.Kind.NUMBER, "Tiefe",
                     "Wie viele Ebenen Datasets unter den Startpunkten verfolgt werden (0 = nur die Member darin)")
-                    .withDefault("1"))
+                    .withDefault("1").advanced())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
-                    "Höchstzahl Member (optional)", "Obergrenze je Lauf; leer = 2000"))
+                    "Höchstzahl Member (optional)", "Obergrenze je Lauf; leer = 2000").advanced())
             .field(SourceSettingField.text("encoding", "Zeichensatz", "Zeichensatz der Textübertragung")
-                    .withDefault("ISO-8859-1"))
+                    .withDefault("ISO-8859-1").advanced())
             .build();
 
     private static final int DEFAULT_PORT = 21;

@@ -30,13 +30,13 @@ public final class LocalFilesSourceProvider implements KnowledgeSourceProvider {
             .field(SourceSettingField.of("directory", SourceSettingField.Kind.DIRECTORY, "Verzeichnis",
                     "Ordner mit den Dokumenten, z. B. C:\\Daten\\Handbuch").required())
             .field(SourceSettingField.text("startPoints", "Startpunkte",
-                    "Kommagetrennte Unterordner (. = alles)").withDefault("."))
+                    "Kommagetrennte Unterordner (. = alles)").withDefault(".").advanced())
             .field(SourceSettingField.of("maxDepth", SourceSettingField.Kind.NUMBER, "Tiefe",
-                    "Wie viele Verzeichnisebenen durchsucht werden").withDefault("20"))
+                    "Wie viele Verzeichnisebenen durchsucht werden").withDefault("20").advanced())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
-                    "Höchstzahl Dateien (optional)", "Obergrenze je Lauf; leer = 5000"))
+                    "Höchstzahl Dateien (optional)", "Obergrenze je Lauf; leer = 5000").advanced())
             .field(SourceSettingField.of("maxFileMegabytes", SourceSettingField.Kind.NUMBER,
-                    "Größte Datei in MB (optional)", "Größere Dateien werden übersprungen; leer = 50"))
+                    "Größte Datei in MB (optional)", "Größere Dateien werden übersprungen; leer = 50").advanced())
             .build();
 
     private final ContentDetector detector;

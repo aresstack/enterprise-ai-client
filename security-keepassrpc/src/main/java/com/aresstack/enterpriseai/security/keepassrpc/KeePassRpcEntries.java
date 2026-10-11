@@ -32,10 +32,65 @@ final class KeePassRpcEntries {
                     return new KeePassEntry(entryTitle,
                             firstNonNull(string(entry, "usernameValue"), string(entry, "username"),
                                     formField(entry, "FFTusername")),
-                            passwordChars);
+                            passwordChars, location(entry));
                 } finally {
                     java.util.Arrays.fill(passwordChars, '\0');
                 }
+            }
+        }
+        return null;
+    }
+
+    /** Alle Einträge mit Titel und Adresse, ohne Benutzer und Passwort (Auswahlliste). */
+    static java.util.List<KeePassEntry> withoutSecrets(JsonElement result) {
+        java.util.List<KeePassEntry> entries = new java.util.ArrayList<KeePassEntry>();
+        if (result == null || !result.isJsonArray()) {
+            return entries;
+        }
+        for (JsonElement element : result.getAsJsonArray()) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            String title = string(element.getAsJsonObject(), "title");
+            if (title != null && !title.trim().isEmpty()) {
+                entries.add(new KeePassEntry(title.trim(), "", new char[0], location(element.getAsJsonObject())));
+            }
+        }
+        return entries;
+    }
+
+    /**
+     * Erste http(s)-Adresse aus {@code uRLs} (bzw. {@code url}), wie MainframeMate sie liest. MainframeMate legt
+     * Einträge ohne URL mit dem Titel als Platzhalter an; solche Werte sind keine Adresse.
+     */
+    static String location(JsonObject entry) {
+        java.util.List<String> candidates = new java.util.ArrayList<String>();
+        for (String name : new String[] {"uRLs", "url", "URLs"}) {
+            JsonElement value = entry.get(name);
+            if (value == null || value.isJsonNull()) {
+                continue;
+            }
+            if (value.isJsonPrimitive()) {
+                candidates.add(value.getAsString());
+            } else if (value.isJsonArray()) {
+                for (JsonElement item : value.getAsJsonArray()) {
+                    if (item.isJsonPrimitive()) {
+                        candidates.add(item.getAsString());
+                    }
+                }
+            }
+        }
+        for (String candidate : candidates) {
+            String trimmed = candidate == null ? "" : candidate.trim();
+            String lower = trimmed.toLowerCase(java.util.Locale.ROOT);
+            if (lower.startsWith("http://") || lower.startsWith("https://")) {
+                return trimmed;
+            }
+        }
+        for (String candidate : candidates) {
+            String trimmed = candidate == null ? "" : candidate.trim();
+            if (trimmed.contains("://")) {
+                return trimmed; // z. B. ftp://host für Mainframe-Einträge
             }
         }
         return null;

@@ -94,7 +94,7 @@ public class FileSettingsActionsTest {
     public void problemsCarryFieldLabels() throws Exception {
         FileSettingsActions actions = new FileSettingsActions(fileWith(validText()), null, DIRECT, DIRECT);
         SettingsForm form = SettingsMapper.fromProperties(actions.file().read()).toBuilder()
-                .chatBaseUrl("").embeddingDimension("viele").build();
+                .chatApiKeyRef("ask:KI-Dienst").chatBaseUrl("").embeddingDimension("viele").build();
         List<String> problems = actions.validate(form);
         assertTrue(problems.toString(), problems.size() >= 2);
         assertTrue(problems.get(0), problems.get(0).startsWith("Basis-URL des KI-Dienstes (chat.baseUrl): "));

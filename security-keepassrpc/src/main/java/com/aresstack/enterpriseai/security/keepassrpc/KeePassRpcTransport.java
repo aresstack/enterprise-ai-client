@@ -27,6 +27,11 @@ interface KeePassRpcTransport {
          */
         KeePassEntry findEntryByTitle(String title) throws KeePassRpcException;
 
+        /** Alle Einträge mit Titel und Adresse, ohne Benutzer und Passwort. */
+        default java.util.List<KeePassEntry> allEntries() throws KeePassRpcException {
+            return java.util.Collections.emptyList();
+        }
+
         @Override
         void close();
     }

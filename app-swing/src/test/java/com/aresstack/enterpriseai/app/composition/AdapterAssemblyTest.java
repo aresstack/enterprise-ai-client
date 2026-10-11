@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app.composition;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
+import com.aresstack.enterpriseai.app.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.application.knowledge.IndexingStage;
@@ -111,7 +112,7 @@ public class AdapterAssemblyTest {
             assertTrue(ports.embeddings() instanceof OpenAiCompatibleEmbeddingAdapter);
             assertEquals(768, ports.embeddingSpace().dimension());
             assertTrue(ports.index() instanceof LuceneKnowledgeIndex);
-            assertTrue(ports.secrets() instanceof KeePassRpcSecretProvider);
+            assertTrue(((AskedSecretProvider) ports.secrets()).vault() instanceof KeePassRpcSecretProvider);
             assertEquals(Arrays.asList(KnowledgeSourceId.of("wiki"), KnowledgeSourceId.of("confluence")),
                     new java.util.ArrayList<KnowledgeSourceId>(ports.sources().ids()));
             assertTrue(unwrap(ports.sources().find(KnowledgeSourceId.of("wiki")).port())
@@ -135,7 +136,7 @@ public class AdapterAssemblyTest {
         CompositionRoot root = CompositionRoot.compose(config, ports, new DirectExecutor(),
                 System::currentTimeMillis, null);
         try {
-            assertTrue(ports.secrets() instanceof UnavailableSecretProvider);
+            assertTrue(((AskedSecretProvider) ports.secrets()).vault() instanceof UnavailableSecretProvider);
             assertTrue(StartupNotices.of(config).get(0).contains("KeePassRPC ist deaktiviert"));
             assertTrue("ohne Agent-Kommando der eingebaute Recherche-Agent", root.hasAgent());
             assertNotNull(root.researchHost());

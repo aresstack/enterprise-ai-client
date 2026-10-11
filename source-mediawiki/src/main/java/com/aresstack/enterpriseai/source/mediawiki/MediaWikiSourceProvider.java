@@ -33,19 +33,20 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
             .idPrefix("wiki")
             .summaryKey("apiUrl")
             .field(SourceSettingField.text("apiUrl", "API-URL",
-                    "Die api.php der MediaWiki-Installation, z. B. …/w/api.php").required())
+                    "Die api.php der MediaWiki-Installation, z. B. …/w/api.php").required()
+                    .fromVault(SourceSettingField.VaultValue.LOCATION))
             .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
-                    "KeePass-Eintrag (optional)", "Titel des KeePass-Eintrags mit Benutzername und Passwort; leer = anonym"))
+                    "KeePass-Eintrag", "Eintrag mit Benutzername, Passwort und URL des Wikis; leer = anonym"))
             .field(SourceSettingField.text("startPoints", "Startpunkte", "Kommagetrennte Seitentitel").required())
             .field(SourceSettingField.of("maxDepth", SourceSettingField.Kind.NUMBER, "Tiefe",
-                    "Wie viele Linkebenen ab den Startpunkten verfolgt werden (0 = nur Startpunkte)").withDefault("1"))
+                    "Wie viele Linkebenen ab den Startpunkten verfolgt werden (0 = nur Startpunkte)").withDefault("1").advanced())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
-                    "Höchstzahl Seiten (optional)", "Obergrenze je Lauf; leer = Standard"))
+                    "Höchstzahl Seiten (optional)", "Obergrenze je Lauf; leer = Standard").advanced())
             .field(SourceSettingField.of("requiresLogin", SourceSettingField.Kind.FLAG, "Anmeldung erforderlich",
-                    "Vor dem Lesen anmelden (Standard: ja, wenn ein KeePass-Eintrag gesetzt ist)"))
+                    "Vor dem Lesen anmelden (Standard: ja, wenn ein KeePass-Eintrag gesetzt ist)").advanced())
             .field(SourceSettingField.text("siteKey", "Site-Schlüssel (optional)",
-                    "Stabiler Schlüssel in den Ressourcen-IDs; nach dem ersten Indexieren nicht ändern"))
-            .field(SourceSettingField.text("displayName", "Anzeigename (optional)", "Name der Quelle in Quellenangaben"))
+                    "Stabiler Schlüssel in den Ressourcen-IDs; nach dem ersten Indexieren nicht ändern").advanced())
+            .field(SourceSettingField.text("displayName", "Anzeigename (optional)", "Name der Quelle in Quellenangaben").advanced())
             .build();
 
     private static final int MAX_TIMEOUT = 600000;

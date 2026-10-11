@@ -3,7 +3,9 @@ package com.aresstack.enterpriseai.app.ui.settings;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Was der Quellen-Dialog ({@link SourceDialog}) braucht: einen Entwurf prüfen und speichern und beim Wechsel des
@@ -25,4 +27,12 @@ public interface SourceActions {
 
     /** Ein neuer Entwurf des Typs mit freier ID und Vorgaben (Wechsel des Typs beim Hinzufügen). */
     SourceDefinition draft(String typeId);
+
+    /**
+     * Die Titel der KeePass-Einträge zur Auswahl im Feld „KeePass-Eintrag“; das Ergebnis kommt später auf dem EDT,
+     * leer, wenn KeePass nicht erreichbar ist (dann bleibt das Feld eine freie Eingabe).
+     */
+    default void vaultEntries(Consumer<List<String>> onResult) {
+        onResult.accept(Collections.<String>emptyList());
+    }
 }
