@@ -182,6 +182,11 @@ public final class ResearchScopeControl {
         return "EVALUATED items=" + decisions.size() + reply;
     }
 
+    /** Projektwechsel: die Schnappschüsse gehörten zum Zaun des bisherigen Projekts und gelten nicht mehr. */
+    void clear() {
+        snapshots.clear();
+    }
+
     String end(String handle) {
         if (handle != null) {
             snapshots.remove(handle);

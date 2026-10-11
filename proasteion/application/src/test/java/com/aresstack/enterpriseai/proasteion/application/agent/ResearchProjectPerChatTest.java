@@ -109,6 +109,35 @@ public class ResearchProjectPerChatTest {
     }
 
     @Test
+    public void searchScopeHandlesDieWithTheProject() throws Exception {
+        ResearchAgentHost host = host(folder.newFolder("research"));
+        host.setScopeEmbedder(new ResearchScopeControl.Embedder() {
+            @Override
+            public String fingerprint() {
+                return "fake-embedding";
+            }
+
+            @Override
+            public java.util.List<float[]> embed(java.util.List<String> texts) {
+                java.util.List<float[]> vectors = new java.util.ArrayList<float[]>();
+                for (int i = 0; i < texts.size(); i++) {
+                    vectors.add(new float[]{1f, 0f});
+                }
+                return vectors;
+            }
+        });
+        host.openChat("chat-a");
+        fill(host, "Karte A", "page-a", "Quelle A");
+        String begun = host.scopeControl().begin();
+        assertTrue(begun, begun.startsWith("ACTIVE handle="));
+        String handle = begun.substring("ACTIVE handle=".length()).split(" ")[0];
+        assertFalse("UNKNOWN_HANDLE".equals(host.scopeControl().evaluate(handle, "web", "[]")));
+
+        host.openChat("chat-b");
+        assertEquals("UNKNOWN_HANDLE", host.scopeControl().evaluate(handle, "web", "[]"));
+    }
+
+    @Test
     public void chatIdsBecomeSafeFolderNames() {
         assertEquals("a_b_c", ResearchProjects.folderName("a/b\\c"));
         assertEquals("_x", ResearchProjects.folderName(".x"));

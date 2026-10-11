@@ -168,6 +168,7 @@ public final class ResearchAgentHost {
         machine = null;
         state = null;
         runStatus = ResearchRunStatus.idle();
+        scopeControl.clear(); // Such-Handles des alten Zauns gelten im neuen Projekt nicht
     }
 
     public synchronized File projectDirectory() {
