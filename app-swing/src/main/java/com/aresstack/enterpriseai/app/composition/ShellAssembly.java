@@ -170,6 +170,8 @@ public final class ShellAssembly {
         // nicht ein (sonst würde ungefiltert im ganzen Index gesucht).
         final KnowledgeSourceSelection selection = root.sourceSelection();
         sources.attach(items -> {
+            // Chat und Agent sehen neue oder entfernte Quellen sofort, ohne Neustart.
+            root.publishSources(sources.liveRegistrations());
             drawer.setKnowledgeSources(items);
             chatModel.setRagEnabled(!items.isEmpty() && selection.isRestricted());
         });

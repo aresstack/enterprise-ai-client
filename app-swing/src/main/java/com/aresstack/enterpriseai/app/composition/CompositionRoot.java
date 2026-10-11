@@ -48,6 +48,8 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -100,6 +102,8 @@ public final class CompositionRoot {
     private final KnowledgeStatusModel knowledgeStatus;
     private final KnowledgeIndexingBinding indexingBinding;
     private final KnowledgeSourceSelection sourceSelection;
+    /** Die angebundenen Quellen von jetzt; ersetzt, nie verändert (siehe {@link #publishSources}). */
+    private volatile KnowledgeSourceCatalog liveSources;
     private final SearchDrivenIndexingUseCase searchIndexing;
     private final ShutdownSequence shutdown;
 
@@ -126,21 +130,23 @@ public final class CompositionRoot {
         // Lesen lädt aus der Quelle, die die ID kennt (knowledge_read); das Gelesene kommt danach in den Index.
         // Gelesen wird nach corenth vermittelt: Tamias (Regel) → Chalcotheca (Archiv) → AcquisitionPort → Holkas-
         // Connector der Quelle; der Use Case fragt den Quellen-Port nicht mehr direkt.
+        // Die angebundenen Quellen von jetzt: zuerst die aus der Konfiguration, danach meldet der Reiter
+        // „Wissensquellen“ jede Änderung (publishSources); Lesen, Chat und knowledge_search fragen je Aufruf.
+        this.liveSources = ports.sources();
         MediatedResourceService resourceAccess = new MediatedResourceService(new ClientResourceAccessPolicy(),
-                new HolkasAcquisitionPort(new KnowledgeSourceConnectorRegistry(ports.sources()::ports, clock)),
+                new HolkasAcquisitionPort(new KnowledgeSourceConnectorRegistry(() -> liveSources.ports(), clock)),
                 new InMemoryResourceArchive());
         this.resourceDocuments = new MediatedKnowledgeDocuments(resourceAccess,
                 new ActorIdentity("enterprise-ai-client-user", ActorType.HUMAN));
         this.documents = new LoadKnowledgeDocumentUseCase(ports.sources())
-                .withReader(resourceDocuments);
+                .withReader(resourceDocuments).withCatalog(() -> liveSources);
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
         // Suche füllt den Index (MainframeMate): Quellen live durchsuchen, nur neue oder geänderte Treffer laden,
         // zerlegen und einbetten (Revision, dann Inhalts-Hash). Kein Vollindex beim Start.
         this.searchIndexing = new SearchDrivenIndexingUseCase(indexing);
-        final KnowledgeSourceCatalog catalog = ports.sources();
         this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler, (query, sources) -> {
             List<KnowledgeSourcePort> chosen = new ArrayList<KnowledgeSourcePort>();
-            for (KnowledgeSourceRegistration registration : catalog.registrations()) {
+            for (KnowledgeSourceRegistration registration : liveSources.registrations()) {
                 if (sources.isEmpty() || sources.contains(registration.sourceId())) {
                     chosen.add(registration.port());
                 }
@@ -358,6 +364,21 @@ public final class CompositionRoot {
     /** Die Häkchen der Wissensquellen: Start-Indexierung und RAG richten sich danach. */
     public KnowledgeSourceSelection sourceSelection() {
         return sourceSelection;
+    }
+
+    /**
+     * Die angebundenen Quellen haben sich geändert (hinzugefügt, entfernt, neu verbunden): Lesen, Chat-RAG und
+     * {@code knowledge_search} nutzen ab dem nächsten Aufruf diese Liste, ohne Neustart. Welche davon durchsucht
+     * werden, sagen weiter die Häkchen ({@link #sourceSelection()}).
+     */
+    public void publishSources(Collection<KnowledgeSourceRegistration> registrations) {
+        liveSources = new KnowledgeSourceCatalog(registrations == null
+                ? Collections.<KnowledgeSourceRegistration>emptyList() : registrations);
+    }
+
+    /** Die angebundenen Quellen von jetzt. */
+    public KnowledgeSourceCatalog liveSources() {
+        return liveSources;
     }
 
     /** Live-Suche, die ihre Treffer indexiert (Drawer, Chat, Agent). */
