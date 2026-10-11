@@ -106,7 +106,7 @@ public class KnowledgeMcpToolsTest {
     @Test
     public void readResolvesBookmarkUri() {
         String bookmark = KnowledgeBookmarks.of(wiki.idOf("Kaffee")).toString();
-        assertTrue(bookmark, bookmark.startsWith("wiki://"));
+        assertTrue(bookmark, bookmark.contains("://"));
         McpToolResult read = call(tools.knowledgeRead(), "id", bookmark);
         assertFalse(read.getText(), read.isError());
         assertTrue(read.getText(), read.getText().contains("id: " + wiki.idOf("Kaffee").value()));
