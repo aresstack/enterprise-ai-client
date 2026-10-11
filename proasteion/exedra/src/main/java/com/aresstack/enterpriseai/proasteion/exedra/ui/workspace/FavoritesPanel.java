@@ -3,9 +3,11 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLinkRow;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
+import com.aresstack.enterpriseai.ui.comic.control.ComicSearchBar;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
@@ -16,17 +18,23 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.Scrollable;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Die Drawer-Seite „Favoriten“ (Reiter mit dem gelben Stern): die gemerkten Quellen und Dokumente mit ihrer Adresse
  * samt Präfix (z. B. {@code wiki:intranet/Handbuch}), wie die Lesezeichen in MainframeMate. Ein Klick zeigt den Favoriten
- * im Lesebereich (Doppelklick heftet an), ✕ vergisst ihn. Gemerkt wird über ★ im Lesebereich.
+ * im Lesebereich (Doppelklick heftet an), ✕ vergisst ihn. Gemerkt wird über ★ im Lesebereich. Die Suchleiste oben ist
+ * dieselbe wie bei Chats und Wissensquellen und filtert die Favoriten beim Tippen nach Titel und Adresse (Esc leert).
  */
 public final class FavoritesPanel extends JPanel {
 
@@ -39,9 +47,13 @@ public final class FavoritesPanel extends JPanel {
 
     static final String EMPTY_TEXT = "Noch keine Favoriten. ★ im Lesebereich merkt eine Quelle oder ein Dokument.";
     static final String REMOVE_TOOLTIP = "Aus den Favoriten entfernen";
+    static final String SEARCH_PLACEHOLDER = "Favoriten durchsuchen…";
+    static final String SEARCH_TOOLTIP = "Favoriten nach Titel und Adresse filtern";
+    static final String NO_MATCH_TEXT = "Keine passenden Favoriten";
 
     private final ComicPalette palette;
     private final JPanel list = new WidthTrackingPanel();
+    private final ComicSearchBar searchBar;
     private final List<ReaderLinkRow> rows = new ArrayList<ReaderLinkRow>();
     private List<ReaderLink> favorites = Collections.emptyList();
     private Actions actions;
@@ -50,6 +62,36 @@ public final class FavoritesPanel extends JPanel {
         super(new BorderLayout());
         this.palette = palette;
         setOpaque(false);
+        searchBar = new ComicSearchBar(SEARCH_PLACEHOLDER, SEARCH_TOOLTIP, palette);
+        searchBar.getTextField().getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                refresh();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                refresh();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                refresh();
+            }
+        });
+        searchBar.getTextField().addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent event) {
+                if (event.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    searchBar.setText("");
+                }
+            }
+        });
+        JPanel searchRow = new JPanel(new BorderLayout());
+        searchRow.setOpaque(false);
+        searchRow.setBorder(BorderFactory.createEmptyBorder(ResearchUiMetrics.SLIM_BAR_TOP_GAP, 8, 4, 4));
+        searchRow.add(searchBar, BorderLayout.CENTER);
+        add(searchRow, BorderLayout.NORTH);
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
         JScrollPane scroll = new ComicScrollPane(list, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -74,6 +116,10 @@ public final class FavoritesPanel extends JPanel {
         return Collections.unmodifiableList(favorites);
     }
 
+    public ComicSearchBar searchBar() {
+        return searchBar;
+    }
+
     /** Die Zeilen in Anzeigereihenfolge (für Tests). */
     public List<ReaderLinkRow> rows() {
         return Collections.unmodifiableList(new ArrayList<ReaderLinkRow>(rows));
@@ -88,15 +134,23 @@ public final class FavoritesPanel extends JPanel {
         header.setBorder(BorderFactory.createEmptyBorder(14, 10, 4, 8));
         header.setAlignmentX(LEFT_ALIGNMENT);
         list.add(header);
-        if (favorites.isEmpty()) {
-            JLabel empty = new JLabel("<html>" + EMPTY_TEXT + "</html>");
+        String filter = searchBar.getText().trim().toLowerCase(Locale.ROOT);
+        List<ReaderLink> visible = new ArrayList<ReaderLink>();
+        for (ReaderLink favorite : favorites) {
+            if (filter.isEmpty() || favorite.title().toLowerCase(Locale.ROOT).contains(filter)
+                    || favorite.location().toLowerCase(Locale.ROOT).contains(filter)) {
+                visible.add(favorite);
+            }
+        }
+        if (visible.isEmpty()) {
+            JLabel empty = new JLabel("<html>" + (favorites.isEmpty() ? EMPTY_TEXT : NO_MATCH_TEXT) + "</html>");
             empty.setFont(ResearchUiTypography.regular(12f));
             empty.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
             empty.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 8));
             empty.setAlignmentX(LEFT_ALIGNMENT);
             list.add(empty);
         }
-        for (final ReaderLink favorite : favorites) {
+        for (final ReaderLink favorite : visible) {
             ComposerButton remove = ComposerButton.iconButton(ComposerIcons.close(), REMOVE_TOOLTIP);
             remove.addActionListener(event -> {
                 if (actions != null) {
