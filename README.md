@@ -77,11 +77,12 @@ java -jar enterprise-ai-client-<version>.jar
    gespeichert, „Modelle verwalten …“ öffnet die Einstellungen) und den Denkaufwand („Denken: Standard/niedrig/mittel/hoch“, gesendet als `reasoning_effort` bzw.
    `reasoning.effort`, gegen das Gateway UNVERIFIED), rechts Büroklammer und Senden/Stop; dazwischen eine Statuszeile.
 7. **Dateianhänge und Tool-Calls**: Die Büroklammer im Composer hängt Dateien an (Chips mit ✕ über dem Editor,
-   nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen laufen über `POST <chat.baseUrl>/responses`
-   statt über das Streaming von `/chat/completions`: Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
+   nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen laufen über
+   `POST <chat.baseUrl>/chat/completions` mit `tools` und ohne Streaming (`ChatCompletionsToolLoop`): Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
    und holt sich den Inhalt selbst über die Werkzeuge `read_attachment` und `search_attachment`; der Client führt
    sie lokal aus (Text über `document-tika`, also Apache Tika) und schickt nur das Ergebnis zurück
-   (`function_call_output` mit `previous_response_id`, höchstens 8 Runden, kein `tool_choice`). Die Dateien liegen
+   (Aufruf als `assistant` mit `tool_calls`, Ergebnis als `role=tool` mit `tool_call_id`, höchstens 8 Runden, kein
+   `tool_choice`). Die Dateien liegen
    unter `chats/<chatId>/` neben der Konfigurationsdatei; `chat.tools.enabled=true` nutzt den Werkzeugpfad
    für jede Frage. Gegen das echte Gateway UNVERIFIED.
    Modellauswahl: Nach „Verbindung testen“ (Einstellungen → KI-Dienst) zeigen Auswahllisten unter Chat- und

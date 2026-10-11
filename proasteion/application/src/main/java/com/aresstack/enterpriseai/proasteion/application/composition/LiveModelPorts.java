@@ -33,8 +33,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Chat-, Responses- und Embedding-Port der Anwendung, die Einstellungen ohne Neustart übernehmen: Use Cases und
- * Oberfläche halten diese drei Ports; jeder Aufruf geht an die Adapter des aktuellen Stands. {@link #apply} baut
+ * Chat- und Embedding-Port der Anwendung, die Einstellungen ohne Neustart übernehmen: Use Cases und
+ * Oberfläche halten diese beiden Ports; jeder Aufruf geht an die Adapter des aktuellen Stands. {@link #apply} baut
  * die Adapter aus den gespeicherten Einstellungen neu (Basis-URL, Modellauswahl je Kategorie, API-Key-Eintrag,
  * Proxy, TLS, User-Agent, lokaler Modellordner). Laufende Anfragen enden auf dem alten Adapter; die nächste nimmt
  * den neuen. Die ONNX-Laufzeiten für lokale Modelle bleiben dieselben (sie laden je Modelldatei) und werden erst
