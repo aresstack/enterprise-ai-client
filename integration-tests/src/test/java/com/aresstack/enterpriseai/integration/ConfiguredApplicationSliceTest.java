@@ -235,6 +235,7 @@ public class ConfiguredApplicationSliceTest {
 
         // Kein Secret in Oberfläche, Statuszeile, Anfrage oder toString() der Ports.
         assertNoSecretInTranscript(model, API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
+        String status = onEdt(() -> root.knowledgeStatus().getText());
         assertNoSecret(status, API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
         assertNoSecret(request.systemContent(), API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
         assertNoSecret(ports.toString(), API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
