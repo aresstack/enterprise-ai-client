@@ -30,6 +30,9 @@ final class ResearchAgentTurns {
 
     private static final Logger LOG = Logger.getLogger(ResearchAgentTurns.class.getName());
     private static final String LANGUAGE = "de";
+    static final String SEARCH_UNAVAILABLE = "Ich kann gerade nicht in den Wissensquellen suchen: Der Client bietet "
+            + "mir knowledge_search nicht an. Prüfe in den Einstellungen unter „Tools“, ob knowledge_search und "
+            + "knowledge_read aktiv sind; dann suche ich sofort.";
 
     /** Wohin sichtbare Nachrichten eines Turns gehen (ACP {@code sendMessage}). */
     interface Output {
@@ -185,8 +188,13 @@ final class ResearchAgentTurns {
         boolean greeted = !"new".equalsIgnoreCase(status.state);
         TeamAgentStateView view = new TeamAgentStateView(status.phase, status.state,
                 Collections.<String>emptyList());
-        if (direct != null && beforeResearch(status) && !isActionPrompt(text)
-                && ConceptTurnPolicy.modeFor(text) == ConceptTurnPolicy.Mode.FULL && offersKnowledgeSearch()) {
+        boolean searchOffered = direct != null && beforeResearch(status) && offersKnowledgeSearch();
+        if (direct != null && beforeResearch(status) && !searchOffered && DirectAnswers.asksForSearch(text)) {
+            // Abgeschaltete Wissenssuche nie stumm übergehen: der Nutzer erfährt, warum nicht gesucht wird.
+            turn.message(SEARCH_UNAVAILABLE);
+        }
+        if (searchOffered && !isActionPrompt(text)
+                && ConceptTurnPolicy.modeFor(text) == ConceptTurnPolicy.Mode.FULL) {
             java.util.List<String> queries = direct.plan(text, currentConceptRendered(), host.scopeFence());
             if (!queries.isEmpty() && !turn.isCancelled()) {
                 directTurn(turn, view, text, status, greeted, queries);

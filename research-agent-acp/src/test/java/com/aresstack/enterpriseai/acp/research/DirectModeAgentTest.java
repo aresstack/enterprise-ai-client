@@ -291,6 +291,17 @@ public class DirectModeAgentTest {
         assertFalse(endpoint.calls.toString(), endpoint.calls.contains(KnowledgePages.SEARCH_TOOL));
     }
 
+    /** Ein abgeschaltetes Suchwerkzeug wird bei einem Suchauftrag sichtbar gemacht, nie stumm übergangen. */
+    @Test
+    public void anExplicitSearchWithTheToolSwitchedOffSaysSo() {
+        FakeEndpoint endpoint = new FakeEndpoint();
+        endpoint.tools.clear();
+        Screen screen = new Screen();
+        agent(endpoint).run("Suche in Confluence nach IAR.", screen);
+        assertFalse(endpoint.calls.toString(), endpoint.calls.contains(KnowledgePages.SEARCH_TOOL));
+        assertTrue(screen.all(), screen.all().contains(ResearchAgentTurns.SEARCH_UNAVAILABLE));
+    }
+
     @Test
     public void aFailingSearchIsReportedNotDenied() {
         FakeEndpoint endpoint = new FakeEndpoint() {
