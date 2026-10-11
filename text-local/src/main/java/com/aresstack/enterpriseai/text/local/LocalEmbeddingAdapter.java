@@ -23,12 +23,16 @@ import java.util.Map;
  * {@link EmbeddingPort} für ein lokal installiertes Embedding-Modell (ONNX-Export vom Hugging Face Hub, ohne
  * Umwandlung): Tokenizer aus {@code tokenizer.json} in reinem Java, Encoder über {@link TextEncoderRuntime}, Pooling
  * und Normalisierung nach der Sentence-Transformers-Konfiguration ({@code modules.json}, {@code 1_Pooling/config.json});
- * fehlt sie, Mittelwert über die Token und L2-Normalisierung. Dimension aus {@code config.json}. Blockiert.
+ * fehlt sie, Mittelwert über die Token und L2-Normalisierung. Dimension aus {@code config.json}. E5-Modelle (Ordnername
+ * wie {@code intfloat--e5-base-v2}) bekommen wie im Sidecar aus askai-java8 je Text {@code passage: } bzw. für
+ * Suchanfragen {@code query: } vorangestellt. Blockiert.
  */
 public final class LocalEmbeddingAdapter implements EmbeddingPort {
 
     private static final int BATCH = 16;
     private static final int DEFAULT_MAX_TOKENS = 512;
+    private static final String QUERY_PREFIX = "query: ";
+    private static final String PASSAGE_PREFIX = "passage: ";
 
     private final Path directory;
     private final TextEncoderRuntime runtime;
@@ -37,6 +41,7 @@ public final class LocalEmbeddingAdapter implements EmbeddingPort {
     private final boolean normalize;
     private final int maxTokens;
     private final long padId;
+    private final boolean e5;
     private HfTokenizer tokenizer;
 
     /**
@@ -50,6 +55,7 @@ public final class LocalEmbeddingAdapter implements EmbeddingPort {
         }
         this.directory = LocalModelFiles.directory(modelRoot, modelId);
         this.runtime = runtime;
+        this.e5 = isE5(modelId);
         try {
             Map<String, Object> config = Json.read(LocalModelFiles.require(directory, "config.json"));
             LocalModelFiles.require(directory, "tokenizer.json");
@@ -81,9 +87,11 @@ public final class LocalEmbeddingAdapter implements EmbeddingPort {
             }
             this.maxTokens = maxTokens(config, tokenizerConfig);
             this.padId = Json.integer(config.get("pad_token_id"), 0);
-            this.identity = EmbeddingModelIdentity.of(modelId, dimension).withAttribute("encoding", "float")
+            EmbeddingModelIdentity base = EmbeddingModelIdentity.of(modelId, dimension).withAttribute("encoding", "float")
                     .withAttribute("catalog", catalogId).withAttribute("pooling", pooling.name().toLowerCase(Locale.ROOT))
                     .withAttribute("normalized", String.valueOf(normalize));
+            // Vektoren mit Präfix sind eine eigene Welt: ein ohne Präfix gebauter Index wird neu aufgebaut.
+            this.identity = e5 ? base.withAttribute("prefix", "query/passage") : base;
         } catch (IOException e) {
             throw new IllegalArgumentException("Lokales Embedding-Modell " + modelId + " nicht lesbar: "
                     + e.getMessage(), e);
@@ -106,6 +114,11 @@ public final class LocalEmbeddingAdapter implements EmbeddingPort {
         return limit;
     }
 
+    /** E5-Familie am Ordnernamen (Repository mit {@code /} → {@code --}): ein Namensteil {@code e5}. */
+    static boolean isE5(String modelId) {
+        return modelId != null && modelId.toLowerCase(Locale.ROOT).matches("(.*[^a-z0-9])?e5([^a-z0-9].*)?");
+    }
+
     @Override
     public EmbeddingModelIdentity modelIdentity() {
         return identity;
@@ -113,6 +126,15 @@ public final class LocalEmbeddingAdapter implements EmbeddingPort {
 
     @Override
     public EmbeddingBatch embed(List<String> texts) {
+        return embed(texts, PASSAGE_PREFIX);
+    }
+
+    @Override
+    public EmbeddingBatch embedQueries(List<String> queries) {
+        return embed(queries, QUERY_PREFIX);
+    }
+
+    private EmbeddingBatch embed(List<String> texts, String prefix) {
         if (texts == null) {
             throw new IllegalArgumentException("texts must not be null");
         }
@@ -134,9 +156,17 @@ public final class LocalEmbeddingAdapter implements EmbeddingPort {
         List<EmbeddingVector> vectors = new ArrayList<EmbeddingVector>(texts.size());
         for (int start = 0; start < texts.size(); start += BATCH) {
             List<String> part = texts.subList(start, Math.min(texts.size(), start + BATCH));
-            vectors.addAll(embedBatch(tokens, graph, part));
+            vectors.addAll(embedBatch(tokens, graph, e5 ? prefixed(part, prefix) : part));
         }
         return EmbeddingBatch.of(identity, texts.size(), vectors);
+    }
+
+    private static List<String> prefixed(List<String> texts, String prefix) {
+        List<String> prefixed = new ArrayList<String>(texts.size());
+        for (String text : texts) {
+            prefixed.add(prefix + text);
+        }
+        return prefixed;
     }
 
     private List<EmbeddingVector> embedBatch(HfTokenizer tokens, Path graph, List<String> texts) {

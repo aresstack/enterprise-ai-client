@@ -119,6 +119,11 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
         }
 
         @Override
+        public EmbeddingBatch embedQueries(List<String> queries) {
+            return current.embeddings.embedQueries(queries);
+        }
+
+        @Override
         public String toString() {
             return "LiveEmbeddings[" + current.embeddings + "]";
         }

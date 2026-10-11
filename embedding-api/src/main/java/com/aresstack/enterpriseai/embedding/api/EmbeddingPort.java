@@ -27,10 +27,20 @@ public interface EmbeddingPort {
     EmbeddingModelIdentity modelIdentity();
 
     /**
+     * Vektoren für zu indexierende Texte (Dokumente, Abschnitte).
+     *
      * @param texts Eingabetexte, nicht {@code null}, ohne {@code null}-Elemente
      * @return genau ein Vektor je Text, in Eingabereihenfolge
      * @throws IllegalArgumentException bei {@code null}-Liste oder {@code null}-Element
      * @throws EmbeddingException       bei jedem Provider-, Transport- oder Antwortfehler
      */
     EmbeddingBatch embed(List<String> texts);
+
+    /**
+     * Vektoren für Suchanfragen. Modelle, die Anfrage und Dokument unterschiedlich kodieren (E5: {@code query: } und
+     * {@code passage: }), unterscheiden hier; alle anderen rechnen wie {@link #embed(List)}. Vertrag wie dort.
+     */
+    default EmbeddingBatch embedQueries(List<String> queries) {
+        return embed(queries);
+    }
 }

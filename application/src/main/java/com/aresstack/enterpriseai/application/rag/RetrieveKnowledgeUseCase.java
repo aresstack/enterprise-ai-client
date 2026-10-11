@@ -256,7 +256,7 @@ public final class RetrieveKnowledgeUseCase {
     }
 
     private List<KnowledgeSearchHit> semanticSearch(String query, Collection<KnowledgeSourceId> filter) {
-        EmbeddingVector vector = embeddings.embed(Collections.singletonList(query)).get(0);
+        EmbeddingVector vector = embeddings.embedQueries(Collections.singletonList(query)).get(0);
         if (!space().equals(vector.identity())) {
             // Der Port hat seine Welt gewechselt; niemals in einem fremden Namespace suchen.
             throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE,
