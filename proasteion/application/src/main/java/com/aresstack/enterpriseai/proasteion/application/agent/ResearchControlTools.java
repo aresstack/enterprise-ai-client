@@ -62,6 +62,9 @@ public final class ResearchControlTools {
                     @Override
                     public McpToolResult invoke(McpToolCall call) {
                         String text = call.getString("text");
+                        if (ResearchWorkflow.isSearchTagPrompt(text)) {
+                            return McpToolResult.ok(""); // ein gelber Vorschlag: kein Auftrag, kein Übergang
+                        }
                         String started = startResearchIfAsked(host, text);
                         if (started != null) {
                             return McpToolResult.ok(started);
@@ -167,6 +170,21 @@ public final class ResearchControlTools {
                 }, McpToolParameter.string("reason", true, "Der ResearchStopReason"),
                 McpToolParameter.integer("pages", false, "Gelesene Seiten"),
                 McpToolParameter.integer("accepted", false, "Übernommene Quellen")));
+        tools.add(McpToolContribution.of("search_tag_finished",
+                "Meldet das Ende einer Suche aus einem gelben Vorschlag: ok=true setzt den Haken (schon gesucht), "
+                        + "ok=false bietet die Wiederholung an.",
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        String query = call.getString("query");
+                        if (query == null || query.trim().isEmpty()) {
+                            return McpToolResult.error("Missing argument: query");
+                        }
+                        host.searchTagFinished(query, !"false".equalsIgnoreCase(String.valueOf(call.getString("ok"))));
+                        return McpToolResult.ok("OK");
+                    }
+                }, McpToolParameter.string("query", true, "Die gesuchte Anfrage des Vorschlags"),
+                McpToolParameter.string("ok", true, "true oder false")));
         tools.add(McpToolContribution.of("research_visited",
                 "Die in allen Läufen dieses Projekts schon gelesenen Seiten (eine Adresse je Zeile); ein Folgelauf "
                         + "liest sie nicht erneut.",

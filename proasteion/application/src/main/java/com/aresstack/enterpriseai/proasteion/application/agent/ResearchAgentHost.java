@@ -785,6 +785,115 @@ public final class ResearchAgentHost {
         return dispatch(ResearchCommandType.START_RESEARCH);
     }
 
+    // ------------------------------------------------------------------ gelbe Suchvorschläge (offer_searches)
+
+    private static final String SEARCHED_FILE = "searched-queries.tsv";
+
+    /** Ein gelber Suchvorschlag mit seinem Stand. */
+    public static final class SearchTag {
+        /** Angeboten, noch nicht gesucht. */
+        public static final String OFFERED = "OFFERED";
+        /** Die Suche läuft. */
+        public static final String RUNNING = "RUNNING";
+        /** Schon gesucht (Haken). */
+        public static final String DONE = "DONE";
+        /** Die Suche ist fehlgeschlagen (Retry). */
+        public static final String FAILED = "FAILED";
+
+        private final String query;
+        private final String purpose;
+        private final String status;
+
+        public SearchTag(String query, String purpose, String status) {
+            this.query = query == null ? "" : query;
+            this.purpose = purpose == null ? "" : purpose;
+            this.status = status == null ? OFFERED : status;
+        }
+
+        public String query() {
+            return query;
+        }
+
+        public String purpose() {
+            return purpose;
+        }
+
+        public String status() {
+            return status;
+        }
+    }
+
+    /**
+     * Die gelben Suchvorschläge des Agenten ({@code offer_searches}) mit ihrem Stand, nur in der Phase Konzept
+     * (askai arch {@code ScopingComposerAccessory}: Vorschläge gibt es nur im Scoping).
+     */
+    public List<SearchTag> searchTags() {
+        ResearchConceptHost concept;
+        synchronized (this) {
+            if (conceptHost == null && readCurrentProject() == null) {
+                return Collections.emptyList();
+            }
+            ensureOpen();
+            if (!ResearchStateIds.SCOPING.equals(state.getPhaseId())) {
+                return Collections.emptyList();
+            }
+            concept = conceptHost;
+        }
+        java.util.Map<String, String> statuses = searchedQueries();
+        List<SearchTag> tags = new ArrayList<SearchTag>();
+        for (ResearchConceptHost.SearchOffer offer : concept.offeredSearches()) {
+            String status = statuses.get(searchKey(offer.query));
+            tags.add(new SearchTag(offer.query, offer.purpose, status == null ? SearchTag.OFFERED : status));
+        }
+        return tags;
+    }
+
+    /** Ein Klick auf einen gelben Vorschlag: die Suche läuft. */
+    public void searchTagStarted(String query) {
+        recordSearch(query, SearchTag.RUNNING);
+    }
+
+    /** Der Agent meldet das Ende der Suche: Haken („schon gesucht“) oder Retry. */
+    public void searchTagFinished(String query, boolean succeeded) {
+        recordSearch(query, succeeded ? SearchTag.DONE : SearchTag.FAILED);
+    }
+
+    private void recordSearch(String query, String status) {
+        String key = searchKey(query);
+        if (key.isEmpty()) {
+            return;
+        }
+        synchronized (this) {
+            ensureOpen();
+            java.util.Map<String, String> statuses = searchedQueries();
+            statuses.put(key, status);
+            StringBuilder text = new StringBuilder();
+            for (java.util.Map.Entry<String, String> entry : statuses.entrySet()) {
+                text.append(entry.getKey()).append('\t').append(entry.getValue()).append('\n');
+            }
+            writeAtomically(new File(projectDirectory, SEARCHED_FILE), text.toString());
+        }
+        fireStateChangedLater();
+    }
+
+    private synchronized java.util.Map<String, String> searchedQueries() {
+        java.util.Map<String, String> statuses = new java.util.LinkedHashMap<String, String>();
+        if (projectDirectory == null) {
+            return statuses;
+        }
+        for (String line : readLines(new File(projectDirectory, SEARCHED_FILE))) {
+            String[] parts = line.split("\t", -1);
+            if (parts.length >= 2 && !parts[0].isEmpty()) {
+                statuses.put(parts[0], parts[1]);
+            }
+        }
+        return statuses;
+    }
+
+    private static String searchKey(String query) {
+        return clean(query).toLowerCase(java.util.Locale.ROOT);
+    }
+
     // ------------------------------------------------------------------ gelesene Seiten aller Läufe
 
     private static final String VISITED_FILE = "visited-pages.txt";

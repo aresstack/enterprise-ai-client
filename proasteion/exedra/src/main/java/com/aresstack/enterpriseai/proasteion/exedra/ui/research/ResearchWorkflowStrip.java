@@ -27,8 +27,9 @@ import java.util.function.Consumer;
 /**
  * Die Benutzerführung des Recherche-Workflows über dem Composer (askai arch {@code ScopingComposerAccessory}): die vier
  * Phasen Konzept → Quellen → Gliederung → Dokument als Comic-Stufen mit dem Zustand der aktiven Phase, darunter die
- * Fortschrittszeile des Quellenlaufs und die roten Aktions-Tags des aktuellen Zustands. Die Leiste zeigt nur, was ihr
- * {@link Snapshot} sagt; ein Klick meldet die Aktions-ID. Nur auf dem EDT.
+ * Fortschrittszeile des Quellenlaufs, die gelben Suchvorschläge des Agenten (nur im Konzept; ein Klick sucht, danach
+ * Haken „schon gesucht“ oder Kreispfeil zum Wiederholen) und die roten Aktions-Tags des aktuellen Zustands. Die
+ * Leiste zeigt nur, was ihr {@link Snapshot} sagt; ein Klick meldet die Aktions-ID bzw. die Anfrage. Nur auf dem EDT.
  */
 public final class ResearchWorkflowStrip extends JPanel {
 
@@ -60,16 +61,47 @@ public final class ResearchWorkflowStrip extends JPanel {
         }
     }
 
+    /** Ein gelber Suchvorschlag; {@code status} ist OFFERED, RUNNING, DONE oder FAILED. */
+    public static final class SuggestionItem {
+        final String query;
+        final String purpose;
+        final String status;
+
+        public SuggestionItem(String query, String purpose, String status) {
+            this.query = query == null ? "" : query;
+            this.purpose = purpose == null ? "" : purpose;
+            this.status = status == null ? "OFFERED" : status;
+        }
+
+        /** Die Beschriftung des Tags: die Anfrage, mit Vermerk, wenn sie schon gesucht ist oder gerade läuft. */
+        String label() {
+            if ("DONE".equals(status)) {
+                return query + " (schon gesucht)";
+            }
+            if ("RUNNING".equals(status)) {
+                return query + " (sucht …)";
+            }
+            return query;
+        }
+    }
+
     /** Was die Leiste zeigt. */
     public static final class Snapshot {
         final List<PhaseItem> phases;
         final String progressLine;
         final List<ActionItem> actions;
+        final List<SuggestionItem> suggestions;
         final boolean busy;
 
         public Snapshot(List<PhaseItem> phases, String progressLine, List<ActionItem> actions, boolean busy) {
+            this(phases, progressLine, Collections.<SuggestionItem>emptyList(), actions, busy);
+        }
+
+        public Snapshot(List<PhaseItem> phases, String progressLine, List<SuggestionItem> suggestions,
+                        List<ActionItem> actions, boolean busy) {
             this.phases = phases == null ? Collections.<PhaseItem>emptyList() : phases;
             this.progressLine = progressLine == null ? "" : progressLine;
+            this.suggestions = suggestions == null ? Collections.<SuggestionItem>emptyList() : suggestions;
             this.actions = actions == null ? Collections.<ActionItem>emptyList() : actions;
             this.busy = busy;
         }
@@ -78,7 +110,9 @@ public final class ResearchWorkflowStrip extends JPanel {
     private final PhaseStepper stepper = new PhaseStepper();
     private final JLabel progress = new JLabel(" ");
     private final JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+    private final JPanel suggestionRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
     private Consumer<String> actionHandler;
+    private Consumer<String> searchHandler;
     private Snapshot snapshot = new Snapshot(null, null, null, false);
 
     public ResearchWorkflowStrip() {
@@ -88,10 +122,13 @@ public final class ResearchWorkflowStrip extends JPanel {
         progress.setFont(ResearchUiTypography.regular(12f));
         progress.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
         actionRow.setOpaque(false);
+        suggestionRow.setOpaque(false);
+        suggestionRow.setVisible(false);
         JPanel south = new JPanel(new BorderLayout());
         south.setOpaque(false);
         south.add(progress, BorderLayout.NORTH);
-        south.add(actionRow, BorderLayout.CENTER);
+        south.add(suggestionRow, BorderLayout.CENTER);
+        south.add(actionRow, BorderLayout.SOUTH);
         javax.swing.ToolTipManager.sharedInstance().registerComponent(stepper);
         add(stepper, BorderLayout.NORTH);
         add(south, BorderLayout.CENTER);
@@ -100,6 +137,11 @@ public final class ResearchWorkflowStrip extends JPanel {
     /** Wer eine Aktion ausführt (Aktions-ID). */
     public void setActionHandler(Consumer<String> handler) {
         this.actionHandler = handler;
+    }
+
+    /** Wer einen gelben Suchvorschlag ausführt (die Anfrage). */
+    public void setSearchHandler(Consumer<String> handler) {
+        this.searchHandler = handler;
     }
 
     public void render(Snapshot next) {
@@ -126,8 +168,59 @@ public final class ResearchWorkflowStrip extends JPanel {
             actionRow.add(button);
         }
         actionRow.setVisible(!snapshot.actions.isEmpty());
+        renderSuggestions();
         revalidate();
         repaint();
+    }
+
+    private void renderSuggestions() {
+        suggestionRow.removeAll();
+        for (final SuggestionItem suggestion : snapshot.suggestions) {
+            ResearchTagButton button = new ResearchTagButton(suggestion.label());
+            button.setName("research-search-" + suggestion.query);
+            boolean done = "DONE".equals(suggestion.status);
+            boolean failed = "FAILED".equals(suggestion.status);
+            boolean running = "RUNNING".equals(suggestion.status);
+            if (done || failed) {
+                javax.swing.Icon icon = done ? new SearchTagIcons.Check() : new SearchTagIcons.Retry();
+                button.setIcon(icon);
+                button.setDisabledIcon(icon);
+            }
+            String purpose = suggestion.purpose.isEmpty() ? "" : suggestion.purpose + " - ";
+            button.setToolTipText(done ? purpose + "Schon gesucht; die Seiten stehen im Reiter „Quellen“."
+                    : failed ? purpose + "Die Suche ist fehlgeschlagen. Klicken, um sie zu wiederholen."
+                    : running ? purpose + "Die Suche läuft." : purpose + "In den Wissensquellen suchen");
+            button.setEnabled(!done && !running && !snapshot.busy);
+            button.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent event) {
+                    if (searchHandler != null) {
+                        searchHandler.accept(suggestion.query);
+                    }
+                }
+            });
+            suggestionRow.add(button);
+        }
+        suggestionRow.setVisible(!snapshot.suggestions.isEmpty());
+    }
+
+    /** Die Beschriftungen der gelben Suchvorschläge (Tests, Barrierefreiheit). */
+    public List<String> suggestionLabels() {
+        List<String> labels = new ArrayList<String>();
+        for (SuggestionItem suggestion : snapshot.suggestions) {
+            labels.add(suggestion.label());
+        }
+        return labels;
+    }
+
+    /** Der Tag eines Suchvorschlags (Tests): klickbar, Symbol. */
+    public javax.swing.JButton suggestionButton(String query) {
+        for (java.awt.Component component : suggestionRow.getComponents()) {
+            if (("research-search-" + query).equals(component.getName())) {
+                return (javax.swing.JButton) component;
+            }
+        }
+        return null;
     }
 
     /** Die Beschriftungen der sichtbaren Aktions-Tags (Tests, Barrierefreiheit). */

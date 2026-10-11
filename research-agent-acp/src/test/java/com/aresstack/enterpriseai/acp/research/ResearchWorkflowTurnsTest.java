@@ -169,4 +169,29 @@ public class ResearchWorkflowTurnsTest {
         DirectModeAgentTest.agent(endpoint).run("Recherche starten", new DirectModeAgentTest.Screen());
         assertEquals(0, count(endpoint.calls, KnowledgePages.READ_TOOL));
     }
+
+    @Test
+    public void aYellowSuggestionSearchesExactlyItsQueryWithACardAndReportsTheOutcome() {
+        DirectModeAgentTest.FakeEndpoint endpoint = endpoint("scoping", "running");
+        DirectModeAgentTest.Screen screen = new DirectModeAgentTest.Screen();
+        DirectModeAgentTest.agent(endpoint).run("Wissenssuche: IAR Betrieb", screen);
+        assertEquals("IAR Betrieb", endpoint.lastArgs.get(KnowledgePages.SEARCH_TOOL).get("query"));
+        assertTrue(endpoint.calls.contains(KnowledgePages.READ_TOOL));
+        assertEquals("IAR Betrieb", endpoint.lastArgs.get("search_tag_finished").get("query"));
+        assertEquals("true", endpoint.lastArgs.get("search_tag_finished").get("ok"));
+        screen.callOf("Recherche in Confluence");
+
+        DirectModeAgentTest.FakeEndpoint failing = new DirectModeAgentTest.FakeEndpoint() {
+            @Override
+            public String callTool(String toolName, java.util.Map<String, Object> arguments)
+                    throws com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException {
+                if (KnowledgePages.SEARCH_TOOL.equals(toolName)) {
+                    throw new com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException("weg", false);
+                }
+                return super.callTool(toolName, arguments);
+            }
+        };
+        DirectModeAgentTest.agent(failing).run("Wissenssuche: IAR Betrieb", new DirectModeAgentTest.Screen());
+        assertEquals("false", failing.lastArgs.get("search_tag_finished").get("ok"));
+    }
 }
