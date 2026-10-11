@@ -200,6 +200,24 @@ public final class ResearchWorkflow {
         return ResearchStateIds.DRAFT.equals(host.phaseId()) && ResearchStateIds.COMPLETED.equals(host.stateId());
     }
 
+    /**
+     * Die Statuszeile des Reiters „Dokument“, solange nur ein Zwischenstand vorliegt (abgebrochener Schreiblauf);
+     * sonst leer.
+     */
+    public String documentDraftLine() {
+        if (host.hasDocument()) {
+            return "";
+        }
+        int saved = host.documentDraftSectionCount();
+        if (saved == 0) {
+            return "";
+        }
+        int total = Math.max(saved, host.outlineChapterCount());
+        String line = "Zwischenstand: " + saved + " von " + total + " Kapiteln gespeichert.";
+        return saved < total ? line + " Mit „Dokument fortsetzen“ schreibe ich ab Kapitel " + (saved + 1) + " weiter."
+                : line;
+    }
+
     /** Titel einer Phase in der Oberfläche. */
     public static String titleOf(String phaseId) {
         if (ResearchStateIds.SCOPING.equals(phaseId)) {

@@ -853,6 +853,57 @@ public final class ResearchAgentHost {
         }
     }
 
+    /**
+     * Der Zwischenstand als (unvollständiges) Dokument für den Reiter „Dokument“: die gespeicherten Kapitel mit
+     * nummerierten Belegen; {@code null} ohne Zwischenstand.
+     */
+    public ResearchDocument documentDraft() {
+        String outline = outline();
+        com.google.gson.JsonArray stored;
+        synchronized (this) {
+            if (projectDirectory == null && readCurrentProject() == null) {
+                return null;
+            }
+            stored = readDocumentDraft(outline).getAsJsonArray("sections");
+        }
+        if (stored.size() == 0) {
+            return null;
+        }
+        List<ResearchDocument.Section> sections = new ArrayList<ResearchDocument.Section>();
+        java.util.Map<String, String> passages = new java.util.LinkedHashMap<String, String>();
+        for (com.google.gson.JsonElement element : stored) {
+            com.google.gson.JsonObject section = element.getAsJsonObject();
+            sections.add(new ResearchDocument.Section(section.get("heading").getAsString(),
+                    section.get("text").getAsString()));
+            if (section.has("passages") && section.get("passages").isJsonObject()) {
+                for (java.util.Map.Entry<String, com.google.gson.JsonElement> entry
+                        : section.getAsJsonObject("passages").entrySet()) {
+                    passages.put(entry.getKey(), entry.getValue().getAsString());
+                }
+            }
+        }
+        String title = "Recherchebericht";
+        for (String line : outline.split("\\r?\\n")) {
+            if (line.trim().startsWith("# ")) {
+                title = line.trim().substring(2).trim();
+                break;
+            }
+        }
+        return ResearchDocument.fromDraft(title, outline, sections, passages, sourceRefs());
+    }
+
+    /** Wie viele Kapitel die aktuelle Gliederung hat ({@code ##}-Zeilen, wie der Agent sie liest). */
+    public int outlineChapterCount() {
+        int chapters = 0;
+        for (String line : outline().split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("## ") || trimmed.startsWith("### ")) {
+                chapters++;
+            }
+        }
+        return chapters;
+    }
+
     private com.google.gson.JsonObject readDocumentDraft(String outline) {
         ensureOpen();
         String json = readText(new File(projectDirectory, DOCUMENT_DRAFT_FILE));

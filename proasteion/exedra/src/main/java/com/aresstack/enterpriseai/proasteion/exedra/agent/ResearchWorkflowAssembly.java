@@ -115,9 +115,10 @@ public final class ResearchWorkflowAssembly {
                 final String runLine = runLine(host);
                 final String outlineText = host.outline();
                 final boolean outlineEditable = workflow.isOutlineEditable();
-                final ResearchDocument current = host.document();
+                final ResearchDocument current = shownDocument(host);
                 final String documentText = current == null ? "" : current.toMarkdown();
-                final String documentLine = documentLine(workflow, current);
+                final String draftLine = workflow.documentDraftLine();
+                final String documentLine = draftLine.isEmpty() ? documentLine(workflow, current) : draftLine;
                 uiExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
@@ -177,7 +178,7 @@ public final class ResearchWorkflowAssembly {
         document.setSourceHandler(new IntConsumer() {
             @Override
             public void accept(int number) {
-                ResearchDocument current = host.document();
+                ResearchDocument current = shownDocument(host);
                 ResearchDocument.Source source = current == null ? null : current.source(number);
                 if (source != null) {
                     opener.open(source.resourceId(), source.title());
@@ -223,6 +224,12 @@ public final class ResearchWorkflowAssembly {
         }
         return new ResearchWorkflowStrip.Snapshot(phases,
                 workflow.showsRunProgress() ? host.runStatus().describe() : "", actions, busy);
+    }
+
+    /** Das fertige Dokument, sonst der Zwischenstand eines abgebrochenen Schreiblaufs (Kapitel 1..n-1). */
+    private static ResearchDocument shownDocument(ResearchAgentHost host) {
+        ResearchDocument document = host.document();
+        return document != null ? document : host.documentDraft();
     }
 
     private static List<ResearchSourcesView.SourceItem> sourceItems(ResearchAgentHost host) {
