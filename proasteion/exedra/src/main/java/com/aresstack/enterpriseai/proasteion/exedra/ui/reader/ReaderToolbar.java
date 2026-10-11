@@ -26,9 +26,10 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 
 /**
- * Die eine Zeile unter dem Lesebereich: links die Werkzeuge (heute die Lupe), rechts „© 2026 AresStack“ an
- * derselben Stelle wie unter dem Chat. Klick auf die Lupe (oder Strg+F) klappt die Suche in derselben Zeile auf:
- * Feld, „aktueller Treffer / Gesamtzahl“, vorheriger, nächster, Schließen; das Branding ist solange ausgeblendet.
+ * Die eine Zeile unter dem Lesebereich: links die Werkzeuge (heute die Lupe), in der Mitte Zurück und Vor, rechts
+ * „© 2026 AresStack“ an derselben Stelle wie unter dem Chat. Klick auf die Lupe (oder Strg+F) klappt die Suche in derselben Zeile auf:
+ * Feld, „aktueller Treffer / Gesamtzahl“, vorheriger, nächster, Schließen; Branding und Zurück/Vor sind solange
+ * ausgeblendet.
  * Enter springt zum nächsten Treffer (bei neuem Text: neue Suche), Shift+Enter zum vorigen, Esc klappt zu.
  * Amber ist nur der Akzent der offenen Suche (Lupe und Unterkante des Felds).
  *
@@ -59,12 +60,16 @@ final class ReaderToolbar extends JPanel {
     private final ComposerButton nextButton;
     private final ComposerButton closeButton;
     private final JPanel branding = new JPanel(new BorderLayout());
+    private final JPanel navigation = new JPanel(new FlowLayout(FlowLayout.CENTER, 2, 0));
+    private final ComposerButton backButton;
+    private final ComposerButton forwardButton;
     private ReaderFind find;
     private FindState state;
     private boolean syncing;
 
     ReaderToolbar() {
-        super(new BorderLayout(4, 0));
+        super();
+        setLayout(new RowLayout());
         setOpaque(false);
         setBorder(BorderFactory.createEmptyBorder(0, CopyrightFooter.SIDE_MARGIN, CopyrightFooter.BOTTOM_MARGIN,
                 CopyrightFooter.SIDE_MARGIN));
@@ -130,9 +135,18 @@ final class ReaderToolbar extends JPanel {
         branding.setOpaque(false);
         branding.add(new CopyrightFooter(), BorderLayout.SOUTH);
 
-        add(tools, BorderLayout.WEST);
-        add(search, BorderLayout.CENTER);
-        add(branding, BorderLayout.EAST);
+        backButton = small(ComposerIcons.chevronLeft(), "Zurück (Maustaste Zurück)");
+        forwardButton = small(ComposerIcons.chevronRight(), "Vor (Maustaste Vor)");
+        backButton.setEnabled(false);
+        forwardButton.setEnabled(false);
+        navigation.setOpaque(false);
+        navigation.add(backButton);
+        navigation.add(forwardButton);
+
+        add(tools);
+        add(navigation);
+        add(search);
+        add(branding);
         expand(false);
         findButton.setEnabled(false);
     }
@@ -203,6 +217,30 @@ final class ReaderToolbar extends JPanel {
         return find.hitCount();
     }
 
+    /** Was Zurück und Vor auslösen. */
+    void setNavigation(Runnable back, Runnable forward) {
+        backButton.addActionListener(event -> back.run());
+        forwardButton.addActionListener(event -> forward.run());
+    }
+
+    /** Graut Zurück/Vor aus, wenn es nichts zum Zurück- oder Vorgehen gibt. */
+    void updateNavigation(boolean canBack, boolean canForward) {
+        backButton.setEnabled(canBack);
+        forwardButton.setEnabled(canForward);
+    }
+
+    ComposerButton backButton() {
+        return backButton;
+    }
+
+    ComposerButton forwardButton() {
+        return forwardButton;
+    }
+
+    boolean isNavigationVisible() {
+        return navigation.isVisible();
+    }
+
     boolean isSearchOpen() {
         return search.isVisible();
     }
@@ -259,6 +297,7 @@ final class ReaderToolbar extends JPanel {
     private void expand(boolean searchOpen) {
         search.setVisible(searchOpen);
         branding.setVisible(!searchOpen);
+        navigation.setVisible(!searchOpen);
         findButton.setEmphasized(searchOpen);
         // weitere Werkzeuge treten zurück, solange die Suche die Zeile braucht
         for (java.awt.Component tool : tools.getComponents()) {
@@ -292,6 +331,62 @@ final class ReaderToolbar extends JPanel {
                 action.run();
             }
         });
+    }
+
+    /**
+     * Werkzeuge links, Zurück/Vor in der Mitte der ganzen Zeile, Branding rechts (je in voller Zeilenhöhe, das
+     * Branding unten bündig); die offene Suche füllt alles rechts der Werkzeuge.
+     */
+    private final class RowLayout implements java.awt.LayoutManager {
+        private static final int GAP = 4;
+
+        @Override
+        public void addLayoutComponent(String name, java.awt.Component comp) {
+        }
+
+        @Override
+        public void removeLayoutComponent(java.awt.Component comp) {
+        }
+
+        @Override
+        public Dimension preferredLayoutSize(java.awt.Container parent) {
+            java.awt.Insets insets = parent.getInsets();
+            int width = 0;
+            int height = 0;
+            for (java.awt.Component child : parent.getComponents()) {
+                if (child.isVisible()) {
+                    Dimension preferred = child.getPreferredSize();
+                    width += preferred.width + GAP;
+                    height = Math.max(height, preferred.height);
+                }
+            }
+            return new Dimension(width + insets.left + insets.right, height + insets.top + insets.bottom);
+        }
+
+        @Override
+        public Dimension minimumLayoutSize(java.awt.Container parent) {
+            return preferredLayoutSize(parent);
+        }
+
+        @Override
+        public void layoutContainer(java.awt.Container parent) {
+            java.awt.Insets insets = parent.getInsets();
+            int left = insets.left;
+            int right = parent.getWidth() - insets.right;
+            int top = insets.top;
+            int height = Math.max(0, parent.getHeight() - insets.top - insets.bottom);
+            int toolsWidth = tools.getPreferredSize().width;
+            tools.setBounds(left, top, toolsWidth, height);
+            int brandingWidth = branding.getPreferredSize().width;
+            branding.setBounds(right - brandingWidth, top, brandingWidth, height);
+            int start = left + toolsWidth + GAP;
+            search.setBounds(start, top, Math.max(0, right - start), height);
+            int navigationWidth = navigation.getPreferredSize().width;
+            int end = (branding.isVisible() ? right - brandingWidth : right) - GAP;
+            int x = (parent.getWidth() - navigationWidth) / 2;
+            x = Math.max(start, Math.min(x, end - navigationWidth));
+            navigation.setBounds(x, top, navigationWidth, height);
+        }
     }
 
     /** Ein flaches Textfeld, das leer den grauen Platzhalter zeigt. */

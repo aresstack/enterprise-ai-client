@@ -42,7 +42,10 @@ import javax.swing.KeyStroke;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import java.awt.AWTEvent;
 import java.awt.BorderLayout;
+import java.awt.Toolkit;
+import java.awt.event.AWTEventListener;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Cursor;
@@ -60,7 +63,9 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -126,6 +131,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     static final String FAVORITE_REMOVE = "Aus den Favoriten entfernen";
     static final String IMAGES_TOOLTIP = "Alle Bilder der Seite als Diashow";
     private static final String EMPTY_CARD = "empty";
+    /** MainframeMate {@code TabbedPaneManager}: Maustasten Zurück und Vor. */
+    static final int MOUSE_BACK_BUTTON = 4;
+    static final int MOUSE_FORWARD_BUTTON = 5;
     private static final int PAGE_PADDING_TOP = 14;
     private static final String CLOSE_OVERLAY_ACTION = "reader.closeOverlay";
 
@@ -168,6 +176,19 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private int cardCounter;
     private Listener listener;
     private final ReaderToolbar toolbar = new ReaderToolbar();
+    /** Verlauf der Reiter wie MainframeMates {@code TabbedPaneManager}: zuvor aktive Reiter, per Zurück verlassene. */
+    private final Deque<Tab> backStack = new ArrayDeque<Tab>();
+    private final Deque<Tab> forwardStack = new ArrayDeque<Tab>();
+    private Tab lastActive;
+    private boolean suppressHistory;
+    private final AWTEventListener mouseNavigation = event -> {
+        if (event instanceof MouseEvent && event.getID() == MouseEvent.MOUSE_RELEASED) {
+            MouseEvent mouse = (MouseEvent) event;
+            if (mouseButton(mouse.getButton(), mouse.getComponent())) {
+                mouse.consume();
+            }
+        }
+    };
 
     public KnowledgeReaderPanel(ComicPalette palette) {
         this(palette, DesktopLinkOpener.systemDefault(), CachingMermaidImageRenderer.forChat());
@@ -234,6 +255,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         layers.add(deck, JLayeredPane.DEFAULT_LAYER);
         add(layers, BorderLayout.CENTER);
         add(toolbar, BorderLayout.SOUTH);
+        toolbar.setNavigation(this::back, this::forward);
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK),
                 "reader.find");
         getActionMap().put("reader.find", new AbstractAction() {
@@ -245,6 +267,140 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             }
         });
         refresh();
+    }
+
+    // ------------------------------------------------------------------ Zurück/Vor
+
+    /**
+     * Zurück wie {@code TabbedPaneManager.navigateTabBack()} in MainframeMate: der aktuelle Reiter geht zu (Vor öffnet
+     * ihn wieder), der zuvor aktive wird gezeigt. Eine durch einen Klick ersetzte Vorschau kommt dabei zurück
+     * (eigene Ergänzung, MainframeMate hatte keine Vorschau).
+     *
+     * @return ob zurückgegangen wurde
+     */
+    public boolean back() {
+        Tab previous = null;
+        while (!backStack.isEmpty()) {
+            Tab candidate = backStack.pop();
+            if (isOpen(candidate) || candidate.replaced && !tabs.containsKey(candidate.link.key())) {
+                previous = candidate;
+                break;
+            }
+        }
+        if (previous == null) {
+            return false;
+        }
+        Tab current = tabs.get(activeKey);
+        suppressHistory = true;
+        try {
+            if (current != null && current != previous) {
+                remove(current);
+                forwardStack.push(current);
+            }
+            showTab(previous);
+        } finally {
+            suppressHistory = false;
+        }
+        return true;
+    }
+
+    /**
+     * Vor wie {@code TabbedPaneManager.navigateTabForward()}: öffnet den zuletzt per Zurück verlassenen Reiter wieder.
+     *
+     * @return ob vorgegangen wurde
+     */
+    public boolean forward() {
+        if (forwardStack.isEmpty()) {
+            return false;
+        }
+        Tab next = forwardStack.pop();
+        Tab current = tabs.get(activeKey);
+        suppressHistory = true;
+        try {
+            if (current != null && current != next) {
+                backStack.push(current);
+            }
+            showTab(next);
+        } finally {
+            suppressHistory = false;
+        }
+        return true;
+    }
+
+    public boolean canGoBack() {
+        for (Tab tab : backStack) {
+            if (isOpen(tab) || tab.replaced && !tabs.containsKey(tab.link.key())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean canGoForward() {
+        return !forwardStack.isEmpty();
+    }
+
+    /**
+     * Die Maustasten Zurück (4) und Vor (5) irgendwo im Lesebereich, wie MainframeMates globaler Listener beim
+     * Loslassen.
+     *
+     * @return ob die Taste behandelt wurde
+     */
+    boolean mouseButton(int button, java.awt.Component source) {
+        if (source == null || !SwingUtilities.isDescendingFrom(source, this)
+                || button != MOUSE_BACK_BUTTON && button != MOUSE_FORWARD_BUTTON) {
+            return false;
+        }
+        if (button == MOUSE_BACK_BUTTON) {
+            back();
+        } else {
+            forward();
+        }
+        return true;
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        Toolkit.getDefaultToolkit().addAWTEventListener(mouseNavigation, AWTEvent.MOUSE_EVENT_MASK);
+    }
+
+    @Override
+    public void removeNotify() {
+        Toolkit.getDefaultToolkit().removeAWTEventListener(mouseNavigation);
+        super.removeNotify();
+    }
+
+    private boolean isOpen(Tab tab) {
+        return tabs.get(tab.link.key()) == tab;
+    }
+
+    /** Zeigt den Reiter; ist er zu, kommt er wieder dazu (eine andere Vorschau weicht ihm). */
+    private void showTab(Tab tab) {
+        activeKey = tab.link.key();
+        lastActive = tab;
+        if (isOpen(tab)) {
+            refresh();
+            return;
+        }
+        if (tabs.containsKey(tab.link.key())) {
+            refresh(); // dieselbe Seite ist inzwischen wieder offen
+            return;
+        }
+        tab.replaced = false;
+        if (!tab.pinned) {
+            Tab preview = previewTab();
+            if (preview != null) {
+                preview.replaced = true;
+                remove(preview);
+            }
+        }
+        tabs.put(tab.link.key(), tab);
+        if (tab.content != null) {
+            tab.content.setName(tab.card);
+            deck.add(tab.content, tab.card);
+        }
+        reorder(new ArrayList<Tab>(tabs.values()));
     }
 
     /** Klappt die Suche des aktiven Reiters auf und setzt den Cursor ins Feld (Strg+F). */
@@ -304,6 +460,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         if (!pin) {
             Tab preview = previewTab();
             if (preview != null) {
+                preview.replaced = true; // Zurück holt sie wieder
                 remove(preview);
             }
         }
@@ -539,6 +696,13 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         List<String> keys = new ArrayList<String>(tabs.keySet());
         int index = keys.indexOf(key);
         remove(tab);
+        // wie MainframeMate: ein von Hand geschlossener Reiter fällt aus dem Verlauf
+        while (backStack.remove(tab)) {
+            // alle Vorkommen
+        }
+        if (lastActive == tab) {
+            lastActive = null;
+        }
         if (key.equals(activeKey)) {
             keys.remove(index);
             activeKey = keys.isEmpty() ? null : keys.get(Math.min(index, keys.size() - 1));
@@ -1021,6 +1185,16 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         strip.setVisible(!tabs.isEmpty());
         Tab active = tabs.get(activeKey);
         cards.show(deck, active == null ? EMPTY_CARD : active.card);
+        if (!suppressHistory && lastActive != null && active != null && lastActive != active) {
+            if (isOpen(lastActive) || lastActive.replaced) {
+                backStack.push(lastActive);
+            }
+            forwardStack.clear();
+        }
+        if (active != null) {
+            lastActive = active;
+        }
+        toolbar.updateNavigation(canGoBack(), canGoForward());
         toolbar.bind(active == null ? null : active.find, active == null ? null : active.findState);
         refreshHeader();
         strip.revalidate();
@@ -1088,6 +1262,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         ReaderFind find;
         final ReaderToolbar.FindState findState = new ReaderToolbar.FindState();
         ReaderTabGroup group;
+        /** Durch einen Klick als Vorschau ersetzt; Zurück holt sie wieder. */
+        boolean replaced;
         /** Die Bilder der Seite, nur bei {@link #showHtml}. */
         ReaderImageStore images;
 
