@@ -82,7 +82,7 @@ embedding.readTimeoutMillis=60000
 |---|---|
 | `embedding.baseUrl`, `embedding.apiKeyRef` | erben vom Chat, wenn nicht gesetzt (eine Enterprise-API). |
 | `embedding.model` | Modellname (bekannt: `danielheinz/e5-base-sts-en-de`). |
-| `embedding.dimension` | Erwartete Vektorlänge; der Adapter prüft jede Antwort dagegen. Für e5-base-sts-en-de vermutlich 768 (UNVERIFIED). |
+| `embedding.dimension` | Erwartete Vektorlänge. Liefert der Dienst einheitlich eine andere Länge, übernimmt der Adapter die gelieferte (Logzeile mit beiden Werten) und der Index wechselt in den Namespace dieser Länge; uneinheitliche Längen in einer Antwort bleiben ein Fehler. Den gemessenen Wert hier eintragen, damit die Warnung beim Start entfällt. Der Einrichtungsassistent misst ihn. |
 | `embedding.inputMode` | `SINGLE_STRING` (Standard): ein Request je Text mit `"input": "<text>"`. `ARRAY_UNVERIFIED`: ein Request je Teil-Batch mit `"input": ["a", "b", …]`; erst aktivieren, wenn ein praktischer Test bestätigt, dass das Backend Arrays annimmt und je Eingabe einen Eintrag liefert. |
 | `embedding.maxBatchSize` | Größe der Teil-Batches im Array-Modus. |
 
