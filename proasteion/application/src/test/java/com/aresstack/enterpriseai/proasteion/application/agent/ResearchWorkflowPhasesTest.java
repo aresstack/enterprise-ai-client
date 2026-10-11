@@ -199,4 +199,14 @@ public class ResearchWorkflowPhasesTest {
         assertNull(host.proposeOutline("# IAR\n\n## 1. Zweck\n- Wozu\n\n## 2. Planung\n- Wann\n"));
         return host;
     }
+
+    @Test
+    public void visitedPagesAreKeptInTheProjectAcrossRestarts() throws Exception {
+        File root = folder.newFolder("v");
+        ResearchAgentHost host = host(root);
+        call(host, "research_turn_begin", "text", "IAR Einführung");
+        call(host, "research_visited_add", "urls", "knowledge:" + PAGE + "\nknowledge:" + PAGE);
+        ResearchAgentHost restarted = host(root);
+        assertEquals("knowledge:" + PAGE, call(restarted, "research_visited").getText());
+    }
 }

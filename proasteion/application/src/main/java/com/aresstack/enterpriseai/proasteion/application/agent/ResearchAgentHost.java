@@ -785,6 +785,41 @@ public final class ResearchAgentHost {
         return dispatch(ResearchCommandType.START_RESEARCH);
     }
 
+    // ------------------------------------------------------------------ gelesene Seiten aller Läufe
+
+    private static final String VISITED_FILE = "visited-pages.txt";
+
+    /**
+     * Die in allen autonomen Läufen dieses Projekts gelesenen Seiten (kanonische Adressen, askai arch
+     * {@code visitedAcrossRuns}, hier im Projekt statt im Agentenprozess): ein Folgelauf liest sie nicht erneut,
+     * auch nach einem Neustart des Agenten oder des Clients.
+     */
+    public synchronized List<String> visitedPages() {
+        if (projectDirectory == null && readCurrentProject() == null) {
+            return Collections.emptyList();
+        }
+        ensureOpen();
+        List<String> pages = new ArrayList<String>();
+        for (String line : readLines(new File(projectDirectory, VISITED_FILE))) {
+            if (!line.trim().isEmpty()) {
+                pages.add(line.trim());
+            }
+        }
+        return pages;
+    }
+
+    /** Merkt gelesene Seiten eines Laufs vor; schon bekannte zählen einmal. */
+    public synchronized void addVisitedPages(java.util.Collection<String> pages) {
+        ensureOpen();
+        LinkedHashSet<String> known = new LinkedHashSet<String>(visitedPages());
+        for (String page : pages == null ? Collections.<String>emptyList() : pages) {
+            String clean = clean(page);
+            if (!clean.isEmpty() && known.add(clean)) {
+                appendLine(new File(projectDirectory, VISITED_FILE), clean);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ Dokument-Zwischenstand (je Kapitel)
 
     private static final String DOCUMENT_DRAFT_FILE = "document-draft.json";

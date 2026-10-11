@@ -36,8 +36,9 @@ final class ResearchRun {
     private final Map<String, String> environment;
     private final AtomicBoolean cancelled;
     /**
-     * Die in allen Läufen dieses Agentenprozesses gelesenen Seiten (askai arch {@code visitedAcrossRuns}): „Weiter
-     * recherchieren“ bekommt ein frisches Budget, liest dieselben Seiten aber nicht noch einmal.
+     * Die in allen Läufen gelesenen Seiten (askai arch {@code visitedAcrossRuns}): „Weiter recherchieren“ bekommt ein
+     * frisches Budget, liest dieselben Seiten aber nicht noch einmal. Der Host hält sie im Projekt
+     * ({@code research_visited}), damit das auch nach einem Neustart des Agentenprozesses gilt.
      */
     private final java.util.Set<String> visitedAcrossRuns =
             java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<String>());
@@ -132,10 +133,11 @@ final class ResearchRun {
                 + " sources<=" + limit(budget.getMaxAcceptedSources()));
         report("STARTED", firstLine(task), "", "", loop.getProgress());
         ResearchStopReason reason;
+        visitedAcrossRuns.addAll(hostVisited());
         loop.excludeVisited(new java.util.ArrayList<String>(visitedAcrossRuns));
         try {
             reason = loop.run(task);
-            visitedAcrossRuns.addAll(loop.getProgress().getVisitedCanonicalUrls());
+            rememberVisited(loop.getProgress().getVisitedCanonicalUrls());
         } catch (RuntimeException failed) {
             card.finish(false, "fehlgeschlagen: " + ToolNarration.shorten(String.valueOf(failed.getMessage())));
             throw failed;
@@ -163,6 +165,41 @@ final class ResearchRun {
         } catch (Exception unavailable) {
             LOG.warning("[research-run] Ende nicht gemeldet: " + unavailable.getMessage());
             return summary(outcome);
+        }
+    }
+
+    /** Die im Projekt vermerkten gelesenen Seiten früherer Läufe; leer, wenn der Host sie nicht liefert. */
+    private java.util.List<String> hostVisited() {
+        java.util.List<String> pages = new java.util.ArrayList<String>();
+        try {
+            for (String line : host.call("research_visited", null).split("\r?\n")) {
+                if (!line.trim().isEmpty()) {
+                    pages.add(line.trim());
+                }
+            }
+        } catch (Exception unavailable) {
+            LOG.info("[research-run] keine gelesenen Seiten vom Host: " + unavailable.getMessage());
+        }
+        return pages;
+    }
+
+    /** Neue gelesene Seiten merken, im Prozess und im Projekt; ein Fehler hier hält nichts an. */
+    private void rememberVisited(java.util.Collection<String> visited) {
+        StringBuilder fresh = new StringBuilder();
+        for (String page : visited) {
+            if (visitedAcrossRuns.add(page)) {
+                fresh.append(page).append('\n');
+            }
+        }
+        if (fresh.length() == 0) {
+            return;
+        }
+        Map<String, Object> args = new LinkedHashMap<String, Object>();
+        args.put("urls", fresh.toString().trim());
+        try {
+            host.call("research_visited_add", args);
+        } catch (Exception unavailable) {
+            LOG.info("[research-run] gelesene Seiten nicht vermerkt: " + unavailable.getMessage());
         }
     }
 

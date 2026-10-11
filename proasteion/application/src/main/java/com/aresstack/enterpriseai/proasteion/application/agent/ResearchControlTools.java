@@ -167,6 +167,29 @@ public final class ResearchControlTools {
                 }, McpToolParameter.string("reason", true, "Der ResearchStopReason"),
                 McpToolParameter.integer("pages", false, "Gelesene Seiten"),
                 McpToolParameter.integer("accepted", false, "Übernommene Quellen")));
+        tools.add(McpToolContribution.of("research_visited",
+                "Die in allen Läufen dieses Projekts schon gelesenen Seiten (eine Adresse je Zeile); ein Folgelauf "
+                        + "liest sie nicht erneut.",
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        StringBuilder lines = new StringBuilder();
+                        for (String page : host.visitedPages()) {
+                            lines.append(page).append('\n');
+                        }
+                        return McpToolResult.ok(lines.toString().trim());
+                    }
+                }));
+        tools.add(McpToolContribution.of("research_visited_add",
+                "Merkt die gelesenen Seiten eines Laufs im Projekt vor (eine Adresse je Zeile).",
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        String urls = call.getString("urls");
+                        host.addVisitedPages(java.util.Arrays.asList((urls == null ? "" : urls).split("\\r?\\n")));
+                        return McpToolResult.ok("OK");
+                    }
+                }, McpToolParameter.string("urls", true, "Adressen, eine je Zeile")));
         tools.add(McpToolContribution.of("research_search_plan",
                 "Die Suchen des autonomen Laufs aus Konzept und Weidezaun, eine je Zeile.",
                 new McpToolHandler() {
