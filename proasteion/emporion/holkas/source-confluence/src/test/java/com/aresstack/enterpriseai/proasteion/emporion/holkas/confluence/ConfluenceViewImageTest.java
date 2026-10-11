@@ -66,6 +66,7 @@ public class ConfluenceViewImageTest {
     private URI requested;
     private Map<String, String> headers;
     private final List<URI> requests = new ArrayList<URI>();
+    private final List<URI> anonymous = new ArrayList<URI>();
     private final List<Map<String, String>> sentHeaders = new ArrayList<Map<String, String>>();
     private final Map<String, ConfluenceHttpResponse> byHost = new java.util.HashMap<String, ConfluenceHttpResponse>();
     private ConfluenceHttpResponse response;
@@ -86,7 +87,7 @@ public class ConfluenceViewImageTest {
     }
 
     private ConfluenceKnowledgeSource source(int maxAttachmentBytes) {
-        ConfluenceHttpTransport transport = (uri, sent, maxBytes) -> {
+        ConfluenceHttpTransport fake = (uri, sent, maxBytes) -> {
             requested = uri;
             headers = sent;
             requests.add(uri);
@@ -110,6 +111,19 @@ public class ConfluenceViewImageTest {
             }
             ConfluenceHttpResponse hosted = byHost.get(uri.getHost());
             return hosted != null ? hosted : response;
+        };
+        ConfluenceHttpTransport transport = new ConfluenceHttpTransport() {
+            @Override
+            public ConfluenceHttpResponse get(URI uri, Map<String, String> sent, int maxBytes) throws IOException {
+                return fake.get(uri, sent, maxBytes);
+            }
+
+            @Override
+            public ConfluenceHttpResponse getAnonymous(URI uri, Map<String, String> sent, int maxBytes)
+                    throws IOException {
+                anonymous.add(uri);
+                return fake.get(uri, sent, maxBytes);
+            }
         };
         return new ConfluenceKnowledgeSource(SourceAddress.of("confluence-dc"),
                 ConfluenceConfig.builder(URI.create(BASE)).credentialRef(RecordingSecretProvider.REF)
@@ -260,6 +274,58 @@ public class ConfluenceViewImageTest {
         assertTrue(sentHeaders.get(0).containsKey("Authorization"));
         assertFalse("Anmeldung verlässt die Confluence nie", sentHeaders.get(1).containsKey("Authorization"));
         assertEquals("image/*,*/*;q=0.8", sentHeaders.get(1).get("Accept"));
+        assertEquals("ohne Client-Zertifikat", java.util.Collections.singletonList(requests.get(1)), anonymous);
+    }
+
+    @Test
+    public void theSessionCookieNeverFollowsARedirectToAnotherHost() throws Exception {
+        response = new ConfluenceHttpResponse(302, "text/html", new byte[0], BASE + "/login.action");
+        restLogin = new ConfluenceHttpResponse(200, "application/json", "{}".getBytes(StandardCharsets.UTF_8), null,
+                java.util.Collections.singletonList("JSESSIONID=abc123"));
+        withSession = new ConfluenceHttpResponse(302, "text/html", new byte[0], "https://files.invalid/a.png");
+        byHost.put("files.invalid", new ConfluenceHttpResponse(200, "image/png", PNG));
+
+        assertArrayEquals(PNG, source().loadViewImage(IMAGE));
+
+        int last = requests.size() - 1;
+        assertEquals("files.invalid", requests.get(last).getHost());
+        assertEquals("JSESSIONID=abc123", sentHeaders.get(last - 1).get("Cookie"));
+        assertFalse(sentHeaders.get(last).containsKey("Cookie"));
+        assertFalse(sentHeaders.get(last).containsKey("Authorization"));
+        assertTrue(anonymous.contains(requests.get(last)));
+    }
+
+    @Test
+    public void notFoundIsNotRetriedWithASession() {
+        response = new ConfluenceHttpResponse(404, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(Kind.NOT_FOUND, failing().kind());
+        assertNoRestLogin();
+    }
+
+    @Test
+    public void anUnreachableConfluenceIsNotRetriedWithASession() {
+        failure = new IOException("Verbindung abgelehnt");
+
+        assertEquals(Kind.UNAVAILABLE, failing().kind());
+        assertNoRestLogin();
+    }
+
+    @Test
+    public void aFailedRestLoginIsNamedInTheReason() {
+        response = new ConfluenceHttpResponse(302, "text/html", new byte[0], BASE + "/login.action");
+        restLogin = new ConfluenceHttpResponse(401, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
+
+        KnowledgeSourceException e = failing();
+
+        assertTrue(e.getMessage(), e.getMessage().endsWith(
+                "; REST-Anmeldung für das Sitzungs-Cookie gescheitert (HTTP 401)"));
+    }
+
+    private void assertNoRestLogin() {
+        for (URI request : requests) {
+            assertFalse(request.toString(), request.getRawPath().endsWith("/rest/api/user/current"));
+        }
     }
 
     @Test

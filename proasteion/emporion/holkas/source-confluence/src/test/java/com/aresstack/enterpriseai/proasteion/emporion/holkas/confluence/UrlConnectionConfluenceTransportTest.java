@@ -31,6 +31,7 @@ public class UrlConnectionConfluenceTransportTest {
     private URI base;
     private final AtomicReference<String> seenAuthorization = new AtomicReference<String>();
     private final AtomicReference<String> seenUri = new AtomicReference<String>();
+    private final AtomicReference<String> seenCookie = new AtomicReference<String>();
     private final AtomicReference<String> seenUserAgent = new AtomicReference<String>();
     private final UrlConnectionConfluenceTransport transport =
             UrlConnectionConfluenceTransport.builder().proxy(Proxy.NO_PROXY).readTimeoutMillis(5000).build();
@@ -50,6 +51,19 @@ public class UrlConnectionConfluenceTransportTest {
         });
         server.createContext("/missing", exchange -> respond(exchange, 404, "application/json", "{\"statusCode\":404}"));
         server.createContext("/big", exchange -> respond(exchange, 200, "text/plain", new String(new char[20000]).replace('\0', 'x')));
+        server.createContext("/hop1", exchange -> {
+            exchange.getResponseHeaders().add("Set-Cookie", "A=1; Path=/");
+            exchange.getResponseHeaders().add("Set-Cookie", "B=2; HttpOnly");
+            exchange.getResponseHeaders().add("Location", "/hop2");
+            respond(exchange, 302, "text/html", "");
+        });
+        server.createContext("/hop2", exchange -> {
+            seenCookie.set(exchange.getRequestHeaders().getFirst("Cookie"));
+            exchange.getResponseHeaders().add("Set-Cookie", "A=3; Secure");
+            exchange.getResponseHeaders().add("Set-Cookie", "B=x; Max-Age=0");
+            exchange.getResponseHeaders().add("Set-Cookie", "C=4");
+            respond(exchange, 200, "application/json", "{}");
+        });
         server.start();
         base = URI.create("http://" + server.getAddress().getHostString() + ":" + server.getAddress().getPort());
     }
@@ -144,6 +158,34 @@ public class UrlConnectionConfluenceTransportTest {
                 .routes(HttpRoutePort.direct()).readTimeoutMillis(5000).build();
         assertEquals(200, direct.get(base.resolve("/ok"), headers(), 1024).status());
         assertEquals("/ok", seenUri.get());
+    }
+
+    @Test
+    public void cookiesAreCollectedOverSameHostRedirectsLaterOnesWinAndDeletionsDrop() throws IOException {
+        ConfluenceHttpResponse response = transport.get(base.resolve("/hop1"), headers(), 1024);
+
+        assertEquals(200, response.status());
+        // Reihenfolge mehrerer Set-Cookie-Header gibt HttpURLConnection nicht verlässlich wieder
+        assertEquals(new java.util.TreeSet<String>(java.util.Arrays.asList("A=3", "C=4")),
+                new java.util.TreeSet<String>(response.cookies()));
+        assertEquals("der Transport setzt selbst keine Cookies", null, seenCookie.get());
+    }
+
+    @Test
+    public void theSetCookieParserKeepsNameAndValueOnlyAndTheLastOfEachName() {
+        Map<String, java.util.List<String>> fields = new LinkedHashMap<String, java.util.List<String>>();
+        fields.put(null, Collections.singletonList("HTTP/1.1 200 OK"));
+        fields.put("set-cookie", java.util.Arrays.asList("S=1; Path=/; Secure", "S=2", "D=y; Max-Age = 0",
+                "kaputt", "=ohneName", "E=; Path=/"));
+
+        assertEquals(java.util.Arrays.asList("S=2", "D=", "E="), UrlConnectionConfluenceTransport.setCookies(fields));
+    }
+
+    @Test
+    public void theAnonymousGetUsesTheSameRouteWithoutTheClientCertificate() throws IOException {
+        ConfluenceHttpResponse response = transport.getAnonymous(base.resolve("/ok"), headers(), 1024);
+
+        assertEquals(200, response.status());
     }
 
     private static Map<String, String> headers() {

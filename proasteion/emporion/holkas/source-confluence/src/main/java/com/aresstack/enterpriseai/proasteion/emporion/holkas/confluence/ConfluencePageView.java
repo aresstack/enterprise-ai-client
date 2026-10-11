@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -171,16 +172,26 @@ final class ConfluencePageView {
             }
             Element macro = data.closest("[data-macro-name]");
             Element anchor = macro != null ? macro : data;
-            if (!anchor.select("img").isEmpty()) {
-                continue;
-            }
             String name = text(diagram, "diagramName");
             String revision = text(diagram, "revision");
             // Wie das Plugin selbst (drawio-reader.js): die Vorschau genau der eingebundenen Diagrammrevision.
             String query = revision.matches("\\d+") ? "?version=" + revision + "&api=v2" : "";
+            String src = baseUri + "download/attachments/" + owner + "/" + encodeSegment(preview) + query;
+            String alt = name.isEmpty() ? preview : name;
+            Elements present = anchor.select("img");
+            if (!present.isEmpty()) {
+                // Ein Bild als Anhang bleibt; eines mit Plugin- oder REST-Adresse (/plugins/servlet/…, /rest/drawio/…)
+                // liefert kein PNG und zeigt auf die Vorschau um.
+                for (Element img : present) {
+                    if (!img.attr("src").contains("/download/attachments/")) {
+                        img.attr("src", src).attr("alt", alt).removeAttr("srcset");
+                    }
+                }
+                continue;
+            }
             Element image = new Element("img")
-                    .attr("src", baseUri + "download/attachments/" + owner + "/" + encodeSegment(preview) + query)
-                    .attr("alt", name.isEmpty() ? preview : name)
+                    .attr("src", src)
+                    .attr("alt", alt)
                     .attr("data-linked-resource-default-alias", preview);
             anchor.after(new Element("p").appendChild(image));
         }

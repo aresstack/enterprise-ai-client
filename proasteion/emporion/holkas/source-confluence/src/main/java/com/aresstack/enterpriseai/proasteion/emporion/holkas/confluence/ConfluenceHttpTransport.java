@@ -23,4 +23,15 @@ public interface ConfluenceHttpTransport {
      * @throws IOException bei Verbindungs-, Timeout- oder Größenfehlern
      */
     ConfluenceHttpResponse get(URI uri, Map<String, String> headers, int maxBytes) throws IOException;
+
+    /**
+     * Wie {@link #get}, aber ohne Client-Zertifikat: für Ziele außerhalb der eingestellten Confluence (Weiterleitung
+     * auf einen anderen Host). Fremde Hosts bekommen weder {@code Authorization} noch Cookie noch Zertifikat.
+     * Implementierungen mit mTLS müssen diese Methode überschreiben; der Standard ist nur für Transporte ohne
+     * Zertifikat (Tests).
+     */
+    default ConfluenceHttpResponse getAnonymous(URI uri, Map<String, String> headers, int maxBytes)
+            throws IOException {
+        return get(uri, headers, maxBytes);
+    }
 }

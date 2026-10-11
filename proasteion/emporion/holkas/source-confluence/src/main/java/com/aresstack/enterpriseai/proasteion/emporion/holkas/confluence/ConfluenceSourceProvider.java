@@ -149,7 +149,8 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
         UrlConnectionConfluenceTransport.Builder transport = UrlConnectionConfluenceTransport.builder()
                 .routes(routes)
                 .connectTimeoutMillis(timeouts[0])
-                .readTimeoutMillis(timeouts[1]);
+                .readTimeoutMillis(timeouts[1])
+                .anonymousSslSocketFactory(sslSocketFactory); // fremde Hosts nie mit Client-Zertifikat
         if (userAgent != null) {
             transport.userAgent(userAgent);
         }

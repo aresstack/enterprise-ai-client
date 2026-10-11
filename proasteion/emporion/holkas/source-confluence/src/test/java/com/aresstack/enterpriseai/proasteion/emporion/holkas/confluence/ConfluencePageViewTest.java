@@ -77,6 +77,38 @@ public class ConfluencePageViewTest {
         assertEquals(BASE + "download/attachments/42/Eigen.png?version=7&api=v2", view.images.get(1).src);
     }
 
+    @Test
+    public void fourDiagramsOnAPageAreFourImagesInPageOrder() {
+        StringBuilder body = new StringBuilder();
+        String[] macros = {"drawio", "drawio-sketch", "inc-drawio", "drawio"};
+        for (int i = 0; i < macros.length; i++) {
+            body.append("<p>Abschnitt ").append(i).append("</p><div data-macro-name=\"").append(macros[i])
+                    .append("\"><div class=\"drawio-macro\"></div><div style=\"display:none\" data-diagramdata=\"")
+                    .append(diagram("Bild " + i, 40 + i, i + 1)).append("\"></div></div>");
+        }
+
+        ConfluencePageView view = ConfluencePageView.of(body.toString(), BASE);
+
+        assertEquals(4, view.images.size());
+        for (int i = 0; i < 4; i++) {
+            assertEquals(BASE + "download/attachments/" + (40 + i) + "/Bild%20" + i + ".png?version=" + (i + 1)
+                    + "&api=v2", view.images.get(i).src);
+            assertTrue(view.html, view.html.indexOf("Abschnitt " + i) < view.html.indexOf("/Bild%20" + i + ".png"));
+        }
+    }
+
+    @Test
+    public void aDrawioImageWithAPluginAddressPointsToThePreview() {
+        String body = "<div data-macro-name=\"drawio\"><img src=\"/confluence/plugins/servlet/drawio/x?pageId=42\">"
+                + "<div style=\"display:none\" data-diagramdata=\"" + diagram("Ablauf", 42, 2) + "\"></div></div>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE);
+
+        assertEquals(1, view.images.size());
+        assertEquals(BASE + "download/attachments/42/Ablauf.png?version=2&api=v2", view.images.get(0).src);
+        assertEquals("Ablauf", view.images.get(0).title);
+    }
+
     private static String diagram(String name, int owningPageId, int revision) {
         return java.util.Base64.getEncoder().encodeToString(("{\"diagramName\":\"" + name + "\",\"previewName\":\""
                 + name + ".png\",\"owningPageId\":" + owningPageId + ",\"revision\":" + revision + "}")

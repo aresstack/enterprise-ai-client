@@ -252,7 +252,8 @@ final class ConfluenceRestClient {
         ConfluenceHttpResponse response;
         for (int hop = 0; ; hop++) {
             try {
-                response = transport.get(uri, headers, maxBytes);
+                response = hop == 0 ? transport.get(uri, headers, maxBytes)
+                        : transport.getAnonymous(uri, headers, maxBytes);
             } catch (ConfluenceResponseTooLargeException e) {
                 throw fileFailure(what, uri.getRawPath(), null, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
                         what + " größer als " + maxBytes + " Bytes"));
@@ -321,10 +322,10 @@ final class ConfluenceRestClient {
             // Authorization-Header. Instanzen, die Basic nur unter /rest/ annehmen (SSO), leiten /download/ ohne
             // Sitzung auf die Anmeldung um. Darum einmal das Sitzungs-Cookie eines angemeldeten REST-Aufrufs holen
             // und das Bild damit erneut laden; das Cookie lebt nur in diesem Aufruf und wird nie geloggt.
-            String cookie = sessionCookie(session);
+            String[] missing = new String[1];
+            String cookie = sessionCookie(session, missing);
             if (cookie == null) {
-                throw new KnowledgeSourceException(first.kind(), first.getMessage()
-                        + "; Confluence setzt beim angemeldeten REST-Aufruf kein Sitzungs-Cookie", first);
+                throw new KnowledgeSourceException(first.kind(), first.getMessage() + "; " + missing[0], first);
             }
             Map<String, String> headers = new LinkedHashMap<String, String>(session.headers(IMAGE_ACCEPT));
             headers.put("Cookie", cookie);
@@ -365,20 +366,26 @@ final class ConfluenceRestClient {
 
     /**
      * Cookie-Header aus einem angemeldeten, leichten REST-Aufruf ({@code /rest/api/user/current}) oder {@code null},
-     * wenn Confluence keins setzt oder der Aufruf scheitert.
+     * wenn Confluence keins setzt oder der Aufruf scheitert; dann steht der Grund in {@code missing[0]}.
      */
-    private String sessionCookie(Session session) {
+    private String sessionCookie(Session session, String[] missing) {
         URI uri = URI.create(config.baseUrl() + "/rest/api/user/current");
         ConfluenceHttpResponse response;
         try {
             response = transport.get(uri, session.headers, config.maxResponseBytes());
         } catch (IOException e) {
             LOG.warning("[Confluence] Bild: REST-Anmeldung für Sitzungs-Cookie fehlgeschlagen (" + cause(e) + ")");
+            missing[0] = "REST-Anmeldung für das Sitzungs-Cookie nicht erreichbar (" + cause(e) + ")";
             return null;
         }
         LOG.info("[Confluence] Bild: REST-Anmeldung für Sitzungs-Cookie: status=" + response.status() + " cookies="
                 + response.cookies().size());
-        if (!response.isSuccess() || response.cookies().isEmpty()) {
+        if (!response.isSuccess()) {
+            missing[0] = "REST-Anmeldung für das Sitzungs-Cookie gescheitert (HTTP " + response.status() + ")";
+            return null;
+        }
+        if (response.cookies().isEmpty()) {
+            missing[0] = "Confluence setzt beim angemeldeten REST-Aufruf kein Sitzungs-Cookie";
             return null;
         }
         StringBuilder header = new StringBuilder();
@@ -395,7 +402,8 @@ final class ConfluenceRestClient {
         ConfluenceHttpResponse response;
         for (int hop = 0; ; hop++) {
             try {
-                response = transport.get(uri, headers, max);
+                // nach einer Weiterleitung auf einen anderen Host: ohne Anmeldung, Cookie und Client-Zertifikat
+                response = hop == 0 ? transport.get(uri, headers, max) : transport.getAnonymous(uri, headers, max);
             } catch (ConfluenceResponseTooLargeException e) {
                 throw imageFailure(uri, null, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
                         "Bild größer als " + max + " Bytes (Grenze maxAttachmentBytes)"));

@@ -28,6 +28,7 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
     private final Proxy proxy;
     private final HttpRoutePort routes;
     private final SSLSocketFactory sslSocketFactory;
+    private final SSLSocketFactory anonymousSslSocketFactory;
     private final String userAgent;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
@@ -41,6 +42,7 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
         this.proxy = builder.proxy;
         this.routes = builder.routes;
         this.sslSocketFactory = builder.sslSocketFactory;
+        this.anonymousSslSocketFactory = builder.anonymousSslSocketFactory;
         this.userAgent = builder.userAgent;
         this.connectTimeoutMillis = builder.connectTimeoutMillis;
         this.readTimeoutMillis = builder.readTimeoutMillis;
@@ -57,19 +59,52 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
      */
     @Override
     public ConfluenceHttpResponse get(URI uri, Map<String, String> headers, int maxBytes) throws IOException {
+        return get(uri, headers, maxBytes, sslSocketFactory);
+    }
+
+    /** Ohne Client-Zertifikat: nur die Vertrauensquellen ({@link Builder#anonymousSslSocketFactory}). */
+    @Override
+    public ConfluenceHttpResponse getAnonymous(URI uri, Map<String, String> headers, int maxBytes)
+            throws IOException {
+        return get(uri, headers, maxBytes, anonymousSslSocketFactory);
+    }
+
+    private ConfluenceHttpResponse get(URI uri, Map<String, String> headers, int maxBytes, SSLSocketFactory tls)
+            throws IOException {
         URI current = uri;
-        java.util.List<String> cookies = new java.util.ArrayList<String>();
+        Map<String, String> cookies = new java.util.LinkedHashMap<String, String>();
         for (int hop = 0; ; hop++) {
             String[] location = new String[1];
-            ConfluenceHttpResponse response = getOnce(current, headers, maxBytes, location);
-            cookies.addAll(response.cookies());
+            ConfluenceHttpResponse response = getOnce(current, headers, maxBytes, location, tls);
+            merge(cookies, response.cookies());
             URI next = hop < 5 ? sameHostRedirect(current, response.status(), location[0]) : null;
             if (next == null) {
-                return hop == 0 ? response : new ConfluenceHttpResponse(response.status(), response.contentType(),
-                        response.body(), response.location(), cookies);
+                return new ConfluenceHttpResponse(response.status(), response.contentType(), response.body(),
+                        response.location(), pairs(cookies));
             }
             current = next;
         }
+    }
+
+    /** Spätere Cookies gleichen Namens ersetzen frühere; ein Löschcookie (leerer Wert) entfernt den Namen. */
+    static void merge(Map<String, String> cookies, java.util.List<String> pairs) {
+        for (String pair : pairs) {
+            int eq = pair.indexOf('=');
+            String name = pair.substring(0, eq);
+            String value = pair.substring(eq + 1);
+            cookies.remove(name);
+            if (!value.isEmpty()) {
+                cookies.put(name, value);
+            }
+        }
+    }
+
+    private static java.util.List<String> pairs(Map<String, String> cookies) {
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        for (Map.Entry<String, String> cookie : cookies.entrySet()) {
+            out.add(cookie.getKey() + "=" + cookie.getValue());
+        }
+        return out;
     }
 
     static URI sameHostRedirect(URI from, int status, String location) {
@@ -100,13 +135,13 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
         return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 
-    private ConfluenceHttpResponse getOnce(URI uri, Map<String, String> headers, int maxBytes, String[] location)
-            throws IOException {
+    private ConfluenceHttpResponse getOnce(URI uri, Map<String, String> headers, int maxBytes, String[] location,
+                                           SSLSocketFactory tls) throws IOException {
         String scheme = uri.getScheme();
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
             throw new IOException("nur http/https unterstützt: " + scheme);
         }
-        HttpURLConnection connection = open(uri);
+        HttpURLConnection connection = open(uri, tls);
         try {
             connection.setRequestMethod("GET");
             connection.setInstanceFollowRedirects(false);
@@ -121,42 +156,59 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             byte[] body = stream == null ? new byte[0] : readLimited(stream, maxBytes);
             return new ConfluenceHttpResponse(status, connection.getContentType(), body, location[0],
-                    setCookies(connection));
+                    setCookies(connection.getHeaderFields()));
         } finally {
             connection.disconnect();
         }
     }
 
-    /** {@code name=wert} jedes {@code Set-Cookie}-Headers, ohne Attribute wie Path oder Expires. */
-    static java.util.List<String> setCookies(HttpURLConnection connection) {
-        java.util.List<String> cookies = new java.util.ArrayList<String>();
-        for (Map.Entry<String, java.util.List<String>> header : connection.getHeaderFields().entrySet()) {
+    /**
+     * {@code name=wert} jedes {@code Set-Cookie}-Headers, ohne Attribute wie Path oder Expires; je Name gilt das
+     * letzte. Ein Löschcookie (leerer Wert oder {@code Max-Age=0}) kommt als {@code name=} und entfernt den Namen
+     * beim Zusammenführen über Weiterleitungen.
+     */
+    static java.util.List<String> setCookies(Map<String, java.util.List<String>> headerFields) {
+        Map<String, String> cookies = new java.util.LinkedHashMap<String, String>();
+        for (Map.Entry<String, java.util.List<String>> header : headerFields.entrySet()) {
             if (header.getKey() == null || !"Set-Cookie".equalsIgnoreCase(header.getKey())) {
                 continue;
             }
             for (String value : header.getValue()) {
-                String pair = value == null ? "" : value.split(";", 2)[0].trim();
-                if (pair.indexOf('=') > 0) {
-                    cookies.add(pair);
+                String[] parts = value == null ? new String[] {""} : value.split(";");
+                String pair = parts[0].trim();
+                int eq = pair.indexOf('=');
+                if (eq <= 0) {
+                    continue;
                 }
+                boolean expired = false;
+                for (int i = 1; i < parts.length; i++) {
+                    expired |= parts[i].trim().replace(" ", "").equalsIgnoreCase("Max-Age=0");
+                }
+                String name = pair.substring(0, eq).trim();
+                cookies.remove(name);
+                cookies.put(name, expired ? "" : pair.substring(eq + 1).trim());
             }
         }
-        return cookies;
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        for (Map.Entry<String, String> cookie : cookies.entrySet()) {
+            out.add(cookie.getKey() + "=" + cookie.getValue());
+        }
+        return out;
     }
 
-    private HttpURLConnection open(URI uri) throws IOException {
-        if (sslSocketFactory != null && "https".equalsIgnoreCase(uri.getScheme())
+    private HttpURLConnection open(URI uri, SSLSocketFactory tls) throws IOException {
+        if (tls != null && tls == sslSocketFactory && "https".equalsIgnoreCase(uri.getScheme())
                 && factoryLogged.compareAndSet(false, true)) {
             LOG.info("[Confluence] TLS für " + uri.getHost() + ": " + sslSocketFactory);
         }
         if (routes != null) {
-            return RouteConnections.open(uri, routes, sslSocketFactory, userAgent);
+            return RouteConnections.open(uri, routes, tls, userAgent);
         }
         HttpURLConnection connection = (HttpURLConnection) (proxy == null
                 ? uri.toURL().openConnection()
                 : uri.toURL().openConnection(proxy));
-        if (sslSocketFactory != null && connection instanceof HttpsURLConnection) {
-            ((HttpsURLConnection) connection).setSSLSocketFactory(sslSocketFactory);
+        if (tls != null && connection instanceof HttpsURLConnection) {
+            ((HttpsURLConnection) connection).setSSLSocketFactory(tls);
         }
         if (userAgent != null) {
             connection.setRequestProperty("User-Agent", userAgent);
@@ -191,6 +243,7 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
         private Proxy proxy;
         private HttpRoutePort routes;
         private SSLSocketFactory sslSocketFactory;
+        private SSLSocketFactory anonymousSslSocketFactory;
         private String userAgent;
         private int connectTimeoutMillis = 15000;
         private int readTimeoutMillis = 60000;
@@ -216,6 +269,15 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
          */
         public Builder sslSocketFactory(SSLSocketFactory value) {
             this.sslSocketFactory = value;
+            return this;
+        }
+
+        /**
+         * TLS-Fabrik für Ziele außerhalb der eingestellten Confluence ({@link #getAnonymous}): Vertrauensquellen
+         * der Anwendung, nie ein Client-Zertifikat; {@code null} = JVM-Standard.
+         */
+        public Builder anonymousSslSocketFactory(SSLSocketFactory value) {
+            this.anonymousSslSocketFactory = value;
             return this;
         }
 
