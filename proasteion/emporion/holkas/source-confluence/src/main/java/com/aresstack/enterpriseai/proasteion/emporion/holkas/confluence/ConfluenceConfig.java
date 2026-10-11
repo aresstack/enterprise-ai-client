@@ -26,6 +26,7 @@ public final class ConfluenceConfig {
     private final int maxResponseBytes;
     private final List<String> searchSpaceKeys;
     private final boolean allowInsecureHttp;
+    private final java.nio.file.Path diagnosticsDirectory;
 
     private ConfluenceConfig(Builder builder) {
         if (builder.credentialRef != null && !builder.allowInsecureHttp
@@ -41,6 +42,7 @@ public final class ConfluenceConfig {
         this.maxAttachmentBytes = builder.maxAttachmentBytes;
         this.maxResponseBytes = builder.maxResponseBytes;
         this.searchSpaceKeys = Collections.unmodifiableList(new ArrayList<String>(builder.searchSpaceKeys));
+        this.diagnosticsDirectory = builder.diagnosticsDirectory;
     }
 
     /**
@@ -87,6 +89,14 @@ public final class ConfluenceConfig {
         return allowInsecureHttp;
     }
 
+    /**
+     * Verzeichnis für Diagnosedateien (HTML-Antworten statt Dateien) oder {@code null}: dann nur Logzeilen. Die
+     * Anwendung setzt ihr Protokollverzeichnis.
+     */
+    public java.nio.file.Path diagnosticsDirectory() {
+        return diagnosticsDirectory;
+    }
+
     @Override
     public String toString() {
         return "ConfluenceConfig[" + baseUrl + ", credentials=" + (credentialRef == null ? "keine" : credentialRef)
@@ -104,6 +114,7 @@ public final class ConfluenceConfig {
         private int maxResponseBytes = 20 * 1024 * 1024;
         private final List<String> searchSpaceKeys = new ArrayList<String>();
         private boolean allowInsecureHttp;
+        private java.nio.file.Path diagnosticsDirectory;
 
         private Builder(URI baseUrl) {
             this.baseUrl = normalize(baseUrl);
@@ -156,6 +167,12 @@ public final class ConfluenceConfig {
             if (!searchSpaceKeys.contains(spaceKey.trim())) {
                 searchSpaceKeys.add(spaceKey.trim());
             }
+            return this;
+        }
+
+        /** Siehe {@link ConfluenceConfig#diagnosticsDirectory()}; {@code null} = keine Diagnosedateien. */
+        public Builder diagnosticsDirectory(java.nio.file.Path value) {
+            this.diagnosticsDirectory = value;
             return this;
         }
 

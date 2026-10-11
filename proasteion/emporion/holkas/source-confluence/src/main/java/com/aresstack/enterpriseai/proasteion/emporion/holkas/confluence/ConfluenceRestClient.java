@@ -58,8 +58,13 @@ final class ConfluenceRestClient {
     private static final DateTimeFormatter COMPACT_OFFSET =
             DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss[.SSS]XX", Locale.ROOT);
 
+    /** So viele Diagnosedateien schreibt eine Quelle je Programmlauf höchstens. */
+    static final int MAX_DIAGNOSTIC_FILES = 5;
+
     private final ConfluenceConfig config;
     private final ConfluenceHttpTransport transport;
+    private final java.util.concurrent.atomic.AtomicInteger diagnosticFiles =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     ConfluenceRestClient(ConfluenceConfig config, ConfluenceHttpTransport transport) {
         this.config = config;
@@ -223,9 +228,11 @@ final class ConfluenceRestClient {
                 ConfluenceHttpResponse response = fetch(headers, attachment.downloadPath, "Anhang", maxBytes);
                 String received = baseMediaType(response.contentType());
                 if (received.contains("html") && !baseMediaType(attachment.mediaType).contains("html")) {
+                    String page = diagnoseHtml("Anhang", fileUri(attachment.downloadPath, response), response,
+                            headers);
                     throw fileFailure("Anhang", attachment.downloadPath, response, new KnowledgeSourceException(
                             Kind.INVALID_RESPONSE, "Anhang: erwartet " + attachment.mediaType + ", erhalten "
-                            + received + " (vermutlich eine Anmeldeseite)"));
+                            + received + " (vermutlich eine Anmeldeseite)" + page));
                 }
                 return response.body();
             }
@@ -249,9 +256,11 @@ final class ConfluenceRestClient {
                 }
                 byte[] body = response.body();
                 if (!isPdf(body) && notAnImage(response.contentType(), body) != null) {
+                    String page = baseMediaType(response.contentType()).contains("html")
+                            ? diagnoseHtml("Vorschau", fileUri(path, response), response, headers) : "";
                     throw fileFailure("Vorschau", path, response, new KnowledgeSourceException(
                             Kind.INVALID_RESPONSE, "Vorschau: erwartet PDF oder Bild, erhalten "
-                            + notAnImage(response.contentType(), body)));
+                            + notAnImage(response.contentType(), body) + page));
                 }
                 return body;
             }
@@ -509,10 +518,17 @@ final class ConfluenceRestClient {
             missing[0] = "REST-Anmeldung für das Sitzungs-Cookie nicht erreichbar (" + cause(e) + ")";
             return null;
         }
+        String[] user = currentUser(response);
         LOG.info("[Confluence] " + what + ": REST-Anmeldung für Sitzungs-Cookie: status=" + response.status() + " cookies="
-                + response.cookies().size());
+                + response.cookies().size() + " cookieNamen=" + response.cookieNames() + " benutzerTyp=" + user[0]
+                + " benutzer=" + user[1] + " (laut /rest/api/user/current)");
         if (!response.isSuccess()) {
             missing[0] = "REST-Anmeldung für das Sitzungs-Cookie gescheitert (HTTP " + response.status() + ")";
+            return null;
+        }
+        if ("anonymous".equalsIgnoreCase(user[0])) {
+            // Ein Cookie einer anonymen Sitzung ist keine Anmeldung; damit zu wiederholen hilft nicht.
+            missing[0] = "die REST-Anmeldung meldet einen anonymen Benutzer, ihr Cookie ist keine angemeldete Sitzung";
             return null;
         }
         if (response.cookies().isEmpty()) {
@@ -524,6 +540,124 @@ final class ConfluenceRestClient {
             header.append(header.length() == 0 ? "" : "; ").append(cookie);
         }
         return header.toString();
+    }
+
+    /**
+     * Typ ({@code known}/{@code anonymous}) und Benutzername aus der Antwort von {@code /rest/api/user/current}; „-“,
+     * wo die Antwort nichts sagt. Der Name steht nur im lokalen Protokoll.
+     */
+    static String[] currentUser(ConfluenceHttpResponse response) {
+        String[] user = {"-", "-"};
+        if (!response.contentType().toLowerCase(Locale.ROOT).contains("json")) {
+            user[0] = "(keine JSON-Antwort: " + baseMediaType(response.contentType()) + ")";
+            return user;
+        }
+        try {
+            JsonElement json = JsonParser.parseString(response.bodyAsUtf8());
+            if (json.isJsonObject()) {
+                String type = string(json.getAsJsonObject(), "type");
+                String name = string(json.getAsJsonObject(), "username");
+                user[0] = type == null ? "-" : type;
+                user[1] = name == null ? "-" : name;
+            }
+        } catch (RuntimeException e) {
+            user[0] = "(JSON nicht lesbar)";
+        }
+        return user;
+    }
+
+    /**
+     * Untersucht eine HTML-Antwort, die statt einer Datei kam ({@link HtmlResponseDiagnosis}): eine WARNING-Zeile
+     * mit Status, Content-Type, Länge, Adresse ohne Query, Weiterleitungen, Titel, Überschrift, Formularen, Zielhosts
+     * und den Namen (nie Werten) der gesendeten und gesetzten Cookies; dazu einmal je Quelle und Programmlauf (bis
+     * {@link #MAX_DIAGNOSTIC_FILES}) die Seite als {@code confluence-failed-download-<Zeit>.html} im
+     * Diagnoseverzeichnis, ohne Werte von Eingabefeldern. Gibt einen kurzen Zusatz für die Fehlermeldung zurück.
+     */
+    private String diagnoseHtml(String what, URI requested, ConfluenceHttpResponse response,
+                                Map<String, String> sent) {
+        URI uri = response.uri() != null ? response.uri() : requested;
+        HtmlResponseDiagnosis page;
+        try {
+            page = HtmlResponseDiagnosis.of(uri, response.body(), response.redirects());
+        } catch (RuntimeException e) {
+            LOG.warning("[Confluence] " + what + ": HTML-Antwort nicht auswertbar (" + cause(e) + ")");
+            return "";
+        }
+        String file = writeDiagnosticFile(what, uri, response, sent);
+        LOG.warning("[Confluence] " + what + ": HTML statt Datei untersucht: status=" + response.status()
+                + " contentType=" + response.contentType() + " bytes=" + response.length()
+                + " adresse=" + withoutQuery(uri.toString())
+                + " weiterleitungen=" + withoutQueries(response.redirects())
+                + " gesendet=" + sentDescription(sent)
+                + " gesetzteCookies=" + response.cookieNames()
+                + " " + page.summary()
+                + (file == null ? "" : " diagnosedatei=" + file));
+        return " [Seite: " + page.kind() + (page.title().isEmpty() ? "" : " „" + page.title() + "“") + "]";
+    }
+
+    /** Die Adresse, von der eine Datei-Antwort kam: laut Transport, sonst Basis-URL und Pfad. */
+    private URI fileUri(String path, ConfluenceHttpResponse response) {
+        if (response.uri() != null) {
+            return response.uri();
+        }
+        try {
+            return URI.create(config.baseUrl() + encodeUnsafe(path));
+        } catch (IllegalArgumentException e) {
+            return config.baseUrl();
+        }
+    }
+
+    /** Authorization-Verfahren und Cookie-Namen eines Requests, nie Werte. */
+    static String sentDescription(Map<String, String> sent) {
+        String authorization = sent.get("Authorization");
+        String scheme = authorization == null ? "-" : authorization.trim().split("\\s+")[0];
+        List<String> names = new ArrayList<String>();
+        String cookie = sent.get("Cookie");
+        if (cookie != null) {
+            for (String pair : cookie.split(";")) {
+                int eq = pair.indexOf('=');
+                names.add((eq < 0 ? pair : pair.substring(0, eq)).trim());
+            }
+        }
+        return "{authorization=" + scheme + ", cookies=" + names + ", accept=" + sent.get("Accept") + "}";
+    }
+
+    private static List<String> withoutQueries(List<String> locations) {
+        List<String> out = new ArrayList<String>();
+        for (String location : locations) {
+            out.add(withoutQuery(location));
+        }
+        return out;
+    }
+
+    private String writeDiagnosticFile(String what, URI uri, ConfluenceHttpResponse response,
+                                       Map<String, String> sent) {
+        java.nio.file.Path directory = config.diagnosticsDirectory();
+        if (directory == null || diagnosticFiles.incrementAndGet() > MAX_DIAGNOSTIC_FILES) {
+            return null;
+        }
+        String stamp = java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern(
+                "yyyyMMdd-HHmmss-SSS", Locale.ROOT));
+        java.nio.file.Path file = directory.resolve("confluence-failed-download-" + stamp + ".html");
+        String details = "enterprise-ai-client: HTML-Antwort statt Datei (" + what + ")\n"
+                + "     status=" + response.status() + " contentType=" + response.contentType() + " bytes="
+                + response.length() + "\n"
+                + "     adresse=" + withoutQuery(uri.toString()) + "\n"
+                + "     weiterleitungen=" + withoutQueries(response.redirects()) + "\n"
+                + "     gesendet=" + sentDescription(sent) + "\n"
+                + "     gesetzteCookies=" + response.cookieNames() + "\n"
+                + "     Werte von Eingabefeldern und Token-Metafeldern sind durch *** ersetzt; Header und Cookie-Werte"
+                + " stehen nicht in der Datei.";
+        try {
+            java.nio.file.Files.createDirectories(directory);
+            java.nio.file.Files.write(file, ("<!-- " + details.replace("--", "- -") + " -->\n"
+                    + HtmlResponseDiagnosis.redacted(uri, response.body()))
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return file.toString();
+        } catch (IOException | RuntimeException e) {
+            LOG.warning("[Confluence] Diagnosedatei nicht geschrieben (" + cause(e) + ")");
+            return null;
+        }
     }
 
     private byte[] fetchImage(URI requested, Map<String, String> initial) throws KnowledgeSourceException {
@@ -560,9 +694,10 @@ final class ConfluenceRestClient {
         byte[] body = response.body();
         String received = notAnImage(response.contentType(), body);
         if (received != null) {
+            String page = received.contains("html") ? diagnoseHtml("Bild", uri, response, headers) : "";
             throw imageFailure(uri, response, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
                     "Bild: erwartet Bild, erhalten " + received + " (HTTP " + response.status() + ", "
-                            + body.length + " Bytes)"));
+                            + body.length + " Bytes)" + page));
         }
         return body;
     }

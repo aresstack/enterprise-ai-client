@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.acp.solon.SolonAcpAgentConnector;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ClientCertificateConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.EmbeddingConfig;
@@ -333,7 +334,9 @@ public final class AdapterAssembly {
         providers.add(new ConfluenceSourceProvider(secrets, network.routes(), network.tls(),
                 network.current().userAgent(),
                 (alias, keyStoreFile, passwordRef) -> ClientCertificateFactory.deferred(
-                        new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network.current())));
+                        new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network.current()),
+                // HTML-Antworten statt Dateien landen zur Untersuchung neben dem Protokoll.
+                AppPaths.defaultLogDirectory()));
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry()));
         providers.add(new FtpSourceProvider(secrets));

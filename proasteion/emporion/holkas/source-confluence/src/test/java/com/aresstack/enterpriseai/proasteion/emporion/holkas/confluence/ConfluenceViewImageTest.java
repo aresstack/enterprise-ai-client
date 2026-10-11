@@ -444,8 +444,14 @@ public class ConfluenceViewImageTest {
         KnowledgeSourceException e = failing();
 
         assertTrue(e.getMessage(), e.getMessage().contains("text/html (vermutlich eine Anmeldeseite)"));
-        assertTrue(logLines.get(0), logLines.get(0).contains("url=https://sso.invalid/login "));
-        assertFalse(logLines.get(0), logLines.get(0).contains("os_destination"));
+        String failure = null;
+        for (String line : logLines) {
+            assertFalse(line, line.contains("os_destination"));
+            if (line.contains("Bild nicht geladen")) {
+                failure = failure == null ? line : failure;
+            }
+        }
+        assertTrue(String.valueOf(failure), failure != null && failure.contains("url=https://sso.invalid/login "));
     }
 
     @Test

@@ -14,6 +14,8 @@ public final class ConfluenceHttpResponse {
     private final byte[] body;
     private final String location;
     private final List<String> cookies;
+    private final java.net.URI uri;
+    private final List<String> redirects;
 
     public ConfluenceHttpResponse(int status, String contentType, byte[] body) {
         this(status, contentType, body, null);
@@ -29,6 +31,19 @@ public final class ConfluenceHttpResponse {
      *                nie geloggt oder ausgegeben
      */
     public ConfluenceHttpResponse(int status, String contentType, byte[] body, String location, List<String> cookies) {
+        this(status, contentType, body, location, cookies, null, Collections.<String>emptyList());
+    }
+
+    /**
+     * @param uri       die Adresse, von der die Antwort zuletzt kam (nach Weiterleitungen auf demselben Host) oder
+     *                  {@code null}
+     * @param redirects die Ziele der verfolgten Weiterleitungen in ihrer Reihenfolge (für die Diagnose)
+     */
+    public ConfluenceHttpResponse(int status, String contentType, byte[] body, String location, List<String> cookies,
+                                  java.net.URI uri, List<String> redirects) {
+        this.uri = uri;
+        this.redirects = redirects == null ? Collections.<String>emptyList()
+                : Collections.unmodifiableList(new ArrayList<String>(redirects));
         this.status = status;
         this.contentType = contentType == null ? "" : contentType;
         this.body = body == null ? new byte[0] : Arrays.copyOf(body, body.length);
@@ -62,6 +77,26 @@ public final class ConfluenceHttpResponse {
     /** Gesetzte Cookies als {@code name=wert}; leer, wenn keine. */
     public List<String> cookies() {
         return cookies;
+    }
+
+    /** Die Adresse, von der die Antwort zuletzt kam, oder {@code null}, wenn der Transport sie nicht nennt. */
+    public java.net.URI uri() {
+        return uri;
+    }
+
+    /** Ziele der verfolgten Weiterleitungen; leer, wenn keine. */
+    public List<String> redirects() {
+        return redirects;
+    }
+
+    /** Namen der gesetzten Cookies, ohne Werte (für Logzeilen). */
+    public List<String> cookieNames() {
+        List<String> names = new ArrayList<String>();
+        for (String cookie : cookies) {
+            int eq = cookie.indexOf('=');
+            names.add(eq < 0 ? cookie : cookie.substring(0, eq));
+        }
+        return names;
     }
 
     /** Körper als UTF-8 (Confluence liefert JSON immer in UTF-8). */

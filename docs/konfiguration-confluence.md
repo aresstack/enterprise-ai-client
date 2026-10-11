@@ -69,6 +69,16 @@ source.1.allowInsecureHttp=false
   Bild mit 401/403, Weiterleitung oder HTML, holt der Client per angemeldetem `/rest/api/user/current` das
   Sitzungs-Cookie und lädt einmal neu. Das Cookie wird weder gespeichert noch geloggt; Löschcookies und doppelte
   Namen werden beim Lesen von `Set-Cookie` berücksichtigt. Bei 404 oder Netzfehlern gibt es keinen Neuversuch.
+  Die Logzeile nennt Status, Cookie-Namen (nie Werte) sowie Typ und Benutzername aus der JSON-Antwort
+  (`benutzerTyp=known|anonymous`); meldet sie `anonymous`, gibt es keinen Neuversuch.
+- **HTML statt Datei** (Bild, Anhang, Vorschau): Der Client untersucht die Seite (`HtmlResponseDiagnosis`) und schreibt
+  eine WARNING-Zeile `[Confluence] <Vorgang>: HTML statt Datei untersucht: …` mit Status, Content-Type, Länge,
+  Adresse und Weiterleitungen ohne Query, gesendetem Authorization-Verfahren und Cookie-Namen, gesetzten Cookie-Namen,
+  Art der Seite (`TWO_FACTOR`, `CONFLUENCE_LOGIN`, `SSO`, `ERROR_PAGE`, `OTHER_FORM`, `CONFLUENCE_PAGE`, `OTHER`),
+  Titel, Überschrift, Textanfang, Formularen (Ziel, Methode, Feldnamen und -typen, Knöpfe), Meta-Refresh, Zielhosts
+  und dem Benutzer laut `ajs-remote-user`. Bis zu fünf Antworten je Quelle und Programmlauf landen als
+  `confluence-failed-download-<yyyyMMdd-HHmmss-SSS>.html` im Protokollverzeichnis (`<Anwendungsverzeichnis>/logs`),
+  mit `***` statt der Werte von Eingabefeldern und Token-Metafeldern; Header und Cookie-Werte stehen nie darin.
 - **draw.io** (`drawio`, `drawio-sketch`, `inc-drawio`, erkannt an jedem `data-diagramdata`, bevor versteckte
   Elemente entfernt werden): `previewName`, `owningPageId` (Rückfall `ceoId`) und `revision` kommen aus den
   Makrodaten, nie aus der angezeigten Seite. An der Makrostelle steht ein Bild mit der Vorschau

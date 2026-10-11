@@ -73,6 +73,7 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
             throws IOException {
         URI current = uri;
         Map<String, String> cookies = new java.util.LinkedHashMap<String, String>();
+        java.util.List<String> redirects = new java.util.ArrayList<String>();
         for (int hop = 0; ; hop++) {
             String[] location = new String[1];
             ConfluenceHttpResponse response = getOnce(current, headers, maxBytes, location, tls);
@@ -80,8 +81,9 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
             URI next = hop < 5 ? sameHostRedirect(current, response.status(), location[0]) : null;
             if (next == null) {
                 return new ConfluenceHttpResponse(response.status(), response.contentType(), response.body(),
-                        response.location(), pairs(cookies));
+                        response.location(), pairs(cookies), current, redirects);
             }
+            redirects.add(next.toString());
             current = next;
         }
     }

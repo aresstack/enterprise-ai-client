@@ -84,6 +84,7 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
     private final SSLSocketFactory sslSocketFactory;
     private final String userAgent;
     private final ClientCertificateSockets certificates;
+    private final java.nio.file.Path diagnosticsDirectory;
 
     /**
      * @param secrets          Security-Port für Benutzer/Passwort je Anfrage
@@ -94,6 +95,15 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
      */
     public ConfluenceSourceProvider(SecretProvider secrets, HttpRoutePort routes, SSLSocketFactory sslSocketFactory,
                                     String userAgent, ClientCertificateSockets certificates) {
+        this(secrets, routes, sslSocketFactory, userAgent, certificates, null);
+    }
+
+    /**
+     * @param diagnosticsDirectory Verzeichnis für Diagnosedateien (HTML-Antworten statt Dateien) oder {@code null}
+     */
+    public ConfluenceSourceProvider(SecretProvider secrets, HttpRoutePort routes, SSLSocketFactory sslSocketFactory,
+                                    String userAgent, ClientCertificateSockets certificates,
+                                    java.nio.file.Path diagnosticsDirectory) {
         if (secrets == null || certificates == null) {
             throw new IllegalArgumentException("secrets and certificates must not be null");
         }
@@ -102,6 +112,7 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
         this.sslSocketFactory = sslSocketFactory;
         this.userAgent = userAgent;
         this.certificates = certificates;
+        this.diagnosticsDirectory = diagnosticsDirectory;
     }
 
     /** Der Typ ohne Laufzeitumgebung (Beschreibung, Felder). */
@@ -139,7 +150,7 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
     @Override
     public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
-        ConfluenceConfig config = config(reader);
+        ConfluenceConfig config = config(reader, diagnosticsDirectory);
         int[] timeouts = timeouts(reader);
         Certificate certificate = certificate(reader);
         if (reader.hasProblems() || config == null) {
@@ -203,6 +214,10 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
     }
 
     private static ConfluenceConfig config(SourceSettingsReader r) {
+        return config(r, null);
+    }
+
+    private static ConfluenceConfig config(SourceSettingsReader r, java.nio.file.Path diagnosticsDirectory) {
         URI baseUrl = r.httpUri("baseUrl", true);
         SecretRef credentialRef = r.secretRef("credentialRef");
         int pageSize = r.integer("pageSize", 50, 1, 500);
@@ -221,7 +236,8 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
                     .includeAttachments(attachments)
                     .maxAttachmentBytes(maxAttachmentBytes)
                     .maxResponseBytes(maxResponseBytes)
-                    .allowInsecureHttp(allowInsecureHttp);
+                    .allowInsecureHttp(allowInsecureHttp)
+                    .diagnosticsDirectory(diagnosticsDirectory);
             for (String spaceKey : spaceKeys) {
                 builder.searchSpaceKey(spaceKey);
             }
