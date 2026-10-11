@@ -15,9 +15,6 @@ import java.util.List;
  */
 public final class ModeSwitchingChatActions implements ChatShellActions {
 
-    private static final String AGENT_IGNORES_ATTACHMENTS =
-            "Anhänge gehen im Agent-Modus noch nicht an den Agenten; die Nachricht wurde ohne sie gesendet.";
-
     private final ChatShellActions chat;
     private final AgentServiceBinding agent;
     private final ShellModeModel modes;
@@ -50,10 +47,7 @@ public final class ModeSwitchingChatActions implements ChatShellActions {
     @Override
     public void sendRequested(String text, boolean ragEnabled, List<Path> attachments) {
         if (agentMode()) {
-            if (attachments != null && !attachments.isEmpty()) {
-                model.addNotice(AGENT_IGNORES_ATTACHMENTS);
-            }
-            agent.sendRequested(text, ragEnabled);
+            agent.sendRequested(text, ragEnabled, attachments);
         } else {
             chat.sendRequested(text, ragEnabled, attachments);
         }
@@ -61,7 +55,7 @@ public final class ModeSwitchingChatActions implements ChatShellActions {
 
     @Override
     public boolean supportsAttachments() {
-        return chat.supportsAttachments();
+        return chat.supportsAttachments() || agent.supportsAttachments();
     }
 
     @Override

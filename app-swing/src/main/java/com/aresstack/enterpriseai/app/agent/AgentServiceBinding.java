@@ -7,6 +7,13 @@ import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.agent.AgentTurn;
 import com.aresstack.enterpriseai.application.agent.AgentTurnListener;
 
+import com.aresstack.enterpriseai.application.attachment.AttachmentTextExtractor;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
@@ -26,6 +33,13 @@ public final class AgentServiceBinding implements ChatShellActions {
     private final Executor uiExecutor;
     private AgentTurn runningTurn;
     private final AgentModelChoice choice;
+    private AttachmentTextExtractor extractor;
+    private Executor workExecutor;
+    /** Stop, während die Anhänge noch gelesen werden (nur UI-Thread). */
+    private boolean cancelBeforeStart;
+
+    /** Höchstens so viele Zeichen Text je Anhang gehen an den Agenten. */
+    static final int MAX_ATTACHMENT_CHARS = 30000;
 
     public AgentServiceBinding(AgentService agentService, ChatShellModel model, Executor uiExecutor) {
         this(agentService, model, uiExecutor, null);
@@ -41,6 +55,81 @@ public final class AgentServiceBinding implements ChatShellActions {
         this.model = model;
         this.uiExecutor = uiExecutor;
         this.choice = choice;
+    }
+
+    /**
+     * Anhänge im Agent-Modus: der Text jeder angehängten Datei (über denselben Extraktor wie im Chat) geht mit der
+     * Nachricht an den Agenten; gelesen wird auf {@code workExecutor}, nie auf dem UI-Thread.
+     */
+    public void enableAttachments(AttachmentTextExtractor extractor, Executor workExecutor) {
+        this.extractor = extractor;
+        this.workExecutor = workExecutor;
+    }
+
+    @Override
+    public boolean supportsAttachments() {
+        return extractor != null && workExecutor != null;
+    }
+
+    /** Muss auf dem UI-Thread gerufen werden. */
+    @Override
+    public void sendRequested(final String text, boolean ragEnabled, final List<Path> attachments) {
+        if (attachments == null || attachments.isEmpty() || !supportsAttachments()) {
+            sendRequested(text, ragEnabled);
+            return;
+        }
+        if (!model.canSend(text)) {
+            return;
+        }
+        List<String> names = new ArrayList<String>(attachments.size());
+        for (Path file : attachments) {
+            names.add(file.getFileName().toString());
+        }
+        model.addUserMessage(text, names);
+        model.beginAssistantMessage();
+        final TurnListener listener = new TurnListener();
+        final List<Path> files = new ArrayList<Path>(attachments);
+        cancelBeforeStart = false;
+        workExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                final String prompt = withAttachments(text, files, extractor);
+                uiExecutor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (cancelBeforeStart) {
+                            listener.onCancelled();
+                            return;
+                        }
+                        start(prompt, listener);
+                    }
+                });
+            }
+        });
+    }
+
+    /** Die Nachricht an den Agenten: der Text des Nutzers, danach der Inhalt jeder angehängten Datei. */
+    static String withAttachments(String text, List<Path> files, AttachmentTextExtractor extractor) {
+        StringBuilder prompt = new StringBuilder(text);
+        prompt.append("\n\nAngehängte Dateien:");
+        for (Path file : files) {
+            String name = file.getFileName().toString();
+            prompt.append("\n\n--- ").append(name).append(" ---\n");
+            try {
+                String content = extractor.extractText(name, Files.readAllBytes(file));
+                if (content == null || content.trim().isEmpty()) {
+                    prompt.append("(kein Text enthalten)");
+                } else if (content.length() > MAX_ATTACHMENT_CHARS) {
+                    prompt.append(content, 0, MAX_ATTACHMENT_CHARS).append("\n(gekürzt, ")
+                            .append(content.length()).append(" Zeichen insgesamt)");
+                } else {
+                    prompt.append(content);
+                }
+            } catch (IOException | RuntimeException unreadable) {
+                prompt.append("(nicht lesbar: ").append(unreadable.getMessage()).append(')');
+            }
+        }
+        return prompt.toString();
     }
 
     /** Der Denkaufwand aus dem Composer gilt ab der nächsten Modellanfrage des eingebauten Agenten. */
@@ -64,9 +153,12 @@ public final class AgentServiceBinding implements ChatShellActions {
         }
         model.addUserMessage(text);
         model.beginAssistantMessage();
-        TurnListener listener = new TurnListener();
+        start(text, new TurnListener());
+    }
+
+    private void start(String prompt, TurnListener listener) {
         try {
-            AgentTurn turn = agentService.send(text, listener);
+            AgentTurn turn = agentService.send(prompt, listener);
             if (!turn.isDone()) {
                 runningTurn = turn;
             }
@@ -82,6 +174,7 @@ public final class AgentServiceBinding implements ChatShellActions {
     /** Muss auf dem UI-Thread gerufen werden. */
     @Override
     public void stopRequested() {
+        cancelBeforeStart = true;
         AgentTurn turn = runningTurn;
         if (turn != null) {
             turn.cancel();

@@ -107,6 +107,9 @@ public final class ShellAssembly {
             agentService = root.agentService();
             AgentServiceBinding agentBinding = AgentModeAssembly.sharedBinding(agentService, chatModel,
                     root.uiExecutor(), root.agentModelChoice());
+            // Anhänge auch im Agent-Modus: ihr Text geht mit der Nachricht an den Agenten.
+            agentBinding.enableAttachments(new DocumentAttachmentTextExtractor(DocumentExtraction.detector(),
+                    DocumentExtraction.registry()), root.workExecutor());
             chatShell = new ChatShellPanel(chatModel,
                     new ModeSwitchingChatActions(chatActions, agentBinding, modes, chatModel),
                     root.knowledgeStatus(), palette, bubbles);
