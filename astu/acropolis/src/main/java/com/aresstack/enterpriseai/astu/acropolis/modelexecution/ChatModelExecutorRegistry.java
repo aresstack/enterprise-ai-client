@@ -5,9 +5,6 @@ import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
 import com.aresstack.enterpriseai.chat.api.ChatTask;
-import com.aresstack.enterpriseai.chat.api.ResponsesPort;
-import com.aresstack.enterpriseai.chat.api.ResponsesRequest;
-import com.aresstack.enterpriseai.chat.api.ResponsesResult;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 import com.aresstack.enterpriseai.astu.chat.ChatRequest;
 import com.aresstack.enterpriseai.astu.chat.ChatResponse;
@@ -22,32 +19,28 @@ import java.util.Map;
 /**
  * Chat-Ausführung je Modellkatalog. Das Modell einer Anfrage ({@code ChatOptions.model}, {@code [<katalog>:]<modell>})
  * oder, ohne Angabe, die gespeicherte CHAT-Auswahl bestimmt den Katalog; die Anfrage geht mit der Modellkennung ohne
- * Präfix an dessen {@link ChatCompletionPort}. {@link #chat()} und {@link #responses()} sind die gerouteten Ports, die
- * der Rest der Anwendung benutzt. Werkzeug-Chat ({@code /responses}) gibt es nur für Kataloge, die ihn anbieten.
+ * Präfix an dessen {@link ChatCompletionPort}. {@link #chat()} ist der geroutete Port, den
+ * der Rest der Anwendung benutzt.
  */
 public final class ChatModelExecutorRegistry {
 
     private final Map<String, ChatCompletionPort> chats;
-    private final Map<String, ResponsesPort> responses;
     private final List<String> knownCatalogs;
     private final String defaultCatalogId;
     private final ModelReference selected;
 
     /**
      * @param chats            Chat-Port je Katalog
-     * @param responses        Werkzeug-Chat je Katalog (Teilmenge)
      * @param knownCatalogs    alle Kataloge, deren Präfix eine Modellangabe tragen darf
      * @param defaultCatalogId Katalog einer Modellangabe ohne Präfix
      * @param selected         die gespeicherte CHAT-Auswahl oder {@code null}
      */
-    public ChatModelExecutorRegistry(Map<String, ChatCompletionPort> chats, Map<String, ResponsesPort> responses,
-                                     List<String> knownCatalogs, String defaultCatalogId, ModelReference selected) {
+    public ChatModelExecutorRegistry(Map<String, ChatCompletionPort> chats, List<String> knownCatalogs,
+                                     String defaultCatalogId, ModelReference selected) {
         if (chats == null || chats.isEmpty() || defaultCatalogId == null) {
             throw new IllegalArgumentException("chats and defaultCatalogId are required");
         }
         this.chats = Collections.unmodifiableMap(new LinkedHashMap<String, ChatCompletionPort>(chats));
-        this.responses = responses == null ? Collections.<String, ResponsesPort>emptyMap()
-                : Collections.unmodifiableMap(new LinkedHashMap<String, ResponsesPort>(responses));
         List<String> known = new ArrayList<String>(this.chats.keySet());
         if (knownCatalogs != null) {
             for (String id : knownCatalogs) {
@@ -95,33 +88,6 @@ public final class ChatModelExecutorRegistry {
             @Override
             public String toString() {
                 return "RoutedChat" + chats.keySet();
-            }
-        };
-    }
-
-    /** Der geroutete Werkzeug-Chat ({@code /responses}). */
-    public ResponsesPort responses() {
-        return new ResponsesPort() {
-            @Override
-            public ResponsesResult create(ResponsesRequest request) {
-                Target target = resolve(request.options());
-                ResponsesPort port = responses.get(target.catalogId);
-                if (port == null) {
-                    throw unsupported(target.catalogId, "Werkzeug-Chat (Anhänge lesen)");
-                }
-                ChatOptions options = withModel(request.options(), target);
-                if (options == request.options()) {
-                    return port.create(request);
-                }
-                return port.create(request.isContinuation()
-                        ? ResponsesRequest.continueWith(request.previousResponseId(), request.instructions(),
-                        request.toolOutputs(), request.tools(), options)
-                        : ResponsesRequest.start(request.instructions(), request.messages(), request.tools(), options));
-            }
-
-            @Override
-            public String toString() {
-                return "RoutedResponses" + responses.keySet();
             }
         };
     }
@@ -187,13 +153,11 @@ public final class ChatModelExecutorRegistry {
 
     private ChatCompletionException unsupported(String catalogId, String what) {
         return new ChatCompletionException(ChatErrorKind.INVALID_REQUEST, what + " ist für Modelle aus „" + catalogId
-                + "“ nicht verfügbar (lokale Modelle beantworten nur den normalen Chat; Werkzeug-Chat gibt "
-                + "es nur über die Enterprise-API)");
+                + "“ nicht verfügbar");
     }
 
     @Override
     public String toString() {
-        return "ChatModelExecutorRegistry[chat=" + chats.keySet() + ", responses=" + responses.keySet()
-                + ", selected=" + selected + "]";
+        return "ChatModelExecutorRegistry[chat=" + chats.keySet() + ", selected=" + selected + "]";
     }
 }

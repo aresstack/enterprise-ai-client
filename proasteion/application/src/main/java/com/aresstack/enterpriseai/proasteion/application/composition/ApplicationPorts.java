@@ -6,7 +6,6 @@ import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
-import com.aresstack.enterpriseai.chat.api.ResponsesPort;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
@@ -36,7 +35,6 @@ public final class ApplicationPorts implements Closeable {
     private static final Logger LOG = Logger.getLogger(ApplicationPorts.class.getName());
 
     private final ChatCompletionPort chat;
-    private final ResponsesPort responses;
     private final EmbeddingPort embeddings;
     private final Supplier<EmbeddingModelIdentity> embeddingSpace;
     private final KnowledgeIndexPort index;
@@ -62,7 +60,6 @@ public final class ApplicationPorts implements Closeable {
             throw new IllegalArgumentException("chat, embeddings, embeddingSpace, index and secrets must be given");
         }
         this.chat = builder.chat;
-        this.responses = builder.responses;
         this.embeddings = builder.embeddings;
         this.embeddingSpace = builder.embeddingSpace;
         this.index = builder.index;
@@ -83,11 +80,6 @@ public final class ApplicationPorts implements Closeable {
 
     public ChatCompletionPort chat() {
         return chat;
-    }
-
-    /** Werkzeugfähige Antworten (Tool-Calling, Dateianhänge); {@code null}: nicht verfügbar. */
-    public ResponsesPort responses() {
-        return responses;
     }
 
     public EmbeddingPort embeddings() {
@@ -223,7 +215,6 @@ public final class ApplicationPorts implements Closeable {
 
     public static final class Builder {
         private ChatCompletionPort chat;
-        private ResponsesPort responses;
         private EmbeddingPort embeddings;
         private Supplier<EmbeddingModelIdentity> embeddingSpace;
         private KnowledgeIndexPort index;
@@ -242,11 +233,6 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder chat(ChatCompletionPort value) {
             this.chat = value;
-            return this;
-        }
-
-        public Builder responses(ResponsesPort value) {
-            this.responses = value;
             return this;
         }
 

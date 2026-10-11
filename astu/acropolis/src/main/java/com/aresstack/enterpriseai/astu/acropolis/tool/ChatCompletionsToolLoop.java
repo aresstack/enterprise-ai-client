@@ -18,8 +18,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Die Werkzeug-Schleife über {@code /chat/completions} (wie {@link ToolCallingChatPort}, aber über den
- * gerouteten {@link ChatCompletionPort} statt {@code /responses}): die Anfrage geht mit den Werkzeugen der
+ * Die Werkzeug-Schleife über {@code /chat/completions} (gerouteter {@link ChatCompletionPort}): die Anfrage geht mit den Werkzeugen der
  * {@link ToolRegistry} als {@code tools} hinaus; solange die Antwort {@code tool_calls} enthält, führt die Schleife
  * sie aus, hängt Aufruf (assistant) und Ergebnis ({@code role=tool}) an den Verlauf dieser Anfrage und fragt erneut,
  * höchstens {@code maxRounds} Mal. Entscheidend sind die gelieferten {@code tool_calls}, nicht {@code finish_reason};

@@ -10,9 +10,6 @@ import com.aresstack.enterpriseai.astu.chat.ChatRequest;
 import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
 import com.aresstack.enterpriseai.chat.api.ChatTask;
-import com.aresstack.enterpriseai.chat.api.ResponsesPort;
-import com.aresstack.enterpriseai.chat.api.ResponsesRequest;
-import com.aresstack.enterpriseai.chat.api.ResponsesResult;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
@@ -69,18 +66,6 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
         }
     };
 
-    private final ResponsesPort responses = new ResponsesPort() {
-        @Override
-        public ResponsesResult create(ResponsesRequest request) {
-            return current.responses.create(request);
-        }
-
-        @Override
-        public String toString() {
-            return "LiveResponses[" + current.responses + "]";
-        }
-    };
-
     private final EmbeddingPort embeddings = new EmbeddingPort() {
         @Override
         public EmbeddingModelIdentity modelIdentity() {
@@ -115,10 +100,6 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
         return chat;
     }
 
-    ResponsesPort responses() {
-        return responses;
-    }
-
     /** Liefert je Aufruf die Welt des aktuellen Embedding-Modells; der Index-Namensraum folgt ihr. */
     EmbeddingPort embeddings() {
         return embeddings;
@@ -145,10 +126,7 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
         chats.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
         // lokale Chat-Modelle: geladen erst bei der ersten Anfrage, Modell = Ordnername der Auswahl
         chats.put(ModelsConfig.LOCAL_CATALOG_ID, new LocalChatAdapter(config.models().localModelRoot(), decoder));
-        Map<String, ResponsesPort> responsePorts = new LinkedHashMap<String, ResponsesPort>();
-        // derselbe Adapter: /responses mit Route, TLS und Token des Chats
-        responsePorts.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
-        ChatModelExecutorRegistry chatModels = new ChatModelExecutorRegistry(chats, responsePorts,
+        ChatModelExecutorRegistry chatModels = new ChatModelExecutorRegistry(chats,
                 ModelsConfig.catalogIds(), ModelsConfig.defaultCatalogId(),
                 config.models().selections().get(ModelCategory.CHAT));
 
@@ -176,7 +154,7 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
                 : unavailableEmbeddings(EmbeddingModelIdentity.of(embeddingModel.modelId(),
                 config.embedding().dimension()).withAttribute("encoding", "float")
                 .withAttribute("catalog", embeddingCatalog), localEmbeddingProblem);
-        return new Adapters(chatModels.chat(), chatModels.responses(), embeddingPort);
+        return new Adapters(chatModels.chat(), embeddingPort);
     }
 
     private static EmbeddingPort unavailableEmbeddings(final EmbeddingModelIdentity identity, final String problem) {
@@ -197,12 +175,10 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
 
     private static final class Adapters {
         final ChatCompletionPort chat;
-        final ResponsesPort responses;
         final EmbeddingPort embeddings;
 
-        Adapters(ChatCompletionPort chat, ResponsesPort responses, EmbeddingPort embeddings) {
+        Adapters(ChatCompletionPort chat, EmbeddingPort embeddings) {
             this.chat = chat;
-            this.responses = responses;
             this.embeddings = embeddings;
         }
     }

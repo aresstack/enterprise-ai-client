@@ -73,7 +73,7 @@ public final class ChatConfig {
     }
 
     /**
-     * {@code chat.tools.enabled}: jede Frage läuft mit Werkzeugen über {@code /responses}. Ohne den Schalter nur
+     * {@code chat.tools.enabled}: jede Frage läuft mit Werkzeugen über {@code /chat/completions}. Ohne den Schalter nur
      * Unterhaltungen mit Anhängen; alle anderen streamen wie bisher über {@code /chat/completions}.
      */
     public boolean toolsEnabled() {

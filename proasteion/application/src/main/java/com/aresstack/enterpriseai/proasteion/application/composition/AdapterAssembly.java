@@ -203,10 +203,9 @@ public final class AdapterAssembly {
         }
         ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
 
-        // Chat, Werkzeug-Chat und Embeddings je Katalog der Modellauswahl, neu gebunden bei jeder Änderung.
+        // Chat und Embeddings je Katalog der Modellauswahl, neu gebunden bei jeder Änderung.
         LiveModelPorts models = new LiveModelPorts(config, network.current(), secrets);
         ports.chat(models.chat());
-        ports.responses(models.responses());
         ports.liveEmbeddings(models.embeddings());
         ports.reconfiguring(models);
         ports.closing("local-models", models);
