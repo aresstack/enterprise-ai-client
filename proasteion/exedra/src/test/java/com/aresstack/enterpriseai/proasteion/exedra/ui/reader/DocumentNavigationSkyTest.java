@@ -106,6 +106,69 @@ public class DocumentNavigationSkyTest {
         assertEquals("Original unverändert", markdown(), markdown);
     }
 
+    /** Dieselben Kapitel als Confluence-Lese-Ansicht (HTML); die Navigation stammt aus dem Text der Seite. */
+    private static String html() {
+        StringBuilder html = new StringBuilder("<h1>Handbuch</h1>");
+        String[] chapters = {"Einleitung", "Installation", "Betrieb und Überwachung im laufenden Rechenzentrum",
+                "Fehlerbehebung", "Anhang"};
+        for (String chapter : chapters) {
+            html.append("<h2>").append(chapter).append("</h2>");
+            for (int i = 0; i < 6; i++) {
+                html.append("<p>").append(LONG).append(LONG).append(LONG).append("</p>");
+            }
+            html.append("<h3>").append(chapter).append(" Details</h3><p>").append(LONG).append("</p>");
+        }
+        return html.toString();
+    }
+
+    @Test
+    public void clickInTheHtmlReadingViewHitsTheHeading() throws Exception {
+        final KnowledgeReaderPanel[] holder = new KnowledgeReaderPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette());
+            ReaderLink link = ReaderLink.source("wiki", "Handbuch");
+            reader.open(link, true);
+            reader.showHtml(link.key(), html(), "https://confluence.invalid/", java.util.Collections.emptyList(),
+                    (image, done) -> done.accept(null));
+            reader.updateNavigation(link.key(), navigation(markdown()));
+            reader.setSize(700, 400);
+            for (int i = 0; i < 4; i++) {
+                reader.validate();
+                layout(reader);
+            }
+            holder[0] = reader;
+        });
+        SwingUtilities.invokeAndWait(() -> {
+            KnowledgeReaderPanel reader = holder[0];
+            DocumentNavigationSky sky = reader.navigationSky(key());
+            NavigableDocumentPage page = reader.documentPage(key());
+            ReaderHtmlView view = reader.htmlView(key());
+            assertNotNull(sky);
+            assertNotNull(view);
+            assertTrue("Banner sichtbar", sky.isVisible() && sky.coveredHeight() > 0);
+            JViewport viewport = page.scroll().getViewport();
+
+            sky.clickChapterForTest(3);
+            NavigationSection target = sky.navigation().chapters().get(3);
+            assertEquals("Fehlerbehebung", target.label());
+            assertTrue("gerollt", viewport.getViewPosition().y > 0);
+            int offset = view.headingOffset(NavigableDocumentPage.normalize("Fehlerbehebung"));
+            assertTrue(offset > 0);
+            int headingY;
+            try {
+                @SuppressWarnings("deprecation")
+                java.awt.Rectangle rect = view.modelToView(offset);
+                headingY = SwingUtilities.convertPoint(view, rect.getLocation(), viewport.getView()).y;
+            } catch (javax.swing.text.BadLocationException e) {
+                throw new AssertionError(e);
+            }
+            int below = headingY - viewport.getViewPosition().y;
+            assertTrue("Überschrift steht direkt unter dem Banner: " + below + " vs " + sky.coveredHeight(),
+                    below >= sky.coveredHeight() && below <= sky.coveredHeight() + 3 * NavigableDocumentPage.TARGET_GAP);
+            assertEquals(target.id(), sky.activeChapterId());
+        });
+    }
+
     @Test
     public void findHitLandsBelowTheBannerAndKeepsItsPosition() throws Exception {
         String markdown = markdown().replace("### Installation Details", "### Installation Zabak");

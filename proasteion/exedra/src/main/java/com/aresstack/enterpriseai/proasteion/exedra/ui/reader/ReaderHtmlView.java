@@ -144,6 +144,47 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
         return Collections.unmodifiableList(result);
     }
 
+    /**
+     * Anfang der ersten Überschrift ({@code h1}–{@code h6}), deren Text normalisiert (nur Buchstaben und Ziffern,
+     * klein) gleich {@code normalizedText} ist; {@code -1} ohne Treffer.
+     */
+    public int headingOffset(String normalizedText) {
+        if (normalizedText == null || normalizedText.isEmpty()) {
+            return -1;
+        }
+        HTMLDocument doc = (HTMLDocument) getDocument();
+        doc.readLock();
+        try {
+            return headingOffset(doc, doc.getDefaultRootElement(), normalizedText);
+        } finally {
+            doc.readUnlock();
+        }
+    }
+
+    private static int headingOffset(HTMLDocument doc, Element element, String wanted) {
+        Object name = element.getAttributes().getAttribute(StyleConstants.NameAttribute);
+        if (name == HTML.Tag.H1 || name == HTML.Tag.H2 || name == HTML.Tag.H3 || name == HTML.Tag.H4
+                || name == HTML.Tag.H5 || name == HTML.Tag.H6) {
+            try {
+                String text = doc.getText(element.getStartOffset(),
+                        element.getEndOffset() - element.getStartOffset());
+                if (wanted.equals(NavigableDocumentPage.normalize(text))) {
+                    return element.getStartOffset();
+                }
+            } catch (BadLocationException ignored) {
+                // Element ohne Text: weiter
+            }
+            return -1;
+        }
+        for (int i = 0; i < element.getElementCount(); i++) {
+            int found = headingOffset(doc, element.getElement(i), wanted);
+            if (found >= 0) {
+                return found;
+            }
+        }
+        return -1;
+    }
+
     /** Rollt zum Element mit dieser {@code id} (z. B. einer Überschrift); ohne Treffer nichts. */
     public void scrollToId(String id) {
         HTMLDocument doc = (HTMLDocument) getDocument();

@@ -214,9 +214,23 @@ final class NavigableDocumentPage extends JLayeredPane {
 
     /** Block oberster Ebene zur Startposition, darin die Zeile des Ankers. */
     private int locate(SourcePosition position) {
-        if (!(view instanceof MarkdownMessageView)) {
-            // HTML-Lese-Ansicht: ein Textdokument ohne Quell-Offsets, also über den Anker im ganzen Dokument.
-            Integer y = anchorY(view, normalize(position.anchor()));
+        if (view instanceof ReaderHtmlView) {
+            // HTML-Lese-Ansicht (FA-05: stabile DOM-Referenz bevorzugt): zuerst die Überschrift im Element-Baum, sonst
+            // der Anker im ganzen Dokument (Themenabschnitte beginnen mitten im Text).
+            ReaderHtmlView html = (ReaderHtmlView) view;
+            String anchor = normalize(position.anchor());
+            int heading = html.headingOffset(anchor);
+            if (heading >= 0) {
+                try {
+                    Rectangle rect = modelToView(html, heading);
+                    if (rect != null) {
+                        return SwingUtilities.convertPoint(html, rect.getLocation(), page).y;
+                    }
+                } catch (BadLocationException e) {
+                    // weiter über den Text
+                }
+            }
+            Integer y = anchorY(html, anchor);
             return y == null ? 0 : y;
         }
         MarkdownMessageView markdown = (MarkdownMessageView) view;
