@@ -59,7 +59,8 @@ public class MarkdownTablePanelTest {
         assertEquals("Wiki", visibleText(table, 1, 0));
         assertEquals("Zeile eins\nZeile zwei mit code & mehr", visibleText(table, 1, 1));
         // Zwei Listenpunkte brauchen zwei Zeilen: die Zeile wächst über die Standardhöhe.
-        assertTrue(table.getRowHeight(0) > table.getRowHeight(1));
+        int lineHeight = table.getFontMetrics(table.getFont()).getHeight();
+        assertTrue(table.getRowHeight(0) >= 2 * lineHeight);
 
         table.setSize(table.getPreferredSize());
         Rectangle cell = table.getCellRect(0, 0, false);
