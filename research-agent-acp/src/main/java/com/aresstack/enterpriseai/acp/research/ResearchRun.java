@@ -24,7 +24,9 @@ import java.util.logging.Logger;
  * Ein autonomer Recherche-Lauf (askai arch {@code runResearchLoop}): der {@link ResearchLoop} sucht über die
  * Wissenssuche des Hosts statt im Web, öffnet höchstens {@code agent.research.maxPages} Treffer per knowledge_read (Budget aus der
  * Umgebung, 0 = unbegrenzt) und übernimmt passende Seiten über {@code source_accept} als Quellen. Rangfolge
- * lexikalisch (BM25), solange der Client kein RERANK-Modell ausführt.
+ * lexikalisch (BM25), solange der Client kein RERANK-Modell ausführt. Der Lauf zeigt sich in derselben Recherche-Karte
+ * wie die interaktive Recherche der Phase Konzept ({@link ResearchCard#forRun}: Suchen, gelesene und übernommene
+ * Seiten gegen das Seitenbudget des Laufs); der Weidezaun begrenzt ihn.
  */
 final class ResearchRun {
 
@@ -33,6 +35,12 @@ final class ResearchRun {
     private final ResearchHostControl host;
     private final Map<String, String> environment;
     private final AtomicBoolean cancelled;
+    /**
+     * Die in allen Läufen dieses Agentenprozesses gelesenen Seiten (askai arch {@code visitedAcrossRuns}): „Weiter
+     * recherchieren“ bekommt ein frisches Budget, liest dieselben Seiten aber nicht noch einmal.
+     */
+    private final java.util.Set<String> visitedAcrossRuns =
+            java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<String>());
 
     ResearchRun(ResearchHostControl host, Map<String, String> environment, AtomicBoolean cancelled) {
         this.host = host;
@@ -50,6 +58,8 @@ final class ResearchRun {
     ResearchRunOutcome run(String task, final ResearchAgentTurns.Output output) {
         KnowledgePages pages = new KnowledgePages(host);
         ResearchRunBudget budget = EnvironmentRunBudget.from(environment);
+        final ResearchCard card = ResearchCard.forRun(output, budget.getMaxPagesVisited());
+        card.searching();
         ResearchLoop loop = new ResearchLoop(pages, host, budget, new ResearchLoopClock() {
             @Override
             public long currentTimeMillis() {
@@ -75,10 +85,18 @@ final class ResearchRun {
                 if (activity == null) {
                     return;
                 }
-                if (ResearchRunActivity.SOURCE_ACCEPTED.equals(activity.getToken())) {
-                    output.message("Quelle übernommen: " + label(activity));
-                } else if (ResearchRunActivity.READING_PAGE.equals(activity.getToken())) {
+                card.counts(progress.getPagesVisited(), progress.getAcceptedSources());
+                String token = activity.getToken();
+                if (ResearchRunActivity.SOURCE_ACCEPTED.equals(token)) {
+                    card.accepted(label(activity), activity.getUrl());
+                } else if (ResearchRunActivity.READING_PAGE.equals(token)) {
                     LOG.info("[research-run] lese " + label(activity));
+                    card.reading(label(activity), activity.getUrl());
+                } else if (ResearchRunActivity.PAGE_SKIPPED.equals(token)) {
+                    card.rejected(label(activity), activity.getUrl());
+                } else if (ResearchRunActivity.SEARCHING.equals(token)
+                        || ResearchRunActivity.SEARCHING_API.equals(token)) {
+                    card.query(activity.getSearchQuery());
                 }
                 report(activity.getToken(), activity.getSearchQuery(), activity.getPageTitle(), activity.getUrl(),
                         progress);
@@ -99,6 +117,7 @@ final class ResearchRun {
         provider.setPlan(searchPlan(), new java.util.function.Consumer<String>() {
             @Override
             public void accept(String query) {
+                card.query(query);
                 report("SEARCHING", query, "", "", running.getProgress());
             }
         });
@@ -112,8 +131,21 @@ final class ResearchRun {
         LOG.info("[research-run] start pages<=" + limit(budget.getMaxPagesVisited())
                 + " sources<=" + limit(budget.getMaxAcceptedSources()));
         report("STARTED", firstLine(task), "", "", loop.getProgress());
-        ResearchStopReason reason = loop.run(task);
-        return loop.outcome(reason);
+        ResearchStopReason reason;
+        loop.excludeVisited(new java.util.ArrayList<String>(visitedAcrossRuns));
+        try {
+            reason = loop.run(task);
+            visitedAcrossRuns.addAll(loop.getProgress().getVisitedCanonicalUrls());
+        } catch (RuntimeException failed) {
+            card.finish(false, "fehlgeschlagen: " + ToolNarration.shorten(String.valueOf(failed.getMessage())));
+            throw failed;
+        }
+        ResearchRunOutcome outcome = loop.outcome(reason);
+        card.counts(outcome.getPagesVisited(), outcome.getAcceptedSources());
+        card.finish(!failedStop(reason), reason == ResearchStopReason.USER_CANCELLED
+                ? "abgebrochen: " + outcome.getPagesVisited() + " Seiten gelesen"
+                : card.summary() + " (" + reasonText(reason) + ")");
+        return outcome;
     }
 
     /**
@@ -171,6 +203,14 @@ final class ResearchRun {
         int end = line.indexOf('\n');
         line = end < 0 ? line : line.substring(0, end);
         return line.length() > 160 ? line.substring(0, 160) + "…" : line;
+    }
+
+    /** Ein Lauf, der nicht arbeiten konnte; der Host geht danach nicht in die Freigabe. */
+    static boolean failedStop(ResearchStopReason reason) {
+        return reason == ResearchStopReason.USER_CANCELLED || reason == ResearchStopReason.MCP_UNAVAILABLE
+                || reason == ResearchStopReason.SEARCH_TECHNICAL_PROBLEM
+                || reason == ResearchStopReason.ERROR_BUDGET_EXHAUSTED
+                || reason == ResearchStopReason.SCOPE_CONTROL_UNAVAILABLE;
     }
 
     /** Die Abschlusszeile für den Chat. */

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.acp.research;
 
+import com.aresstack.enterpriseai.research.runtime.json.MiniJson;
 import com.aresstack.enterpriseai.research.runtime.loop.ToolInvoker;
 import com.aresstack.enterpriseai.research.runtime.team.ChatMessage;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
@@ -21,7 +22,10 @@ import java.util.regex.Pattern;
  * Quellen des Projekts, gelesen als Passagen aus dem Wissensindex ({@code project_search}); das Projekt hält keine
  * Textkopien. Jede Aussage des Dokuments trägt ihre Passage ({@code [[passage-id]]}), der Host nummeriert daraus
  * die Quellen. Reicht der Projektkorpus für eine Nachfrage nicht, sucht der Agent in den aktivierten Wissensquellen
- * nach ({@code knowledge_search}/{@code knowledge_read}) und übernimmt passende Seiten ins Projekt.
+ * nach (dieselbe Recherche wie in der Phase Konzept: {@link DirectAnswers} mit Recherche-Karte und Weidezaun) und
+ * übernimmt die gelesenen Seiten ins Projekt, in jeder Phase. Das Dokument entsteht Kapitel für Kapitel; jedes fertige
+ * Kapitel speichert der Host sofort ({@code document_section_save}), ein Fehler bei Kapitel n lässt 1..n-1 bestehen,
+ * und der nächste Schreibauftrag setzt bei Kapitel n fort ({@code document_draft}).
  */
 final class ResearchWriting {
 
@@ -30,6 +34,7 @@ final class ResearchWriting {
     private static final int OUTLINE_QUERIES = 6;
     private static final int SECTION_PASSAGES = 8;
     private static final int ANSWER_PASSAGES = 8;
+    /** Höchstens so viele Seiten übernimmt die Nachsuche eines Kapitels ohne Passagen (kippbar). */
     private static final int FOLLOW_UP_PAGES = 3;
     private static final int PASSAGE_CHARS = 1200;
     private static final int OUTPUT_TOKENS = 3000;
@@ -61,14 +66,27 @@ final class ResearchWriting {
         }
     }
 
+    /** Ein Kapitel konnte nicht geschrieben werden (Modell); die früheren bleiben gespeichert. */
+    static final class ChapterFailure extends Exception {
+        ChapterFailure(String message) {
+            super(message);
+        }
+    }
+
     private final ToolInvoker host;
     private final KnowledgePages pages;
     private final MainModelChat model;
+    private final DirectAnswers direct;
 
     ResearchWriting(ToolInvoker host, MainModelChat model) {
+        this(host, model, new DirectAnswers(host, model));
+    }
+
+    ResearchWriting(ToolInvoker host, MainModelChat model, DirectAnswers direct) {
         this.host = host;
         this.pages = new KnowledgePages(host);
         this.model = model;
+        this.direct = direct;
     }
 
     // ------------------------------------------------------------------ Gliederung
@@ -124,7 +142,11 @@ final class ResearchWriting {
 
     // ------------------------------------------------------------------ Dokument
 
-    /** Schreibt das Dokument Kapitel für Kapitel mit Passagen-Belegen und speichert es im Projekt. */
+    /**
+     * Schreibt das Dokument Kapitel für Kapitel mit Passagen-Belegen. Jedes fertige Kapitel geht sofort an den Host
+     * ({@code document_section_save}); scheitert ein Kapitel, bleiben die früheren gespeichert und der nächste Aufruf
+     * setzt beim gescheiterten fort. Erst das vollständige Dokument wird gespeichert ({@code document_save}).
+     */
     String document(ResearchAgentTurns.Output progress) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
         String outline = host.call("research_outline", null);
         String title = titleOf(outline);
@@ -132,50 +154,199 @@ final class ResearchWriting {
         if (chapters.isEmpty()) {
             return "Die Gliederung hat keine Kapitel; bitte ergänze sie im Reiter „Gliederung“.";
         }
-        StringBuilder json = new StringBuilder("{\"title\":").append(ResearchHostControl.quote(title))
-                .append(",\"sections\":[");
+        List<String[]> done = savedChapters(chapters);
         Map<String, String> passageResources = new LinkedHashMap<String, String>();
+        List<String> texts = new ArrayList<String>();
         StringBuilder written = new StringBuilder();
-        for (int index = 0; index < chapters.size(); index++) {
-            if (progress.isCancelled()) {
-                return "Abgebrochen; das Dokument wurde nicht gespeichert.";
-            }
+        for (String[] saved : done) {
+            texts.add(saved[1]);
+            passageResources.putAll(parsePassageMap(saved[2]));
+            written.append("## ").append(saved[0]).append("\n").append(saved[1]).append("\n\n");
+        }
+        if (!done.isEmpty() && done.size() < chapters.size()) {
+            progress.message(chaptersKept(done.size()) + " Ich setze bei Kapitel " + (done.size() + 1) + " fort.");
+        }
+        for (int index = done.size(); index < chapters.size(); index++) {
             Chapter chapter = chapters.get(index);
+            if (progress.isCancelled()) {
+                return "Abgebrochen. " + chaptersKept(index) + " Mit „Dokument fortsetzen“ geht es bei Kapitel "
+                        + (index + 1) + " weiter.";
+            }
             progress.message("Schreibe Abschnitt " + (index + 1) + " von " + chapters.size() + ": "
                     + chapter.heading);
+            Map<String, String> chapterPassages = new LinkedHashMap<String, String>();
             String text;
-            if (isOpenPointsChapter(chapter.heading)) {
-                text = openPoints(chapter, outline, written.toString());
-            } else {
-                List<Passage> passages = search(chapter.heading + " " + join(chapter.points), SECTION_PASSAGES);
-                text = section(title, chapter, passages);
-                text = toPassageMarkers(text, passages, passageResources);
+            try {
+                if (isOpenPointsChapter(chapter.heading)) {
+                    text = openPoints(chapter, outline, written.toString());
+                } else {
+                    String query = chapter.heading + " " + join(chapter.points);
+                    List<Passage> passages = search(query, SECTION_PASSAGES);
+                    if (passages.isEmpty()) {
+                        passages = followUpPassages(chapterTopic(chapter), query, progress);
+                    }
+                    text = section(title, chapter, passages);
+                    text = toPassageMarkers(text, passages, chapterPassages);
+                }
+                Map<String, Object> args = new LinkedHashMap<String, Object>();
+                args.put("index", Integer.valueOf(index));
+                args.put("heading", chapter.heading);
+                args.put("text", text);
+                args.put("passages_json", passageMapJson(chapterPassages));
+                host.call("document_section_save", args);
+            } catch (ChapterFailure failed) {
+                return chapterFailed(index, chapter, failed.getMessage());
+            } catch (ToolInvoker.ToolFailure failed) {
+                return chapterFailed(index, chapter, failed.getMessage());
             }
+            passageResources.putAll(chapterPassages);
+            texts.add(text);
             written.append("## ").append(chapter.heading).append("\n").append(text).append("\n\n");
+        }
+        StringBuilder json = new StringBuilder("{\"title\":").append(ResearchHostControl.quote(title))
+                .append(",\"sections\":[");
+        for (int index = 0; index < chapters.size(); index++) {
             if (index > 0) {
                 json.append(',');
             }
-            json.append("{\"heading\":").append(ResearchHostControl.quote(chapter.heading)).append(",\"text\":")
-                    .append(ResearchHostControl.quote(text)).append('}');
+            json.append("{\"heading\":").append(ResearchHostControl.quote(chapters.get(index).heading))
+                    .append(",\"text\":").append(ResearchHostControl.quote(texts.get(index))).append('}');
         }
-        json.append("],\"passages\":{");
-        boolean first = true;
-        for (Map.Entry<String, String> entry : passageResources.entrySet()) {
-            if (!first) {
-                json.append(',');
-            }
-            first = false;
-            json.append(ResearchHostControl.quote(entry.getKey())).append(':')
-                    .append(ResearchHostControl.quote(entry.getValue()));
-        }
-        json.append("}}");
+        json.append("],\"passages\":").append(passageMapJson(passageResources)).append('}');
         host.call("document_save", single("document_json", json.toString()));
         return "Das Dokument „" + title + "“ ist fertig (" + chapters.size() + " Abschnitte) und steht im Reiter "
                 + "„Dokument“; jede belegte Aussage verweist auf ihre Quelle. Du kannst jetzt Detailfragen stellen; "
                 + "ich suche zuerst in den Quellen dieses Projekts und bei Bedarf in den Wissensquellen nach.";
     }
 
-    private String section(String title, Chapter chapter, List<Passage> passages) {
+    /**
+     * Ein Kapitel ohne Passagen im Projektkorpus: der Agent sucht wie bei einer Nachfrage in den Wissensquellen nach,
+     * übernimmt die gelesenen Seiten ins Projekt und sucht dann erneut im Projektkorpus. Ohne Wissenssuche (oder ohne
+     * Treffer) bleibt es leer; das Kapitel sagt dann, dass die Quellen nichts enthalten.
+     */
+    private List<Passage> followUpPassages(String topic, String query, ResearchAgentTurns.Output progress)
+            throws ToolInvoker.EndpointUnavailable {
+        int added = 0;
+        try {
+            for (KnowledgePages.Hit hit : pages.search(topic, FOLLOW_UP_PAGES * 2)) {
+                if (added >= FOLLOW_UP_PAGES || progress.isCancelled()) {
+                    break;
+                }
+                Map<String, Object> read = new LinkedHashMap<String, Object>();
+                read.put("id", hit.id);
+                String page = host.call(KnowledgePages.READ_TOOL, read);
+                if (page == null || page.trim().isEmpty()) {
+                    continue;
+                }
+                Map<String, Object> add = new LinkedHashMap<String, Object>();
+                add.put("capture_id", hit.id);
+                add.put("title", hit.title);
+                add.put("url", hit.url);
+                String result = host.call("project_source_add", add);
+                if (!result.startsWith("ALREADY_ACCEPTED")) {
+                    progress.message("Neue Quelle im Projekt: " + (hit.title.isEmpty() ? hit.id : hit.title));
+                }
+                added++;
+            }
+        } catch (ToolInvoker.ToolFailure unavailable) {
+            LOG.info("[research-writing] Nachsuche nicht möglich: " + unavailable.getMessage());
+        }
+        if (added == 0) {
+            return new ArrayList<Passage>();
+        }
+        try {
+            return search(query, SECTION_PASSAGES);
+        } catch (ToolInvoker.ToolFailure unavailable) {
+            return new ArrayList<Passage>();
+        }
+    }
+
+    /** Die Suchanfrage einer Nachsuche: die Kapitelüberschrift ohne Nummer. */
+    static String chapterTopic(Chapter chapter) {
+        return chapter.heading.replaceFirst("^\\d+(\\.\\d+)*\\.?\\s*", "").trim();
+    }
+
+    /** „Kapitel 1–3 sind gespeichert.“ */
+    static String chaptersKept(int count) {
+        if (count <= 0) {
+            return "Es ist noch kein Kapitel gespeichert.";
+        }
+        return count == 1 ? "Kapitel 1 ist gespeichert." : "Kapitel 1–" + count + " sind gespeichert.";
+    }
+
+    private static String chapterFailed(int index, Chapter chapter, String reason) {
+        LOG.warning("[research-writing] Kapitel " + (index + 1) + " gescheitert: " + reason);
+        return "Kapitel " + (index + 1) + " („" + chapter.heading + "“) konnte nicht geschrieben werden: " + reason
+                + "\n\n" + chaptersKept(index) + " Mit „Dokument fortsetzen“ schreibe ich ab Kapitel " + (index + 1)
+                + " weiter.";
+    }
+
+    /**
+     * Die schon gespeicherten Kapitel ({@code heading, text, passages-JSON}), soweit sie der Reihe nach zur
+     * aktuellen Gliederung passen; ohne Zwischenstand leer.
+     */
+    private List<String[]> savedChapters(List<Chapter> chapters) throws ToolInvoker.EndpointUnavailable {
+        List<String[]> saved = new ArrayList<String[]>();
+        Object parsed;
+        try {
+            String json = host.call("document_draft", null);
+            parsed = MiniJson.parse(json == null || json.trim().isEmpty() ? "{}" : json);
+        } catch (ToolInvoker.ToolFailure unavailable) {
+            return saved;
+        } catch (RuntimeException unreadable) {
+            return saved;
+        }
+        if (!(parsed instanceof Map) || !(((Map<?, ?>) parsed).get("sections") instanceof List)) {
+            return saved;
+        }
+        List<?> sections = (List<?>) ((Map<?, ?>) parsed).get("sections");
+        for (int index = 0; index < sections.size() && index < chapters.size(); index++) {
+            if (!(sections.get(index) instanceof Map)) {
+                break;
+            }
+            Map<?, ?> section = (Map<?, ?>) sections.get(index);
+            Object text = section.get("text");
+            if (!chapters.get(index).heading.equals(String.valueOf(section.get("heading")))
+                    || !(text instanceof String)) {
+                break;
+            }
+            Map<String, String> passages = new LinkedHashMap<String, String>();
+            if (section.get("passages") instanceof Map) {
+                for (Map.Entry<?, ?> entry : ((Map<?, ?>) section.get("passages")).entrySet()) {
+                    passages.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+                }
+            }
+            saved.add(new String[]{chapters.get(index).heading, (String) text, passageMapJson(passages)});
+        }
+        return saved;
+    }
+
+    private static Map<String, String> parsePassageMap(String json) {
+        Map<String, String> map = new LinkedHashMap<String, String>();
+        Object parsed;
+        try {
+            parsed = MiniJson.parse(json);
+        } catch (RuntimeException unreadable) {
+            return map;
+        }
+        if (parsed instanceof Map) {
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) parsed).entrySet()) {
+                map.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+            }
+        }
+        return map;
+    }
+
+    private static String passageMapJson(Map<String, String> passages) {
+        StringBuilder json = new StringBuilder("{");
+        for (Map.Entry<String, String> entry : passages.entrySet()) {
+            json.append(json.length() > 1 ? "," : "").append(ResearchHostControl.quote(entry.getKey())).append(':')
+                    .append(ResearchHostControl.quote(entry.getValue()));
+        }
+        return json.append('}').toString();
+    }
+
+    private String section(String title, Chapter chapter, List<Passage> passages) throws ChapterFailure {
         String system = "Du schreibst einen Abschnitt eines ausführlichen Rechercheberichts auf Deutsch. Nutze "
                 + "AUSSCHLIESSLICH die nummerierten Passagen. Belege jede Aussage direkt am Satzende mit der Passage, "
                 + "z. B. [P2] oder [P1][P3]. Erfinde nichts. Nenne Namen, Organisationseinheiten, Termine und "
@@ -192,61 +363,65 @@ final class ResearchWriting {
         }
         user.append("\nPASSAGEN:\n").append(passages.isEmpty() ? "(keine passenden Passagen in den Quellen)\n"
                 : render(passages, true));
-        String text = clean(complete(system, user.toString(), 0.2d));
+        String text = clean(completeOrFail(system, user.toString(), 0.2d));
         return text.isEmpty() ? "Die Quellen des Projekts enthalten zu diesem Abschnitt keine Angaben." : text;
     }
 
-    private String openPoints(Chapter chapter, String outline, String written) {
+    private String openPoints(Chapter chapter, String outline, String written) throws ChapterFailure {
         String system = "Du prüfst einen Rechercheberichts-Entwurf auf Lücken. Liste auf Deutsch knapp als "
                 + "Aufzählung, welche Leitfragen der Gliederung die Quellen nicht oder nur teilweise beantworten und "
                 + "welche Informationen fehlen. Erfinde keine Antworten.";
-        String text = clean(complete(system, "GLIEDERUNG:\n" + outline + "\n\nENTWURF:\n" + written, 0.1d));
+        String text = clean(completeOrFail(system, "GLIEDERUNG:\n" + outline + "\n\nENTWURF:\n" + written, 0.1d));
         return text.isEmpty() ? "Keine offenen Punkte festgestellt." : text;
     }
 
     // ------------------------------------------------------------------ Nachfragen
 
     /**
-     * Beantwortet eine Frage aus dem Quellenkorpus des Projekts. Reicht er nicht, sucht der Agent in den aktivierten
-     * Wissensquellen nach, übernimmt passende Seiten (nur in der Phase Dokument) und antwortet erneut.
+     * Beantwortet eine Frage zuerst aus dem Quellenkorpus des Projekts. Reicht er nicht, recherchiert der Agent in
+     * den aktivierten Wissensquellen nach (dieselbe Recherche wie in der Phase Konzept, mit Karte, Weidezaun und
+     * Übernahme der gelesenen Seiten ins Projekt), in jeder Phase.
+     *
+     * @param searchAvailable ob die Wissenssuche angeboten wird; ohne sie bleibt es beim Projektkorpus
      */
-    String answer(String question, boolean mayAddSources, ResearchAgentTurns.Output progress)
+    String answer(String question, boolean searchAvailable, ResearchAgentTurns.Output progress)
             throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
+        String fromCorpus = corpusAnswer(question);
+        if (fromCorpus != null) {
+            return fromCorpus;
+        }
+        if (progress.isCancelled()) {
+            return "Abgebrochen.";
+        }
+        if (!searchAvailable) {
+            return "Die Quellen dieses Projekts beantworten das nicht, und die Wissenssuche ist gerade nicht aktiv. "
+                    + "Prüfe in den Einstellungen unter „Tools“, ob knowledge_search und knowledge_read aktiv sind.";
+        }
+        progress.message("Die Quellen des Projekts reichen dafür nicht; ich suche in den Wissensquellen nach.");
+        String fence = "";
+        try {
+            fence = host.call("research_scope_fence", null);
+        } catch (ToolInvoker.ToolFailure unavailable) {
+            LOG.fine("[research-writing] kein Weidezaun: " + unavailable.getMessage());
+        }
+        List<String> queries = direct.plan(question, "", fence);
+        if (queries.isEmpty()) {
+            queries = DirectAnswers.keywordQueries(question);
+        }
+        return direct.answer(question, queries, progress);
+    }
+
+    /**
+     * Die Antwort allein aus dem Projektkorpus, oder {@code null}, wenn er nichts Passendes enthält (ohne
+     * Modellaufruf, wenn keine Passage gefunden wird).
+     */
+    String corpusAnswer(String question) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
         List<Passage> passages = search(question, ANSWER_PASSAGES);
-        String answer = passages.isEmpty() ? INSUFFICIENT : answerFrom(question, passages);
-        if (INSUFFICIENT.equals(answer) && !progress.isCancelled()) {
-            progress.message("Die Quellen des Projekts reichen dafür nicht; ich suche in den Wissensquellen nach.");
-            int added = 0;
-            for (KnowledgePages.Hit hit : pages.search(question, FOLLOW_UP_PAGES * 2)) {
-                if (added >= FOLLOW_UP_PAGES || progress.isCancelled()) {
-                    break;
-                }
-                Map<String, Object> read = new LinkedHashMap<String, Object>();
-                read.put("id", hit.id);
-                String page = host.call(KnowledgePages.READ_TOOL, read);
-                if (page == null || page.trim().isEmpty()) {
-                    continue;
-                }
-                if (mayAddSources) {
-                    Map<String, Object> add = new LinkedHashMap<String, Object>();
-                    add.put("capture_id", hit.id);
-                    add.put("title", hit.title);
-                    add.put("url", hit.url);
-                    String result = host.call("project_source_add", add);
-                    if (!result.startsWith("ALREADY_ACCEPTED")) {
-                        progress.message("Neue Quelle im Projekt: " + (hit.title.isEmpty() ? hit.id : hit.title));
-                    }
-                }
-                added++;
-            }
-            passages = mayAddSources ? search(question, ANSWER_PASSAGES) : passages;
-            answer = passages.isEmpty() ? INSUFFICIENT : answerFrom(question, passages);
+        if (passages.isEmpty()) {
+            return null;
         }
-        if (INSUFFICIENT.equals(answer)) {
-            return "Dazu finde ich weder in den Quellen dieses Projekts noch in den aktivierten Wissensquellen "
-                    + "belastbare Angaben.";
-        }
-        return withSourceList(answer, passages);
+        String answer = answerFrom(question, passages);
+        return INSUFFICIENT.equals(answer) ? null : withSourceList(answer, passages);
     }
 
     private String answerFrom(String question, List<Passage> passages) {
@@ -399,6 +574,20 @@ final class ResearchWriting {
         if (!result.isOk()) {
             LOG.warning("[research-writing] model failed: " + result.getStatus() + " " + result.getDetail());
             return "";
+        }
+        return result.getText() == null ? "" : result.getText();
+    }
+
+    /** Wie {@link #complete}, aber ein Modellfehler bricht das Kapitel ab, statt es leer zu füllen. */
+    private String completeOrFail(String system, String user, double temperature) throws ChapterFailure {
+        List<ChatMessage> messages = new ArrayList<ChatMessage>();
+        messages.add(ChatMessage.system(system));
+        messages.add(ChatMessage.user(user));
+        MainModelChatResult result = model.complete(messages, temperature, OUTPUT_TOKENS);
+        if (!result.isOk()) {
+            String detail = result.getDetail() == null || result.getDetail().isEmpty() ? result.getStatus().name()
+                    : result.getStatus() + " " + result.getDetail();
+            throw new ChapterFailure("das Modell hat nicht geantwortet (" + detail + ")");
         }
         return result.getText() == null ? "" : result.getText();
     }

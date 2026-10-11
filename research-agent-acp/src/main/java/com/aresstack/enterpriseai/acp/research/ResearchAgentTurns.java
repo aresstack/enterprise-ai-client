@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.research.runtime.team.ConceptToolRounds;
 import com.aresstack.enterpriseai.research.runtime.team.ConceptTurnPolicy;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
 import com.aresstack.enterpriseai.research.runtime.team.MoveActionGenerator;
+import com.aresstack.enterpriseai.research.runtime.team.OutlineChangeRequest;
 import com.aresstack.enterpriseai.research.runtime.team.ResearchTeamAgent;
 import com.aresstack.enterpriseai.research.runtime.team.ScopeUpdateDocument;
 import com.aresstack.enterpriseai.research.runtime.team.ScopingAssistantOutput;
@@ -17,6 +18,7 @@ import com.aresstack.enterpriseai.research.runtime.team.TeamAgentStateView;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.logging.Logger;
 
 /**
@@ -25,6 +27,13 @@ import java.util.logging.Logger;
  * antwortet er; Konzeptpapier wie {@code conceptAwareRespond} (ein eindeutiges Ja/Nein auf eine offene
  * Konfliktfrage beantwortet der Host selbst, ein Verschiebeauftrag läuft über die eigene Verschiebe-Generierung,
  * sonst treibt {@link ConceptToolRounds} die Konzeptwerkzeuge). Alle Werkzeuge gehen über MCP an den Host.
+ *
+ * <p>Research-Workflow: Phase Konzept ist ein interaktiver Recherche-Chat (jede Frage wird sofort in den
+ * Wissensquellen recherchiert, ohne Konzeptpflicht und ohne Phasenwechsel). Den autonomen Lauf der Phase Quellen
+ * startet nur der ausdrückliche Startbefehl („Recherche starten“, {@code research:}); jede andere Nachricht wird in
+ * jeder Phase als Frage beantwortet, zuerst aus dem Projektkorpus, bei Lücken aus den Wissensquellen (mit Übernahme
+ * der gelesenen Seiten). In der Phase Gliederung überarbeitet nur ein erkennbarer Änderungswunsch die Gliederung
+ * ({@link OutlineChangeRequest}).
  */
 final class ResearchAgentTurns {
 
@@ -56,56 +65,96 @@ final class ResearchAgentTurns {
     private final ResearchHostControl host;
     private final ResearchTeamAgent teamAgent;
     private final MainModelChat mainModelChat;
-    private final boolean conceptTools;
+    /** Ob der Host die Konzeptwerkzeuge anbietet; je Turn frisch gefragt. */
+    private final BooleanSupplier conceptTools;
     private final ResearchRun research;
     private final ResearchWriting writing;
     private final DirectAnswers direct;
     private final ToolNarration narration = new ToolNarration();
 
     ResearchAgentTurns(ResearchHostControl host, ResearchTeamAgent teamAgent, MainModelChat mainModelChat,
-                       boolean conceptTools, ResearchRun research) {
+                       BooleanSupplier conceptTools, ResearchRun research) {
         this.host = host;
         this.research = research;
         this.teamAgent = teamAgent;
         this.mainModelChat = mainModelChat;
         this.conceptTools = conceptTools;
-        this.writing = research == null ? null : new ResearchWriting(host, mainModelChat);
         this.direct = research == null ? null : new DirectAnswers(host, mainModelChat);
+        this.writing = research == null ? null : new ResearchWriting(host, mainModelChat, direct);
     }
 
     /**
-     * Die Phasen nach der Quellensuche: Gliederung/running erstellt oder überarbeitet die Gliederung, Dokument/running
-     * schreibt das Dokument, und nach der Quellensuche beantwortet jede Nachricht eine Nachfrage aus dem
-     * Projektkorpus (in der Phase Dokument mit Nachsuchen und Übernahme neuer Quellen).
+     * Die Phasen nach dem Start der autonomen Recherche: Gliederung/running erstellt die Gliederung (Aktion) oder
+     * überarbeitet sie (erkennbarer Änderungswunsch), Dokument/running schreibt das Dokument (Aktion); jede andere
+     * Nachricht ist eine Frage, beantwortet aus dem Projektkorpus und bei Lücken aus den Wissensquellen.
      */
     private boolean writingTurn(Turn turn, String text, ResearchHostControl.Status status)
             throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
-        String phase = status.phase == null ? "" : status.phase.toLowerCase(java.util.Locale.ROOT);
-        String state = status.state == null ? "" : status.state.toLowerCase(java.util.Locale.ROOT);
-        if ("outline".equals(phase) && "running".equals(state)) {
-            String feedback = isActionPrompt(text) ? "" : text;
+        String phase = lower(status.phase);
+        String state = lower(status.state);
+        boolean action = isActionPrompt(text);
+        if ("outline".equals(phase) && "running".equals(state)
+                && (action || OutlineChangeRequest.isChangeRequest(text))) {
+            String feedback = action ? "" : text;
             turn.message(writing.outline(currentConceptRendered(), host.call("research_scope_fence", null),
                     feedback));
             return true;
         }
-        if ("draft".equals(phase) && "running".equals(state)) {
+        if ("draft".equals(phase) && "running".equals(state) && action) {
             turn.message(writing.document(turn.output()));
             return true;
         }
-        boolean afterSources = "draft".equals(phase) || "outline".equals(phase)
-                || ("research".equals(phase) && "waiting_approval".equals(state));
-        if (afterSources && !text.trim().isEmpty() && !isActionPrompt(text)) {
-            turn.message(writing.answer(text.trim(), "draft".equals(phase), turn.output()));
+        if (afterResearchStart(status) && !action) {
+            answerQuestion(turn, text.trim());
             return true;
         }
         return false;
     }
 
-    /** Die Texte der Workflow-Knöpfe tragen keinen eigenen Auftrag. */
+    /** Ab dem Start der autonomen Recherche (Quellen außer „wartet auf Start“, Gliederung, Dokument). */
+    static boolean afterResearchStart(ResearchHostControl.Status status) {
+        String phase = lower(status.phase);
+        return ("research".equals(phase) && !"waiting".equals(lower(status.state))) || "outline".equals(phase)
+                || "draft".equals(phase);
+    }
+
+    /**
+     * Eine Frage nach dem Start: ein ausdrücklicher Suchauftrag recherchiert sofort in den Wissensquellen, sonst
+     * zuerst der Projektkorpus und bei Lücken die Wissensquellen; gelesene Seiten kommen ins Projekt.
+     */
+    private void answerQuestion(Turn turn, String text)
+            throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
+        boolean searchOffered = offersKnowledgeSearch();
+        if (searchOffered && DirectAnswers.asksForSearch(text)) {
+            java.util.List<String> queries = direct.plan(text, currentConceptRendered(), host.scopeFence());
+            if (queries.isEmpty()) {
+                queries = DirectAnswers.keywordQueries(text);
+            }
+            turn.message(direct.answer(text, queries, turn.output()));
+            return;
+        }
+        turn.message(writing.answer(text, searchOffered, turn.output()));
+    }
+
+    /** Die Texte der Workflow-Knöpfe tragen keinen eigenen Auftrag (leer zählt wie ein Knopf). */
     static boolean isActionPrompt(String text) {
         String trimmed = text == null ? "" : text.trim();
         return trimmed.isEmpty() || "Gliederung erstellen".equalsIgnoreCase(trimmed)
-                || "Dokument erstellen".equalsIgnoreCase(trimmed);
+                || "Dokument erstellen".equalsIgnoreCase(trimmed) || isStartCommand(trimmed);
+    }
+
+    /**
+     * Der ausdrückliche Start des autonomen Laufs: die Aktion „Recherche starten“ (Aktionsprompt des Workflows)
+     * oder das Textkommando {@code research:}/{@code recherche:} aus askai. Nur er startet Phase 2.
+     */
+    static boolean isStartCommand(String text) {
+        String lower = text == null ? "" : text.trim().toLowerCase(java.util.Locale.ROOT);
+        return lower.startsWith("research:") || lower.startsWith("recherche:")
+                || lower.startsWith("recherche starten");
+    }
+
+    private static String lower(String value) {
+        return value == null ? "" : value.toLowerCase(java.util.Locale.ROOT);
     }
 
     /** Sitzungsende: der Seitenpool des Recherche-Laufs wird beendet. */
@@ -172,18 +221,27 @@ final class ResearchAgentTurns {
         }
         ResearchHostControl.Status status = host.status();
         if (research != null && "research".equalsIgnoreCase(status.phase)
-                && "running".equalsIgnoreCase(status.state)) {
-            // askai arch: in Phase Quellen/running startet jede Nachricht den autonomen Lauf
+                && "running".equalsIgnoreCase(status.state) && isStartCommand(text)) {
+            // Nur der ausdrückliche Start (Aktion „Recherche starten“, research:) startet den autonomen Lauf;
+            // jede andere Nachricht in Quellen/running ist eine Frage (askai arch startete mit jeder Nachricht).
             String task = researchTask(text);
             if (task.isEmpty()) {
                 task = currentConceptRendered();
             }
-            turn.message("Ich suche in den Wissensquellen nach: " + firstLine(task));
+            if (task.trim().isEmpty()) {
+                // ohne Konzeptwerkzeuge: der Auftrag aus dem Suchplan des Hosts (Auftrag, Konzeptkarten)
+                task = host.call("research_search_plan", null).trim().replace('\n', ' ');
+            }
+            turn.message("Ich starte die autonome Recherche anhand des Konzepts"
+                    + (task.trim().isEmpty() ? "." : ": " + firstLine(task)));
             turn.message(research.finish(research.run(task, turn.output())));
             return;
         }
         if (writing != null && writingTurn(turn, text, status)) {
             return;
+        }
+        if (afterResearchStart(status)) {
+            return; // ein leerer Turn nach dem Start: nichts zu tun
         }
         boolean greeted = !"new".equalsIgnoreCase(status.state);
         TeamAgentStateView view = new TeamAgentStateView(status.phase, status.state,
@@ -251,16 +309,20 @@ final class ResearchAgentTurns {
                 host.greeted();
             }
         }
-        if (conceptTools && !turn.isCancelled()) {
+        if (conceptTools.getAsBoolean() && !turn.isCancelled()) {
             TeamAgentResult concept = conceptAwareRespond(view, text, status.searchTagsOffered);
             if (concept.getStatus() == TeamAgentResult.Status.OK
                     && concept.getOutput() instanceof ScopingAssistantOutput) {
                 applyScopeUpdate((ScopingAssistantOutput) concept.getOutput());
             }
         }
-        if (!turn.isCancelled()) {
-            turn.message(direct.answer(text, queries, turn.output()));
+        if (turn.isCancelled()) {
+            return;
         }
+        // Projektkorpus zuerst (ohne Modellaufruf, solange das Projekt nichts Passendes hat); ein ausdrücklicher
+        // Suchauftrag („Suche in Confluence nach …“) sucht immer sofort in den Wissensquellen.
+        String fromCorpus = DirectAnswers.asksForSearch(text) ? null : writing.corpusAnswer(text);
+        turn.message(fromCorpus != null ? fromCorpus : direct.answer(text, queries, turn.output()));
     }
 
     /** Der Auftrag ohne den Startbefehl ({@code research:} wie in askai, oder „Recherche starten“). */
@@ -284,7 +346,7 @@ final class ResearchAgentTurns {
 
     private TeamAgentResult conceptAwareRespond(final TeamAgentStateView view, String text,
                                                 boolean searchTagsOffered) {
-        if (!conceptTools) {
+        if (!conceptTools.getAsBoolean()) {
             return teamAgent.respond(text, view);
         }
         if (ConceptTurnPolicy.modeFor(text) == ConceptTurnPolicy.Mode.MOVE_TRUTH) {
@@ -360,7 +422,7 @@ final class ResearchAgentTurns {
 
     /** Das sichtbare Konzeptpapier vor jeder Inferenz (askai K2e: CURRENT_CONCEPT); leer bei Fehlern. */
     String currentConceptRendered() {
-        if (!conceptTools) {
+        if (!conceptTools.getAsBoolean()) {
             return "";
         }
         try {
