@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.CopyrightFooter;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownMessageView;
@@ -161,6 +162,7 @@ public final class KnowledgeReaderPanel extends JPanel {
         deck.add(message(EMPTY_TEXT), EMPTY_CARD);
         add(north, BorderLayout.NORTH);
         add(deck, BorderLayout.CENTER);
+        add(CopyrightFooter.placedLikeChat(), BorderLayout.SOUTH);
         refresh();
     }
 

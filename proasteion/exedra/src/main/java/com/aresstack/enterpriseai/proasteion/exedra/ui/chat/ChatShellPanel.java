@@ -58,10 +58,10 @@ public final class ChatShellPanel extends JPanel {
         south.setOpaque(false);
         JPanel composerWrap = new JPanel(new BorderLayout());
         composerWrap.setOpaque(false);
-        composerWrap.setBorder(BorderFactory.createEmptyBorder(4, 12, 6, 12));
+        composerWrap.setBorder(BorderFactory.createEmptyBorder(4, CopyrightFooter.SIDE_MARGIN,
+                CopyrightFooter.BOTTOM_MARGIN, CopyrightFooter.SIDE_MARGIN));
         composerWrap.add(composer, BorderLayout.CENTER);
         CopyrightFooter footer = new CopyrightFooter();
-        footer.setBorder(BorderFactory.createEmptyBorder(3, 0, 0, 0));
         composerWrap.add(footer, BorderLayout.SOUTH);
         south.add(statusBar, BorderLayout.NORTH);
         south.add(composerWrap, BorderLayout.CENTER);
