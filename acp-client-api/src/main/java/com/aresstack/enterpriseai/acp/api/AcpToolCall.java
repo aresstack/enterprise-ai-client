@@ -10,6 +10,12 @@ public final class AcpToolCall {
     /** Zustand des Aufrufs (ACP {@code ToolCallStatus}). */
     public enum Status { PENDING, IN_PROGRESS, COMPLETED, FAILED }
 
+    /**
+     * {@code _meta}-Schlüssel eines {@code tool_call}, der eine eigene Art jenseits der ACP-{@code ToolKind} trägt
+     * (z. B. {@code research} für die Recherche-Karte); auf der Leitung steht dann {@code kind: other}.
+     */
+    public static final String META_TOOL_KIND = "aresstack/toolKind";
+
     private final String id;
     private final String title;
     private final String kind;

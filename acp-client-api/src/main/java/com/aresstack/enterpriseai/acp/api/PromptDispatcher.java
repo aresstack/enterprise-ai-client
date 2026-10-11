@@ -57,6 +57,43 @@ public final class PromptDispatcher {
         }
     }
 
+    /** A message chunk; {@code startsUtterance} marks the first chunk of a new utterance of the agent. */
+    public boolean updateMessage(String text, boolean startsUtterance) {
+        synchronized (deliveryLock) {
+            if (state.get().isTerminal()) {
+                return false;
+            }
+            lastUpdateNanos = System.nanoTime();
+            AcpUpdate update = new AcpUpdate(sessionId, promptId, sequence.incrementAndGet(), text, startsUtterance);
+            try {
+                listener.onUpdate(update);
+            } catch (RuntimeException ignored) {
+                // a broken consumer must not kill the reader
+            }
+            return true;
+        }
+    }
+
+    /**
+     * Any other ACP {@code sessionUpdate} ({@link AcpUpdate.Kind#OTHER}) with its name, e.g. a {@code plan} with its
+     * entries; same ordering and terminal rules as {@link #update(AcpUpdate.Kind, String)}.
+     */
+    public boolean updateOther(String type, String text, java.util.List<AcpPlanEntry> plan) {
+        synchronized (deliveryLock) {
+            if (state.get().isTerminal()) {
+                return false;
+            }
+            lastUpdateNanos = System.nanoTime();
+            AcpUpdate update = new AcpUpdate(sessionId, promptId, sequence.incrementAndGet(), type, text, plan);
+            try {
+                listener.onUpdate(update);
+            } catch (RuntimeException ignored) {
+                // a broken consumer must not kill the reader
+            }
+            return true;
+        }
+    }
+
     /** A tool call update; same ordering and terminal rules as {@link #update(AcpUpdate.Kind, String)}. */
     public boolean update(AcpToolCall toolCall) {
         synchronized (deliveryLock) {

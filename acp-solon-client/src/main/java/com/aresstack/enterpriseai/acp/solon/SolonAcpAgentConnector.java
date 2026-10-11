@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.acp.api.AcpAgentConnector;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AcpConnectionState;
 import com.aresstack.enterpriseai.acp.api.AcpException;
+import com.aresstack.enterpriseai.acp.api.AcpPlanEntry;
 import com.aresstack.enterpriseai.acp.api.AcpPromptState;
 import com.aresstack.enterpriseai.acp.api.AcpSession;
 import com.aresstack.enterpriseai.acp.api.AcpSessionState;
@@ -58,6 +59,7 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
     private static final String AGENT_THOUGHT_CHUNK = "agent_thought_chunk";
     private static final String TOOL_CALL = "tool_call";
     private static final String TOOL_CALL_UPDATE = "tool_call_update";
+    private static final String PLAN = AcpUpdate.TYPE_PLAN;
     /** Upper bound on a connection close: a graceful transport shutdown must never wedge the caller. */
     private static final long CLOSE_TIMEOUT_MILLIS = 2500L;
 
@@ -188,18 +190,30 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                 });
                 return;
             }
-            final AcpUpdate.Kind mapped;
-            final String text;
-            if (AGENT_MESSAGE_CHUNK.equals(kind)) {
-                mapped = AcpUpdate.Kind.MESSAGE;
-                text = textOf(((Map<?, ?>) update).get("content"));
-            } else if (AGENT_THOUGHT_CHUNK.equals(kind)) {
-                mapped = AcpUpdate.Kind.THOUGHT;
-                text = textOf(((Map<?, ?>) update).get("content"));
-            } else {
-                // Unknown/custom update kinds are tolerated and surfaced generically, never fatal.
-                mapped = AcpUpdate.Kind.OTHER;
-                text = String.valueOf(update);
+            if (!AGENT_MESSAGE_CHUNK.equals(kind) && !AGENT_THOUGHT_CHUNK.equals(kind)) {
+                // Plans and unknown/custom update kinds are surfaced as OTHER with their name (the host shows them
+                // as an activity), never fatal and never dropped here.
+                final String type = kind == null ? "" : kind.toString();
+                final java.util.List<AcpPlanEntry> plan = PLAN.equals(type) && update instanceof Map
+                        ? planOf(((Map<?, ?>) update).get("entries")) : null;
+                final String text = plan != null ? "" : otherText(update);
+                deliver(new Runnable() {
+                    public void run() {
+                        dispatcher.updateOther(type, text, plan);
+                    }
+                });
+                return;
+            }
+            final AcpUpdate.Kind mapped = AGENT_MESSAGE_CHUNK.equals(kind)
+                    ? AcpUpdate.Kind.MESSAGE : AcpUpdate.Kind.THOUGHT;
+            final String text = textOf(((Map<?, ?>) update).get("content"));
+            if (mapped == AcpUpdate.Kind.MESSAGE && startsUtterance(((Map<?, ?>) update).get("_meta"))) {
+                deliver(new Runnable() {
+                    public void run() {
+                        dispatcher.updateMessage(text, true);
+                    }
+                });
+                return;
             }
             deliver(new Runnable() {
                 public void run() {
@@ -221,9 +235,80 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
             } else if ("failed".equals(status)) {
                 mapped = AcpToolCall.Status.FAILED;
             }
+            String output = stringOf(update.get("rawOutput"));
+            if (output.isEmpty()) {
+                // ACP trägt das sichtbare Ergebnis oft nur als content-Liste ({type: content, content: {text}}).
+                output = contentText(update.get("content"));
+            }
+            String kind = stringOf(update.get("kind"));
+            Object meta = update.get("_meta");
+            if (meta instanceof Map && ((Map<?, ?>) meta).get(AcpToolCall.META_TOOL_KIND) != null) {
+                // Eigene Art (z. B. die Recherche-Karte) neben kind: other.
+                kind = stringOf(((Map<?, ?>) meta).get(AcpToolCall.META_TOOL_KIND));
+            }
             return new AcpToolCall(stringOf(update.get("toolCallId")), stringOf(update.get("title")),
-                    stringOf(update.get("kind")), mapped, stringOf(update.get("rawInput")),
-                    stringOf(update.get("rawOutput")));
+                    kind, mapped, stringOf(update.get("rawInput")), output);
+        }
+
+        /** {@code _meta} eines Nachrichtenstücks: beginnt es eine neue Äußerung ({@link AcpUpdate#META_UTTERANCE})? */
+        private boolean startsUtterance(Object meta) {
+            return meta instanceof Map
+                    && AcpUpdate.UTTERANCE_START.equals(((Map<?, ?>) meta).get(AcpUpdate.META_UTTERANCE));
+        }
+
+        /** Die Texte einer ACP {@code ToolCallContent}-Liste, zeilenweise; Diffs und Terminals bleiben draußen. */
+        private String contentText(Object content) {
+            if (!(content instanceof java.util.List)) {
+                return "";
+            }
+            StringBuilder text = new StringBuilder();
+            for (Object item : (java.util.List<?>) content) {
+                if (!(item instanceof Map) || !"content".equals(((Map<?, ?>) item).get("type"))) {
+                    continue;
+                }
+                Object block = ((Map<?, ?>) item).get("content");
+                if (block instanceof Map && "text".equals(((Map<?, ?>) block).get("type"))) {
+                    Object value = ((Map<?, ?>) block).get("text");
+                    if (value != null && !value.toString().isEmpty()) {
+                        text.append(text.length() == 0 ? "" : "\n").append(value);
+                    }
+                }
+            }
+            return text.toString();
+        }
+
+        /** ACP {@code plan.entries} → neutral; Einträge ohne Inhalt entfallen. */
+        private java.util.List<AcpPlanEntry> planOf(Object entries) {
+            java.util.List<AcpPlanEntry> plan = new java.util.ArrayList<AcpPlanEntry>();
+            if (entries instanceof java.util.List) {
+                for (Object entry : (java.util.List<?>) entries) {
+                    if (entry instanceof Map) {
+                        Map<?, ?> fields = (Map<?, ?>) entry;
+                        String content = stringOf(fields.get("content"));
+                        if (!content.trim().isEmpty()) {
+                            plan.add(new AcpPlanEntry(content, stringOf(fields.get("priority")),
+                                    stringOf(fields.get("status"))));
+                        }
+                    }
+                }
+            }
+            return plan;
+        }
+
+        /** Ein unbekanntes Update lesbar: seine Felder ohne den Typ. */
+        private String otherText(Object update) {
+            if (!(update instanceof Map)) {
+                return String.valueOf(update);
+            }
+            StringBuilder text = new StringBuilder();
+            for (Map.Entry<?, ?> field : ((Map<?, ?>) update).entrySet()) {
+                if ("sessionUpdate".equals(field.getKey()) || field.getValue() == null) {
+                    continue;
+                }
+                text.append(text.length() == 0 ? "" : "\n").append(field.getKey()).append(": ")
+                        .append(field.getValue());
+            }
+            return text.toString();
         }
 
         /** Runs a listener-facing step on the callback thread; after close() directly (it is then a no-op). */

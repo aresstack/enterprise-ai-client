@@ -32,6 +32,8 @@ public final class ChatShellModel {
     private final java.util.Map<String, TranscriptEntry> activities =
             new java.util.LinkedHashMap<String, TranscriptEntry>();
     private boolean ragEnabled;
+    /** Die laufende Antwort ist ein weiterer Abschnitt desselben Auftrags (nach {@link #beginAnswerSection}). */
+    private boolean continuedSection;
 
     /** @param clock liefert Epoch-Millisekunden für die Zeitstempel der Bubbles (im Test fest). */
     public ChatShellModel(LongSupplier clock) {
@@ -113,6 +115,7 @@ public final class ChatShellModel {
             throw new IllegalStateException("an assistant message is already streaming");
         }
         streamingEntry = newEntry(TranscriptEntry.Author.ASSISTANT, "", TranscriptEntry.State.STREAMING);
+        continuedSection = false;
         fireEntryAdded(streamingEntry);
         fireStateChanged();
         return streamingEntry;
@@ -123,7 +126,7 @@ public final class ChatShellModel {
         if (delta == null || delta.isEmpty()) {
             return; // Null-/Leer-Chunks sind im Streaming zulässig und ändern nichts.
         }
-        if (entry.getText().isEmpty() && !activities.isEmpty()) {
+        if (entry.getText().isEmpty() && (!activities.isEmpty() || continuedSection)) {
             // Ein neuer Abschnitt hinter einer Tool-Wolke beginnt nicht mit den Absatz-Leerzeilen des Agenten.
             delta = delta.replaceFirst("^[\\r\\n]+", "");
             if (delta.isEmpty()) {
@@ -132,6 +135,23 @@ public final class ChatShellModel {
         }
         entry.append(delta);
         fireEntryUpdated(entry);
+    }
+
+    /**
+     * Eine neue Äußerung des Agenten beginnt (askai arch: eine Blase je Äußerung): eine angefangene Antwort endet als
+     * eigener Abschnitt, der weitere Text kommt in eine neue Antwortblase. Eine noch leere Antwort bleibt. Leerzeilen
+     * am Anfang des neuen Abschnitts entfallen.
+     */
+    public void beginAnswerSection() {
+        TranscriptEntry entry = requireStreaming();
+        if (entry.getText().isEmpty()) {
+            return;
+        }
+        entry.finish(TranscriptEntry.State.COMPLETE, null);
+        fireEntryUpdated(entry);
+        streamingEntry = newEntry(TranscriptEntry.Author.ASSISTANT, "", TranscriptEntry.State.STREAMING);
+        continuedSection = true;
+        fireEntryAdded(streamingEntry);
     }
 
     public void completeAssistantMessage() {
@@ -211,6 +231,11 @@ public final class ChatShellModel {
         }
         activity.finishActivity(succeeded ? TranscriptEntry.State.COMPLETE : TranscriptEntry.State.FAILED, summary);
         fireEntryUpdated(activity);
+    }
+
+    /** Ob der laufende Auftrag einen Arbeitsschritt mit dieser Kennung kennt (laufend oder beendet). */
+    public boolean hasActivity(String key) {
+        return activities.containsKey(key);
     }
 
     /** Ob ein Arbeitsschritt mit dieser Kennung noch läuft. */

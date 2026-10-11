@@ -250,7 +250,7 @@ public final class CompositionRoot {
         final ChatPortMainModelChat researchModel = new ChatPortMainModelChat(ports.chat(),
                 config.chat().defaultOptions(), agentModelChoice);
         toolCatalog.register(ORIGIN_RESEARCH, EnumSet.of(ToolChannel.RESEARCH_AGENT),
-                () -> ResearchControlTools.toolsFor(researchHost, researchModel));
+                () -> ResearchControlTools.toolsFor(researchHost, researchModel), ResearchControlTools::isRequired);
         // Der Werkzeugsatz des Agenten folgt der Phase (askai arch ResearchToolPolicy): neu berechnet und per
         // updateTools veröffentlicht, sobald der Host seinen Zustand ändert.
         final PhaseToolSetController researchToolSet = new PhaseToolSetController(

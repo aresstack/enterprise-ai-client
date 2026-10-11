@@ -21,8 +21,8 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Direktmodus ohne Konzept über den ganzen Agenten-Turn: der Nutzer fragt direkt, der Agent sucht mit
- * knowledge_search, liest mit knowledge_read, notiert die Quelle im Projekt und antwortet mit Beleg. Jeder sichtbare
- * Host-Aufruf wird zur Werkzeugblase (Start und Ergebnis). Host-Werkzeuge und Modell sind Fakes hinter MCP.
+ * knowledge_search, liest mit knowledge_read, notiert die Quelle im Projekt und antwortet mit Beleg. Die Recherche
+ * zeigt eine Karte; einzelne Host-Aufrufe darin erscheinen nicht zusätzlich als Wolke. Host-Werkzeuge und Modell sind Fakes hinter MCP.
  */
 public class DirectModeAgentTest {
 
@@ -135,6 +135,16 @@ public class DirectModeAgentTest {
             throw new AssertionError("keine Blase " + title + " in " + started.values());
         }
 
+        /** Die Recherche-Karte des Turns. */
+        String card() {
+            for (Map.Entry<String, String> entry : kinds.entrySet()) {
+                if ("research".equals(entry.getValue())) {
+                    return entry.getKey();
+                }
+            }
+            throw new AssertionError("keine Recherche-Karte in " + started.values());
+        }
+
         String all() {
             StringBuilder text = new StringBuilder();
             for (String message : messages) {
@@ -178,25 +188,24 @@ public class DirectModeAgentTest {
         assertFalse(text, text.toLowerCase(java.util.Locale.ROOT).contains("kein zugriff"));
     }
 
+    /**
+     * askai arch: solange die Recherche-Karte offen ist, gibt es keine Einzelwolken für Suche, gelesene Seiten und
+     * notierte Quellen (sie stehen in der Karte); was davor geschieht (Planen), bleibt eine eigene Wolke.
+     */
     @Test
-    public void everyVisibleHostCallBecomesAToolBubbleWithItsResult() {
+    public void whileTheResearchCardIsOpenNoSingleToolCloudsAppear() {
         FakeEndpoint endpoint = new FakeEndpoint();
         Screen screen = new Screen();
         agent(endpoint).run("Kannst du mir was über IAR aus Confluence finden?", screen);
 
-        String search = screen.callOf("Suche in den Wissensquellen");
-        assertEquals("search", screen.kinds.get(search));
-        assertEquals("IAR", screen.inputs.get(search));
-        assertEquals("1 Treffer: IAR Übersicht", screen.finished.get(search));
-
-        String read = screen.callOf("Lese Seite");
-        assertEquals("read", screen.kinds.get(read));
-        assertEquals("IAR Übersicht", screen.inputs.get(read));
-        assertTrue(screen.finished.get(read), screen.finished.get(read).startsWith("Gelesen ("));
-
-        String note = screen.callOf("Quelle notieren");
-        assertEquals("IAR Übersicht", screen.inputs.get(note));
-
+        assertTrue(endpoint.calls.toString(), endpoint.calls.contains(KnowledgePages.SEARCH_TOOL));
+        assertTrue(endpoint.calls.toString(), endpoint.calls.contains(KnowledgePages.READ_TOOL));
+        String card = screen.card();
+        assertTrue(screen.inputs.get(card), screen.inputs.get(card).contains("Suche nach: \u201eIAR\u201c"));
+        assertFalse(screen.started.values().toString(), screen.started.containsValue("Suche in den Wissensquellen"));
+        assertFalse(screen.started.values().toString(), screen.started.containsValue("Lese Seite"));
+        assertFalse(screen.started.values().toString(), screen.started.containsValue("Quelle notieren"));
+        // Das Planen der Suche liegt vor der Karte und bleibt sichtbar.
         String think = screen.callOf("Denke nach");
         assertEquals("think", screen.kinds.get(think));
 
@@ -204,9 +213,7 @@ public class DirectModeAgentTest {
         for (Boolean ok : screen.succeeded.values()) {
             assertTrue(ok.booleanValue());
         }
-        // interne Aufrufe bleiben unsichtbar
         assertFalse(screen.started.containsValue("research_status"));
-        assertEquals(endpoint.calls.size() > screen.started.size(), true);
     }
 
     /** Phase 1 ist ein interaktiver Recherche-Chat: normale Fragen suchen sofort, ohne Konzept und Phasenwechsel. */
@@ -318,9 +325,9 @@ public class DirectModeAgentTest {
         agent(endpoint).run("Was ist IAR?", screen);
         String text = screen.all();
         assertTrue(text, text.contains("Die Suche in den Wissensquellen ist fehlgeschlagen: Quelle nicht erreichbar"));
-        String search = screen.callOf("Suche in den Wissensquellen");
-        assertFalse(screen.succeeded.get(search).booleanValue());
-        assertEquals("Quelle nicht erreichbar", screen.finished.get(search));
+        String card = screen.card();
+        assertFalse(screen.succeeded.get(card).booleanValue());
+        assertEquals("Suche fehlgeschlagen: Quelle nicht erreichbar", screen.finished.get(card));
     }
 
     @Test
@@ -332,7 +339,7 @@ public class DirectModeAgentTest {
         String text = screen.all();
         assertTrue(text, text.contains("nichts gefunden"));
         assertFalse(text, text.toLowerCase(java.util.Locale.ROOT).contains("zugriff"));
-        assertEquals("Keine Treffer", screen.finished.get(screen.callOf("Suche in den Wissensquellen")));
+        assertEquals("keine Treffer", screen.finished.get(screen.card()));
     }
 
     @Test

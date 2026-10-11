@@ -196,6 +196,70 @@ public class SolonAcpRoundTripTest {
     }
 
     @Test
+    public void utteranceMarksInMetaCrossTheRealWire() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            AcpSession session = connection.newSession();
+            Collecting listener = new Collecting();
+            session.prompt("utter", listener);
+            assertTrue("prompt did not terminate", listener.terminated.await(30, TimeUnit.SECONDS));
+            List<AcpUpdate> updates = listener.updates;
+            assertEquals(3, updates.size());
+            assertTrue(updates.get(0).startsUtterance());
+            assertEquals("Erstens", updates.get(0).getText());
+            assertFalse("Fortsetzung ohne Markierung", updates.get(1).startsUtterance());
+            assertEquals(" und mehr.", updates.get(1).getText());
+            assertTrue(updates.get(2).startsUtterance());
+            assertEquals(AcpUpdate.Kind.MESSAGE, updates.get(2).getKind());
+        } finally {
+            connection.close();
+        }
+    }
+
+    @Test
+    public void plansThoughtsAndContentOnlyToolResultsCrossTheRealWire() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            AcpSession session = connection.newSession();
+            Collecting listener = new Collecting();
+            session.prompt("plan IAR", listener);
+            assertTrue("prompt did not terminate", listener.terminated.await(30, TimeUnit.SECONDS));
+            assertEquals(AcpPromptState.COMPLETED, listener.terminal.get());
+
+            List<AcpUpdate> updates = listener.updates;
+            assertEquals(8, updates.size());
+            // Ein plan-Update ist OTHER mit Typ und Einträgen, nicht ein Map-toString.
+            AcpUpdate firstPlan = updates.get(0);
+            assertEquals(AcpUpdate.Kind.OTHER, firstPlan.getKind());
+            assertTrue(firstPlan.isPlan());
+            assertEquals(2, firstPlan.getPlan().size());
+            assertEquals("Quellen suchen: IAR", firstPlan.getPlan().get(0).getContent());
+            assertEquals("high", firstPlan.getPlan().get(0).getPriority());
+            assertTrue(firstPlan.getPlan().get(0).isInProgress());
+            assertEquals("pending", firstPlan.getPlan().get(1).getStatus());
+            // Gedanken kommen als einzelne Stücke in Leitungsreihenfolge.
+            assertEquals(AcpUpdate.Kind.THOUGHT, updates.get(1).getKind());
+            assertEquals("Ich ", updates.get(1).getText());
+            assertEquals("suche ", updates.get(2).getText());
+            assertEquals("zuerst.", updates.get(3).getText());
+            // Das Ergebnis steht nur im content des tool_call_update.
+            AcpToolCall finished = updates.get(5).getToolCall();
+            assertEquals("call-plan", finished.getId());
+            assertEquals(AcpToolCall.Status.COMPLETED, finished.getStatus());
+            assertEquals("2 Treffer", finished.getOutput());
+            AcpUpdate lastPlan = updates.get(6);
+            assertTrue(lastPlan.isPlan());
+            assertTrue(lastPlan.getPlan().get(0).isCompleted());
+            assertTrue(lastPlan.getPlan().get(1).isCompleted());
+            assertEquals("fertig: IAR", updates.get(7).getText());
+        } finally {
+            connection.close();
+        }
+    }
+
+    @Test
     public void cancelDuringStreamingYieldsSingleCancelledTerminal() throws Exception {
         SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
         AcpConnection connection = connector.connect(spec());

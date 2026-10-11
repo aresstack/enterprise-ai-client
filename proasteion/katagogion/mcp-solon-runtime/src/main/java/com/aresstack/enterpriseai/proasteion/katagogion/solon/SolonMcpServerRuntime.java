@@ -155,13 +155,9 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
                     wanted.put(tool.getName(), tool);
                 }
             }
-            if (!keepsRelativeOrder(registration, wanted)) {
-                // Neue Reihenfolge der bleibenden Tools: nur durch Neuaufbau herstellbar (kurze Lücke).
-                for (FunctionTool tool : new ArrayList<FunctionTool>(registration.provider.getTools())) {
-                    registration.provider.removeTool(tool.name());
-                }
-                registration.installed.clear();
-            }
+            // Kein Neuaufbau, auch nicht für eine neue Reihenfolge: ein Aufruf, der parallel läuft (z. B. knowledge_read
+            // während project_source_add den Satz der Phase wechselt), fände sein Werkzeug sonst kurz nicht
+            // („Unknown tool“). Die Reihenfolge im Katalog bestimmt deshalb das MCP-SDK.
             // Das MCP-SDK ersetzt ein Tool durch Entfernen und Neuanlegen. Bleiben Beschreibung und Schema gleich,
             // wird deshalb nur der Handler getauscht: laufende Aufrufe sehen unveränderte Tools nie als unbekannt.
             // Erst neue bzw. geänderte Tools setzen, dann die überzähligen entfernen; der Provider meldet jede
@@ -189,23 +185,6 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
                 registration.installed.remove(name);
             }
         }
-    }
-
-    /** Stehen die bleibenden Tools in derselben relativen Reihenfolge wie bisher? */
-    private static boolean keepsRelativeOrder(Registration registration, Map<String, McpToolContribution> wanted) {
-        List<String> current = new ArrayList<String>();
-        for (FunctionTool tool : registration.provider.getTools()) {
-            if (wanted.containsKey(tool.name())) {
-                current.add(tool.name());
-            }
-        }
-        List<String> target = new ArrayList<String>();
-        for (String name : wanted.keySet()) {
-            if (current.contains(name)) {
-                target.add(name);
-            }
-        }
-        return current.equals(target);
     }
 
     @Override

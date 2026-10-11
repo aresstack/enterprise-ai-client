@@ -181,6 +181,14 @@ final class FakeAgentLauncher implements AgentLauncher {
             dispatcher.update(AcpUpdate.Kind.OTHER, chunk);
         }
 
+        void other(String type, String chunk) {
+            dispatcher.updateOther(type, chunk, null);
+        }
+
+        void plan(com.aresstack.enterpriseai.acp.api.AcpPlanEntry... entries) {
+            dispatcher.updateOther(AcpUpdate.TYPE_PLAN, "", java.util.Arrays.asList(entries));
+        }
+
         void tool(com.aresstack.enterpriseai.acp.api.AcpToolCall call) {
             dispatcher.update(call);
         }
