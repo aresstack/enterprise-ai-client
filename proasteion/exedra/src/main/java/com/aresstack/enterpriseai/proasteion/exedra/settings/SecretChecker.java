@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
 import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 
@@ -9,7 +10,7 @@ import java.util.List;
 
 /**
  * Prüft, ob ein KeePass-Eintrag unter den gegebenen KeePass-Einstellungen erreichbar ist. Die produktive
- * Umsetzung baut den KeePassRPC-Adapter und liegt deshalb in {@code app.composition}; sie darf blockieren
+ * Umsetzung baut den KeePassRPC-Adapter und liegt deshalb in {@code exedra.assembly} über {@code AdapterAssembly.keePassAccess}; sie darf blockieren
  * (Pairing-Dialog) und wird nie auf dem EDT gerufen. Das Ergebnis enthält nie Secret-Material.
  */
 public interface SecretChecker {
@@ -22,8 +23,8 @@ public interface SecretChecker {
     }
 
     /** Die Eintragsverwaltung (Passwortverwaltung) mit diesen KeePass-Einstellungen; nie auf dem EDT benutzen. */
-    default com.aresstack.enterpriseai.adyton.SecretVault vault(KeePassConfig keePass) {
-        return com.aresstack.enterpriseai.proasteion.application.security.SecretVaults.of(null);
+    default KeePassAccess vault(KeePassConfig keePass) {
+        return KeePassAccess.unavailable();
     }
 
     /**

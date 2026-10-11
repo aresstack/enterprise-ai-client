@@ -1,8 +1,9 @@
 package com.aresstack.enterpriseai.proasteion.application.security;
 
 /**
- * Fragt den Benutzer nach dem Einmal-Passwort, das KeePass beim Pairing anzeigt. Produktiv der Swing-Dialog
- * ({@code app.ui.security.KeePassPairingDialog}); in Tests ein Fake. Wird auf dem EDT aufgerufen.
+ * Fragt den Benutzer nach dem Einmal-Passwort, das KeePass beim Pairing anzeigt. Produktiv liefert die Schale
+ * (exedra) den Swing-Dialog, der selbst auf den EDT wechselt; in Tests ein Fake. Der Kompositionspunkt reicht die
+ * Eingabe an den KeePassRPC-Adapter weiter, die Schale kennt dessen Typen nicht.
  */
 public interface PairingPrompt {
 

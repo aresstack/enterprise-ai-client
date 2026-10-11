@@ -583,6 +583,12 @@ public final class AppConfigLoader {
         return r.enumValue("network.proxy.mode", ProxyMode.class, ProxyMode.PAC_URL_POWERSHELL);
     }
 
+    /** Wie {@link #legacyMode} als Name des neuen Modus (Einstellungen-Dialog); {@code null} für keinen alten Namen. */
+    public static String legacyModeName(String name, String pacUrl) {
+        ProxyMode legacy = legacyMode(name, pacUrl);
+        return legacy == null ? null : legacy.name();
+    }
+
     /** Die Modusnamen der Fassungen bis 0.1.3; {@code null}, wenn {@code name} keiner davon ist. */
     public static ProxyMode legacyMode(String name, String pacUrl) {
         if (name == null) {

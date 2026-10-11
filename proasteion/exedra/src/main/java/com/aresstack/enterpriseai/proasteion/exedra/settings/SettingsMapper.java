@@ -105,8 +105,8 @@ public final class SettingsMapper {
         String pacUrl = text(p, KEY_PAC_URL, "");
         String mode = text(p, KEY_PROXY_MODE, SettingsForm.PROXY_PAC_URL_POWERSHELL).toUpperCase(Locale.ROOT)
                 .replace('-', '_');
-        Object legacy = AppConfigLoader.legacyMode(mode, pacUrl.isEmpty() ? null : pacUrl);
-        b.proxyMode(legacy == null ? mode : legacy.toString());
+        String legacy = AppConfigLoader.legacyModeName(mode, pacUrl.isEmpty() ? null : pacUrl);
+        b.proxyMode(legacy == null ? mode : legacy);
         b.pacUrl(pacUrl);
         String script = p.getProperty(KEY_PAC_DISCOVERY_SCRIPT);
         b.pacDiscoveryScript(script == null ? "" : script);

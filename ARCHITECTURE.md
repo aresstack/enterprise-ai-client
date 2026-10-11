@@ -43,18 +43,24 @@ proasteion                            προάστειον Vorstadt: Ports und A
 
 Regeln aus corenth, die hier gelten: proasteion → astu → adyton-Abstraktionen, nie umgekehrt. Holkas wird nicht
 direkt gerufen, sondern über den Archivschalter der chalcotheca, der Tamias jede Operation entscheiden lässt.
-Deigma transportiert und indexiert nicht. Exedra bleibt dünn: `proasteion:application` liest die Konfiguration und
-setzt Netz, Tresor-Brücken, Adapter, Index und Use Cases zu `ApplicationPorts` zusammen (`AdapterAssembly`); exedra
-baut daraus die Swing-Schale (`CompositionRoot`, `ShellAssembly`) und liefert die Dialoge, die application über
-`UserPrompts` erfragt (Zugang „Manuell“, KeePass-Pairing). anagraphai ist das lexikalische Register und kennt pinakes
+Deigma transportiert und indexiert nicht. Exedra bleibt dünn (corenth ADR-0001, `EXEDRA_MUST_STAY_THIN_UI_SHELL`):
+`proasteion:application` ist der einzige Kompositionspunkt. Er liest die Konfiguration, setzt Netz, Tresor-Brücken,
+Adapter, Index und Use Cases zu `ApplicationPorts` zusammen (`AdapterAssembly`), baut den Graphen
+(`CompositionRoot` mit Agent-Host, Vorlader, MCP-Werkzeugen) und startet ihn ohne Oberfläche (`ApplicationStart`:
+Netz, Tresor, Settings-Service, Übernahme gespeicherter Einstellungen). exedra baut darauf nur die Swing-Schale
+(`ShellAssembly`, Bindings, Statuszeile) und liefert die Dialoge, die application über `UserPrompts` erfragt (Zugang
+„Manuell“, KeePass-Pairing als `PairingPrompt`). exedra kennt keinen Adapter. anagraphai ist das lexikalische Register und kennt pinakes
 nicht; pinakes hält den Vektorindex und verbindet beide per RRF zum Index-Adapter.
 
 Architekturtests: Ein Modul besitzt die Klassen seines Basispakets ohne die darin geschachtelten Module
 (`ArchitectureModule.classes()`). Überdecken dürfen sich Basispakete nur entlang der Stadt
 (`ModuleRegistryTest.CITY`). proasteion, emporion und platform sind Grenzmodule ohne Klassen (`ModuleKind.BOUNDARY`).
 Ein Port darf einen in ihm liegenden Port sehen (chalcotheca → tamias). Ein Adapter darf ein Nachbar-Register im
-selben Elternmodul nutzen (pinakes → anagraphai); das Register setzt dann selbst keinen Port um. exedra darf den
-Kompositionspunkt application sehen (beide COMPOSITION_ROOT, zyklenfrei).
+selben Elternmodul nutzen (pinakes → anagraphai); das Register setzt dann selbst keinen Port um. application ist der
+einzige COMPOSITION_ROOT (ohne Oberfläche); exedra ist UI_SHELL und sieht application, Kern, Ports und
+comic-controls, aber keinen Adapter und nicht den Tresor adyton (`CompositionRootBoundaryTest.exedraKnowsNoAdapter`):
+Passwortverwaltung, Proben und Zugang „Manuell“ laufen über `proasteion.application.security.KeePassAccess` und
+`AskedSecretProvider.CredentialPrompt`; exedra liefert nur die Dialoge.
 
 Noch nicht wie corenth:
 - source-api bleibt außerhalb der Stadt: acropolis fragt die Quellen-Ports heute direkt statt über den
@@ -147,7 +153,7 @@ Moduls liegen nur dort (geprüft).
 | `mcp-solon-runtime` | ADAPTER | `proasteion.katagogion.solon` | astu, katagogion | H (AP19) |
 | `comic-controls` | UI_LIBRARY | `ui.comic` | – | B (AP4) |
 | `application` | COMPOSITION_ROOT | `proasteion.application` | Ports, Adapter, acropolis (ohne UI) | ADR-0001 (corenth) |
-| `exedra` | COMPOSITION_ROOT | `proasteion.exedra` | application und alles außer acp-demo-agent und architecture-tests | B (AP4, AP22), AP23 |
+| `exedra` | UI_SHELL | `proasteion.exedra` | application, astu, acropolis, comic-controls und Ports (chat-api, chalcotheca, source-api, acp-client-api, network, speech-api, model-api); kein Adapter, kein adyton | B (AP4, AP22), AP23 |
 | `architecture-tests` | ARCHITECTURE_TESTS | `architecture` (nur Tests) | – (liest kompilierte Klassen) | AP24 |
 | `integration-tests` | INTEGRATION_TESTS | `integration` (Produktion nur Anker-Klasse) | – (Testklassenpfad sieht alle Module und Testfixtures) | AP25 |
 
@@ -185,10 +191,11 @@ askai-java8 übernommenen Verträge sind bewusst eigenständig.
   angefragt und in `exedra` umgesetzt.
 - **acropolis**: Use Cases (Chat, RAG, Indexierung, Retrieval, MCP-Tool-Logik), ausschließlich gegen Ports.
   MCP-Tool-Handler rufen Use Cases auf, nie Adapter.
-- **application** (`proasteion:application`): Kompositionspunkt ohne Oberfläche. Nur hier (und in der Schale)
-  werden Konfiguration gelesen, Adapter instanziiert und per Konstruktor verdrahtet.
-- **exedra**: Swing-Oberfläche mit Programmeinstieg (`EnterpriseAiClientMain`); baut die Schale auf den
-  `ApplicationPorts` aus application und liefert die Dialoge (`SwingUserPrompts`).
+- **application** (`proasteion:application`): Kompositionspunkt ohne Oberfläche. Nur hier werden Adapter
+  instanziiert und per Konstruktor verdrahtet (`AdapterAssembly`, `CompositionRoot`, `ApplicationStart`).
+- **exedra**: Swing-Schale mit Programmeinstieg (`EnterpriseAiClientMain`); startet application, baut die Schale auf
+  dessen Use Cases und liefert die Dialoge (`SwingUserPrompts`). Liest und schreibt die Konfigurationsdatei nur im
+  Einstellungen-Dialog.
 - **Secrets**: `SecretRef` (loggbar) darf durch Use Cases laufen, Secret-Material nicht. Klartext nur im
   Security-Adapter, im konsumierenden Adapter (z. B. Confluence) und in den Brücken `proasteion.application.security` des
   Kompositionspunkts (API-Key je Anfrage, Wiki-Login), so kurzlebig wie möglich; nie in Logs, Exceptions,
@@ -228,10 +235,10 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `BuildModelTest.everyModuleHasClassesOnlyInItsOwnBasePackage` | Klasse ↔ Modul eindeutig, kein Modul leer |
 | `ClassBoundaryTest.*` | Modulmatrix auf Klassenebene, Kern-Positivliste, AP24-Technologietabelle für den Kern, Technologiegrenzen, keine Singletons / kein nicht-finales `static` / keine nicht-privaten `static final` Arrays, Collections, Maps, Atomics oder StringBuilder, `main` nur in exedra und acp-demo-agent |
 | `ModuleRegistryTest.*` | die Registry selbst: keine Zyklen, Schichtung, AP24-Verbotskanten bleiben verboten, Pakete disjunkt |
-| `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `astu.acropolis.agent`, `astu.acropolis.mcp`, `proasteion.exedra.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `proasteion.exedra.ui.agent` ist reine Oberfläche |
+| `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `astu.acropolis.agent`, `astu.acropolis.mcp`, `proasteion.application.agent`, `proasteion.application.composition` und der Schale (`proasteion.exedra.agent`); Agent-Use-Case sieht nur den ACP-Port; `proasteion.exedra.ui.agent` ist reine Oberfläche |
 | `RagBoundaryTest.*` | AP10: `astu.acropolis.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `astu.acropolis.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
 | `McpKnowledgeToolsBoundaryTest.*` | AP20: `astu.acropolis.mcp` sieht nur die Use-Case-Pakete `astu.acropolis.rag` und `astu.acropolis.knowledge`, Knowledge-Domain, aus `source.api` allein `KnowledgeSourceException` (Fehlerart) und den MCP-Port-Vertrag; Index-, Embedding- und Quell-Port (samt `SourceScope`) nur über Use Cases; kein Adapter, kein Chat, kein ACP, kein Security-Typ; Use Cases und Chat-Pfad kennen die Werkzeuge nicht |
-| `CompositionRootBoundaryTest.*` | AP23: Konstruktoren von Adaptern (Klassen eines Adaptermoduls, die einen Port implementieren) werden außerhalb der Adaptermodule nur in `proasteion.application.composition` und `proasteion.exedra.composition` aufgerufen; Wert- und Konfigurationstypen der Adaptermodule bleiben überall baubar |
+| `CompositionRootBoundaryTest.*` | AP23: Konstruktoren von Adaptern (Klassen eines Adaptermoduls, die einen Port implementieren) werden außerhalb der Adaptermodule nur in `proasteion.application.composition` aufgerufen; exedra hängt an keinem Adapter und nicht an holkas, deigma, tamias, anagraphai, pinakes (corenth `EXEDRA_MUST_STAY_THIN_UI_SHELL`) |
 | `SecretBoundaryTest.*` | AP13/AP23: Secret-Material nur in `adyton`, `security-keepassrpc`, `source-confluence`, `source-ftp`, `source-ndv` und, paketgenau, in `proasteion.application.security` (Brücken des Kompositionspunkts); nie in Feldern |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 | `CoreNamingTest.*` | Nachtrag 1/19: keine Provider-Namen (OpenAI, Ollama, Claude, llama.cpp ...) und keine Multi-Provider-Abstraktion in Klassennamen oder Enum-Konstanten des Kerns |
@@ -271,9 +278,9 @@ Agent-Modus ist ein getrennter Zusatz: UI → `AgentService` (`astu.acropolis.ag
 
 - `AgentService` hält Prozess, ACP-Verbindung und eine Session, höchstens einen Auftrag gleichzeitig, und ein
   eigenes Transkript. Gestartet wird über `AgentLauncher`, den die Composition Root implementiert
-  (`proasteion.exedra.agent.AcpAgentLauncher`); Endpoint-Tokens und Launch-Umgebung laufen nie durch den Use Case.
+  (`proasteion.application.agent.AcpAgentLauncher`); Endpoint-Tokens und Launch-Umgebung laufen nie durch den Use Case.
 - MCP für den Agenten: je Agentenprozess ein frisch registrierter Endpoint (neuer Token), übergeben als
-  Umgebungsvariablen `ENTERPRISE_AI_MCP_*` (`proasteion.exedra.agent.AgentMcpEnvironment`); beim Schließen von Verbindung
+  Umgebungsvariablen `ENTERPRISE_AI_MCP_*` (`proasteion.application.agent.AgentMcpEnvironment`); beim Schließen von Verbindung
   oder Agent-Modus wird er abgemeldet.
 - Oberfläche: `proasteion.exedra.ui.workspace.ChatWorkspacePanel` zeigt Chat oder Agent als Karte, gewählt über die
   Modus-Pille `☰ [ Chat ▾ ]`/`[ Agent ▾ ]` neben dem Hamburger (Presentation-Model `proasteion.exedra.ui.agent.ShellModeModel`);
@@ -430,10 +437,10 @@ Bindings in `proasteion.exedra.chat`, die AP23 in der Composition Root verdrahte
 
 ## Composition Root und Konfiguration (AP23)
 
-`exedra` ist die einzige Composition Root. `EnterpriseAiClientMain` öffnet die Protokolldatei
-(`AppLogFile`, `java.util.logging` rollierend unter `<Anwendungsverzeichnis>/logs/`), lädt die Konfiguration,
-installiert Vertrauens- und Proxy-Regel, baut die Adapter, komponiert den Graphen, registriert den
-Shutdown-Hook und zeigt das Fenster.
+`proasteion:application` ist die einzige Composition Root (corenth ADR-0001). `EnterpriseAiClientMain` (exedra)
+öffnet die Protokolldatei (`AppLogFile`, `java.util.logging` rollierend unter `<Anwendungsverzeichnis>/logs/`), lädt
+die Konfiguration (Erststart-Dialog), ruft `ApplicationStart.start` (Netz, Tresor, Adapter, Graph, Übernahme
+gespeicherter Einstellungen), bindet die Sprache, registriert den Shutdown-Hook und zeigt das Fenster.
 
 ```
 enterprise-ai-client.properties ──AppConfigLoader──▶ AppConfig (Snapshots, ohne Secrets)
@@ -443,10 +450,12 @@ TrustPolicy (SSLSocketFactory je Verb.)   AdapterAssembly ──▶ ApplicationP
 NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
                                                             SecretProvider, AgentBackend, Schließreihenfolge)
                                                             │
-                                       CompositionRoot ◀────┘  Use Cases (AP2/AP10/AP20), Bindings (AP22),
-                                            │                  AgentService mit AcpAgentLauncher (AP21),
-                                            │                  StartupIndexing, ShutdownSequence
-                                       ShellAssembly ──▶ ChatShellPanel + RagChatBinding, Agent-Ansicht, JFrame
+                                       CompositionRoot ◀────┘  Use Cases (AP2/AP10/AP20), Vorlader, MCP-Werkzeuge,
+                                            │                  AgentService mit AcpAgentLauncher (AP21), ShutdownSequence
+                              (application) │
+                              ─ ─ ─ ─ ─ ─ ─ ┼ ─ ─ ─ ─ ─ ─ ─
+                              (exedra)      ▼
+                                       ShellAssembly ──▶ ChatShellPanel + RagChatBinding, Statuszeile, Agent-Ansicht, JFrame
 ```
 
 - **Pakete**: `proasteion.exedra.config` (Snapshots `AppConfig`, `ChatConfig`, `EmbeddingConfig`, `KnowledgeConfig`,
@@ -460,13 +469,16 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   (`ChatWorkspacePanel` mit Hamburger, Modus-Pille und Drawer, `ShellFrame` rahmenloses Hauptfenster,
   `WorkspaceActions`, `KnowledgeSourceItem`), `proasteion.exedra.ui.sidebar` (`ChatSidebarPanel`, `SidebarTabRibbon`,
   `ChatHistoryRow`, `ChatSidebarTab`; Ports aus askai-java8 `arch`), `proasteion.exedra.settings`
-  (`ConfigurationFile`, `SettingsMapper`, `FileSettingsActions`, `FileSourceActions`, `FileIndexActions`,
+  (`SettingsMapper`, `FileSettingsActions`, `FileIndexActions`; `ConfigurationFile` und `FileSourceActions` liegen in
+  `proasteion.application.settings`, weil der Start die Quellenadressen abgleicht;
   `ConfigurationStartup`, `ConfigurationCheck`:
   Dialog ↔ Datei ↔ `AppConfigLoader`; `ConnectionProbe` und `ConnectionChecker`: der Verbindungstest des Dialogs
-  über `proasteion.exedra.net`), `proasteion.exedra.knowledge` (`StartupIndexing`), `proasteion.exedra.composition`
-  (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ShellAssembly`, `ShutdownSequence`,
-  `StartupNotices`, `LoggingKnowledgeSource` als Protokollhülle um jede Wissensquelle, `SettingsAssembly`,
-  `KeePassSecretChecker`, `ServiceConnectionChecker`).
+  über `proasteion.application.net`), `proasteion.exedra.assembly` (`ShellAssembly`, `SettingsAssembly`,
+  `KeePassSecretChecker`, `ServiceConnectionChecker`), dazu im Kompositionspunkt `proasteion.application.composition`
+  (`AdapterAssembly`, `ApplicationPorts`, `CompositionRoot`, `ApplicationStart`, `ShutdownSequence`,
+  `StartupNotices`, `LoggingKnowledgeSource` als Protokollhülle um jede Wissensquelle), `proasteion.application.agent`
+  (`AcpAgentLauncher`, `ResearchAgentHost`, `ResearchConceptEditing`, Research-Werkzeuge) und
+  `proasteion.application.speech` (`NlpModels`, `IndexSentenceSegmenter`).
 - **Konfiguration**: eine Properties-Datei im Benutzerverzeichnis (`~/.enterprise-ai-client/` bzw.
   `%APPDATA%`, überschreibbar mit `-Denterpriseai.home` und `-Denterpriseai.config`), eingebaute Defaults
   (AP10-Retrieval/Kontext, Adapter-Timeouts), Fehlermeldungen nennen Schlüssel und Erwartung, nie den Wert;

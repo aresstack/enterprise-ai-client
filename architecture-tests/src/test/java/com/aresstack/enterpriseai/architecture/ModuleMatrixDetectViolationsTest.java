@@ -5,7 +5,10 @@ import com.aresstack.enterpriseai.acp.demo.archfixture.FakeDemoAgent;
 import com.aresstack.enterpriseai.acp.demo.archfixture.matrix.DemoAgentUsingPort;
 import com.aresstack.enterpriseai.proasteion.exedra.archfixture.FakeShell;
 import com.aresstack.enterpriseai.proasteion.exedra.archfixture.matrix.CompositionRootUsingDemoAgent;
-import com.aresstack.enterpriseai.proasteion.exedra.archfixture.matrix.CompositionRootUsingEverything;
+import com.aresstack.enterpriseai.proasteion.exedra.archfixture.matrix.ShellUsingAdapter;
+import com.aresstack.enterpriseai.proasteion.exedra.archfixture.matrix.ShellUsingEverything;
+import com.aresstack.enterpriseai.proasteion.application.composition.archfixture.matrix.CompositionRootUsingComicControls;
+import com.aresstack.enterpriseai.proasteion.application.composition.archfixture.matrix.CompositionRootUsingEverything;
 import com.aresstack.enterpriseai.astu.acropolis.archfixture.NeutralUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.archfixture.matrix.UseCaseUsingComicControls;
 import com.aresstack.enterpriseai.astu.acropolis.archfixture.matrix.UseCaseUsingCompositionRoot;
@@ -36,7 +39,8 @@ import java.util.Map;
 /**
  * Modulmatrix (ARCHITECTURE.md, AP1/AP24) mit Gegenbeispiel je verbotener Kante: astu → Port/Application,
  * Port → Adapter/Application/anderer Port, Adapter → Adapter/Application/exedra/comic-controls,
- * Application → exedra/comic-controls, jede Kante nach acp-demo-agent. Ergänzt
+ * Application → exedra/comic-controls, Schale exedra → Adapter, Kompositionspunkt → comic-controls, jede Kante nach
+ * acp-demo-agent. Ergänzt
  * {@code RulesDetectViolationsTest.applicationUsingConcreteAdapterIsDetected}.
  */
 public class ModuleMatrixDetectViolationsTest {
@@ -61,6 +65,8 @@ public class ModuleMatrixDetectViolationsTest {
         edges.put(UseCaseUsingDemoAgent.class, FakeDemoAgent.class);
         edges.put(DemoAgentUsingPort.class, FakeAcpSession.class);
         edges.put(CompositionRootUsingDemoAgent.class, FakeDemoAgent.class);
+        edges.put(ShellUsingAdapter.class, FakeChatAdapter.class);
+        edges.put(CompositionRootUsingComicControls.class, FakeComicPanel.class);
         return edges;
     }
 
@@ -84,6 +90,14 @@ public class ModuleMatrixDetectViolationsTest {
         Violations.assertNone("Composition Root darf verdrahten",
                 Violations.of(ArchitectureRules.moduleDependencyRules(REGISTRY), ProductionClasses.of(
                         CompositionRootUsingEverything.class, FakeChatAdapter.class, NeutralUseCase.class,
-                        FakeChatPort.class, FakeChatValue.class, FakeComicPanel.class)));
+                        FakeChatPort.class, FakeChatValue.class)));
+    }
+
+    @Test
+    public void shellMayUseUseCasesPortsAndComicControls() {
+        Violations.assertNone("Schale darf Use Cases, Ports und comic-controls nutzen",
+                Violations.of(ArchitectureRules.moduleDependencyRules(REGISTRY), ProductionClasses.of(
+                        ShellUsingEverything.class, NeutralUseCase.class, FakeChatPort.class, FakeChatValue.class,
+                        FakeComicPanel.class)));
     }
 }

@@ -29,6 +29,11 @@ public final class KeePassConfig {
         return rpc;
     }
 
+    /** Adresse des KeePassRPC-Endpunkts als {@code host:port} (Pairing-Dialog, Meldungen). */
+    public String address() {
+        return rpc.host() + ":" + rpc.port();
+    }
+
     /** Datei für den Pairing-Schlüssel oder {@code null} (nur im Speicher, nach jedem Start neues Pairing). */
     public Path pairingKeyFile() {
         return pairingKeyFile;

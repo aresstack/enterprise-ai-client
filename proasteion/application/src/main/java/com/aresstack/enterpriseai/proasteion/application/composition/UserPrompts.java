@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
-import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingCallback;
+import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
 
 /**
  * Was der Kompositionspunkt vom Benutzer erfragen muss (Zugang „Manuell“, KeePass-Pairing). proasteion:application
@@ -11,5 +11,5 @@ public interface UserPrompts {
 
     AskedSecretProvider.CredentialPrompt credentials();
 
-    KeePassPairingCallback pairing(String keePassAddress);
+    PairingPrompt pairing(String keePassAddress);
 }

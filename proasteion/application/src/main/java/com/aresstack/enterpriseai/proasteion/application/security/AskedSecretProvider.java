@@ -28,7 +28,17 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
      * wechselt dafür selbst auf ihren Thread; ohne Oberfläche scheitert die Abfrage mit einer Meldung.
      */
     public interface CredentialPrompt {
-        Answer ask(SecretRef ref, String label) throws SecretUnavailableException;
+        Answer ask(SecretRef ref, String label) throws Unavailable;
+    }
+
+    /** Die Eingabe ist hier nicht möglich (kein Fenster); die Meldung nennt den Grund, nie Material. */
+    public static final class Unavailable extends Exception {
+
+        private static final long serialVersionUID = 1L;
+
+        public Unavailable(String message) {
+            super(message);
+        }
     }
 
     /** Eingabe des Benutzers; das Geheimnis löscht der Empfänger. */
@@ -85,7 +95,12 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
                 return new SecretMaterial(ref, users.get(key), known);
             }
         }
-        Answer answer = prompt.ask(ref, ref.id().substring(SCHEME.length()).trim());
+        Answer answer;
+        try {
+            answer = prompt.ask(ref, ref.id().substring(SCHEME.length()).trim());
+        } catch (Unavailable e) {
+            throw new SecretUnavailableException(Reason.NOT_AVAILABLE, ref, e.getMessage());
+        }
         if (answer == null) {
             throw new SecretUnavailableException(Reason.CANCELLED, ref, "Eingabe der Zugangsdaten abgebrochen");
         }

@@ -2,8 +2,8 @@ package com.aresstack.enterpriseai.integration;
 
 import com.aresstack.enterpriseai.proasteion.exedra.chat.fakeapi.FakeChatCompletionsServer;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.CompositionRoot;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.ShellAssembly;
+import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
+import com.aresstack.enterpriseai.proasteion.exedra.assembly.ShellAssembly;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatComposerPanel;

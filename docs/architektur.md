@@ -140,7 +140,7 @@ ARCHITECTURE.md, Abschnitt "Architekturtests"; eine Übersicht der Regelgruppen:
 | Technologiegrenzen | Swing nur in UI, Lucene nur in anagraphai, Solon/ACP-SDK/Reactor nur in ihren Adaptern, Positivliste des Kerns | `ClassBoundaryTest`, `UiTechnologyTest` |
 | Adapter-Grenzen | keine Bibliothekstypen in öffentlichen Signaturen, keine Bibliothek als `api`, jeder Adapter implementiert ein Interface seines Ports | `AdapterSignatureTest`, `CompositionRootTest`, `ChatBoundaryTest`, `EmbeddingBoundaryTest`, `KnowledgeBoundaryTest`, `SourceBoundaryTest` |
 | Strang-Grenzen | Chat-Pfad kennt kein RAG/ACP/MCP; `astu.acropolis.mcp` nur über Use Cases; UI ohne Ports | `RagBoundaryTest`, `AgentModeBoundaryTest`, `McpKnowledgeToolsBoundaryTest`, `ComicUiBoundaryTest` |
-| Composition Root | Adapterkonstruktoren nur in `proasteion.exedra.composition`; `System.getenv`/Preferences/`Properties.load` nur in exedra; kein `ServiceLoader` | `CompositionRootBoundaryTest`, `CompositionRootTest` |
+| Composition Root | Adapterkonstruktoren nur in `proasteion.exedra.assembly`; `System.getenv`/Preferences/`Properties.load` nur in exedra; kein `ServiceLoader` | `CompositionRootBoundaryTest`, `CompositionRootTest` |
 | Secrets und Logging | `SecretMaterial` nur in erlaubten Modulen und nie in Feldern; kein Logging-Framework, keine Konsole | `SecretBoundaryTest`, `LoggingBoundaryTest` |
 | Provider-Neutralität | keine Provider-Namen im Kern, keine Hosts/Modelle/Keys im Bytecode, kein `0.0.0.0` | `CoreNamingTest`, `HardcodedConfigurationTest` |
 | Testcode und Java 8 | Produktionscode kennt keine Testbibliothek und keine Fixtures; `--release 8` und Bytecode 52 überall | `TestCodeIsolationTest`, `Java8CompatibilityTest` |

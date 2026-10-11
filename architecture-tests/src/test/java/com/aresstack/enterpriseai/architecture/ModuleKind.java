@@ -25,8 +25,17 @@ enum ModuleKind {
     /** Wiederverwendbare Swing/Java2D-Bibliothek ohne Projektabhängigkeiten. */
     UI_LIBRARY,
 
-    /** Äußerstes Modul: Swing-Anwendung und einzige Composition Root. */
+    /**
+     * Der Kompositionspunkt ohne Oberfläche (corenth ADR-0001, {@code proasteion:application}): einziger Ort, an dem
+     * Adapter entstehen und Konfiguration gelesen wird; gibt Use Cases und Ports an Schalen heraus.
+     */
     COMPOSITION_ROOT,
+
+    /**
+     * Eine Schale über dem Kompositionspunkt (corenth: exedra, „dünne UI-Schale“): kennt den Kompositionspunkt, Kern,
+     * Ports und die Comic-Bibliothek, aber keine Adapter.
+     */
+    UI_SHELL,
 
     /** Separater Prozess bzw. Testfixture; darf von keinem Modul referenziert werden. */
     TEST_FIXTURE,

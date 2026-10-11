@@ -28,14 +28,16 @@ import static org.junit.Assert.assertTrue;
  *   <li>Der Chat-Pfad (Modell, Port, Adapter, Use Case, Anbindung, Oberfläche) kennt weder ACP noch MCP noch
  *       den Agent-Modus.</li>
  *   <li>ACP- und MCP-Typen tauchen außerhalb ihrer eigenen Module nur in {@code astu.acropolis.agent},
- *       {@code astu.acropolis.mcp} (AP20), {@code proasteion.exedra.agent} und der Composition Root ({@code proasteion.exedra}) auf.</li>
+ *       {@code astu.acropolis.mcp} (AP20), {@code proasteion.application.agent} und {@code proasteion.application.composition}
+ *       (Kompositionspunkt, corenth ADR-0001) sowie in der Schale {@code proasteion.exedra.agent} und
+ *       {@code proasteion.exedra} auf.</li>
  *   <li>Der Agent-Use-Case sieht nur den ACP-Port, keine MCP-Typen und nicht den Chat.</li>
  *   <li>Die Modus-Umschaltung ({@code proasteion.exedra.ui.agent}) ist reine Oberfläche: keine Use Cases, keine Ports.</li>
  * </ul>
  *
  * AP20 (MCP-Wissenswerkzeuge in {@code astu.acropolis.mcp}) ist in {@link #ACP_MCP_ALLOWED} eingetragen; seine
- * eigenen Grenzen prüft {@link McpKnowledgeToolsBoundaryTest}. AP23 verdrahtet ACP und MCP in
- * {@code proasteion.exedra.composition} (neben {@code proasteion.exedra.agent} und der Composition-Root-Klasse im Paket {@code proasteion.exedra}).
+ * eigenen Grenzen prüft {@link McpKnowledgeToolsBoundaryTest}. Verdrahtet werden ACP und MCP im Kompositionspunkt
+ * {@code proasteion.application.composition} mit {@code proasteion.application.agent}.
  */
 public class AgentModeBoundaryTest {
 
@@ -45,13 +47,13 @@ public class AgentModeBoundaryTest {
             ROOT + ".proasteion.exedra.chat..", ROOT + ".proasteion.exedra.ui.chat.."};
     private static final String[] AGENT_AND_PROTOCOLS = {
             ROOT + ".acp..", ROOT + ".proasteion.katagogion..", ROOT + ".astu.acropolis.agent..", ROOT + ".proasteion.exedra.agent..",
-            ROOT + ".proasteion.exedra.ui.agent..", "com.agentclientprotocol..", "io.modelcontextprotocol..", "org.noear.."};
+            ROOT + ".proasteion.application.agent..", ROOT + ".proasteion.exedra.ui.agent..", "com.agentclientprotocol..", "io.modelcontextprotocol..", "org.noear.."};
     private static final String[] ACP_AND_MCP = {ROOT + ".acp..", ROOT + ".proasteion.katagogion.."};
     /** Wo ACP-/MCP-Typen außerhalb ihrer eigenen Module vorkommen dürfen. */
     private static final String[] ACP_MCP_ALLOWED = {
             ROOT + ".acp..", ROOT + ".proasteion.katagogion..", ROOT + ".astu.acropolis.agent..", ROOT + ".astu.acropolis.mcp..",
-            ROOT + ".proasteion.exedra.agent..", ROOT + ".proasteion.exedra.composition..", ROOT + ".proasteion.exedra",
-            ROOT + ".proasteion.application.composition.."};
+            ROOT + ".proasteion.exedra.agent..", ROOT + ".proasteion.exedra",
+            ROOT + ".proasteion.application.agent..", ROOT + ".proasteion.application.composition.."};
 
     private static JavaClasses productionClasses;
 

@@ -10,7 +10,7 @@ import com.agentclientprotocol.sdk.annotation.NewSession;
 import com.agentclientprotocol.sdk.annotation.Prompt;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import com.aresstack.enterpriseai.acp.api.AcpEndpointDescriptor;
-import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentMcpEnvironment;
+import com.aresstack.enterpriseai.proasteion.application.agent.AgentMcpEnvironment;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolClient;

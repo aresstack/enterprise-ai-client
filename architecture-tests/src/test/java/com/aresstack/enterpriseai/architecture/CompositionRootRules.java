@@ -33,8 +33,9 @@ final class CompositionRootRules {
     static ArchRule configurationIsReadOnlyInTheCompositionRoot(ModuleRegistry registry) {
         return noClasses()
                 .that().resideInAPackage(ModuleRegistry.ROOT_PACKAGE + "..")
-                .and().resideOutsideOfPackages(registry.module("exedra").packagePattern(),
-                        registry.module("application").packagePattern(),
+                // Die Schale (exedra) liest und schreibt die Konfigurationsdatei im Einstellungen-Dialog.
+                .and().resideOutsideOfPackages(registry.module("application").packagePattern(),
+                        registry.module("exedra").packagePattern(),
                         registry.module("acp-demo-agent").packagePattern(),
                         registry.module("research-agent-acp").packagePattern())
                 .should().callMethodWhere(LoggingRules.call(System.class, "getenv"))

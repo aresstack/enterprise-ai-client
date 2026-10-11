@@ -15,53 +15,18 @@ application {
 apply from: rootProject.file('gradle/fat-jar.gradle')
 
 dependencies {
+    // Die Schale kennt nur den Kompositionspunkt (corenth ADR-0001), den Kern, Ports und die Comic-Bibliothek;
+    // Adapter und den Tresor (adyton) verdrahtet allein proasteion:application. Das Fat Jar bekommt sie über dessen Laufzeitklassenpfad.
     implementation project(':proasteion:application')
+    implementation project(':astu')
     implementation project(':astu:acropolis')
     implementation project(':comic-controls')
-    implementation project(':chat-openai')
-    implementation project(':embedding-openai')
-    implementation project(':astu:acropolis:chalcotheca:anagraphai')
-    implementation project(':astu:acropolis:chalcotheca:pinakes')
-    implementation project(':proasteion:emporion:holkas:source-mediawiki')
-    implementation project(':proasteion:emporion:holkas:source-confluence')
-    // Lokale Dateien als Quelle; Extraktion über document-tika (Klartext/Markdown ohne Tika, sonst Apache Tika).
-    implementation project(':proasteion:emporion:holkas:source-localfiles')
-    // Mainframe über FTP (MVS-Datasets, COBOL), Anmeldung über KeePass.
-    implementation project(':proasteion:emporion:holkas:source-ftp')
-    // Natural über NDV, Anmeldung über KeePass.
-    implementation project(':proasteion:emporion:holkas:source-ndv')
-    implementation project(':astu:acropolis:chalcotheca')
-    implementation project(':proasteion:emporion:holkas')
-    implementation project(':proasteion:emporion:deigma:document-tika')
-    implementation project(':proasteion:platform:security-keepassrpc')
-    implementation project(':acp-solon-client')
-    implementation project(':proasteion:katagogion:mcp-solon-runtime')
-    implementation project(':proasteion:platform:network')
-    // Modellverwaltung: Katalog der Enterprise-API und Stimmen vom Hugging Face Hub.
-    implementation project(':model-kipitz')
-    implementation project(':model-huggingface')
+    implementation project(':chat-api')
+    implementation project(':source-api')
+    implementation project(':acp-client-api')
     implementation project(':speech-api')
-    implementation project(':speech-runtime-api')
-    implementation project(':speech-local')
-    implementation project(':speech-onnx')
-    implementation project(':speech-opennlp')
-    implementation project(':text-runtime-api')
-    implementation project(':text-local')
-    implementation project(':text-onnx')
-    implementation project(':research-domain')
-    implementation project(':research-api')
-    implementation project(':research-scope')
-    implementation project(':research-store')
-    implementation project(':research-agent-runtime')
-    implementation project(':research-concept')
-    // Der eingebaute Recherche-Agent als eigener Prozess über ACP (askai-java8 arch: ResearchAgentMain). Nur zur
-    // Laufzeit: der Client startet ihn mit derselben Java-Laufzeit aus demselben Fat Jar (java -cp <jar> <Klasse>).
-    runtimeOnly project(':research-agent-acp')
-    // Proxy je Ziel in den Modi von win-proxy-java (PAC per PowerShell/VBScript/Windows-Einstellungen, fester
-    // Proxy, ...): app.net.HttpRoutes. Bringt GraalJS mit; das Fat Jar führt dessen ServiceLoader-Dateien zusammen.
-    implementation libs.win.proxy.java
-    // TLS-Vertrauen aus JVM-Truststore, Windows-ROOT und Windows Root/CA-Export: app.net.TrustPolicy.
-    implementation libs.win.trust.java
+    implementation project(':model-api')
+    implementation project(':proasteion:platform:network')
     // Markdown-Rendering der Antworten (app.ui.markdown, aus askai-java8 arch): flexmark mit Tabellen, Autolinks und
     // Durchstreichen; Mermaid-Zäune werden mit mermaid-java (GraalJS + Batik, ohne Browser und Netz) zu Bildern.
     implementation libs.flexmark
@@ -71,6 +36,46 @@ dependencies {
     implementation libs.mermaid.java
     // Chat-Historie (app.chat.FileChatHistoryStore, aus askai-java8 arch): ein JSON-Dokument je Chat.
     implementation libs.gson
+
+    // Die Tests setzen die Schale auch mit echten Adaptern zusammen (Kompositionstests, Agent-Roundtrips, Demos);
+    // nur hier, nicht im Produktionscode der Schale.
+    testImplementation project(':adyton')
+    testImplementation project(':chat-openai')
+    testImplementation project(':embedding-openai')
+    testImplementation project(':astu:acropolis:chalcotheca')
+    testImplementation project(':astu:acropolis:chalcotheca:tamias')
+    testImplementation project(':astu:acropolis:chalcotheca:anagraphai')
+    testImplementation project(':astu:acropolis:chalcotheca:pinakes')
+    testImplementation project(':proasteion:emporion:holkas')
+    testImplementation project(':proasteion:emporion:holkas:source-mediawiki')
+    testImplementation project(':proasteion:emporion:holkas:source-confluence')
+    testImplementation project(':proasteion:emporion:holkas:source-localfiles')
+    testImplementation project(':proasteion:emporion:holkas:source-ftp')
+    testImplementation project(':proasteion:emporion:holkas:source-ndv')
+    testImplementation project(':proasteion:emporion:deigma')
+    testImplementation project(':proasteion:emporion:deigma:document-tika')
+    testImplementation project(':proasteion:platform:security-keepassrpc')
+    testImplementation project(':acp-solon-client')
+    testImplementation project(':proasteion:katagogion')
+    testImplementation project(':proasteion:katagogion:mcp-solon-runtime')
+    testImplementation project(':embedding-api')
+    testImplementation project(':model-kipitz')
+    testImplementation project(':model-huggingface')
+    testImplementation project(':speech-runtime-api')
+    testImplementation project(':speech-local')
+    testImplementation project(':speech-onnx')
+    testImplementation project(':speech-opennlp')
+    testImplementation project(':text-runtime-api')
+    testImplementation project(':text-local')
+    testImplementation project(':text-onnx')
+    testImplementation project(':research-domain')
+    testImplementation project(':research-api')
+    testImplementation project(':research-scope')
+    testImplementation project(':research-store')
+    testImplementation project(':research-agent-runtime')
+    testImplementation project(':research-concept')
+    testImplementation libs.win.proxy.java
+    testImplementation libs.win.trust.java
 
     // Strang A: skriptbarer Fake-ChatCompletionPort für UI-Tests und die Demo.
     testImplementation testFixtures(project(':chat-api'))

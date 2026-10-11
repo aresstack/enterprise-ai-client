@@ -82,7 +82,7 @@ public class LiveKeePassIT {
     static KeePassPairingCallback pairingCallback(KeePassRpcConfig config, final AtomicInteger prompts) {
         final KeePassPairingCallback inner = GraphicsEnvironment.isHeadless()
                 ? KeePassPairingCallback.unavailable()
-                : new SwingPairingCallback(config.host() + ":" + config.port());
+                : new SwingPairingCallback(config.host() + ":" + config.port())::requestPairingPassword;
         return clientDisplayName -> {
             prompts.incrementAndGet();
             return inner.requestPairingPassword(clientDisplayName);

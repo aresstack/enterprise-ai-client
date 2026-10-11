@@ -20,6 +20,16 @@ public final class SecretProbe {
     }
 
     /** @return {@code true}, wenn der Eintrag existiert und sein Passwortfeld nicht leer (nur Whitespace) ist */
+    /**
+     * Das Bearer-Token eines Eintrags wie der Chat-Adapter es liest (getrimmt); für Verbindungstest und
+     * Modellabfrage der Einstellungen.
+     *
+     * @throws SecretAccessException wenn das Secret nicht bereitgestellt werden kann
+     */
+    public static String token(SecretProvider provider, SecretRef ref) {
+        return new SecretBackedTokenSource(provider, ref).token();
+    }
+
     public static boolean isFilled(SecretProvider provider, SecretRef ref) throws SecretUnavailableException {
         if (provider == null || ref == null) {
             throw new IllegalArgumentException("provider and ref must not be null");

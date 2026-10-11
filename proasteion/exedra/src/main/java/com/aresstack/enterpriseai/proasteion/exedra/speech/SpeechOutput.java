@@ -1,12 +1,12 @@
 package com.aresstack.enterpriseai.proasteion.exedra.speech;
 
+import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
-import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 
 /**
  * Entscheidet, ob und womit vorgelesen wird: das Modell kommt aus der Katalog-Kategorie TTS ({@code model.tts}),
@@ -28,12 +28,12 @@ public final class SpeechOutput {
      * geladen beim ersten Vorlesen, entladen eine Minute nach dem letzten.
      */
     public static TextAnalysisService textAnalysis() {
-        return new TextAnalysisService(nlpModels().loader(), TextAnalysisService.DEFAULT_STOP_GRACE_MILLIS);
+        return NlpModels.textAnalysis();
     }
 
     /** Die OpenNLP-Modelle des Vorlesens im Anwendungsverzeichnis. */
     public static NlpModels nlpModels() {
-        return NlpModels.standard(AppPaths.appDirectory().resolve("models").resolve("nlp"));
+        return NlpModels.inApplicationDirectory();
     }
 
     /**

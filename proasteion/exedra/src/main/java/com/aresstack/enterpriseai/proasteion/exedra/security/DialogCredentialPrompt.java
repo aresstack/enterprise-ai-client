@@ -1,7 +1,5 @@
 package com.aresstack.enterpriseai.proasteion.exedra.security;
 
-import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
-import com.aresstack.enterpriseai.adyton.SecretUnavailableException.Reason;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.security.CredentialDialog;
@@ -18,9 +16,10 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class DialogCredentialPrompt implements AskedSecretProvider.CredentialPrompt {
 
     @Override
-    public AskedSecretProvider.Answer ask(SecretRef ref, final String label) throws SecretUnavailableException {
+    public AskedSecretProvider.Answer ask(SecretRef ref, final String label)
+            throws AskedSecretProvider.Unavailable {
         if (GraphicsEnvironment.isHeadless()) {
-            throw new SecretUnavailableException(Reason.NOT_AVAILABLE, ref,
+            throw new AskedSecretProvider.Unavailable(
                     "Manuelle Zugangsdaten brauchen ein Fenster zur Eingabe");
         }
         if (SwingUtilities.isEventDispatchThread()) {

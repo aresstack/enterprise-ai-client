@@ -71,7 +71,7 @@ sequenceDiagram
   alter Kontext verloren); einen automatischen Neustart ohne Nutzeraktion gibt es nicht. Fehler sind
   `AgentFailure` (`START_FAILED`, `SESSION_FAILED`, `PROMPT_FAILED`, `AGENT_TERMINATED`, `CLOSED`) ohne Details
   aus Agent oder SDK.
-- **`AgentLauncher`** ist das Port-Interface des Use Case; die Implementierung `proasteion.exedra.agent.AcpAgentLauncher`
+- **`AgentLauncher`** ist das Port-Interface des Use Case; die Implementierung `proasteion.application.agent.AcpAgentLauncher`
   liegt in der Composition Root. Dadurch laufen Launch-Umgebung, Endpoint-URL und Token nie durch den Use Case.
 - **MCP-Übergabe**: Je Agentenprozess registriert der Launcher einen frischen Endpoint (neuer Token) und legt
   ihn als Umgebungsvariablen in den Prozess (`AgentMcpEnvironment`): `ENTERPRISE_AI_MCP_ENDPOINT_ID`,

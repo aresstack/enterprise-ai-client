@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.proasteion.application.knowledge.SourcePartiti
 import com.aresstack.enterpriseai.proasteion.application.net.LiveNetwork;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
 import com.aresstack.enterpriseai.proasteion.application.security.ClientCertificateFactory;
 import com.aresstack.enterpriseai.proasteion.application.security.FilePairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedBearerTokenSource;
@@ -35,6 +36,7 @@ import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.InMemoryPairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingCallback;
+import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcSecretProvider;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
@@ -91,6 +93,58 @@ public final class AdapterAssembly {
                 ? new InMemoryPairingKeyStore()
                 : new FilePairingKeyStore(keePass.pairingKeyFile());
         return secrets(keePass, pairing, keyStore, prompt);
+    }
+
+    /**
+     * Wie {@link #secrets(AppConfig, KeePassPairingCallback, AskedSecretProvider.CredentialPrompt)} mit der Eingabe
+     * einer Oberfläche: die Schale kennt den KeePass-Adapter nicht, nur {@link PairingPrompt}.
+     */
+    public static SecretProvider secrets(AppConfig config, PairingPrompt pairing,
+                                         AskedSecretProvider.CredentialPrompt prompt) {
+        return secrets(config, callback(pairing), prompt);
+    }
+
+    /**
+     * Der Security-Port für eine KeePass-Einstellung (Proben des Einstellungen-Dialogs, Proxy-Anmeldung der
+     * Stimmen): Schlüsselablage wie konfiguriert ({@code file} oder {@code memory}), Pairing über die Oberfläche.
+     */
+    public static SecretProvider secrets(KeePassConfig keePass, PairingPrompt pairing,
+                                         AskedSecretProvider.CredentialPrompt prompt) {
+        KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
+                ? new InMemoryPairingKeyStore()
+                : new FilePairingKeyStore(keePass.pairingKeyFile());
+        return secrets(keePass, callback(pairing), keyStore, prompt);
+    }
+
+    /**
+     * Der Tresorzugang der Einstellungen-Proben für eine KeePass-Einstellung (Entwurf des Dialogs): derselbe
+     * Security-Port wie {@link #secrets(KeePassConfig, PairingPrompt, AskedSecretProvider.CredentialPrompt)}, für die
+     * Schale ohne adyton-Typen; ausgeschaltetes KeePass lehnt jeden Zugriff ab.
+     */
+    public static KeePassAccess keePassAccess(KeePassConfig keePass, PairingPrompt pairing,
+                                              AskedSecretProvider.CredentialPrompt prompt) {
+        if (keePass == null || !keePass.enabled()) {
+            return KeePassAccess.unavailable();
+        }
+        return new KeePassAccess(secrets(keePass, pairing, prompt), keePass.address());
+    }
+
+    /** Die Eingabe der Oberfläche als Pairing-Callback des KeePassRPC-Adapters. */
+    private static KeePassPairingCallback callback(final PairingPrompt pairing) {
+        if (pairing == null) {
+            throw new IllegalArgumentException("pairing must not be null");
+        }
+        return new KeePassPairingCallback() {
+            @Override
+            public char[] requestPairingPassword(String clientDisplayName) {
+                return pairing.requestPairingPassword(clientDisplayName);
+            }
+
+            @Override
+            public String toString() {
+                return pairing.toString();
+            }
+        };
     }
 
     /**

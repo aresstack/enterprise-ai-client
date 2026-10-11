@@ -163,10 +163,13 @@ public class ModuleRegistryTest {
             case ADAPTER:
                 return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT);
             case COMPOSITION_ROOT:
-                // Die Schale (exedra) nutzt den Kompositionspunkt ohne Oberfläche (application, corenth ADR-0001);
-                // Zyklen schließt assertAcyclic aus.
+                // Der Kompositionspunkt ohne Oberfläche (application, corenth ADR-0001) kennt alle Adapter.
                 return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT, ModuleKind.APPLICATION,
-                        ModuleKind.ADAPTER, ModuleKind.UI_LIBRARY, ModuleKind.AGENT_PROCESS, ModuleKind.COMPOSITION_ROOT);
+                        ModuleKind.ADAPTER, ModuleKind.AGENT_PROCESS);
+            case UI_SHELL:
+                // Die Schale (exedra) konsumiert den Kompositionspunkt; Adapter kennt sie nicht (corenth ADR-0001).
+                return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT, ModuleKind.APPLICATION,
+                        ModuleKind.UI_LIBRARY, ModuleKind.COMPOSITION_ROOT);
             case AGENT_PROCESS:
                 return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT, ModuleKind.APPLICATION, ModuleKind.ADAPTER);
             default:

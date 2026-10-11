@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.agent;
 
+import com.aresstack.enterpriseai.proasteion.application.agent.ResearchAgentHost;
+import com.aresstack.enterpriseai.proasteion.application.agent.AgentModelChoice;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchOutOfScopeSky;

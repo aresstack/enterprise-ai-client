@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.proasteion.application.settings.LocalVoiceInst
 import com.aresstack.enterpriseai.proasteion.application.settings.HubSearchHistory;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationCheck;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
+import com.aresstack.enterpriseai.proasteion.application.settings.FileSourceActions;
 
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
@@ -17,7 +18,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.VaultLocations;
 import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
-import com.aresstack.enterpriseai.proasteion.exedra.speech.NlpModels;
+import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceSearchCallback;
@@ -967,16 +968,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
 
     @Override
     public String defaultDiscoveryScript(String proxyMode) {
-        try {
-            com.aresstack.winproxy.ProxyMode mode = com.aresstack.winproxy.ProxyMode.valueOf(proxyMode);
-            if (mode != com.aresstack.winproxy.ProxyMode.PAC_URL_POWERSHELL
-                    && mode != com.aresstack.winproxy.ProxyMode.PAC_URL_WSCRIPT) {
-                return "";
-            }
-            return HttpRoutes.defaultDiscoveryScript(mode);
-        } catch (RuntimeException e) {
-            return "";
-        }
+        return HttpRoutes.discoveryScriptFor(proxyMode);
     }
 
     /** Netzwerkabschnitt des Entwurfs laden, Probe auf dem Arbeits-Executor, Zeilen und Ende über den UI-Executor. */

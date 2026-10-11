@@ -55,7 +55,7 @@ final class ModuleRegistry {
                 .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "astu", "chat-api", "network")
 
                 // Netz: HTTP-Route je Ziel-URL (Proxy-Entscheidung) als neutraler Port; die einzige
-                // Implementierung (win-proxy-java) liegt in exedra (app.net.HttpRoutes).
+                // Implementierung (win-proxy-java) liegt im Kompositionspunkt (proasteion.application.net.HttpRoutes).
                 .module("network", "proasteion.platform.network", ModuleKind.PORT, "N (Netz)", "astu")
 
                 .module("embedding-api", "embedding.api", ModuleKind.PORT, "C", "astu")
@@ -173,20 +173,15 @@ final class ModuleRegistry {
                         "deigma", "document-tika", "source-localfiles", "tamias",
                         "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
-                        "text-runtime-api", "text-local", "text-onnx")
-                .module("exedra", "proasteion.exedra", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
-                        "application", "astu", "acropolis",
-                        "chat-api", "embedding-api", "chalcotheca", "source-api", "adyton",
-                        "acp-client-api", "katagogion", "network",
-                        "chat-openai", "embedding-openai", "anagraphai", "pinakes", "source-mediawiki",
-                        "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
-                        "comic-controls", "deigma", "document-tika", "source-localfiles", "tamias",
-                        "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
-                        "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
-                        "speech-opennlp",
-                        "text-runtime-api", "text-local", "text-onnx", "research-domain", "research-api",
-                        "research-scope", "research-store", "research-agent-runtime", "research-concept",
-                        "research-agent-acp")
+                        "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",
+                        "research-api", "research-scope", "research-store", "research-agent-runtime",
+                        "research-concept", "research-agent-acp")
+                // Die Swing-Schale über dem Kompositionspunkt (corenth ADR-0001): kennt application, Kern, Ports und
+                // comic-controls, aber keinen Adapter; nicht holkas, deigma, tamias, anagraphai oder pinakes.
+                .module("exedra", "proasteion.exedra", ModuleKind.UI_SHELL, "B (AP4, AP22, AP23)",
+                        "application", "astu", "acropolis", "comic-controls",
+                        "chat-api", "chalcotheca", "source-api", "acp-client-api", "network", "speech-api",
+                        "model-api")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

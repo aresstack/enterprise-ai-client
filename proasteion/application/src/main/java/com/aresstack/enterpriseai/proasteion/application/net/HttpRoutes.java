@@ -149,6 +149,22 @@ public final class HttpRoutes implements HttpRoutePort {
         return ProxyConfiguration.builder().mode(mode).build().getPacUrlDiscoveryScript();
     }
 
+    /**
+     * Wie {@link #defaultDiscoveryScript(ProxyMode)} für den Modusnamen aus dem Einstellungen-Dialog; leer für Modi
+     * ohne PAC-Ermittlungsskript und für unbekannte Namen.
+     */
+    public static String discoveryScriptFor(String proxyMode) {
+        try {
+            ProxyMode mode = ProxyMode.valueOf(proxyMode);
+            if (mode != ProxyMode.PAC_URL_POWERSHELL && mode != ProxyMode.PAC_URL_WSCRIPT) {
+                return "";
+            }
+            return defaultDiscoveryScript(mode);
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
     public NetworkConfig config() {
         return config;
     }

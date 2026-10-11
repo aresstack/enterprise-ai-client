@@ -3,7 +3,6 @@ package com.aresstack.enterpriseai.proasteion.exedra.security;
 import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.security.KeePassPairingDialog;
-import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingCallback;
 
 import javax.swing.SwingUtilities;
 import java.awt.GraphicsEnvironment;
@@ -11,11 +10,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * {@link KeePassPairingCallback} der Desktop-Anwendung: Der KeePassRPC-Adapter ruft ihn auf einem Arbeits-Thread
+ * {@link PairingPrompt} der Desktop-Anwendung: Der KeePassRPC-Adapter ruft ihn (über den Kompositionspunkt) auf einem Arbeits-Thread
  * (Chat, Indexierung) auf; der Dialog läuft modal auf dem EDT, der Aufrufer wartet. Ohne Display (headless) oder
  * bei Unterbrechung gilt das Pairing als abgebrochen ({@code null}), genau wie beim Abbrechen im Dialog.
  */
-public final class SwingPairingCallback implements KeePassPairingCallback {
+public final class SwingPairingCallback implements PairingPrompt {
 
     private final PairingPrompt prompt;
 

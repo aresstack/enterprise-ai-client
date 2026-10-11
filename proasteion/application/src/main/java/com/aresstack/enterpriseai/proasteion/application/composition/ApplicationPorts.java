@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -144,6 +145,11 @@ public final class ApplicationPorts implements Closeable {
 
     public SecretProvider secrets() {
         return secrets;
+    }
+
+    /** Der Tresorzugang der Schale (Titel, Passwortverwaltung, {@code MM_CertAlias}) über diesem Security-Port. */
+    public KeePassAccess keePassAccess() {
+        return new KeePassAccess(secrets, null);
     }
 
     /** {@code null}: kein Agent-Modus konfiguriert. */

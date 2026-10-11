@@ -7,7 +7,7 @@ dependencies {
     api project(':astu:acropolis')
     api project(':astu:acropolis:chalcotheca')
     api project(':proasteion:platform:network')
-    api project(':proasteion:platform:security-keepassrpc')
+    implementation project(':proasteion:platform:security-keepassrpc')
     implementation project(':chat-openai')
     implementation project(':embedding-openai')
     implementation project(':astu:acropolis:chalcotheca:anagraphai')
@@ -30,6 +30,23 @@ dependencies {
     implementation project(':text-runtime-api')
     implementation project(':text-local')
     implementation project(':text-onnx')
+    // Satzgrenzen beim Indexieren und beim Vorlesen (OpenNLP wie askai arch): speech.NlpModels.
+    implementation project(':speech-opennlp')
+    // Anhänge (chat.DocumentAttachmentTextExtractor) über den Dokument-Port.
+    implementation project(':proasteion:emporion:deigma')
+    // Agent-Modus: ACP-Start mit MCP-Endpoint (agent.AcpAgentLauncher) und der eingebaute Recherche-Agent
+    // (agent.ResearchAgentHost mit Weidezaun, Konzeptpapier und Projektablage).
+    implementation project(':acp-client-api')
+    implementation project(':proasteion:katagogion')
+    implementation project(':research-domain')
+    implementation project(':research-api')
+    implementation project(':research-scope')
+    implementation project(':research-store')
+    implementation project(':research-agent-runtime')
+    implementation project(':research-concept')
+    // Der eingebaute Recherche-Agent als eigener Prozess über ACP (askai-java8 arch: ResearchAgentMain). Nur zur
+    // Laufzeit: der Kompositionspunkt startet ihn mit derselben Java-Laufzeit aus demselben Fat Jar.
+    runtimeOnly project(':research-agent-acp')
     // Proxy je Ziel (net.HttpRoutes) und TLS-Vertrauen (net.TrustPolicy), wie bisher in exedra.
     implementation libs.win.proxy.java
     implementation libs.win.trust.java

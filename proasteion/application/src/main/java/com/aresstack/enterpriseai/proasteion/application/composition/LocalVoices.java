@@ -6,7 +6,6 @@ import com.aresstack.enterpriseai.proasteion.application.config.LocalVoicesConfi
 import com.aresstack.enterpriseai.proasteion.application.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
-import com.aresstack.enterpriseai.proasteion.application.security.FilePairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.application.security.ProxyAuthenticator;
 import com.aresstack.enterpriseai.proasteion.application.settings.LocalVoiceInstaller;
 import com.aresstack.enterpriseai.astu.acropolis.localruntime.LocalVoiceService;
@@ -18,8 +17,6 @@ import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
 import com.aresstack.enterpriseai.model.huggingface.HubRepositorySuggestion;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoice;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoiceProvisioning;
-import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.InMemoryPairingKeyStore;
-import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingKeyStore;
 
 import java.net.URI;
 import java.nio.file.Path;
@@ -95,10 +92,7 @@ public final class LocalVoices implements LocalVoiceInstaller {
             return;
         }
         String address = keePass.rpc().host() + ":" + keePass.rpc().port();
-        KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
-                ? new InMemoryPairingKeyStore()
-                : new FilePairingKeyStore(keePass.pairingKeyFile());
-        ProxyAuthenticator.install(AdapterAssembly.secrets(keePass, prompts.pairing(address), keyStore,
+        ProxyAuthenticator.install(AdapterAssembly.secrets(keePass, prompts.pairing(address),
                         prompts.credentials()),
                 network.proxyCredentialRef());
     }

@@ -4,8 +4,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.chat.fakeapi.FakeChatComplet
 import com.aresstack.enterpriseai.proasteion.exedra.chat.fakeapi.FakeEmbeddingsServer;
 import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.CompositionRoot;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.ShellAssembly;
+import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
+import com.aresstack.enterpriseai.proasteion.exedra.assembly.ShellAssembly;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
@@ -233,7 +233,7 @@ public class ConfiguredApplicationSliceTest {
 
         // Kein Secret in Oberfläche, Statuszeile, Anfrage oder toString() der Ports.
         assertNoSecretInTranscript(model, API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
-        String status = onEdt(() -> root.knowledgeStatus().getText());
+        String status = onEdt(() -> view.knowledgeStatus().getText());
         assertNoSecret(status, API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
         assertNoSecret(request.systemContent(), API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);
         assertNoSecret(ports.toString(), API_KEY, WIKI_PASSWORD, CONFLUENCE_PASSWORD);

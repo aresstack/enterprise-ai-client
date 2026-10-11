@@ -1,38 +1,28 @@
 package com.aresstack.enterpriseai.proasteion.exedra;
 
-import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
-import com.aresstack.enterpriseai.astu.acropolis.source.KnowledgeSourceManagement;
-import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.CompositionRoot;
+import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationStart;
+import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
+import com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts;
 import com.aresstack.enterpriseai.proasteion.application.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.Dictation;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.SwitchableReadAloud;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.SpeechOutput;
 import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
 import com.aresstack.enterpriseai.proasteion.application.composition.LocalVoices;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.SettingsAssembly;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.ShellAssembly;
+import com.aresstack.enterpriseai.proasteion.exedra.assembly.SettingsAssembly;
+import com.aresstack.enterpriseai.proasteion.exedra.assembly.ShellAssembly;
 import com.aresstack.enterpriseai.proasteion.application.composition.StartupNotices;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
-import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
-import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
-import com.aresstack.enterpriseai.proasteion.application.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.proasteion.application.net.LiveNetwork;
-import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
-import com.aresstack.enterpriseai.proasteion.application.security.LiveSecretProvider;
-import com.aresstack.enterpriseai.proasteion.application.security.ProxyAuthenticator;
-import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedTokenSource;
-import com.aresstack.enterpriseai.proasteion.exedra.security.DialogCredentialPrompt;
-import com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.SourcePartitionSelection;
 import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.FileIndexActions;
-import com.aresstack.enterpriseai.proasteion.exedra.settings.FileSourceActions;
+import com.aresstack.enterpriseai.proasteion.application.settings.FileSourceActions;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.ConfigurationStartup;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.SettingsMapper;
 import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
@@ -46,8 +36,6 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SourceDialog;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
-import com.aresstack.enterpriseai.astu.security.SecretRef;
-import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsPanel;
@@ -62,27 +50,19 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Einstiegspunkt der Desktop-Anwendung und Composition Root (AP23). Ablauf: Protokolldatei anhängen,
- * Konfiguration beschaffen (fehlt sie oder lädt sie nicht, öffnet sich mit Oberfläche der Einstellungen-Dialog;
- * ohne Display wird die Beispieldatei angelegt und erklärt), Netzschicht bauen (Proxy-Route, TLS-Vertrauen und
- * User-Agent als {@link NetworkServices}, ohne etwas aufzulösen; die erste Anfrage löst auf), Adapter bauen,
- * Graphen komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten. Prozessweit
- * gesetzt werden nur {@code java.net.preferIPv6Addresses} (Option) und bei Proxy-Anmeldung BASIC der
- * {@link ProxyAuthenticator}. Schließen des Fensters fährt geordnet herunter und beendet die JVM; der
+ * Einstiegspunkt der Desktop-Anwendung (Schale exedra). Ablauf: Protokolldatei anhängen, Konfiguration beschaffen
+ * (fehlt sie oder lädt sie nicht, öffnet sich mit Oberfläche der Einstellungen-Dialog; ohne Display wird die
+ * Beispieldatei angelegt und erklärt), die Anwendung im Kompositionspunkt ohne Oberfläche zusammensetzen
+ * ({@link ApplicationStart}, corenth ADR-0001: Netz, Tresor, Adapter, Graph, Übernahme gespeicherter
+ * Einstellungen), Sprache binden, Shutdown-Hook registrieren, Fenster zeigen. Schließen des Fensters fährt geordnet herunter und beendet die JVM; der
  * Shutdown-Hook deckt hartes Beenden ab (beide idempotent).
  *
  * <p>Start: {@code ./gradlew :proasteion:exedra:run}; Konfigurationsdatei per {@code -Denterpriseai.config=<Pfad>},
@@ -107,7 +87,7 @@ public final class EnterpriseAiClientMain {
         final boolean headless = GraphicsEnvironment.isHeadless();
         final ModelCatalogs modelCatalogs = SettingsAssembly.modelCatalogs(
                 AppPaths.appDirectory().resolve(AppPaths.MODEL_CATALOG_FILE_NAME));
-        final LocalVoices localVoices = new LocalVoices(new com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts());
+        final LocalVoices localVoices = new LocalVoices(new SwingUserPrompts());
         final SettingsDialogActions settingsActions = headless ? null
                 : SettingsAssembly.create(file, modelCatalogs, localVoices);
         ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
@@ -125,37 +105,16 @@ public final class EnterpriseAiClientMain {
         }
         AppConfig config = outcome.config();
         LOG.info("Konfiguration aus " + file.path() + ": " + config);
-        NetworkConfig networkConfig = config.network();
-        if (networkConfig.preferIpv6() && System.getProperty("java.net.preferIPv6Addresses") == null) {
-            // Wie askai-java8: nur wirksam, bevor die erste Namensauflösung läuft.
-            System.setProperty("java.net.preferIPv6Addresses", "true");
-        }
-        // Nichts wird prozessweit installiert: Route und Vertrauensregel bekommen die Adapter je Verbindung; die
-        // erste Anfrage löst die Route auf und baut die Regel (PowerShell-Export unter Windows), nicht der Start.
-        // Netzschicht und Security-Port übernehmen spätere Einstellungen ohne Neustart (siehe applySettings).
-        final LiveNetwork network = new LiveNetwork(NetworkServices.from(networkConfig));
-        LOG.info("Proxy-Regel: " + network.current().routes().describe());
-        LOG.info("TLS-Vertrauensquellen (werden bei der ersten HTTPS-Verbindung geladen): "
-                + networkConfig.describeTrust());
-        LOG.info("User-Agent: " + network.current().userAgent());
-        ProxyAuthenticator.allowBasicTunneling();
         // Anwendungszustand (askai arch / MainframeMate): Fenster, Drawer und die angehakten Spaces je Quelle.
         final ApplicationStateService applicationState = new ApplicationStateService(AppPaths.applicationStateFile());
-        dropLegacySourceEntries(config.knowledge().indexDirectory(), applicationState);
+        ApplicationStart.dropLegacySourceEntries(config.knowledge().indexDirectory(), applicationState);
         final SourcePartitionSelection partitions = new SourcePartitionSelection(applicationState);
-        final ApplicationPorts ports;
-        final CompositionRoot root;
-        final SettingsService settings;
+        // Zusammengesetzt wird im Kompositionspunkt ohne Oberfläche (proasteion:application, corenth ADR-0001);
+        // die Schale liefert nur ihre Dialoge (Pairing, Zugang „Manuell“) und den UI-Executor.
+        final ApplicationStart application;
         try {
-            final LiveSecretProvider secrets = new LiveSecretProvider(vault(config));
-            // Zugang „KeePass“ ohne eingetragene URL: die Basis-URL steht im KeePass-Eintrag des API-Keys.
-            config = AdapterAssembly.withVaultLocations(config, file.read(), secrets);
-            settings = new SettingsService(config, settingsLoader(file, secrets, config));
-            ports = AdapterAssembly.createWith(config, network, secrets, partitions);
-            adoptSourceAddresses(file, ports, settings);
-            applyProxyAuthentication(null, config, ports, localVoices);
-            root = CompositionRoot.compose(settings, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
-                    null);
+            application = ApplicationStart.start(file, config, new SwingUserPrompts(), localVoices, modelCatalogs,
+                    partitions, SwingUtilities::invokeLater, System::currentTimeMillis, null);
         } catch (AppConfigException | IOException e) {
             LOG.log(Level.SEVERE, "Konfiguration unvollständig", e);
             showError("Konfiguration", e.getMessage());
@@ -170,12 +129,17 @@ public final class EnterpriseAiClientMain {
             System.exit(1);
             return;
         }
+        final CompositionRoot root = application.root();
+        final SettingsService settings = application.settings();
+        final LiveNetwork network = application.network();
+        final java.util.function.Supplier<String> chatToken = application.chatToken();
+        config = settings.current(); // mit der Basis-URL aus KeePass (Zugang „KeePass“ ohne eingetragene URL)
         // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über die Quelle dieses Modells (Enterprise-API oder
         // lokale Stimme im Prozess); ohne TTS-Modell bleibt sie aus und der Play/Pause-Orb nennt den Grund.
         // Satz- und Spracherkennung beim Vorlesen (OpenNLP wie askai arch), über alle Neubindungen dieselbe.
         final TextAnalysisService textAnalysis = SpeechOutput.textAnalysis();
         final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
-                modelCatalogs.speech(config, config.models(), network.current(), chatToken(settings, ports)),
+                modelCatalogs.speech(config, config.models(), network.current(), chatToken),
                 textAnalysis));
         LOG.info("Sprachausgabe: " + readAloud.currentDescription());
         // Spracheingabe: Modell aus der Kategorie STT, erkannt über die Quelle dieses Modells (heute lokal im Prozess);
@@ -197,16 +161,6 @@ public final class EnterpriseAiClientMain {
             }
         });
         Runtime.getRuntime().addShutdownHook(root.shutdown().asShutdownHook());
-        refreshModelsInBackground(modelCatalogs, settings, network, ports);
-        // Beobachter auf dem Settings-Service (wie SettingsHelper.addChangeListener in MainframeMate): Adapter,
-        // Netz, KeePass, Proxy-Anmeldung, Agent und Modellkatalog übernehmen gespeicherte Einstellungen sofort.
-        settings.addListener(new SettingsService.Listener() {
-            @Override
-            public void settingsChanged(AppConfig previous, AppConfig current) {
-                applySettings(previous, current, network, ports, root, localVoices);
-                refreshModelsInBackground(modelCatalogs, settings, network, ports);
-            }
-        });
 
         final AppConfig started = config;
         SwingUtilities.invokeLater(new Runnable() {
@@ -231,7 +185,7 @@ public final class EnterpriseAiClientMain {
                             public void run() {
                                 frame.setTitle(current.windowTitle());
                                 rebindSpeech(readAloud, textAnalysis, dictation, current, modelCatalogs, network,
-                                        settings, ports);
+                                        chatToken);
                             }
                         });
                     }
@@ -283,72 +237,6 @@ public final class EnterpriseAiClientMain {
             LOG.log(Level.FINE, "Lokale Chat-Modelle nicht lesbar", unreadable);
         }
         return ids;
-    }
-
-    /** Der KeePass- bzw. „Manuell“-Port nach den KeePass-Einstellungen, mit Pairing-Dialog für deren Adresse. */
-    private static SecretProvider vault(AppConfig config) {
-        return AdapterAssembly.secrets(config, new SwingPairingCallback(
-                config.keePass().rpc().host() + ":" + config.keePass().rpc().port()), new DialogCredentialPrompt());
-    }
-
-    /**
-     * Liest die gespeicherten Einstellungen wie der Start: Datei, bei geänderten KeePass-Einstellungen zuerst der
-     * neue Security-Port, dann die Basis-URL aus KeePass (Zugang „KeePass“ ohne eingetragene URL).
-     */
-    private static SettingsService.Loader settingsLoader(final ConfigurationFile file,
-                                                         final LiveSecretProvider secrets, AppConfig started) {
-        final AtomicReference<String> keePass = new AtomicReference<String>(started.keePass().toString());
-        return new SettingsService.Loader() {
-            @Override
-            public AppConfig load() throws IOException {
-                Properties properties = file.read();
-                AppConfig loaded = AppConfigLoader.fromProperties(properties);
-                String vault = loaded.keePass().toString();
-                if (!vault.equals(keePass.get())) {
-                    secrets.replace(vault(loaded));
-                    keePass.set(vault);
-                    LOG.info("KeePass-Anbindung neu: " + vault);
-                }
-                return AdapterAssembly.withVaultLocations(loaded, properties, secrets);
-            }
-        };
-    }
-
-    /**
-     * Übernimmt gespeicherte Einstellungen in den laufenden Graphen: Netz (Proxy, PAC, TLS, User-Agent), Chat- und
-     * Embedding-Adapter samt Modellauswahl, Indexverzeichnis, Proxy-Anmeldung; eine offene Agent-Sitzung endet,
-     * wenn sich die Agent-Einstellungen geändert haben (die nächste Nachricht startet den Agenten neu).
-     */
-    private static void applySettings(AppConfig previous, AppConfig current, LiveNetwork network,
-                                      ApplicationPorts ports, CompositionRoot root, LocalVoices localVoices) {
-        network.apply(current.network());
-        ports.apply(current, network.current());
-        applyProxyAuthentication(previous, current, ports, localVoices);
-        if (!previous.agent().toString().equals(current.agent().toString())) {
-            try {
-                root.agentService().endSession();
-            } catch (IllegalStateException busy) {
-                LOG.info("Agent arbeitet noch; neue Agent-Einstellungen gelten ab der nächsten Agent-Sitzung");
-            }
-        }
-        if (previous.network().preferIpv6() != current.network().preferIpv6()) {
-            // Die JVM liest java.net.preferIPv6Addresses nur vor der ersten Namensauflösung.
-            LOG.info("IPv6 bevorzugen gilt erst beim nächsten Start (die JVM liest den Wert nur einmal)");
-        }
-        LOG.info("Einstellungen übernommen: " + current);
-    }
-
-    /** Proxy-Anmeldung BASIC aus KeePass setzen, ändern oder entfernen. */
-    private static void applyProxyAuthentication(AppConfig previous, AppConfig current, ApplicationPorts ports,
-                                                 LocalVoices localVoices) {
-        NetworkConfig network = current.network();
-        boolean basic = network.proxyAuthMode() == ProxyAuthMode.BASIC && network.proxyCredentialRef() != null;
-        if (basic) {
-            ProxyAuthenticator.install(ports.secrets(), network.proxyCredentialRef());
-            localVoices.proxyAuthenticationInstalled();
-        } else if (previous != null && previous.network().proxyAuthMode() == ProxyAuthMode.BASIC) {
-            ProxyAuthenticator.uninstall();
-        }
     }
 
     /**
@@ -410,50 +298,18 @@ public final class EnterpriseAiClientMain {
     /** Bindet Sprachausgabe und Spracheingabe an die gespeicherte TTS-/STT-Auswahl (auf dem EDT). */
     private static void rebindSpeech(SwitchableReadAloud readAloud, TextAnalysisService textAnalysis,
                                      Dictation dictation, AppConfig current,
-                                     ModelCatalogs catalogs, LiveNetwork network, SettingsService settings,
-                                     ApplicationPorts ports) {
+                                     ModelCatalogs catalogs, LiveNetwork network,
+                                     java.util.function.Supplier<String> chatToken) {
         try {
             ModelsConfig saved = current.models();
             readAloud.replace(SpeechOutput.readAloud(saved,
-                    catalogs.speech(current, saved, network.current(), chatToken(settings, ports)), textAnalysis));
+                    catalogs.speech(current, saved, network.current(), chatToken), textAnalysis));
             LOG.info("Sprachausgabe: " + readAloud.currentDescription());
             dictation.bind(saved, catalogs.speechRecognition(saved));
             LOG.info("Spracheingabe: " + dictation.currentDescription());
         } catch (RuntimeException e) {
             LOG.log(Level.WARNING, "Sprachausgabe/-eingabe nicht neu gebunden", e);
         }
-    }
-
-    /** Das Bearer-Token des Chats, je Anfrage frisch: Eintrag aus den aktuellen Einstellungen, Wert aus KeePass. */
-    private static java.util.function.Supplier<String> chatToken(final SettingsService settings,
-                                                                 final ApplicationPorts ports) {
-        return new java.util.function.Supplier<String>() {
-            @Override
-            public String get() {
-                SecretRef ref = settings.current().chat().apiKeyRef();
-                return ref == null ? null : new SecretBackedTokenSource(ports.secrets(), ref).token();
-            }
-        };
-    }
-
-    /**
-     * Fragt die Modellquelle (KIPITZ {@code GET /models}) im Hintergrund ab, damit der Reiter „Modelle“ aktuelle
-     * Listen hat; blockiert weder Start noch EDT. Fehler landen nur im Protokoll.
-     */
-    private static void refreshModelsInBackground(final ModelCatalogs catalogs, final SettingsService settings,
-                                                  final LiveNetwork network, final ApplicationPorts ports) {
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    catalogs.refresh(settings.current(), network.current(), chatToken(settings, ports));
-                } catch (RuntimeException e) {
-                    LOG.log(Level.WARNING, "Modellkatalog konnte nicht abgefragt werden", e);
-                }
-            }
-        }, "enterprise-ai-model-catalog");
-        thread.setDaemon(true);
-        thread.start();
     }
 
     /**
@@ -584,92 +440,6 @@ public final class EnterpriseAiClientMain {
                 return null;
             }
             return result.get();
-        }
-    }
-
-    /** Markiert ein Indexverzeichnis, dessen Einträge schon Quellenadressen tragen (ab 0.1.104). */
-    private static final String SOURCE_ADDRESS_INDEX_MARKER = ".source-addresses";
-
-    /**
-     * Löscht beim ersten Start mit Quellenadressen, was noch an frei vergebenen Quellen-IDs hängt: den ganzen
-     * Wissensindex (Lucene und Vektoren, samt Passagen; er baut sich bei Bedarf neu auf) und die Space-Häkchen
-     * {@code source.<id>.spaces.*} im Anwendungszustand. Kein Produktivbetrieb: keine Umschlüsselung, keine Aliase.
-     * Favoriten mit alter ID verwirft der {@code FavoritesStore} beim Laden.
-     */
-    private static void dropLegacySourceEntries(Path indexDirectory, ApplicationStateService state) {
-        if (indexDirectory != null) {
-            Path root = indexDirectory.toAbsolutePath().normalize();
-            Path marker = root.resolve(SOURCE_ADDRESS_INDEX_MARKER);
-            try {
-                if (!Files.exists(marker)) {
-                    if (Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
-                        for (String part : new String[]{"text", "vectors"}) {
-                            deleteRecursively(root.resolve(part));
-                        }
-                        LOG.info("Wissensindex mit alten Quellen-IDs gelöscht; er baut sich bei Bedarf neu auf");
-                    }
-                    Files.createDirectories(root);
-                    Files.createFile(marker);
-                }
-            } catch (IOException | RuntimeException e) {
-                LOG.log(Level.WARNING, "Alter Wissensindex nicht gelöscht (" + e.getClass().getSimpleName() + ")", e);
-            }
-        }
-        Map<String, String> stale = new LinkedHashMap<String, String>();
-        for (String key : state.withPrefix("source.").keySet()) {
-            if (key.contains(".spaces.") && !key.contains("://")) {
-                stale.put(key, null);
-            }
-        }
-        if (!stale.isEmpty()) {
-            state.putAllAndSave(stale);
-            LOG.info("Space-Häkchen alter Quellen-IDs gelöscht: " + stale.size());
-        }
-    }
-
-    private static void deleteRecursively(Path path) throws IOException {
-        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-            return;
-        }
-        if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-            List<Path> children = new ArrayList<Path>();
-            try (java.nio.file.DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
-                for (Path child : stream) {
-                    children.add(child);
-                }
-            }
-            for (Path child : children) {
-                deleteRecursively(child);
-            }
-        }
-        Files.delete(path);
-    }
-
-    /**
-     * Gleicht die Quellen der Konfiguration beim Start ab: Einträge der früheren Form mit frei vergebener ID
-     * ({@code sources=…}, {@code source.<id>.*}) werden entfernt (kein Produktivbetrieb, keine Überführung; solche
-     * Quellen legt der Benutzer neu an), von Hand eingetragene Quellen bekommen ihre Adresse aus Typ und Endpoint.
-     * Danach liest die Anwendung die Konfiguration neu, damit Häkchen und Quellen dieselbe Adresse tragen.
-     */
-    private static void adoptSourceAddresses(ConfigurationFile file, ApplicationPorts ports,
-                                             SettingsService settings) {
-        try {
-            FileSourceActions store = new FileSourceActions(file);
-            int dropped = store.dropLegacyEntries();
-            if (dropped > 0) {
-                LOG.info("Wissensquellen der früheren Form (frei vergebene ID) entfernt: " + dropped
-                        + " Schlüssel; bitte im Reiter „Wissensquellen“ neu anlegen");
-            }
-            Map<String, String> changed = new KnowledgeSourceManagement(ports.sourceProviders(), store,
-                    ports.index()).adoptAddresses();
-            if (!changed.isEmpty()) {
-                LOG.info("Adressen der Wissensquellen aus Typ und Endpoint gesetzt: " + changed.values());
-            }
-            if (dropped > 0 || !changed.isEmpty()) {
-                settings.reload();
-            }
-        } catch (IOException | RuntimeException e) {
-            LOG.log(Level.WARNING, "Wissensquellen nicht abgeglichen (" + e.getClass().getSimpleName() + ")", e);
         }
     }
 }

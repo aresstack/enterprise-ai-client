@@ -131,7 +131,7 @@ final class ArchitectureRules {
                 .and().areDeclaredInClassesThat().resideOutsideOfPackages(packagePatterns(registry,
                         Arrays.asList("exedra", "acp-demo-agent", "research-agent-acp")))
                 .should().haveRawParameterTypes(String[].class)
-                .because("die Anwendung wird ausschließlich in exedra zusammengesetzt und gestartet")
+                .because("gestartet wird die Anwendung in der Schale exedra, zusammengesetzt in proasteion:application")
                 .allowEmptyShould(true);
     }
 

@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.integration;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
 import com.aresstack.enterpriseai.acp.solon.SolonAcpAgentConnector;
-import com.aresstack.enterpriseai.proasteion.exedra.agent.AcpAgentLauncher;
+import com.aresstack.enterpriseai.proasteion.application.agent.AcpAgentLauncher;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentExchange;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentFailure;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentService;
