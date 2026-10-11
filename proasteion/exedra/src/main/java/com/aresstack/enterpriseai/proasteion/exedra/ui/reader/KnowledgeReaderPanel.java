@@ -184,9 +184,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private final AWTEventListener mouseNavigation = event -> {
         if (event instanceof MouseEvent && event.getID() == MouseEvent.MOUSE_RELEASED) {
             MouseEvent mouse = (MouseEvent) event;
-            if (mouseButton(mouse.getButton(), mouse.getComponent())) {
-                mouse.consume();
-            }
+            mouseButton(mouse.getButton(), mouse.getComponent());
         }
     };
 
@@ -698,6 +696,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         remove(tab);
         // wie MainframeMate: ein von Hand geschlossener Reiter fällt aus dem Verlauf
         while (backStack.remove(tab)) {
+            // alle Vorkommen
+        }
+        while (forwardStack.remove(tab)) {
             // alle Vorkommen
         }
         if (lastActive == tab) {

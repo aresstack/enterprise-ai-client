@@ -40,8 +40,8 @@ final class ReaderToolbar extends JPanel {
 
     static final String FIND_PLACEHOLDER = "Im Dokument suchen…";
     static final String FIND_TOOLTIP = "Im Dokument suchen (Strg+F)";
-    private static final int BUTTON_WIDTH = 26;
-    private static final int BUTTON_HEIGHT = 22;
+    /** Quadratische Knöpfe („quadratischer Lupen-Button“). */
+    private static final int BUTTON_SIZE = 22;
 
     /** Suchzustand eines Reiters. */
     static final class FindState {
@@ -313,13 +313,13 @@ final class ReaderToolbar extends JPanel {
         boolean searched = state != null && state.searched != null && find != null;
         counter.setText(!searched ? "" : find.hitCount() == 0 ? "0 / 0"
                 : (find.currentIndex() + 1) + " / " + find.hitCount());
-        previousButton.setEnabled(searched && find.hitCount() > 1);
-        nextButton.setEnabled(searched && find.hitCount() > 1);
+        previousButton.setEnabled(searched && find.hitCount() > 0);
+        nextButton.setEnabled(searched && find.hitCount() > 0);
     }
 
     private static ComposerButton small(javax.swing.Icon icon, String tooltip) {
         ComposerButton button = ComposerButton.iconButton(icon, tooltip);
-        button.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
+        button.setPreferredSize(new Dimension(BUTTON_SIZE, BUTTON_SIZE));
         return button;
     }
 

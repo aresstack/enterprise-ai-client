@@ -34,12 +34,12 @@ import java.util.function.IntSupplier;
  */
 final class ReaderFind {
 
-    /** MainframeMate: {@code Color.YELLOW}. */
-    static final Color HIT = Color.YELLOW;
+    /** Alle Treffer leicht markiert (Angelo; MainframeMate hatte volles {@code Color.YELLOW}). */
+    static final Color HIT = new Color(0xFFF59D);
     /** Der aktuelle Treffer (eigene Ergänzung, MainframeMates Amber 0xFFB74D). */
     static final Color CURRENT_HIT = new Color(0xFFB74D);
 
-    private static final String TABLE_HITS = ReaderFind.class.getName() + ".tableHits";
+    static final String TABLE_HITS = ReaderFind.class.getName() + ".tableHits";
 
     private final JComponent root;
     private final List<Hit> hits = new ArrayList<Hit>();
