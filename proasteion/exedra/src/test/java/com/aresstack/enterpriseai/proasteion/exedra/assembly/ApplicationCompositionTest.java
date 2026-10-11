@@ -1,5 +1,9 @@
 package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
+import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
+import java.util.Properties;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.SearchAttachmentTool;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.ReadAttachmentTool;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ToolOverviewEntry;
@@ -237,12 +241,68 @@ public class ApplicationCompositionTest {
             }
         }
         assertEquals(shownForAgent, agent);
-        // Der Chat bekommt den Wissens-Werkzeugsatz aus derselben Registry (Bug 1: auch knowledge_search).
         List<String> chat = new ArrayList<String>();
-        for (com.aresstack.enterpriseai.astu.acropolis.tool.AiTool tool : root.knowledgeChatTools()) {
+        // Der Chat bekommt den Wissens-Werkzeugsatz aus derselben Registry (Bug 1: auch knowledge_search).
+        for (AiTool tool : root.knowledgeChatTools()) {
             chat.add(tool.name());
         }
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ), chat);
+    }
+
+    @Test
+    public void disabledToolsLeaveChatAndAgentAndComeBackWithoutRestart() throws Exception {
+        final AtomicReference<Properties> file = new AtomicReference<Properties>(
+                TestConfigs.base(temp.getRoot().toPath()));
+        file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_SEARCH + "," + ReadAttachmentTool.NAME);
+        SettingsService settings = new SettingsService(AppConfigLoader.fromProperties(file.get()),
+                () -> AppConfigLoader.fromProperties(file.get()));
+        CompositionRoot root = CompositionRoot.compose(settings, ports(false), SwingUtilities::invokeLater,
+                System::currentTimeMillis, ZoneId.of("Europe/Berlin"));
+
+        // Abgeschaltet: weder Chat noch Agent bekommen es, die Registry zeigt es weiter (als aus).
+        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_READ), names(root.agentTools()));
+        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_READ), chatNames(root.knowledgeChatTools()));
+        assertFalse(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
+        assertTrue(root.toolCatalog().isEnabled(SearchAttachmentTool.NAME));
+        Map<String, ToolOverviewEntry> shown = new LinkedHashMap<String, ToolOverviewEntry>();
+        for (ToolOverviewEntry tool : new CatalogToolOverview(root.toolCatalog()).tools()) {
+            shown.put(tool.name(), tool);
+        }
+        assertFalse(shown.get(KnowledgeMcpTools.KNOWLEDGE_SEARCH).enabled());
+        assertFalse(shown.get(ReadAttachmentTool.NAME).enabled());
+        assertTrue(shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).enabled());
+        assertTrue(shown.get("research_status").enabled()); // nicht genannt = aktiv
+
+        // knowledge_read zusätzlich aus, knowledge_search wieder an: gilt nach dem Neuladen, ohne neue Komposition.
+        file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_READ);
+        settings.reload();
+        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_SEARCH), names(root.agentTools()));
+        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_SEARCH),
+                chatNames(root.knowledgeChatTools()));
+        assertTrue(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
+
+        file.get().remove("tools.disabled");
+        settings.reload();
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ),
+                names(root.agentTools()));
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ),
+                chatNames(root.knowledgeChatTools()));
+    }
+
+    private static List<String> names(List<McpToolContribution> tools) {
+        List<String> names = new ArrayList<String>();
+        for (McpToolContribution tool : tools) {
+            names.add(tool.getName());
+        }
+        return names;
+    }
+
+    private static List<String> chatNames(List<AiTool> tools) {
+        List<String> names = new ArrayList<String>();
+        for (AiTool tool : tools) {
+            names.add(tool.name());
+        }
+        return names;
     }
 
     @Test

@@ -99,6 +99,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | Netzwerk & Agent | `ui.windowTitle`; Proxy-Auflösung wie AskAI (`network.proxy.mode` mit den Modi von win-proxy-java, PAC-URL/Ermittlungsskript, Host/Port, Test-URL, Timeout, „Proxy auflösen“, „HTTPS-Verbindung testen“); TLS-Quellen (`network.tls.*`); User-Agent, Prefer IPv6, Proxy-Anmeldung NONE/BASIC (KeePass-Eintrag); Agent-Modus. „Verbindung testen“ steht im Reiter KI-Dienst. |
 | Modelle | je Kategorie ein Modell: `chat.model`, `embedding.model`, `model.rerank`, `model.tts`, `model.stt`, `model.vision`, `model.documentOcr`, `model.imageEmbedding` (lokale mit Präfix `local:`); „Modelle aktualisieren“; Modellverzeichnis lokaler Stimmen `models.local.modelRoot` |
 | Index | `knowledge.indexDirectory` (mit „Wählen …“); leer heißt `index` im Anwendungsverzeichnis |
+| Tools | alle registrierten Werkzeuge (Name, Beschreibung, Herkunft, Verfügbarkeit Chat/Agent/Recherche-Agent) mit Häkchen „aktiv“; abgeschaltete stehen in `tools.disabled` (kommagetrennt, fehlt = alle aktiv) und gelten ohne Neustart |
 
 - **Wissensquellen** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet die Liste `source.<n>.*`, je
   Quelle `source.<n>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki

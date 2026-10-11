@@ -7,12 +7,19 @@ public final class ToolOverviewEntry {
     private final String description;
     private final String origin;
     private final String availability;
+    private final boolean enabled;
+
+    /** Wie unten, aktiv. */
+    public ToolOverviewEntry(String name, String description, String origin, String availability) {
+        this(name, description, origin, availability, true);
+    }
 
     /**
      * @param origin       Herkunft bzw. Registry, z. B. „Wissenswerkzeuge (KnowledgeMcpTools)“
      * @param availability wo das Werkzeug angeboten wird, z. B. „Chat + Agent“
+     * @param enabled      aktiv laut Registry (gespeicherter Stand)
      */
-    public ToolOverviewEntry(String name, String description, String origin, String availability) {
+    public ToolOverviewEntry(String name, String description, String origin, String availability, boolean enabled) {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
         }
@@ -20,6 +27,11 @@ public final class ToolOverviewEntry {
         this.description = description == null ? "" : description;
         this.origin = origin == null ? "" : origin;
         this.availability = availability == null ? "" : availability;
+        this.enabled = enabled;
+    }
+
+    public boolean enabled() {
+        return enabled;
     }
 
     public String name() {

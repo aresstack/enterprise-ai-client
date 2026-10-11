@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -23,10 +24,33 @@ import java.util.function.Supplier;
  * Aufruf neu gefragt, damit phasenabhängige Sätze (Recherche-Agent) immer dem aktuellen Stand entsprechen. Werkzeuge,
  * die keine {@link McpToolContribution} sind (Anhang-Werkzeuge je Unterhaltung), stehen nur mit ihrer
  * {@link ToolDefinition} zur Anzeige im Katalog.
+ *
+ * <p>Aktiv oder abgeschaltet entscheidet allein {@code enabled} (produktiv {@code tools.disabled} der aktuellen
+ * Einstellungen, bei jedem Aufruf frisch): {@link #tools}, {@link #find} und {@link #isEnabled} liefern nur aktive
+ * Werkzeuge, {@link #entries()} alle mit ihrem Zustand. Ein abgeschaltetes Werkzeug bleibt registriert.
  */
 public final class ToolCatalog {
 
     private final List<Registration> registrations = new CopyOnWriteArrayList<Registration>();
+    private final Predicate<String> enabled;
+
+    /** Alle Werkzeuge aktiv. */
+    public ToolCatalog() {
+        this(name -> true);
+    }
+
+    /** @param enabled sagt je Aufruf, ob das Werkzeug mit diesem Namen aktiv ist */
+    public ToolCatalog(Predicate<String> enabled) {
+        if (enabled == null) {
+            throw new IllegalArgumentException("enabled must not be null");
+        }
+        this.enabled = enabled;
+    }
+
+    /** Ist das Werkzeug aktiv (nicht abgeschaltet)? Unbekannte Namen gelten als aktiv. */
+    public boolean isEnabled(String name) {
+        return enabled.test(name);
+    }
 
     /** Registriert einen Werkzeugsatz; Reihenfolge der Registrierung = Reihenfolge der Werkzeuge. */
     public void register(String origin, Set<ToolChannel> channels,
@@ -46,7 +70,7 @@ public final class ToolCatalog {
         registrations.add(new Registration(origin, channels, null, definitions));
     }
 
-    /** Die ausführbaren Werkzeuge, die in mindestens einem der Kanäle angeboten werden, ohne doppelte Namen. */
+    /** Die aktiven ausführbaren Werkzeuge, die in mindestens einem der Kanäle angeboten werden, ohne doppelte Namen. */
     public List<McpToolContribution> tools(Set<ToolChannel> anyOf) {
         List<McpToolContribution> result = new ArrayList<McpToolContribution>();
         Set<String> names = new HashSet<String>();
@@ -55,7 +79,7 @@ public final class ToolCatalog {
                 continue;
             }
             for (McpToolContribution tool : registration.tools.get()) {
-                if (names.add(tool.getName())) {
+                if (enabled.test(tool.getName()) && names.add(tool.getName())) {
                     result.add(tool);
                 }
             }
@@ -63,7 +87,7 @@ public final class ToolCatalog {
         return result;
     }
 
-    /** Das ausführbare Werkzeug mit diesem Namen im Kanal oder {@code null}. */
+    /** Das aktive ausführbare Werkzeug mit diesem Namen im Kanal oder {@code null}. */
     public McpToolContribution find(String name, ToolChannel channel) {
         for (McpToolContribution tool : tools(EnumSet.of(channel))) {
             if (tool.getName().equals(name)) {
@@ -74,7 +98,7 @@ public final class ToolCatalog {
     }
 
     /**
-     * Alle Werkzeuge zur Anzeige, in Registrierungsreihenfolge. Ein Name, der in mehreren Registrierungen steht,
+     * Alle Werkzeuge zur Anzeige, aktive wie abgeschaltete, in Registrierungsreihenfolge. Ein Name, der in mehreren Registrierungen steht,
      * erscheint einmal mit allen Kanälen; Herkunft und Beschreibung stammen aus der ersten.
      */
     public List<ToolEntry> entries() {
@@ -105,7 +129,8 @@ public final class ToolCatalog {
         }
         List<ToolEntry> entries = new ArrayList<ToolEntry>(order.size());
         for (String name : order) {
-            entries.add(new ToolEntry(name, descriptions.get(name), origins.get(name), channels.get(name)));
+            entries.add(new ToolEntry(name, descriptions.get(name), origins.get(name), channels.get(name),
+                    enabled.test(name)));
         }
         return entries;
     }

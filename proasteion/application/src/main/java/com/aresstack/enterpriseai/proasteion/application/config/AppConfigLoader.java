@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
@@ -112,6 +113,7 @@ public final class AppConfigLoader {
         NetworkConfig network = network(reader, chat == null ? null : chat.baseUrl(), warnings);
         AgentConfig agent = agent(reader);
         ModelsConfig models = models(reader, warnings);
+        Set<String> disabledTools = new LinkedHashSet<String>(reader.list("tools.disabled"));
 
         for (String unread : reader.unreadKeys()) {
             warnings.add("Unbekannter Konfigurationsschlüssel wird ignoriert: " + unread);
@@ -139,7 +141,7 @@ public final class AppConfigLoader {
             throw new AppConfigException(reader.problems());
         }
         return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models,
-                warnings);
+                disabledTools, warnings);
     }
 
     /**

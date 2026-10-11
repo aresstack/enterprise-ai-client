@@ -433,6 +433,19 @@ public class SettingsPanelTest {
                 panel.tabButton(SettingsPanel.TOOLS_TAB).doClick();
                 assertEquals(3, panel.toolsTab().lines().getComponentCount());
                 assertTrue(texts(panel.toolsTab().lines()).contains("future_tool"));
+                // Häkchen „aktiv“: Abschalten und Wiedereinschalten landen im Entwurf tools.disabled.
+                assertTrue(panel.toolsTab().activeBox("knowledge_search").isSelected());
+                panel.toolsTab().activeBox("knowledge_search").doClick();
+                panel.toolsTab().activeBox("knowledge_read").doClick();
+                assertEquals("knowledge_search,knowledge_read", panel.toForm().disabledTools());
+                panel.toolsTab().activeBox("knowledge_search").doClick();
+                assertEquals("knowledge_read", panel.toForm().disabledTools());
+                // Gespeicherter Stand: abgeschaltet heißt ohne Häkchen; ein gerade nicht registrierter Name bleibt.
+                panel.setForm(sample().toBuilder().disabledTools("knowledge_read,source_accept").build());
+                assertFalse(panel.toolsTab().activeBox("knowledge_read").isSelected());
+                assertTrue(panel.toolsTab().activeBox("future_tool").isSelected());
+                panel.toolsTab().activeBox("future_tool").doClick();
+                assertEquals("knowledge_read,source_accept,future_tool", panel.toForm().disabledTools());
             }
         });
     }

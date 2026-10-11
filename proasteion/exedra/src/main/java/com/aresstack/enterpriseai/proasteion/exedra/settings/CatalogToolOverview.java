@@ -28,7 +28,8 @@ public final class CatalogToolOverview implements ToolOverview {
         List<ToolEntry> entries = catalog.entries();
         List<ToolOverviewEntry> tools = new ArrayList<ToolOverviewEntry>(entries.size());
         for (ToolEntry entry : entries) {
-            tools.add(new ToolOverviewEntry(entry.name(), entry.description(), entry.origin(), entry.availability()));
+            tools.add(new ToolOverviewEntry(entry.name(), entry.description(), entry.origin(), entry.availability(),
+                    entry.enabled()));
         }
         return tools;
     }

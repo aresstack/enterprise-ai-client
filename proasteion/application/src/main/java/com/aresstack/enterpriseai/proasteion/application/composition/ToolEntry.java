@@ -4,19 +4,26 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Set;
 
-/** Ein Werkzeug des {@link ToolCatalog} zum Anzeigen: Name, Beschreibung, Herkunft und Kanäle; ohne Handler. */
+/** Ein Werkzeug des {@link ToolCatalog} zum Anzeigen: Name, Beschreibung, Herkunft, Kanäle und Zustand; ohne Handler. */
 public final class ToolEntry {
 
     private final String name;
     private final String description;
     private final String origin;
     private final Set<ToolChannel> channels;
+    private final boolean enabled;
 
-    ToolEntry(String name, String description, String origin, Set<ToolChannel> channels) {
+    ToolEntry(String name, String description, String origin, Set<ToolChannel> channels, boolean enabled) {
         this.name = name;
         this.description = description == null ? "" : description;
         this.origin = origin;
         this.channels = Collections.unmodifiableSet(EnumSet.copyOf(channels));
+        this.enabled = enabled;
+    }
+
+    /** Aktiv, also Chat bzw. Agenten angeboten; abgeschaltet bleibt es registriert. */
+    public boolean enabled() {
+        return enabled;
     }
 
     public String name() {
@@ -47,6 +54,6 @@ public final class ToolEntry {
 
     @Override
     public String toString() {
-        return "ToolEntry[" + name + ", " + origin + ", " + availability() + "]";
+        return "ToolEntry[" + name + ", " + origin + ", " + availability() + (enabled ? "" : ", aus") + "]";
     }
 }

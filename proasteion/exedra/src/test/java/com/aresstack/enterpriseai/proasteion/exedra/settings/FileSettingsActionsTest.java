@@ -126,6 +126,29 @@ public class FileSettingsActionsTest {
     }
 
     @Test
+    public void disabledToolsArePersistedAndEverythingElseStaysActive() throws Exception {
+        ConfigurationFile file = fileWith(validText());
+        FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);
+        // Ohne Schlüssel: alle aktiv, auch unbekannte Werkzeuge.
+        assertTrue(AppConfigLoader.load(file.path()).isToolEnabled("knowledge_search"));
+        assertTrue(AppConfigLoader.load(file.path()).isToolEnabled("future_tool"));
+        actions.save(SettingsMapper.fromProperties(file.read()).toBuilder()
+                .disabledTools("knowledge_search,read_attachment").build());
+        String text = new String(Files.readAllBytes(file.path()), StandardCharsets.UTF_8);
+        assertTrue(text, text.contains("\ntools.disabled=knowledge_search,read_attachment\n"));
+        AppConfig loaded = AppConfigLoader.load(file.path());
+        assertFalse(loaded.isToolEnabled("knowledge_search"));
+        assertFalse(loaded.isToolEnabled("read_attachment"));
+        assertTrue(loaded.isToolEnabled("knowledge_read"));
+        assertTrue(loaded.warnings().toString(), loaded.warnings().isEmpty()
+                || !loaded.warnings().toString().contains("tools.disabled"));
+        assertEquals("knowledge_search,read_attachment", SettingsMapper.fromProperties(file.read()).disabledTools());
+        // Wieder alle aktiv: der Schlüssel verschwindet, Vorgabe aktiv gilt.
+        actions.save(SettingsMapper.fromProperties(file.read()).toBuilder().disabledTools("").build());
+        assertTrue(AppConfigLoader.load(file.path()).disabledTools().isEmpty());
+    }
+
+    @Test
     public void indexDirectoryIsLoadedSavedAndClearedByTheSettingsDialog() throws Exception {
         Path old = tmp.newFolder("alt").toPath();
         Path changed = tmp.newFolder("neu-index").toPath();

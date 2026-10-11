@@ -115,7 +115,7 @@ public final class CompositionRoot {
     private final LoadKnowledgeDocumentUseCase documents;
     private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeMcpTools knowledgeTools;
-    private final ToolCatalog toolCatalog = new ToolCatalog();
+    private final ToolCatalog toolCatalog;
     private final AgentService agentService;
     private final ResearchAgentHost researchHost;
     private final AgentModelChoice agentModelChoice;
@@ -139,6 +139,8 @@ public final class CompositionRoot {
     private CompositionRoot(final SettingsService settings, final ApplicationPorts ports, Executor uiExecutor,
                             LongSupplier clock, ZoneId zone) {
         this.settings = settings;
+        // Aktiv oder abgeschaltet: tools.disabled der aktuellen Einstellungen, bei jedem Aufruf frisch.
+        this.toolCatalog = new ToolCatalog(name -> settings.current().isToolEnabled(name));
         AppConfig config = settings.current();
         this.ports = ports;
         this.uiExecutor = uiExecutor;
@@ -266,13 +268,27 @@ public final class CompositionRoot {
                 researchToolSet.refresh();
             }
         });
+        // Ein eigenes Agent-Kommando bekommt die Werkzeuge des Kanals Agent; ebenfalls neu veröffentlicht, sobald
+        // sich der Satz ändert.
+        final PhaseToolSetController externalToolSet = new PhaseToolSetController(this::agentTools);
+        // Werkzeug ein- oder ausgeschaltet (Reiter „Tools“): laufende Agenten bekommen den neuen Satz sofort
+        // (tools/list_changed); der Chat fragt den Katalog ohnehin je Anfrage.
+        settings.addListener((previous, current) -> {
+            if (!previous.disabledTools().equals(current.disabledTools())) {
+                researchToolSet.refresh();
+                externalToolSet.refresh();
+            }
+        });
         this.agentService = new AgentService(new AgentLauncher() {
             @Override
             public AcpConnection launch() throws AcpException {
                 AgentBackend external = ports.agentFor(settings.current().agent());
                 if (external != null) {
-                    return new AcpAgentLauncher(external.connector(), external.launchSpec(), external.registry(),
-                            external.endpoint(), agentTools()).launch();
+                    if (external.registry() == null) {
+                        return new AcpAgentLauncher(external.connector(), external.launchSpec()).launch();
+                    }
+                    return AcpAgentLauncher.withPhaseToolSet(external.connector(), external.launchSpec(),
+                            external.registry(), external.endpoint(), externalToolSet).launch();
                 }
                 // Der eingebaute Recherche-Agent wie in askai-java8 arch: eigener Prozess über ACP, die
                 // Research-Steuerung, das Konzeptpapier und das Hauptmodell über seinen MCP-Endpoint.
@@ -446,6 +462,7 @@ public final class CompositionRoot {
      * Wissens-Werkzeugsatz ({@code knowledge_search}, {@code knowledge_read}): dieselben Handler, Beschreibungen und
      * Schemas wie über MCP für den Agenten; {@code knowledge_search} durchsucht nur die
      * angehakten Quellen von jetzt. Der Chat-Pfad sieht nur {@link com.aresstack.enterpriseai.astu.acropolis.tool.AiTool}.
+     * Bei jedem Aufruf neu und nur aktive: ein im Reiter „Tools“ abgeschaltetes Werkzeug fehlt ab der nächsten Anfrage.
      */
     public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> knowledgeChatTools() {
         return McpChatTool.all(toolCatalog.tools(EnumSet.of(ToolChannel.CHAT)));

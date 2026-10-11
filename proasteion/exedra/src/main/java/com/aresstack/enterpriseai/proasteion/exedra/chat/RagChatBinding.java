@@ -378,8 +378,12 @@ public final class RagChatBinding implements ChatShellActions {
                                     conversation);
                             extraContext = join(attachments.context(), ChatBookmark.context(chatPages));
                             List<AiTool> available = new ArrayList<AiTool>();
-                            available.add(attachments.registry().find(ReadAttachmentTool.NAME));
-                            available.add(attachments.registry().find(SearchAttachmentTool.NAME));
+                            // Nur aktive Werkzeuge (Reiter „Tools“); abgeschaltete bleiben registriert.
+                            for (String name : new String[]{ReadAttachmentTool.NAME, SearchAttachmentTool.NAME}) {
+                                if (support.isEnabled(name)) {
+                                    available.add(attachments.registry().find(name));
+                                }
+                            }
                             if (knowledgeTools) {
                                 available.addAll(support.knowledgeTools());
                             }

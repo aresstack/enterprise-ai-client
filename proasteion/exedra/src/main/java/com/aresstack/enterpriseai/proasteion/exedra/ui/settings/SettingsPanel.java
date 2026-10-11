@@ -77,7 +77,7 @@ public final class SettingsPanel extends JPanel {
     static final int SPEECH_TAB = 4;
     /** Index der Kategorie „Index“ (Indexverzeichnis). */
     static final int INDEX_TAB = 5;
-    /** Index der Kategorie „Tools“ (Werkzeuge der zentralen Registry, nur lesend). */
+    /** Index der Kategorie „Tools“ (Werkzeuge der zentralen Registry mit Häkchen „aktiv“). */
     static final int TOOLS_TAB = 6;
     /** Index der Kategorie „Technische Details“ (Protokoll). */
     static final int TECHNICAL_TAB = 7;
@@ -359,6 +359,7 @@ public final class SettingsPanel extends JPanel {
         modelsTab.load(form);
         speechTab.load(form);
         indexTab.load(form);
+        toolsTab.load(form);
     }
 
     /** Der aktuelle Stand aller Felder als Formular, Quellen wie geladen. */
@@ -370,6 +371,7 @@ public final class SettingsPanel extends JPanel {
         modelsTab.store(b);
         speechTab.store(b);
         indexTab.store(b);
+        toolsTab.store(b);
         return b.build();
     }
 
