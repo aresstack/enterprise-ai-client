@@ -822,9 +822,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         micButton.setEmphasized(recording);
         micButton.setToolTipText(recording ? RECORDING_TOOLTIP : recognizing ? CANCEL_TOOLTIP
                 : DICTATE_TOOLTIP + " – " + dictation.description());
-        boolean layoutChanged = retryButton.isVisible() != (idle && dictation.canRetry())
+        boolean layoutChanged = discardButton.isVisible() != recording
+                || retryButton.isVisible() != (idle && dictation.canRetry())
                 || levelBar.isVisible() != recording;
-        discardButton.setVisible(false); // verworfen wird über das ✕ an der Statuszeile oder Esc (kein eigener Knopf)
+        discardButton.setVisible(recording);
         retryButton.setVisible(idle && dictation.canRetry());
         retryButton.setEnabled(!busy);
         levelBar.setVisible(recording);
