@@ -1,6 +1,5 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
-import com.aresstack.enterpriseai.domain.localruntime.HubSearchSuggestion;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
@@ -22,19 +21,18 @@ import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * „Installiert und vorgeschlagen“ im Reiter „Lokale Modelle“: je vorgeschlagene oder installierte Stimme eine Zeile mit Installationsstand und
- * „Installieren“ bzw. „Aktualisieren“ und „Entfernen“. Installieren wählt nichts aus: ein installiertes Modell steht
- * danach in der Liste seiner Funktion darüber und wird dort gewählt. Dazu die Hugging-Face-Suche
- * ({@link #searchPanel()}): Funktion, Suchfeld mit Vorschlags-Dropdown (wie in askai) und Treffer, nur Modelle, die
- * der Client ohne Umwandlung lädt; ihre Zeilen haben dieselben Knöpfe. Fortschritt und Ergebnis stehen unter der
- * Zeile, aus der installiert wurde: je Datei ein Balken bis 100 % mit „Datei n von m“ darin.
+ * Gruppen „Installiert“ ({@link #panel()}) und „Vorschläge“ ({@link #suggestionsPanel()}) im Reiter „Lokale Modelle“:
+ * je Modell eine Zeile mit Installationsstand und „Installieren“ bzw. „Aktualisieren“ und „Entfernen“. Installieren
+ * wählt nichts aus: ein installiertes Modell steht danach unter „Installiert“ und wird oben je Funktion gewählt. Dazu
+ * die Hugging-Face-Suche ({@link #searchPanel()}): Funktion, Suchfeld mit den letzten Suchbegriffen als Dropdown und
+ * Treffer, nur Modelle, die der Client ohne Umwandlung lädt; ihre Zeilen haben dieselben Knöpfe. Fortschritt und
+ * Ergebnis stehen unter der Zeile, aus der installiert wurde: je Datei ein Balken bis 100 % mit „Datei n von m“ darin.
  */
 final class LocalVoiceList {
 
@@ -43,7 +41,8 @@ final class LocalVoiceList {
     static final String UPDATE_LABEL = "Aktualisieren";
     static final String NOT_INSTALLED = "Nicht installiert";
     static final String INSTALLED = "✓ installiert";
-    static final String NONE = "Keine lokalen Modelle installiert oder vorgeschlagen.";
+    static final String NONE = "Noch keine lokalen Modelle installiert.";
+    static final String NO_SUGGESTIONS = "Alle Vorschläge sind installiert.";
     static final String SEARCH_LABEL = "Suchen";
     static final String NO_HITS = "Keine im Client ladbaren Modelle gefunden.";
     static final String ALL_CATEGORIES = "Alle Funktionen";
@@ -72,11 +71,12 @@ final class LocalVoiceList {
     private final List<ComicButton> buttons = new ArrayList<ComicButton>();
     private List<LocalVoiceOffer> offers = Collections.emptyList();
     private final JPanel searchPanel = new JPanel(new BorderLayout(0, 6));
-    /** Suchfeld mit Vorschlägen: editierbar, Einträge sind {@link HubSearchSuggestion}s der gewählten Funktion. */
-    private final JComboBox<Object> query = new JComboBox<Object>();
+    /** Suchfeld mit den letzten Suchbegriffen als Dropdown (editierbar). */
+    private final JComboBox<String> query = new JComboBox<String>();
     private final JLabel searchStatus = new WrappingLabel(" ");
-    private final List<HubSearchSuggestion> suggestions;
-    private boolean fillingSuggestions;
+    private boolean fillingHistory;
+    /** Vorgeschlagene, nicht installierte Modelle (eigene Gruppe „Vorschläge“). */
+    private final JPanel suggested = new JPanel();
     private final JComboBox<String> category = FormRows.<String>fittingComboBox();
     private final ComicButton searchButton;
     private final JPanel hits = new JPanel();
@@ -94,6 +94,7 @@ final class LocalVoiceList {
     private String fileText = "";
     private JProgressBar rowBar;
     private JLabel rowLabel;
+    private boolean rowRendered;
 
     LocalVoiceList(SettingsDialogActions actions, Supplier<SettingsForm> form, Listener listener,
                    ComicPalette palette) {
@@ -108,13 +109,12 @@ final class LocalVoiceList {
         panel.setOpaque(false);
         panel.add(lines, BorderLayout.CENTER);
 
-        List<HubSearchSuggestion> configured = actions.hubSearchSuggestions();
-        suggestions = configured == null ? Collections.<HubSearchSuggestion>emptyList()
-                : new ArrayList<HubSearchSuggestion>(configured);
+        suggested.setOpaque(false);
+        suggested.setLayout(new BoxLayout(suggested, BoxLayout.Y_AXIS));
         query.setEditable(true);
-        query.setRenderer(new SuggestionRenderer());
+        query.setRenderer(new HistoryRenderer());
         query.setToolTipText("Suchbegriff, z. B. „thorsten“, „multilingual-e5“ oder „qwen instruct“; leer = beliebteste. "
-                + "Das Dropdown schlägt passende Modelle vor.");
+                + "Das Dropdown zeigt die letzten Suchbegriffe.");
         query.getAccessibleContext().setAccessibleName("Hugging Face durchsuchen");
         searchButton = new ComicButton(SEARCH_LABEL, null, ComicButton.Accent.ACTION, palette);
         searchButton.setToolTipText("Sucht auf dem Hugging Face Hub über die Netzwerkeinstellungen");
@@ -129,10 +129,10 @@ final class LocalVoiceList {
         query.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                Object selected = query.getSelectedItem();
-                if (!fillingSuggestions && selected instanceof HubSearchSuggestion
-                        && "comboBoxChanged".equals(e.getActionCommand())) {
-                    suggest((HubSearchSuggestion) selected);
+                // ein Begriff aus der Historie gewählt (nicht getippt): sofort suchen
+                if (!fillingHistory && query.isPopupVisible() && "comboBoxChanged".equals(e.getActionCommand())
+                        && query.getSelectedIndex() >= 0) {
+                    search();
                 }
             }
         });
@@ -140,13 +140,7 @@ final class LocalVoiceList {
         for (ModelCategory searchable : SEARCH_CATEGORIES) {
             category.addItem(searchable.displayName());
         }
-        category.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                fillSuggestions();
-            }
-        });
-        fillSuggestions();
+        fillHistory(actions.hubSearchHistory());
         category.setToolTipText("Nur Modelle dieser Funktion suchen");
         category.getAccessibleContext().setAccessibleName("Funktion der Suche");
         JPanel searchRow = new JPanel(new BorderLayout(8, 0));
@@ -166,6 +160,18 @@ final class LocalVoiceList {
         fill();
     }
 
+    /** Gruppe „Vorschläge“: vorgeschlagene Modelle, die noch nicht installiert sind. */
+    JPanel suggestionsPanel() {
+        return suggested;
+    }
+
+    private static JLabel muted(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(FormRows.MUTED);
+        label.setAlignmentX(JComponent.LEFT_ALIGNMENT);
+        return label;
+    }
+
     /** Suchfeld und Treffer der Hugging-Face-Suche. */
     JPanel searchPanel() {
         return searchPanel;
@@ -178,7 +184,11 @@ final class LocalVoiceList {
         busy = true;
         updateButtons();
         showSearch("Suche auf dem Hugging Face Hub …", true);
-        actions.searchLocalVoices(form.get(), queryText(), selectedCategory(), new LocalVoiceSearchCallback() {
+        String text = queryText();
+        if (!text.isEmpty()) {
+            fillHistory(actions.rememberHubSearch(text));
+        }
+        actions.searchLocalVoices(form.get(), text, selectedCategory(), new LocalVoiceSearchCallback() {
             @Override
             public void found(List<LocalVoiceOffer> result) {
                 busy = false;
@@ -205,32 +215,21 @@ final class LocalVoiceList {
         return item == null ? "" : item.toString().trim();
     }
 
-    /** Ein Vorschlag wurde gewählt: seine Funktion einstellen, den Begriff übernehmen und sofort suchen. */
-    private void suggest(HubSearchSuggestion suggestion) {
-        int index = Arrays.asList(SEARCH_CATEGORIES).indexOf(suggestion.category());
-        if (index >= 0 && category.getSelectedIndex() != index + 1) {
-            category.setSelectedIndex(index + 1);
-        }
-        query.getEditor().setItem(suggestion.query());
-        search();
-    }
-
-    /** Das Dropdown mit den Vorschlägen der gewählten Funktion (alle bei „Alle Funktionen“), Getipptes bleibt. */
-    private void fillSuggestions() {
+    /** Das Dropdown mit den letzten Suchbegriffen; der Text im Feld bleibt. */
+    private void fillHistory(List<String> history) {
         Object typed = query.getEditor().getItem();
-        ModelCategory selected = selectedCategory();
-        fillingSuggestions = true;
+        fillingHistory = true;
         try {
             query.removeAllItems();
-            for (HubSearchSuggestion suggestion : suggestions) {
-                if (selected == null || selected == suggestion.category()) {
-                    query.addItem(suggestion);
+            if (history != null) {
+                for (String entry : history) {
+                    query.addItem(entry);
                 }
             }
-            query.setSelectedItem(null);
+            query.setSelectedIndex(-1);
             query.getEditor().setItem(typed == null ? "" : typed.toString());
         } finally {
-            fillingSuggestions = false;
+            fillingHistory = false;
         }
     }
 
@@ -272,32 +271,39 @@ final class LocalVoiceList {
     private void fill() {
         lines.removeAll();
         buttons.clear();
+        suggested.removeAll();
         rowBar = null;
         rowLabel = null;
-        if (offers.isEmpty()) {
-            JLabel none = new JLabel(NONE);
-            none.setForeground(FormRows.MUTED);
-            none.setAlignmentX(JComponent.LEFT_ALIGNMENT);
-            lines.add(none);
-        }
+        rowRendered = false;
         for (LocalVoiceOffer offer : offers) {
-            lines.add(line(offer, OFFER + offer.id()));
+            (offer.isInstalled() ? lines : suggested).add(line(offer, OFFER + offer.id()));
+        }
+        if (lines.getComponentCount() == 0) {
+            lines.add(muted(NONE));
+        }
+        if (suggested.getComponentCount() == 0) {
+            suggested.add(muted(NO_SUGGESTIONS));
         }
         hits.removeAll();
         if (found != null && found.isEmpty()) {
-            JLabel none = new JLabel(NO_HITS);
-            none.setForeground(FormRows.MUTED);
-            none.setAlignmentX(JComponent.LEFT_ALIGNMENT);
-            hits.add(none);
+            hits.add(muted(NO_HITS));
         }
         if (found != null) {
             for (LocalVoiceOffer hit : found) {
                 hits.add(line(withInstalledState(hit), HIT + hit.id()));
             }
         }
+        if (rowKey != null && !rowRendered && !downloading) {
+            // ein installierter Vorschlag steht jetzt unter „Installiert“ (ggf. unter seinem Ordnernamen)
+            JComponent state = rowState();
+            state.setAlignmentX(JComponent.LEFT_ALIGNMENT);
+            (rowKey.startsWith(HIT) ? hits : lines).add(state);
+        }
         updateButtons();
         lines.revalidate();
         lines.repaint();
+        suggested.revalidate();
+        suggested.repaint();
         hits.revalidate();
         hits.repaint();
     }
@@ -364,6 +370,7 @@ final class LocalVoiceList {
         line.add(head, BorderLayout.NORTH);
         if (key.equals(rowKey)) {
             line.add(rowState(), BorderLayout.CENTER);
+            rowRendered = true;
         }
         line.setAlignmentX(JComponent.LEFT_ALIGNMENT);
         return line;
@@ -498,18 +505,13 @@ final class LocalVoiceList {
         return font.deriveFont(Font.PLAIN, Math.max(11f, font.getSize2D() - 1f));
     }
 
-    /** Vorschläge im Dropdown: Suchbegriff und die Funktion, in der damit gesucht wird. */
-    private static final class SuggestionRenderer extends DefaultListCellRenderer {
+    /** Historie im Dropdown: nur Text, nie HTML. */
+    private static final class HistoryRenderer extends DefaultListCellRenderer {
 
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected,
                                                       boolean cellHasFocus) {
-            Object text = value;
-            if (value instanceof HubSearchSuggestion && index >= 0) {
-                HubSearchSuggestion suggestion = (HubSearchSuggestion) value;
-                text = suggestion.query() + "  ·  " + suggestion.category().displayName();
-            }
-            JLabel label = (JLabel) super.getListCellRendererComponent(list, text, index, isSelected, cellHasFocus);
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
             label.putClientProperty("html.disable", Boolean.TRUE);
             return label;
         }

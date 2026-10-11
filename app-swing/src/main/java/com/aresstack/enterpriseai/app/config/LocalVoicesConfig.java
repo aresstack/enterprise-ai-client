@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.app.config;
 
-import com.aresstack.enterpriseai.domain.localruntime.HubSearchSuggestion;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.model.huggingface.HubRepositorySuggestion;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoice;
 
 import java.io.IOException;
@@ -36,17 +36,18 @@ public final class LocalVoicesConfig {
         return load().getProperty("hub.endpoint", "").trim();
     }
 
-    /** Vorschläge für das Dropdown der Hub-Suche; ein Eintrag mit unbekannter Funktion fällt weg. */
-    public static List<HubSearchSuggestion> searchSuggestions() {
+    /** Vorgeschlagene Modelle anderer Funktionen (z. B. Spracheingabe); ein unvollständiger Eintrag fällt weg. */
+    public static List<HubRepositorySuggestion> suggestions() {
         return parseSuggestions(load());
     }
 
-    static List<HubSearchSuggestion> parseSuggestions(Properties properties) {
-        List<HubSearchSuggestion> suggestions = new ArrayList<HubSearchSuggestion>();
-        for (String id : split(properties.getProperty("search.suggestions", ""))) {
+    static List<HubRepositorySuggestion> parseSuggestions(Properties properties) {
+        List<HubRepositorySuggestion> suggestions = new ArrayList<HubRepositorySuggestion>();
+        for (String id : split(properties.getProperty("suggestions", ""))) {
             String prefix = "suggestion." + id + ".";
             try {
-                suggestions.add(new HubSearchSuggestion(properties.getProperty(prefix + "query"),
+                suggestions.add(new HubRepositorySuggestion(id, properties.getProperty(prefix + "name"),
+                        properties.getProperty(prefix + "repository"),
                         ModelCategory.valueOf(properties.getProperty(prefix + "category", "").trim())));
             } catch (IllegalArgumentException invalid) {
                 // unvollständiger Eintrag: nicht vorschlagen

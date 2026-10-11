@@ -3,7 +3,6 @@ package com.aresstack.enterpriseai.app.ui.settings;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
-import com.aresstack.enterpriseai.domain.localruntime.HubSearchSuggestion;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 
@@ -95,7 +94,7 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * „Installiert und vorgeschlagen“ im Reiter „Lokale Modelle“: die angebotenen Stimmen mit Installationsstand im Modellverzeichnis des
+     * „Installiert“ und „Vorschläge“ im Reiter „Lokale Modelle“: die angebotenen Stimmen mit Installationsstand im Modellverzeichnis des
      * Entwurfs, genau einmal auf dem EDT.
      */
     default void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {
@@ -120,9 +119,14 @@ public interface SettingsDialogActions {
         callback.failed("In dieser Umgebung nicht verfügbar.");
     }
 
-    /** Vorschläge für das Dropdown der Hub-Suche (Suchbegriff und Funktion), in der Reihenfolge der Konfiguration. */
-    default List<HubSearchSuggestion> hubSearchSuggestions() {
-        return Collections.<HubSearchSuggestion>emptyList();
+    /** Die letzten Suchbegriffe der Hub-Suche, neuester zuerst (Dropdown am Suchfeld). */
+    default List<String> hubSearchHistory() {
+        return Collections.<String>emptyList();
+    }
+
+    /** Merkt sich einen Suchbegriff der Hub-Suche; gibt die neue Historie zurück (neuester zuerst). */
+    default List<String> rememberHubSearch(String query) {
+        return hubSearchHistory();
     }
 
     /** Lädt eine installierte Stimme neu (wie {@link #installLocalVoice}); ändert keine Auswahl. */

@@ -6,7 +6,6 @@ import com.aresstack.enterpriseai.app.config.AppConfigException;
 import com.aresstack.enterpriseai.app.config.AppConfigLoader;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
-import com.aresstack.enterpriseai.app.config.LocalVoicesConfig;
 import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.net.HttpRoutes;
@@ -20,7 +19,6 @@ import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.application.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.application.modelcatalog.ModelCatalogSnapshot;
-import com.aresstack.enterpriseai.domain.localruntime.HubSearchSuggestion;
 import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
@@ -716,8 +714,18 @@ public final class FileSettingsActions implements SettingsDialogActions {
     }
 
     @Override
-    public List<HubSearchSuggestion> hubSearchSuggestions() {
-        return LocalVoicesConfig.searchSuggestions();
+    public List<String> hubSearchHistory() {
+        return HubSearchHistory.read(historyFile());
+    }
+
+    @Override
+    public List<String> rememberHubSearch(String query) {
+        return HubSearchHistory.remember(historyFile(), query);
+    }
+
+    /** Neben der Konfigurationsdatei. */
+    private Path historyFile() {
+        return file.path().toAbsolutePath().resolveSibling(HubSearchHistory.FILE_NAME);
     }
 
     @Override
