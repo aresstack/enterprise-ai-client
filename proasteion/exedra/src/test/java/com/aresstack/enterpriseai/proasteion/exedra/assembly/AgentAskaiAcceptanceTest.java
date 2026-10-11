@@ -200,6 +200,8 @@ public class AgentAskaiAcceptanceTest {
         // 6. Werkzeugaufrufe und Zwischenschritte stehen im Verlauf, abgeschlossen mit Ergebnis
         TranscriptEntry card = activity(entries, "Recherche in Confluence");
         assertEquals("abgeschlossen: 1 Seite gelesen, 1 Treffer, 1 Quelle übernommen", card.getActivitySummary());
+        // die Art „research“ übersteht die ACP-Leitung (kind: other + _meta), sonst zeichnet der Verlauf keine Karte
+        assertEquals("research", card.getActivityKind());
         // askai arch: während die Karte offen ist, keine Einzelwolken für Suche, Lesen und Notieren
         assertTrue(card.getText(), card.getText().contains("IAR"));
         for (TranscriptEntry entry : entries) {

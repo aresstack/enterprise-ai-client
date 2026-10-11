@@ -174,6 +174,19 @@ public final class ResearchAgentMain {
                 java.util.Collections.<String, Object>singletonMap(META_UTTERANCE, UTTERANCE_START));
     }
 
+    /** {@code _meta}-Schlüssel wie {@code AcpToolCall.META_TOOL_KIND} des Clients: eigene Art neben {@code other}. */
+    static final String META_TOOL_KIND = "aresstack/toolKind";
+
+    /** Der {@code tool_call} eines sichtbaren Aufrufs; eine Art ohne ACP-Gegenstück reist in {@code _meta}. */
+    static AcpSchema.ToolCall toolCall(String callId, String title, String kind, String input) {
+        AcpSchema.ToolKind wire = toolKind(kind);
+        java.util.Map<String, Object> meta = wire == AcpSchema.ToolKind.OTHER && kind != null && !kind.isEmpty()
+                && !"other".equals(kind) ? java.util.Collections.<String, Object>singletonMap(META_TOOL_KIND, kind)
+                : null;
+        return new AcpSchema.ToolCall("tool_call", callId, title, wire, AcpSchema.ToolCallStatus.IN_PROGRESS, null,
+                null, input, null, meta);
+    }
+
     static AcpSchema.ToolKind toolKind(String kind) {
         if ("search".equals(kind)) {
             return AcpSchema.ToolKind.SEARCH;
@@ -228,8 +241,7 @@ public final class ResearchAgentMain {
 
             @Override
             public void toolStarted(String callId, String title, String kind, String input) {
-                send(ctx, new AcpSchema.ToolCall("tool_call", callId, title, toolKind(kind),
-                        AcpSchema.ToolCallStatus.IN_PROGRESS, null, null, input, null, null));
+                send(ctx, toolCall(callId, title, kind, input));
             }
 
             @Override

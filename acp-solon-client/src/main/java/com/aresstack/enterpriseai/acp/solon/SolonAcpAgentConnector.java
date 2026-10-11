@@ -240,8 +240,14 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
                 // ACP trägt das sichtbare Ergebnis oft nur als content-Liste ({type: content, content: {text}}).
                 output = contentText(update.get("content"));
             }
+            String kind = stringOf(update.get("kind"));
+            Object meta = update.get("_meta");
+            if (meta instanceof Map && ((Map<?, ?>) meta).get(AcpToolCall.META_TOOL_KIND) != null) {
+                // Eigene Art (z. B. die Recherche-Karte) neben kind: other.
+                kind = stringOf(((Map<?, ?>) meta).get(AcpToolCall.META_TOOL_KIND));
+            }
             return new AcpToolCall(stringOf(update.get("toolCallId")), stringOf(update.get("title")),
-                    stringOf(update.get("kind")), mapped, stringOf(update.get("rawInput")), output);
+                    kind, mapped, stringOf(update.get("rawInput")), output);
         }
 
         /** {@code _meta} eines Nachrichtenstücks: beginnt es eine neue Äußerung ({@link AcpUpdate#META_UTTERANCE})? */
