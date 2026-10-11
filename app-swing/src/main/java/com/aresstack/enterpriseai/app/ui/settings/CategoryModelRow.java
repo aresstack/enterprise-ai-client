@@ -15,6 +15,7 @@ import javax.swing.JList;
 import javax.swing.JTextField;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.plaf.basic.BasicComboBoxEditor;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.event.ActionEvent;
@@ -27,15 +28,14 @@ import java.util.List;
  * Sicht auf die Auswahl einer {@link ModelCategory} in einem der Reiter „Cloud-Modelle“ oder „Lokale Modelle“:
  * eine Liste nur der passenden Modelle dieses Reiters. Beide Reiter teilen eine {@link ModelSelection}; liegt die
  * Auswahl im anderen Reiter, steht hier „– lokales Modell gewählt –“ bzw. „– Cloud-Modell gewählt –“, und wer hier
- * ein Modell wählt, wählt das andere ab. Chat und Embeddings haben in „Cloud-Modelle“ zusätzlich ein Textfeld, damit
- * sie auch ohne Verbindung (Erststart) gesetzt werden können; dort ist das Feld der gespeicherte Wert und die Liste
- * schreibt hinein. Eine gespeicherte Auswahl, die der Katalog gerade nicht kennt, bleibt als „nicht im Katalog“
- * stehen. Ohne passende Modelle ist die Liste gesperrt: „kein Modell verfügbar“.
+ * ein Modell wählt, wählt das andere ab. Chat und Embeddings sind in „Cloud-Modelle“ editierbare Listen, damit sie
+ * auch ohne Verbindung (Erststart) gesetzt werden können: das Eingabefeld zeigt die gespeicherte Modellkennung, die
+ * aufgeklappte Liste die Modelle des Katalogs. Eine gespeicherte Auswahl, die der Katalog gerade nicht kennt, bleibt
+ * als „nicht im Katalog“ stehen. Ohne passende Modelle ist eine nicht editierbare Liste gesperrt.
  */
 final class CategoryModelRow {
 
     static final String NO_SELECTION = "– keine Auswahl –";
-    static final String NOTHING_AVAILABLE = "kein Modell verfügbar";
     static final String LOCAL_ELSEWHERE = "– lokales Modell gewählt (Reiter „Lokale Modelle“) –";
     static final String CLOUD_ELSEWHERE = "– Cloud-Modell gewählt (Reiter „Cloud-Modelle“) –";
 
@@ -53,9 +53,9 @@ final class CategoryModelRow {
 
     /**
      * @param local    Sicht im Reiter „Lokale Modelle“ (nur lokale Modelle), sonst „Cloud-Modelle“
-     * @param withTextField nur Cloud: Textfeld für die Modellkennung (Chat, Embeddings)
+     * @param editable nur Cloud: Modellkennung auch frei eintippbar (Chat, Embeddings)
      */
-    CategoryModelRow(FormRows rows, final ModelCategory category, boolean local, boolean withTextField,
+    CategoryModelRow(FormRows rows, final ModelCategory category, boolean local, boolean editable,
                      ModelSelection selection, SettingsDialogActions actions, ComicPalette palette) {
         this.category = category;
         this.local = local;
@@ -78,10 +78,14 @@ final class CategoryModelRow {
                 + category.displayName());
         String source = local ? "Installierte lokale Modelle"
                 : "Passende Modelle aus GET /models der Enterprise-API";
-        if (withTextField && !local) {
-            field = rows.textField(category.displayName(), "Modellkennung, wie sie der Dienst nennt; optional mit "
-                    + "Katalog davor (local:…). Die Liste darunter setzt sie.");
-            rows.component("", combo, source);
+        if (editable && !local) {
+            combo.setEditable(true);
+            combo.setEditor(new StoredValueEditor());
+            field = (JTextField) combo.getEditor().getEditorComponent();
+            field.setForeground(palette.getInk());
+            field.getAccessibleContext().setAccessibleName(combo.getAccessibleContext().getAccessibleName());
+            rows.component(category.displayName(), combo, "Modellkennung, wie sie der Dienst nennt, eintippen "
+                    + "(optional mit Katalog davor, local:…) oder aus der Liste wählen: " + source);
             field.getDocument().addDocumentListener(new DocumentListener() {
                 @Override
                 public void insertUpdate(DocumentEvent e) {
@@ -110,11 +114,7 @@ final class CategoryModelRow {
                     return;
                 }
                 ModelOption option = (ModelOption) selected;
-                if (field != null) {
-                    if (option.descriptor() != null) {
-                        field.setText(option.stored());
-                    }
-                } else {
+                if (field == null || option.descriptor() != null) {
                     selection.set(option.stored());
                 }
             }
@@ -122,14 +122,6 @@ final class CategoryModelRow {
         selection.onChange(new Runnable() {
             @Override
             public void run() {
-                if (field != null && !syncing && !field.getText().trim().equals(selection.get())) {
-                    syncing = true;
-                    try {
-                        field.setText(selection.get());
-                    } finally {
-                        syncing = false;
-                    }
-                }
                 rebuild();
             }
         });
@@ -137,7 +129,7 @@ final class CategoryModelRow {
     }
 
     private void typed() {
-        if (syncing) {
+        if (syncing || filling) {
             return;
         }
         syncing = true;
@@ -185,16 +177,10 @@ final class CategoryModelRow {
             DefaultComboBoxModel<ModelOption> model = new DefaultComboBoxModel<ModelOption>();
             ModelOption selected = null;
             if (field != null) {
-                if (options.isEmpty() && current.isEmpty()) {
-                    model.addElement(ModelOption.none(NOTHING_AVAILABLE));
-                    combo.setModel(model);
-                    combo.setEnabled(false);
-                    return;
-                }
-                if (options.isEmpty() || !here) {
-                    ModelOption none = ModelOption.none(here ? NOTHING_AVAILABLE : LOCAL_ELSEWHERE);
-                    model.addElement(none);
-                    selected = none;
+                if (!here) {
+                    ModelOption elsewhere = ModelOption.elsewhere(current, LOCAL_ELSEWHERE);
+                    model.addElement(elsewhere);
+                    selected = elsewhere;
                 }
             } else {
                 if (!required || current.isEmpty()) {
@@ -210,18 +196,21 @@ final class CategoryModelRow {
             }
             for (ModelOption option : options) {
                 model.addElement(option);
-                if (here && reference != null && reference.equals(actions.parseModel(option.stored()))) {
+                // Editierbar: nur der wörtlich gleiche Eintrag, damit das Eingabefeld beim Tippen stehen bleibt.
+                if (here && reference != null && (field != null ? option.stored().equals(current)
+                        : reference.equals(actions.parseModel(option.stored())))) {
                     selected = option;
                 }
             }
-            if (here && reference != null && (selected == null || !selected.available())) {
+            if (here && (reference != null || (field != null && !current.isEmpty()))
+                    && (selected == null || !selected.available())) {
                 ModelOption missing = ModelOption.missing(current);
                 model.addElement(missing);
                 selected = missing;
             }
             model.setSelectedItem(selected);
             combo.setModel(model);
-            combo.setEnabled(!options.isEmpty() || (field == null && !required && here && reference != null));
+            combo.setEnabled(field != null || !options.isEmpty() || (!required && here && reference != null));
         } finally {
             filling = false;
         }
@@ -240,12 +229,33 @@ final class CategoryModelRow {
         return combo;
     }
 
-    /** Das Textfeld (nur Chat und Embeddings im Reiter „Cloud-Modelle“), sonst {@code null}. */
+    /** Das Eingabefeld der editierbaren Liste (nur Chat und Embeddings unter „Cloud-Modelle“), sonst {@code null}. */
     JTextField field() {
         return field;
     }
 
     JComponent focusTarget() {
         return field != null ? field : combo;
+    }
+
+    /**
+     * Eingabefeld der editierbaren Liste: zeigt von einem Listeneintrag die gespeicherte Modellkennung, nicht seine
+     * Beschriftung, und lässt den Text stehen, solange er schon passt (kein Sprung des Cursors beim Tippen).
+     */
+    private static final class StoredValueEditor extends BasicComboBoxEditor {
+
+        @Override
+        public void setItem(Object item) {
+            String text = item instanceof ModelOption ? ((ModelOption) item).stored()
+                    : item == null ? "" : item.toString();
+            if (!text.trim().equals(editor.getText().trim())) {
+                editor.setText(text);
+            }
+        }
+
+        @Override
+        public Object getItem() {
+            return editor.getText();
+        }
     }
 }

@@ -80,8 +80,8 @@ final class ModelsTab {
         selection.note("Je Funktion ein Modell der Enterprise-API. Die Listen zeigen nur Modelle, deren gemeldete "
                 + "Fähigkeiten passen. Eine Wahl unter „Lokale Modelle“ ersetzt die Wahl hier und umgekehrt.");
         for (ModelCategory category : ModelCategory.values()) {
-            boolean text = category == ModelCategory.CHAT || category == ModelCategory.EMBEDDING;
-            rows.add(new CategoryModelRow(selection, category, false, text, selections.get(category), actions,
+            boolean editable = category == ModelCategory.CHAT || category == ModelCategory.EMBEDDING;
+            rows.add(new CategoryModelRow(selection, category, false, editable, selections.get(category), actions,
                     palette));
         }
 
@@ -357,7 +357,7 @@ final class ModelsTab {
         return voices;
     }
 
-    /** Das Textfeld des Chat-Modells. */
+    /** Das Eingabefeld der editierbaren Chat-Modell-Liste. */
     JTextField chatModel() {
         return row(ModelCategory.CHAT).field();
     }
