@@ -15,9 +15,6 @@ import com.aresstack.enterpriseai.research.runtime.search.provider.SearchEngine;
 import com.aresstack.enterpriseai.research.runtime.support.HostDomainKeyResolver;
 
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
@@ -34,21 +31,6 @@ final class ResearchRun {
     private final ResearchHostControl host;
     private final Map<String, String> environment;
     private final AtomicBoolean cancelled;
-    /**
-     * GPT-Plan: der Lauf selbst ist EIN Orchestrator-Thread (der ACP-Prompt-Thread), Seiten lädt ein eigener
-     * Pool aus genau vier Threads (KIPITZ verträgt mindestens vier parallele Anfragen).
-     */
-    private final ExecutorService pagePool = Executors.newFixedThreadPool(PAGE_THREADS, new ThreadFactory() {
-        private int count;
-
-        @Override
-        public synchronized Thread newThread(Runnable work) {
-            Thread thread = new Thread(work, "research-page-" + (++count));
-            thread.setDaemon(true);
-            return thread;
-        }
-    });
-    static final int PAGE_THREADS = 4;
 
     ResearchRun(ResearchHostControl host, Map<String, String> environment, AtomicBoolean cancelled) {
         this.host = host;
@@ -56,13 +38,15 @@ final class ResearchRun {
         this.cancelled = cancelled;
     }
 
-    /** Beim Sitzungsende: der Seitenpool hält keine JVM am Leben (Daemon), wird aber sauber beendet. */
+    /**
+     * Beim Sitzungsende. Der Lauf ist EIN Orchestrator-Thread; Vorladen und Priority-Lesen macht der Host hinter
+     * {@code knowledge_search}/{@code knowledge_read} (wie MainframeMate), der Agent hält keinen eigenen Seitenpool.
+     */
     void close() {
-        pagePool.shutdownNow();
     }
 
     ResearchRunOutcome run(String task, final ResearchAgentTurns.Output output) {
-        KnowledgePages pages = new KnowledgePages(host, pagePool);
+        KnowledgePages pages = new KnowledgePages(host);
         ResearchRunBudget budget = EnvironmentRunBudget.from(environment);
         ResearchLoop loop = new ResearchLoop(pages, host, budget, new ResearchLoopClock() {
             @Override

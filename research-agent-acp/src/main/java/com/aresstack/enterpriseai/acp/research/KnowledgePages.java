@@ -8,11 +8,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 
 /**
  * Die Quellenseiten des Recherche-Laufs über die Wissenswerkzeuge des Hosts: {@code knowledge_search} findet
@@ -21,8 +17,7 @@ import java.util.concurrent.Future;
  * web_open(url)} liefert den Seitentext im Format des Browser-Bridges ({@code URL: … title="…" capture_id=…}),
  * {@code web_links} liefert keine Links (das Budget zählt Treffer der Suche, kein Weiterhangeln).
  */
-final class KnowledgePages implements ToolInvoker,
-        com.aresstack.enterpriseai.research.runtime.acquire.PagePrefetch {
+final class KnowledgePages implements ToolInvoker {
 
     static final String SEARCH_TOOL = "knowledge_search";
     static final String READ_TOOL = "knowledge_read";
@@ -44,36 +39,13 @@ final class KnowledgePages implements ToolInvoker,
     }
 
     private final ToolInvoker host;
-    /** Der Pool fester Größe (4) für das parallele Laden der ausgewählten Treffer; {@code null}: kein Vorausladen. */
-    private final ExecutorService pool;
-    private final Map<String, Future<String>> prefetched = new ConcurrentHashMap<String, Future<String>>();
     /** URL des Treffers → Dokument-ID für {@code knowledge_read}. */
     private final Map<String, String> idsByUrl = new ConcurrentHashMap<String, String>();
     private final Map<String, String> titlesById = new ConcurrentHashMap<String, String>();
     private final Map<String, String> urlsById = new ConcurrentHashMap<String, String>();
 
-    KnowledgePages(ToolInvoker host, ExecutorService pool) {
+    KnowledgePages(ToolInvoker host) {
         this.host = host;
-        this.pool = pool;
-    }
-
-    @Override
-    public void prefetch(List<String> urls) {
-        if (pool == null || urls == null) {
-            return;
-        }
-        for (String url : urls) {
-            final String id = idFor(url);
-            if (prefetched.containsKey(id)) {
-                continue;
-            }
-            prefetched.put(id, pool.submit(new Callable<String>() {
-                @Override
-                public String call() throws Exception {
-                    return read(id);
-                }
-            }));
-        }
     }
 
     /** {@code knowledge_search}; jede Treffer-URL wird für das spätere Öffnen gemerkt. */
@@ -140,25 +112,6 @@ final class KnowledgePages implements ToolInvoker,
         return host.call(READ_TOOL, args);
     }
 
-    private static String await(Future<String> loaded) throws ToolFailure, EndpointUnavailable {
-        try {
-            return loaded.get();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            loaded.cancel(true);
-            throw new ToolFailure("interrupted while reading");
-        } catch (ExecutionException failed) {
-            Throwable cause = failed.getCause();
-            if (cause instanceof EndpointUnavailable) {
-                throw (EndpointUnavailable) cause;
-            }
-            if (cause instanceof ToolFailure) {
-                throw (ToolFailure) cause;
-            }
-            throw new ToolFailure(String.valueOf(cause));
-        }
-    }
-
     /** Die capture_id ist ein Token der Kopfzeile, also ohne Leerzeichen. */
     private static String captureId(String id) {
         return id.replace(' ', '_');
@@ -184,13 +137,7 @@ final class KnowledgePages implements ToolInvoker,
             throw new ToolFailure("Missing argument: url");
         }
         String id = idFor(url);
-        String text;
-        Future<String> loaded = prefetched.remove(id);
-        if (loaded != null) {
-            text = await(loaded);
-        } else {
-            text = read(id);
-        }
+        String text = read(id);
         String title = titlesById.get(captureId(id));
         return "URL: " + url.trim() + " title=\"" + (title == null ? "" : title.replace('"', '\'')) + "\""
                 + " capture_id=" + captureId(id) + "\n" + (text == null ? "" : text);

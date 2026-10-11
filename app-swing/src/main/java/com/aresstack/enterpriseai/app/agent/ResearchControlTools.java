@@ -137,7 +137,7 @@ public final class ResearchControlTools {
                 McpToolParameter.integer("max_output_tokens", false, "Ausgabebudget, 0 = Standard")));
         if (ResearchStateIds.RESEARCH.equals(host.phaseId())) {
             tools.add(McpToolContribution.of("source_passages",
-                    "Liest eine übernommene Quelle in semantischen Passagen (nach Thema zerlegt). "
+                    "Liest die Passagen einer übernommenen Quelle aus dem Wissensindex, jede mit passage-ID für Belege. "
                             + "Beispiel: capture_id=\"123456\"",
                     new McpToolHandler() {
                         @Override
@@ -149,7 +149,7 @@ public final class ResearchControlTools {
                             }
                             String text = host.passagesOf(id.trim());
                             return McpToolResult.ok(text.isEmpty()
-                                    ? "No passages yet for " + id.trim() + " (still running or not accepted)."
+                                    ? "No passages in the index for " + id.trim() + " yet (read it with knowledge_read first)."
                                     : text);
                         }
                     }, McpToolParameter.string("capture_id", true, "Die Quelle aus source_accept")));

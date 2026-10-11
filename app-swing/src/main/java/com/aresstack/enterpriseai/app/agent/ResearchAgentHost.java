@@ -50,7 +50,6 @@ public final class ResearchAgentHost {
     private static final String SOURCES_FILE = "sources.tsv";
     private static final String PARKED_FILE = "parked.tsv";
     private static final String IMAGES_DIRECTORY = "images";
-    private static final String PASSAGES_DIRECTORY = "passages";
 
     private final File projectsRoot;
     private final Function<File, ResearchScopeDraftStore> stores;
@@ -59,6 +58,8 @@ public final class ResearchAgentHost {
     private volatile Consumer<String> problemSink;
     /** Wer nach einer neuen Quelle weiterarbeitet (Bilder auswerten); bekommt die Dokument-ID. */
     private volatile Consumer<String> sourceAcceptedListener;
+    private volatile Function<String, String> passageReader;
+    private volatile Function<String, String[]> resourceReferences;
     private File projectDirectory;
     private ResearchScopeCoordinator coordinator;
     private ResearchConceptHost conceptHost;
@@ -259,7 +260,8 @@ public final class ResearchAgentHost {
 
     /**
      * Übernimmt eine gelesene Seite als Quelle des Projekts (askai {@code source_accept}); nur in Phase Quellen
-     * und „running“. Eine Seite zählt einmal.
+     * und „running“. Eine Seite zählt einmal. Gespeichert wird wie in corenth nur die Referenz
+     * ({@code id, Titel, URL, Bookmark, Revision, Inhalts-Hash}), nie der Seitentext; der liegt im Wissensindex.
      *
      * @return {@code source_id=…}, bei Wiederholung mit {@code ALREADY_ACCEPTED}
      */
@@ -272,7 +274,13 @@ public final class ResearchAgentHost {
                 return "ALREADY_ACCEPTED source_id=" + id;
             }
         }
-        appendLine(new File(projectDirectory, SOURCES_FILE), id + "\t" + clean(title) + "\t" + clean(url));
+        Function<String, String[]> references = resourceReferences;
+        String[] reference = references == null ? null : references.apply(id);
+        if (reference == null || reference.length < 3) {
+            reference = new String[]{"", "", ""};
+        }
+        appendLine(new File(projectDirectory, SOURCES_FILE), id + "\t" + clean(title) + "\t" + clean(url)
+                + "\t" + clean(reference[0]) + "\t" + clean(reference[1]) + "\t" + clean(reference[2]));
         LOG.info("[research-sources] accepted " + id + " " + clean(title));
         fireStateChangedLater();
         Consumer<String> listener = sourceAcceptedListener;
@@ -326,57 +334,22 @@ public final class ResearchAgentHost {
         return text.toString().trim();
     }
 
-    // ------------------------------------------------------------------ passages of sources (Absatzbildung)
+    // ------------------------------------------------------------------ passages of sources (aus dem Index)
 
-    /** Speichert die semantischen Passagen einer Quelle samt Embedding (eine JSON-Zeile je Passage). */
-    public void savePassages(String sourceId,
-                             List<com.aresstack.enterpriseai.application.passage.SourcePassage> passages) {
-        StringBuilder lines = new StringBuilder();
-        for (com.aresstack.enterpriseai.application.passage.SourcePassage passage : passages) {
-            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
-            json.addProperty("id", passage.passageId());
-            json.addProperty("source", passage.sourceId());
-            json.addProperty("heading", passage.headingPath());
-            json.addProperty("first", passage.firstSentence());
-            json.addProperty("embedding", passage.embeddingFingerprint());
-            json.addProperty("text", passage.text());
-            com.google.gson.JsonArray vector = new com.google.gson.JsonArray();
-            for (float value : passage.vector()) {
-                vector.add(value);
-            }
-            json.add("vector", vector);
-            lines.append(json.toString()).append('\n');
-        }
-        writeText(passageFile(sourceId), lines.toString());
-        LOG.info("[research-passages] " + passages.size() + " Passagen für " + sourceId);
-    }
-
-    /** Die Passagen einer Quelle als Text (Abschnitt und Inhalt); leer, solange keine vorliegen. */
+    /** Die Passagen einer Quelle aus dem Wissensindex (mit Passage-ID für Belege); leer, solange keine vorliegen. */
     public String passagesOf(String sourceId) {
-        StringBuilder text = new StringBuilder();
-        int number = 0;
-        for (String line : readLines(passageFile(sourceId))) {
-            if (line.trim().isEmpty()) {
-                continue;
-            }
-            com.google.gson.JsonObject json = com.google.gson.JsonParser.parseString(line).getAsJsonObject();
-            text.append('[').append(++number).append("] ");
-            String heading = json.get("heading").getAsString();
-            if (!heading.isEmpty()) {
-                text.append(heading).append(": ");
-            }
-            text.append(json.get("text").getAsString()).append("\n\n");
-        }
-        return text.toString().trim();
+        Function<String, String> reader = passageReader;
+        return reader == null ? "" : reader.apply(sourceId);
     }
 
-    private synchronized File passageFile(String sourceId) {
-        ensureOpen();
-        File directory = new File(projectDirectory, PASSAGES_DIRECTORY);
-        if (!directory.isDirectory() && !directory.mkdirs()) {
-            LOG.warning("Passagenordner nicht anlegbar: " + directory);
-        }
-        return new File(directory, sha256(sourceId) + ".jsonl");
+    /** Liest die Passagen einer Ressource aus dem Wissensindex; das Projekt hält keine Kopie. */
+    public void setPassageReader(Function<String, String> reader) {
+        this.passageReader = reader;
+    }
+
+    /** Liefert zu einer Ressourcen-ID {@code Bookmark, Revision, Inhalts-Hash} aus dem Index. */
+    public void setResourceReferences(Function<String, String[]> references) {
+        this.resourceReferences = references;
     }
 
     private synchronized File imageFile(String kind, String key) {

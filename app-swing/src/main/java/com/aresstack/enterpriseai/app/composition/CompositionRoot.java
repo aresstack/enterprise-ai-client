@@ -432,9 +432,61 @@ public final class CompositionRoot {
         };
     }
 
+    /** Bookmark, Revision und Inhalts-Hash einer Ressource aus dem Index; leere Felder, solange sie fehlen. */
+    private String[] resourceReference(String id) {
+        com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId resource;
+        try {
+            resource = com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId.of(id);
+        } catch (IllegalArgumentException notAResource) {
+            return new String[]{"", "", ""};
+        }
+        String bookmark;
+        try {
+            bookmark = com.aresstack.enterpriseai.domain.resource.KnowledgeBookmarks.of(resource).toString();
+        } catch (IllegalArgumentException noBookmark) {
+            bookmark = "";
+        }
+        java.util.Optional<com.aresstack.enterpriseai.knowledge.api.IndexedResourceState> state =
+                indexing.stateOf(resource);
+        if (!state.isPresent()) {
+            return new String[]{bookmark, "", ""};
+        }
+        com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision revision = state.get().revision();
+        String version = !revision.version().isEmpty() ? revision.version()
+                : revision.modifiedAt().isPresent() ? revision.modifiedAt().get().toString() : "";
+        return new String[]{bookmark, version, state.get().hasContentHash() ? state.get().contentHash() : ""};
+    }
+
+    /** Die indexierten Passagen einer Ressource mit ihrer ID (für Belege), Abschnitt und Text. */
+    private String indexedPassages(String id) {
+        java.util.List<com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry> entries;
+        try {
+            entries = ports.index().entriesOf(indexing.space(),
+                    com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId.of(id));
+        } catch (IllegalArgumentException notAResource) {
+            return "";
+        } catch (com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexException unreadable) {
+            java.util.logging.Logger.getLogger(CompositionRoot.class.getName()).warning(
+                    "[research-passages] " + id + ": " + unreadable.getMessage());
+            return "";
+        }
+        StringBuilder text = new StringBuilder();
+        for (com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry entry : entries) {
+            text.append("passage: ").append(entry.chunkId().value()).append('\n');
+            String heading = entry.chunk().headingLine();
+            if (!heading.isEmpty()) {
+                text.append(heading).append(": ");
+            }
+            text.append(entry.chunk().text()).append("\n\n");
+        }
+        return text.toString().trim();
+    }
+
     /**
-     * Nach jeder übernommenen Quelle arbeitet ein eigener Pool aus vier Threads (GPT-Plan): die semantische
-     * Absatzbildung des Textes ({@code source_passages}) und der Binärpfad für Bilder, OCR (Modell DOCUMENT_OCR)
+     * Quellen des Recherche-Projekts sind Referenzen wie in corenth: der Host speichert je Quelle nur
+     * {@link com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId}, Bookmark, Revision und Inhalts-Hash
+     * aus dem Wissensindex, nie den Seitentext; die Passagen liest {@code source_passages} aus dem Index.
+     * Nach jeder übernommenen Quelle wertet ein Pool aus vier Threads die Bilder aus, OCR (Modell DOCUMENT_OCR)
      * und Beschreibung (Modell VISION) getrennt über KIPITZ, je Bild und Version einmal ({@code source_images}).
      */
     private void wireSourceProcessing(
@@ -448,25 +500,21 @@ public final class CompositionRoot {
                         modelKey(com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory.DOCUMENT_OCR),
                         modelKey(com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory.VISION),
                         researchHost.imageCache());
-        final com.aresstack.enterpriseai.application.passage.PassageSegmentation passages =
-                new com.aresstack.enterpriseai.application.passage.PassageSegmentation(ports.embeddings());
+        researchHost.setResourceReferences(new java.util.function.Function<String, String[]>() {
+            @Override
+            public String[] apply(String id) {
+                return resourceReference(id);
+            }
+        });
+        researchHost.setPassageReader(new java.util.function.Function<String, String>() {
+            @Override
+            public String apply(String id) {
+                return indexedPassages(id);
+            }
+        });
         researchHost.setSourceAcceptedListener(new java.util.function.Consumer<String>() {
             @Override
             public void accept(final String sourceId) {
-                // Absatzbildung (askai arch SourceProcessingWorker): Text der Quelle → semantische Passagen
-                pool.submit(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument document = documents.load(
-                                    com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId.of(sourceId));
-                            researchHost.savePassages(sourceId, passages.segment(sourceId, document.text()));
-                        } catch (Exception failed) {
-                            java.util.logging.Logger.getLogger(CompositionRoot.class.getName()).warning(
-                                    "[research-passages] " + sourceId + ": " + failed.getMessage());
-                        }
-                    }
-                });
                 pool.submit(new Runnable() {
                     @Override
                     public void run() {

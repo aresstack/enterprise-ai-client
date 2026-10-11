@@ -30,7 +30,7 @@ public final class ResearchProject {
     private boolean briefConfirmed;
     private final List<OrientationResearchRun> orientationRuns = new ArrayList<OrientationResearchRun>();
     private final List<SearchObservation> observations = new ArrayList<SearchObservation>();
-    private final Map<String, SourceCapture> captures = new LinkedHashMap<String, SourceCapture>();
+    private final Map<String, SourceReference> captures = new LinkedHashMap<String, SourceReference>();
     private final Map<String, Sentence> sentences = new LinkedHashMap<String, Sentence>();
     private final Map<String, Passage> passages = new LinkedHashMap<String, Passage>();
     private final Map<String, TopicProposal> topicProposals = new LinkedHashMap<String, TopicProposal>();
@@ -100,17 +100,19 @@ public final class ResearchProject {
      * Immutable capture; a re-captured page is a NEW capture (new id), the old one stays. Reprocess-idempotent:
      * recording the SAME capture id with the SAME content (checksum) again is a no-op that returns the existing
      * capture (no duplicate, no event) — only a SAME id with DIFFERENT content violates immutability and throws.
+     * The project keeps only the {@link SourceReference} (corenth: reference, not a copy); the blocks of the
+     * capture stay in the knowledge index.
      */
     public SourceCapture recordSourceCapture(SourceCapture capture) {
-        SourceCapture existing = captures.get(capture.getCaptureId());
+        SourceReference existing = captures.get(capture.getCaptureId());
         if (existing != null) {
             if (existing.getChecksum().equals(capture.getChecksum())) {
-                return existing; // idempotent: identical capture already recorded
+                return capture; // idempotent: identical capture already recorded
             }
             throw new IllegalArgumentException("capture " + capture.getCaptureId()
                     + " already exists with different content (captures are immutable)");
         }
-        captures.put(capture.getCaptureId(), capture);
+        captures.put(capture.getCaptureId(), SourceReference.of(capture));
         publish("SourceCaptureRecorded", capture.getCaptureId());
         return capture;
     }
@@ -495,7 +497,7 @@ public final class ResearchProject {
         return Collections.unmodifiableList(outlineRevisions);
     }
 
-    public Map<String, SourceCapture> captures() {
+    public Map<String, SourceReference> captures() {
         return Collections.unmodifiableMap(captures);
     }
 
