@@ -3,11 +3,13 @@ package com.aresstack.enterpriseai.application.mcp;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.application.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.application.rag.RetrieveKnowledgeUseCase;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Die MCP-Wissenswerkzeuge für einen Endpoint eines {@code McpServerRegistry} – bewusst nur zwei, klein und mit
@@ -39,11 +41,21 @@ public final class KnowledgeMcpTools {
      */
     public KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
                              SearchDrivenIndexingUseCase live, KnowledgeToolSettings settings) {
+        this(retrieval, documents, live, id -> true, settings);
+    }
+
+    /** Wie oben; {@code enabled} sagt je Aufruf, welche Quellen angehakt sind (nur die durchsucht knowledge_search). */
+    public KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
+                             SearchDrivenIndexingUseCase live, Predicate<KnowledgeSourceId> enabled,
+                             KnowledgeToolSettings settings) {
+        if (enabled == null) {
+            throw new IllegalArgumentException("enabled ist Pflicht");
+        }
         if (retrieval == null || documents == null || live == null) {
             throw new IllegalArgumentException("retrieval, documents und live sind Pflicht");
         }
         this.settings = settings == null ? KnowledgeToolSettings.defaults() : settings;
-        this.search = new KnowledgeSearchTool(retrieval, live, documents.catalog(), this.settings);
+        this.search = new KnowledgeSearchTool(retrieval, live, documents.catalog(), enabled, this.settings);
         this.read = new KnowledgeReadTool(documents, live, this.settings);
     }
 

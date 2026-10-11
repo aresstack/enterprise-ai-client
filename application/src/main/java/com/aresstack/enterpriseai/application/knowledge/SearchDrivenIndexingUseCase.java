@@ -50,6 +50,20 @@ public final class SearchDrivenIndexingUseCase {
                 hitLimit, maxPages);
     }
 
+    /** Wie {@link #searchAndIndex(KnowledgeSourceCatalog, String, int, int)}, aber nur über die Quellen {@code only}. */
+    public Result searchAndIndex(KnowledgeSourceCatalog catalog, Collection<KnowledgeSourceId> only, String query,
+                                 int hitLimit, int maxPages) {
+        List<KnowledgeSourcePort> sources = new ArrayList<KnowledgeSourcePort>();
+        if (catalog != null && only != null) {
+            for (KnowledgeSourcePort port : catalog.ports()) {
+                if (only.contains(port.sourceId())) {
+                    sources.add(port);
+                }
+            }
+        }
+        return searchAndIndex(sources, query, hitLimit, maxPages);
+    }
+
     /**
      * @param hitLimit höchstens so viele Treffer je Quelle (Suche ist billig, Laden nicht)
      * @param maxPages höchstens so viele Treffer laden und indexieren; {@link #UNLIMITED} = alle

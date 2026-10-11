@@ -151,13 +151,6 @@ public final class CompositionRoot {
                 LOG.info("Live-Suche für den Chat: " + result.failures());
             }
         });
-        // Nur zwei Werkzeuge (knowledge_search, knowledge_read); welche Quellen, sagt der Katalog.
-        this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, searchIndexing,
-                config.agent().toolSettings());
-        this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
-        this.knowledgeStatus = new KnowledgeStatusModel();
-        this.indexingBinding = new KnowledgeIndexingBinding(indexing, knowledgeStatus, uiExecutor, workExecutor,
-                clock, zone);
         this.sourceSelection = new KnowledgeSourceSelection();
         for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
             boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt
@@ -168,6 +161,14 @@ public final class CompositionRoot {
             }
             sourceSelection.register(registration.sourceId(), enabled);
         }
+        // Nur zwei Werkzeuge (knowledge_search, knowledge_read); durchsucht werden nur die angehakten Quellen.
+        final KnowledgeSourceSelection selection = sourceSelection;
+        this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, searchIndexing,
+                id -> !selection.isRestricted() || selection.isEnabled(id), config.agent().toolSettings());
+        this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
+        this.knowledgeStatus = new KnowledgeStatusModel();
+        this.indexingBinding = new KnowledgeIndexingBinding(indexing, knowledgeStatus, uiExecutor, workExecutor,
+                clock, zone);
 
         this.agentStarts = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-agent-start"));
         // Der eingebaute Recherche-Agent aus askai-java8 (arch) samt Weidezaun, Projekte neben der Konfiguration.

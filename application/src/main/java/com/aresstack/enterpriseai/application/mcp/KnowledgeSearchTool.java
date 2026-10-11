@@ -15,11 +15,13 @@ import com.aresstack.enterpriseai.mcp.api.McpToolHandler;
 import com.aresstack.enterpriseai.mcp.api.McpToolParameter;
 import com.aresstack.enterpriseai.mcp.api.McpToolResult;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * {@code knowledge_search(query, limit)}: Quellen live durchsuchen, neue oder geänderte Treffer im Rahmen von
@@ -38,13 +40,16 @@ final class KnowledgeSearchTool implements McpToolHandler {
     private final RetrieveKnowledgeUseCase retrieval;
     private final SearchDrivenIndexingUseCase live;
     private final KnowledgeSourceCatalog catalog;
+    private final Predicate<KnowledgeSourceId> enabled;
     private final KnowledgeToolSettings settings;
 
     KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
-                        KnowledgeSourceCatalog catalog, KnowledgeToolSettings settings) {
+                        KnowledgeSourceCatalog catalog, Predicate<KnowledgeSourceId> enabled,
+                        KnowledgeToolSettings settings) {
         this.retrieval = retrieval;
         this.live = live;
         this.catalog = catalog;
+        this.enabled = enabled;
         this.settings = settings;
     }
 
@@ -75,17 +80,28 @@ final class KnowledgeSearchTool implements McpToolHandler {
         }
         int limit = (int) Math.min(requested, Math.max(1, retrieval.settings().maxResults()));
         String text = query.trim();
+        // Nur angehakte Quellen: abgewählte werden weder live gefragt noch im Index durchsucht.
+        List<KnowledgeSourceId> sources = new ArrayList<KnowledgeSourceId>();
+        for (KnowledgeSourceId id : catalog.ids()) {
+            if (enabled.test(id)) {
+                sources.add(id);
+            }
+        }
+        if (sources.isEmpty()) {
+            return McpToolResult.ok("Query: " + ToolText.oneLine(text, 200)
+                    + "\nNo knowledge source is enabled. Ask the user to check a source in the drawer.");
+        }
 
         SearchDrivenIndexingUseCase.Result found;
         try {
-            found = live.searchAndIndex(catalog, text, Math.max(limit, 1), settings.maxPages());
+            found = live.searchAndIndex(catalog, sources, text, Math.max(limit, 1), settings.maxPages());
         } catch (RuntimeException e) {
             found = null; // Live-Suche ist eine Ergänzung; der Index antwortet trotzdem.
         }
         List<RetrievedChunk> hits;
         boolean indexFailed = false;
         try {
-            RetrievalResult result = retrieval.retrieve(text, catalog.ids());
+            RetrievalResult result = retrieval.retrieve(text, sources);
             hits = result.hits();
         } catch (RuntimeException e) { // auch KnowledgeRetrievalException: alle Suchpfade ausgefallen
             hits = Collections.emptyList();
@@ -110,6 +126,7 @@ final class KnowledgeSearchTool implements McpToolHandler {
         int maxChars = settings.maxResponseChars() - ToolText.MARKER_RESERVE;
         Set<KnowledgeResourceId> listed = new HashSet<KnowledgeResourceId>();
         int shown = 0;
+        String firstShown = null;
         for (RetrievedChunk hit : hits) {
             if (shown >= limit) {
                 break;
@@ -120,6 +137,9 @@ final class KnowledgeSearchTool implements McpToolHandler {
             }
             out.append(block);
             listed.add(hit.resource().id());
+            if (firstShown == null) {
+                firstShown = hit.resource().id().value();
+            }
             shown++;
         }
         if (found != null) {
@@ -135,6 +155,9 @@ final class KnowledgeSearchTool implements McpToolHandler {
                     break;
                 }
                 out.append(block);
+                if (firstShown == null) {
+                    firstShown = resource.resourceId().value();
+                }
                 shown++;
             }
         }
@@ -143,7 +166,7 @@ final class KnowledgeSearchTool implements McpToolHandler {
                     .append(" Anleitung\"");
         } else {
             out.append("\nRead a hit completely with knowledge_read — example: id=\"")
-                    .append(firstId(hits, found)).append("\"");
+                    .append(firstShown).append("\"");
         }
         return ToolText.truncate(out.toString(), settings.maxResponseChars());
     }
@@ -173,12 +196,5 @@ final class KnowledgeSearchTool implements McpToolHandler {
             block.append(ToolText.snippet(resource.snippet(), settings.snippetChars())).append('\n');
         }
         return block.toString();
-    }
-
-    private static String firstId(List<RetrievedChunk> hits, SearchDrivenIndexingUseCase.Result found) {
-        if (!hits.isEmpty()) {
-            return hits.get(0).resource().id().value();
-        }
-        return found.hits().get(0).resourceId().value();
     }
 }
