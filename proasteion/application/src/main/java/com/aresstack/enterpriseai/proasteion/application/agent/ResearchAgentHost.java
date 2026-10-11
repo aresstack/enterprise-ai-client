@@ -371,6 +371,9 @@ public final class ResearchAgentHost {
                 LOG.info("[research-state] " + command + " abgelehnt: " + rejection);
             }
         }
+        if (rejection == null && command == ResearchCommandType.APPROVE_OUTLINE) {
+            recordOutcome(ResearchStateIds.OUTLINE, outlineOutcome());
+        }
         if (rejection == null) {
             fireStateChanged();
         }
@@ -623,21 +626,58 @@ public final class ResearchAgentHost {
         boolean running = isWritable(ResearchStateIds.RESEARCH);
         if (running && USER_CANCELLED.equals(stopReason)) {
             dispatch(ResearchCommandType.PAUSE);
-            return "Die Quellensuche ist angehalten (" + pages + (pages == 1 ? " Seite" : " Seiten") + " gelesen, "
-                    + sourceRefs().size() + " Quellen im Projekt). Mit „Recherche fortsetzen“ geht sie weiter; "
-                    + "Fragen beantworte ich auch so.";
+            return recordOutcome(ResearchStateIds.RESEARCH, "Die Quellensuche ist angehalten (" + pages
+                    + (pages == 1 ? " Seite" : " Seiten") + " gelesen, " + sourceRefs().size()
+                    + " Quellen im Projekt). Mit „Recherche fortsetzen“ geht sie weiter; Fragen beantworte ich "
+                    + "auch so.");
         }
         if (running && FAILED_STOPS.contains(stopReason)) {
             fireStateChangedLater();
-            return "Die Quellensuche ist fehlgeschlagen (" + ResearchRunStatus.reasonText(stopReason) + "). Die "
-                    + "bisher übernommenen Quellen bleiben im Projekt; mit „Recherche fortsetzen“ starte ich neu.";
+            return recordOutcome(ResearchStateIds.RESEARCH, "Die Quellensuche ist fehlgeschlagen ("
+                    + ResearchRunStatus.reasonText(stopReason) + "). Die bisher übernommenen Quellen bleiben im "
+                    + "Projekt; mit „Recherche fortsetzen“ starte ich neu.");
         }
         if (running) {
             dispatch(ResearchCommandType.REQUEST_EVIDENCE_REVIEW);
         } else {
             fireStateChangedLater();
         }
-        return evidenceSummary();
+        // askai applyRunOutcome: die Erzählung zum Laufende IST die Zusammenfassung der Phase für chat_history.
+        return recordOutcome(ResearchStateIds.RESEARCH, evidenceSummary());
+    }
+
+    /**
+     * askai {@code journal.recordOutcome}: die EINE Ergebnis-Zusammenfassung einer Phase (die letzte gilt), die
+     * {@code chat_history} für abgeschlossene Phasen statt der Einzelnachrichten zeigt.
+     *
+     * @return {@code summary}, damit der Aufrufer denselben Text in den Chat gibt
+     */
+    private String recordOutcome(String phaseId, String summary) {
+        synchronized (this) {
+            if (journal.recordOutcome(phaseId, summary)) {
+                File directory = existingProject();
+                if (directory != null) {
+                    writeText(new File(directory, JOURNAL_FILE), journal.toJson());
+                }
+            }
+        }
+        return summary;
+    }
+
+    /** Die Zusammenfassung der freigegebenen Gliederung: Zahl und Titel der Kapitel. */
+    private String outlineOutcome() {
+        List<String> chapters = new ArrayList<String>();
+        for (String line : outline().split("\n")) {
+            if (line.startsWith("## ")) {
+                chapters.add(line.substring(3).trim());
+            }
+        }
+        StringBuilder text = new StringBuilder("Gliederung freigegeben (").append(chapters.size())
+                .append(" Kapitel)");
+        for (int i = 0; i < chapters.size(); i++) {
+            text.append(i == 0 ? ": " : "; ").append(chapters.get(i));
+        }
+        return text.append('.').toString();
     }
 
     private static final String USER_CANCELLED = "USER_CANCELLED";
@@ -793,6 +833,10 @@ public final class ResearchAgentHost {
         }
         LOG.info("[research-document] saved: " + document.sections().size() + " sections, "
                 + document.sources().size() + " sources, " + document.claims().size() + " claims");
+        recordOutcome(ResearchStateIds.DRAFT, "Dokument „" + document.title() + "“ gespeichert: "
+                + document.sections().size() + " Kapitel, " + document.sources().size()
+                + (document.sources().size() == 1 ? " Quelle, " : " Quellen, ") + document.claims().size()
+                + (document.claims().size() == 1 ? " belegte Aussage." : " belegte Aussagen."));
         return dispatch(ResearchCommandType.REQUEST_DRAFT_REVIEW);
     }
 
@@ -898,6 +942,150 @@ public final class ResearchAgentHost {
         return dispatch(ResearchCommandType.START_RESEARCH);
     }
 
+    // ------------------------------------------------------------------ gelbe Suchvorschläge (offer_searches)
+
+    private static final String SEARCHED_FILE = "searched-queries.tsv";
+
+    /** Ein gelber Suchvorschlag mit seinem Stand. */
+    public static final class SearchTag {
+        /** Angeboten, noch nicht gesucht. */
+        public static final String OFFERED = "OFFERED";
+        /** Die Suche läuft. */
+        public static final String RUNNING = "RUNNING";
+        /** Schon gesucht (Haken). */
+        public static final String DONE = "DONE";
+        /** Die Suche ist fehlgeschlagen (Retry). */
+        public static final String FAILED = "FAILED";
+
+        private final String query;
+        private final String purpose;
+        private final String status;
+
+        public SearchTag(String query, String purpose, String status) {
+            this.query = query == null ? "" : query;
+            this.purpose = purpose == null ? "" : purpose;
+            this.status = status == null ? OFFERED : status;
+        }
+
+        public String query() {
+            return query;
+        }
+
+        public String purpose() {
+            return purpose;
+        }
+
+        public String status() {
+            return status;
+        }
+    }
+
+    /**
+     * Die gelben Suchvorschläge des Agenten ({@code offer_searches}) mit ihrem Stand, nur in der Phase Konzept
+     * (askai arch {@code ScopingComposerAccessory}: Vorschläge gibt es nur im Scoping).
+     */
+    public List<SearchTag> searchTags() {
+        ResearchConceptHost concept;
+        synchronized (this) {
+            if (conceptHost == null && readCurrentProject() == null) {
+                return Collections.emptyList();
+            }
+            ensureOpen();
+            if (!ResearchStateIds.SCOPING.equals(state.getPhaseId())) {
+                return Collections.emptyList();
+            }
+            concept = conceptHost;
+        }
+        java.util.Map<String, String> statuses = searchedQueries();
+        List<SearchTag> tags = new ArrayList<SearchTag>();
+        for (ResearchConceptHost.SearchOffer offer : concept.offeredSearches()) {
+            String status = statuses.get(searchKey(offer.query));
+            tags.add(new SearchTag(offer.query, offer.purpose, status == null ? SearchTag.OFFERED : status));
+        }
+        return tags;
+    }
+
+    /** Ein Klick auf einen gelben Vorschlag: die Suche läuft. */
+    public void searchTagStarted(String query) {
+        recordSearch(query, SearchTag.RUNNING);
+    }
+
+    /** Der Agent meldet das Ende der Suche: Haken („schon gesucht“) oder Retry. */
+    public void searchTagFinished(String query, boolean succeeded) {
+        recordSearch(query, succeeded ? SearchTag.DONE : SearchTag.FAILED);
+    }
+
+    private void recordSearch(String query, String status) {
+        String key = searchKey(query);
+        if (key.isEmpty()) {
+            return;
+        }
+        synchronized (this) {
+            ensureOpen();
+            java.util.Map<String, String> statuses = searchedQueries();
+            statuses.put(key, status);
+            StringBuilder text = new StringBuilder();
+            for (java.util.Map.Entry<String, String> entry : statuses.entrySet()) {
+                text.append(entry.getKey()).append('\t').append(entry.getValue()).append('\n');
+            }
+            writeAtomically(new File(projectDirectory, SEARCHED_FILE), text.toString());
+        }
+        fireStateChangedLater();
+    }
+
+    private synchronized java.util.Map<String, String> searchedQueries() {
+        java.util.Map<String, String> statuses = new java.util.LinkedHashMap<String, String>();
+        if (projectDirectory == null) {
+            return statuses;
+        }
+        for (String line : readLines(new File(projectDirectory, SEARCHED_FILE))) {
+            String[] parts = line.split("\t", -1);
+            if (parts.length >= 2 && !parts[0].isEmpty()) {
+                statuses.put(parts[0], parts[1]);
+            }
+        }
+        return statuses;
+    }
+
+    private static String searchKey(String query) {
+        return clean(query).toLowerCase(java.util.Locale.ROOT);
+    }
+
+    // ------------------------------------------------------------------ gelesene Seiten aller Läufe
+
+    private static final String VISITED_FILE = "visited-pages.txt";
+
+    /**
+     * Die in allen autonomen Läufen dieses Projekts gelesenen Seiten (kanonische Adressen, askai arch
+     * {@code visitedAcrossRuns}, hier im Projekt statt im Agentenprozess): ein Folgelauf liest sie nicht erneut,
+     * auch nach einem Neustart des Agenten oder des Clients.
+     */
+    public synchronized List<String> visitedPages() {
+        if (projectDirectory == null && readCurrentProject() == null) {
+            return Collections.emptyList();
+        }
+        ensureOpen();
+        List<String> pages = new ArrayList<String>();
+        for (String line : readLines(new File(projectDirectory, VISITED_FILE))) {
+            if (!line.trim().isEmpty()) {
+                pages.add(line.trim());
+            }
+        }
+        return pages;
+    }
+
+    /** Merkt gelesene Seiten eines Laufs vor; schon bekannte zählen einmal. */
+    public synchronized void addVisitedPages(java.util.Collection<String> pages) {
+        ensureOpen();
+        LinkedHashSet<String> known = new LinkedHashSet<String>(visitedPages());
+        for (String page : pages == null ? Collections.<String>emptyList() : pages) {
+            String clean = clean(page);
+            if (!clean.isEmpty() && known.add(clean)) {
+                appendLine(new File(projectDirectory, VISITED_FILE), clean);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ Dokument-Zwischenstand (je Kapitel)
 
     private static final String DOCUMENT_DRAFT_FILE = "document-draft.json";
@@ -964,6 +1152,57 @@ public final class ResearchAgentHost {
         synchronized (this) {
             return readDocumentDraft(outline).getAsJsonArray("sections").size();
         }
+    }
+
+    /**
+     * Der Zwischenstand als (unvollständiges) Dokument für den Reiter „Dokument“: die gespeicherten Kapitel mit
+     * nummerierten Belegen; {@code null} ohne Zwischenstand.
+     */
+    public ResearchDocument documentDraft() {
+        String outline = outline();
+        com.google.gson.JsonArray stored;
+        synchronized (this) {
+            if (projectDirectory == null && readCurrentProject() == null) {
+                return null;
+            }
+            stored = readDocumentDraft(outline).getAsJsonArray("sections");
+        }
+        if (stored.size() == 0) {
+            return null;
+        }
+        List<ResearchDocument.Section> sections = new ArrayList<ResearchDocument.Section>();
+        java.util.Map<String, String> passages = new java.util.LinkedHashMap<String, String>();
+        for (com.google.gson.JsonElement element : stored) {
+            com.google.gson.JsonObject section = element.getAsJsonObject();
+            sections.add(new ResearchDocument.Section(section.get("heading").getAsString(),
+                    section.get("text").getAsString()));
+            if (section.has("passages") && section.get("passages").isJsonObject()) {
+                for (java.util.Map.Entry<String, com.google.gson.JsonElement> entry
+                        : section.getAsJsonObject("passages").entrySet()) {
+                    passages.put(entry.getKey(), entry.getValue().getAsString());
+                }
+            }
+        }
+        String title = "Recherchebericht";
+        for (String line : outline.split("\\r?\\n")) {
+            if (line.trim().startsWith("# ")) {
+                title = line.trim().substring(2).trim();
+                break;
+            }
+        }
+        return ResearchDocument.fromDraft(title, outline, sections, passages, sourceRefs());
+    }
+
+    /** Wie viele Kapitel die aktuelle Gliederung hat ({@code ##}-Zeilen, wie der Agent sie liest). */
+    public int outlineChapterCount() {
+        int chapters = 0;
+        for (String line : outline().split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("## ") || trimmed.startsWith("### ")) {
+                chapters++;
+            }
+        }
+        return chapters;
     }
 
     private com.google.gson.JsonObject readDocumentDraft(String outline) {

@@ -107,6 +107,59 @@ public class ChatHistoryToolTest {
     }
 
     @Test
+    public void eachFinishedPhaseRecordsItsOutcome() throws Exception {
+        File root = folder.newFolder("research");
+        ResearchAgentHost host = host(root);
+        host.setChatHistoryReader(reader);
+        saved.put("chat-a", Arrays.asList(message("u-1", "user", "Recherchiere IAR"),
+                message("a-1", "assistant", "Ich suche Quellen."),
+                message("u-2", "user", "Schreib das Dokument")));
+        host.openChat("chat-a");
+        host.markGreeted();
+        assertEquals(null, host.dispatch(com.aresstack.enterpriseai.research.domain.state.ResearchCommandType.SUBMIT_SCOPE));
+        assertEquals(null, host.dispatch(
+                com.aresstack.enterpriseai.research.domain.state.ResearchCommandType.START_RESEARCH));
+        host.attributeMessage("u-1");
+        host.attributeMessage("a-1");
+        host.acceptSource("page-1", "IAR Übersicht", "");
+
+        // Ende des Quellenlaufs: die Erzählung an den Nutzer ist die Zusammenfassung der Phase
+        String narrative = host.reportRunFinished("TARGET_REACHED", 3, 1);
+        assertEquals(narrative, journal(root).outcomeOf("research"));
+
+        // Freigabe der Gliederung
+        assertEquals(null, host.dispatch(
+                com.aresstack.enterpriseai.research.domain.state.ResearchCommandType.APPROVE_EVIDENCE));
+        assertEquals(null, host.proposeOutline("# IAR\n\n## Was ist IAR\n- Zweck\n\n## Offene Punkte\n"));
+        assertEquals(null, host.dispatch(
+                com.aresstack.enterpriseai.research.domain.state.ResearchCommandType.APPROVE_OUTLINE));
+        assertEquals("Gliederung freigegeben (2 Kapitel): Was ist IAR; Offene Punkte.",
+                journal(root).outcomeOf("outline"));
+
+        // document_save
+        if ("waiting".equals(host.stateId())) {
+            assertEquals(null, host.dispatch(
+                    com.aresstack.enterpriseai.research.domain.state.ResearchCommandType.START_DRAFTING));
+        }
+        host.attributeMessage("u-2");
+        assertEquals(null, host.saveDocument("IAR", Collections.singletonList(
+                new ResearchDocument.Section("Was ist IAR", "IAR bündelt Anträge.")),
+                Collections.<String, String>emptyMap()));
+        assertEquals("Dokument „IAR“ gespeichert: 1 Kapitel, 0 Quellen, 0 belegte Aussagen.",
+                journal(root).outcomeOf("draft"));
+
+        // chat_history: die abgeschlossene Phase Quellen erscheint als ihre Zusammenfassung
+        String history = call(host, ResearchControlTools.CHAT_HISTORY);
+        assertTrue(history, history.contains("== phase research\n  summary: " + narrative.split("\n")[0]));
+        assertTrue(history, history.contains("== phase draft (current)\n  outcome: Dokument „IAR“ gespeichert"));
+    }
+
+    private static ResearchPhaseJournal journal(File root) throws Exception {
+        return ResearchPhaseJournal.fromJson(new String(java.nio.file.Files.readAllBytes(
+                new File(new File(root, "chat-a"), "phase-journal.json").toPath()), "UTF-8"));
+    }
+
+    @Test
     public void withoutReaderTheToolSaysSoHonestly() throws Exception {
         ResearchAgentHost host = host(folder.newFolder("research"));
         host.openChat("chat-a");

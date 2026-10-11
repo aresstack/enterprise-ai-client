@@ -29,6 +29,33 @@ public final class ResearchWorkflow {
     static final String RESEARCH_PROMPT = "Recherche starten";
     static final String OUTLINE_PROMPT = "Gliederung erstellen";
     static final String DOCUMENT_PROMPT = "Dokument erstellen";
+    /** Der Auftrag eines gelben Suchvorschlags an den Agenten: die Direktrecherche genau dieser Anfrage. */
+    public static final String SEARCH_TAG_PREFIX = "Wissenssuche:";
+
+    /** Ob ein Text der Auftrag eines gelben Suchvorschlags ist. */
+    public static boolean isSearchTagPrompt(String text) {
+        return text != null && text.trim().startsWith(SEARCH_TAG_PREFIX);
+    }
+
+    /** Die gelben Suchvorschläge mit ihrem Stand (nur in der Phase Konzept). */
+    public List<ResearchAgentHost.SearchTag> searchTags() {
+        return host.searchTags();
+    }
+
+    /**
+     * Ein Klick auf einen gelben Vorschlag (askai arch: ein Klick IST die Suche): kein Phasenwechsel, der Agent
+     * recherchiert genau diese Anfrage direkt (Recherche-Karte) und meldet danach Haken oder Retry.
+     */
+    public Result search(String query) {
+        String trimmed = query == null ? "" : query.trim();
+        if (trimmed.isEmpty()) {
+            return Result.rejected("Leere Suche.");
+        }
+        // Ein „laufender“ Vorschlag darf erneut starten: die Oberfläche bietet ihn nur an, wenn der Chat nicht mehr
+        // arbeitet, die Suche also nie zu Ende kam (Turn abgebrochen, Agentensitzung beendet).
+        host.searchTagStarted(trimmed);
+        return Result.prompt(SEARCH_TAG_PREFIX + " " + trimmed, "Suche: " + trimmed);
+    }
 
     /** Phasen in Produktreihenfolge (technische IDs aus askai arch). */
     static List<String> phaseOrder() {
@@ -198,6 +225,24 @@ public final class ResearchWorkflow {
     /** Ob das Dokument abgeschlossen ist. */
     public boolean isDocumentFinal() {
         return ResearchStateIds.DRAFT.equals(host.phaseId()) && ResearchStateIds.COMPLETED.equals(host.stateId());
+    }
+
+    /**
+     * Die Statuszeile des Reiters „Dokument“, solange nur ein Zwischenstand vorliegt (abgebrochener Schreiblauf);
+     * sonst leer.
+     */
+    public String documentDraftLine() {
+        if (host.hasDocument()) {
+            return "";
+        }
+        int saved = host.documentDraftSectionCount();
+        if (saved == 0) {
+            return "";
+        }
+        int total = Math.max(saved, host.outlineChapterCount());
+        String line = "Zwischenstand: " + saved + " von " + total + " Kapiteln gespeichert.";
+        return saved < total ? line + " Mit „Dokument fortsetzen“ schreibe ich ab Kapitel " + (saved + 1) + " weiter."
+                : line;
     }
 
     /** Titel einer Phase in der Oberfläche. */

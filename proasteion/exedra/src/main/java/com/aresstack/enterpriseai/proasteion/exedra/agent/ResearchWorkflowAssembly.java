@@ -56,15 +56,22 @@ public final class ResearchWorkflowAssembly {
         private final ResearchDocumentView document;
         private final Runnable refresh;
         private final Consumer<String> perform;
+        private final Consumer<String> search;
 
         Parts(ResearchWorkflowStrip strip, ResearchSourcesView sources, ResearchOutlineView outline,
-              ResearchDocumentView document, Runnable refresh, Consumer<String> perform) {
+              ResearchDocumentView document, Runnable refresh, Consumer<String> perform, Consumer<String> search) {
             this.strip = strip;
             this.sources = sources;
             this.outline = outline;
             this.document = document;
             this.refresh = refresh;
             this.perform = perform;
+            this.search = search;
+        }
+
+        /** Führt einen gelben Suchvorschlag aus wie ein Klick auf ihn (auf dem UI-Thread). */
+        public void search(String query) {
+            search.accept(query);
         }
 
         public ResearchWorkflowStrip strip() {
@@ -115,9 +122,10 @@ public final class ResearchWorkflowAssembly {
                 final String runLine = runLine(host);
                 final String outlineText = host.outline();
                 final boolean outlineEditable = workflow.isOutlineEditable();
-                final ResearchDocument current = host.document();
+                final ResearchDocument current = shownDocument(host);
                 final String documentText = current == null ? "" : current.toMarkdown();
-                final String documentLine = documentLine(workflow, current);
+                final String draftLine = workflow.documentDraftLine();
+                final String documentLine = draftLine.isEmpty() ? documentLine(workflow, current) : draftLine;
                 uiExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
@@ -157,6 +165,25 @@ public final class ResearchWorkflowAssembly {
             }
         };
         strip.setActionHandler(perform);
+        // Ein gelber Vorschlag ist eine Direktrecherche genau dieser Anfrage, kein Phasenwechsel (askai arch:
+        // ein Klick IST die Suche); der Agent meldet danach Haken oder Retry.
+        final Consumer<String> search = new Consumer<String>() {
+            @Override
+            public void accept(String query) {
+                if (chat.isStreaming()) {
+                    chat.addNotice("Der Agent arbeitet noch am vorherigen Auftrag.");
+                    return;
+                }
+                ResearchWorkflow.Result result = workflow.search(query);
+                if (result.rejection() != null) {
+                    chat.addNotice("Nicht möglich: " + result.rejection());
+                } else if (result.prompt() != null) {
+                    sender.send(result.visibleText(), result.prompt());
+                }
+                render.run();
+            }
+        };
+        strip.setSearchHandler(search);
         sources.setOpenHandler(new Consumer<String>() {
             @Override
             public void accept(String resourceId) {
@@ -177,7 +204,7 @@ public final class ResearchWorkflowAssembly {
         document.setSourceHandler(new IntConsumer() {
             @Override
             public void accept(int number) {
-                ResearchDocument current = host.document();
+                ResearchDocument current = shownDocument(host);
                 ResearchDocument.Source source = current == null ? null : current.source(number);
                 if (source != null) {
                     opener.open(source.resourceId(), source.title());
@@ -206,7 +233,7 @@ public final class ResearchWorkflowAssembly {
             }
         });
         render.run();
-        return new Parts(strip, sources, outline, document, render, perform);
+        return new Parts(strip, sources, outline, document, render, perform, search);
     }
 
     static ResearchWorkflowStrip.Snapshot stripSnapshot(ResearchWorkflow workflow, ResearchAgentHost host,
@@ -221,8 +248,18 @@ public final class ResearchWorkflowAssembly {
             actions.add(new ResearchWorkflowStrip.ActionItem(action.id(), action.label(), action.tooltip(),
                     action.isEnabled()));
         }
+        List<ResearchWorkflowStrip.SuggestionItem> suggestions = new ArrayList<ResearchWorkflowStrip.SuggestionItem>();
+        for (ResearchAgentHost.SearchTag tag : workflow.searchTags()) {
+            suggestions.add(new ResearchWorkflowStrip.SuggestionItem(tag.query(), tag.purpose(), tag.status()));
+        }
         return new ResearchWorkflowStrip.Snapshot(phases,
-                workflow.showsRunProgress() ? host.runStatus().describe() : "", actions, busy);
+                workflow.showsRunProgress() ? host.runStatus().describe() : "", suggestions, actions, busy);
+    }
+
+    /** Das fertige Dokument, sonst der Zwischenstand eines abgebrochenen Schreiblaufs (Kapitel 1..n-1). */
+    private static ResearchDocument shownDocument(ResearchAgentHost host) {
+        ResearchDocument document = host.document();
+        return document != null ? document : host.documentDraft();
     }
 
     private static List<ResearchSourcesView.SourceItem> sourceItems(ResearchAgentHost host) {

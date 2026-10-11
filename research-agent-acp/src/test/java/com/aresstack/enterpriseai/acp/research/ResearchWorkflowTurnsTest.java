@@ -133,4 +133,65 @@ public class ResearchWorkflowTurnsTest {
         assertTrue(explicit.calls.toString(), explicit.calls.contains(KnowledgePages.SEARCH_TOOL));
         assertTrue(explicit.calls.toString(), explicit.calls.contains(KnowledgePages.READ_TOOL));
     }
+
+    /** Ein Host, der die gelesenen Seiten im Projekt hält (research_visited / research_visited_add). */
+    private static final class VisitedEndpoint extends DirectModeAgentTest.FakeEndpoint {
+        final StringBuilder visited = new StringBuilder();
+
+        @Override
+        public String callTool(String toolName, java.util.Map<String, Object> arguments)
+                throws com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException {
+            if ("research_visited".equals(toolName)) {
+                calls.add(toolName);
+                return visited.toString();
+            }
+            if ("research_visited_add".equals(toolName)) {
+                calls.add(toolName);
+                visited.append(arguments.get("urls")).append('\n');
+                return "OK";
+            }
+            return super.callTool(toolName, arguments);
+        }
+    }
+
+    @Test
+    public void afterARestartOfTheAgentProcessKnownPagesAreNotReadAgain() {
+        VisitedEndpoint endpoint = new VisitedEndpoint();
+        endpoint.phase = "research";
+        endpoint.state = "running";
+        endpoint.answers.put("research_search_plan", "IAR");
+        DirectModeAgentTest.agent(endpoint).run("Recherche starten", new DirectModeAgentTest.Screen());
+        assertTrue("der erste Lauf liest", count(endpoint.calls, KnowledgePages.READ_TOOL) > 0);
+        assertTrue(endpoint.visited.toString(), endpoint.visited.length() > 0);
+
+        endpoint.calls.clear();
+        // neuer Agentenprozess: nichts im Speicher, nur das Projekt kennt die Seiten
+        DirectModeAgentTest.agent(endpoint).run("Recherche starten", new DirectModeAgentTest.Screen());
+        assertEquals(0, count(endpoint.calls, KnowledgePages.READ_TOOL));
+    }
+
+    @Test
+    public void aYellowSuggestionSearchesExactlyItsQueryWithACardAndReportsTheOutcome() {
+        DirectModeAgentTest.FakeEndpoint endpoint = endpoint("scoping", "running");
+        DirectModeAgentTest.Screen screen = new DirectModeAgentTest.Screen();
+        DirectModeAgentTest.agent(endpoint).run("Wissenssuche: IAR Betrieb", screen);
+        assertEquals("IAR Betrieb", endpoint.lastArgs.get(KnowledgePages.SEARCH_TOOL).get("query"));
+        assertTrue(endpoint.calls.contains(KnowledgePages.READ_TOOL));
+        assertEquals("IAR Betrieb", endpoint.lastArgs.get("search_tag_finished").get("query"));
+        assertEquals("true", endpoint.lastArgs.get("search_tag_finished").get("ok"));
+        screen.callOf("Recherche in Confluence");
+
+        DirectModeAgentTest.FakeEndpoint failing = new DirectModeAgentTest.FakeEndpoint() {
+            @Override
+            public String callTool(String toolName, java.util.Map<String, Object> arguments)
+                    throws com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException {
+                if (KnowledgePages.SEARCH_TOOL.equals(toolName)) {
+                    throw new com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException("weg", false);
+                }
+                return super.callTool(toolName, arguments);
+            }
+        };
+        DirectModeAgentTest.agent(failing).run("Wissenssuche: IAR Betrieb", new DirectModeAgentTest.Screen());
+        assertEquals("false", failing.lastArgs.get("search_tag_finished").get("ok"));
+    }
 }

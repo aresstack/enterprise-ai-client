@@ -85,6 +85,11 @@ public final class ResearchDocumentView extends JPanel {
         return markdown;
     }
 
+    /** Die angezeigte Statuszeile (Tests). */
+    public String statusLine() {
+        return status.getText().trim();
+    }
+
     /** Öffnet die Quelle {@code number} wie ein Klick auf ihren Beleg. */
     public void openSource(int number) {
         if (sourceHandler != null && number > 0) {

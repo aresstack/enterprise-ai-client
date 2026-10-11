@@ -136,6 +136,45 @@ final class ResearchAgentTurns {
         turn.message(writing.answer(text, searchOffered, turn.output()));
     }
 
+    /** Der Auftrag eines gelben Suchvorschlags (Host {@code ResearchWorkflow.SEARCH_TAG_PREFIX}). */
+    static final String SEARCH_TAG_PREFIX = "Wissenssuche:";
+
+    static boolean isSearchTagCommand(String text) {
+        return text != null && text.trim().startsWith(SEARCH_TAG_PREFIX);
+    }
+
+    /**
+     * Ein Klick auf einen gelben Suchvorschlag (askai arch {@code applyManualSearch}): genau diese Anfrage wird
+     * direkt recherchiert (Recherche-Karte, Weidezaun, Übernahme der Seiten), ohne Planung und ohne
+     * Konzeptgespräch; danach meldet der Agent dem Host Haken oder Retry.
+     */
+    private void searchTagTurn(Turn turn, String query)
+            throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
+        boolean succeeded = false;
+        try {
+            if (query.isEmpty()) {
+                return;
+            }
+            if (!offersKnowledgeSearch()) {
+                turn.message(SEARCH_UNAVAILABLE);
+                return;
+            }
+            turn.message(direct.answer(query, java.util.Collections.singletonList(query), turn.output()));
+            succeeded = direct.lastSucceeded() && !turn.isCancelled();
+        } finally {
+            if (!query.isEmpty()) {
+                Map<String, Object> args = new LinkedHashMap<String, Object>();
+                args.put("query", query);
+                args.put("ok", String.valueOf(succeeded));
+                try {
+                    host.call("search_tag_finished", args);
+                } catch (ToolInvoker.ToolFailure refused) {
+                    LOG.info("[research-agent] Suchvorschlag nicht gemeldet: " + refused.getMessage());
+                }
+            }
+        }
+    }
+
     /** Die Texte der Workflow-Knöpfe tragen keinen eigenen Auftrag (leer zählt wie ein Knopf). */
     static boolean isActionPrompt(String text) {
         String trimmed = text == null ? "" : text.trim();
@@ -220,6 +259,10 @@ final class ResearchAgentTurns {
             host.beginTurn("");
         }
         ResearchHostControl.Status status = host.status();
+        if (direct != null && isSearchTagCommand(text)) {
+            searchTagTurn(turn, text.trim().substring(SEARCH_TAG_PREFIX.length()).trim());
+            return;
+        }
         if (research != null && "research".equalsIgnoreCase(status.phase)
                 && "running".equalsIgnoreCase(status.state) && isStartCommand(text)) {
             // Nur der ausdrückliche Start (Aktion „Recherche starten“, research:) startet den autonomen Lauf;

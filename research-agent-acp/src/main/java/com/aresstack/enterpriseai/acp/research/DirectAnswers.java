@@ -48,6 +48,8 @@ final class DirectAnswers {
     private final ToolInvoker host;
     private final MainModelChat model;
     private final KnowledgePages pages;
+    /** Ob die letzte Recherche gesucht und gelesen hat (für Haken oder Retry eines gelben Vorschlags). */
+    private volatile boolean lastSucceeded;
 
     DirectAnswers(ToolInvoker host, MainModelChat model) {
         this.host = host;
@@ -168,6 +170,7 @@ final class DirectAnswers {
         progress.message("Ich suche in den aktivierten Wissensquellen nach: " + join(queries));
         ResearchCard card = new ResearchCard(progress, queries, MAX_PAGES);
         card.searching();
+        lastSucceeded = false;
         try {
             return research(question, queries, progress, card);
         } finally {
@@ -208,6 +211,7 @@ final class DirectAnswers {
         hits = withinFence(hits);
         card.found(hits);
         if (hits.isEmpty()) {
+            lastSucceeded = true; // gesucht ist gesucht, auch ohne Treffer
             card.finish(true, "keine Treffer");
             return "In den aktivierten Wissensquellen habe ich zu " + join(queries) + " nichts gefunden. Prüfe in "
                     + "den Einstellungen, ob die Quelle angehakt ist, oder nenne mir einen anderen Begriff.";
@@ -244,6 +248,7 @@ final class DirectAnswers {
             return "Ich habe " + hits.size() + " Treffer gefunden, konnte aber keine der Seiten lesen.";
         }
         card.answering();
+        lastSucceeded = true;
         List<ResearchWriting.Passage> passages = new ArrayList<ResearchWriting.Passage>();
         Set<String> covered = new HashSet<String>();
         for (ResearchWriting.Passage passage : projectPassages(question)) {
@@ -274,6 +279,11 @@ final class DirectAnswers {
             return fallback.toString();
         }
         return ResearchWriting.withSourceList(text, passages);
+    }
+
+    /** Ob die letzte {@link #answer} gesucht hat (ohne Fehler, Abbruch oder unlesbare Seiten). */
+    boolean lastSucceeded() {
+        return lastSucceeded;
     }
 
     /** Treffer, die der Weidezaun ausschließt, fallen weg; ohne aktiven Zaun bleiben alle. */
