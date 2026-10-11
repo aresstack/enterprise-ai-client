@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.agent;
 
+import com.aresstack.enterpriseai.research.concept.ConceptBranchService;
 import com.aresstack.enterpriseai.research.domain.scope.ResearchScopeDraft;
 import com.aresstack.enterpriseai.research.domain.scope.ResearchScopeFenceView;
 import com.aresstack.enterpriseai.research.domain.scope.ScopeFacet;
@@ -38,24 +39,30 @@ public final class ResearchAgentHost {
     private static final Logger LOG = Logger.getLogger(ResearchAgentHost.class.getName());
     private static final String GREETED_MARKER = "greeted";
     private static final String CURRENT_PROJECT_FILE = "current-project";
+    private static final String CONCEPT_DIRECTORY = "concept";
 
     private final File projectsRoot;
     private final Function<File, ResearchScopeDraftStore> stores;
+    private final Function<File, ConceptBranchService> concepts;
     private final List<Runnable> stateListeners = new CopyOnWriteArrayList<Runnable>();
     private volatile Consumer<String> problemSink;
     private File projectDirectory;
     private ResearchScopeCoordinator coordinator;
+    private ResearchConceptHost conceptHost;
 
     /**
      * @param projectsRoot Wurzel der Research-Projekte (je Projekt ein Unterverzeichnis)
      * @param stores       Ablage des Scope-Entwurfs je Projektverzeichnis (Adapter aus der Composition Root)
+     * @param concepts     Konzeptpapier (Konzeptbaum mit Inseln) je Konzeptverzeichnis (Adapter aus der Composition Root)
      */
-    public ResearchAgentHost(File projectsRoot, Function<File, ResearchScopeDraftStore> stores) {
-        if (projectsRoot == null || stores == null) {
-            throw new IllegalArgumentException("projectsRoot and stores must not be null");
+    public ResearchAgentHost(File projectsRoot, Function<File, ResearchScopeDraftStore> stores,
+                             Function<File, ConceptBranchService> concepts) {
+        if (projectsRoot == null || stores == null || concepts == null) {
+            throw new IllegalArgumentException("projectsRoot, stores and concepts must not be null");
         }
         this.projectsRoot = projectsRoot;
         this.stores = stores;
+        this.concepts = concepts;
     }
 
     /** Öffnet das zuletzt benutzte Projekt erst bei Bedarf: ohne Agent-Turn wird nichts angelegt. */
@@ -90,6 +97,23 @@ public final class ResearchAgentHost {
         if (!coordinator.isUsable()) {
             LOG.warning("Scope-Entwurf unbrauchbar: " + coordinator.unusableReason());
         }
+        conceptHost = new ResearchConceptHost(concepts.apply(new File(directory, CONCEPT_DIRECTORY)),
+                new ResearchConceptHost.Owner() {
+                    @Override
+                    public ResearchScopeCoordinator scopeCoordinator() {
+                        return ResearchAgentHost.this.scopeCoordinator();
+                    }
+
+                    @Override
+                    public void stateChanged() {
+                        fireStateChanged();
+                    }
+
+                    @Override
+                    public boolean isGerman() {
+                        return true;
+                    }
+                });
         writeCurrentProject(directory);
     }
 
@@ -186,6 +210,39 @@ public final class ResearchAgentHost {
         return coordinator;
     }
 
+    /** Das Konzeptpapier des aktuellen Projekts (öffnet das Projekt bei Bedarf). */
+    synchronized ResearchConceptHost conceptHost() {
+        ensureOpen();
+        return conceptHost;
+    }
+
+    /** Das Konzeptpapier, nur wenn schon ein Projekt existiert (für die Anzeige; legt nichts an). */
+    public ConceptBranchService existingConceptService() {
+        synchronized (this) {
+            if (conceptHost == null && readCurrentProject() != null) {
+                ensureOpen();
+            }
+            return conceptHost == null ? null : conceptHost.service();
+        }
+    }
+
+    /** askai {@code blacklistTermsForDisplay}: was der Konzeptbaum als ausgeschlossen markiert. */
+    public List<String> blacklistTermsForDisplay() {
+        ResearchConceptHost concept;
+        synchronized (this) {
+            if (conceptHost == null && readCurrentProject() != null) {
+                ensureOpen();
+            }
+            concept = conceptHost;
+        }
+        return concept == null ? Collections.<String>emptyList() : concept.currentBlacklistTerms();
+    }
+
+    /** One technical-log line for a tree-editor gesture (askai {@code logConceptUiAction}). */
+    public void logConceptUiAction(String line) {
+        LOG.info("[research-concept] concept USER_UI -> " + line);
+    }
+
     /** The current persisted scope draft — the blacklist UI reads this. */
     public ResearchScopeDraft currentScopeDraft() {
         ResearchScopeCoordinator current = existingCoordinator();
@@ -201,7 +258,11 @@ public final class ResearchAgentHost {
         if (current == null || !current.isUsable()) {
             return "";
         }
-        return ResearchScopeFenceView.render(current.current());
+        ResearchConceptHost concept;
+        synchronized (this) {
+            concept = conceptHost;
+        }
+        return ResearchScopeFenceView.render(current.current()) + (concept == null ? "" : concept.fenceBlocks());
     }
 
     /** Exclusion strings + EXCLUDED facet labels, deduplicated, draft order (askai {@code ResearchPhaseAccessory}). */

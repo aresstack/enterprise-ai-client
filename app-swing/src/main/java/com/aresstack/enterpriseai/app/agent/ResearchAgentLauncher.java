@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.domain.chat.ChatOptions;
 import com.aresstack.enterpriseai.research.runtime.team.PhaseAssistantProfileRegistry;
 import com.aresstack.enterpriseai.research.runtime.team.PhaseContextAssembler;
+import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
 import com.aresstack.enterpriseai.research.runtime.team.ResearchTeamAgent;
 
 import java.util.logging.Logger;
@@ -16,8 +17,8 @@ import java.util.logging.Logger;
  * der Weidezaun des aktuellen Projekts ({@link ResearchAgentHost}) geht vor jedem Turn als maßgeblicher Umfang
  * in den Kontext.
  *
- * <p>Ohne Konzeptwerkzeuge (Mindmap/Inseln folgen in einem eigenen Schritt); „Immer Suchvorschläge anbieten“
- * ist wie in askai standardmäßig aus.
+ * <p>Mit Konzeptwerkzeugen (Konzeptpapier mit Inseln): vor jeder Inferenz sieht das Modell das gespeicherte
+ * Konzept (CURRENT_CONCEPT). „Immer Suchvorschläge anbieten“ ist wie in askai standardmäßig aus.
  */
 public final class ResearchAgentLauncher implements AgentLauncher {
 
@@ -38,12 +39,20 @@ public final class ResearchAgentLauncher implements AgentLauncher {
 
     @Override
     public AcpConnection launch() {
-        ResearchTeamAgent teamAgent = new ResearchTeamAgent(new ChatPortMainModelChat(chat, defaults),
-                PhaseAssistantProfileRegistry.defaults(false, false),
+        final ResearchAgentConnection[] connection = new ResearchAgentConnection[1];
+        MainModelChat mainModelChat = new ChatPortMainModelChat(chat, defaults);
+        ResearchTeamAgent teamAgent = new ResearchTeamAgent(mainModelChat,
+                PhaseAssistantProfileRegistry.defaults(false, true),
                 new PhaseContextAssembler(new PhaseContextAssembler.CurrentLanguage() {
                     @Override
                     public String displayName() {
                         return "German";
+                    }
+                }).withCurrentConcept(new PhaseContextAssembler.CurrentConcept() {
+                    @Override
+                    public String rendered() {
+                        ResearchAgentConnection current = connection[0];
+                        return current == null ? "" : current.currentConceptRendered();
                     }
                 }).withCurrentScope(new PhaseContextAssembler.CurrentScope() {
                     @Override
@@ -57,6 +66,7 @@ public final class ResearchAgentLauncher implements AgentLauncher {
                 LOG.info("[research-agent] " + line);
             }
         });
-        return new ResearchAgentConnection(host, teamAgent);
+        connection[0] = new ResearchAgentConnection(host, teamAgent, mainModelChat);
+        return connection[0];
     }
 }

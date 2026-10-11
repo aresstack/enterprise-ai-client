@@ -30,6 +30,8 @@ import com.aresstack.enterpriseai.application.resource.policy.ClientResourceAcce
 import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.mcp.api.McpToolContribution;
+import com.aresstack.enterpriseai.research.concept.ConceptBranchService;
+import com.aresstack.enterpriseai.research.concept.FileConceptStore;
 import com.aresstack.enterpriseai.research.store.FileResearchScopeDraftStore;
 import com.aresstack.enterpriseai.resource.holkas.HolkasAcquisitionPort;
 import com.aresstack.enterpriseai.resource.holkas.KnowledgeSourceConnectorRegistry;
@@ -145,7 +147,8 @@ public final class CompositionRoot {
             // Ohne eigenes Agent-Kommando ist der Agent-Modus der eingebaute Recherche-Agent aus askai-java8
             // (arch) samt Weidezaun; er läuft im Client auf dem Chat-Modell, Projekte neben der Konfiguration.
             this.researchHost = new ResearchAgentHost(AppPaths.configFile().toAbsolutePath().getParent()
-                    .resolve(RESEARCH_DIRECTORY).toFile(), FileResearchScopeDraftStore::new);
+                    .resolve(RESEARCH_DIRECTORY).toFile(), FileResearchScopeDraftStore::new,
+                    directory -> new ConceptBranchService(new FileConceptStore(directory)));
             this.agentService = new AgentService(new ResearchAgentLauncher(researchHost, ports.chat(),
                     config.chat().defaultOptions()), agentStarts);
         }

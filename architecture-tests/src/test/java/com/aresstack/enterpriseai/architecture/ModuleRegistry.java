@@ -129,6 +129,10 @@ final class ModuleRegistry {
                 // Ablage des Research-Projekts (JSON-Dateien je Projektverzeichnis) hinter den Ports aus research-scope.
                 .module("research-store", "research.store", ModuleKind.ADAPTER, "Research",
                         "research-domain", "research-api")
+                // Konzeptpapier (Konzeptbaum mit Inseln) aus askai-java8 (arch): JSON-Dokument mit Revisionen
+                // hinter dem Lese-Port aus research-api; gson bleibt im Modul.
+                .module("research-concept", "research.concept", ModuleKind.ADAPTER, "Research",
+                        "research-domain", "research-api")
 
                 .module("comic-controls", "ui.comic", ModuleKind.UI_LIBRARY, "B")
                 .module("app-swing", "app", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
@@ -141,7 +145,7 @@ final class ModuleRegistry {
                         "resource-holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "research-domain", "research-api",
-                        "research-scope", "research-store", "research-agent-runtime")
+                        "research-scope", "research-store", "research-agent-runtime", "research-concept")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

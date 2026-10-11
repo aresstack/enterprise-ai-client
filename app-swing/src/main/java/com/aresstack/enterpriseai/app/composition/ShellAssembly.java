@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.app.composition;
 
 import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.app.agent.AgentModeAssembly;
+import com.aresstack.enterpriseai.app.agent.ResearchConceptViewAssembly;
 import com.aresstack.enterpriseai.app.chat.ChatHistoryBinding;
 import com.aresstack.enterpriseai.app.chat.DocumentAttachmentTextExtractor;
 import com.aresstack.enterpriseai.app.chat.FileAttachmentStore;
@@ -65,6 +66,8 @@ public final class ShellAssembly {
 
     /** Ordner der gespeicherten Chats und ihrer Anhänge, neben der Konfigurationsdatei. */
     static final String CHATS_DIRECTORY = "chats";
+    /** Drawer-Reiter des Konzeptpapiers im Agent-Modus (askai: Artefakt-Ansicht „Concept“). */
+    static final String CONCEPT_TAB = "Konzept";
 
     private ShellAssembly() {
     }
@@ -110,6 +113,11 @@ public final class ShellAssembly {
         ChatWorkspacePanel workspace = new ChatWorkspacePanel(modes, chatShell, agent == null ? null : agent.shell(),
                 palette);
         workspace.setWindowTitle(root.config().windowTitle());
+        if (agent != null && root.researchHost() != null) {
+            // askai: die Artefakt-Ansicht „Konzept“ (Konzeptbaum mit Inseln) als Drawer-Reiter im Agent-Modus
+            workspace.addAgentTab(CONCEPT_TAB, ResearchConceptViewAssembly.create(root.researchHost(),
+                    root.uiExecutor()));
+        }
         final KnowledgeSourcesController sources = knowledgeSources(root);
         workspace.setKnowledgeSourceActions(sources);
         final ChatWorkspacePanel drawer = workspace;

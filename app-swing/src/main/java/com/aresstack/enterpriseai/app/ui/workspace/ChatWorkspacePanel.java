@@ -93,6 +93,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
 
     public static final String CHATS_TAB = "Chats";
     public static final String KNOWLEDGE_TAB = "Wissensquellen";
+    private final List<ChatSidebarTab> agentTabs = new ArrayList<ChatSidebarTab>();
     static final String NEW_CHAT_LABEL = "+ Neuer Chat";
     static final String SETTINGS_TOOLTIP = "Einstellungen";
     static final String NEW_CHAT_TITLE = "Neuer Chat";
@@ -218,8 +219,27 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         return knowledgePane;
     }
 
+    /** Ein Drawer-Reiter, der nur im Agent-Modus erscheint (askai: Artefakt-Ansicht des Agenten). */
+    public void addAgentTab(final String title, final JComponent component) {
+        agentTabs.add(new ChatSidebarTab() {
+            @Override
+            public String getTitle() {
+                return title;
+            }
+
+            @Override
+            public JComponent getComponent() {
+                return component;
+            }
+        });
+        sidebar.rebuildTabs();
+        refreshRibbonTabs();
+    }
+
     @Override
     public void modeChanged(ShellMode mode) {
+        sidebar.rebuildTabs();
+        refreshRibbonTabs();
         cards.show(deck, mode.name());
         int index = Arrays.asList(ShellMode.values()).indexOf(mode);
         if (modePill.getSelectedIndex() != index) {
@@ -378,17 +398,25 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         topBar.add(windowControls, BorderLayout.EAST);
 
         sidebar.setVisible(false);
-        sidebar.setExtraTabsSupplier(() -> Collections.<ChatSidebarTab>singletonList(new ChatSidebarTab() {
-            @Override
-            public String getTitle() {
-                return KNOWLEDGE_TAB;
-            }
+        sidebar.setExtraTabsSupplier(() -> {
+            List<ChatSidebarTab> tabs = new ArrayList<ChatSidebarTab>();
+            tabs.add(new ChatSidebarTab() {
+                @Override
+                public String getTitle() {
+                    return KNOWLEDGE_TAB;
+                }
 
-            @Override
-            public JComponent getComponent() {
-                return knowledgePane;
+                @Override
+                public JComponent getComponent() {
+                    return knowledgePane;
+                }
+            });
+            // askai AgentArtifactTabs: die Artefakt-Ansichten des Agenten nur, solange der Agent-Modus aktiv ist.
+            if (modes.getMode() == ShellMode.AGENT) {
+                tabs.addAll(agentTabs);
             }
-        }));
+            return tabs;
+        });
         chatFilter.getTextField().getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {

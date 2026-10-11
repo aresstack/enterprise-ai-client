@@ -1,0 +1,6 @@
+description = 'Konzeptpapier aus askai-java8 (Zweig arch): Konzeptbaum mit Inseln (Karten, Zweige, Verschieben, Umbenennen), strenge JSON-Prüfung, Revisionen.'
+
+dependencies {
+    api project(':research-api')
+    implementation libs.gson
+}

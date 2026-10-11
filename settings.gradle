@@ -81,6 +81,7 @@ include 'research-domain'
 include 'research-api'
 include 'research-scope'
 include 'research-store'
+include 'research-concept'
 include 'research-agent-runtime'
 
 // Strang B – Swing-Comic-UI und Composition Root
