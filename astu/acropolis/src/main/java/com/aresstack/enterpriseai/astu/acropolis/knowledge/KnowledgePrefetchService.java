@@ -318,13 +318,15 @@ public final class KnowledgePrefetchService {
 
     /**
      * Indexiert ein geladenes Dokument auf dem Index-Thread (derselbe Weg wie beim Vorladen: Revision, dann Hash,
-     * sonst zerlegen, embedden, ersetzen) und wartet höchstens {@code timeoutMillis} darauf.
+     * sonst zerlegen, embedden, ersetzen) und wartet höchstens {@code timeoutMillis} darauf. Solange gewartet wird,
+     * kommt der Auftrag vor die noch nicht begonnenen übrigen; endet das Warten vorher, reiht er sich normal ein.
      *
      * @return das Ergebnis, oder {@code null}, wenn es nicht rechtzeitig fertig wurde oder scheiterte
      */
     public ResourceIndexingOutcome indexNow(KnowledgeDocument document, long timeoutMillis) {
         CompletableFuture<ResourceIndexingOutcome> done = new CompletableFuture<ResourceIndexingOutcome>();
-        enqueueIndex(document, done, URGENT);
+        java.util.concurrent.atomic.AtomicBoolean waiting = new java.util.concurrent.atomic.AtomicBoolean(true);
+        enqueueIndex(document, done, waiting);
         try {
             return done.get(timeoutMillis, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
@@ -332,6 +334,8 @@ public final class KnowledgePrefetchService {
             return null;
         } catch (ExecutionException | TimeoutException | java.util.concurrent.CancellationException e) {
             return null;
+        } finally {
+            waiting.set(false); // niemand wartet mehr: kein Vorrang
         }
     }
 
@@ -396,9 +400,6 @@ public final class KnowledgePrefetchService {
     }
 
     // ------------------------------------------------------------------ Aufbereitung (eigener Thread)
-
-    private static final java.util.concurrent.atomic.AtomicBoolean URGENT =
-            new java.util.concurrent.atomic.AtomicBoolean(true);
 
     private void enqueueIndex(KnowledgeDocument document, CompletableFuture<ResourceIndexingOutcome> indexed,
                               java.util.concurrent.atomic.AtomicBoolean urgent) {
@@ -615,12 +616,11 @@ public final class KnowledgePrefetchService {
          * @return die fertigen Ergebnisse in Rangfolge (ohne gescheiterte)
          */
         public List<ResourceIndexingOutcome> awaitIndexed(int count, long timeoutMillis) {
-            List<CompletableFuture<ResourceIndexingOutcome>> first =
-                    new ArrayList<CompletableFuture<ResourceIndexingOutcome>>();
+            List<Pending> first = new ArrayList<Pending>();
             synchronized (this) {
                 for (Pending entry : pending.subList(0, Math.min(Math.max(0, count), pending.size()))) {
                     entry.urgent.set(true); // jemand wartet: vor übrigem Vorgeladenem aufbereiten
-                    first.add(entry.indexed);
+                    first.add(entry);
                 }
             }
             Runnable signal = wake;
@@ -629,20 +629,26 @@ public final class KnowledgePrefetchService {
             }
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMillis));
             List<ResourceIndexingOutcome> outcomes = new ArrayList<ResourceIndexingOutcome>();
-            for (CompletableFuture<ResourceIndexingOutcome> done : first) {
-                long left = deadline - System.nanoTime();
-                try {
-                    ResourceIndexingOutcome outcome = done.get(Math.max(0, left), TimeUnit.NANOSECONDS);
-                    if (outcome != null) {
-                        outcomes.add(outcome);
+            try {
+                for (Pending entry : first) {
+                    long left = deadline - System.nanoTime();
+                    try {
+                        ResourceIndexingOutcome outcome = entry.indexed.get(Math.max(0, left), TimeUnit.NANOSECONDS);
+                        if (outcome != null) {
+                            outcomes.add(outcome);
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    } catch (ExecutionException | CancellationException e) {
+                        // gescheitert oder abgebrochen: zählt als fertig
+                    } catch (TimeoutException e) {
+                        break;
                     }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (ExecutionException | CancellationException e) {
-                    // gescheitert oder abgebrochen: zählt als fertig
-                } catch (TimeoutException e) {
-                    break;
+                }
+            } finally {
+                for (Pending entry : first) {
+                    entry.urgent.set(false); // niemand wartet mehr: Rest wieder in normaler Reihenfolge
                 }
             }
             return Collections.unmodifiableList(outcomes);

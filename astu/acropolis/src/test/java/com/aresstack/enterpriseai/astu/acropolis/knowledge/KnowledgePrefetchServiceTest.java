@@ -143,6 +143,53 @@ public class KnowledgePrefetchServiceTest {
                 .containsAll(java.util.Arrays.asList(wiki.idOf("A"), wiki.idOf("B"))));
     }
 
+    @Test
+    public void onlyAJobSomeoneStillWaitsForGoesBeforeTheQueuedOnes() throws Exception {
+        final CountDownLatch gate = new CountDownLatch(1);
+        final List<String> order = new CopyOnWriteArrayList<String>();
+        final String[] pages = {"Drucker", "Kaffee", "Urlaub", "Netze"};
+        com.aresstack.enterpriseai.embedding.api.EmbeddingPort gated =
+                new com.aresstack.enterpriseai.embedding.api.EmbeddingPort() {
+                    @Override
+                    public com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity modelIdentity() {
+                        return embeddings.modelIdentity();
+                    }
+
+                    @Override
+                    public com.aresstack.enterpriseai.embedding.api.EmbeddingBatch embed(List<String> texts) {
+                        for (String page : pages) {
+                            if (texts.toString().contains(page) && !order.contains(page)) {
+                                order.add(page);
+                            }
+                        }
+                        try {
+                            gate.await(10, TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        return embeddings.embed(texts);
+                    }
+                };
+        IndexKnowledgeUseCase slow = new IndexKnowledgeUseCase(new InMemoryKnowledgeIndex(), gated,
+                embeddings.modelIdentity(), new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+        prefetch = new KnowledgePrefetchService(slow, reader,
+                () -> KnowledgePrefetchService.Settings.of(5, 1, 10));
+        prefetch.indexNow(wiki.load(wiki.idOf("A")), 1L);
+        waitUntil(() -> order.contains("Drucker")); // der Index-Thread steckt in A
+        // B und C: der Aufrufer gibt nach 1 ms auf, beide warten danach in normaler Reihenfolge
+        prefetch.indexNow(wiki.load(wiki.idOf("B")), 1L);
+        prefetch.indexNow(wiki.load(wiki.idOf("C")), 1L);
+        final KnowledgeDocument e = wiki.load(wiki.idOf("E"));
+        Thread waiter = new Thread(() -> prefetch.indexNow(e, 10_000L));
+        waiter.start();
+        waitUntil(() -> waiter.getState() == Thread.State.TIMED_WAITING);
+        gate.countDown();
+        waiter.join(10_000L);
+        waitUntil(() -> order.size() == 4);
+        assertEquals("wer noch wartet, kommt vor die eingereihten; sonst FIFO",
+                java.util.Arrays.asList("Drucker", "Netze", "Kaffee", "Urlaub"), order);
+    }
+
     private static void waitUntil(java.util.function.BooleanSupplier condition) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 10_000L;
         while (!condition.getAsBoolean()) {
