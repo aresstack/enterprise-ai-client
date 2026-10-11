@@ -26,16 +26,12 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
-import javax.swing.ButtonGroup;
 import javax.swing.Icon;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
 import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
-import javax.swing.JTextField;
-import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
@@ -54,7 +50,6 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.GridLayout;
 import java.awt.Point;
 import java.awt.Insets;
 import java.awt.Rectangle;
@@ -120,7 +115,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     static final String MENU_NEW_GROUP = "Neue Gruppe\u2026";
     static final String MENU_ADD_TO_GROUP = "Zu Gruppe hinzufügen";
     static final String MENU_REMOVE_FROM_GROUP = "Aus Gruppe entfernen";
-    static final String MENU_RENAME_GROUP = "Gruppe umbenennen\u2026";
+    static final String MENU_EDIT_GROUP = "Gruppe bearbeiten\u2026";
     static final String MENU_GROUP_COLOR = "Farbe";
     static final String MENU_COLLAPSE_GROUP = "Gruppe einklappen";
     static final String MENU_EXPAND_GROUP = "Gruppe ausklappen";
@@ -153,7 +148,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             if (dropX >= 0) {
                 Graphics2D g2 = ResearchUiPainter.prepare(graphics);
                 try {
-                    g2.setColor(ResearchUiPalette.ACCENT_BLUE);
+                    // In der Gruppenfarbe, wenn der Reiter beim Loslassen der Gruppe beitritt.
+                    g2.setColor(dropTint != null ? dropTint : ResearchUiPalette.ACCENT_BLUE);
                     g2.fillRoundRect(dropX - 1, 0, 3, getHeight(), 3, 3);
                 } finally {
                     g2.dispose();
@@ -167,6 +163,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private Point dragStart;
     private boolean dragging;
     private int dropX = -1;
+    private Color dropTint;
     private final ComposerButton infoButton;
     private java.util.function.Consumer<String> clipboard = ReaderPageInfo.SYSTEM_CLIPBOARD;
     private final JLayeredPane layers = new JLayeredPane();
@@ -688,6 +685,14 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
      * ihn aus seiner Gruppe heraus, verlässt er sie. Die Reiter einer Gruppe bleiben nebeneinander.
      */
     public void moveTab(String key, int index) {
+        moveTab(key, index, null);
+    }
+
+    /**
+     * Wie {@link #moveTab(String, int)}; mit {@code join} tritt der Reiter dieser Gruppe bei, egal wo die Gruppe
+     * gerade steht (Ablegen auf einem Gruppenreiter oder auf der Gruppenmarke, wie in Firefox).
+     */
+    private void moveTab(String key, int index, ReaderTabGroup join) {
         Tab moved = tabs.get(key);
         if (moved == null) {
             return;
@@ -698,7 +703,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         order.add(target, moved);
         ReaderTabGroup left = target > 0 ? order.get(target - 1).group : null;
         ReaderTabGroup right = target + 1 < order.size() ? order.get(target + 1).group : null;
-        if (left != null && left == right) {
+        if (join != null) {
+            moved.group = join;
+        } else if (left != null && left == right) {
             moved.group = left;
         } else if (moved.group != null && moved.group != left && moved.group != right) {
             moved.group = null;
@@ -878,10 +885,12 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         if (group == null) {
             return menu;
         }
-        menu.add(item(MENU_RENAME_GROUP, () -> {
-            String name = JOptionPane.showInputDialog(this, "Name der Gruppe (darf leer bleiben):", group.name());
-            if (name != null) {
-                renameGroup(group.id(), name);
+        menu.add(item(MENU_EDIT_GROUP, () -> {
+            ReaderTabGroupDialog.Result answer = ReaderTabGroupDialog.show(this, ReaderTabGroupDialog.EDIT_TITLE,
+                    group.name(), group.tint(), palette);
+            if (answer != null) {
+                group.recolor(answer.tint());
+                renameGroup(group.id(), answer.name());
             }
         }));
         JMenu colors = new JMenu(MENU_GROUP_COLOR);
@@ -970,6 +979,16 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         return null;
     }
 
+    /** Die Marke der Gruppe {@code groupId} in der Reiterleiste oder {@code null}. */
+    JComponent groupChip(String groupId) {
+        for (java.awt.Component component : strip.getComponents()) {
+            if (component instanceof GroupChip && ((GroupChip) component).group.id().equals(groupId)) {
+                return (GroupChip) component;
+            }
+        }
+        return null;
+    }
+
     /** Stecknadel im Reiter {@code key}, {@code null} bei angehefteten Reitern. */
     ComposerButton tabPinButton(String key) {
         JComponent chip = tabChip(key);
@@ -1037,26 +1056,10 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
 
     /** Fragt Name (optional) und Farbe der neuen Gruppe ab, wie das Gruppenfeld in Firefox. */
     private void askNewGroup(String key) {
-        JTextField name = new JTextField(18);
-        JPanel swatches = new JPanel(new GridLayout(1, ReaderTabGroup.Tint.values().length, 4, 0));
-        ButtonGroup choice = new ButtonGroup();
-        ReaderTabGroup.Tint proposed = nextTint();
-        final ReaderTabGroup.Tint[] chosen = {proposed};
-        for (final ReaderTabGroup.Tint tint : ReaderTabGroup.Tint.values()) {
-            JToggleButton button = new JToggleButton(new Swatch(tint.color()));
-            button.setToolTipText(tint.label());
-            button.setSelected(tint == proposed);
-            button.addActionListener(event -> chosen[0] = tint);
-            choice.add(button);
-            swatches.add(button);
-        }
-        JPanel form = new JPanel(new BorderLayout(0, 6));
-        form.add(name, BorderLayout.NORTH);
-        form.add(swatches, BorderLayout.CENTER);
-        int answer = JOptionPane.showConfirmDialog(this, new Object[]{"Name der Gruppe (darf leer bleiben):", form},
-                "Neue Gruppe", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-        if (answer == JOptionPane.OK_OPTION) {
-            newGroup(key, name.getText(), chosen[0]);
+        ReaderTabGroupDialog.Result answer = ReaderTabGroupDialog.show(this, ReaderTabGroupDialog.NEW_TITLE, "",
+                nextTint(), palette);
+        if (answer != null) {
+            newGroup(key, answer.name(), answer.tint());
         }
     }
 
@@ -1088,47 +1091,108 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         }
         dragging = true;
         strip.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
-        dropX = dropSlot(point.x)[1];
+        Drop drop = dropSlot(point.x);
+        dropX = drop.x;
+        dropTint = drop.group == null ? null : drop.group.tint().color();
         strip.repaint();
     }
 
     private void dragEnded(MouseEvent event) {
         String key = dragKey;
-        boolean moved = dragging;
+        Drop drop = null;
+        if (key != null && dragging) {
+            drop = dropSlot(SwingUtilities.convertPoint(event.getComponent(), event.getPoint(), strip).x);
+        }
         dragKey = null;
         dragging = false;
         dropX = -1;
+        dropTint = null;
         strip.setCursor(Cursor.getDefaultCursor());
         strip.repaint();
-        if (key != null && moved) {
-            Point point = SwingUtilities.convertPoint(event.getComponent(), event.getPoint(), strip);
-            moveTab(key, dropSlot(point.x)[0]);
+        if (drop != null) {
+            moveTab(key, drop.index, drop.group);
         }
     }
 
     /**
-     * Wohin ein gezogener Reiter fällt: {@code [Index ohne den gezogenen Reiter, x der Einfügemarke]} — vor den ersten
-     * sichtbaren Reiter, dessen Mitte rechts vom Zeiger liegt, sonst ans Ende.
+     * Wohin ein gezogener Reiter fällt. Über der Marke einer Gruppe oder über einem ihrer Reiter tritt er der Gruppe
+     * bei (vor bzw. hinter dem Reiter je nach Hälfte); sonst landet er vor dem ersten sichtbaren Reiter, dessen Mitte
+     * rechts vom Zeiger liegt, oder am Ende, und die Nachbarn entscheiden wie bisher über die Gruppe.
      */
-    private int[] dropSlot(int x) {
+    private Drop dropSlot(int x) {
         List<String> order = new ArrayList<String>(tabs.keySet());
+        int own = order.indexOf(dragKey);
         order.remove(dragKey);
         int lastRight = 0;
         for (java.awt.Component component : strip.getComponents()) {
-            if (!(component instanceof TabChip) || !component.isVisible()) {
+            if (!component.isVisible()) {
+                continue;
+            }
+            int left = component.getX();
+            int right = left + component.getWidth();
+            if (component instanceof GroupChip) {
+                ReaderTabGroup group = ((GroupChip) component).group;
+                if (x >= left && x < right) {
+                    int first = -1;
+                    for (Tab tab : tabs.values()) {
+                        if (tab.group == group && !tab.link.key().equals(dragKey)) {
+                            first = order.indexOf(tab.link.key());
+                            break;
+                        }
+                    }
+                    return new Drop(first < 0 ? Math.max(0, own) : first, right + 1, group);
+                }
+                if (left > x) {
+                    return new Drop(firstTabAfter(component, order), left - 3, null);
+                }
+                lastRight = right;
+                continue;
+            }
+            if (!(component instanceof TabChip)) {
                 continue;
             }
             TabChip chip = (TabChip) component;
             if (chip.key.equals(dragKey)) {
-                lastRight = component.getX() + component.getWidth();
+                lastRight = right;
                 continue;
             }
-            if (component.getX() + component.getWidth() / 2 > x) {
-                return new int[]{order.indexOf(chip.key), component.getX() - 3};
+            int index = order.indexOf(chip.key);
+            boolean after = x >= left + component.getWidth() / 2;
+            if (chip.group != null && x >= left && x < right) {
+                return new Drop(after ? index + 1 : index, after ? right + 1 : left - 3, chip.group);
             }
-            lastRight = component.getX() + component.getWidth();
+            if (!after) {
+                return new Drop(index, left - 3, null);
+            }
+            lastRight = right;
         }
-        return new int[]{order.size(), lastRight + 1};
+        return new Drop(order.size(), lastRight + 1, null);
+    }
+
+    /** Index (ohne den gezogenen Reiter) des ersten Reiters rechts von {@code marker} in der Leiste. */
+    private int firstTabAfter(java.awt.Component marker, List<String> order) {
+        boolean seen = false;
+        for (java.awt.Component component : strip.getComponents()) {
+            if (component == marker) {
+                seen = true;
+            } else if (seen && component instanceof TabChip && !((TabChip) component).key.equals(dragKey)) {
+                return order.indexOf(((TabChip) component).key);
+            }
+        }
+        return order.size();
+    }
+
+    /** Ziel eines Ziehens: Index ohne den gezogenen Reiter, x der Einfügemarke, beizutretende Gruppe oder null. */
+    private static final class Drop {
+        final int index;
+        final int x;
+        final ReaderTabGroup group;
+
+        Drop(int index, int x, ReaderTabGroup group) {
+            this.index = index;
+            this.x = x;
+            this.group = group;
+        }
     }
 
     private Tab previewTab() {
