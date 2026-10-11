@@ -8,6 +8,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -28,12 +29,14 @@ import java.awt.image.BufferedImage;
 
 /**
  * Rendert Mermaid abseits des EDT und zeichnet das Ergebnis mit Java2D, mit Aktionen „Bild kopieren“ und
- * „Code kopieren“ (aus askai-java8 {@code MermaidDiagramPanel}). Ein Klick auf das Bild öffnet den vergrößerten
- * Betrachter {@link MermaidViewerDialog}.
+ * „Code kopieren“ (aus askai-java8 {@code MermaidDiagramPanel}). Ein Klick auf das Bild öffnet den vollen
+ * Betrachter {@link MermaidViewerPanel} als Comic-Overlay über dem Verlauf ({@link DiagramOverlayHost}); nur ohne
+ * solchen Verlauf (etwa eingebettet anderswo) bleibt der eigenständige {@link MermaidViewerDialog}.
  */
 public final class MermaidDiagramPanel extends JPanel {
 
     private static final int PADDING = 12;
+    private static final String VIEWER_TITLE = "Mermaid-Diagramm";
     private static final int MIN_RENDER_WIDTH = 640;
     private static final int MAX_RENDER_WIDTH = 2400;
 
@@ -126,6 +129,12 @@ public final class MermaidDiagramPanel extends JPanel {
 
     /** Öffnet den vergrößerten, zoombaren Betrachter; er rendert das Diagramm aus dem Mermaid-Quelltext neu. */
     private void openEnlargedViewer() {
+        Container host = SwingUtilities.getAncestorOfClass(DiagramOverlayHost.class, this);
+        if (host instanceof DiagramOverlayHost) {
+            ((DiagramOverlayHost) host).showTranscriptOverlay(
+                    new MermaidViewerPanel(diagramCode, imageRenderer, image), VIEWER_TITLE);
+            return;
+        }
         Window owner = SwingUtilities.getWindowAncestor(this);
         MermaidViewerDialog.open(owner, diagramCode, imageRenderer, image);
     }

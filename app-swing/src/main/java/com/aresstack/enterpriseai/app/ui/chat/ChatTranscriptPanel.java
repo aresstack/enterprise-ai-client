@@ -2,18 +2,22 @@ package com.aresstack.enterpriseai.app.ui.chat;
 
 import com.aresstack.enterpriseai.app.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.app.ui.markdown.DesktopLinkOpener;
+import com.aresstack.enterpriseai.app.ui.markdown.DiagramOverlayHost;
 import com.aresstack.enterpriseai.app.ui.markdown.MarkdownMessageView;
 import com.aresstack.enterpriseai.app.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.app.ui.markdown.MermaidImageRenderer;
+import com.aresstack.enterpriseai.app.ui.markdown.MermaidViewerPanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubbleMessageRow;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubbleSide;
 import com.aresstack.enterpriseai.ui.comic.bubble.SpeechBubblePanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.TranscriptBubble;
+import com.aresstack.enterpriseai.ui.comic.control.ComicOverlayPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ReadAloudOrb;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -22,6 +26,7 @@ import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollBar;
+import javax.swing.KeyStroke;
 import javax.swing.Scrollable;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
@@ -39,6 +44,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.util.HashMap;
@@ -81,7 +87,7 @@ import java.util.Map;
  * <p>Zeilenlayout, Blasenbreite und Zeilenhöhe kommen unverändert aus der Comic-Bibliothek
  * ({@link BubbleMessageRow}), die Breitenführung durch den Viewport aus AskAIs {@code BubbleTranscriptPanel}.
  */
-public final class ChatTranscriptPanel extends JPanel implements ChatShellModelListener {
+public final class ChatTranscriptPanel extends JPanel implements ChatShellModelListener, DiagramOverlayHost {
 
     static final String USER_HEADER = "Du";
     static final String ASSISTANT_HEADER = "Assistent";
@@ -107,6 +113,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     /** Zwischen Verlauf (DEFAULT) und Orb (PALETTE), wie in askai-java8. */
     private static final Integer TRANSCRIPT_SKY_LAYER = Integer.valueOf(50);
+    private static final String CLOSE_OVERLAY_ACTION = "closeTranscriptOverlay";
 
     private static final int BASE_PADDING_TOP = 10;
     private static final int BASE_PADDING_BOTTOM = 10;
@@ -135,6 +142,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final ReadAloudOrb readAloudOrb = new ReadAloudOrb();
     private final JLayeredPane layers = new JLayeredPane();
     private JComponent transcriptSkyAccessory;
+    private ComicOverlayPanel transcriptOverlay;
     private int topInset;
     /** Beobachtet die Inset-Property der Ebene (an ihr und ihren direkten Kindern). */
     private final PropertyChangeListener skyInsetListener = new PropertyChangeListener() {
@@ -238,6 +246,50 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             latestAnswer = entry.getText(); // gezeigt oder geladen, aber nie von selbst vorgelesen
         }
         refresh(true);
+    }
+
+    /**
+     * Zeigt Inhalt als schließbares Comic-Overlay über dem Verlauf (dem „Antwortfenster“), etwa den
+     * Mermaid-Betrachter oder eine Mindmap; ersetzt ein vorheriges Overlay, das ✕ oben rechts oder Esc schließt es.
+     * Aus askai-java8 {@code OllamaChatPanel.showTranscriptOverlay}. Nur auf dem EDT.
+     */
+    @Override
+    public void showTranscriptOverlay(JComponent content, String title) {
+        closeTranscriptOverlay();
+        transcriptOverlay = new ComicOverlayPanel(title, content, new Runnable() {
+            @Override
+            public void run() {
+                closeTranscriptOverlay();
+            }
+        }, comicPalette);
+        transcriptOverlay.getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), CLOSE_OVERLAY_ACTION);
+        transcriptOverlay.getActionMap().put(CLOSE_OVERLAY_ACTION, new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                closeTranscriptOverlay();
+            }
+        });
+        layers.add(transcriptOverlay, JLayeredPane.MODAL_LAYER);
+        layers.revalidate();
+        layers.repaint();
+    }
+
+    /** Zeigt einen Mermaid-Quelltext im vollen Betrachter ({@link MermaidViewerPanel}) als Overlay. */
+    @Override
+    public void showDiagramOverlay(String mermaidSource, String title) {
+        showTranscriptOverlay(new MermaidViewerPanel(mermaidSource, mermaidImageRenderer), title);
+    }
+
+    /** Schließt das Overlay über dem Verlauf (ohne Overlay nichts). Nur auf dem EDT. */
+    @Override
+    public void closeTranscriptOverlay() {
+        if (transcriptOverlay != null) {
+            layers.remove(transcriptOverlay);
+            transcriptOverlay = null;
+            layers.revalidate();
+            layers.repaint();
+        }
     }
 
     /**
@@ -747,6 +799,10 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             Rectangle viewport = scrollPane.getViewport().getBounds();
             readAloudOrb.setBounds(viewport.x + viewport.width - ORB_INSET - ReadAloudOrb.SIZE,
                     viewport.y + ORB_INSET, ReadAloudOrb.SIZE, ReadAloudOrb.SIZE);
+            if (transcriptOverlay != null) {
+                transcriptOverlay.setBounds(0, 0, width, parent.getHeight()); // das Overlay deckt den ganzen Verlauf
+                transcriptOverlay.doLayout();
+            }
             if (transcriptSkyAccessory != null) {
                 // Der Himmel liegt über dem Sichtbereich, die Bildlaufleiste bleibt frei.
                 transcriptSkyAccessory.setBounds(viewport.x, viewport.y, viewport.width, viewport.height);
