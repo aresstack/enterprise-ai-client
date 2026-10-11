@@ -14,7 +14,9 @@ import java.util.Set;
  * Confluence: Space-Key oder Page-ID, Dateien: Verzeichnis). Ab den Startpunkten folgt der Adapter Links
  * bzw. Kindern bis {@link #maxDepth()}; {@code 0} heißt nur die Startpunkte selbst. Höchstens
  * {@link #maxResources()} Ressourcen werden geliefert. Bereiche in {@link #excludedPartitions()} (Schlüssel aus
- * {@link KnowledgeSourcePort#partitions()}) lässt der Adapter aus.
+ * {@link KnowledgeSourcePort#partitions()}) lässt der Adapter aus. Die Häkchen des Benutzers gelten für Indexierung
+ * und Suche; wer gezielt einen Bereich aufschlägt (Klick auf einen Space im Drawer), baut den Umfang mit
+ * {@link Builder#ignoringSelection()}, dann bleibt die Auswahl außen vor ({@link #selectionApplies()}).
  */
 public final class SourceScope {
 
@@ -25,12 +27,15 @@ public final class SourceScope {
     private final int maxDepth;
     private final int maxResources;
     private final Set<String> excludedPartitions;
+    private final boolean selectionApplies;
 
-    private SourceScope(List<String> startPoints, int maxDepth, int maxResources, Set<String> excludedPartitions) {
+    private SourceScope(List<String> startPoints, int maxDepth, int maxResources, Set<String> excludedPartitions,
+                        boolean selectionApplies) {
         this.startPoints = startPoints;
         this.maxDepth = maxDepth;
         this.maxResources = maxResources;
         this.excludedPartitions = excludedPartitions;
+        this.selectionApplies = selectionApplies;
     }
 
     /** Nur die angegebenen Startpunkte, ohne Links zu folgen. */
@@ -59,6 +64,11 @@ public final class SourceScope {
         return excludedPartitions;
     }
 
+    /** {@code false}: gezieltes Aufschlagen, die abgehakten Bereiche des Benutzers gelten hier nicht. */
+    public boolean selectionApplies() {
+        return selectionApplies;
+    }
+
     /** Derselbe Umfang ohne die angegebenen Bereiche. */
     public SourceScope withExcludedPartitions(Collection<String> keys) {
         Set<String> excluded = new LinkedHashSet<String>();
@@ -69,14 +79,16 @@ public final class SourceScope {
                 }
             }
         }
-        return new SourceScope(startPoints, maxDepth, maxResources, Collections.unmodifiableSet(excluded));
+        return new SourceScope(startPoints, maxDepth, maxResources, Collections.unmodifiableSet(excluded),
+                selectionApplies);
     }
 
     @Override
     public String toString() {
         return "SourceScope{startPoints=" + startPoints + ", maxDepth=" + maxDepth
                 + ", maxResources=" + maxResources
-                + (excludedPartitions.isEmpty() ? "" : ", excludedPartitions=" + excludedPartitions) + "}";
+                + (excludedPartitions.isEmpty() ? "" : ", excludedPartitions=" + excludedPartitions)
+                + (selectionApplies ? "" : ", ignoringSelection") + "}";
     }
 
     @Override
@@ -89,7 +101,7 @@ public final class SourceScope {
         }
         SourceScope that = (SourceScope) o;
         return maxDepth == that.maxDepth && maxResources == that.maxResources
-                && startPoints.equals(that.startPoints) && excludedPartitions.equals(that.excludedPartitions);
+                && selectionApplies == that.selectionApplies && startPoints.equals(that.startPoints) && excludedPartitions.equals(that.excludedPartitions);
     }
 
     @Override
@@ -102,6 +114,7 @@ public final class SourceScope {
         private final List<String> startPoints = new ArrayList<String>();
         private int maxDepth;
         private int maxResources = DEFAULT_MAX_RESOURCES;
+        private boolean selectionApplies = true;
 
         private Builder() {
         }
@@ -146,12 +159,18 @@ public final class SourceScope {
             return this;
         }
 
+        /** Gezieltes Aufschlagen eines Bereichs: die Häkchen des Benutzers gelten nicht. */
+        public Builder ignoringSelection() {
+            this.selectionApplies = false;
+            return this;
+        }
+
         public SourceScope build() {
             if (startPoints.isEmpty()) {
                 throw new IllegalArgumentException("at least one start point is required");
             }
             return new SourceScope(Collections.unmodifiableList(new ArrayList<String>(startPoints)),
-                    maxDepth, maxResources, Collections.<String>emptySet());
+                    maxDepth, maxResources, Collections.<String>emptySet(), selectionApplies);
         }
     }
 }

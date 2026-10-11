@@ -203,7 +203,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
             if (link.isSource()) {
                 final List<ReaderLink> entries = new ArrayList<ReaderLink>();
                 SourceScope scope = link.startPoint().isEmpty() ? registration.scope()
-                        : SourceScope.of(link.startPoint());
+                        : SourceScope.builder().startPoint(link.startPoint()).ignoringSelection().build();
                 for (KnowledgeResource resource : browse.list(registration.port(), scope)) {
                     entries.add(new ReaderLink(link.sourceId(), resource.id().value(), resource.title(), "",
                             resource.id().value()));

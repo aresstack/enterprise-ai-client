@@ -85,6 +85,9 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
 
         @Override
         public List<KnowledgeResource> discover(SourceScope scope) throws KnowledgeSourceException {
+            if (!scope.selectionApplies()) {
+                return port.discover(scope); // Klick auf einen Bereich: Blättern, keine Suche (wie MainframeMate)
+            }
             Set<String> excluded = new LinkedHashSet<String>(scope.excludedPartitions());
             excluded.addAll(selection.excluded(port.sourceId()));
             return port.discover(scope.withExcludedPartitions(excluded));

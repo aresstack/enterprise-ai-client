@@ -35,8 +35,9 @@ public final class BrowseKnowledgeSourceUseCase {
         if (source == null || scope == null) {
             throw new IllegalArgumentException("source and scope must not be null");
         }
-        SourceScope limited = SourceScope.builder().startPoints(scope.startPoints()).maxDepth(scope.maxDepth())
-                .maxResources(Math.min(MAX_LISTED, scope.maxResources())).build();
+        SourceScope.Builder builder = SourceScope.builder().startPoints(scope.startPoints()).maxDepth(scope.maxDepth())
+                .maxResources(Math.min(MAX_LISTED, scope.maxResources()));
+        SourceScope limited = (scope.selectionApplies() ? builder : builder.ignoringSelection()).build();
         List<KnowledgeResource> resources = source.discover(limited);
         return Collections.unmodifiableList(new ArrayList<KnowledgeResource>(
                 resources.size() > MAX_LISTED ? resources.subList(0, MAX_LISTED) : resources));
