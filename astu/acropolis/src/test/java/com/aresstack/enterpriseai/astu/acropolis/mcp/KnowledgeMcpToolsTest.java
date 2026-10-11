@@ -92,7 +92,8 @@ public class KnowledgeMcpToolsTest {
     public void readResolvesFromIndexAndByPassageId() {
         String id = wiki.idOf("Kaffee").value();
         String first = call(tools.knowledgeRead(), "id", id).getText();
-        assertTrue(first, first.contains("[passage " + id + "#p0@"));
+        assertTrue(first, first.contains("[passage " + id + "@"));
+        assertTrue(first, first.contains("#p0@"));
         String again = call(tools.knowledgeRead(), "id", id).getText();
         assertTrue("zweites Lesen ohne Quelle: " + again, again.contains("from: index"));
         int start = again.indexOf("[passage ") + "[passage ".length();

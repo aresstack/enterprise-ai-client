@@ -192,14 +192,34 @@ public final class IndexKnowledgeUseCase {
         return KnowledgePassageId.versionTag(space().fingerprint());
     }
 
-    /** Die Passage-ID eines im aktuellen Namensraum gespeicherten Abschnitts. */
-    public KnowledgePassageId passageId(KnowledgeChunkId chunk) {
-        return KnowledgePassageId.of(chunk.resourceId(), chunk.ordinal(), segmentationTag(), embeddingTag());
+    /**
+     * Die Passage-ID eines im aktuellen Namensraum gespeicherten Abschnitts (askai arch: Capture + Position +
+     * Zerlegung + Embedding-Modell). Die Capture stammt aus dem Inhalts-Hash, der mit genau diesem Eintrag gespeichert
+     * ist, nicht aus einem späteren Nachschlagen: ein Treffer nennt immer die Fassung, aus der sein Text stammt.
+     *
+     * @return leer, wenn der Eintrag keinen Inhalts-Hash trägt (Altbestand, wird beim nächsten Lesen neu aufbereitet)
+     */
+    public Optional<KnowledgePassageId> passageId(KnowledgeIndexEntry entry) {
+        return passageId(entry.resource(), entry.chunkId());
     }
 
-    /** {@code true}, wenn der Indexstand mit der aktuellen Zerlegung entstand (sonst muss neu aufbereitet werden). */
+    /** Wie {@link #passageId(KnowledgeIndexEntry)} für einen Treffer aus Ressource (mit Metadaten) und Abschnitt. */
+    public Optional<KnowledgePassageId> passageId(KnowledgeResource resource, KnowledgeChunkId chunk) {
+        Optional<String> hash = resource.metadata().get(IndexedResourceState.CONTENT_HASH_KEY);
+        if (!hash.isPresent() || hash.get().length() < KnowledgePassageId.CAPTURE_LENGTH
+                || !hash.get().substring(0, KnowledgePassageId.CAPTURE_LENGTH).matches("[0-9a-fA-F]+")) {
+            return Optional.empty();
+        }
+        return Optional.of(KnowledgePassageId.of(chunk.resourceId(), KnowledgePassageId.captureOf(hash.get()),
+                chunk.ordinal(), segmentationTag(), embeddingTag()));
+    }
+
+    /**
+     * {@code true}, wenn der Indexstand mit der aktuellen Zerlegung entstand und seine Fassung (Inhalts-Hash) kennt;
+     * sonst muss neu aufbereitet werden.
+     */
     public boolean isPrepared(IndexedResourceState state) {
-        return state != null && state.segmentation().equals(segmentationFingerprint());
+        return state != null && state.hasContentHash() && state.segmentation().equals(segmentationFingerprint());
     }
 
     /** Die aufbereiteten Passagen einer Ressource im aktuellen Namensraum, nach Position; leer, wenn unbekannt. */
@@ -425,7 +445,7 @@ public final class IndexKnowledgeUseCase {
             // Gleiche Revision genügt nur mit gleicher Zerlegung (ein anderes Verfahren baut neu).
             Optional<IndexedResourceState> stored = index.stateOf(space(), id);
             return stored.isPresent() && stored.get().revision().equals(discovered)
-                    && stored.get().segmentation().equals(segmentationFingerprint());
+                    && isPrepared(stored.get());
         } catch (KnowledgeIndexException e) {
             // Die Abfrage ist nur eine Abkürzung; im Zweifel neu indexieren.
             return false;

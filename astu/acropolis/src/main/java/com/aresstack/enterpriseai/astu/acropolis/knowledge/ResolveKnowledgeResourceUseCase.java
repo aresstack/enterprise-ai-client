@@ -94,8 +94,11 @@ public final class ResolveKnowledgeResourceUseCase {
         KnowledgeResource resource = entries.get(0).resource();
         List<Passage> passages = new ArrayList<Passage>(entries.size());
         for (KnowledgeIndexEntry entry : entries) {
-            passages.add(new Passage(indexing.passageId(entry.chunkId()), entry.chunk().headingLine(),
-                    entry.chunk().text()));
+            Optional<KnowledgePassageId> passageId = indexing.passageId(entry);
+            if (!passageId.isPresent()) {
+                return null; // Eintrag ohne Fassung (Altbestand): neu holen und aufbereiten
+            }
+            passages.add(new Passage(passageId.get(), entry.chunk().headingLine(), entry.chunk().text()));
         }
         KnowledgeResourceRef ref = new KnowledgeResourceRef(resource.sourceId(), resource.id(),
                 resource.location().orElse(null), state.get().revision(), state.get().contentHash());

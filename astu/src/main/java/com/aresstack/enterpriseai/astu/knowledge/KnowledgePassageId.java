@@ -1,36 +1,59 @@
 package com.aresstack.enterpriseai.astu.knowledge;
 
 /**
- * Stabile Adresse einer aufbereiteten Passage im Index (askai arch: Capture + Position + Segmentierungsversion +
- * Embedding-Fingerabdruck). Form: {@code <resourceId>#p<position>@<segmentation>-<embedding>}, z. B.
- * {@code confluence:47110815#p3@9f2c41ab-5e07d1c3}. {@code position} zählt die Passagen der Ressource ab 0;
- * {@code segmentation} und {@code embedding} sind Kurzformen (8 Hex-Zeichen) der Fingerabdrücke von Zerlegung und
- * Embedding-Modell. Ändert sich eines davon, ändert sich die ID: ein Finding zeigt nie still auf eine andere Passage.
+ * Stabile Adresse einer aufbereiteten Passage im Index, wie askai arch: unveränderliche Capture + Position +
+ * Segmentierungsversion + Embedding-Fingerabdruck. Form:
+ * {@code <resourceId>@<capture>#p<position>@<segmentation>-<embedding>}, z. B.
+ * {@code confluence:47110815@3fa9c2d1e0b4#p3@9f2c41ab-5e07d1c3}.
+ * <ul>
+ *   <li>{@code resourceId}: die Ressource, stabil über Inhaltsänderungen (ihr Format bestimmt der Connector);</li>
+ *   <li>{@code capture}: die gelesene Fassung, die ersten {@value #CAPTURE_LENGTH} Hex-Zeichen des
+ *       {@code contentHash} ihres Textes (askai {@code SourceCapture.captureId}); ändert sich der Inhalt, ändert sich
+ *       die Capture und damit jede Passage-ID;</li>
+ *   <li>{@code position} zählt die Passagen dieser Fassung ab 0;</li>
+ *   <li>{@code segmentation} und {@code embedding} sind Kurzformen (8 Hex-Zeichen) der Fingerabdrücke von Zerlegung
+ *       und Embedding-Modell.</li>
+ * </ul>
+ * Ändert sich eines davon, ändert sich die ID: ein Beleg zeigt nie still auf eine andere Passage oder neuen Text.
  */
 public final class KnowledgePassageId {
 
+    /** Länge der Capture-Kennung (Präfix des SHA-256-Hex-Hashes des Textes). */
+    public static final int CAPTURE_LENGTH = 12;
+
+    private static final String CAPTURE = "@";
     private static final String POSITION = "#p";
     private static final String VERSION = "@";
     private static final String SEPARATOR = "-";
 
     private final KnowledgeResourceId resourceId;
+    private final String capture;
     private final int position;
     private final String segmentation;
     private final String embedding;
     private final String value;
 
-    private KnowledgePassageId(KnowledgeResourceId resourceId, int position, String segmentation, String embedding) {
+    private KnowledgePassageId(KnowledgeResourceId resourceId, String capture, int position, String segmentation,
+                               String embedding) {
         this.resourceId = resourceId;
+        this.capture = capture;
         this.position = position;
         this.segmentation = segmentation;
         this.embedding = embedding;
-        this.value = resourceId.value() + POSITION + position + VERSION + segmentation + SEPARATOR + embedding;
+        this.value = resourceId.value() + CAPTURE + capture + POSITION + position + VERSION + segmentation
+                + SEPARATOR + embedding;
     }
 
-    public static KnowledgePassageId of(KnowledgeResourceId resourceId, int position, String segmentation,
-                                        String embedding) {
+    /**
+     * @param capture die Capture der gelesenen Fassung, siehe {@link #captureOf(String)}
+     */
+    public static KnowledgePassageId of(KnowledgeResourceId resourceId, String capture, int position,
+                                        String segmentation, String embedding) {
         if (resourceId == null) {
             throw new IllegalArgumentException("Resource-ID fehlt");
+        }
+        if (!isCapture(capture)) {
+            throw new IllegalArgumentException("Capture muss " + CAPTURE_LENGTH + " Hex-Zeichen haben: " + capture);
         }
         if (position < 0) {
             throw new IllegalArgumentException("position darf nicht negativ sein: " + position);
@@ -39,7 +62,21 @@ public final class KnowledgePassageId {
             throw new IllegalArgumentException("Versionskennungen müssen [a-z0-9] sein: " + segmentation + ", "
                     + embedding);
         }
-        return new KnowledgePassageId(resourceId, position, segmentation, embedding);
+        return new KnowledgePassageId(resourceId, capture, position, segmentation, embedding);
+    }
+
+    /**
+     * Die Capture einer gelesenen Fassung aus dem {@code contentHash} ihres Textes (SHA-256, hex).
+     *
+     * @throws IllegalArgumentException wenn der Hash fehlt oder kein Hex ist (Fassung ohne Hash ist keine Capture)
+     */
+    public static String captureOf(String contentHash) {
+        String capture = contentHash == null || contentHash.length() < CAPTURE_LENGTH ? ""
+                : contentHash.substring(0, CAPTURE_LENGTH).toLowerCase(java.util.Locale.ROOT);
+        if (!isCapture(capture)) {
+            throw new IllegalArgumentException("contentHash fehlt oder ist kein SHA-256-Hex");
+        }
+        return capture;
     }
 
     /** {@code true}, wenn {@code value} die Form einer Passage-ID hat (sonst ist es eine Resource-ID). */
@@ -55,7 +92,8 @@ public final class KnowledgePassageId {
     public static KnowledgePassageId parse(String value) {
         int at = value == null ? -1 : value.lastIndexOf(VERSION);
         int hash = at <= 0 ? -1 : value.lastIndexOf(POSITION, at);
-        if (hash <= 0) {
+        int captureAt = hash <= 0 ? -1 : value.lastIndexOf(CAPTURE, hash);
+        if (captureAt <= 0) {
             throw new IllegalArgumentException("Ungültige Passage-ID: " + KnowledgeSourceId.quote(value));
         }
         String position = value.substring(hash + POSITION.length(), at);
@@ -64,7 +102,8 @@ public final class KnowledgePassageId {
         if (position.isEmpty() || position.length() > 9 || !position.matches("[0-9]+") || separator <= 0) {
             throw new IllegalArgumentException("Ungültige Passage-ID: " + KnowledgeSourceId.quote(value));
         }
-        return of(KnowledgeResourceId.of(value.substring(0, hash)), Integer.parseInt(position),
+        return of(KnowledgeResourceId.of(value.substring(0, captureAt)),
+                value.substring(captureAt + CAPTURE.length(), hash), Integer.parseInt(position),
                 versions.substring(0, separator), versions.substring(separator + 1));
     }
 
@@ -86,12 +125,21 @@ public final class KnowledgePassageId {
         }
     }
 
+    private static boolean isCapture(String capture) {
+        return capture != null && capture.length() == CAPTURE_LENGTH && capture.matches("[0-9a-f]+");
+    }
+
     private static boolean isTag(String tag) {
         return tag != null && !tag.isEmpty() && tag.length() <= 32 && tag.matches("[a-z0-9]+");
     }
 
     public KnowledgeResourceId resourceId() {
         return resourceId;
+    }
+
+    /** Die Capture, also die gelesene Fassung der Ressource, zu der die Passage gehört. */
+    public String capture() {
+        return capture;
     }
 
     public int position() {

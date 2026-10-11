@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingU
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalResult;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgePassageId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
@@ -192,7 +193,11 @@ final class KnowledgeSearchTool implements McpToolHandler {
         if (resource.location().isPresent()) {
             block.append("url: ").append(resource.location().get()).append('\n');
         }
-        block.append("passage: ").append(live.prefetch().indexing().passageId(hit.chunk().id()).value()).append('\n');
+        java.util.Optional<KnowledgePassageId> passage =
+                live.prefetch().indexing().passageId(resource, hit.chunk().id());
+        if (passage.isPresent()) {
+            block.append("passage: ").append(passage.get().value()).append('\n');
+        }
         block.append("source: ").append(resource.sourceId().value()).append('\n');
         block.append(ToolText.snippet(hit.chunk().text(), settings.snippetChars())).append('\n');
         return block.toString();

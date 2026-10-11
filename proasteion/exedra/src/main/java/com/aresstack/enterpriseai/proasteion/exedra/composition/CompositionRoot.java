@@ -499,7 +499,11 @@ public final class CompositionRoot {
         }
         StringBuilder text = new StringBuilder();
         for (com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry entry : entries) {
-            text.append("passage: ").append(indexing.passageId(entry.chunkId()).value()).append('\n');
+            java.util.Optional<com.aresstack.enterpriseai.astu.knowledge.KnowledgePassageId> passage =
+                    indexing.passageId(entry);
+            if (passage.isPresent()) {
+                text.append("passage: ").append(passage.get().value()).append('\n');
+            }
             String heading = entry.chunk().headingLine();
             if (!heading.isEmpty()) {
                 text.append(heading).append(": ");

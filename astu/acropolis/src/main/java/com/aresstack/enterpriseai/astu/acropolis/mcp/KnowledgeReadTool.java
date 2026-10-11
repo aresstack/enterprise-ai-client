@@ -21,7 +21,8 @@ import java.util.List;
 
 /**
  * {@code knowledge_read(id)}: Resource-Resolver (corenth: Bookmark statt Textkopie). Die ID eines Suchtreffers
- * ({@code confluence:47110815}) oder einer Passage ({@code confluence:47110815#p3@9f2c41ab-5e07d1c3}) wird zuerst aus
+ * ({@code confluence:47110815}) oder einer Passage
+ * ({@code confluence:47110815@3fa9c2d1e0b4#p3@9f2c41ab-5e07d1c3}) wird zuerst aus
  * dem Index beantwortet: Referenz (id, url, Revision, Inhalts-Hash) und die aufbereiteten Passagen mit ihren IDs. Die
  * Quelle wird nur bei unbekanntem oder geändertem Stand gefragt, über den Priority-Lader (an der Vorlade-Warteschlange
  * vorbei), danach wird indexiert und wieder aus dem Index geliefert. Bei einer Passage-ID kommen diese Passage und
@@ -140,9 +141,14 @@ final class KnowledgeReadTool implements McpToolHandler {
                 from = Math.max(0, at - NEIGHBOURS);
                 to = Math.min(passages.size(), at + NEIGHBOURS + 1);
                 out.append("passage: ").append(requested.value()).append(" (with neighbours)\n");
+            } else if (!passages.isEmpty() && !passages.get(0).id().capture().equals(requested.capture())) {
+                out.append("note: passage ").append(requested.value()).append(" belongs to an older version of the ")
+                        .append("page (capture ").append(requested.capture()).append(", now ")
+                        .append(passages.get(0).id().capture())
+                        .append("); its text is gone. The current passages follow — cite them instead.\n");
             } else {
                 out.append("note: passage ").append(requested.value())
-                        .append(" no longer exists (page or segmentation changed); all passages follow.\n");
+                        .append(" no longer exists (segmentation or embedding model changed); all passages follow.\n");
             }
         }
         out.append("passages: ").append(passages.size()).append('\n');
