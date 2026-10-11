@@ -138,6 +138,14 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private ComposerStatusLine.Tone dictationNoteTone = ComposerStatusLine.Tone.MUTED;
     private long recordingStartedMillis;
 
+    private StatusKind currentStatus;
+    private StatusKind dismissedStatus;
+
+    /** Welche Meldung die Statuszeile gerade zeigt (für das ✕). */
+    private enum StatusKind {
+        STREAMING, RECORDING, RECOGNIZING, ATTACHMENTS, NOTE
+    }
+
     /** Wo das Diktat steht; der Mikrofon-Knopf und die Statuszeile folgen ihm. */
     private enum DictationPhase {
         IDLE, RECORDING, RECOGNIZING
@@ -313,7 +321,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         repaint();
     }
 
-    /** Der Text der Statuszeile (zentriert über der Fußzeile); leer, wenn nichts zu melden ist. */
+    /** Der Text der Statuszeile (eigene Zeile über dem Composer-Rahmen); leer, wenn nichts zu melden ist. */
     public String statusText() {
         return statusLine.text();
     }
@@ -521,8 +529,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             int inset = 1;
-            RoundRectangle2D background = new RoundRectangle2D.Float(inset, inset, getWidth() - 2 * inset,
-                    getHeight() - 2 * inset, ARC, ARC);
+            int top = statusLine.getHeight(); // die Statuszeile steht außerhalb des Rahmens darüber
+            RoundRectangle2D background = new RoundRectangle2D.Float(inset, top + inset, getWidth() - 2 * inset,
+                    getHeight() - top - 2 * inset, ARC, ARC);
             boolean busy = isBusy();
             boolean dictating = isDictationActive();
             g2.setColor(dictating ? BACKGROUND_DICTATION : editorFocused ? BACKGROUND_FOCUSED : resolveBackground());
@@ -556,7 +565,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private void buildUi() {
         setOpaque(false);
         setLayout(new BorderLayout(0, 0));
-        setBorder(new EmptyBorder(9, 11, 8, 8));
         editor.setToolTipText("Enter: senden · Umschalt+Enter: neue Zeile");
         // Der Platzhalter ist nur gemalt; Screenreader brauchen einen echten Namen.
         editor.getAccessibleContext().setAccessibleName("Nachricht");
@@ -575,8 +583,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         editorScroll.setViewportBorder(BorderFactory.createEmptyBorder());
         editorScroll.setPreferredSize(new Dimension(520, MIN_EDITOR_HEIGHT));
 
-        // Wie arch: der Editor in einer Schichtung, damit die Wellenform ÜBER dem Text schwebt; darüber die
-        // Statuszeile als zentrierte volle Zeile direkt über der Fußzeile. Beide lassen Klicks zum Editor durch.
+        // Wie arch: der Editor in einer Schichtung, damit die Wellenform ÜBER dem Text schwebt (lässt Klicks durch).
         final JScrollPane scroll = editorScroll;
         JLayeredPane editorLayers = new JLayeredPane() {
             private static final long serialVersionUID = 1L;
@@ -600,12 +607,19 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         };
         editorLayers.add(editorScroll, JLayeredPane.DEFAULT_LAYER);
         editorLayers.add(waveform, JLayeredPane.PALETTE_LAYER);
-        editorLayers.add(statusLine, JLayeredPane.MODAL_LAYER);
 
-        add(attachmentStrip, BorderLayout.NORTH);
-        add(editorLayers, BorderLayout.CENTER);
-        add(buildFooter(), BorderLayout.SOUTH);
-        setMinimumSize(new Dimension(320, 104));
+        // Die Statuszeile steht als eigene Zeile über dem Rahmen (außerhalb), ihr Platz ist immer reserviert,
+        // damit der Composer beim Erscheinen nicht springt; das ✕ schließt sie.
+        statusLine.onClose(this::dismissStatus);
+        JPanel body = new JPanel(new BorderLayout(0, 0));
+        body.setOpaque(false);
+        body.setBorder(new EmptyBorder(9, 11, 8, 8));
+        body.add(attachmentStrip, BorderLayout.NORTH);
+        body.add(editorLayers, BorderLayout.CENTER);
+        body.add(buildFooter(), BorderLayout.SOUTH);
+        add(statusLine, BorderLayout.NORTH);
+        add(body, BorderLayout.CENTER);
+        setMinimumSize(new Dimension(320, 104 + statusLine.getPreferredSize().height));
     }
 
     /** Die Fußzeile wie arch: links Modell, Denkaufwand, Verwerfen/Erneut; rechts Pegel, Anhang, Mikrofon, Senden/Stop. */
@@ -809,20 +823,47 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     /** Die Statuszeile: Antwort, Aufnahme, Erkennung, vorgemerkte Anhänge, sonst die letzte Diktat-Meldung. */
     private void refreshStatus() {
         int pending = attachmentStrip.count();
+        StatusKind kind;
+        String text;
+        ComposerStatusLine.Tone tone = ComposerStatusLine.Tone.MUTED;
         if (model.canStop()) {
-            statusLine.show(STREAMING_STATUS, ComposerStatusLine.Tone.MUTED);
+            kind = StatusKind.STREAMING;
+            text = STREAMING_STATUS;
         } else if (dictationPhase == DictationPhase.RECORDING) {
-            statusLine.show(recordingStatus(), ComposerStatusLine.Tone.DICTATION);
+            kind = StatusKind.RECORDING;
+            text = recordingStatus();
+            tone = ComposerStatusLine.Tone.DICTATION;
         } else if (dictationPhase == DictationPhase.RECOGNIZING) {
-            statusLine.show(RECOGNIZING_STATUS, ComposerStatusLine.Tone.DICTATION);
+            kind = StatusKind.RECOGNIZING;
+            text = RECOGNIZING_STATUS;
+            tone = ComposerStatusLine.Tone.DICTATION;
         } else if (dictationNote != null && dictationNoteTone == ComposerStatusLine.Tone.ERROR) {
-            statusLine.show(dictationNote, dictationNoteTone);
+            kind = StatusKind.NOTE;
+            text = dictationNote;
+            tone = dictationNoteTone;
         } else if (pending > 0) {
-            statusLine.show(pending == 1 ? "1 Anhang vorgemerkt" : pending + " Anhänge vorgemerkt",
-                    ComposerStatusLine.Tone.MUTED);
+            kind = StatusKind.ATTACHMENTS;
+            text = pending == 1 ? "1 Anhang vorgemerkt" : pending + " Anhänge vorgemerkt";
         } else {
-            statusLine.show(dictationNote, dictationNoteTone);
+            kind = StatusKind.NOTE;
+            text = dictationNote;
+            tone = dictationNoteTone;
         }
+        currentStatus = kind;
+        if (dismissedStatus != null && dismissedStatus != kind) {
+            dismissedStatus = null; // eine neue Art Meldung erscheint wieder
+        }
+        statusLine.show(kind == dismissedStatus ? null : text, tone);
         setToolTipText(statusLine.text().isEmpty() ? null : statusLine.text());
+    }
+
+    /** ✕ an der Statuszeile: eine Diktat-Meldung verschwindet, laufende Meldungen bleiben aus, bis sich die Art ändert. */
+    private void dismissStatus() {
+        if (currentStatus == StatusKind.NOTE) {
+            setDictationNote(null, ComposerStatusLine.Tone.MUTED);
+        } else {
+            dismissedStatus = currentStatus;
+        }
+        refreshStatus();
     }
 }
