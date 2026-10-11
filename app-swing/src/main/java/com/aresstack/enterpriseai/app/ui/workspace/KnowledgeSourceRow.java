@@ -14,11 +14,15 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JCheckBox;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -26,6 +30,9 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Eine Quelle im Drawer-Reiter „Wissensquellen“:
@@ -34,11 +41,13 @@ import java.awt.event.MouseEvent;
  * [✓] wiki                                ⟳ ✎ ✕
  *     MediaWiki · Hauptseite, Handbuch
  *     34 Seiten im Index · Stand 00:12
+ *     ▸ Spaces · 3 von 12                  (nur bei Quellen mit Bereichen, z. B. Confluence)
  * </pre>
  *
  * Das Häkchen schaltet die Quelle für Chat und Indexierung an und ab, ⟳ indexiert sie jetzt, ✎ öffnet den
  * Quellen-Dialog, ein Klick auf den Text zeigt die Quelle im Lesebereich (Doppelklick heftet an), ✕ entfernt die Quelle (nach kurzer Rückfrage). Transparent in Ruhe, heller blauer Hauch beim Überfahren (wie die Chat-Zeilen);
- * abgewählte Quellen stehen gedämpft, ein Problem steht rot in der Statuszeile.
+ * abgewählte Quellen stehen gedämpft, ein Problem steht rot in der Statuszeile. „▸ Spaces“ klappt die Bereiche der
+ * Quelle mit Häkchen auf (wie MainframeMate); Aufklappen und Häkchen öffnen nicht den Lesebereich.
  */
 public final class KnowledgeSourceRow extends JPanel {
 
@@ -46,6 +55,8 @@ public final class KnowledgeSourceRow extends JPanel {
     static final String EDIT_TOOLTIP = "Bearbeiten";
     static final String OPEN_TOOLTIP = "Im Lesebereich zeigen (Doppelklick heftet an)";
     static final String REMOVE_TOOLTIP = "Quelle entfernen";
+    /** Höhe der aufgeklappten Bereichsliste, ab der sie rollt (etwa zehn Einträge). */
+    private static final int MAX_PARTITIONS_HEIGHT = 190;
     private static final Color HOVER_WASH = ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.94f);
 
     private final KnowledgeSourceItem item;
@@ -54,6 +65,8 @@ public final class KnowledgeSourceRow extends JPanel {
     private final ComposerButton editButton;
     private final ComposerButton removeButton;
     private final JLabel statusLabel = new JLabel();
+    private final JLabel partitionsToggle = new JLabel();
+    private final List<JCheckBox> partitionBoxes = new ArrayList<JCheckBox>();
     private boolean hovered;
 
     public KnowledgeSourceRow(final KnowledgeSourceItem item, final KnowledgeSourceActions actions,
@@ -93,7 +106,7 @@ public final class KnowledgeSourceRow extends JPanel {
         };
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
         text.setOpaque(false);
-        JLabel title = new JLabel(item.id());
+        JLabel title = new JLabel(item.title());
         title.setFont(ResearchUiTypography.semiBold(13f));
         title.setForeground(item.enabled() ? palette.getInk() : ResearchUiPalette.LIGHT_TEXT_MUTED);
         JLabel meta = new JLabel(item.description());
@@ -105,6 +118,12 @@ public final class KnowledgeSourceRow extends JPanel {
         text.add(title);
         text.add(meta);
         text.add(statusLabel);
+        if (!item.partitionsLabel().isEmpty()) {
+            text.add(partitionsToggle(actions));
+            if (item.partitionsExpanded()) {
+                text.add(partitionsList(actions, palette));
+            }
+        }
 
         indexButton = ComposerButton.iconButton(ComposerIcons.refresh(), INDEX_TOOLTIP);
         indexButton.setEnabled(item.indexable());
@@ -168,6 +187,103 @@ public final class KnowledgeSourceRow extends JPanel {
         });
     }
 
+    /** „▸ Spaces“: klappt die Bereiche der Quelle auf und zu, ohne den Lesebereich zu öffnen. */
+    private JLabel partitionsToggle(final KnowledgeSourceActions actions) {
+        partitionsToggle.setText(toggleText());
+        partitionsToggle.setFont(ResearchUiTypography.semiBold(11f));
+        partitionsToggle.setForeground(ResearchUiPalette.ACCENT_BLUE);
+        partitionsToggle.setBorder(BorderFactory.createEmptyBorder(3, 0, 1, 0));
+        partitionsToggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        partitionsToggle.setToolTipText(item.partitionsLabel() + " anzeigen und auswählen, welche durchsucht werden");
+        partitionsToggle.getAccessibleContext().setAccessibleName(item.partitionsLabel() + " von " + item.title());
+        partitionsToggle.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent event) {
+                if (SwingUtilities.isLeftMouseButton(event) && actions != null) {
+                    actions.partitionsToggled(item.id(), !item.partitionsExpanded());
+                }
+            }
+        });
+        return partitionsToggle;
+    }
+
+    private String toggleText() {
+        String text = (item.partitionsExpanded() ? "▾ " : "▸ ") + item.partitionsLabel();
+        List<KnowledgeSourcePartitionItem> partitions = item.partitions();
+        if (partitions == null || partitions.isEmpty()) {
+            return text;
+        }
+        int selected = 0;
+        for (JCheckBox box : partitionBoxes) {
+            selected += box.isSelected() ? 1 : 0;
+        }
+        if (partitionBoxes.isEmpty()) {
+            for (KnowledgeSourcePartitionItem partition : partitions) {
+                selected += partition.selected() ? 1 : 0;
+            }
+        }
+        return selected == partitions.size() ? text + " · alle " + selected
+                : text + " · " + selected + " von " + partitions.size();
+    }
+
+    /** Die Bereiche mit Häkchen (wie MainframeMate), bei vielen in einer begrenzten Liste mit Rollbalken. */
+    private JComponent partitionsList(final KnowledgeSourceActions actions, ComicPalette palette) {
+        List<KnowledgeSourcePartitionItem> partitions = item.partitions();
+        if (!item.partitionsProblem().isEmpty() || partitions == null || partitions.isEmpty()) {
+            JLabel note = new JLabel(!item.partitionsProblem().isEmpty() ? item.partitionsProblem()
+                    : partitions == null ? item.partitionsLabel() + " werden geladen …"
+                    : "Keine " + item.partitionsLabel() + " gefunden");
+            note.setFont(ResearchUiTypography.regular(11f));
+            note.setForeground(item.partitionsProblem().isEmpty() ? ResearchUiPalette.LIGHT_TEXT_MUTED
+                    : ResearchUiPalette.DANGER_RED);
+            return note;
+        }
+        JPanel list = new JPanel();
+        list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+        list.setOpaque(false);
+        for (final KnowledgeSourcePartitionItem partition : partitions) {
+            final JCheckBox box = new JCheckBox(partition.title().equals(partition.key()) ? partition.key()
+                    : partition.key() + " – " + partition.title());
+            box.setIcon(new ResearchCheckIcon());
+            box.setSelectedIcon(new ResearchCheckIcon());
+            box.setSelected(partition.selected());
+            box.setOpaque(false);
+            box.setFocusPainted(false);
+            box.setFont(ResearchUiTypography.regular(11f));
+            box.setForeground(palette.getInk());
+            box.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
+            box.setToolTipText(partition.key() + " — " + partition.title());
+            box.addActionListener(event -> {
+                partitionsToggle.setText(toggleText());
+                if (actions != null) {
+                    actions.partitionChanged(item.id(), partition.key(), box.isSelected());
+                }
+            });
+            partitionBoxes.add(box);
+            list.add(box);
+        }
+        partitionsToggle.setText(toggleText());
+        JScrollPane scroll = new JScrollPane(list, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER) {
+            @Override
+            public Dimension getPreferredSize() {
+                Dimension size = super.getPreferredSize();
+                return new Dimension(0, Math.min(size.height, MAX_PARTITIONS_HEIGHT));
+            }
+
+            @Override
+            public Dimension getMaximumSize() {
+                return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+            }
+        };
+        scroll.setBorder(BorderFactory.createEmptyBorder(2, 0, 0, 0));
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        scroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return scroll;
+    }
+
     static Color statusColor(KnowledgeSourceItem.State state, ComicPalette palette) {
         switch (state) {
             case RUNNING:
@@ -197,6 +313,16 @@ public final class KnowledgeSourceRow extends JPanel {
 
     public ComposerButton removeButton() {
         return removeButton;
+    }
+
+    /** „▸ Spaces“ (Tests); ohne Bereiche nicht im Bild. */
+    public JLabel partitionsToggle() {
+        return partitionsToggle;
+    }
+
+    /** Die Häkchen der aufgeklappten Bereiche (Tests). */
+    public List<JCheckBox> partitionBoxes() {
+        return Collections.unmodifiableList(partitionBoxes);
     }
 
     public String statusText() {

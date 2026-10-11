@@ -1,8 +1,11 @@
 package com.aresstack.enterpriseai.source.api;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Welcher Ausschnitt einer Quelle erfasst werden soll.
@@ -10,7 +13,8 @@ import java.util.List;
  * <p>Startpunkte sind quellennative Locator, die nur der Adapter interpretiert (MediaWiki: Seitentitel,
  * Confluence: Space-Key oder Page-ID, Dateien: Verzeichnis). Ab den Startpunkten folgt der Adapter Links
  * bzw. Kindern bis {@link #maxDepth()}; {@code 0} heißt nur die Startpunkte selbst. Höchstens
- * {@link #maxResources()} Ressourcen werden geliefert.
+ * {@link #maxResources()} Ressourcen werden geliefert. Bereiche in {@link #excludedPartitions()} (Schlüssel aus
+ * {@link KnowledgeSourcePort#partitions()}) lässt der Adapter aus.
  */
 public final class SourceScope {
 
@@ -20,11 +24,13 @@ public final class SourceScope {
     private final List<String> startPoints;
     private final int maxDepth;
     private final int maxResources;
+    private final Set<String> excludedPartitions;
 
-    private SourceScope(List<String> startPoints, int maxDepth, int maxResources) {
+    private SourceScope(List<String> startPoints, int maxDepth, int maxResources, Set<String> excludedPartitions) {
         this.startPoints = startPoints;
         this.maxDepth = maxDepth;
         this.maxResources = maxResources;
+        this.excludedPartitions = excludedPartitions;
     }
 
     /** Nur die angegebenen Startpunkte, ohne Links zu folgen. */
@@ -48,10 +54,29 @@ public final class SourceScope {
         return maxResources;
     }
 
+    /** Schlüssel der Bereiche, die der Benutzer abgehakt hat; leer = alle. */
+    public Set<String> excludedPartitions() {
+        return excludedPartitions;
+    }
+
+    /** Derselbe Umfang ohne die angegebenen Bereiche. */
+    public SourceScope withExcludedPartitions(Collection<String> keys) {
+        Set<String> excluded = new LinkedHashSet<String>();
+        if (keys != null) {
+            for (String key : keys) {
+                if (key != null && !key.trim().isEmpty()) {
+                    excluded.add(key.trim());
+                }
+            }
+        }
+        return new SourceScope(startPoints, maxDepth, maxResources, Collections.unmodifiableSet(excluded));
+    }
+
     @Override
     public String toString() {
         return "SourceScope{startPoints=" + startPoints + ", maxDepth=" + maxDepth
-                + ", maxResources=" + maxResources + "}";
+                + ", maxResources=" + maxResources
+                + (excludedPartitions.isEmpty() ? "" : ", excludedPartitions=" + excludedPartitions) + "}";
     }
 
     @Override
@@ -64,12 +89,12 @@ public final class SourceScope {
         }
         SourceScope that = (SourceScope) o;
         return maxDepth == that.maxDepth && maxResources == that.maxResources
-                && startPoints.equals(that.startPoints);
+                && startPoints.equals(that.startPoints) && excludedPartitions.equals(that.excludedPartitions);
     }
 
     @Override
     public int hashCode() {
-        return 31 * (31 * startPoints.hashCode() + maxDepth) + maxResources;
+        return 31 * (31 * (31 * startPoints.hashCode() + maxDepth) + maxResources) + excludedPartitions.hashCode();
     }
 
     public static final class Builder {
@@ -126,7 +151,7 @@ public final class SourceScope {
                 throw new IllegalArgumentException("at least one start point is required");
             }
             return new SourceScope(Collections.unmodifiableList(new ArrayList<String>(startPoints)),
-                    maxDepth, maxResources);
+                    maxDepth, maxResources, Collections.<String>emptySet());
         }
     }
 }

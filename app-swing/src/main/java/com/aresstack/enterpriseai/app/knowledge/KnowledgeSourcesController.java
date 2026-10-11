@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.app.ui.settings.SourceActions;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceActions;
 import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourceItem;
+import com.aresstack.enterpriseai.app.ui.workspace.KnowledgeSourcePartitionItem;
 import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.application.knowledge.IndexingStatus;
 import com.aresstack.enterpriseai.app.ui.reader.ReaderLink;
@@ -13,7 +14,9 @@ import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.SourceDefinitionStore;
+import com.aresstack.enterpriseai.source.api.SourcePartition;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -50,6 +53,9 @@ import java.util.logging.Logger;
  *       aus der Datei nehmen und ihren Index zurückziehen (auf dem Arbeits-Executor).</li>
  *   <li><b>Indexstand</b>: Seiten im Index je Quelle (auf dem Arbeits-Executor gezählt), dazu das Ergebnis des
  *       letzten Laufs dieser Sitzung; die {@link KnowledgeIndexingBinding} meldet Beginn und Ende jedes Laufs.</li>
+ *   <li><b>Titel und Spaces</b>: Die Zeile zeigt den Titel aus den Einstellungen; Quellen mit Bereichen
+ *       (Confluence) klappen ihre Spaces mit Häkchen auf (wie MainframeMate). Die Häkchen stehen über
+ *       {@link SourcePartitionSelection} im Anwendungszustand; nach Änderungen indexiert Zuklappen die Quelle neu.</li>
  *   <li>Eine Quelle der Datei, die nicht angebunden ist, zeigt ihr erstes Problem oder „gilt nach dem Neustart“.</li>
  * </ul>
  *
@@ -97,6 +103,11 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private SourceEditorLauncher launcher;
     private volatile Supplier<List<String>> vaultTitles;
     private String running;
+    private SourcePartitionSelection partitionSelection;
+    private final Set<String> expandedPartitions = new HashSet<String>();
+    private final Map<String, List<SourcePartition>> partitionCache = new HashMap<String, List<SourcePartition>>();
+    private final Map<String, String> partitionProblems = new HashMap<String, String>();
+    private final Set<String> partitionsChanged = new HashSet<String>();
     private KnowledgeReadingController reading;
 
     /**
@@ -163,6 +174,11 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
      * Liefert die Titel der KeePass-Einträge für das Feld „KeePass-Eintrag“ im Quellen-Dialog; darf blockieren
      * (läuft auf dem Arbeits-Executor), {@code null} = keine Liste.
      */
+    public void setPartitionSelection(SourcePartitionSelection selection) {
+        this.partitionSelection = selection;
+        publish();
+    }
+
     public void setVaultTitles(Supplier<List<String>> titles) {
         this.vaultTitles = titles;
     }
@@ -224,6 +240,75 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             connect(saved.id());
         }
         publish();
+    }
+
+    /**
+     * Aufklappen lädt die Bereiche (Confluence: alle Spaces) im Hintergrund, einmal je Anbindung. Zuklappen
+     * indexiert die Quelle neu, wenn sich Häkchen geändert haben, damit abgehakte Spaces aus dem Index gehen und
+     * neu angehakte hineinkommen.
+     */
+    @Override
+    public void partitionsToggled(final String sourceId, boolean expanded) {
+        final KnowledgeSourceRegistration registration = live.get(sourceId);
+        if (registration == null || partitionSelection == null) {
+            return;
+        }
+        if (!expanded) {
+            expandedPartitions.remove(sourceId);
+            if (partitionsChanged.remove(sourceId)) {
+                if (selection.isEnabled(registration.sourceId()) && !binding.isRunning()) {
+                    indexRequested(sourceId);
+                }
+            }
+            publish();
+            return;
+        }
+        expandedPartitions.add(sourceId);
+        if (!partitionCache.containsKey(sourceId)) {
+            partitionProblems.remove(sourceId);
+            loadPartitions(sourceId, registration);
+        }
+        publish();
+    }
+
+    @Override
+    public void partitionChanged(String sourceId, String key, boolean selected) {
+        if (partitionSelection == null) {
+            return;
+        }
+        partitionSelection.setSelected(sourceId, key, selected);
+        partitionsChanged.add(sourceId);
+    }
+
+    private void loadPartitions(final String sourceId, final KnowledgeSourceRegistration registration) {
+        try {
+            workExecutor.execute(() -> {
+                List<SourcePartition> found = null;
+                String problem = null;
+                try {
+                    found = registration.port().partitions();
+                } catch (KnowledgeSourceException | RuntimeException e) {
+                    LOG.log(Level.WARNING, "Bereiche der Quelle " + sourceId + " nicht lesbar", e);
+                    problem = "Nicht ladbar: " + (e.getMessage() == null ? e.getClass().getSimpleName()
+                            : e.getMessage());
+                }
+                final List<SourcePartition> result = found;
+                final String failure = problem;
+                uiExecutor.execute(() -> {
+                    if (live.get(sourceId) != registration) {
+                        return; // inzwischen neu angebunden oder entfernt
+                    }
+                    if (result != null) {
+                        partitionCache.put(sourceId, result);
+                    } else {
+                        partitionProblems.put(sourceId, failure);
+                    }
+                    publish();
+                });
+            });
+        } catch (RuntimeException rejected) {
+            partitionProblems.put(sourceId, "Nicht ladbar; bitte erneut aufklappen");
+        }
     }
 
     @Override
@@ -410,6 +495,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         lastRun.remove(id);
         failedRuns.remove(id);
         counts.remove(id);
+        forgetPartitions(id);
         live.put(id, registration);
         selection.register(registration.sourceId(), config.enabled());
         if (config.enabled() && !binding.isRunning()) {
@@ -430,6 +516,14 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         lastRun.remove(id);
         failedRuns.remove(id);
         writeProblems.remove(id);
+        forgetPartitions(id);
+        expandedPartitions.remove(id);
+    }
+
+    private void forgetPartitions(String id) {
+        partitionCache.remove(id);
+        partitionProblems.remove(id);
+        partitionsChanged.remove(id);
     }
 
     // ------------------------------------------------------------------ Indexstand
@@ -502,7 +596,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         List<KnowledgeSourceItem> items = new ArrayList<KnowledgeSourceItem>();
         if (editing == null) {
             for (SourceDefinition source : startupSources) {
-                items.add(item(source.id(), label(source.typeId()), summary(source), null));
+                items.add(decorated(item(source.id(), label(source.typeId()), summary(source), null), source));
             }
             return items;
         }
@@ -510,9 +604,36 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             if (source.id().isEmpty() || removing.contains(source.id())) {
                 continue;
             }
-            items.add(item(source.id(), label(source.typeId()), summary(source), source));
+            items.add(decorated(item(source.id(), label(source.typeId()), summary(source), source), source));
         }
         return items;
+    }
+
+    /** Titel aus den Einstellungen und, bei Quellen mit Bereichen, die aufklappbaren Spaces mit Häkchen. */
+    private KnowledgeSourceItem decorated(KnowledgeSourceItem item, SourceDefinition source) {
+        KnowledgeSourceType type = management.type(source.typeId());
+        if (type == null) {
+            return item;
+        }
+        String title = type.titleKey().isEmpty() ? "" : source.settings().get(type.titleKey());
+        KnowledgeSourceItem titled = type.titleKey().isEmpty() ? item
+                : item.withTitle(title.isEmpty() ? type.displayName() : title);
+        String id = source.id();
+        if (type.partitionsLabel().isEmpty() || partitionSelection == null || !live.containsKey(id)
+                || pendingRestart.contains(id)) {
+            return titled;
+        }
+        List<KnowledgeSourcePartitionItem> partitions = null;
+        List<SourcePartition> cached = partitionCache.get(id);
+        if (cached != null) {
+            partitions = new ArrayList<KnowledgeSourcePartitionItem>();
+            for (SourcePartition partition : cached) {
+                partitions.add(new KnowledgeSourcePartitionItem(partition.key(), partition.title(),
+                        partitionSelection.isSelected(id, partition.key())));
+            }
+        }
+        return titled.withPartitions(type.partitionsLabel(), expandedPartitions.contains(id), partitions,
+                partitionProblems.get(id));
     }
 
     private KnowledgeSourceItem item(String id, String kind, String scope, SourceDefinition form) {

@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -60,4 +61,13 @@ public interface KnowledgeSourcePort {
      * @throws KnowledgeSourceException {@code NOT_FOUND}, wenn die Ressource selbst nicht existiert
      */
     List<SourceLink> discoverLinks(KnowledgeResourceId resourceId) throws KnowledgeSourceException;
+
+    /**
+     * Die Bereiche der Quelle, die der Benutzer an- und abhaken kann (Confluence: alle Spaces), in der Reihenfolge
+     * der Quelle; leer bei Quellen ohne Bereiche. Abgehakte Bereiche gibt der Aufrufer über
+     * {@link SourceScope#excludedPartitions()} an {@link #discover(SourceScope)} zurück.
+     */
+    default List<SourcePartition> partitions() throws KnowledgeSourceException {
+        return Collections.emptyList();
+    }
 }

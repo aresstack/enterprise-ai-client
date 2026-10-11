@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.app.config.ChatConfig;
 import com.aresstack.enterpriseai.app.config.ClientCertificateConfig;
 import com.aresstack.enterpriseai.app.config.EmbeddingConfig;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.knowledge.SourcePartitionSelection;
 import com.aresstack.enterpriseai.app.net.LiveNetwork;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.security.AskedSecretProvider;
@@ -132,6 +133,15 @@ public final class AdapterAssembly {
      * Modelle und Index übernehmen gespeicherte Einstellungen über {@link ApplicationPorts#apply}.
      */
     public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets) {
+        return createWith(config, network, secrets, null);
+    }
+
+    /**
+     * Wie {@link #createWith(AppConfig, LiveNetwork, SecretProvider)}; Quellen mit Bereichen (Confluence-Spaces)
+     * lassen bei jedem Lauf die in {@code partitions} abgehakten aus ({@code null}: keine Auswahl).
+     */
+    public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets,
+                                              SourcePartitionSelection partitions) {
         if (config == null || network == null || secrets == null) {
             throw new IllegalArgumentException("config, network and secrets must not be null");
         }
@@ -148,7 +158,9 @@ public final class AdapterAssembly {
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
         for (KnowledgeSourceProvider provider : sourceProviders(secrets, network)) {
-            ports.sourceProvider(new LoggingSourceProvider(new VaultSourceProvider(provider, secrets)));
+            KnowledgeSourceProvider wrapped = new LoggingSourceProvider(new VaultSourceProvider(provider, secrets));
+            ports.sourceProvider(partitions == null ? wrapped
+                    : new PartitionSelectingSourceProvider(wrapped, partitions));
         }
         ports.sources(startupSources(config.sources(), ports));
 

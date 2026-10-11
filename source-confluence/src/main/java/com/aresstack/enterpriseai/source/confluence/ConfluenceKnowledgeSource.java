@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.SourceLink;
+import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
@@ -25,6 +26,8 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -37,7 +40,9 @@ import java.util.Set;
  * Confluence Data Center als {@link SearchableKnowledgeSource}.
  *
  * <ul>
- *   <li>Startpunkte: Seiten-ID ({@code 123456}, {@code page:123456}), Space ({@code DEV}, {@code space:DEV} –
+ *   <li>Ohne Startpunkte ({@code space:*}, Standard wie in MainframeMate): alle Seiten aller Spaces außer den
+ *       abgehakten ({@link SourceScope#excludedPartitions()}); die Spaces listet {@link #partitions()}.</li>
+ *   <li>Startpunkte (nur noch aus der Datei): Seiten-ID ({@code 123456}, {@code page:123456}), Space ({@code DEV}, {@code space:DEV} –
  *       beginnt bei dessen Startseite) oder eine Ressourcen-ID dieser Quelle. {@code discover} folgt per
  *       Breitensuche den Kindseiten bis {@code maxDepth}; textartige Anhänge sind, wenn konfiguriert, Kinder
  *       ihrer Seite.</li>
@@ -127,8 +132,18 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     }
 
     @Override
+    public List<SourcePartition> partitions() throws KnowledgeSourceException {
+        return withSession(new Operation<List<SourcePartition>>() {
+            @Override
+            public List<SourcePartition> run(Session session) throws KnowledgeSourceException {
+                return client.spaces(session, Integer.MAX_VALUE);
+            }
+        });
+    }
+
+    @Override
     public List<SourceSearchHit> search(final SourceQuery query) throws KnowledgeSourceException {
-        final String cql = cql(query.text(), config.searchSpaceKeys());
+        final String cql = cql(query.text(), config.searchSpaceKeys(), query.excludedPartitions());
         return withSession(new Operation<List<SourceSearchHit>>() {
             @Override
             public List<SourceSearchHit> run(Session session) throws KnowledgeSourceException {
@@ -151,9 +166,15 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     private List<KnowledgeResource> crawl(Session session, SourceScope scope) throws KnowledgeSourceException {
         Map<KnowledgeResourceId, KnowledgeResource> found = new LinkedHashMap<KnowledgeResourceId, KnowledgeResource>();
         Deque<Node> queue = new ArrayDeque<Node>();
-        for (String raw : startPoints(session, scope)) {
+        for (String raw : scope.startPoints()) {
+            if (ConfluenceSourceProvider.ALL_SPACES.equals(raw.trim())) {
+                for (String key : spaceKeys(session, scope)) {
+                    allPagesOf(session, key, scope.maxResources(), found);
+                }
+                continue;
+            }
             Page start = startPage(session, raw);
-            if (start != null) {
+            if (start != null && !scope.excludedPartitions().contains(start.spaceKey)) {
                 queue.add(new Node(pageResource(start, start.parentId), start.id, 0));
             }
         }
@@ -184,21 +205,43 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         return new ArrayList<KnowledgeResource>(found.values());
     }
 
-    /** Die Startpunkte; {@code space:*} steht für die Space-Schlüssel der Quelle oder, ohne sie, alle Spaces. */
-    private List<String> startPoints(Session session, SourceScope scope) throws KnowledgeSourceException {
-        List<String> points = new ArrayList<String>();
-        for (String raw : scope.startPoints()) {
-            if (!ConfluenceSourceProvider.ALL_SPACES.equals(raw.trim())) {
-                points.add(raw);
-                continue;
+    /**
+     * Die Spaces für {@code space:*}: die Space-Schlüssel der Quelle oder, ohne sie, alle Spaces (wie MainframeMate),
+     * jeweils ohne die abgehakten.
+     */
+    private List<String> spaceKeys(Session session, SourceScope scope) throws KnowledgeSourceException {
+        List<String> keys = new ArrayList<String>();
+        if (config.searchSpaceKeys().isEmpty()) {
+            for (SourcePartition space : client.spaces(session, Integer.MAX_VALUE)) {
+                keys.add(space.key());
             }
-            List<String> keys = config.searchSpaceKeys().isEmpty()
-                    ? client.spaceKeys(session, scope.maxResources()) : config.searchSpaceKeys();
-            for (String key : keys) {
-                points.add("space:" + key);
+        } else {
+            keys.addAll(config.searchSpaceKeys());
+        }
+        keys.removeAll(scope.excludedPartitions());
+        return keys;
+    }
+
+    /** Alle Seiten eines Space (samt textartiger Anhänge, wenn konfiguriert), bis {@code max} beisammen sind. */
+    private void allPagesOf(Session session, String spaceKey, int max,
+                            Map<KnowledgeResourceId, KnowledgeResource> found) throws KnowledgeSourceException {
+        if (found.size() >= max) {
+            return;
+        }
+        for (Page page : client.spacePages(session, spaceKey, max - found.size())) {
+            if (found.size() >= max) {
+                return;
+            }
+            KnowledgeResource resource = pageResource(page, page.parentId);
+            found.put(resource.id(), resource);
+            if (config.includeAttachments() && found.size() < max) {
+                for (Attachment attachment : client.attachments(session, page.id, max - found.size(),
+                        this::isIndexable)) {
+                    KnowledgeResource attached = attachmentResource(attachment);
+                    found.put(attached.id(), attached);
+                }
             }
         }
-        return points;
     }
 
     private Page startPage(Session session, String raw) throws KnowledgeSourceException {
@@ -349,15 +392,27 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
 
     /** CQL für die Volltextsuche; Anführungszeichen und Backslashes im Suchtext werden maskiert. */
     static String cql(String text, List<String> spaceKeys) {
+        return cql(text, spaceKeys, Collections.<String>emptySet());
+    }
+
+    /** Wie MainframeMate: abgehakte Spaces fallen über {@code space not in (...)} aus der Suche. */
+    static String cql(String text, List<String> spaceKeys, Collection<String> excludedSpaces) {
         StringBuilder cql = new StringBuilder("type=page AND text ~ \"").append(escapeCql(text.trim())).append('"');
-        if (!spaceKeys.isEmpty()) {
-            cql.append(" AND space in (");
-            for (int i = 0; i < spaceKeys.size(); i++) {
-                cql.append(i == 0 ? "" : ",").append('"').append(escapeCql(spaceKeys.get(i))).append('"');
-            }
-            cql.append(')');
-        }
+        appendSpaces(cql, " AND space in (", spaceKeys);
+        appendSpaces(cql, " AND space not in (", excludedSpaces);
         return cql.toString();
+    }
+
+    private static void appendSpaces(StringBuilder cql, String clause, Collection<String> keys) {
+        if (keys.isEmpty()) {
+            return;
+        }
+        cql.append(clause);
+        int i = 0;
+        for (String key : keys) {
+            cql.append(i++ == 0 ? "" : ",").append('"').append(escapeCql(key)).append('"');
+        }
+        cql.append(')');
     }
 
     private static String escapeCql(String value) {

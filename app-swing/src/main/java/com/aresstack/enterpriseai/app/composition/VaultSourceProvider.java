@@ -19,6 +19,7 @@ import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SourceLink;
+import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.net.URI;
@@ -202,6 +203,11 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
                         "Quelle " + sourceId.value() + " hat keine eigene Suche");
             }
             return ((SearchableKnowledgeSource) port).search(query);
+        }
+
+        @Override
+        public List<SourcePartition> partitions() throws KnowledgeSourceException {
+            return port().partitions();
         }
 
         @Override

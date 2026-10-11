@@ -1,5 +1,9 @@
 package com.aresstack.enterpriseai.app.ui.workspace;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Eine Wissensquelle, wie der Drawer-Reiter „Wissensquellen“ sie zeigt: ID, Typ und Umfang, das Häkchen, der
  * Indexstand als Text und was sich gerade mit ihr tun lässt. Unveränderlich; die Anbindung baut die Liste neu,
@@ -26,6 +30,11 @@ public final class KnowledgeSourceItem {
     private final boolean indexable;
     private final boolean editable;
     private final boolean removable;
+    private String title = "";
+    private String partitionsLabel = "";
+    private boolean partitionsExpanded;
+    private List<KnowledgeSourcePartitionItem> partitions;
+    private String partitionsProblem = "";
 
     /**
      * @param kind      Typ für die Anzeige, z. B. „MediaWiki“
@@ -58,6 +67,65 @@ public final class KnowledgeSourceItem {
 
     public String id() {
         return id;
+    }
+
+    /** Was die Zeile groß zeigt: der Titel aus den Einstellungen, ohne ihn die ID. */
+    public String title() {
+        return title.isEmpty() ? id : title;
+    }
+
+    /** Dieselbe Quelle mit Titel ({@code null} oder leer: die ID). */
+    public KnowledgeSourceItem withTitle(String value) {
+        KnowledgeSourceItem copy = copy();
+        copy.title = value == null ? "" : value.trim();
+        return copy;
+    }
+
+    /**
+     * Dieselbe Quelle mit aufklappbaren Bereichen (Confluence: Spaces).
+     *
+     * @param label    wie die Bereiche heißen, z. B. „Spaces“; leer = nichts Aufklappbares
+     * @param expanded ob die Liste offen ist
+     * @param items    die Bereiche; {@code null}, solange sie geladen werden
+     * @param problem  warum sie nicht geladen werden konnten; leer, wenn nichts schiefging
+     */
+    public KnowledgeSourceItem withPartitions(String label, boolean expanded, List<KnowledgeSourcePartitionItem> items,
+                                              String problem) {
+        KnowledgeSourceItem copy = copy();
+        copy.partitionsLabel = label == null ? "" : label.trim();
+        copy.partitionsExpanded = expanded;
+        copy.partitions = items == null ? null
+                : Collections.unmodifiableList(new ArrayList<KnowledgeSourcePartitionItem>(items));
+        copy.partitionsProblem = problem == null ? "" : problem.trim();
+        return copy;
+    }
+
+    public String partitionsLabel() {
+        return partitionsLabel;
+    }
+
+    public boolean partitionsExpanded() {
+        return partitionsExpanded;
+    }
+
+    /** Die Bereiche oder {@code null}, solange sie (noch) nicht geladen sind. */
+    public List<KnowledgeSourcePartitionItem> partitions() {
+        return partitions;
+    }
+
+    public String partitionsProblem() {
+        return partitionsProblem;
+    }
+
+    private KnowledgeSourceItem copy() {
+        KnowledgeSourceItem copy = new KnowledgeSourceItem(id, kind, scope, enabled, status, state, indexable,
+                editable, removable);
+        copy.title = title;
+        copy.partitionsLabel = partitionsLabel;
+        copy.partitionsExpanded = partitionsExpanded;
+        copy.partitions = partitions;
+        copy.partitionsProblem = partitionsProblem;
+        return copy;
     }
 
     public String kind() {
@@ -102,7 +170,7 @@ public final class KnowledgeSourceItem {
 
     @Override
     public String toString() {
-        return id + " (" + description() + (enabled ? "" : ", abgewählt") + (status.isEmpty() ? "" : ", " + status)
+        return title() + " (" + description() + (enabled ? "" : ", abgewählt") + (status.isEmpty() ? "" : ", " + status)
                 + ")";
     }
 }

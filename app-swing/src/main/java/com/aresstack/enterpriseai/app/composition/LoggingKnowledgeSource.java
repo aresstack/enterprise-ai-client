@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 import com.aresstack.enterpriseai.source.api.SourceLink;
+import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.util.List;
@@ -92,6 +93,17 @@ final class LoggingKnowledgeSource implements SearchableKnowledgeSource {
             throw logged("search", e);
         } catch (RuntimeException e) {
             throw unexpected("search", e);
+        }
+    }
+
+    @Override
+    public List<SourcePartition> partitions() throws KnowledgeSourceException {
+        try {
+            return delegate.partitions();
+        } catch (KnowledgeSourceException e) {
+            throw logged("partitions", e);
+        } catch (RuntimeException e) {
+            throw unexpected("partitions", e);
         }
     }
 

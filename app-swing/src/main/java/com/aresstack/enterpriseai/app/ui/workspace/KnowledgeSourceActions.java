@@ -23,6 +23,14 @@ public interface KnowledgeSourceActions {
      */
     void removeRequested(String sourceId);
 
+    /** Die Bereiche (Confluence: Spaces) der Quelle auf- oder zugeklappt; beim Aufklappen werden sie geladen. */
+    default void partitionsToggled(String sourceId, boolean expanded) {
+    }
+
+    /** Häkchen eines Bereichs geändert: gemerkt im Anwendungszustand, wirksam beim nächsten Indexieren. */
+    default void partitionChanged(String sourceId, String key, boolean selected) {
+    }
+
     /** „+ Quelle“: welcher Quelltyp, fragt der Dialog. */
     void addRequested();
 

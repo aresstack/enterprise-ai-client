@@ -26,6 +26,7 @@ import com.aresstack.enterpriseai.app.security.ProxyAuthenticator;
 import com.aresstack.enterpriseai.app.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.ConfigurationFile;
+import com.aresstack.enterpriseai.app.knowledge.SourcePartitionSelection;
 import com.aresstack.enterpriseai.app.state.ApplicationStateService;
 import com.aresstack.enterpriseai.app.settings.FileIndexActions;
 import com.aresstack.enterpriseai.app.settings.FileSourceActions;
@@ -130,6 +131,9 @@ public final class EnterpriseAiClientMain {
                 + networkConfig.describeTrust());
         LOG.info("User-Agent: " + network.current().userAgent());
         ProxyAuthenticator.allowBasicTunneling();
+        // Anwendungszustand (askai arch / MainframeMate): Fenster, Drawer und die angehakten Spaces je Quelle.
+        final ApplicationStateService applicationState = new ApplicationStateService(AppPaths.applicationStateFile());
+        final SourcePartitionSelection partitions = new SourcePartitionSelection(applicationState);
         final ApplicationPorts ports;
         final CompositionRoot root;
         final SettingsService settings;
@@ -138,7 +142,7 @@ public final class EnterpriseAiClientMain {
             // Zugang „KeePass“ ohne eingetragene URL: die Basis-URL steht im KeePass-Eintrag des API-Keys.
             config = AdapterAssembly.withVaultLocations(config, file.read(), secrets);
             settings = new SettingsService(config, settingsLoader(file, secrets, config));
-            ports = AdapterAssembly.createWith(config, network, secrets);
+            ports = AdapterAssembly.createWith(config, network, secrets, partitions);
             applyProxyAuthentication(null, config, ports, localVoices);
             root = CompositionRoot.compose(settings, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
                     null);
@@ -231,8 +235,7 @@ public final class EnterpriseAiClientMain {
                 view.workspace().chatShell().transcript().setReadAloud(readAloud);
                 view.workspace().chatShell().composer().setDictation(dictation);
                 attachSourceEditing(view, frame, file, palette, settings);
-                // Anwendungszustand (askai arch / MainframeMate): Fenster und Drawer überleben den Neustart.
-                ApplicationStateService applicationState = new ApplicationStateService(AppPaths.applicationStateFile());
+                view.knowledgeSources().setPartitionSelection(partitions);
                 ShellFrame.rememberBounds(frame, applicationState);
                 view.workspace().setApplicationState(applicationState);
                 frame.setVisible(true);

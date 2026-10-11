@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.source.confluence;
 
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
+import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -66,14 +67,26 @@ final class ConfluenceRestClient {
         return home == null || string(home, "id") == null ? null : page(session, string(home, "id"), false);
     }
 
-    /** Schlüssel der globalen Spaces, höchstens {@code max} Stück, in Confluence-Reihenfolge. */
-    List<String> spaceKeys(Session session, int max) throws KnowledgeSourceException {
-        return paged(session, "/rest/api/space?type=global", "Spaces", max, new Item<String>() {
+    /** Alle Spaces (wie MainframeMate, auch persönliche) mit Schlüssel und Namen, in Confluence-Reihenfolge. */
+    List<SourcePartition> spaces(Session session, int max) throws KnowledgeSourceException {
+        return paged(session, "/rest/api/space?expand=homepage", "Spaces", max, new Item<SourcePartition>() {
             @Override
-            public String map(JsonObject space) {
-                return string(space, "key");
+            public SourcePartition map(JsonObject space) {
+                String key = string(space, "key");
+                return key == null || key.trim().isEmpty() ? null : new SourcePartition(key, string(space, "name"));
             }
         });
+    }
+
+    /** Alle Seiten eines Space ohne Inhalt, höchstens {@code max}, in Confluence-Reihenfolge. */
+    List<Page> spacePages(Session session, String spaceKey, int max) throws KnowledgeSourceException {
+        return paged(session, "/rest/api/content?type=page&spaceKey=" + query(spaceKey) + "&expand=" + LIST_EXPAND
+                + ",ancestors", "Seiten des Space", max, new Item<Page>() {
+                    @Override
+                    public Page map(JsonObject json) throws KnowledgeSourceException {
+                        return toPage(json);
+                    }
+                });
     }
 
     /**

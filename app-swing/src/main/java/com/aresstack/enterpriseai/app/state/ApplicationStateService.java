@@ -61,6 +61,17 @@ public final class ApplicationStateService {
         }
     }
 
+    /** Alle gespeicherten Werte, deren Schlüssel mit {@code prefix} beginnt (Kopie, in Speicherreihenfolge). */
+    public synchronized Map<String, String> withPrefix(String prefix) {
+        Map<String, String> found = new LinkedHashMap<String, String>();
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            if (prefix == null || entry.getKey().startsWith(prefix)) {
+                found.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return found;
+    }
+
     /** Speichert einen Wert ({@code null} entfernt den Schlüssel) und schreibt sofort; wirft nie. */
     public synchronized void putAndSave(String key, String value) {
         put(key, value);

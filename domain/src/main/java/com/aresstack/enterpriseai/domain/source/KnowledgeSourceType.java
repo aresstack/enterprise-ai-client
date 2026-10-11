@@ -27,6 +27,8 @@ public final class KnowledgeSourceType {
     private final String description;
     private final String idPrefix;
     private final String summaryKey;
+    private final String titleKey;
+    private final String partitionsLabel;
     private final List<SourceSettingField> fields;
 
     private KnowledgeSourceType(Builder b) {
@@ -36,6 +38,8 @@ public final class KnowledgeSourceType {
         this.description = b.description;
         this.idPrefix = b.idPrefix;
         this.summaryKey = b.summaryKey;
+        this.titleKey = b.titleKey;
+        this.partitionsLabel = b.partitionsLabel;
         this.fields = Collections.unmodifiableList(new ArrayList<SourceSettingField>(b.fields));
     }
 
@@ -74,6 +78,19 @@ public final class KnowledgeSourceType {
     /** Schlüssel des Felds, das die Quellenzeile unter dem Namen zeigt (Adresse oder Verzeichnis). */
     public String summaryKey() {
         return summaryKey;
+    }
+
+    /** Schlüssel des Felds mit dem Titel, den die Quellenzeile statt der ID zeigt; leer, wenn keiner. */
+    public String titleKey() {
+        return titleKey;
+    }
+
+    /**
+     * Name der Bereiche, in die sich die Quelle gliedert und die der Benutzer an- und abhaken kann (Confluence:
+     * „Spaces“); leer, wenn die Quelle keine hat. Die Bereiche selbst liefert der Quellen-Port.
+     */
+    public String partitionsLabel() {
+        return partitionsLabel;
     }
 
     /** Die Felder in Anzeigereihenfolge. */
@@ -124,6 +141,8 @@ public final class KnowledgeSourceType {
         private String description = "";
         private String idPrefix;
         private String summaryKey = "";
+        private String titleKey = "";
+        private String partitionsLabel = "";
         private final List<SourceSettingField> fields = new ArrayList<SourceSettingField>();
 
         private Builder(String id, String scheme, String displayName) {
@@ -157,6 +176,16 @@ public final class KnowledgeSourceType {
 
         public Builder summaryKey(String value) {
             this.summaryKey = value == null ? "" : value.trim();
+            return this;
+        }
+
+        public Builder titleKey(String value) {
+            this.titleKey = value == null ? "" : value.trim();
+            return this;
+        }
+
+        public Builder partitionsLabel(String value) {
+            this.partitionsLabel = value == null ? "" : value.trim();
             return this;
         }
 
