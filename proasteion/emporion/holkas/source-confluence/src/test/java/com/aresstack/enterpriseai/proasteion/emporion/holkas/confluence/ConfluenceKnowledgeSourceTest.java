@@ -278,6 +278,52 @@ public class ConfluenceKnowledgeSourceTest {
         assertEquals(4, source().search(new SourceQuery("x", 10)).size());
     }
 
+    @Test
+    public void searchRecognisesADirectPage() throws Exception {
+        confluence.searchResults("101");
+
+        List<SourceSearchHit> hits = source().search(new SourceQuery("x", 5));
+
+        assertEquals(1, hits.size());
+        assertEquals(page("101"), hits.get(0).resourceId());
+        assertEquals("Kapitel 1", hits.get(0).title());
+    }
+
+    @Test
+    public void searchRecognisesThePageInsideASearchResultWrapper() throws Exception {
+        confluence.wrappedSearchResult("102", "Text mit <b>@@@hl@@@zabak@@@endhl@@@</b> drin");
+
+        List<SourceSearchHit> hits = source().search(new SourceQuery("zabak", 5));
+
+        assertEquals(1, hits.size());
+        assertEquals(page("102"), hits.get(0).resourceId());
+        assertEquals("Kapitel 2", hits.get(0).title());
+        assertEquals("Text mit zabak drin", hits.get(0).snippet());
+    }
+
+    @Test
+    public void searchSkipsNonPageResults() throws Exception {
+        confluence.searchResults("att900");
+        confluence.wrappedSearchResult("att901", "Bild");
+
+        assertTrue(source().search(new SourceQuery("x", 5)).isEmpty());
+    }
+
+    @Test
+    public void searchKeepsPagesFromAMixedResultList() throws Exception {
+        confluence.searchResults("att900", "100");
+        confluence.wrappedSearchResult("att901", "Bild");
+        confluence.wrappedSearchResult("101", "Eins");
+        confluence.searchResults("102");
+
+        List<SourceSearchHit> hits = source().search(new SourceQuery("x", 10));
+
+        assertEquals(Arrays.asList(page("100"), page("101"), page("102")),
+                Arrays.asList(hits.get(0).resourceId(), hits.get(1).resourceId(), hits.get(2).resourceId()));
+        assertEquals(3, hits.size());
+        assertEquals("Eins", hits.get(1).snippet());
+    }
+
     // --- Anmeldung ----------------------------------------------------------------------------------------
 
     @Test

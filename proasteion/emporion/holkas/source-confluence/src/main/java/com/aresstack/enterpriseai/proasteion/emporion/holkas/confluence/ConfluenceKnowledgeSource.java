@@ -209,7 +209,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 List<SourceSearchHit> hits = new ArrayList<SourceSearchHit>();
                 for (Page page : client.search(session, cql, query.limit())) {
                     // Version und URL liefert die Suche mit (expand=version): unveränderte Treffer werden nicht geladen.
-                    hits.add(new SourceSearchHit(ConfluenceIds.page(sourceId, page.id), page.title, "",
+                    hits.add(new SourceSearchHit(ConfluenceIds.page(sourceId, page.id), page.title, page.excerpt,
                             KnowledgeRevision.of(page.modifiedAt, page.version), location(page.webUi)));
                 }
                 return hits;

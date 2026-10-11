@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.logging.Logger;
 
 /**
  * Confluence-Data-Center-REST-Aufrufe (paketintern). Endpunkte und Felder aus MainframeMate
@@ -36,6 +37,8 @@ import java.util.function.Predicate;
  * {@code INVALID_RESPONSE}. Meldungen nennen Vorgang und Status, nie Antwortkörper oder Header.
  */
 final class ConfluenceRestClient {
+
+    private static final Logger LOG = Logger.getLogger(ConfluenceRestClient.class.getName());
 
     private static final String PAGE_EXPAND = "body.view,version,space,ancestors,metadata.labels";
     /** Felder für Seiten ohne Inhalt (Startpunkte, Kindseiten, Suchtreffer); Labels sind nicht Standard. */
@@ -152,15 +155,40 @@ final class ConfluenceRestClient {
         return response.body();
     }
 
-    /** CQL-Suche über {@code /rest/api/content/search}, blättert bis {@code limit} Seiten-Treffer. */
+    /**
+     * CQL-Suche über {@code /rest/api/content/search}, blättert bis {@code limit} Seiten-Treffer. Wie MainframeMate
+     * ({@code ConfluenceSearchProvider.search()}) kommt ein Treffer entweder als Seite selbst oder als Such-Hülle
+     * {@code {content: {...}, excerpt: "..."}}; der Ausschnitt der Hülle wird übernommen.
+     */
     List<Page> search(Session session, String cql, int limit) throws KnowledgeSourceException {
-        return paged(session, "/rest/api/content/search?cql=" + query(cql) + "&expand=" + LIST_EXPAND, "Suche", limit,
-                new Item<Page>() {
+        final int[] httpResults = new int[1];
+        List<Page> pages = paged(session, "/rest/api/content/search?cql=" + query(cql) + "&expand=" + LIST_EXPAND,
+                "Suche", limit, new Item<Page>() {
                     @Override
                     public Page map(JsonObject json) throws KnowledgeSourceException {
-                        return "page".equals(string(json, "type")) ? toPage(json) : null;
+                        httpResults[0]++;
+                        JsonObject content = object(json, "content");
+                        if (content == null) {
+                            content = json;
+                        }
+                        String type = string(content, "type");
+                        if (type != null && !"page".equals(type)) {
+                            return null;
+                        }
+                        return toPage(content).withExcerpt(excerpt(string(json, "excerpt")));
                     }
                 });
+        LOG.info("[Confluence] Suche: HTTP-Ergebnisse=" + httpResults[0] + ", erkannte Seiten=" + pages.size());
+        return pages;
+    }
+
+    /** Wie MainframeMate: Markup und Hervorhebungsmarken entfernen, auf 300 Zeichen kürzen. */
+    static String excerpt(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String text = raw.replaceAll("<[^>]+>", "").replaceAll("@@@hl@@@|@@@endhl@@@", "").trim();
+        return text.length() > 300 ? text.substring(0, 300) + "…" : text;
     }
 
     // --- HTTP ---------------------------------------------------------------------------------------------
@@ -437,9 +465,16 @@ final class ConfluenceRestClient {
         final String html;
         final String webUi;
         final List<String> labels;
+        /** Klartext-Ausschnitt aus der Suche; leer außerhalb der Suche. */
+        final String excerpt;
 
         Page(String id, String title, String spaceKey, String version, Instant modifiedAt,
              String parentId, String html, String webUi, List<String> labels) {
+            this(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, "");
+        }
+
+        private Page(String id, String title, String spaceKey, String version, Instant modifiedAt,
+                     String parentId, String html, String webUi, List<String> labels, String excerpt) {
             this.id = id;
             this.title = title;
             this.spaceKey = spaceKey;
@@ -449,6 +484,11 @@ final class ConfluenceRestClient {
             this.html = html;
             this.webUi = webUi;
             this.labels = Collections.unmodifiableList(labels);
+            this.excerpt = excerpt;
+        }
+
+        Page withExcerpt(String excerpt) {
+            return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt);
         }
     }
 

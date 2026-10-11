@@ -30,6 +30,11 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
     final List<Map<String, String>> requestHeaders = new ArrayList<Map<String, String>>();
     /** Ergebnis-IDs der nächsten CQL-Suche; die letzte gesendete CQL steht in {@link #lastCql}. */
     final List<String> searchResults = new ArrayList<String>();
+    /**
+     * Treffer, die die Suche wie die reale Confluence-Antwort in einer Such-Hülle liefert:
+     * {@code {content: {...}, title, excerpt, url}}; Wert ist der Ausschnitt mit Hervorhebungsmarken.
+     */
+    final Map<String, String> wrappedSearchResults = new LinkedHashMap<String, String>();
     String lastCql;
     /** Erzwingt eine feste Antwort für alle Requests (Fehlerfälle). */
     ConfluenceHttpResponse forcedResponse;
@@ -61,9 +66,15 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         spaceHomepages.put(spaceKey, pageId);
     }
 
-    /** Ergebnis-IDs der nächsten CQL-Suche. */
+    /** Ergebnis-IDs der nächsten CQL-Suche; Anhang-IDs erscheinen als Nicht-Seiten-Treffer. */
     public void searchResults(String... pageIds) {
         Collections.addAll(searchResults, pageIds);
+    }
+
+    /** Wie {@link #searchResults(String...)}, aber als Such-Hülle {@code {content: {...}, excerpt}}. */
+    public void wrappedSearchResult(String id, String excerpt) {
+        searchResults.add(id);
+        wrappedSearchResults.put(id, excerpt);
     }
 
     /** Kopie aller bisher gesehenen Anfrage-URIs. */
@@ -122,7 +133,7 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
             int limit = Integer.parseInt(query.get("limit"));
             JsonArray results = new JsonArray();
             for (int i = start; i < searchResults.size() && results.size() < limit; i++) {
-                results.add(pageJson(pages.get(searchResults.get(i)), query.get("expand")));
+                results.add(searchEntry(searchResults.get(i), query.get("expand")));
             }
             return json(page(results, nextLink(uri, start + results.size(), searchResults.size())));
         }
@@ -186,6 +197,21 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         }
         page.add("_links", links);
         return page;
+    }
+
+    private JsonObject searchEntry(String id, String expand) {
+        JsonObject content = pages.containsKey(id) ? pageJson(pages.get(id), expand)
+                : attachmentJson(attachments.get(id));
+        if (!wrappedSearchResults.containsKey(id)) {
+            return content;
+        }
+        JsonObject wrapper = new JsonObject();
+        wrapper.add("content", content);
+        wrapper.addProperty("title", content.get("title").getAsString());
+        wrapper.addProperty("excerpt", wrappedSearchResults.get(id));
+        wrapper.addProperty("url", "/pages/viewpage.action?pageId=" + id);
+        wrapper.addProperty("entityType", "content");
+        return wrapper;
     }
 
     private JsonObject pageJson(FakePage page, String expand) {
