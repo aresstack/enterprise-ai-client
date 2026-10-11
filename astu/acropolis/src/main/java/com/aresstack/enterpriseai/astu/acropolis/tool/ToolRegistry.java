@@ -7,16 +7,29 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
-/** Die Werkzeuge einer Anfrage, nach Namen. Unveränderlich nach dem Bau. */
+/**
+ * Die Werkzeuge einer Anfrage, nach Namen. Unveränderlich nach dem Bau; welche davon gerade angeboten und
+ * ausgeführt werden, entscheidet {@code active} bei jedem Aufruf neu (Reiter „Tools“ während einer laufenden Runde).
+ */
 public final class ToolRegistry {
 
     /** Anfang eines Fehlerergebnisses, so wie es an das Modell zurückgeht (auch von {@code McpChatTool}). */
     public static final String ERROR_PREFIX = "Fehler:";
 
     private final Map<String, AiTool> tools;
+    private final Predicate<String> active;
 
     public ToolRegistry(List<? extends AiTool> tools) {
+        this(tools, null);
+    }
+
+    /**
+     * @param active sagt je Aufruf, ob ein Werkzeug (nach Namen) gerade aktiv ist; {@code null}: alle aktiv. Ein
+     *               abgeschaltetes Werkzeug fehlt in {@link #definitions()} und wird nicht mehr ausgeführt.
+     */
+    public ToolRegistry(List<? extends AiTool> tools, Predicate<String> active) {
         Map<String, AiTool> byName = new LinkedHashMap<String, AiTool>();
         if (tools != null) {
             for (AiTool tool : tools) {
@@ -29,13 +42,16 @@ public final class ToolRegistry {
             }
         }
         this.tools = Collections.unmodifiableMap(byName);
+        this.active = active == null ? name -> true : active;
     }
 
-    /** Die Definitionen aller Werkzeuge in Registrierungsreihenfolge. */
+    /** Die Definitionen aller jetzt aktiven Werkzeuge in Registrierungsreihenfolge. */
     public List<ToolDefinition> definitions() {
         List<ToolDefinition> definitions = new ArrayList<ToolDefinition>(tools.size());
         for (AiTool tool : tools.values()) {
-            definitions.add(tool.definition());
+            if (active.test(tool.name())) {
+                definitions.add(tool.definition());
+            }
         }
         return definitions;
     }
@@ -50,8 +66,8 @@ public final class ToolRegistry {
     }
 
     /**
-     * Führt einen Werkzeugaufruf des Modells aus. Unbekannte Werkzeuge und Fehler werden zum Ergebnistext
-     * ({@code Fehler: …}), damit das Modell reagieren kann.
+     * Führt einen Werkzeugaufruf des Modells aus. Unbekannte und inzwischen abgeschaltete Werkzeuge sowie Fehler
+     * werden zum Ergebnistext ({@code Fehler: …}), damit das Modell reagieren kann.
      *
      * @param activity erfährt den Namen vor der Ausführung und danach, ob sie gelang; darf {@code null} sein
      */
@@ -59,6 +75,9 @@ public final class ToolRegistry {
         AiTool tool = find(name);
         if (tool == null) {
             return ERROR_PREFIX + " unbekanntes Werkzeug " + name;
+        }
+        if (!active.test(name)) {
+            return ERROR_PREFIX + " Werkzeug " + name + " ist abgeschaltet";
         }
         if (activity != null) {
             activity.onToolCall(name);

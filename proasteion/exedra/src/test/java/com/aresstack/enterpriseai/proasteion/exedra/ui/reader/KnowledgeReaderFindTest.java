@@ -25,20 +25,20 @@ public class KnowledgeReaderFindTest {
             ReaderLink first = new ReaderLink("wiki", "wiki:a", "Erste Seite", "", "");
             ReaderLink second = new ReaderLink("wiki", "wiki:b", "Zweite Seite", "", "");
             reader.open(first, true);
-            reader.showMarkdown(first.key(), "# Zabak\n\nZabak steht hier und noch einmal zabak.");
+            reader.showMarkdown(first.key(), "# Wapok\n\nWapok steht hier und noch einmal wapok.");
             reader.open(second, true);
-            reader.showMarkdown(second.key(), "Hier steht Zabak nur einmal.");
+            reader.showMarkdown(second.key(), "Hier steht Wapok nur einmal.");
 
             assertEquals(second.key(), reader.activeKey());
             assertTrue(reader.toolbar().findButton().isEnabled());
-            assertEquals(1, reader.searchFor("zabak"));
+            assertEquals(1, reader.searchFor("wapok"));
             assertEquals(1, reader.findHitCount(second.key()));
             assertEquals(0, reader.findHitCount(first.key()));
             Component hit = reader.findHit(second.key(), 0);
             assertTrue(SwingUtilities.isDescendingFrom(hit, reader));
 
             reader.select(first.key());
-            assertEquals(3, reader.searchFor("ZABAK"));
+            assertEquals(3, reader.searchFor("WAPOK"));
             assertEquals(1, reader.findHitCount(second.key()));
             assertEquals(0, reader.searchFor(""));
             assertEquals(0, reader.findHitCount(first.key()));
@@ -51,11 +51,11 @@ public class KnowledgeReaderFindTest {
             KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette());
             ReaderLink page = new ReaderLink("wiki", "confluence:confluence.invalid/page/1", "Seite", "", "");
             reader.open(page, true);
-            reader.showHtml(page.key(), "<h2>Zabak</h2><p>Zabak steht hier</p><table><tr><td>und zabak</td></tr>"
+            reader.showHtml(page.key(), "<h2>Wapok</h2><p>Wapok steht hier</p><table><tr><td>und wapok</td></tr>"
                     + "</table>", "https://confluence.invalid/", java.util.Collections.emptyList(),
                     (image, done) -> done.accept(null));
             assertTrue(reader.toolbar().findButton().isEnabled());
-            assertEquals(3, reader.searchFor("zabak"));
+            assertEquals(3, reader.searchFor("wapok"));
             ReaderHtmlView view = reader.htmlView(page.key());
             assertSame(view, reader.findHit(page.key(), 0));
             javax.swing.text.Highlighter.Highlight[] marks = view.getHighlighter().getHighlights();

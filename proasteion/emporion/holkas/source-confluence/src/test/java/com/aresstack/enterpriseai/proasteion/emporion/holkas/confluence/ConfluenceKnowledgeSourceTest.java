@@ -363,14 +363,14 @@ public class ConfluenceKnowledgeSourceTest {
 
     @Test
     public void searchRecognisesThePageInsideASearchResultWrapper() throws Exception {
-        confluence.wrappedSearchResult("102", "Text mit <b>@@@hl@@@zabak@@@endhl@@@</b> drin");
+        confluence.wrappedSearchResult("102", "Text mit <b>@@@hl@@@wapok@@@endhl@@@</b> drin");
 
-        List<SourceSearchHit> hits = source().search(new SourceQuery("zabak", 5));
+        List<SourceSearchHit> hits = source().search(new SourceQuery("wapok", 5));
 
         assertEquals(1, hits.size());
         assertEquals(page("102"), hits.get(0).resourceId());
         assertEquals("Kapitel 2", hits.get(0).title());
-        assertEquals("Text mit zabak drin", hits.get(0).snippet());
+        assertEquals("Text mit wapok drin", hits.get(0).snippet());
     }
 
     @Test

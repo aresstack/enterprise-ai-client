@@ -108,7 +108,7 @@ public final class FileSetupActions implements SetupActions {
             merged = SettingsMapper.merge(current(), probe.build());
             config = AppConfigLoader.fromProperties(merged);
         } catch (AppConfigException e) {
-            done.accept(null, "Angaben unvollständig: " + join(SettingsMapper.describe(e.problems())));
+            done.accept(null, "Angaben unvollständig: " + join(SettingsMapper.plain(e.problems())));
             return;
         } catch (IOException | RuntimeException e) {
             done.accept(null, "Angaben nicht lesbar (" + e.getClass().getSimpleName() + ").");
@@ -161,7 +161,7 @@ public final class FileSetupActions implements SetupActions {
         try {
             settings.save(form);
         } catch (IllegalArgumentException e) {
-            loadProblem = "Angaben unvollständig: " + join(settings.validate(form));
+            loadProblem = "Angaben unvollständig: " + join(SettingsMapper.plain(settings.problems(form)));
         } catch (IOException e) {
             loadProblem = "Konfigurationsdatei nicht schreibbar (" + e.getClass().getSimpleName() + ").";
         }
@@ -184,7 +184,7 @@ public final class FileSetupActions implements SetupActions {
                 check.verify(config);
             } catch (AppConfigException e) {
                 config = null;
-                loadProblem = join(SettingsMapper.describe(e.problems()));
+                loadProblem = join(SettingsMapper.plain(e.problems()));
             } catch (IOException e) {
                 config = null;
                 loadProblem = "Konfigurationsdatei nicht lesbar (" + e.getClass().getSimpleName() + ").";
@@ -199,7 +199,7 @@ public final class FileSetupActions implements SetupActions {
             try {
                 effective = located(config, stored);
             } catch (AppConfigException e) {
-                locateProblem = join(e.problems());
+                locateProblem = join(SettingsMapper.plain(e.problems()));
             } catch (RuntimeException e) {
                 locateProblem = message(e);
             }

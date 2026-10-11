@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -81,6 +82,8 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
         } catch (EmbeddingException expected) {
             assertEquals(EmbeddingFailureKind.RATE_LIMITED, expected.kind());
             assertEquals("kein vierter Versuch", Collections.singletonList(200), statuses);
+            // Die Meldung landet im Protokoll: Pfad des Endpunkts, kein Host.
+            assertEquals("embedding endpoint /v1/embeddings returned HTTP 429", expected.getMessage());
         }
     }
 
@@ -98,6 +101,7 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
         } catch (EmbeddingException expected) {
             assertEquals(EmbeddingFailureKind.UNAVAILABLE, expected.kind());
             assertTrue(expected.getMessage().contains("SocketTimeoutException"));
+            assertFalse(expected.getMessage(), expected.getMessage().contains("ai.intern"));
         }
     }
 

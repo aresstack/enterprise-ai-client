@@ -169,7 +169,7 @@ public class RagChatBindingTest {
                 return "SEITENTEXT";
             }
         };
-        final String bookmark = "confluence://cf.intern/confluence/page/17025995";
+        final String bookmark = "confluence://cf.intern/confluence/page/4242001";
         onEdt(new Runnable() {
             @Override
             public void run() {
@@ -825,7 +825,7 @@ public class RagChatBindingTest {
                         .toPath()), (name, content) -> "", Collections.singletonList(knowledgeRead), false));
                 fixture.binding.sendRequested(QUESTION, true, Collections.<java.nio.file.Path>emptyList(),
                         Collections.singletonList(new ChatPage("Betriebshandbuch",
-                                "confluence://cf.intern/confluence/page/17025995")));
+                                "confluence://cf.intern/confluence/page/4242001")));
             }
         });
     }
@@ -896,7 +896,7 @@ public class RagChatBindingTest {
         ScriptedToolChat readPage() {
             script.add(new ChatResponse(ChatMessage.assistantToolCalls("", Collections.singletonList(
                     new com.aresstack.enterpriseai.astu.chat.ChatToolCall("call_1", ChatBookmark.READ_TOOL,
-                            "{\"id\":\"confluence://cf.intern/confluence/page/17025995\"}"))),
+                            "{\"id\":\"confluence://cf.intern/confluence/page/4242001\"}"))),
                     com.aresstack.enterpriseai.astu.chat.ChatFinishReason.TOOL_CALLS,
                     com.aresstack.enterpriseai.astu.chat.ChatUsage.notReported(), "m"));
             return this;

@@ -39,8 +39,11 @@ public final class PassageSegmentation {
     static final int MAX_PASSAGE_SENTENCES = 8;
     /** Version der Zerlegung: ändert sie sich, entstehen neue Passage-IDs. */
     public static final String SEGMENTATION_VERSION = "semantic-v2";
-    /** Höchstgröße einer Passage in Token (wie das bisherige Chunk-Budget), sonst an Wortgrenzen geteilt. */
-    static final int MAX_PASSAGE_TOKENS = 350;
+    /**
+     * Höchstgröße einer Passage in Token (wie das bisherige Chunk-Budget), sonst an Wortgrenzen geteilt; zugleich die
+     * längste Suchanfrage für das Embedding ({@code RetrieveKnowledgeUseCase.MAX_QUERY_TOKENS}).
+     */
+    public static final int MAX_PASSAGE_TOKENS = 350;
     /** Passage-Texte je Embedding-Aufruf. */
     static final int EMBEDDING_BATCH = 16;
 

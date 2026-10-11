@@ -114,7 +114,7 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         HttpResult result = post(EmbeddingRequestWriter.singleInput(configuration.modelId(), inputs.get(0)),
                 maxResponseBytes(1));
         if (result.status != 200) {
-            throw EmbeddingErrorMapper.fromStatus(configuration.endpoint().toString(), result.status, result.body);
+            throw EmbeddingErrorMapper.fromStatus(endpointPath(), result.status, result.body);
         }
         float[] vector = EmbeddingResponseParser.parse(result.body, 1).get(0);
         if (vector == null || vector.length == 0) {
@@ -136,7 +136,7 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
             result = post(requestBody, maxResponseBytes(expectedCount));
         }
         if (result.status != 200) {
-            throw EmbeddingErrorMapper.fromStatus(configuration.endpoint().toString(), result.status, result.body);
+            throw EmbeddingErrorMapper.fromStatus(endpointPath(), result.status, result.body);
         }
         List<float[]> matrix = EmbeddingResponseParser.parse(result.body, expectedCount);
         List<EmbeddingVector> vectors = new ArrayList<EmbeddingVector>(matrix.size());
@@ -152,6 +152,15 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         return Collections.unmodifiableList(vectors);
     }
 
+    /**
+     * Der Endpunkt für Fehlermeldungen und damit für das Protokoll: nur der Pfad ({@code /v1/embeddings}), nie der
+     * Host; welcher Dienst gemeint ist, steht in der Konfiguration.
+     */
+    private String endpointPath() {
+        String path = configuration.endpoint().getRawPath();
+        return path == null || path.isEmpty() ? "/embeddings" : path;
+    }
+
     /** Überlast des Dienstes, die sich mit kurzem Warten erfahrungsgemäß löst. */
     private static boolean overloaded(int status) {
         return status == 429 || status == 503;
@@ -164,11 +173,11 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
             return transport.post(configuration.endpoint(), requestBody, token, maxResponseBytes);
         } catch (ResponseTooLargeException ex) {
             throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE, "embedding response from "
-                    + configuration.endpoint() + " is implausibly large: " + ex.getMessage(), ex);
+                    + endpointPath() + " is implausibly large: " + ex.getMessage(), ex);
         } catch (IOException ex) {
             // Nur Typ und Endpunkt: IOException-Texte können Proxy-/Host-Details, aber keine Header enthalten.
             throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "embedding request to "
-                    + configuration.endpoint() + " failed: " + ex.getClass().getSimpleName()
+                    + endpointPath() + " failed: " + ex.getClass().getSimpleName()
                     + (ex.getMessage() == null ? "" : " " + ex.getMessage()), ex);
         } finally {
             if (token != null) {

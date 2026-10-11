@@ -24,7 +24,7 @@ import static org.junit.Assert.assertTrue;
 /** Die eine Zeile unter dem Lesebereich: Ruhezustand nur Lupe und Branding, Suche klappt in derselben Zeile auf. */
 public class ReaderToolbarTest {
 
-    private static final String TEXT = "# Zabak\n\nZabak steht hier und noch einmal zabak.";
+    private static final String TEXT = "# Wapok\n\nWapok steht hier und noch einmal wapok.";
 
     @Test
     public void restingRowShowsOnlyTheMagnifierAndTheBrandingWhereTheChatHasIt() throws Exception {
@@ -78,7 +78,7 @@ public class ReaderToolbarTest {
             ReaderToolbar toolbar = reader.toolbar();
             toolbar.open();
             JTextField field = toolbar.field();
-            field.setText("zabak");
+            field.setText("wapok");
 
             press(field, KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0));
             assertEquals("erste Enter sucht", "1 / 3", toolbar.counterText());
@@ -94,14 +94,14 @@ public class ReaderToolbarTest {
             press(field, KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0));
             assertEquals("0 / 0", toolbar.counterText());
 
-            field.setText("zabak");
+            field.setText("wapok");
             press(field, KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0));
             press(field, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0));
             assertFalse(toolbar.isSearchOpen());
             assertTrue(toolbar.isBrandingVisible());
             assertEquals("Markierungen weg", 0, reader.findHitCount(key));
             toolbar.open();
-            assertEquals("Begriff bleibt", "zabak", field.getText());
+            assertEquals("Begriff bleibt", "wapok", field.getText());
             assertEquals("", toolbar.counterText());
         });
     }
@@ -133,7 +133,7 @@ public class ReaderToolbarTest {
             ReaderToolbar toolbar = reader.toolbar();
 
             reader.select(first.key());
-            assertEquals(3, reader.searchFor("zabak"));
+            assertEquals(3, reader.searchFor("wapok"));
             press(toolbar.field(), KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0));
             assertEquals("2 / 3", toolbar.counterText());
 
@@ -144,7 +144,7 @@ public class ReaderToolbarTest {
 
             reader.select(first.key());
             assertTrue(toolbar.isSearchOpen());
-            assertEquals("zabak", toolbar.field().getText());
+            assertEquals("wapok", toolbar.field().getText());
             assertEquals("2 / 3", toolbar.counterText());
             assertEquals(3, reader.findHitCount(first.key()));
         });
@@ -159,7 +159,7 @@ public class ReaderToolbarTest {
             reader.open(broken, true);
             reader.showProblem(broken.key(), "Quelle nicht erreichbar");
             assertFalse(reader.toolbar().findButton().isEnabled());
-            assertEquals(0, reader.searchFor("zabak"));
+            assertEquals(0, reader.searchFor("wapok"));
             assertFalse(reader.toolbar().isSearchOpen());
         });
     }
