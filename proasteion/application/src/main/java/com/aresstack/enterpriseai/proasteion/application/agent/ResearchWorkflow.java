@@ -51,11 +51,8 @@ public final class ResearchWorkflow {
         if (trimmed.isEmpty()) {
             return Result.rejected("Leere Suche.");
         }
-        for (ResearchAgentHost.SearchTag tag : host.searchTags()) {
-            if (tag.query().equalsIgnoreCase(trimmed) && ResearchAgentHost.SearchTag.RUNNING.equals(tag.status())) {
-                return Result.rejected("Diese Suche läuft schon.");
-            }
-        }
+        // Ein „laufender“ Vorschlag darf erneut starten: die Oberfläche bietet ihn nur an, wenn der Chat nicht mehr
+        // arbeitet, die Suche also nie zu Ende kam (Turn abgebrochen, Agentensitzung beendet).
         host.searchTagStarted(trimmed);
         return Result.prompt(SEARCH_TAG_PREFIX + " " + trimmed, "Suche: " + trimmed);
     }

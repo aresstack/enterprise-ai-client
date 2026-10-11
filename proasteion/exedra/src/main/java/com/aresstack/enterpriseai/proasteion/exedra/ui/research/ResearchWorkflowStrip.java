@@ -73,13 +73,17 @@ public final class ResearchWorkflowStrip extends JPanel {
             this.status = status == null ? "OFFERED" : status;
         }
 
-        /** Die Beschriftung des Tags: die Anfrage, mit Vermerk, wenn sie schon gesucht ist oder gerade läuft. */
-        String label() {
+        /**
+         * Die Beschriftung des Tags: die Anfrage, mit Vermerk, wenn sie schon gesucht ist oder gerade läuft. Eine
+         * „laufende“ Suche, während der Chat nicht mehr arbeitet (Turn beendet, Agentensitzung weg), ist
+         * unterbrochen und wird wie ein Fehler wiederholbar.
+         */
+        String label(boolean busy) {
             if ("DONE".equals(status)) {
                 return query + " (schon gesucht)";
             }
             if ("RUNNING".equals(status)) {
-                return query + " (sucht …)";
+                return query + (busy ? " (sucht …)" : " (unterbrochen)");
             }
             return query;
         }
@@ -176,12 +180,14 @@ public final class ResearchWorkflowStrip extends JPanel {
     private void renderSuggestions() {
         suggestionRow.removeAll();
         for (final SuggestionItem suggestion : snapshot.suggestions) {
-            ResearchTagButton button = new ResearchTagButton(suggestion.label());
+            ResearchTagButton button = new ResearchTagButton(suggestion.label(snapshot.busy));
             button.setName("research-search-" + suggestion.query);
             boolean done = "DONE".equals(suggestion.status);
             boolean failed = "FAILED".equals(suggestion.status);
             boolean running = "RUNNING".equals(suggestion.status);
-            if (done || failed) {
+            // läuft, aber der Chat arbeitet nicht mehr: die Suche kam nie zu Ende, also wiederholbar
+            boolean stalled = running && !snapshot.busy;
+            if (done || failed || stalled) {
                 javax.swing.Icon icon = done ? new SearchTagIcons.Check() : new SearchTagIcons.Retry();
                 button.setIcon(icon);
                 button.setDisabledIcon(icon);
@@ -189,8 +195,9 @@ public final class ResearchWorkflowStrip extends JPanel {
             String purpose = suggestion.purpose.isEmpty() ? "" : suggestion.purpose + " - ";
             button.setToolTipText(done ? purpose + "Schon gesucht; die Seiten stehen im Reiter „Quellen“."
                     : failed ? purpose + "Die Suche ist fehlgeschlagen. Klicken, um sie zu wiederholen."
+                    : stalled ? purpose + "Die Suche wurde nicht abgeschlossen. Klicken, um sie zu wiederholen."
                     : running ? purpose + "Die Suche läuft." : purpose + "In den Wissensquellen suchen");
-            button.setEnabled(!done && !running && !snapshot.busy);
+            button.setEnabled(!done && !snapshot.busy);
             button.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent event) {
@@ -208,7 +215,7 @@ public final class ResearchWorkflowStrip extends JPanel {
     public List<String> suggestionLabels() {
         List<String> labels = new ArrayList<String>();
         for (SuggestionItem suggestion : snapshot.suggestions) {
-            labels.add(suggestion.label());
+            labels.add(suggestion.label(snapshot.busy));
         }
         return labels;
     }

@@ -66,13 +66,20 @@ public class ResearchSearchTagsTest {
         refresh(parts);
         assertEquals(Arrays.asList("Wissenssuche: IAR Betrieb"), prompts);
         assertEquals("scoping", host.phaseId());
+        onEdt(chat::beginAssistantMessage); // der Agenten-Turn läuft
+        refresh(parts);
         assertEquals("IAR Betrieb (sucht …)", onEdt(() -> parts.strip().suggestionLabels()).get(0));
+        assertFalse(onEdt(() -> parts.strip().suggestionButton("IAR Betrieb").isEnabled()));
         // der Agent beginnt den Turn mit genau diesem Text: kein Auftrag daraus
         call(host, "research_turn_begin", "text", "Wissenssuche: IAR Betrieb");
         assertNotNull(host.researchBriefGap());
 
         // Erfolg: Haken und Vermerk, nicht mehr klickbar
         call(host, "search_tag_finished", "query", "IAR Betrieb", "ok", "true");
+        onEdt(() -> {
+            chat.completeAssistantMessage();
+            return null;
+        });
         refresh(parts);
         assertEquals("IAR Betrieb (schon gesucht)", onEdt(() -> parts.strip().suggestionLabels()).get(0));
         JButton done = onEdt(() -> parts.strip().suggestionButton("IAR Betrieb"));
@@ -94,6 +101,52 @@ public class ResearchSearchTagsTest {
             return null;
         });
         assertEquals("Wissenssuche: IAR Planung", prompts.get(prompts.size() - 1));
+    }
+
+    @Test
+    public void aSearchThatNeverFinishedBecomesRetryableWhenTheChatStopsWorking() throws Exception {
+        final ResearchAgentHost host = new ResearchAgentHost(folder.newFolder("stalled"),
+                FileResearchScopeDraftStore::new,
+                directory -> new ConceptBranchService(new FileConceptStore(directory)));
+        host.markGreeted();
+        call(host, "offer_searches", "suggestions_json", "[{\"query\":\"IAR Betrieb\",\"purpose\":\"\"}]");
+        final List<String> prompts = new ArrayList<String>();
+        final ChatShellModel chat = onEdt(() -> new ChatShellModel(System::currentTimeMillis));
+        final ResearchWorkflowAssembly.Parts parts = onEdt(() -> ResearchWorkflowAssembly.create(host,
+                (visible, prompt) -> prompts.add(prompt), chat, SwingUtilities::invokeLater, (id, title) -> { },
+                title -> { }));
+        onEdt(() -> {
+            parts.search("IAR Betrieb");
+            return null;
+        });
+        onEdt(chat::beginAssistantMessage);
+        refresh(parts);
+        assertFalse(onEdt(() -> parts.strip().suggestionButton("IAR Betrieb").isEnabled()));
+
+        // die Agentensitzung endet, ohne dass search_tag_finished kam
+        onEdt(() -> {
+            chat.failAssistantMessage("Die Agentensitzung wurde beendet.");
+            return null;
+        });
+        refresh(parts);
+        assertEquals("IAR Betrieb (unterbrochen)", onEdt(() -> parts.strip().suggestionLabels()).get(0));
+        JButton retry = onEdt(() -> parts.strip().suggestionButton("IAR Betrieb"));
+        assertTrue(onEdt(retry::isEnabled));
+        assertEquals("Retry", onEdt(retry::getIcon).getClass().getSimpleName());
+        onEdt(() -> {
+            retry.doClick();
+            return null;
+        });
+        assertEquals(Arrays.asList("Wissenssuche: IAR Betrieb", "Wissenssuche: IAR Betrieb"), prompts);
+
+        // nach einem gewöhnlich beendeten Turn ohne Rückmeldung ebenso
+        onEdt(chat::beginAssistantMessage);
+        onEdt(() -> {
+            chat.completeAssistantMessage();
+            return null;
+        });
+        refresh(parts);
+        assertTrue(onEdt(() -> parts.strip().suggestionButton("IAR Betrieb").isEnabled()));
     }
 
     private static McpToolResult call(ResearchAgentHost host, String name, String... pairs) {
