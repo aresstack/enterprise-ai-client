@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.agent;
 
+import com.aresstack.enterpriseai.acp.api.AcpPlanEntry;
 import com.aresstack.enterpriseai.acp.api.AcpPromptState;
 import com.aresstack.enterpriseai.acp.api.AcpSession;
 import com.aresstack.enterpriseai.acp.api.AcpToolCall;
@@ -116,6 +117,14 @@ public final class AgentTurn {
                     listener.onToolActivity(activityOf(update.getToolCall()));
                     return;
                 }
+                if (update.getKind() == AcpUpdate.Kind.OTHER) {
+                    // Pläne und sonstige Ereignisse des Agenten werden wie in askai zur Aktivität, nicht verworfen.
+                    AgentToolActivity activity = otherActivity(update);
+                    if (activity != null) {
+                        listener.onToolActivity(activity);
+                    }
+                    return;
+                }
                 if (update.getText().isEmpty()) {
                     return;
                 }
@@ -126,8 +135,35 @@ public final class AgentTurn {
                     thoughts.append(update.getText());
                     listener.onThought(update.getText());
                 }
-                // OTHER (Pläne, unbekannte Erweiterungen) zeigt der Agent-Modus nicht an.
             }
+        }
+
+        /**
+         * Ein {@code plan} wird eine Plan-Wolke mit fester Kennung je Auftrag (jedes Update trägt den ganzen Plan und
+         * ersetzt ihren Inhalt), fertig, sobald alle Schritte erledigt sind. Jedes andere Ereignis wird eine kurze
+         * Aktivität je Ereignisart; ohne Inhalt entfällt es.
+         */
+        private AgentToolActivity otherActivity(AcpUpdate update) {
+            if (update.isPlan()) {
+                boolean done = true;
+                StringBuilder text = new StringBuilder();
+                for (AcpPlanEntry entry : update.getPlan()) {
+                    done &= entry.isCompleted();
+                    text.append(text.length() == 0 ? "" : "\n")
+                            .append(entry.isCompleted() ? "[x] " : entry.isInProgress() ? "[>] " : "[ ] ")
+                            .append(entry.getContent());
+                }
+                return new AgentToolActivity(AgentToolActivity.PLAN_ID, AgentToolActivity.PLAN_TITLE,
+                        AgentToolActivity.KIND_PLAN,
+                        done ? AgentToolActivity.Status.COMPLETED : AgentToolActivity.Status.RUNNING,
+                        text.toString(), done ? AgentToolActivity.PLAN_DONE : "");
+            }
+            if (update.getText().trim().isEmpty()) {
+                return null;
+            }
+            String type = update.getType().isEmpty() ? "event" : update.getType();
+            return new AgentToolActivity("agent-event-" + type, AgentToolActivity.EVENT_TITLE_PREFIX + type,
+                    AgentToolActivity.KIND_EVENT, AgentToolActivity.Status.COMPLETED, update.getText(), "");
         }
 
         private AgentToolActivity activityOf(AcpToolCall call) {

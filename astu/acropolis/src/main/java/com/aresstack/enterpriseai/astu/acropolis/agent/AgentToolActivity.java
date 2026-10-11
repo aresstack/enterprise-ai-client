@@ -10,6 +10,16 @@ public final class AgentToolActivity {
     /** Lebenszyklus eines Aufrufs. */
     public enum Status { RUNNING, COMPLETED, FAILED }
 
+    /** Art der Plan-Wolke (ACP {@code plan}); ihre Kennung ist je Auftrag fest. */
+    public static final String KIND_PLAN = "plan";
+    public static final String PLAN_ID = "agent-plan";
+    public static final String PLAN_TITLE = "Plan";
+    /** Ergebniszeile eines vollständig erledigten Plans. */
+    public static final String PLAN_DONE = "alle Schritte erledigt";
+    /** Art eines sonstigen Agenten-Ereignisses (ACP-Update ohne eigene Darstellung). */
+    public static final String KIND_EVENT = "event";
+    public static final String EVENT_TITLE_PREFIX = "Agent-Ereignis: ";
+
     private final String id;
     private final String title;
     private final String kind;

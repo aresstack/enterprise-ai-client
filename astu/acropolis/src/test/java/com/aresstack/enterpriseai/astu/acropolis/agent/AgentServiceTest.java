@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.astu.acropolis.agent;
 
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AcpException;
+import com.aresstack.enterpriseai.acp.api.AcpPlanEntry;
 import com.aresstack.enterpriseai.acp.api.AcpPromptState;
 
 import org.junit.Test;
@@ -68,7 +69,7 @@ public class AgentServiceTest {
 
         launcher.lastPrompt().thought("überlege");
         launcher.lastPrompt().message("Hallo ");
-        launcher.lastPrompt().other("tool call");
+        launcher.lastPrompt().other(""); // leeres Ereignis: nichts zu zeigen
         launcher.lastPrompt().message("Welt");
         launcher.lastPrompt().complete();
 
@@ -107,6 +108,29 @@ public class AgentServiceTest {
                 "tool:call-1::COMPLETED:::1 Treffer: IAR Übersicht",
                 "tool:call-2:think:RUNNING:Denke nach::",
                 "tool:call-2::FAILED:::Modell nicht erreichbar",
+                "message:IAR bündelt die Auswertung.", "completed"), listener.events);
+    }
+
+    @Test
+    public void plansAndOtherAgentEventsBecomeActivitiesWithStableIds() {
+        AgentService service = new AgentService(launcher, DIRECT);
+        RecordingAgentListener listener = new RecordingAgentListener();
+        service.send("Was ist IAR?", listener);
+
+        launcher.lastPrompt().plan(new AcpPlanEntry("Quellen suchen", "high", AcpPlanEntry.IN_PROGRESS),
+                new AcpPlanEntry("Antwort schreiben", "medium", AcpPlanEntry.PENDING));
+        launcher.lastPrompt().other("current_mode_update", "currentModeId: ask");
+        launcher.lastPrompt().plan(new AcpPlanEntry("Quellen suchen", "high", AcpPlanEntry.COMPLETED),
+                new AcpPlanEntry("Antwort schreiben", "medium", AcpPlanEntry.COMPLETED));
+        launcher.lastPrompt().message("IAR bündelt die Auswertung.");
+        launcher.lastPrompt().complete();
+
+        assertEquals(Arrays.asList(
+                "tool:agent-plan:plan:RUNNING:Plan:[>] Quellen suchen\n[ ] Antwort schreiben:",
+                "tool:agent-event-current_mode_update:event:COMPLETED:Agent-Ereignis: current_mode_update:"
+                        + "currentModeId: ask:",
+                "tool:agent-plan:plan:COMPLETED:Plan:[x] Quellen suchen\n[x] Antwort schreiben:"
+                        + AgentToolActivity.PLAN_DONE,
                 "message:IAR bündelt die Auswertung.", "completed"), listener.events);
     }
 
