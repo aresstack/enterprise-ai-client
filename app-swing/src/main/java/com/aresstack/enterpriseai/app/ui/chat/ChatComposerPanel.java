@@ -822,10 +822,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         micButton.setEmphasized(recording);
         micButton.setToolTipText(recording ? RECORDING_TOOLTIP : recognizing ? CANCEL_TOOLTIP
                 : DICTATE_TOOLTIP + " – " + dictation.description());
-        boolean layoutChanged = discardButton.isVisible() != recording
-                || retryButton.isVisible() != (idle && dictation.canRetry())
+        boolean layoutChanged = retryButton.isVisible() != (idle && dictation.canRetry())
                 || levelBar.isVisible() != recording;
-        discardButton.setVisible(recording);
+        discardButton.setVisible(false); // verworfen wird über das ✕ an der Statuszeile oder Esc (kein eigener Knopf)
         retryButton.setVisible(idle && dictation.canRetry());
         retryButton.setEnabled(!busy);
         levelBar.setVisible(recording);
@@ -890,8 +889,14 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         setToolTipText(statusLine.text().isEmpty() ? null : statusLine.text());
     }
 
-    /** ✕ an der Statuszeile: eine Diktat-Meldung verschwindet, laufende Meldungen bleiben aus, bis sich die Art ändert. */
+    /** ✕ an der Statuszeile: Aufnahme/Erkennung abbrechen, eine Diktat-Meldung schließen, sonst bis zur nächsten Art ausblenden. */
     private void dismissStatus() {
+        if (currentStatus == StatusKind.RECORDING || currentStatus == StatusKind.RECOGNIZING) {
+            discardDictation(); // das ✕ verwirft die Aufnahme bzw. bricht die Erkennung ab
+            setDictationNote(null, ComposerStatusLine.Tone.MUTED); // ohne Folgemeldung: die Zeile verschwindet
+            refreshStatus();
+            return;
+        }
         if (currentStatus == StatusKind.NOTE) {
             setDictationNote(null, ComposerStatusLine.Tone.MUTED);
         } else {
