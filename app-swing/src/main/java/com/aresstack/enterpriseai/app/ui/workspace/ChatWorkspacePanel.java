@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.ui.workspace;
 
+import com.aresstack.enterpriseai.app.state.ApplicationStateService;
 import com.aresstack.enterpriseai.app.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.app.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
@@ -104,6 +105,9 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     static final int SIDEBAR_DEFAULT_WIDTH = 360; // wie askai arch
     private static final int HOVER_MARGIN_PX = 12;
     private static final int SIDEBAR_CLOSE_DELAY_MS = 300;
+    private static final int SIDEBAR_WIDTH_SAVE_DELAY_MS = 300;
+    static final String STATE_BURGER_PINNED = "chat.burgerPinned";
+    static final String STATE_SIDEBAR_WIDTH = "chat.sidebar.width";
     private static final int LIST_REFRESH_DELAY_MS = 150;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.GERMANY);
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd.MM.", Locale.GERMANY);
@@ -141,6 +145,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private AWTEventListener sidebarMouseWatcher;
     private boolean menuLocked;
     private WorkspaceActions actions;
+    /** Fasst die Ereignisse eines Ziehens am Teiler zu EINEM Schreibvorgang zusammen. */
+    private final Timer sidebarWidthSaveTimer;
+    private int pendingSidebarWidth = -1;
+    private ApplicationStateService applicationState;
 
     /**
      * @param agentShell eine eigene Agent-Ansicht oder {@code null}: dann schaltet der Agent-Modus nur Fähigkeiten und
@@ -172,6 +180,12 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         sidebarCloseTimer.setRepeats(false);
         this.listRefreshTimer = new Timer(LIST_REFRESH_DELAY_MS, event -> refreshChatList());
         listRefreshTimer.setRepeats(false);
+        this.sidebarWidthSaveTimer = new Timer(SIDEBAR_WIDTH_SAVE_DELAY_MS, event -> saveSidebarWidthNow());
+        sidebarWidthSaveTimer.setRepeats(false);
+        sidebarSplit.setLeftWidthListener(width -> {
+            pendingSidebarWidth = width;
+            sidebarWidthSaveTimer.restart();
+        });
 
         setBackground(palette.getSurface());
         deck.setBackground(palette.getSurface());
@@ -190,6 +204,40 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     /** Neuer Chat und Einstellungen; ohne Aktionen sind die Knöpfe wirkungslos. */
     public void setActions(WorkspaceActions actions) {
         this.actions = actions;
+    }
+
+    /**
+     * Bindet den Anwendungszustand, damit Drawer-Breite und eingerasteter Drawer einen Neustart überleben, und
+     * stellt beides sofort wieder her (wie askai arch). Einmal nach dem Aufbau aufrufen.
+     */
+    public void setApplicationState(ApplicationStateService applicationState) {
+        this.applicationState = applicationState;
+        if (applicationState == null) {
+            return;
+        }
+        // Erst die Breite, dann öffnet ein eingerasteter Drawer schon in ihr.
+        int width = applicationState.getInt(STATE_SIDEBAR_WIDTH, -1);
+        if (width > 0) {
+            sidebarSplit.setPreferredLeftWidth(width);
+        }
+        if (applicationState.getBoolean(STATE_BURGER_PINNED, false)) {
+            openDrawer();
+        }
+    }
+
+    /** Merkt, ob der Drawer eingerastet ist (wirkungslos, solange kein Zustand gebunden ist). */
+    private void persistBurgerPinned() {
+        if (applicationState != null) {
+            applicationState.putAndSave(STATE_BURGER_PINNED, Boolean.toString(menuLocked));
+        }
+    }
+
+    /** Schreibt die zuletzt gezogene Drawer-Breite (wirkungslos, solange kein Zustand gebunden ist). */
+    private void saveSidebarWidthNow() {
+        sidebarWidthSaveTimer.stop();
+        if (applicationState != null && pendingSidebarWidth > 0) {
+            applicationState.putAndSave(STATE_SIDEBAR_WIDTH, Integer.toString(pendingSidebarWidth));
+        }
     }
 
     /** Der stille Titel in der Kopfzeile (der Fenstertitel aus der Konfiguration). */
@@ -326,6 +374,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             menuLocked = true;
             burger.setEmphasized(true);
             openMenuAndSidebar();
+            persistBurgerPinned();
         }
     }
 
@@ -365,6 +414,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                 menuLocked = true;
                 burger.setEmphasized(true);
                 openMenuAndSidebar();
+                persistBurgerPinned();
             }
         });
         burger.addMouseListener(new MouseAdapter() {
@@ -809,10 +859,14 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
 
     private void collapseMenuAndSidebar() {
         sidebarCloseTimer.stop();
+        boolean wasPinned = menuLocked;
         menuLocked = false;
         burger.setEmphasized(false);
         ribbon.close();
         hideSidebar();
+        if (wasPinned) {
+            persistBurgerPinned();
+        }
     }
 
     private void showSidebar() {

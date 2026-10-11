@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.ui.workspace;
 
+import com.aresstack.enterpriseai.app.state.ApplicationStateService;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowHoldCloseButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
@@ -15,7 +16,13 @@ import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Frame;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.Rectangle;
+import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Das rahmenlose Hauptfenster: {@code setUndecorated(true)}, eine Tintenkontur als Fensterrand, dessen Polster
@@ -30,6 +37,11 @@ public final class ShellFrame {
 
     static final int WINDOW_PADDING = 4;
     static final int RESIZE_GRIP = 6;
+    static final String STATE_WINDOW_WIDTH = "window.width";
+    static final String STATE_WINDOW_HEIGHT = "window.height";
+    static final String STATE_WINDOW_X = "window.x";
+    static final String STATE_WINDOW_Y = "window.y";
+    static final String STATE_WINDOW_MAXIMIZED = "window.maximized";
 
     private ShellFrame() {
     }
@@ -59,6 +71,68 @@ public final class ShellFrame {
         frame.setSize(new Dimension(1040, 720));
         frame.setLocationRelativeTo(null);
         return frame;
+    }
+
+    /**
+     * Stellt Größe, Lage und Maximierung aus dem Anwendungszustand wieder her (wie MainframeMate) und merkt sie
+     * sich beim Schließen. Vor {@code setVisible(true)} aufrufen. Eine Lage, die auf keinem Bildschirm mehr
+     * sichtbar ist (abgezogener Monitor), wird verworfen und das Fenster zentriert.
+     */
+    public static void rememberBounds(final JFrame frame, final ApplicationStateService state) {
+        if (frame == null || state == null) {
+            return;
+        }
+        int width = state.getInt(STATE_WINDOW_WIDTH, -1);
+        int height = state.getInt(STATE_WINDOW_HEIGHT, -1);
+        if (width > 0 && height > 0) {
+            Dimension minimum = frame.getMinimumSize();
+            frame.setSize(Math.max(width, minimum.width), Math.max(height, minimum.height));
+            int x = state.getInt(STATE_WINDOW_X, Integer.MIN_VALUE);
+            int y = state.getInt(STATE_WINDOW_Y, Integer.MIN_VALUE);
+            Rectangle bounds = new Rectangle(x, y, frame.getWidth(), frame.getHeight());
+            if (x != Integer.MIN_VALUE && y != Integer.MIN_VALUE && onAnyScreen(bounds)) {
+                frame.setLocation(x, y);
+            } else {
+                frame.setLocationRelativeTo(null);
+            }
+        }
+        if (state.getBoolean(STATE_WINDOW_MAXIMIZED, false)) {
+            ComicWindowDragger.maximize(frame);
+        }
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent event) {
+                saveBounds(frame, state);
+            }
+        });
+    }
+
+    static void saveBounds(JFrame frame, ApplicationStateService state) {
+        boolean maximized = ComicWindowDragger.isMaximized(frame);
+        Rectangle normal = maximized ? ComicWindowDragger.restoredBounds(frame) : frame.getBounds();
+        Map<String, String> entries = new LinkedHashMap<String, String>();
+        if (normal != null) {
+            entries.put(STATE_WINDOW_WIDTH, Integer.toString(normal.width));
+            entries.put(STATE_WINDOW_HEIGHT, Integer.toString(normal.height));
+            entries.put(STATE_WINDOW_X, Integer.toString(normal.x));
+            entries.put(STATE_WINDOW_Y, Integer.toString(normal.y));
+        }
+        entries.put(STATE_WINDOW_MAXIMIZED, Boolean.toString(maximized));
+        state.putAllAndSave(entries);
+    }
+
+    /** Ob die Titelzeile des Fensters auf einem der Bildschirme greifbar bleibt. */
+    private static boolean onAnyScreen(Rectangle bounds) {
+        if (GraphicsEnvironment.isHeadless()) {
+            return false;
+        }
+        Rectangle grip = new Rectangle(bounds.x, bounds.y, bounds.width, Math.min(bounds.height, 40));
+        for (GraphicsDevice device : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            if (device.getDefaultConfiguration().getBounds().intersects(grip)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

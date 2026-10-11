@@ -170,6 +170,14 @@ public final class ComicWindowDragger {
         return frame.getBounds();
     }
 
+    /**
+     * The bounds a frame maximized by this class returns to on {@link #restore}; {@code null} when it is not
+     * maximized by this class.
+     */
+    public static Rectangle restoredBounds(Window window) {
+        return normalBounds(window);
+    }
+
     /** The bounds of a screen minus its taskbars and docks. */
     static Rectangle usableBounds(GraphicsConfiguration configuration) {
         if (configuration == null) {
