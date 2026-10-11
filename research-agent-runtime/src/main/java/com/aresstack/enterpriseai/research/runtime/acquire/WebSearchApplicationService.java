@@ -721,6 +721,7 @@ public final class WebSearchApplicationService {
                         parkCandidate(ranked);
                     }
                 }
+                prefetchFrontier(frontier);
                 if (!serpVerdicts.isEmpty()) {
                     int serpNearIn = 0;
                     for (SearchScopeControlPort.Decision decision : serpVerdicts.values()) {
@@ -1084,6 +1085,20 @@ public final class WebSearchApplicationService {
         } catch (ToolInvoker.EndpointUnavailable ex) {
             listener.status("park skipped (endpoint unavailable)");
         }
+    }
+
+    /** Lässt die Seitenwerkzeuge die ausgewählten Treffer parallel laden, höchstens so viele, wie das Budget erlaubt. */
+    private void prefetchFrontier(List<FrontierEntry> frontier) {
+        if (!(browser instanceof PagePrefetch) || frontier.isEmpty()) {
+            return;
+        }
+        int remaining = budget.getMaxPagesVisited() == ResearchRunBudget.UNLIMITED
+                ? Integer.MAX_VALUE : Math.max(0, budget.getMaxPagesVisited() - progress.getPagesVisited());
+        List<String> urls = new ArrayList<String>();
+        for (FrontierEntry entry : frontier) {
+            urls.add(entry.getUrl());
+        }
+        ((PagePrefetch) browser).prefetch(urls, remaining);
     }
 
     /**

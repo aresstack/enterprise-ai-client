@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.app.agent.AcpAgentLauncher;
 import com.aresstack.enterpriseai.app.agent.AgentModelChoice;
 import com.aresstack.enterpriseai.app.agent.ResearchAgentHost;
 import com.aresstack.enterpriseai.app.agent.ChatPortMainModelChat;
+import com.aresstack.enterpriseai.app.agent.PhaseToolSetController;
 import com.aresstack.enterpriseai.app.agent.ResearchControlTools;
 import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.app.config.AgentConfig;
@@ -186,6 +187,24 @@ public final class CompositionRoot {
         this.agentModelChoice = new AgentModelChoice();
         final ChatPortMainModelChat researchModel = new ChatPortMainModelChat(ports.chat(),
                 config.chat().defaultOptions(), agentModelChoice);
+        // Der Werkzeugsatz des Agenten folgt der Phase (askai arch ResearchToolPolicy): neu berechnet und per
+        // updateTools veröffentlicht, sobald der Host seinen Zustand ändert.
+        final PhaseToolSetController researchToolSet = new PhaseToolSetController(
+                new java.util.function.Supplier<List<McpToolContribution>>() {
+                    @Override
+                    public List<McpToolContribution> get() {
+                        List<McpToolContribution> tools = new ArrayList<McpToolContribution>(
+                                ResearchControlTools.toolsFor(researchHost, researchModel));
+                        tools.addAll(agentTools());
+                        return tools;
+                    }
+                });
+        researchHost.addStateListener(new Runnable() {
+            @Override
+            public void run() {
+                researchToolSet.refresh();
+            }
+        });
         this.agentService = new AgentService(new AgentLauncher() {
             @Override
             public AcpConnection launch() throws AcpException {
@@ -200,11 +219,17 @@ public final class CompositionRoot {
                 if (research == null) {
                     throw new AcpException(AcpException.Phase.SPAWN, "research agent is not available", null);
                 }
-                List<McpToolContribution> tools = new ArrayList<McpToolContribution>(
-                        ResearchControlTools.toolsFor(researchHost, researchModel));
-                tools.addAll(agentTools());
-                return new AcpAgentLauncher(research.connector(), research.launchSpec(), research.registry(),
-                        research.endpoint(), tools).launch();
+                // Das Seitenbudget des Laufs ist dieselbe Einstellung wie das der Wissenswerkzeuge
+                // (agent.tools.maxPages, 0 = unbegrenzt); der Agentenprozess liest es aus seiner Umgebung.
+                java.util.Map<String, String> env = new java.util.LinkedHashMap<String, String>(
+                        research.launchSpec().getEnv());
+                env.put(com.aresstack.enterpriseai.research.runtime.loop.EnvironmentRunBudget.ENV_MAX_PAGES,
+                        Integer.toString(settings.current().agent().toolSettings().maxPages()));
+                com.aresstack.enterpriseai.acp.api.AgentLaunchSpec spec =
+                        new com.aresstack.enterpriseai.acp.api.AgentLaunchSpec(research.launchSpec().getCommand(),
+                                research.launchSpec().getArgs(), env);
+                return AcpAgentLauncher.withPhaseToolSet(research.connector(), spec,
+                        research.registry(), research.endpoint(), researchToolSet).launch();
             }
         }, agentStarts);
         this.shutdown = buildShutdown();

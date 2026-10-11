@@ -42,13 +42,22 @@ final class ResearchAgentTurns {
     private final ResearchTeamAgent teamAgent;
     private final MainModelChat mainModelChat;
     private final boolean conceptTools;
+    private final ResearchRun research;
 
     ResearchAgentTurns(ResearchHostControl host, ResearchTeamAgent teamAgent, MainModelChat mainModelChat,
-                       boolean conceptTools) {
+                       boolean conceptTools, ResearchRun research) {
         this.host = host;
+        this.research = research;
         this.teamAgent = teamAgent;
         this.mainModelChat = mainModelChat;
         this.conceptTools = conceptTools;
+    }
+
+    /** Sitzungsende: der Seitenpool des Recherche-Laufs wird beendet. */
+    void close() {
+        if (research != null) {
+            research.close();
+        }
     }
 
     void run(String text, Output output) {
@@ -76,6 +85,17 @@ final class ResearchAgentTurns {
             host.beginTurn("");
         }
         ResearchHostControl.Status status = host.status();
+        if (research != null && "research".equalsIgnoreCase(status.phase)
+                && "running".equalsIgnoreCase(status.state)) {
+            // askai arch: in Phase Quellen/running startet jede Nachricht den autonomen Lauf
+            String task = researchTask(text);
+            if (task.isEmpty()) {
+                task = currentConceptRendered();
+            }
+            turn.message("Ich suche in den Wissensquellen nach: " + firstLine(task));
+            turn.message(ResearchRun.summary(research.run(task, turn.output())));
+            return;
+        }
         boolean greeted = !"new".equalsIgnoreCase(status.state);
         TeamAgentStateView view = new TeamAgentStateView(status.phase, status.state,
                 Collections.<String>emptyList());
@@ -93,6 +113,25 @@ final class ResearchAgentTurns {
         } else {
             emit(turn, conceptAwareRespond(view, text, status.searchTagsOffered));
         }
+    }
+
+    /** Der Auftrag ohne den Startbefehl ({@code research:} wie in askai, oder „Recherche starten“). */
+    static String researchTask(String text) {
+        String task = text == null ? "" : text.trim();
+        String lower = task.toLowerCase(java.util.Locale.ROOT);
+        for (String prefix : new String[]{"research:", "recherche starten", "recherche:"}) {
+            if (lower.startsWith(prefix)) {
+                return task.substring(prefix.length()).replaceFirst("^[\\s:.!-]+", "").trim();
+            }
+        }
+        return task;
+    }
+
+    private static String firstLine(String text) {
+        String line = text.trim();
+        int end = line.indexOf('\n');
+        line = end < 0 ? line : line.substring(0, end);
+        return line.length() > 160 ? line.substring(0, 160) + "…" : line;
     }
 
     private TeamAgentResult conceptAwareRespond(final TeamAgentStateView view, String text,
@@ -301,6 +340,21 @@ final class ResearchAgentTurns {
 
         boolean isCancelled() {
             return output.isCancelled();
+        }
+
+        /** Für den Recherche-Lauf: seine Zeilen gehen durch denselben Turn (Absätze, Abbruch). */
+        Output output() {
+            return new Output() {
+                @Override
+                public boolean isCancelled() {
+                    return Turn.this.isCancelled();
+                }
+
+                @Override
+                public void message(String text) {
+                    Turn.this.message(text);
+                }
+            };
         }
 
         void message(String text) {
