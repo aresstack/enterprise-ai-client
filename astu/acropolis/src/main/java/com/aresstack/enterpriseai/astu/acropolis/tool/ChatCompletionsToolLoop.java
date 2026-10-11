@@ -22,7 +22,8 @@ import java.util.concurrent.RejectedExecutionException;
  * gerouteten {@link ChatCompletionPort} statt {@code /responses}): die Anfrage geht mit den Werkzeugen der
  * {@link ToolRegistry} als {@code tools} hinaus; solange die Antwort {@code tool_calls} enthält, führt die Schleife
  * sie aus, hängt Aufruf (assistant) und Ergebnis ({@code role=tool}) an den Verlauf dieser Anfrage und fragt erneut,
- * höchstens {@code maxRounds} Mal. Die fertige Antwort kommt als ein Delta (kein Streaming auf diesem Pfad).
+ * höchstens {@code maxRounds} Mal. Entscheidend sind die gelieferten {@code tool_calls}, nicht {@code finish_reason};
+ * fehlt einem Aufruf die {@code id}, vergibt die Schleife {@code call_<runde>_<index>}. Die fertige Antwort kommt als ein Delta (kein Streaming auf diesem Pfad).
  *
  * <p>Werkzeugaufrufe und -ergebnisse bleiben in dieser Anfrage; in die Historie kommt nur die fertige Antwort.
  * Unbekannte Werkzeuge und Werkzeugfehler gehen als Text an das Modell zurück. Ein Abbruch meldet sofort
@@ -108,8 +109,16 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
                 throw new ChatCompletionException(ChatErrorKind.PROTOCOL,
                         "das Modell hat nach " + maxRounds + " Werkzeugrunden noch keine Antwort gegeben");
             }
-            messages.add(response.message());
-            for (ChatToolCall call : response.message().toolCalls()) {
+            // Ohne id vom Server vergibt die Schleife eine eigene, damit Aufruf und Ergebnis zusammenpassen (ein
+            // strenger Server lehnt eine leere tool_call_id ab).
+            List<ChatToolCall> calls = new ArrayList<ChatToolCall>();
+            for (int i = 0; i < response.message().toolCalls().size(); i++) {
+                ChatToolCall call = response.message().toolCalls().get(i);
+                calls.add(call.id().isEmpty()
+                        ? new ChatToolCall("call_" + round + "_" + i, call.name(), call.argumentsJson()) : call);
+            }
+            messages.add(ChatMessage.assistantToolCalls(response.message().content(), calls));
+            for (ChatToolCall call : calls) {
                 messages.add(ChatMessage.tool(call.id(), tools.execute(call.name(), call.argumentsJson(), activity)));
             }
             if (task != null && task.isCancelRequested()) {

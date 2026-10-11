@@ -102,8 +102,10 @@ public final class RagChatBinding implements ChatShellActions {
     static final String READING_ACTIVITY = "Liest Anhang …";
     static final String SEARCHING_ACTIVITY = "Durchsucht Anhang …";
     static final String READING_PAGE_ACTIVITY = "Liest Seite …";
-    static final String ATTACHMENTS_UNAVAILABLE_NOTICE = "Dateianhänge sind in dieser Sitzung nicht verfügbar.";
-    static final String PAGES_UNAVAILABLE_NOTICE = "Seiten können in dieser Sitzung nicht zum Chat hinzugefügt werden.";
+    static final String ATTACHMENTS_UNAVAILABLE_NOTICE =
+            "Dateianhänge sind in dieser Sitzung nicht verfügbar; die Nachricht ging ohne sie hinaus.";
+    static final String PAGES_UNAVAILABLE_NOTICE =
+            "Seiten können in dieser Sitzung nicht zum Chat hinzugefügt werden; die Nachricht ging ohne sie hinaus.";
 
     private static final DateTimeFormatter REVISION_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -280,14 +282,16 @@ public final class RagChatBinding implements ChatShellActions {
                 }
             }
         }
+        // Ohne Werkzeuge gehen Seiten und Dateien nicht mit; die Nachricht selbst darf nicht verloren gehen (der
+        // Composer hat Text und Chips schon geleert).
         if (!newBookmarks.isEmpty() && (tools == null || tools.knowledgeRead() == null)) {
             model.addNotice(PAGES_UNAVAILABLE_NOTICE);
-            return;
+            newBookmarks.clear();
+            newPages.clear();
         }
-        final List<Path> newFiles = files == null ? Collections.<Path>emptyList() : new ArrayList<Path>(files);
-        if (!newFiles.isEmpty() && tools == null) {
+        final List<Path> newFiles = files == null || tools == null ? new ArrayList<Path>() : new ArrayList<Path>(files);
+        if (files != null && !files.isEmpty() && tools == null) {
             model.addNotice(ATTACHMENTS_UNAVAILABLE_NOTICE);
-            return;
         }
         List<String> names = new ArrayList<String>(newFiles.size());
         for (Path file : newFiles) {

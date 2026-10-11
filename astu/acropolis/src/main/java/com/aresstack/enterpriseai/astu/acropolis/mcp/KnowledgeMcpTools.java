@@ -77,7 +77,7 @@ public final class KnowledgeMcpTools {
         return read.contribution();
     }
 
-        /** Merkt das Abmelden des Endpoints; die Werkzeuge sind zustandslos. Idempotent. */
+    /** Merkt das Abmelden des Endpoints; die Werkzeuge sind zustandslos. Idempotent. */
     public void shutdown() {
         shutdown = true;
     }

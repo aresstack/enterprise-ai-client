@@ -24,6 +24,7 @@ import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSour
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.FavoritesStore;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeReadingController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesController;
+import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ReaderChatPages;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentReader;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
@@ -194,6 +195,8 @@ public final class ShellAssembly {
                 new FavoritesStore(chatsDirectory.resolveSibling(FAVORITES_FILE)), root.documentNavigation(),
                 root.uiExecutor(), root.workExecutor());
         sources.setReading(reading);
+        // Rechtsklick auf einen Reiter: „Zum aktuellen Chat hinzufügen“ legt nur Titel und Bookmark in den Composer.
+        workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));
         reading.attach();
         final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources, chatShell.composer(),
                 knowledgeStatus);

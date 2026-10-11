@@ -1,0 +1,167 @@
+package com.aresstack.enterpriseai.astu.acropolis.tool;
+
+import com.aresstack.enterpriseai.astu.chat.ChatFinishReason;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatRole;
+import com.aresstack.enterpriseai.astu.chat.ChatToolCall;
+import com.aresstack.enterpriseai.astu.chat.ChatUsage;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
+import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
+import com.aresstack.enterpriseai.chat.api.ChatTask;
+import com.aresstack.enterpriseai.chat.api.ToolDefinition;
+import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.Executor;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+/** Eine Werkzeugrunde über /chat/completions: Echo der tool_calls, role=tool mit tool_call_id, Rundenlimit, Abbruch. */
+public class ChatCompletionsToolLoopTest {
+
+    private static final Executor DIRECT = Runnable::run;
+
+    private final ScriptedChat chat = new ScriptedChat();
+    private final List<String> executed = new ArrayList<String>();
+    private final ToolRegistry tools = new ToolRegistry(Collections.<AiTool>singletonList(new AiTool() {
+        @Override
+        public String name() {
+            return "knowledge_read";
+        }
+
+        @Override
+        public ToolDefinition definition() {
+            return ToolDefinition.function("knowledge_read", "liest", "{\"type\":\"object\",\"properties\":{}}");
+        }
+
+        @Override
+        public String execute(String arguments) {
+            executed.add(arguments);
+            return "Inhalt";
+        }
+    }));
+
+    @Test
+    public void oneRoundEchoesTheCallAndAnswersWithItsId() {
+        chat.script.add(toolCall(""));
+        chat.script.add(answer("Fertig"));
+        ChatResponse response = loop(8).complete(request());
+
+        assertEquals("Fertig", response.content());
+        assertEquals(1, executed.size());
+        assertEquals(2, chat.requests.size());
+        assertEquals("knowledge_read", chat.requests.get(0).tools().get(0).name());
+        List<ChatMessage> second = chat.requests.get(1).messages();
+        ChatMessage echo = second.get(second.size() - 2);
+        ChatMessage result = second.get(second.size() - 1);
+        assertEquals(ChatRole.ASSISTANT, echo.role());
+        String id = echo.toolCalls().get(0).id();
+        assertEquals("fehlende id wird vergeben", "call_1_0", id);
+        assertEquals(ChatRole.TOOL, result.role());
+        assertEquals(id, result.toolCallId());
+        assertEquals("Inhalt", result.content());
+    }
+
+    @Test
+    public void serverIdIsKept() {
+        chat.script.add(toolCall("abc"));
+        chat.script.add(answer("Fertig"));
+        loop(8).complete(request());
+        List<ChatMessage> second = chat.requests.get(1).messages();
+        assertEquals("abc", second.get(second.size() - 1).toolCallId());
+    }
+
+    @Test
+    public void stopsAfterMaxRounds() {
+        for (int i = 0; i < 4; i++) {
+            chat.script.add(toolCall("x" + i));
+        }
+        try {
+            loop(3).complete(request());
+            fail("Rundenlimit");
+        } catch (ChatCompletionException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("3 Werkzeugrunden"));
+        }
+        assertEquals(3, executed.size());
+    }
+
+    @Test
+    public void cancelBeforeStartReportsCancelled() {
+        final List<Runnable> queued = new ArrayList<Runnable>();
+        ChatCompletionsToolLoop loop = new ChatCompletionsToolLoop(chat, tools, queued::add, null, 8);
+        final List<String> events = new ArrayList<String>();
+        ChatTask task = loop.stream(request(), new ChatStreamListener() {
+            @Override
+            public void onStart() {
+                events.add("start");
+            }
+
+            @Override
+            public void onDelta(String text) {
+                events.add("delta");
+            }
+
+            @Override
+            public void onComplete(ChatResponse response) {
+                events.add("complete");
+            }
+
+            @Override
+            public void onError(ChatCompletionException error) {
+                events.add("error");
+            }
+
+            @Override
+            public void onCancelled() {
+                events.add("cancelled");
+            }
+        });
+        task.cancel();
+        queued.get(0).run();
+        assertEquals(Collections.singletonList("cancelled"), events);
+        assertTrue(task.isCancelled());
+        assertTrue("kein Modellaufruf nach Abbruch", chat.requests.isEmpty());
+    }
+
+    private ChatCompletionsToolLoop loop(int rounds) {
+        return new ChatCompletionsToolLoop(chat, tools, DIRECT, null, rounds);
+    }
+
+    private static ChatRequest request() {
+        return new ChatRequest(Collections.singletonList(ChatMessage.user("Was steht auf der Seite?")), null);
+    }
+
+    private static ChatResponse toolCall(String id) {
+        return new ChatResponse(ChatMessage.assistantToolCalls("", Collections.singletonList(
+                new ChatToolCall(id, "knowledge_read", "{\"id\":\"wiki://x/Seite\"}"))), ChatFinishReason.TOOL_CALLS,
+                ChatUsage.notReported(), "m");
+    }
+
+    private static ChatResponse answer(String text) {
+        return new ChatResponse(ChatMessage.assistant(text), ChatFinishReason.STOP, ChatUsage.notReported(), "m");
+    }
+
+    private static final class ScriptedChat implements ChatCompletionPort {
+        final LinkedList<ChatResponse> script = new LinkedList<ChatResponse>();
+        final List<ChatRequest> requests = new ArrayList<ChatRequest>();
+
+        @Override
+        public ChatResponse complete(ChatRequest request) {
+            requests.add(request);
+            return script.removeFirst();
+        }
+
+        @Override
+        public ChatTask stream(ChatRequest request, ChatStreamListener listener) {
+            throw new UnsupportedOperationException();
+        }
+    }
+}

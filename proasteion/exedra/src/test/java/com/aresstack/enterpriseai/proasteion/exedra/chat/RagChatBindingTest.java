@@ -209,6 +209,27 @@ public class RagChatBindingTest {
     }
 
     @Test
+    public void withoutToolsThePageIsDroppedButTheMessageIsSent() throws Exception {
+        port.enqueueAnswer("Trotzdem");
+        final Fixture fixture = fixture(index, embeddings);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Was steht da?", false, Collections.<java.nio.file.Path>emptyList(),
+                        Collections.singletonList(new ChatPage("Betriebshandbuch", "confluence://cf.intern/page/1")));
+            }
+        });
+        awaitIdle(fixture.model);
+
+        List<TranscriptEntry> entries = entries(fixture.model);
+        assertEquals(RagChatBinding.PAGES_UNAVAILABLE_NOTICE, entries.get(0).getText());
+        assertEquals("Was steht da?", entries.get(1).getText());
+        assertEquals("Trotzdem", entries.get(2).getText());
+        assertEquals("Was steht da?", port.lastRequest().messages().get(port.lastRequest().messages().size() - 1)
+                .content());
+    }
+
+    @Test
     public void ragOffIsExactlyThePlainChatPath() throws Exception {
         indexAll();
         int embeddingCalls = embeddings.calls().size();
