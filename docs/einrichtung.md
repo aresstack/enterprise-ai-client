@@ -226,6 +226,10 @@ Treffer zeigen ihre Funktion vorn im Namen. Installierte Modelle stehen danach u
 Funktion zur Wahl.
 
 `speech.readAloud.autoStart=true` liest neue Antworten automatisch vor (Standard aus).
+`speech.readAloud.chunking` legt die Einheit je Synthese fest wie in askai arch: `PARAGRAPHS` (Standard, Absätze),
+`SENTENCES` (Sätze) oder `ANSWER` (ganze Antwort); `speech.readAloud.synthesisWorkers` (1–8, Standard 2) ist die Zahl
+paralleler Synthesen. Beides steht unter Einstellungen → Sprachausgabe. Das erste Stück rechnet allein und klingt,
+sobald es fertig ist; die übrigen rechnen währenddessen, gespielt wird lückenlos über eine offene Audioausgabe.
 
 ### Spracheingabe (lokal)
 

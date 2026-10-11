@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.app.config;
 
+import com.aresstack.enterpriseai.application.speech.SpeechChunking;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelSelections;
@@ -23,6 +24,12 @@ public final class ModelsConfig {
     /** Neue Antworten automatisch vorlesen (askai arch {@code readAloudAutoStart}); braucht ein TTS-Modell. */
     public static final String READ_ALOUD_AUTO_START_KEY = "speech.readAloud.autoStart";
 
+    /** Einheit je Synthese (askai arch {@code tts.chunking}): ANSWER, PARAGRAPHS (Standard) oder SENTENCES. */
+    public static final String READ_ALOUD_CHUNKING_KEY = "speech.readAloud.chunking";
+
+    /** Parallele Synthesen beim Vorlesen (askai arch {@code tts.synthesisWorkers}), 1 bis 8, Standard 2. */
+    public static final String READ_ALOUD_WORKERS_KEY = "speech.readAloud.synthesisWorkers";
+
     /** Stimme der Enterprise-Sprachausgabe ({@code voice} bei {@code /audio/speech}); leer = ohne. */
     public static final String SPEECH_VOICE_KEY = "speech.voice";
 
@@ -31,10 +38,13 @@ public final class ModelsConfig {
 
     private final ModelSelections selections;
     private final boolean readAloudAutoStart;
+    private final SpeechChunking readAloudChunking;
+    private final int synthesisWorkers;
     private final String speechVoice;
     private final Path localModelRoot;
 
-    ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, String speechVoice, Path localModelRoot) {
+    ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
+                 int synthesisWorkers, String speechVoice, Path localModelRoot) {
         if (localModelRoot == null) {
             throw new IllegalArgumentException("localModelRoot must not be null");
         }
@@ -42,6 +52,8 @@ public final class ModelsConfig {
         this.speechVoice = speechVoice == null || speechVoice.trim().isEmpty() ? null : speechVoice.trim();
         this.selections = selections == null ? ModelSelections.none() : selections;
         this.readAloudAutoStart = readAloudAutoStart;
+        this.readAloudChunking = readAloudChunking == null ? SpeechChunking.PARAGRAPHS : readAloudChunking;
+        this.synthesisWorkers = synthesisWorkers;
     }
 
     /** Die bekannten Kataloge (Präfixe einer Auswahl). */
@@ -83,6 +95,16 @@ public final class ModelsConfig {
     /** Ob neue Antworten automatisch vorgelesen werden. */
     public boolean readAloudAutoStart() {
         return readAloudAutoStart;
+    }
+
+    /** Einheit, in der vorgelesen wird. */
+    public SpeechChunking readAloudChunking() {
+        return readAloudChunking;
+    }
+
+    /** Parallele Synthesen beim Vorlesen. */
+    public int synthesisWorkers() {
+        return synthesisWorkers;
     }
 
     /** Stimme für die Sprachausgabe der Enterprise-API ({@code speech.voice}) oder {@code null}. */

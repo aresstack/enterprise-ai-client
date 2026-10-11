@@ -6,13 +6,19 @@ import java.util.regex.Pattern;
 
 /**
  * Bereitet eine Markdown-Antwort zum Vorlesen auf: Codeblöcke und Mermaid-Diagramme fallen weg, Links werden zu
- * ihrem Text, Formatierungszeichen verschwinden. {@link #chunks} teilt in Absätze und Sätze (wie die
- * Absatz-/Satz-Körnung aus askai arch, ohne NLP-Modelle), damit das erste Stück schnell erklingt.
+ * ihrem Text, Formatierungszeichen verschwinden. {@link #chunks(String, SpeechChunking)} teilt nach der gewählten
+ * {@link SpeechChunking} (Absatz-/Satz-Körnung aus askai arch, ohne NLP-Modelle).
  */
 public final class SpeechText {
 
-    /** Obergrenze je Stück; längere Sätze werden an Kommas oder Leerzeichen geteilt. */
+    /** Obergrenze je Satz; längere Sätze werden an Kommas oder Leerzeichen geteilt. */
     static final int MAX_CHUNK_CHARS = 280;
+
+    /**
+     * Obergrenze je Absatz- oder Antwort-Stück: längere werden an Satzgrenzen geteilt, damit eine Äußerung im
+     * Token-Rahmen der Stimme bleibt und das erste Stück nicht unnötig lange rechnet.
+     */
+    static final int MAX_UNIT_CHARS = 1200;
 
     private static final Pattern FENCE = Pattern.compile("(?s)```.*?(```|$)|~~~.*?(~~~|$)");
     private static final Pattern IMAGE = Pattern.compile("!\\[([^\\]]*)\\]\\([^)]*\\)");
@@ -45,22 +51,57 @@ public final class SpeechText {
         return text.replaceAll("[ \\t]+", " ").replaceAll("\\n{3,}", "\n\n").trim();
     }
 
-    /** Absätze, darin Sätze; leere Stücke fallen weg. */
+    /** Ein Stück je Satz; leere Stücke fallen weg. */
     public static List<String> chunks(String plainText) {
+        return chunks(plainText, SpeechChunking.SENTENCES);
+    }
+
+    /** Stücke in der gewählten Einheit, in Lesereihenfolge; leere fallen weg. */
+    public static List<String> chunks(String plainText, SpeechChunking chunking) {
         List<String> chunks = new ArrayList<String>();
         if (plainText == null) {
             return chunks;
         }
+        List<String> unit = new ArrayList<String>();
         for (String paragraph : plainText.split("\\n\\s*\\n")) {
             String flat = paragraph.replace('\n', ' ').trim();
             if (flat.isEmpty()) {
                 continue;
             }
+            List<String> sentences = new ArrayList<String>();
             for (String sentence : SENTENCE_END.split(flat)) {
-                addBounded(chunks, sentence.trim());
+                addBounded(sentences, sentence.trim());
+            }
+            if (chunking == SpeechChunking.SENTENCES) {
+                chunks.addAll(sentences);
+            } else {
+                unit.addAll(sentences);
+                if (chunking != SpeechChunking.ANSWER) {
+                    addUnits(chunks, unit);
+                    unit.clear();
+                }
             }
         }
+        addUnits(chunks, unit);
         return chunks;
+    }
+
+    /** Fasst Sätze zu Stücken bis {@link #MAX_UNIT_CHARS} zusammen. */
+    private static void addUnits(List<String> chunks, List<String> sentences) {
+        StringBuilder unit = new StringBuilder();
+        for (String sentence : sentences) {
+            if (unit.length() > 0 && unit.length() + 1 + sentence.length() > MAX_UNIT_CHARS) {
+                chunks.add(unit.toString());
+                unit.setLength(0);
+            }
+            if (unit.length() > 0) {
+                unit.append(' ');
+            }
+            unit.append(sentence);
+        }
+        if (unit.length() > 0) {
+            chunks.add(unit.toString());
+        }
     }
 
     private static void addBounded(List<String> chunks, String sentence) {
