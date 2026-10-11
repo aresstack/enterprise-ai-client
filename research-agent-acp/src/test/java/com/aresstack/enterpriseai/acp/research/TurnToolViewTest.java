@@ -13,8 +13,8 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Senke der Host-Aufrufe eines Turns (askai arch {@code updateConceptToolBubble}/{@code finishConceptToolBubble},
- * {@code applyRunLog}): Konzept-Werkzeuge bündeln sich in einer Denkwolke, eine offene Recherche-Karte unterdrückt
- * Einzelwolken, ein Fehler trägt seinen Text.
+ * {@code applyRunLog}): Konzept-Werkzeuge bündeln sich in einer Denkwolke, eine offene Recherche-Karte nimmt das
+ * Notieren der Quellen auf (Suche und Lesen bleiben sichtbar), ein Fehler trägt seinen Text.
  */
 public class TurnToolViewTest {
 
@@ -43,18 +43,20 @@ public class TurnToolViewTest {
     }
 
     @Test
-    public void anOpenResearchCardHidesSingleCloudsUntilItEnds() {
+    public void anOpenResearchCardTakesTheSourceNotesButSearchAndReadStayVisible() {
         Recorder out = new Recorder();
         TurnToolView view = new TurnToolView(out, new ToolNarration());
         view.cardStarted("card-1", TurnToolView.CARD_KIND);
 
         view.started("s1", KnowledgePages.SEARCH_TOOL, args("query", "IAR"));
         view.finished("s1", KnowledgePages.SEARCH_TOOL, args("query", "IAR"), "", null);
-        assertTrue(out.started.toString(), out.started.isEmpty());
+        view.started("n1", "project_source_add", args("title", "IAR Übersicht"));
+        view.finished("n1", "project_source_add", args("title", "IAR Übersicht"), "source_id=x", null);
+        assertEquals("Suche sichtbar, Notiz in der Karte", Collections.singletonList("s1"), out.started);
 
         view.cardFinished("card-1");
-        view.started("s2", KnowledgePages.SEARCH_TOOL, args("query", "IAR"));
-        assertEquals(Collections.singletonList("s2"), out.started);
+        view.started("n2", "project_source_add", args("title", "IAR Planung"));
+        assertEquals(java.util.Arrays.asList("s1", "n2"), out.started);
     }
 
     @Test
