@@ -1,8 +1,11 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigLoader;
-import com.aresstack.enterpriseai.proasteion.exedra.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationCheck;
+import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
+
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SecretCheckResult;
@@ -69,7 +72,7 @@ public class FileSettingsActionsTest {
             @Override
             public void verify(AppConfig config) {
                 if (config.network().caCertificatesFile() != null) {
-                    throw new com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigException(
+                    throw new com.aresstack.enterpriseai.proasteion.application.config.AppConfigException(
                             "network.tls.caCertificatesFile: Datei enthält kein Zertifikat");
                 }
             }

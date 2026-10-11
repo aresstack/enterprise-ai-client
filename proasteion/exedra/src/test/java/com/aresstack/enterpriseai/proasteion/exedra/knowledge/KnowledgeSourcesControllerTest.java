@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.knowledge;
 
+import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
+
 import com.aresstack.enterpriseai.proasteion.exedra.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.KnowledgeStatusModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.KnowledgeSourceItem;

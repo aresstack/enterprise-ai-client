@@ -1,9 +1,12 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.KeePassConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.security.FilePairingKeyStore;
-import com.aresstack.enterpriseai.proasteion.exedra.security.SecretProbe;
-import com.aresstack.enterpriseai.proasteion.exedra.security.SecretVaults;
+import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
+import com.aresstack.enterpriseai.proasteion.application.composition.ConfluenceEntryCheck;
+
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.security.FilePairingKeyStore;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretProbe;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretVaults;
 import com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.SecretChecker;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SecretCheckResult;
@@ -67,7 +70,8 @@ public final class KeePassSecretChecker implements SecretChecker {
         KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
                 ? new InMemoryPairingKeyStore()
                 : new FilePairingKeyStore(keePass.pairingKeyFile());
-        SecretProvider provider = AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore);
+        SecretProvider provider = AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore,
+                new com.aresstack.enterpriseai.proasteion.exedra.security.DialogCredentialPrompt());
         try {
             boolean filled = SecretProbe.isFilled(provider, ref);
             if (filled) {
@@ -107,7 +111,7 @@ public final class KeePassSecretChecker implements SecretChecker {
     }
 
     @Override
-    public String testConfluence(com.aresstack.enterpriseai.proasteion.exedra.config.NetworkConfig network, String url, String user,
+    public String testConfluence(com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig network, String url, String user,
                                  char[] password, String certAlias) throws Exception {
         return ConfluenceEntryCheck.check(network, url, user, password, certAlias);
     }
@@ -117,7 +121,8 @@ public final class KeePassSecretChecker implements SecretChecker {
         KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
                 ? new InMemoryPairingKeyStore()
                 : new FilePairingKeyStore(keePass.pairingKeyFile());
-        return AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore);
+        return AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore,
+                new com.aresstack.enterpriseai.proasteion.exedra.security.DialogCredentialPrompt());
     }
 
     /** Der Titel, wie KeePass ihn kennt: die Referenz ohne das optionale Präfix {@code keepass:}. */

@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
+import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
+import com.aresstack.enterpriseai.proasteion.application.composition.ConfluenceEntryCheck;
+
 import com.aresstack.enterpriseai.astu.acropolis.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentModeAssembly;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchOutOfScopeSky;
@@ -13,9 +16,9 @@ import com.aresstack.enterpriseai.proasteion.exedra.chat.FileAttachmentStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.RagChatBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ToolSupport;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppPaths;
-import com.aresstack.enterpriseai.proasteion.exedra.config.ModelsConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourceSelection;
+import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.FavoritesStore;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeReadingController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesController;
@@ -312,7 +315,7 @@ public final class ShellAssembly {
                 root.clock(), root.zone());
         controller.setVaultTitles(() -> vaultTitles(ports.secrets()));
         controller.setPasswordStore(new com.aresstack.enterpriseai.proasteion.exedra.settings.VaultPasswordStore(
-                () -> com.aresstack.enterpriseai.proasteion.exedra.security.SecretVaults.of(ports.secrets()), root.workExecutor(),
+                () -> com.aresstack.enterpriseai.proasteion.application.security.SecretVaults.of(ports.secrets()), root.workExecutor(),
                 root.uiExecutor(), (url, user, password, alias) ->
                         ConfluenceEntryCheck.check(root.config().network(), url, user, password, alias)));
         controller.setVaultCertificateAliases(title -> vaultCertificateAlias(ports.secrets(), title));

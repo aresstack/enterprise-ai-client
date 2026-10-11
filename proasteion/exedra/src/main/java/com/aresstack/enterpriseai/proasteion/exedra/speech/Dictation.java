@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.speech;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.DictationControl;
 import com.aresstack.enterpriseai.astu.acropolis.speech.DictationService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechRecognitionRegistry;

@@ -27,7 +27,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.embedding.openai.BearerTokenSource;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
-import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.LuceneKnowledgeIndex;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.pinakes.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;

@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
 
 import java.util.function.Consumer;

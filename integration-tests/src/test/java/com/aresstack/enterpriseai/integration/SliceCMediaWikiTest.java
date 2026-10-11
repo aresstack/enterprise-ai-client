@@ -10,7 +10,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
-import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.LuceneKnowledgeIndex;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.pinakes.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceScope;

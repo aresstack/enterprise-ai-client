@@ -3,12 +3,12 @@
  * Agent-Modus verbunden werden (Architekturregel {@code CompositionRootBoundaryTest}).
  *
  * <ul>
- *   <li>{@link com.aresstack.enterpriseai.proasteion.exedra.composition.ApplicationPorts}: die Ports, gegen die alles
- *       Weitere gebaut wird; produktiv aus {@link com.aresstack.enterpriseai.proasteion.exedra.composition.AdapterAssembly},
+ *   <li>{@link com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts}: die Ports, gegen die alles
+ *       Weitere gebaut wird; produktiv aus {@link com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly},
  *       im Test aus Fakes.</li>
  *   <li>{@link com.aresstack.enterpriseai.proasteion.exedra.composition.CompositionRoot}: Use Cases, Agent-Modus mit
  *       MCP-Werkzeugen (AP20), Hintergrund-Indexierung und die geordnete, idempotente
- *       {@link com.aresstack.enterpriseai.proasteion.exedra.composition.ShutdownSequence}.</li>
+ *       {@link com.aresstack.enterpriseai.proasteion.application.composition.ShutdownSequence}.</li>
  *   <li>{@link com.aresstack.enterpriseai.proasteion.exedra.composition.ShellAssembly}: die Oberfläche (Chat/Agent) auf dem EDT.</li>
  * </ul>
  *

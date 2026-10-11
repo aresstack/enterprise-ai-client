@@ -69,7 +69,8 @@ public class CompositionRootTest {
         List<String> violations = CompositionRootRules.adaptersWithoutPortImplementation(REGISTRY,
                 ProductionClasses.of(FakeChatAdapter.class, AdapterImplementingItsPort.class, FakeChatPort.class));
         // Alle Adapter außer chat-openai fehlen in dieser Klassenmenge; chat-openai ist durch das Fixture gedeckt.
-        assertEquals(violations.toString(), REGISTRY.modulesOfKind(ModuleKind.ADAPTER).size() - 1, violations.size());
+        assertEquals(violations.toString(), REGISTRY.modulesOfKind(ModuleKind.ADAPTER).size() - 1
+                - CompositionRootRules.registersOfSiblingCatalogs(REGISTRY).size(), violations.size());
         assertTrue(violations.toString(), !violations.toString().contains("chat-openai "));
 
         List<String> withoutImplementation = CompositionRootRules.adaptersWithoutPortImplementation(REGISTRY,

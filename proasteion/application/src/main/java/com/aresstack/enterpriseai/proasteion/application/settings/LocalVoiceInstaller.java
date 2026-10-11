@@ -1,0 +1,35 @@
+package com.aresstack.enterpriseai.proasteion.application.settings;
+
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
+import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
+import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
+import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
+
+import java.nio.file.Path;
+import java.util.List;
+
+/**
+ * Lokale Stimmen für den Abschnitt „Installiert“ und „Vorschläge“ im Reiter „Lokale Modelle“; produktiv verdrahtet
+ * {@code app.composition.LocalVoices} den Anwendungsfall mit der Netzroute des Entwurfs. Beide Methoden blockieren.
+ */
+public interface LocalVoiceInstaller {
+
+    List<LocalVoiceOffer> offers(Path modelRoot);
+
+    /** Hub-Suche nach im Client ladbaren Modellen einer Kategorie ({@code null} = alle); danach installierbar. */
+    List<LocalVoiceOffer> search(NetworkConfig network, KeePassConfig keePass, String query, ModelCategory category,
+                                 Path modelRoot)
+            throws LocalVoiceInstallException;
+
+    /** @param keePass KeePass-Abschnitt des Entwurfs für die Proxy-Anmeldung (BASIC) oder {@code null} */
+    void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+            throws LocalVoiceInstallException;
+
+    /** Wie {@link #install}, lädt aber auch eine vollständige Stimme neu. */
+    void update(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
+                LocalVoiceInstallListener listener) throws LocalVoiceInstallException;
+
+    void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException;
+}

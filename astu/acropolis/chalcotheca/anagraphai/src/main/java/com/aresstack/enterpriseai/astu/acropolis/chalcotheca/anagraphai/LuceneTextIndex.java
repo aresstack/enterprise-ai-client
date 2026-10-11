@@ -63,28 +63,28 @@ import java.util.Set;
  * Upsert über Term, Replace über Löschterm, Anfrage als OR über analysierte Terme); BM25-Konfiguration und
  * gespeicherte Ressourcenfelder angelehnt an corenth {@code LuceneLexicalIndex}.
  */
-final class LuceneTextIndex {
+public final class LuceneTextIndex {
 
     /** Obergrenze analysierter Anfrageterme (Lucene erlaubt höchstens 1024 Klauseln). */
     private static final int MAX_QUERY_TERMS = 256;
 
     private final Path root;
 
-    LuceneTextIndex(Path root) {
+    public LuceneTextIndex(Path root) {
         this.root = root;
     }
 
-    void upsert(EmbeddingModelIdentity space, Collection<KnowledgeIndexEntry> entries) {
+    public void upsert(EmbeddingModelIdentity space, Collection<KnowledgeIndexEntry> entries) {
         write(directoryOf(space), null, entries);
     }
 
-    void replace(EmbeddingModelIdentity space, KnowledgeResourceId resourceId,
+    public void replace(EmbeddingModelIdentity space, KnowledgeResourceId resourceId,
                  Collection<KnowledgeIndexEntry> entries) {
         write(directoryOf(space), new Term(LuceneDocuments.RESOURCE_ID, resourceId.value()), entries);
     }
 
     /** Löscht passende Dokumente in allen Namespaces ({@code null}-Kriterium wird ignoriert). */
-    void removeWhere(KnowledgeResourceId resourceId, KnowledgeSourceId sourceId) {
+    public void removeWhere(KnowledgeResourceId resourceId, KnowledgeSourceId sourceId) {
         for (Path directory : IndexFiles.list(root)) {
             if (!Files.isDirectory(directory)) {
                 continue;
@@ -100,12 +100,12 @@ final class LuceneTextIndex {
         }
     }
 
-    void removeAll() {
+    public void removeAll() {
         IndexFiles.deleteRecursively(root);
     }
 
     /** BM25-Treffer, absteigend nach Score, Gleichstand nach Chunk-ID. */
-    List<ScoredStored> search(KnowledgeKeywordQuery query) {
+    public List<ScoredStored> search(KnowledgeKeywordQuery query) {
         List<ScoredStored> hits = new ArrayList<ScoredStored>();
         Path path = directoryOf(query.space());
         if (!Files.isDirectory(path)) {
@@ -148,7 +148,7 @@ final class LuceneTextIndex {
     }
 
     /** Gespeicherte Ressource/Chunk je Chunk-ID; fehlende IDs fehlen in der Map. */
-    Map<String, LuceneDocuments.Stored> load(EmbeddingModelIdentity space, Collection<String> chunkIds) {
+    public Map<String, LuceneDocuments.Stored> load(EmbeddingModelIdentity space, Collection<String> chunkIds) {
         Map<String, LuceneDocuments.Stored> stored = new LinkedHashMap<String, LuceneDocuments.Stored>();
         Path path = directoryOf(space);
         if (chunkIds.isEmpty() || !Files.isDirectory(path)) {
@@ -185,7 +185,7 @@ final class LuceneTextIndex {
     }
 
     /** Ressourcen-IDs aller Dokumente einer Quelle im Namespace (aus dem gespeicherten Feld, auch bei Alt-Indizes). */
-    Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+    public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
         final Set<KnowledgeResourceId> ids = new LinkedHashSet<KnowledgeResourceId>();
         forEachDocument(space, new TermQuery(new Term(LuceneDocuments.SOURCE_ID, sourceId.value())),
                 Collections.singleton(LuceneDocuments.RESOURCE_ID), new DocumentVisitor() {
@@ -199,7 +199,7 @@ final class LuceneTextIndex {
     }
 
     /** Alle gespeicherten Chunks einer Ressource im Namespace, aufsteigend nach {@code ordinal}. */
-    List<LuceneDocuments.Stored> loadResource(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+    public List<LuceneDocuments.Stored> loadResource(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
         final List<LuceneDocuments.Stored> stored = new ArrayList<LuceneDocuments.Stored>();
         forEachDocument(space, new TermQuery(new Term(LuceneDocuments.RESOURCE_ID, resourceId.value())), null,
                 new DocumentVisitor() {
@@ -219,7 +219,7 @@ final class LuceneTextIndex {
     }
 
     /** Gespeicherte Revision einer Ressource; leer ohne Dokument oder bei uneinheitlichen Revisionen. */
-    Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+    public Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
         final KnowledgeRevision[] found = new KnowledgeRevision[1];
         final boolean[] consistent = {true};
         forEachDocument(space, new TermQuery(new Term(LuceneDocuments.RESOURCE_ID, resourceId.value())),
@@ -240,9 +240,9 @@ final class LuceneTextIndex {
     }
 
     /** Ein Volltexttreffer. */
-    static final class ScoredStored {
-        final LuceneDocuments.Stored stored;
-        final double score;
+    public static final class ScoredStored {
+        public final LuceneDocuments.Stored stored;
+        public final double score;
 
         ScoredStored(LuceneDocuments.Stored stored, double score) {
             this.stored = stored;

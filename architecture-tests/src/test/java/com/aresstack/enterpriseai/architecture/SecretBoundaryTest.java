@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.architecture;
 
 import com.aresstack.enterpriseai.proasteion.exedra.chat.archfixture.secret.ChatBindingTouchingSecret;
-import com.aresstack.enterpriseai.proasteion.exedra.security.archfixture.secret.BridgeUsingSecretBriefly;
+import com.aresstack.enterpriseai.proasteion.application.security.archfixture.secret.BridgeUsingSecretBriefly;
 import com.aresstack.enterpriseai.astu.acropolis.archfixture.secret.UseCaseTouchingSecret;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.secret.IndexStoringSecret;
 import com.aresstack.enterpriseai.adyton.archfixture.secret.FakeSecretMaterial;
@@ -77,7 +77,7 @@ public class SecretBoundaryTest {
     @Test
     public void allowedPackagesLieInTheCompositionRootOnly() {
         for (String pkg : SecretBoundaryRules.packagesAllowedToUseSecretMaterial()) {
-            assertTrue(pkg, pkg.startsWith(ModuleRegistry.ROOT_PACKAGE + ".proasteion.exedra.security"));
+            assertTrue(pkg, pkg.startsWith(ModuleRegistry.ROOT_PACKAGE + ".proasteion.application.security"));
         }
     }
 
@@ -92,7 +92,7 @@ public class SecretBoundaryTest {
 
     @Test
     public void securityBridgeInTheCompositionRootUsingSecretMaterialBrieflyPasses() {
-        Violations.assertNone("proasteion.exedra.security darf Secret-Material je Aufruf lesen (AP23)",
+        Violations.assertNone("proasteion.application.security darf Secret-Material je Aufruf lesen (AP23)",
                 Violations.of(SecretBoundaryRules.all(REGISTRY, FAKE_SECRET_MATERIAL),
                         importClasses(BridgeUsingSecretBriefly.class, FakeSecretMaterial.class)));
     }

@@ -1,5 +1,11 @@
 package com.aresstack.enterpriseai.proasteion.exedra.security;
 
+import com.aresstack.enterpriseai.proasteion.application.security.SecretAccessException;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedMediaWikiCredentialsProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.UnavailableSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedTokenSource;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedBearerTokenSource;
+
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;

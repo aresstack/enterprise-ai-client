@@ -31,6 +31,7 @@ public class KnowledgeBoundaryTest {
     private static final String DOMAIN_EMBEDDING = "com.aresstack.enterpriseai.astu.embedding..";
     private static final String KNOWLEDGE_API = "com.aresstack.enterpriseai.astu.acropolis.chalcotheca..";
     private static final String KNOWLEDGE_LUCENE = "com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai..";
+    private static final String KNOWLEDGE_CATALOG = "com.aresstack.enterpriseai.astu.acropolis.chalcotheca.pinakes..";
 
     private static JavaClasses productionClasses;
 
@@ -106,17 +107,23 @@ public class KnowledgeBoundaryTest {
     }
 
     /**
-     * Von anagraphai ist nur der Port-Adapter selbst öffentlich; Text-/Vektorindex und Lucene-Abbildung
-     * bleiben paketintern, damit keine Adaptertypen das Modul verlassen.
+     * Von pinakes ist nur der Port-Adapter selbst öffentlich; das lexikalische Register anagraphai sieht außer
+     * pinakes niemand, damit keine Adaptertypen die chalcotheca verlassen. anagraphai kennt pinakes nicht (corenth).
      */
     @Test
     public void knowledgeLuceneExposesOnlyTheAdapter() {
-        ArchRule rule = classes().that().resideInAPackage(KNOWLEDGE_LUCENE)
+        ArchRule exposed = classes().that().resideInAPackage(KNOWLEDGE_CATALOG)
                 .and().haveModifier(JavaModifier.PUBLIC)
                 .and().areTopLevelClasses()
                 .should().haveSimpleName("LuceneKnowledgeIndex")
                 .allowEmptyShould(true);
-        Violations.assertNone("öffentliche Typen in anagraphai",
-                Violations.of(Arrays.asList(rule), productionClasses));
+        ArchRule register = noClasses().that().resideOutsideOfPackages(KNOWLEDGE_LUCENE, KNOWLEDGE_CATALOG)
+                .should().dependOnClassesThat().resideInAPackage(KNOWLEDGE_LUCENE)
+                .allowEmptyShould(true);
+        ArchRule lexicalOnly = noClasses().that().resideInAPackage(KNOWLEDGE_LUCENE)
+                .should().dependOnClassesThat().resideInAPackage(KNOWLEDGE_CATALOG)
+                .allowEmptyShould(true);
+        Violations.assertNone("öffentliche Typen in anagraphai/pinakes",
+                Violations.of(Arrays.asList(exposed, register, lexicalOnly), productionClasses));
     }
 }

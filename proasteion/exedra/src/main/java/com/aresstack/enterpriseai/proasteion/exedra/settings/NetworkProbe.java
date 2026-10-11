@@ -1,11 +1,11 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigException;
-import com.aresstack.enterpriseai.proasteion.exedra.config.NetworkConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.net.HttpConnections;
-import com.aresstack.enterpriseai.proasteion.exedra.net.HttpRoutes;
-import com.aresstack.enterpriseai.proasteion.exedra.net.NetworkServices;
-import com.aresstack.enterpriseai.proasteion.exedra.net.TrustPolicy;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
+import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
+import com.aresstack.enterpriseai.proasteion.application.net.HttpConnections;
+import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
+import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
+import com.aresstack.enterpriseai.proasteion.application.net.TrustPolicy;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoute;
 
 import javax.net.ssl.HttpsURLConnection;

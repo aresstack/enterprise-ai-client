@@ -1,0 +1,12 @@
+description = 'Pinakes (corenth): semantischer Katalog. Persistenter Vektorindex mit exakter Cosine-Suche ' +
+        '(FileVectorIndex) und der Index-Adapter (KnowledgeIndexPort), der ihn per RRF mit dem lexikalischen Register ' +
+        'anagraphai verbindet. Kennt keine Lucene-Typen; anagraphai kennt pinakes nicht.'
+
+dependencies {
+    api project(':astu:acropolis:chalcotheca')
+    implementation project(':astu:acropolis:chalcotheca:anagraphai')
+
+    // Vertragstest und Testdaten des Ports; deterministischer Embedding-Fake für den Vertical-Slice-Test (AP9).
+    testImplementation testFixtures(project(':astu:acropolis:chalcotheca'))
+    testImplementation testFixtures(project(':embedding-api'))
+}

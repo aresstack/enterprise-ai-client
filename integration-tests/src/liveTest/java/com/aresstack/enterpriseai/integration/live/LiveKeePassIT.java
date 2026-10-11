@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.integration.live;
 
-import com.aresstack.enterpriseai.proasteion.exedra.security.FilePairingKeyStore;
+import com.aresstack.enterpriseai.proasteion.application.security.FilePairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretMaterial;

@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.speech;
 
-import com.aresstack.enterpriseai.proasteion.exedra.net.HttpConnections;
-import com.aresstack.enterpriseai.proasteion.exedra.net.NetworkServices;
+import com.aresstack.enterpriseai.proasteion.application.net.HttpConnections;
+import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoute;
 import com.aresstack.enterpriseai.speech.api.TextAnalysisEngine;
 import com.aresstack.enterpriseai.speech.api.TextAnalysisEngineLoader;

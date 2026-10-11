@@ -61,7 +61,10 @@ public class ModuleRegistryTest {
                 // Ein Port darf den Vertrag eines in ihm liegenden Ports sehen (chalcotheca → tamias wie in corenth).
                 boolean innerPort = module.kind() == ModuleKind.PORT && targetKind == ModuleKind.PORT
                         && ArchitectureModule.covers(module.basePackage(), registry.module(target).basePackage());
-                if (!permitted.contains(targetKind) && !innerPort) {
+                // Register und Katalog der chalcotheca (corenth): pinakes verbindet das lexikalische Register anagraphai.
+                boolean siblingCatalog = module.kind() == ModuleKind.ADAPTER && targetKind == ModuleKind.ADAPTER
+                        && sameParent(module.basePackage(), registry.module(target).basePackage());
+                if (!permitted.contains(targetKind) && !innerPort && !siblingCatalog) {
                     violations.add(module.name() + " (" + module.kind() + ") darf " + target + " ("
                             + targetKind + ") nicht sehen");
                 }
@@ -128,6 +131,12 @@ public class ModuleRegistryTest {
         Violations.assertNone("Überlappende Basispakete", violations);
     }
 
+    private static boolean sameParent(String a, String b) {
+        int i = a.lastIndexOf('.');
+        int j = b.lastIndexOf('.');
+        return i > 0 && j > 0 && a.substring(0, i).equals(b.substring(0, j));
+    }
+
     private void assertAcyclic(String current, List<String> path) {
         if (path.contains(current)) {
             throw new AssertionError("Zyklus in erlaubten Abhängigkeiten: " + path + " -> " + current);
@@ -154,8 +163,10 @@ public class ModuleRegistryTest {
             case ADAPTER:
                 return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT);
             case COMPOSITION_ROOT:
+                // Die Schale (exedra) nutzt den Kompositionspunkt ohne Oberfläche (application, corenth ADR-0001);
+                // Zyklen schließt assertAcyclic aus.
                 return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT, ModuleKind.APPLICATION,
-                        ModuleKind.ADAPTER, ModuleKind.UI_LIBRARY, ModuleKind.AGENT_PROCESS);
+                        ModuleKind.ADAPTER, ModuleKind.UI_LIBRARY, ModuleKind.AGENT_PROCESS, ModuleKind.COMPOSITION_ROOT);
             case AGENT_PROCESS:
                 return EnumSet.of(ModuleKind.DOMAIN, ModuleKind.PORT, ModuleKind.APPLICATION, ModuleKind.ADAPTER);
             default:

@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.security;
 
+import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
+
 import com.aresstack.enterpriseai.proasteion.exedra.ui.security.KeePassPairingDialog;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingCallback;
 

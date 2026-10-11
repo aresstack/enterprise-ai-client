@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.architecture;
 
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.pinakes.archfixture.SecondPublicCatalogType;
+
 import com.aresstack.enterpriseai.astu.acropolis.agent.archfixture.AgentUseCaseUsingAcp;
 import com.aresstack.enterpriseai.astu.acropolis.agent.archfixture.AgentUseCaseUsingMcp;
 import com.aresstack.enterpriseai.astu.acropolis.chat.archfixture.ChatUseCaseUsingIndex;
@@ -146,7 +148,7 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void secondPublicTypeInKnowledgeLuceneIsDetected() {
         ExistingRuleProbe.assertRuleFails(KnowledgeBoundaryTest.class, "knowledgeLuceneExposesOnlyTheAdapter",
-                ProductionClasses.of(FakeLuceneAdapter.class), "FakeLuceneAdapter");
+                ProductionClasses.of(SecondPublicCatalogType.class), "SecondPublicCatalogType");
     }
 
     // ---- RagBoundaryTest (AP10) ----

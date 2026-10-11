@@ -33,7 +33,7 @@ import java.util.Set;
  * verlustfrei als gespeicherte Felder abgelegt, damit ein Treffer ohne Rückgriff auf die Quelle vollständig ist.
  * Durchsucht wird ein zusammengesetztes Feld aus Titel, Überschriften und Text.
  */
-final class LuceneDocuments {
+public final class LuceneDocuments {
 
     static final String CHUNK_ID = "chunkId";
     static final String CHUNK_ID_SORT = "chunkIdSort";
@@ -56,9 +56,9 @@ final class LuceneDocuments {
     }
 
     /** Ressource und Chunk eines gespeicherten Dokuments. */
-    static final class Stored {
-        final KnowledgeResource resource;
-        final KnowledgeChunk chunk;
+    public static final class Stored {
+        public final KnowledgeResource resource;
+        public final KnowledgeChunk chunk;
 
         Stored(KnowledgeResource resource, KnowledgeChunk chunk) {
             this.resource = resource;
@@ -142,7 +142,7 @@ final class LuceneDocuments {
     }
 
     /** Liste als {@code <länge>:<wert>}-Folge; jedes Zeichen ist im Wert erlaubt. */
-    static String encode(List<String> values) {
+    public static String encode(List<String> values) {
         StringBuilder encoded = new StringBuilder();
         for (String value : values) {
             encoded.append(value.length()).append(':').append(value);
@@ -150,7 +150,7 @@ final class LuceneDocuments {
         return encoded.toString();
     }
 
-    static List<String> decode(String encoded) {
+    public static List<String> decode(String encoded) {
         List<String> values = new ArrayList<String>();
         if (encoded == null) {
             return values;

@@ -62,7 +62,11 @@ final class ModuleRegistry {
                 .module("embedding-openai", "embedding.openai", ModuleKind.ADAPTER, "C", "astu", "embedding-api",
                         "network")
 
+                // corenth: anagraphai ist das lexikalische Register (Lucene) und kennt pinakes nicht; pinakes ist der
+                // semantische Katalog (Vektoren) und verbindet beide als Index-Adapter (KnowledgeIndexPort, RRF).
                 .module("anagraphai", "astu.acropolis.chalcotheca.anagraphai", ModuleKind.ADAPTER, "D", "astu", "chalcotheca")
+                .module("pinakes", "astu.acropolis.chalcotheca.pinakes", ModuleKind.ADAPTER, "D", "astu", "chalcotheca",
+                        "anagraphai")
 
                 .module("source-api", "source.api", ModuleKind.PORT, "E", "astu")
                 .module("source-mediawiki", "proasteion.emporion.holkas.mediawiki", ModuleKind.ADAPTER, "E", "astu", "source-api",
@@ -158,11 +162,23 @@ final class ModuleRegistry {
                         "research-domain", "research-agent-runtime", "katagogion", "mcp-solon-runtime")
 
                 .module("comic-controls", "ui.comic", ModuleKind.UI_LIBRARY, "B")
-                .module("exedra", "proasteion.exedra", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
+                // corenth ADR-0001: neutraler Kompositionspunkt ohne Oberfläche (Konfiguration, Netz, Tresor-Brücken,
+                // Adapter, Index, Use Cases → ApplicationPorts); exedra ist nur noch die Swing-Schale darauf.
+                .module("application", "proasteion.application", ModuleKind.COMPOSITION_ROOT, "Stadt (ADR-0001)",
                         "astu", "acropolis",
                         "chat-api", "embedding-api", "chalcotheca", "source-api", "adyton",
                         "acp-client-api", "katagogion", "network",
-                        "chat-openai", "embedding-openai", "anagraphai", "source-mediawiki",
+                        "chat-openai", "embedding-openai", "anagraphai", "pinakes", "source-mediawiki",
+                        "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
+                        "deigma", "document-tika", "source-localfiles", "tamias",
+                        "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
+                        "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
+                        "text-runtime-api", "text-local", "text-onnx")
+                .module("exedra", "proasteion.exedra", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
+                        "application", "astu", "acropolis",
+                        "chat-api", "embedding-api", "chalcotheca", "source-api", "adyton",
+                        "acp-client-api", "katagogion", "network",
+                        "chat-openai", "embedding-openai", "anagraphai", "pinakes", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "comic-controls", "deigma", "document-tika", "source-localfiles", "tamias",
                         "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",

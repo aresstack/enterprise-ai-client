@@ -1,8 +1,12 @@
 package com.aresstack.enterpriseai.proasteion.exedra.security;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigLoader;
-import com.aresstack.enterpriseai.proasteion.exedra.config.ClientCertificateConfig;
+import com.aresstack.enterpriseai.proasteion.application.security.ClientCertificateFactory;
+
+import com.aresstack.enterpriseai.proasteion.exedra.security.RecordingSecretProvider;
+
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.ClientCertificateConfig;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
 import org.junit.Rule;

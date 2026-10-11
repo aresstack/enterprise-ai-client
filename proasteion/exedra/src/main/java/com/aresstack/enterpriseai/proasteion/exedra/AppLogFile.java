@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 
 import java.io.IOException;
 import java.nio.file.Files;

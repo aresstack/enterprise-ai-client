@@ -13,14 +13,14 @@ import java.security.NoSuchAlgorithmException;
  * Vektor- und Textindex leiten ihn unabhängig voneinander ab; stimmen beide überein, stammen Vektor und
  * gespeicherter Text aus derselben Fassung.
  */
-final class EntryStamp {
+public final class EntryStamp {
 
     private static final Charset UTF_8 = Charset.forName("UTF-8");
 
     private EntryStamp() {
     }
 
-    static String of(KnowledgeResource resource, KnowledgeChunk chunk) {
+    public static String of(KnowledgeResource resource, KnowledgeChunk chunk) {
         KnowledgeRevision revision = resource.revision();
         String material = chunk.textWithHeading() + '\u0000' + revision.version() + '\u0000'
                 + (revision.modifiedAt().isPresent() ? revision.modifiedAt().get().toString() : "");

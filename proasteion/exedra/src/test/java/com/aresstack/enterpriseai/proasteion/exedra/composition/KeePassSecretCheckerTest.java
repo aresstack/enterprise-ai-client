@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigLoader;
-import com.aresstack.enterpriseai.proasteion.exedra.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.FakeKeePassRpcServer;

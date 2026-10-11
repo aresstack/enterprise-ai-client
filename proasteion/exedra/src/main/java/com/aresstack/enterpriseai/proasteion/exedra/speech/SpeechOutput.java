@@ -1,12 +1,12 @@
 package com.aresstack.enterpriseai.proasteion.exedra.speech;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 
 /**
  * Entscheidet, ob und womit vorgelesen wird: das Modell kommt aus der Katalog-Kategorie TTS ({@code model.tts}),

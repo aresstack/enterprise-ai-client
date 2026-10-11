@@ -14,7 +14,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
-import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.LuceneKnowledgeIndex;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.pinakes.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.After;
 import org.junit.Before;

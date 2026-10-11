@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
-import com.aresstack.enterpriseai.proasteion.exedra.state.ApplicationStateService;
+import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;

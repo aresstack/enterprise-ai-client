@@ -1,5 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
+import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
+import com.aresstack.enterpriseai.proasteion.application.composition.SemanticPassageSplitter;
+import com.aresstack.enterpriseai.proasteion.application.composition.ShutdownSequence;
+import com.aresstack.enterpriseai.proasteion.application.composition.AgentBackend;
+
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AcpAgentLauncher;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentModelChoice;
@@ -8,12 +13,12 @@ import com.aresstack.enterpriseai.proasteion.exedra.agent.ChatPortMainModelChat;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.PhaseToolSetController;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchControlTools;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.KnowledgeIndexingBinding;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AgentConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppPaths;
-import com.aresstack.enterpriseai.proasteion.exedra.config.KnowledgeConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourceSelection;
-import com.aresstack.enterpriseai.proasteion.exedra.settings.SettingsService;
+import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.KnowledgeConfig;
+import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
+import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AcpException;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentLauncher;

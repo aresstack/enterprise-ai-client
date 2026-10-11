@@ -50,7 +50,8 @@ public class AgentModeBoundaryTest {
     /** Wo ACP-/MCP-Typen außerhalb ihrer eigenen Module vorkommen dürfen. */
     private static final String[] ACP_MCP_ALLOWED = {
             ROOT + ".acp..", ROOT + ".proasteion.katagogion..", ROOT + ".astu.acropolis.agent..", ROOT + ".astu.acropolis.mcp..",
-            ROOT + ".proasteion.exedra.agent..", ROOT + ".proasteion.exedra.composition..", ROOT + ".proasteion.exedra"};
+            ROOT + ".proasteion.exedra.agent..", ROOT + ".proasteion.exedra.composition..", ROOT + ".proasteion.exedra",
+            ROOT + ".proasteion.application.composition.."};
 
     private static JavaClasses productionClasses;
 

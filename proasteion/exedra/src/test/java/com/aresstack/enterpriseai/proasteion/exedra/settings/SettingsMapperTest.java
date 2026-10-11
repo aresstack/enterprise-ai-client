@@ -1,9 +1,9 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigException;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigLoader;
-import com.aresstack.enterpriseai.proasteion.exedra.config.ProxyAuthMode;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.winproxy.ProxyMode;
 import org.junit.Test;

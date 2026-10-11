@@ -24,8 +24,10 @@ astu                                  ἄστυ       Innenstadt: Kernmodell    
 └── acropolis                         ἀκρόπολις  Burg: Lebenszyklus, Suche, Use Cases               ← application
     └── chalcotheca                   χαλκοθήκη  Bronze-Archiv und Archivschalter                   ← resource-api, knowledge-api, application.resource
         ├── tamias                    ταμίας     Wächter am Archivschalter (ResourceAccessPolicy)   ← application.resource.policy
-        └── anagraphai                ἀναγραφαί  Register: Lucene-Volltext                          ← knowledge-lucene
+        ├── anagraphai                ἀναγραφαί  Register: Lucene-Volltext (lexikalisch)            ← knowledge-lucene
+        └── pinakes                   πίνακες    Kataloge: Vektorindex, Fusion (KnowledgeIndexPort) ← knowledge-lucene
 proasteion                            προάστειον Vorstadt: Ports und Adapter, zeigt nur nach innen
+├── application                                  Kompositionspunkt ohne Oberfläche (ADR-0001)       ← app-swing (composition, config, net, security, …)
 ├── exedra                            ἐξέδρα     Swing-Schale                                       ← app-swing
 ├── katagogion                        καταγώγιον Herberge: Plugins, Tools, MCP                      ← mcp-runtime-api
 │   └── mcp-solon-runtime
@@ -41,27 +43,32 @@ proasteion                            προάστειον Vorstadt: Ports und A
 
 Regeln aus corenth, die hier gelten: proasteion → astu → adyton-Abstraktionen, nie umgekehrt. Holkas wird nicht
 direkt gerufen, sondern über den Archivschalter der chalcotheca, der Tamias jede Operation entscheiden lässt.
-Deigma transportiert und indexiert nicht. Exedra bleibt dünn.
+Deigma transportiert und indexiert nicht. Exedra bleibt dünn: `proasteion:application` liest die Konfiguration und
+setzt Netz, Tresor-Brücken, Adapter, Index und Use Cases zu `ApplicationPorts` zusammen (`AdapterAssembly`); exedra
+baut daraus die Swing-Schale (`CompositionRoot`, `ShellAssembly`) und liefert die Dialoge, die application über
+`UserPrompts` erfragt (Zugang „Manuell“, KeePass-Pairing). anagraphai ist das lexikalische Register und kennt pinakes
+nicht; pinakes hält den Vektorindex und verbindet beide per RRF zum Index-Adapter.
 
 Architekturtests: Ein Modul besitzt die Klassen seines Basispakets ohne die darin geschachtelten Module
 (`ArchitectureModule.classes()`). Überdecken dürfen sich Basispakete nur entlang der Stadt
 (`ModuleRegistryTest.CITY`). proasteion, emporion und platform sind Grenzmodule ohne Klassen (`ModuleKind.BOUNDARY`).
-Ein Port darf einen in ihm liegenden Port sehen (chalcotheca → tamias).
+Ein Port darf einen in ihm liegenden Port sehen (chalcotheca → tamias). Ein Adapter darf ein Nachbar-Register im
+selben Elternmodul nutzen (pinakes → anagraphai); das Register setzt dann selbst keinen Port um. exedra darf den
+Kompositionspunkt application sehen (beide COMPOSITION_ROOT, zyklenfrei).
 
 Noch nicht wie corenth:
-- `proasteion:application` (ADR-0001, neutraler Kompositionspunkt ohne UI) fehlt; die Komposition liegt in
-  `proasteion.exedra.composition`.
-- pinakes (semantischer Katalog) ist kein eigenes Modul; der Vektorindex (FileVectorIndex) ist ein internes Teil
-  von anagraphai (LuceneKnowledgeIndex), solange es keinen eigenen Port dafür gibt.
 - source-api bleibt außerhalb der Stadt: acropolis fragt die Quellen-Ports heute direkt statt über den
   Archivschalter. Läge der Port im Außenring, zeigte acropolis nach außen.
-- propylaea (Quelltext-Analyse) und network-winproxy als eigenes Modul (liegt in `proasteion.exedra.net`) fehlen.
+- propylaea (tiefe Quelltext-Analyse) hat im Client kein Gegenstück.
+- network-winproxy ist kein eigenes Modul: Die Proxy-Auflösung (`proasteion.application.net.HttpRoutes`) liegt im
+  Kompositionspunkt, weil Konfiguration (`NetworkConfig`) und Einstellungen-Dialog den Typ `ProxyMode` aus
+  win-proxy-java direkt verwenden; ein eigenes Modul braucht zuerst einen eigenen Proxy-Modus-Typ.
 - Keine eigenen Stadt-Namen: chat-*, embedding-*, model-*, speech-*, text-*, acp-*, research-*, comic-controls.
 
 ## Schichten und Richtung
 
 ```
-             exedra  (UI + einzige Composition Root)
+             exedra  (Swing-Schale) → application (Kompositionspunkt)
             /    |     \
    Adapter       |      comic-controls (Swing/Java2D-Bibliothek)
    (*-openai,    |
@@ -106,7 +113,8 @@ Moduls liegen nur dort (geprüft).
 | `embedding-openai` | ADAPTER | `embedding.openai` | astu, embedding-api | C (AP6) |
 | `chalcotheca` | PORT | `astu.acropolis.chalcotheca` | astu, tamias | D (AP7, AP8): Index-Port; Ressourcen (0.1.16): AcquisitionPort, Bronze, Archivschalter MediatedResourceService |
 | `tamias` | PORT | `astu.acropolis.chalcotheca.tamias` | astu | Wächter am Archivschalter: ResourceAccessPolicy, ClientResourceAccessPolicy (0.1.16) |
-| `anagraphai` | ADAPTER | `astu.acropolis.chalcotheca.anagraphai` | astu, chalcotheca | D (AP9) |
+| `anagraphai` | ADAPTER | `astu.acropolis.chalcotheca.anagraphai` | astu, chalcotheca | D (AP9): lexikalisches Register (Lucene) |
+| `pinakes` | ADAPTER | `astu.acropolis.chalcotheca.pinakes` | astu, chalcotheca, anagraphai | D (AP9): Vektorindex und Index-Adapter (RRF) |
 | `source-api` | PORT | `source.api` | astu | E (AP11) |
 | `source-mediawiki` | ADAPTER | `proasteion.emporion.holkas.mediawiki` | astu, source-api, network | E (AP12) |
 | `source-confluence` | ADAPTER | `proasteion.emporion.holkas.confluence` | astu, source-api, adyton, network | F (AP15) |
@@ -138,7 +146,8 @@ Moduls liegen nur dort (geprüft).
 | `katagogion` | PORT | `proasteion.katagogion` | astu | H (AP18) |
 | `mcp-solon-runtime` | ADAPTER | `proasteion.katagogion.solon` | astu, katagogion | H (AP19) |
 | `comic-controls` | UI_LIBRARY | `ui.comic` | – | B (AP4) |
-| `exedra` | COMPOSITION_ROOT | `proasteion.exedra` | alles außer acp-demo-agent und architecture-tests | B (AP4, AP22), AP23 |
+| `application` | COMPOSITION_ROOT | `proasteion.application` | Ports, Adapter, acropolis (ohne UI) | ADR-0001 (corenth) |
+| `exedra` | COMPOSITION_ROOT | `proasteion.exedra` | application und alles außer acp-demo-agent und architecture-tests | B (AP4, AP22), AP23 |
 | `architecture-tests` | ARCHITECTURE_TESTS | `architecture` (nur Tests) | – (liest kompilierte Klassen) | AP24 |
 | `integration-tests` | INTEGRATION_TESTS | `integration` (Produktion nur Anker-Klasse) | – (Testklassenpfad sieht alle Module und Testfixtures) | AP25 |
 
@@ -176,11 +185,13 @@ askai-java8 übernommenen Verträge sind bewusst eigenständig.
   angefragt und in `exedra` umgesetzt.
 - **acropolis**: Use Cases (Chat, RAG, Indexierung, Retrieval, MCP-Tool-Logik), ausschließlich gegen Ports.
   MCP-Tool-Handler rufen Use Cases auf, nie Adapter.
-- **exedra**: Swing-Oberfläche und die einzige Composition Root (`EnterpriseAiClientMain`). Nur hier werden
-  Konfiguration gelesen, Adapter instanziiert und per Konstruktor verdrahtet.
+- **application** (`proasteion:application`): Kompositionspunkt ohne Oberfläche. Nur hier (und in der Schale)
+  werden Konfiguration gelesen, Adapter instanziiert und per Konstruktor verdrahtet.
+- **exedra**: Swing-Oberfläche mit Programmeinstieg (`EnterpriseAiClientMain`); baut die Schale auf den
+  `ApplicationPorts` aus application und liefert die Dialoge (`SwingUserPrompts`).
 - **Secrets**: `SecretRef` (loggbar) darf durch Use Cases laufen, Secret-Material nicht. Klartext nur im
-  Security-Adapter, im konsumierenden Adapter (z. B. Confluence) und in den Brücken `proasteion.exedra.security` der
-  Composition Root (API-Key je Anfrage, Wiki-Login), so kurzlebig wie möglich; nie in Logs, Exceptions,
+  Security-Adapter, im konsumierenden Adapter (z. B. Confluence) und in den Brücken `proasteion.application.security` des
+  Kompositionspunkts (API-Key je Anfrage, Wiki-Login), so kurzlebig wie möglich; nie in Logs, Exceptions,
   `toString()`, Chat-Historie oder Indizes.
 
 ## Technologiegrenzen
@@ -220,14 +231,14 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `AgentModeBoundaryTest.*` | AP21: Chat-Pfad ohne ACP/MCP/Agent-Modus; ACP-/MCP-Typen nur in `astu.acropolis.agent`, `astu.acropolis.mcp`, `proasteion.exedra.agent` und der Composition Root; Agent-Use-Case sieht nur den ACP-Port; `proasteion.exedra.ui.agent` ist reine Oberfläche |
 | `RagBoundaryTest.*` | AP10: `astu.acropolis.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `astu.acropolis.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
 | `McpKnowledgeToolsBoundaryTest.*` | AP20: `astu.acropolis.mcp` sieht nur die Use-Case-Pakete `astu.acropolis.rag` und `astu.acropolis.knowledge`, Knowledge-Domain, aus `source.api` allein `KnowledgeSourceException` (Fehlerart) und den MCP-Port-Vertrag; Index-, Embedding- und Quell-Port (samt `SourceScope`) nur über Use Cases; kein Adapter, kein Chat, kein ACP, kein Security-Typ; Use Cases und Chat-Pfad kennen die Werkzeuge nicht |
-| `CompositionRootBoundaryTest.*` | AP23: Konstruktoren von Adaptern (Klassen eines Adaptermoduls, die einen Port implementieren) werden außerhalb der Adaptermodule nur in `proasteion.exedra.composition` aufgerufen; Wert- und Konfigurationstypen der Adaptermodule bleiben überall baubar |
-| `SecretBoundaryTest.*` | AP13/AP23: Secret-Material nur in `adyton`, `security-keepassrpc`, `source-confluence`, `source-ftp`, `source-ndv` und, paketgenau, in `proasteion.exedra.security` (Brücken der Composition Root); nie in Feldern |
+| `CompositionRootBoundaryTest.*` | AP23: Konstruktoren von Adaptern (Klassen eines Adaptermoduls, die einen Port implementieren) werden außerhalb der Adaptermodule nur in `proasteion.application.composition` und `proasteion.exedra.composition` aufgerufen; Wert- und Konfigurationstypen der Adaptermodule bleiben überall baubar |
+| `SecretBoundaryTest.*` | AP13/AP23: Secret-Material nur in `adyton`, `security-keepassrpc`, `source-confluence`, `source-ftp`, `source-ndv` und, paketgenau, in `proasteion.application.security` (Brücken des Kompositionspunkts); nie in Feldern |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 | `CoreNamingTest.*` | Nachtrag 1/19: keine Provider-Namen (OpenAI, Ollama, Claude, llama.cpp ...) und keine Multi-Provider-Abstraktion in Klassennamen oder Enum-Konstanten des Kerns |
 | `TestCodeIsolationTest.*` | Produktionscode kennt weder JUnit/ArchUnit/Mockito noch Testfixture-Klassen oder Testpakete (`testing`, `testkit`, `fake`); keine `testFixtures(...)` in einer Produktionskonfiguration |
 | `AdapterSignatureTest.*` | öffentliche Signaturen (Supertypen, Felder, Konstruktoren, Methoden, Typargumente) aller Adapter zeigen keine Bibliotheks- oder Transporttypen; keine Fremdbibliothek mit `api` deklariert |
 | `LoggingBoundaryTest.*` | Kern und comic-controls loggen nicht; kein Logging-Framework (Adapter höchstens `java.util.logging`); `System.out`/`System.err` und `printStackTrace` nur im Demo-Agenten |
-| `CompositionRootTest.*` | `System.getenv`, Preferences und `Properties.load` nur in exedra und acp-demo-agent; kein `ServiceLoader`; jeder Adapter implementiert ein Interface seines Ports |
+| `CompositionRootTest.*` | `System.getenv`, Preferences und `Properties.load` nur in application, exedra und acp-demo-agent; kein `ServiceLoader`; jeder Adapter implementiert ein Interface seines Ports |
 | `UiTechnologyTest.*` | Nachtrag 3: kein JavaFX, SWT, Servlet oder Web-Framework im Produktionscode |
 | `HardcodedConfigurationTest.*` | Nachtrag 1/5/18: im Konstantenpool der Produktionsklassen keine URL mit fremdem Host, kein Modellname, kein API-Key-/Bearer-Literal, keine Bind-All-Adresse `0.0.0.0` |
 | `Java8CompatibilityTest.*` | jeder Kompilierschritt jedes Moduls (auch Tests und Testfixtures) zielt auf Java 8 (`--release 8` bzw. Target 1.8); alle Klassendateien tragen Bytecode-Major 52 |

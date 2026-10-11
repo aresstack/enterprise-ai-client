@@ -1,7 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.security.UnavailableSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
+import com.aresstack.enterpriseai.proasteion.application.composition.StartupNotices;
+
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalog;

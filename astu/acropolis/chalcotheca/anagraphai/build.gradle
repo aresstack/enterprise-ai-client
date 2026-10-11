@@ -1,4 +1,4 @@
-description = 'Adapter: Lucene-BM25 plus exakte Cosine-Suche (Strang D). Einziges Modul mit Lucene.'
+description = 'Anagraphai (corenth): lexikalisches Register, Lucene-BM25 (Strang D). Einziges Modul mit Lucene; kennt pinakes nicht.'
 
 dependencies {
     api project(':astu:acropolis:chalcotheca')

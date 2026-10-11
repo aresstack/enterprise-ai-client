@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
+import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
+import com.aresstack.enterpriseai.proasteion.application.composition.AgentBackend;
+
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.AcpAgentLauncher;
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ChatPortMainModelChat;

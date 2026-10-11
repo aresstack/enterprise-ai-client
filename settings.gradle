@@ -11,7 +11,7 @@ dependencyResolutionManagement {
 rootProject.name = 'enterprise-ai-client'
 
 // Stadt aus corenth (ARCHITECTURE.md, „Die Stadt“): adyton, astu → acropolis → chalcotheca → {tamias, anagraphai},
-// proasteion → {exedra, katagogion, emporion → {holkas, deigma}, platform → {network, security-keepassrpc}}.
+// proasteion → {application, exedra, katagogion, emporion → {holkas, deigma}, platform → {network, security-keepassrpc}}.
 // Grenzmodule ohne eigene Klassen: proasteion, emporion, platform.
 include 'proasteion'
 include 'proasteion:emporion'
@@ -36,6 +36,7 @@ include 'embedding-openai'
 include 'astu:acropolis:chalcotheca'
 include 'astu:acropolis:chalcotheca:tamias'
 include 'astu:acropolis:chalcotheca:anagraphai'
+include 'astu:acropolis:chalcotheca:pinakes'
 
 // Strang E – Knowledge Sources (Strang F: source-confluence)
 include 'source-api'
@@ -96,6 +97,7 @@ include 'research-agent-acp'
 
 // Strang B – Swing-Comic-UI und Composition Root
 include 'comic-controls'
+include 'proasteion:application'
 include 'proasteion:exedra'
 
 // AP24 – ausführbare Architekturregeln

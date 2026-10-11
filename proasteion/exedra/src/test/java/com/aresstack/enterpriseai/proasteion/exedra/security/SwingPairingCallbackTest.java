@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.security;
 
+import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
+
 import org.junit.Test;
 
 import javax.swing.SwingUtilities;

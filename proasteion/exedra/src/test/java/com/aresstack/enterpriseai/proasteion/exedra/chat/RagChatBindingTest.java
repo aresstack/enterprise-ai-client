@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
-import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourceSelection;
+import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
+
+import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;

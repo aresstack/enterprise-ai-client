@@ -34,6 +34,7 @@ final class CompositionRootRules {
         return noClasses()
                 .that().resideInAPackage(ModuleRegistry.ROOT_PACKAGE + "..")
                 .and().resideOutsideOfPackages(registry.module("exedra").packagePattern(),
+                        registry.module("application").packagePattern(),
                         registry.module("acp-demo-agent").packagePattern(),
                         registry.module("research-agent-acp").packagePattern())
                 .should().callMethodWhere(LoggingRules.call(System.class, "getenv"))
@@ -59,7 +60,11 @@ final class CompositionRootRules {
     /** Je Adaptermodul: mindestens eine Klasse implementiert ein Interface aus einem seiner Port-Module. */
     static List<String> adaptersWithoutPortImplementation(ModuleRegistry registry, JavaClasses classes) {
         List<String> violations = new ArrayList<String>();
+        List<String> registers = registersOfSiblingCatalogs(registry);
         for (ArchitectureModule adapter : registry.modulesOfKind(ModuleKind.ADAPTER)) {
+            if (registers.contains(adapter.name())) {
+                continue;
+            }
             List<ArchitectureModule> ports = new ArrayList<ArchitectureModule>();
             for (String dependency : adapter.allowedDependencies()) {
                 if (registry.module(dependency).kind() == ModuleKind.PORT) {
@@ -83,6 +88,29 @@ final class CompositionRootRules {
             }
         }
         return violations;
+    }
+
+    /**
+     * Adapter, die ein Nachbar-Adapter im selben Elternmodul nutzt, statt selbst einen Port umzusetzen: das
+     * lexikalische Register anagraphai, das pinakes (corenth: semantischer Katalog) mit dem Vektorindex verbindet.
+     */
+    static List<String> registersOfSiblingCatalogs(ModuleRegistry registry) {
+        List<String> registers = new ArrayList<String>();
+        for (ArchitectureModule adapter : registry.modulesOfKind(ModuleKind.ADAPTER)) {
+            for (String dependency : adapter.allowedDependencies()) {
+                ArchitectureModule target = registry.module(dependency);
+                if (target.kind() == ModuleKind.ADAPTER && parent(target.basePackage()).equals(parent(adapter.basePackage()))
+                        && !registers.contains(dependency)) {
+                    registers.add(dependency);
+                }
+            }
+        }
+        return registers;
+    }
+
+    private static String parent(String basePackage) {
+        int dot = basePackage.lastIndexOf('.');
+        return dot < 0 ? "" : basePackage.substring(0, dot);
     }
 
     private static List<String> names(List<ArchitectureModule> modules) {

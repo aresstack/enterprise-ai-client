@@ -1,16 +1,22 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
+import com.aresstack.enterpriseai.proasteion.application.settings.ModelCatalogLoader;
+import com.aresstack.enterpriseai.proasteion.application.settings.LocalVoiceInstaller;
+import com.aresstack.enterpriseai.proasteion.application.settings.HubSearchHistory;
+import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationCheck;
+import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
+
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigException;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigLoader;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppPaths;
-import com.aresstack.enterpriseai.proasteion.exedra.config.KeePassConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.ModelsConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.NetworkConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.VaultLocations;
-import com.aresstack.enterpriseai.proasteion.exedra.net.HttpRoutes;
-import com.aresstack.enterpriseai.proasteion.exedra.net.NetworkServices;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.VaultLocations;
+import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
+import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.NlpModels;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;

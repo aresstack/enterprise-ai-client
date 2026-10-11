@@ -13,7 +13,7 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
-import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.LuceneKnowledgeIndex;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.pinakes.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpEndpointDefinition;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpEndpointHandle;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException;

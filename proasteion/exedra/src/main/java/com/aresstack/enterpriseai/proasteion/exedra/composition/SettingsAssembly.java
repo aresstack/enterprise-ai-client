@@ -1,13 +1,16 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigException;
-import com.aresstack.enterpriseai.proasteion.exedra.net.HttpRoutes;
-import com.aresstack.enterpriseai.proasteion.exedra.net.TrustPolicy;
-import com.aresstack.enterpriseai.proasteion.exedra.settings.ConfigurationCheck;
-import com.aresstack.enterpriseai.proasteion.exedra.settings.ConfigurationFile;
+import com.aresstack.enterpriseai.proasteion.application.composition.LocalVoices;
+import com.aresstack.enterpriseai.proasteion.application.composition.ModelCatalogs;
+
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
+import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
+import com.aresstack.enterpriseai.proasteion.application.net.TrustPolicy;
+import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationCheck;
+import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.FileSettingsActions;
-import com.aresstack.enterpriseai.proasteion.exedra.settings.ModelCatalogLoader;
+import com.aresstack.enterpriseai.proasteion.application.settings.ModelCatalogLoader;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.SpeechOutput;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
 
@@ -35,7 +38,7 @@ public final class SettingsAssembly {
 
     /** Wie {@link #create(ConfigurationFile)}, dazu die Modellabfrage des Reiters „Modelle“ ({@code null}: keine). */
     public static SettingsDialogActions create(ConfigurationFile file, final ModelCatalogLoader models) {
-        return create(file, models, new LocalVoices());
+        return create(file, models, new LocalVoices(new com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts()));
     }
 
     /** Wie {@link #create(ConfigurationFile, ModelCatalogLoader)} mit der Stimmenversorgung des Starts. */
@@ -63,7 +66,7 @@ public final class SettingsAssembly {
 
     public static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, Executor worker,
                                                Executor ui) {
-        return create(file, models, new LocalVoices(), worker, ui);
+        return create(file, models, new LocalVoices(new com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts()), worker, ui);
     }
 
     private static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, LocalVoices voices,
@@ -83,7 +86,7 @@ public final class SettingsAssembly {
                 return new com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback(address);
             }
         };
-        return new ModelCatalogs(new com.aresstack.enterpriseai.proasteion.exedra.settings.ModelCatalogCache(cacheFile),
+        return new ModelCatalogs(new com.aresstack.enterpriseai.proasteion.application.settings.ModelCatalogCache(cacheFile),
                 new ModelCatalogs.TokenLookup() {
                     @Override
                     public String token(AppConfig config) throws java.io.IOException {

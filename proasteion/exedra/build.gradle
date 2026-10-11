@@ -3,7 +3,7 @@ apply plugin: 'application'
 // vor, damit integration-tests sie wiederverwendet: testImplementation testFixtures(project(':proasteion:exedra')).
 apply plugin: 'java-test-fixtures'
 
-description = 'Swing-Desktop-Anwendung und einzige Composition Root (Strang B, AP23).'
+description = 'Exedra (corenth): dünne Swing-Schale. Nutzt den Kompositionspunkt proasteion:application und baut daraus die Oberfläche.'
 
 application {
     mainClass = 'com.aresstack.enterpriseai.proasteion.exedra.EnterpriseAiClientMain'
@@ -15,11 +15,13 @@ application {
 apply from: rootProject.file('gradle/fat-jar.gradle')
 
 dependencies {
+    implementation project(':proasteion:application')
     implementation project(':astu:acropolis')
     implementation project(':comic-controls')
     implementation project(':chat-openai')
     implementation project(':embedding-openai')
     implementation project(':astu:acropolis:chalcotheca:anagraphai')
+    implementation project(':astu:acropolis:chalcotheca:pinakes')
     implementation project(':proasteion:emporion:holkas:source-mediawiki')
     implementation project(':proasteion:emporion:holkas:source-confluence')
     // Lokale Dateien als Quelle; Extraktion über document-tika (Klartext/Markdown ohne Tika, sonst Apache Tika).

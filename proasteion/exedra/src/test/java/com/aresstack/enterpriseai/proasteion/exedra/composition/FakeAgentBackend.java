@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
+import com.aresstack.enterpriseai.proasteion.application.composition.AgentBackend;
+
 import com.aresstack.enterpriseai.acp.api.AcpAgentConnector;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AcpConnectionState;

@@ -40,12 +40,12 @@ final class SecretBoundaryRules {
 
     /**
      * Pakete außerhalb dieser Module, die Secret-Material sehen dürfen (AP23): die Brücken der Composition Root in
-     * {@code proasteion.exedra.security}, die den API-Key des Chat-/Embedding-Adapters und die Wiki-Anmeldung je Aufruf über
+     * {@code proasteion.application.security}, die den API-Key des Chat-/Embedding-Adapters und die Wiki-Anmeldung je Aufruf über
      * {@code SecretProvider.withSecret} holen. Paketgenau, damit Konfiguration, Shell, Bindings und der Rest von
      * {@code exedra} gesperrt bleiben; die Feldregel gilt auch hier.
      */
     static List<String> packagesAllowedToUseSecretMaterial() {
-        return Collections.singletonList(ModuleRegistry.ROOT_PACKAGE + ".proasteion.exedra.security..");
+        return Collections.singletonList(ModuleRegistry.ROOT_PACKAGE + ".proasteion.application.security..");
     }
 
     private SecretBoundaryRules() {

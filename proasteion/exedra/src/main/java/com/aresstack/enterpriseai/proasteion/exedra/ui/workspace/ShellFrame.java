@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
-import com.aresstack.enterpriseai.proasteion.exedra.state.ApplicationStateService;
+import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowHoldCloseButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;

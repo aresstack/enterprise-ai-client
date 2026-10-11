@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 
@@ -23,14 +23,14 @@ public interface SecretChecker {
 
     /** Die Eintragsverwaltung (Passwortverwaltung) mit diesen KeePass-Einstellungen; nie auf dem EDT benutzen. */
     default com.aresstack.enterpriseai.adyton.SecretVault vault(KeePassConfig keePass) {
-        return com.aresstack.enterpriseai.proasteion.exedra.security.SecretVaults.of(null);
+        return com.aresstack.enterpriseai.proasteion.application.security.SecretVaults.of(null);
     }
 
     /**
      * „🔗 Verbindung testen“ für einen Confluence-Eintrag mit den eingegebenen Werten; Meldung bei Erfolg, sonst
      * eine Ausnahme mit der Ursache. Nie auf dem EDT.
      */
-    default String testConfluence(com.aresstack.enterpriseai.proasteion.exedra.config.NetworkConfig network, String url,
+    default String testConfluence(com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig network, String url,
                                   String user, char[] password, String certAlias) throws Exception {
         throw new UnsupportedOperationException("Verbindungstest hier nicht verfügbar");
     }

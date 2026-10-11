@@ -91,7 +91,7 @@ sequenceDiagram
 - **Prüfen aus dem Einstellungen-Dialog**: „In KeePass prüfen“ (Reiter KI-Dienst und KeePass) baut mit den
   KeePass-Werten des Entwurfs denselben `KeePassRpcSecretProvider` (`proasteion.exedra.composition.KeePassSecretChecker`,
   Pairing über `SwingPairingCallback`, Schlüssel in der konfigurierten Datei oder nur im Speicher) und löst den
-  Eintrag einmal auf. `proasteion.exedra.security.SecretProbe` sieht das Material nur, um „Passwortfeld gefüllt/leer“ zu
+  Eintrag einmal auf. `proasteion.application.security.SecretProbe` sieht das Material nur, um „Passwortfeld gefüllt/leer“ zu
   melden, und löscht es sofort; die Meldung nennt weder Inhalt noch Länge. Die vier Fehlerfälle werden in
   Klartext erklärt (Titel stimmt nicht, KeePass nicht erreichbar oder gesperrt, Pairing widerrufen, abgebrochen).
 

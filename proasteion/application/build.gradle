@@ -1,0 +1,45 @@
+description = 'proasteion:application (corenth ADR-0001): neutraler Kompositionspunkt ohne Oberfläche. Liest die ' +
+        'Konfiguration, baut Netz, Tresor-Brücken, Adapter, Index und Use Cases zu ApplicationPorts zusammen; ' +
+        'exedra (Swing-Schale) und weitere Oberflächen konsumieren sie.'
+
+dependencies {
+    // Was die Schale von den Ports sieht (ApplicationPorts, Konfiguration), sieht sie über dieses Modul.
+    api project(':astu:acropolis')
+    api project(':astu:acropolis:chalcotheca')
+    api project(':proasteion:platform:network')
+    api project(':proasteion:platform:security-keepassrpc')
+    implementation project(':chat-openai')
+    implementation project(':embedding-openai')
+    implementation project(':astu:acropolis:chalcotheca:anagraphai')
+    implementation project(':astu:acropolis:chalcotheca:pinakes')
+    implementation project(':proasteion:emporion:holkas:source-mediawiki')
+    implementation project(':proasteion:emporion:holkas:source-confluence')
+    implementation project(':proasteion:emporion:holkas:source-localfiles')
+    implementation project(':proasteion:emporion:holkas:source-ftp')
+    implementation project(':proasteion:emporion:holkas:source-ndv')
+    implementation project(':proasteion:emporion:holkas')
+    implementation project(':proasteion:emporion:deigma:document-tika')
+    implementation project(':acp-solon-client')
+    implementation project(':proasteion:katagogion:mcp-solon-runtime')
+    implementation project(':model-kipitz')
+    implementation project(':model-huggingface')
+    implementation project(':speech-api')
+    implementation project(':speech-runtime-api')
+    implementation project(':speech-local')
+    implementation project(':speech-onnx')
+    implementation project(':text-runtime-api')
+    implementation project(':text-local')
+    implementation project(':text-onnx')
+    // Proxy je Ziel (net.HttpRoutes) und TLS-Vertrauen (net.TrustPolicy), wie bisher in exedra.
+    implementation libs.win.proxy.java
+    implementation libs.win.trust.java
+    implementation libs.gson
+
+    testImplementation testFixtures(project(':chat-api'))
+    testImplementation testFixtures(project(':embedding-api'))
+    testImplementation testFixtures(project(':astu:acropolis:chalcotheca'))
+    testImplementation testFixtures(project(':source-api'))
+    testImplementation testFixtures(project(':proasteion:platform:security-keepassrpc'))
+    testImplementation libs.java.websocket
+    testImplementation libs.gson
+}

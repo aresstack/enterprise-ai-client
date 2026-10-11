@@ -1,6 +1,6 @@
 /**
  * Bearbeiten der Konfigurationsdatei aus der Oberfläche heraus, ohne Swing: {@link
- * com.aresstack.enterpriseai.proasteion.exedra.settings.ConfigurationFile} schreibt Schlüssel unter Erhalt der Kommentare,
+ * com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile} schreibt Schlüssel unter Erhalt der Kommentare,
  * {@link com.aresstack.enterpriseai.proasteion.exedra.settings.SettingsMapper} übersetzt zwischen Datei und
  * {@code app.ui.settings.SettingsForm}, {@link com.aresstack.enterpriseai.proasteion.exedra.settings.FileSettingsActions}
  * prüft über den {@code AppConfigLoader} und speichert ({@link

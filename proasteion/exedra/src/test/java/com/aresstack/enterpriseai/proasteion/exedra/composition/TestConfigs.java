@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 
 import java.nio.file.Path;
 import java.util.Properties;

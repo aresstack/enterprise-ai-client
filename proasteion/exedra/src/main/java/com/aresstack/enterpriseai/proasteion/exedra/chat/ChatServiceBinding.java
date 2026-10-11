@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
-import com.aresstack.enterpriseai.proasteion.exedra.net.ConnectionDiagnosis;
+import com.aresstack.enterpriseai.proasteion.application.net.ConnectionDiagnosis;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;

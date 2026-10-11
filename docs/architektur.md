@@ -103,7 +103,7 @@ flowchart LR
     sp -.-> kp["KeePassRpcSecretProvider"]
 ```
 
-Die gestrichelten Kanten entstehen nur in der Composition Root (`proasteion.exedra.composition.AdapterAssembly`,
+Die gestrichelten Kanten entstehen nur in der Composition Root (`proasteion.application.composition.AdapterAssembly`,
 `CompositionRoot`): Dort werden Adapter gebaut und in die Use Cases injiziert. Der Chat-Pfad funktioniert
 vollständig ohne RAG, ACP und MCP; RAG legt sich von außen um den `ChatService`, der Agent-Modus ist ein
 getrennter Zusatz (siehe [RAG-Datenfluss](rag-datenfluss.md), [ACP](acp.md), [MCP](mcp.md)).

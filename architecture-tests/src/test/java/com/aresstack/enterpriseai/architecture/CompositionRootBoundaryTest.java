@@ -41,6 +41,9 @@ public class CompositionRootBoundaryTest {
 
     private static final ModuleRegistry REGISTRY = ModuleRegistry.standard();
     static final String COMPOSITION_PACKAGE = ModuleRegistry.ROOT_PACKAGE + ".proasteion.exedra.composition..";
+    /** Kompositionspunkt (proasteion:application, corenth ADR-0001) und die Schale, die ihn nutzt (exedra). */
+    static final String[] COMPOSITION_PACKAGES = {
+            ModuleRegistry.ROOT_PACKAGE + ".proasteion.application.composition..", COMPOSITION_PACKAGE};
     private static JavaClasses productionClasses;
 
     @BeforeClass
@@ -76,7 +79,7 @@ public class CompositionRootBoundaryTest {
         String[] agentProcesses = packagesOfKind(registry, ModuleKind.AGENT_PROCESS).toArray(new String[0]);
         return noClasses()
                 .that().resideOutsideOfPackages(adapters)
-                .and().resideOutsideOfPackage(COMPOSITION_PACKAGE)
+                .and().resideOutsideOfPackages(COMPOSITION_PACKAGES)
                 .and().resideOutsideOfPackages(agentProcesses)
                 .should().callConstructorWhere(target(owner(
                         resideInAnyPackage(adapters).and(assignableTo(ports)))))

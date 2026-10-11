@@ -19,6 +19,7 @@ dependencies {
     testImplementation project(':chat-openai')
     testImplementation project(':embedding-openai')
     testImplementation project(':astu:acropolis:chalcotheca:anagraphai')
+    testImplementation project(':astu:acropolis:chalcotheca:pinakes')
     testImplementation project(':proasteion:emporion:holkas:source-mediawiki')
     testImplementation project(':proasteion:emporion:holkas:source-confluence')
     testImplementation project(':proasteion:platform:security-keepassrpc')
@@ -27,6 +28,7 @@ dependencies {
     // Oberfläche und Composition Root
     testImplementation project(':comic-controls')
     testImplementation project(':proasteion:exedra')
+    testImplementation project(':proasteion:application')
 
     // Testfixtures der Stränge: Fake-Ports, In-Memory-Index und -Quelle, MCP-Test-Tools, Fake-HTTP-Server
     // (/chat/completions, /embeddings), Fake-MediaWiki, Fake-Confluence, Fake-KeePassRPC.

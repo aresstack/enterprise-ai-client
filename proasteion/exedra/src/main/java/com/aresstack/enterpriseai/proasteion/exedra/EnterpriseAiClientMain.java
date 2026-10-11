@@ -1,39 +1,40 @@
 package com.aresstack.enterpriseai.proasteion.exedra;
 
-import com.aresstack.enterpriseai.proasteion.exedra.composition.AdapterAssembly;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.ApplicationPorts;
+import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
+import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.proasteion.exedra.composition.CompositionRoot;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.ModelCatalogs;
+import com.aresstack.enterpriseai.proasteion.application.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.Dictation;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.SwitchableReadAloud;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.SpeechOutput;
 import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.LocalVoices;
+import com.aresstack.enterpriseai.proasteion.application.composition.LocalVoices;
 import com.aresstack.enterpriseai.proasteion.exedra.composition.SettingsAssembly;
 import com.aresstack.enterpriseai.proasteion.exedra.composition.ShellAssembly;
-import com.aresstack.enterpriseai.proasteion.exedra.composition.StartupNotices;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigException;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigLoader;
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppPaths;
-import com.aresstack.enterpriseai.proasteion.exedra.config.ModelsConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.NetworkConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.ProxyAuthMode;
+import com.aresstack.enterpriseai.proasteion.application.composition.StartupNotices;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesController;
-import com.aresstack.enterpriseai.proasteion.exedra.net.LiveNetwork;
-import com.aresstack.enterpriseai.proasteion.exedra.net.NetworkServices;
-import com.aresstack.enterpriseai.proasteion.exedra.security.LiveSecretProvider;
-import com.aresstack.enterpriseai.proasteion.exedra.security.ProxyAuthenticator;
-import com.aresstack.enterpriseai.proasteion.exedra.security.SecretBackedTokenSource;
+import com.aresstack.enterpriseai.proasteion.application.net.LiveNetwork;
+import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
+import com.aresstack.enterpriseai.proasteion.application.security.LiveSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.ProxyAuthenticator;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedTokenSource;
+import com.aresstack.enterpriseai.proasteion.exedra.security.DialogCredentialPrompt;
 import com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback;
-import com.aresstack.enterpriseai.proasteion.exedra.settings.ConfigurationFile;
-import com.aresstack.enterpriseai.proasteion.exedra.knowledge.SourcePartitionSelection;
-import com.aresstack.enterpriseai.proasteion.exedra.state.ApplicationStateService;
+import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
+import com.aresstack.enterpriseai.proasteion.application.knowledge.SourcePartitionSelection;
+import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.FileIndexActions;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.FileSourceActions;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.ConfigurationStartup;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.SettingsMapper;
-import com.aresstack.enterpriseai.proasteion.exedra.settings.SettingsService;
+import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.IndexDialog;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.IndexForm;
@@ -100,7 +101,7 @@ public final class EnterpriseAiClientMain {
         final boolean headless = GraphicsEnvironment.isHeadless();
         final ModelCatalogs modelCatalogs = SettingsAssembly.modelCatalogs(
                 AppPaths.appDirectory().resolve(AppPaths.MODEL_CATALOG_FILE_NAME));
-        final LocalVoices localVoices = new LocalVoices();
+        final LocalVoices localVoices = new LocalVoices(new com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts());
         final SettingsDialogActions settingsActions = headless ? null
                 : SettingsAssembly.create(file, modelCatalogs, localVoices);
         ConfigurationStartup.Outcome outcome = ConfigurationStartup.obtain(file,
@@ -279,7 +280,7 @@ public final class EnterpriseAiClientMain {
     /** Der KeePass- bzw. „Manuell“-Port nach den KeePass-Einstellungen, mit Pairing-Dialog für deren Adresse. */
     private static SecretProvider vault(AppConfig config) {
         return AdapterAssembly.secrets(config, new SwingPairingCallback(
-                config.keePass().rpc().host() + ":" + config.keePass().rpc().port()));
+                config.keePass().rpc().host() + ":" + config.keePass().rpc().port()), new DialogCredentialPrompt());
     }
 
     /**

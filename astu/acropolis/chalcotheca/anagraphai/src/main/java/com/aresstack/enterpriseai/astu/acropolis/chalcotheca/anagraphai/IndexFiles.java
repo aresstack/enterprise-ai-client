@@ -14,7 +14,7 @@ import java.util.Collections;
 import java.util.List;
 
 /** Dateihilfen der Index-Projektion: atomare Schreibvorgänge, Verzeichnisse auflisten und löschen. */
-final class IndexFiles {
+public final class IndexFiles {
 
     private IndexFiles() {
     }
@@ -24,7 +24,7 @@ final class IndexFiles {
      * ersetzendem Umbenennen. Gelesen wird nur von derselben, synchronisierten Instanz nach dem Schreiben, nie
      * nebenläufig; die temporäre Datei schützt vor halb geschriebenen Zieldateien bei Abbruch.
      */
-    static void atomicWrite(Path target, byte[] content) {
+    public static void atomicWrite(Path target, byte[] content) {
         try {
             Files.createDirectories(target.getParent());
             Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
@@ -40,7 +40,7 @@ final class IndexFiles {
     }
 
     /** Einträge eines Verzeichnisses, sortiert; leer, wenn es nicht existiert. */
-    static List<Path> list(Path directory) {
+    public static List<Path> list(Path directory) {
         List<Path> entries = new ArrayList<Path>();
         if (!Files.isDirectory(directory)) {
             return entries;
@@ -61,7 +61,7 @@ final class IndexFiles {
         return entries;
     }
 
-    static void deleteRecursively(Path path) {
+    public static void deleteRecursively(Path path) {
         if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }

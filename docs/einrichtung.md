@@ -65,7 +65,7 @@ Dialog erneut (die Vorlage allein wäre ladbar und würde sonst mit Beispiel-Adr
 (headless, etwa `smokeStartFatJar`) gibt es keinen Dialog: die Vorlage wird angelegt, der Hinweis geloggt,
 Exit-Code 2. Eine vorhandene Datei mit Fehlern öffnet den Dialog mit ihren Werten
 und den Problemen (headless: Meldung und Exit-Code 2). Die Vorlage selbst liegt im Repository unter
-`exedra/src/main/resources/com/aresstack/enterpriseai/proasteion/exedra/config/enterprise-ai-client.example.properties`
+`proasteion/application/src/main/resources/com/aresstack/enterpriseai/proasteion/application/config/enterprise-ai-client.example.properties`
 und beschreibt jeden Schlüssel. Pflicht sind:
 
 ```properties

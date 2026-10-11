@@ -1,10 +1,12 @@
 package com.aresstack.enterpriseai.proasteion.exedra.composition;
 
-import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.config.KeePassConfig;
-import com.aresstack.enterpriseai.proasteion.exedra.security.FilePairingKeyStore;
-import com.aresstack.enterpriseai.proasteion.exedra.security.SecretAccessException;
-import com.aresstack.enterpriseai.proasteion.exedra.security.SecretBackedTokenSource;
+import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
+
+import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.security.FilePairingKeyStore;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretAccessException;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.ConnectionChecker;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.ConnectionProbe;
@@ -75,7 +77,8 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
         KeePassPairingKeyStore keyStore = keePass.pairingKeyFile() == null
                 ? new InMemoryPairingKeyStore()
                 : new FilePairingKeyStore(keePass.pairingKeyFile());
-        SecretProvider provider = AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore);
+        SecretProvider provider = AdapterAssembly.secrets(keePass, pairing.forAddress(address), keyStore,
+                new com.aresstack.enterpriseai.proasteion.exedra.security.DialogCredentialPrompt());
         try {
             return new SecretBackedTokenSource(provider, ref).token();
         } catch (SecretAccessException e) {
