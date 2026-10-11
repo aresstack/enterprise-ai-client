@@ -467,6 +467,79 @@ public class RagChatBindingTest {
         assertTrue(entries.get(1).getSources().get(0).getKeywordRank() >= 1);
     }
 
+    /**
+     * Abnahme 1: „Hi“ bei eingeschalteter Wissenssuche und angehakter Quelle sucht nicht, bettet nichts ein und
+     * zeigt keinen Hinweis, selbst wenn die semantische Suche gerade ausfallen würde.
+     */
+    @Test
+    public void smallTalkWithTickedSourceDoesNotSearchAndShowsNoNotice() throws Exception {
+        indexAll();
+        final FailingEmbeddings failing = new FailingEmbeddings(embeddings);
+        final Fixture fixture = fixture(index, failing);
+        for (final String greeting : new String[] {"Hi", "Danke!", "ok"}) {
+            port.enqueueAnswer("Hallo zurück");
+            onEdt(new Runnable() {
+                @Override
+                public void run() {
+                    fixture.binding.sendRequested(greeting, true);
+                }
+            });
+            awaitIdle(fixture.model);
+            assertEquals("Antworte knapp.", port.lastRequest().messages().get(0).content());
+        }
+        assertEquals("kein Embedding, keine Suche", 0, failing.calls.get());
+        List<TranscriptEntry> entries = entries(fixture.model);
+        assertEquals("nur Fragen und Antworten, kein Hinweis", 6, entries.size());
+        for (TranscriptEntry entry : entries) {
+            assertFalse(entry.toString(), entry.getAuthor() == TranscriptEntry.Author.NOTICE);
+            assertFalse(entry.hasSources());
+        }
+    }
+
+    /**
+     * Mit Wissens-Werkzeugen entscheidet das Modell: Small Talk und Aufträge ohne erkennbare Wissensfrage gehen
+     * ohne Vorabsuche hinaus, knowledge_search wird aber angeboten; eine erkennbare Frage sucht weiterhin vorab.
+     */
+    @Test
+    public void withKnowledgeToolsOnlyARecognizableQuestionIsSearchedAhead() throws Exception {
+        indexAll();
+        final FailingEmbeddings failing = new FailingEmbeddings(embeddings);
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(source.sourceId(), true);
+        final Fixture fixture = fixture(index, failing, selection);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.enableTools(new ToolSupport(port, new FileAttachmentStore(folder.getRoot().toPath()),
+                        (name, content) -> "", Collections.singletonList(recordingTool("knowledge_search",
+                                new ArrayList<String>(), "")), false));
+            }
+        });
+        for (final String message : new String[] {"Hallo", "Schreib mir ein Gedicht über den Herbst"}) {
+            port.enqueueAnswer("Antwort");
+            onEdt(new Runnable() {
+                @Override
+                public void run() {
+                    fixture.binding.sendRequested(message, true);
+                }
+            });
+            awaitIdle(fixture.model);
+            assertTrue(toolNames(port.lastRequest()).contains("knowledge_search"));
+        }
+        assertEquals("keine Vorabsuche", 0, failing.calls.get());
+        assertEquals(4, entries(fixture.model).size());
+
+        port.enqueueAnswer("Drei Monate");
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+        assertEquals("die Frage wurde vorab gesucht", 1, failing.calls.get());
+    }
+
     @Test
     public void deselectedSourcesAreNotSearched() throws Exception {
         indexAll();
@@ -1181,6 +1254,7 @@ public class RagChatBindingTest {
     /** Der Embedding-Dienst ist nicht erreichbar: die semantische Suche fällt aus, die Volltextsuche bleibt. */
     private static final class FailingEmbeddings implements EmbeddingPort {
         private final EmbeddingPort identityOf;
+        final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
 
         FailingEmbeddings(EmbeddingPort identityOf) {
             this.identityOf = identityOf;
@@ -1193,6 +1267,7 @@ public class RagChatBindingTest {
 
         @Override
         public EmbeddingBatch embed(List<String> texts) {
+            calls.incrementAndGet();
             throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "embedding service down");
         }
     }

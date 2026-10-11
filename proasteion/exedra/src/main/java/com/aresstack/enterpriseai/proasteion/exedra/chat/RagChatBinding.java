@@ -16,6 +16,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeAcquisition;
+import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeQuestion;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagOptions;
@@ -65,7 +66,9 @@ import java.util.logging.Logger;
  *       nur RAG. Auf dem Werkzeugweg kommt der Hinweis deshalb erst nach der Antwort: hat {@code knowledge_read}
  *       eine Seite geliefert, heißt ein ausgefallener Suchpfad nicht „ohne Kontext“.</li>
  *   <li><b>Quellen</b>: gesucht wird nur in den Quellen, die der {@link RagSourceFilter} erlaubt (die Häkchen im
- *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche und ohne Hinweis als normaler Chat.</li>
+ *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche und ohne Hinweis als normaler Chat. Angehakt heißt
+ *       „verfügbar“: ob vorab gesucht wird, entscheidet {@link KnowledgeQuestion} (Small Talk nie; mit
+ *       {@code knowledge_search} nur bei erkennbarer Wissensfrage, sonst sucht das Modell selbst).</li>
  *   <li><b>Stop</b> während des Retrievals merkt sich den Wunsch und bricht den Turn ab, sobald er existiert;
  *       die Nutzerfrage bleibt dabei in der Historie (AP2-Regel), die Antwortblase endet als abgebrochen.</li>
  * </ul>
@@ -335,6 +338,12 @@ public final class RagChatBinding implements ChatShellActions {
                 && (ragOptions.isEnabled() || !chatPages.isEmpty());
         final boolean toolPath = tools != null && (tools.alwaysOn() || conversationHasAttachments
                 || !newFiles.isEmpty() || !chatPages.isEmpty() || knowledgeTools);
+        // Angehakte Quellen heißen „verfügbar“, nicht „bei jeder Nachricht suchen“: Small Talk sucht nie; hat das
+        // Modell knowledge_search, sucht es selbst und vorab nur bei einer erkennbaren Wissensfrage.
+        if (ragOptions.isEnabled() && !KnowledgeQuestion.wantsRetrieval(text,
+                knowledgeTools && tools.knowledgeTool(KnowledgeMcpTools.KNOWLEDGE_SEARCH) != null)) {
+            ragOptions = RagOptions.disabled();
+        }
         if (!ragOptions.isEnabled() && !toolPath) {
             startWithoutRetrieval(text, listener);
             return;
