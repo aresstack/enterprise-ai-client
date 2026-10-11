@@ -117,7 +117,7 @@ public final class ShellAssembly {
             chatActions.enableTools(new ToolSupport(root.ports().chat(),
                     new FileAttachmentStore(chatsDirectory),
                     root.attachmentText(),
-                    root.knowledgeTools().knowledgeReadChatTool(),
+                    root.knowledgeReadChatTool(),
                     root.config().chat().toolsEnabled()));
         }
         final ChatHistoryBinding history = new ChatHistoryBinding(new FileChatHistoryStore(chatsDirectory),

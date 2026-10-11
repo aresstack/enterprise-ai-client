@@ -273,7 +273,7 @@ public final class RagChatBinding implements ChatShellActions {
         if (pages != null) {
             for (ChatPage page : pages) {
                 try {
-                    newBookmarks.add(new ChatBookmark(page.title(), BookmarkUri.parse(page.bookmark())));
+                    newBookmarks.add(new ChatBookmark(page.title(), BookmarkUri.parse(page.bookmark()).toString()));
                     newPages.add(page);
                 } catch (IllegalArgumentException invalid) {
                     LOG.warning("Seite ohne gültiges Bookmark übergangen: " + page);

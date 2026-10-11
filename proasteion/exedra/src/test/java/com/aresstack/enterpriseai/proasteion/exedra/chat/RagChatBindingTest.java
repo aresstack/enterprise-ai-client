@@ -190,7 +190,7 @@ public class RagChatBindingTest {
             }
         });
         assertEquals(1, pages.size());
-        assertEquals(bookmark, pages.get(0).uri().toString());
+        assertEquals(bookmark, pages.get(0).uri());
 
         String system = port.lastRequest().messages().get(0).content();
         assertTrue(system, system.contains("Betriebshandbuch: " + bookmark));

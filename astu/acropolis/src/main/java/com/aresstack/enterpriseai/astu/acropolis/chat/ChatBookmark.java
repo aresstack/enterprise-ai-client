@@ -1,13 +1,11 @@
 package com.aresstack.enterpriseai.astu.acropolis.chat;
 
-import com.aresstack.enterpriseai.astu.resource.BookmarkUri;
-
 import java.util.List;
 
 /**
  * Eine Seite, die der Nutzer einem Chat hinzugefügt hat (corenth: Bookmark statt Textkopie): nur Titel und
- * {@link BookmarkUri} der kanonischen Ressource, nie ihr Text. Das Modell erfährt beides über {@link #context};
- * den Inhalt liest es bei Bedarf mit {@code knowledge_read}, das das Bookmark über den Index auflöst.
+ * Bookmark der kanonischen Ressource ({@code BookmarkUri} als Text, vom Aufrufer geprüft), nie ihr Text. Das
+ * Modell erfährt beides über {@link #context}; den Inhalt liest es bei Bedarf mit {@code knowledge_read}, das das Bookmark über den Index auflöst.
  */
 public final class ChatBookmark {
 
@@ -15,21 +13,21 @@ public final class ChatBookmark {
     public static final String READ_TOOL = "knowledge_read";
 
     private final String title;
-    private final BookmarkUri uri;
+    private final String uri;
 
-    public ChatBookmark(String title, BookmarkUri uri) {
-        if (uri == null) {
-            throw new IllegalArgumentException("uri must not be null");
+    public ChatBookmark(String title, String uri) {
+        if (uri == null || uri.trim().isEmpty()) {
+            throw new IllegalArgumentException("uri must not be blank");
         }
-        this.title = title == null || title.trim().isEmpty() ? uri.toString() : title.trim();
-        this.uri = uri;
+        this.uri = uri.trim();
+        this.title = title == null || title.trim().isEmpty() ? this.uri : title.trim();
     }
 
     public String title() {
         return title;
     }
 
-    public BookmarkUri uri() {
+    public String uri() {
         return uri;
     }
 

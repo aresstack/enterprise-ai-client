@@ -329,7 +329,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         for (ChatMessageRecord message : record.getMessages()) {
             for (BookmarkRecord bookmark : message.getBookmarks()) {
                 try {
-                    bookmarks.add(new ChatBookmark(bookmark.getTitle(), BookmarkUri.parse(bookmark.getUri())));
+                    bookmarks.add(new ChatBookmark(bookmark.getTitle(), BookmarkUri.parse(bookmark.getUri()).toString()));
                 } catch (IllegalArgumentException invalid) {
                     // ohne gültiges Bookmark kann das Modell die Seite nicht lesen
                 }

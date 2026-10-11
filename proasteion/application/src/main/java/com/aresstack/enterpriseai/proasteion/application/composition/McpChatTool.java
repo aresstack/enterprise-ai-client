@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.astu.acropolis.mcp;
+package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolArguments;

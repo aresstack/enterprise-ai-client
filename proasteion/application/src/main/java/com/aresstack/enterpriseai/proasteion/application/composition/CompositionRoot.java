@@ -413,6 +413,14 @@ public final class CompositionRoot {
         return knowledgeTools;
     }
 
+    /**
+     * {@code knowledge_read} als Werkzeug des normalen Chats (Seiten-Bookmarks): derselbe Handler wie über MCP; der
+     * Chat-Pfad sieht nur {@link com.aresstack.enterpriseai.astu.acropolis.tool.AiTool}.
+     */
+    public com.aresstack.enterpriseai.astu.acropolis.tool.AiTool knowledgeReadChatTool() {
+        return new McpChatTool(knowledgeTools.knowledgeRead());
+    }
+
     /** Der Agent-Modus: das konfigurierte Agent-Kommando, sonst der eingebaute Recherche-Agent. */
     public AgentService agentService() {
         return agentService;

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.mcp;
 
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeBookmarkIds;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentNotIndexedException;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeResourceUseCase;
@@ -10,8 +11,6 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgePassageId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceRef;
-import com.aresstack.enterpriseai.astu.resource.BookmarkUri;
-import com.aresstack.enterpriseai.astu.resource.KnowledgeBookmarks;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
@@ -20,13 +19,12 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 
 import java.util.List;
-import java.util.regex.Pattern;
 
 /**
  * {@code knowledge_read(id)}: Resource-Resolver (corenth: Bookmark statt Textkopie). Die ID eines Suchtreffers
  * ({@code confluence:47110815}) oder einer Passage
  * ({@code confluence:47110815@<sha256>#p3@9f2c41ab-5e07d1c3}) oder ihr Bookmark ({@code confluence://cf.intern/confluence/page/
- * 47110815}, über {@link KnowledgeBookmarks#toResourceId}) wird zuerst aus
+ * 47110815}, über {@link KnowledgeBookmarkIds}) wird zuerst aus
  * dem Index beantwortet: Referenz (id, url, Revision, Inhalts-Hash) und die aufbereiteten Passagen mit ihren IDs. Die
  * Quelle wird nur bei unbekanntem oder geändertem Stand gefragt, auf dem Thread des Agenten (an der Vorlade-Warteschlange
  * vorbei), danach wird indexiert und wieder aus dem Index geliefert. Bei einer Passage-ID kommen diese Passage und
@@ -39,8 +37,6 @@ final class KnowledgeReadTool implements McpToolHandler {
 
     private static final String EXAMPLE = "id=\"confluence:47110815\"";
     private static final String BOOKMARK_EXAMPLE = "id=\"confluence://cf.intern/confluence/page/47110815\"";
-    /** Ein Bookmark hat nach dem Schema immer {@code //}, eine Resource-ID nie ({@code SourceLocators}). */
-    private static final Pattern BOOKMARK = Pattern.compile("[a-z][a-z0-9+.-]*://.+", Pattern.DOTALL);
     private static final int FIELD_CHARS = 200;
     private static final int HASH_CHARS = 12;
     /** Nachbarn links und rechts einer angefragten Passage. */
@@ -77,8 +73,8 @@ final class KnowledgeReadTool implements McpToolHandler {
         KnowledgePassageId passage = null;
         KnowledgeResourceId id;
         try {
-            if (BOOKMARK.matcher(trimmed).matches()) {
-                id = KnowledgeBookmarks.toResourceId(BookmarkUri.parse(trimmed));
+            if (KnowledgeBookmarkIds.isBookmark(trimmed)) {
+                id = KnowledgeBookmarkIds.resourceIdOf(trimmed);
             } else if (KnowledgePassageId.looksLike(trimmed)) {
                 passage = KnowledgePassageId.parse(trimmed);
                 id = passage.resourceId();
