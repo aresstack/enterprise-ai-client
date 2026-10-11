@@ -987,7 +987,7 @@ public final class ResearchAgentHost {
     public List<SearchTag> searchTags() {
         ResearchConceptHost concept;
         synchronized (this) {
-            if (conceptHost == null && readCurrentProject() == null) {
+            if (conceptHost == null && existingProject() == null) {
                 return Collections.emptyList();
             }
             ensureOpen();
@@ -1061,7 +1061,7 @@ public final class ResearchAgentHost {
      * auch nach einem Neustart des Agenten oder des Clients.
      */
     public synchronized List<String> visitedPages() {
-        if (projectDirectory == null && readCurrentProject() == null) {
+        if (projectDirectory == null && existingProject() == null) {
             return Collections.emptyList();
         }
         ensureOpen();
@@ -1162,7 +1162,7 @@ public final class ResearchAgentHost {
         String outline = outline();
         com.google.gson.JsonArray stored;
         synchronized (this) {
-            if (projectDirectory == null && readCurrentProject() == null) {
+            if (projectDirectory == null && existingProject() == null) {
                 return null;
             }
             stored = readDocumentDraft(outline).getAsJsonArray("sections");

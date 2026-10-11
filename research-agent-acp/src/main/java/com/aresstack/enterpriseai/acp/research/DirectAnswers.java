@@ -249,17 +249,24 @@ final class DirectAnswers {
         }
         card.answering();
         lastSucceeded = true;
-        List<ResearchWriting.Passage> passages = new ArrayList<ResearchWriting.Passage>();
-        Set<String> covered = new HashSet<String>();
-        for (ResearchWriting.Passage passage : projectPassages(question)) {
-            if (read.containsKey(passage.resource) || covered.size() < PROJECT_PASSAGES) {
-                passages.add(passage);
-                covered.add(passage.resource);
-            }
-        }
+        // Die Auszüge der eben gelesenen Seiten gehen immer mit: eine Projektpassage derselben Seite kann nur die
+        // Notiz (Titel, Snippet) sein und darf den gelesenen Seitentext nie verdrängen.
+        List<ResearchWriting.Passage> passages = new ArrayList<ResearchWriting.Passage>(excerpts);
+        Set<String> texts = new HashSet<String>();
         for (ResearchWriting.Passage excerpt : excerpts) {
-            if (!covered.contains(excerpt.resource)) {
-                passages.add(excerpt);
+            texts.add(excerpt.text.trim());
+        }
+        Set<String> others = new HashSet<String>();
+        for (ResearchWriting.Passage passage : projectPassages(question)) {
+            String text = passage.text == null ? "" : passage.text.trim();
+            if (text.isEmpty() || text.equals(passage.title.trim()) || !texts.add(text)) {
+                continue;
+            }
+            if (read.containsKey(passage.resource)) {
+                passages.add(passage);
+            } else if (others.size() < PROJECT_PASSAGES || others.contains(passage.resource)) {
+                others.add(passage.resource);
+                passages.add(passage);
             }
         }
         String system = "Du bist der Recherche-Agent. Beantworte die Frage des Nutzers ausführlich und inhaltlich auf "

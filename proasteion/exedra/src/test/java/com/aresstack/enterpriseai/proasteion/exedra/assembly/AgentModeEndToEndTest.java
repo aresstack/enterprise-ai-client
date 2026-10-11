@@ -106,8 +106,10 @@ public class AgentModeEndToEndTest {
                     "Meilenstein 1 von IAR ist die Fachkonzeption bis Juni."},
             {"confluence:wiki/page/1004", "IAR Betrieb",
                     "Den Betrieb von IAR übernimmt das Rechenzentrum."},
-            {"confluence:wiki/page/1005", "IAR " + EXCLUDED,
-                    "Das " + EXCLUDED + " von IAR enthält Altakten."},
+            // Semantisch klar auf der OUT-Seite: der Weidezaun (askai SearchScopeGate) verwirft nie wegen eines
+            // einzelnen Wortes, nur nach dem Inhalt; mit dem Wortbeutel-Fake hieße "IAR Archiv" unentschieden.
+            {"confluence:wiki/page/1005", EXCLUDED + " Altakten",
+                    "Das " + EXCLUDED + " enthält Altakten aus der Ablage."},
     };
 
     @Rule
@@ -538,8 +540,7 @@ public class AgentModeEndToEndTest {
             if (system.contains("Du schreibst einen Abschnitt")) {
                 String section = between(user, "ABSCHNITT: ", "\n");
                 if (sectionsWritten.size() == 1 && persistedBeforeSecondSection == null) {
-                    ResearchDocument partial = host.document();
-                    persistedBeforeSecondSection = partial == null ? 0 : partial.sections().size();
+                    persistedBeforeSecondSection = host.documentDraftSectionCount();
                 }
                 sectionsWritten.add(section.replaceFirst("^\\d+\\.\\s*", ""));
                 return fromPassages(user, 3);
@@ -634,9 +635,12 @@ public class AgentModeEndToEndTest {
 
     // ------------------------------------------------------------------ Hilfen
 
+    /** Ein Host für den Chat dieses Tests; ein Neustart bindet wieder an denselben Chat (Projekt je Chat). */
     static ResearchAgentHost newHost(File root) {
-        return new ResearchAgentHost(root, FileResearchScopeDraftStore::new,
+        ResearchAgentHost host = new ResearchAgentHost(root, FileResearchScopeDraftStore::new,
                 directory -> new ConceptBranchService(new FileConceptStore(directory)));
+        host.openChat("chat-e2e");
+        return host;
     }
 
     /** Wie eine Nutzerin im Agent-Modus: Nachricht senden, warten, bis der Agent fertig ist. */

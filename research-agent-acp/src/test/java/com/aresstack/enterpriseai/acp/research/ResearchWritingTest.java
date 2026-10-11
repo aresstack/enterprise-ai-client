@@ -123,7 +123,9 @@ public class ResearchWritingTest {
         assertTrue(host.calls.contains("knowledge_search"));
         assertEquals("confluence:wiki/page/1002", host.lastArgs.get("project_source_add").get("capture_id"));
         assertTrue(answer, answer.contains("Frühjahr geplant. [1]"));
-        assertTrue(answer, answer.contains("[1] IAR Übersicht"));
+        // die eben gelesene Seite steht vorn; der Projektkorpus ergänzt
+        assertTrue(answer, answer.contains("[1] IAR Planung"));
+        assertTrue(answer, answer.contains("IAR Übersicht"));
     }
 
     /** Der Host mit Zwischenstand: document_section_save speichert, document_draft liefert die Kapitel zurück. */
