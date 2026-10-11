@@ -4,12 +4,12 @@ package com.aresstack.enterpriseai.astu.knowledge;
  * Stabile Adresse einer aufbereiteten Passage im Index, wie askai arch: unveränderliche Capture + Position +
  * Segmentierungsversion + Embedding-Fingerabdruck. Form:
  * {@code <resourceId>@<capture>#p<position>@<segmentation>-<embedding>}, z. B.
- * {@code confluence:47110815@3fa9c2d1e0b4#p3@9f2c41ab-5e07d1c3}.
+ * {@code confluence:47110815@3fa9c2d1…(64 Hex)#p3@9f2c41ab-5e07d1c3}.
  * <ul>
  *   <li>{@code resourceId}: die Ressource, stabil über Inhaltsänderungen (ihr Format bestimmt der Connector);</li>
- *   <li>{@code capture}: die gelesene Fassung, die ersten {@value #CAPTURE_LENGTH} Hex-Zeichen des
- *       {@code contentHash} ihres Textes (askai {@code SourceCapture.captureId}); ändert sich der Inhalt, ändert sich
- *       die Capture und damit jede Passage-ID;</li>
+ *   <li>{@code capture}: die unveränderliche Kennung der gelesenen Fassung (askai {@code SourceCapture.captureId}),
+ *       der vollständige {@code contentHash} ihres Textes (SHA-256, {@value #CAPTURE_LENGTH} Hex-Zeichen, nie gekürzt);
+ *       ändert sich der Inhalt, ändert sich die Capture und damit jede Passage-ID;</li>
  *   <li>{@code position} zählt die Passagen dieser Fassung ab 0;</li>
  *   <li>{@code segmentation} und {@code embedding} sind Kurzformen (8 Hex-Zeichen) der Fingerabdrücke von Zerlegung
  *       und Embedding-Modell.</li>
@@ -18,8 +18,8 @@ package com.aresstack.enterpriseai.astu.knowledge;
  */
 public final class KnowledgePassageId {
 
-    /** Länge der Capture-Kennung (Präfix des SHA-256-Hex-Hashes des Textes). */
-    public static final int CAPTURE_LENGTH = 12;
+    /** Länge der Capture-Kennung: der vollständige SHA-256-Hex-Hash des Textes. */
+    public static final int CAPTURE_LENGTH = 64;
 
     private static final String CAPTURE = "@";
     private static final String POSITION = "#p";
@@ -66,13 +66,13 @@ public final class KnowledgePassageId {
     }
 
     /**
-     * Die Capture einer gelesenen Fassung aus dem {@code contentHash} ihres Textes (SHA-256, hex).
+     * Die Capture einer gelesenen Fassung: der vollständige {@code contentHash} ihres Textes (SHA-256, hex).
      *
-     * @throws IllegalArgumentException wenn der Hash fehlt oder kein Hex ist (Fassung ohne Hash ist keine Capture)
+     * @throws IllegalArgumentException wenn der Hash fehlt oder kein vollständiger SHA-256-Hex ist (Fassung ohne Hash
+     *                                  ist keine Capture)
      */
     public static String captureOf(String contentHash) {
-        String capture = contentHash == null || contentHash.length() < CAPTURE_LENGTH ? ""
-                : contentHash.substring(0, CAPTURE_LENGTH).toLowerCase(java.util.Locale.ROOT);
+        String capture = contentHash == null ? "" : contentHash.toLowerCase(java.util.Locale.ROOT);
         if (!isCapture(capture)) {
             throw new IllegalArgumentException("contentHash fehlt oder ist kein SHA-256-Hex");
         }

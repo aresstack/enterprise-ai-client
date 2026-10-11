@@ -206,12 +206,14 @@ public final class IndexKnowledgeUseCase {
     /** Wie {@link #passageId(KnowledgeIndexEntry)} für einen Treffer aus Ressource (mit Metadaten) und Abschnitt. */
     public Optional<KnowledgePassageId> passageId(KnowledgeResource resource, KnowledgeChunkId chunk) {
         Optional<String> hash = resource.metadata().get(IndexedResourceState.CONTENT_HASH_KEY);
-        if (!hash.isPresent() || hash.get().length() < KnowledgePassageId.CAPTURE_LENGTH
-                || !hash.get().substring(0, KnowledgePassageId.CAPTURE_LENGTH).matches("[0-9a-fA-F]+")) {
+        String capture;
+        try {
+            capture = KnowledgePassageId.captureOf(hash.orElse(null));
+        } catch (IllegalArgumentException e) {
             return Optional.empty();
         }
-        return Optional.of(KnowledgePassageId.of(chunk.resourceId(), KnowledgePassageId.captureOf(hash.get()),
-                chunk.ordinal(), segmentationTag(), embeddingTag()));
+        return Optional.of(KnowledgePassageId.of(chunk.resourceId(), capture, chunk.ordinal(), segmentationTag(),
+                embeddingTag()));
     }
 
     /**

@@ -49,14 +49,26 @@ public class PassageCaptureIdTest {
 
     @Test
     public void passageIdRoundTrips() {
+        String hash = "3FA9C2D1E0B4aa00" + repeat('0', 48);
         KnowledgePassageId id = KnowledgePassageId.of(KnowledgeResourceId.of("confluence:47110815"),
-                KnowledgePassageId.captureOf("3FA9C2D1E0B4aa00"), 3, "9f2c41ab", "5e07d1c3");
-        assertEquals("confluence:47110815@3fa9c2d1e0b4#p3@9f2c41ab-5e07d1c3", id.value());
+                KnowledgePassageId.captureOf(hash), 3, "9f2c41ab", "5e07d1c3");
+        assertEquals("volle Capture, nie gekürzt",
+                "confluence:47110815@" + hash.toLowerCase(java.util.Locale.ROOT) + "#p3@9f2c41ab-5e07d1c3", id.value());
         assertEquals(id, KnowledgePassageId.parse(id.value()));
         assertTrue(KnowledgePassageId.looksLike(id.value()));
         assertFalse("ohne Capture keine Passage-ID",
                 KnowledgePassageId.looksLike("confluence:47110815#p3@9f2c41ab-5e07d1c3"));
         assertFalse(KnowledgePassageId.looksLike("confluence:47110815"));
+        assertFalse("gekürzte Capture ist keine Passage-ID",
+                KnowledgePassageId.looksLike("confluence:47110815@3fa9c2d1e0b4#p3@9f2c41ab-5e07d1c3"));
+    }
+
+    private static String repeat(char c, int count) {
+        StringBuilder out = new StringBuilder(count);
+        for (int i = 0; i < count; i++) {
+            out.append(c);
+        }
+        return out.toString();
     }
 
     private List<KnowledgePassageId> passageIds(KnowledgeResourceId id) {
