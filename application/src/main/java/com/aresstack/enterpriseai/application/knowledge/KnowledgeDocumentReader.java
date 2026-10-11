@@ -22,6 +22,15 @@ public interface KnowledgeDocumentReader {
             throws KnowledgeSourceException;
 
     /** Liest direkt aus dem Quellen-Port. */
+    /**
+     * Holt die Ressource gezielt neu aus der Quelle, an jeder Zwischenkopie vorbei (corenth {@code REFRESH_EXTERNAL});
+     * nötig, wenn ihre Revision unbekannt ist oder sich laut Suche geändert hat. Standard: wie {@link #read}.
+     */
+    default KnowledgeDocument refresh(KnowledgeSourceId owner, KnowledgeSourcePort source, KnowledgeResourceId id)
+            throws KnowledgeSourceException {
+        return read(owner, source, id);
+    }
+
     static KnowledgeDocumentReader direct() {
         return new KnowledgeDocumentReader() {
             @Override

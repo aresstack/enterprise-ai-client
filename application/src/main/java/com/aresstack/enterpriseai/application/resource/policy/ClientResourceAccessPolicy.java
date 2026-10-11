@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.application.resource.policy;
 /**
  * Tamias-Regel dieses Clients: Welche Quellen gelesen werden dürfen, entscheiden Konfiguration und Wissensindex
  * vorher (nur angebundene Quellen, nur indexierte Ressourcen); hier gilt deshalb: Lesen, Auflisten und Beschaffen
- * ist jedem Akteur erlaubt, einen Archiveintrag löschen darf nur die Anwendung selbst ({@link ActorType#SERVICE}),
+ * ist jedem Akteur erlaubt, ebenso das gezielte Neuholen einer Bronze-Kopie ({@code REFRESH_EXTERNAL}), einen Archiveintrag löschen darf nur die Anwendung selbst ({@link ActorType#SERVICE}),
  * etwa wenn eine Quelle entfernt wird. Jede andere Operation wird abgelehnt.
  */
 public final class ClientResourceAccessPolicy implements ResourceAccessPolicy {
@@ -18,6 +18,7 @@ public final class ClientResourceAccessPolicy implements ResourceAccessPolicy {
             case READ_CONTENT:
             case LIST_CHILDREN:
             case FETCH_EXTERNAL:
+            case REFRESH_EXTERNAL:
                 return ResourceAccessDecision.allow();
             case DELETE_ARCHIVE_ENTRY:
                 if (request.actor() != null && request.actor().actorType() == ActorType.SERVICE) {

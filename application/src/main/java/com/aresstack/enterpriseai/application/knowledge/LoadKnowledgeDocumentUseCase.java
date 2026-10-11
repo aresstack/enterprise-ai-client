@@ -125,6 +125,20 @@ public final class LoadKnowledgeDocumentUseCase {
      */
     public KnowledgeDocument load(KnowledgeResourceId resourceId)
             throws KnowledgeSourceException, KnowledgeDocumentNotIndexedException {
+        return load(resourceId, false);
+    }
+
+    /**
+     * Wie {@link #load(KnowledgeResourceId)}, holt die Ressource aber gezielt neu aus der Quelle (an der Bronze-Kopie
+     * vorbei, corenth {@code REFRESH_EXTERNAL}); für unbekannte oder laut Suche geänderte Revisionen.
+     */
+    public KnowledgeDocument refresh(KnowledgeResourceId resourceId)
+            throws KnowledgeSourceException, KnowledgeDocumentNotIndexedException {
+        return load(resourceId, true);
+    }
+
+    private KnowledgeDocument load(KnowledgeResourceId resourceId, boolean fresh)
+            throws KnowledgeSourceException, KnowledgeDocumentNotIndexedException {
         if (resourceId == null) {
             throw new IllegalArgumentException("resourceId ist Pflicht");
         }
@@ -134,11 +148,13 @@ public final class LoadKnowledgeDocumentUseCase {
             if (owner == null) {
                 throw new KnowledgeDocumentNotIndexedException(resourceId, null);
             }
-            return reader.read(owner, current.find(owner).port(), resourceId);
+            return fresh ? reader.refresh(owner, current.find(owner).port(), resourceId)
+                    : reader.read(owner, current.find(owner).port(), resourceId);
         }
         for (KnowledgeSourceRegistration registration : current.registrations()) {
             try {
-                return reader.read(registration.sourceId(), registration.port(), resourceId);
+                return fresh ? reader.refresh(registration.sourceId(), registration.port(), resourceId)
+                        : reader.read(registration.sourceId(), registration.port(), resourceId);
             } catch (KnowledgeSourceException e) {
                 if (e.kind() != KnowledgeSourceException.Kind.UNSUPPORTED) {
                     throw e;

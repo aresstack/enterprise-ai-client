@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.source.api;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 
+import java.net.URI;
+
 /** Treffer der quelleneigenen Suche: Ressource, Titel und ein kurzer Klartext-Ausschnitt. */
 public final class SourceSearchHit {
 
@@ -10,6 +12,7 @@ public final class SourceSearchHit {
     private final String title;
     private final String snippet;
     private final KnowledgeRevision revision;
+    private final URI url;
 
     public SourceSearchHit(KnowledgeResourceId resourceId, String title, String snippet) {
         this(resourceId, title, snippet, KnowledgeRevision.unknown());
@@ -20,6 +23,12 @@ public final class SourceSearchHit {
      *                 suchgesteuerte Indexierung unveränderte Treffer, ohne sie zu laden
      */
     public SourceSearchHit(KnowledgeResourceId resourceId, String title, String snippet, KnowledgeRevision revision) {
+        this(resourceId, title, snippet, revision, null);
+    }
+
+    /** @param url aufrufbare Adresse der Seite (Bookmark), {@code null}, wenn die Suche keine nennt */
+    public SourceSearchHit(KnowledgeResourceId resourceId, String title, String snippet, KnowledgeRevision revision,
+                           URI url) {
         if (resourceId == null) {
             throw new IllegalArgumentException("resourceId must not be null");
         }
@@ -27,6 +36,17 @@ public final class SourceSearchHit {
         this.title = title == null ? "" : title.trim();
         this.snippet = snippet == null ? "" : snippet.trim();
         this.revision = revision == null ? KnowledgeRevision.unknown() : revision;
+        this.url = url;
+    }
+
+    /** Aufrufbare Adresse (Bookmark); {@code null}, wenn unbekannt. */
+    public URI url() {
+        return url;
+    }
+
+    /** {@link #url()} als Text; {@code null}, wenn unbekannt. */
+    public String urlText() {
+        return url == null ? null : url.toString();
     }
 
     /** Stand laut Suche; {@link KnowledgeRevision#unknown()}, wenn die Quelle ihn nicht nennt. */

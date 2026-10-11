@@ -22,6 +22,7 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgePassageId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeTokenCounter;
 
 import java.util.ArrayList;
@@ -180,6 +181,36 @@ public final class IndexKnowledgeUseCase {
     public EmbeddingModelIdentity space() {
         return space.get();
     }
+
+    /** Kurzform (8 Hex) des Zerlegungs-Fingerabdrucks; Teil jeder Passage-ID. */
+    public String segmentationTag() {
+        return KnowledgePassageId.versionTag(segmentationFingerprint());
+    }
+
+    /** Kurzform (8 Hex) des Embedding-Fingerabdrucks (Modell, Dimension, Attribute); Teil jeder Passage-ID. */
+    public String embeddingTag() {
+        return KnowledgePassageId.versionTag(space().fingerprint());
+    }
+
+    /** Die Passage-ID eines im aktuellen Namensraum gespeicherten Abschnitts. */
+    public KnowledgePassageId passageId(KnowledgeChunkId chunk) {
+        return KnowledgePassageId.of(chunk.resourceId(), chunk.ordinal(), segmentationTag(), embeddingTag());
+    }
+
+    /** {@code true}, wenn der Indexstand mit der aktuellen Zerlegung entstand (sonst muss neu aufbereitet werden). */
+    public boolean isPrepared(IndexedResourceState state) {
+        return state != null && state.segmentation().equals(segmentationFingerprint());
+    }
+
+    /** Die aufbereiteten Passagen einer Ressource im aktuellen Namensraum, nach Position; leer, wenn unbekannt. */
+    public List<KnowledgeIndexEntry> entriesOf(KnowledgeResourceId id) {
+        try {
+            return index.entriesOf(space(), id);
+        } catch (KnowledgeIndexException e) {
+            return Collections.emptyList();
+        }
+    }
+
 
     /** Ermittelt die Ressourcen im {@code scope} der Quelle und indexiert jede davon. */
     public IndexingReport indexSource(KnowledgeSourcePort source, SourceScope scope, IndexingListener listener) {

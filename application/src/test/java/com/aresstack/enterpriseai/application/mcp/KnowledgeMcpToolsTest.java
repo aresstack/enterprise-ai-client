@@ -88,6 +88,19 @@ public class KnowledgeMcpToolsTest {
         assertTrue(indexedSoon("Kaffee"));
     }
 
+    @Test
+    public void readResolvesFromIndexAndByPassageId() {
+        String id = wiki.idOf("Kaffee").value();
+        String first = call(tools.knowledgeRead(), "id", id).getText();
+        assertTrue(first, first.contains("[passage " + id + "#p0@"));
+        String again = call(tools.knowledgeRead(), "id", id).getText();
+        assertTrue("zweites Lesen ohne Quelle: " + again, again.contains("from: index"));
+        int start = again.indexOf("[passage ") + "[passage ".length();
+        String passage = again.substring(start, again.indexOf(']', start));
+        String one = call(tools.knowledgeRead(), "id", passage).getText();
+        assertTrue(one, one.contains("passage: " + passage));
+    }
+
     /** Vorladen und Indexieren laufen im Hintergrund; höchstens 10 s warten. */
     private boolean indexedSoon(String page) {
         long deadline = System.currentTimeMillis() + 10_000L;

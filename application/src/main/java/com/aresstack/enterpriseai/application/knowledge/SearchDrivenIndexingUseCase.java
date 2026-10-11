@@ -123,7 +123,8 @@ public final class SearchDrivenIndexingUseCase {
                 }
                 KnowledgeSourcePort source = searched.get(s);
                 found.add(new FoundResource(source.sourceId(), hit.resourceId(), hit.title(), hit.snippet(),
-                        hit.resourceId().value(), FoundResource.Origin.SOURCE, hit.revision()));
+                        hit.resourceId().value(), FoundResource.Origin.SOURCE, hit.revision(),
+                        hit.urlText()));
                 candidates.add(new KnowledgePrefetchService.Candidate(source, hit.resourceId(), hit.revision()));
             }
             if (!any) {

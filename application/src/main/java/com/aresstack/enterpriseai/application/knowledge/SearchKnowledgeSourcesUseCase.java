@@ -158,7 +158,8 @@ public final class SearchKnowledgeSourcesUseCase {
         List<FoundResource> found = new ArrayList<FoundResource>();
         for (SourceSearchHit hit : hits) {
             found.add(new FoundResource(sourceId, hit.resourceId(), hit.title(), shorten(hit.snippet(), text),
-                    hit.resourceId().value(), FoundResource.Origin.SOURCE, hit.revision()));
+                    hit.resourceId().value(), FoundResource.Origin.SOURCE, hit.revision(),
+                        hit.urlText()));
             if (found.size() >= limit) {
                 break;
             }

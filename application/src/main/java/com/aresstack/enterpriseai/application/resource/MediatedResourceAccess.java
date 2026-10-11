@@ -39,4 +39,10 @@ public interface MediatedResourceAccess {
      * @return the mediated result; never {@code null}
      */
     MediatedResult<BronzeListing> listChildren(ResourceAccessRequest request);
+
+    /**
+     * Holt den Inhalt gezielt neu aus der Quelle und ersetzt die Bronze-Kopie ({@link
+     * com.aresstack.enterpriseai.application.resource.policy.ResourceOperation#REFRESH_EXTERNAL}).
+     */
+    MediatedResult<BronzeContent> refreshContent(ResourceAccessRequest request);
 }

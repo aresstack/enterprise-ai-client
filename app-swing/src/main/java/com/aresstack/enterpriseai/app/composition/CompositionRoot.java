@@ -494,7 +494,7 @@ public final class CompositionRoot {
         }
         StringBuilder text = new StringBuilder();
         for (com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexEntry entry : entries) {
-            text.append("passage: ").append(entry.chunkId().value()).append('\n');
+            text.append("passage: ").append(indexing.passageId(entry.chunkId()).value()).append('\n');
             String heading = entry.chunk().headingLine();
             if (!heading.isEmpty()) {
                 text.append(heading).append(": ");

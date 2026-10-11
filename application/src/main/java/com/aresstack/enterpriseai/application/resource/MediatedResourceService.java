@@ -203,6 +203,42 @@ public final class MediatedResourceService implements MediatedResourceAccess {
     }
 
     /**
+     * Refreshes the bronze content of a resource from the external source, mediated by Tamias.
+     *
+     * <p>The request must carry {@link ResourceOperation#REFRESH_EXTERNAL} and needs a strict
+     * {@link AccessDecisionType#ALLOW}: a refresh always acquires. On success the fresh snapshot replaces the
+     * cached one; on failure the cached copy stays untouched. Whether the new content must be re-indexed is decided
+     * by the caller from revision and content hash.
+     *
+     * @param request the access request (operation must be REFRESH_EXTERNAL)
+     * @return the freshly acquired content
+     */
+    @Override
+    public MediatedResult<BronzeContent> refreshContent(ResourceAccessRequest request) {
+        if (request == null) {
+            return MediatedResult.error("request must not be null");
+        }
+        if (request.operation() != ResourceOperation.REFRESH_EXTERNAL) {
+            return MediatedResult.denied(ResourceAccessDecision.deny(
+                    AccessReasonCode.INVALID_OPERATION,
+                    "Operation mismatch: refreshContent requires REFRESH_EXTERNAL, got " + request.operation()));
+        }
+        ResourceAccessDecision decision = accessPolicy.evaluate(request);
+        if (decision.type() != AccessDecisionType.ALLOW) {
+            return MediatedResult.denied(decision);
+        }
+        BookmarkUri uri = request.target();
+        try {
+            BronzeContent acquired = acquisitionPort.fetchContent(uri);
+            contentCache.put(uri, acquired);
+            metadataCache.remove(uri);
+            return MediatedResult.success(acquired, decision);
+        } catch (IOException e) {
+            return MediatedResult.error("Acquisition failed: " + e.getMessage());
+        }
+    }
+
+    /**
      * Deletes a bronze archive entry (tombstones it).
      *
      * <p>The request must carry {@link ResourceOperation#DELETE_ARCHIVE_ENTRY}.

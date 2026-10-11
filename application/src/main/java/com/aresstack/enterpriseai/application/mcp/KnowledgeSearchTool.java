@@ -189,6 +189,10 @@ final class KnowledgeSearchTool implements McpToolHandler {
             block.append(" – ").append(ToolText.oneLine(heading, TITLE_CHARS));
         }
         block.append('\n').append("id: ").append(resource.id().value()).append('\n');
+        if (resource.location().isPresent()) {
+            block.append("url: ").append(resource.location().get()).append('\n');
+        }
+        block.append("passage: ").append(live.prefetch().indexing().passageId(hit.chunk().id()).value()).append('\n');
         block.append("source: ").append(resource.sourceId().value()).append('\n');
         block.append(ToolText.snippet(hit.chunk().text(), settings.snippetChars())).append('\n');
         return block.toString();
@@ -199,6 +203,9 @@ final class KnowledgeSearchTool implements McpToolHandler {
         block.append('\n').append('[').append(number).append("] ")
                 .append(ToolText.oneLine(resource.title(), TITLE_CHARS)).append('\n');
         block.append("id: ").append(resource.resourceId().value()).append('\n');
+        if (resource.url() != null) {
+            block.append("url: ").append(resource.url()).append('\n');
+        }
         block.append("source: ").append(resource.sourceId().value()).append(" (not read yet)\n");
         if (!resource.snippet().isEmpty()) {
             block.append(ToolText.snippet(resource.snippet(), settings.snippetChars())).append('\n');

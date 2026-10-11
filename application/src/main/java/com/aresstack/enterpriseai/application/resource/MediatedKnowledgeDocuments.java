@@ -54,6 +54,18 @@ public final class MediatedKnowledgeDocuments implements KnowledgeDocumentReader
     @Override
     public KnowledgeDocument read(KnowledgeSourceId owner, KnowledgeSourcePort source, KnowledgeResourceId id)
             throws KnowledgeSourceException {
+        return fetch(owner, id, false);
+    }
+
+    /** Neu aus der Quelle über {@code REFRESH_EXTERNAL}; ersetzt die Bronze-Kopie. */
+    @Override
+    public KnowledgeDocument refresh(KnowledgeSourceId owner, KnowledgeSourcePort source, KnowledgeResourceId id)
+            throws KnowledgeSourceException {
+        return fetch(owner, id, true);
+    }
+
+    private KnowledgeDocument fetch(KnowledgeSourceId owner, KnowledgeResourceId id, boolean refresh)
+            throws KnowledgeSourceException {
         BookmarkUri uri;
         try {
             uri = KnowledgeBookmarks.of(id);
@@ -61,8 +73,11 @@ public final class MediatedKnowledgeDocuments implements KnowledgeDocumentReader
             throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED,
                     "keine Ressourcenadresse für " + id);
         }
-        MediatedResult<BronzeContent> result = access.readContent(
-                new ResourceAccessRequest(reader, uri, ResourceOperation.READ_CONTENT, "Wissensdokument laden"));
+        MediatedResult<BronzeContent> result = refresh
+                ? access.refreshContent(new ResourceAccessRequest(reader, uri, ResourceOperation.REFRESH_EXTERNAL,
+                        "Wissensdokument neu holen"))
+                : access.readContent(
+                        new ResourceAccessRequest(reader, uri, ResourceOperation.READ_CONTENT, "Wissensdokument laden"));
         if (result.isDenied()) {
             throw new KnowledgeSourceException(KnowledgeSourceException.Kind.ACCESS_DENIED,
                     "Zugriff abgelehnt: " + result.decision().reasonCode());

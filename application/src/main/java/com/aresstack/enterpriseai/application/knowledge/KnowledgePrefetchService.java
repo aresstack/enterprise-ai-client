@@ -50,6 +50,7 @@ public final class KnowledgePrefetchService {
     static final long PRIORITY_TIMEOUT_SECONDS = 30;
     /** Kleine Pause zwischen zwei Indexierungen, damit Suchen nicht verhungern (MainframeMate). */
     private static final long INDEX_PAUSE_MILLIS = 100;
+    private static final int SEEN_LIMIT = 10000;
 
     /** Wie eine Seite auf Anforderung geladen wird (z. B. {@code documents.load(id)}). */
     public interface DocumentLoad {
@@ -64,6 +65,16 @@ public final class KnowledgePrefetchService {
     private final Map<KnowledgeResourceId, KnowledgeDocument> cache =
             new LinkedHashMap<KnowledgeResourceId, KnowledgeDocument>();
     private final Map<String, Series> running = new HashMap<String, Series>();
+    /** Zuletzt in einem Suchtreffer gesehene Revision je Ressource (für den Resource-Resolver), begrenzt. */
+    private final Map<KnowledgeResourceId, KnowledgeRevision> seen =
+            new java.util.LinkedHashMap<KnowledgeResourceId, KnowledgeRevision>() {
+                private static final long serialVersionUID = 1L;
+
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<KnowledgeResourceId, KnowledgeRevision> eldest) {
+                    return size() > SEEN_LIMIT;
+                }
+            };
     private long cachedBytes;
     private ExecutorService prefetchPool;
     private int poolSize;
@@ -111,6 +122,13 @@ public final class KnowledgePrefetchService {
             if (shutdown) {
                 return series;
             }
+            synchronized (seen) {
+                for (Candidate candidate : ranked) {
+                    if (candidate != null && candidate.revision() != null && candidate.revision().isKnown()) {
+                        seen.put(candidate.id(), candidate.revision());
+                    }
+                }
+            }
             int start = Math.max(0, fromIndex);
             int end = Math.min(ranked.size(), start + current.maxItems());
             ExecutorService pool = pool(current.concurrency());
@@ -150,8 +168,21 @@ public final class KnowledgePrefetchService {
                 indexed.complete(ResourceIndexingOutcome.done(candidate.id(), "", IndexingStatus.UNCHANGED, 0));
                 return;
             }
-            KnowledgeDocument document = cached != null ? cached
-                    : remember(reader.read(candidate.source().sourceId(), candidate.source(), candidate.id()));
+            KnowledgeDocument document = cached;
+            if (document == null) {
+                boolean known = candidate.revision() != null && candidate.revision().isKnown();
+                if (known) {
+                    document = reader.read(candidate.source().sourceId(), candidate.source(), candidate.id());
+                    if (!isSameRevision(document, candidate.revision())) {
+                        // Bronze-Kopie älter als der Suchtreffer: gezielt neu holen (REFRESH_EXTERNAL)
+                        document = reader.refresh(candidate.source().sourceId(), candidate.source(), candidate.id());
+                    }
+                } else {
+                    // Suche ohne Revision: nur die Quelle weiß, ob sich etwas geändert hat; der Hash spart das Indexieren
+                    document = reader.refresh(candidate.source().sourceId(), candidate.source(), candidate.id());
+                }
+                remember(document);
+            }
             indexLater(document, indexed);
         } catch (KnowledgeSourceException | RuntimeException e) {
             indexed.completeExceptionally(e); // nur ein Vorladen; Lesen auf Anforderung versucht es erneut
@@ -218,6 +249,53 @@ public final class KnowledgePrefetchService {
             throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNAVAILABLE,
                     "Laden unterbrochen: " + id, e);
         }
+    }
+
+    /** Der Index-Pfad, über den jedes Laden indexiert. */
+    public IndexKnowledgeUseCase indexing() {
+        return indexing;
+    }
+
+    /**
+     * Die Revision, die die Quelle zuletzt in einem Suchtreffer meldete; {@code null}, wenn seit dem Start keine Suche
+     * die Ressource lieferte. Neuer als der Indexstand heißt: neu holen.
+     */
+    public KnowledgeRevision seenRevision(KnowledgeResourceId id) {
+        synchronized (seen) {
+            return seen.get(id);
+        }
+    }
+
+    /**
+     * Indexiert ein geladenes Dokument auf dem Index-Thread (derselbe Weg wie beim Vorladen: Revision, dann Hash,
+     * sonst zerlegen, embedden, ersetzen) und wartet höchstens {@code timeoutMillis} darauf.
+     *
+     * @return das Ergebnis, oder {@code null}, wenn es nicht rechtzeitig fertig wurde oder scheiterte
+     */
+    public ResourceIndexingOutcome indexNow(KnowledgeDocument document, long timeoutMillis) {
+        CompletableFuture<ResourceIndexingOutcome> done = new CompletableFuture<ResourceIndexingOutcome>();
+        indexLater(document, done);
+        try {
+            return done.get(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (ExecutionException | TimeoutException | java.util.concurrent.CancellationException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Wie {@link #read}, aber am Speicher-Cache vorbei: für Ressourcen, deren Stand unklar oder geändert ist
+     * ({@code load} holt dann typischerweise mit {@code REFRESH_EXTERNAL} neu).
+     */
+    public KnowledgeDocument refresh(KnowledgeResourceId id, DocumentLoad load)
+            throws KnowledgeSourceException, KnowledgeDocumentNotIndexedException {
+        if (id == null) {
+            throw new IllegalArgumentException("id ist Pflicht");
+        }
+        evict(id);
+        return read(id, load);
     }
 
     // ------------------------------------------------------------------ Cache
