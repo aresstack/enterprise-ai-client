@@ -73,11 +73,17 @@ source.1.allowInsecureHttp=false
   Elemente entfernt werden): `previewName`, `owningPageId` (Rückfall `ceoId`) und `revision` kommen aus den
   Makrodaten, nie aus der angezeigten Seite. An der Makrostelle steht ein Bild mit der Vorschau
   `/download/attachments/{owningPageId}/{previewName}?version={revision}&api=v2` (ohne lesbare Revision: ohne Query,
-  also die jüngste Vorschau, mit Logzeile). Der Lader holt zuerst das Diagramm selbst
+  also die jüngste Vorschau, mit Logzeile) und dem Kennzeichen `#drawio={Name}&page={owningPageId}&revision={revision}`.
+  Liefert Confluence im Makro (oder anderswo auf der Seite) schon ein `<img>` auf genau diese Vorschau, bekommt dieses
+  Bild dieselbe Adresse samt Kennzeichen; es wird nie als gewöhnliches Bild geladen. Der Lader holt zuerst das Diagramm selbst
   (`/rest/drawio/1.0/diagram/crud/{Name}/{owningPageId}?revision={revision}`) und zeichnet es mit JGraphX als SVG
   (`DrawioDiagramRenderer`); enthält es Formen, die JGraphX nicht kennt, oder scheitert der Abruf, kommt die
   PNG-Vorschau. Angleichungen (kippbar): HTML-Beschriftungen als Text, draw.io-Farbwörter und -Standardfarben,
-  `note` als Rechteck.
+  `note` als Rechteck. Selbst gezeichnet, weil JGraphX sie nicht kennt: Blockpfeil `mxgraph.arrows2.arrow` (`dx`,
+  `dy`, `notch`, Richtung, Spiegelung) und UML-Schnittstelle `providedRequiredInterface` (Kugel und Pfanne, Drehung).
+  Logzeilen (INFO): `[Confluence] draw.io: rendere Diagramm name=… page=… revision=…`, danach
+  `[Confluence] draw.io: SVG erzeugt (… Bytes)` oder
+  `[Confluence] draw.io: JGraphX nicht möglich (Grund), verwende PNG-Vorschau: …`.
 
 ## Grenzen
 

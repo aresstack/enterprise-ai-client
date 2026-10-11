@@ -6,7 +6,6 @@ import com.google.gson.JsonParser;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -197,14 +196,19 @@ final class ConfluencePageView {
                         + (revision.matches("\\d+") ? "&revision=" + revision : "");
             }
             String alt = name.isEmpty() ? preview : name;
-            Elements present = anchor.select("img");
+            // Liefert Confluence die Vorschau schon als <img> (export_view: /download/attachments/…png?version=…&
+            // modificationDate=…), wird genau dieses Bild markiert; sonst ginge es am Diagramm vorbei als PNG über die
+            // Leitung und landete bei SSO auf der Anmeldeseite (0.19.x, Angelos Lauf). Gilt für Bilder im Makro und
+            // für jedes Bild der Seite, dessen Pfad diese Vorschau ist.
+            Set<Element> present = new LinkedHashSet<Element>(anchor.select("img"));
+            for (Element img : doc.select("img")) {
+                if (isPreview(img.attr("src"), owner, preview)) {
+                    present.add(img);
+                }
+            }
             if (!present.isEmpty()) {
-                // Ein Bild als Anhang bleibt; eines mit Plugin- oder REST-Adresse (/plugins/servlet/…, /rest/drawio/…)
-                // liefert kein PNG und zeigt auf die Vorschau um.
                 for (Element img : present) {
-                    if (!img.attr("src").contains("/download/attachments/")) {
-                        img.attr("src", src).attr("alt", alt).removeAttr("srcset");
-                    }
+                    img.attr("src", src).attr("alt", alt).removeAttr("srcset");
                 }
                 continue;
             }
@@ -214,6 +218,25 @@ final class ConfluencePageView {
                     .attr("data-linked-resource-default-alias", preview);
             anchor.after(new Element("p").appendChild(image));
         }
+    }
+
+    /** Zeigt {@code src} (ohne Query, dekodiert) auf {@code …/download/attachments|thumbnails/<owner>/<preview>}? */
+    static boolean isPreview(String src, String owner, String preview) {
+        if (src == null || src.isEmpty()) {
+            return false;
+        }
+        String path = src;
+        for (char end : new char[] {'?', '#'}) {
+            int at = path.indexOf(end);
+            path = at < 0 ? path : path.substring(0, at);
+        }
+        try {
+            path = java.net.URLDecoder.decode(path.replace("+", "%2B"), "UTF-8");
+        } catch (java.io.UnsupportedEncodingException | IllegalArgumentException e) {
+            return false;
+        }
+        return path.endsWith("/download/attachments/" + owner + "/" + preview)
+                || path.endsWith("/download/thumbnails/" + owner + "/" + preview);
     }
 
     private static String text(JsonObject json, String key) {

@@ -46,9 +46,11 @@ public class ConfluenceViewImageTest {
 
     private final RecordingSecretProvider secrets = new RecordingSecretProvider();
     private final List<String> logLines = new ArrayList<String>();
+    private final List<String> infoLines = new ArrayList<String>();
     private final Handler capture = new Handler() {
         @Override
         public void publish(LogRecord record) {
+            infoLines.add(record.getMessage());
             if (record.getLevel().intValue() >= Level.WARNING.intValue()) {
                 logLines.add(record.getMessage());
             }
@@ -73,6 +75,7 @@ public class ConfluenceViewImageTest {
     private ConfluenceHttpResponse restLogin;
     private ConfluenceHttpResponse drawio = new ConfluenceHttpResponse(404, "application/json", new byte[0]);
     private ConfluenceHttpResponse withSession;
+    private String readingPage = READING_PAGE;
     private IOException failure;
 
     @Before
@@ -101,7 +104,7 @@ public class ConfluenceViewImageTest {
                         "{\"results\":[],\"_links\":{}}".getBytes(StandardCharsets.UTF_8));
             }
             if (uri.getRawPath().startsWith("/confluence/rest/api/content/7")) {
-                return new ConfluenceHttpResponse(200, "application/json", READING_PAGE.getBytes(StandardCharsets.UTF_8));
+                return new ConfluenceHttpResponse(200, "application/json", readingPage.getBytes(StandardCharsets.UTF_8));
             }
             if (uri.getRawPath().contains("/rest/drawio/")) {
                 return drawio;
@@ -355,7 +358,7 @@ public class ConfluenceViewImageTest {
 
     @Test
     public void anUnsupportedDiagramFallsBackToThePreviewPng() throws Exception {
-        drawio = diagram("mxgraph.arrows2.arrow");
+        drawio = diagram("mxgraph.unbekannt.form");
         response = new ConfluenceHttpResponse(200, "image/png", PNG);
 
         assertArrayEquals(PNG, source().loadViewImage(DIAGRAM_IMAGE));
@@ -365,6 +368,47 @@ public class ConfluenceViewImageTest {
         assertEquals("version=3&api=v2", preview.getRawQuery());
         assertNull("das Fragment geht nicht über die Leitung", preview.getRawFragment());
         assertTrue("Rückfall ist kein Fehler", logLines.isEmpty());
+        assertTrue(infoLines.toString(), infoLines.contains("[Confluence] draw.io: rendere Diagramm name=Bild A page=42"
+                + " revision=3"));
+        assertTrue(infoLines.toString(), infoLines.stream().anyMatch(line -> line.startsWith(
+                "[Confluence] draw.io: JGraphX nicht möglich (nicht unterstützt: shape=mxgraph.unbekannt.form),"
+                        + " verwende PNG-Vorschau")));
+    }
+
+    /**
+     * Echte Seitenstruktur: das draw.io-Makro bringt sein Vorschau-PNG schon als {@code <img>} mit; die Vorschau
+     * liefert ohne Sitzung nur eine Anmeldeseite. Die Zeichnung kommt trotzdem als SVG, ohne das PNG anzufragen.
+     */
+    @Test
+    public void aMacroWithADeliveredPreviewIsDrawnAsSvgEvenWhenThePreviewIsALoginPage() throws Exception {
+        String data = java.util.Base64.getEncoder().encodeToString(("{\"diagramName\":\"Bild A\",\"previewName\":"
+                + "\"Bild A.png\",\"owningPageId\":42,\"revision\":55}").getBytes(StandardCharsets.UTF_8));
+        readingPage = "{\"id\":\"7\",\"type\":\"page\",\"title\":\"Seite\",\"body\":{\"export_view\":{\"value\":"
+                + "\"<div data-macro-name=\\\"drawio\\\"><img src=\\\"" + SERVER_BASE + "/download/attachments/42/"
+                + "Bild%20A.png?version=55&amp;modificationDate=1700000000000&amp;api=v2\\\">"
+                + "<div style=\\\"display:none\\\" data-diagramdata=\\\"" + data + "\\\"></div></div>\"}},"
+                + "\"_links\":{\"base\":\"" + SERVER_BASE + "\",\"webui\":\"/pages/7\"}}";
+        drawio = diagram("mxgraph.arrows2.arrow");
+        response = new ConfluenceHttpResponse(200, "text/html",
+                "<html><body>Login</body></html>".getBytes(StandardCharsets.UTF_8));
+        ConfluenceKnowledgeSource source = source();
+
+        PageView view = source.pageView(KnowledgeResourceId.of("confluence", "confluence.invalid/confluence/page/7"));
+        assertEquals(1, view.images().size());
+        String src = view.images().get(0).src();
+        assertTrue(src, src.endsWith("#drawio=Bild%20A&page=42&revision=55"));
+        requests.clear();
+
+        String svg = new String(source.loadViewImage(src), StandardCharsets.UTF_8);
+
+        assertTrue(svg, svg.contains("<svg") && svg.contains("Kasten") && svg.contains("<path"));
+        assertEquals(1, requests.size());
+        assertEquals("/confluence/rest/drawio/1.0/diagram/crud/Bild%20A/42", requests.get(0).getRawPath());
+        assertTrue(infoLines.toString(), infoLines.contains("[Confluence] draw.io: rendere Diagramm name=Bild A page=42"
+                + " revision=55"));
+        assertTrue(infoLines.toString(), infoLines.stream().anyMatch(
+                line -> line.startsWith("[Confluence] draw.io: SVG erzeugt")));
+        assertTrue(logLines.isEmpty());
     }
 
     @Test

@@ -62,10 +62,15 @@ final class DrawioDiagramRenderer {
         }
     }
 
+    /** draw.io-Blockpfeil ({@code mxgraph.arrows2.arrow}), den {@link DrawioSvgCanvas} selbst zeichnet. */
+    static final String BLOCK_ARROW = "blockArrow";
+    /** UML-Schnittstelle mit Kugel und Pfanne ({@code providedRequiredInterface}), ebenfalls selbst gezeichnet. */
+    static final String INTERFACE = "providedRequiredInterface";
+
     /** Formen, die JGraphX selbst zeichnet ({@code mxGraphics2DCanvas}/{@code mxSvgCanvas}). */
     private static final Set<String> VERTEX_SHAPES = new TreeSet<String>(java.util.Arrays.asList(
             "rectangle", "ellipse", "doubleEllipse", "rhombus", "line", "image", "label", "cylinder", "swimlane",
-            "actor", "cloud", "triangle", "hexagon"));
+            "actor", "cloud", "triangle", "hexagon", BLOCK_ARROW, INTERFACE));
     private static final Set<String> EDGE_SHAPES = new TreeSet<String>(java.util.Arrays.asList(
             "connector", "arrow", "line", "curve"));
 
@@ -82,6 +87,7 @@ final class DrawioDiagramRenderer {
         SHAPE_ALIASES.put("flexArrow", "arrow");
         SHAPE_ALIASES.put("link", "connector");
         SHAPE_ALIASES.put("note", "rectangle"); // ohne Eselsohr
+        SHAPE_ALIASES.put("mxgraph.arrows2.arrow", BLOCK_ARROW);
 
         NAMED_STYLES.put("text", "fillColor=none;strokeColor=none");
         NAMED_STYLES.put("edgeLabel", "fillColor=none;strokeColor=none;labelBackgroundColor=#FFFFFF");
@@ -143,7 +149,7 @@ final class DrawioDiagramRenderer {
                     new mxCellRenderer.CanvasFactory() {
                         @Override
                         public mxICanvas createCanvas(int width, int height) {
-                            return new mxSvgCanvas(mxDomUtils.createSvgDocument(width, height));
+                            return new DrawioSvgCanvas(mxDomUtils.createSvgDocument(width, height));
                         }
                     });
         } catch (RuntimeException e) {
@@ -415,5 +421,125 @@ final class DrawioDiagramRenderer {
                 return null;
             }
         }
+    }
+
+    /** SVG-Zeichenfläche von JGraphX plus die draw.io-Formen, die JGraphX nicht kennt. */
+    private static final class DrawioSvgCanvas extends mxSvgCanvas {
+        DrawioSvgCanvas(Document document) {
+            super(document);
+        }
+
+        @Override
+        public Element drawShape(int x, int y, int w, int h, Map<String, Object> style) {
+            Object shape = style.get("shape");
+            String[] parts;
+            if (BLOCK_ARROW.equals(shape)) {
+                parts = new String[] {blockArrowPath(x, y, w, h, style)};
+            } else if (INTERFACE.equals(shape)) {
+                parts = interfacePaths(x, y, w, h);
+            } else {
+                return super.drawShape(x, y, w, h, style);
+            }
+            Element group = document.createElement("g");
+            double rotation = number(style, "rotation", 0);
+            if (rotation != 0) {
+                group.setAttribute("transform", "rotate(" + round(rotation) + " " + round(x + w / 2.0) + " "
+                        + round(y + h / 2.0) + ")");
+            }
+            double opacity = number(style, "opacity", 100);
+            if (opacity < 100) {
+                group.setAttribute("opacity", String.valueOf(opacity / 100));
+            }
+            group.setAttribute("stroke", color(style, "strokeColor"));
+            group.setAttribute("stroke-width", String.valueOf(number(style, "strokeWidth", 1) * scale));
+            for (int i = 0; i < parts.length; i++) {
+                Element path = document.createElement("path");
+                path.setAttribute("d", parts[i]);
+                // Nur der erste Teil ist Fläche; weitere Teile (Pfanne der Schnittstelle) sind reine Linien.
+                path.setAttribute("fill", i == 0 ? color(style, "fillColor") : "none");
+                group.appendChild(path);
+            }
+            appendSvgElement(group);
+            return group;
+        }
+
+        private static String color(Map<String, Object> style, String key) {
+            Object value = style.get(key);
+            return value == null || "none".equals(value) ? "none" : value.toString();
+        }
+    }
+
+    /**
+     * Umriss wie draw.io {@code mxgraph.arrows2.arrow}: Schaft mit Höhe {@code (1 - dy)} der Dicke, Spitze
+     * {@code dx} lang, Kerbe {@code notch} am Ende; Richtung und Spiegelung wie in draw.io.
+     */
+    static String blockArrowPath(int x, int y, int w, int h, Map<String, Object> style) {
+        String direction = String.valueOf(style.get("direction"));
+        boolean vertical = "south".equals(direction) || "north".equals(direction);
+        double length = vertical ? h : w;
+        double thickness = vertical ? w : h;
+        double dy = thickness * 0.5 * Math.max(0, Math.min(1, number(style, "dy", 0.6)));
+        double dx = Math.max(0, Math.min(length, number(style, "dx", 40)));
+        double notch = Math.max(0, Math.min(length - dx, number(style, "notch", 0)));
+        double[][] points = {
+                {0, dy}, {length - dx, dy}, {length - dx, 0}, {length, thickness / 2}, {length - dx, thickness},
+                {length - dx, thickness - dy}, {0, thickness - dy}, {notch, thickness / 2}};
+        boolean flipH = "1".equals(String.valueOf(style.get("flipH")));
+        boolean flipV = "1".equals(String.valueOf(style.get("flipV")));
+        StringBuilder d = new StringBuilder();
+        for (double[] p : points) {
+            double px;
+            double py;
+            if ("west".equals(direction)) {
+                px = w - p[0];
+                py = p[1];
+            } else if ("south".equals(direction)) {
+                px = thickness - p[1];
+                py = p[0];
+            } else if ("north".equals(direction)) {
+                px = p[1];
+                py = h - p[0];
+            } else {
+                px = p[0];
+                py = p[1];
+            }
+            if (flipH) {
+                px = w - px;
+            }
+            if (flipV) {
+                py = h - py;
+            }
+            d.append(d.length() == 0 ? "M " : " L ").append(round(x + px)).append(' ').append(round(y + py));
+        }
+        return d.append(" Z").toString();
+    }
+
+    /** Wie draw.io: Kugel links ({@code 0,2h} bis {@code 0,8h}), Pfanne als Halbbogen von oben Mitte nach unten Mitte. */
+    static String[] interfacePaths(int x, int y, int w, int h) {
+        double rx = w * 0.3;
+        double ry = h * 0.3;
+        double cy = y + h / 2.0;
+        String ball = "M " + round(x) + " " + round(cy) + " A " + round(rx) + " " + round(ry) + " 0 1 1 "
+                + round(x + 2 * rx) + " " + round(cy) + " A " + round(rx) + " " + round(ry) + " 0 1 1 " + round(x)
+                + " " + round(cy) + " Z";
+        String socket = "M " + round(x + w * 0.5) + " " + round(y) + " A " + round(w * 0.5) + " " + round(h * 0.5)
+                + " 0 0 1 " + round(x + w * 0.5) + " " + round(y + h);
+        return new String[] {ball, socket};
+    }
+
+    private static double number(Map<String, Object> style, String key, double fallback) {
+        Object value = style.get(key);
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return Double.parseDouble(value.toString().trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static String round(double value) {
+        return String.valueOf(Math.round(value * 100) / 100.0);
     }
 }
