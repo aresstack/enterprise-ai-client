@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.app.config.ChatConfig;
 import com.aresstack.enterpriseai.app.config.ClientCertificateConfig;
 import com.aresstack.enterpriseai.app.config.EmbeddingConfig;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
+import com.aresstack.enterpriseai.app.net.LiveNetwork;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.app.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.app.security.ClientCertificateFactory;
@@ -20,27 +21,13 @@ import com.aresstack.enterpriseai.app.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.source.KnowledgeSourceManagement;
-import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.VaultLocations;
-import com.aresstack.enterpriseai.application.modelexecution.ChatModelExecutorRegistry;
-import com.aresstack.enterpriseai.application.modelexecution.EmbeddingModelExecutorRegistry;
-import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
-import com.aresstack.enterpriseai.chat.api.ResponsesPort;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatConfig;
 import com.aresstack.enterpriseai.document.tika.DocumentExtraction;
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
-import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
-import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
-import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import com.aresstack.enterpriseai.mcp.api.McpEndpointDefinition;
 import com.aresstack.enterpriseai.mcp.solon.SolonMcpServerRuntime;
 import com.aresstack.enterpriseai.domain.security.SecretRef;
@@ -56,16 +43,10 @@ import com.aresstack.enterpriseai.source.ftp.JesSourceProvider;
 import com.aresstack.enterpriseai.source.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.source.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.source.ndv.NdvSourceProvider;
-import com.aresstack.enterpriseai.text.local.LocalChatAdapter;
-import com.aresstack.enterpriseai.text.local.LocalEmbeddingAdapter;
-import com.aresstack.enterpriseai.text.onnx.OnnxCausalLmRuntime;
-import com.aresstack.enterpriseai.text.onnx.OnnxTextEncoderRuntime;
 
 import java.io.Closeable;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -139,65 +120,30 @@ public final class AdapterAssembly {
 
     /** Mit fertigem Security-Port (Start: derselbe, der vorher die Basis-URL aus KeePass gelesen hat). */
     public static ApplicationPorts createWith(AppConfig config, NetworkServices network, SecretProvider secrets) {
+        if (network == null) {
+            throw new IllegalArgumentException("config, network and secrets must not be null");
+        }
+        return createWith(config, new LiveNetwork(network), secrets);
+    }
+
+    /**
+     * Wie {@link #createWith(AppConfig, NetworkServices, SecretProvider)} mit der Netzschicht, die Einstellungen
+     * ohne Neustart übernimmt: Quellen-Adapter verbinden sich je Anfrage über die aktuelle Route und TLS-Regel;
+     * Modelle und Index übernehmen gespeicherte Einstellungen über {@link ApplicationPorts#apply}.
+     */
+    public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets) {
         if (config == null || network == null || secrets == null) {
             throw new IllegalArgumentException("config, network and secrets must not be null");
         }
         ApplicationPorts.Builder ports = ApplicationPorts.builder().secrets(secrets);
 
-        // Ausführung je Katalog der Modellauswahl: die Enterprise-API immer; lokal installierte Modelle laufen im
-        // Prozess über ONNX Runtime (Chat und Embeddings hier, Stimmen in ModelCatalogs).
-        OpenAiCompatibleChatAdapter chatAdapter = chat(config.chat(), secrets, network);
-        Map<String, ChatCompletionPort> chats = new LinkedHashMap<String, ChatCompletionPort>();
-        chats.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
-        // lokale Chat-Modelle: geladen erst bei der ersten Anfrage, Modell = Ordnername der Auswahl
-        final OnnxCausalLmRuntime decoder = new OnnxCausalLmRuntime();
-        chats.put(ModelsConfig.LOCAL_CATALOG_ID, new LocalChatAdapter(config.models().localModelRoot(), decoder));
-        ports.closing("local-chat", new Closeable() {
-            @Override
-            public void close() {
-                decoder.close();
-            }
-        });
-        Map<String, ResponsesPort> responses = new LinkedHashMap<String, ResponsesPort>();
-        // derselbe Adapter: /responses mit Route, TLS und Token des Chats
-        responses.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
-        ChatModelExecutorRegistry chatModels = new ChatModelExecutorRegistry(chats, responses,
-                ModelsConfig.catalogIds(), ModelsConfig.defaultCatalogId(),
-                config.models().selections().get(ModelCategory.CHAT));
-        ports.chat(chatModels.chat());
-        ports.responses(chatModels.responses());
-
-        Map<String, EmbeddingPort> embeddingPorts = new LinkedHashMap<String, EmbeddingPort>();
-        embeddingPorts.put(KipitzModelCatalogAdapter.CATALOG_ID, embeddings(config.embedding(), secrets, network));
-        ModelReference embeddingModel = config.models().selections().get(ModelCategory.EMBEDDING);
-        String localEmbeddingProblem = null;
-        if (embeddingModel != null && ModelsConfig.LOCAL_CATALOG_ID.equals(embeddingModel.catalogId())) {
-            final OnnxTextEncoderRuntime encoder = new OnnxTextEncoderRuntime();
-            try {
-                embeddingPorts.put(ModelsConfig.LOCAL_CATALOG_ID, new LocalEmbeddingAdapter(
-                        ModelsConfig.LOCAL_CATALOG_ID, embeddingModel.modelId(), config.models().localModelRoot(),
-                        encoder));
-                ports.closing("local-embeddings", new Closeable() {
-                    @Override
-                    public void close() {
-                        encoder.close();
-                    }
-                });
-            } catch (IllegalArgumentException missing) {
-                localEmbeddingProblem = missing.getMessage();
-                LOG.log(Level.WARNING, "Lokales Embedding-Modell nicht nutzbar: {0}", missing.getMessage());
-            }
-        }
-        EmbeddingModelExecutorRegistry embeddingModels = new EmbeddingModelExecutorRegistry(embeddingPorts);
-        String embeddingCatalog = embeddingModel == null ? KipitzModelCatalogAdapter.CATALOG_ID
-                : embeddingModel.catalogId();
-        // Ein früher lokal gewähltes Modell scheitert (Start-Hinweis), statt Text an die Enterprise-API zu geben.
-        EmbeddingPort embeddings = embeddingModels.supports(embeddingCatalog)
-                ? embeddingModels.require(embeddingCatalog)
-                : unavailableEmbeddings(EmbeddingModelIdentity.of(embeddingModel.modelId(),
-                config.embedding().dimension()).withAttribute("encoding", "float")
-                .withAttribute("catalog", embeddingCatalog), localEmbeddingProblem);
-        ports.embeddings(embeddings, embeddings.modelIdentity());
+        // Chat, Werkzeug-Chat und Embeddings je Katalog der Modellauswahl, neu gebunden bei jeder Änderung.
+        LiveModelPorts models = new LiveModelPorts(config, network.current(), secrets);
+        ports.chat(models.chat());
+        ports.responses(models.responses());
+        ports.liveEmbeddings(models.embeddings());
+        ports.reconfiguring(models);
+        ports.closing("local-models", models);
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
         for (KnowledgeSourceProvider provider : sourceProviders(secrets, network)) {
@@ -205,39 +151,32 @@ public final class AdapterAssembly {
         }
         ports.sources(startupSources(config.sources(), ports));
 
+        // Agent-Kommando, Argumente und Zeitlimit kommen je Agent-Sitzung aus den aktuellen Einstellungen; der
+        // MCP-Server ist derselbe (startet erst mit dem ersten Endpoint).
+        final SolonMcpServerRuntime mcp = new SolonMcpServerRuntime();
+        ports.agents(new java.util.function.Function<AgentConfig, AgentBackend>() {
+            @Override
+            public AgentBackend apply(AgentConfig settings) {
+                return agent(settings, mcp);
+            }
+        });
         if (config.agent().enabled()) {
-            final SolonMcpServerRuntime mcp = new SolonMcpServerRuntime();
             ports.agent(agent(config.agent(), mcp));
-            // Reihenfolge beim Beenden: erst der MCP-Server (Endpoints weg, Token ungültig), dann der Index.
-            ports.closing("mcp-server", new Closeable() {
-                @Override
-                public void close() {
-                    mcp.shutdown();
-                    SolonMcpServerRuntime.stopSharedServer();
-                }
-            });
         }
+        // Reihenfolge beim Beenden: erst der MCP-Server (Endpoints weg, Token ungültig), dann der Index.
+        ports.closing("mcp-server", new Closeable() {
+            @Override
+            public void close() {
+                mcp.shutdown();
+                SolonMcpServerRuntime.stopSharedServer();
+            }
+        });
 
-        final LuceneKnowledgeIndex index = new LuceneKnowledgeIndex(config.knowledge().indexDirectory());
+        final LiveKnowledgeIndex index = new LiveKnowledgeIndex(config.knowledge().indexDirectory());
         ports.index(index);
+        ports.reconfiguring(index);
         ports.closing("knowledge-index", index);
         return ports.build();
-    }
-
-    private static EmbeddingPort unavailableEmbeddings(final EmbeddingModelIdentity identity, final String problem) {
-        return new EmbeddingPort() {
-            @Override
-            public EmbeddingModelIdentity modelIdentity() {
-                return identity;
-            }
-
-            @Override
-            public EmbeddingBatch embed(List<String> texts) {
-                throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "Lokales Embedding-Modell "
-                        + identity.modelId() + " nicht nutzbar" + (problem == null ? "" : ": " + problem)
-                        + " (Einstellungen → Modelle → Lokale Modelle)");
-            }
-        };
     }
 
     static SecretProvider secrets(KeePassConfig keePass, KeePassPairingCallback pairing,
@@ -291,13 +230,15 @@ public final class AdapterAssembly {
      * Die Quelltypen der Anwendung in der Reihenfolge des Dialogs „+ Quelle“. Ein neuer Adapter (SharePoint, Mail,
      * FTP ...) kommt hier als weiterer Provider hinzu; Kern, Use Cases und Oberfläche bleiben unverändert.
      */
-    static List<KnowledgeSourceProvider> sourceProviders(final SecretProvider secrets, final NetworkServices network) {
+    static List<KnowledgeSourceProvider> sourceProviders(final SecretProvider secrets, final LiveNetwork network) {
         List<KnowledgeSourceProvider> providers = new ArrayList<KnowledgeSourceProvider>();
+        // Route und TLS als Funktionen des aktuellen Stands: Proxy-Änderungen gelten ab der nächsten Verbindung.
         providers.add(new MediaWikiSourceProvider(ref -> new SecretBackedMediaWikiCredentialsProvider(secrets, ref),
-                network.routes(), network.tls(), network.userAgent()));
-        providers.add(new ConfluenceSourceProvider(secrets, network.routes(), network.tls(), network.userAgent(),
+                network.routes(), network.tls(), network.current().userAgent()));
+        providers.add(new ConfluenceSourceProvider(secrets, network.routes(), network.tls(),
+                network.current().userAgent(),
                 (alias, keyStoreFile, passwordRef) -> ClientCertificateFactory.deferred(
-                        new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network)));
+                        new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network.current())));
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry()));
         providers.add(new FtpSourceProvider(secrets));

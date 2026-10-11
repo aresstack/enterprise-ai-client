@@ -103,7 +103,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
   Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki
   `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` (Häkchen, ⟳, ✎,
   „+ MediaWiki“/„+ Confluence“) und über „Index …“ `knowledge.indexDirectory` (mit Verzeichnisauswahl) und
-  `knowledge.indexOnStartup`. Beides schreibt in dieselbe Datei; Änderungen am Index gelten beim nächsten Start.
+  `knowledge.indexOnStartup`. Beides schreibt in dieselbe Datei; ein neues Indexverzeichnis gilt sofort.
 - **Prüfen** läuft durch denselben Loader wie der Start und baut wie dieser die TLS-Vertrauensregel (eine
   fehlende oder leere CA-Datei fällt also hier auf, nicht erst beim nächsten Start): Speichern geht nur ohne
   Probleme; Probleme stehen unter den Reitern mit Feldname und Schlüssel, der betroffene Reiter wird gewählt.
@@ -127,8 +127,13 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
   verglichen wird (HTTP 401 ohne Key gilt als erreichbar, mit Key als abgelehnter Key; 404 ist ein Hinweis zur
   Basis-URL). Der API-Key erscheint in keiner Zeile; dieselben Zeilen stehen im Protokoll unter
   `Verbindungstest, …`. Der Test ändert nichts an der laufenden Anwendung.
-- **Wirksamkeit**: Die laufende Anwendung ist mit der alten Konfiguration gebaut. Nach dem Speichern bietet sie
-  an, sich zu beenden; die Änderungen gelten beim nächsten Start.
+- **Wirksamkeit**: Änderungen gelten sofort, ohne Neustart (wie der `SettingsHelper` in MainframeMate). Nach dem
+  Speichern lädt der `SettingsService` die Datei neu; Werte werden über ihn frisch gelesen statt beim Start
+  kopiert, und wo ein Wert in ein gebautes Objekt geht, übernimmt ein Beobachter ihn: Chat- und Embedding-Adapter
+  samt Modellauswahl, API-Key-Eintrag und Basis-URL, Proxy/PAC/TLS/User-Agent, KeePass-Anbindung,
+  Proxy-Anmeldung, Indexverzeichnis, System-Prompt, Fenstertitel, Sprachaus- und -eingabe, Agent-Kommando
+  (ab der nächsten Agent-Sitzung). Ein anderes Embedding-Modell nutzt seinen eigenen Namensraum im Index, also
+  danach neu indexieren. Einzige Ausnahme: „IPv6 bevorzugen“ liest die JVM nur beim Start.
 
 ### Erster Chat
 

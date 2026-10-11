@@ -25,7 +25,7 @@ import java.util.List;
  * <pre>
  * ┌──────────────────────────────────────────┐
  * │ Index-Einstellungen                    ✕ │  stille Überschrift; rechts Platz für das Fenster-✕
- * │ Hinweis: gilt beim nächsten Start        │
+ * │ Hinweis: Speicherort                     │
  * ├──────────────────────────────────────────┤
  * │ Platte „Index“: Verzeichnis, Häkchen     │
  * ├──────────────────────────────────────────┤
@@ -48,7 +48,7 @@ public final class IndexPanel extends JPanel {
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
     static final String NOTE = "Indexverzeichnis und Indexierung beim Start der Anwendung.\n"
-            + "Gespeichert wird in die Konfigurationsdatei; Änderungen gelten beim nächsten Start.";
+            + "Gespeichert wird in die Konfigurationsdatei; Änderungen gelten sofort.";
 
     private final IndexActions actions;
     private final ComicPalette palette;
@@ -126,7 +126,7 @@ public final class IndexPanel extends JPanel {
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         buttons.setOpaque(false);
         buttons.setBorder(BorderFactory.createEmptyBorder(4, 12, 0, 12));
-        saveButton.setToolTipText("In die Konfigurationsdatei schreiben; gilt beim nächsten Start");
+        saveButton.setToolTipText("In die Konfigurationsdatei schreiben; gilt sofort");
         cancelButton.setToolTipText("Änderungen verwerfen");
         buttons.add(cancelButton);
         buttons.add(saveButton);

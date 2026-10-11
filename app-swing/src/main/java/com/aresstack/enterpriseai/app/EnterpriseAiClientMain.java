@@ -19,7 +19,9 @@ import com.aresstack.enterpriseai.app.config.ModelsConfig;
 import com.aresstack.enterpriseai.app.config.NetworkConfig;
 import com.aresstack.enterpriseai.app.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourcesController;
+import com.aresstack.enterpriseai.app.net.LiveNetwork;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
+import com.aresstack.enterpriseai.app.security.LiveSecretProvider;
 import com.aresstack.enterpriseai.app.security.ProxyAuthenticator;
 import com.aresstack.enterpriseai.app.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
@@ -29,6 +31,7 @@ import com.aresstack.enterpriseai.app.settings.FileIndexActions;
 import com.aresstack.enterpriseai.app.settings.FileSourceActions;
 import com.aresstack.enterpriseai.app.settings.ConfigurationStartup;
 import com.aresstack.enterpriseai.app.settings.SettingsMapper;
+import com.aresstack.enterpriseai.app.settings.SettingsService;
 import com.aresstack.enterpriseai.app.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.app.ui.settings.IndexDialog;
 import com.aresstack.enterpriseai.app.ui.settings.IndexForm;
@@ -39,6 +42,7 @@ import com.aresstack.enterpriseai.app.ui.settings.SourceDialog;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.app.ui.settings.SettingsForm;
@@ -57,6 +61,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -118,24 +123,24 @@ public final class EnterpriseAiClientMain {
         }
         // Nichts wird prozessweit installiert: Route und Vertrauensregel bekommen die Adapter je Verbindung; die
         // erste Anfrage löst die Route auf und baut die Regel (PowerShell-Export unter Windows), nicht der Start.
-        final NetworkServices network = NetworkServices.from(networkConfig);
-        LOG.info("Proxy-Regel: " + network.routes().describe());
+        // Netzschicht und Security-Port übernehmen spätere Einstellungen ohne Neustart (siehe applySettings).
+        final LiveNetwork network = new LiveNetwork(NetworkServices.from(networkConfig));
+        LOG.info("Proxy-Regel: " + network.current().routes().describe());
         LOG.info("TLS-Vertrauensquellen (werden bei der ersten HTTPS-Verbindung geladen): "
                 + networkConfig.describeTrust());
-        LOG.info("User-Agent: " + network.userAgent());
+        LOG.info("User-Agent: " + network.current().userAgent());
+        ProxyAuthenticator.allowBasicTunneling();
         final ApplicationPorts ports;
         final CompositionRoot root;
+        final SettingsService settings;
         try {
-            SecretProvider secrets = AdapterAssembly.secrets(config, new SwingPairingCallback(
-                    config.keePass().rpc().host() + ":" + config.keePass().rpc().port()));
+            final LiveSecretProvider secrets = new LiveSecretProvider(vault(config));
             // Zugang „KeePass“ ohne eingetragene URL: die Basis-URL steht im KeePass-Eintrag des API-Keys.
             config = AdapterAssembly.withVaultLocations(config, file.read(), secrets);
+            settings = new SettingsService(config, settingsLoader(file, secrets, config));
             ports = AdapterAssembly.createWith(config, network, secrets);
-            if (networkConfig.proxyAuthMode() == ProxyAuthMode.BASIC && networkConfig.proxyCredentialRef() != null) {
-                ProxyAuthenticator.install(ports.secrets(), networkConfig.proxyCredentialRef());
-                localVoices.proxyAuthenticationInstalled();
-            }
-            root = CompositionRoot.compose(config, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
+            applyProxyAuthentication(null, config, ports, localVoices);
+            root = CompositionRoot.compose(settings, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
                     null);
         } catch (AppConfigException | IOException e) {
             LOG.log(Level.SEVERE, "Konfiguration unvollständig", e);
@@ -154,7 +159,7 @@ public final class EnterpriseAiClientMain {
         // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über die Quelle dieses Modells (Enterprise-API oder
         // lokale Stimme im Prozess); ohne TTS-Modell bleibt sie aus und der Play/Pause-Orb nennt den Grund.
         final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
-                modelCatalogs.speech(config, config.models(), network, chatToken(config, ports))));
+                modelCatalogs.speech(config, config.models(), network.current(), chatToken(settings, ports))));
         LOG.info("Sprachausgabe: " + readAloud.currentDescription());
         // Spracheingabe: Modell aus der Kategorie STT, erkannt über die Quelle dieses Modells (heute lokal im Prozess);
         // ohne STT-Modell bleibt der Mikrofon-Knopf deaktiviert und nennt den Grund.
@@ -175,7 +180,16 @@ public final class EnterpriseAiClientMain {
             }
         });
         Runtime.getRuntime().addShutdownHook(root.shutdown().asShutdownHook());
-        refreshModelsInBackground(modelCatalogs, config, network, ports);
+        refreshModelsInBackground(modelCatalogs, settings, network, ports);
+        // Beobachter auf dem Settings-Service (wie SettingsHelper.addChangeListener in MainframeMate): Adapter,
+        // Netz, KeePass, Proxy-Anmeldung, Agent und Modellkatalog übernehmen gespeicherte Einstellungen sofort.
+        settings.addListener(new SettingsService.Listener() {
+            @Override
+            public void settingsChanged(AppConfig previous, AppConfig current) {
+                applySettings(previous, current, network, ports, root, localVoices);
+                refreshModelsInBackground(modelCatalogs, settings, network, ports);
+            }
+        });
 
         final AppConfig started = config;
         SwingUtilities.invokeLater(new Runnable() {
@@ -191,14 +205,22 @@ public final class EnterpriseAiClientMain {
                         shutdownAndExit(root);
                     }
                 });
-                view.setSettingsAction(settingsAction(frame, file, settingsActions, palette, new Runnable() {
+                // Fenstertitel, Sprachausgabe und Spracheingabe auf dem EDT nach jeder Änderung.
+                settings.addListener(new SettingsService.Listener() {
                     @Override
-                    public void run() {
-                        rebindSpeech(readAloud, dictation, file, started, modelCatalogs, network, ports);
+                    public void settingsChanged(AppConfig previous, final AppConfig current) {
+                        SwingUtilities.invokeLater(new Runnable() {
+                            @Override
+                            public void run() {
+                                frame.setTitle(current.windowTitle());
+                                rebindSpeech(readAloud, dictation, current, modelCatalogs, network, settings, ports);
+                            }
+                        });
                     }
-                }));
+                });
+                view.setSettingsAction(settingsAction(frame, file, settingsActions, palette, settings));
                 view.setChatModels(modelCatalogs::cached, () -> installedLocalChats(localVoices,
-                        started.models().localModelRoot()), modelId -> {
+                        settings.current().models().localModelRoot()), modelId -> {
                     try {
                         file.update(Collections.singletonMap(ModelsConfig.keyOf(ModelCategory.CHAT), modelId), null, null);
                     } catch (IOException | RuntimeException e) {
@@ -207,7 +229,7 @@ public final class EnterpriseAiClientMain {
                 }, root.workExecutor());
                 view.workspace().chatShell().transcript().setReadAloud(readAloud);
                 view.workspace().chatShell().composer().setDictation(dictation);
-                attachSourceEditing(view, frame, file, palette);
+                attachSourceEditing(view, frame, file, palette, settings);
                 // Anwendungszustand (askai arch / MainframeMate): Fenster und Drawer überleben den Neustart.
                 ApplicationStateService applicationState = new ApplicationStateService(AppPaths.applicationStateFile());
                 ShellFrame.rememberBounds(frame, applicationState);
@@ -231,12 +253,6 @@ public final class EnterpriseAiClientMain {
         });
     }
 
-    /**
-     * Das Zahnrad im Drawer: öffnet den Dialog mit den Werten der Datei. Gespeichert wird in die Datei; der
-     * laufende Graph ist mit der alten Konfiguration gebaut, deshalb gelten Änderungen beim nächsten Start
-     * (Angebot, jetzt zu beenden). Ausnahme wie die Chat-Auswahl: TTS-Modell und Vorlesen gelten sofort
-     * ({@code afterSave}).
-     */
     /** Ordnernamen der installierten lokalen Chat-Modelle für die Modellliste des Composers. */
     private static List<String> installedLocalChats(LocalVoices localVoices, java.nio.file.Path modelRoot) {
         List<String> ids = new ArrayList<String>();
@@ -252,9 +268,79 @@ public final class EnterpriseAiClientMain {
         return ids;
     }
 
+    /** Der KeePass- bzw. „Manuell“-Port nach den KeePass-Einstellungen, mit Pairing-Dialog für deren Adresse. */
+    private static SecretProvider vault(AppConfig config) {
+        return AdapterAssembly.secrets(config, new SwingPairingCallback(
+                config.keePass().rpc().host() + ":" + config.keePass().rpc().port()));
+    }
+
+    /**
+     * Liest die gespeicherten Einstellungen wie der Start: Datei, bei geänderten KeePass-Einstellungen zuerst der
+     * neue Security-Port, dann die Basis-URL aus KeePass (Zugang „KeePass“ ohne eingetragene URL).
+     */
+    private static SettingsService.Loader settingsLoader(final ConfigurationFile file,
+                                                         final LiveSecretProvider secrets, AppConfig started) {
+        final AtomicReference<String> keePass = new AtomicReference<String>(started.keePass().toString());
+        return new SettingsService.Loader() {
+            @Override
+            public AppConfig load() throws IOException {
+                Properties properties = file.read();
+                AppConfig loaded = AppConfigLoader.fromProperties(properties);
+                String vault = loaded.keePass().toString();
+                if (!vault.equals(keePass.get())) {
+                    secrets.replace(vault(loaded));
+                    keePass.set(vault);
+                    LOG.info("KeePass-Anbindung neu: " + vault);
+                }
+                return AdapterAssembly.withVaultLocations(loaded, properties, secrets);
+            }
+        };
+    }
+
+    /**
+     * Übernimmt gespeicherte Einstellungen in den laufenden Graphen: Netz (Proxy, PAC, TLS, User-Agent), Chat- und
+     * Embedding-Adapter samt Modellauswahl, Indexverzeichnis, Proxy-Anmeldung; eine offene Agent-Sitzung endet,
+     * wenn sich die Agent-Einstellungen geändert haben (die nächste Nachricht startet den Agenten neu).
+     */
+    private static void applySettings(AppConfig previous, AppConfig current, LiveNetwork network,
+                                      ApplicationPorts ports, CompositionRoot root, LocalVoices localVoices) {
+        network.apply(current.network());
+        ports.apply(current, network.current());
+        applyProxyAuthentication(previous, current, ports, localVoices);
+        if (!previous.agent().toString().equals(current.agent().toString())) {
+            try {
+                root.agentService().endSession();
+            } catch (IllegalStateException busy) {
+                LOG.info("Agent arbeitet noch; neue Agent-Einstellungen gelten ab der nächsten Agent-Sitzung");
+            }
+        }
+        if (previous.network().preferIpv6() != current.network().preferIpv6()) {
+            // Die JVM liest java.net.preferIPv6Addresses nur vor der ersten Namensauflösung.
+            LOG.info("IPv6 bevorzugen gilt erst beim nächsten Start (die JVM liest den Wert nur einmal)");
+        }
+        LOG.info("Einstellungen übernommen: " + current);
+    }
+
+    /** Proxy-Anmeldung BASIC aus KeePass setzen, ändern oder entfernen. */
+    private static void applyProxyAuthentication(AppConfig previous, AppConfig current, ApplicationPorts ports,
+                                                 LocalVoices localVoices) {
+        NetworkConfig network = current.network();
+        boolean basic = network.proxyAuthMode() == ProxyAuthMode.BASIC && network.proxyCredentialRef() != null;
+        if (basic) {
+            ProxyAuthenticator.install(ports.secrets(), network.proxyCredentialRef());
+            localVoices.proxyAuthenticationInstalled();
+        } else if (previous != null && previous.network().proxyAuthMode() == ProxyAuthMode.BASIC) {
+            ProxyAuthenticator.uninstall();
+        }
+    }
+
+    /**
+     * Das Zahnrad im Drawer: öffnet den Dialog mit den Werten der Datei. Gespeichert wird in die Datei; danach lädt
+     * der Settings-Service sie neu und seine Beobachter übernehmen die Änderungen sofort, ohne Neustart.
+     */
     private static Runnable settingsAction(final JFrame frame, final ConfigurationFile file,
                                            final SettingsDialogActions actions, final ComicPalette palette,
-                                           final Runnable afterSave) {
+                                           final SettingsService settings) {
         return new Runnable() {
             @Override
             public void run() {
@@ -272,57 +358,77 @@ public final class EnterpriseAiClientMain {
                 if (saved == null) {
                     return;
                 }
-                LOG.info("Einstellungen gespeichert; sie gelten beim nächsten Start, Sprachaus- und -eingabe sofort");
-                afterSave.run();
-                offerRestart(frame, "Einstellungen gespeichert",
-                        "Die Einstellungen sind gespeichert. Sprachausgabe und Spracheingabe gelten sofort, alles "
-                                + "andere beim nächsten Start der Anwendung.");
+                reloadInBackground(settings, "Einstellungen");
             }
         };
     }
 
     /**
-     * Fragt die Modellquelle (KIPITZ {@code GET /models}) einmal im Hintergrund ab,
-     * damit der Reiter „Modelle“ aktuelle Listen hat; blockiert weder Start noch EDT. Fehler landen nur im Protokoll.
+     * Lädt die gespeicherten Einstellungen außerhalb des EDT neu (KeePass kann dabei gefragt werden) und
+     * benachrichtigt die Beobachter; scheitert das, bleibt der bisherige Stand und der Grund erscheint.
      */
-    /**
-     * Liest die gespeicherte Datei neu und bindet die Sprachausgabe an die neue TTS-Auswahl (auf dem EDT). Nur die
-     * Modellwerte sind neu; Endpunkt, Netz und Token bleiben die des laufenden Graphen (gelten beim nächsten Start).
-     */
-    private static void rebindSpeech(SwitchableReadAloud readAloud, Dictation dictation, ConfigurationFile file,
-                                     AppConfig running, ModelCatalogs catalogs, NetworkServices network,
-                                     ApplicationPorts ports) {
-        try {
-            ModelsConfig saved = AppConfigLoader.load(file.path()).models();
-            readAloud.replace(SpeechOutput.readAloud(saved,
-                    catalogs.speech(running, saved, network, chatToken(running, ports))));
-            LOG.info("Sprachausgabe: " + readAloud.currentDescription());
-            dictation.bind(saved, catalogs.speechRecognition(saved));
-            LOG.info("Spracheingabe: " + dictation.currentDescription());
-        } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Sprachausgabe nicht neu gebunden; sie gilt beim nächsten Start", e);
-        }
-    }
-
-    /** Das Bearer-Token des Chats, je Anfrage aus dem Secret-Port geholt. */
-    private static java.util.function.Supplier<String> chatToken(final AppConfig config,
-                                                                 final ApplicationPorts ports) {
-        return new java.util.function.Supplier<String>() {
-            @Override
-            public String get() {
-                return config.chat().apiKeyRef() == null ? null
-                        : new SecretBackedTokenSource(ports.secrets(), config.chat().apiKeyRef()).token();
-            }
-        };
-    }
-
-    private static void refreshModelsInBackground(final ModelCatalogs catalogs, final AppConfig config,
-                                                  final NetworkServices network, final ApplicationPorts ports) {
+    private static void reloadInBackground(final SettingsService settings, final String title) {
         Thread thread = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    catalogs.refresh(config, network, chatToken(config, ports));
+                    settings.reload();
+                } catch (IOException | RuntimeException e) {
+                    LOG.log(Level.WARNING, title + " gespeichert, aber nicht übernommen", e);
+                    final String message = title + " sind gespeichert, konnten aber nicht übernommen werden: "
+                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                    SwingUtilities.invokeLater(new Runnable() {
+                        @Override
+                        public void run() {
+                            showError(title, message);
+                        }
+                    });
+                }
+            }
+        }, "enterprise-ai-settings-reload");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    /** Bindet Sprachausgabe und Spracheingabe an die gespeicherte TTS-/STT-Auswahl (auf dem EDT). */
+    private static void rebindSpeech(SwitchableReadAloud readAloud, Dictation dictation, AppConfig current,
+                                     ModelCatalogs catalogs, LiveNetwork network, SettingsService settings,
+                                     ApplicationPorts ports) {
+        try {
+            ModelsConfig saved = current.models();
+            readAloud.replace(SpeechOutput.readAloud(saved,
+                    catalogs.speech(current, saved, network.current(), chatToken(settings, ports))));
+            LOG.info("Sprachausgabe: " + readAloud.currentDescription());
+            dictation.bind(saved, catalogs.speechRecognition(saved));
+            LOG.info("Spracheingabe: " + dictation.currentDescription());
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Sprachausgabe/-eingabe nicht neu gebunden", e);
+        }
+    }
+
+    /** Das Bearer-Token des Chats, je Anfrage frisch: Eintrag aus den aktuellen Einstellungen, Wert aus KeePass. */
+    private static java.util.function.Supplier<String> chatToken(final SettingsService settings,
+                                                                 final ApplicationPorts ports) {
+        return new java.util.function.Supplier<String>() {
+            @Override
+            public String get() {
+                SecretRef ref = settings.current().chat().apiKeyRef();
+                return ref == null ? null : new SecretBackedTokenSource(ports.secrets(), ref).token();
+            }
+        };
+    }
+
+    /**
+     * Fragt die Modellquelle (KIPITZ {@code GET /models}) im Hintergrund ab, damit der Reiter „Modelle“ aktuelle
+     * Listen hat; blockiert weder Start noch EDT. Fehler landen nur im Protokoll.
+     */
+    private static void refreshModelsInBackground(final ModelCatalogs catalogs, final SettingsService settings,
+                                                  final LiveNetwork network, final ApplicationPorts ports) {
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    catalogs.refresh(settings.current(), network.current(), chatToken(settings, ports));
                 } catch (RuntimeException e) {
                     LOG.log(Level.WARNING, "Modellkatalog konnte nicht abgefragt werden", e);
                 }
@@ -332,22 +438,13 @@ public final class EnterpriseAiClientMain {
         thread.start();
     }
 
-    /** Nach dem Speichern: „Jetzt beenden“ schließt das Fenster, denn der laufende Graph hat den alten Stand. */
-    private static void offerRestart(JFrame frame, String title, String message) {
-        Object[] options = {"Jetzt beenden", "Weiter"};
-        int choice = JOptionPane.showOptionDialog(frame, message, title, JOptionPane.DEFAULT_OPTION,
-                JOptionPane.INFORMATION_MESSAGE, null, options, options[1]);
-        if (choice == 0) {
-            frame.dispose();
-        }
-    }
-
     /**
      * Der Drawer-Reiter „Wissensquellen“ bearbeitet die Quellen der Datei über den Quellen-Dialog und mit
      * „Index …“ Indexverzeichnis und Indexierung beim Start über den Index-Dialog.
      */
     private static void attachSourceEditing(ShellAssembly.ShellView view, final JFrame frame,
-                                            ConfigurationFile file, final ComicPalette palette) {
+                                            ConfigurationFile file, final ComicPalette palette,
+                                            SettingsService settings) {
         view.knowledgeSources().setEditing(new FileSourceActions(file),
                 new KnowledgeSourcesController.SourceEditorLauncher() {
                     @Override
@@ -361,16 +458,16 @@ public final class EnterpriseAiClientMain {
                         return SourceDialog.confirmRemove(frame, id, typeName, palette);
                     }
                 });
-        view.workspace().knowledgeSources().setIndexSettingsAction(indexSettingsAction(frame, file, palette));
+        view.workspace().knowledgeSources().setIndexSettingsAction(indexSettingsAction(frame, file, palette,
+                settings));
     }
 
     /**
      * „Index …“ im Drawer-Reiter „Wissensquellen“: öffnet den Index-Dialog mit den Werten der Datei. Gespeichert
-     * wird in die Datei; der laufende Graph arbeitet mit dem alten Index, deshalb gelten Änderungen beim nächsten
-     * Start (Angebot, jetzt zu beenden, wie nach dem Einstellungen-Dialog).
+     * wird in die Datei; danach übernimmt der Settings-Service das Indexverzeichnis sofort.
      */
     private static Runnable indexSettingsAction(final JFrame frame, final ConfigurationFile file,
-                                                final ComicPalette palette) {
+                                                final ComicPalette palette, final SettingsService settings) {
         final FileIndexActions actions = new FileIndexActions(file);
         return () -> {
             IndexForm current;
@@ -385,9 +482,7 @@ public final class EnterpriseAiClientMain {
             if (IndexDialog.show(frame, current, actions, palette) == null) {
                 return;
             }
-            LOG.info("Index-Einstellungen gespeichert; sie gelten beim nächsten Start");
-            offerRestart(frame, "Index-Einstellungen gespeichert",
-                    "Die Index-Einstellungen sind gespeichert. Sie gelten beim nächsten Start der Anwendung.");
+            reloadInBackground(settings, "Index-Einstellungen");
         };
     }
 

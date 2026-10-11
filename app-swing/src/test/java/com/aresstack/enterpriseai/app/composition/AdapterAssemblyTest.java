@@ -17,7 +17,6 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
 import com.aresstack.enterpriseai.knowledge.api.testing.InMemoryKnowledgeIndex;
-import com.aresstack.enterpriseai.knowledge.lucene.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
@@ -108,10 +107,10 @@ public class AdapterAssemblyTest {
         NetworkServices proxy = NetworkServices.from(config.network());
         ApplicationPorts ports = AdapterAssembly.create(config, proxy, NO_PAIRING, new InMemoryPairingKeyStore());
         try {
-            assertTrue("Chat geht über die Ausführung je Katalog", ports.chat().toString().startsWith("RoutedChat"));
-            assertTrue(ports.embeddings() instanceof OpenAiCompatibleEmbeddingAdapter);
+            assertTrue("Chat geht über die Ausführung je Katalog", ports.chat().toString().contains("RoutedChat"));
+            assertTrue(ports.embeddings().toString().startsWith("LiveEmbeddings"));
             assertEquals(768, ports.embeddingSpace().dimension());
-            assertTrue(ports.index() instanceof LuceneKnowledgeIndex);
+            assertTrue(ports.index() instanceof LiveKnowledgeIndex);
             assertTrue(((AskedSecretProvider) ports.secrets()).vault() instanceof KeePassRpcSecretProvider);
             assertEquals(Arrays.asList(KnowledgeSourceId.of("wiki"), KnowledgeSourceId.of("confluence")),
                     new java.util.ArrayList<KnowledgeSourceId>(ports.sources().ids()));
@@ -120,7 +119,7 @@ public class AdapterAssemblyTest {
             assertTrue(unwrap(ports.sources().find(KnowledgeSourceId.of("confluence")).port())
                     instanceof ConfluenceKnowledgeSource);
             assertFalse("Agent-Modus ist in der Beispielkonfiguration aus", ports.hasAgent());
-            assertEquals(Arrays.asList("local-chat", "knowledge-index"), ports.resourceNames());
+            assertEquals(Arrays.asList("local-models", "mcp-server", "knowledge-index"), ports.resourceNames());
             assertFalse(ports.toString().toLowerCase().contains("password"));
         } finally {
             ports.close();

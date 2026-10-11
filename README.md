@@ -38,7 +38,7 @@ java -jar enterprise-ai-client-<version>.jar
    Bedarf mit Pairing). Speichern schreibt die kommentierte Datei `enterprise-ai-client.properties` im
    Anwendungsverzeichnis (`~/.enterprise-ai-client/`, unter Windows `%APPDATA%\.enterprise-ai-client\`), danach
    startet die Anwendung. Später öffnet das Zahnrad im Drawer (Hamburger ☰ links oben, Seite „Chats“) denselben
-   Dialog; Änderungen gelten beim nächsten Start. Wissensquellen sowie Indexverzeichnis und Indexierung beim Start
+   Dialog; Änderungen gelten sofort, ohne Neustart. Wissensquellen sowie Indexverzeichnis und Indexierung beim Start
    („Index …“) verwaltet die Drawer-Seite „Wissensquellen“ in derselben Datei. Secrets stehen nie in der Datei;
    sie kommen zur Laufzeit aus KeePass (Plugin
    KeePassRPC). Die Datei lässt sich weiterhin von Hand pflegen (Feineinstellungen wie Timeouts stehen nur

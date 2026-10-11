@@ -6,11 +6,16 @@ import com.aresstack.enterpriseai.app.agent.AgentModelChoice;
 import com.aresstack.enterpriseai.app.agent.ResearchAgentHost;
 import com.aresstack.enterpriseai.app.agent.ResearchAgentLauncher;
 import com.aresstack.enterpriseai.app.chat.KnowledgeIndexingBinding;
+import com.aresstack.enterpriseai.app.config.AgentConfig;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.config.AppPaths;
 import com.aresstack.enterpriseai.app.config.KnowledgeConfig;
 import com.aresstack.enterpriseai.app.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.app.knowledge.StartupIndexing;
+import com.aresstack.enterpriseai.app.settings.SettingsService;
+import com.aresstack.enterpriseai.acp.api.AcpConnection;
+import com.aresstack.enterpriseai.acp.api.AcpException;
+import com.aresstack.enterpriseai.application.agent.AgentLauncher;
 import com.aresstack.enterpriseai.app.ui.chat.KnowledgeStatusModel;
 import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
@@ -68,7 +73,7 @@ public final class CompositionRoot {
     /** Ordner der Research-Projekte des eingebauten Recherche-Agenten, neben der Konfigurationsdatei. */
     static final String RESEARCH_DIRECTORY = "research";
 
-    private final AppConfig config;
+    private final SettingsService settings;
     private final ApplicationPorts ports;
     private final ChatService chatService;
     private final RetrieveKnowledgeUseCase retrieval;
@@ -93,9 +98,10 @@ public final class CompositionRoot {
     private final StartupIndexing startupIndexing;
     private final ShutdownSequence shutdown;
 
-    private CompositionRoot(AppConfig config, ApplicationPorts ports, Executor uiExecutor, LongSupplier clock,
-                            ZoneId zone) {
-        this.config = config;
+    private CompositionRoot(final SettingsService settings, final ApplicationPorts ports, Executor uiExecutor,
+                            LongSupplier clock, ZoneId zone) {
+        this.settings = settings;
+        AppConfig config = settings.current();
         this.ports = ports;
         this.uiExecutor = uiExecutor;
         this.clock = clock;
@@ -103,11 +109,12 @@ public final class CompositionRoot {
         KnowledgeConfig knowledge = config.knowledge();
 
         this.chatService = new ChatService(ports.chat(), config.chat().defaultOptions());
-        this.retrieval = new RetrieveKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpace(),
+        // Die Embedding-Welt als Funktion: ein anderes Embedding-Modell gilt ohne Neustart (eigener Namensraum).
+        this.retrieval = new RetrieveKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
                 knowledge.retrieval());
         this.contextAssembler = new PromptContextAssembler(knowledge.context());
         this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler);
-        this.indexing = new IndexKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpace(),
+        this.indexing = new IndexKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
                 new KnowledgeChunker(knowledge.chunking()), knowledge.embeddingBatchSize());
         // Der Index führt (AP20-Folge #32): get_knowledge_document liefert nur Dokumente, die im konfigurierten
         // Namespace indexiert sind; der Agent sieht ausschließlich den freigegebenen Korpus.
@@ -118,7 +125,7 @@ public final class CompositionRoot {
                 new InMemoryResourceArchive());
         this.resourceDocuments = new MediatedKnowledgeDocuments(resourceAccess,
                 new ActorIdentity("enterprise-ai-client-user", ActorType.HUMAN));
-        this.documents = new LoadKnowledgeDocumentUseCase(ports.sources(), ports.index(), ports.embeddingSpace())
+        this.documents = new LoadKnowledgeDocumentUseCase(ports.sources(), ports.index(), ports.embeddingSpaceSource())
                 .withReader(resourceDocuments);
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
         this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, refresh, config.agent().toolSettings());
@@ -140,22 +147,26 @@ public final class CompositionRoot {
                 sourceSelection);
 
         this.agentStarts = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-agent-start"));
-        if (ports.hasAgent()) {
-            AgentBackend agent = ports.agent();
-            this.researchHost = null;
-            this.agentModelChoice = null;
-            this.agentService = new AgentService(new AcpAgentLauncher(agent.connector(), agent.launchSpec(),
-                    agent.registry(), agent.endpoint(), agentTools()), agentStarts);
-        } else {
-            // Ohne eigenes Agent-Kommando ist der Agent-Modus der eingebaute Recherche-Agent aus askai-java8
-            // (arch) samt Weidezaun; er läuft im Client auf dem Chat-Modell, Projekte neben der Konfiguration.
-            this.researchHost = new ResearchAgentHost(AppPaths.configFile().toAbsolutePath().getParent()
-                    .resolve(RESEARCH_DIRECTORY).toFile(), FileResearchScopeDraftStore::new,
-                    directory -> new ConceptBranchService(new FileConceptStore(directory)));
-            this.agentModelChoice = new AgentModelChoice();
-            this.agentService = new AgentService(new ResearchAgentLauncher(researchHost, ports.chat(),
-                    config.chat().defaultOptions(), agentModelChoice), agentStarts);
-        }
+        // Der eingebaute Recherche-Agent aus askai-java8 (arch) samt Weidezaun läuft im Client auf dem Chat-Modell,
+        // Projekte neben der Konfiguration. Ist ein eigenes Agent-Kommando eingeschaltet, startet stattdessen dieses;
+        // entschieden wird je Agent-Sitzung aus den aktuellen Einstellungen, ein Neustart ist nicht nötig.
+        this.researchHost = new ResearchAgentHost(AppPaths.configFile().toAbsolutePath().getParent()
+                .resolve(RESEARCH_DIRECTORY).toFile(), FileResearchScopeDraftStore::new,
+                directory -> new ConceptBranchService(new FileConceptStore(directory)));
+        this.agentModelChoice = new AgentModelChoice();
+        final ResearchAgentLauncher research = new ResearchAgentLauncher(researchHost, ports.chat(),
+                config.chat().defaultOptions(), agentModelChoice);
+        this.agentService = new AgentService(new AgentLauncher() {
+            @Override
+            public AcpConnection launch() throws AcpException {
+                AgentBackend external = ports.agentFor(settings.current().agent());
+                if (external == null) {
+                    return research.launch();
+                }
+                return new AcpAgentLauncher(external.connector(), external.launchSpec(), external.registry(),
+                        external.endpoint(), agentTools()).launch();
+            }
+        }, agentStarts);
         this.shutdown = buildShutdown();
     }
 
@@ -168,10 +179,19 @@ public final class CompositionRoot {
      */
     public static CompositionRoot compose(AppConfig config, ApplicationPorts ports, Executor uiExecutor,
                                           LongSupplier clock, ZoneId zone) {
-        if (config == null || ports == null || uiExecutor == null || clock == null) {
+        if (config == null) {
             throw new IllegalArgumentException("config, ports, uiExecutor and clock must not be null");
         }
-        return new CompositionRoot(config, ports, uiExecutor, clock, zone == null ? ZoneId.systemDefault() : zone);
+        return compose(SettingsService.fixed(config), ports, uiExecutor, clock, zone);
+    }
+
+    /** Wie oben mit dem Settings-Service der Anwendung: {@link #config()} liefert dann immer den aktuellen Stand. */
+    public static CompositionRoot compose(SettingsService settings, ApplicationPorts ports, Executor uiExecutor,
+                                          LongSupplier clock, ZoneId zone) {
+        if (settings == null || ports == null || uiExecutor == null || clock == null) {
+            throw new IllegalArgumentException("settings, ports, uiExecutor and clock must not be null");
+        }
+        return new CompositionRoot(settings, ports, uiExecutor, clock, zone == null ? ZoneId.systemDefault() : zone);
     }
 
     private static ThreadFactory daemonThreads(final String name) {
@@ -192,13 +212,25 @@ public final class CompositionRoot {
 
     /** Startet die Hintergrundarbeit (Indexierung, falls konfiguriert). Idempotent. */
     public void startBackgroundWork() {
-        if (config.knowledge().indexOnStartup() && !ports.sources().isEmpty()) {
+        if (config().knowledge().indexOnStartup() && !ports.sources().isEmpty()) {
             startupIndexing.start();
         }
     }
 
+    /** Der aktuelle Stand der Einstellungen, bei jedem Aufruf frisch (nicht in Feldern ablegen). */
     public AppConfig config() {
-        return config;
+        return settings.current();
+    }
+
+    /** Der Settings-Service der Anwendung: frisch lesen über {@code current()}, Änderungen über Beobachter. */
+    public SettingsService settings() {
+        return settings;
+    }
+
+    /** {@code true}, solange kein eigenes Agent-Kommando eingeschaltet ist (eingebauter Recherche-Agent). */
+    public boolean usesBuiltInAgent() {
+        AgentConfig agent = config().agent();
+        return ports.agentFor(agent) == null;
     }
 
     public ApplicationPorts ports() {
@@ -278,12 +310,12 @@ public final class CompositionRoot {
         return agentService != null;
     }
 
-    /** Weidezaun des eingebauten Recherche-Agenten; {@code null}, wenn ein eigenes Agent-Kommando läuft. */
+    /** Weidezaun des eingebauten Recherche-Agenten. */
     public ResearchAgentHost researchHost() {
         return researchHost;
     }
 
-    /** Modell und Denkaufwand aus dem Composer des eingebauten Recherche-Agenten; {@code null} bei externem Agenten. */
+    /** Modell und Denkaufwand aus dem Composer des eingebauten Recherche-Agenten. */
     public AgentModelChoice agentModelChoice() {
         return agentModelChoice;
     }

@@ -85,8 +85,9 @@ public final class ShellAssembly {
             throw new IllegalStateException("createShell must run on the event dispatch thread");
         }
         final ChatService chatService = root.chatService();
-        final String systemPrompt = root.config().chat().systemPrompt();
-        ChatConversationId conversation = chatService.openConversation(systemPrompt);
+        // Einstellungen frisch lesen (Funktion statt Variable): ein geänderter System-Prompt gilt ohne Neustart.
+        final java.util.function.Supplier<String> systemPrompt = root.settings().get(c -> c.chat().systemPrompt());
+        ChatConversationId conversation = chatService.openConversation(systemPrompt.get());
         final ChatShellModel chatModel = new ChatShellModel(root.clock());
         final RagChatBinding chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel,
                 root.uiExecutor(), root.workExecutor(), root.zone(), root.sourceSelection());
@@ -122,7 +123,7 @@ public final class ShellAssembly {
                         root.uiExecutor());
                 // Der Wolkenhimmel gehört zur Erscheinung des Agent-Modus.
                 final ShellModeModel.Listener skyByMode = mode -> {
-                    if (mode == ShellMode.AGENT) {
+                    if (mode == ShellMode.AGENT && root.usesBuiltInAgent()) {
                         chatShell.transcript().setTranscriptSkyAccessory(sky);
                     } else {
                         chatShell.transcript().clearTranscriptSkyAccessory();
@@ -139,6 +140,14 @@ public final class ShellAssembly {
         chatShell.composer().setModelName(root.config().chat().model());
         ChatWorkspacePanel workspace = new ChatWorkspacePanel(modes, chatShell, null, palette);
         workspace.setWindowTitle(root.config().windowTitle());
+        // Beobachter auf dem Settings-Service: was schon angezeigt wird, übernimmt gespeicherte Werte sofort.
+        final ChatShellPanel shell = chatShell;
+        final ChatWorkspacePanel titled = workspace;
+        root.settings().addListener((previous, current) -> root.uiExecutor().execute(() -> {
+            chatService.setSystemPrompt(chatActions.conversationId(), current.chat().systemPrompt());
+            shell.composer().setModelName(current.chat().model());
+            titled.setWindowTitle(current.windowTitle());
+        }));
         if (agent != null && root.researchHost() != null) {
             // askai: die Artefakt-Ansicht „Konzept“ (Konzeptbaum mit Inseln) als Drawer-Reiter im Agent-Modus
             workspace.addAgentTab(CONCEPT_TAB, ResearchConceptViewAssembly.create(root.researchHost(),
@@ -193,7 +202,7 @@ public final class ShellAssembly {
                     return false; // der Knopf ist während einer Antwort deaktiviert; zur Sicherheit auch hier
                 }
                 ChatConversationId previous = chatActions.conversationId();
-                ChatConversationId next = chatService.openConversation(systemPrompt);
+                ChatConversationId next = chatService.openConversation(systemPrompt.get());
                 try {
                     chatActions.startConversation(next);
                 } catch (IllegalStateException stillBusy) {

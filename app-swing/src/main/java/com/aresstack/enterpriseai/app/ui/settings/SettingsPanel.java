@@ -40,7 +40,7 @@ import java.util.function.Supplier;
  * <pre>
  * ┌──────────────────────────────────────────┐
  * │ Einstellungen                          ✕  │  stille Überschrift; rechts Platz für das Fenster-✕
- * │ Hinweis zum Erststart bzw. zum Neustart   │
+ * │ Hinweis zum Erststart bzw. zu KeePass     │
  * ├──────────────────────────────────────────┤
  * │ KI-Dienst  │ Platten mit Formularzeilen  │  Navigationsliste links wie askai arch
  * │ KeePass    │ (scrollbar)                 │  (Outlook-Stil), rechts je Kategorie eine
@@ -90,7 +90,7 @@ public final class SettingsPanel extends JPanel {
     static final String FIRST_START_NOTE = "Willkommen. Für den ersten Start fehlen noch der KeePass-Eintrag mit API-Key und "
             + "URL sowie die Embedding-Dimension\n(Reiter KI-Dienst) und Chat- und Embedding-Modell (Reiter Modelle).\n"
             + "Alles andere hat sinnvolle Vorgaben und lässt sich später ändern.";
-    static final String EDIT_NOTE = "Gespeicherte Änderungen gelten beim nächsten Start der Anwendung.\n"
+    static final String EDIT_NOTE = "Gespeicherte Änderungen gelten sofort, ohne Neustart.\n"
             + "Mit KeePass stehen API-Key und URL im Eintrag; hier steht nur sein Titel.";
 
     private final Mode mode;
@@ -225,7 +225,7 @@ public final class SettingsPanel extends JPanel {
         buttons.setOpaque(false);
         buttons.setBorder(BorderFactory.createEmptyBorder(4, 12, 0, 12));
         saveButton.setToolTipText(mode == Mode.FIRST_START ? "Konfiguration schreiben und die Anwendung starten"
-                : "Konfiguration schreiben; gilt beim nächsten Start");
+                : "Konfiguration schreiben; gilt sofort");
         cancelButton.setToolTipText(mode == Mode.FIRST_START ? "Ohne Konfiguration beenden" : "Änderungen verwerfen");
         buttons.add(cancelButton);
         buttons.add(saveButton);

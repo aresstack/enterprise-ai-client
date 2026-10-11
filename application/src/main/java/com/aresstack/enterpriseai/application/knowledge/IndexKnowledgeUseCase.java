@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Use Case "Wissen indexieren": bringt Ressourcen einer {@link KnowledgeSourcePort Quelle} in den
@@ -78,7 +79,7 @@ public final class IndexKnowledgeUseCase {
 
     private final KnowledgeIndexPort index;
     private final EmbeddingPort embeddings;
-    private final EmbeddingModelIdentity space;
+    private final Supplier<EmbeddingModelIdentity> space;
     private final KnowledgeChunker chunker;
     private final int embeddingBatchSize;
 
@@ -107,13 +108,33 @@ public final class IndexKnowledgeUseCase {
         }
         this.index = index;
         this.embeddings = embeddings;
+        this.space = () -> space;
+        this.chunker = chunker;
+        this.embeddingBatchSize = embeddingBatchSize;
+    }
+
+    /**
+     * Mit wechselnder Embedding-Welt (Einstellungen gelten ohne Neustart): Namespace und Port werden je Aufruf
+     * gelesen; {@code space} muss dieselbe Welt liefern wie {@code embeddings.modelIdentity()}.
+     */
+    public IndexKnowledgeUseCase(KnowledgeIndexPort index, EmbeddingPort embeddings,
+                                 Supplier<EmbeddingModelIdentity> space, KnowledgeChunker chunker,
+                                 int embeddingBatchSize) {
+        if (index == null || embeddings == null || space == null || chunker == null) {
+            throw new IllegalArgumentException("index, embeddings, space und chunker sind Pflicht");
+        }
+        if (embeddingBatchSize < 1) {
+            throw new IllegalArgumentException("embeddingBatchSize muss >= 1 sein: " + embeddingBatchSize);
+        }
+        this.index = index;
+        this.embeddings = embeddings;
         this.space = space;
         this.chunker = chunker;
         this.embeddingBatchSize = embeddingBatchSize;
     }
 
     public EmbeddingModelIdentity space() {
-        return space;
+        return space.get();
     }
 
     /** Ermittelt die Ressourcen im {@code scope} der Quelle und indexiert jede davon. */
@@ -219,7 +240,7 @@ public final class IndexKnowledgeUseCase {
             return false;
         }
         try {
-            Optional<KnowledgeRevision> stored = index.revisionOf(space, id);
+            Optional<KnowledgeRevision> stored = index.revisionOf(space(), id);
             return stored.isPresent() && stored.get().equals(discovered);
         } catch (KnowledgeIndexException e) {
             // Die Abfrage ist nur eine Abkürzung; im Zweifel neu indexieren.
@@ -235,7 +256,7 @@ public final class IndexKnowledgeUseCase {
      */
     private List<KnowledgeResourceId> staleResources(KnowledgeSourceId sourceId, Set<KnowledgeResourceId> touched) {
         List<KnowledgeResourceId> stale = new ArrayList<KnowledgeResourceId>();
-        for (KnowledgeResourceId id : index.resourceIds(space, sourceId)) {
+        for (KnowledgeResourceId id : index.resourceIds(space(), sourceId)) {
             if (!touched.contains(id)) {
                 stale.add(id);
             }
@@ -249,7 +270,7 @@ public final class IndexKnowledgeUseCase {
      */
     private ResourceIndexingOutcome pruneOne(KnowledgeResourceId id) {
         try {
-            index.replace(space, id, Collections.<KnowledgeIndexEntry>emptyList());
+            index.replace(space(), id, Collections.<KnowledgeIndexEntry>emptyList());
             return ResourceIndexingOutcome.done(id, "", IndexingStatus.PRUNED, 0);
         } catch (KnowledgeIndexException e) {
             return ResourceIndexingOutcome.failed(id, "", IndexingStage.INDEXING, e.getMessage());
@@ -292,7 +313,7 @@ public final class IndexKnowledgeUseCase {
                 EmbeddingBatch batch = embeddings.embed(texts);
                 for (int i = 0; i < slice.size(); i++) {
                     EmbeddingVector vector = batch.get(i);
-                    space.requireSameWorldAs(vector.identity());
+                    space().requireSameWorldAs(vector.identity());
                     entries.add(KnowledgeIndexEntry.of(resource, slice.get(i), vector));
                 }
             }
@@ -305,7 +326,7 @@ public final class IndexKnowledgeUseCase {
         }
 
         try {
-            index.replace(space, target, entries);
+            index.replace(space(), target, entries);
         } catch (KnowledgeIndexException e) {
             return ResourceIndexingOutcome.failed(target, resource.title(), IndexingStage.INDEXING, e.getMessage());
         }

@@ -8,6 +8,8 @@ import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 
+import java.util.function.Supplier;
+
 /**
  * Use Case "Wissensdokument laden": holt den vollständigen, aktuellen Text einer Ressource aus ihrer Quelle
  * (nicht aus dem Index, der nur eine wiederherstellbare Projektion ist).
@@ -35,7 +37,7 @@ public final class LoadKnowledgeDocumentUseCase {
 
     private final KnowledgeSourceCatalog catalog;
     private final KnowledgeIndexPort index;
-    private final EmbeddingModelIdentity space;
+    private final Supplier<EmbeddingModelIdentity> space;
     private final KnowledgeDocumentReader reader;
 
     /** Ohne Index: Die Quellen entscheiden, welche ID sie kennen; jede akzeptierte ID wird geladen. */
@@ -51,11 +53,18 @@ public final class LoadKnowledgeDocumentUseCase {
      */
     public LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog, KnowledgeIndexPort index,
                                         EmbeddingModelIdentity space) {
+        this(catalog, index, space == null ? null : () -> space, true, KnowledgeDocumentReader.direct());
+    }
+
+    /** Wie oben, mit wechselnder Embedding-Welt (Einstellungen gelten ohne Neustart): je Aufruf gelesen. */
+    public LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog, KnowledgeIndexPort index,
+                                        Supplier<EmbeddingModelIdentity> space) {
         this(catalog, index, space, true, KnowledgeDocumentReader.direct());
     }
 
     private LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog, KnowledgeIndexPort index,
-                                         EmbeddingModelIdentity space, boolean gated, KnowledgeDocumentReader reader) {
+                                         Supplier<EmbeddingModelIdentity> space, boolean gated,
+                                         KnowledgeDocumentReader reader) {
         if (catalog == null) {
             throw new IllegalArgumentException("catalog ist Pflicht");
         }
@@ -137,7 +146,7 @@ public final class LoadKnowledgeDocumentUseCase {
             throw new KnowledgeSourceException(KnowledgeSourceException.Kind.NOT_FOUND,
                     "Quelle " + sourceId + " ist nicht konfiguriert");
         }
-        if (index != null && !index.resourceIds(space, sourceId).contains(resourceId)) {
+        if (index != null && !index.resourceIds(space.get(), sourceId).contains(resourceId)) {
             throw new KnowledgeDocumentNotIndexedException(resourceId, sourceId);
         }
         return reader.read(sourceId, registration.port(), resourceId);
@@ -146,7 +155,7 @@ public final class LoadKnowledgeDocumentUseCase {
     /** Die konfigurierte Quelle, unter der die Ressource im Namespace indexiert ist, oder {@code null}. */
     private KnowledgeSourceId indexedSourceOf(KnowledgeResourceId resourceId) {
         for (KnowledgeSourceId sourceId : catalog.ids()) {
-            if (index.resourceIds(space, sourceId).contains(resourceId)) {
+            if (index.resourceIds(space.get(), sourceId).contains(resourceId)) {
                 return sourceId;
             }
         }

@@ -152,7 +152,7 @@ public class LoadKnowledgeDocumentUseCaseTest {
             // ok
         }
         try {
-            new LoadKnowledgeDocumentUseCase(catalog, index, null);
+            new LoadKnowledgeDocumentUseCase(catalog, index, (EmbeddingModelIdentity) null);
             fail("IllegalArgumentException erwartet");
         } catch (IllegalArgumentException expected) {
             // ok

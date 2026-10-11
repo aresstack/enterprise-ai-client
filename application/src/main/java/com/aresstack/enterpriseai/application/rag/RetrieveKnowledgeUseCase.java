@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Use Case "Wissen abrufen": hybride Suche über den {@link KnowledgeIndexPort} – Volltext (BM25) und semantisch
@@ -39,7 +40,7 @@ public final class RetrieveKnowledgeUseCase {
 
     private final KnowledgeIndexPort index;
     private final EmbeddingPort embeddings;
-    private final EmbeddingModelIdentity space;
+    private final Supplier<EmbeddingModelIdentity> space;
     private final RetrievalSettings settings;
     private final ReciprocalRankFusion fusion;
 
@@ -70,13 +71,33 @@ public final class RetrieveKnowledgeUseCase {
         }
         this.index = index;
         this.embeddings = embeddings;
+        this.space = () -> space;
+        this.settings = effective;
+        this.fusion = new ReciprocalRankFusion(effective);
+    }
+
+    /**
+     * Mit wechselnder Embedding-Welt (Einstellungen gelten ohne Neustart): Namespace und Port werden je Suche
+     * gelesen; {@code space} muss dieselbe Welt liefern wie {@code embeddings.modelIdentity()}.
+     */
+    public RetrieveKnowledgeUseCase(KnowledgeIndexPort index, EmbeddingPort embeddings,
+                                    Supplier<EmbeddingModelIdentity> space, RetrievalSettings settings) {
+        if (index == null || space == null) {
+            throw new IllegalArgumentException("index and space must not be null");
+        }
+        RetrievalSettings effective = settings == null ? RetrievalSettings.defaults() : settings;
+        if (effective.semanticEnabled() && embeddings == null) {
+            throw new IllegalArgumentException("semantische Suche aktiv, aber kein EmbeddingPort");
+        }
+        this.index = index;
+        this.embeddings = embeddings;
         this.space = space;
         this.settings = effective;
         this.fusion = new ReciprocalRankFusion(effective);
     }
 
     public EmbeddingModelIdentity space() {
-        return space;
+        return space.get();
     }
 
     public RetrievalSettings settings() {
@@ -108,7 +129,7 @@ public final class RetrieveKnowledgeUseCase {
         if (settings.keywordEnabled()) {
             activePaths++;
             try {
-                keywordHits = index.keywordSearch(KnowledgeKeywordQuery.of(space, query, settings.keywordCandidates())
+                keywordHits = index.keywordSearch(KnowledgeKeywordQuery.of(space(), query, settings.keywordCandidates())
                         .restrictedTo(filter));
             } catch (KnowledgeIndexException e) {
                 warnings.add(new RetrievalWarning(RetrievalPath.KEYWORD, "Volltextsuche fehlgeschlagen: "
@@ -148,7 +169,7 @@ public final class RetrieveKnowledgeUseCase {
 
     private List<KnowledgeSearchHit> semanticSearch(String query, Collection<KnowledgeSourceId> filter) {
         EmbeddingVector vector = embeddings.embed(Collections.singletonList(query)).get(0);
-        if (!space.equals(vector.identity())) {
+        if (!space().equals(vector.identity())) {
             // Der Port hat seine Welt gewechselt; niemals in einem fremden Namespace suchen.
             throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE,
                     "Anfragevektor aus einer anderen Embedding-Welt");

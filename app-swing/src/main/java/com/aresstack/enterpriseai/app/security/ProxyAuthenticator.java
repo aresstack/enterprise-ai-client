@@ -51,6 +51,23 @@ public final class ProxyAuthenticator extends Authenticator {
         return authenticator;
     }
 
+    /**
+     * Gibt BASIC für den HTTPS-Tunnel schon beim Start frei (sofern die Property nicht gesetzt ist): Das JDK liest
+     * sie nur einmal, eine später in den Einstellungen eingeschaltete Proxy-Anmeldung griffe sonst erst nach einem
+     * Neustart. Ohne installierten Authenticator ändert das nichts.
+     */
+    public static void allowBasicTunneling() {
+        if (System.getProperty(TUNNELING_DISABLED_SCHEMES) == null) {
+            System.setProperty(TUNNELING_DISABLED_SCHEMES, "");
+        }
+    }
+
+    /** Nimmt die Proxy-Anmeldung zurück (Einstellung „keine Anmeldung“ gespeichert). */
+    public static void uninstall() {
+        Authenticator.setDefault(null);
+        LOG.info("Proxy-Anmeldung entfernt");
+    }
+
     public SecretRef ref() {
         return ref;
     }

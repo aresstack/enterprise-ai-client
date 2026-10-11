@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.app.composition;
 
+import com.aresstack.enterpriseai.app.config.AgentConfig;
+import com.aresstack.enterpriseai.app.config.AppConfig;
+import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
@@ -14,11 +17,15 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Alle Ports, gegen die die Anwendung gebaut wird, unveränderlich. Produktiv liefert sie
+ * Alle Ports, gegen die die Anwendung gebaut wird. Die Ports selbst bleiben dieselben Objekte; Ports, die
+ * Einstellungen ohne Neustart übernehmen (Modelle, Index), melden sich als {@link Reconfigurable} und werden über
+ * {@link #apply} auf den gespeicherten Stand gebracht. Produktiv liefert sie
  * {@link AdapterAssembly} mit echten Adaptern, der Kompositionstest mit Fakes; {@link CompositionRoot} kennt
  * den Unterschied nicht. {@link #close()} schließt die mitgegebenen Ressourcen in Reihenfolge (zuletzt der
  * Index) und ist idempotent.
@@ -30,15 +37,22 @@ public final class ApplicationPorts implements Closeable {
     private final ChatCompletionPort chat;
     private final ResponsesPort responses;
     private final EmbeddingPort embeddings;
-    private final EmbeddingModelIdentity embeddingSpace;
+    private final Supplier<EmbeddingModelIdentity> embeddingSpace;
     private final KnowledgeIndexPort index;
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
+    private final Function<AgentConfig, AgentBackend> agents;
     private final List<KnowledgeSourceProvider> sourceProviders;
     private final List<String> sourceWarnings;
     private final List<NamedResource> resources;
+    private final List<Reconfigurable> reconfigurables;
     private boolean closed;
+
+    /** Ein Port, der gespeicherte Einstellungen ohne Neustart übernimmt. */
+    interface Reconfigurable {
+        void apply(AppConfig config, NetworkServices network);
+    }
 
     private ApplicationPorts(Builder builder) {
         if (builder.chat == null || builder.embeddings == null || builder.embeddingSpace == null
@@ -53,9 +67,11 @@ public final class ApplicationPorts implements Closeable {
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
+        this.agents = builder.agents;
         this.sourceProviders = Collections.unmodifiableList(new ArrayList<KnowledgeSourceProvider>(builder.sourceProviders));
         this.sourceWarnings = Collections.unmodifiableList(new ArrayList<String>(builder.sourceWarnings));
         this.resources = Collections.unmodifiableList(new ArrayList<NamedResource>(builder.resources));
+        this.reconfigurables = Collections.unmodifiableList(new ArrayList<Reconfigurable>(builder.reconfigurables));
     }
 
     public static Builder builder() {
@@ -75,8 +91,31 @@ public final class ApplicationPorts implements Closeable {
         return embeddings;
     }
 
+    /** Die Embedding-Welt (Index-Namensraum) des aktuellen Stands. */
     public EmbeddingModelIdentity embeddingSpace() {
+        return embeddingSpace.get();
+    }
+
+    /** Die Embedding-Welt als Funktion: Use Cases fragen sie je Aufruf, damit ein Modellwechsel sofort gilt. */
+    public Supplier<EmbeddingModelIdentity> embeddingSpaceSource() {
         return embeddingSpace;
+    }
+
+    /**
+     * Bringt die Ports, die Einstellungen ohne Neustart übernehmen, auf den gespeicherten Stand (Beobachter des
+     * Settings-Service). Ein Port, der scheitert, behält seinen bisherigen Stand; die übrigen übernehmen trotzdem.
+     */
+    public void apply(AppConfig config, NetworkServices network) {
+        if (config == null || network == null) {
+            throw new IllegalArgumentException("config and network must not be null");
+        }
+        for (Reconfigurable reconfigurable : reconfigurables) {
+            try {
+                reconfigurable.apply(config, network);
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "Einstellungen nicht übernommen von " + reconfigurable, e);
+            }
+        }
     }
 
     public KnowledgeIndexPort index() {
@@ -112,6 +151,17 @@ public final class ApplicationPorts implements Closeable {
 
     public boolean hasAgent() {
         return agent != null;
+    }
+
+    /**
+     * Das eigene Agent-Kommando nach den aktuellen Agent-Einstellungen, gebaut je Agent-Sitzung ({@code null}:
+     * ausgeschaltet, der eingebaute Recherche-Agent übernimmt). Ohne Fabrik das Agent-Kommando des Starts.
+     */
+    public AgentBackend agentFor(AgentConfig settings) {
+        if (agents == null) {
+            return agent;
+        }
+        return settings != null && settings.enabled() ? agents.apply(settings) : null;
     }
 
     /** Namen der Ressourcen in Schließreihenfolge (für Tests und Log). */
@@ -159,14 +209,16 @@ public final class ApplicationPorts implements Closeable {
         private ChatCompletionPort chat;
         private ResponsesPort responses;
         private EmbeddingPort embeddings;
-        private EmbeddingModelIdentity embeddingSpace;
+        private Supplier<EmbeddingModelIdentity> embeddingSpace;
         private KnowledgeIndexPort index;
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
+        private Function<AgentConfig, AgentBackend> agents;
         private final List<KnowledgeSourceProvider> sourceProviders = new ArrayList<KnowledgeSourceProvider>();
         private final List<String> sourceWarnings = new ArrayList<String>();
         private final List<NamedResource> resources = new ArrayList<NamedResource>();
+        private final List<Reconfigurable> reconfigurables = new ArrayList<Reconfigurable>();
 
         private Builder() {
         }
@@ -181,9 +233,35 @@ public final class ApplicationPorts implements Closeable {
             return this;
         }
 
-        public Builder embeddings(EmbeddingPort value, EmbeddingModelIdentity space) {
+        public Builder embeddings(EmbeddingPort value, final EmbeddingModelIdentity space) {
             this.embeddings = value;
-            this.embeddingSpace = space;
+            this.embeddingSpace = space == null ? null : new Supplier<EmbeddingModelIdentity>() {
+                @Override
+                public EmbeddingModelIdentity get() {
+                    return space;
+                }
+            };
+            return this;
+        }
+
+        /** Ein Embedding-Port, dessen Welt wechseln kann: der Index-Namensraum folgt seiner {@code modelIdentity()}. */
+        public Builder liveEmbeddings(final EmbeddingPort value) {
+            this.embeddings = value;
+            this.embeddingSpace = value == null ? null : new Supplier<EmbeddingModelIdentity>() {
+                @Override
+                public EmbeddingModelIdentity get() {
+                    return value.modelIdentity();
+                }
+            };
+            return this;
+        }
+
+        /** Ein Port, der über {@link ApplicationPorts#apply} gespeicherte Einstellungen übernimmt. */
+        Builder reconfiguring(Reconfigurable value) {
+            if (value == null) {
+                throw new IllegalArgumentException("reconfigurable must not be null");
+            }
+            this.reconfigurables.add(value);
             return this;
         }
 
@@ -204,6 +282,12 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder agent(AgentBackend value) {
             this.agent = value;
+            return this;
+        }
+
+        /** Baut das eigene Agent-Kommando je Sitzung aus den aktuellen Einstellungen (siehe {@link #agentFor}). */
+        public Builder agents(Function<AgentConfig, AgentBackend> value) {
+            this.agents = value;
             return this;
         }
 

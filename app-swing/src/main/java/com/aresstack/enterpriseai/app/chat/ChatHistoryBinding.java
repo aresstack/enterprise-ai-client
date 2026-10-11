@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * Hält den Chat-Verlauf persistent (aus askai-java8 arch: {@code OllamaChatPanel} speichert den Nutzer-Turn samt
@@ -45,7 +46,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     private final ChatService chatService;
     private final RagChatBinding chat;
     private final ChatShellModel model;
-    private final String systemPrompt;
+    private final Supplier<String> systemPrompt;
     private final LongSupplier clock;
     private final Map<Long, List<AttachmentRecord>> storedAttachments = new HashMap<Long, List<AttachmentRecord>>();
     private ChatConversationId recordedConversation;
@@ -54,7 +55,21 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     private boolean restoring;
 
     public ChatHistoryBinding(ChatHistoryStore store, ChatService chatService, RagChatBinding chat,
-                              ChatShellModel model, String systemPrompt, LongSupplier clock) {
+                              ChatShellModel model, final String systemPrompt, LongSupplier clock) {
+        this(store, chatService, chat, model, new Supplier<String>() {
+            @Override
+            public String get() {
+                return systemPrompt;
+            }
+        }, clock);
+    }
+
+    /** Wie oben; der System-Prompt wird beim Öffnen eines gespeicherten Chats frisch gelesen (ohne Neustart). */
+    public ChatHistoryBinding(ChatHistoryStore store, ChatService chatService, RagChatBinding chat,
+                              ChatShellModel model, Supplier<String> systemPrompt, LongSupplier clock) {
+        if (systemPrompt == null) {
+            throw new IllegalArgumentException("systemPrompt must not be null");
+        }
         if (store == null || chatService == null || chat == null || model == null || clock == null) {
             throw new IllegalArgumentException("store, chatService, chat, model and clock must not be null");
         }
@@ -110,7 +125,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             }
         }
         try {
-            chatService.restoreConversation(target, systemPrompt, history);
+            chatService.restoreConversation(target, systemPrompt.get(), history);
         } catch (IllegalStateException busy) {
             return false;
         }

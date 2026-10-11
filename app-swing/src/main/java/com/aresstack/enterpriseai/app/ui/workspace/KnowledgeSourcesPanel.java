@@ -28,7 +28,7 @@ import java.util.List;
  * entscheiden die angebundenen Adapter, nicht die Oberfläche), darunter je Quelle eine {@link KnowledgeSourceRow}
  * mit Häkchen, Indexstand, „Jetzt indexieren“, Bearbeiten und Entfernen, dann ein
  * stiller Hinweis, was das Häkchen bewirkt, und unten der Bereich „Index“ mit „Index …“ für Indexverzeichnis
- * und Indexierung beim Start (öffnet den Index-Dialog; gilt beim nächsten Start). Ohne
+ * und Indexierung beim Start (öffnet den Index-Dialog; gilt sofort). Ohne
  * {@link KnowledgeSourceActions} bzw. {@link #setIndexSettingsAction} bleiben die Knöpfe wirkungslos.
  */
 public final class KnowledgeSourcesPanel extends JPanel {
@@ -38,9 +38,8 @@ public final class KnowledgeSourcesPanel extends JPanel {
     static final String HINT_TEXT = "<html>Der Chat durchsucht nur angehakte Quellen; abgewählte werden auch beim "
             + "Start nicht indexiert.</html>";
     public static final String INDEX_LABEL = "Index …";
-    static final String INDEX_TOOLTIP = "Indexverzeichnis und Indexierung beim Start ändern; gilt beim nächsten Start";
-    static final String INDEX_HINT_TEXT = "<html>Indexverzeichnis und Indexierung beim Start; Änderungen gelten beim "
-            + "nächsten Start.</html>";
+    static final String INDEX_TOOLTIP = "Indexverzeichnis und Indexierung beim Start ändern";
+    static final String INDEX_HINT_TEXT = "<html>Indexverzeichnis und Indexierung beim Start.</html>";
 
     private final ComicPalette palette;
     private final ResearchPillButton addButton;
