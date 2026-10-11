@@ -28,7 +28,13 @@ import java.util.List;
  *
  * <p>Überlast: Antwortet der Dienst mit HTTP 429 oder 503, wird derselbe Request nach einer Pause wiederholt
  * (500 ms, dann 1500 ms; höchstens drei Versuche), bevor der Fehler gilt. So scheitert eine Suchanfrage nicht
- * daran, dass gleichzeitig die eigene Vorladung Passagen einbettet. Alle anderen Fehler gelten sofort.
+ * daran, dass gleichzeitig die eigene Vorladung Passagen einbettet. Nennt der Dienst {@code Retry-After}, wird
+ * mindestens so lange gewartet (höchstens {@value #MAX_RETRY_AFTER_MILLIS} ms). Alle anderen Fehler gelten sofort.
+ *
+ * <p>Eine Spur ({@link RequestLane}): Von diesem Adapter ist höchstens ein Request gleichzeitig unterwegs, und das
+ * Embedding einer Suchanfrage ({@link #embedQueries}) kommt vor wartenden Aufbereitungs-Requests ({@link #embed}).
+ * Gateways, die je Schlüssel nur eine Anfrage gleichzeitig annehmen, weisen so nichts mehr wegen der eigenen
+ * Vorladung ab, und die Frage wartet höchstens auf den einen laufenden Request.
  *
  * <p>Herkunft: Transport-Naht, strikte Validierung und „kein Fallback“ aus askai-java8
  * ({@code HttpEmbeddingPortAdapter}); OpenAI-Wireformat ({@code /embeddings}, {@code data[].embedding}, Bearer)
@@ -44,6 +50,10 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
 
     /** Wartezeiten vor dem zweiten und dritten Versuch bei HTTP 429/503. */
     private static final long[] RETRY_DELAYS_MILLIS = {500L, 1500L};
+    /** Längste Pause, die ein {@code Retry-After} des Dienstes erzwingen kann. */
+    static final long MAX_RETRY_AFTER_MILLIS = 5000L;
+
+    private final RequestLane lane = new RequestLane();
 
     /** Wartet zwischen zwei Versuchen (in Tests ersetzbar). */
     interface Sleeper {
@@ -83,6 +93,16 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
 
     @Override
     public EmbeddingBatch embed(List<String> texts) {
+        return embed(texts, false);
+    }
+
+    /** Wie {@link #embed}, aber mit Vortritt vor wartenden Aufbereitungs-Requests (gleiche Vektoren). */
+    @Override
+    public EmbeddingBatch embedQueries(List<String> queries) {
+        return embed(queries, true);
+    }
+
+    private EmbeddingBatch embed(List<String> texts, boolean query) {
         List<String> inputs = EmbeddingInputs.requireValid(texts);
         if (inputs.isEmpty()) {
             return EmbeddingBatch.empty(identity);
@@ -91,11 +111,12 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         if (configuration.inputMode() == EmbeddingInputMode.ARRAY_UNVERIFIED) {
             for (int from = 0; from < inputs.size(); from += configuration.maxBatchSize()) {
                 List<String> chunk = inputs.subList(from, Math.min(inputs.size(), from + configuration.maxBatchSize()));
-                vectors.addAll(call(EmbeddingRequestWriter.arrayInput(configuration.modelId(), chunk), chunk.size()));
+                vectors.addAll(call(EmbeddingRequestWriter.arrayInput(configuration.modelId(), chunk), chunk.size(),
+                        query));
             }
         } else {
             for (String text : inputs) {
-                vectors.addAll(call(EmbeddingRequestWriter.singleInput(configuration.modelId(), text), 1));
+                vectors.addAll(call(EmbeddingRequestWriter.singleInput(configuration.modelId(), text), 1, query));
             }
         }
         return EmbeddingBatch.of(identity, inputs.size(), vectors);
@@ -111,10 +132,10 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
      */
     public int measureDimension(String sample) {
         List<String> inputs = EmbeddingInputs.requireValid(Collections.singletonList(sample));
-        HttpResult result = post(EmbeddingRequestWriter.singleInput(configuration.modelId(), inputs.get(0)),
-                maxResponseBytes(1));
+        HttpResult result = postInLane(EmbeddingRequestWriter.singleInput(configuration.modelId(), inputs.get(0)),
+                maxResponseBytes(1), true);
         if (result.status != 200) {
-            throw EmbeddingErrorMapper.fromStatus(configuration.endpoint().toString(), result.status, result.body);
+            throw EmbeddingErrorMapper.fromStatus(endpointPath(), result.status, result.body);
         }
         float[] vector = EmbeddingResponseParser.parse(result.body, 1).get(0);
         if (vector == null || vector.length == 0) {
@@ -124,19 +145,20 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         return vector.length;
     }
 
-    private List<EmbeddingVector> call(String requestBody, int expectedCount) {
-        HttpResult result = post(requestBody, maxResponseBytes(expectedCount));
+    private List<EmbeddingVector> call(String requestBody, int expectedCount, boolean query) {
+        HttpResult result = postInLane(requestBody, maxResponseBytes(expectedCount), query);
         for (int retry = 0; retry < RETRY_DELAYS_MILLIS.length && overloaded(result.status); retry++) {
             try {
-                sleeper.sleep(RETRY_DELAYS_MILLIS[retry]);
+                // Pause außerhalb der Spur: andere Requests (vor allem Suchanfragen) warten nicht hinter ihr.
+                sleeper.sleep(delay(RETRY_DELAYS_MILLIS[retry], result.retryAfterMillis));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 break;
             }
-            result = post(requestBody, maxResponseBytes(expectedCount));
+            result = postInLane(requestBody, maxResponseBytes(expectedCount), query);
         }
         if (result.status != 200) {
-            throw EmbeddingErrorMapper.fromStatus(configuration.endpoint().toString(), result.status, result.body);
+            throw EmbeddingErrorMapper.fromStatus(endpointPath(), result.status, result.body);
         }
         List<float[]> matrix = EmbeddingResponseParser.parse(result.body, expectedCount);
         List<EmbeddingVector> vectors = new ArrayList<EmbeddingVector>(matrix.size());
@@ -152,9 +174,39 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         return Collections.unmodifiableList(vectors);
     }
 
+    /**
+     * Der Endpunkt für Fehlermeldungen und damit für das Protokoll: nur der Pfad ({@code /v1/embeddings}), nie der
+     * Host; welcher Dienst gemeint ist, steht in der Konfiguration.
+     */
+    private String endpointPath() {
+        String path = configuration.endpoint().getRawPath();
+        return path == null || path.isEmpty() ? "/embeddings" : path;
+    }
+
     /** Überlast des Dienstes, die sich mit kurzem Warten erfahrungsgemäß löst. */
     private static boolean overloaded(int status) {
         return status == 429 || status == 503;
+    }
+
+    /** Pause vor dem nächsten Versuch: die eigene Staffel, mindestens aber ein {@code Retry-After} (gedeckelt). */
+    static long delay(long backoffMillis, long retryAfterMillis) {
+        return retryAfterMillis <= backoffMillis ? backoffMillis : Math.min(retryAfterMillis, MAX_RETRY_AFTER_MILLIS);
+    }
+
+    /** Ein Request auf der Spur dieses Adapters (siehe {@link RequestLane}). */
+    private HttpResult postInLane(String requestBody, long maxResponseBytes, boolean query) {
+        try {
+            lane.enter(query);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "embedding request to " + endpointPath()
+                    + " interrupted while waiting for the previous request");
+        }
+        try {
+            return post(requestBody, maxResponseBytes);
+        } finally {
+            lane.leave();
+        }
     }
 
     private HttpResult post(String requestBody, long maxResponseBytes) {
@@ -164,11 +216,11 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
             return transport.post(configuration.endpoint(), requestBody, token, maxResponseBytes);
         } catch (ResponseTooLargeException ex) {
             throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE, "embedding response from "
-                    + configuration.endpoint() + " is implausibly large: " + ex.getMessage(), ex);
+                    + endpointPath() + " is implausibly large: " + ex.getMessage(), ex);
         } catch (IOException ex) {
             // Nur Typ und Endpunkt: IOException-Texte können Proxy-/Host-Details, aber keine Header enthalten.
             throw new EmbeddingException(EmbeddingFailureKind.UNAVAILABLE, "embedding request to "
-                    + configuration.endpoint() + " failed: " + ex.getClass().getSimpleName()
+                    + endpointPath() + " failed: " + ex.getClass().getSimpleName()
                     + (ex.getMessage() == null ? "" : " " + ex.getMessage()), ex);
         } finally {
             if (token != null) {

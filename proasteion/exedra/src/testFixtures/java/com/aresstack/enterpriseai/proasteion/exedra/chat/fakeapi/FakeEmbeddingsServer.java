@@ -20,6 +20,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -69,6 +72,12 @@ public final class FakeEmbeddingsServer implements AutoCloseable {
     private volatile int failStatus;
     private volatile String failBody = "";
     private volatile CountDownLatch gate;
+    private volatile int maxInFlight; // 0 = unbegrenzt
+    private volatile int retryAfterSeconds;
+    private volatile long latencyMillis;
+    private final AtomicInteger inFlight = new AtomicInteger();
+    private final AtomicInteger rejected = new AtomicInteger();
+    private final ExecutorService workers;
 
     public FakeEmbeddingsServer(int dimension) throws IOException {
         if (dimension < 8) {
@@ -84,7 +93,32 @@ public final class FakeEmbeddingsServer implements AutoCloseable {
                 serve(exchange);
             }
         });
+        // Mehrere Anfragen gleichzeitig wie ein echter Dienst (der Standard-Executor des JDK-Servers bearbeitet sie
+        // nacheinander und versteckt damit jede Konkurrenz zwischen Vorladung und Suchanfrage).
+        workers = Executors.newCachedThreadPool(runnable -> {
+            Thread thread = new Thread(runnable, "fake-embeddings");
+            thread.setDaemon(true);
+            return thread;
+        });
+        server.setExecutor(workers);
         server.start();
+    }
+
+    /**
+     * Verhalten eines Unternehmens-Gateways vor dem Embedding-Modell: höchstens {@code maxInFlight} Anfragen
+     * gleichzeitig je Schlüssel, jede weitere sofort {@code 429} mit {@code Retry-After} und OpenAI-Fehlerobjekt;
+     * jede angenommene Anfrage braucht {@code latencyMillis} (Rechenzeit des Modells).
+     */
+    public FakeEmbeddingsServer gateway(int maxInFlight, int retryAfterSeconds, long latencyMillis) {
+        this.maxInFlight = maxInFlight;
+        this.retryAfterSeconds = retryAfterSeconds;
+        this.latencyMillis = latencyMillis;
+        return this;
+    }
+
+    /** Wie viele Anfragen das Gateway wegen der Parallelgrenze mit 429 abgewiesen hat. */
+    public int rejectedCount() {
+        return rejected.get();
     }
 
     /** Basis-URL für {@code OpenAiCompatibleEmbeddingConfiguration}; der Adapter hängt {@code /embeddings} an. */
@@ -185,6 +219,7 @@ public final class FakeEmbeddingsServer implements AutoCloseable {
     public void close() {
         release();
         server.stop(0);
+        workers.shutdownNow();
     }
 
     private void serve(HttpExchange exchange) throws IOException {
@@ -215,6 +250,31 @@ public final class FakeEmbeddingsServer implements AutoCloseable {
             send(exchange, failStatus, failBody);
             return;
         }
+        int limit = maxInFlight;
+        if (limit > 0 && inFlight.incrementAndGet() > limit) {
+            inFlight.decrementAndGet();
+            rejected.incrementAndGet();
+            exchange.getResponseHeaders().set("Retry-After", String.valueOf(retryAfterSeconds));
+            send(exchange, 429, "{\"error\":{\"message\":\"Parallel request limit reached\","
+                    + "\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}");
+            return;
+        }
+        try {
+            if (latencyMillis > 0) {
+                Thread.sleep(latencyMillis);
+            }
+            answer(exchange, body, inputs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            send(exchange, 503, "");
+        } finally {
+            if (limit > 0) {
+                inFlight.decrementAndGet();
+            }
+        }
+    }
+
+    private void answer(HttpExchange exchange, JsonObject body, List<String> inputs) throws IOException {
         JsonArray data = new JsonArray();
         for (int i = 0; i < inputs.size(); i++) {
             JsonObject entry = new JsonObject();

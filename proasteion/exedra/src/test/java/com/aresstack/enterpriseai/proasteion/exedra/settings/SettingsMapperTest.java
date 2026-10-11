@@ -258,4 +258,24 @@ public class SettingsMapperTest {
         assertEquals("retrieval.maxResults: keine ganze Zahl", SettingsMapper.describe("retrieval.maxResults: keine ganze Zahl"));
         assertEquals("ohne Doppelpunkt", SettingsMapper.describe("ohne Doppelpunkt"));
     }
+
+    /** Einrichtungsassistent: Feldnamen statt Properties-Schlüssel, auch im Text der Meldung. */
+    @Test
+    public void plainShowsNoPropertyKeys() {
+        assertEquals("Basis-URL des KI-Dienstes: fehlt (Pflichtangabe)",
+                SettingsMapper.plain("chat.baseUrl: fehlt (Pflichtangabe)"));
+        assertEquals("Manual host: fehlt (Pflicht bei Mode=MANUAL_PROXY)",
+                SettingsMapper.plain("network.proxy.host: fehlt (Pflicht bei network.proxy.mode=MANUAL_PROXY)"));
+        assertEquals("Chat-Parameter ungültig (siehe Beispielkonfiguration)",
+                SettingsMapper.plain("chat.*: Chat-Parameter ungültig (siehe Beispielkonfiguration)"));
+        assertEquals("Basis-URL für Embeddings: darf keine Zugangsdaten enthalten (KeePass-Eintrag verwenden)",
+                SettingsMapper.plain("embedding.baseUrl: darf keine Zugangsdaten enthalten (SecretRef verwenden)"));
+        assertEquals("Einstellung: keine ganze Zahl", SettingsMapper.plain("retrieval.maxResults: keine ganze Zahl"));
+        assertEquals("Konfigurationsdatei nicht lesbar: /tmp/x.properties (IOException)",
+                SettingsMapper.plain("Konfigurationsdatei nicht lesbar: /tmp/x.properties (IOException)"));
+        for (String problem : SettingsMapper.plain(java.util.Arrays.asList("chat.model: fehlt (Pflichtangabe)",
+                "embedding.dimension: fehlt (Pflichtangabe, z. B. 768)", "chat.apiKeyRef: fehlt"))) {
+            assertFalse(problem, problem.matches("(?s).*\\b(chat|embedding)\\.[a-zA-Z]+.*"));
+        }
+    }
 }

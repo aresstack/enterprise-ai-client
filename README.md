@@ -82,7 +82,8 @@ java -jar enterprise-ai-client-<version>.jar
    Wissensquelle laufen über `POST <chat.baseUrl>/chat/completions` mit `tools`, gestreamt: `ChatCompletionsToolLoop`
    fragt jede Runde gestreamt, die `tool_calls` setzt der Chat-Adapter aus den Stream-Deltas zusammen. Mit angehakter Quelle oder Seiten bekommt das Modell den
    Wissens-Werkzeugsatz des Agenten (`knowledge_search` über die angehakten Quellen, `knowledge_read`) aus dem
-   `ToolCatalog`, auch ohne Seite. Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
+   `ToolCatalog`, auch ohne Seite; im Reiter „Tools“ abgeschaltete Werkzeuge (`tools.disabled`) fehlen ohne Neustart,
+   auch in einer schon laufenden Runde ab dem nächsten Modellaufruf. Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
    und holt sich den Inhalt selbst über die Werkzeuge `read_attachment` und `search_attachment`; der Client führt
    sie lokal aus (Text über `document-tika`, also Apache Tika) und schickt nur das Ergebnis zurück
    (Aufruf als `assistant` mit `tool_calls`, Ergebnis als `role=tool` mit `tool_call_id`, höchstens 8 Runden, kein

@@ -14,10 +14,10 @@ public class ReaderChatPagesTest {
     @Test
     public void pageCarriesOnlyTitleAndBookmark() {
         ReaderLink link = new ReaderLink("confluence:https://cf.intern/confluence",
-                "confluence:cf.intern/confluence/page/17025995", "Betriebshandbuch", "Seitentext im Ausschnitt", "");
+                "confluence:cf.intern/confluence/page/4242001", "Betriebshandbuch", "Seitentext im Ausschnitt", "");
         ChatPage page = ReaderChatPages.pageOf(link);
         assertEquals("Betriebshandbuch", page.title());
-        assertEquals("confluence://cf.intern/confluence/page/17025995", page.bookmark());
+        assertEquals("confluence://cf.intern/confluence/page/4242001", page.bookmark());
         assertFalse(page.toString().contains("Seitentext"));
     }
 

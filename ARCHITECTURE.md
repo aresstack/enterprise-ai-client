@@ -361,7 +361,17 @@ Der normale Chat bleibt unverändert; RAG legt sich von außen darum. Einstiegsp
   oder leer ist.
 - `astu.acropolis.rag.RetrieveKnowledgeUseCase`: Volltext und Cosine im Namespace der konfigurierten
   `EmbeddingModelIdentity`, Fusion per Reciprocal Rank Fusion (`RetrievalSettings`); fällt ein Pfad aus, liefert
-  der andere mit Warnung.
+  der andere mit Warnung. Für die semantische Suche wird eine Anfrage über `MAX_QUERY_TOKENS` an einer Wortgrenze
+  gekürzt; die Grenze ist `PassageSegmentation.MAX_PASSAGE_TOKENS` (350 Wörter und Symbole, derselbe Zähler wie für
+  die Passagen, keine Modell-Token), die Volltextsuche bekommt die ganze Anfrage. Ausgefallene Suchpfade und
+  Kürzungen meldet ein `RetrievalObserver`; die Composition Root schreibt sie mit `LoggingRetrievalObserver` ins
+  Protokoll (Pfad, Fehlerart, Meldung des Ports, Tokenzahlen, nie die Anfrage), für Chat-RAG und
+  `knowledge_search` gleich. Der Hinweis in der Antwortblase bleibt davon unberührt.
+- Embedding-Überlast: `OpenAiCompatibleEmbeddingAdapter` wiederholt einen Request bei HTTP 429 oder 503 nach 500 ms
+  und 1500 ms (höchstens drei Versuche), bevor der Fehler gilt. Das gilt für jeden Aufruf des Ports, also auch für
+  Vorladung und Indexierung (ein überlasteter Batch dauert bis zu 2 s länger); einen Vorrang der Frage vor der
+  Vorladung gibt es nicht, die Wiederholung sorgt nur dafür, dass beide durchkommen. Fehlermeldungen des Adapters
+  nennen den Pfad des Endpunkts (`/v1/embeddings`), nicht den Host.
 - `astu.acropolis.rag.PromptContextAssembler`: nummerierter Kontextblock in Fusionsreihenfolge bis Token-Budget
   oder Quellenzahl (`ContextSettings`).
 - `astu.acropolis.rag.RagChatUseCase`: RAG aus = `ChatService.send`; RAG an = Kontext über
@@ -446,7 +456,7 @@ Bindings in `proasteion.exedra.chat`, die AP23 in der Composition Root verdrahte
 
 `proasteion:application` ist die einzige Composition Root (corenth ADR-0001). `EnterpriseAiClientMain` (exedra)
 öffnet die Protokolldatei (`AppLogFile`, `java.util.logging` rollierend unter `<Anwendungsverzeichnis>/logs/`), lädt
-die Konfiguration (Erststart-Dialog), ruft `ApplicationStart.start` (Netz, Tresor, Adapter, Graph, Übernahme
+die Konfiguration (Erststart: Einrichtungsassistent `ui.setup.SetupWizardPanel`), ruft `ApplicationStart.start` (Netz, Tresor, Adapter, Graph, Übernahme
 gespeicherter Einstellungen), bindet die Sprache, registriert den Shutdown-Hook und zeigt das Fenster.
 
 ```
@@ -488,11 +498,14 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
 - **Konfiguration**: eine Properties-Datei im Benutzerverzeichnis (`~/.enterprise-ai-client/` bzw.
   `%APPDATA%`, überschreibbar mit `-Denterpriseai.home` und `-Denterpriseai.config`), eingebaute Defaults
   (AP10-Retrieval/Kontext, Adapter-Timeouts), Fehlermeldungen nennen Schlüssel und Erwartung, nie den Wert;
-  unbekannte Schlüssel werden als Warnung gemeldet. Fehlt die Datei, legt die Anwendung die kommentierte
-  Vorlage `enterprise-ai-client.example.properties` ab und öffnet mit Oberfläche den Einstellungen-Dialog
-  (Erststart ohne Handarbeit; headless: Hinweis und Exit-Code 2). Der Dialog (Zahnrad im Fuß der
-  Drawer-Seite „Chats“) schreibt nur seine Schlüssel zeilenschonend in dieselbe Datei; Änderungen gelten beim nächsten
-  Start. Modellnamen, Dimension (e5-base
+  unbekannte Schlüssel werden als Warnung gemeldet. Fehlt die Datei, öffnet mit Oberfläche der
+  Einrichtungsassistent (`ConfigurationStartup` mit `SetupUi`; fünf Schritte KeePass, KI-Dienst, Modelle, Confluence,
+  Abschlussprüfung mit neun Punkten über `FileSetupActions`, Stand `setup.completed` im `ApplicationStateService`;
+  Fehlertexte als Klartext über `SettingsMapper.plain`, ohne Properties-Schlüssel); erst „Fertig“ schreibt die Datei
+  aus der Vorlage `enterprise-ai-client.example.properties`, dann startet die Anwendung ohne Neustart (headless:
+  Vorlage, Hinweis und Exit-Code 2). Eine fehlerhafte Datei öffnet den Einstellungen-Dialog. Der Dialog (Zahnrad im
+  Fuß der Drawer-Seite „Chats“) schreibt nur seine Schlüssel zeilenschonend in dieselbe Datei; Änderungen gelten
+  ohne Neustart ([Einrichtung](docs/einrichtung.md#einstellungen-dialog)). Modellnamen, Dimension (e5-base
   vermutlich 768, UNVERIFIED), Proxy und Quellen sind reine Konfiguration.
 - **Secrets**: in der Datei stehen nur `SecretRef`s (Titel des KeePass-Eintrags): `chat.apiKeyRef`,
   `embedding.apiKeyRef`, `source.<n>.credentialRef`, `…clientCertificate.keyStorePasswordRef`.
@@ -519,6 +532,13 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   Definition) nur bei `agent.enabled=true`; `CompositionRoot` baut `AcpAgentLauncher` mit den Contributions
   von `KnowledgeMcpTools` (AP20) und `AgentService`. Der MCP-Token entsteht allein im Launcher je
   Agentenprozess und wird nie geloggt. `KnowledgeToolSettings` kommen aus `agent.tools.*`.
+- **Werkzeuge**: Der `ToolCatalog` (Composition Root) ist die eine Werkzeug-Registry für Chat, Agent,
+  Recherche-Agent und den Reiter „Tools“. Aktiv ist, was nicht in `tools.disabled` steht (kommagetrennt, bei jedem
+  Aufruf frisch aus den Einstellungen); abgeschaltete Werkzeuge bleiben registriert. Nach dem Speichern berechnen
+  die `PhaseToolSetController` des Recherche-Agenten und eines eigenen Agent-Kommandos ihren Satz neu und
+  veröffentlichen ihn per `updateTools` am laufenden Endpoint (`tools/list_changed`); der Chat fragt den Katalog je
+  Anfrage, und eine laufende Werkzeug-Runde prüft ihn je Modellaufruf (`ToolRegistry` mit Aktiv-Prüfung): ein
+  abgeschaltetes Werkzeug wird nicht mehr angeboten, ein schon angefragter Aufruf mit `Fehler:` abgelehnt.
 - **Shutdown** (`ShutdownSequence`, idempotent, Fenster-Schließen und JVM-Shutdown-Hook): laufende Chat-Turns
   abbrechen → Agent-Modus beenden (`KnowledgeMcpTools.shutdown()`, `AgentService.close()`, Endpoint abgemeldet)
   → Ports schließen (`SolonMcpServerRuntime.shutdown()` +

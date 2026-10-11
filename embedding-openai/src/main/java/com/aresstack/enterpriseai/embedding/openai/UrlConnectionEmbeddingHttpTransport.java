@@ -55,7 +55,8 @@ final class UrlConnectionEmbeddingHttpTransport implements EmbeddingHttpTranspor
             int status = connection.getResponseCode();
             InputStream in = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             if (status >= 400) {
-                return new HttpResult(status, readAtMost(in, MAX_ERROR_BODY_BYTES));
+                return new HttpResult(status, readAtMost(in, MAX_ERROR_BODY_BYTES),
+                        HttpResult.retryAfterMillis(connection.getHeaderField("Retry-After")));
             }
             return new HttpResult(status, readAll(in, maxResponseBytes));
         } finally {

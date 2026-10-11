@@ -4,7 +4,7 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 
 /**
- * Bildet HTTP-Status auf portneutrale {@link EmbeddingFailureKind}s ab. Die Fehlermeldung enthält nur Endpunkt,
+ * Bildet HTTP-Status auf portneutrale {@link EmbeddingFailureKind}s ab. Die Fehlermeldung enthält nur den Pfad des Endpunkts (ohne Host),
  * Status und gegebenenfalls einen maschinenlesbaren Fehlercode des Servers. Nie enthalten: Request-Header
  * (Bearer-Token), Request-Body und freier Antworttext, weil Validierungsfehler Eingabetexte zurückspiegeln können.
  */

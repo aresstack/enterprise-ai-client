@@ -28,15 +28,15 @@ public class ReaderFindMarkingTest {
         onEdt(() -> {
             JPanel root = new JPanel();
             root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
-            JLabel label = new JLabel("Zabak im Titel");
-            JTable table = new JTable(new Object[][] {{"kein Treffer", "und zabak"}}, new Object[] {"Zabak", "Wert"});
-            JTextArea text = new JTextArea("hier zabak");
+            JLabel label = new JLabel("Wapok im Titel");
+            JTable table = new JTable(new Object[][] {{"kein Treffer", "und wapok"}}, new Object[] {"Wapok", "Wert"});
+            JTextArea text = new JTextArea("hier wapok");
             root.add(label);
             root.add(table);
             root.add(text);
             ReaderFind find = new ReaderFind(root);
 
-            assertEquals(4, find.search("zabak"));
+            assertEquals(4, find.search("wapok"));
             assertTrue(find.hitComponent(0) == label);
             assertTrue(find.hitComponent(1) == table);
             assertTrue(find.hitComponent(2) == table);
@@ -71,8 +71,8 @@ public class ReaderFindMarkingTest {
             KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette());
             ReaderLink page = new ReaderLink("wiki", "wiki:t", "Tabelle", "", "");
             reader.open(page, true);
-            reader.showMarkdown(page.key(), "| Name | Wert |\n|---|---|\n| zabak | 1 |\n");
-            assertEquals(1, reader.searchFor("zabak"));
+            reader.showMarkdown(page.key(), "| Name | Wert |\n|---|---|\n| wapok | 1 |\n");
+            assertEquals(1, reader.searchFor("wapok"));
             assertTrue(reader.findHit(page.key(), 0) instanceof JTable);
         });
     }

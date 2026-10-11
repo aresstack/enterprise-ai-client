@@ -95,14 +95,19 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
         return task;
     }
 
-    private ChatResponse run(ChatRequest request, ToolLoopTask task) {
+    /** Die Werkzeuge, die jetzt aktiv sind, im Format des Chat-Ports. */
+    private List<ChatToolDefinition> definitions() {
         List<ChatToolDefinition> definitions = new ArrayList<ChatToolDefinition>();
         for (ToolDefinition definition : tools.definitions()) {
             definitions.add(new ChatToolDefinition(definition.name(), definition.description(),
                     definition.parametersSchema()));
         }
+        return definitions;
+    }
+
+    private ChatResponse run(ChatRequest request, ToolLoopTask task) {
         List<ChatMessage> messages = new ArrayList<ChatMessage>(request.messages());
-        ChatResponse response = ask(new ChatRequest(messages, request.options(), definitions), task);
+        ChatResponse response = ask(new ChatRequest(messages, request.options(), definitions()), task);
         if (response == null) {
             return null;
         }
@@ -130,7 +135,8 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
             if (task != null && task.isCancelRequested()) {
                 return null;
             }
-            response = ask(new ChatRequest(messages, request.options(), definitions), task);
+            // Je Runde neu: ein inzwischen abgeschaltetes Werkzeug wird nicht mehr angeboten.
+            response = ask(new ChatRequest(messages, request.options(), definitions()), task);
             if (response == null) {
                 return null;
             }

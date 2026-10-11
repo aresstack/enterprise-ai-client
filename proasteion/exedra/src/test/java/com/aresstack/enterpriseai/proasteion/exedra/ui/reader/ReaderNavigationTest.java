@@ -27,7 +27,7 @@ public class ReaderNavigationTest {
             reader.open(a, true);
             reader.showMarkdown(a.key(), "Seite A");
             reader.open(b, true);
-            reader.showMarkdown(b.key(), "Seite B mit zabak");
+            reader.showMarkdown(b.key(), "Seite B mit wapok");
             ReaderToolbar toolbar = reader.toolbar();
             assertTrue(toolbar.backButton().isEnabled());
             assertFalse(toolbar.forwardButton().isEnabled());
@@ -41,7 +41,7 @@ public class ReaderNavigationTest {
             toolbar.forwardButton().doClick();
             assertEquals(b.key(), reader.activeKey());
             assertEquals(Arrays.asList(a.key(), b.key()), reader.tabKeys());
-            assertEquals("Inhalt bleibt", 1, reader.searchFor("zabak"));
+            assertEquals("Inhalt bleibt", 1, reader.searchFor("wapok"));
             assertFalse(toolbar.forwardButton().isEnabled());
             assertTrue(toolbar.backButton().isEnabled());
         });

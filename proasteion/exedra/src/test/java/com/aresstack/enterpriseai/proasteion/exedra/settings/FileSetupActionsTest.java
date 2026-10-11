@@ -184,6 +184,12 @@ public class FileSetupActionsTest {
         assertFalse(checks.get(5).isOk());
         assertFalse(checks.get(8).isOk());
         assertFalse("ohne gültigen Entwurf keine Datei", Files.exists(configPath()));
+        // Klartext statt Properties-Schlüssel (der Assistent zeigt keine Schlüssel)
+        String detail = checks.get(8).detail();
+        assertTrue(detail, detail.contains("Chat-Modell"));
+        for (SetupCheck check : checks) {
+            assertFalse(check.toString(), check.detail().matches("(?s).*\\b(chat|embedding)\\.[a-zA-Z]+.*"));
+        }
     }
 
     @Test

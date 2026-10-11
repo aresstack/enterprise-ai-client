@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -81,7 +82,80 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
         } catch (EmbeddingException expected) {
             assertEquals(EmbeddingFailureKind.RATE_LIMITED, expected.kind());
             assertEquals("kein vierter Versuch", Collections.singletonList(200), statuses);
+            // Die Meldung landet im Protokoll: Pfad des Endpunkts, kein Host.
+            assertEquals("embedding endpoint /v1/embeddings returned HTTP 429", expected.getMessage());
         }
+    }
+
+    @Test
+    public void retryAfterOfTheServiceIsHonouredButCapped() {
+        final List<HttpResult> answers = new ArrayList<HttpResult>(Arrays.asList(
+                new HttpResult(429, "", 2000L), new HttpResult(429, "", 60000L),
+                new HttpResult(200, "{\"data\":[{\"embedding\":[1,0]}]}")));
+        final List<Long> waits = new ArrayList<Long>();
+        EmbeddingHttpTransport gateway = (endpoint, body, token, max) -> answers.remove(0);
+        new OpenAiCompatibleEmbeddingAdapter(CONFIG, tokens(), gateway, waits::add)
+                .embedQueries(Collections.singletonList("frage"));
+        assertEquals(Arrays.asList(2000L, OpenAiCompatibleEmbeddingAdapter.MAX_RETRY_AFTER_MILLIS), waits);
+        assertEquals(2000L, HttpResult.retryAfterMillis(" 2 "));
+        assertEquals(-1L, HttpResult.retryAfterMillis("Wed, 21 Oct 2026 07:28:00 GMT"));
+        assertEquals(-1L, HttpResult.retryAfterMillis(null));
+    }
+
+    /**
+     * Ein Gateway mit einer Anfrage je Schlüssel sieht vom Adapter nie zwei gleichzeitig, und die Frage überholt die
+     * wartende Aufbereitung: Während ein Passage-Request läuft, warten ein weiterer Passage-Request und die Frage; als
+     * Nächstes geht die Frage hinaus.
+     */
+    @Test
+    public void onlyOneRequestAtATimeAndTheQueryGoesFirst() throws Exception {
+        final java.util.concurrent.CountDownLatch firstStarted = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch releaseFirst = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicInteger inFlight = new java.util.concurrent.atomic.AtomicInteger();
+        final java.util.concurrent.atomic.AtomicInteger maxInFlight = new java.util.concurrent.atomic.AtomicInteger();
+        final List<String> order = Collections.synchronizedList(new ArrayList<String>());
+        EmbeddingHttpTransport gateway = (endpoint, body, token, max) -> {
+            maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            try {
+                order.add(body.contains("passage-1") ? "passage-1" : body.contains("passage-2") ? "passage-2"
+                        : "frage");
+                if (body.contains("passage-1")) {
+                    firstStarted.countDown();
+                    releaseFirst.await();
+                }
+                return new HttpResult(200, "{\"data\":[{\"embedding\":[1,0]}]}");
+            } catch (InterruptedException e) {
+                throw new IOException(e);
+            } finally {
+                inFlight.decrementAndGet();
+            }
+        };
+        final OpenAiCompatibleEmbeddingAdapter adapter = new OpenAiCompatibleEmbeddingAdapter(CONFIG, tokens(),
+                gateway, millis -> { });
+        Thread first = new Thread(() -> adapter.embed(Collections.singletonList("passage-1")));
+        first.start();
+        assertTrue(firstStarted.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        Thread second = new Thread(() -> adapter.embed(Collections.singletonList("passage-2")));
+        second.start();
+        Thread question = new Thread(() -> adapter.embedQueries(Collections.singletonList("frage")));
+        question.start();
+        waitUntilWaiting(second);
+        waitUntilWaiting(question);
+        releaseFirst.countDown();
+        first.join(5000);
+        second.join(5000);
+        question.join(5000);
+
+        assertEquals(Arrays.asList("passage-1", "frage", "passage-2"), order);
+        assertEquals(1, maxInFlight.get());
+    }
+
+    private static void waitUntilWaiting(Thread thread) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5000;
+        while (thread.getState() != Thread.State.WAITING && System.currentTimeMillis() < deadline) {
+            Thread.sleep(5);
+        }
+        assertEquals(Thread.State.WAITING, thread.getState());
     }
 
     @Test
@@ -98,6 +172,7 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
         } catch (EmbeddingException expected) {
             assertEquals(EmbeddingFailureKind.UNAVAILABLE, expected.kind());
             assertTrue(expected.getMessage().contains("SocketTimeoutException"));
+            assertFalse(expected.getMessage(), expected.getMessage().contains("ai.intern"));
         }
     }
 
