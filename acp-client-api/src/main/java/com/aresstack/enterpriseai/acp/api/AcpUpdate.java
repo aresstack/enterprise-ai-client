@@ -17,6 +17,13 @@ public final class AcpUpdate {
 
     /** ACP {@code sessionUpdate} of an agent plan. */
     public static final String TYPE_PLAN = "plan";
+    /**
+     * {@code _meta} key on an {@code agent_message_chunk}: value {@code "start"} marks the first chunk of a new
+     * utterance, which the host shows as its own bubble (askai arch: one bubble per agent utterance). Agents that do
+     * not send it keep one bubble per turn.
+     */
+    public static final String META_UTTERANCE = "aresstack/utterance";
+    public static final String UTTERANCE_START = "start";
 
     private final String sessionId;
     private final String promptId;
@@ -26,19 +33,25 @@ public final class AcpUpdate {
     private final AcpToolCall toolCall;
     private final String type;
     private final List<AcpPlanEntry> plan;
+    private final boolean startsUtterance;
 
     public AcpUpdate(String sessionId, String promptId, long sequenceNumber, Kind kind, String text) {
-        this(sessionId, promptId, sequenceNumber, kind, text, "", null);
+        this(sessionId, promptId, sequenceNumber, kind, text, "", null, false);
+    }
+
+    /** A {@link Kind#MESSAGE} chunk; {@code startsUtterance} when it opens a new utterance of the agent. */
+    public AcpUpdate(String sessionId, String promptId, long sequenceNumber, String text, boolean startsUtterance) {
+        this(sessionId, promptId, sequenceNumber, Kind.MESSAGE, text, "", null, startsUtterance);
     }
 
     /** An {@link Kind#OTHER} update with its ACP {@code sessionUpdate} name; {@code plan} only for {@link #TYPE_PLAN}. */
     public AcpUpdate(String sessionId, String promptId, long sequenceNumber, String type, String text,
                      List<AcpPlanEntry> plan) {
-        this(sessionId, promptId, sequenceNumber, Kind.OTHER, text, type, plan);
+        this(sessionId, promptId, sequenceNumber, Kind.OTHER, text, type, plan, false);
     }
 
     private AcpUpdate(String sessionId, String promptId, long sequenceNumber, Kind kind, String text, String type,
-                      List<AcpPlanEntry> plan) {
+                      List<AcpPlanEntry> plan, boolean startsUtterance) {
         this.sessionId = sessionId;
         this.promptId = promptId;
         this.sequenceNumber = sequenceNumber;
@@ -48,6 +61,7 @@ public final class AcpUpdate {
         this.type = type == null ? "" : type;
         this.plan = plan == null ? Collections.<AcpPlanEntry>emptyList()
                 : Collections.unmodifiableList(new ArrayList<AcpPlanEntry>(plan));
+        this.startsUtterance = startsUtterance && this.kind == Kind.MESSAGE;
     }
 
     /** Ein Werkzeugaufruf ({@link Kind#TOOL_CALL}); {@link #getText()} ist sein Titel. */
@@ -60,6 +74,7 @@ public final class AcpUpdate {
         this.text = toolCall == null ? "" : toolCall.getTitle();
         this.type = "";
         this.plan = Collections.emptyList();
+        this.startsUtterance = false;
     }
 
     public String getSessionId() { return sessionId; }
@@ -73,6 +88,9 @@ public final class AcpUpdate {
     public String getType() { return type; }
     /** The whole plan of a {@link #TYPE_PLAN} update (it replaces the previous one), otherwise empty. */
     public List<AcpPlanEntry> getPlan() { return plan; }
+
+    /** A {@link Kind#MESSAGE} chunk that opens a new utterance (see {@link #META_UTTERANCE}). */
+    public boolean startsUtterance() { return startsUtterance; }
 
     public boolean isPlan() {
         return kind == Kind.OTHER && TYPE_PLAN.equals(type);

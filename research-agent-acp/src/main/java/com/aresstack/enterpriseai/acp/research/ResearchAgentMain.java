@@ -164,6 +164,16 @@ public final class ResearchAgentMain {
         }
     }
 
+    /** {@code _meta}-Schlüssel und -Wert wie {@code AcpUpdate.META_UTTERANCE}/{@code UTTERANCE_START} des Clients. */
+    static final String META_UTTERANCE = "aresstack/utterance";
+    static final String UTTERANCE_START = "start";
+
+    /** Eine Äußerung als {@code agent_message_chunk}, markiert als Beginn einer neuen Äußerung. */
+    static AcpSchema.AgentMessageChunk utterance(String text) {
+        return new AcpSchema.AgentMessageChunk("agent_message_chunk", new AcpSchema.TextContent(text),
+                java.util.Collections.<String, Object>singletonMap(META_UTTERANCE, UTTERANCE_START));
+    }
+
     static AcpSchema.ToolKind toolKind(String kind) {
         if ("search".equals(kind)) {
             return AcpSchema.ToolKind.SEARCH;
@@ -210,7 +220,9 @@ public final class ResearchAgentMain {
             @Override
             public void message(String message) {
                 if (!cancelled.get() && message != null && !message.isEmpty()) {
-                    ctx.sendMessage(message);
+                    // Jede Äußerung des Turns eine eigene Blase (askai arch sayAsAgent); ein Host ohne diese
+                    // Markierung sieht die Äußerungen wie bisher als Absätze einer Antwort.
+                    send(ctx, utterance(message));
                 }
             }
 

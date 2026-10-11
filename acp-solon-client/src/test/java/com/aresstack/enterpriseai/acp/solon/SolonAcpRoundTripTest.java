@@ -196,6 +196,28 @@ public class SolonAcpRoundTripTest {
     }
 
     @Test
+    public void utteranceMarksInMetaCrossTheRealWire() throws Exception {
+        SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
+        AcpConnection connection = connector.connect(spec());
+        try {
+            AcpSession session = connection.newSession();
+            Collecting listener = new Collecting();
+            session.prompt("utter", listener);
+            assertTrue("prompt did not terminate", listener.terminated.await(30, TimeUnit.SECONDS));
+            List<AcpUpdate> updates = listener.updates;
+            assertEquals(3, updates.size());
+            assertTrue(updates.get(0).startsUtterance());
+            assertEquals("Erstens", updates.get(0).getText());
+            assertFalse("Fortsetzung ohne Markierung", updates.get(1).startsUtterance());
+            assertEquals(" und mehr.", updates.get(1).getText());
+            assertTrue(updates.get(2).startsUtterance());
+            assertEquals(AcpUpdate.Kind.MESSAGE, updates.get(2).getKind());
+        } finally {
+            connection.close();
+        }
+    }
+
+    @Test
     public void plansThoughtsAndContentOnlyToolResultsCrossTheRealWire() throws Exception {
         SolonAcpAgentConnector connector = new SolonAcpAgentConnector(Duration.ofSeconds(30), null);
         AcpConnection connection = connector.connect(spec());

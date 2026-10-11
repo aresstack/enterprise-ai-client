@@ -129,6 +129,9 @@ public final class AgentTurn {
                     return;
                 }
                 if (update.getKind() == AcpUpdate.Kind.MESSAGE) {
+                    if (update.startsUtterance() && reply.length() > 0) {
+                        listener.onUtteranceStarted(); // askai: jede Äußerung eine eigene Blase
+                    }
                     reply.append(update.getText());
                     listener.onMessage(update.getText());
                 } else if (update.getKind() == AcpUpdate.Kind.THOUGHT) {

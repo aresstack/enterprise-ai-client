@@ -58,10 +58,21 @@ public class AgentActivityWireTest {
     }
 
     @Test
-    public void planThoughtsAndToolResultBecomeOneCloudEach() throws Exception {
+    public void everyUtteranceIsItsOwnBubble() throws Exception {
+        List<TranscriptEntry> entries = run("utter");
+        List<String> answers = new ArrayList<String>();
+        for (TranscriptEntry entry : entries) {
+            if (entry.getAuthor() == TranscriptEntry.Author.ASSISTANT) {
+                answers.add(entry.getText());
+            }
+        }
+        assertEquals(Arrays.asList("Erstens und mehr.", "Zweitens."), answers);
+    }
+
+    private List<TranscriptEntry> run(final String prompt) throws Exception {
         final ChatShellModel model = new ChatShellModel(System::currentTimeMillis);
         final AgentServiceBinding binding = new AgentServiceBinding(agentService, model, ui);
-        ui.submit(() -> binding.sendRequested("plan IAR", false)).get(10, TimeUnit.SECONDS);
+        ui.submit(() -> binding.sendRequested(prompt, false)).get(10, TimeUnit.SECONDS);
         long deadline = System.currentTimeMillis() + 60_000L;
         while (System.currentTimeMillis() < deadline) {
             if (!ui.submit(model::isStreaming).get(10, TimeUnit.SECONDS)) {
@@ -69,8 +80,12 @@ public class AgentActivityWireTest {
             }
             Thread.sleep(50L);
         }
-        List<TranscriptEntry> entries = ui.submit(() -> new ArrayList<TranscriptEntry>(model.getEntries()))
-                .get(10, TimeUnit.SECONDS);
+        return ui.submit(() -> new ArrayList<TranscriptEntry>(model.getEntries())).get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    public void planThoughtsAndToolResultBecomeOneCloudEach() throws Exception {
+        List<TranscriptEntry> entries = run("plan IAR");
         List<TranscriptEntry> plans = new ArrayList<TranscriptEntry>();
         List<TranscriptEntry> thoughts = new ArrayList<TranscriptEntry>();
         List<TranscriptEntry> tools = new ArrayList<TranscriptEntry>();

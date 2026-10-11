@@ -41,6 +41,9 @@ public final class AgentServiceBinding implements ChatShellActions {
     /** Stop, während die Anhänge noch gelesen werden (nur UI-Thread). */
     private boolean cancelBeforeStart;
 
+    /** Ergebniszeile eines fehlgeschlagenen Werkzeugaufrufs ohne Fehlertext. */
+    static final String FAILED_WITHOUT_TEXT = "fehlgeschlagen";
+
     /** Höchstens so viele Zeichen Text je Anhang gehen an den Agenten. */
     static final int MAX_ATTACHMENT_CHARS = 30000;
 
@@ -238,6 +241,17 @@ public final class AgentServiceBinding implements ChatShellActions {
             });
         }
 
+        @Override
+        public void onUtteranceStarted() {
+            onUi(new Runnable() {
+                @Override
+                public void run() {
+                    closeThinking();
+                    model.beginAnswerSection();
+                }
+            });
+        }
+
         /** Kennung der offenen Denkwolke für gestreamte Überlegungen (nur UI-Thread), sonst {@code null}. */
         private String thinkingKey;
         private int thoughtSeries;
@@ -275,8 +289,10 @@ public final class AgentServiceBinding implements ChatShellActions {
                         // Auch das abschließende Update kann Titel oder Inhalt ändern (ein Plan trägt jedes Mal
                         // den ganzen Plan); leere Felder lassen den bekannten Stand stehen.
                         model.startActivity(activity.id(), activity.title(), activity.kind(), activity.input());
-                        model.finishActivity(activity.id(), activity.status() == AgentToolActivity.Status.COMPLETED,
-                                activity.output());
+                        boolean succeeded = activity.status() == AgentToolActivity.Status.COMPLETED;
+                        // Ein Fehler zeigt immer eine Ergebniszeile, auch wenn der Agent keinen Text mitschickt.
+                        model.finishActivity(activity.id(), succeeded, succeeded || !activity.output().trim().isEmpty()
+                                ? activity.output() : FAILED_WITHOUT_TEXT);
                     }
                 }
             });

@@ -151,7 +151,7 @@ public class AgentAskaiAcceptanceTest {
     }
 
     @Test
-    public void directQuestionInAgentModeSearchesShowsToolCloudsNotesSourcesAndAnswers() throws Exception {
+    public void directQuestionInAgentModeSearchesShowsCardNotesSourcesAndAnswers() throws Exception {
         String classPath = System.getProperty("research.agent.classpath");
         assumeTrue("research agent class path not set (run via Gradle)", classPath != null);
         mcp = new SolonMcpServerRuntime();
@@ -200,14 +200,13 @@ public class AgentAskaiAcceptanceTest {
         // 6. Werkzeugaufrufe und Zwischenschritte stehen im Verlauf, abgeschlossen mit Ergebnis
         TranscriptEntry card = activity(entries, "Recherche in Confluence");
         assertEquals("abgeschlossen: 1 Seite gelesen, 1 Treffer, 1 Quelle übernommen", card.getActivitySummary());
-        TranscriptEntry search = activity(entries, "Suche in den Wissensquellen");
-        assertEquals("IAR", search.getText());
-        assertEquals("1 Treffer: IAR Übersicht", search.getActivitySummary());
-        assertEquals(TranscriptEntry.State.COMPLETE, search.getState());
-        TranscriptEntry read = activity(entries, "Lese Seite");
-        assertEquals("IAR Übersicht", read.getText());
-        assertTrue(read.getActivitySummary(), read.getActivitySummary().startsWith("Gelesen ("));
-        assertNotNull(activity(entries, "Quelle notieren"));
+        // askai arch: während die Karte offen ist, keine Einzelwolken für Suche, Lesen und Notieren
+        assertTrue(card.getText(), card.getText().contains("IAR"));
+        for (TranscriptEntry entry : entries) {
+            String title = entry.getActivityTitle();
+            assertFalse(title, "Suche in den Wissensquellen".equals(title) || "Lese Seite".equals(title)
+                    || "Quelle notieren".equals(title));
+        }
         assertTrue("Denkschritte als grüne Wolke", activity(entries, "Denke nach").isThinking());
 
         // 7. die gelesene Quelle ist im Projekt übernommen

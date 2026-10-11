@@ -134,6 +134,17 @@ public final class DemoAcpAgentMain {
             ctx.sendMessage("fertig: " + goal);
             return AcpSchema.PromptResponse.endTurn();
         }
+        if (text.equals("utter")) {
+            // Two utterances, each marked as a new one in _meta (as the research agent does), streamed in two chunks.
+            java.util.Map<String, Object> start = java.util.Collections.<String, Object>singletonMap(
+                    "aresstack/utterance", "start");
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.AgentMessageChunk("agent_message_chunk",
+                    new AcpSchema.TextContent("Erstens"), start));
+            ctx.sendMessage(" und mehr.");
+            ctx.sendUpdate(ctx.getSessionId(), new AcpSchema.AgentMessageChunk("agent_message_chunk",
+                    new AcpSchema.TextContent("\n\nZweitens."), start));
+            return AcpSchema.PromptResponse.endTurn();
+        }
         if (text.contains("hang")) {
             // Silent for a while without any update: lets the host hit its request timeout while alive.
             try {

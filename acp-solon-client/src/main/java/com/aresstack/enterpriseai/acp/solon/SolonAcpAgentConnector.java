@@ -207,6 +207,14 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
             final AcpUpdate.Kind mapped = AGENT_MESSAGE_CHUNK.equals(kind)
                     ? AcpUpdate.Kind.MESSAGE : AcpUpdate.Kind.THOUGHT;
             final String text = textOf(((Map<?, ?>) update).get("content"));
+            if (mapped == AcpUpdate.Kind.MESSAGE && startsUtterance(((Map<?, ?>) update).get("_meta"))) {
+                deliver(new Runnable() {
+                    public void run() {
+                        dispatcher.updateMessage(text, true);
+                    }
+                });
+                return;
+            }
             deliver(new Runnable() {
                 public void run() {
                     dispatcher.update(mapped, text);
@@ -234,6 +242,12 @@ public final class SolonAcpAgentConnector implements AcpAgentConnector {
             }
             return new AcpToolCall(stringOf(update.get("toolCallId")), stringOf(update.get("title")),
                     stringOf(update.get("kind")), mapped, stringOf(update.get("rawInput")), output);
+        }
+
+        /** {@code _meta} eines Nachrichtenstücks: beginnt es eine neue Äußerung ({@link AcpUpdate#META_UTTERANCE})? */
+        private boolean startsUtterance(Object meta) {
+            return meta instanceof Map
+                    && AcpUpdate.UTTERANCE_START.equals(((Map<?, ?>) meta).get(AcpUpdate.META_UTTERANCE));
         }
 
         /** Die Texte einer ACP {@code ToolCallContent}-Liste, zeilenweise; Diffs und Terminals bleiben draußen. */

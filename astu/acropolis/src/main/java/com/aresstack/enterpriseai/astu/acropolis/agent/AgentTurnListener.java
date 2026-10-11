@@ -28,6 +28,13 @@ public interface AgentTurnListener {
     default void onToolActivity(AgentToolActivity activity) {
     }
 
+    /**
+     * Die nächsten {@link #onMessage}-Stücke gehören zu einer neuen Äußerung des Agenten (eigene Blase statt
+     * Anhängen an die vorige). Kommt nie vor der ersten Äußerung eines Auftrags. Standard: ignorieren.
+     */
+    default void onUtteranceStarted() {
+    }
+
     void onCompleted();
 
     void onCancelled();

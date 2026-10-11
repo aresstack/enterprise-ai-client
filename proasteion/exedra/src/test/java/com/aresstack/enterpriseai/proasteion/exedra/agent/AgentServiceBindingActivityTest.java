@@ -102,6 +102,41 @@ public class AgentServiceBindingActivityTest {
         assertTrue(tools.get(1).getText().startsWith("[x] "));
     }
 
+    @Test
+    public void failedToolShowsItsErrorTextOrAFallback() {
+        binding.sendRequested("Los", false);
+        prompt.update(new AcpToolCall("call-1", "Suche", "search", AcpToolCall.Status.IN_PROGRESS, "IAR", null));
+        prompt.update(new AcpToolCall("call-1", null, null, AcpToolCall.Status.FAILED, null,
+                "Wissensquelle nicht erreichbar"));
+        prompt.update(new AcpToolCall("call-2", "Lese Seite", "read", AcpToolCall.Status.IN_PROGRESS, "IAR", null));
+        prompt.update(new AcpToolCall("call-2", null, null, AcpToolCall.Status.FAILED, null, null));
+        prompt.terminal(AcpPromptState.COMPLETED, "");
+
+        List<TranscriptEntry> tools = activities(false);
+        assertEquals(TranscriptEntry.State.FAILED, tools.get(0).getState());
+        assertEquals("Wissensquelle nicht erreichbar", tools.get(0).getActivitySummary());
+        assertEquals(TranscriptEntry.State.FAILED, tools.get(1).getState());
+        assertEquals(AgentServiceBinding.FAILED_WITHOUT_TEXT, tools.get(1).getActivitySummary());
+    }
+
+    @Test
+    public void markedUtterancesBecomeSeparateBubbles() {
+        binding.sendRequested("Los", false);
+        prompt.updateMessage("Hallo.", true);
+        prompt.updateMessage(" Noch was.", false);
+        prompt.updateMessage("\n\nIch suche.", true);
+        prompt.terminal(AcpPromptState.COMPLETED, "");
+
+        List<String> answers = new ArrayList<String>();
+        for (TranscriptEntry entry : model.getEntries()) {
+            if (entry.getAuthor() == TranscriptEntry.Author.ASSISTANT) {
+                answers.add(entry.getText());
+                assertEquals(TranscriptEntry.State.COMPLETE, entry.getState());
+            }
+        }
+        assertEquals(Arrays.asList("Hallo. Noch was.", "Ich suche."), answers);
+    }
+
     private List<TranscriptEntry> activities(boolean thinking) {
         List<TranscriptEntry> result = new ArrayList<TranscriptEntry>();
         for (TranscriptEntry entry : model.getEntries()) {

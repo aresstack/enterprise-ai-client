@@ -123,7 +123,9 @@ final class ResearchAgentTurns {
 
     void run(String text, Output output) {
         Turn turn = new Turn(output);
-        host.setObserver(observerFor(turn.output()));
+        TurnToolView tools = new TurnToolView(turn.output(), narration);
+        turn.tools = tools;
+        host.setObserver(tools);
         try {
             runTurn(turn, text);
         } catch (ToolInvoker.EndpointUnavailable dead) {
@@ -134,35 +136,8 @@ final class ResearchAgentTurns {
             turn.message("Der Client hat den Auftrag abgelehnt: " + failed.getMessage());
         } finally {
             host.setObserver(null);
+            tools.turnFinished();
         }
-    }
-
-    /** Jeder sichtbare Host-Aufruf des Turns wird zur Tool-Blase (askai arch: gelb Werkzeug, grün Denken). */
-    private ResearchHostControl.ToolObserver observerFor(final Output output) {
-        final java.util.Set<String> visible = java.util.Collections.newSetFromMap(
-                new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
-        return new ResearchHostControl.ToolObserver() {
-            @Override
-            public void started(String callId, String toolName, Map<String, Object> args) {
-                ToolNarration.Visible shown = narration.describe(toolName, args);
-                if (shown != null && !output.isCancelled()) {
-                    visible.add(callId);
-                    output.toolStarted(callId, shown.title, shown.kind, shown.input);
-                }
-            }
-
-            @Override
-            public void finished(String callId, String toolName, Map<String, Object> args, String result,
-                                 String failure) {
-                String summary = narration.summarize(toolName, result);
-                if (!visible.remove(callId)) {
-                    return;
-                }
-                boolean failed = failure != null || ToolNarration.isFailureText(result);
-                output.toolFinished(callId, !failed, failed
-                        ? ToolNarration.shorten(failure != null ? failure : result) : summary);
-            }
-        };
     }
 
     private void runTurn(Turn turn, String text) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
@@ -488,6 +463,9 @@ final class ResearchAgentTurns {
         private final Output output;
         private int sent;
 
+        /** Die Wolken-Sicht des Turns (Karte offen, Konzept-Wolke); {@code null} außerhalb von {@link #run}. */
+        TurnToolView tools;
+
         Turn(Output output) {
             this.output = output;
         }
@@ -512,6 +490,9 @@ final class ResearchAgentTurns {
                 @Override
                 public void toolStarted(String callId, String title, String kind, String input) {
                     if (!output.isCancelled()) {
+                        if (tools != null) {
+                            tools.cardStarted(callId, kind);
+                        }
                         output.toolStarted(callId, title, kind, input);
                     }
                 }
@@ -525,6 +506,9 @@ final class ResearchAgentTurns {
 
                 @Override
                 public void toolFinished(String callId, boolean succeeded, String summary) {
+                    if (tools != null) {
+                        tools.cardFinished(callId);
+                    }
                     output.toolFinished(callId, succeeded, summary);
                 }
             };
