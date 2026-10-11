@@ -20,6 +20,7 @@ import java.awt.BorderLayout;
  * │ │ Nachricht…               │ │  ChatComposerPanel (eine abgerundete Fläche)
  * │ │ [RAG]            [Senden]│ │
  * │ ╰──────────────────────────╯ │
+ * │           © 2026 AresStack   │  CopyrightFooter (bündig mit dem Composer)
  * └──────────────────────────────┘
  * </pre>
  *
@@ -57,8 +58,11 @@ public final class ChatShellPanel extends JPanel {
         south.setOpaque(false);
         JPanel composerWrap = new JPanel(new BorderLayout());
         composerWrap.setOpaque(false);
-        composerWrap.setBorder(BorderFactory.createEmptyBorder(4, 12, 12, 12));
+        composerWrap.setBorder(BorderFactory.createEmptyBorder(4, 12, 6, 12));
         composerWrap.add(composer, BorderLayout.CENTER);
+        CopyrightFooter footer = new CopyrightFooter();
+        footer.setBorder(BorderFactory.createEmptyBorder(3, 0, 0, 0));
+        composerWrap.add(footer, BorderLayout.SOUTH);
         south.add(statusBar, BorderLayout.NORTH);
         south.add(composerWrap, BorderLayout.CENTER);
 
