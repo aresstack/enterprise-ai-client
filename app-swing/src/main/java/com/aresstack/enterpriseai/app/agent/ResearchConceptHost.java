@@ -56,6 +56,12 @@ final class ResearchConceptHost implements ResearchConceptTools.Context {
         void stateChanged();
 
         boolean isGerman();
+
+        /** Ob das Konzept gerade geschrieben werden darf (Phase scoping, Zustand running). */
+        boolean scopingWritable();
+
+        /** {@code phase/state} für Fehlermeldungen der Werkzeuge. */
+        String stateDescription();
     }
 
     /** Eine vom Modell angebotene Orientierungssuche (gelber Tag). */
@@ -177,12 +183,12 @@ final class ResearchConceptHost implements ResearchConceptTools.Context {
 
     @Override
     public boolean scopingWritable() {
-        return true; // bis zur Zustandsmaschine der Phasen gibt es nur das Scoping
+        return owner.scopingWritable();
     }
 
     @Override
     public String stateDescription() {
-        return "scoping/running";
+        return owner.stateDescription();
     }
 
     @Override

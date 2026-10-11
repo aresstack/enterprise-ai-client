@@ -40,6 +40,8 @@ public final class AcpAgentLauncher implements AgentLauncher {
     private final McpServerRegistry registry;
     private final McpEndpointDefinition endpoint;
     private final List<McpToolContribution> tools;
+    /** Bei einem phasenabhängigen Werkzeugsatz: berechnet und veröffentlicht ihn bei jedem Zustandswechsel. */
+    private final PhaseToolSetController toolSet;
 
     /** Agent ohne MCP-Endpoint. */
     public AcpAgentLauncher(AcpAgentConnector connector, AgentLaunchSpec baseSpec) {
@@ -53,6 +55,25 @@ public final class AcpAgentLauncher implements AgentLauncher {
      */
     public AcpAgentLauncher(AcpAgentConnector connector, AgentLaunchSpec baseSpec, McpServerRegistry registry,
                             McpEndpointDefinition endpoint, Collection<McpToolContribution> tools) {
+        this(connector, baseSpec, registry, endpoint, tools, null);
+    }
+
+    /**
+     * Wie oben, der Werkzeugsatz folgt aber dem Zustand: der Controller behält Registry und Handle und
+     * veröffentlicht bei jedem Phasenwechsel neu ({@code updateTools}).
+     */
+    public static AcpAgentLauncher withPhaseToolSet(AcpAgentConnector connector, AgentLaunchSpec baseSpec,
+                                                    McpServerRegistry registry, McpEndpointDefinition endpoint,
+                                                    PhaseToolSetController toolSet) {
+        if (registry == null || toolSet == null) {
+            throw new IllegalArgumentException("registry and toolSet must not be null");
+        }
+        return new AcpAgentLauncher(connector, baseSpec, registry, endpoint, null, toolSet);
+    }
+
+    private AcpAgentLauncher(AcpAgentConnector connector, AgentLaunchSpec baseSpec, McpServerRegistry registry,
+                             McpEndpointDefinition endpoint, Collection<McpToolContribution> tools,
+                             PhaseToolSetController toolSet) {
         if (connector == null || baseSpec == null) {
             throw new IllegalArgumentException("connector and baseSpec must not be null");
         }
@@ -65,6 +86,7 @@ public final class AcpAgentLauncher implements AgentLauncher {
         this.endpoint = endpoint;
         this.tools = Collections.unmodifiableList(new ArrayList<McpToolContribution>(
                 tools == null ? Collections.<McpToolContribution>emptyList() : tools));
+        this.toolSet = toolSet;
     }
 
     @Override
@@ -85,7 +107,7 @@ public final class AcpAgentLauncher implements AgentLauncher {
             release(handle);
             throw e;
         }
-        return handle == null ? connection : new EndpointBoundConnection(connection, registry, handle);
+        return handle == null ? connection : new EndpointBoundConnection(connection, registry, handle, toolSet);
     }
 
     private McpEndpointHandle provideEndpoint(Map<String, String> env) throws AcpException {
@@ -98,7 +120,10 @@ public final class AcpAgentLauncher implements AgentLauncher {
         }
         String url;
         try {
-            registry.updateTools(handle, tools);
+            registry.updateTools(handle, toolSet == null ? tools : toolSet.current());
+            if (toolSet != null) {
+                toolSet.attach(registry, handle);
+            }
             url = registry.endpointUrl(handle);
             if (url != null) {
                 AgentMcpEnvironment.put(env, new AcpEndpointDescriptor(handle.getEndpointId(), url,
@@ -117,6 +142,9 @@ public final class AcpAgentLauncher implements AgentLauncher {
 
     private void release(McpEndpointHandle handle) {
         if (handle != null) {
+            if (toolSet != null) {
+                toolSet.detach(handle);
+            }
             registry.unregisterEndpoint(handle);
         }
     }
@@ -127,11 +155,14 @@ public final class AcpAgentLauncher implements AgentLauncher {
         private final AcpConnection delegate;
         private final McpServerRegistry registry;
         private final McpEndpointHandle handle;
+        private final PhaseToolSetController toolSet;
 
-        EndpointBoundConnection(AcpConnection delegate, McpServerRegistry registry, McpEndpointHandle handle) {
+        EndpointBoundConnection(AcpConnection delegate, McpServerRegistry registry, McpEndpointHandle handle,
+                                PhaseToolSetController toolSet) {
             this.delegate = delegate;
             this.registry = registry;
             this.handle = handle;
+            this.toolSet = toolSet;
         }
 
         @Override
@@ -154,6 +185,9 @@ public final class AcpAgentLauncher implements AgentLauncher {
             try {
                 delegate.close();
             } finally {
+                if (toolSet != null) {
+                    toolSet.detach(handle);
+                }
                 registry.unregisterEndpoint(handle); // idempotent
             }
         }

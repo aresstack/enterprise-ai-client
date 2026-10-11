@@ -1,0 +1,185 @@
+package com.aresstack.enterpriseai.research.domain.state.oo;
+
+/**
+ * Builds phase/state objects and rebuilds them from a {@link ResearchStateMemento}. It is the one place that
+ * decides whether a (phase, state) combination is legal: impossible combinations are rejected here, so they can
+ * never exist as objects. Stateless and shareable.
+ */
+public final class ResearchStateFactory {
+
+    /** Zustandslos: jede Zustandsmaschine hält ihre eigene (keine statische Instanz). */
+    public static ResearchStateFactory getInstance() {
+        return new ResearchStateFactory();
+    }
+
+    /** The starting phase state: SCOPING / new. */
+    public ResearchPhaseState initialPhase() {
+        return phase(ResearchStateIds.SCOPING, state(ResearchStateIds.SCOPING, ResearchStateIds.NEW, null, null));
+    }
+
+    public ResearchPhaseState phase(String phaseId, PhaseState state) {
+        return new ResearchStates.Phase(phaseId, state);
+    }
+
+    /**
+     * Build a {@link PhaseState} for a (phase, state) pair. Interruptions carry a continuation state id;
+     * approval gates may carry a pending approval id. Illegal combinations throw {@link IllegalArgumentException}.
+     */
+    public PhaseState state(String phaseId, String stateId, String continuationStateId,
+                            String pendingApprovalId) {
+        requireKnownPhase(phaseId);
+        if (stateId == null) {
+            throw new IllegalArgumentException("stateId must not be null");
+        }
+        if (ResearchStateIds.NEW.equals(stateId)) {
+            requireCombo(phaseId, stateId);
+            requireNoApprovalId(stateId, pendingApprovalId);
+            return new ResearchStates.NewState(phaseId);
+        }
+        if (ResearchStateIds.RUNNING.equals(stateId)) {
+            requireCombo(phaseId, stateId);
+            requireNoApprovalId(stateId, pendingApprovalId);
+            return new ResearchStates.RunningState(phaseId);
+        }
+        if (ResearchStateIds.WAITING.equals(stateId)) {
+            requireCombo(phaseId, stateId);
+            requireNoApprovalId(stateId, pendingApprovalId);
+            return new ResearchStates.WaitingState(phaseId);
+        }
+        if (ResearchStateIds.WAITING_APPROVAL.equals(stateId)) {
+            requireCombo(phaseId, stateId);
+            return new ResearchStates.WaitingApprovalState(phaseId, requireApprovalId(pendingApprovalId));
+        }
+        if (ResearchStateIds.PAUSED.equals(stateId)) {
+            String continuation = requireContinuation(phaseId, continuationStateId);
+            return new ResearchStates.PausedState(phaseId, continuation,
+                    validInterruptApproval(continuation, pendingApprovalId));
+        }
+        if (ResearchStateIds.BLOCKED.equals(stateId)) {
+            String continuation = requireContinuation(phaseId, continuationStateId);
+            return new ResearchStates.BlockedState(phaseId, continuation,
+                    validInterruptApproval(continuation, pendingApprovalId));
+        }
+        if (ResearchStateIds.FAILED.equals(stateId)) {
+            String continuation = requireContinuation(phaseId, continuationStateId);
+            return new ResearchStates.FailedState(phaseId, continuation,
+                    validInterruptApproval(continuation, pendingApprovalId));
+        }
+        if (ResearchStateIds.COMPLETED.equals(stateId)) {
+            requireCombo(phaseId, stateId);
+            requireNoApprovalId(stateId, pendingApprovalId);
+            return new ResearchStates.TerminalState(phaseId, ResearchStateIds.COMPLETED);
+        }
+        if (ResearchStateIds.CANCELLED.equals(stateId)) {
+            requireNoApprovalId(stateId, pendingApprovalId);
+            return new ResearchStates.TerminalState(phaseId, ResearchStateIds.CANCELLED); // cancel valid anywhere
+        }
+        throw new IllegalArgumentException("unknown stateId: " + stateId);
+    }
+
+    /**
+     * Rebuild a phase state from persisted ids. Invalid combinations are rejected, never
+     * guessed. #43 migration: a persisted 7-phase memento (evidence/review/finalization) is
+     * remapped to its canonical 4-phase home HERE — the one restore choke point — so old
+     * sessions load without a separate repair pass; the next snapshot() then persists the
+     * canonical ids. State/continuation ids carry over unchanged (every legacy combination
+     * has a valid canonical home in the new graph).
+     */
+    public ResearchPhaseState restore(ResearchStateMemento memento) {
+        if (memento == null) {
+            throw new IllegalArgumentException("memento must not be null");
+        }
+        String phaseId = ResearchStateIds.canonicalPhaseId(memento.getPhaseId());
+        PhaseState state = state(phaseId, memento.getStateId(),
+                memento.getContinuationStateId(), memento.getPendingApprovalId());
+        return phase(phaseId, state);
+    }
+
+    /**
+     * The phase this FORWARD (phase-progressing) command would move into from this state, or {@code null}
+     * when the graph has no such edge (interruption commands always answer {@code null} — they never
+     * progress a phase). This is a read of the ONE transition graph, exposed so a UI can make phases
+     * clickable without ever holding a second transition table.
+     */
+    public String forwardTargetPhaseId(ResearchPhaseState phase,
+                                       com.aresstack.enterpriseai.research.domain.state.ResearchCommandType command) {
+        ResearchStateGraph.Edge edge = ResearchStateGraph.forward(
+                phase.getPhaseId(), phase.getCurrentState().getStateId(), command);
+        return edge == null ? null : edge.targetPhaseId;
+    }
+
+    /** Snapshot a phase state to a memento (ids only). */
+    public ResearchStateMemento snapshot(ResearchPhaseState phase, long revision) {
+        PhaseState state = phase.getCurrentState();
+        return new ResearchStateMemento(phase.getPhaseId(), state.getStateId(),
+                state.getContinuationStateId(), revision, state.getPendingApprovalId());
+    }
+
+    /**
+     * The continuation a legacy (phase, PAUSED/BLOCKED/FAILED) pair maps to: the phase's working state. Phases
+     * with a running state continue into running; approval-only phases (evidence, review) continue into their
+     * approval gate. The legacy {@code ResearchSessionState} cannot carry a precise continuation, so this is the
+     * safe, always-valid reconstruction.
+     */
+    public String defaultContinuationStateId(String phaseId) {
+        return ResearchStateGraph.isKnownCombo(phaseId, ResearchStateIds.RUNNING)
+                ? ResearchStateIds.RUNNING : ResearchStateIds.WAITING_APPROVAL;
+    }
+
+    private static void requireKnownPhase(String phaseId) {
+        // #43: the factory is STRICT on the canonical four — legacy phase ids reach it only
+        // through the restore remap, never as fresh states.
+        if (!ResearchStateIds.isCanonicalPhase(phaseId)) {
+            throw new IllegalArgumentException("unknown phaseId: " + phaseId);
+        }
+    }
+
+    private static void requireCombo(String phaseId, String stateId) {
+        if (!ResearchStateGraph.isKnownCombo(phaseId, stateId)) {
+            throw new IllegalArgumentException("illegal state for phase: " + phaseId + "/" + stateId);
+        }
+    }
+
+    /** An approval id is only valid on the approval gate itself. */
+    private static void requireNoApprovalId(String stateId, String pendingApprovalId) {
+        if (pendingApprovalId != null) {
+            throw new IllegalArgumentException("pendingApprovalId is not valid for state " + stateId);
+        }
+    }
+
+    /** An approval gate must carry a non-empty approval id — never a null/blank one. */
+    private static String requireApprovalId(String pendingApprovalId) {
+        if (pendingApprovalId == null || pendingApprovalId.trim().isEmpty()) {
+            throw new IllegalArgumentException("WAITING_APPROVAL requires a non-empty pendingApprovalId");
+        }
+        return pendingApprovalId;
+    }
+
+    /**
+     * An interruption carries an approval id if and only if it continues into an approval gate: continuing into
+     * WAITING_APPROVAL <em>requires</em> a non-empty id (so resuming restores exactly the same approval), and any
+     * other continuation must have none.
+     */
+    private static String validInterruptApproval(String continuationStateId, String pendingApprovalId) {
+        if (ResearchStateIds.WAITING_APPROVAL.equals(continuationStateId)) {
+            return requireApprovalId(pendingApprovalId);
+        }
+        if (pendingApprovalId != null) {
+            throw new IllegalArgumentException(
+                    "pendingApprovalId is only valid when the interruption continues into an approval gate");
+        }
+        return null;
+    }
+
+    private static String requireContinuation(String phaseId, String continuationStateId) {
+        if (continuationStateId == null) {
+            throw new IllegalArgumentException("interruption requires a continuation state id");
+        }
+        // The continuation must be a legal base state of this phase.
+        if (!ResearchStateGraph.isKnownCombo(phaseId, continuationStateId)) {
+            throw new IllegalArgumentException("illegal continuation for phase: "
+                    + phaseId + "/" + continuationStateId);
+        }
+        return continuationStateId;
+    }
+}
