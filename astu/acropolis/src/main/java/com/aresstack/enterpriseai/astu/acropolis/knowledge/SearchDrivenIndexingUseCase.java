@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
@@ -60,7 +60,7 @@ public final class SearchDrivenIndexingUseCase {
     }
 
     /** Wie {@link #search(String, Collection, String, int)} über die Quellen {@code only} des Katalogs. */
-    public Result search(String channel, KnowledgeSourceCatalog catalog, Collection<KnowledgeSourceId> only,
+    public Result search(String channel, KnowledgeSourceCatalog catalog, Collection<SourceAddress> only,
                          String query, int hitLimit) {
         List<KnowledgeSourcePort> sources = new ArrayList<KnowledgeSourcePort>();
         if (catalog != null && only != null) {
@@ -86,7 +86,7 @@ public final class SearchDrivenIndexingUseCase {
         if (hitLimit < 1) {
             throw new IllegalArgumentException("hitLimit >= 1 erwartet");
         }
-        Map<KnowledgeSourceId, String> failures = new LinkedHashMap<KnowledgeSourceId, String>();
+        Map<SourceAddress, String> failures = new LinkedHashMap<SourceAddress, String>();
         List<List<SourceSearchHit>> perSource = new ArrayList<List<SourceSearchHit>>();
         List<KnowledgeSourcePort> searched = new ArrayList<KnowledgeSourcePort>();
         for (KnowledgeSourcePort source : sources == null ? Collections.<KnowledgeSourcePort>emptyList() : sources) {
@@ -166,14 +166,14 @@ public final class SearchDrivenIndexingUseCase {
 
         private final List<FoundResource> hits;
         private final KnowledgePrefetchService.Series series;
-        private final Map<KnowledgeSourceId, String> failures;
+        private final Map<SourceAddress, String> failures;
         private volatile List<ResourceIndexingOutcome> outcomes = Collections.emptyList();
 
         Result(List<FoundResource> hits, KnowledgePrefetchService.Series series,
-               Map<KnowledgeSourceId, String> failures) {
+               Map<SourceAddress, String> failures) {
             this.hits = Collections.unmodifiableList(new ArrayList<FoundResource>(hits));
             this.series = series;
-            this.failures = Collections.unmodifiableMap(new LinkedHashMap<KnowledgeSourceId, String>(failures));
+            this.failures = Collections.unmodifiableMap(new LinkedHashMap<SourceAddress, String>(failures));
         }
 
         /** Die Vorlade-Serie der Treffer. */
@@ -200,7 +200,7 @@ public final class SearchDrivenIndexingUseCase {
             return n;
         }
 
-        public Map<KnowledgeSourceId, String> failures() {
+        public Map<SourceAddress, String> failures() {
             return failures;
         }
     }

@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.SourceScope;
@@ -98,7 +98,7 @@ public class MediaWikiHttpIntegrationTest {
     }
 
     private MediaWikiKnowledgeSource source(final String password) {
-        return new MediaWikiKnowledgeSource(KnowledgeSourceId.of("wiki-local"),
+        return new MediaWikiKnowledgeSource(SourceAddress.of("wiki-local"),
                 MediaWikiSiteConfig.builder("local", "http://127.0.0.1:" + server.getAddress().getPort() + "/w")
                         .requiresLogin(true).build(),
                 new MediaWikiCredentialsProvider() {

@@ -1,11 +1,12 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretMaterial;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
@@ -66,15 +67,17 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
         T run(NdvClient client) throws IOException, NdvException, KnowledgeSourceException;
     }
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final String host;
     private final int port;
+    /** {@code host:port} klein, Teil jeder Ressourcen-ID ({@code ndv:host:port/LIB/OBJ.NSP}). */
+    private final String locator;
     private final SecretRef credentialRef;
     private final SecretProvider secrets;
     private final Connector connector;
     private NdvClient client;
 
-    NdvKnowledgeSource(KnowledgeSourceId sourceId, String host, int port, SecretRef credentialRef,
+    NdvKnowledgeSource(SourceAddress sourceId, String host, int port, SecretRef credentialRef,
                        SecretProvider secrets, Connector connector) {
         if (sourceId == null || host == null || credentialRef == null || secrets == null || connector == null) {
             throw new IllegalArgumentException("sourceId, host, credentialRef, secrets and connector are required");
@@ -82,13 +85,14 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
         this.sourceId = sourceId;
         this.host = host;
         this.port = port;
+        this.locator = SourceLocators.hostPort(host, port);
         this.credentialRef = credentialRef;
         this.secrets = secrets;
         this.connector = connector;
     }
 
     @Override
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 
@@ -275,7 +279,7 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
         if (object.getUser() != null && !object.getUser().isEmpty()) {
             metadata.put("ndv.user", object.getUser());
         }
-        return KnowledgeResource.builder(KnowledgeResourceId.of(SCHEME, sourceId.value() + "/" + path), sourceId)
+        return KnowledgeResource.builder(KnowledgeResourceId.of(SCHEME, locator + "/" + path), sourceId)
                 .title(object.getName() + "." + object.getTypeExtension())
                 .contentType(KnowledgeResource.DEFAULT_CONTENT_TYPE)
                 .revision(revision)
@@ -305,7 +309,7 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
     }
 
     private String pathOf(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
-        String prefix = SCHEME + ":" + sourceId.value() + "/";
+        String prefix = SCHEME + ":" + locator + "/";
         String value = resourceId == null ? "" : resourceId.value();
         if (!value.startsWith(prefix) || value.length() == prefix.length()) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, resourceId + " gehört nicht zur Quelle " + sourceId);

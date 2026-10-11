@@ -12,8 +12,10 @@ import java.util.regex.Pattern;
  * Adapter über den Quellen-Port anbietet. Der Dialog „+ Quelle“ listet die Typen und baut das Formular aus den
  * {@link #fields() Feldern}; Oberfläche und Use Cases verzweigen nie nach dem Typ.
  *
- * <p>{@link #id()} ist die Serialisierung in der Konfiguration ({@code source.<id>.type}), {@link #scheme()} das
- * Ressourcenschema nach corenth ({@code ResourceScheme}: {@code wiki}, {@code confluence}, {@code file} ...).
+ * <p>{@link #id()} ist die Serialisierung in der Konfiguration ({@code source.<n>.type}), {@link #scheme()}
+ * das Ressourcenschema nach corenth ({@code ResourceScheme}: {@code wiki}, {@code confluence}, {@code file} ...),
+ * das der Dialog unter „Erweitert“ als {@link #pathPrefix() Pfadpräfix} zeigt. Die Identität einer Quelle ergibt
+ * sich aus Typ und kanonischem Endpoint ({@link #addressFor}), nie aus einer Benutzerangabe.
  * Wie in corenth ist der Typ ein offener Wert, kein Enum: neue Adapter bringen ihren Typ mit, ohne den Kern zu
  * ändern.
  */
@@ -72,7 +74,30 @@ public final class KnowledgeSourceType {
         return description;
     }
 
-    /** Vorschlag für die ID neuer Quellen, z. B. {@code wiki} (dann {@code wiki2} ...). */
+    /**
+     * Das Pfadpräfix der Ressourcen dieses Typs zur Anzeige, immer mit {@code :} ({@code confluence:},
+     * {@code ndv:} ...). Technische Information, keine Benutzereinstellung, wird nicht gespeichert.
+     */
+    public String pathPrefix() {
+        return scheme + ":";
+    }
+
+    /**
+     * Die kanonische Adresse einer Quelle dieses Typs am Locator ({@link SourceLocators}), als corenth-Bookmark
+     * {@code <scheme>://<locator>}: {@code confluence://cf.intern/confluence}, {@code ndv://host.example:2700},
+     * {@code file:///C:/Wissen}. Sie ist die Identität der Quelle (Konfiguration, Häkchen, Bereichsauswahl,
+     * Indexzuordnung), deterministisch und nie vom Benutzer vergeben.
+     *
+     * @return die Adresse oder {@code ""}, wenn der Locator leer ist
+     */
+    public String addressFor(String locator) {
+        if (locator == null || locator.trim().isEmpty()) {
+            return "";
+        }
+        return scheme + "://" + locator.trim();
+    }
+
+    /** Früherer Vorschlag für frei vergebene IDs; nur noch Suchbegriff für passende KeePass-Einträge. */
     public String idPrefix() {
         return idPrefix;
     }

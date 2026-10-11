@@ -262,21 +262,25 @@ public final class AdapterAssembly {
         return providers;
     }
 
+    private static String label(SourceDefinition definition) {
+        return definition.address().isEmpty() ? definition.typeId() : definition.address();
+    }
+
     /** Die Quellen der Konfiguration, die sich öffnen lassen; die übrigen werden mit einem Hinweis übersprungen. */
     static KnowledgeSourceCatalog startupSources(List<SourceDefinition> definitions, ApplicationPorts.Builder ports) {
         KnowledgeSourceManagement sources = new KnowledgeSourceManagement(ports.sourceProviders(), null, null);
         List<KnowledgeSourceRegistration> registrations = new ArrayList<KnowledgeSourceRegistration>();
         for (SourceDefinition definition : definitions) {
-            List<String> problems = sources.validate(definition, definition.id());
+            List<String> problems = sources.validate(definition, definition.address());
             if (!problems.isEmpty()) {
-                ports.sourceWarning("Wissensquelle „" + definition.id() + "“ wird übersprungen, bis sie im Reiter "
+                ports.sourceWarning("Wissensquelle „" + label(definition) + "“ wird übersprungen, bis sie im Reiter "
                         + "„Wissensquellen“ korrigiert ist: " + String.join("; ", problems));
                 continue;
             }
             try {
                 registrations.add(sources.open(definition));
             } catch (RuntimeException e) {
-                ports.sourceWarning("Wissensquelle „" + definition.id() + "“ wird übersprungen: nicht anbindbar ("
+                ports.sourceWarning("Wissensquelle „" + label(definition) + "“ wird übersprungen: nicht anbindbar ("
                         + e.getClass().getSimpleName() + ")");
             }
         }

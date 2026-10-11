@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,11 +9,11 @@ import java.util.List;
 /** Das Ergebnis der Suche in EINER Quelle: ihre Treffer oder, wenn die Quelle nicht antwortete, das Problem. */
 public final class SourceSearchOutcome {
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final List<FoundResource> hits;
     private final String problem;
 
-    private SourceSearchOutcome(KnowledgeSourceId sourceId, List<FoundResource> hits, String problem) {
+    private SourceSearchOutcome(SourceAddress sourceId, List<FoundResource> hits, String problem) {
         if (sourceId == null) {
             throw new IllegalArgumentException("sourceId must not be null");
         }
@@ -22,17 +22,17 @@ public final class SourceSearchOutcome {
         this.problem = problem;
     }
 
-    public static SourceSearchOutcome found(KnowledgeSourceId sourceId, List<FoundResource> hits) {
+    public static SourceSearchOutcome found(SourceAddress sourceId, List<FoundResource> hits) {
         return new SourceSearchOutcome(sourceId, hits == null ? Collections.<FoundResource>emptyList() : hits, null);
     }
 
     /** @param problem kurze Meldung ohne Zugangsdaten, z. B. „nicht erreichbar“ */
-    public static SourceSearchOutcome failed(KnowledgeSourceId sourceId, String problem) {
+    public static SourceSearchOutcome failed(SourceAddress sourceId, String problem) {
         return new SourceSearchOutcome(sourceId, Collections.<FoundResource>emptyList(),
                 problem == null || problem.trim().isEmpty() ? "Suche fehlgeschlagen" : problem.trim());
     }
 
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 

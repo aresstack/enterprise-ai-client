@@ -5,7 +5,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
@@ -48,12 +48,12 @@ public final class MediaWikiKnowledgeSource implements SearchableKnowledgeSource
 
     static final String CONTENT_TYPE = "text/html";
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final MediaWikiSiteConfig site;
     private final MediaWikiClient client;
     private final WikiCrawler crawler;
 
-    public MediaWikiKnowledgeSource(KnowledgeSourceId sourceId, MediaWikiSiteConfig site,
+    public MediaWikiKnowledgeSource(SourceAddress sourceId, MediaWikiSiteConfig site,
                                     MediaWikiCredentialsProvider credentialsProvider) {
         this(sourceId, site, new UrlConnectionMediaWikiTransport(requireSite(site)), credentialsProvider);
     }
@@ -62,14 +62,14 @@ public final class MediaWikiKnowledgeSource implements SearchableKnowledgeSource
      * @param routes           Proxy-Route je Ziel; {@code null} = JVM-Standard
      * @param sslSocketFactory Vertrauensquellen für HTTPS; {@code null} = JVM-Standard
      */
-    public MediaWikiKnowledgeSource(KnowledgeSourceId sourceId, MediaWikiSiteConfig site,
+    public MediaWikiKnowledgeSource(SourceAddress sourceId, MediaWikiSiteConfig site,
                                     MediaWikiCredentialsProvider credentialsProvider, HttpRoutePort routes,
                                     SSLSocketFactory sslSocketFactory) {
         this(sourceId, site, new UrlConnectionMediaWikiTransport(requireSite(site), routes, sslSocketFactory),
                 credentialsProvider);
     }
 
-    MediaWikiKnowledgeSource(KnowledgeSourceId sourceId, MediaWikiSiteConfig site, MediaWikiTransport transport,
+    MediaWikiKnowledgeSource(SourceAddress sourceId, MediaWikiSiteConfig site, MediaWikiTransport transport,
                              MediaWikiCredentialsProvider credentialsProvider) {
         if (sourceId == null) {
             throw new IllegalArgumentException("sourceId must not be null");
@@ -84,7 +84,7 @@ public final class MediaWikiKnowledgeSource implements SearchableKnowledgeSource
     }
 
     @Override
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 

@@ -3,7 +3,7 @@
  * die daraus abgeleiteten Chunks. Keine Lucene-, HTTP-, Wiki- oder Confluence-Typen.
  *
  * <ul>
- *   <li>{@link com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId} – konfigurierte Quelle</li>
+ *   <li>{@link com.aresstack.enterpriseai.astu.knowledge.SourceAddress} – konfigurierte Quelle</li>
  *   <li>{@link com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId} – stabile Ressourcen-ID
  *       ({@code <schema>:<id>}), Schlüssel für Upsert/Replace/Delete im Index</li>
  *   <li>{@link com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource} – Beschreibung ohne Inhalt

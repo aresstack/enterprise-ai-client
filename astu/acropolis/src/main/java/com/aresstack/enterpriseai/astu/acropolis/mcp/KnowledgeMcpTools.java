@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.mcp;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 
 import java.util.Arrays;
@@ -47,7 +47,7 @@ public final class KnowledgeMcpTools {
 
     /** Wie oben; {@code enabled} sagt je Aufruf, welche Quellen angehakt sind (nur die durchsucht knowledge_search). */
     public KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
-                             SearchDrivenIndexingUseCase live, Predicate<KnowledgeSourceId> enabled,
+                             SearchDrivenIndexingUseCase live, Predicate<SourceAddress> enabled,
                              KnowledgeToolSettings settings) {
         if (enabled == null) {
             throw new IllegalArgumentException("enabled ist Pflicht");

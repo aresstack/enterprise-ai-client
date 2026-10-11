@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 /**
  * Ein Treffer der Quellensuche ({@link SearchKnowledgeSourcesUseCase}): welche Ressource welcher Quelle, ihr Titel, ein
@@ -16,7 +16,7 @@ public final class FoundResource {
         INDEX
     }
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final KnowledgeResourceId resourceId;
     private final String title;
     private final String snippet;
@@ -25,19 +25,19 @@ public final class FoundResource {
     private final KnowledgeRevision revision;
     private final String url;
 
-    public FoundResource(KnowledgeSourceId sourceId, KnowledgeResourceId resourceId, String title, String snippet,
+    public FoundResource(SourceAddress sourceId, KnowledgeResourceId resourceId, String title, String snippet,
                          String location, Origin origin) {
         this(sourceId, resourceId, title, snippet, location, origin, KnowledgeRevision.unknown());
     }
 
     /** Wie oben, mit der Revision laut Suche (für das Vorladen: unverändert indexierte Treffer werden nicht geladen). */
-    public FoundResource(KnowledgeSourceId sourceId, KnowledgeResourceId resourceId, String title, String snippet,
+    public FoundResource(SourceAddress sourceId, KnowledgeResourceId resourceId, String title, String snippet,
                          String location, Origin origin, KnowledgeRevision revision) {
         this(sourceId, resourceId, title, snippet, location, origin, revision, null);
     }
 
     /** Wie oben, mit der aufrufbaren Adresse (Bookmark) laut Suche. */
-    public FoundResource(KnowledgeSourceId sourceId, KnowledgeResourceId resourceId, String title, String snippet,
+    public FoundResource(SourceAddress sourceId, KnowledgeResourceId resourceId, String title, String snippet,
                          String location, Origin origin, KnowledgeRevision revision, String url) {
         if (sourceId == null || resourceId == null || origin == null) {
             throw new IllegalArgumentException("sourceId, resourceId and origin must not be null");
@@ -62,7 +62,7 @@ public final class FoundResource {
         return revision;
     }
 
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 

@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -35,12 +35,17 @@ final class LoggingSourceProvider implements KnowledgeSourceProvider {
     }
 
     @Override
+    public String locator(SourceSettings settings) {
+        return delegate.locator(settings);
+    }
+
+    @Override
     public SourceScope scope(SourceSettings settings) {
         return delegate.scope(settings);
     }
 
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         return new LoggingKnowledgeSource(delegate.open(sourceId, settings));
     }
 

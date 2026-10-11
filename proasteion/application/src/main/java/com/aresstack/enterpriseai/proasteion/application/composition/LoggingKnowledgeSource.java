@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
@@ -43,7 +43,7 @@ public final class LoggingKnowledgeSource implements SearchableKnowledgeSource {
     }
 
     @Override
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return delegate.sourceId();
     }
 

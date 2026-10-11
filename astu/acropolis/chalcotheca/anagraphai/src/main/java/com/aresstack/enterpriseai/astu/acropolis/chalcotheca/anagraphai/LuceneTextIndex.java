@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexException;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeKeywordQuery;
@@ -84,7 +84,7 @@ public final class LuceneTextIndex {
     }
 
     /** Löscht passende Dokumente in allen Namespaces ({@code null}-Kriterium wird ignoriert). */
-    public void removeWhere(KnowledgeResourceId resourceId, KnowledgeSourceId sourceId) {
+    public void removeWhere(KnowledgeResourceId resourceId, SourceAddress sourceId) {
         for (Path directory : IndexFiles.list(root)) {
             if (!Files.isDirectory(directory)) {
                 continue;
@@ -185,7 +185,7 @@ public final class LuceneTextIndex {
     }
 
     /** Ressourcen-IDs aller Dokumente einer Quelle im Namespace (aus dem gespeicherten Feld, auch bei Alt-Indizes). */
-    public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+    public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, SourceAddress sourceId) {
         final Set<KnowledgeResourceId> ids = new LinkedHashSet<KnowledgeResourceId>();
         forEachDocument(space, new TermQuery(new Term(LuceneDocuments.SOURCE_ID, sourceId.value())),
                 Collections.singleton(LuceneDocuments.RESOURCE_ID), new DocumentVisitor() {
@@ -373,12 +373,12 @@ public final class LuceneTextIndex {
         return builder.build();
     }
 
-    private static Query withSourceFilter(Query query, Set<KnowledgeSourceId> sources) {
+    private static Query withSourceFilter(Query query, Set<SourceAddress> sources) {
         if (sources.isEmpty()) {
             return query;
         }
         List<BytesRef> ids = new ArrayList<BytesRef>();
-        for (KnowledgeSourceId source : sources) {
+        for (SourceAddress source : sources) {
             ids.add(new BytesRef(source.value()));
         }
         return new BooleanQuery.Builder()

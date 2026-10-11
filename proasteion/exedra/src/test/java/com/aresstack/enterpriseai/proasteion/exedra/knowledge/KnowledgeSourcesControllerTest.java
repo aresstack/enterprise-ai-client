@@ -11,9 +11,10 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegist
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.source.KnowledgeSourceManagement;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
@@ -53,7 +54,7 @@ public class KnowledgeSourcesControllerTest {
     private final KnowledgeIndexingBinding binding = new KnowledgeIndexingBinding(indexing,
             new KnowledgeStatusModel(), DIRECT, DIRECT, () -> NOON_UTC, ZoneId.of("UTC"));
     private final KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
-    private final Function<KnowledgeSourceId, Integer> count = id ->
+    private final Function<SourceAddress, Integer> count = id ->
             index.resourceIds(embeddings.modelIdentity(), id).size();
     private final List<List<KnowledgeSourceItem>> published = new ArrayList<List<KnowledgeSourceItem>>();
     private final FakeFile file = new FakeFile();
@@ -163,14 +164,16 @@ public class KnowledgeSourcesControllerTest {
 
     @Test
     public void addedSourceIsConnectedWithoutRestartAndIndexedOnRequest() {
-        final InMemoryKnowledgeSource handbook = new InMemoryKnowledgeSource("wiki2")
+        final InMemoryKnowledgeSource handbook = new InMemoryKnowledgeSource("wiki://handbuch.intern")
                 .add("9", "Homeoffice", "Zwei Tage pro Woche.");
-        provider.sources.put("wiki2", handbook);
+        provider.sources.put("wiki://handbuch.intern", handbook);
         KnowledgeSourcesController controller = controller(true);
         final List<String> offered = new ArrayList<String>();
         controller.setEditing(file, launcher((initial, originalId, actions) -> {
-            offered.add(initial.id() + "/" + originalId);
-            SourceDefinition saved = definition(initial.id(), true);
+            offered.add(initial.address() + "/" + originalId);
+            SourceDefinition saved = definition(initial.address(), true).withSettings(
+                    definition(initial.address(), true).settings().with("site", "Handbuch.intern/"));
+            saved = saved.withAddress(actions.addressOf(saved));
             try {
                 actions.save(saved, originalId);
             } catch (IOException e) {
@@ -181,14 +184,15 @@ public class KnowledgeSourcesControllerTest {
         assertTrue(controller.canAdd());
         controller.addRequested();
 
-        assertEquals("die nächste freie ID wird vorgeschlagen", Collections.singletonList("wiki2/null"), offered);
+        assertEquals("kein vorgeschlagener Name: der Schlüssel kommt aus der Adresse",
+                Collections.singletonList("/null"), offered);
         assertTrue(selection.isEnabled(handbook.sourceId()));
         assertTrue("Hinzufügen indexiert nichts",
                 index.resourceIds(embeddings.modelIdentity(), handbook.sourceId()).isEmpty());
-        controller.indexRequested("wiki2");
+        controller.indexRequested("wiki://handbuch.intern");
         assertEquals(1, index.resourceIds(embeddings.modelIdentity(), handbook.sourceId()).size());
-        assertEquals("1 Seite im Index · Stand 12:00", last("wiki2").status());
-        assertTrue(last("wiki2").editable());
+        assertEquals("1 Seite im Index · Stand 12:00", last("wiki://handbuch.intern").status());
+        assertTrue(last("wiki://handbuch.intern").editable());
     }
 
     @Test
@@ -200,7 +204,7 @@ public class KnowledgeSourcesControllerTest {
         controller.enabledChanged("confluence", true);
         KnowledgeSourceItem added = last("confluence");
         assertFalse(added.indexable());
-        assertFalse(selection.isRegistered(KnowledgeSourceId.of("confluence")));
+        assertFalse(selection.isRegistered(SourceAddress.of("confluence")));
     }
 
     @Test
@@ -244,7 +248,7 @@ public class KnowledgeSourcesControllerTest {
 
         @Override
         public void save(SourceDefinition definition, String originalId) throws IOException {
-            calls.add("save " + definition.id());
+            calls.add("save " + definition.address());
             definitions.add(definition);
         }
 
@@ -252,7 +256,7 @@ public class KnowledgeSourcesControllerTest {
         public void remove(String id) {
             calls.add("remove " + id);
             for (int i = definitions.size() - 1; i >= 0; i--) {
-                if (definitions.get(i).id().equals(id)) {
+                if (definitions.get(i).address().equals(id)) {
                     definitions.remove(i);
                 }
             }
@@ -289,8 +293,14 @@ public class KnowledgeSourcesControllerTest {
             return SourceScope.of(settings.get("startPoints").split(","));
         }
 
+        /** Endpoint aus „site“; ohne ihn bleibt es beim gespeicherten Schlüssel. */
         @Override
-        public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+        public String locator(SourceSettings settings) {
+            return SourceLocators.of(settings.get("site"));
+        }
+
+        @Override
+        public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
             KnowledgeSourcePort port = sources.get(sourceId.value());
             if (port == null) {
                 throw new IllegalArgumentException("unbekannt: " + sourceId);

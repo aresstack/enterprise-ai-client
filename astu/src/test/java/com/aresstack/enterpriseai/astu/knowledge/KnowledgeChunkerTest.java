@@ -15,7 +15,7 @@ import static org.junit.Assert.fail;
 public class KnowledgeChunkerTest {
 
     private static final KnowledgeResource RESOURCE = KnowledgeResource
-            .builder(KnowledgeResourceId.of("wiki:intranet/Test"), KnowledgeSourceId.of("wiki-intranet"))
+            .builder(KnowledgeResourceId.of("wiki:intranet/Test"), SourceAddress.of("wiki-intranet"))
             .title("Test").build();
 
     private final KnowledgeTokenCounter counter = KnowledgeTokenCounter.wordsAndSymbols();

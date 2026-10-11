@@ -14,7 +14,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.acropolis.source.KnowledgeSourceManagement;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
@@ -99,7 +99,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private final Set<String> removing = new HashSet<String>();
     private final KnowledgeSourceSelection selection;
     private final KnowledgeIndexingBinding binding;
-    private final Function<KnowledgeSourceId, Integer> indexCount;
+    private final Function<SourceAddress, Integer> indexCount;
     private final KnowledgeSourceManagement management;
     private final Executor uiExecutor;
     private final Executor workExecutor;
@@ -128,14 +128,14 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
      */
     public KnowledgeSourcesController(List<SourceDefinition> startupSources, KnowledgeSourceCatalog catalog,
                                       KnowledgeSourceSelection selection, KnowledgeIndexingBinding binding,
-                                      Function<KnowledgeSourceId, Integer> indexCount,
+                                      Function<SourceAddress, Integer> indexCount,
                                       KnowledgeSourceManagement management,
                                       Executor uiExecutor, Executor workExecutor, LongSupplier clock, ZoneId zone) {
         if (startupSources == null || catalog == null || selection == null || binding == null || management == null
                 || uiExecutor == null || workExecutor == null || clock == null || zone == null) {
             throw new IllegalArgumentException("only indexCount may be null");
         }
-        this.startupSources = new ArrayList<SourceDefinition>(startupSources);
+        this.startupSources = addressed(startupSources, management);
         for (KnowledgeSourceRegistration registration : catalog.registrations()) {
             live.put(registration.sourceId().value(), registration);
         }
@@ -149,7 +149,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         this.zone = zone;
         binding.addRunListener(new KnowledgeIndexingBinding.RunListener() {
             @Override
-            public void started(KnowledgeSourceId sourceId) {
+            public void started(SourceAddress sourceId) {
                 running = sourceId.value();
                 publish();
             }
@@ -212,7 +212,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
 
     @Override
     public void enabledChanged(String sourceId, boolean enabled) {
-        selection.setEnabled(KnowledgeSourceId.of(sourceId), enabled);
+        selection.setEnabled(SourceAddress.of(sourceId), enabled);
         writeProblems.remove(sourceId);
         if (editing != null) {
             try {
@@ -247,7 +247,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         }
         SourceDefinition current = null;
         for (SourceDefinition source : fileSources()) {
-            if (source.id().equals(sourceId)) {
+            if (source.address().equals(sourceId)) {
                 current = source;
             }
         }
@@ -259,10 +259,10 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
                 : Collections.singletonList(type);
         SourceDefinition saved = launcher.edit(current, sourceId, types, dialogActions());
         if (saved != null) {
-            if (!saved.id().equals(sourceId)) {
+            if (!saved.address().equals(sourceId)) {
                 detach(sourceId);
             }
-            connect(saved.id());
+            connect(saved.address());
         }
         publish();
     }
@@ -341,7 +341,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         SourceDefinition initial = editing.draft(types.get(0).id(), taken());
         SourceDefinition saved = launcher.edit(initial, null, types, dialogActions());
         if (saved != null) {
-            connect(saved.id());
+            connect(saved.address());
         }
         publish();
     }
@@ -353,7 +353,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         }
         SourceDefinition current = null;
         for (SourceDefinition source : fileSources()) {
-            if (source.id().equals(sourceId)) {
+            if (source.address().equals(sourceId)) {
                 current = source;
             }
         }
@@ -474,6 +474,11 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             }
 
             @Override
+            public String addressOf(SourceDefinition draft) {
+                return target.addressOf(draft);
+            }
+
+            @Override
             public SourceDefinition draft(String typeId) {
                 return target.draft(typeId, taken());
             }
@@ -549,7 +554,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private Set<String> taken() {
         Set<String> taken = new HashSet<String>(live.keySet());
         for (SourceDefinition source : fileSources()) {
-            taken.add(source.id());
+            taken.add(source.address());
         }
         return taken;
     }
@@ -642,7 +647,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         if (indexCount == null) {
             return;
         }
-        final KnowledgeSourceId sourceId = KnowledgeSourceId.of(id);
+        final SourceAddress sourceId = SourceAddress.of(id);
         try {
             workExecutor.execute(() -> {
                 Integer n;
@@ -667,12 +672,23 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
 
     // ------------------------------------------------------------------ Liste
 
+    /** Von Hand eingetragene Quellen ohne gespeicherte Adresse bekommen ihre aus Typ und Endpoint. */
+    private static List<SourceDefinition> addressed(List<SourceDefinition> definitions,
+                                                    KnowledgeSourceManagement management) {
+        List<SourceDefinition> addressed = new ArrayList<SourceDefinition>(definitions.size());
+        for (SourceDefinition definition : definitions) {
+            addressed.add(definition.address().isEmpty()
+                    ? definition.withAddress(management.addressOf(definition)) : definition);
+        }
+        return addressed;
+    }
+
     private List<SourceDefinition> fileSources() {
         if (editing == null) {
             return Collections.emptyList();
         }
         try {
-            return editing.definitions();
+            return addressed(editing.definitions(), management);
         } catch (IOException | RuntimeException e) {
             LOG.log(Level.WARNING, "Wissensquellen der Konfigurationsdatei nicht lesbar", e);
             return Collections.emptyList();
@@ -684,15 +700,15 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         List<KnowledgeSourceItem> items = new ArrayList<KnowledgeSourceItem>();
         if (editing == null) {
             for (SourceDefinition source : startupSources) {
-                items.add(decorated(item(source.id(), label(source.typeId()), summary(source), null), source));
+                items.add(decorated(item(source.address(), label(source.typeId()), summary(source), null), source));
             }
             return items;
         }
         for (SourceDefinition source : fileSources()) {
-            if (source.id().isEmpty() || removing.contains(source.id())) {
+            if (source.address().isEmpty() || removing.contains(source.address())) {
                 continue;
             }
-            items.add(decorated(item(source.id(), label(source.typeId()), summary(source), source), source));
+            items.add(decorated(item(source.address(), label(source.typeId()), summary(source), source), source));
         }
         return items;
     }
@@ -706,7 +722,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         String title = type.titleKey().isEmpty() ? "" : source.settings().get(type.titleKey());
         KnowledgeSourceItem titled = type.titleKey().isEmpty() ? item
                 : item.withTitle(title.isEmpty() ? type.displayName() : title);
-        String id = source.id();
+        String id = source.address();
         if (type.partitionsLabel().isEmpty() || partitionSelection == null || !live.containsKey(id)
                 || pendingRestart.contains(id)) {
             return titled;
@@ -777,7 +793,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     /** {@code true}, wenn der Typ der Quelle „Alles indexieren“ auf Knopfdruck anbietet (NDV, FTP, Dateien). */
     private boolean fullIndexing(String id) {
         for (SourceDefinition source : editing == null ? startupSources : fileSources()) {
-            if (source.id().equals(id)) {
+            if (source.address().equals(id)) {
                 KnowledgeSourceType type = management.type(source.typeId());
                 return type != null && type.fullIndexing();
             }

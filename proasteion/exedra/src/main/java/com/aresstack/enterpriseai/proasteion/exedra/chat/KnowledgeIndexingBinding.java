@@ -7,7 +7,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexingStatus;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResourceIndexingOutcome;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
@@ -57,7 +57,7 @@ public final class KnowledgeIndexingBinding {
 
     /** Beobachtet Beginn und Ende jedes Laufs dieser Anbindung (Start-Indexierung wie Knopf); auf dem UI-Thread. */
     public interface RunListener {
-        void started(KnowledgeSourceId sourceId);
+        void started(SourceAddress sourceId);
 
         void finished(IndexingReport report);
     }

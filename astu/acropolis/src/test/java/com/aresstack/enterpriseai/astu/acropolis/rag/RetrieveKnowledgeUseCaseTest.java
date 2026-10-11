@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.rag;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagTestData.ObservedIndex;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagTestData.ScriptedEmbeddingPort;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
@@ -94,7 +94,7 @@ public class RetrieveKnowledgeUseCaseTest {
     @Test
     public void sourceFilterRestrictsBothPaths() {
         RetrievalResult result = useCase(null).retrieve("Kaffeemaschine",
-                Collections.singleton(KnowledgeSourceId.of("wiki")));
+                Collections.singleton(SourceAddress.of("wiki")));
 
         assertFalse(resourceIds(result).contains("confluence:42"));
     }

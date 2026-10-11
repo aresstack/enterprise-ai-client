@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.integration.live;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretMaterial;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcSecretProvider;
@@ -41,7 +41,7 @@ public class LiveConfluenceKeePassIT {
         if (LiveSettings.optional("live.confluence.searchSpaceKey") != null) {
             config.searchSpaceKey(LiveSettings.optional("live.confluence.searchSpaceKey"));
         }
-        return new ConfluenceKnowledgeSource(KnowledgeSourceId.of("live-confluence"), config.build(),
+        return new ConfluenceKnowledgeSource(SourceAddress.of("live-confluence"), config.build(),
                 UrlConnectionConfluenceTransport.builder().build(), provider);
     }
 

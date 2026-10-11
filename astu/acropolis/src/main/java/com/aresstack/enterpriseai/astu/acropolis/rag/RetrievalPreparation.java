@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collection;
 
@@ -12,7 +12,7 @@ import java.util.Collection;
 public interface RetrievalPreparation {
 
     /** @param sources die freigegebenen Quellen des Turns; leer = alle */
-    void prepare(String query, Collection<KnowledgeSourceId> sources);
+    void prepare(String query, Collection<SourceAddress> sources);
 
     static RetrievalPreparation none() {
         return (query, sources) -> {

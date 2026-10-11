@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.source;
 
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
@@ -16,12 +16,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * Use Case „Wissensquellen verwalten“: der Dialog „+ Quelle“ bekommt die Quelltypen aller registrierten
- * {@link KnowledgeSourceProvider}, prüft und speichert Entwürfe darüber und entfernt Quellen. Nach corenth sind die
- * Indexdaten einer Quelle abgeleitete Sichten: wer eine Quelle entfernt (oder unter neuer ID speichert), zieht ihre
+ * {@link KnowledgeSourceProvider}, prüft und speichert Entwürfe darüber und entfernt Quellen. Die einzige
+ * Identität einer Quelle ist ihre kanonische Adresse ({@link SourceAddress}, {@code confluence://cf.intern/confluence}):
+ * nie vom Benutzer vergeben, sondern aus Connector-Typ und kanonischem Endpoint abgeleitet ({@link #addressOf}); eine
+ * zweite Quelle mit derselben Adresse wird abgelehnt. Nach corenth sind die
+ * Indexdaten einer Quelle abgeleitete Sichten: wer eine Quelle entfernt (oder auf einen anderen Endpoint umstellt), zieht ihre
  * Einträge aus dem Wissensindex (und über {@link #withWithdrawal} aus dem Ressourcenarchiv) zurück, damit RAG und Agent sie nicht mehr finden. Das gehört hierher, nicht in die
  * Oberfläche.
  *
@@ -29,9 +31,9 @@ import java.util.regex.Pattern;
  */
 public final class KnowledgeSourceManagement {
 
-    private static final Pattern SOURCE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
-    static final String ID_RULE = "ID: nur Buchstaben, Ziffern, Punkt, Unterstrich und Strich, beginnend mit "
-            + "Buchstabe oder Ziffer";
+    static final String ADDRESS_RULE = "Adresse: fehlt (unter „Erweitert“ angeben oder aus dem KeePass-Eintrag "
+            + "übernehmen); aus ihr entsteht die Identität der Quelle";
+    static final String DUPLICATE = "Diese Wissensquelle ist bereits vorhanden.";
 
     private final Map<String, KnowledgeSourceProvider> providers;
     private final SourceDefinitionStore store;
@@ -110,50 +112,66 @@ public final class KnowledgeSourceManagement {
     }
 
     /**
-     * Ein neuer Entwurf des Typs mit freier ID und den Vorgaben der Felder.
+     * Ein neuer Entwurf des Typs mit den Vorgaben der Felder. Seine Adresse bekommt er erst beim Speichern: aus Typ
+     * und kanonischem Endpoint ({@link #addressOf}), nie vom Benutzer.
      *
-     * @param taken IDs, die schon vergeben sind (auch angebundene ohne Datei)
+     * @param taken ohne Bedeutung (früher: schon vergebene IDs)
      */
     public SourceDefinition draft(String typeId, Set<String> taken) {
         KnowledgeSourceType type = type(typeId);
         if (type == null) {
             throw new IllegalArgumentException("unbekannter Quelltyp: " + typeId);
         }
-        Set<String> used = new HashSet<String>(taken == null ? Collections.<String>emptySet() : taken);
-        try {
-            for (SourceDefinition definition : definitions()) {
-                used.add(definition.id());
-            }
-        } catch (IOException e) {
-            // ohne lesbare Datei bleibt es bei den übergebenen IDs; Speichern meldet das Problem
-        }
-        String candidate = type.idPrefix();
-        int n = 2;
-        while (used.contains(candidate)) {
-            candidate = type.idPrefix() + n++;
-        }
-        return new SourceDefinition(candidate, type.id(), true, type.defaults());
+        return new SourceDefinition("", type.id(), true, type.defaults());
+    }
+
+    /**
+     * Die kanonische Adresse der Quelle ({@link SourceAddress}): deterministisch aus Connector-Typ und kanonischem
+     * Endpoint ({@link KnowledgeSourceProvider#locator}, {@link KnowledgeSourceType#addressFor}). Titel und
+     * KeePass-Eintrag gehören nie dazu. Liefern die Einstellungen keinen Endpoint (Adresse nur im KeePass-Eintrag),
+     * bleibt es bei der gespeicherten Adresse.
+     *
+     * @return die Adresse oder {@code ""}, wenn weder Endpoint noch gespeicherte Adresse vorliegen
+     */
+    public String addressOf(SourceDefinition definition) {
+        KnowledgeSourceProvider provider = providers.get(definition.typeId());
+        String derived = provider == null ? "" : provider.type().addressFor(provider.locator(definition.settings()));
+        return derived.isEmpty() ? definition.address() : derived;
+    }
+
+    /** Das Pfadpräfix des Typs zur Anzeige ({@code confluence:}); leer bei unbekanntem Typ. */
+    public String pathPrefix(String typeId) {
+        KnowledgeSourceType type = type(typeId);
+        return type == null ? "" : type.pathPrefix();
     }
 
     /**
      * Probleme des Entwurfs mit Feldnamen, nie Werten; leer, wenn er sich speichern lässt.
      *
-     * @param originalId die bisherige ID beim Bearbeiten, {@code null} beim Hinzufügen
+     * @param originalAddress die bisherige Adresse beim Bearbeiten, {@code null} beim Hinzufügen
      */
-    public List<String> validate(SourceDefinition draft, String originalId) {
+    public List<String> validate(SourceDefinition draft, String originalAddress) {
         if (draft == null) {
             throw new IllegalArgumentException("draft must not be null");
         }
         List<String> problems = new ArrayList<String>();
-        if (draft.id().isEmpty()) {
-            problems.add("ID: fehlt (Kurzname der Quelle)");
-        } else if (!SOURCE_ID.matcher(draft.id()).matches()) {
-            problems.add(ID_RULE);
-        } else if (store != null && !draft.id().equals(originalId)) {
+        KnowledgeSourceProvider provider = providers.get(draft.typeId());
+        if (provider == null) {
+            problems.add("Typ: unbekannter Quelltyp; verfügbar sind " + providers.keySet());
+            return problems;
+        }
+        problems.addAll(provider.validate(draft.settings()));
+        if (!problems.isEmpty()) {
+            return problems;
+        }
+        String address = addressOf(draft);
+        if (address.isEmpty()) {
+            problems.add(ADDRESS_RULE);
+        } else if (store != null && !address.equals(originalAddress)) {
             try {
                 for (SourceDefinition other : store.definitions()) {
-                    if (other.id().equals(draft.id())) {
-                        problems.add("ID: eine Quelle „" + draft.id() + "“ gibt es schon");
+                    if (other.address().equals(address)) {
+                        problems.add(DUPLICATE);
                         break;
                     }
                 }
@@ -161,47 +179,76 @@ public final class KnowledgeSourceManagement {
                 problems.add("Konfigurationsdatei nicht lesbar (" + e.getClass().getSimpleName() + ")");
             }
         }
-        KnowledgeSourceProvider provider = providers.get(draft.typeId());
-        if (provider == null) {
-            problems.add("Typ: unbekannter Quelltyp; verfügbar sind " + providers.keySet());
-        } else {
-            problems.addAll(provider.validate(draft.settings()));
-        }
         return problems;
     }
 
     /**
-     * Speichert den Entwurf (neu oder ersetzt, auch unter neuer ID). Wechselt die ID, werden die Indexdaten der
-     * alten ID zurückgezogen.
+     * Speichert den Entwurf unter seiner abgeleiteten Adresse (neu oder an der Stelle von {@code originalAddress}).
+     * Ändert sich die Adresse, weil der Endpoint ein anderer ist, werden die Indexdaten der alten zurückgezogen.
      *
      * @throws IllegalArgumentException wenn {@link #validate} Probleme meldet
      */
-    public void save(SourceDefinition draft, String originalId) throws IOException {
+    public void save(SourceDefinition draft, String originalAddress) throws IOException {
         requireStore();
-        List<String> problems = validate(draft, originalId);
+        List<String> problems = validate(draft, originalAddress);
         if (!problems.isEmpty()) {
             throw new IllegalArgumentException("Entwurf hat Probleme: " + problems);
         }
-        store.save(draft, originalId);
-        if (originalId != null && !originalId.equals(draft.id())) {
-            withdraw(originalId);
+        String address = addressOf(draft);
+        store.save(draft.withAddress(address), originalAddress);
+        if (originalAddress != null && !originalAddress.equals(address)) {
+            withdraw(originalAddress);
         }
+    }
+
+    /**
+     * Gleicht die gespeicherten Adressen beim Start mit Typ und Endpoint ab: von Hand eingetragene Quellen ohne
+     * Adresse bekommen ihre, geänderte Endpoints ihre neue (Indexdaten der alten werden zurückgezogen, nicht
+     * überführt). Quellen ohne Endpoint und Dubletten bleiben unverändert.
+     *
+     * @return alte → neue Adresse der geänderten Quellen (alt leer, wenn keine gespeichert war)
+     */
+    public Map<String, String> adoptAddresses() throws IOException {
+        Map<String, String> changed = new LinkedHashMap<String, String>();
+        if (store == null) {
+            return changed;
+        }
+        List<SourceDefinition> all = store.definitions();
+        Set<String> used = new HashSet<String>();
+        for (SourceDefinition definition : all) {
+            used.add(definition.address());
+        }
+        for (SourceDefinition definition : all) {
+            KnowledgeSourceProvider provider = providers.get(definition.typeId());
+            if (provider == null || !provider.validate(definition.settings()).isEmpty()) {
+                continue;
+            }
+            String address = provider.type().addressFor(provider.locator(definition.settings()));
+            if (address.isEmpty() || address.equals(definition.address()) || used.contains(address)) {
+                continue;
+            }
+            store.save(definition.withAddress(address), definition.address());
+            used.add(address);
+            withdraw(definition.address());
+            changed.put(definition.address(), address);
+        }
+        return changed;
     }
 
     /**
      * Entfernt die Quelle aus der Konfiguration und zieht ihre abgeleiteten Daten (Wissensindex) zurück.
      */
-    public void remove(String id) throws IOException {
+    public void remove(String address) throws IOException {
         requireStore();
         // erst die abgeleiteten Daten: scheitert das, bleibt die Quelle in der Datei und lässt sich erneut entfernen
-        withdraw(id);
-        store.remove(id);
+        withdraw(address);
+        store.remove(address);
     }
 
     /** Schreibt nur das Häkchen. */
-    public void setEnabled(String id, boolean enabled) throws IOException {
+    public void setEnabled(String address, boolean enabled) throws IOException {
         requireStore();
-        store.setEnabled(id, enabled);
+        store.setEnabled(address, enabled);
     }
 
     /** Problemlos gespeicherte Quelle als Registrierung (Port und Crawl-Umfang); ohne Netzwerkzugriff. */
@@ -210,26 +257,29 @@ public final class KnowledgeSourceManagement {
         if (provider == null) {
             throw new IllegalArgumentException("unbekannter Quelltyp: " + definition.typeId());
         }
-        KnowledgeSourceId sourceId = KnowledgeSourceId.of(definition.id());
-        return new KnowledgeSourceRegistration(provider.open(sourceId, definition.settings()),
+        String address = addressOf(definition);
+        if (address.isEmpty()) {
+            throw new IllegalArgumentException(ADDRESS_RULE);
+        }
+        return new KnowledgeSourceRegistration(provider.open(SourceAddress.of(address), definition.settings()),
                 provider.scope(definition.settings()));
     }
 
-    /** Die gespeicherte Quelle mit dieser ID oder {@code null}. */
-    public SourceDefinition find(String id) throws IOException {
+    /** Die gespeicherte Quelle mit dieser Adresse oder {@code null}. */
+    public SourceDefinition find(String address) throws IOException {
         for (SourceDefinition definition : definitions()) {
-            if (definition.id().equals(id)) {
+            if (definition.address().equals(address)) {
                 return definition;
             }
         }
         return null;
     }
 
-    private void withdraw(String id) {
-        if (!SOURCE_ID.matcher(id).matches()) {
+    private void withdraw(String address) {
+        if (address == null || address.isEmpty()) {
             return;
         }
-        KnowledgeSourceId sourceId = KnowledgeSourceId.of(id);
+        SourceAddress sourceId = SourceAddress.of(address);
         if (index != null) {
             index.removeSource(sourceId);
         }

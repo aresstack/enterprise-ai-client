@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra;
 
 import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
+import com.aresstack.enterpriseai.astu.acropolis.source.KnowledgeSourceManagement;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.proasteion.exedra.composition.CompositionRoot;
 import com.aresstack.enterpriseai.proasteion.application.composition.ModelCatalogs;
@@ -64,6 +65,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
@@ -145,6 +147,7 @@ public final class EnterpriseAiClientMain {
             config = AdapterAssembly.withVaultLocations(config, file.read(), secrets);
             settings = new SettingsService(config, settingsLoader(file, secrets, config));
             ports = AdapterAssembly.createWith(config, network, secrets, partitions);
+            adoptSourceAddresses(file, ports, settings);
             applyProxyAuthentication(null, config, ports, localVoices);
             root = CompositionRoot.compose(settings, ports, SwingUtilities::invokeLater, System::currentTimeMillis,
                     null);
@@ -576,6 +579,34 @@ public final class EnterpriseAiClientMain {
                 return null;
             }
             return result.get();
+        }
+    }
+
+    /**
+     * Gleicht die Quellen der Konfiguration beim Start ab: Einträge der früheren Form mit frei vergebener ID
+     * ({@code sources=…}, {@code source.<id>.*}) werden entfernt (kein Produktivbetrieb, keine Überführung; solche
+     * Quellen legt der Benutzer neu an), von Hand eingetragene Quellen bekommen ihre Adresse aus Typ und Endpoint.
+     * Danach liest die Anwendung die Konfiguration neu, damit Häkchen und Quellen dieselbe Adresse tragen.
+     */
+    private static void adoptSourceAddresses(ConfigurationFile file, ApplicationPorts ports,
+                                             SettingsService settings) {
+        try {
+            FileSourceActions store = new FileSourceActions(file);
+            int dropped = store.dropLegacyEntries();
+            if (dropped > 0) {
+                LOG.info("Wissensquellen der früheren Form (frei vergebene ID) entfernt: " + dropped
+                        + " Schlüssel; bitte im Reiter „Wissensquellen“ neu anlegen");
+            }
+            Map<String, String> changed = new KnowledgeSourceManagement(ports.sourceProviders(), store,
+                    ports.index()).adoptAddresses();
+            if (!changed.isEmpty()) {
+                LOG.info("Adressen der Wissensquellen aus Typ und Endpoint gesetzt: " + changed.values());
+            }
+            if (dropped > 0 || !changed.isEmpty()) {
+                settings.reload();
+            }
+        } catch (IOException | RuntimeException e) {
+            LOG.log(Level.WARNING, "Wissensquellen nicht abgeglichen (" + e.getClass().getSimpleName() + ")", e);
         }
     }
 }

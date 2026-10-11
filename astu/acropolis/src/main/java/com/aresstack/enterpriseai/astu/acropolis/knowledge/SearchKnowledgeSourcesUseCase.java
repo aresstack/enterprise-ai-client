@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeKeywordQuery;
@@ -108,7 +108,7 @@ public final class SearchKnowledgeSourcesUseCase {
 
     /** Die Suche in einer Quelle; wirft nie, ein Fehler wird zum Ergebnis der Quelle. */
     SourceSearchOutcome searchOne(KnowledgeSourcePort source, String text, int limit) {
-        KnowledgeSourceId sourceId = source.sourceId();
+        SourceAddress sourceId = source.sourceId();
         try {
             if (source instanceof SearchableKnowledgeSource) {
                 try {
@@ -128,7 +128,7 @@ public final class SearchKnowledgeSourcesUseCase {
     }
 
     /** Live-Treffer zuerst, dann passende Ressourcen derselben Quelle aus dem Index, die die Live-Suche nicht nannte. */
-    private List<FoundResource> withIndexed(KnowledgeSourceId sourceId, List<FoundResource> live, String text,
+    private List<FoundResource> withIndexed(SourceAddress sourceId, List<FoundResource> live, String text,
                                             int limit) {
         if (!mergeIndexed || index == null || live.size() >= limit) {
             return live;
@@ -153,7 +153,7 @@ public final class SearchKnowledgeSourcesUseCase {
         return merged;
     }
 
-    private static List<FoundResource> live(KnowledgeSourceId sourceId, List<SourceSearchHit> hits, String text,
+    private static List<FoundResource> live(SourceAddress sourceId, List<SourceSearchHit> hits, String text,
                                             int limit) {
         List<FoundResource> found = new ArrayList<FoundResource>();
         for (SourceSearchHit hit : hits) {
@@ -168,7 +168,7 @@ public final class SearchKnowledgeSourcesUseCase {
     }
 
     /** BM25 im Index, beschränkt auf die Quelle; je Ressource nur der beste Abschnitt. */
-    private List<FoundResource> indexed(KnowledgeSourceId sourceId, String text, int limit) {
+    private List<FoundResource> indexed(SourceAddress sourceId, String text, int limit) {
         if (index == null) {
             return Collections.emptyList();
         }

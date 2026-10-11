@@ -8,7 +8,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
@@ -53,7 +53,7 @@ public class KnowledgeVerticalSliceTest {
     public void documentToChunksToEmbeddingsToPersistentHybridSearch() throws Exception {
         DeterministicEmbeddingPort embeddings = DeterministicEmbeddingPort.withDimension(64);
         KnowledgeResource resource = KnowledgeResource
-                .builder(KnowledgeResourceId.of("wiki:intranet/Betriebshandbuch"), KnowledgeSourceId.of("wiki-intranet"))
+                .builder(KnowledgeResourceId.of("wiki:intranet/Betriebshandbuch"), SourceAddress.of("wiki-intranet"))
                 .title("Betriebshandbuch")
                 .contentType("text/html")
                 .revision(KnowledgeRevision.version("4711"))

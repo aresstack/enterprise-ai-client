@@ -5,7 +5,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.io.IOException;
 import java.net.URI;
@@ -95,7 +95,7 @@ public final class KnowledgeBronze {
         }
         try {
             KnowledgeResource.Builder resource = KnowledgeResource.builder(
-                    KnowledgeResourceId.of(header.get("id")), KnowledgeSourceId.of(header.get("source")));
+                    KnowledgeResourceId.of(header.get("id")), SourceAddress.of(header.get("source")));
             resource.title(orEmpty(header.get("title")));
             if (header.containsKey("type")) {
                 resource.contentType(header.get("type"));

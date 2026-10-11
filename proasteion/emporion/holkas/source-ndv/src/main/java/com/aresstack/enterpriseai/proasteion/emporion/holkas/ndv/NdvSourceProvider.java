@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
@@ -14,7 +15,7 @@ import com.aresstack.enterpriseai.source.api.SourceSettingsReader;
 import java.util.List;
 
 /**
- * Quelltyp „Natural (NDV)“ ({@code source.<id>.type=ndv}, Ressourcenschema {@code ndv}): Natural-Quellen aus
+ * Quelltyp „Natural (NDV)“ ({@code source.<n>.type=ndv}, Ressourcenschema {@code ndv}): Natural-Quellen aus
  * Bibliotheken eines Natural Development Servers. Schlüssel: {@code host}, {@code port} (Standard 2700),
  * {@code credentialRef} (KeePass-Eintrag mit Benutzer und Passwort, Pflicht), {@code startPoints} (Bibliotheken,
  * optional mit Filter {@code LIB/PREFIX*}), {@code maxResources}.
@@ -80,7 +81,7 @@ public final class NdvSourceProvider implements KnowledgeSourceProvider {
     }
 
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
         String host = host(reader);
         int port = reader.integer("port", DEFAULT_PORT, 1, 65535);
@@ -97,6 +98,14 @@ public final class NdvSourceProvider implements KnowledgeSourceProvider {
             }
             return client;
         });
+    }
+
+    /** {@code host:port} des NDV-Servers, klein ({@code ndv:host:2700/LIB/OBJ.NSP}). */
+    @Override
+    public String locator(SourceSettings settings) {
+        SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
+        String host = host(reader);
+        return host == null ? "" : SourceLocators.hostPort(host, reader.integer("port", DEFAULT_PORT, 1, 65535));
     }
 
     private static String host(SourceSettingsReader r) {

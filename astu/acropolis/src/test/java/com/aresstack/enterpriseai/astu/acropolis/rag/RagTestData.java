@@ -15,7 +15,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSearchHit;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSemanticQuery;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -127,7 +127,7 @@ final class RagTestData {
         }
 
         @Override
-        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, SourceAddress sourceId) {
             return delegate.resourceIds(space, sourceId);
         }
 
@@ -142,7 +142,7 @@ final class RagTestData {
         }
 
         @Override
-        public void removeSource(KnowledgeSourceId sourceId) {
+        public void removeSource(SourceAddress sourceId) {
             delegate.removeSource(sourceId);
         }
 

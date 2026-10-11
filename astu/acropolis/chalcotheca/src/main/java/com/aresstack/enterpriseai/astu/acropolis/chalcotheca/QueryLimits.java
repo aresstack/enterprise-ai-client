@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.chalcotheca;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -23,10 +23,10 @@ final class QueryLimits {
         return Math.min(requested, MAX_RESULTS_LIMIT);
     }
 
-    static Set<KnowledgeSourceId> sources(Collection<KnowledgeSourceId> sources) {
-        Set<KnowledgeSourceId> copy = new LinkedHashSet<KnowledgeSourceId>();
+    static Set<SourceAddress> sources(Collection<SourceAddress> sources) {
+        Set<SourceAddress> copy = new LinkedHashSet<SourceAddress>();
         if (sources != null) {
-            for (KnowledgeSourceId source : sources) {
+            for (SourceAddress source : sources) {
                 if (source == null) {
                     throw new IllegalArgumentException("Quellenfilter enthält null");
                 }

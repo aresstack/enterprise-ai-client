@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 /**
  * Die angefragte Ressource liegt nicht im Wissensindex (im Namespace der konfigurierten Embedding-Welt), deshalb
@@ -12,10 +12,10 @@ public final class KnowledgeDocumentNotIndexedException extends Exception {
     private static final long serialVersionUID = 1L;
 
     private final KnowledgeResourceId resourceId;
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
 
     /** @param sourceId die ausdrücklich angefragte Quelle oder {@code null}, wenn alle konfigurierten geprüft wurden */
-    public KnowledgeDocumentNotIndexedException(KnowledgeResourceId resourceId, KnowledgeSourceId sourceId) {
+    public KnowledgeDocumentNotIndexedException(KnowledgeResourceId resourceId, SourceAddress sourceId) {
         super(resourceId + (sourceId == null ? " ist nicht indexiert" : " ist in Quelle " + sourceId + " nicht indexiert"));
         if (resourceId == null) {
             throw new IllegalArgumentException("resourceId ist Pflicht");
@@ -29,7 +29,7 @@ public final class KnowledgeDocumentNotIndexedException extends Exception {
     }
 
     /** Die angefragte Quelle oder {@code null}. */
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 }

@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 
 import java.util.ArrayList;
@@ -12,17 +12,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Die konfigurierten Wissensquellen, unveränderlich und nach {@link KnowledgeSourceId} auffindbar, in
+ * Die konfigurierten Wissensquellen, unveränderlich und nach {@link SourceAddress} auffindbar, in
  * Konfigurationsreihenfolge. Die Composition Root befüllt ihn einmal; Use Cases ({@link LoadKnowledgeDocumentUseCase})
  * und die MCP-Wissenswerkzeuge lesen daraus. Doppelte Source-IDs werden abgelehnt.
  */
 public final class KnowledgeSourceCatalog {
 
-    private final Map<KnowledgeSourceId, KnowledgeSourceRegistration> registrations;
+    private final Map<SourceAddress, KnowledgeSourceRegistration> registrations;
 
     public KnowledgeSourceCatalog(Collection<KnowledgeSourceRegistration> registrations) {
-        Map<KnowledgeSourceId, KnowledgeSourceRegistration> byId =
-                new LinkedHashMap<KnowledgeSourceId, KnowledgeSourceRegistration>();
+        Map<SourceAddress, KnowledgeSourceRegistration> byId =
+                new LinkedHashMap<SourceAddress, KnowledgeSourceRegistration>();
         if (registrations != null) {
             for (KnowledgeSourceRegistration registration : registrations) {
                 if (registration == null) {
@@ -50,7 +50,7 @@ public final class KnowledgeSourceCatalog {
     }
 
     /** Die Source-IDs in Konfigurationsreihenfolge. */
-    public Set<KnowledgeSourceId> ids() {
+    public Set<SourceAddress> ids() {
         return registrations.keySet();
     }
 
@@ -68,11 +68,11 @@ public final class KnowledgeSourceCatalog {
     }
 
     /** @return die Registrierung oder {@code null}, wenn die Quelle nicht konfiguriert ist */
-    public KnowledgeSourceRegistration find(KnowledgeSourceId sourceId) {
+    public KnowledgeSourceRegistration find(SourceAddress sourceId) {
         return sourceId == null ? null : registrations.get(sourceId);
     }
 
-    public boolean contains(KnowledgeSourceId sourceId) {
+    public boolean contains(SourceAddress sourceId) {
         return sourceId != null && registrations.containsKey(sourceId);
     }
 

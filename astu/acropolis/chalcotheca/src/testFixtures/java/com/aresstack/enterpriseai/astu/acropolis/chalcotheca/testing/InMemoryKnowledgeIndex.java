@@ -4,7 +4,7 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeKeywordQuery;
@@ -120,7 +120,7 @@ public final class InMemoryKnowledgeIndex implements KnowledgeIndexPort {
 
     @Override
     public synchronized Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space,
-                                                             KnowledgeSourceId sourceId) {
+                                                             SourceAddress sourceId) {
         if (space == null || sourceId == null) {
             throw new IllegalArgumentException("space und sourceId sind Pflicht");
         }
@@ -195,7 +195,7 @@ public final class InMemoryKnowledgeIndex implements KnowledgeIndexPort {
     }
 
     @Override
-    public synchronized void removeSource(KnowledgeSourceId sourceId) {
+    public synchronized void removeSource(SourceAddress sourceId) {
         for (Map<KnowledgeChunkId, KnowledgeIndexEntry> namespace : namespaces.values()) {
             removeWhere(namespace, null, sourceId);
         }
@@ -227,7 +227,7 @@ public final class InMemoryKnowledgeIndex implements KnowledgeIndexPort {
     }
 
     private static void removeWhere(Map<KnowledgeChunkId, KnowledgeIndexEntry> namespace,
-                                    KnowledgeResourceId resourceId, KnowledgeSourceId sourceId) {
+                                    KnowledgeResourceId resourceId, SourceAddress sourceId) {
         for (Iterator<KnowledgeIndexEntry> it = namespace.values().iterator(); it.hasNext(); ) {
             KnowledgeIndexEntry entry = it.next();
             if (entry.resource().id().equals(resourceId) || entry.resource().sourceId().equals(sourceId)) {

@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.knowledge;
 
 import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * Welche Bereiche einer Quelle (Confluence: Spaces) der Benutzer unter Wissensquellen angehakt hat, wie in
- * MainframeMate je Bereich ein Häkchen: {@code source.<id>.spaces.<schlüssel>=true|false} in der
+ * MainframeMate je Bereich ein Häkchen: {@code source.<n>.spaces.<schlüssel>=true|false} in der
  * {@code application-state.json}, nicht in der Konfiguration. Ein Bereich ohne gemerkten Wert ist angehakt, neue
  * Spaces sind also dabei. Wirkt ohne Neustart: Indexierung und Suche fragen bei jedem Lauf {@link #excluded} ab.
  */
@@ -25,7 +25,7 @@ public final class SourcePartitionSelection {
     }
 
     /** Die abgehakten Bereiche der Quelle; leer = alle. */
-    public Set<String> excluded(KnowledgeSourceId sourceId) {
+    public Set<String> excluded(SourceAddress sourceId) {
         Set<String> excluded = new LinkedHashSet<String>();
         String prefix = prefix(sourceId.value());
         for (Map.Entry<String, String> entry : state.withPrefix(prefix).entrySet()) {

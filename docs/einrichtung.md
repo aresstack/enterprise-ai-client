@@ -80,7 +80,7 @@ embedding.dimension=768
 
 Die Datei enthält keine Secrets. `chat.apiKeyRef` ist der Titel des KeePass-Eintrags, dessen Passwortfeld den
 API-Key trägt. Fehler in der Datei werden gesammelt gemeldet und nennen Schlüssel und Erwartung, nie den Wert;
-unbekannte Schlüssel erzeugen eine Warnung. Die Vorlage hat `sources=` leer und die Beispielquellen (Wiki,
+unbekannte Schlüssel erzeugen eine Warnung. Die Vorlage hat keine aktiven Quellen, die Beispielquellen (Wiki,
 Confluence) auskommentiert; ohne Quellen gibt es nur Chat, und die Statuszeile meldet keine fehlgeschlagene
 Indexierung gegen Beispielhosts. Proxy (Standard `AUTO`: PAC-Skript des Unternehmens wie im Browser, sonst
 Systemeinstellungen) und TLS-Vertrauen stehen unter `network.*`
@@ -99,8 +99,8 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | Netzwerk & Agent | `ui.windowTitle`; Proxy-Auflösung wie AskAI (`network.proxy.mode` mit den Modi von win-proxy-java, PAC-URL/Ermittlungsskript, Host/Port, Test-URL, Timeout, „Proxy auflösen“, „HTTPS-Verbindung testen“); TLS-Quellen (`network.tls.*`); User-Agent, Prefer IPv6, Proxy-Anmeldung NONE/BASIC (KeePass-Eintrag); Agent-Modus. „Verbindung testen“ steht im Reiter KI-Dienst. |
 | Modelle | je Kategorie ein Modell: `chat.model`, `embedding.model`, `model.rerank`, `model.tts`, `model.stt`, `model.vision`, `model.documentOcr`, `model.imageEmbedding` (lokale mit Präfix `local:`); „Modelle aktualisieren“; Modellverzeichnis lokaler Stimmen `models.local.modelRoot` |
 
-- **Wissensquellen und Index** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet `sources` und je
-  Quelle `source.<id>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki
+- **Wissensquellen und Index** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet die Liste `source.<n>.*`, je
+  Quelle `source.<n>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki
   `siteKey`, `displayName`, `requiresLogin`, Confluence `searchSpaceKeys`, `includeAttachments` (Häkchen, ⟳, ✎,
   „+ MediaWiki“/„+ Confluence“) und über „Index …“ `knowledge.indexDirectory` (mit Verzeichnisauswahl) und
   `knowledge.indexOnStartup`. Beides schreibt in dieselbe Datei; ein neues Indexverzeichnis gilt sofort.
@@ -150,7 +150,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 
 ### Quelle indexieren und RAG verwenden
 
-1. Quellen unter `sources=` und `source.<id>.*` konfigurieren ([MediaWiki](konfiguration-mediawiki.md),
+1. Quellen im Reiter „Wissensquellen“ anlegen oder als Liste `source.<n>.*` konfigurieren ([MediaWiki](konfiguration-mediawiki.md),
    [Confluence](konfiguration-confluence.md)).
 2. Mit `knowledge.indexOnStartup=true` (Standard) indexiert die Anwendung beim Start alle Quellen nacheinander
    im Hintergrund. Die Statuszeile über der Eingabezeile zeigt Fortschritt ("Indexierung: k von N Seiten · Titel")

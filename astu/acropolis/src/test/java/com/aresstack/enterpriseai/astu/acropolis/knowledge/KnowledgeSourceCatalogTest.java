@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.Test;
@@ -28,16 +28,16 @@ public class KnowledgeSourceCatalogTest {
         KnowledgeSourceCatalog catalog = KnowledgeSourceCatalog.of(docsRegistration, wikiRegistration);
 
         assertEquals(2, catalog.size());
-        assertEquals(Arrays.asList(KnowledgeSourceId.of("docs"), KnowledgeSourceId.of("wiki")),
-                new ArrayList<KnowledgeSourceId>(catalog.ids()));
+        assertEquals(Arrays.asList(SourceAddress.of("docs"), SourceAddress.of("wiki")),
+                new ArrayList<SourceAddress>(catalog.ids()));
         assertEquals(Arrays.asList(docs, wiki), catalog.ports());
-        assertSame(wikiRegistration, catalog.find(KnowledgeSourceId.of("wiki")));
-        assertSame(wiki, catalog.find(KnowledgeSourceId.of("wiki")).port());
-        assertEquals(SourceScope.of("Start"), catalog.find(KnowledgeSourceId.of("wiki")).scope());
-        assertTrue(catalog.contains(KnowledgeSourceId.of("docs")));
-        assertFalse(catalog.contains(KnowledgeSourceId.of("other")));
+        assertSame(wikiRegistration, catalog.find(SourceAddress.of("wiki")));
+        assertSame(wiki, catalog.find(SourceAddress.of("wiki")).port());
+        assertEquals(SourceScope.of("Start"), catalog.find(SourceAddress.of("wiki")).scope());
+        assertTrue(catalog.contains(SourceAddress.of("docs")));
+        assertFalse(catalog.contains(SourceAddress.of("other")));
         assertFalse(catalog.contains(null));
-        assertNull(catalog.find(KnowledgeSourceId.of("other")));
+        assertNull(catalog.find(SourceAddress.of("other")));
         assertNull(catalog.find(null));
     }
 
@@ -71,7 +71,7 @@ public class KnowledgeSourceCatalogTest {
 
     @Test
     public void registrationExposesTheSourceId() {
-        assertEquals(KnowledgeSourceId.of("wiki"), wikiRegistration.sourceId());
+        assertEquals(SourceAddress.of("wiki"), wikiRegistration.sourceId());
         assertTrue(wikiRegistration.toString().contains("wiki"));
     }
 }

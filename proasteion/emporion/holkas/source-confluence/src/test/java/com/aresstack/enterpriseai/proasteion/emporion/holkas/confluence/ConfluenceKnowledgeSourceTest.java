@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException.Reason;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
@@ -32,7 +32,7 @@ import static org.junit.Assert.fail;
 
 public class ConfluenceKnowledgeSourceTest {
 
-    private static final KnowledgeSourceId SOURCE = KnowledgeSourceId.of("confluence-dc");
+    private static final SourceAddress SOURCE = SourceAddress.of("confluence-dc");
 
     private final FakeConfluence confluence = new FakeConfluence();
     private final RecordingSecretProvider secrets = new RecordingSecretProvider();
@@ -58,11 +58,11 @@ public class ConfluenceKnowledgeSourceTest {
     }
 
     private static KnowledgeResourceId page(String id) {
-        return KnowledgeResourceId.of("confluence", "confluence-dc/page/" + id);
+        return KnowledgeResourceId.of("confluence", "confluence.example.org/wiki/page/" + id);
     }
 
     private static KnowledgeResourceId attachment(String id) {
-        return KnowledgeResourceId.of("confluence", "confluence-dc/attachment/" + id);
+        return KnowledgeResourceId.of("confluence", "confluence.example.org/wiki/attachment/" + id);
     }
 
     // --- discover -----------------------------------------------------------------------------------------
@@ -79,7 +79,7 @@ public class ConfluenceKnowledgeSourceTest {
 
     @Test
     public void pageStartPointsInAllForms() throws Exception {
-        for (String start : new String[] {"101", "page:101", "confluence:confluence-dc/page/101"}) {
+        for (String start : new String[] {"101", "page:101", "confluence:confluence.example.org/wiki/page/101"}) {
             List<KnowledgeResource> resources = source().discover(SourceScope.of(start));
             assertEquals(start, Collections.singletonList(page("101")), ids(resources));
         }
@@ -237,14 +237,14 @@ public class ConfluenceKnowledgeSourceTest {
     @Test
     public void attachmentIdIsNotAPage() {
         assertKind(Kind.NOT_FOUND, () -> source().load(page("900")));
-        assertKind(Kind.UNSUPPORTED, () -> source().load(KnowledgeResourceId.of("confluence", "confluence-dc/page/att900")));
+        assertKind(Kind.UNSUPPORTED, () -> source().load(KnowledgeResourceId.of("confluence", "confluence.example.org/wiki/page/att900")));
     }
 
     @Test
     public void foreignAndMalformedIdsAreUnsupported() {
         assertKind(Kind.UNSUPPORTED, () -> source().load(KnowledgeResourceId.of("confluence", "other/page/100")));
-        assertKind(Kind.UNSUPPORTED, () -> source().load(KnowledgeResourceId.of("wiki", "confluence-dc/page/100")));
-        assertKind(Kind.UNSUPPORTED, () -> source().discoverLinks(KnowledgeResourceId.of("confluence", "confluence-dc/blog/1")));
+        assertKind(Kind.UNSUPPORTED, () -> source().load(KnowledgeResourceId.of("wiki", "confluence.example.org/wiki/page/100")));
+        assertKind(Kind.UNSUPPORTED, () -> source().discoverLinks(KnowledgeResourceId.of("confluence", "confluence.example.org/wiki/blog/1")));
         assertTrue(confluence.requests.isEmpty());
     }
 

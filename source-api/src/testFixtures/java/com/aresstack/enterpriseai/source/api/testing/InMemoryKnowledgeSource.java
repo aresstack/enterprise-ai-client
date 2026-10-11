@@ -5,7 +5,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
@@ -37,7 +37,7 @@ import java.util.Set;
  */
 public final class InMemoryKnowledgeSource implements SearchableKnowledgeSource {
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final String scheme;
     private final Map<String, Entry> entries = new LinkedHashMap<String, Entry>();
     private final Map<String, Kind> failures = new HashMap<String, Kind>();
@@ -48,7 +48,7 @@ public final class InMemoryKnowledgeSource implements SearchableKnowledgeSource 
     }
 
     public InMemoryKnowledgeSource(String sourceId, String scheme) {
-        this.sourceId = KnowledgeSourceId.of(sourceId);
+        this.sourceId = SourceAddress.of(sourceId);
         this.scheme = scheme;
     }
 
@@ -103,7 +103,7 @@ public final class InMemoryKnowledgeSource implements SearchableKnowledgeSource 
     }
 
     @Override
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 

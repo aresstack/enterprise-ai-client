@@ -5,7 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Die Einstellungen einer Quelle als Schlüssel und Text, ohne Präfix {@code source.<id>.} und ohne {@code type}
+ * Die Einstellungen einer Quelle als Schlüssel und Text, ohne Präfix {@code source.<n>.} und ohne {@code type}
  * und {@code enabled}. Welche Schlüssel es gibt, bestimmt der Adapter ({@link KnowledgeSourceType#fields()});
  * Kern und Oberfläche reichen die Werte nur durch. Leere Werte zählen als nicht gesetzt. Enthält nie Secrets, nur
  * Verweise darauf; {@link #toString()} nennt trotzdem nur die Schlüssel.

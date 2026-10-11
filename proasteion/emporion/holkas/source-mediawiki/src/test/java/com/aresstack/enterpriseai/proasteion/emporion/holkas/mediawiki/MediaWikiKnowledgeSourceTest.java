@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.SourceLink;
@@ -26,7 +26,7 @@ import static org.junit.Assert.fail;
 public class MediaWikiKnowledgeSourceTest {
 
     private final FakeMediaWikiTransport wiki = MediaWikiKnowledgeSourceContractTest.sampleWiki();
-    private final MediaWikiKnowledgeSource source = new MediaWikiKnowledgeSource(KnowledgeSourceId.of("wiki-intranet"),
+    private final MediaWikiKnowledgeSource source = new MediaWikiKnowledgeSource(SourceAddress.of("wiki-intranet"),
             MediaWikiSiteConfig.builder("intranet", "https://wiki.example/w").build(), wiki,
             MediaWikiCredentialsProvider.anonymous());
 
@@ -109,7 +109,7 @@ public class MediaWikiKnowledgeSourceTest {
     public void loginProtectedWikiUsesCredentialsAndNeverExposesThem() throws Exception {
         wiki.requiredUser = "indexer";
         wiki.requiredPassword = "Sup3r-Geheim";
-        MediaWikiKnowledgeSource secured = new MediaWikiKnowledgeSource(KnowledgeSourceId.of("wiki-secure"),
+        MediaWikiKnowledgeSource secured = new MediaWikiKnowledgeSource(SourceAddress.of("wiki-secure"),
                 MediaWikiSiteConfig.builder("secure", "https://wiki.example/w").requiresLogin(true).build(), wiki,
                 new MediaWikiCredentialsProvider() {
                     @Override

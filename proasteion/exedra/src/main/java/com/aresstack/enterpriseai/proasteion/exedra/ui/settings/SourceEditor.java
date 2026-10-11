@@ -44,7 +44,7 @@ final class SourceEditor {
     private final BiConsumer<String, Consumer<String>> vaultCertificateAlias;
     private final JPanel panel = new JPanel(new BorderLayout());
     private final Map<String, JComponent> inputs = new LinkedHashMap<String, JComponent>();
-    private JTextField id;
+    private JTextField pathPrefix;
     private JComboBox<String> typeChoice;
     private JComboBox<String> accessChoice;
     private JComboBox<String> entryChoice;
@@ -191,7 +191,10 @@ final class SourceEditor {
                         secret.hint().isEmpty() ? null : secret.hint());
                 VaultAccess.setEntries(entryChoice, entries == null ? Collections.<String>emptyList() : entries);
                 VaultAccess.setText(entryChoice, VaultAccess.title(source.settings().get(secret.key())));
-                entryChoice.addActionListener(event -> requestCertificateAlias());
+                entryChoice.addActionListener(event -> {
+                    requestCertificateAlias();
+                    requestVaultAddress();
+                });
             }
         }
         for (SourceSettingField field : main) {
@@ -212,10 +215,13 @@ final class SourceEditor {
             expanded = !expanded;
             showAdvanced();
         });
-        id = new JTextField(28);
-        advancedRows.add(rows.textField(id, "ID",
-                "Kurzname der Quelle (Buchstaben, Ziffern, Punkt, Strich); Teil der Ressourcen-IDs"));
-        id.setText(source.id());
+        // Kein frei vergebener Name: das Präfix kommt vom Connector, die Identität aus Präfix und Adresse.
+        pathPrefix = new JTextField(type == null ? "" : type.pathPrefix(), 28);
+        pathPrefix.setEditable(false);
+        pathPrefix.setFocusable(false);
+        advancedRows.add(rows.textField(pathPrefix, "Pfadpräfix",
+                "Technisches Präfix der Ressourcen dieses Connectors; mit der Adresse ergibt es die Identität der "
+                        + "Quelle. Nicht änderbar."));
         for (SourceSettingField field : advanced) {
             boolean fromVault = field.vaultValue() != SourceSettingField.VaultValue.NONE && secret != null;
             String label = fromVault ? field.label() + " (sonst aus KeePass)" : field.label();
@@ -344,6 +350,58 @@ final class SourceEditor {
             }
         }
         requestCertificateAlias();
+        requestVaultAddress();
+    }
+
+    /**
+     * Übernimmt die Adresse des gewählten KeePass-Eintrags in leere Adressfelder (unter „Erweitert“), damit die
+     * Quelle beim Speichern ihren Endpoint und damit ihre Identität kennt. Ein eingetragener Wert bleibt.
+     */
+    private void requestVaultAddress() {
+        if (entryChoice == null || manual || passwordStore == null || type == null) {
+            return;
+        }
+        final String title = VaultAccess.text(entryChoice);
+        if (title.isEmpty()) {
+            return;
+        }
+        final Map<SourceSettingField, JTextField> empty = new LinkedHashMap<SourceSettingField, JTextField>();
+        for (SourceSettingField field : type.fields()) {
+            JComponent input = inputs.get(field.key());
+            if (field.vaultValue() != SourceSettingField.VaultValue.NONE && input instanceof JTextField
+                    && ((JTextField) input).getText().trim().isEmpty()) {
+                empty.put(field, (JTextField) input);
+            }
+        }
+        PasswordStore store = empty.isEmpty() ? null : passwordStore.get();
+        if (store == null) {
+            return;
+        }
+        store.read(title, (entry, error) -> {
+            if (entry == null) {
+                return;
+            }
+            String location = entry.url();
+            entry.wipe();
+            if (location == null || location.trim().isEmpty() || !title.equals(VaultAccess.text(entryChoice))) {
+                return;
+            }
+            for (Map.Entry<SourceSettingField, JTextField> target : empty.entrySet()) {
+                if (target.getValue().getText().trim().isEmpty()) {
+                    target.getValue().setText(target.getKey().vaultValue() == SourceSettingField.VaultValue.HOST
+                            ? hostOf(location) : location.trim());
+                }
+            }
+        });
+    }
+
+    private static String hostOf(String location) {
+        try {
+            String host = java.net.URI.create(location.trim()).getHost();
+            return host == null ? location.trim() : host;
+        } catch (IllegalArgumentException e) {
+            return location.trim();
+        }
     }
 
     private static SourceSettingField secretField(KnowledgeSourceType type) {
@@ -426,18 +484,14 @@ final class SourceEditor {
                     .with(certificateField.certificateUseKey(), use ? "" : "false");
         }
         SourceSettingField secret = secretField(type);
-        String sourceId = id == null ? "" : id.getText().trim();
+        String typeId = type == null ? (loaded == null ? "" : loaded.typeId()) : type.id();
         if (secret != null) {
             String title = entryChoice == null ? "" : VaultAccess.text(entryChoice);
-            settings = settings.with(secret.key(), VaultAccess.stored(manual, title, sourceId));
+            settings = settings.with(secret.key(), VaultAccess.stored(manual, title, typeId));
         }
-        String typeId = type == null ? (loaded == null ? "" : loaded.typeId()) : type.id();
         boolean enabled = loaded == null || loaded.enabled();
-        return new SourceDefinition(id == null ? "" : id.getText(), typeId, enabled, settings);
-    }
-
-    String currentId() {
-        return id == null ? "" : id.getText().trim();
+        // Der Schlüssel bleibt der gespeicherte; beim Speichern leitet der Use Case ihn aus Typ und Adresse ab.
+        return new SourceDefinition(loaded == null ? "" : loaded.address(), typeId, enabled, settings);
     }
 
     KnowledgeSourceType type() {
@@ -468,15 +522,13 @@ final class SourceEditor {
             entryChoice.requestFocusInWindow();
         } else if (!inputs.isEmpty()) {
             inputs.values().iterator().next().requestFocusInWindow();
-        } else if (id != null) {
-            id.requestFocusInWindow();
         }
     }
 
     // Für Tests.
 
-    JTextField idField() {
-        return id;
+    JTextField pathPrefixField() {
+        return pathPrefix;
     }
 
     JComboBox<String> typeChoice() {

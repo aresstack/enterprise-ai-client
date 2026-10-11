@@ -5,30 +5,28 @@ verfügbar (`KnowledgeSourcePort` und `SearchableKnowledgeSource`). Endpunkte, F
 aus MainframeMate `ConfluenceRestClient` übernommen. Zugangsdaten holt der Adapter ausschließlich über den
 Security-Port (`SecretProvider.withSecret`), einmal je Port-Aufruf, nie je HTTP-Request, und nie in einem Feld.
 
-## Schlüssel (`source.<id>.*` mit `type=confluence`)
+## Schlüssel (`source.<n>.*` mit `type=confluence`)
 
 ```properties
-sources=confluence
-
-source.confluence.type=confluence
-source.confluence.baseUrl=https://confluence.intern.example/confluence
-source.confluence.credentialRef=keepass:Confluence
-source.confluence.startPoints=space:DEV
-source.confluence.maxDepth=3
-source.confluence.maxResources=1000
-source.confluence.pageSize=50
-source.confluence.includeAttachments=false
-source.confluence.searchSpaceKeys=DEV
-source.confluence.connectTimeoutMillis=15000
-source.confluence.readTimeoutMillis=60000
-source.confluence.allowInsecureHttp=false
+source.1.type=confluence
+source.1.baseUrl=https://confluence.intern.example/confluence
+source.1.credentialRef=keepass:Confluence
+source.1.startPoints=space:DEV
+source.1.maxDepth=3
+source.1.maxResources=1000
+source.1.pageSize=50
+source.1.includeAttachments=false
+source.1.searchSpaceKeys=DEV
+source.1.connectTimeoutMillis=15000
+source.1.readTimeoutMillis=60000
+source.1.allowInsecureHttp=false
 # Optional mTLS, Variante 1: Zertifikat aus dem Windows-Zertifikatsspeicher (Windows-MY); nur der Alias
-#source.confluence.clientCertificate.alias=mein-client-zertifikat
+#source.1.clientCertificate.alias=mein-client-zertifikat
 # Optional mTLS, Variante 2: PKCS12-Datei; der Alias ist auch hier Pflicht und bezeichnet den Schlüsseleintrag
 # in der Datei, das Passwort liegt in KeePass
-#source.confluence.clientCertificate.alias=mein-client-zertifikat
-#source.confluence.clientCertificate.keyStoreFile=/pfad/zu/client.p12
-#source.confluence.clientCertificate.keyStorePasswordRef=keepass:Client-Zertifikat
+#source.1.clientCertificate.alias=mein-client-zertifikat
+#source.1.clientCertificate.keyStoreFile=/pfad/zu/client.p12
+#source.1.clientCertificate.keyStorePasswordRef=keepass:Client-Zertifikat
 ```
 
 | Schlüssel | Bedeutung |

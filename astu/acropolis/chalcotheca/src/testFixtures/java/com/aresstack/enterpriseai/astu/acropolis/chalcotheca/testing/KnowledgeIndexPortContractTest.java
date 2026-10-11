@@ -4,7 +4,7 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingWorldMismatchException
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeKeywordQuery;
@@ -283,13 +283,13 @@ public abstract class KnowledgeIndexPortContractTest {
                 entry(wiki, 0, "gemeinsam", vector(SPACE_3D, 1, 0, 0)),
                 entry(confluence, 0, "gemeinsam", vector(SPACE_3D, 1, 0, 0))));
 
-        List<KnowledgeSourceId> onlyWiki = Collections.singletonList(KnowledgeSourceId.of("wiki"));
+        List<SourceAddress> onlyWiki = Collections.singletonList(SourceAddress.of("wiki"));
         assertEquals(Collections.singletonList("wiki:x/A#chunk-0"), ids(written().keywordSearch(
                 KnowledgeKeywordQuery.of(SPACE_3D, "gemeinsam", 10).restrictedTo(onlyWiki))));
         assertEquals(Collections.singletonList("wiki:x/A#chunk-0"), ids(written().semanticSearch(
                 KnowledgeSemanticQuery.of(vector(SPACE_3D, 1, 0, 0), 10).restrictedTo(onlyWiki))));
 
-        index.removeSource(KnowledgeSourceId.of("wiki"));
+        index.removeSource(SourceAddress.of("wiki"));
         assertEquals(Collections.singletonList("confluence:dc/page/1#chunk-0"), keyword("gemeinsam"));
     }
 
@@ -306,14 +306,14 @@ public abstract class KnowledgeIndexPortContractTest {
                 entry(b, 0, "drei andere Welt", vector(OTHER_SPACE_3D, 0, 0, 1))));
 
         assertEquals(resourceIds("wiki:x/A", "wiki:x/B"),
-                written().resourceIds(SPACE_3D, KnowledgeSourceId.of("wiki")));
+                written().resourceIds(SPACE_3D, SourceAddress.of("wiki")));
         assertEquals(resourceIds("confluence:dc/1"),
-                written().resourceIds(SPACE_3D, KnowledgeSourceId.of("confluence")));
-        assertEquals(resourceIds("wiki:x/B"), written().resourceIds(OTHER_SPACE_3D, KnowledgeSourceId.of("wiki")));
-        assertEquals(resourceIds(), written().resourceIds(SPACE_2D, KnowledgeSourceId.of("wiki")));
-        assertEquals(resourceIds(), written().resourceIds(SPACE_3D, KnowledgeSourceId.of("unbekannt")));
+                written().resourceIds(SPACE_3D, SourceAddress.of("confluence")));
+        assertEquals(resourceIds("wiki:x/B"), written().resourceIds(OTHER_SPACE_3D, SourceAddress.of("wiki")));
+        assertEquals(resourceIds(), written().resourceIds(SPACE_2D, SourceAddress.of("wiki")));
+        assertEquals(resourceIds(), written().resourceIds(SPACE_3D, SourceAddress.of("unbekannt")));
         try {
-            written().resourceIds(SPACE_3D, KnowledgeSourceId.of("wiki")).clear();
+            written().resourceIds(SPACE_3D, SourceAddress.of("wiki")).clear();
             fail("unveränderlich erwartet");
         } catch (UnsupportedOperationException expected) {
             // erwartet
@@ -324,7 +324,7 @@ public abstract class KnowledgeIndexPortContractTest {
     public void resourceIdsFollowReplaceAndRemove() {
         KnowledgeResource a = resource("wiki:x/A", "wiki");
         KnowledgeResource b = resource("wiki:x/B", "wiki");
-        KnowledgeSourceId wiki = KnowledgeSourceId.of("wiki");
+        SourceAddress wiki = SourceAddress.of("wiki");
         index.index(Arrays.asList(
                 entry(a, 0, "eins", vector(SPACE_3D, 1, 0, 0)),
                 entry(b, 0, "zwei", vector(SPACE_3D, 0, 1, 0))));

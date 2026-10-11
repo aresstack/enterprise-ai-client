@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeKeywordQuery;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
@@ -47,10 +47,10 @@ public class RefreshKnowledgeSourceUseCaseTest {
 
     @Test
     public void refreshesTheConfiguredSourceInItsConfiguredScope() throws KnowledgeSourceException {
-        IndexingReport report = useCase.refresh(KnowledgeSourceId.of("wiki"), null);
+        IndexingReport report = useCase.refresh(SourceAddress.of("wiki"), null);
 
         assertTrue(report.toString(), report.isComplete());
-        assertEquals(KnowledgeSourceId.of("wiki"), report.sourceId());
+        assertEquals(SourceAddress.of("wiki"), report.sourceId());
         assertEquals(1, report.discovered());
         assertEquals(1, report.count(IndexingStatus.INDEXED));
         assertEquals("nur der konfigurierte Scope, nicht die ganze Quelle",
@@ -64,7 +64,7 @@ public class RefreshKnowledgeSourceUseCaseTest {
     @Test
     public void unknownSourceIsNotFound() {
         try {
-            useCase.refresh(KnowledgeSourceId.of("sharepoint"), null);
+            useCase.refresh(SourceAddress.of("sharepoint"), null);
             fail("NOT_FOUND erwartet");
         } catch (KnowledgeSourceException e) {
             assertEquals(KnowledgeSourceException.Kind.NOT_FOUND, e.kind());
@@ -76,7 +76,7 @@ public class RefreshKnowledgeSourceUseCaseTest {
 
     @Test
     public void listenerCanCancelTheRun() throws KnowledgeSourceException {
-        IndexingReport report = useCase.refresh(KnowledgeSourceId.of("wiki"), new IndexingListener() {
+        IndexingReport report = useCase.refresh(SourceAddress.of("wiki"), new IndexingListener() {
             @Override
             public boolean isCancelled() {
                 return true;

@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretMaterial;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
@@ -36,13 +36,13 @@ final class FtpSessionPool<S extends FtpSessionPool.Session> {
 
     private static final String ANONYMOUS = "anonymous";
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final FtpConnectionSettings settings;
     private final SecretProvider secrets;
     private final Connector<S> connector;
     private S session;
 
-    FtpSessionPool(KnowledgeSourceId sourceId, FtpConnectionSettings settings, SecretProvider secrets,
+    FtpSessionPool(SourceAddress sourceId, FtpConnectionSettings settings, SecretProvider secrets,
                    Connector<S> connector) {
         if (sourceId == null || settings == null || connector == null) {
             throw new IllegalArgumentException("sourceId, settings and connector are required");

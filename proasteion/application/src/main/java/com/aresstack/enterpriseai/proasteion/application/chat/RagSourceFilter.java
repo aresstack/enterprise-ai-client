@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.chat;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collections;
 import java.util.Set;
@@ -20,7 +20,7 @@ public interface RagSourceFilter {
             }
 
             @Override
-            public Set<KnowledgeSourceId> allowedSources() {
+            public Set<SourceAddress> allowedSources() {
                 return Collections.emptySet();
             }
         };
@@ -30,5 +30,5 @@ public interface RagSourceFilter {
     boolean isRestricted();
 
     /** Die erlaubten Quellen, wenn eingeschränkt; leer heißt dann: keine Quelle gewählt, also keine Suche. */
-    Set<KnowledgeSourceId> allowedSources();
+    Set<SourceAddress> allowedSources();
 }

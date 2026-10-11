@@ -26,7 +26,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
@@ -245,7 +245,7 @@ public class RagChatBindingTest {
         port.enqueueAnswer("Weiß ich nicht");
         KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
         selection.register(source.sourceId(), false);
-        selection.register(KnowledgeSourceId.of("andere"), true);
+        selection.register(SourceAddress.of("andere"), true);
         final Fixture fixture = fixture(index, embeddings, selection);
         onEdt(new Runnable() {
             @Override
@@ -609,7 +609,7 @@ public class RagChatBindingTest {
         }
 
         @Override
-        public void removeSource(KnowledgeSourceId sourceId) {
+        public void removeSource(SourceAddress sourceId) {
             delegate.removeSource(sourceId);
         }
 
@@ -619,7 +619,7 @@ public class RagChatBindingTest {
         }
 
         @Override
-        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, SourceAddress sourceId) {
             return delegate.resourceIds(space, sourceId);
         }
 
@@ -658,7 +658,7 @@ public class RagChatBindingTest {
         }
 
         @Override
-        public void removeSource(KnowledgeSourceId sourceId) {
+        public void removeSource(SourceAddress sourceId) {
             throw new KnowledgeIndexException("index unavailable");
         }
 
@@ -668,7 +668,7 @@ public class RagChatBindingTest {
         }
 
         @Override
-        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, SourceAddress sourceId) {
             throw new KnowledgeIndexException("index unavailable");
         }
 

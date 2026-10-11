@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.testing.KnowledgeSourceContractTest;
 
@@ -26,7 +26,7 @@ public class ConfluenceKnowledgeSourceContractTest extends KnowledgeSourceContra
                 .includeAttachments(true)
                 .pageSize(1)
                 .build();
-        return new ConfluenceKnowledgeSource(KnowledgeSourceId.of("confluence-dc"), config, confluence,
+        return new ConfluenceKnowledgeSource(SourceAddress.of("confluence-dc"), config, confluence,
                 new RecordingSecretProvider());
     }
 
@@ -42,7 +42,7 @@ public class ConfluenceKnowledgeSourceContractTest extends KnowledgeSourceContra
 
     @Override
     protected KnowledgeResourceId unknownResourceId() {
-        return KnowledgeResourceId.of("confluence", "confluence-dc/page/424242");
+        return KnowledgeResourceId.of("confluence", "confluence.example.org/wiki/page/424242");
     }
 
     @Override

@@ -241,6 +241,7 @@ public final class SourcePanel extends JPanel {
             return false;
         }
         try {
+            draft = draft.withAddress(actions.addressOf(draft));
             actions.save(draft, originalId);
         } catch (IOException | RuntimeException e) {
             showProblems(Collections.singletonList("Speichern fehlgeschlagen: " + e.getClass().getSimpleName()));

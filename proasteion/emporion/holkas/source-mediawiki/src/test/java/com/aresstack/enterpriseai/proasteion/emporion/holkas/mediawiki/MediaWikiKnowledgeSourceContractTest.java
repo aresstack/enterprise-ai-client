@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.testing.KnowledgeSourceContractTest;
 
@@ -22,7 +22,7 @@ public class MediaWikiKnowledgeSourceContractTest extends KnowledgeSourceContrac
 
     @Override
     protected KnowledgeSourcePort createSource() {
-        return new MediaWikiKnowledgeSource(KnowledgeSourceId.of("wiki-intranet"),
+        return new MediaWikiKnowledgeSource(SourceAddress.of("wiki-intranet"),
                 MediaWikiSiteConfig.builder("intranet", "https://wiki.example/w").build(), sampleWiki(),
                 MediaWikiCredentialsProvider.anonymous());
     }

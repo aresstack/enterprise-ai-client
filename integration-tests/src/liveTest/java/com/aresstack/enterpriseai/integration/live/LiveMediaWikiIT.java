@@ -10,7 +10,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
@@ -47,7 +47,7 @@ public class LiveMediaWikiIT {
                 ? MediaWikiCredentialsProvider.anonymous()
                 : site -> new MediaWikiCredentials(user, password.clone());
         MediaWikiSiteConfig site = MediaWikiSiteConfig.builder(siteKey, apiUrl).requiresLogin(user != null).build();
-        return new MediaWikiKnowledgeSource(KnowledgeSourceId.of("live-wiki"), site, credentials);
+        return new MediaWikiKnowledgeSource(SourceAddress.of("live-wiki"), site, credentials);
     }
 
     private static SourceScope scope() {

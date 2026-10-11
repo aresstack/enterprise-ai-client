@@ -7,7 +7,7 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexException;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSemanticQuery;
@@ -61,11 +61,11 @@ final class FileVectorIndex {
     static final class VectorEntry {
         final String chunkId;
         final KnowledgeResourceId resourceId;
-        final KnowledgeSourceId sourceId;
+        final SourceAddress sourceId;
         final String stamp;
         final EmbeddingVector vector;
 
-        VectorEntry(String chunkId, KnowledgeResourceId resourceId, KnowledgeSourceId sourceId, String stamp,
+        VectorEntry(String chunkId, KnowledgeResourceId resourceId, SourceAddress sourceId, String stamp,
                     EmbeddingVector vector) {
             this.chunkId = chunkId;
             this.resourceId = resourceId;
@@ -141,7 +141,7 @@ final class FileVectorIndex {
     }
 
     /** Entfernt passende Einträge aus allen Namespaces ({@code null}-Kriterium wird ignoriert). */
-    void removeWhere(KnowledgeResourceId resourceId, KnowledgeSourceId sourceId) {
+    void removeWhere(KnowledgeResourceId resourceId, SourceAddress sourceId) {
         for (Path file : IndexFiles.list(root)) {
             if (!file.getFileName().toString().endsWith(SUFFIX)) {
                 continue;
@@ -212,7 +212,7 @@ final class FileVectorIndex {
                     for (int i = 0; i < count; i++) {
                         String chunkId = in.readUTF();
                         KnowledgeResourceId resourceId = KnowledgeChunkId.parse(chunkId).resourceId();
-                        KnowledgeSourceId sourceId = KnowledgeSourceId.of(in.readUTF());
+                        SourceAddress sourceId = SourceAddress.of(in.readUTF());
                         String stamp = in.readUTF();
                         float[] values = new float[space.dimension()];
                         for (int d = 0; d < values.length; d++) {

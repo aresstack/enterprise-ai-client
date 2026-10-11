@@ -24,7 +24,7 @@ public final class KnowledgeResource {
     public static final String DEFAULT_CONTENT_TYPE = "text/plain";
 
     private final KnowledgeResourceId id;
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final String title;
     private final String contentType;
     private final KnowledgeRevision revision;
@@ -49,7 +49,7 @@ public final class KnowledgeResource {
         }
     }
 
-    public static Builder builder(KnowledgeResourceId id, KnowledgeSourceId sourceId) {
+    public static Builder builder(KnowledgeResourceId id, SourceAddress sourceId) {
         return new Builder(id, sourceId);
     }
 
@@ -63,7 +63,7 @@ public final class KnowledgeResource {
         return id;
     }
 
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 
@@ -135,7 +135,7 @@ public final class KnowledgeResource {
     public static final class Builder {
 
         private final KnowledgeResourceId id;
-        private final KnowledgeSourceId sourceId;
+        private final SourceAddress sourceId;
         private String title;
         private String contentType;
         private KnowledgeRevision revision;
@@ -144,7 +144,7 @@ public final class KnowledgeResource {
         private URI location;
         private KnowledgeMetadata metadata;
 
-        private Builder(KnowledgeResourceId id, KnowledgeSourceId sourceId) {
+        private Builder(KnowledgeResourceId id, SourceAddress sourceId) {
             if (id == null) {
                 throw new IllegalArgumentException("Resource-ID fehlt");
             }

@@ -66,8 +66,11 @@ public final class AppConfigLoader {
     /** Sprache des Satzmodells (OpenNLP) für die Passagenbildung beim Indexieren: de oder en. */
     public static final String KNOWLEDGE_PASSAGE_LANGUAGE_KEY = "knowledge.passages.language";
 
-    private static final Pattern SOURCE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
-    private static final String SOURCE_ID_RULE = "Quell-ID muss dem Muster [A-Za-z0-9][A-Za-z0-9._-]* entsprechen";
+    /** Präfix der Quellenliste: {@code source.<n>.*}, {@code n} = Listenposition ab 1, keine Identität. */
+    public static final String SOURCE_PREFIX = "source.";
+    /** Feld mit der kanonischen Adresse der Quelle ({@code source.<n>.address}), ihrer Identität. */
+    public static final String SOURCE_ADDRESS_FIELD = "address";
+    private static final Pattern SOURCE_SLOT = Pattern.compile("source\\.([1-9][0-9]{0,5})\\..+");
     private static final int MAX_TIMEOUT = 3600000;
 
     private AppConfigLoader() {
@@ -124,7 +127,7 @@ public final class AppConfigLoader {
             for (SourceDefinition source : sources) {
                 if (source.settings().has("credentialRef") && !source.settings().get("credentialRef").trim()
                         .regionMatches(true, 0, VaultLocations.ASK_SCHEME, 0, VaultLocations.ASK_SCHEME.length())) {
-                    refs.add("source." + source.id() + ".credentialRef");
+                    refs.add(source.address() + " credentialRef");
                 }
             }
             if (!refs.isEmpty()) {
@@ -379,29 +382,27 @@ public final class AppConfigLoader {
     }
 
     /**
-     * Die Quellen aus {@code sources}, typneutral: ID, {@code type}, {@code enabled} und alle übrigen Schlüssel
-     * {@code source.<id>.*} als Einstellungen des Adapters. Ob die Einstellungen stimmen, prüft beim Start der
-     * Quellen-Port des Adapters ({@code KnowledgeSourceProvider}); hier werden nur ungültige oder doppelte IDs und
-     * fehlende Typen mit einem Hinweis übersprungen.
+     * Die Quellen der Liste {@code source.<n>.*}, typneutral: Adresse ({@code .address}), {@code type},
+     * {@code enabled} und alle übrigen Schlüssel als Einstellungen des Adapters. Ob die Einstellungen stimmen, prüft
+     * beim Start der Quellen-Port des Adapters ({@code KnowledgeSourceProvider}); hier werden nur Einträge ohne Typ
+     * und doppelte Adressen mit einem Hinweis übersprungen; fehlt die Adresse (von Hand eingetragen), bildet der Use Case
+     * sie aus Typ und Endpoint.
      */
     private static List<SourceDefinition> sources(ConfigReader r, List<String> warnings) {
         List<SourceDefinition> sources = new ArrayList<SourceDefinition>();
-        List<String> ids = r.list("sources");
         Set<String> seen = new HashSet<String>();
-        for (String id : ids) {
-            if (!SOURCE_ID.matcher(id).matches()) {
-                warnings.add("Wissensquelle „" + id + "“ wird übersprungen: " + SOURCE_ID_RULE);
-                continue;
-            }
-            if (!seen.add(id)) {
-                warnings.add("Wissensquelle „" + id + "“ steht doppelt in sources; der zweite Eintrag wird übersprungen.");
-                continue;
-            }
-            r.markRead("source." + id + ".");
-            SourceDefinition source = sourceDefinition(r.properties(), id, ids);
+        for (int slot : sourceSlots(r.properties())) {
+            r.markRead(SOURCE_PREFIX + slot + ".");
+            SourceDefinition source = sourceDefinition(r.properties(), slot);
+            String label = source.address().isEmpty() ? "Nr. " + slot : source.address();
             if (source.typeId().isEmpty()) {
-                warnings.add("Wissensquelle „" + id + "“ wird übersprungen, bis sie im Reiter „Wissensquellen“ "
-                        + "korrigiert ist: source." + id + ".type: fehlt (Pflichtangabe)");
+                warnings.add("Wissensquelle „" + label + "“ wird übersprungen, bis sie im Reiter „Wissensquellen“ "
+                        + "korrigiert ist: Typ fehlt (Pflichtangabe)");
+                continue;
+            }
+            if (!source.address().isEmpty() && !seen.add(source.address())) {
+                warnings.add("Wissensquelle „" + label + "“ steht doppelt in der Liste; der zweite Eintrag wird "
+                        + "übersprungen.");
                 continue;
             }
             sources.add(source);
@@ -409,38 +410,55 @@ public final class AppConfigLoader {
         return sources;
     }
 
-    /** Alle in {@code sources} gelisteten Quellen der Datei, so wie sie dort stehen (auch fehlerhafte). */
+    /** Alle Quellen der Liste {@code source.<n>.*} in Listenreihenfolge, so wie sie dort stehen (auch fehlerhafte). */
     public static List<SourceDefinition> sourceDefinitions(Properties properties) {
         if (properties == null) {
             throw new IllegalArgumentException("properties must not be null");
         }
-        List<String> ids = new ConfigReader(properties).list("sources");
         List<SourceDefinition> sources = new ArrayList<SourceDefinition>();
-        Set<String> seen = new HashSet<String>();
-        for (String id : ids) {
-            if (seen.add(id)) {
-                sources.add(sourceDefinition(properties, id, ids));
-            }
+        for (int slot : sourceSlots(properties)) {
+            sources.add(sourceDefinition(properties, slot));
         }
         return sources;
     }
 
+    /** Die belegten Listenpositionen {@code n} der Schlüssel {@code source.<n>.*}, aufsteigend. */
+    public static List<Integer> sourceSlots(Properties properties) {
+        Set<Integer> slots = new java.util.TreeSet<Integer>();
+        for (String key : properties.stringPropertyNames()) {
+            Integer slot = sourceSlotOf(key);
+            if (slot != null) {
+                slots.add(slot);
+            }
+        }
+        return new ArrayList<Integer>(slots);
+    }
+
+    /** Die Listenposition eines Schlüssels {@code source.<n>.<feld>}, sonst {@code null}. */
+    public static Integer sourceSlotOf(String key) {
+        java.util.regex.Matcher m = SOURCE_SLOT.matcher(key);
+        return m.matches() ? Integer.valueOf(m.group(1)) : null;
+    }
+
     /**
-     * Eine Quelle {@code source.<id>.*}: Typ (klein geschrieben), Häkchen (Standard {@code true}) und die übrigen
-     * Schlüssel ohne Präfix. Quell-IDs dürfen Punkte enthalten; ein Schlüssel gehört der längsten passenden ID.
+     * Ein Listeneintrag {@code source.<n>.*}: Adresse, Typ (klein geschrieben), Häkchen (Standard {@code true}) und
+     * die übrigen Schlüssel ohne Präfix.
      */
-    static SourceDefinition sourceDefinition(Properties properties, String id, List<String> knownIds) {
-        String prefix = "source." + id + ".";
+    static SourceDefinition sourceDefinition(Properties properties, int slot) {
+        String prefix = SOURCE_PREFIX + slot + ".";
+        String address = "";
         String type = "";
         boolean enabled = true;
         Map<String, String> settings = new TreeMap<String, String>();
         for (String key : properties.stringPropertyNames()) {
-            if (!key.startsWith(prefix) || key.length() == prefix.length() || !ownedBy(key, id, knownIds)) {
+            if (!key.startsWith(prefix) || key.length() == prefix.length()) {
                 continue;
             }
             String field = key.substring(prefix.length());
             String value = properties.getProperty(key).trim();
-            if ("type".equals(field)) {
+            if (SOURCE_ADDRESS_FIELD.equals(field)) {
+                address = value;
+            } else if ("type".equals(field)) {
                 type = value.toLowerCase(Locale.ROOT);
             } else if ("enabled".equals(field)) {
                 enabled = !("false".equalsIgnoreCase(value) || "no".equalsIgnoreCase(value)
@@ -449,17 +467,7 @@ public final class AppConfigLoader {
                 settings.put(field, value);
             }
         }
-        return new SourceDefinition(id, type, enabled, SourceSettings.of(settings));
-    }
-
-    /** Ob {@code key} zu {@code id} gehört und nicht zu einer längeren ID mit demselben Anfang. */
-    private static boolean ownedBy(String key, String id, List<String> knownIds) {
-        for (String other : knownIds) {
-            if (other.length() > id.length() && key.startsWith("source." + other + ".")) {
-                return false;
-            }
-        }
-        return true;
+        return new SourceDefinition(address, type, enabled, SourceSettings.of(settings));
     }
 
     private static KeePassConfig keePass(ConfigReader r) {

@@ -185,7 +185,7 @@ public final class CompositionRoot {
         for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
             boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt
             for (SourceDefinition source : config.sources()) {
-                if (source.id().equals(registration.sourceId().value())) {
+                if (source.address().equals(registration.sourceId().value())) {
                     enabled = source.enabled();
                 }
             }

@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.knowledge;
 
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -16,12 +16,12 @@ import java.util.Set;
  */
 public final class KnowledgeSourceSelection implements RagSourceFilter {
 
-    private final Map<KnowledgeSourceId, Boolean> sources = new LinkedHashMap<KnowledgeSourceId, Boolean>();
+    private final Map<SourceAddress, Boolean> sources = new LinkedHashMap<SourceAddress, Boolean>();
     /** Einmal verwaltet, bleibt die Auswahl einschränkend: entfernte Quellen tauchen nicht über den Index wieder auf. */
     private boolean managed;
 
     /** Bindet eine Quelle an (oder setzt ihr Häkchen neu). */
-    public synchronized void register(KnowledgeSourceId id, boolean enabled) {
+    public synchronized void register(SourceAddress id, boolean enabled) {
         if (id == null) {
             throw new IllegalArgumentException("id must not be null");
         }
@@ -30,12 +30,12 @@ public final class KnowledgeSourceSelection implements RagSourceFilter {
     }
 
     /** Die Quelle ist nicht mehr konfiguriert: RAG durchsucht sie nicht mehr. */
-    public synchronized void unregister(KnowledgeSourceId id) {
+    public synchronized void unregister(SourceAddress id) {
         sources.remove(id);
     }
 
     /** @return {@code false}, wenn die Quelle nicht angebunden ist */
-    public synchronized boolean setEnabled(KnowledgeSourceId id, boolean enabled) {
+    public synchronized boolean setEnabled(SourceAddress id, boolean enabled) {
         if (!sources.containsKey(id)) {
             return false;
         }
@@ -43,11 +43,11 @@ public final class KnowledgeSourceSelection implements RagSourceFilter {
         return true;
     }
 
-    public synchronized boolean isRegistered(KnowledgeSourceId id) {
+    public synchronized boolean isRegistered(SourceAddress id) {
         return sources.containsKey(id);
     }
 
-    public synchronized boolean isEnabled(KnowledgeSourceId id) {
+    public synchronized boolean isEnabled(SourceAddress id) {
         return Boolean.TRUE.equals(sources.get(id));
     }
 
@@ -57,9 +57,9 @@ public final class KnowledgeSourceSelection implements RagSourceFilter {
     }
 
     @Override
-    public synchronized Set<KnowledgeSourceId> allowedSources() {
-        Set<KnowledgeSourceId> enabled = new LinkedHashSet<KnowledgeSourceId>();
-        for (Map.Entry<KnowledgeSourceId, Boolean> entry : sources.entrySet()) {
+    public synchronized Set<SourceAddress> allowedSources() {
+        Set<SourceAddress> enabled = new LinkedHashSet<SourceAddress>();
+        for (Map.Entry<SourceAddress, Boolean> entry : sources.entrySet()) {
             if (entry.getValue()) {
                 enabled.add(entry.getKey());
             }

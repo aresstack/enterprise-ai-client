@@ -15,12 +15,12 @@ import java.util.List;
 public final class KnowledgeChunk {
 
     private final KnowledgeChunkId id;
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final List<String> headingPath;
     private final String text;
     private final int tokenCount;
 
-    public KnowledgeChunk(KnowledgeChunkId id, KnowledgeSourceId sourceId, List<String> headingPath, String text,
+    public KnowledgeChunk(KnowledgeChunkId id, SourceAddress sourceId, List<String> headingPath, String text,
                           int tokenCount) {
         if (id == null) {
             throw new IllegalArgumentException("Chunk-ID fehlt");
@@ -58,7 +58,7 @@ public final class KnowledgeChunk {
         return id.resourceId();
     }
 
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 

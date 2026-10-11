@@ -4,8 +4,9 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
@@ -47,7 +48,7 @@ import java.util.Set;
  *       beginnt bei dessen Startseite) oder eine Ressourcen-ID dieser Quelle. {@code discover} folgt per
  *       Breitensuche den Kindseiten bis {@code maxDepth}; textartige Anhänge sind, wenn konfiguriert, Kinder
  *       ihrer Seite.</li>
- *   <li>IDs: {@code confluence:<sourceId>/page/<id>} und {@code confluence:<sourceId>/attachment/<attId>}.</li>
+ *   <li>IDs: {@code confluence:<locator>/page/<id>} und {@code confluence:<locator>/attachment/<attId>} (Locator = kanonische Basis-URL ohne Schema).</li>
  *   <li>Revision: Versionsnummer und Änderungszeitpunkt aus Confluence.</li>
  *   <li>Inhalt: gerenderte Ansicht ({@code body.view}), in Text mit Markdown-Struktur überführt.</li>
  *   <li>Suche: CQL {@code type=page AND text ~ "..."} über {@code /rest/api/content/search} (wie MainframeMate),
@@ -63,7 +64,9 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
 
     static final String PAGE_CONTENT_TYPE = "text/html";
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
+    /** Kanonische Basis-URL ohne Schema, Teil jeder Ressourcen-ID. */
+    private final String locator;
     private final ConfluenceConfig config;
     private final ConfluenceRestClient client;
     private final SecretProvider secrets;
@@ -73,13 +76,13 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
      * @param transport z. B. {@link UrlConnectionConfluenceTransport} mit Proxy/mTLS aus der Composition Root
      * @param secrets   Security-Port; wird nur benutzt, wenn {@link ConfluenceConfig#credentialRef()} gesetzt ist
      */
-    public ConfluenceKnowledgeSource(KnowledgeSourceId sourceId, ConfluenceConfig config,
+    public ConfluenceKnowledgeSource(SourceAddress sourceId, ConfluenceConfig config,
                                      ConfluenceHttpTransport transport, SecretProvider secrets) {
         this(sourceId, config, transport, secrets, new VaultEntryOptions(secrets, config == null ? null
                 : config.credentialRef()));
     }
 
-    ConfluenceKnowledgeSource(KnowledgeSourceId sourceId, ConfluenceConfig config,
+    ConfluenceKnowledgeSource(SourceAddress sourceId, ConfluenceConfig config,
                               ConfluenceHttpTransport transport, SecretProvider secrets, VaultEntryOptions options) {
         if (sourceId == null || config == null || transport == null) {
             throw new IllegalArgumentException("sourceId, config und transport sind Pflicht");
@@ -88,6 +91,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
             throw new IllegalArgumentException("credentialRef gesetzt, aber kein SecretProvider");
         }
         this.sourceId = sourceId;
+        this.locator = locatorOf(config);
         this.config = config;
         this.client = new ConfluenceRestClient(config, transport);
         this.secrets = secrets;
@@ -95,7 +99,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     }
 
     @Override
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 
@@ -209,7 +213,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 List<SourceSearchHit> hits = new ArrayList<SourceSearchHit>();
                 for (Page page : client.search(session, cql, query.limit())) {
                     // Version und URL liefert die Suche mit (expand=version): unveränderte Treffer werden nicht geladen.
-                    hits.add(new SourceSearchHit(ConfluenceIds.page(sourceId, page.id), page.title, page.excerpt,
+                    hits.add(new SourceSearchHit(ConfluenceIds.page(locator, page.id), page.title, page.excerpt,
                             KnowledgeRevision.of(page.modifiedAt, page.version), location(page.webUi)));
                 }
                 return hits;
@@ -259,7 +263,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 throw e;
             }
             for (KnowledgeResource child : children) {
-                ConfluenceIds.Parsed parsed = ConfluenceIds.parse(sourceId, child.id());
+                ConfluenceIds.Parsed parsed = ConfluenceIds.parse(locator, child.id());
                 queue.add(new Node(child, parsed.attachment ? null : parsed.contentId, node.depth + 1));
             }
         }
@@ -306,7 +310,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     }
 
     private Page startPage(Session session, String raw) throws KnowledgeSourceException {
-        ConfluenceIds.StartPoint start = ConfluenceIds.startPoint(sourceId, raw);
+        ConfluenceIds.StartPoint start = ConfluenceIds.startPoint(locator, raw);
         if (start == null) {
             return null;
         }
@@ -370,11 +374,11 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         if (!page.labels.isEmpty()) {
             metadata.put("confluence.labels", join(page.labels));
         }
-        return KnowledgeResource.builder(ConfluenceIds.page(sourceId, page.id), sourceId)
+        return KnowledgeResource.builder(ConfluenceIds.page(locator, page.id), sourceId)
                 .title(page.title)
                 .contentType(PAGE_CONTENT_TYPE)
                 .revision(KnowledgeRevision.of(page.modifiedAt, page.version))
-                .parentId(parentId == null ? null : ConfluenceIds.page(sourceId, parentId))
+                .parentId(parentId == null ? null : ConfluenceIds.page(locator, parentId))
                 .scope(page.spaceKey == null ? "" : page.spaceKey)
                 .location(location(page.webUi))
                 .metadata(KnowledgeMetadata.of(metadata))
@@ -388,12 +392,12 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         if (attachment.size >= 0) {
             metadata.put("confluence.fileSize", String.valueOf(attachment.size));
         }
-        return KnowledgeResource.builder(ConfluenceIds.attachment(sourceId, attachment.id), sourceId)
+        return KnowledgeResource.builder(ConfluenceIds.attachment(locator, attachment.id), sourceId)
                 .title(attachment.title)
                 .contentType(attachment.mediaType)
                 .revision(KnowledgeRevision.of(attachment.modifiedAt, attachment.version))
                 .parentId(attachment.containerId == null || !ConfluenceIds.isContentId(attachment.containerId)
-                        ? null : ConfluenceIds.page(sourceId, attachment.containerId))
+                        ? null : ConfluenceIds.page(locator, attachment.containerId))
                 .location(location(attachment.webUi))
                 .metadata(KnowledgeMetadata.of(metadata))
                 .build();
@@ -442,8 +446,13 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         }
     }
 
+    /** Der kanonische Locator der Basis-URL ({@code cf.intern/confluence}), aus dem die Ressourcen-IDs entstehen. */
+    static String locatorOf(ConfluenceConfig config) {
+        return SourceLocators.url(config.baseUrl().toString());
+    }
+
     private ConfluenceIds.Parsed parse(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
-        ConfluenceIds.Parsed parsed = resourceId == null ? null : ConfluenceIds.parse(sourceId, resourceId);
+        ConfluenceIds.Parsed parsed = resourceId == null ? null : ConfluenceIds.parse(locator, resourceId);
         if (parsed == null) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED,
                     resourceId + " gehört nicht zur Confluence-Quelle " + sourceId);

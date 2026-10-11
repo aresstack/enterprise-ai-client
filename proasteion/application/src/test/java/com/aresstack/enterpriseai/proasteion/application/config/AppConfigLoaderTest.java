@@ -65,7 +65,6 @@ public class AppConfigLoaderTest {
     public void exampleSourceBlocksLoadOnceUncommented() throws Exception {
         Properties p = new Properties();
         p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
-        p.setProperty("sources", "wiki,confluence,dateien,cobol,natural,jobs");
         AppConfig config = AppConfigLoader.fromProperties(p);
         assertEquals(6, config.sources().size());
         assertEquals("mediawiki", config.sources().get(0).typeId());
@@ -291,17 +290,17 @@ public class AppConfigLoaderTest {
     @Test
     public void brokenSourcesAreSkippedWithAWarningThatNamesKeysButNoValues() throws Exception {
         Properties p = minimal();
-        p.setProperty("sources", "wiki, ok");
-        p.setProperty("source.wiki.type", "mediawiki");
-        p.setProperty("source.wiki.apiUrl", "https://wiki.example/w/api.php");
-        p.setProperty("source.wiki.maxDepth", "-7");
-        p.setProperty("source.ok.type", "mediawiki");
-        p.setProperty("source.ok.apiUrl", "https://wiki.example/w/api.php");
-        p.setProperty("source.ok.startPoints", "Hauptseite");
+        p.setProperty("source.1.type", "mediawiki");
+        p.setProperty("source.1.apiUrl", "https://wiki.example/w/api.php");
+        p.setProperty("source.1.maxDepth", "-7");
+        p.setProperty("source.2.address", "wiki://wiki.example/handbuch");
+        p.setProperty("source.2.type", "mediawiki");
+        p.setProperty("source.2.apiUrl", "https://wiki.example/handbuch/api.php");
+        p.setProperty("source.2.startPoints", "Hauptseite");
         // Der Loader liest Quellen typneutral; ob die Einstellungen stimmen, prüft der Adapter des Typs.
         AppConfig config = AppConfigLoader.fromProperties(p);
         assertEquals(config.warnings().toString(), 2, config.sources().size());
-        assertEquals("ok", config.sources().get(1).id());
+        assertEquals("wiki://wiki.example/handbuch", config.sources().get(1).address());
         assertEquals("-7", config.sources().get(0).settings().get("maxDepth"));
         String all = String.join("\n", config.warnings());
         assertFalse("gelesene Quell-Schlüssel sind keine unbekannten Schlüssel: " + all, all.contains("ignoriert"));
@@ -314,16 +313,15 @@ public class AppConfigLoaderTest {
     @Test
     public void sourceEnabledDefaultsToTrueAndCanBeSwitchedOff() throws Exception {
         Properties p = minimal();
-        p.setProperty("sources", "wiki");
-        p.setProperty("source.wiki.type", "mediawiki");
-        p.setProperty("source.wiki.apiUrl", "https://wiki.example/w/api.php");
-        p.setProperty("source.wiki.startPoints", "Hauptseite");
+        p.setProperty("source.1.type", "mediawiki");
+        p.setProperty("source.1.apiUrl", "https://wiki.example/w/api.php");
+        p.setProperty("source.1.startPoints", "Hauptseite");
         assertTrue(AppConfigLoader.fromProperties(p).sources().get(0).enabled());
-        p.setProperty("source.wiki.enabled", "false");
+        p.setProperty("source.1.enabled", "false");
         AppConfig config = AppConfigLoader.fromProperties(p);
         assertFalse(config.sources().get(0).enabled());
         for (String warning : config.warnings()) {
-            assertFalse(warning, warning.contains("source.wiki"));
+            assertFalse(warning, warning.contains("source.1"));
         }
     }
 
@@ -344,22 +342,21 @@ public class AppConfigLoaderTest {
     public void sourcesAreParsedWithScopeAndCredentials() throws Exception {
         Properties p = minimal();
         p.setProperty("security.keepass.enabled", "true");
-        p.setProperty("sources", "wiki, confluence");
-        p.setProperty("source.wiki.type", "mediawiki");
-        p.setProperty("source.wiki.apiUrl", "https://wiki.example/w/api.php");
-        p.setProperty("source.wiki.siteKey", "intern");
-        p.setProperty("source.wiki.credentialRef", "Intranet-Wiki");
-        p.setProperty("source.wiki.startPoints", "Hauptseite, Handbuch");
-        p.setProperty("source.wiki.maxDepth", "1");
-        p.setProperty("source.confluence.type", "confluence");
-        p.setProperty("source.confluence.baseUrl", "https://confluence.example/c");
-        p.setProperty("source.confluence.credentialRef", "Confluence");
-        p.setProperty("source.confluence.startPoints", "space:DEV");
-        p.setProperty("source.confluence.clientCertificate.alias", "mein-zertifikat");
+        p.setProperty("source.1.address", "wiki://wiki.example/w");
+        p.setProperty("source.1.type", "mediawiki");
+        p.setProperty("source.1.apiUrl", "https://wiki.example/w/api.php");
+        p.setProperty("source.1.credentialRef", "Intranet-Wiki");
+        p.setProperty("source.1.startPoints", "Hauptseite, Handbuch");
+        p.setProperty("source.1.maxDepth", "1");
+        p.setProperty("source.2.type", "confluence");
+        p.setProperty("source.2.baseUrl", "https://confluence.example/c");
+        p.setProperty("source.2.credentialRef", "Confluence");
+        p.setProperty("source.2.startPoints", "space:DEV");
+        p.setProperty("source.2.clientCertificate.alias", "mein-zertifikat");
         AppConfig config = AppConfigLoader.fromProperties(p);
         assertEquals(2, config.sources().size());
         SourceDefinition wiki = config.sources().get(0);
-        assertEquals("wiki", wiki.id());
+        assertEquals("wiki://wiki.example/w", wiki.address());
         assertEquals("Intranet-Wiki", wiki.settings().get("credentialRef"));
         assertEquals("Hauptseite, Handbuch", wiki.settings().get("startPoints"));
         SourceDefinition confluence = config.sources().get(1);
@@ -369,21 +366,21 @@ public class AppConfigLoaderTest {
     }
 
     @Test
-    public void duplicateOrUnknownSourceTypesAreSkippedWithWarnings() throws Exception {
+    public void duplicateAddressesAreSkippedUnknownTypesStay() throws Exception {
         Properties p = minimal();
-        p.setProperty("sources", "a,a,b,Ungültig!");
-        p.setProperty("source.a.type", "mediawiki");
-        p.setProperty("source.a.apiUrl", "https://wiki.example/w/api.php");
-        p.setProperty("source.a.startPoints", "Hauptseite");
-        p.setProperty("source.b.type", "sharepoint");
+        for (int slot = 1; slot <= 2; slot++) {
+            p.setProperty("source." + slot + ".address", "wiki://wiki.example/w");
+            p.setProperty("source." + slot + ".type", "mediawiki");
+            p.setProperty("source." + slot + ".apiUrl", "https://wiki.example/w/api.php");
+        }
+        p.setProperty("source.3.type", "sharepoint");
         AppConfig config = AppConfigLoader.fromProperties(p);
-        // Unbekannte Typen bleiben stehen (der Reiter zeigt sie als fehlerhaft); doppelte und ungültige IDs nicht.
+        // Unbekannte Typen bleiben stehen (der Reiter zeigt sie als fehlerhaft); doppelte Adressen nicht.
         assertEquals(config.warnings().toString(), 2, config.sources().size());
-        assertEquals("a", config.sources().get(0).id());
+        assertEquals("wiki://wiki.example/w", config.sources().get(0).address());
         assertEquals("sharepoint", config.sources().get(1).typeId());
         String all = String.join("\n", config.warnings());
-        assertTrue(all, all.contains("„a“ steht doppelt"));
-        assertTrue(all, all.contains("„Ungültig!“ wird übersprungen"));
+        assertTrue(all, all.contains("„wiki://wiki.example/w“ steht doppelt"));
     }
 
     @Test

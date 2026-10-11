@@ -4,7 +4,7 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -60,7 +60,7 @@ public interface KnowledgeIndexPort {
      * Menge; leer für unbekannte Namespaces oder Quellen. Spiegelt {@link #replace}, {@link #remove} und
      * {@link #removeSource} sofort wider.
      */
-    Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId);
+    Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, SourceAddress sourceId);
 
     /**
      * Die im Namespace {@code space} gespeicherte Revision einer Ressource, damit ein Index-Lauf unveränderte
@@ -113,7 +113,7 @@ public interface KnowledgeIndexPort {
     void remove(KnowledgeResourceId resourceId);
 
     /** Entfernt alle Chunks einer Quelle aus allen Namespaces (z. B. wenn die Quelle aus der Konfiguration fällt). */
-    void removeSource(KnowledgeSourceId sourceId);
+    void removeSource(SourceAddress sourceId);
 
     /**
      * Verwirft den gesamten Index (alle Namespaces) und baut ihn aus {@code entries} neu auf – Wiederherstellung

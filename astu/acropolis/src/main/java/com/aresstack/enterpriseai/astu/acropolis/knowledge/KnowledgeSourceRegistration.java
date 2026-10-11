@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
@@ -26,7 +26,7 @@ public final class KnowledgeSourceRegistration {
         this.scope = scope;
     }
 
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return port.sourceId();
     }
 

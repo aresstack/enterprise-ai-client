@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.astu.acropolis.chalcotheca;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunk;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import org.junit.Test;
 
@@ -48,15 +48,15 @@ public class KnowledgeIndexModelTest {
         assertEquals("", keyword.text());
         assertEquals(10, keyword.maxResults());
         assertEquals(1000, KnowledgeKeywordQuery.of(SPACE_3D, "x", 5000).maxResults());
-        assertTrue(keyword.accepts(KnowledgeSourceId.of("beliebig")));
+        assertTrue(keyword.accepts(SourceAddress.of("beliebig")));
 
         KnowledgeSemanticQuery semantic = KnowledgeSemanticQuery.of(vector(SPACE_3D, 1, 0, 0), 3)
-                .restrictedTo(Arrays.asList(KnowledgeSourceId.of("wiki")));
+                .restrictedTo(Arrays.asList(SourceAddress.of("wiki")));
         assertEquals(SPACE_3D, semantic.space());
-        assertTrue(semantic.accepts(KnowledgeSourceId.of("wiki")));
-        assertFalse(semantic.accepts(KnowledgeSourceId.of("confluence")));
-        assertTrue(semantic.restrictedTo(Collections.<KnowledgeSourceId>emptyList())
-                .accepts(KnowledgeSourceId.of("confluence")));
+        assertTrue(semantic.accepts(SourceAddress.of("wiki")));
+        assertFalse(semantic.accepts(SourceAddress.of("confluence")));
+        assertTrue(semantic.restrictedTo(Collections.<SourceAddress>emptyList())
+                .accepts(SourceAddress.of("confluence")));
         assertFalse("Query-Text erscheint nicht im toString",
                 KnowledgeKeywordQuery.of(SPACE_3D, "geheime frage", 1).toString().contains("geheime"));
     }

@@ -8,7 +8,7 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalResult;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.pinakes.LuceneKnowledgeIndex;
@@ -117,7 +117,7 @@ public class SliceDConfluenceKeePassTest {
                 .connectTimeoutMillis(5000)
                 .readTimeoutMillis(10000)
                 .build();
-        return new ConfluenceKnowledgeSource(KnowledgeSourceId.of("confluence"), config, transport, secrets);
+        return new ConfluenceKnowledgeSource(SourceAddress.of("confluence"), config, transport, secrets);
     }
 
     private static SourceScope devSpace() {

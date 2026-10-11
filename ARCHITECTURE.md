@@ -477,7 +477,7 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   Start. Modellnamen, Dimension (e5-base
   vermutlich 768, UNVERIFIED), Proxy und Quellen sind reine Konfiguration.
 - **Secrets**: in der Datei stehen nur `SecretRef`s (Titel des KeePass-Eintrags): `chat.apiKeyRef`,
-  `embedding.apiKeyRef`, `source.<id>.credentialRef`, `…clientCertificate.keyStorePasswordRef`.
+  `embedding.apiKeyRef`, `source.<n>.credentialRef`, `…clientCertificate.keyStorePasswordRef`.
   `SecretBackedTokenSource` (Chat) und `SecretBackedBearerTokenSource` (Embedding) lösen den API-Key je Anfrage
   mit `SecretProvider.withSecret` auf; das Material lebt nur für den Aufruf, kein Feld hält es. Der
   `SecretProvider` ist `KeePassRpcSecretProvider`; sein Pairing-Callback öffnet modal den Comic-Dialog

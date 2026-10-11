@@ -11,13 +11,13 @@ import java.net.URI;
  */
 public final class KnowledgeResourceRef {
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final KnowledgeResourceId resourceId;
     private final URI canonicalUrl;
     private final KnowledgeRevision revision;
     private final String contentHash;
 
-    public KnowledgeResourceRef(KnowledgeSourceId sourceId, KnowledgeResourceId resourceId, URI canonicalUrl,
+    public KnowledgeResourceRef(SourceAddress sourceId, KnowledgeResourceId resourceId, URI canonicalUrl,
                                 KnowledgeRevision revision, String contentHash) {
         if (sourceId == null || resourceId == null || revision == null) {
             throw new IllegalArgumentException("sourceId, resourceId und revision sind Pflicht");
@@ -36,7 +36,7 @@ public final class KnowledgeResourceRef {
                 resource.revision(), document.contentHash());
     }
 
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 

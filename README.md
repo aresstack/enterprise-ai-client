@@ -50,7 +50,7 @@ java -jar enterprise-ai-client-<version>.jar
    erscheinen als Markdown (Überschriften, Listen, Tabellen, Code mit Kopierknopf, Links; Mermaid-Diagramme als
    Bild, ein Klick vergrößert), „Stop“ im Composer bricht ab; der System-Prompt kommt aus `chat.systemPrompt`. „+ Neuer Chat“ im Drawer beginnt eine
    neue Unterhaltung. Das Fenster ist rahmenlos: die Kopfzeile zieht, der Rand vergrößert, das ✕ schließt.
-5. **Quelle anbinden**: Eine Quelle unter `sources` und `source.<id>.*` eintragen (MediaWiki oder
+5. **Quelle anbinden**: Eine Quelle unter `sources` und `source.<n>.*` eintragen (MediaWiki oder
    Confluence). Indexiert wird nie beim Start, sondern wie in MainframeMate über die Suche: Drawer-Suche,
    Chat-Frage und das Agenten-Werkzeug `knowledge_search` fragen die angehakten Quellen live, laden höchstens
    einige Treffer (Agent: `agent.tools.maxPages`, Standard 4, 0 = unbegrenzt) und indexieren sie nur, wenn
@@ -61,7 +61,7 @@ java -jar enterprise-ai-client-<version>.jar
    `KnowledgeSourceProvider` (`source-api`, nach corenth); der Use Case `KnowledgeSourceManagement` prüft,
    speichert und entfernt. Das ✕ in einer Zeile entfernt die Quelle nach kurzer Rückfrage: sie verschwindet sofort,
    ihre Zeilen in der Datei werden auskommentiert und ihr Index wird gelöscht. Gespeichert wird weiter als
-   `source.<id>.type` und `source.<id>.*`; bestehende Dateien laden unverändert.
+   `source.<n>.type` und `source.<n>.*`; bestehende Dateien laden unverändert.
    Dokumente liest der Agent über die Ressourcenschicht aus corenth: Tamias prüft den Zugriff,
    Chalcotheca hält die Kopie, Holkas holt sie über den Connector der Quelle (`wiki`, `confluence`, `file`); beim
    Entfernen einer Quelle werden auch ihre Archiveinträge zurückgezogen.

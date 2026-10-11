@@ -57,7 +57,7 @@ Fähigkeit aus der Spalte UNVERIFIED gestrichen.
 - **Agent-Modus**: kein automatischer Neustart eines beendeten Agenten; Tool-Updates werden in der Oberfläche
   nicht angezeigt; Prozessende wird erst beim nächsten Request oder Timeout erkannt.
 - **Quellen**: keine Anhänge im Wiki, keine Blogposts in Confluence, Confluence Cloud nicht Ziel; ein Wechsel
-  von `siteKey` oder Embedding-Modell bedeutet Neuindexierung.
+  der Quellenadresse oder des Embedding-Modells bedeutet Neuindexierung.
 - **Bibliotheken**: JWBF 3.1.1 und OkHttp 4.9.3 stehen im Versionskatalog, werden aber nicht verwendet.
 - **Einstellungen-Dialog**: Änderungen gelten sofort (Settings-Service mit Beobachtern, siehe
   `docs/einrichtung.md`, „Wirksamkeit“); nur „IPv6 bevorzugen“ wirkt erst beim nächsten Start, weil die JVM

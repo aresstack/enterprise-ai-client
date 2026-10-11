@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -144,7 +144,7 @@ public final class LoadKnowledgeDocumentUseCase {
         }
         KnowledgeSourceCatalog current = catalog();
         if (index != null) {
-            KnowledgeSourceId owner = indexedSourceOf(current, resourceId);
+            SourceAddress owner = indexedSourceOf(current, resourceId);
             if (owner == null) {
                 throw new KnowledgeDocumentNotIndexedException(resourceId, null);
             }
@@ -173,7 +173,7 @@ public final class LoadKnowledgeDocumentUseCase {
      * @throws KnowledgeSourceException             {@code NOT_FOUND}, wenn die Quelle nicht konfiguriert ist; sonst
      *                                              der Fehler der Quelle
      */
-    public KnowledgeDocument load(KnowledgeResourceId resourceId, KnowledgeSourceId sourceId)
+    public KnowledgeDocument load(KnowledgeResourceId resourceId, SourceAddress sourceId)
             throws KnowledgeSourceException, KnowledgeDocumentNotIndexedException {
         if (resourceId == null || sourceId == null) {
             throw new IllegalArgumentException("resourceId und sourceId sind Pflicht");
@@ -190,8 +190,8 @@ public final class LoadKnowledgeDocumentUseCase {
     }
 
     /** Die konfigurierte Quelle, unter der die Ressource im Namespace indexiert ist, oder {@code null}. */
-    private KnowledgeSourceId indexedSourceOf(KnowledgeSourceCatalog current, KnowledgeResourceId resourceId) {
-        for (KnowledgeSourceId sourceId : current.ids()) {
+    private SourceAddress indexedSourceOf(KnowledgeSourceCatalog current, KnowledgeResourceId resourceId) {
+        for (SourceAddress sourceId : current.ids()) {
             if (index.resourceIds(space.get(), sourceId).contains(resourceId)) {
                 return sourceId;
             }

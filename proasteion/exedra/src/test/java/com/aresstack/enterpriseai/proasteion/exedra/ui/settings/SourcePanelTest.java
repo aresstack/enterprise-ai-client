@@ -28,13 +28,13 @@ public class SourcePanelTest {
 
         @Override
         public List<String> validate(SourceDefinition draft, String originalId) {
-            calls.add("validate " + draft.id() + "/" + originalId);
+            calls.add("validate " + draft.address() + "/" + originalId);
             return problems;
         }
 
         @Override
         public void save(SourceDefinition draft, String originalId) {
-            calls.add("save " + draft.id() + " " + draft.settings().get("apiUrl") + "/" + originalId);
+            calls.add("save " + draft.address() + " " + draft.settings().get("apiUrl") + "/" + originalId);
         }
 
         @Override
@@ -52,7 +52,7 @@ public class SourcePanelTest {
             SourcePanel panel = new SourcePanel(new SourceDefinition("wiki", MediaWikiSourceProvider.TYPE_ID, true,
                     SourceSettings.empty()), null, Collections.singletonList(MediaWikiSourceProvider.sourceType()),
                     actions, palette);
-            panel.setListener((outcome, source) -> outcomes.add(outcome + (source == null ? "" : " " + source.id())));
+            panel.setListener((outcome, source) -> outcomes.add(outcome + (source == null ? "" : " " + source.address())));
             actions.problems = Collections.singletonList("URL (source.wiki.apiUrl): fehlt");
             assertFalse(panel.save());
             assertTrue(panel.problemsText(), panel.problemsText().contains("source.wiki.apiUrl"));

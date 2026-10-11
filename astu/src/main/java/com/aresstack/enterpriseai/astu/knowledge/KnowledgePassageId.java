@@ -94,13 +94,13 @@ public final class KnowledgePassageId {
         int hash = at <= 0 ? -1 : value.lastIndexOf(POSITION, at);
         int captureAt = hash <= 0 ? -1 : value.lastIndexOf(CAPTURE, hash);
         if (captureAt <= 0) {
-            throw new IllegalArgumentException("Ungültige Passage-ID: " + KnowledgeSourceId.quote(value));
+            throw new IllegalArgumentException("Ungültige Passage-ID: " + SourceAddress.quote(value));
         }
         String position = value.substring(hash + POSITION.length(), at);
         String versions = value.substring(at + VERSION.length());
         int separator = versions.indexOf(SEPARATOR);
         if (position.isEmpty() || position.length() > 9 || !position.matches("[0-9]+") || separator <= 0) {
-            throw new IllegalArgumentException("Ungültige Passage-ID: " + KnowledgeSourceId.quote(value));
+            throw new IllegalArgumentException("Ungültige Passage-ID: " + SourceAddress.quote(value));
         }
         return of(KnowledgeResourceId.of(value.substring(0, captureAt)),
                 value.substring(captureAt + CAPTURE.length(), hash), Integer.parseInt(position),

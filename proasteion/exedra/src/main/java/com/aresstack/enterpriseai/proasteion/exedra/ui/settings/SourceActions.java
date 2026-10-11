@@ -18,14 +18,25 @@ public interface SourceActions {
     /**
      * Probleme des Entwurfs mit Feldnamen, nie Werte; leer, wenn er sich speichern lässt.
      *
-     * @param originalId die bisherige ID beim Bearbeiten, {@code null} beim Hinzufügen
+     * @param originalAddress die bisherige Adresse beim Bearbeiten, {@code null} beim Hinzufügen
      */
-    List<String> validate(SourceDefinition draft, String originalId);
+    List<String> validate(SourceDefinition draft, String originalAddress);
 
-    /** Schreibt den Entwurf (hinzufügen oder ersetzen, auch unter neuer ID). Vorher ist {@link #validate} leer. */
-    void save(SourceDefinition draft, String originalId) throws IOException;
+    /**
+     * Schreibt den Entwurf unter {@link #addressOf seiner Adresse} (hinzufügen oder ersetzen, auch unter neuer
+     * Adresse). Vorher ist {@link #validate} leer.
+     */
+    void save(SourceDefinition draft, String originalAddress) throws IOException;
 
-    /** Ein neuer Entwurf des Typs mit freier ID und Vorgaben (Wechsel des Typs beim Hinzufügen). */
+    /**
+     * Die kanonische Adresse, unter der der Entwurf gespeichert wird: aus Typ und Endpoint abgeleitet, nie vom
+     * Benutzer vergeben. Vorgabe: die Adresse des Entwurfs.
+     */
+    default String addressOf(SourceDefinition draft) {
+        return draft.address();
+    }
+
+    /** Ein neuer Entwurf des Typs mit Vorgaben, noch ohne Adresse (Wechsel des Typs beim Hinzufügen). */
     SourceDefinition draft(String typeId);
 
     /**

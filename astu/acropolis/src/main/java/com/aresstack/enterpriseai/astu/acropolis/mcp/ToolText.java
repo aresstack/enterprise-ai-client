@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.mcp;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collection;
 import java.util.Locale;
@@ -85,9 +85,9 @@ final class ToolText {
         return String.format(Locale.ROOT, "%.4f", value);
     }
 
-    static String join(Collection<KnowledgeSourceId> ids) {
+    static String join(Collection<SourceAddress> ids) {
         StringBuilder text = new StringBuilder();
-        for (KnowledgeSourceId id : ids) {
+        for (SourceAddress id : ids) {
             if (text.length() > 0) {
                 text.append(", ");
             }

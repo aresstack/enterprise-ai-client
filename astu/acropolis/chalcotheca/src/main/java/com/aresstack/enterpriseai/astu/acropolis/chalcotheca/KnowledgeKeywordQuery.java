@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.chalcotheca;
 
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collection;
 import java.util.Set;
@@ -18,10 +18,10 @@ public final class KnowledgeKeywordQuery {
     private final EmbeddingModelIdentity space;
     private final String text;
     private final int maxResults;
-    private final Set<KnowledgeSourceId> sources;
+    private final Set<SourceAddress> sources;
 
     private KnowledgeKeywordQuery(EmbeddingModelIdentity space, String text, int maxResults,
-                                  Set<KnowledgeSourceId> sources) {
+                                  Set<SourceAddress> sources) {
         if (space == null) {
             throw new IllegalArgumentException("Namespace (EmbeddingModelIdentity) fehlt");
         }
@@ -37,7 +37,7 @@ public final class KnowledgeKeywordQuery {
     }
 
     /** Kopie, die nur in den genannten Quellen sucht; leer hebt die Einschränkung auf. */
-    public KnowledgeKeywordQuery restrictedTo(Collection<KnowledgeSourceId> sourceIds) {
+    public KnowledgeKeywordQuery restrictedTo(Collection<SourceAddress> sourceIds) {
         return new KnowledgeKeywordQuery(space, text, maxResults, QueryLimits.sources(sourceIds));
     }
 
@@ -54,11 +54,11 @@ public final class KnowledgeKeywordQuery {
     }
 
     /** Erlaubte Quellen; leer heißt alle. */
-    public Set<KnowledgeSourceId> sources() {
+    public Set<SourceAddress> sources() {
         return sources;
     }
 
-    public boolean accepts(KnowledgeSourceId sourceId) {
+    public boolean accepts(SourceAddress sourceId) {
         return sources.isEmpty() || sources.contains(sourceId);
     }
 

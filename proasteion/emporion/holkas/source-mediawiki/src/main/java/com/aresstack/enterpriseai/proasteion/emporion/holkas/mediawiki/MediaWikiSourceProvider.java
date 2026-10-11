@@ -1,9 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -14,13 +15,12 @@ import com.aresstack.enterpriseai.source.api.SourceSettingsReader;
 import javax.net.ssl.SSLSocketFactory;
 import java.net.URI;
 import java.util.List;
-import java.util.Locale;
 import java.util.function.Function;
 
 /**
- * Quelltyp „MediaWiki“ ({@code source.<id>.type=mediawiki}, Ressourcenschema {@code wiki}): Felder, Prüfung und
+ * Quelltyp „MediaWiki“ ({@code source.<n>.type=mediawiki}, Ressourcenschema {@code wiki}): Felder, Prüfung und
  * Aufbau einer {@link MediaWikiKnowledgeSource}. Schlüssel wie bisher: {@code apiUrl}, {@code credentialRef},
- * {@code startPoints}, {@code maxDepth}, {@code maxResources}, {@code requiresLogin}, {@code siteKey},
+ * {@code startPoints}, {@code maxDepth}, {@code maxResources}, {@code requiresLogin},
  * {@code displayName}; nur in der Datei: {@code connectTimeoutMillis}, {@code readTimeoutMillis},
  * {@code userAgent}, {@code linkNamespaces}.
  */
@@ -44,8 +44,6 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
                     "Höchstzahl Seiten (optional)", "Obergrenze je Lauf; leer = Standard").advanced())
             .field(SourceSettingField.of("requiresLogin", SourceSettingField.Kind.FLAG, "Anmeldung erforderlich",
                     "Vor dem Lesen anmelden (Standard: ja, wenn ein KeePass-Eintrag gesetzt ist)").advanced())
-            .field(SourceSettingField.text("siteKey", "Site-Schlüssel (optional)",
-                    "Stabiler Schlüssel in den Ressourcen-IDs; nach dem ersten Indexieren nicht ändern").advanced())
             .field(SourceSettingField.text("displayName", "Anzeigename (optional)", "Name der Quelle in Quellenangaben").advanced())
             .build();
 
@@ -86,7 +84,7 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
     @Override
     public List<String> validate(SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
-        site(reader, "wiki"); // ohne ID: Site-Schlüssel nur prüfen, wenn er gesetzt ist
+        site(reader);
         reader.scope(null, 1, SourceScope.DEFAULT_MAX_RESOURCES);
         return reader.problems();
     }
@@ -97,9 +95,9 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
     }
 
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
-        MediaWikiSiteConfig site = site(reader, sourceId.value());
+        MediaWikiSiteConfig site = site(reader);
         SecretRef credentialRef = reader.secretRef("credentialRef");
         if (reader.hasProblems() || site == null) {
             throw new IllegalArgumentException("MediaWiki-Quelle " + sourceId + " ist fehlerhaft: " + reader.problems());
@@ -109,11 +107,24 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
         return new MediaWikiKnowledgeSource(sourceId, site, provider, routes, sslSocketFactory);
     }
 
+    /**
+     * Kanonischer Endpoint der Wiki-Installation ohne Schema und ohne {@code api.php}, z. B.
+     * {@code wiki.intern/w}; Teil jeder Ressourcen-ID ({@code wiki:wiki.intern/w/Hauptseite}).
+     */
+    @Override
+    public String locator(SourceSettings settings) {
+        return siteLocator(settings.get("apiUrl"));
+    }
+
+    static String siteLocator(String apiUrl) {
+        String locator = SourceLocators.url(apiUrl);
+        return locator.endsWith("/api.php") ? locator.substring(0, locator.length() - "/api.php".length()) : locator;
+    }
+
     /** Die Site-Konfiguration oder {@code null} (dann sind Probleme vermerkt). */
-    private MediaWikiSiteConfig site(SourceSettingsReader r, String sourceId) {
+    private MediaWikiSiteConfig site(SourceSettingsReader r) {
         URI apiUrl = r.httpUri("apiUrl", true);
         SecretRef credentialRef = r.secretRef("credentialRef");
-        String siteKey = r.text("siteKey", sourceId.toLowerCase(Locale.ROOT));
         String displayName = r.text("displayName", null);
         boolean requiresLogin = r.bool("requiresLogin", credentialRef != null);
         int connect = r.integer("connectTimeoutMillis", 15000, 1, MAX_TIMEOUT);
@@ -124,7 +135,8 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
             return null;
         }
         try {
-            MediaWikiSiteConfig.Builder site = MediaWikiSiteConfig.builder(siteKey, apiUrl.toString())
+            MediaWikiSiteConfig.Builder site = MediaWikiSiteConfig.builder(siteLocator(apiUrl.toString()),
+                            apiUrl.toString())
                     .requiresLogin(requiresLogin)
                     .connectTimeoutMillis(connect)
                     .readTimeoutMillis(read);
@@ -146,7 +158,7 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
             r.problem("linkNamespaces", "Namensräume müssen ganze Zahlen sein");
             return null;
         } catch (IllegalArgumentException e) {
-            r.problem("siteKey", "MediaWiki-Einstellung ungültig (Site-Schlüssel oder Adresse)");
+            r.problem("apiUrl", "MediaWiki-Einstellung ungültig (Adresse)");
             return null;
         }
     }

@@ -8,7 +8,7 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalResult;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.pinakes.LuceneKnowledgeIndex;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
@@ -43,7 +43,7 @@ public class SliceCMediaWikiTest {
 
     private static final String USER = "wikibot";
     private static final String PASSWORD = "wiki-pw-3b1c-geheim";
-    private static final KnowledgeSourceId SOURCE_ID = KnowledgeSourceId.of("intranet-wiki");
+    private static final SourceAddress SOURCE_ID = SourceAddress.of("intranet-wiki");
 
     @Rule
     public TemporaryFolder temp = new TemporaryFolder();

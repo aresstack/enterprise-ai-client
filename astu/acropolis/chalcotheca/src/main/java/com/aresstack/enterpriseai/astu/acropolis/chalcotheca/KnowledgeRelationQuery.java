@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.chalcotheca;
 
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -22,10 +22,10 @@ public final class KnowledgeRelationQuery {
     private final Set<KnowledgeRelationKind> kinds;
     private final int maxPerKind;
     private final double minSimilarity;
-    private final Set<KnowledgeSourceId> sources;
+    private final Set<SourceAddress> sources;
 
     private KnowledgeRelationQuery(EmbeddingModelIdentity space, Set<KnowledgeRelationKind> kinds, int maxPerKind,
-                                   double minSimilarity, Set<KnowledgeSourceId> sources) {
+                                   double minSimilarity, Set<SourceAddress> sources) {
         this.space = space;
         this.kinds = Collections.unmodifiableSet(kinds);
         this.maxPerKind = maxPerKind;
@@ -39,7 +39,7 @@ public final class KnowledgeRelationQuery {
             throw new IllegalArgumentException("space fehlt");
         }
         return new KnowledgeRelationQuery(space, EnumSet.allOf(KnowledgeRelationKind.class), DEFAULT_MAX_PER_KIND,
-                DEFAULT_MIN_SIMILARITY, new LinkedHashSet<KnowledgeSourceId>());
+                DEFAULT_MIN_SIMILARITY, new LinkedHashSet<SourceAddress>());
     }
 
     /** Nur diese Kantenarten; leer heißt keine. */
@@ -69,8 +69,8 @@ public final class KnowledgeRelationQuery {
     }
 
     /** Ziele nur aus diesen Quellen; leer oder {@code null} heißt alle. */
-    public KnowledgeRelationQuery restrictedTo(Collection<KnowledgeSourceId> value) {
-        Set<KnowledgeSourceId> copy = new LinkedHashSet<KnowledgeSourceId>();
+    public KnowledgeRelationQuery restrictedTo(Collection<SourceAddress> value) {
+        Set<SourceAddress> copy = new LinkedHashSet<SourceAddress>();
         if (value != null) {
             copy.addAll(value);
         }
@@ -97,11 +97,11 @@ public final class KnowledgeRelationQuery {
         return minSimilarity;
     }
 
-    public Set<KnowledgeSourceId> sources() {
+    public Set<SourceAddress> sources() {
         return sources;
     }
 
-    public boolean accepts(KnowledgeSourceId sourceId) {
+    public boolean accepts(SourceAddress sourceId) {
         return sources.isEmpty() || sources.contains(sourceId);
     }
 

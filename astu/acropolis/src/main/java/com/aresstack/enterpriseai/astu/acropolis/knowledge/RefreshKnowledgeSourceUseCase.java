@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 
 /**
@@ -8,7 +8,7 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
  * {@code SourceScope} neu, über {@link IndexKnowledgeUseCase#indexSource}.
  *
  * <p>Löst die Quelle über den {@link KnowledgeSourceCatalog} auf, damit Aufrufer (etwa die MCP-Wissenswerkzeuge) nur
- * die {@link KnowledgeSourceId} kennen müssen und weder Port noch Scope in die Hand bekommen. Blockiert für die
+ * die {@link SourceAddress} kennen müssen und weder Port noch Scope in die Hand bekommen. Blockiert für die
  * Dauer des Laufs; der {@link IndexingListener} kann ihn zwischen zwei Ressourcen abbrechen.
  */
 public final class RefreshKnowledgeSourceUseCase {
@@ -34,7 +34,7 @@ public final class RefreshKnowledgeSourceUseCase {
      * @param listener Beobachter und Abbruchschalter; {@code null} für keinen
      * @throws KnowledgeSourceException {@code NOT_FOUND}, wenn die Quelle nicht konfiguriert ist
      */
-    public IndexingReport refresh(KnowledgeSourceId sourceId, IndexingListener listener) throws KnowledgeSourceException {
+    public IndexingReport refresh(SourceAddress sourceId, IndexingListener listener) throws KnowledgeSourceException {
         if (sourceId == null) {
             throw new IllegalArgumentException("sourceId ist Pflicht");
         }

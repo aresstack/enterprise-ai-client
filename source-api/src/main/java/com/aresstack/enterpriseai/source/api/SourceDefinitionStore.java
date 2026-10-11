@@ -6,9 +6,10 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Wo die konfigurierten Quellen liegen (produktiv die Konfigurationsdatei: {@code sources} und
- * {@code source.<id>.type}, {@code .enabled} und die Schlüssel des Adapters). Der Store prüft keine Einstellungen;
- * das tun die {@link KnowledgeSourceProvider} im Use Case.
+ * Wo die konfigurierten Quellen liegen (produktiv die Konfigurationsdatei, je Quelle ein Listeneintrag
+ * {@code source.<n>.*} mit Adresse, Typ, Häkchen und den Schlüsseln des Adapters). Gefunden wird eine Quelle über
+ * ihre kanonische Adresse; die Listenposition ist ein Detail der Ablage. Der Store prüft keine Einstellungen; das tun
+ * die {@link KnowledgeSourceProvider} im Use Case.
  */
 public interface SourceDefinitionStore {
 
@@ -16,16 +17,17 @@ public interface SourceDefinitionStore {
     List<SourceDefinition> definitions() throws IOException;
 
     /**
-     * Speichert eine Quelle: neu hinten angefügt oder an der Stelle von {@code originalId} ersetzt (auch unter neuer
-     * ID).
+     * Speichert eine Quelle: neu hinten angefügt oder an der Stelle der Quelle mit {@code originalAddress} ersetzt
+     * (auch unter neuer Adresse). Eine leere {@code originalAddress} meint die erste gespeicherte Quelle desselben
+     * Typs ohne Adresse.
      *
-     * @param originalId die bisherige ID beim Bearbeiten, {@code null} beim Hinzufügen
+     * @param originalAddress die bisherige Adresse beim Bearbeiten, {@code null} beim Hinzufügen
      */
-    void save(SourceDefinition definition, String originalId) throws IOException;
+    void save(SourceDefinition definition, String originalAddress) throws IOException;
 
-    /** Nimmt die Quelle aus der Konfiguration. */
-    void remove(String id) throws IOException;
+    /** Nimmt die Quelle mit dieser Adresse aus der Konfiguration. */
+    void remove(String address) throws IOException;
 
     /** Schreibt nur das Häkchen. */
-    void setEnabled(String id, boolean enabled) throws IOException;
+    void setEnabled(String address, boolean enabled) throws IOException;
 }

@@ -1,9 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
@@ -21,7 +22,7 @@ import java.util.List;
 import java.util.logging.Logger;
 
 /**
- * Quelltyp „Confluence“ ({@code source.<id>.type=confluence}, Ressourcenschema {@code confluence}): Felder,
+ * Quelltyp „Confluence“ ({@code source.<n>.type=confluence}, Ressourcenschema {@code confluence}): Felder,
  * Prüfung und Aufbau einer {@link ConfluenceKnowledgeSource} samt Transport. Im Dialog: {@code title},
  * {@code baseUrl}, {@code credentialRef} und das Client-Zertifikat ({@code clientCertificate.alias}, Auswahl
  * aus dem Windows-Zertifikatspeicher wie MainframeMate; ohne Angabe gilt {@code MM_CertAlias} aus dem
@@ -129,8 +130,14 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
         return new SourceSettingsReader(TYPE, settings).scope(ALL_SPACES, 1, UNLIMITED);
     }
 
+    /** Kanonische Basis-URL ohne Schema ({@code cf.intern/confluence}); zwei Kontextpfade sind zwei Quellen. */
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public String locator(SourceSettings settings) {
+        return SourceLocators.url(settings.get("baseUrl"));
+    }
+
+    @Override
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
         ConfluenceConfig config = config(reader);
         int[] timeouts = timeouts(reader);
@@ -165,7 +172,7 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
                     certificate.passwordRef));
         } else if (config.credentialRef() != null) {
             // Wie MainframeMate: Das Client-Zertifikat steht als MM_CertAlias im KeePass-Eintrag (Windows-MY).
-            final KnowledgeSourceId id = sourceId;
+            final SourceAddress id = sourceId;
             transport.sslSocketFactory(new LazySslSocketFactory(() -> {
                 String alias;
                 try {

@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.astu.acropolis.chalcotheca;
 
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collection;
 import java.util.Set;
@@ -18,9 +18,9 @@ public final class KnowledgeSemanticQuery {
 
     private final EmbeddingVector vector;
     private final int maxResults;
-    private final Set<KnowledgeSourceId> sources;
+    private final Set<SourceAddress> sources;
 
-    private KnowledgeSemanticQuery(EmbeddingVector vector, int maxResults, Set<KnowledgeSourceId> sources) {
+    private KnowledgeSemanticQuery(EmbeddingVector vector, int maxResults, Set<SourceAddress> sources) {
         if (vector == null) {
             throw new IllegalArgumentException("Anfragevektor fehlt");
         }
@@ -35,7 +35,7 @@ public final class KnowledgeSemanticQuery {
     }
 
     /** Kopie, die nur in den genannten Quellen sucht; leer hebt die Einschränkung auf. */
-    public KnowledgeSemanticQuery restrictedTo(Collection<KnowledgeSourceId> sourceIds) {
+    public KnowledgeSemanticQuery restrictedTo(Collection<SourceAddress> sourceIds) {
         return new KnowledgeSemanticQuery(vector, maxResults, QueryLimits.sources(sourceIds));
     }
 
@@ -51,11 +51,11 @@ public final class KnowledgeSemanticQuery {
         return maxResults;
     }
 
-    public Set<KnowledgeSourceId> sources() {
+    public Set<SourceAddress> sources() {
         return sources;
     }
 
-    public boolean accepts(KnowledgeSourceId sourceId) {
+    public boolean accepts(SourceAddress sourceId) {
         return sources.isEmpty() || sources.contains(sourceId);
     }
 

@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeRelation;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeRelationKind;
@@ -26,7 +26,7 @@ public class IndexKnowledgeRelationsTest {
     @Test
     public void neighborsComeFromStoredVectorsAndStructure() {
         KnowledgeResource parent = resource("wiki:P", "wiki");
-        KnowledgeResource page = KnowledgeResource.builder(KnowledgeResourceId.of("wiki:A"), KnowledgeSourceId.of("wiki"))
+        KnowledgeResource page = KnowledgeResource.builder(KnowledgeResourceId.of("wiki:A"), SourceAddress.of("wiki"))
                 .title("A").parentId(parent.id()).build();
         KnowledgeResource other = resource("wiki:B", "wiki");
         KnowledgeResource unrelated = resource("wiki:C", "wiki");

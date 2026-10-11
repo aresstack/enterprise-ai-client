@@ -58,7 +58,7 @@ ausführliche Fassung.
 | Teil | Quelle | Geändert |
 |---|---|---|
 | `KnowledgeSourcePort` (`discover`/`load`/`discoverLinks`), `SourceScope` (Startpunkte, Tiefe, Höchstzahl) | corenth `ResourceScheme`, Parameter aus MainframeMate `WikiSourceScanner` | Port ohne Adapter-DTOs, Ausnahmearten `KnowledgeSourceException` |
-| MediaWiki über Action-API | MainframeMate `JwbfWikiContentService` (Abfragen, `CookieManager` je Site), `HtmlPostProcessor` (HTML → Text), `WikiSourceScanner` (Breitensuche, `wiki://site/Titel`) | ohne JWBF, direkt über `HttpURLConnection`; Zugangsdaten per Callback und gelöscht (MainframeMate hielt sie verschlüsselt in den Settings); IDs `wiki:<siteKey>/<Titel>` |
+| MediaWiki über Action-API | MainframeMate `JwbfWikiContentService` (Abfragen, `CookieManager` je Site), `HtmlPostProcessor` (HTML → Text), `WikiSourceScanner` (Breitensuche, `wiki://site/Titel`) | ohne JWBF, direkt über `HttpURLConnection`; Zugangsdaten per Callback und gelöscht (MainframeMate hielt sie verschlüsselt in den Settings); IDs `wiki:<host/pfad>/<Titel>` |
 | Confluence REST (Endpunkte, `expand`-Felder, Paging über `_links.next`, Windows-MY-mTLS) | MainframeMate `ConfluenceRestClient`, `ConfluenceConnectionConfig`, `HtmlTextExtractor` | Secret je Port-Aufruf statt in der Konfiguration; zusätzlich Bearer/PAT (UNVERIFIED) und PKCS12 mit Passwort aus KeePass; keine Weiterleitungen; Transport-Naht `ConfluenceHttpTransport` |
 
 ## Sicherheit (AP13, AP14)

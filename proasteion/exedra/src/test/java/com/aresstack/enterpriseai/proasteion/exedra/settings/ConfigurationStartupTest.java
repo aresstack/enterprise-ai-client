@@ -138,7 +138,7 @@ public class ConfigurationStartupTest {
         assertEquals("test-chat", outcome.config().chat().model());
         String text = new String(Files.readAllBytes(configPath()), StandardCharsets.UTF_8);
         assertTrue("die Kommentare der Vorlage bleiben erhalten", text.contains("#"));
-        assertNull("Beispielquellen der Vorlage sind nicht aktiv", file.read().getProperty("source.wiki.type"));
+        assertNull("Beispielquellen der Vorlage sind nicht aktiv", file.read().getProperty("source.1.type"));
     }
 
     @Test

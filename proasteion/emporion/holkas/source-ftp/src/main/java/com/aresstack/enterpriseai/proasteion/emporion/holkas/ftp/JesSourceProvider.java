@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
@@ -15,7 +16,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Quelltyp „JES-Jobs (Mainframe)“ ({@code source.<id>.type=jes}, Ressourcenschema {@code jes}): Ausgaben von
+ * Quelltyp „JES-Jobs (Mainframe)“ ({@code source.<n>.type=jes}, Ressourcenschema {@code jes}): Ausgaben von
  * JCL-Jobs über die JES-Schnittstelle des z/OS-FTP-Servers. Schlüssel: {@code host}, {@code port} (Standard 21),
  * {@code credentialRef} (Pflicht), {@code startPoints} (Jobnamen-Filter, Standard {@code *}), {@code owner}
  * (leer = angemeldeter Benutzer), {@code status} ({@code OUTPUT}, {@code ALL}, {@code ACTIVE}, {@code INPUT};
@@ -90,7 +91,7 @@ public final class JesSourceProvider implements KnowledgeSourceProvider {
     }
 
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
         FtpConnectionSettings connection = connection(reader);
         String status = status(reader);
@@ -98,8 +99,16 @@ public final class JesSourceProvider implements KnowledgeSourceProvider {
         if (reader.hasProblems() || connection == null || status == null) {
             throw new IllegalArgumentException("JES-Quelle " + sourceId + " ist fehlerhaft: " + reader.problems());
         }
-        return new JesKnowledgeSource(sourceId, owner == null ? null : owner.toUpperCase(Locale.ROOT), status,
+        return new JesKnowledgeSource(sourceId, SourceLocators.hostPort(connection.host, connection.port),
+                owner == null ? null : owner.toUpperCase(Locale.ROOT), status,
                 new FtpSessionPool<JesFtpSession>(sourceId, connection, secrets, JesFtpSession::open));
+    }
+
+    /** {@code host:port} des FTP-Servers, klein ({@code jes:host:21/JOB01234}). */
+    @Override
+    public String locator(SourceSettings settings) {
+        FtpConnectionSettings connection = FtpSourceProvider.connection(new SourceSettingsReader(TYPE, settings));
+        return connection == null ? "" : SourceLocators.hostPort(connection.host, connection.port);
     }
 
     private static FtpConnectionSettings connection(SourceSettingsReader r) {

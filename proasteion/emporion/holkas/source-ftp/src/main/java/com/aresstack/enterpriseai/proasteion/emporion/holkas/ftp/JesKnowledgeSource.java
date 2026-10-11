@@ -5,7 +5,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -38,24 +38,27 @@ final class JesKnowledgeSource implements KnowledgeSourcePort {
 
     private static final Pattern JOB_CARD = Pattern.compile("^\\s*\\d*\\s*//(\\S+)\\s+JOB\\b", Pattern.MULTILINE);
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
+    /** {@code host:port} klein, Teil jeder Ressourcen-ID ({@code jes:host:port/JOB01234}). */
+    private final String locator;
     private final String ownerFilter;
     private final String statusFilter;
     private final FtpSessionPool<JesFtpSession> sessions;
 
-    JesKnowledgeSource(KnowledgeSourceId sourceId, String ownerFilter, String statusFilter,
+    JesKnowledgeSource(SourceAddress sourceId, String locator, String ownerFilter, String statusFilter,
                        FtpSessionPool<JesFtpSession> sessions) {
-        if (sourceId == null || statusFilter == null || sessions == null) {
-            throw new IllegalArgumentException("sourceId, statusFilter and sessions are required");
+        if (sourceId == null || locator == null || statusFilter == null || sessions == null) {
+            throw new IllegalArgumentException("sourceId, locator, statusFilter and sessions are required");
         }
         this.sourceId = sourceId;
+        this.locator = locator;
         this.ownerFilter = ownerFilter;
         this.statusFilter = statusFilter;
         this.sessions = sessions;
     }
 
     @Override
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 
@@ -113,7 +116,7 @@ final class JesKnowledgeSource implements KnowledgeSourcePort {
         if (owner != null) {
             metadata.put("jes.owner", owner);
         }
-        return KnowledgeResource.builder(KnowledgeResourceId.of(SCHEME, sourceId.value() + "/" + jobId), sourceId)
+        return KnowledgeResource.builder(KnowledgeResourceId.of(SCHEME, locator + "/" + jobId), sourceId)
                 .title(jobName == null ? jobId : jobName + " (" + jobId + ")")
                 .contentType(KnowledgeResource.DEFAULT_CONTENT_TYPE)
                 .revision(revision)
@@ -123,7 +126,7 @@ final class JesKnowledgeSource implements KnowledgeSourcePort {
     }
 
     private String jobIdOf(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
-        String prefix = SCHEME + ":" + sourceId.value() + "/";
+        String prefix = SCHEME + ":" + locator + "/";
         String value = resourceId == null ? "" : resourceId.value();
         String jobId = value.startsWith(prefix) ? value.substring(prefix.length()) : "";
         if (jobId.isEmpty() || jobId.contains("/") || jobId.contains(" ")) {

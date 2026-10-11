@@ -9,7 +9,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
@@ -374,7 +374,7 @@ public final class IndexKnowledgeUseCase {
     }
 
     /** Entfernt alle Chunks einer Quelle aus dem Index, z. B. wenn sie aus der Konfiguration fällt. */
-    public void removeSource(KnowledgeSourceId sourceId) {
+    public void removeSource(SourceAddress sourceId) {
         index.removeSource(sourceId);
     }
 
@@ -458,7 +458,7 @@ public final class IndexKnowledgeUseCase {
      *
      * @throws KnowledgeIndexException wenn der Index die Abfrage nicht beantworten kann
      */
-    private List<KnowledgeResourceId> staleResources(KnowledgeSourceId sourceId, Set<KnowledgeResourceId> touched) {
+    private List<KnowledgeResourceId> staleResources(SourceAddress sourceId, Set<KnowledgeResourceId> touched) {
         List<KnowledgeResourceId> stale = new ArrayList<KnowledgeResourceId>();
         for (KnowledgeResourceId id : index.resourceIds(space(), sourceId)) {
             if (!touched.contains(id)) {

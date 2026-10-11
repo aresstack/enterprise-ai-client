@@ -47,31 +47,35 @@ public class FileSourceActionsTest {
                 + "security.keepass.enabled=false\n";
     }
 
+    private static final String WIKI = "wiki://127.0.0.1:9/w";
+    private static final String CONFLUENCE = "confluence://127.0.0.1:9/confluence";
+
     private static String withWiki() {
         return baseText()
-                + "sources=wiki\n"
-                + "source.wiki.type=mediawiki\n"
-                + "source.wiki.apiUrl=http://127.0.0.1:9/w/api.php\n"
-                + "source.wiki.startPoints=Hauptseite\n";
+                + "source.1.address=" + WIKI + "\n"
+                + "source.1.type=mediawiki\n"
+                + "source.1.apiUrl=http://127.0.0.1:9/w/api.php\n"
+                + "source.1.startPoints=Hauptseite\n";
     }
 
-    private static SourceDefinition confluence(String id) {
-        return new SourceDefinition(id, "confluence", true, SourceSettings.empty()
+    private static SourceDefinition confluence(String address) {
+        return new SourceDefinition(address, "confluence", true, SourceSettings.empty()
                 .with("baseUrl", "http://127.0.0.1:9/confluence").with("startPoints", "space:DEV"));
     }
 
     @Test
     public void addingASourceAppendsItAndLeavesTheRestUntouched() throws Exception {
         FileSourceActions actions = actionsWith(withWiki());
-        actions.save(confluence("confluence"), null);
+        actions.save(confluence(CONFLUENCE), null);
 
         String text = text();
         assertTrue(text, text.startsWith("# Mein Kommentar bleibt\nchat.baseUrl=http://127.0.0.1:9/v1\n"));
         assertTrue(text, text.contains("chat.apiKeyRef=keepass:Enterprise AI API"));
+        assertTrue(text, text.contains("source.2.address=" + CONFLUENCE));
         List<SourceDefinition> sources = actions.definitions();
         assertEquals(2, sources.size());
-        assertEquals("wiki", sources.get(0).id());
-        assertEquals("confluence", sources.get(1).id());
+        assertEquals(WIKI, sources.get(0).address());
+        assertEquals(CONFLUENCE, sources.get(1).address());
         AppConfig config = AppConfigLoader.load(path);
         assertEquals(2, config.sources().size());
         assertEquals("space:DEV", config.sources().get(1).settings().get("startPoints"));
@@ -79,30 +83,29 @@ public class FileSourceActionsTest {
     }
 
     @Test
-    public void editingCanRenameASourceInPlace() throws Exception {
+    public void editingCanChangeTheAddressInPlace() throws Exception {
         FileSourceActions actions = actionsWith(withWiki());
-        SourceDefinition renamed = new SourceDefinition("handbuch", "mediawiki", true, SourceSettings.empty()
-                .with("apiUrl", "http://127.0.0.1:9/w/api.php").with("startPoints", "Urlaub, Gleitzeit"));
-        actions.save(renamed, "wiki");
+        SourceDefinition moved = new SourceDefinition("wiki://127.0.0.1:9/handbuch", "mediawiki", true,
+                SourceSettings.empty().with("apiUrl", "http://127.0.0.1:9/handbuch/api.php")
+                        .with("startPoints", "Urlaub, Gleitzeit"));
+        actions.save(moved, WIKI);
 
         List<SourceDefinition> sources = actions.definitions();
         assertEquals(1, sources.size());
-        assertEquals("handbuch", sources.get(0).id());
+        assertEquals("wiki://127.0.0.1:9/handbuch", sources.get(0).address());
         assertEquals("Urlaub, Gleitzeit", sources.get(0).settings().get("startPoints"));
-        String text = text();
-        assertFalse(text, text.contains("\nsource.wiki.apiUrl="));
         assertEquals(1, AppConfigLoader.load(path).sources().size());
     }
 
     @Test
     public void removingASourceDropsItFromTheList() throws Exception {
         FileSourceActions actions = actionsWith(withWiki());
-        actions.save(confluence("confluence"), null);
-        actions.remove("wiki");
+        actions.save(confluence(CONFLUENCE), null);
+        actions.remove(WIKI);
 
         List<SourceDefinition> sources = actions.definitions();
         assertEquals(1, sources.size());
-        assertEquals("confluence", sources.get(0).id());
+        assertEquals(CONFLUENCE, sources.get(0).address());
         AppConfig config = AppConfigLoader.load(path);
         assertEquals(1, config.sources().size());
         for (String warning : config.warnings()) {
@@ -111,15 +114,23 @@ public class FileSourceActionsTest {
     }
 
     @Test
+    public void legacyEntriesWithFreeIdsAreDropped() throws Exception {
+        FileSourceActions actions = actionsWith(withWiki() + "sources=alt\nsource.alt.type=mediawiki\n");
+        assertEquals(2, actions.dropLegacyEntries());
+        assertEquals(1, actions.definitions().size());
+        assertFalse(text(), text().contains("\nsource.alt.type="));
+    }
+
+    @Test
     public void checkboxWritesOnlyTheEnabledKey() throws Exception {
         FileSourceActions actions = actionsWith(withWiki());
-        actions.setEnabled("wiki", false);
-        assertTrue(text(), text().contains("source.wiki.enabled=false"));
+        actions.setEnabled(WIKI, false);
+        assertTrue(text(), text().contains("source.1.enabled=false"));
         assertFalse(actions.definitions().get(0).enabled());
         assertFalse(AppConfigLoader.load(path).sources().get(0).enabled());
 
-        actions.setEnabled("wiki", true);
-        assertFalse(text(), text().contains("\nsource.wiki.enabled=false"));
+        actions.setEnabled(WIKI, true);
+        assertFalse(text(), text().contains("\nsource.1.enabled=false"));
         assertTrue(AppConfigLoader.load(path).sources().get(0).enabled());
         assertTrue(text(), text().startsWith("# Mein Kommentar bleibt\n"));
     }

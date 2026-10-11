@@ -6,7 +6,6 @@ import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -34,7 +33,6 @@ public final class SettingsMapper {
     static final String KEY_EMBEDDING_API_KEY_REF = "embedding.apiKeyRef";
     static final String KEY_INDEX_DIRECTORY = "knowledge.indexDirectory";
     static final String KEY_INDEX_ON_STARTUP = "knowledge.indexOnStartup";
-    static final String KEY_SOURCES = "sources";
     static final String KEY_KEEPASS_ENABLED = "security.keepass.enabled";
     static final String KEY_KEEPASS_HOST = "security.keepass.host";
     static final String KEY_KEEPASS_PORT = "security.keepass.port";
@@ -221,7 +219,7 @@ public final class SettingsMapper {
 
     /**
      * Die Schlüssel, die entfernt (auskommentiert) werden: verwaltete Schlüssel mit leerem Wert sowie alle
-     * {@code source.<id>.*} der Datei, deren Quelle das Formular nicht mehr kennt oder deren Typ sich geändert hat.
+     * {@code source.<n>.*} der Datei, deren Quelle das Formular nicht mehr kennt oder deren Typ sich geändert hat.
      * Quell-IDs dürfen Punkte enthalten; ein Schlüssel wird deshalb der längsten bekannten ID (Formular oder
      * {@code sources} der Datei) zugeordnet. Schlüssel zu Quellen, die nirgends gelistet sind, bleiben unberührt.
      */
@@ -237,21 +235,6 @@ public final class SettingsMapper {
         remove.add(KEY_LEGACY_TLS_WINDOWS_STORE);
         remove.removeAll(nonEmptyKeys(changes));
         return remove;
-    }
-
-    /** Die längste bekannte Quell-ID, zu der {@code source.<id>.<feld>} gehört, sonst {@code null}. */
-    static String sourceIdOf(String key, Collection<String> knownIds) {
-        if (!key.startsWith(SOURCE_PREFIX)) {
-            return null;
-        }
-        String best = null;
-        for (String id : knownIds) {
-            String prefix = SOURCE_PREFIX + id + ".";
-            if (key.startsWith(prefix) && key.length() > prefix.length() && (best == null || id.length() > best.length())) {
-                best = id;
-            }
-        }
-        return best;
     }
 
     /** Die Datei nach dem Speichern, als Properties (für die Prüfung mit dem Loader). */
@@ -280,18 +263,15 @@ public final class SettingsMapper {
         if (key == null) {
             return "";
         }
-        if (key.startsWith(SOURCE_PREFIX)) {
-            int dot = key.lastIndexOf('.');
-            if (dot > SOURCE_PREFIX.length()) {
-                String id = key.substring(SOURCE_PREFIX.length(), dot); // IDs dürfen Punkte enthalten
-                String field = key.substring(dot + 1);
-                String label = "apiUrl".equals(field) ? "API-URL" : "baseUrl".equals(field) ? "Basis-URL"
-                        : "directory".equals(field) ? "Verzeichnis"
-                        : "startPoints".equals(field) ? "Startpunkte" : "credentialRef".equals(field) ? "KeePass-Eintrag"
-                        : "maxDepth".equals(field) ? "Tiefe" : "maxResources".equals(field) ? "Höchstzahl Seiten"
-                        : "type".equals(field) ? "Typ" : "enabled".equals(field) ? "Aktiv" : field;
-                return "Quelle „" + id + "“, " + label;
-            }
+        Integer slot = AppConfigLoader.sourceSlotOf(key); // Listenposition, nicht die Identität
+        if (slot != null) {
+            String field = key.substring(SOURCE_PREFIX.length() + String.valueOf(slot).length() + 1);
+            String label = "apiUrl".equals(field) ? "API-URL" : "baseUrl".equals(field) ? "Basis-URL"
+                    : "directory".equals(field) ? "Verzeichnis"
+                    : "startPoints".equals(field) ? "Startpunkte" : "credentialRef".equals(field) ? "KeePass-Eintrag"
+                    : "maxDepth".equals(field) ? "Tiefe" : "maxResources".equals(field) ? "Höchstzahl Seiten"
+                    : "type".equals(field) ? "Typ" : "enabled".equals(field) ? "Aktiv" : field;
+            return "Quelle Nr. " + slot + ", " + label;
         }
         switch (key) {
             case KEY_WINDOW_TITLE:
@@ -314,8 +294,6 @@ public final class SettingsMapper {
                 return "KeePass-Eintrag für Embeddings";
             case KEY_INDEX_DIRECTORY:
                 return "Indexverzeichnis";
-            case KEY_SOURCES:
-                return "Wissensquellen";
             case KEY_KEEPASS_HOST:
                 return "KeePassRPC-Host";
             case KEY_KEEPASS_PORT:

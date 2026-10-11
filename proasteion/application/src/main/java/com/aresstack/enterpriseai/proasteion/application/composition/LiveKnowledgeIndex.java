@@ -6,7 +6,7 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeKeywordQuery;
@@ -81,7 +81,7 @@ public final class LiveKnowledgeIndex implements KnowledgeIndexPort, Application
     }
 
     @Override
-    public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+    public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, SourceAddress sourceId) {
         return current.resourceIds(space, sourceId);
     }
 
@@ -106,7 +106,7 @@ public final class LiveKnowledgeIndex implements KnowledgeIndexPort, Application
     }
 
     @Override
-    public void removeSource(KnowledgeSourceId sourceId) {
+    public void removeSource(SourceAddress sourceId) {
         current.removeSource(sourceId);
     }
 

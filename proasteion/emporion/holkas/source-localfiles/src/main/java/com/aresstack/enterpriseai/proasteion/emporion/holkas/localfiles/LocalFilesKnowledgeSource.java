@@ -10,11 +10,12 @@ import com.aresstack.enterpriseai.proasteion.emporion.deigma.ExtractionRequest;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.ExtractionResult;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.ResourceExtractor;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -62,13 +63,15 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
             ContentCategory.PLAIN_TEXT, ContentCategory.MARKDOWN, ContentCategory.HTML, ContentCategory.PDF,
             ContentCategory.OFFICE_DOCUMENT, ContentCategory.SOURCE_CODE, ContentCategory.STRUCTURED_DATA));
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final Path root;
+    /** Das Verzeichnis absolut mit {@code /}, Teil jeder Ressourcen-ID ({@code file:/C:/Daten/Doku/a.txt}). */
+    private final String locator;
     private final ContentDetector detector;
     private final ExtractionRegistry extractors;
     private final long maxFileBytes;
 
-    public LocalFilesKnowledgeSource(KnowledgeSourceId sourceId, Path root, ContentDetector detector,
+    public LocalFilesKnowledgeSource(SourceAddress sourceId, Path root, ContentDetector detector,
                                      ExtractionRegistry extractors, long maxFileBytes) {
         if (sourceId == null || root == null || detector == null || extractors == null) {
             throw new IllegalArgumentException("sourceId, root, detector and extractors are required");
@@ -78,13 +81,19 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
         }
         this.sourceId = sourceId;
         this.root = root.toAbsolutePath().normalize();
+        this.locator = locatorOf(this.root);
         this.detector = detector;
         this.extractors = extractors;
         this.maxFileBytes = maxFileBytes;
     }
 
+    /** Kanonischer Locator eines Verzeichnisses: absolut, normalisiert, mit {@code /} getrennt. */
+    static String locatorOf(Path directory) {
+        return SourceLocators.path(directory.toAbsolutePath().normalize().toString());
+    }
+
     @Override
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 
@@ -231,11 +240,11 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
     }
 
     private KnowledgeResourceId idOf(String relative) {
-        return KnowledgeResourceId.of(SCHEME, sourceId.value() + "/" + relative);
+        return KnowledgeResourceId.of(SCHEME, locator + "/" + relative);
     }
 
     private Path fileOf(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
-        String prefix = SCHEME + ":" + sourceId.value() + "/";
+        String prefix = SCHEME + ":" + locator + "/";
         String value = resourceId.value();
         Path file = value.startsWith(prefix) && value.length() > prefix.length()
                 ? inside(value.substring(prefix.length())) : null;

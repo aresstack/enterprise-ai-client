@@ -4,7 +4,7 @@ import com.aresstack.enterpriseai.proasteion.application.knowledge.SourcePartiti
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
@@ -50,12 +50,17 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
     }
 
     @Override
+    public String locator(SourceSettings settings) {
+        return delegate.locator(settings);
+    }
+
+    @Override
     public SourceScope scope(SourceSettings settings) {
         return delegate.scope(settings);
     }
 
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         KnowledgeSourcePort port = delegate.open(sourceId, settings);
         return delegate.type().partitionsLabel().isEmpty() ? port : new Selecting(port);
     }
@@ -74,7 +79,7 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
         }
 
         @Override
-        public KnowledgeSourceId sourceId() {
+        public SourceAddress sourceId() {
             return port.sourceId();
         }
 

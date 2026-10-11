@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.astu.source;
 
 /**
- * Ein Eingabefeld eines Quelltyps, wie es der Dialog „+ Quelle“ zeigt: Schlüssel (ohne {@code source.<id>.}),
+ * Ein Eingabefeld eines Quelltyps, wie es der Dialog „+ Quelle“ zeigt: Schlüssel (ohne {@code source.<n>.}),
  * Beschriftung, Hinweis, Art und Vorgabe. Der Adapter liefert seine Felder selbst ({@link KnowledgeSourceType});
  * die Oberfläche baut daraus das Formular, ohne den Typ zu kennen. Keine Secrets: Zugangsdaten sind höchstens
  * ein Verweis ({@link Kind#SECRET_REF}).

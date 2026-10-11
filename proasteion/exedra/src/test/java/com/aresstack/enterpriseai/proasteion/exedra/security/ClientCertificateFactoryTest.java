@@ -36,7 +36,7 @@ public class ClientCertificateFactoryTest {
     public TemporaryFolder temp = new TemporaryFolder();
 
     private ClientCertificateConfig certificateConfig(Path keyStoreFile, boolean withPasswordRef) throws Exception {
-        // Wie die Confluence-Quelle es aus source.<id>.clientCertificate.* baut.
+        // Wie die Confluence-Quelle es aus source.<n>.clientCertificate.* baut.
         return new ClientCertificateConfig("client", keyStoreFile, withPasswordRef ? REF : null);
     }
 

@@ -5,7 +5,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.application.security.ClientCertificateFactory;
 import com.aresstack.enterpriseai.proasteion.application.security.EnteredSecretProvider;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourcePartition;
@@ -40,7 +40,7 @@ public final class ConfluenceEntryCheck {
             if (useCertificate) {
                 settings = settings.with("clientCertificate.alias", certAlias.trim());
             }
-            KnowledgeSourcePort port = provider.open(KnowledgeSourceId.of("passwort-test"), settings);
+            KnowledgeSourcePort port = provider.open(SourceAddress.of("passwort-test"), settings);
             List<SourcePartition> spaces = port.partitions();
             return "Verbindung erfolgreich" + (useCertificate ? " (Zertifikat „" + certAlias.trim() + "“)" : "")
                     + ": " + spaces.size() + " Spaces sichtbar.";

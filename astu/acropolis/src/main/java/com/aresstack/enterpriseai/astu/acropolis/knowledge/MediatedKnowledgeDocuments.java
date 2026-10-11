@@ -6,7 +6,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ResourceAcce
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ResourceOperation;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.resource.BookmarkUri;
 import com.aresstack.enterpriseai.astu.resource.KnowledgeBookmarks;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.AcquisitionFailure;
@@ -37,8 +37,8 @@ public final class MediatedKnowledgeDocuments implements KnowledgeDocumentReader
     private final MediatedResourceService access;
     private final ActorIdentity reader;
     private final ActorIdentity service;
-    private final Map<KnowledgeSourceId, Set<BookmarkUri>> served =
-            new ConcurrentHashMap<KnowledgeSourceId, Set<BookmarkUri>>();
+    private final Map<SourceAddress, Set<BookmarkUri>> served =
+            new ConcurrentHashMap<SourceAddress, Set<BookmarkUri>>();
 
     /**
      * @param reader wer liest (Mensch in der Oberfläche oder Agent)
@@ -53,19 +53,19 @@ public final class MediatedKnowledgeDocuments implements KnowledgeDocumentReader
     }
 
     @Override
-    public KnowledgeDocument read(KnowledgeSourceId owner, KnowledgeSourcePort source, KnowledgeResourceId id)
+    public KnowledgeDocument read(SourceAddress owner, KnowledgeSourcePort source, KnowledgeResourceId id)
             throws KnowledgeSourceException {
         return fetch(owner, id, false);
     }
 
     /** Neu aus der Quelle über {@code REFRESH_EXTERNAL}; ersetzt die Bronze-Kopie. */
     @Override
-    public KnowledgeDocument refresh(KnowledgeSourceId owner, KnowledgeSourcePort source, KnowledgeResourceId id)
+    public KnowledgeDocument refresh(SourceAddress owner, KnowledgeSourcePort source, KnowledgeResourceId id)
             throws KnowledgeSourceException {
         return fetch(owner, id, true);
     }
 
-    private KnowledgeDocument fetch(KnowledgeSourceId owner, KnowledgeResourceId id, boolean refresh)
+    private KnowledgeDocument fetch(SourceAddress owner, KnowledgeResourceId id, boolean refresh)
             throws KnowledgeSourceException {
         BookmarkUri uri;
         try {
@@ -109,7 +109,7 @@ public final class MediatedKnowledgeDocuments implements KnowledgeDocumentReader
     }
 
     /** Zieht die Archiveinträge zurück, die diese Quelle geliefert hat; die Anzahl der zurückgezogenen Adressen. */
-    public int withdraw(KnowledgeSourceId owner) {
+    public int withdraw(SourceAddress owner) {
         Set<BookmarkUri> uris = owner == null ? null : served.remove(owner);
         if (uris == null) {
             return 0;
@@ -135,7 +135,7 @@ public final class MediatedKnowledgeDocuments implements KnowledgeDocumentReader
     }
 
     /** Die Quellen, deren Adressen gerade im Archiv gemerkt sind (für Tests und Log). */
-    public List<KnowledgeSourceId> owners() {
-        return new ArrayList<KnowledgeSourceId>(served.keySet());
+    public List<SourceAddress> owners() {
+        return new ArrayList<SourceAddress>(served.keySet());
     }
 }

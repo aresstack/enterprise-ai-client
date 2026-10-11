@@ -41,7 +41,7 @@ import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.tika.DocumentExtraction;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelDescriptor;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
@@ -305,7 +305,7 @@ public final class ShellAssembly {
     /** Der Drawer-Reiter „Wissensquellen“: Häkchen, Indexstand je Quelle, Indexieren und (mit Datei) Bearbeiten. */
     static KnowledgeSourcesController knowledgeSources(CompositionRoot root) {
         final ApplicationPorts ports = root.ports();
-        Function<KnowledgeSourceId, Integer> count = sourceId ->
+        Function<SourceAddress, Integer> count = sourceId ->
                 ports.index().resourceIds(ports.embeddingSpace(), sourceId).size();
         KnowledgeSourcesController controller = new KnowledgeSourcesController(root.config().sources(),
                 ports.sources(), root.sourceSelection(), root.indexingBinding(), count,

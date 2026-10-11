@@ -1,7 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import org.junit.Test;
 
@@ -15,7 +14,7 @@ import static org.junit.Assert.fail;
 
 public class ConfluenceConfigTest {
 
-    private static final KnowledgeSourceId SOURCE = KnowledgeSourceId.of("dc");
+    private static final String SOURCE = "dc";
 
     @Test
     public void normalizesTheBaseUrlAndHasDefaults() {
@@ -81,7 +80,7 @@ public class ConfluenceConfigTest {
         assertEquals("confluence:dc/page/42", page.value());
         assertEquals("42", ConfluenceIds.parse(SOURCE, page).contentId);
         assertTrue(ConfluenceIds.parse(SOURCE, ConfluenceIds.attachment(SOURCE, "att42")).attachment);
-        assertNull(ConfluenceIds.parse(KnowledgeSourceId.of("other"), page));
+        assertNull(ConfluenceIds.parse("other", page));
         assertNull(ConfluenceIds.parse(SOURCE, KnowledgeResourceId.of("confluence", "dc/page/42/x")));
     }
 }

@@ -1,7 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
 
 import java.util.regex.Pattern;
 
@@ -9,9 +8,11 @@ import java.util.regex.Pattern;
  * Ressourcen-IDs und Startpunkte des Confluence-Adapters (paketintern).
  *
  * <ul>
- *   <li>Seite: {@code confluence:<sourceId>/page/<contentId>}</li>
- *   <li>Anhang: {@code confluence:<sourceId>/attachment/<attachmentId>} (Confluence-IDs der Form {@code att123})</li>
+ *   <li>Seite: {@code confluence:<locator>/page/<contentId>}</li>
+ *   <li>Anhang: {@code confluence:<locator>/attachment/<attachmentId>} (Confluence-IDs der Form {@code att123})</li>
  * </ul>
+ * Der Locator ist die kanonische Basis-URL ohne Schema ({@code cf.intern/confluence}, siehe {@code SourceLocators}),
+ * nie ein Benutzername der Quelle; als corenth-Bookmark also {@code confluence://cf.intern/confluence/page/123456}.
  * Die Content-ID ist in Confluence über Umbenennen und Verschieben hinweg stabil und damit der Upsert-Schlüssel.
  */
 final class ConfluenceIds {
@@ -26,12 +27,12 @@ final class ConfluenceIds {
     private ConfluenceIds() {
     }
 
-    static KnowledgeResourceId page(KnowledgeSourceId source, String contentId) {
-        return KnowledgeResourceId.of(SCHEME, source.value() + "/page/" + contentId);
+    static KnowledgeResourceId page(String locator, String contentId) {
+        return KnowledgeResourceId.of(SCHEME, locator + "/page/" + contentId);
     }
 
-    static KnowledgeResourceId attachment(KnowledgeSourceId source, String attachmentId) {
-        return KnowledgeResourceId.of(SCHEME, source.value() + "/attachment/" + attachmentId);
+    static KnowledgeResourceId attachment(String locator, String attachmentId) {
+        return KnowledgeResourceId.of(SCHEME, locator + "/attachment/" + attachmentId);
     }
 
     static boolean isContentId(String value) {
@@ -47,11 +48,11 @@ final class ConfluenceIds {
     }
 
     /** Zerlegte ID dieser Quelle oder {@code null}, wenn die ID nicht zu ihr gehört. */
-    static Parsed parse(KnowledgeSourceId source, KnowledgeResourceId id) {
+    static Parsed parse(String locator, KnowledgeResourceId id) {
         if (!SCHEME.equals(id.scheme())) {
             return null;
         }
-        String prefix = source.value() + "/";
+        String prefix = locator + "/";
         String rest = id.schemeSpecificPart();
         if (!rest.startsWith(prefix)) {
             return null;
@@ -72,12 +73,12 @@ final class ConfluenceIds {
      *
      * @return {@code null}, wenn der Startpunkt keine dieser Formen hat
      */
-    static StartPoint startPoint(KnowledgeSourceId source, String raw) {
+    static StartPoint startPoint(String locator, String raw) {
         String value = raw.trim();
         if (value.startsWith(SCHEME + ":")) {
             Parsed parsed;
             try {
-                parsed = parse(source, KnowledgeResourceId.of(value));
+                parsed = parse(locator, KnowledgeResourceId.of(value));
             } catch (IllegalArgumentException e) {
                 return null;
             }

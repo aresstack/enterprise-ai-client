@@ -5,7 +5,7 @@ import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretPro
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
@@ -72,12 +72,17 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
     }
 
     @Override
+    public String locator(SourceSettings settings) {
+        return delegate.locator(settings);
+    }
+
+    @Override
     public SourceScope scope(SourceSettings settings) {
         return delegate.scope(settings);
     }
 
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         if (fieldsFromVault(settings).isEmpty()) {
             return delegate.open(sourceId, settings);
         }
@@ -153,11 +158,11 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
     /** Öffnet die eigentliche Quelle beim ersten Zugriff, nachdem KeePass die Adresse geliefert hat. */
     private final class Deferred implements SearchableKnowledgeSource {
 
-        private final KnowledgeSourceId sourceId;
+        private final SourceAddress sourceId;
         private final SourceSettings settings;
         private KnowledgeSourcePort opened;
 
-        Deferred(KnowledgeSourceId sourceId, SourceSettings settings) {
+        Deferred(SourceAddress sourceId, SourceSettings settings) {
             this.sourceId = sourceId;
             this.settings = settings;
         }
@@ -176,7 +181,7 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
         }
 
         @Override
-        public KnowledgeSourceId sourceId() {
+        public SourceAddress sourceId() {
             return sourceId;
         }
 

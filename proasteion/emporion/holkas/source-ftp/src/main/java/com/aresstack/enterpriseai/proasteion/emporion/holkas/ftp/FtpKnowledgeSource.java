@@ -1,11 +1,12 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -45,22 +46,25 @@ final class FtpKnowledgeSource implements KnowledgeSourcePort {
 
     static final String SCHEME = "ftp";
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final FtpConnectionSettings settings;
+    /** {@code host:port} klein, Teil jeder Ressourcen-ID ({@code ftp:host:port/HLQ.DATASET(MEMBER)}). */
+    private final String locator;
     private final FtpSessionPool<FtpClientSession> sessions;
 
-    FtpKnowledgeSource(KnowledgeSourceId sourceId, FtpConnectionSettings settings,
+    FtpKnowledgeSource(SourceAddress sourceId, FtpConnectionSettings settings,
                        FtpSessionPool<FtpClientSession> sessions) {
         if (sourceId == null || settings == null || sessions == null) {
             throw new IllegalArgumentException("sourceId, settings and sessions are required");
         }
         this.sourceId = sourceId;
         this.settings = settings;
+        this.locator = SourceLocators.hostPort(settings.host, settings.port);
         this.sessions = sessions;
     }
 
     @Override
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 
@@ -184,11 +188,11 @@ final class FtpKnowledgeSource implements KnowledgeSourcePort {
     }
 
     private KnowledgeResourceId idOf(String idPath) {
-        return KnowledgeResourceId.of(SCHEME, sourceId.value() + "/" + idPath);
+        return KnowledgeResourceId.of(SCHEME, locator + "/" + idPath);
     }
 
     private String pathOf(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
-        String prefix = SCHEME + ":" + sourceId.value() + "/";
+        String prefix = SCHEME + ":" + locator + "/";
         String value = resourceId == null ? "" : resourceId.value();
         if (!value.startsWith(prefix) || value.length() == prefix.length()) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, resourceId + " gehört nicht zur Quelle " + sourceId);

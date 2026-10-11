@@ -34,21 +34,19 @@ public class SettingsMapperTest {
         p.setProperty("embedding.dimension", "8");
         p.setProperty("knowledge.indexOnStartup", "false");
         p.setProperty("retrieval.maxResults", "5");
-        p.setProperty("sources", "wiki,confluence");
-        p.setProperty("source.wiki.type", "mediawiki");
-        p.setProperty("source.wiki.apiUrl", "http://127.0.0.1:9/w/api.php");
-        p.setProperty("source.wiki.siteKey", "intern");
-        p.setProperty("source.wiki.displayName", "Intranet-Wiki");
-        p.setProperty("source.wiki.startPoints", "Hauptseite,Handbuch");
-        p.setProperty("source.wiki.maxDepth", "2");
-        p.setProperty("source.wiki.connectTimeoutMillis", "15000");
-        p.setProperty("source.confluence.type", "confluence");
-        p.setProperty("source.confluence.baseUrl", "http://127.0.0.1:9/confluence");
-        p.setProperty("source.confluence.credentialRef", "keepass:Confluence");
-        p.setProperty("source.confluence.startPoints", "space:DEV");
-        p.setProperty("source.confluence.searchSpaceKeys", "DEV");
-        p.setProperty("source.confluence.includeAttachments", "true");
-        p.setProperty("source.confluence.allowInsecureHttp", "true");
+        p.setProperty("source.1.type", "mediawiki");
+        p.setProperty("source.1.apiUrl", "http://127.0.0.1:9/w/api.php");
+        p.setProperty("source.1.displayName", "Intranet-Wiki");
+        p.setProperty("source.1.startPoints", "Hauptseite,Handbuch");
+        p.setProperty("source.1.maxDepth", "2");
+        p.setProperty("source.1.connectTimeoutMillis", "15000");
+        p.setProperty("source.2.type", "confluence");
+        p.setProperty("source.2.baseUrl", "http://127.0.0.1:9/confluence");
+        p.setProperty("source.2.credentialRef", "keepass:Confluence");
+        p.setProperty("source.2.startPoints", "space:DEV");
+        p.setProperty("source.2.searchSpaceKeys", "DEV");
+        p.setProperty("source.2.includeAttachments", "true");
+        p.setProperty("source.2.allowInsecureHttp", "true");
         p.setProperty("security.keepass.enabled", "false");
         p.setProperty("network.proxy.mode", "DISABLED");
         return p;
@@ -197,7 +195,7 @@ public class SettingsMapperTest {
         Properties merged = SettingsMapper.merge(current, form);
         for (String key : current.stringPropertyNames()) {
             if (current.getProperty(key).isEmpty()) {
-                // "sources=" (leer) der Vorlage: leer und fehlend sind für den Loader dasselbe; der Dialog
+                // leere Werte der Vorlage: leer und fehlend sind für den Loader dasselbe; der Dialog
                 // kommentiert leere Werte aus, die Quellen-Schlüssel verwaltet er nicht.
                 String value = merged.getProperty(key);
                 assertTrue(key, value == null || value.isEmpty());
@@ -225,9 +223,7 @@ public class SettingsMapperTest {
             }
         }
         assertNull("Beispielquellen der Vorlage gehören nicht in die erste eigene Konfiguration",
-                merged.getProperty("source.wiki.type"));
-        String sources = merged.getProperty("sources");
-        assertTrue(sources == null || sources.isEmpty());
+                merged.getProperty("source.1.type"));
     }
 
     @Test
@@ -236,13 +232,6 @@ public class SettingsMapperTest {
         SettingsForm form = SettingsMapper.fromProperties(current).toBuilder().chatSystemPrompt("  ").build();
         assertTrue(SettingsMapper.removals(form, current).contains("chat.systemPrompt"));
         assertNull(SettingsMapper.merge(current, form).getProperty("chat.systemPrompt"));
-    }
-
-    @Test
-    public void dottedSourceIdsKeepTheirUnmanagedKeys() {
-        assertEquals("team.wiki", SettingsMapper.sourceIdOf("source.team.wiki.apiUrl",
-                java.util.Arrays.asList("team", "team.wiki")));
-        assertNull(SettingsMapper.sourceIdOf("source.team.wiki.apiUrl", java.util.Collections.singleton("wiki")));
     }
 
     @Test
@@ -260,10 +249,10 @@ public class SettingsMapperTest {
     public void describePutsFieldLabelsInFront() {
         assertEquals("Basis-URL des KI-Dienstes (chat.baseUrl): fehlt (Pflichtangabe)",
                 SettingsMapper.describe("chat.baseUrl: fehlt (Pflichtangabe)"));
-        assertEquals("Quelle \u201ewiki\u201c, API-URL (source.wiki.apiUrl): keine gültige URL",
-                SettingsMapper.describe("source.wiki.apiUrl: keine gültige URL"));
-        assertEquals("Quelle \u201eteam.wiki\u201c, Startpunkte (source.team.wiki.startPoints): fehlt",
-                SettingsMapper.describe("source.team.wiki.startPoints: fehlt"));
+        assertEquals("Quelle Nr. 1, API-URL (source.1.apiUrl): keine gültige URL",
+                SettingsMapper.describe("source.1.apiUrl: keine gültige URL"));
+        assertEquals("Quelle Nr. 2, Startpunkte (source.2.startPoints): fehlt",
+                SettingsMapper.describe("source.2.startPoints: fehlt"));
         assertEquals("CA-Datei (network.tls.caCertificatesFile): Datei nicht lesbar (NoSuchFileException)",
                 SettingsMapper.describe("network.tls.caCertificatesFile: Datei nicht lesbar (NoSuchFileException)"));
         assertEquals("retrieval.maxResults: keine ganze Zahl", SettingsMapper.describe("retrieval.maxResults: keine ganze Zahl"));

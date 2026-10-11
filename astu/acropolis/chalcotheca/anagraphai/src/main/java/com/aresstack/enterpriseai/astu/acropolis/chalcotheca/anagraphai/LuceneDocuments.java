@@ -6,7 +6,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexException;
 
@@ -105,7 +105,7 @@ public final class LuceneDocuments {
     static Stored fromDocument(Document doc) {
         try {
             KnowledgeResourceId resourceId = KnowledgeResourceId.of(doc.get(RESOURCE_ID));
-            KnowledgeSourceId sourceId = KnowledgeSourceId.of(doc.get(SOURCE_ID));
+            SourceAddress sourceId = SourceAddress.of(doc.get(SOURCE_ID));
             String parentId = doc.get(PARENT_ID);
             String location = doc.get(LOCATION);
             List<String> metadataItems = decode(doc.get(METADATA));

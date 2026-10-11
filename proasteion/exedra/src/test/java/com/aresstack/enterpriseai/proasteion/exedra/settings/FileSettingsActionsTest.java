@@ -126,8 +126,9 @@ public class FileSettingsActionsTest {
     @Test
     public void clearingAFieldCommentsItsLineOutInsteadOfWritingAnEmptyValue() throws Exception {
         ConfigurationFile file = fileWith(validText() + "chat.systemPrompt=Antworte kurz.\n"
-                + "sources=wiki\nsource.wiki.type=mediawiki\nsource.wiki.apiUrl=http://127.0.0.1:9/w/api.php\n"
-                + "source.wiki.startPoints=Hauptseite\nsource.wiki.linkNamespaces=0\n");
+                + "source.1.address=wiki://127.0.0.1:9/w\nsource.1.type=mediawiki\n"
+                + "source.1.apiUrl=http://127.0.0.1:9/w/api.php\n"
+                + "source.1.startPoints=Hauptseite\nsource.1.linkNamespaces=0\n");
         FileSettingsActions actions = new FileSettingsActions(file, null, DIRECT, DIRECT);
         SettingsForm form = SettingsMapper.fromProperties(file.read()).toBuilder()
                 .chatSystemPrompt("").build();
@@ -136,8 +137,8 @@ public class FileSettingsActionsTest {
         assertTrue(text, text.contains("\n#chat.systemPrompt=Antworte kurz.\n"));
         assertFalse(text, text.contains("\nchat.systemPrompt="));
         // Quellen verwaltet der Drawer-Reiter; der Einstellungen-Dialog lässt ihre Zeilen unverändert.
-        assertTrue(text, text.contains("\nsources=wiki\n"));
-        assertTrue(text, text.contains("\nsource.wiki.linkNamespaces=0\n"));
+        assertTrue(text, text.contains("\nsource.1.address=wiki://127.0.0.1:9/w\n"));
+        assertTrue(text, text.contains("\nsource.1.linkNamespaces=0\n"));
         AppConfig loaded = AppConfigLoader.load(file.path());
         assertEquals(1, loaded.sources().size());
     }

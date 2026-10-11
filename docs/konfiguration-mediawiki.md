@@ -5,30 +5,26 @@ verfügbar. Er implementiert `KnowledgeSourcePort` und `SearchableKnowledgeSourc
 Wiki- noch HTTP-Typen. JWBF wird bewusst nicht verwendet, die Abfragen sind aus MainframeMate
 `JwbfWikiContentService` übernommen und laufen über `HttpURLConnection`, JSON über Gson, HTML über jsoup.
 
-## Schlüssel (`source.<id>.*` mit `type=mediawiki`)
+## Schlüssel (`source.<n>.*` mit `type=mediawiki`)
 
 ```properties
-sources=wiki
-
-source.wiki.type=mediawiki
-source.wiki.apiUrl=https://wiki.intern.example/w/api.php
-source.wiki.siteKey=intern
-source.wiki.displayName=Intranet-Wiki
-source.wiki.credentialRef=keepass:Intranet-Wiki
-source.wiki.requiresLogin=true
-source.wiki.startPoints=Hauptseite,Handbuch
-source.wiki.maxDepth=2
-source.wiki.maxResources=500
-source.wiki.linkNamespaces=0
-source.wiki.connectTimeoutMillis=15000
-source.wiki.readTimeoutMillis=30000
+source.1.type=mediawiki
+source.1.apiUrl=https://wiki.intern.example/w/api.php
+source.1.displayName=Intranet-Wiki
+source.1.credentialRef=keepass:Intranet-Wiki
+source.1.requiresLogin=true
+source.1.startPoints=Hauptseite,Handbuch
+source.1.maxDepth=2
+source.1.maxResources=500
+source.1.linkNamespaces=0
+source.1.connectTimeoutMillis=15000
+source.1.readTimeoutMillis=30000
 ```
 
 | Schlüssel | Bedeutung |
 |---|---|
-| `sources` | Kommagetrennte Quell-IDs; je ID ein Block `source.<id>.*`. Die ID ist die `KnowledgeSourceId`, unter der Ressourcen im Index liegen, und der Wert für `source_ids` im MCP-Werkzeug `search_knowledge`. |
-| `apiUrl` | Basis-URL des Wikis oder direkt die `api.php`; ohne Query, Fragment und Userinfo. Die `api.php` wird wie in MainframeMate abgeleitet. |
-| `siteKey` | Stabiler, kleingeschriebener Schlüssel, Teil jeder Ressourcen-ID `wiki:<siteKey>/<Titel>`. Nach dem ersten Indexieren nicht mehr ändern, sonst gelten alle Seiten als neu. |
+| `source.<n>.*` | Ein Listeneintrag je Quelle (`n` nur Position). Die Identität ist die kanonische Adresse aus Typ und Endpoint (`source.<n>.address`, z. B. `wiki://wiki.intern.example/w` oder `confluence://confluence.intern.example/confluence`); die Anwendung setzt sie, eine zweite Quelle mit derselben Adresse wird abgelehnt. |
+| `apiUrl` | Basis-URL des Wikis oder direkt die `api.php`; ohne Query, Fragment und Userinfo. Die `api.php` wird wie in MainframeMate abgeleitet. Aus ihr (Host klein, ohne Standardport, ohne `api.php`) entsteht jede Ressourcen-ID `wiki:<host/pfad>/<Titel>`, etwa `wiki:wiki.intern.example/w/Hauptseite`. Einen eigenen Site-Schlüssel gibt es nicht mehr. |
 | `credentialRef` | Titel des KeePass-Eintrags mit Benutzername und Passwort; leer = anonym. Die Zugangsdaten werden erst beim Login über `MediaWikiCredentialsProvider` angefordert und danach gelöscht. |
 | `requiresLogin` | `true`: ohne Login wird nicht gelesen. `false`: ohne Zugangsdaten wird anonym gelesen; verweigert das Wiki den Zugriff, ist das `ACCESS_DENIED`. |
 | `startPoints` | Seitentitel, von denen der Crawl ausgeht. |
@@ -56,10 +52,10 @@ source.wiki.readTimeoutMillis=30000
 - Nichts gegen ein echtes Firmen-Wiki getestet (UNVERIFIED): Login-Varianten, Single Sign-on, Proxy. Die Tests
   laufen gegen `FakeMediaWikiTransport` und einen lokalen HTTP-Server (`MediaWikiHttpIntegrationTest`).
 - Anhänge und Bilder werden nicht indexiert.
-- Ändert sich `siteKey` oder zieht das Wiki um, ändern sich die Ressourcen-IDs.
+- Zieht das Wiki um (andere `apiUrl`), ändern sich Schlüssel und Ressourcen-IDs; die alten Indexeinträge werden gelöscht.
 
 ## Weitere Quellen
 
 Neue Quellen (SharePoint, lokale Dateien) implementieren `source-api`, erben den `KnowledgeSourceContractTest`
 aus dessen Testfixtures und werden in `proasteion.application.composition.AdapterAssembly` aus einem eigenen
-`source.<id>.type` gebaut. Kern und `acropolis` bleiben unverändert.
+`source.<n>.type` gebaut. Kern und `acropolis` bleiben unverändert.

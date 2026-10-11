@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,7 +9,7 @@ import java.util.List;
 /** Ergebnis eines Indexierungslaufs über eine Quelle. */
 public final class IndexingReport {
 
-    private final KnowledgeSourceId sourceId;
+    private final SourceAddress sourceId;
     private final int discovered;
     private final List<ResourceIndexingOutcome> outcomes;
     private final boolean cancelled;
@@ -17,17 +17,17 @@ public final class IndexingReport {
     private final String pruneFailure;
 
     /** Ein Lauf, der schon vor oder bei der Discovery scheiterte (z. B. ein unerwarteter Fehler im Lauf selbst). */
-    public static IndexingReport failed(KnowledgeSourceId sourceId, String reason) {
+    public static IndexingReport failed(SourceAddress sourceId, String reason) {
         return new IndexingReport(sourceId, 0, Collections.<ResourceIndexingOutcome>emptyList(), false,
                 reason == null || reason.trim().isEmpty() ? "unbekannter Fehler" : reason);
     }
 
-    IndexingReport(KnowledgeSourceId sourceId, int discovered, List<ResourceIndexingOutcome> outcomes,
+    IndexingReport(SourceAddress sourceId, int discovered, List<ResourceIndexingOutcome> outcomes,
                    boolean cancelled, String discoveryFailure) {
         this(sourceId, discovered, outcomes, cancelled, discoveryFailure, null);
     }
 
-    IndexingReport(KnowledgeSourceId sourceId, int discovered, List<ResourceIndexingOutcome> outcomes,
+    IndexingReport(SourceAddress sourceId, int discovered, List<ResourceIndexingOutcome> outcomes,
                    boolean cancelled, String discoveryFailure, String pruneFailure) {
         this.sourceId = sourceId;
         this.discovered = discovered;
@@ -37,7 +37,7 @@ public final class IndexingReport {
         this.pruneFailure = pruneFailure;
     }
 
-    public KnowledgeSourceId sourceId() {
+    public SourceAddress sourceId() {
         return sourceId;
     }
 

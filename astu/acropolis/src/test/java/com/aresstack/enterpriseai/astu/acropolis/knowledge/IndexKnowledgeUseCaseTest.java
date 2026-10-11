@@ -11,7 +11,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
@@ -239,13 +239,13 @@ public class IndexKnowledgeUseCaseTest {
     public void failedRedirectTargetKeepsTheAliasChunksAndIsRetriedByTheNextAlias() {
         KnowledgeResourceId alias = KnowledgeResourceId.of("inmemory:wiki/JavaAlias");
         KnowledgeResourceId other = KnowledgeResourceId.of("inmemory:wiki/JavaOther");
-        KnowledgeResource aliasResource = KnowledgeResource.builder(alias, KnowledgeSourceId.of("wiki"))
+        KnowledgeResource aliasResource = KnowledgeResource.builder(alias, SourceAddress.of("wiki"))
                 .title("Alt").build();
         index.replace(space, alias, Collections.singletonList(
                 KnowledgeIndexEntry.of(aliasResource,
                         new KnowledgeChunk(
                                 KnowledgeChunkId.of(alias, 0),
-                                KnowledgeSourceId.of("wiki"), Collections.<String>emptyList(), "altes Wissen", 2),
+                                SourceAddress.of("wiki"), Collections.<String>emptyList(), "altes Wissen", 2),
                         embeddings.vectorFor("altes Wissen"))));
         ScriptedSource redirecting = new ScriptedSource(wiki).redirect(alias, wiki.idOf("Java"))
                 .redirect(other, wiki.idOf("Java"));
@@ -390,7 +390,7 @@ public class IndexKnowledgeUseCaseTest {
         ScriptedSource scripted = new ScriptedSource(wiki)
                 .failLoad(wiki.idOf("Drucker"), KnowledgeSourceException.Kind.UNAVAILABLE)
                 .redirect(alias, wiki.idOf("Java"))
-                .discoverAlso(KnowledgeResource.builder(alias, KnowledgeSourceId.of("wiki")).title("Alias").build());
+                .discoverAlso(KnowledgeResource.builder(alias, SourceAddress.of("wiki")).title("Alias").build());
 
         // Scope ohne Java: Java wird nur als Weiterleitungsziel des Alias geladen.
         IndexingReport report = useCase.indexSource(scripted, SourceScope.of("Drucker", "Kaffee"), null);
@@ -444,11 +444,11 @@ public class IndexKnowledgeUseCaseTest {
         IndexingReport report = useCase.indexSource(wiki, ALL, null);
 
         assertEquals(1, report.count(IndexingStatus.PRUNED));
-        assertFalse(index.resourceIds(space, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+        assertFalse(index.resourceIds(space, SourceAddress.of("wiki")).contains(wiki.idOf("Kaffee")));
         assertTrue("die andere Embedding-Welt behält ihre Kopie, bis ihr eigener Lauf sie bereinigt",
-                index.resourceIds(otherSpace, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+                index.resourceIds(otherSpace, SourceAddress.of("wiki")).contains(wiki.idOf("Kaffee")));
         assertEquals(1, otherWorld.indexSource(wiki, ALL, null).count(IndexingStatus.PRUNED));
-        assertFalse(index.resourceIds(otherSpace, KnowledgeSourceId.of("wiki")).contains(wiki.idOf("Kaffee")));
+        assertFalse(index.resourceIds(otherSpace, SourceAddress.of("wiki")).contains(wiki.idOf("Kaffee")));
     }
 
     @Test
@@ -562,7 +562,7 @@ public class IndexKnowledgeUseCaseTest {
     public void removeSourceDropsAllItsChunks() {
         useCase.indexSource(wiki, SourceScope.of("Java", "Kaffee"), null);
 
-        useCase.removeSource(KnowledgeSourceId.of("wiki"));
+        useCase.removeSource(SourceAddress.of("wiki"));
 
         assertEquals(0, index.size());
     }
@@ -616,7 +616,7 @@ public class IndexKnowledgeUseCaseTest {
         }
 
         @Override
-        public KnowledgeSourceId sourceId() {
+        public SourceAddress sourceId() {
             return delegate.sourceId();
         }
 
@@ -664,7 +664,7 @@ public class IndexKnowledgeUseCaseTest {
         }
 
         @Override
-        public KnowledgeSourceId sourceId() {
+        public SourceAddress sourceId() {
             return delegate.sourceId();
         }
 
@@ -724,7 +724,7 @@ public class IndexKnowledgeUseCaseTest {
         }
 
         @Override
-        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, KnowledgeSourceId sourceId) {
+        public Set<KnowledgeResourceId> resourceIds(EmbeddingModelIdentity space, SourceAddress sourceId) {
             throw new KnowledgeIndexException("Indexverzeichnis nicht lesbar: /var/lib/eai/index");
         }
 
@@ -744,7 +744,7 @@ public class IndexKnowledgeUseCaseTest {
         }
 
         @Override
-        public void removeSource(KnowledgeSourceId sourceId) {
+        public void removeSource(SourceAddress sourceId) {
             delegate.removeSource(sourceId);
         }
 

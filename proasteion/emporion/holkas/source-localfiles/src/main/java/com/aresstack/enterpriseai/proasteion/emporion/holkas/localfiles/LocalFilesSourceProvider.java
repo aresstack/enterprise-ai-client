@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.localfiles;
 
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.ContentDetector;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.ExtractionRegistry;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
@@ -15,7 +15,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Quelltyp „Lokale Dateien“ ({@code source.<id>.type=files}, Ressourcenschema {@code file}): ein Verzeichnis,
+ * Quelltyp „Lokale Dateien“ ({@code source.<n>.type=files}, Ressourcenschema {@code file}): ein Verzeichnis,
  * rekursiv. Schlüssel wie bisher: {@code directory}, {@code startPoints} (Standard {@code .}), {@code maxDepth}
  * (Standard 20), {@code maxResources} (Standard 5000), {@code maxFileMegabytes} (Standard 50).
  */
@@ -76,7 +76,7 @@ public final class LocalFilesSourceProvider implements KnowledgeSourceProvider {
     }
 
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
         Path directory = directory(reader);
         long maxFileBytes = maxFileBytes(reader);
@@ -84,6 +84,13 @@ public final class LocalFilesSourceProvider implements KnowledgeSourceProvider {
             throw new IllegalArgumentException("Dateiquelle " + sourceId + " ist fehlerhaft: " + reader.problems());
         }
         return new LocalFilesKnowledgeSource(sourceId, directory, detector, extraction, maxFileBytes);
+    }
+
+    /** Das Verzeichnis absolut mit {@code /} ({@code file:/C:/Daten/Doku/sub/a.txt}). */
+    @Override
+    public String locator(SourceSettings settings) {
+        Path directory = directory(new SourceSettingsReader(TYPE, settings));
+        return directory == null ? "" : LocalFilesKnowledgeSource.locatorOf(directory);
     }
 
     private static Path directory(SourceSettingsReader r) {

@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp;
 
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.astu.source.SourceLocators;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
@@ -16,7 +17,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Quelltyp „FTP (Mainframe)“ ({@code source.<id>.type=ftp}, Ressourcenschema {@code ftp}): COBOL- und andere
+ * Quelltyp „FTP (Mainframe)“ ({@code source.<n>.type=ftp}, Ressourcenschema {@code ftp}): COBOL- und andere
  * Textquellen aus MVS-Datasets bzw. Dateien eines FTP-Servers. Schlüssel: {@code host}, {@code port} (Standard 21),
  * {@code credentialRef} (KeePass-Eintrag mit Benutzer und Passwort; leer = anonym), {@code startPoints},
  * {@code maxDepth} (Standard 1), {@code maxResources}, {@code encoding} (Standard ISO-8859-1 wie MainframeMate);
@@ -88,7 +89,7 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
     }
 
     @Override
-    public KnowledgeSourcePort open(KnowledgeSourceId sourceId, SourceSettings settings) {
+    public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
         FtpConnectionSettings connection = connection(reader);
         if (reader.hasProblems() || connection == null) {
@@ -96,6 +97,13 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
         }
         return new FtpKnowledgeSource(sourceId, connection,
                 new FtpSessionPool<FtpClientSession>(sourceId, connection, secrets, CommonsNetFtpSession::open));
+    }
+
+    /** {@code host:port} des FTP-Servers, klein ({@code ftp:host:21/HLQ.DATASET(MEMBER)}). */
+    @Override
+    public String locator(SourceSettings settings) {
+        FtpConnectionSettings connection = connection(new SourceSettingsReader(TYPE, settings));
+        return connection == null ? "" : SourceLocators.hostPort(connection.host, connection.port);
     }
 
     /** Verbindungsteil; auch für weitere Quelltypen über FTP (JES). */

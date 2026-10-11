@@ -8,7 +8,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 
 import java.net.URI;
@@ -30,14 +30,14 @@ public final class KnowledgeIndexTestData {
     }
 
     public static KnowledgeResource resource(String id, String source) {
-        return KnowledgeResource.builder(KnowledgeResourceId.of(id), KnowledgeSourceId.of(source))
+        return KnowledgeResource.builder(KnowledgeResourceId.of(id), SourceAddress.of(source))
                 .title("Titel " + id)
                 .build();
     }
 
     /** Ressource mit allen optionalen Feldern, um die verlustfreie Ablage im Index zu prüfen. */
     public static KnowledgeResource richResource(String id, String source) {
-        return KnowledgeResource.builder(KnowledgeResourceId.of(id), KnowledgeSourceId.of(source))
+        return KnowledgeResource.builder(KnowledgeResourceId.of(id), SourceAddress.of(source))
                 .title("Betriebshandbuch Größe")
                 .contentType("text/html")
                 .revision(KnowledgeRevision.of(Instant.parse("2026-10-01T08:30:00Z"), "12"))

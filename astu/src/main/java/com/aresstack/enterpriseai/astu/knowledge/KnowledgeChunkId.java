@@ -33,13 +33,13 @@ public final class KnowledgeChunkId {
     public static KnowledgeChunkId parse(String value) {
         int separator = value == null ? -1 : value.lastIndexOf(SEPARATOR);
         if (separator <= 0) {
-            throw new IllegalArgumentException("Ungültige Chunk-ID: " + KnowledgeSourceId.quote(value));
+            throw new IllegalArgumentException("Ungültige Chunk-ID: " + SourceAddress.quote(value));
         }
         String ordinal = value.substring(separator + SEPARATOR.length());
         if (ordinal.isEmpty() || ordinal.length() > 10 || !ordinal.matches("[0-9]+")
                 || ordinal.length() > 1 && ordinal.charAt(0) == '0'
                 || Long.parseLong(ordinal) > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException("Ungültige Chunk-ID: " + KnowledgeSourceId.quote(value));
+            throw new IllegalArgumentException("Ungültige Chunk-ID: " + SourceAddress.quote(value));
         }
         return of(KnowledgeResourceId.of(value.substring(0, separator)), Integer.parseInt(ordinal));
     }

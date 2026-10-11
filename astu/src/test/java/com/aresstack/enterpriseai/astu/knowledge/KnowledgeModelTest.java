@@ -26,13 +26,16 @@ public class KnowledgeModelTest {
     }
 
     @Test
-    public void sourceIdAcceptsConfigurationKeysOnly() {
-        assertEquals("confluence-dc", KnowledgeSourceId.of("confluence-dc").value());
-        assertEquals(KnowledgeSourceId.of("wiki:intranet"), KnowledgeSourceId.of("wiki:intranet"));
-        for (final String invalid : new String[]{null, "", " wiki", "wiki intranet", "-x", "ä"}) {
+    public void sourceAddressIsSchemeAndCanonicalLocator() {
+        SourceAddress address = SourceAddress.of("confluence", "cf.intern/confluence");
+        assertEquals("confluence://cf.intern/confluence", address.value());
+        assertEquals("confluence", address.scheme());
+        assertEquals("cf.intern/confluence", address.locator());
+        assertEquals(address, SourceAddress.of("confluence://cf.intern/confluence"));
+        for (final String invalid : new String[]{null, "", " wiki://x", "wiki://x ", "wiki://a\nb"}) {
             assertRejected(new Runnable() {
                 public void run() {
-                    KnowledgeSourceId.of(invalid);
+                    SourceAddress.of(invalid);
                 }
             });
         }
@@ -119,7 +122,7 @@ public class KnowledgeModelTest {
     public void resourceCarriesEverythingASourceNeedsToDescribe() {
         Instant modified = Instant.parse("2026-10-01T08:30:00Z");
         KnowledgeResource resource = KnowledgeResource
-                .builder(KnowledgeResourceId.of("confluence:dc/page/4711"), KnowledgeSourceId.of("confluence-dc"))
+                .builder(KnowledgeResourceId.of("confluence:dc/page/4711"), SourceAddress.of("confluence-dc"))
                 .title(" Betriebshandbuch ")
                 .contentType("text/html")
                 .revision(KnowledgeRevision.of(modified, "12"))
@@ -143,7 +146,7 @@ public class KnowledgeModelTest {
     @Test
     public void resourceDefaultsAndGuards() {
         final KnowledgeResourceId id = KnowledgeResourceId.of("file:docs/readme.md");
-        final KnowledgeSourceId source = KnowledgeSourceId.of("files");
+        final SourceAddress source = SourceAddress.of("files");
         KnowledgeResource minimal = KnowledgeResource.builder(id, source).build();
 
         assertEquals("file:docs/readme.md", minimal.title());
@@ -172,7 +175,7 @@ public class KnowledgeModelTest {
     @Test
     public void documentNormalizesTextAndHashesItWithoutPrintingIt() {
         KnowledgeResource resource = KnowledgeResource
-                .builder(KnowledgeResourceId.of("wiki:x/A"), KnowledgeSourceId.of("wiki")).build();
+                .builder(KnowledgeResourceId.of("wiki:x/A"), SourceAddress.of("wiki")).build();
         KnowledgeDocument nfd = KnowledgeDocument.of(resource, "Größe\r\nZeile");
         KnowledgeDocument nfc = KnowledgeDocument.of(resource, "Größe\nZeile");
 
@@ -212,7 +215,7 @@ public class KnowledgeModelTest {
             });
         }
 
-        final KnowledgeSourceId source = KnowledgeSourceId.of("wiki");
+        final SourceAddress source = SourceAddress.of("wiki");
         KnowledgeChunk chunk = new KnowledgeChunk(id, source, Collections.singletonList("Kapitel"), "Text.", 3);
         assertEquals(7, chunk.ordinal());
         assertFalse(chunk.toString().contains("Text."));

@@ -9,7 +9,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.chat.ChatRequest;
 import com.aresstack.enterpriseai.astu.chat.ChatRole;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
@@ -122,7 +122,7 @@ public class RagChatUseCaseTest {
     public void noHitsMeansNoContext() throws Exception {
         ChatConversationId id = chat.openConversation("System");
         RagChatTurn turn = rag.send(id, QUESTION, RagOptions.enabled()
-                .restrictedTo(Collections.singleton(KnowledgeSourceId.of("confluence"))), listener());
+                .restrictedTo(Collections.singleton(SourceAddress.of("confluence"))), listener());
         awaitDone(turn);
 
         assertTrue(turn.retrievalRequested());

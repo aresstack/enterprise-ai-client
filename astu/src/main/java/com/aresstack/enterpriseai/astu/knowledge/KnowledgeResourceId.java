@@ -5,8 +5,9 @@ import java.util.regex.Pattern;
 
 /**
  * Stabile, quellenübergreifend eindeutige Identität einer Wissensressource in URI-Form
- * {@code <schema>:<schemaspezifischer Teil>}, z. B. {@code wiki:intranet/Hauptseite} oder
- * {@code confluence:dc/page/123456}.
+ * {@code <schema>:<schemaspezifischer Teil>}, z. B. {@code wiki:wiki.intern/w/Hauptseite} oder
+ * {@code confluence:cf.intern/confluence/page/123456}. Der schemaspezifische Teil beginnt bei allen Adaptern mit dem
+ * kanonischen Endpoint der Quelle ({@code SourceLocators}), nie mit einem Benutzernamen der Quelle.
  *
  * <p>Das Schema benennt die Art der Quelle (klein geschrieben, {@code [a-z][a-z0-9+.-]*}), der Rest wird vom
  * jeweiligen Source-Adapter vergeben und muss für dieselbe Ressource über Läufe hinweg gleich bleiben – er ist
@@ -86,7 +87,7 @@ public final class KnowledgeResourceId {
     }
 
     private static IllegalArgumentException invalid(String value, String reason) {
-        return new IllegalArgumentException("Ungültige Knowledge-Resource-ID " + KnowledgeSourceId.quote(value)
+        return new IllegalArgumentException("Ungültige Knowledge-Resource-ID " + SourceAddress.quote(value)
                 + ": " + reason);
     }
 }

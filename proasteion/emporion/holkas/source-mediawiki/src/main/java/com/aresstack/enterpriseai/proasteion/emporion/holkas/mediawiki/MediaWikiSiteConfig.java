@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
  */
 public final class MediaWikiSiteConfig {
 
-    private static final Pattern SITE_KEY = Pattern.compile("[a-z0-9][a-z0-9._-]*");
+    private static final Pattern SITE_KEY = Pattern.compile("[a-z0-9][A-Za-z0-9._:/~%-]*");
 
     private final String siteKey;
     private final String displayName;
@@ -36,7 +36,8 @@ public final class MediaWikiSiteConfig {
     }
 
     /**
-     * @param siteKey stabiler, kleingeschriebener Schlüssel der Site; Teil jeder {@code wiki:}-Resource-ID
+     * @param siteKey kanonischer Endpoint der Site ohne Schema (Provider: {@code wiki.intern/w}); Teil jeder
+     *                {@code wiki:}-Resource-ID
      *                und darf sich nach dem ersten Indexieren nicht mehr ändern
      * @param apiUrl  Basis-URL des Wikis oder direkt die {@code api.php}
      */
@@ -107,7 +108,7 @@ public final class MediaWikiSiteConfig {
         private Builder(String siteKey, String apiUrl) {
             if (siteKey == null || !SITE_KEY.matcher(siteKey).matches()) {
                 throw new IllegalArgumentException(
-                        "siteKey must match [a-z0-9][a-z0-9._-]*: " + siteKey);
+                        "siteKey must match [a-z0-9][A-Za-z0-9._:/~%-]*: " + siteKey);
             }
             if (apiUrl == null || apiUrl.trim().isEmpty()) {
                 throw new IllegalArgumentException("apiUrl must not be blank");

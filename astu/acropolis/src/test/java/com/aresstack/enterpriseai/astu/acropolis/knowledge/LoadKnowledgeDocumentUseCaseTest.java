@@ -5,7 +5,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
@@ -113,16 +113,16 @@ public class LoadKnowledgeDocumentUseCaseTest {
         indexing.indexSource(wiki, SourceScope.of("Java"), null);
         int docsCalls = docs.calls().size();
 
-        assertEquals("Java installieren", gated.load(wiki.idOf("Java"), KnowledgeSourceId.of("wiki")).resource().title());
+        assertEquals("Java installieren", gated.load(wiki.idOf("Java"), SourceAddress.of("wiki")).resource().title());
         try {
-            gated.load(wiki.idOf("Java"), KnowledgeSourceId.of("docs"));
+            gated.load(wiki.idOf("Java"), SourceAddress.of("docs"));
             fail("KnowledgeDocumentNotIndexedException erwartet");
         } catch (KnowledgeDocumentNotIndexedException e) {
-            assertEquals(KnowledgeSourceId.of("docs"), e.sourceId());
+            assertEquals(SourceAddress.of("docs"), e.sourceId());
         }
         assertEquals("die fremde Quelle wird nicht gefragt", Collections.emptyList(), callsSince(docs, docsCalls));
         try {
-            gated.load(wiki.idOf("Java"), KnowledgeSourceId.of("sharepoint"));
+            gated.load(wiki.idOf("Java"), SourceAddress.of("sharepoint"));
             fail("NOT_FOUND erwartet");
         } catch (KnowledgeSourceException e) {
             assertEquals("unbekannte Quelle bleibt NOT_FOUND", KnowledgeSourceException.Kind.NOT_FOUND, e.kind());
@@ -164,7 +164,7 @@ public class LoadKnowledgeDocumentUseCaseTest {
         KnowledgeDocumentNotIndexedException plain =
                 new KnowledgeDocumentNotIndexedException(wiki.idOf("Java"), null);
         KnowledgeDocumentNotIndexedException scoped =
-                new KnowledgeDocumentNotIndexedException(wiki.idOf("Java"), KnowledgeSourceId.of("docs"));
+                new KnowledgeDocumentNotIndexedException(wiki.idOf("Java"), SourceAddress.of("docs"));
 
         assertEquals("memory:wiki/Java ist nicht indexiert", plain.getMessage());
         assertEquals("memory:wiki/Java ist in Quelle docs nicht indexiert", scoped.getMessage());
@@ -224,17 +224,17 @@ public class LoadKnowledgeDocumentUseCaseTest {
 
     @Test
     public void explicitSourceIsAskedDirectly() throws Exception {
-        KnowledgeDocument document = useCase.load(wiki.idOf("Java"), KnowledgeSourceId.of("wiki"));
+        KnowledgeDocument document = useCase.load(wiki.idOf("Java"), SourceAddress.of("wiki"));
         assertEquals("Java installieren", document.resource().title());
 
         try {
-            useCase.load(wiki.idOf("Java"), KnowledgeSourceId.of("docs"));
+            useCase.load(wiki.idOf("Java"), SourceAddress.of("docs"));
             fail("UNSUPPORTED erwartet");
         } catch (KnowledgeSourceException e) {
             assertEquals(KnowledgeSourceException.Kind.UNSUPPORTED, e.kind());
         }
         try {
-            useCase.load(wiki.idOf("Java"), KnowledgeSourceId.of("sharepoint"));
+            useCase.load(wiki.idOf("Java"), SourceAddress.of("sharepoint"));
             fail("NOT_FOUND erwartet");
         } catch (KnowledgeSourceException e) {
             assertEquals(KnowledgeSourceException.Kind.NOT_FOUND, e.kind());

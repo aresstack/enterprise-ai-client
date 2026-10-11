@@ -20,7 +20,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalo
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResourceIndexingOutcome;
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingAdapter;
@@ -85,11 +85,14 @@ public class AdapterAssemblyTest {
         ProxySelector.setDefault(originalSelector);
     }
 
+    private static final SourceAddress WIKI = SourceAddress.of("wiki://wiki.intern.example/w");
+    private static final SourceAddress CONFLUENCE = SourceAddress.of("confluence://confluence.intern.example/confluence");
+
     /** Die Vorlage mit den auskommentierten Beispielquellen (Wiki, Confluence) aktiviert. */
     static Properties exampleWithSources() throws Exception {
         Properties p = new Properties();
-        p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
-        p.setProperty("sources", "wiki,confluence");
+        p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.1.", "\nsource.1.")
+                .replace("\n#source.2.", "\nsource.2.")));
         return p;
     }
 
@@ -120,11 +123,11 @@ public class AdapterAssemblyTest {
             assertEquals(768, ports.embeddingSpace().dimension());
             assertTrue(ports.index() instanceof LiveKnowledgeIndex);
             assertTrue(((AskedSecretProvider) ports.secrets()).vault() instanceof KeePassRpcSecretProvider);
-            assertEquals(Arrays.asList(KnowledgeSourceId.of("wiki"), KnowledgeSourceId.of("confluence")),
-                    new java.util.ArrayList<KnowledgeSourceId>(ports.sources().ids()));
-            assertTrue(unwrap(ports.sources().find(KnowledgeSourceId.of("wiki")).port())
+            assertEquals(Arrays.asList(WIKI, CONFLUENCE),
+                    new java.util.ArrayList<SourceAddress>(ports.sources().ids()));
+            assertTrue(unwrap(ports.sources().find(WIKI).port())
                     instanceof MediaWikiKnowledgeSource);
-            assertTrue(unwrap(ports.sources().find(KnowledgeSourceId.of("confluence")).port())
+            assertTrue(unwrap(ports.sources().find(CONFLUENCE).port())
                     instanceof ConfluenceKnowledgeSource);
             assertFalse("Agent-Modus ist in der Beispielkonfiguration aus", ports.hasAgent());
             assertEquals(Arrays.asList("local-models", "mcp-server", "knowledge-index"), ports.resourceNames());
@@ -164,15 +167,15 @@ public class AdapterAssemblyTest {
     @Test
     public void confluenceClientCertificateWithoutKeePassDoesNotAbortStartup() throws Exception {
         Properties p = exampleProperties(false);
-        p.setProperty("source.confluence.clientCertificate.alias", "client");
-        p.setProperty("source.confluence.clientCertificate.keyStoreFile",
+        p.setProperty("source.2.clientCertificate.alias", "client");
+        p.setProperty("source.2.clientCertificate.keyStoreFile",
                 temp.newFile("client.p12").getAbsolutePath());
-        p.setProperty("source.confluence.clientCertificate.keyStorePasswordRef", "Client-Zertifikat");
+        p.setProperty("source.2.clientCertificate.keyStorePasswordRef", "Client-Zertifikat");
         AppConfig config = AppConfigLoader.fromProperties(p);
 
         ApplicationPorts ports = AdapterAssembly.create(config, NetworkServices.from(config.network()), null, null);
         try {
-            KnowledgeSourcePort confluence = ports.sources().find(KnowledgeSourceId.of("confluence")).port();
+            KnowledgeSourcePort confluence = ports.sources().find(CONFLUENCE).port();
             assertTrue("Quellen tragen die Protokollhülle", confluence instanceof LoggingKnowledgeSource);
             assertTrue(unwrap(confluence) instanceof ConfluenceKnowledgeSource);
             try {

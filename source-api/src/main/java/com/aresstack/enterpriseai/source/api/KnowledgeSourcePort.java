@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.source.api;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.util.Collections;
 import java.util.List;
@@ -30,7 +30,7 @@ import java.util.List;
 public interface KnowledgeSourcePort {
 
     /** Die konfigurierte Quelle, zu der alle gelieferten Ressourcen gehören. */
-    KnowledgeSourceId sourceId();
+    SourceAddress sourceId();
 
     /**
      * Ermittelt die Ressourcen im angegebenen Ausschnitt der Quelle, ohne ihren Inhalt zu laden.

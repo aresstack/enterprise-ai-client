@@ -3,7 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.rag;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
@@ -149,7 +149,7 @@ public final class RetrieveKnowledgeUseCase {
 
     /** Sucht in allen Quellen. */
     public RetrievalResult retrieve(String query) {
-        return retrieve(query, Collections.<KnowledgeSourceId>emptySet());
+        return retrieve(query, Collections.<SourceAddress>emptySet());
     }
 
     /**
@@ -158,11 +158,11 @@ public final class RetrieveKnowledgeUseCase {
      * @return höchstens {@link RetrievalSettings#maxResults()} fusionierte Treffer
      * @throws KnowledgeRetrievalException wenn alle aktiven Suchpfade ausgefallen sind
      */
-    public RetrievalResult retrieve(String query, Collection<KnowledgeSourceId> sources) {
+    public RetrievalResult retrieve(String query, Collection<SourceAddress> sources) {
         if (query == null || query.trim().isEmpty()) {
             return RetrievalResult.empty();
         }
-        Collection<KnowledgeSourceId> filter = sources == null ? Collections.<KnowledgeSourceId>emptySet() : sources;
+        Collection<SourceAddress> filter = sources == null ? Collections.<SourceAddress>emptySet() : sources;
         List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
         RuntimeException lastFailure = null;
         int failedPaths = 0;
@@ -214,7 +214,7 @@ public final class RetrieveKnowledgeUseCase {
      * 1-Hop-Erweiterung: Nachbarn der besten Treffer, die noch nicht im Ergebnis sind, mit
      * {@code seedScore * relationWeight} (ähnliche Absätze zusätzlich mal Cosine); danach neu sortiert.
      */
-    private List<RetrievedChunk> expand(List<RetrievedChunk> fused, Collection<KnowledgeSourceId> filter) {
+    private List<RetrievedChunk> expand(List<RetrievedChunk> fused, Collection<SourceAddress> filter) {
         RetrievalSettings live = relationSettings == null ? null : relationSettings.get();
         if (relations == null || live == null || !live.relationsEnabled() || fused.isEmpty()
                 || live.relationWeight() == 0.0) {
@@ -255,7 +255,7 @@ public final class RetrieveKnowledgeUseCase {
         return expanded;
     }
 
-    private List<KnowledgeSearchHit> semanticSearch(String query, Collection<KnowledgeSourceId> filter) {
+    private List<KnowledgeSearchHit> semanticSearch(String query, Collection<SourceAddress> filter) {
         EmbeddingVector vector = embeddings.embedQueries(Collections.singletonList(query)).get(0);
         if (!space().equals(vector.identity())) {
             // Der Port hat seine Welt gewechselt; niemals in einem fremden Namespace suchen.

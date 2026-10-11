@@ -9,7 +9,7 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgePassageId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
@@ -47,11 +47,11 @@ final class KnowledgeSearchTool implements McpToolHandler {
     private final RetrieveKnowledgeUseCase retrieval;
     private final SearchDrivenIndexingUseCase live;
     private final Supplier<KnowledgeSourceCatalog> catalogs;
-    private final Predicate<KnowledgeSourceId> enabled;
+    private final Predicate<SourceAddress> enabled;
     private final KnowledgeToolSettings settings;
 
     KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
-                        Supplier<KnowledgeSourceCatalog> catalogs, Predicate<KnowledgeSourceId> enabled,
+                        Supplier<KnowledgeSourceCatalog> catalogs, Predicate<SourceAddress> enabled,
                         KnowledgeToolSettings settings) {
         this.retrieval = retrieval;
         this.live = live;
@@ -90,8 +90,8 @@ final class KnowledgeSearchTool implements McpToolHandler {
         // Die Quellen von jetzt (auch zur Laufzeit hinzugefügte), davon nur die angehakten: abgewählte werden
         // weder live gefragt noch im Index durchsucht.
         KnowledgeSourceCatalog catalog = catalogs.get();
-        List<KnowledgeSourceId> sources = new ArrayList<KnowledgeSourceId>();
-        for (KnowledgeSourceId id : catalog.ids()) {
+        List<SourceAddress> sources = new ArrayList<SourceAddress>();
+        for (SourceAddress id : catalog.ids()) {
             if (enabled.test(id)) {
                 sources.add(id);
             }
@@ -124,7 +124,7 @@ final class KnowledgeSearchTool implements McpToolHandler {
         StringBuilder out = new StringBuilder();
         out.append("Query: ").append(ToolText.oneLine(query, 200)).append('\n');
         if (found != null) {
-            for (Map.Entry<KnowledgeSourceId, String> failure : found.failures().entrySet()) {
+            for (Map.Entry<SourceAddress, String> failure : found.failures().entrySet()) {
                 out.append("Note: source ").append(failure.getKey().value()).append(" could not be searched (")
                         .append(failure.getValue()).append(").\n");
             }
