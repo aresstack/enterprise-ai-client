@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 import com.aresstack.enterpriseai.proasteion.application.config.KnowledgeConfig;
 import com.aresstack.enterpriseai.proasteion.application.chat.DocumentAttachmentTextExtractor;
+import com.aresstack.enterpriseai.proasteion.application.knowledge.FileDocumentNavigationStore;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.proasteion.application.speech.IndexSentenceSegmenter;
 import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
@@ -80,6 +81,9 @@ import java.util.logging.Logger;
  * einmal, auch wenn Fenster-Schließen und JVM-Shutdown-Hook beide zugreifen.
  */
 public final class CompositionRoot {
+
+    /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
+    static final String NAVIGATION_DIRECTORY = "navigation";
 
     private static final Logger LOG = Logger.getLogger(CompositionRoot.class.getName());
     /** Wartezeit beim Beenden auf eine laufende Indexierung (danach wird der Index geschlossen). */
@@ -203,13 +207,15 @@ public final class CompositionRoot {
                 id -> !selection.isRestricted() || selection.isEnabled(id), config.agent().toolSettings());
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
         // Dokumentnavigation im Lesebereich: Passagen der Index-Pipeline (askai arch PassageSegmentation) + TopicClusterer,
-        // ohne Vorrang in der Index-Warteschlange; ohne OpenNLP-Satzmodell nur Originalüberschriften. Themenabschnitte
+        // ohne Vorrang in der Index-Warteschlange; ohne OpenNLP-Satzmodell nur Originalüberschriften. Analysierte Fassungen
+        // bleiben über den Neustart in <Konfigurationsverzeichnis>/navigation. Themenabschnitte
         // benennt das gewählte Chat-Modell (austauschbar), sonst bleibt die Bezeichnung aus der Analyse.
         this.documentNavigation = new BuildDocumentNavigationUseCase(prefetch,
                 () -> nlpModels.hasSentenceModel(passageLanguage),
                 new ChatSectionLabeler(ports.chat(), modelKey(
                         com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.CHAT)),
-                workExecutor);
+                workExecutor, new FileDocumentNavigationStore(AppPaths.configFile().toAbsolutePath().getParent()
+                        .resolve(NAVIGATION_DIRECTORY)));
         // Anhänge (Chat und Agent): Text über den Dokument-Port, Markdown/Klartext direkt, sonst Apache Tika.
         this.attachmentText = new DocumentAttachmentTextExtractor(DocumentExtraction.detector(),
                 DocumentExtraction.registry());

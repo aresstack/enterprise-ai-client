@@ -35,20 +35,23 @@ public class BuildDocumentNavigationUseCaseTest {
             + "Der Antrag auf Urlaub geht an die Personalstelle.\n";
 
     private final InMemoryKnowledgeSource wiki = new InMemoryKnowledgeSource("wiki").add("A", "Handbuch", TEXT);
-    private KnowledgePrefetchService prefetch;
+    private final List<KnowledgePrefetchService> services = new java.util.ArrayList<KnowledgePrefetchService>();
+    private final MemoryStore store = new MemoryStore();
 
     private BuildDocumentNavigationUseCase useCase(EmbeddingPort embeddings, boolean sentenceModel) {
         IndexKnowledgeUseCase indexing = new IndexKnowledgeUseCase(new InMemoryKnowledgeIndex(), embeddings,
                 embeddings.modelIdentity(), new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
         KnowledgeDocumentReader reader = (owner, source, id) -> source.load(id);
-        prefetch = new KnowledgePrefetchService(indexing, reader,
+        KnowledgePrefetchService prefetch = new KnowledgePrefetchService(indexing, reader,
                 () -> KnowledgePrefetchService.Settings.of(5, 1, 10));
-        return new BuildDocumentNavigationUseCase(prefetch, () -> sentenceModel, AnalysisLabels.KEEP, Runnable::run);
+        services.add(prefetch);
+        return new BuildDocumentNavigationUseCase(prefetch, () -> sentenceModel, AnalysisLabels.KEEP, Runnable::run,
+                store);
     }
 
     @After
     public void tearDown() {
-        if (prefetch != null) {
+        for (KnowledgePrefetchService prefetch : services) {
             prefetch.shutdown();
         }
     }
@@ -77,6 +80,26 @@ public class BuildDocumentNavigationUseCaseTest {
         DocumentNavigation changed = navigation.analyze(document()).get(10, TimeUnit.SECONDS);
         assertEquals(2, navigation.analysisCount());
         assertEquals(3, changed.chapters().size());
+    }
+
+    @Test
+    public void unchangedRevisionIsNotAnalyzedAgainAfterRestart() throws Exception {
+        DocumentNavigation first = useCase(new VocabularyEmbeddingPort("beleg", "urlaub"), true).analyze(document())
+                .get(10, TimeUnit.SECONDS);
+        assertEquals(1, store.saves);
+
+        // Neustart: neuer Use Case, neuer Index, leerer Speicher im Prozess; nur der Navigationsspeicher bleibt.
+        BuildDocumentNavigationUseCase restarted = useCase(new VocabularyEmbeddingPort("beleg", "urlaub"), true);
+        DocumentNavigation again = restarted.analyze(document()).get(10, TimeUnit.SECONDS);
+        assertEquals("keine neue Analyse, kein neuer Benenner-Aufruf", 0, restarted.analysisCount());
+        assertEquals(first.toString(), again.toString());
+        assertEquals(1, store.saves);
+    }
+
+    @Test
+    public void fallbacksAreNotPersisted() throws Exception {
+        useCase(new VocabularyEmbeddingPort("beleg"), false).analyze(document()).get(10, TimeUnit.SECONDS);
+        assertEquals("ohne Satzmodell nichts merken: nach der Installation wird analysiert", 0, store.saves);
     }
 
     @Test
@@ -109,5 +132,24 @@ public class BuildDocumentNavigationUseCaseTest {
         assertFalse(result.fallbackReason().isEmpty());
         assertEquals(Arrays.asList("Import", "Urlaub"), Arrays.asList(result.chapters().get(0).label(),
                 result.chapters().get(1).label()));
+    }
+
+    /** Navigationsspeicher, der einen Neustart überlebt (eine Instanz für mehrere Use Cases). */
+    private static final class MemoryStore implements DocumentNavigationStore {
+        private final java.util.Map<String, DocumentNavigation> byResource =
+                new java.util.HashMap<String, DocumentNavigation>();
+        int saves;
+
+        @Override
+        public synchronized DocumentNavigation load(String resourceId, String captureId) {
+            DocumentNavigation stored = byResource.get(resourceId);
+            return stored != null && stored.captureId().equals(captureId) ? stored : null;
+        }
+
+        @Override
+        public synchronized void save(DocumentNavigation navigation) {
+            saves++;
+            byResource.put(navigation.resourceId(), navigation);
+        }
     }
 }

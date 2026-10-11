@@ -24,7 +24,8 @@ import java.util.function.BooleanSupplier;
  * geht: die zwischengespeicherte Navigation dieser Fassung oder die Originalüberschriften. {@link #analyze} wartet
  * ohne Vorrang, bis die Index-Pipeline genau diese Fassung aufbereitet hat (dieselbe Warteschlange wie jede Seite,
  * kein Blockieren eines Threads), liest deren Passagen aus dem Index und baut daraus die semantische Navigation; der
- * Aufrufer zieht den Banner damit nach. Eine Fassung (Capture-ID) wird je Sitzung nur einmal analysiert.
+ * Aufrufer zieht den Banner damit nach. Eine Fassung (Capture-ID) wird nur einmal analysiert, auch über den Neustart
+ * hinaus ({@link DocumentNavigationStore}).
  *
  * <p>Kontrollierter Rückfall auf die Originalüberschriften: kein OpenNLP-Satzmodell installiert, Aufbereitung
  * gescheitert (z. B. Embedding-Dienst nicht erreichbar) oder keine Passagen dieser Fassung im Index.</p>
@@ -41,6 +42,7 @@ public final class BuildDocumentNavigationUseCase {
     private final SectionLabeler labeler;
     private final Executor workExecutor;
     private final DocumentNavigationBuilder builder;
+    private final DocumentNavigationStore store;
     private final Map<String, DocumentNavigation> analyzed = new LinkedHashMap<String, DocumentNavigation>(16, 0.75f,
             true) {
         @Override
@@ -54,17 +56,20 @@ public final class BuildDocumentNavigationUseCase {
      * @param sentenceModelAvailable ob das OpenNLP-Satzmodell der Wissensbasis-Sprache installiert ist (je Aufruf
      *                               gefragt, gilt ohne Neustart)
      * @param labeler                Benenner der Themenabschnitte; liefert er {@code null}: Analyse-Bezeichnungen
-     * @param workExecutor           wo analysiert und benannt wird (nie der Index-Thread)
+     * @param workExecutor           wo analysiert, gelesen und gespeichert wird (nie der Index-Thread)
+     * @param store                  analysierte Fassungen über den Neustart hinaus
      */
     public BuildDocumentNavigationUseCase(KnowledgePrefetchService prefetch, BooleanSupplier sentenceModelAvailable,
-                                          SectionLabeler labeler, Executor workExecutor) {
-        this(prefetch, sentenceModelAvailable, labeler, workExecutor, new DocumentNavigationBuilder());
+                                          SectionLabeler labeler, Executor workExecutor,
+                                          DocumentNavigationStore store) {
+        this(prefetch, sentenceModelAvailable, labeler, workExecutor, store, new DocumentNavigationBuilder());
     }
 
     BuildDocumentNavigationUseCase(KnowledgePrefetchService prefetch, BooleanSupplier sentenceModelAvailable,
-                                   SectionLabeler labeler, Executor workExecutor, DocumentNavigationBuilder builder) {
+                                   SectionLabeler labeler, Executor workExecutor, DocumentNavigationStore store,
+                                   DocumentNavigationBuilder builder) {
         if (prefetch == null || sentenceModelAvailable == null || labeler == null || workExecutor == null
-                || builder == null) {
+                || store == null || builder == null) {
             throw new IllegalArgumentException("all arguments are required");
         }
         this.prefetch = prefetch;
@@ -72,6 +77,7 @@ public final class BuildDocumentNavigationUseCase {
         this.labeler = labeler;
         this.workExecutor = workExecutor;
         this.builder = builder;
+        this.store = store;
     }
 
     /** Sofort: die schon analysierte Navigation dieser Fassung, sonst die Originalüberschriften. */
@@ -83,7 +89,8 @@ public final class BuildDocumentNavigationUseCase {
 
     /**
      * Die semantische Navigation dieser Fassung, sobald ihre Passagen im Index liegen; bei unveränderter Fassung aus
-     * dem Speicher, ohne neue Analyse. Endet nie mit einem Fehler: im Zweifel die Originalüberschriften mit Grund.
+     * dem Speicher (auch nach dem Neustart), ohne neue Analyse. Endet nie mit einem Fehler: im Zweifel die
+     * Originalüberschriften mit Grund.
      */
     public CompletableFuture<DocumentNavigation> analyze(final KnowledgeDocument document) {
         final String capture = captureOf(document);
@@ -92,6 +99,26 @@ public final class BuildDocumentNavigationUseCase {
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
+        return CompletableFuture.supplyAsync(() -> stored(document, capture), workExecutor)
+                .thenCompose(stored -> {
+                    if (stored != null) {
+                        remember(key, stored);
+                        return CompletableFuture.completedFuture(stored);
+                    }
+                    return fresh(document, capture, key);
+                });
+    }
+
+    private DocumentNavigation stored(KnowledgeDocument document, String capture) {
+        try {
+            return store.load(document.id().value(), capture);
+        } catch (RuntimeException unreadable) {
+            return null; // dann eben neu analysieren
+        }
+    }
+
+    private CompletableFuture<DocumentNavigation> fresh(final KnowledgeDocument document, final String capture,
+                                                        final String key) {
         if (!sentenceModelAvailable.getAsBoolean()) {
             return CompletableFuture.completedFuture(headings(document, capture, NO_SENTENCE_MODEL));
         }
@@ -109,9 +136,9 @@ public final class BuildDocumentNavigationUseCase {
                 return headings(document, capture, INDEXING_FAILED);
             }
             DocumentNavigation built = fromIndex(document, capture);
-            if (built.analysis() == DocumentNavigation.Analysis.SEMANTIC || !NOT_INDEXED.equals(
-                    built.fallbackReason())) {
+            if (!NOT_INDEXED.equals(built.fallbackReason())) {
                 remember(key, built);
+                persist(built); // echte Analyse dieser Fassung: nach dem Neustart nicht wiederholen
             }
             return built;
         }, workExecutor);
@@ -151,6 +178,14 @@ public final class BuildDocumentNavigationUseCase {
 
     private synchronized DocumentNavigation cached(String key) {
         return analyzed.get(key);
+    }
+
+    private void persist(DocumentNavigation navigation) {
+        try {
+            store.save(navigation);
+        } catch (RuntimeException ignored) {
+            // nicht gespeichert: nach dem Neustart wird diese Fassung neu analysiert
+        }
     }
 
     private synchronized void remember(String key, DocumentNavigation navigation) {
