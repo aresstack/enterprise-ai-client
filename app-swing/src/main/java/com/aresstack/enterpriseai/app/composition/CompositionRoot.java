@@ -133,8 +133,16 @@ public final class CompositionRoot {
                 knowledge.retrieval()).withRelations(new IndexKnowledgeRelations(ports.index()),
                 settings.get(c -> c.knowledge().retrieval()));
         this.contextAssembler = new PromptContextAssembler(knowledge.context());
+        // Indexiert wird wie askai arch in semantische Passagen: Struktur zuerst, Satzgrenzen aus dem OpenNLP-Modell
+        // der eingestellten Sprache, Themenwechsel über Satzfenster, eigenes Embedding je Passage. Ändert sich Text,
+        // Zerlegung oder Embedding-Modell, wird neu verarbeitet, sonst nicht.
         this.indexing = new IndexKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
-                new KnowledgeChunker(knowledge.chunking()), knowledge.embeddingBatchSize());
+                new KnowledgeChunker(knowledge.chunking()), knowledge.embeddingBatchSize())
+                .withPassages(new SemanticPassageSplitter(new com.aresstack.enterpriseai.application.passage.PassageSegmentation(
+                        ports.embeddings(), new com.aresstack.enterpriseai.app.speech.IndexSentenceSegmenter(
+                                com.aresstack.enterpriseai.app.speech.SpeechOutput.nlpModels(),
+                                com.aresstack.enterpriseai.app.speech.SpeechOutput.textAnalysis(),
+                                knowledge.passageLanguage()))));
         // Lesen lädt aus der Quelle, die die ID kennt (knowledge_read); das Gelesene kommt danach in den Index.
         // Gelesen wird nach corenth vermittelt: Tamias (Regel) → Chalcotheca (Archiv) → AcquisitionPort → Holkas-
         // Connector der Quelle; der Use Case fragt den Quellen-Port nicht mehr direkt.

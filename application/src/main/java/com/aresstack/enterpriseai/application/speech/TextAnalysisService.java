@@ -114,6 +114,14 @@ public final class TextAnalysisService {
         return engine != null;
     }
 
+    /**
+     * Die Sätze eines Absatzes mit dem Satzmodell der Sprache (z. B. für die Passagenbildung beim Indexieren); ohne
+     * geladene Engine {@code null}. Vorher {@link #acquire(Object)}.
+     */
+    public synchronized List<String> sentences(String paragraph, String languageCode) {
+        return engine == null ? null : engine.sentences(paragraph, languageCode);
+    }
+
     /** Warum die Engine zuletzt nicht geladen werden konnte, sonst {@code null}. */
     public synchronized String loadProblem() {
         return loadProblem;

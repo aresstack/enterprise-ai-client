@@ -21,6 +21,9 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkId;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeTokenCounter;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -90,6 +93,9 @@ public final class IndexKnowledgeUseCase {
     private final Supplier<EmbeddingModelIdentity> space;
     private final KnowledgeChunker chunker;
     private final int embeddingBatchSize;
+    /** Passagen wie askai arch statt fester Chunks; {@code null}: {@link KnowledgeChunker}. */
+    private final KnowledgePassageSplitter passages;
+    private final KnowledgeTokenCounter tokenCounter = KnowledgeTokenCounter.wordsAndSymbols();
 
     public IndexKnowledgeUseCase(KnowledgeIndexPort index, EmbeddingPort embeddings, EmbeddingModelIdentity space,
                                  KnowledgeChunker chunker) {
@@ -119,6 +125,7 @@ public final class IndexKnowledgeUseCase {
         this.space = () -> space;
         this.chunker = chunker;
         this.embeddingBatchSize = embeddingBatchSize;
+        this.passages = null;
     }
 
     /**
@@ -139,6 +146,35 @@ public final class IndexKnowledgeUseCase {
         this.space = space;
         this.chunker = chunker;
         this.embeddingBatchSize = embeddingBatchSize;
+        this.passages = null;
+    }
+
+    private IndexKnowledgeUseCase(IndexKnowledgeUseCase base, KnowledgePassageSplitter passages) {
+        this.index = base.index;
+        this.embeddings = base.embeddings;
+        this.space = base.space;
+        this.chunker = base.chunker;
+        this.embeddingBatchSize = base.embeddingBatchSize;
+        this.passages = passages;
+    }
+
+    /**
+     * Derselbe Use Case, der Dokumente wie askai arch in semantische Passagen zerlegt (Struktur zuerst, Satzgrenzen
+     * aus dem Satzmodell, Themenwechsel über Satzfenster, eigenes Embedding je Passage) statt in feste Chunks.
+     */
+    public IndexKnowledgeUseCase withPassages(KnowledgePassageSplitter value) {
+        if (value == null) {
+            throw new IllegalArgumentException("passages must not be null");
+        }
+        return new IndexKnowledgeUseCase(this, value);
+    }
+
+    /**
+     * Fingerabdruck der Zerlegung, mit dem indexiert wird. Unverändert wird eine Ressource nur übersprungen, wenn Text
+     * (Hash), Zerlegung (dieser Wert) und Embedding-Modell (Namensraum) gleich sind.
+     */
+    public String segmentationFingerprint() {
+        return passages != null ? passages.fingerprint() : "chunker;" + chunker.fingerprint();
     }
 
     public EmbeddingModelIdentity space() {
@@ -253,7 +289,8 @@ public final class IndexKnowledgeUseCase {
         KnowledgeResource resource = document.resource();
         Optional<IndexedResourceState> state = stateOf(resource.id());
         if (state.isPresent() && state.get().hasContentHash()
-                && state.get().contentHash().equals(document.contentHash())) {
+                && state.get().contentHash().equals(document.contentHash())
+                && state.get().segmentation().equals(segmentationFingerprint())) {
             if (!state.get().revision().equals(resource.revision())) {
                 restamp(resource, document.contentHash());
             }
@@ -279,9 +316,10 @@ public final class IndexKnowledgeUseCase {
         }
     }
 
-    private static KnowledgeResource withHash(KnowledgeResource resource, String contentHash) {
+    private KnowledgeResource withHash(KnowledgeResource resource, String contentHash) {
         return resource.toBuilder()
-                .metadata(resource.metadata().with(IndexedResourceState.CONTENT_HASH_KEY, contentHash)).build();
+                .metadata(resource.metadata().with(IndexedResourceState.CONTENT_HASH_KEY, contentHash)
+                        .with(IndexedResourceState.SEGMENTATION_KEY, segmentationFingerprint())).build();
     }
 
     /** Entfernt alle Chunks einer Quelle aus dem Index, z. B. wenn sie aus der Konfiguration fällt. */
@@ -353,8 +391,10 @@ public final class IndexKnowledgeUseCase {
             return false;
         }
         try {
-            Optional<KnowledgeRevision> stored = index.revisionOf(space(), id);
-            return stored.isPresent() && stored.get().equals(discovered);
+            // Gleiche Revision genügt nur mit gleicher Zerlegung (ein anderes Verfahren baut neu).
+            Optional<IndexedResourceState> stored = index.stateOf(space(), id);
+            return stored.isPresent() && stored.get().revision().equals(discovered)
+                    && stored.get().segmentation().equals(segmentationFingerprint());
         } catch (KnowledgeIndexException e) {
             // Die Abfrage ist nur eine Abkürzung; im Zweifel neu indexieren.
             return false;
@@ -423,6 +463,9 @@ public final class IndexKnowledgeUseCase {
                     ResourceIndexingOutcome.done(target, resource.title(), IndexingStatus.DUPLICATE, 0));
         }
 
+        if (passages != null) {
+            return indexPassages(requested, target, resource, document, done);
+        }
         List<KnowledgeChunk> chunks = chunker.chunk(document);
 
         List<KnowledgeIndexEntry> entries = new ArrayList<KnowledgeIndexEntry>(chunks.size());
@@ -456,6 +499,52 @@ public final class IndexKnowledgeUseCase {
         done.add(target);
         return dropAlias(requested, target, resource, ResourceIndexingOutcome.done(target, resource.title(),
                 entries.isEmpty() ? IndexingStatus.EMPTY : IndexingStatus.INDEXED, entries.size()));
+    }
+
+    /**
+     * askai arch: Struktur → Sätze → semantische Passagen, jede mit eigenem Embedding; je Passage ein Eintrag
+     * (Ordinalzahl = Lesereihenfolge, Abschnittspfad aus den Überschriften).
+     */
+    private ResourceIndexingOutcome indexPassages(KnowledgeResourceId requested, KnowledgeResourceId target,
+                                                  KnowledgeResource resource, KnowledgeDocument document,
+                                                  Set<KnowledgeResourceId> done) {
+        List<KnowledgeIndexEntry> entries = new ArrayList<KnowledgeIndexEntry>();
+        try {
+            List<KnowledgePassageSplitter.Passage> found = document.isBlank()
+                    ? Collections.<KnowledgePassageSplitter.Passage>emptyList()
+                    : passages.split(target.value(), document.text());
+            for (int i = 0; i < found.size(); i++) {
+                KnowledgePassageSplitter.Passage passage = found.get(i);
+                KnowledgeChunk chunk = new KnowledgeChunk(KnowledgeChunkId.of(target, i), resource.sourceId(),
+                        headings(passage.headingPath()), passage.text(), tokenCounter.count(passage.text()));
+                EmbeddingVector vector = EmbeddingVector.of(embeddings.modelIdentity(), passage.vector());
+                space().requireSameWorldAs(vector.identity());
+                entries.add(KnowledgeIndexEntry.of(resource, chunk, vector));
+            }
+        } catch (EmbeddingException e) {
+            return ResourceIndexingOutcome.failed(target, resource.title(), IndexingStage.EMBEDDING,
+                    e.kind() + ": " + e.getMessage());
+        } catch (EmbeddingWorldMismatchException e) {
+            return ResourceIndexingOutcome.failed(target, resource.title(), IndexingStage.EMBEDDING, e.getMessage());
+        }
+        try {
+            index.replace(space(), target, entries);
+        } catch (KnowledgeIndexException e) {
+            return ResourceIndexingOutcome.failed(target, resource.title(), IndexingStage.INDEXING, e.getMessage());
+        }
+        done.add(target);
+        return dropAlias(requested, target, resource, ResourceIndexingOutcome.done(target, resource.title(),
+                entries.isEmpty() ? IndexingStatus.EMPTY : IndexingStatus.INDEXED, entries.size()));
+    }
+
+    private static List<String> headings(String path) {
+        List<String> headings = new ArrayList<String>();
+        for (String heading : path.split(" > ")) {
+            if (!heading.trim().isEmpty()) {
+                headings.add(heading.trim());
+            }
+        }
+        return headings;
     }
 
     /**

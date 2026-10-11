@@ -123,6 +123,16 @@ public final class NlpModels {
     }
 
     /** Installiert = Manifest und Datei liegen da. */
+    /** Ob das Satzmodell der Sprache ({@code de}, {@code en}) installiert ist. */
+    public boolean hasSentenceModel(String language) {
+        for (Entry entry : entries) {
+            if (SENTENCE.equals(entry.capability) && entry.language.equals(language) && isInstalled(entry)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean isInstalled(Entry entry) {
         return Files.isRegularFile(directory(entry).resolve(MANIFEST))
                 && Files.isRegularFile(directory(entry).resolve(entry.file));

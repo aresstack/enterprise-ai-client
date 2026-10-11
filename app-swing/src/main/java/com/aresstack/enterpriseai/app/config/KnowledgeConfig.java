@@ -21,10 +21,11 @@ public final class KnowledgeConfig {
     private final RetrievalSettings retrieval;
     private final ContextSettings context;
     private final KnowledgePrefetchService.Settings prefetch;
+    private final String passageLanguage;
 
     KnowledgeConfig(Path indexDirectory, boolean indexOnStartup, KnowledgeChunkingPolicy chunking,
                     int embeddingBatchSize, RetrievalSettings retrieval, ContextSettings context,
-                    KnowledgePrefetchService.Settings prefetch) {
+                    KnowledgePrefetchService.Settings prefetch, String passageLanguage) {
         this.indexDirectory = indexDirectory;
         this.indexOnStartup = indexOnStartup;
         this.chunking = chunking;
@@ -32,6 +33,13 @@ public final class KnowledgeConfig {
         this.retrieval = retrieval;
         this.context = context;
         this.prefetch = prefetch == null ? KnowledgePrefetchService.Settings.defaults() : prefetch;
+        this.passageLanguage = passageLanguage == null || passageLanguage.trim().isEmpty() ? "de"
+                : passageLanguage.trim();
+    }
+
+    /** Sprache des Satzmodells für die Passagenbildung beim Indexieren ({@code knowledge.passages.language}). */
+    public String passageLanguage() {
+        return passageLanguage;
     }
 
     /** Vorladen der Suchtreffer: Fenster ab der Cursorposition, parallele Abrufe, Cache-Größe. */

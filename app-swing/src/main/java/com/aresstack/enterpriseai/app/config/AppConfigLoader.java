@@ -63,6 +63,8 @@ public final class AppConfigLoader {
     public static final String KNOWLEDGE_PREFETCH_CONCURRENCY_KEY = "knowledge.prefetch.concurrency";
     /** Vorladen: Größe des Speicher-Caches in MB (MainframeMate confluencePrefetchCacheMaxMb). */
     public static final String KNOWLEDGE_PREFETCH_CACHE_MB_KEY = "knowledge.prefetch.cacheMaxMb";
+    /** Sprache des Satzmodells (OpenNLP) für die Passagenbildung beim Indexieren: de oder en. */
+    public static final String KNOWLEDGE_PASSAGE_LANGUAGE_KEY = "knowledge.passages.language";
 
     private static final Pattern SOURCE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
     private static final String SOURCE_ID_RULE = "Quell-ID muss dem Muster [A-Za-z0-9][A-Za-z0-9._-]* entsprechen";
@@ -367,7 +369,13 @@ public final class AppConfigLoader {
                         KnowledgePrefetchService.Settings.MAX_CONCURRENCY),
                 r.integer(KNOWLEDGE_PREFETCH_CACHE_MB_KEY, KnowledgePrefetchService.Settings.DEFAULT_CACHE_MAX_MB, 1,
                         KnowledgePrefetchService.Settings.CACHE_MAX_MB_LIMIT));
-        return new KnowledgeConfig(indexDirectory, indexOnStartup, chunking, batch, retrieval, context, prefetch);
+        String passageLanguage = r.text(KNOWLEDGE_PASSAGE_LANGUAGE_KEY, "de");
+        if (!"de".equals(passageLanguage) && !"en".equals(passageLanguage)) {
+            r.problem(KNOWLEDGE_PASSAGE_LANGUAGE_KEY, "Sprache der Passagen muss de oder en sein");
+            passageLanguage = "de";
+        }
+        return new KnowledgeConfig(indexDirectory, indexOnStartup, chunking, batch, retrieval, context, prefetch,
+                passageLanguage);
     }
 
     /**

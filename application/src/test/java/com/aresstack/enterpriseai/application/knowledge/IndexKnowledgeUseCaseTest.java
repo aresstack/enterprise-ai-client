@@ -734,6 +734,11 @@ public class IndexKnowledgeUseCaseTest {
         }
 
         @Override
+        public List<KnowledgeIndexEntry> entriesOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+            return delegate.entriesOf(space, resourceId);
+        }
+
+        @Override
         public void remove(KnowledgeResourceId resourceId) {
             delegate.remove(resourceId);
         }

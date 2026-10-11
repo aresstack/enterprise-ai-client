@@ -15,16 +15,32 @@ public final class IndexedResourceState {
 
     /** Metadaten-Schlüssel, unter dem die Indexierung den Inhalts-Hash an der Ressource ablegt. */
     public static final String CONTENT_HASH_KEY = "index.contentHash";
+    /**
+     * Metadaten-Schlüssel des Fingerabdrucks der Zerlegung (Passagen-Verfahren, Parameter, Satzmodell). Zusammen mit
+     * dem Namensraum (Embedding-Modell) und dem Inhalts-Hash entscheidet er, ob neu verarbeitet werden muss.
+     */
+    public static final String SEGMENTATION_KEY = "index.segmentation";
 
     private final KnowledgeRevision revision;
     private final String contentHash;
+    private final String segmentation;
 
     public IndexedResourceState(KnowledgeRevision revision, String contentHash) {
+        this(revision, contentHash, "");
+    }
+
+    public IndexedResourceState(KnowledgeRevision revision, String contentHash, String segmentation) {
         if (revision == null) {
             throw new IllegalArgumentException("revision must not be null");
         }
         this.revision = revision;
         this.contentHash = contentHash == null ? "" : contentHash;
+        this.segmentation = segmentation == null ? "" : segmentation;
+    }
+
+    /** Fingerabdruck der Zerlegung, mit der indexiert wurde; leer bei alten Einträgen. */
+    public String segmentation() {
+        return segmentation;
     }
 
     public KnowledgeRevision revision() {
@@ -42,6 +58,7 @@ public final class IndexedResourceState {
 
     @Override
     public String toString() {
-        return "IndexedResourceState{" + revision + ", contentHash=" + (contentHash.isEmpty() ? "-" : contentHash) + "}";
+        return "IndexedResourceState{" + revision + ", contentHash=" + (contentHash.isEmpty() ? "-" : contentHash)
+                + ", segmentation=" + (segmentation.isEmpty() ? "-" : segmentation) + "}";
     }
 }
