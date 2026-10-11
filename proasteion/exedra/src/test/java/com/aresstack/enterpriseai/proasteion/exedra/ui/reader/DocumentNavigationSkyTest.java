@@ -119,7 +119,7 @@ public class DocumentNavigationSkyTest {
             }
             html.append("<h3>").append(chapter).append(" Details</h3><p>").append(LONG).append("</p>");
             if ("Installation".equals(chapter)) {
-                html.append("<p>Hier steht Zabak einmal.</p>");
+                html.append("<p>Hier steht Wapok einmal.</p>");
             }
         }
         return html.toString();
@@ -156,7 +156,7 @@ public class DocumentNavigationSkyTest {
             viewport.setViewPosition(new java.awt.Point(0,
                     Math.max(0, viewport.getView().getHeight() - viewport.getExtentSize().height)));
             assertTrue(viewport.getViewPosition().y > 0);
-            assertEquals(1, reader.searchFor("zabak"));
+            assertEquals(1, reader.searchFor("wapok"));
             assertSame(view, reader.findHit(key(), 0));
             javax.swing.text.Highlighter.Highlight[] marks = view.getHighlighter().getHighlights();
             assertEquals(1, marks.length);
@@ -209,7 +209,7 @@ public class DocumentNavigationSkyTest {
 
     @Test
     public void findHitLandsBelowTheBannerAndKeepsItsPosition() throws Exception {
-        String markdown = markdown().replace("### Installation Details", "### Installation Zabak");
+        String markdown = markdown().replace("### Installation Details", "### Installation Wapok");
         KnowledgeReaderPanel reader = reader(markdown, 700, 400);
         SwingUtilities.invokeAndWait(() -> {
             DocumentNavigationSky sky = reader.navigationSky(key());
@@ -219,7 +219,7 @@ public class DocumentNavigationSkyTest {
             viewport.setViewPosition(new java.awt.Point(0,
                     Math.max(0, viewport.getView().getHeight() - viewport.getExtentSize().height)));
             assertTrue(viewport.getViewPosition().y > 0);
-            assertEquals(1, reader.searchFor("zabak"));
+            assertEquals(1, reader.searchFor("wapok"));
             Component hit = reader.findHit(key(), 0);
             int top = SwingUtilities.convertPoint(hit, 0, 0, viewport).y;
             assertTrue("Treffer unter dem Banner: " + top + " vs " + covered, top >= covered);

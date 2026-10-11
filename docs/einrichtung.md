@@ -43,9 +43,10 @@ java -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis -jar enterprise-ai-clie
 ```
 
 Einstiegspunkt ist `com.aresstack.enterpriseai.proasteion.exedra.EnterpriseAiClientMain` (Modul `exedra`). Ablauf beim
-Start: Protokolldatei öffnen, Konfiguration beschaffen (Datei laden; fehlt sie oder lädt sie nicht, öffnet sich
-der Einstellungen-Dialog), Vertrauensregel (TLS) und Proxy-Regel installieren, Adapter bauen, Graphen
-komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
+Start: Protokolldatei öffnen, Konfiguration beschaffen (Datei laden; fehlt sie, öffnet sich der
+[Einrichtungsassistent](#einrichtungsassistent-erststart), lädt sie nicht, der Einstellungen-Dialog), Vertrauensregel
+(TLS) und Proxy-Regel installieren, Adapter bauen, Graphen komponieren, Shutdown-Hook registrieren, Fenster zeigen.
+Beim Start wird nichts indexiert (siehe [Quelle indexieren](#quelle-indexieren-und-rag-verwenden)).
 
 ### Anwendungsverzeichnis und Konfigurationsdatei
 
@@ -57,14 +58,13 @@ komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung
 | KeePassRPC-Pairing-Schlüssel | `<Anwendungsverzeichnis>/keepassrpc-pairing.key` (Schlüssel `security.keepass.pairingKeyFile`) |
 | Protokolldateien | `<Anwendungsverzeichnis>/logs/enterprise-ai-client.<n>.log` (rollierend, drei Dateien à 2 MB, `java.util.logging` ab INFO; enthält Start, Konfiguration ohne Secrets, Vertrauensquellen, Proxy-Regel samt Route zum KI-Dienst, jeden fehlgeschlagenen Chat-Aufruf und jeden fehlgeschlagenen Zugriff auf eine Wissensquelle mit Stacktrace sowie je nicht indexierbarer Seite den Grund) |
 
-Beim ersten Start ohne Datei öffnet die Anwendung den [Einstellungen-Dialog](#einstellungen-dialog) mit leeren
-Pflichtfeldern (der KeePass-Titel ist mit `keepass:Enterprise AI API` vorgeschlagen); „Speichern“ schreibt die
-kommentierte Vorlage mit den eingetragenen Werten als `enterprise-ai-client.properties` an genau diesen Pfad, dann
-startet sie. „Beenden“ im Dialog schreibt keine Datei und endet mit Exit-Code 2; der nächste Start öffnet den
-Dialog erneut (die Vorlage allein wäre ladbar und würde sonst mit Beispiel-Adressen starten). Ohne Display
-(headless, etwa `smokeStartFatJar`) gibt es keinen Dialog: die Vorlage wird angelegt, der Hinweis geloggt,
-Exit-Code 2. Eine vorhandene Datei mit Fehlern öffnet den Dialog mit ihren Werten
-und den Problemen (headless: Meldung und Exit-Code 2). Die Vorlage selbst liegt im Repository unter
+Beim ersten Start ohne Datei öffnet die Anwendung den [Einrichtungsassistenten](#einrichtungsassistent-erststart);
+erst sein „Fertig“ schreibt die kommentierte Vorlage mit den eingetragenen Werten als
+`enterprise-ai-client.properties` an genau diesen Pfad, dann startet die Anwendung ohne Neustart. Abbrechen schreibt
+keine Datei; der nächste Start öffnet den Assistenten erneut (die Vorlage allein wäre ladbar und würde sonst mit
+Beispiel-Adressen starten). Ohne Display (headless, etwa `smokeStartFatJar`) gibt es keinen Assistenten: die
+Vorlage wird angelegt, der Hinweis geloggt, Exit-Code 2. Eine vorhandene Datei mit Fehlern öffnet den
+[Einstellungen-Dialog](#einstellungen-dialog) mit ihren Werten und den Problemen (headless: Meldung und Exit-Code 2). Die Vorlage selbst liegt im Repository unter
 `proasteion/application/src/main/resources/com/aresstack/enterpriseai/proasteion/application/config/enterprise-ai-client.example.properties`
 und beschreibt jeden Schlüssel. Pflicht sind:
 
@@ -86,11 +86,35 @@ Indexierung gegen Beispielhosts. Proxy (Standard `AUTO`: PAC-Skript des Unterneh
 Systemeinstellungen) und TLS-Vertrauen stehen unter `network.*`
 ([API-Konfiguration](konfiguration-api.md#netzwerk-network)).
 
+### Einrichtungsassistent (Erststart)
+
+Fehlt die Konfigurationsdatei, führt ein Assistent im Comic-Design durch fünf Schritte; Properties-Schlüssel zeigt
+er nirgends, auch nicht in Fehlermeldungen (dort stehen die Feldnamen, z. B. „Chat-Modell: fehlt“):
+
+1. **KeePass verbinden**: Host, Port und Client-Name sind vorbelegt; „Mit KeePass verbinden“ pairt über den
+   bekannten Pairing-Dialog (der Pairing-Schlüssel liegt immer in der Datei) und gilt erst als erledigt, wenn die
+   Eintragsliste lesbar ist.
+2. **KI-Dienst**: wählt den KeePass-Eintrag vor (konfigurierter Titel, sonst ein eindeutiger Titel mit „enterprise
+   ai“, sonst „Enterprise AI API“), liest Basis-URL und API-Key daraus und testet die Verbindung. Fehlt etwas,
+   lassen sich Basis-URL und API-Key eintragen und „In KeePass speichern“; der API-Key landet nie in der
+   Konfigurationsdatei, `chat.baseUrl` bleibt leer und kommt beim Start aus dem Eintrag.
+3. **Modelle**: Chat- und Embedding-Modell aus `GET /models`; die Embedding-Dimension misst ein Probe-Embedding.
+4. **Confluence**: Basis-URL, KeePass-Eintrag mit Benutzer und Passwort bzw. Token, optional ein Client-Zertifikat
+   aus dem Windows-Zertifikatspeicher; Netzwerkeinstellungen über den Netzwerk-Reiter des Einstellungen-Dialogs.
+5. **Abschlussprüfung**: schreibt Konfiguration und Confluence-Quelle und prüft neun Punkte (KeePass gekoppelt,
+   KI-Dienst erreichbar, API-Key lesbar, Chat-Modell, Embedding-Modell, Dimension, Confluence-Zugang, Quelle
+   gespeichert und aktiviert, Konfiguration lädt vollständig). „Fertig“ gibt es erst, wenn alle grün sind.
+
+Der Stand steht als `setup.completed` im Anwendungszustand (`application-state.json`): fehlt die Datei, öffnet sich
+immer der Assistent und der Wert wird `false`; nur ein erfolgreiches „Fertig“ setzt `true`. Eine vorhandene Datei
+ohne den Schlüssel ist eine bestehende Installation und startet wie bisher; eine Datei mit `false` (Einrichtung
+unterbrochen) öffnet den Assistenten mit ihren Werten. Später öffnet der Knopf „Einrichtungsassistent“ im
+Einstellungen-Dialog ihn erneut, als Overlay über dem Antwortfenster.
+
 ### Einstellungen-Dialog
 
-Das Zahnrad im Fuß der Drawer-Seite „Chats“ (Hamburger ☰ links oben) öffnet den Dialog, den auch der erste Start
-zeigt. Er
-bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
+Das Zahnrad im Fuß der Drawer-Seite „Chats“ (Hamburger ☰ links oben) öffnet den Dialog; ein Start mit fehlerhafter
+Datei zeigt ihn ebenfalls. Er bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 
 | Reiter | Schlüssel |
 |---|---|
@@ -99,7 +123,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 | Netzwerk & Agent | `ui.windowTitle`; Proxy-Auflösung wie AskAI (`network.proxy.mode` mit den Modi von win-proxy-java, PAC-URL/Ermittlungsskript, Host/Port, Test-URL, Timeout, „Proxy auflösen“, „HTTPS-Verbindung testen“); TLS-Quellen (`network.tls.*`); User-Agent, Prefer IPv6, Proxy-Anmeldung NONE/BASIC (KeePass-Eintrag); Agent-Modus. „Verbindung testen“ steht im Reiter KI-Dienst. |
 | Modelle | je Kategorie ein Modell: `chat.model`, `embedding.model`, `model.rerank`, `model.tts`, `model.stt`, `model.vision`, `model.documentOcr`, `model.imageEmbedding` (lokale mit Präfix `local:`); „Modelle aktualisieren“; Modellverzeichnis lokaler Stimmen `models.local.modelRoot` |
 | Index | `knowledge.indexDirectory` (mit „Wählen …“); leer heißt `index` im Anwendungsverzeichnis |
-| Tools | alle registrierten Werkzeuge (Name, Beschreibung, Herkunft, Verfügbarkeit Chat/Agent/Recherche-Agent) mit Häkchen „aktiv“; abgeschaltete stehen in `tools.disabled` (kommagetrennt, fehlt = alle aktiv) und gelten ohne Neustart |
+| Tools | alle registrierten Werkzeuge (Name, Beschreibung, Herkunft, Verfügbarkeit Chat/Agent/Recherche-Agent) mit Häkchen „aktiv“; abgeschaltete stehen in `tools.disabled` (kommagetrennt, fehlt = alle aktiv) und gelten ohne Neustart: ein laufender Agent bekommt den neuen Satz sofort (`tools/list_changed`), eine laufende Chat-Runde bietet ein abgeschaltetes Werkzeug ab dem nächsten Modellaufruf nicht mehr an und lehnt einen schon angefragten Aufruf ab |
 
 - **Wissensquellen** haben keinen Reiter: die Drawer-Seite „Wissensquellen“ verwaltet die Liste `source.<n>.*`, je
   Quelle `source.<n>.type`, API-/Basis-URL, `credentialRef`, `startPoints`, `maxDepth`, `maxResources`, MediaWiki
@@ -161,8 +185,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
    einklappbar unter die Antwort. Hinweise (keine Treffer, ein Suchpfad ausgefallen) erscheinen als eigene
    Blase. Ablauf im Detail: [RAG-Datenfluss](rag-datenfluss.md).
 
-Eine manuelle Neuindexierung aus der Oberfläche gibt es derzeit nicht; ein erneuter Start indexiert neu, ein
-Agent kann `refresh_knowledge_source` aufrufen ([MCP](mcp.md)).
+Neu indexiert wird über ⟳ („Jetzt indexieren“) an der Quelle oder über die Suche; ein Neustart indexiert nichts.
 
 ### Agent-Modus starten
 

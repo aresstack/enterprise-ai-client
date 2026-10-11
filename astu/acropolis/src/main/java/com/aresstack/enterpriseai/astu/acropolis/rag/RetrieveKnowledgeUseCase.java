@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
+import com.aresstack.enterpriseai.astu.acropolis.passage.PassageSegmentation;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
@@ -58,8 +59,8 @@ import java.util.function.Supplier;
  */
 public final class RetrieveKnowledgeUseCase {
 
-    /** Längste Anfrage für das Embedding; dieselbe Grenze wie für indexierte Passagen. */
-    public static final int MAX_QUERY_TOKENS = 350;
+    /** Längste Anfrage für das Embedding; dieselbe Grenze wie für indexierte Passagen (eine Quelle, kein Duplikat). */
+    public static final int MAX_QUERY_TOKENS = PassageSegmentation.MAX_PASSAGE_TOKENS;
 
     private static final KnowledgeTokenCounter QUERY_TOKENS = KnowledgeTokenCounter.wordsAndSymbols();
 
