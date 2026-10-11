@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSearchBar;
+import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.paint.SidebarIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
@@ -98,6 +99,9 @@ public final class FavoritesPanel extends JPanel {
     static final String NEW_SUBFOLDER = "Neuer Unterordner";
     static final String RENAME = "Umbenennen";
     static final String REMOVE = "Entfernen";
+    static final String REMOVE_TOOLTIP = "Aus den Favoriten entfernen";
+    /** Breite der Fläche mit ✕ am rechten Rand jeder Zeile. */
+    private static final int REMOVE_WIDTH = 22;
     static final String FOLDER_NAME_PROMPT = "Name des neuen Ordners:";
 
     private static final DataFlavor ENTRY_FLAVOR = new DataFlavor(FavoriteEntry.class, "Favorit");
@@ -239,6 +243,12 @@ public final class FavoritesPanel extends JPanel {
                     return;
                 }
                 FavoriteEntry entry = entryAt(event.getX(), event.getY());
+                if (entry != null && onRemoveMark(event.getX(), event.getY())) {
+                    if (event.getClickCount() == 1) {
+                        removeWithConfirmation(entry); // ✕ am Zeilenende wie bisher
+                    }
+                    return;
+                }
                 if (entry != null && !entry.isFolder() && actions != null) {
                     actions.favoriteOpened(entry.link(), event.getClickCount() >= 2);
                 }
@@ -463,6 +473,13 @@ public final class FavoritesPanel extends JPanel {
         return path == null ? null : entryOf(path.getLastPathComponent());
     }
 
+    /** Ob die Stelle auf dem ✕ am Ende ihrer Zeile liegt. */
+    private boolean onRemoveMark(int x, int y) {
+        int row = tree.getRowForLocation(x, y);
+        java.awt.Rectangle bounds = row < 0 ? null : tree.getRowBounds(row);
+        return bounds != null && x >= bounds.x + bounds.width - REMOVE_WIDTH;
+    }
+
     private static FavoriteEntry entryOf(Object node) {
         if (node instanceof DefaultMutableTreeNode) {
             Object value = ((DefaultMutableTreeNode) node).getUserObject();
@@ -680,6 +697,7 @@ public final class FavoritesPanel extends JPanel {
         private final JLabel icon = new JLabel();
         private final JLabel title = new JLabel();
         private final JLabel location = new JLabel();
+        private final JLabel remove = new JLabel(ComposerIcons.close());
         private final Icon folderIcon = SidebarIcons.folder();
         private final Icon starIcon = SidebarIcons.star(true);
         private boolean selected;
@@ -700,6 +718,11 @@ public final class FavoritesPanel extends JPanel {
             icon.setVerticalAlignment(JLabel.TOP);
             add(icon, BorderLayout.WEST);
             add(text, BorderLayout.CENTER);
+            remove.setVerticalAlignment(JLabel.TOP);
+            remove.setHorizontalAlignment(JLabel.RIGHT);
+            remove.setPreferredSize(new java.awt.Dimension(REMOVE_WIDTH - 6, 16));
+            remove.setToolTipText(REMOVE_TOOLTIP);
+            add(remove, BorderLayout.EAST);
         }
 
         @Override
