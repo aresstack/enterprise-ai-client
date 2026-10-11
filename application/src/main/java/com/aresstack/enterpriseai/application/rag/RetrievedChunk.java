@@ -2,8 +2,10 @@ package com.aresstack.enterpriseai.application.rag;
 
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunk;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeRelation;
 
 import java.util.Comparator;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
@@ -13,6 +15,9 @@ import java.util.OptionalInt;
  *
  * <p>Die Rohscores sind nur innerhalb ihres Pfades und ihrer Suche vergleichbar (BM25 nach oben offen, Cosine in
  * [-1, 1]); sie werden zur Anzeige und Diagnose mitgeführt, die Reihenfolge bestimmt allein {@link #fusedScore()}.
+ *
+ * <p>Ein Treffer aus der Nachbarschaftserweiterung hat keinen Rang in einem Suchpfad; {@link #relation()} nennt die
+ * Kante, über die er dazukam.
  */
 public final class RetrievedChunk {
 
@@ -23,13 +28,24 @@ public final class RetrievedChunk {
     private final double keywordScore;
     private final int semanticRank;
     private final double semanticScore;
+    private final KnowledgeRelation relation;
 
     RetrievedChunk(KnowledgeResource resource, KnowledgeChunk chunk, double fusedScore, int keywordRank,
                    double keywordScore, int semanticRank, double semanticScore) {
+        this(resource, chunk, fusedScore, keywordRank, keywordScore, semanticRank, semanticScore, null);
+    }
+
+    /** Ein über {@code relation} dazugekommener Nachbar eines Treffers. */
+    static RetrievedChunk related(KnowledgeRelation relation, double fusedScore) {
+        return new RetrievedChunk(relation.resource(), relation.chunk(), fusedScore, 0, 0.0, 0, 0.0, relation);
+    }
+
+    private RetrievedChunk(KnowledgeResource resource, KnowledgeChunk chunk, double fusedScore, int keywordRank,
+                           double keywordScore, int semanticRank, double semanticScore, KnowledgeRelation relation) {
         if (resource == null || chunk == null) {
             throw new IllegalArgumentException("resource und chunk sind Pflicht");
         }
-        if (keywordRank <= 0 && semanticRank <= 0) {
+        if (keywordRank <= 0 && semanticRank <= 0 && relation == null) {
             throw new IllegalArgumentException("mindestens ein Suchpfad muss den Chunk gefunden haben");
         }
         this.resource = resource;
@@ -39,6 +55,7 @@ public final class RetrievedChunk {
         this.keywordScore = keywordScore;
         this.semanticRank = semanticRank;
         this.semanticScore = semanticScore;
+        this.relation = relation;
     }
 
     /** Absteigend nach RRF-Score, bei Gleichstand aufsteigend nach Chunk-ID – die Ordnung jedes Ergebnisses. */
@@ -69,6 +86,11 @@ public final class RetrievedChunk {
         return path == RetrievalPath.KEYWORD ? keywordRank > 0 : semanticRank > 0;
     }
 
+    /** Die Kante, über die der Chunk als Nachbar eines Treffers dazukam; leer für direkte Treffer. */
+    public Optional<KnowledgeRelation> relation() {
+        return Optional.ofNullable(relation);
+    }
+
     /** Rang (ab 1) in der Volltextsuche. */
     public OptionalInt keywordRank() {
         return keywordRank > 0 ? OptionalInt.of(keywordRank) : OptionalInt.empty();
@@ -93,6 +115,7 @@ public final class RetrievedChunk {
     public String toString() {
         return "RetrievedChunk{" + chunk.id() + ", fused=" + fusedScore
                 + (keywordRank > 0 ? ", keyword=#" + keywordRank + "/" + keywordScore : "")
-                + (semanticRank > 0 ? ", semantic=#" + semanticRank + "/" + semanticScore : "") + "}";
+                + (semanticRank > 0 ? ", semantic=#" + semanticRank + "/" + semanticScore : "")
+                + (relation != null ? ", via=" + relation.kind() + " " + relation.from() : "") + "}";
     }
 }

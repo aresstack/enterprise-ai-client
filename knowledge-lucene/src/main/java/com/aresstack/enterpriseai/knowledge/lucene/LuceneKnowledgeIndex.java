@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.knowledge.lucene;
 
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
@@ -15,6 +16,7 @@ import java.io.Closeable;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -182,6 +184,43 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
             throw new IllegalArgumentException("space und resourceId sind Pflicht");
         }
         return text.revisionOf(space, resourceId);
+    }
+
+    @Override
+    public synchronized Optional<KnowledgeIndexEntry> entry(EmbeddingModelIdentity space, KnowledgeChunkId chunkId) {
+        requireOpen();
+        if (space == null || chunkId == null) {
+            throw new IllegalArgumentException("space und chunkId sind Pflicht");
+        }
+        LuceneDocuments.Stored document = text.load(space, Collections.singletonList(chunkId.value()))
+                .get(chunkId.value());
+        return document == null ? Optional.<KnowledgeIndexEntry>empty() : paired(space, document);
+    }
+
+    @Override
+    public synchronized List<KnowledgeIndexEntry> entriesOf(EmbeddingModelIdentity space,
+                                                           KnowledgeResourceId resourceId) {
+        requireOpen();
+        if (space == null || resourceId == null) {
+            throw new IllegalArgumentException("space und resourceId sind Pflicht");
+        }
+        List<KnowledgeIndexEntry> entries = new ArrayList<KnowledgeIndexEntry>();
+        for (LuceneDocuments.Stored document : text.loadResource(space, resourceId)) {
+            Optional<KnowledgeIndexEntry> entry = paired(space, document);
+            if (entry.isPresent()) {
+                entries.add(entry.get());
+            }
+        }
+        return entries;
+    }
+
+    /** Text und Vektor desselben Stempels als Eintrag; leer, wenn der Vektor fehlt oder zu einer anderen Fassung gehört. */
+    private Optional<KnowledgeIndexEntry> paired(EmbeddingModelIdentity space, LuceneDocuments.Stored document) {
+        FileVectorIndex.VectorEntry vector = vectors.get(space, document.chunk.id().value());
+        if (vector == null || !vector.stamp.equals(EntryStamp.of(document.resource, document.chunk))) {
+            return Optional.empty();
+        }
+        return Optional.of(KnowledgeIndexEntry.of(document.resource, document.chunk, vector.vector));
     }
 
     @Override

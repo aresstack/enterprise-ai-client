@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.application.rag;
 
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingVector;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
@@ -9,13 +10,19 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexException;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeKeywordQuery;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeRelation;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeRelationKind;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeRelationQuery;
+import com.aresstack.enterpriseai.knowledge.api.KnowledgeRelationsPort;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeSearchHit;
 import com.aresstack.enterpriseai.knowledge.api.KnowledgeSemanticQuery;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -33,6 +40,12 @@ import java.util.function.Supplier;
  * {@link KnowledgeRetrievalException}. Programmierfehler (z. B. {@code IllegalArgumentException}) werden nicht
  * abgefangen.
  *
+ * <p>Nachbarschaft: Mit {@link #withRelations} verdrahtet, werden die besten fusionierten Treffer vor dem Kürzen um
+ * ihre 1-Hop-Nachbarn aus dem {@link KnowledgeRelationsPort} ergänzt (siehe {@link RetrievalSettings}). Die
+ * Erweiterung ist eine Zugabe: Scheitert sie, bleibt das Ergebnis der Suche unverändert. Ein Reranker über die
+ * erweiterte Menge hätte seinen Platz direkt nach der Erweiterung; die Kategorie RERANK ist noch nicht ausführbar
+ * angebunden.
+ *
  * <p>Blockiert für die Dauer von Embedding-Aufruf und Indexsuche; Aufrufer aus der Oberfläche rufen ihn nicht auf
  * dem Event-Thread auf. Zustandslos und threadsicher, soweit die Ports es sind.
  */
@@ -43,6 +56,8 @@ public final class RetrieveKnowledgeUseCase {
     private final Supplier<EmbeddingModelIdentity> space;
     private final RetrievalSettings settings;
     private final ReciprocalRankFusion fusion;
+    private final KnowledgeRelationsPort relations;
+    private final Supplier<RetrievalSettings> relationSettings;
 
     /**
      * @param index      der Wissensindex
@@ -74,6 +89,8 @@ public final class RetrieveKnowledgeUseCase {
         this.space = () -> space;
         this.settings = effective;
         this.fusion = new ReciprocalRankFusion(effective);
+        this.relations = null;
+        this.relationSettings = null;
     }
 
     /**
@@ -94,6 +111,32 @@ public final class RetrieveKnowledgeUseCase {
         this.space = space;
         this.settings = effective;
         this.fusion = new ReciprocalRankFusion(effective);
+        this.relations = null;
+        this.relationSettings = null;
+    }
+
+    private RetrieveKnowledgeUseCase(RetrieveKnowledgeUseCase base, KnowledgeRelationsPort relations,
+                                     Supplier<RetrievalSettings> relationSettings) {
+        this.index = base.index;
+        this.embeddings = base.embeddings;
+        this.space = base.space;
+        this.settings = base.settings;
+        this.fusion = base.fusion;
+        this.relations = relations;
+        this.relationSettings = relationSettings;
+    }
+
+    /**
+     * Kopie mit Nachbarschaftserweiterung über {@code relations}. Die {@code relation*}-Werte werden je Suche aus
+     * {@code liveSettings} gelesen (Einstellungen gelten ohne Neustart); {@code null} nimmt die eigenen Settings.
+     */
+    public RetrieveKnowledgeUseCase withRelations(KnowledgeRelationsPort relations,
+                                                  Supplier<RetrievalSettings> liveSettings) {
+        if (relations == null) {
+            throw new IllegalArgumentException("relations must not be null");
+        }
+        final RetrievalSettings own = settings;
+        return new RetrieveKnowledgeUseCase(this, relations, liveSettings == null ? () -> own : liveSettings);
     }
 
     public EmbeddingModelIdentity space() {
@@ -160,11 +203,56 @@ public final class RetrieveKnowledgeUseCase {
         if (failedPaths == activePaths) {
             throw new KnowledgeRetrievalException(warnings, lastFailure);
         }
-        List<RetrievedChunk> fused = fusion.fuse(keywordHits, semanticHits);
+        List<RetrievedChunk> fused = expand(fusion.fuse(keywordHits, semanticHits), filter);
         if (fused.size() > settings.maxResults()) {
             fused = fused.subList(0, settings.maxResults());
         }
         return new RetrievalResult(fused, warnings);
+    }
+
+    /**
+     * 1-Hop-Erweiterung: Nachbarn der besten Treffer, die noch nicht im Ergebnis sind, mit
+     * {@code seedScore * relationWeight} (ähnliche Absätze zusätzlich mal Cosine); danach neu sortiert.
+     */
+    private List<RetrievedChunk> expand(List<RetrievedChunk> fused, Collection<KnowledgeSourceId> filter) {
+        RetrievalSettings live = relationSettings == null ? null : relationSettings.get();
+        if (relations == null || live == null || !live.relationsEnabled() || fused.isEmpty()
+                || live.relationWeight() == 0.0) {
+            return fused;
+        }
+        KnowledgeRelationQuery query = KnowledgeRelationQuery.of(space())
+                .maxPerKind(live.relationNeighbors())
+                .minSimilarity(live.relationMinSimilarity())
+                .restrictedTo(filter);
+        Map<KnowledgeChunkId, RetrievedChunk> result = new LinkedHashMap<KnowledgeChunkId, RetrievedChunk>();
+        for (RetrievedChunk hit : fused) {
+            result.put(hit.chunk().id(), hit);
+        }
+        int seeds = Math.min(live.relationSeeds(), fused.size());
+        for (int i = 0; i < seeds; i++) {
+            RetrievedChunk seed = fused.get(i);
+            List<KnowledgeRelation> neighbors;
+            try {
+                neighbors = relations.neighbors(seed.chunk().id(), query);
+            } catch (KnowledgeIndexException e) {
+                return fused; // Zugabe gescheitert: das Suchergebnis bleibt, wie es war
+            }
+            for (KnowledgeRelation neighbor : neighbors) {
+                if (result.containsKey(neighbor.to())) {
+                    continue;
+                }
+                double factor = neighbor.kind() == KnowledgeRelationKind.SIMILAR_TO
+                        ? Math.max(0.0, neighbor.score()) : 1.0;
+                result.put(neighbor.to(), RetrievedChunk.related(neighbor,
+                        seed.fusedScore() * live.relationWeight() * factor));
+            }
+        }
+        if (result.size() == fused.size()) {
+            return fused;
+        }
+        List<RetrievedChunk> expanded = new ArrayList<RetrievedChunk>(result.values());
+        Collections.sort(expanded, RetrievedChunk.byFusedScore());
+        return expanded;
     }
 
     private List<KnowledgeSearchHit> semanticSearch(String query, Collection<KnowledgeSourceId> filter) {

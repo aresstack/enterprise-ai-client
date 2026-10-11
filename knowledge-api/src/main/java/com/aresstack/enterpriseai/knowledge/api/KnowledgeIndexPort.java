@@ -1,11 +1,13 @@
 package com.aresstack.enterpriseai.knowledge.api;
 
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -67,6 +69,27 @@ public interface KnowledgeIndexPort {
      * als nicht sauber indexiert und ist neu zu indexieren.
      */
     Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId);
+
+    /**
+     * Der gespeicherte Eintrag eines Chunks im Namespace {@code space} – Ressource, Chunk und Vektor –, damit
+     * Beziehungen (z. B. semantische Nachbarn) aus den vorhandenen Vektoren abgeleitet werden können, ohne neu zu
+     * embedden. Leer, wenn der Chunk dort nicht (oder nur halb) indexiert ist.
+     *
+     * <p>Standard: leer – ein Index ohne Einzelzugriff liefert schlicht keine Nachbarschaft.
+     */
+    default Optional<KnowledgeIndexEntry> entry(EmbeddingModelIdentity space, KnowledgeChunkId chunkId) {
+        return Optional.empty();
+    }
+
+    /**
+     * Alle Einträge einer Ressource im Namespace {@code space}, aufsteigend nach {@code ordinal}; leer für
+     * unbekannte Ressourcen. Grundlage für Nachbarabsätze, gleichen Abschnitt und Elternseite.
+     *
+     * <p>Standard: leer (siehe {@link #entry}).
+     */
+    default List<KnowledgeIndexEntry> entriesOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+        return Collections.emptyList();
+    }
 
     /** Entfernt alle Chunks der Ressource aus allen Namespaces. */
     void remove(KnowledgeResourceId resourceId);

@@ -19,6 +19,7 @@ import com.aresstack.enterpriseai.application.agent.AgentLauncher;
 import com.aresstack.enterpriseai.app.ui.chat.KnowledgeStatusModel;
 import com.aresstack.enterpriseai.application.agent.AgentService;
 import com.aresstack.enterpriseai.application.chat.ChatService;
+import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeRelations;
 import com.aresstack.enterpriseai.application.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.application.knowledge.LoadKnowledgeDocumentUseCase;
@@ -110,8 +111,11 @@ public final class CompositionRoot {
 
         this.chatService = new ChatService(ports.chat(), config.chat().defaultOptions());
         // Die Embedding-Welt als Funktion: ein anderes Embedding-Modell gilt ohne Neustart (eigener Namensraum).
+        // Nachbarschaft (ähnliche Absätze, Nachbarabsätze, Abschnitt, Elternseite) aus dem Index abgeleitet;
+        // Schwelle und Anzahl gelten ohne Neustart.
         this.retrieval = new RetrieveKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
-                knowledge.retrieval());
+                knowledge.retrieval()).withRelations(new IndexKnowledgeRelations(ports.index()),
+                settings.get(c -> c.knowledge().retrieval()));
         this.contextAssembler = new PromptContextAssembler(knowledge.context());
         this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler);
         this.indexing = new IndexKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),

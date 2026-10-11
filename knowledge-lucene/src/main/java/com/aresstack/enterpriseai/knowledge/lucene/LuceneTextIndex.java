@@ -42,6 +42,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -197,6 +198,26 @@ final class LuceneTextIndex {
         return Collections.unmodifiableSet(ids);
     }
 
+    /** Alle gespeicherten Chunks einer Ressource im Namespace, aufsteigend nach {@code ordinal}. */
+    List<LuceneDocuments.Stored> loadResource(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+        final List<LuceneDocuments.Stored> stored = new ArrayList<LuceneDocuments.Stored>();
+        forEachDocument(space, new TermQuery(new Term(LuceneDocuments.RESOURCE_ID, resourceId.value())), null,
+                new DocumentVisitor() {
+                    @Override
+                    public boolean visit(Document doc) {
+                        stored.add(LuceneDocuments.fromDocument(doc));
+                        return true;
+                    }
+                });
+        Collections.sort(stored, new Comparator<LuceneDocuments.Stored>() {
+            @Override
+            public int compare(LuceneDocuments.Stored a, LuceneDocuments.Stored b) {
+                return Integer.compare(a.chunk.ordinal(), b.chunk.ordinal());
+            }
+        });
+        return stored;
+    }
+
     /** Gespeicherte Revision einer Ressource; leer ohne Dokument oder bei uneinheitlichen Revisionen. */
     Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
         final KnowledgeRevision[] found = new KnowledgeRevision[1];
@@ -238,7 +259,8 @@ final class LuceneTextIndex {
 
     /**
      * Besucht jedes Dokument des Namespaces, das {@code query} trifft, ohne Scoring und mit nur den genannten
-     * gespeicherten Feldern (kein Laden von Text und Metadaten); nichts, wenn der Index fehlt.
+     * gespeicherten Feldern (kein Laden von Text und Metadaten; {@code null} = alle Felder); nichts, wenn der Index
+     * fehlt.
      */
     private void forEachDocument(EmbeddingModelIdentity space, Query query, final Set<String> fields,
                                  final DocumentVisitor visitor) {

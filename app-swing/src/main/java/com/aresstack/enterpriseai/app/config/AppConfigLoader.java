@@ -325,6 +325,15 @@ public final class AppConfigLoader {
                     .maxResults(r.integer("retrieval.maxResults", RetrievalSettings.DEFAULT_MAX_RESULTS, 1,
                             RetrievalSettings.MAX_CANDIDATES))
                     .minSemanticScore(r.decimal("retrieval.minSemanticScore", -1.0, -1.0, 1.0))
+                    .relationsEnabled(r.bool("retrieval.relations.enabled", true))
+                    .relationSeeds(r.integer("retrieval.relations.seeds", RetrievalSettings.DEFAULT_RELATION_SEEDS, 1,
+                            RetrievalSettings.MAX_CANDIDATES))
+                    .relationNeighbors(r.integer("retrieval.relations.neighbors",
+                            RetrievalSettings.DEFAULT_RELATION_NEIGHBORS, 1, RetrievalSettings.MAX_CANDIDATES))
+                    .relationMinSimilarity(r.decimal("retrieval.relations.minSimilarity",
+                            RetrievalSettings.DEFAULT_RELATION_MIN_SIMILARITY, -1.0, 1.0))
+                    .relationWeight(r.decimal("retrieval.relations.weight", RetrievalSettings.DEFAULT_RELATION_WEIGHT,
+                            0.0, 1000.0))
                     .build();
         } catch (IllegalArgumentException e) {
             r.problem("retrieval.*", "Retrieval-Einstellung ungültig (siehe Beispielkonfiguration)");

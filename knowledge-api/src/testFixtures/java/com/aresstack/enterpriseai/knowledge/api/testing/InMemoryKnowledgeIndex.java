@@ -161,6 +161,33 @@ public final class InMemoryKnowledgeIndex implements KnowledgeIndexPort {
     }
 
     @Override
+    public synchronized Optional<KnowledgeIndexEntry> entry(EmbeddingModelIdentity space, KnowledgeChunkId chunkId) {
+        Map<KnowledgeChunkId, KnowledgeIndexEntry> namespace = namespaces.get(space.fingerprint());
+        return Optional.ofNullable(namespace == null ? null : namespace.get(chunkId));
+    }
+
+    @Override
+    public synchronized List<KnowledgeIndexEntry> entriesOf(EmbeddingModelIdentity space,
+                                                           KnowledgeResourceId resourceId) {
+        List<KnowledgeIndexEntry> entries = new ArrayList<KnowledgeIndexEntry>();
+        Map<KnowledgeChunkId, KnowledgeIndexEntry> namespace = namespaces.get(space.fingerprint());
+        if (namespace != null) {
+            for (KnowledgeIndexEntry entry : namespace.values()) {
+                if (entry.resource().id().equals(resourceId)) {
+                    entries.add(entry);
+                }
+            }
+        }
+        Collections.sort(entries, new java.util.Comparator<KnowledgeIndexEntry>() {
+            @Override
+            public int compare(KnowledgeIndexEntry a, KnowledgeIndexEntry b) {
+                return Integer.compare(a.chunk().ordinal(), b.chunk().ordinal());
+            }
+        });
+        return entries;
+    }
+
+    @Override
     public synchronized void remove(KnowledgeResourceId resourceId) {
         for (Map<KnowledgeChunkId, KnowledgeIndexEntry> namespace : namespaces.values()) {
             removeWhere(namespace, resourceId, null);

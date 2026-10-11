@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app.composition;
 import com.aresstack.enterpriseai.app.config.AppConfig;
 import com.aresstack.enterpriseai.app.net.NetworkServices;
 import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.domain.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
@@ -87,6 +88,16 @@ final class LiveKnowledgeIndex implements KnowledgeIndexPort, ApplicationPorts.R
     @Override
     public Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
         return current.revisionOf(space, resourceId);
+    }
+
+    @Override
+    public Optional<KnowledgeIndexEntry> entry(EmbeddingModelIdentity space, KnowledgeChunkId chunkId) {
+        return current.entry(space, chunkId);
+    }
+
+    @Override
+    public List<KnowledgeIndexEntry> entriesOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
+        return current.entriesOf(space, resourceId);
     }
 
     @Override

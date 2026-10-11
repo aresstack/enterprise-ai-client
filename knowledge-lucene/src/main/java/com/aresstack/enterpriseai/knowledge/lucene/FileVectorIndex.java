@@ -132,6 +132,11 @@ final class FileVectorIndex {
         return hits.size() > query.maxResults() ? new ArrayList<ScoredChunk>(hits.subList(0, query.maxResults())) : hits;
     }
 
+    /** Der gespeicherte Vektor eines Chunks im Namespace; {@code null}, wenn keiner da ist. */
+    VectorEntry get(EmbeddingModelIdentity space, String chunkId) {
+        return load(space).get(chunkId);
+    }
+
     /** Entfernt passende Einträge aus allen Namespaces ({@code null}-Kriterium wird ignoriert). */
     void removeWhere(KnowledgeResourceId resourceId, KnowledgeSourceId sourceId) {
         for (Path file : IndexFiles.list(root)) {
