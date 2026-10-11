@@ -21,8 +21,8 @@ import java.util.Collections;
 import java.util.Properties;
 
 /**
- * Kleine Fußzeile rechts unter dem Composer, bündig mit dessen rechtem Rand: „© 2026 AresStack“, der Name
- * öffnet die Release-Seite. Die Adresse steht in {@code copyright-footer.properties} neben dieser Klasse.
+ * Kleine Fußzeile rechts unter dem Composer, bündig mit dessen rechtem Rand: „© 2026 AresStack“, ganz grau; der Name
+ * wird erst beim Hovern zum blauen Link und öffnet die Release-Seite. Die Adresse steht in {@code copyright-footer.properties} neben dieser Klasse.
  */
 public final class CopyrightFooter extends JPanel {
 
@@ -44,7 +44,7 @@ public final class CopyrightFooter extends JPanel {
         copyright.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
         link = new JLabel("AresStack");
         link.setFont(font);
-        link.setForeground(ResearchUiPalette.ACCENT_BLUE);
+        link.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
         if (url != null && !url.isEmpty()) {
             final Font underlined = font.deriveFont(
                     Collections.singletonMap(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON));
@@ -60,11 +60,13 @@ public final class CopyrightFooter extends JPanel {
                 @Override
                 public void mouseEntered(MouseEvent e) {
                     link.setFont(underlined);
+                    link.setForeground(ResearchUiPalette.ACCENT_BLUE);
                 }
 
                 @Override
                 public void mouseExited(MouseEvent e) {
                     link.setFont(plain);
+                    link.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
                 }
             });
         }
