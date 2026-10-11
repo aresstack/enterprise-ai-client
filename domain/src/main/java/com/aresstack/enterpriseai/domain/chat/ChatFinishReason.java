@@ -8,6 +8,8 @@ public enum ChatFinishReason {
     LENGTH,
     /** Inhalt vom Provider gefiltert. */
     CONTENT_FILTER,
+    /** Das Modell ruft Werkzeuge auf ({@code tool_calls}); die Antwort trägt sie in der Nachricht. */
+    TOOL_CALLS,
     /** Kein oder ein unbekannter Grund gemeldet. */
     UNKNOWN
 }

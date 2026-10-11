@@ -11,5 +11,7 @@ public enum ChatRole {
     SYSTEM,
     DEVELOPER,
     USER,
-    ASSISTANT
+    ASSISTANT,
+    /** Ergebnis eines Werkzeugaufrufs des Modells ({@code role=tool} mit {@code tool_call_id}). */
+    TOOL
 }

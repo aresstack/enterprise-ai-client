@@ -9,8 +9,14 @@ public final class ChatRequest {
 
     private final List<ChatMessage> messages;
     private final ChatOptions options;
+    private final List<ChatToolDefinition> tools;
 
     public ChatRequest(List<ChatMessage> messages, ChatOptions options) {
+        this(messages, options, null);
+    }
+
+    /** @param tools Werkzeuge, die das Modell aufrufen darf ({@code null} oder leer: keine) */
+    public ChatRequest(List<ChatMessage> messages, ChatOptions options, List<ChatToolDefinition> tools) {
         if (messages == null || messages.isEmpty()) {
             throw new IllegalArgumentException("a chat request needs at least one message");
         }
@@ -22,6 +28,13 @@ public final class ChatRequest {
         }
         this.messages = Collections.unmodifiableList(copy);
         this.options = options == null ? ChatOptions.defaults() : options;
+        this.tools = Collections.unmodifiableList(tools == null ? new ArrayList<ChatToolDefinition>()
+                : new ArrayList<ChatToolDefinition>(tools));
+    }
+
+    /** Werkzeuge der Anfrage; leer ohne Werkzeuge. */
+    public List<ChatToolDefinition> tools() {
+        return tools;
     }
 
     /** @return eine Anfrage aus System-Prompt und Historie der Konversation */
@@ -39,6 +52,7 @@ public final class ChatRequest {
 
     @Override
     public String toString() {
-        return "ChatRequest[" + messages.size() + " messages, " + options + "]";
+        return "ChatRequest[" + messages.size() + " messages, " + options
+                + (tools.isEmpty() ? "" : ", " + tools.size() + " tools") + "]";
     }
 }
