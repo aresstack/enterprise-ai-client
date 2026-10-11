@@ -543,7 +543,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private String recordingStatus() {
         long seconds = Math.max(0, (System.currentTimeMillis() - recordingStartedMillis) / 1000L);
         return "● Aufnahme " + (seconds / 60) + ":" + String.format("%02d", seconds % 60)
-                + "   ·   Stopp: erkennen   ·   Senden: erkennen und senden   ·   ✕ / Esc: verwerfen";
+                + "   ·   Stopp: erkennen   ·   Senden: erkennen und senden   ·   Esc: verwerfen";
     }
 
     /** Ob gerade eine Antwort läuft (dann zeigt die Fläche Stop und den Akzentrand). */
