@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.application.speech;
 
+import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisException;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
 
@@ -40,6 +41,7 @@ public final class ReadAloudService {
     private final AudioPlayback playback;
     private final SpeechChunking chunking;
     private final int workers;
+    private final EmbeddingPort paragraphEmbeddings;
     private final Object lock = new Object();
     private long generation;
 
@@ -58,6 +60,15 @@ public final class ReadAloudService {
      */
     public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, AudioPlayback playback,
                             SpeechChunking chunking, int workers) {
+        this(synthesis, modelId, playback, chunking, workers, null);
+    }
+
+    /**
+     * @param paragraphEmbeddings Embedding-Modell, mit dem die Einheit „Absätze“ nach Thema umbricht
+     *                            ({@link SemanticParagraphs}); {@code null} = Absätze nur an Leerzeilen
+     */
+    public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, AudioPlayback playback,
+                            SpeechChunking chunking, int workers, EmbeddingPort paragraphEmbeddings) {
         if (synthesis == null || modelId == null || modelId.trim().isEmpty() || playback == null) {
             throw new IllegalArgumentException("synthesis, modelId and playback must be set");
         }
@@ -66,6 +77,7 @@ public final class ReadAloudService {
         this.playback = playback;
         this.chunking = chunking == null ? SpeechChunking.PARAGRAPHS : chunking;
         this.workers = Math.max(1, Math.min(MAX_SYNTHESIS_WORKERS, workers));
+        this.paragraphEmbeddings = paragraphEmbeddings;
     }
 
     public String modelId() {
@@ -82,7 +94,7 @@ public final class ReadAloudService {
         synchronized (lock) {
             myGeneration = ++generation;
         }
-        List<String> chunks = SpeechText.chunks(SpeechText.plainText(markdown), chunking);
+        List<String> chunks = chunks(SpeechText.plainText(markdown), listener);
         if (chunks.isEmpty()) {
             return false;
         }
@@ -134,6 +146,18 @@ public final class ReadAloudService {
             pool.shutdownNow();
             playback.finish();
         }
+    }
+
+    /** Absätze nach Thema, wenn ein Embedding-Modell gewählt ist; scheitert es, Absätze an Leerzeilen. */
+    private List<String> chunks(String plainText, Listener listener) {
+        if (chunking == SpeechChunking.PARAGRAPHS && paragraphEmbeddings != null) {
+            try {
+                return SemanticParagraphs.chunks(plainText, paragraphEmbeddings);
+            } catch (RuntimeException failed) {
+                report(listener, null, "Absätze ohne Embeddings: " + message(failed));
+            }
+        }
+        return SpeechText.chunks(plainText, chunking);
     }
 
     private Future<byte[]> submit(ExecutorService pool, final String chunk) {

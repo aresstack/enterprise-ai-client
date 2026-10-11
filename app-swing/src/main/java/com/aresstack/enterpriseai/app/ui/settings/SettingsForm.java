@@ -74,6 +74,7 @@ public final class SettingsForm {
     private final boolean readAloudAutoStart;
     private final String readAloudChunking;
     private final String synthesisWorkers;
+    private final String readAloudEmbedding;
     private final String agentCommand;
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
@@ -116,6 +117,7 @@ public final class SettingsForm {
         this.readAloudAutoStart = b.readAloudAutoStart;
         this.readAloudChunking = b.readAloudChunking;
         this.synthesisWorkers = b.synthesisWorkers;
+        this.readAloudEmbedding = b.readAloudEmbedding;
         this.agentCommand = b.agentCommand;
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
@@ -148,6 +150,7 @@ public final class SettingsForm {
                 .readAloudAutoStart(readAloudAutoStart)
                 .readAloudChunking(readAloudChunking)
                 .synthesisWorkers(synthesisWorkers)
+                .readAloudEmbedding(readAloudEmbedding)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .modelSelections(modelSelections)
                 .localModelRoot(localModelRoot);
@@ -309,6 +312,11 @@ public final class SettingsForm {
         return readAloudChunking;
     }
 
+    /** Embedding-Modell der Absätze beim Vorlesen ({@code speech.readAloud.embeddingModel}), leer = keins. */
+    public String readAloudEmbedding() {
+        return readAloudEmbedding;
+    }
+
     /** Parallele Synthesen beim Vorlesen ({@code speech.readAloud.synthesisWorkers}). */
     public String synthesisWorkers() {
         return synthesisWorkers;
@@ -389,6 +397,7 @@ public final class SettingsForm {
         private boolean readAloudAutoStart;
         private String readAloudChunking = "PARAGRAPHS";
         private String synthesisWorkers = "2";
+        private String readAloudEmbedding = "";
         private String agentCommand = "";
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
@@ -561,6 +570,11 @@ public final class SettingsForm {
 
         public Builder readAloudChunking(String value) {
             this.readAloudChunking = value;
+            return this;
+        }
+
+        public Builder readAloudEmbedding(String value) {
+            this.readAloudEmbedding = value == null ? "" : value.trim();
             return this;
         }
 

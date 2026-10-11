@@ -1,20 +1,22 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JPanel;
+import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 /**
- * Kategorie „Sprachausgabe“ (askai arch {@code readAloudAutoStart}, {@code chunking}, {@code synthesisWorkers} und die
- * Stimmenwahl Engine + Stimme): Modell lokal oder Cloud, Standard lokal, und das Verhalten beim Vorlesen. Die Wahl
- * ist dieselbe {@link ModelSelection} wie unter „Modelle“ ({@code model.tts}), keine zweite Wahrheit.
+ * Kategorie „Sprachausgabe“ (askai arch {@code readAloudAutoStart}, {@code chunking}, {@code synthesisWorkers}): nur
+ * das Verhalten beim Vorlesen. Welche Stimme spricht, bestimmt allein das TTS-Modell unter „Modelle“ (Cloud-Modell
+ * oder lokale Stimme); hier gibt es keine zweite Auswahl. Dazu das Embedding-Modell, mit dem die Einheit „Absätze“
+ * nach Thema umbricht ({@code speech.readAloud.embeddingModel}, wie die semantische Absatzbildung in arch): lokal
+ * (Standard) oder Cloud, das Embedding-Modell der Wissensbasis.
  */
 final class SpeechTab {
 
@@ -26,51 +28,19 @@ final class SpeechTab {
     private static final String CHUNKING_SENTENCES = "Sätze";
     private static final String CHUNKING_ANSWER = "Ganze Antwort";
 
-    private final ModelSelection selection;
-    private final SettingsDialogActions actions;
-    private final JComboBox<String> source;
-    private final CardLayout modelPages = new CardLayout();
-    private final JPanel modelDeck = new JPanel(modelPages);
+    private final ModelSelection localEmbedding = new ModelSelection();
+    private final JComboBox<String> embeddingSource;
+    private final CardLayout embeddingPages = new CardLayout();
+    private final JPanel embeddingDeck = new JPanel(embeddingPages);
     private final JCheckBox readAloudAutoStart;
     private final JComboBox<String> chunking;
     private final JComboBox<String> workers;
     private final JPanel panel;
 
     SpeechTab(ModelsTab models, SettingsDialogActions actions, ComicPalette palette) {
-        this.selection = models.selection(ModelCategory.TTS);
-        this.actions = actions;
-        FormRows model = new FormRows(palette);
-        model.note("Lokale Stimmen rechnen im Client, Cloud-Modelle auf der Enterprise-API. Dieselbe Wahl wie unter "
-                + "„Modelle“; ohne Modell bleibt der Play/Pause-Orb über dem Verlauf aus.");
-        source = model.comboBox("Modell", "Lokale Stimme (Standard) oder Cloud-Modell der Enterprise-API",
-                SOURCE_LOCAL, SOURCE_CLOUD);
-        FormRows localRows = new FormRows(palette);
-        models.mirror(new CategoryModelRow(localRows, ModelCategory.TTS, true, false, selection, actions, palette),
-                true);
-        FormRows cloudRows = new FormRows(palette);
-        models.mirror(new CategoryModelRow(cloudRows, ModelCategory.TTS, false, false, selection, actions, palette),
-                false);
-        modelDeck.setOpaque(false);
-        modelDeck.add(localRows.panel(), SOURCE_LOCAL);
-        modelDeck.add(cloudRows.panel(), SOURCE_CLOUD);
-        source.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                modelPages.show(modelDeck, (String) source.getSelectedItem());
-            }
-        });
-        selection.onChange(new Runnable() {
-            @Override
-            public void run() {
-                showSource();
-            }
-        });
-        JPanel modelContent = new JPanel(new java.awt.BorderLayout(0, 0));
-        modelContent.setOpaque(false);
-        modelContent.add(model.panel(), java.awt.BorderLayout.NORTH);
-        modelContent.add(modelDeck, java.awt.BorderLayout.CENTER);
-
         FormRows speech = new FormRows(palette);
+        speech.note("Gesprochen wird mit dem TTS-Modell aus „Modelle“: ein Cloud-Modell der Enterprise-API oder "
+                + "eine lokale Stimme. Ohne TTS-Modell bleibt der Play/Pause-Orb über dem Verlauf aus.");
         readAloudAutoStart = speech.checkBox("Neue Antworten automatisch vorlesen",
                 "Der Orb ist beim Start aktiv: jede neue Antwort wird sofort vorgelesen (speech.readAloud.autoStart)");
         chunking = speech.comboBox("Einheit der Synthese",
@@ -83,19 +53,40 @@ final class SpeechTab {
                 "1", "2", "3", "4", "5", "6", "7", "8");
         speech.note("Absätze sind der beste Kompromiss aus Klang und Wartezeit: Sätze klingen früher, aber "
                 + "abgehackter, die ganze Antwort klingt am natürlichsten, beginnt aber erst nach der ganzen Synthese.");
+
+        FormRows embedding = new FormRows(palette);
+        embedding.note("Die Einheit „Absätze“ bricht zusätzlich dort um, wo das Thema wechselt; dafür rechnet ein "
+                + "Embedding-Modell je Satz. Lokal rechnet im Client, Cloud schickt jeden Satz an die Enterprise-API. "
+                + "Ohne Modell trennen nur Leerzeilen die Absätze.");
+        embeddingSource = embedding.comboBox("Embeddings für Absätze",
+                "Lokales Embedding-Modell (Standard) oder das Cloud-Embedding-Modell der Wissensbasis "
+                        + "(speech.readAloud.embeddingModel)", SOURCE_LOCAL, SOURCE_CLOUD);
+        FormRows localRows = new FormRows(palette);
+        models.mirror(new CategoryModelRow(localRows, ModelCategory.EMBEDDING, true, false, localEmbedding, actions,
+                palette), true);
+        FormRows cloudRows = new FormRows(palette);
+        cloudRows.note("Das Embedding-Modell der Wissensbasis (Einstellungen → Modelle).");
+        embeddingDeck.setOpaque(false);
+        embeddingDeck.add(localRows.panel(), SOURCE_LOCAL);
+        embeddingDeck.add(cloudRows.panel(), SOURCE_CLOUD);
+        embeddingSource.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                embeddingPages.show(embeddingDeck, (String) embeddingSource.getSelectedItem());
+            }
+        });
+        JPanel embeddingContent = new JPanel(new BorderLayout(0, 0));
+        embeddingContent.setOpaque(false);
+        embeddingContent.add(embedding.panel(), BorderLayout.NORTH);
+        embeddingContent.add(embeddingDeck, BorderLayout.CENTER);
+
         panel = FormRows.column(palette,
-                FormRows.plate("Modell", palette.getNavigationBlue(), modelContent, palette),
-                FormRows.plate("Sprachausgabe", palette.getAgentPetrol(), speech.panel(), palette));
+                FormRows.plate("Sprachausgabe", palette.getAgentPetrol(), speech.panel(), palette),
+                FormRows.plate("Absätze", palette.getNavigationBlue(), embeddingContent, palette));
     }
 
-    /** Zeigt die Quelle der gespeicherten Wahl; ohne Wahl lokal (Standard). */
-    private void showSource() {
-        ModelReference reference = actions.parseModel(selection.get());
-        source.setSelectedItem(reference == null || actions.isLocal(reference) ? SOURCE_LOCAL : SOURCE_CLOUD);
-    }
-
-    JComboBox<String> source() {
-        return source;
+    JComboBox<String> embeddingSource() {
+        return embeddingSource;
     }
 
     JPanel panel() {
@@ -103,16 +94,20 @@ final class SpeechTab {
     }
 
     void load(SettingsForm form) {
-        showSource();
         readAloudAutoStart.setSelected(form.readAloudAutoStart());
         chunking.setSelectedIndex(chunkingIndex(form.readAloudChunking()));
         workers.setSelectedItem(workersItem(form.synthesisWorkers()));
+        String embeddingModel = form.readAloudEmbedding();
+        boolean cloud = "cloud".equals(embeddingModel);
+        localEmbedding.set(cloud ? "" : embeddingModel);
+        embeddingSource.setSelectedItem(cloud ? SOURCE_CLOUD : SOURCE_LOCAL);
     }
 
     void store(SettingsForm.Builder b) {
         b.readAloudAutoStart(readAloudAutoStart.isSelected());
         b.readAloudChunking(chunkingValue(chunking.getSelectedIndex()));
         b.synthesisWorkers((String) workers.getSelectedItem());
+        b.readAloudEmbedding(SOURCE_CLOUD.equals(embeddingSource.getSelectedItem()) ? "cloud" : localEmbedding.get());
     }
 
     private static int chunkingIndex(String value) {

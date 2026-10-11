@@ -129,6 +129,7 @@ public final class SettingsMapper {
         b.readAloudAutoStart(bool(p, ModelsConfig.READ_ALOUD_AUTO_START_KEY, false));
         b.readAloudChunking(text(p, ModelsConfig.READ_ALOUD_CHUNKING_KEY, "PARAGRAPHS").toUpperCase(Locale.ROOT));
         b.synthesisWorkers(text(p, ModelsConfig.READ_ALOUD_WORKERS_KEY, "2"));
+        b.readAloudEmbedding(text(p, ModelsConfig.READ_ALOUD_EMBEDDING_KEY, ""));
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
         b.agentArgs(text(p, KEY_AGENT_ARGS, ""));
         b.agentRequestTimeoutSeconds(text(p, KEY_AGENT_TIMEOUT, "30"));
@@ -185,6 +186,7 @@ public final class SettingsMapper {
                 "PARAGRAPHS".equals(form.readAloudChunking()) ? "" : form.readAloudChunking());
         put(set, ModelsConfig.READ_ALOUD_WORKERS_KEY,
                 "2".equals(form.synthesisWorkers()) ? "" : form.synthesisWorkers());
+        put(set, ModelsConfig.READ_ALOUD_EMBEDDING_KEY, form.readAloudEmbedding());
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
         put(set, KEY_AGENT_TIMEOUT, form.agentRequestTimeoutSeconds());

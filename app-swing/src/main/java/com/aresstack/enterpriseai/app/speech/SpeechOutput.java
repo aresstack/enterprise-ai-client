@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.application.speech.ReadAloudService;
 import com.aresstack.enterpriseai.application.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 
 /**
  * Entscheidet, ob und womit vorgelesen wird: das Modell kommt aus der Katalog-Kategorie TTS ({@code model.tts}),
@@ -14,7 +15,7 @@ import com.aresstack.enterpriseai.domain.modelcatalog.ModelReference;
  */
 public final class SpeechOutput {
 
-    static final String NO_MODEL = "Sprachausgabe aus: kein TTS-Modell gewählt (Einstellungen → Sprachausgabe)";
+    static final String NO_MODEL = "Sprachausgabe aus: kein TTS-Modell gewählt (Einstellungen → Modelle)";
     static final String NO_PORT = "Sprachausgabe aus: die Quelle des gewählten TTS-Modells ist nicht verfügbar "
             + "(lokale Stimme installiert? Einstellungen → Modelle → Lokale Modelle)";
 
@@ -24,8 +25,11 @@ public final class SpeechOutput {
     /**
      * @param models Modellauswahl aus der Konfiguration
      * @param speech die Sprachausgabe je Modellkatalog
+     * @param paragraphEmbeddings Embeddings für die Absätze ({@code speech.readAloud.embeddingModel}), nur genutzt,
+     *                            wenn dort ein Modell gewählt ist
      */
-    public static ReadAloudBinding readAloud(ModelsConfig models, SpeechSynthesisRegistry speech) {
+    public static ReadAloudBinding readAloud(ModelsConfig models, SpeechSynthesisRegistry speech,
+                                             EmbeddingPort paragraphEmbeddings) {
         ModelReference selected = models.selections().get(ModelCategory.TTS);
         if (selected == null) {
             return ReadAloudBinding.unavailable(NO_MODEL);
@@ -34,7 +38,8 @@ public final class SpeechOutput {
             return ReadAloudBinding.unavailable(NO_PORT);
         }
         ReadAloudService service = new ReadAloudService(speech.require(selected.catalogId()), selected.modelId(),
-                new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers());
+                new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
+                models.readAloudEmbedding() == null ? null : paragraphEmbeddings);
         return ReadAloudBinding.available(service, "Stimme: " + selected.modelId() + " (" + selected.catalogId()
                 + ")", models.readAloudAutoStart());
     }

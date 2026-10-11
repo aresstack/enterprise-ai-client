@@ -86,8 +86,30 @@ public final class SpeechText {
         return chunks;
     }
 
+    /** Die Sätze je Absatz (Leerzeilen trennen Absätze), in Lesereihenfolge; leere Absätze fallen weg. */
+    static List<List<String>> paragraphSentences(String plainText) {
+        List<List<String>> paragraphs = new ArrayList<List<String>>();
+        if (plainText == null) {
+            return paragraphs;
+        }
+        for (String paragraph : plainText.split("\\n\\s*\\n")) {
+            String flat = paragraph.replace('\n', ' ').trim();
+            if (flat.isEmpty()) {
+                continue;
+            }
+            List<String> sentences = new ArrayList<String>();
+            for (String sentence : SENTENCE_END.split(flat)) {
+                addBounded(sentences, sentence.trim());
+            }
+            if (!sentences.isEmpty()) {
+                paragraphs.add(sentences);
+            }
+        }
+        return paragraphs;
+    }
+
     /** Fasst Sätze zu Stücken bis {@link #MAX_UNIT_CHARS} zusammen. */
-    private static void addUnits(List<String> chunks, List<String> sentences) {
+    static void addUnits(List<String> chunks, List<String> sentences) {
         StringBuilder unit = new StringBuilder();
         for (String sentence : sentences) {
             if (unit.length() > 0 && unit.length() + 1 + sentence.length() > MAX_UNIT_CHARS) {

@@ -30,6 +30,15 @@ public final class ModelsConfig {
     /** Parallele Synthesen beim Vorlesen (askai arch {@code tts.synthesisWorkers}), 1 bis 8, Standard 2. */
     public static final String READ_ALOUD_WORKERS_KEY = "speech.readAloud.synthesisWorkers";
 
+    /**
+     * Embedding-Modell, mit dem die Einheit „Absätze“ beim Vorlesen nach Thema umbricht: {@code local:<ordner>}
+     * (Standard: lokal) oder {@link #READ_ALOUD_EMBEDDING_CLOUD}; leer = Absätze nur an Leerzeilen.
+     */
+    public static final String READ_ALOUD_EMBEDDING_KEY = "speech.readAloud.embeddingModel";
+
+    /** Wert von {@link #READ_ALOUD_EMBEDDING_KEY}: das Cloud-Embedding-Modell der Wissensbasis. */
+    public static final String READ_ALOUD_EMBEDDING_CLOUD = "cloud";
+
     /** Stimme der Enterprise-Sprachausgabe ({@code voice} bei {@code /audio/speech}); leer = ohne. */
     public static final String SPEECH_VOICE_KEY = "speech.voice";
 
@@ -40,11 +49,12 @@ public final class ModelsConfig {
     private final boolean readAloudAutoStart;
     private final SpeechChunking readAloudChunking;
     private final int synthesisWorkers;
+    private final String readAloudEmbedding;
     private final String speechVoice;
     private final Path localModelRoot;
 
     ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
-                 int synthesisWorkers, String speechVoice, Path localModelRoot) {
+                 int synthesisWorkers, String readAloudEmbedding, String speechVoice, Path localModelRoot) {
         if (localModelRoot == null) {
             throw new IllegalArgumentException("localModelRoot must not be null");
         }
@@ -54,6 +64,8 @@ public final class ModelsConfig {
         this.readAloudAutoStart = readAloudAutoStart;
         this.readAloudChunking = readAloudChunking == null ? SpeechChunking.PARAGRAPHS : readAloudChunking;
         this.synthesisWorkers = synthesisWorkers;
+        this.readAloudEmbedding = readAloudEmbedding == null || readAloudEmbedding.trim().isEmpty() ? null
+                : readAloudEmbedding.trim();
     }
 
     /** Die bekannten Kataloge (Präfixe einer Auswahl). */
@@ -100,6 +112,11 @@ public final class ModelsConfig {
     /** Einheit, in der vorgelesen wird. */
     public SpeechChunking readAloudChunking() {
         return readAloudChunking;
+    }
+
+    /** Embedding-Modell der Absätze beim Vorlesen ({@code local:<ordner>} oder {@code cloud}) oder {@code null}. */
+    public String readAloudEmbedding() {
+        return readAloudEmbedding;
     }
 
     /** Parallele Synthesen beim Vorlesen. */

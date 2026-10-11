@@ -142,6 +142,7 @@ public final class AdapterAssembly {
         ports.chat(models.chat());
         ports.responses(models.responses());
         ports.liveEmbeddings(models.embeddings());
+        ports.readAloudEmbeddings(models.readAloudEmbeddings());
         ports.reconfiguring(models);
         ports.closing("local-models", models);
 

@@ -159,7 +159,8 @@ public final class EnterpriseAiClientMain {
         // Sprachausgabe: Modell aus der Kategorie TTS, gesprochen über die Quelle dieses Modells (Enterprise-API oder
         // lokale Stimme im Prozess); ohne TTS-Modell bleibt sie aus und der Play/Pause-Orb nennt den Grund.
         final SwitchableReadAloud readAloud = new SwitchableReadAloud(SpeechOutput.readAloud(config.models(),
-                modelCatalogs.speech(config, config.models(), network.current(), chatToken(settings, ports))));
+                modelCatalogs.speech(config, config.models(), network.current(), chatToken(settings, ports)),
+                ports.readAloudEmbeddings()));
         LOG.info("Sprachausgabe: " + readAloud.currentDescription());
         // Spracheingabe: Modell aus der Kategorie STT, erkannt über die Quelle dieses Modells (heute lokal im Prozess);
         // ohne STT-Modell bleibt der Mikrofon-Knopf deaktiviert und nennt den Grund.
@@ -397,7 +398,8 @@ public final class EnterpriseAiClientMain {
         try {
             ModelsConfig saved = current.models();
             readAloud.replace(SpeechOutput.readAloud(saved,
-                    catalogs.speech(current, saved, network.current(), chatToken(settings, ports))));
+                    catalogs.speech(current, saved, network.current(), chatToken(settings, ports)),
+                    ports.readAloudEmbeddings()));
             LOG.info("Sprachausgabe: " + readAloud.currentDescription());
             dictation.bind(saved, catalogs.speechRecognition(saved));
             LOG.info("Spracheingabe: " + dictation.currentDescription());
