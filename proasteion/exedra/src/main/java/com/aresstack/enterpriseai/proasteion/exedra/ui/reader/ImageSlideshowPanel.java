@@ -211,18 +211,18 @@ public final class ImageSlideshowPanel extends JPanel {
         descriptionPane.setBorder(BorderFactory.createEmptyBorder());
         descriptionPane.setVisible(false);
 
-        previous = new ViewerButton(new ScaledIcon(ComposerIcons.chevronLeft(), 2), "Vorheriges Bild (←)");
-        next = new ViewerButton(new ScaledIcon(ComposerIcons.chevronRight(), 2), "Nächstes Bild (→)");
+        previous = new ViewerButton(new ScaledIcon(ComposerIcons.chevronLeft(), 2), "Vorheriges Bild (Pfeiltaste links)");
+        next = new ViewerButton(new ScaledIcon(ComposerIcons.chevronRight(), 2), "Nächstes Bild (Pfeiltaste rechts)");
         download = new ViewerButton(ComposerIcons.download(), "Herunterladen");
-        zoomOut = new ViewerButton(ComposerIcons.minus(15), "Verkleinern (−)");
+        zoomOut = new ViewerButton(ComposerIcons.minus(15), "Verkleinern (Minus)");
         zoomIn = new ViewerButton(ComposerIcons.plus(15), "Vergrößern (+)");
         zoomFit = new ViewerButton(ComposerIcons.refresh(), "Einpassen (0)");
         previous.onClick(this::previous);
         next.onClick(this::next);
         download.onClick(this::saveImage);
         if (attachment != null) {
-            previous.setToolTipText("Vorherige Seite (←)");
-            next.setToolTipText("Nächste Seite (→)");
+            previous.setToolTipText("Vorherige Seite (Pfeiltaste links oder Bild auf)");
+            next.setToolTipText("Nächste Seite (Pfeiltaste rechts oder Bild ab)");
             download.setToolTipText("Originaldatei speichern");
         }
         zoomOut.onClick(() -> zoomBy(1.0 / 1.25));

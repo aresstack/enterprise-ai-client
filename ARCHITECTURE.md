@@ -330,6 +330,13 @@ eigene Palette gibt es nicht.
   EDT zu Bildern, ein Klick öffnet den zoombaren `MermaidViewerDialog`. Eine einzelne äußere ```markdown-Umhüllung
   der Antwort fällt weg (`MarkdownResponseNormalizer`). Nutzer-, Hinweis- und Fehlerblasen bleiben
   `SpeechBubblePanel`; beide erfüllen `TranscriptBubble` (comic-controls bleibt abhängigkeitsfrei).
+- Anhänge im Lesebereich (`proasteion.exedra.ui.reader`): Liefert die Quelle eine `PageView` mit Anhängen, zeigt die
+  Reader-Leiste eine Büroklammer mit Zähler (ohne Anhänge ausgeblendet); ein Klick öffnet das Popover
+  `ReaderAttachmentList` (Name, Typ, Größe), ein Eintrag das vorhandene Comic-Overlay mit `ImageSlideshowPanel` im
+  Anhangsmodus: Bilder und SVG wie bisher, PDF über PDFBox mit Seiten und Zoom, Text/JSON/XML als Text, Office über
+  die Vorschau der Quelle (DOCUMENT, POSTER, THUMBNAIL), sonst Name, Typ und Größe; Speichern und Öffnen der
+  Originaldatei. Die Bytes holt `KnowledgeReadingController` über `BrowseKnowledgeSourceUseCase` vom
+  `PageViewSource`-Port; die Oberfläche spricht nie selbst mit Confluence.
 - Fehler des KI-Dienstes bleiben Sprechblasen in Blasengeometrie: Überschrift sichtbar, „Technische Ursache“
   und „Hinweis“ hinter „Details anzeigen“ (`SpeechBubblePanel.setDetails`).
 - Einstellungen-Dialog: ebenfalls rahmenlos (Überschrift zieht, ✕ bricht ab), Reiter als Pillen (KI-Dienst,

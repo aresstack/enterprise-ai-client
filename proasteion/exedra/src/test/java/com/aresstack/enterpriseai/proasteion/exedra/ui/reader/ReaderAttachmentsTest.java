@@ -211,6 +211,65 @@ public class ReaderAttachmentsTest {
     }
 
     @Test
+    public void clickingThePaperclipShowsTheListAndAnEntryOpensTheOverlay() throws Exception {
+        final AttachmentPage source = new AttachmentPage(pdf(2));
+        final List<JPopupMenu> shown = new ArrayList<JPopupMenu>();
+        run(() -> {
+            ChatWorkspacePanel workspace = workspace();
+            KnowledgeReaderPanel reader = workspace.reader();
+            reader.setAttachmentRenderer(Runnable::run);
+            reader.setAttachmentMenuShower(shown::add);
+            controller(workspace, source).open(new ReaderLink(SOURCE.value(), PAGE, "Seite", "", ""), true);
+
+            reader.attachmentsButton().doClick();
+
+            assertEquals("ein Klick, eine Liste", 1, shown.size());
+            List<ReaderAttachmentList.Row> rows = ReaderAttachmentList.rows(shown.get(0));
+            assertEquals(5, rows.size());
+            assertEquals("Ablauf Beispiel.pdf", rows.get(0).nameText());
+            rows.get(0).activate();
+            ImageSlideshowPanel viewer = reader.slideshow();
+            assertNotNull("Overlay offen", viewer);
+            assertEquals("Ablauf Beispiel.pdf", viewer.attachment().fileName());
+            assertEquals(2, viewer.pageCount());
+        });
+    }
+
+    @Test
+    public void anOfficeFileWithoutPreviewShowsTheReasonAndKeepsSaveAndOpen() throws Exception {
+        assertOfficeFailureVisible(new KnowledgeSourceException(KnowledgeSourceException.Kind.NOT_FOUND,
+                "Vorschau: nicht gefunden (HTTP 404)"));
+        assertOfficeFailureVisible(new KnowledgeSourceException(KnowledgeSourceException.Kind.INVALID_RESPONSE,
+                "Vorschau: erwartet PDF oder Bild, erhalten text/html"));
+    }
+
+    private void assertOfficeFailureVisible(KnowledgeSourceException failure) throws Exception {
+        final AttachmentPage source = new AttachmentPage(pdf(1));
+        source.previewFailure = failure;
+        final List<File> opened = new ArrayList<File>();
+        run(() -> {
+            ChatWorkspacePanel workspace = workspace();
+            KnowledgeReaderPanel reader = workspace.reader();
+            reader.setFileOpener(opened::add);
+            controller(workspace, source).open(new ReaderLink(SOURCE.value(), PAGE, "Seite", "", ""), true);
+
+            reader.openAttachment(PAGE_KEY, 1);
+            ImageSlideshowPanel office = reader.slideshow();
+            assertFalse(office.showsPicture());
+            String status = office.statusText();
+            assertTrue(status, status.contains("Planung.xlsx"));
+            assertTrue(status, status.contains("Excel · 82 KB"));
+            assertTrue(status, status.contains(ImageSlideshowPanel.NO_PREVIEW_TEXT));
+            assertTrue(status, status.contains(failure.getMessage()));
+            assertEquals("alle Vorschauarten versucht", 3, source.previews.size());
+            assertTrue(office.saveButton().isEnabled());
+            office.openButton().doClick();
+            assertEquals("Öffnen lädt das Original", 1, opened.size());
+            assertEquals("Planung.xlsx", opened.get(0).getName());
+        });
+    }
+
+    @Test
     public void aPageWithoutAttachmentsHidesThePaperclip() throws Exception {
         final AttachmentPage source = new AttachmentPage(pdf(1));
         run(() -> {
@@ -348,6 +407,7 @@ public class ReaderAttachmentsTest {
         private final Map<String, byte[]> files = new HashMap<String, byte[]>();
         final Map<String, Integer> loads = new HashMap<String, Integer>();
         final List<PageView.Preview> previews = new ArrayList<PageView.Preview>();
+        KnowledgeSourceException previewFailure;
         private final byte[] picture = png();
 
         AttachmentPage(byte[] pdf) {
@@ -417,6 +477,9 @@ public class ReaderAttachmentsTest {
         public byte[] loadAttachmentPreview(PageView.Attachment attachment, PageView.Preview preview)
                 throws KnowledgeSourceException {
             previews.add(preview);
+            if (previewFailure != null) {
+                throw previewFailure;
+            }
             if (preview == PageView.Preview.POSTER) {
                 return picture;
             }

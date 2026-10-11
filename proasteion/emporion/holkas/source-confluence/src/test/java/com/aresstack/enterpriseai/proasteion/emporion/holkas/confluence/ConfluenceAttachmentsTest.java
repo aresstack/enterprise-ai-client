@@ -10,6 +10,7 @@ import org.junit.Test;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +56,8 @@ public class ConfluenceAttachmentsTest {
     private final List<URI> requests = new ArrayList<URI>();
     private final List<Map<String, String>> sentHeaders = new ArrayList<Map<String, String>>();
     private final Map<String, ConfluenceHttpResponse> byPath = new HashMap<String, ConfluenceHttpResponse>();
+    private ConfluenceHttpResponse restLogin;
+    private ConfluenceHttpResponse withSession;
 
     private ConfluenceKnowledgeSource source(boolean includeAttachments) {
         ConfluenceHttpTransport transport = (uri, sent, maxBytes) -> {
@@ -73,6 +76,16 @@ public class ConfluenceAttachmentsTest {
             }
             if (path.equals("/confluence/rest/api/content/att102")) {
                 return json(SHEET_ATTACHMENT);
+            }
+            if (path.equals("/confluence/rest/api/user/current") && restLogin != null) {
+                return restLogin;
+            }
+            if (withSession != null && sent.containsKey("Cookie")) {
+                return withSession;
+            }
+            if (path.equals("/confluence/login.action")) {
+                return new ConfluenceHttpResponse(200, "text/html", "<html>Anmelden</html>".getBytes(
+                        StandardCharsets.UTF_8));
             }
             ConfluenceHttpResponse known = byPath.get(path);
             return known != null ? known : new ConfluenceHttpResponse(404, "text/plain", new byte[0]);
@@ -219,5 +232,58 @@ public class ConfluenceAttachmentsTest {
             assertEquals(Kind.UNSUPPORTED, e.kind());
         }
         assertFalse(requests.iterator().hasNext());
+    }
+
+    private static ConfluenceHttpResponse signedInWithCookie() {
+        return new ConfluenceHttpResponse(200, "application/json", "{}".getBytes(StandardCharsets.UTF_8), null,
+                Arrays.asList("JSESSIONID=sitzung1", "seraph.confluence=sitzung2"));
+    }
+
+    @Test
+    public void aLoginRedirectOnTheAttachmentIsRetriedOnceWithTheSessionCookieLikeImages() throws Exception {
+        byPath.put("/confluence/download/attachments/7/Handbuch%20Beispiel.pdf",
+                new ConfluenceHttpResponse(302, "text/html", new byte[0], BASE + "/login.action?os_destination=x"));
+        restLogin = signedInWithCookie();
+        withSession = new ConfluenceHttpResponse(200, "application/pdf", PDF);
+        ConfluenceKnowledgeSource source = source(false);
+        PageView.Attachment pdf = source.pageView(page()).attachments().get(0);
+        sentHeaders.clear();
+
+        assertArrayEquals(PDF, source.loadAttachment(pdf));
+
+        Map<String, String> last = sentHeaders.get(sentHeaders.size() - 1);
+        assertEquals("JSESSIONID=sitzung1; seraph.confluence=sitzung2", last.get("Cookie"));
+        assertEquals("*/*", last.get("Accept"));
+        for (Map<String, String> sent : sentHeaders.subList(0, sentHeaders.size() - 1)) {
+            assertFalse("vor dem Neuversuch kein Cookie", sent.containsKey("Cookie"));
+        }
+    }
+
+    @Test
+    public void aLoginPageInsteadOfThePreviewIsRetriedWithTheSessionCookie() throws Exception {
+        byPath.put("/confluence/rest/documentConversion/latest/conversion/convert/102/1",
+                new ConfluenceHttpResponse(200, "text/html", "<html>Anmelden</html>".getBytes(StandardCharsets.UTF_8)));
+        restLogin = signedInWithCookie();
+        withSession = new ConfluenceHttpResponse(200, "application/pdf", PDF);
+        ConfluenceKnowledgeSource source = source(false);
+        PageView.Attachment sheet = source.pageView(page()).attachments().get(1);
+
+        assertArrayEquals(PDF, source.loadAttachmentPreview(sheet, PageView.Preview.DOCUMENT));
+    }
+
+    @Test
+    public void whenTheCookieDoesNotHelpTheAttachmentReasonNamesBothAttempts() throws Exception {
+        byPath.put("/confluence/download/attachments/7/Handbuch%20Beispiel.pdf",
+                new ConfluenceHttpResponse(302, "text/html", new byte[0], BASE + "/login.action"));
+        restLogin = signedInWithCookie();
+        withSession = new ConfluenceHttpResponse(403, "text/html", new byte[0]);
+        ConfluenceKnowledgeSource source = source(false);
+        try {
+            source.loadAttachment(source.pageView(page()).attachments().get(0));
+            fail("403 auch mit Cookie");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(Kind.ACCESS_DENIED, e.kind());
+            assertTrue(e.getMessage(), e.getMessage().endsWith("(auch mit Sitzungs-Cookie aus der REST-Anmeldung)"));
+        }
     }
 }

@@ -198,41 +198,55 @@ final class ConfluenceRestClient {
     /**
      * Die Originaldatei eines Anhangs für den Lesebereich: wie {@link #download}, aber mit {@link #ANY_ACCEPT}, eigener
      * Grenze und einer Prüfung gegen Anmeldeseiten (HTML, wo der Anhang keins ist). Weiterleitungen auf einen anderen
-     * Host folgt der Weg wie der Bildweg ohne Anmeldung.
+     * Host folgt der Weg wie der Bildweg ohne Anmeldung; greift die Anmeldung nicht, gilt derselbe Sitzungs-Cookie-
+     * Neuversuch wie für Bilder ({@link #withSessionCookie}).
      */
-    byte[] readAttachment(Session session, Attachment attachment, int maxBytes) throws KnowledgeSourceException {
+    byte[] readAttachment(Session session, final Attachment attachment, final int maxBytes)
+            throws KnowledgeSourceException {
         if (attachment.downloadPath == null || !attachment.downloadPath.startsWith("/")
                 || attachment.downloadPath.startsWith("//")) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
                     "Anhang " + attachment.id + " ohne gültigen Download-Pfad");
         }
-        ConfluenceHttpResponse response = fetch(session, attachment.downloadPath, "Anhang", maxBytes);
-        String received = baseMediaType(response.contentType());
-        if (received.contains("html") && !baseMediaType(attachment.mediaType).contains("html")) {
-            throw fileFailure("Anhang", attachment.downloadPath, response, new KnowledgeSourceException(
-                    Kind.INVALID_RESPONSE, "Anhang: erwartet " + attachment.mediaType + ", erhalten " + received
-                    + " (vermutlich eine Anmeldeseite)"));
-        }
-        return response.body();
+        return withSessionCookie(session, ANY_ACCEPT, "Anhang", new Attempt() {
+            @Override
+            public byte[] run(Map<String, String> headers) throws KnowledgeSourceException {
+                ConfluenceHttpResponse response = fetch(headers, attachment.downloadPath, "Anhang", maxBytes);
+                String received = baseMediaType(response.contentType());
+                if (received.contains("html") && !baseMediaType(attachment.mediaType).contains("html")) {
+                    throw fileFailure("Anhang", attachment.downloadPath, response, new KnowledgeSourceException(
+                            Kind.INVALID_RESPONSE, "Anhang: erwartet " + attachment.mediaType + ", erhalten "
+                            + received + " (vermutlich eine Anmeldeseite)"));
+                }
+                return response.body();
+            }
+        });
     }
 
     /**
      * Eine Vorschau der Dokumentkonvertierung ({@link #conversionPath}); nur PDF oder Bild gilt, alles andere (etwa
-     * die Anmeldeseite) wird abgelehnt. 202 heißt: Confluence erzeugt sie noch.
+     * die Anmeldeseite) wird abgelehnt, mit Sitzungs-Cookie-Neuversuch wie beim Bild. 202 heißt: Confluence erzeugt
+     * sie noch.
      */
-    byte[] conversion(Session session, Attachment attachment, String kind, int maxBytes)
+    byte[] conversion(Session session, Attachment attachment, String kind, final int maxBytes)
             throws KnowledgeSourceException {
-        String path = conversionPath(attachment.id, attachment.version, kind);
-        ConfluenceHttpResponse response = fetch(session, path, "Vorschau", maxBytes);
-        if (response.status() == 202) {
-            throw new KnowledgeSourceException(Kind.UNAVAILABLE, "Vorschau wird von Confluence noch erzeugt");
-        }
-        byte[] body = response.body();
-        if (!isPdf(body) && notAnImage(response.contentType(), body) != null) {
-            throw fileFailure("Vorschau", path, response, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
-                    "Vorschau: erwartet PDF oder Bild, erhalten " + notAnImage(response.contentType(), body)));
-        }
-        return body;
+        final String path = conversionPath(attachment.id, attachment.version, kind);
+        return withSessionCookie(session, ANY_ACCEPT, "Vorschau", new Attempt() {
+            @Override
+            public byte[] run(Map<String, String> headers) throws KnowledgeSourceException {
+                ConfluenceHttpResponse response = fetch(headers, path, "Vorschau", maxBytes);
+                if (response.status() == 202) {
+                    throw new KnowledgeSourceException(Kind.UNAVAILABLE, "Vorschau wird von Confluence noch erzeugt");
+                }
+                byte[] body = response.body();
+                if (!isPdf(body) && notAnImage(response.contentType(), body) != null) {
+                    throw fileFailure("Vorschau", path, response, new KnowledgeSourceException(
+                            Kind.INVALID_RESPONSE, "Vorschau: erwartet PDF oder Bild, erhalten "
+                            + notAnImage(response.contentType(), body)));
+                }
+                return body;
+            }
+        });
     }
 
     static boolean isPdf(byte[] data) {
@@ -240,7 +254,7 @@ final class ConfluenceRestClient {
     }
 
     /** GET mit {@link #ANY_ACCEPT}; Fehlerstatus werden mit Logzeile (ohne Query und Header) zur Ausnahme. */
-    private ConfluenceHttpResponse fetch(Session session, String path, String what, int maxBytes)
+    private ConfluenceHttpResponse fetch(Map<String, String> initial, String path, String what, int maxBytes)
             throws KnowledgeSourceException {
         URI uri;
         try {
@@ -248,7 +262,7 @@ final class ConfluenceRestClient {
         } catch (IllegalArgumentException e) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": ungültiger Pfad");
         }
-        Map<String, String> headers = session.headers(ANY_ACCEPT);
+        Map<String, String> headers = initial;
         ConfluenceHttpResponse response;
         for (int hop = 0; ; hop++) {
             try {
@@ -312,8 +326,28 @@ final class ConfluenceRestClient {
         } catch (IllegalArgumentException e) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Bild: ungültiger Pfad");
         }
+        final URI image = uri;
+        return withSessionCookie(session, IMAGE_ACCEPT, "Bild", new Attempt() {
+            @Override
+            public byte[] run(Map<String, String> headers) throws KnowledgeSourceException {
+                return fetchImage(image, headers);
+            }
+        });
+    }
+
+    /** Ein Abruf mit den gegebenen Kopfzeilen; für {@link #withSessionCookie}. */
+    private interface Attempt {
+        byte[] run(Map<String, String> headers) throws KnowledgeSourceException;
+    }
+
+    /**
+     * Führt den Abruf angemeldet aus und wiederholt ihn einmal mit Sitzungs-Cookie, wenn die Anmeldung nicht griff
+     * (Bild, Anhang, Vorschau).
+     */
+    private byte[] withSessionCookie(Session session, String accept, String what, Attempt attempt)
+            throws KnowledgeSourceException {
         try {
-            return fetchImage(uri, session.headers(IMAGE_ACCEPT));
+            return attempt.run(session.headers(accept));
         } catch (KnowledgeSourceException first) {
             if (!needsSession(first)) {
                 throw first;
@@ -323,14 +357,14 @@ final class ConfluenceRestClient {
             // Sitzung auf die Anmeldung um. Darum einmal das Sitzungs-Cookie eines angemeldeten REST-Aufrufs holen
             // und das Bild damit erneut laden; das Cookie lebt nur in diesem Aufruf und wird nie geloggt.
             String[] missing = new String[1];
-            String cookie = sessionCookie(session, missing);
+            String cookie = sessionCookie(session, what, missing);
             if (cookie == null) {
                 throw new KnowledgeSourceException(first.kind(), first.getMessage() + "; " + missing[0], first);
             }
-            Map<String, String> headers = new LinkedHashMap<String, String>(session.headers(IMAGE_ACCEPT));
+            Map<String, String> headers = new LinkedHashMap<String, String>(session.headers(accept));
             headers.put("Cookie", cookie);
             try {
-                return fetchImage(uri, Collections.unmodifiableMap(headers));
+                return attempt.run(Collections.unmodifiableMap(headers));
             } catch (KnowledgeSourceException second) {
                 throw new KnowledgeSourceException(second.kind(), second.getMessage()
                         + " (auch mit Sitzungs-Cookie aus der REST-Anmeldung)", second);
@@ -358,7 +392,7 @@ final class ConfluenceRestClient {
         return out.toString();
     }
 
-    /** Weiterleitung, 401/403 oder HTML statt Bild: Anmeldung hat beim Download nicht gegriffen. */
+    /** Weiterleitung, 401/403 oder HTML statt Datei: Anmeldung hat beim Download nicht gegriffen. */
     private static boolean needsSession(KnowledgeSourceException e) {
         return e.kind() == Kind.ACCESS_DENIED
                 || e.kind() == Kind.INVALID_RESPONSE && e.getMessage() != null && e.getMessage().contains("html");
@@ -368,17 +402,17 @@ final class ConfluenceRestClient {
      * Cookie-Header aus einem angemeldeten, leichten REST-Aufruf ({@code /rest/api/user/current}) oder {@code null},
      * wenn Confluence keins setzt oder der Aufruf scheitert; dann steht der Grund in {@code missing[0]}.
      */
-    private String sessionCookie(Session session, String[] missing) {
+    private String sessionCookie(Session session, String what, String[] missing) {
         URI uri = URI.create(config.baseUrl() + "/rest/api/user/current");
         ConfluenceHttpResponse response;
         try {
             response = transport.get(uri, session.headers, config.maxResponseBytes());
         } catch (IOException e) {
-            LOG.warning("[Confluence] Bild: REST-Anmeldung für Sitzungs-Cookie fehlgeschlagen (" + cause(e) + ")");
+            LOG.warning("[Confluence] " + what + ": REST-Anmeldung für Sitzungs-Cookie fehlgeschlagen (" + cause(e) + ")");
             missing[0] = "REST-Anmeldung für das Sitzungs-Cookie nicht erreichbar (" + cause(e) + ")";
             return null;
         }
-        LOG.info("[Confluence] Bild: REST-Anmeldung für Sitzungs-Cookie: status=" + response.status() + " cookies="
+        LOG.info("[Confluence] " + what + ": REST-Anmeldung für Sitzungs-Cookie: status=" + response.status() + " cookies="
                 + response.cookies().size());
         if (!response.isSuccess()) {
             missing[0] = "REST-Anmeldung für das Sitzungs-Cookie gescheitert (HTTP " + response.status() + ")";

@@ -168,6 +168,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private final ComposerButton infoButton;
     /** Büroklammer mit der Zahl der Anhänge des aktiven Reiters; ohne Anhänge ausgeblendet. */
     private final ComposerButton attachmentsButton;
+    private java.util.function.Consumer<JPopupMenu> attachmentMenuShower = this::showAboveButton;
     private ReaderFileOpener fileOpener = ReaderFileOpener.system();
     /** Zeichen-Thread des Anhang-Overlays für PDF-Seiten; {@code null}: der gemeinsame. */
     private java.util.concurrent.Executor attachmentRenderer;
@@ -224,7 +225,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         attachmentsButton.addActionListener(event -> {
             JPopupMenu list = attachmentMenu();
             if (list != null) {
-                list.show(attachmentsButton, 0, -list.getPreferredSize().height);
+                attachmentMenuShower.accept(list);
             }
         });
 
@@ -575,6 +576,15 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         ReaderAttachment attachment = tab.attachments.get(index);
         showTranscriptOverlay(new ImageSlideshowPanel(attachment, tab.attachmentLoader, fileOpener,
                 attachmentRenderer), attachment.fileName());
+    }
+
+    /** Wie die Anhangsliste nach dem Klick auf die Büroklammer erscheint (Tests: ohne Bildschirm abfangen). */
+    void setAttachmentMenuShower(java.util.function.Consumer<JPopupMenu> shower) {
+        this.attachmentMenuShower = shower == null ? this::showAboveButton : shower;
+    }
+
+    private void showAboveButton(JPopupMenu list) {
+        list.show(attachmentsButton, 0, -list.getPreferredSize().height);
     }
 
     /** Womit „Öffnen“ im Anhang-Overlay die Datei öffnet (Tests). */
