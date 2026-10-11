@@ -28,7 +28,8 @@ public class ConfluencePageViewTest {
 
         assertTrue(view.html, view.html.contains("Vorher <img"));
         assertTrue(view.html, view.html.contains("src=\"https://confluence.invalid/confluence/download/attachments/7/a.png"));
-        assertTrue(view.html, view.html.contains("smile.svg")); // Emoticons bleiben im Text, nur nicht in der Liste
+        assertFalse(view.html, view.html.contains("smile.svg")); // Emoticon ist kein Bild, nur sein Text bleibt
+        assertTrue(view.html, view.html.contains("<p>(smile)</p>"));
         assertFalse(view.html, view.html.contains("<script"));
         assertFalse(view.html, view.html.contains("Lade Vorgänge"));
         assertFalse(view.html, view.html.contains("Platzhalter"));
@@ -202,5 +203,74 @@ public class ConfluencePageViewTest {
                 "<img src=\"/confluence/download/attachments/7/Bild mit Ü.png?version=1\">", BASE);
 
         assertEquals(BASE + "download/attachments/7/Bild%20mit%20%C3%9C.png?version=1", view.images.get(0).src);
+    }
+
+    // ------------------------------------------------------------------ Symbole sind keine Inhaltsbilder
+
+    private static final String JIRA = "https://jira.invalid/browse/PROJ-12345";
+
+    /** Regressionstest 1: Jira-Link mit Symbol. Das Symbol fällt weg, Link und Vorgangsschlüssel bleiben. */
+    @Test
+    public void aJiraIconInsideItsLinkIsNoImageButTheLinkStays() {
+        String body = "<p><a href=\"" + JIRA + "\"><img src=\"/images/icons/jira-issue.png\"> PROJ-12345</a></p>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE);
+
+        assertTrue(view.images.isEmpty());
+        assertFalse(view.html, view.html.contains("<img"));
+        assertTrue(view.html, view.html.contains("<a href=\"" + JIRA + "\"> PROJ-12345</a>"));
+    }
+
+    /** Wie Confluence das Jira-Makro liefert: Avatar vom Jira-Host, kein {@code /icons/} im Pfad. */
+    @Test
+    public void aJiraMacroAvatarFromTheJiraHostIsNoImage() {
+        String body = "<p><span class=\"confluence-jim-macro jira-issue\" data-jira-key=\"PROJ-12345\">"
+                + "<a href=\"" + JIRA + "\" class=\"jira-issue-key\"><img class=\"icon\""
+                + " src=\"https://jira.invalid/secure/viewavatar?size=xsmall&amp;avatarId=10315&amp;avatarType=issuetype\">"
+                + "PROJ-12345</a> - <span class=\"summary\">Zusammenfassung</span></span></p>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE);
+
+        assertTrue(view.images.isEmpty());
+        assertFalse(view.html, view.html.contains("<img"));
+        assertTrue(view.html, view.html.contains("class=\"jira-issue-key\">PROJ-12345</a>"));
+        assertTrue(view.html, view.html.contains("Zusammenfassung"));
+    }
+
+    /** Regressionstest 2: Emoticon und Icon ohne Link. Kein Bild bleibt; das Emoticon wird zu seinem Text. */
+    @Test
+    public void emoticonsAndIconsWithoutALinkLeaveNoImage() {
+        String body = "<table><tr><td><img class=\"emoticon emoticon-tick\" data-emoticon-name=\"tick\""
+                + " src=\"/confluence/images/icons/emoticons/check.svg\" alt=\"(/)\"></td>"
+                + "<td><img src=\"/confluence/images/icons/contenttypes/page.png\" alt=\"\"> Seite</td>"
+                + "<td><img src=\"data:image/png;base64,iVBORw0KGgo=\"> Daten</td></tr></table>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE);
+
+        assertTrue(view.images.isEmpty());
+        assertFalse(view.html, view.html.contains("<img"));
+        assertTrue(view.html, view.html.contains("<td>(/)</td>"));
+        assertTrue(view.html, view.html.contains("Seite"));
+    }
+
+    /** Regressionstest 3 und 4: Inhaltsbild und draw.io neben einem Jira-Symbol bleiben, wie sie waren. */
+    @Test
+    public void contentImagesAndDrawioStayNextToAJiraIcon() {
+        String body = "<p><img class=\"confluence-embedded-image\" src=\"/confluence/download/attachments/7/a.png\""
+                + " alt=\"Architektur\" data-linked-resource-id=\"101\"></p>"
+                + "<p><a href=\"" + JIRA + "\"><img src=\"/images/icons/jira-issue.png\"> PROJ-12345</a></p>"
+                + "<div data-macro-name=\"drawio\"><div style=\"display:none\" data-diagramdata=\""
+                + diagram("Ablauf", 42, 3) + "\"></div></div>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE);
+
+        assertEquals(2, view.images.size());
+        assertEquals(BASE + "download/attachments/7/a.png", view.images.get(0).src);
+        assertEquals("att101", view.images.get(0).attachmentId);
+        assertEquals(BASE + "download/attachments/42/Ablauf.png?version=3&api=v2#drawio=Ablauf&page=42&revision=3",
+                view.images.get(1).src);
+        assertTrue(view.html, view.html.contains("src=\"" + BASE + "download/attachments/7/a.png\""));
+        assertTrue(view.html, view.html.contains("#drawio=Ablauf&amp;page=42&amp;revision=3"));
+        assertFalse(view.html, view.html.contains("jira-issue.png"));
     }
 }

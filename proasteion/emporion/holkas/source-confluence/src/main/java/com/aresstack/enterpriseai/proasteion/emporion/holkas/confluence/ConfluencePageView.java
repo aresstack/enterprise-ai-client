@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.TextNode;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -21,7 +22,9 @@ import java.util.regex.Pattern;
 /**
  * Bereitet {@code body.view} für die Lese-Ansicht auf (paketintern), mit den Regeln aus MainframeMate
  * {@code HtmlImageExtractor}/{@code ConfluenceReaderTab}: Bilder bleiben an ihrer Stelle, die Bildliste folgt der
- * Dokumentreihenfolge (jede Adresse einmal), {@code data:}-Bilder und Emoticons/Icons zählen nicht. Versteckte
+ * Dokumentreihenfolge (jede Adresse einmal). {@code data:}-Bilder, Emoticons, Icons und Jira-Symbole sind keine
+ * Inhaltsbilder: sie fallen aus dem HTML (ein Emoticon bleibt als sein Alternativtext), siehe
+ * {@link #isDecorative}. Versteckte
  * Elemente ({@code .hidden}, {@code display:none}) fallen weg wie in {@link ConfluenceHtmlText}. Anders als
  * dort liest jsoup die Attribute; ist das Bild ein Anhang ({@code data-linked-resource-id}), kommen Anhang-ID,
  * Version und Medientyp mit. Entfernt werden Skripte, Formulare und eingebettete Objekte; Überschriften ohne
@@ -120,7 +123,8 @@ final class ConfluencePageView {
             src = ConfluenceRestClient.encodeUnsafe(src);
             src = onBase(onBase(src, serverBase, baseUri, true), baseUri, baseUri, false);
             img.attr("src", src);
-            if (raw.startsWith("data:") || src.contains("/emoticons/") || src.contains("/icons/")) {
+            if (isDecorative(img, raw, src)) {
+                dropDecorative(img, src);
                 continue;
             }
             if (!seen.add(src)) {
@@ -159,6 +163,38 @@ final class ConfluencePageView {
         }
         doc.outputSettings().prettyPrint(false);
         return new ConfluencePageView(doc.body().html(), images);
+    }
+
+    /**
+     * Ein Symbol statt eines Inhaltsbilds: {@code data:}-Bilder, Confluence-Emoticons und -Icons, Jira-Avatare
+     * ({@code /secure/viewavatar}), Bilder mit Klasse {@code icon}/{@code emoticon} und alles innerhalb eines
+     * Jira-Vorgangs ({@code .jira-issue}, {@code [data-jira-key]}, {@code a.jira-issue-key}). Solche Bilder kommen
+     * weder in die Bildliste noch bleiben sie im HTML: die Lese-Ansicht hätte für sie nur einen Platzhalter.
+     */
+    static boolean isDecorative(Element img, String raw, String src) {
+        if (img.hasAttr(DRAWIO_MARK)) {
+            return false; // ein draw.io-Diagramm ist immer Inhalt, gleich wie Confluence sein img auszeichnet
+        }
+        if (raw.startsWith("data:") || src.contains("/emoticons/") || src.contains("/icons/")
+                || src.contains("/secure/viewavatar") || img.hasClass("icon") || img.hasClass("emoticon")
+                || img.hasAttr("data-emoticon-name")) {
+            return true;
+        }
+        return img.closest(".jira-issue, [data-jira-key], a.jira-issue-key") != null;
+    }
+
+    /**
+     * Entfernt ein Symbol aus dem HTML; ein Emoticon mit Alternativtext (etwa {@code (/)} als Haken in einer Tabelle)
+     * bleibt als dieser Text stehen. Ein umgebender Link bleibt unverändert.
+     */
+    private static void dropDecorative(Element img, String src) {
+        String alt = img.attr("alt").trim();
+        boolean emoticon = src.contains("/emoticons/") || img.hasClass("emoticon") || img.hasAttr("data-emoticon-name");
+        if (emoticon && !alt.isEmpty()) {
+            img.replaceWith(new TextNode(alt));
+        } else {
+            img.remove();
+        }
     }
 
     /**

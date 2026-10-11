@@ -52,7 +52,9 @@ import java.util.function.Consumer;
  *
  * <p>Anders als im Vorbild lädt die Ansicht Bilder nie selbst aus dem Netz: jedes {@code <img>} zeichnet eine eigene
  * {@link View}, die ihr Bild aus dem {@link ReaderImageStore} des Reiters holt (über die Quelle, mit deren Anmeldung)
- * und bis dahin einen Platzhalter zeigt. Bilder, die die Quelle nicht kennt, bleiben Platzhalter mit Alternativtext.</p>
+ * und bis dahin einen Platzhalter zeigt. Ein {@code <img>}, das die Quelle nicht als Bild meldet (Symbol eines
+ * unbekannten Makros), ist kein Inhaltsbild: es zeigt nur seinen Alternativtext in Textgröße oder gar nichts, nie einen
+ * Bildplatzhalter, und ein Klick darauf gehört dem umgebenden Link.</p>
  *
  * <p>Textstellen sind adressierbar über Zeichen-Offsets im einen {@link HTMLDocument} ({@code modelToView} zum
  * Rollen), über dessen Element-Baum ({@code HTML.Tag} und Attribute wie {@code id}) und über die {@code id} der
@@ -136,6 +138,17 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
             }
         }
         return null;
+    }
+
+    /** Bevorzugte Größe der {@code <img>}, die kein bekanntes Bild sind (für Tests). */
+    List<Dimension> unknownImageSizes() {
+        List<Dimension> result = new ArrayList<Dimension>();
+        for (InlineImageView view : new ArrayList<InlineImageView>(imageViews.keySet())) {
+            if (view.image == null) {
+                result.add(view.size());
+            }
+        }
+        return result;
     }
 
     /** Die Bilder, die die Ansicht gerade als {@code <img>} enthält (in Dokumentreihenfolge, für Tests). */
@@ -356,7 +369,8 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
 
     /**
      * Ein {@code <img>}: das geladene Bild in Originalgröße (bzw. den Maßen aus {@code width}/{@code height}),
-     * höchstens so breit wie die Ansicht; bis dahin ein Platzhalter mit Alternativtext.
+     * höchstens so breit wie die Ansicht; bis dahin ein Platzhalter. Ohne bekanntes Bild nur der Alternativtext in
+     * Textgröße (ohne Alternativtext keine Fläche), gleich was {@code width}/{@code height} sagen.
      */
     private final class InlineImageView extends View {
         final ReaderImage image;
@@ -380,7 +394,18 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
             return loaded == null ? null : loaded.image();
         }
 
-        private Dimension size() {
+        private Font altFont() {
+            return ReaderHtmlView.this.getFont().deriveFont(Font.ITALIC);
+        }
+
+        Dimension size() {
+            if (image == null) {
+                if (alt.isEmpty()) {
+                    return new Dimension(0, 0);
+                }
+                FontMetrics fm = ReaderHtmlView.this.getFontMetrics(altFont());
+                return new Dimension(fm.stringWidth(alt), fm.getHeight());
+            }
             BufferedImage bitmap = bitmap();
             int w;
             int h;
@@ -410,6 +435,10 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
 
         @Override
         public float getAlignment(int axis) {
+            if (axis == View.Y_AXIS && image == null && !alt.isEmpty()) {
+                FontMetrics fm = ReaderHtmlView.this.getFontMetrics(altFont());
+                return fm.getAscent() / (float) fm.getHeight(); // Grundlinie wie der Text daneben
+            }
             return axis == View.Y_AXIS ? 1f : super.getAlignment(axis);
         }
 
@@ -419,6 +448,16 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
             painted = new Rectangle(r);
             Graphics2D g2 = (Graphics2D) g.create();
             try {
+                if (image == null) {
+                    if (!alt.isEmpty()) {
+                        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                                RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                        g2.setColor(ResearchUiPalette.LIGHT_TEXT_MUTED);
+                        g2.setFont(altFont());
+                        g2.drawString(alt, r.x, r.y + g2.getFontMetrics().getAscent());
+                    }
+                    return;
+                }
                 BufferedImage bitmap = bitmap();
                 if (bitmap != null) {
                     g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
@@ -432,8 +471,7 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
                 g2.fillRoundRect(r.x, r.y, r.width - 1, r.height - 1, 8, 8);
                 g2.setColor(new Color(200, 200, 200));
                 g2.drawRoundRect(r.x, r.y, r.width - 1, r.height - 1, 8, 8);
-                String text = image == null ? (alt.isEmpty() ? "Bild" : alt)
-                        : store.loaded(image) == null ? "Bild wird geladen …" : "Bild nicht ladbar";
+                String text = store.loaded(image) == null ? "Bild wird geladen …" : "Bild nicht ladbar";
                 g2.setColor(ResearchUiPalette.LIGHT_TEXT_MUTED);
                 g2.setFont(getFont().deriveFont(Font.ITALIC, 11f));
                 FontMetrics fm = g2.getFontMetrics();
