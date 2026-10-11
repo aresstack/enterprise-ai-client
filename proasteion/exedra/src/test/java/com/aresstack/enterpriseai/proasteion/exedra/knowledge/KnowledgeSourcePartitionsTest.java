@@ -122,6 +122,11 @@ public class KnowledgeSourcePartitionsTest {
             }
 
             @Override
+            public boolean canAdd() {
+                return false;
+            }
+
+            @Override
             public void partitionChanged(String sourceId, String key, boolean selected) {
                 calls.add("partition " + key + " " + selected);
             }
