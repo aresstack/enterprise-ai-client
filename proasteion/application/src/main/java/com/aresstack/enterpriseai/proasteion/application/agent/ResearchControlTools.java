@@ -519,10 +519,7 @@ public final class ResearchControlTools {
         if ("document_save".equals(name)) {
             return host.isWritable(ResearchStateIds.DRAFT);
         }
-        if ("project_source_add".equals(name)) {
-            // Wie addFollowUpSource: direkter Suchauftrag in der Konzeptphase, Nachfragen in der Phase Dokument.
-            return ResearchStateIds.SCOPING.equals(phase) || ResearchStateIds.DRAFT.equals(phase);
-        }
+        // project_source_add: Nachrecherche übernimmt neue Quellen in jeder Phase (wie addFollowUpSource).
         if ("research_progress".equals(name) || "research_run_finished".equals(name)) {
             return host.isWritable(ResearchStateIds.RESEARCH);
         }

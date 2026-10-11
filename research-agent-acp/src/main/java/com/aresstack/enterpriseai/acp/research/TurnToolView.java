@@ -12,8 +12,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * Was ein Turn von den Host-Aufrufen zeigt (askai arch {@code ResearchAgentSession.applyRunLog},
  * {@code updateConceptToolBubble}, {@code finishConceptToolBubble}):
  * <ul>
- *   <li>Solange eine Recherche-Karte offen ist, erscheinen keine Einzelwolken: Suche, gelesene Seiten und
- *       übernommene Quellen stehen in der Karte (askai: im Lauf keine Einzelwerkzeug-Blasen).</li>
+ *   <li>Solange eine Recherche-Karte offen ist, bleiben Suche und gelesene Seiten als Werkzeugwolken sichtbar
+ *       (Auftrag: Tool-Calls sichtbar neben der Blase); nur das Notieren und Übernehmen der Quellen schweigt, das
+ *       zählt die Karte („Quellen: n übernommen“). askai blendet im Lauf alle Einzelwolken aus.</li>
  *   <li>Die Konzept- und Weidezaun-Werkzeuge eines Turns sammeln sich in <b>einer</b> Denkwolke mit einer Zeile
  *       je Schritt, die mit dem Turn endet („N Werkzeug-Schritte“).</li>
  *   <li>Jeder andere sichtbare Aufruf ist eine eigene Wolke; ein Fehler beendet sie mit seinem Fehlertext.</li>
@@ -55,6 +56,12 @@ final class TurnToolView implements ResearchHostControl.ToolObserver {
         return !openCards.isEmpty();
     }
 
+    /** Quellen notieren, übernehmen, zurückstellen: steht während einer Recherche in der Karte. */
+    static boolean isSourceBookkeeping(String toolName) {
+        return "project_source_add".equals(toolName) || "source_accept".equals(toolName)
+                || "source_park".equals(toolName);
+    }
+
     static boolean isConceptTool(String toolName) {
         return toolName != null && (toolName.startsWith("concept_") || "exclude_topic".equals(toolName)
                 || "resolve_concept_conflict".equals(toolName) || "offer_searches".equals(toolName));
@@ -66,7 +73,7 @@ final class TurnToolView implements ResearchHostControl.ToolObserver {
             return; // erscheint mit seinem Ergebnis als Zeile der Konzept-Wolke
         }
         ToolNarration.Visible shown = narration.describe(toolName, args);
-        if (shown == null || output.isCancelled() || isCardOpen()) {
+        if (shown == null || output.isCancelled() || (isCardOpen() && isSourceBookkeeping(toolName))) {
             return;
         }
         visible.add(callId);

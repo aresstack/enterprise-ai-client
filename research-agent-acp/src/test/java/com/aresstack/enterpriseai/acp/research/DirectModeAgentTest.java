@@ -189,11 +189,11 @@ public class DirectModeAgentTest {
     }
 
     /**
-     * askai arch: solange die Recherche-Karte offen ist, gibt es keine Einzelwolken für Suche, gelesene Seiten und
-     * notierte Quellen (sie stehen in der Karte); was davor geschieht (Planen), bleibt eine eigene Wolke.
+     * Neben der Recherche-Karte bleiben Suche und gelesene Seiten als Werkzeugwolken sichtbar (Auftrag: Tool-Calls
+     * sichtbar); das Notieren der Quellen zählt die Karte und erscheint nicht als eigene Wolke.
      */
     @Test
-    public void whileTheResearchCardIsOpenNoSingleToolCloudsAppear() {
+    public void besideTheResearchCardSearchAndReadsStayVisibleButNotesDoNot() {
         FakeEndpoint endpoint = new FakeEndpoint();
         Screen screen = new Screen();
         agent(endpoint).run("Kannst du mir was über IAR aus Confluence finden?", screen);
@@ -202,8 +202,8 @@ public class DirectModeAgentTest {
         assertTrue(endpoint.calls.toString(), endpoint.calls.contains(KnowledgePages.READ_TOOL));
         String card = screen.card();
         assertTrue(screen.inputs.get(card), screen.inputs.get(card).contains("Suche nach: \u201eIAR\u201c"));
-        assertFalse(screen.started.values().toString(), screen.started.containsValue("Suche in den Wissensquellen"));
-        assertFalse(screen.started.values().toString(), screen.started.containsValue("Lese Seite"));
+        assertTrue(screen.started.values().toString(), screen.started.containsValue("Suche in den Wissensquellen"));
+        assertTrue(screen.started.values().toString(), screen.started.containsValue("Lese Seite"));
         assertFalse(screen.started.values().toString(), screen.started.containsValue("Quelle notieren"));
         // Das Planen der Suche liegt vor der Karte und bleibt sichtbar.
         String think = screen.callOf("Denke nach");

@@ -260,7 +260,8 @@ public class AgentModeEndToEndTest {
             readTitles.add(entry.getText());
         }
         assertEquals(Arrays.asList(PAGES[0][1], PAGES[1][1], PAGES[2][1], PAGES[3][1]), readTitles);
-        assertEquals(4, activities(entries, "Quelle notieren").size());
+        // das Notieren als Quelle zählt die Karte („4 Quellen übernommen“), keine eigene Wolke je Seite
+        assertEquals(0, activities(entries, "Quelle notieren").size());
         assertTrue("Denkschritte als grüne Wolke", activity(entries, "Denke nach").isThinking());
 
         // die gelesenen Seiten sind Quellen des Projekts

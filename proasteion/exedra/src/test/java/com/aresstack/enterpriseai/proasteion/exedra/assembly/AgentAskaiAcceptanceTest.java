@@ -202,13 +202,18 @@ public class AgentAskaiAcceptanceTest {
         assertEquals("abgeschlossen: 1 Seite gelesen, 1 Treffer, 1 Quelle übernommen", card.getActivitySummary());
         // die Art „research“ übersteht die ACP-Leitung (kind: other + _meta), sonst zeichnet der Verlauf keine Karte
         assertEquals("research", card.getActivityKind());
-        // askai arch: während die Karte offen ist, keine Einzelwolken für Suche, Lesen und Notieren
+        // neben der Karte: Suche und Lesen als Werkzeugwolken, das Notieren zählt die Karte
         assertTrue(card.getText(), card.getText().contains("IAR"));
+        boolean search = false;
+        boolean read = false;
         for (TranscriptEntry entry : entries) {
             String title = entry.getActivityTitle();
-            assertFalse(title, "Suche in den Wissensquellen".equals(title) || "Lese Seite".equals(title)
-                    || "Quelle notieren".equals(title));
+            search |= "Suche in den Wissensquellen".equals(title);
+            read |= "Lese Seite".equals(title);
+            assertFalse(title, "Quelle notieren".equals(title));
         }
+        assertTrue("Suchwolke", search);
+        assertTrue("Lesewolke", read);
         assertTrue("Denkschritte als grüne Wolke", activity(entries, "Denke nach").isThinking());
 
         // 7. die gelesene Quelle ist im Projekt übernommen

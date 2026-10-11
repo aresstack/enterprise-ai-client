@@ -52,7 +52,7 @@ public class ResearchToolPolicyTest {
         assertRequired(running);
         assertTrue(running.contains("research_progress"));
         assertTrue(running.contains("research_run_finished"));
-        assertFalse(running.contains("project_source_add"));
+        assertTrue("Nachrecherche übernimmt Quellen in jeder Phase", running.contains("project_source_add"));
         assertFalse(running.contains("outline_propose"));
 
         assertNull(host.dispatch(ResearchCommandType.REQUEST_EVIDENCE_REVIEW));
