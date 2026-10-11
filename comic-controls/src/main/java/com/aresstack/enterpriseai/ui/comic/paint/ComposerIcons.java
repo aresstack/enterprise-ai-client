@@ -272,4 +272,28 @@ public final class ComposerIcons {
             }
         };
     }
+
+    /** A sheet with a folded corner (a file attachment in the reader). Own addition. */
+    public static StrokeIcon document() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawPolyline(new int[] {9, 3, 3, 12, 12, 9, 9, 12}, new int[] {1, 1, 14, 14, 4, 1, 4, 4}, 8);
+                g2.drawLine(5, 8, 10, 8);
+                g2.drawLine(5, 11, 10, 11);
+            }
+        };
+    }
+
+    /** A box with an arrow leaving it to the upper right (open with the system application). Own addition. */
+    public static StrokeIcon openExternal() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawPolyline(new int[] {7, 2, 2, 13, 13}, new int[] {3, 3, 13, 13, 8}, 5);
+                g2.drawLine(8, 7, 13, 2);
+                g2.drawPolyline(new int[] {9, 13, 13}, new int[] {2, 2, 6}, 3);
+            }
+        };
+    }
 }

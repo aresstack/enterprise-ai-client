@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.knowledge;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.KnowledgeReaderPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderAttachment;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderAttachmentLoader;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImageDescription;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImageLoader;
@@ -63,6 +65,10 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     static final String DESCRIPTIONS_UNAVAILABLE = "Bildbeschreibung ist hier nicht verfügbar.";
     static final String IMAGE_FAILED_UNEXPECTEDLY = "Bild nicht ladbar: unerwarteter Fehler (Protokoll).";
     static final String IMAGE_NOT_SCHEDULED = "Bild nicht ladbar: Hintergrundarbeit abgelehnt (Protokoll).";
+    /** Vorschau eines Office-Anhangs: zuerst das umgewandelte Dokument (Seiten), dann ein großes, dann ein kleines Bild. */
+    static List<PageView.Preview> previewOrder() {
+        return java.util.Arrays.asList(PageView.Preview.DOCUMENT, PageView.Preview.POSTER, PageView.Preview.THUMBNAIL);
+    }
 
     private final ChatWorkspacePanel workspace;
     private final Supplier<List<KnowledgeSourceRegistration>> enabledSources;
@@ -252,7 +258,20 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                         byKey.put(image.src(), image);
                     }
                     final ReaderImageLoader loader = new SourceImages(registration.port(), byKey);
-                    uiExecutor.execute(() -> reader.showHtml(link.key(), view.html(), view.baseUri(), images, loader));
+                    final List<ReaderAttachment> attachments = new ArrayList<ReaderAttachment>();
+                    final Map<String, PageView.Attachment> attachmentsByKey =
+                            new LinkedHashMap<String, PageView.Attachment>();
+                    for (PageView.Attachment attachment : view.attachments()) {
+                        attachments.add(new ReaderAttachment(attachment.id(), attachment.fileName(),
+                                attachment.mediaType(), attachment.size()));
+                        attachmentsByKey.put(attachment.id(), attachment);
+                    }
+                    final ReaderAttachmentLoader attachmentLoader =
+                            new SourceAttachments(registration.port(), attachmentsByKey);
+                    uiExecutor.execute(() -> {
+                        reader.showHtml(link.key(), view.html(), view.baseUri(), images, loader);
+                        reader.showAttachments(link.key(), attachments, attachmentLoader);
+                    });
                     // Danach wie bisher aufbereiten (Index); der Banner zieht auf der Lese-Ansicht nach.
                     KnowledgeDocument viewed = indexAfterViewing(registration.port(), id, link);
                     if (viewed != null && navigation != null) {
@@ -387,6 +406,65 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 done.accept(ReaderImageDescription.unavailable(DESCRIPTION_FAILED));
             }
         }
+    }
+
+    /**
+     * Anhänge einer Lese-Ansicht: Originaldatei und Vorschau (Office: umgewandeltes Dokument, sonst Bild der ersten
+     * Seite) über die Quelle; blockierend auf dem Arbeits-Executor, Rückrufe auf dem UI-Executor, jeder Fehlschlag
+     * mit Grund.
+     */
+    private final class SourceAttachments implements ReaderAttachmentLoader {
+        private final KnowledgeSourcePort port;
+        private final Map<String, PageView.Attachment> byKey;
+
+        SourceAttachments(KnowledgeSourcePort port, Map<String, PageView.Attachment> byKey) {
+            this.port = port;
+            this.byKey = byKey;
+        }
+
+        @Override
+        public void load(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed) {
+            fetch(attachment, "Anhang", source -> browse.attachment(port, source), done, failed);
+        }
+
+        @Override
+        public void preview(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed) {
+            fetch(attachment, "Vorschau", source -> browse.attachmentPreview(port, source, previewOrder()), done,
+                    failed);
+        }
+
+        private void fetch(final ReaderAttachment attachment, final String what, final SourceCall call,
+                           final Consumer<byte[]> done, final Consumer<String> failed) {
+            final PageView.Attachment source = byKey.get(attachment.key());
+            if (source == null) {
+                failed.accept(what + " gehört nicht zu dieser Seite.");
+                return;
+            }
+            try {
+                workExecutor.execute(() -> {
+                    try {
+                        final byte[] bytes = call.run(source);
+                        uiExecutor.execute(() -> done.accept(bytes));
+                    } catch (KnowledgeSourceException e) {
+                        final String reason = e.getMessage() == null || e.getMessage().trim().isEmpty()
+                                ? what + " nicht ladbar (" + e.kind() + ", ohne Meldung der Quelle)" : e.getMessage();
+                        LOG.warning(what + " nicht ladbar (" + e.kind() + "): " + source.id() + ": " + reason);
+                        uiExecutor.execute(() -> failed.accept(reason));
+                    } catch (RuntimeException e) {
+                        LOG.log(Level.WARNING, what + " nicht ladbar: " + source.id(), e);
+                        uiExecutor.execute(() -> failed.accept(what + " nicht ladbar: unerwarteter Fehler (Protokoll)."));
+                    }
+                });
+            } catch (RuntimeException rejected) {
+                LOG.log(Level.WARNING, what + " nicht ladbar, Hintergrundarbeit abgelehnt: " + source.id(), rejected);
+                failed.accept(what + " nicht ladbar: Hintergrundarbeit abgelehnt (Protokoll).");
+            }
+        }
+    }
+
+    /** Ein blockierender Aufruf an die Quelle. */
+    private interface SourceCall {
+        byte[] run(PageView.Attachment attachment) throws KnowledgeSourceException;
     }
 
     /**

@@ -94,6 +94,10 @@ public class ConfluenceViewImageTest {
             if (failure != null) {
                 throw failure;
             }
+            if (uri.getRawPath().equals("/confluence/rest/api/content/7/child/attachment")) {
+                return new ConfluenceHttpResponse(200, "application/json",
+                        "{\"results\":[],\"_links\":{}}".getBytes(StandardCharsets.UTF_8));
+            }
             if (uri.getRawPath().startsWith("/confluence/rest/api/content/7")) {
                 return new ConfluenceHttpResponse(200, "application/json", READING_PAGE.getBytes(StandardCharsets.UTF_8));
             }

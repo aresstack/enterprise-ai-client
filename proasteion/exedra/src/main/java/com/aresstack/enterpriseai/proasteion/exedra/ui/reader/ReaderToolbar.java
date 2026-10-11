@@ -228,6 +228,20 @@ final class ReaderToolbar extends JPanel {
         return tool;
     }
 
+    /** Client-Property eines Werkzeugs, das gerade nichts zu tun hat (z. B. die Büroklammer ohne Anhänge). */
+    private static final String HIDDEN_TOOL = "reader.toolbar.hiddenTool";
+
+    /**
+     * Blendet ein Werkzeug aus {@link #addTool} ein oder aus; ein ausgeblendetes kommt auch nach dem Schließen der
+     * Suche nicht wieder.
+     */
+    void showTool(ComposerButton tool, boolean shown) {
+        tool.putClientProperty(HIDDEN_TOOL, shown ? null : Boolean.TRUE);
+        tool.setVisible(shown && (state == null || !state.open));
+        revalidate();
+        repaint();
+    }
+
     /** Was Zurück und Vor auslösen. */
     void setNavigation(Runnable back, Runnable forward) {
         backButton.addActionListener(event -> back.run());
@@ -313,7 +327,8 @@ final class ReaderToolbar extends JPanel {
         // weitere Werkzeuge treten zurück, solange die Suche die Zeile braucht
         for (java.awt.Component tool : tools.getComponents()) {
             if (tool != findButton) {
-                tool.setVisible(!searchOpen);
+                tool.setVisible(!searchOpen && !(tool instanceof javax.swing.JComponent
+                        && Boolean.TRUE.equals(((javax.swing.JComponent) tool).getClientProperty(HIDDEN_TOOL))));
             }
         }
         revalidate();

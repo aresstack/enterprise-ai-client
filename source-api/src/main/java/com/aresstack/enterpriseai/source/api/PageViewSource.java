@@ -20,4 +20,22 @@ public interface PageViewSource {
      * @param src die Adresse aus {@link PageView.Image#src()}
      */
     byte[] loadViewImage(String src) throws KnowledgeSourceException;
+
+    /**
+     * Die Originaldatei eines Anhangs aus {@link PageView#attachments()} über die Anmeldung der Quelle (derselbe
+     * Netzweg wie die Seite). Quellen ohne Anhänge: {@code UNSUPPORTED}.
+     */
+    default byte[] loadAttachment(PageView.Attachment attachment) throws KnowledgeSourceException {
+        throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Anhänge");
+    }
+
+    /**
+     * Eine von der Quelle erzeugte Vorschau des Anhangs (z. B. ein Office-Dokument als PDF oder Bild); nur Arten aus
+     * {@link PageView.Attachment#previews()}. Gibt es sie nicht (noch nicht erzeugt, Typ nicht umwandelbar):
+     * {@code NOT_FOUND}, {@code UNAVAILABLE} oder {@code UNSUPPORTED}.
+     */
+    default byte[] loadAttachmentPreview(PageView.Attachment attachment, PageView.Preview preview)
+            throws KnowledgeSourceException {
+        throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Vorschauen");
+    }
 }

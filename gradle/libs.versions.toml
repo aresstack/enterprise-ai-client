@@ -19,6 +19,8 @@ winTrust = "0.1.0"
 flexmark = "0.62.2"
 mermaidJava = "0.2.0-beta.2"
 tika = "2.9.1"
+# Dieselbe PDFBox-Linie wie Tika 2.9.1 (tika-parent: pdfbox.version 2.0.29), damit das Fat Jar nur eine Fassung trägt.
+pdfbox = "2.0.29"
 commonsNet = "3.9.0"
 huggingface4j = "0.1.1"
 onnxruntime = "1.30.0"
@@ -65,6 +67,8 @@ flexmark-ext-tables = { module = "com.vladsch.flexmark:flexmark-ext-tables", ver
 flexmark-ext-autolink = { module = "com.vladsch.flexmark:flexmark-ext-autolink", version.ref = "flexmark" }
 flexmark-ext-gfm-strikethrough = { module = "com.vladsch.flexmark:flexmark-ext-gfm-strikethrough", version.ref = "flexmark" }
 mermaid-java = { module = "com.aresstack:mermaid-java", version.ref = "mermaidJava" }
+# exedra (ui.reader): PDF-Anhänge im Anhang-Overlay als Seitenbilder (Apache PDFBox 2.0.x, Java 6+). Nur in exedra.
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 
 # document-tika: Dokument-Extraktion (PDF, Office, HTML, Mail) wie MainframeMate; nur in document-tika als implementation.
 tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }

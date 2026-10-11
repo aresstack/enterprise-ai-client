@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -56,6 +57,10 @@ import java.util.logging.Logger;
  *   <li>Inhalt: gerenderte Ansicht ({@code body.view}), in Text mit Markdown-Struktur überführt.</li>
  *   <li>Lese-Ansicht ({@link PageViewSource}): {@code body.export_view} (Rückfall {@code body.view}) als HTML
  *       mit den Bildern an ihrer Stelle; deren Bytes lädt {@link #loadViewImage} angemeldet von dieser Confluence.</li>
+ *   <li>Anhänge der Lese-Ansicht: alle Anhänge der Seite ({@code /child/attachment}, unabhängig von
+ *       {@code includeAttachments}); die Originaldatei lädt {@link #loadAttachment} über den Download-Pfad, Vorschauen
+ *       {@link #loadAttachmentPreview} über die Dokumentkonvertierung ({@code /rest/documentConversion/latest/
+ *       conversion/<art>/<id>/<version>}, Muster aus Seite und Files-Endpunkt eines echten Mitschnitts).</li>
  *   <li>Suche: CQL {@code type=page AND text ~ "..."} über {@code /rest/api/content/search} (wie MainframeMate),
  *       optional auf konfigurierte Spaces beschränkt; dieser Endpunkt liefert keine Textausschnitte, Treffer
  *       haben deshalb einen leeren Snippet.</li>
@@ -70,6 +75,10 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     static final String PAGE_CONTENT_TYPE = "text/html";
 
     private static final Logger LOG = Logger.getLogger(ConfluenceKnowledgeSource.class.getName());
+    /** So viele Anhänge zeigt der Lesebereich je Seite höchstens. */
+    static final int MAX_READER_ATTACHMENTS = 500;
+    /** Größte Datei, die der Lesebereich lädt (100 MB). */
+    static final int READER_MAX_BYTES = 100 * 1024 * 1024;
 
     private final SourceAddress sourceId;
     /** Kanonische Basis-URL ohne Schema, Teil jeder Ressourcen-ID. */
@@ -192,9 +201,91 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                     images.add(new PageView.Image(image.src, image.title, image.attachmentId == null ? null
                             : inlineImageResource(image, loaded.id)));
                 }
-                return new PageView(view.html, base, images);
+                return new PageView(view.html, base, images, readerAttachments(session, loaded.id));
             }
         });
+    }
+
+    /**
+     * Alle Anhänge der Seite für den Lesebereich, ohne Filter und unabhängig von {@link ConfluenceConfig#includeAttachments()}
+     * (der Schalter gilt der Indexierung). Scheitert die Liste, bleibt die Seite lesbar, nur ohne Anhänge.
+     */
+    private List<PageView.Attachment> readerAttachments(Session session, String pageId) {
+        List<PageView.Attachment> result = new ArrayList<PageView.Attachment>();
+        try {
+            for (Attachment attachment : client.attachments(session, pageId, MAX_READER_ATTACHMENTS,
+                    candidate -> true)) {
+                result.add(new PageView.Attachment(attachment.id, attachment.containerId, attachment.title,
+                        attachment.mediaType, attachment.version, attachment.size, attachment.downloadPath,
+                        attachment.webUi, EnumSet.allOf(PageView.Preview.class)));
+            }
+        } catch (KnowledgeSourceException e) {
+            LOG.warning("[Confluence] Anhänge der Seite " + pageId + " nicht gelesen (" + e.kind() + "): "
+                    + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Die Originaldatei über denselben angemeldeten Weg wie die Seite. Die Angaben des Anhangs werden frisch aus
+     * Confluence gelesen (Download-Pfad und Version nicht vom Aufrufer übernommen).
+     */
+    @Override
+    public byte[] loadAttachment(PageView.Attachment attachment) throws KnowledgeSourceException {
+        final String id = attachmentIdOf(attachment);
+        return withSession(new Operation<byte[]>() {
+            @Override
+            public byte[] run(Session session) throws KnowledgeSourceException {
+                return client.readAttachment(session, client.attachment(session, id), readerMaxBytes());
+            }
+        });
+    }
+
+    /**
+     * Vorschau aus Confluences Dokumentkonvertierung ({@code convert}, {@code poster}, {@code thumbnail}); ob es sie
+     * für den Typ gibt, weiß erst Confluence (sonst {@code NOT_FOUND} bzw. {@code INVALID_RESPONSE}).
+     */
+    @Override
+    public byte[] loadAttachmentPreview(PageView.Attachment attachment, final PageView.Preview preview)
+            throws KnowledgeSourceException {
+        final String id = attachmentIdOf(attachment);
+        if (preview == null) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Vorschauart fehlt");
+        }
+        return withSession(new Operation<byte[]>() {
+            @Override
+            public byte[] run(Session session) throws KnowledgeSourceException {
+                return client.conversion(session, client.attachment(session, id), conversionKind(preview),
+                        readerMaxBytes());
+            }
+        });
+    }
+
+    static String conversionKind(PageView.Preview preview) {
+        switch (preview) {
+            case DOCUMENT:
+                return "convert";
+            case POSTER:
+                return "poster";
+            default:
+                return "thumbnail";
+        }
+    }
+
+    private static String attachmentIdOf(PageView.Attachment attachment) throws KnowledgeSourceException {
+        if (attachment == null || !ConfluenceIds.isAttachmentId(attachment.id())) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Kein Confluence-Anhang: "
+                    + (attachment == null ? "null" : attachment.id()));
+        }
+        return attachment.id();
+    }
+
+    /**
+     * Grenze für Anhänge im Lesebereich: höchstens {@link #READER_MAX_BYTES}, mindestens die Grenze der Indexierung
+     * ({@code maxAttachmentBytes}, Standard 5 MB, für Lesen zu knapp).
+     */
+    private int readerMaxBytes() {
+        return Math.max(config.maxAttachmentBytes(), READER_MAX_BYTES);
     }
 
     /** Wie MainframeMates {@code ByteDownloader} im {@code ConfluenceReaderTab}: jede Adresse unter der Basis-URL. */

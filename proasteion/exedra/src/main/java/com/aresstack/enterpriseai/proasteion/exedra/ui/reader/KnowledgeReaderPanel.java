@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.ui.comic.control.ComicOverlayPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
+import com.aresstack.enterpriseai.ui.comic.paint.CountBadgeIcon;
 import com.aresstack.enterpriseai.ui.comic.paint.SidebarIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
@@ -165,6 +166,11 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private int dropX = -1;
     private Color dropTint;
     private final ComposerButton infoButton;
+    /** Büroklammer mit der Zahl der Anhänge des aktiven Reiters; ohne Anhänge ausgeblendet. */
+    private final ComposerButton attachmentsButton;
+    private ReaderFileOpener fileOpener = ReaderFileOpener.system();
+    /** Zeichen-Thread des Anhang-Overlays für PDF-Seiten; {@code null}: der gemeinsame. */
+    private java.util.concurrent.Executor attachmentRenderer;
     private java.util.function.Consumer<String> clipboard = ReaderPageInfo.SYSTEM_CLIPBOARD;
     private final JLayeredPane layers = new JLayeredPane();
     private ComicOverlayPanel overlay;
@@ -210,6 +216,15 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             JPopupMenu info = pageInfoMenu();
             if (info != null) {
                 info.show(infoButton, 0, -info.getPreferredSize().height);
+            }
+        });
+        // Rechts neben Lupe und Info: Anhänge der Seite (unabhängig davon, ob die Quelle sie indexiert).
+        attachmentsButton = toolbar.addTool(attachmentIcon(0), ReaderAttachmentList.tooltip(0));
+        toolbar.showTool(attachmentsButton, false);
+        attachmentsButton.addActionListener(event -> {
+            JPopupMenu list = attachmentMenu();
+            if (list != null) {
+                list.show(attachmentsButton, 0, -list.getPreferredSize().height);
             }
         });
 
@@ -518,6 +533,66 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         NavigableDocumentPage document = new NavigableDocumentPage(scroll(page), page, view, PAGE_PADDING_TOP);
         tab.document = document;
         replace(tab, searchable(tab, document, page), store);
+    }
+
+    /**
+     * Die Dateianhänge der Seite im Reiter {@code key} (alle, gleich welchen Typs): die Büroklammer unten zeigt ihre
+     * Zahl, die Liste dahinter öffnet jeden im Anhang-Overlay; {@code loader} holt Originaldatei und Vorschau.
+     */
+    public void showAttachments(String key, List<ReaderAttachment> attachments, ReaderAttachmentLoader loader) {
+        Tab tab = tabs.get(key);
+        if (tab == null) {
+            return;
+        }
+        tab.attachments = attachments == null || loader == null ? Collections.<ReaderAttachment>emptyList()
+                : Collections.unmodifiableList(new ArrayList<ReaderAttachment>(attachments));
+        tab.attachmentLoader = loader;
+        refresh();
+    }
+
+    /** Die Anhänge des Reiters (leer ohne). */
+    public List<ReaderAttachment> attachments(String key) {
+        Tab tab = tabs.get(key);
+        return tab == null ? Collections.<ReaderAttachment>emptyList() : tab.attachments;
+    }
+
+    /** Die Anhangsliste des aktiven Reiters oder {@code null} ohne Anhänge. */
+    JPopupMenu attachmentMenu() {
+        final Tab tab = tabs.get(activeKey);
+        if (tab == null || tab.attachments.isEmpty()) {
+            return null;
+        }
+        final String key = tab.link.key();
+        return ReaderAttachmentList.menu(tab.attachments, palette, index -> openAttachment(key, index));
+    }
+
+    /** Öffnet Anhang {@code index} des Reiters im Overlay (dasselbe Comic-Overlay wie die Diashow). */
+    public void openAttachment(String key, int index) {
+        Tab tab = key == null ? null : tabs.get(key);
+        if (tab == null || index < 0 || index >= tab.attachments.size() || tab.attachmentLoader == null) {
+            return;
+        }
+        ReaderAttachment attachment = tab.attachments.get(index);
+        showTranscriptOverlay(new ImageSlideshowPanel(attachment, tab.attachmentLoader, fileOpener,
+                attachmentRenderer), attachment.fileName());
+    }
+
+    /** Womit „Öffnen“ im Anhang-Overlay die Datei öffnet (Tests). */
+    void setFileOpener(ReaderFileOpener opener) {
+        this.fileOpener = opener == null ? ReaderFileOpener.system() : opener;
+    }
+
+    /** Der Thread, auf dem das Anhang-Overlay PDF-Seiten zeichnet (Tests: direkt). */
+    void setAttachmentRenderer(java.util.concurrent.Executor renderer) {
+        this.attachmentRenderer = renderer;
+    }
+
+    ComposerButton attachmentsButton() {
+        return attachmentsButton;
+    }
+
+    private Icon attachmentIcon(int count) {
+        return new CountBadgeIcon(ComposerIcons.paperclip(), count, palette.getAccentOrange(), palette.getInk());
     }
 
     /** Öffnet die Diashow des Reiters bei Bild {@code index} (ohne Bilder nichts). */
@@ -1222,6 +1297,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
 
     private void replace(Tab tab, JComponent content, ReaderImageStore images) {
         tab.images = images;
+        // neuer Inhalt: die Anhänge setzt der Controller danach neu (showAttachments)
+        tab.attachments = Collections.<ReaderAttachment>emptyList();
+        tab.attachmentLoader = null;
         for (java.awt.Component component : deck.getComponents()) {
             if (tab.card.equals(component.getName())) {
                 deck.remove(component);
@@ -1264,6 +1342,10 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         toolbar.updateNavigation(canGoBack(), canGoForward());
         toolbar.bind(active == null ? null : active.find, active == null ? null : active.findState);
         infoButton.setEnabled(active != null);
+        int attached = active == null ? 0 : active.attachments.size();
+        attachmentsButton.setIcon(attachmentIcon(attached));
+        attachmentsButton.setToolTipText(ReaderAttachmentList.tooltip(attached));
+        toolbar.showTool(attachmentsButton, attached > 0);
         strip.revalidate();
         strip.repaint();
         deck.revalidate();
@@ -1318,6 +1400,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         boolean replaced;
         /** Die Bilder der Seite, nur bei {@link #showHtml}. */
         ReaderImageStore images;
+        /** Die Dateianhänge der Seite (alle Typen), nur bei Quellen mit Lese-Ansicht. */
+        List<ReaderAttachment> attachments = Collections.<ReaderAttachment>emptyList();
+        ReaderAttachmentLoader attachmentLoader;
 
         Tab(ReaderLink link, boolean pinned, String card) {
             this.link = link;

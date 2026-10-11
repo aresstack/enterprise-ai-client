@@ -180,6 +180,119 @@ final class ConfluenceRestClient {
         return response.body();
     }
 
+    /** {@code Accept} beim Laden von Anhängen und Vorschauen für den Lesebereich (wie der Browser im Mitschnitt). */
+    static final String ANY_ACCEPT = "*/*";
+
+    /**
+     * Pfad der Confluence-Dokumentkonvertierung, wie Confluence ihn selbst in der Seite ({@code view-file}-Makro,
+     * Vorschaubild) und im Files-Endpunkt ({@code previewContents}) nennt:
+     * {@code /rest/documentConversion/latest/conversion/<art>/<numerische Anhang-ID>/<Version>} mit den Arten
+     * {@code convert} (Dokument), {@code poster} und {@code thumbnail}.
+     */
+    static String conversionPath(String attachmentId, String version, String kind) {
+        String numeric = attachmentId.startsWith("att") ? attachmentId.substring(3) : attachmentId;
+        return "/rest/documentConversion/latest/conversion/" + kind + "/" + numeric + "/"
+                + (version == null || version.isEmpty() ? "1" : version);
+    }
+
+    /**
+     * Die Originaldatei eines Anhangs für den Lesebereich: wie {@link #download}, aber mit {@link #ANY_ACCEPT}, eigener
+     * Grenze und einer Prüfung gegen Anmeldeseiten (HTML, wo der Anhang keins ist). Weiterleitungen auf einen anderen
+     * Host folgt der Weg wie der Bildweg ohne Anmeldung.
+     */
+    byte[] readAttachment(Session session, Attachment attachment, int maxBytes) throws KnowledgeSourceException {
+        if (attachment.downloadPath == null || !attachment.downloadPath.startsWith("/")
+                || attachment.downloadPath.startsWith("//")) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                    "Anhang " + attachment.id + " ohne gültigen Download-Pfad");
+        }
+        ConfluenceHttpResponse response = fetch(session, attachment.downloadPath, "Anhang", maxBytes);
+        String received = baseMediaType(response.contentType());
+        if (received.contains("html") && !baseMediaType(attachment.mediaType).contains("html")) {
+            throw fileFailure("Anhang", attachment.downloadPath, response, new KnowledgeSourceException(
+                    Kind.INVALID_RESPONSE, "Anhang: erwartet " + attachment.mediaType + ", erhalten " + received
+                    + " (vermutlich eine Anmeldeseite)"));
+        }
+        return response.body();
+    }
+
+    /**
+     * Eine Vorschau der Dokumentkonvertierung ({@link #conversionPath}); nur PDF oder Bild gilt, alles andere (etwa
+     * die Anmeldeseite) wird abgelehnt. 202 heißt: Confluence erzeugt sie noch.
+     */
+    byte[] conversion(Session session, Attachment attachment, String kind, int maxBytes)
+            throws KnowledgeSourceException {
+        String path = conversionPath(attachment.id, attachment.version, kind);
+        ConfluenceHttpResponse response = fetch(session, path, "Vorschau", maxBytes);
+        if (response.status() == 202) {
+            throw new KnowledgeSourceException(Kind.UNAVAILABLE, "Vorschau wird von Confluence noch erzeugt");
+        }
+        byte[] body = response.body();
+        if (!isPdf(body) && notAnImage(response.contentType(), body) != null) {
+            throw fileFailure("Vorschau", path, response, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                    "Vorschau: erwartet PDF oder Bild, erhalten " + notAnImage(response.contentType(), body)));
+        }
+        return body;
+    }
+
+    static boolean isPdf(byte[] data) {
+        return data.length > 4 && data[0] == '%' && data[1] == 'P' && data[2] == 'D' && data[3] == 'F';
+    }
+
+    /** GET mit {@link #ANY_ACCEPT}; Fehlerstatus werden mit Logzeile (ohne Query und Header) zur Ausnahme. */
+    private ConfluenceHttpResponse fetch(Session session, String path, String what, int maxBytes)
+            throws KnowledgeSourceException {
+        URI uri;
+        try {
+            uri = URI.create(config.baseUrl() + path);
+        } catch (IllegalArgumentException e) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": ungültiger Pfad");
+        }
+        Map<String, String> headers = session.headers(ANY_ACCEPT);
+        ConfluenceHttpResponse response;
+        for (int hop = 0; ; hop++) {
+            try {
+                response = transport.get(uri, headers, maxBytes);
+            } catch (ConfluenceResponseTooLargeException e) {
+                throw fileFailure(what, uri.getRawPath(), null, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                        what + " größer als " + maxBytes + " Bytes"));
+            } catch (IOException e) {
+                throw fileFailure(what, uri.getRawPath(), null, new KnowledgeSourceException(Kind.UNAVAILABLE,
+                        what + ": Confluence nicht erreichbar (" + cause(e) + ")", e));
+            }
+            URI next = hop < 5 ? foreignRedirect(uri, response) : null;
+            if (next == null) {
+                break;
+            }
+            LOG.info("[Confluence] " + what + ": Weiterleitung von " + withoutQuery(uri.toString()) + " auf "
+                    + withoutQuery(next.toString()) + ", ohne Anmeldung gefolgt");
+            uri = next;
+            headers = withoutAuthorization(headers);
+        }
+        if (!response.isSuccess()) {
+            throw fileFailure(what, uri.getRawPath(), response, statusFailure(what, response.status()));
+        }
+        return response;
+    }
+
+    /** Logzeile zum fehlgeschlagenen Anhang bzw. zur Vorschau (Pfad ohne Query, nie Header). */
+    private static KnowledgeSourceException fileFailure(String what, String path, ConfluenceHttpResponse response,
+                                                        KnowledgeSourceException error) {
+        LOG.warning("[Confluence] " + what + " nicht geladen: pfad=" + withoutQuery(String.valueOf(path))
+                + " status=" + (response == null ? "-" : String.valueOf(response.status()))
+                + " contentType=" + (response == null || response.contentType().isEmpty() ? "-"
+                : response.contentType())
+                + " bytes=" + (response == null ? "-" : String.valueOf(response.length()))
+                + " fehler=" + error.kind() + ": " + error.getMessage());
+        return error;
+    }
+
+    private static String baseMediaType(String contentType) {
+        String media = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        int semicolon = media.indexOf(';');
+        return (semicolon < 0 ? media : media.substring(0, semicolon)).trim();
+    }
+
     /**
      * Ein Bild der Lese-Ansicht über seinen Pfad unter der Basis-URL (wie MainframeMate {@code client.getBytes(path)},
      * dort mit {@code Accept: *}{@code /*}). Gesendet wird {@link #IMAGE_ACCEPT} statt {@code application/json}.

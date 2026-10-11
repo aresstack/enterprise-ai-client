@@ -34,6 +34,8 @@ dependencies {
     implementation libs.flexmark.ext.autolink
     implementation libs.flexmark.ext.gfm.strikethrough
     implementation libs.mermaid.java
+    // Anhang-Overlay im Lesebereich: PDF-Seiten als Bilder (Apache PDFBox), mit Seitennavigation und Zoom.
+    implementation libs.pdfbox
     // Chat-Historie (app.chat.FileChatHistoryStore, aus askai-java8 arch): ein JSON-Dokument je Chat.
     implementation libs.gson
 

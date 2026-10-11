@@ -131,6 +131,29 @@ public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, 
         }
     }
 
+    @Override
+    public byte[] loadAttachment(PageView.Attachment attachment) throws KnowledgeSourceException {
+        String what = "loadAttachment " + (attachment == null ? "null" : attachment.id());
+        try {
+            return SourceCapabilities.loadAttachment(delegate, attachment);
+        } catch (KnowledgeSourceException e) {
+            throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e : logged(what, e);
+        } catch (RuntimeException e) {
+            throw unexpected(what, e);
+        }
+    }
+
+    /** Fehlende Vorschauen sind normal (nicht umwandelbar, noch nicht erzeugt) und werden nur durchgereicht. */
+    @Override
+    public byte[] loadAttachmentPreview(PageView.Attachment attachment, PageView.Preview preview)
+            throws KnowledgeSourceException {
+        try {
+            return SourceCapabilities.loadAttachmentPreview(delegate, attachment, preview);
+        } catch (RuntimeException e) {
+            throw unexpected("loadAttachmentPreview " + (attachment == null ? "null" : attachment.id()), e);
+        }
+    }
+
     private KnowledgeSourceException logged(String operation, KnowledgeSourceException e) {
         LOG.log(Level.WARNING, "Quelle " + sourceId().value() + ": " + operation + " fehlgeschlagen (" + e.kind()
                 + "): " + e.getMessage(), e);

@@ -33,10 +33,12 @@ public class ReaderToolbarTest {
             ReaderToolbar toolbar = reader.toolbar();
             assertFalse(toolbar.isSearchOpen());
             assertTrue(toolbar.isBrandingVisible());
-            // Lupe ganz links, daneben das Info-Symbol (Seiteninformationen)
-            assertEquals(2, toolbar.tools().getComponentCount());
+            // Lupe ganz links, daneben das Info-Symbol (Seiteninformationen), dann die Büroklammer (ohne Anhänge aus)
+            assertEquals(3, toolbar.tools().getComponentCount());
             assertTrue(toolbar.tools().getComponent(0) == toolbar.findButton());
             assertTrue(toolbar.tools().getComponent(1) == reader.infoButton());
+            assertTrue(toolbar.tools().getComponent(2) == reader.attachmentsButton());
+            assertFalse(reader.attachmentsButton().isVisible());
             assertTrue(toolbar.findButton().isEnabled());
             assertFalse(toolbar.findButton().isEmphasized());
 

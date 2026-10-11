@@ -84,4 +84,46 @@ public final class BrowseKnowledgeSourceUseCase {
         }
         return ((PageViewSource) source).loadViewImage(src);
     }
+
+    /** Die Originaldatei eines Anhangs aus {@link PageView#attachments()} über die Quelle (mit deren Anmeldung). */
+    public byte[] attachment(KnowledgeSourcePort source, PageView.Attachment attachment)
+            throws KnowledgeSourceException {
+        if (attachment == null) {
+            throw new IllegalArgumentException("attachment must not be null");
+        }
+        if (!(source instanceof PageViewSource)) {
+            throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Lese-Ansicht");
+        }
+        return ((PageViewSource) source).loadAttachment(attachment);
+    }
+
+    /**
+     * Die erste Vorschau des Anhangs, die die Quelle liefern kann, in der Reihenfolge {@code order} (nur Arten aus
+     * {@link PageView.Attachment#previews()}); gibt es keine, der Fehler der letzten Art.
+     */
+    public byte[] attachmentPreview(KnowledgeSourcePort source, PageView.Attachment attachment,
+                                    List<PageView.Preview> order) throws KnowledgeSourceException {
+        if (attachment == null || order == null) {
+            throw new IllegalArgumentException("attachment and order must not be null");
+        }
+        if (!(source instanceof PageViewSource)) {
+            throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Lese-Ansicht");
+        }
+        KnowledgeSourceException last = null;
+        for (PageView.Preview preview : order) {
+            if (!attachment.previews().contains(preview)) {
+                continue;
+            }
+            try {
+                return ((PageViewSource) source).loadAttachmentPreview(attachment, preview);
+            } catch (KnowledgeSourceException e) {
+                if (e.kind() == KnowledgeSourceException.Kind.ACCESS_DENIED) {
+                    throw e; // die nächste Art scheitert genauso
+                }
+                last = e;
+            }
+        }
+        throw last != null ? last : new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED,
+                "Die Quelle bietet für " + attachment.fileName() + " keine Vorschau an");
+    }
 }

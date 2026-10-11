@@ -133,6 +133,17 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
         }
 
         @Override
+        public byte[] loadAttachment(PageView.Attachment attachment) throws KnowledgeSourceException {
+            return SourceCapabilities.loadAttachment(port, attachment);
+        }
+
+        @Override
+        public byte[] loadAttachmentPreview(PageView.Attachment attachment, PageView.Preview preview)
+                throws KnowledgeSourceException {
+            return SourceCapabilities.loadAttachmentPreview(port, attachment, preview);
+        }
+
+        @Override
         public String toString() {
             return port.toString();
         }
