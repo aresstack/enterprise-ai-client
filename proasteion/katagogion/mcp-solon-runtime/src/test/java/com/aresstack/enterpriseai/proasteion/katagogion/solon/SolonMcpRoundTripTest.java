@@ -307,14 +307,61 @@ public class SolonMcpRoundTripTest {
         assertEquals(null, changes.poll(1, TimeUnit.SECONDS));
     }
 
+    /**
+     * Eine neue Reihenfolge baut den Katalog nicht neu auf (das war eine Lücke für parallele Aufrufe); der Katalog
+     * enthält danach genau den gewünschten Satz, in der Reihenfolge des MCP-SDK.
+     */
     @Test
-    public void reorderedToolSetKeepsTheRequestedOrder() {
+    public void reorderedToolSetHoldsExactlyTheRequestedTools() {
         McpEndpointHandle handle = runtime.registerEndpoint(new McpEndpointDefinition("order", "Order"));
         runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo(), McpTestTools.add()));
         runtime.updateTools(handle, Arrays.asList(McpTestTools.add(), McpTestTools.ping()));
-        assertEquals(Arrays.asList("add", "ping"), runtime.toolNames(handle));
+        assertEquals(new java.util.HashSet<String>(Arrays.asList("add", "ping")),
+                new java.util.HashSet<String>(runtime.toolNames(handle)));
         runtime.updateTools(handle, Arrays.asList(McpTestTools.add(), McpTestTools.echo(), McpTestTools.ping()));
-        assertEquals(Arrays.asList("add", "ping", "echo"), runtime.toolNames(handle));
+        assertEquals(new java.util.HashSet<String>(Arrays.asList("add", "echo", "ping")),
+                new java.util.HashSet<String>(runtime.toolNames(handle)));
+    }
+
+    /**
+     * E2E-Befund: ein Aufruf parallel zum Wechsel des Werkzeugsatzes (andere Reihenfolge, wie beim Phasenwechsel)
+     * scheiterte mit „Unknown tool“. Ein bleibendes Werkzeug ist während jedes Wechsels aufrufbar.
+     */
+    @Test
+    public void aToolStaysCallableWhileTheToolSetIsRefreshedInParallel() throws Exception {
+        final McpEndpointHandle handle = runtime.registerEndpoint(new McpEndpointDefinition("swap", "Swap"));
+        runtime.updateTools(handle, Arrays.asList(McpTestTools.ping(), McpTestTools.echo()));
+        McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(10), Duration.ofSeconds(10))
+                .connect(runtime.endpointUrl(handle), null);
+        final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
+        final AtomicReference<Throwable> updaterFailure = new AtomicReference<Throwable>();
+        Thread updater = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    boolean flip = false;
+                    while (!done.get()) {
+                        runtime.updateTools(handle, flip
+                                ? Arrays.asList(McpTestTools.ping(), McpTestTools.echo(), McpTestTools.add())
+                                : Arrays.asList(McpTestTools.add(), McpTestTools.echo(), McpTestTools.ping()));
+                        flip = !flip;
+                    }
+                } catch (Throwable t) {
+                    updaterFailure.set(t);
+                }
+            }
+        });
+        updater.start();
+        try {
+            for (int i = 0; i < 150; i++) {
+                assertEquals("Aufruf " + i, "pong", client.callTool("ping", new HashMap<String, Object>()));
+            }
+        } finally {
+            done.set(true);
+            updater.join(TimeUnit.SECONDS.toMillis(30));
+            client.close();
+        }
+        assertEquals(null, updaterFailure.get());
     }
 
     @Test
