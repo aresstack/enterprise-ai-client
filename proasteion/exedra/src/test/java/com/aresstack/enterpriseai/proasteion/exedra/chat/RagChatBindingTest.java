@@ -674,6 +674,193 @@ public class RagChatBindingTest {
         }
     }
 
+    @Test
+    public void readPageCountsAsContextWhenTheSemanticPathFails() throws Exception {
+        // Akzeptanztest 4: RAG findet nichts (Volltext leer, Embeddings fallen aus), knowledge_read liest die Seite.
+        final Fixture fixture = fixture(index, new FailingEmbeddings(embeddings));
+        final ScriptedToolChat toolChat = new ScriptedToolChat().readPage().answer("Laut Seite: drei Monate.");
+        final List<String> log = captureLog();
+        sendWithPage(fixture, toolChat, pageTool("SEITENTEXT Kündigungsfrist drei Monate"));
+        awaitEntries(fixture.model, 3);
+
+        List<TranscriptEntry> entries = entries(fixture.model);
+        assertEquals("Laut Seite: drei Monate.", entries.get(1).getText());
+        assertEquals(TranscriptEntry.Author.NOTICE, entries.get(2).getAuthor());
+        assertEquals(RagChatBinding.SEMANTIC_PATH_FAILED_PAGE_READ_NOTICE, entries.get(2).getText());
+        assertFalse(entries.get(2).getText().contains("ohne Kontext"));
+        assertFalse(entries.get(2).getText().contains(RagChatBinding.NO_SOURCES_NOTICE));
+        assertTrue("Seitentext ging an das Modell", toolChat.toolResults().contains("SEITENTEXT"));
+        // Akzeptanztest 6: die Ursache steht im technischen Log, die Frage nicht.
+        String line = join(log);
+        assertTrue(line, line.contains("SEMANTIC") && line.contains("UNAVAILABLE")
+                && line.contains("embedding service down"));
+        assertFalse(line, line.contains(QUESTION));
+    }
+
+    @Test
+    public void failedPageReadAndNoRagHitsMeanNoContext() throws Exception {
+        // Akzeptanztest 5: knowledge_read scheitert ebenfalls und RAG liefert nichts.
+        final Fixture fixture = fixture(index, new FailingEmbeddings(embeddings));
+        final ScriptedToolChat toolChat = new ScriptedToolChat().readPage().answer("Weiß ich nicht.");
+        sendWithPage(fixture, toolChat, pageTool(null));
+        awaitEntries(fixture.model, 3);
+
+        List<TranscriptEntry> entries = entries(fixture.model);
+        assertEquals(RagChatBinding.SEMANTIC_PATH_FAILED_NOTICE + " " + RagChatBinding.NO_SOURCES_NOTICE,
+                entries.get(2).getText());
+        assertTrue(toolChat.toolResults().startsWith("Fehler:"));
+    }
+
+    @Test
+    public void readPageWithoutRagFailureNeedsNoNotice() throws Exception {
+        // RAG lief vollständig ohne Treffer, die Seite wurde gelesen: kein „Keine passenden Abschnitte“.
+        final Fixture fixture = fixture(index, embeddings);
+        final ScriptedToolChat toolChat = new ScriptedToolChat().readPage().answer("Laut Seite: drei Monate.");
+        sendWithPage(fixture, toolChat, pageTool("SEITENTEXT"));
+        awaitIdle(fixture.model);
+        Thread.sleep(200); // ein später Hinweis hätte jetzt den UI-Thread erreicht
+        awaitIdle(fixture.model);
+
+        assertEquals("nur Frage und Antwort", 2, entries(fixture.model).size());
+    }
+
+    private static final String QUESTION = "Wie lange ist die Kündigungsfrist laut Seite?";
+
+    private void sendWithPage(final Fixture fixture, final ScriptedToolChat toolChat, final AiTool knowledgeRead)
+            throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.enableTools(new ToolSupport(toolChat, new FileAttachmentStore(folder.getRoot()
+                        .toPath()), (name, content) -> "", Collections.singletonList(knowledgeRead), false));
+                fixture.binding.sendRequested(QUESTION, true, Collections.<java.nio.file.Path>emptyList(),
+                        Collections.singletonList(new ChatPage("Betriebshandbuch",
+                                "confluence://cf.intern/confluence/page/17025995")));
+            }
+        });
+    }
+
+    /** {@code knowledge_read}, das {@code text} liefert oder bei {@code null} scheitert. */
+    private static AiTool pageTool(final String text) {
+        return new AiTool() {
+            @Override
+            public String name() {
+                return ChatBookmark.READ_TOOL;
+            }
+
+            @Override
+            public ToolDefinition definition() {
+                return ToolDefinition.function(ChatBookmark.READ_TOOL, "liest",
+                        "{\"type\":\"object\",\"properties\":{}}");
+            }
+
+            @Override
+            public String execute(String arguments) {
+                if (text == null) {
+                    throw new IllegalStateException("Quelle nicht erreichbar");
+                }
+                return text;
+            }
+        };
+    }
+
+    private static void awaitEntries(final ChatShellModel model, final int count) throws Exception {
+        UiTestSupport.await(count + " Einträge", new Callable<Boolean>() {
+            @Override
+            public Boolean call() throws Exception {
+                return model.getEntries().size() >= count && !model.isStreaming();
+            }
+        });
+    }
+
+    private static List<String> captureLog() {
+        final List<String> lines = Collections.synchronizedList(new ArrayList<String>());
+        java.util.logging.Logger.getLogger(RagChatBinding.class.getName()).addHandler(new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                lines.add(record.getMessage());
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        });
+        return lines;
+    }
+
+    private static String join(List<String> lines) {
+        synchronized (lines) {
+            return String.join("\n", lines);
+        }
+    }
+
+    /** Das Modell der Werkzeug-Schleife: erst ein Aufruf von knowledge_read, dann die Antwort. */
+    private static final class ScriptedToolChat implements ChatCompletionPort {
+        private final java.util.LinkedList<ChatResponse> script = new java.util.LinkedList<ChatResponse>();
+        private volatile String toolResults = "";
+
+        ScriptedToolChat readPage() {
+            script.add(new ChatResponse(ChatMessage.assistantToolCalls("", Collections.singletonList(
+                    new com.aresstack.enterpriseai.astu.chat.ChatToolCall("call_1", ChatBookmark.READ_TOOL,
+                            "{\"id\":\"confluence://cf.intern/confluence/page/17025995\"}"))),
+                    com.aresstack.enterpriseai.astu.chat.ChatFinishReason.TOOL_CALLS,
+                    com.aresstack.enterpriseai.astu.chat.ChatUsage.notReported(), "m"));
+            return this;
+        }
+
+        ScriptedToolChat answer(String text) {
+            script.add(new ChatResponse(ChatMessage.assistant(text),
+                    com.aresstack.enterpriseai.astu.chat.ChatFinishReason.STOP,
+                    com.aresstack.enterpriseai.astu.chat.ChatUsage.notReported(), "m"));
+            return this;
+        }
+
+        String toolResults() {
+            return toolResults;
+        }
+
+        @Override
+        public synchronized ChatResponse complete(ChatRequest request) {
+            StringBuilder results = new StringBuilder();
+            for (ChatMessage message : request.messages()) {
+                if (message.role() == ChatRole.TOOL) {
+                    results.append(message.content());
+                }
+            }
+            toolResults = results.toString();
+            return script.removeFirst();
+        }
+
+        @Override
+        public ChatTask stream(ChatRequest request, ChatStreamListener listener) {
+            ChatResponse response = complete(request);
+            listener.onStart();
+            if (!response.content().isEmpty()) {
+                listener.onDelta(response.content());
+            }
+            listener.onComplete(response);
+            return new ChatTask() {
+                @Override
+                public void cancel() {
+                }
+
+                @Override
+                public boolean isDone() {
+                    return true;
+                }
+
+                @Override
+                public boolean isCancelled() {
+                    return false;
+                }
+            };
+        }
+    }
+
     private void indexAll() {
         new IndexKnowledgeUseCase(index, embeddings, space, new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()))
                 .indexSource(source, SourceScope.of("urlaub", "kuendigung"), null);

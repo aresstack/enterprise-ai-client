@@ -15,6 +15,7 @@ import com.aresstack.enterpriseai.astu.acropolis.attachment.SearchAttachmentTool
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
+import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeAcquisition;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagOptions;
@@ -41,10 +42,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -60,9 +60,13 @@ import java.util.logging.Logger;
  *       "{@value #RETRIEVING_ACTIVITY}"; das Retrieval blockiert und läuft deshalb auf {@code workExecutor}, nie
  *       auf dem Event-Thread. Sobald der Turn steht, kommen seine Quellen an die Antwort und Hinweise (Suche ganz
  *       oder teilweise ausgefallen, keine Treffer) als eigene Hinweiszeile in den Verlauf; Deltas, Abschluss,
- *       Abbruch und Fehler laufen weiter über den {@code ChatTurn} der Antwort.</li>
+ *       Abbruch und Fehler laufen weiter über den {@code ChatTurn} der Antwort. Jeder ausgefallene Suchpfad steht
+ *       mit seiner Ursache im technischen Log.</li>
+ *   <li><b>Hinweis zur Wissensbeschaffung</b>: bewertet wird der ganze Turn ({@link KnowledgeAcquisition}), nicht
+ *       nur RAG. Auf dem Werkzeugweg kommt der Hinweis deshalb erst nach der Antwort: hat {@code knowledge_read}
+ *       eine Seite geliefert, heißt ein ausgefallener Suchpfad nicht „ohne Kontext“.</li>
  *   <li><b>Quellen</b>: gesucht wird nur in den Quellen, die der {@link RagSourceFilter} erlaubt (die Häkchen im
- *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche, und ein Hinweis sagt das.</li>
+ *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche und ohne Hinweis als normaler Chat.</li>
  *   <li><b>Stop</b> während des Retrievals merkt sich den Wunsch und bricht den Turn ab, sobald er existiert;
  *       die Nutzerfrage bleibt dabei in der Historie (AP2-Regel), die Antwortblase endet als abgebrochen.</li>
  * </ul>
@@ -100,6 +104,14 @@ public final class RagChatBinding implements ChatShellActions {
             "Die Volltextsuche ist ausgefallen; es wurde nur semantisch gesucht.";
     static final String SEMANTIC_PATH_FAILED_NOTICE =
             "Die semantische Suche ist ausgefallen; es wurde nur im Volltext gesucht.";
+    static final String RETRIEVAL_FAILED_PAGE_READ_NOTICE =
+            "Die Wissenssuche ist ausgefallen. Die Seite wurde direkt gelesen.";
+    static final String KEYWORD_PATH_FAILED_PAGE_READ_NOTICE =
+            "Die Volltextsuche in der Wissensbasis ist ausgefallen. Die Seite wurde direkt gelesen.";
+    static final String SEMANTIC_PATH_FAILED_PAGE_READ_NOTICE =
+            "Die semantische Suche in der Wissensbasis ist ausgefallen. Die Seite wurde direkt gelesen.";
+    static final String PAGE_READ_FAILED_NOTICE =
+            "Die Seite konnte nicht gelesen werden. Die Antwort entstand ohne Kontext aus der Wissensbasis.";
     static final String STORING_ACTIVITY = "Anhang wird abgelegt …";
     static final String TOOLS_ACTIVITY = "Antwort wird erstellt …";
     static final String READING_ACTIVITY = "Liest Anhang …";
@@ -332,7 +344,8 @@ public final class RagChatBinding implements ChatShellActions {
         final ChatOptions chatOptions = turnOptions();
         final ToolSupport support = toolPath ? tools : null;
         final ChatConversationId conversation = conversationId;
-        final Request request = new Request(answer, listener);
+        final Request request = new Request(answer, listener, toolPath);
+        listener.request = request;
         model.setAssistantActivity(!newFiles.isEmpty() ? STORING_ACTIVITY
                 : options.isEnabled() ? RETRIEVING_ACTIVITY : TOOLS_ACTIVITY);
         retrieving = request;
@@ -371,7 +384,7 @@ public final class RagChatBinding implements ChatShellActions {
                                 available.addAll(support.knowledgeTools());
                             }
                             via = new ChatCompletionsToolLoop(support.chat(), new ToolRegistry(available),
-                                    support.loopExecutor(), activity(listener),
+                                    support.loopExecutor(), activity(listener, request),
                                     ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
                             if (options.isEnabled()) {
                                 showActivity(listener, RETRIEVING_ACTIVITY);
@@ -447,8 +460,11 @@ public final class RagChatBinding implements ChatShellActions {
         model.failAssistantMessage(reason == null ? SEND_REJECTED : SEND_REJECTED + " " + reason);
     }
 
-    /** Zeigt in der laufenden Antwort, welches Werkzeug gerade läuft. */
-    private ToolActivityListener activity(final TurnListener listener) {
+    /**
+     * Zeigt in der laufenden Antwort, welches Werkzeug gerade läuft, und zählt für die Anfrage, ob Wissenswerkzeuge
+     * Kontext geliefert haben (läuft auf dem Thread der Werkzeug-Schleife).
+     */
+    private ToolActivityListener activity(final TurnListener listener, final Request request) {
         return new ToolActivityListener() {
             @Override
             public void onToolCall(String toolName) {
@@ -457,6 +473,13 @@ public final class RagChatBinding implements ChatShellActions {
                         : ChatBookmark.READ_TOOL.equals(toolName) ? READING_PAGE_ACTIVITY
                         : KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) ? SEARCHING_KNOWLEDGE_ACTIVITY
                         : "Werkzeug " + toolName + " …");
+            }
+
+            @Override
+            public void onToolResult(String toolName, boolean succeeded) {
+                if (KnowledgeAcquisition.deliversContext(toolName)) {
+                    (succeeded ? request.toolReads : request.toolReadFails).incrementAndGet();
+                }
             }
         };
     }
@@ -478,9 +501,11 @@ public final class RagChatBinding implements ChatShellActions {
         if (!request.answer.hasSources()) {
             model.attachSources(request.answer, describe(ragTurn.sources()));
         }
-        String notice = ragTurn.retrievalRequested() ? notice(ragTurn) : null;
-        if (notice != null) {
-            model.addNotice(notice);
+        logRetrieval(ragTurn);
+        request.ragTurn = ragTurn;
+        // Ohne Werkzeuge steht die Wissensbeschaffung jetzt fest; mit Werkzeugen erst, wenn die Antwort fertig ist.
+        if (!request.toolPath || request.ended) {
+            addNotice(request);
         }
         if (retrieving != request) {
             // Die Antwort war schon fertig, bevor ihre Quellen ankamen; inzwischen sucht die nächste Anfrage.
@@ -496,35 +521,65 @@ public final class RagChatBinding implements ChatShellActions {
         }
     }
 
+    /** Der Hinweis zur Wissensbeschaffung der Anfrage, höchstens einmal (UI-Thread). */
+    private void addNotice(Request request) {
+        if (request.noticed || request.ragTurn == null) {
+            return;
+        }
+        request.noticed = true;
+        KnowledgeAcquisition acquisition = KnowledgeAcquisition.of(request.ragTurn, request.toolReads.get(),
+                request.toolReadFails.get());
+        String notice = notice(acquisition);
+        if (notice != null) {
+            model.addNotice(notice);
+        }
+    }
+
     /**
-     * Der Hinweis zu einem RAG-Turn oder {@code null}, wenn alles normal lief. Ein ausgefallener Suchpfad wird
-     * auch dann genannt, wenn der andere nichts fand: so bleibt eine unvollständige Suche von einer vollständigen
-     * ohne Treffer unterscheidbar.
+     * Schreibt jeden ausgefallenen Suchpfad mit Ursache ins technische Log: Pfad, Fehlerart und Meldung des Ports
+     * (laut Port-Vertrag ohne Secrets und ohne Anfragetext), nie die Frage selbst.
      */
-    static String notice(RagChatTurn turn) {
-        if (turn.retrievalFailed()) {
-            return RETRIEVAL_FAILED_NOTICE;
+    private static void logRetrieval(RagChatTurn turn) {
+        if (!turn.retrievalRequested()) {
+            return;
         }
-        Set<RetrievalPath> failed = EnumSet.noneOf(RetrievalPath.class);
         for (RetrievalWarning warning : turn.warnings()) {
-            failed.add(warning.path());
+            LOG.warning("Wissenssuche: Suchpfad " + warning.path() + " ausgefallen"
+                    + (turn.retrievalFailed() ? " (alle Suchpfade ausgefallen)" : "") + ": " + warning.message());
         }
-        if (failed.contains(RetrievalPath.KEYWORD) && failed.contains(RetrievalPath.SEMANTIC)) {
-            return RETRIEVAL_FAILED_NOTICE;
+    }
+
+    /**
+     * Der Hinweis zur Wissensbeschaffung eines Turns oder {@code null}, wenn alles normal lief oder der Ausfall für
+     * die Antwort keine Rolle spielt. Ein ausgefallener Suchpfad wird auch dann genannt, wenn der andere nichts
+     * fand: so bleibt eine unvollständige Suche von einer vollständigen ohne Treffer unterscheidbar. „Ohne
+     * Kontext“ steht nur da, wenn der Turn wirklich keinen Wissenskontext hatte.
+     */
+    static String notice(KnowledgeAcquisition acquisition) {
+        boolean keyword = acquisition.failedPaths().contains(RetrievalPath.KEYWORD);
+        boolean semantic = acquisition.failedPaths().contains(RetrievalPath.SEMANTIC);
+        switch (acquisition.status()) {
+            case RAG_PARTIALLY_FAILED:
+                return keyword ? KEYWORD_PATH_FAILED_NOTICE : SEMANTIC_PATH_FAILED_NOTICE;
+            case RAG_NO_HITS:
+                return acquisition.toolContext() ? null : NO_SOURCES_NOTICE;
+            case RAG_FAILED_TOOL_CONTEXT:
+                return keyword && semantic ? RETRIEVAL_FAILED_PAGE_READ_NOTICE
+                        : keyword ? KEYWORD_PATH_FAILED_PAGE_READ_NOTICE : SEMANTIC_PATH_FAILED_PAGE_READ_NOTICE;
+            case NO_CONTEXT:
+                if (keyword && semantic) {
+                    return RETRIEVAL_FAILED_NOTICE;
+                }
+                if (keyword) {
+                    return KEYWORD_PATH_FAILED_NOTICE + " " + NO_SOURCES_NOTICE;
+                }
+                if (semantic) {
+                    return SEMANTIC_PATH_FAILED_NOTICE + " " + NO_SOURCES_NOTICE;
+                }
+                return PAGE_READ_FAILED_NOTICE;
+            default:
+                return null;
         }
-        StringBuilder notice = new StringBuilder();
-        if (failed.contains(RetrievalPath.KEYWORD)) {
-            notice.append(KEYWORD_PATH_FAILED_NOTICE);
-        } else if (failed.contains(RetrievalPath.SEMANTIC)) {
-            notice.append(SEMANTIC_PATH_FAILED_NOTICE);
-        }
-        if (turn.sources().isEmpty()) {
-            if (notice.length() > 0) {
-                notice.append(' ');
-            }
-            notice.append(NO_SOURCES_NOTICE);
-        }
-        return notice.length() == 0 ? null : notice.toString();
     }
 
     /** Übersetzt die Quellen des Use Case in Anzeigewerte der Shell. */
@@ -565,15 +620,25 @@ public final class RagChatBinding implements ChatShellActions {
         return text.toString();
     }
 
-    /** Eine Nachricht mit Suche: ihre Antwortblase, ihr Listener und ein während der Suche geäußerter Stop. */
+    /**
+     * Eine Nachricht mit Suche oder Werkzeugen: ihre Antwortblase, ihr Listener, ein während der Suche geäußerter
+     * Stop und was zur Wissensbeschaffung des Turns gehört (Felder ohne Atomic nur auf dem UI-Thread).
+     */
     private static final class Request {
         final TranscriptEntry answer;
         final TurnListener listener;
+        final boolean toolPath;
+        final AtomicInteger toolReads = new AtomicInteger();
+        final AtomicInteger toolReadFails = new AtomicInteger();
         boolean cancelRequested;
+        RagChatTurn ragTurn;
+        boolean ended;
+        boolean noticed;
 
-        Request(TranscriptEntry answer, TurnListener listener) {
+        Request(TranscriptEntry answer, TurnListener listener, boolean toolPath) {
             this.answer = answer;
             this.listener = listener;
+            this.toolPath = toolPath;
         }
     }
 
@@ -581,6 +646,8 @@ public final class RagChatBinding implements ChatShellActions {
     private final class TurnListener implements ChatTurnListener {
 
         private volatile boolean closed;
+        /** Die Anfrage dieses Turns; {@code null} auf dem Weg ohne Suche und Werkzeuge. Nur UI-Thread. */
+        private Request request;
 
         @Override
         public void onDelta(final String text) {
@@ -631,6 +698,10 @@ public final class RagChatBinding implements ChatShellActions {
                     closed = true;
                     runningTurn = null;
                     terminal.run();
+                    if (request != null && request.toolPath) {
+                        request.ended = true;
+                        addNotice(request);
+                    }
                 }
             });
         }

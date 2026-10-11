@@ -11,6 +11,9 @@ import java.util.Map;
 /** Die Werkzeuge einer Anfrage, nach Namen. Unveränderlich nach dem Bau. */
 public final class ToolRegistry {
 
+    /** Anfang eines Fehlerergebnisses, so wie es an das Modell zurückgeht (auch von {@code McpChatTool}). */
+    public static final String ERROR_PREFIX = "Fehler:";
+
     private final Map<String, AiTool> tools;
 
     public ToolRegistry(List<? extends AiTool> tools) {
@@ -50,22 +53,31 @@ public final class ToolRegistry {
      * Führt einen Werkzeugaufruf des Modells aus. Unbekannte Werkzeuge und Fehler werden zum Ergebnistext
      * ({@code Fehler: …}), damit das Modell reagieren kann.
      *
-     * @param activity erfährt den Namen vor der Ausführung; darf {@code null} sein
+     * @param activity erfährt den Namen vor der Ausführung und danach, ob sie gelang; darf {@code null} sein
      */
     public String execute(String name, String arguments, ToolActivityListener activity) {
         AiTool tool = find(name);
         if (tool == null) {
-            return "Fehler: unbekanntes Werkzeug " + name;
+            return ERROR_PREFIX + " unbekanntes Werkzeug " + name;
         }
         if (activity != null) {
             activity.onToolCall(name);
         }
+        String output;
+        boolean succeeded;
         try {
-            String output = tool.execute(arguments);
-            return output == null ? "" : output;
+            String result = tool.execute(arguments);
+            output = result == null ? "" : result;
+            succeeded = !output.startsWith(ERROR_PREFIX);
         } catch (RuntimeException e) {
             String message = e.getMessage();
-            return "Fehler: " + (message == null || message.trim().isEmpty() ? e.getClass().getSimpleName() : message);
+            output = ERROR_PREFIX + " "
+                    + (message == null || message.trim().isEmpty() ? e.getClass().getSimpleName() : message);
+            succeeded = false;
         }
+        if (activity != null) {
+            activity.onToolResult(name, succeeded);
+        }
+        return output;
     }
 }

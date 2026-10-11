@@ -5,4 +5,12 @@ public interface ToolActivityListener {
 
     /** Das Modell hat {@code toolName} aufgerufen; die Ausführung beginnt jetzt. */
     void onToolCall(String toolName);
+
+    /**
+     * {@code toolName} ist fertig: {@code succeeded} ist {@code false}, wenn das Werkzeug geworfen oder ein
+     * {@value ToolRegistry#ERROR_PREFIX}-Ergebnis geliefert hat. So weiß der Aufrufer, ob ein Werkzeug dem Turn
+     * tatsächlich etwas geliefert hat (z. B. Wissenskontext über {@code knowledge_read}).
+     */
+    default void onToolResult(String toolName, boolean succeeded) {
+    }
 }
