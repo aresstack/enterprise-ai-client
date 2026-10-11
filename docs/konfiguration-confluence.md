@@ -58,6 +58,27 @@ source.1.allowInsecureHttp=false
   JSON, fehlendes `results`, Folgelink außerhalb `/rest/api/` oder Schleife → `INVALID_RESPONSE`. Meldungen
   nennen nie Antwortkörper oder Header. Fehlendes Secret: `NOT_AVAILABLE` → `UNAVAILABLE`, sonst `ACCESS_DENIED`.
 
+## Lesebereich: Bilder und draw.io-Diagramme
+
+- **Bilder** der Lese-Ansicht (`body.export_view`) laden angemeldet über denselben Transport wie REST, mit
+  `Accept: image/*,*/*;q=0.8`. Adressen unter `_links.base` werden auf die eingestellte Adresse umgeschrieben,
+  Leerzeichen und Umlaute prozentkodiert (`ConfluenceRestClient.encodeUnsafe`, nur im Bildweg). Fremde Hosts werden nie
+  geladen. Einer Weiterleitung auf einen anderen Host folgt der Bildweg ohne Authorization, Cookie und
+  Client-Zertifikat (`ConfluenceHttpTransport.getAnonymous`), nie von https auf http.
+- **Sitzungs-Cookie-Neuversuch** (gefolgert für SSO-Instanzen, die Basic nur unter `/rest/` annehmen): Scheitert ein
+  Bild mit 401/403, Weiterleitung oder HTML, holt der Client per angemeldetem `/rest/api/user/current` das
+  Sitzungs-Cookie und lädt einmal neu. Das Cookie wird weder gespeichert noch geloggt; Löschcookies und doppelte
+  Namen werden beim Lesen von `Set-Cookie` berücksichtigt. Bei 404 oder Netzfehlern gibt es keinen Neuversuch.
+- **draw.io** (`drawio`, `drawio-sketch`, `inc-drawio`, erkannt an jedem `data-diagramdata`, bevor versteckte
+  Elemente entfernt werden): `previewName`, `owningPageId` (Rückfall `ceoId`) und `revision` kommen aus den
+  Makrodaten, nie aus der angezeigten Seite. An der Makrostelle steht ein Bild mit der Vorschau
+  `/download/attachments/{owningPageId}/{previewName}?version={revision}&api=v2` (ohne lesbare Revision: ohne Query,
+  also die jüngste Vorschau, mit Logzeile). Der Lader holt zuerst das Diagramm selbst
+  (`/rest/drawio/1.0/diagram/crud/{Name}/{owningPageId}?revision={revision}`) und zeichnet es mit JGraphX als SVG
+  (`DrawioDiagramRenderer`); enthält es Formen, die JGraphX nicht kennt, oder scheitert der Abruf, kommt die
+  PNG-Vorschau. Angleichungen (kippbar): HTML-Beschriftungen als Text, draw.io-Farbwörter und -Standardfarben,
+  `note` als Rechteck.
+
 ## Grenzen
 
 - Nichts gegen eine echte Confluence-Instanz getestet (UNVERIFIED); die Tests laufen gegen `FakeConfluence`

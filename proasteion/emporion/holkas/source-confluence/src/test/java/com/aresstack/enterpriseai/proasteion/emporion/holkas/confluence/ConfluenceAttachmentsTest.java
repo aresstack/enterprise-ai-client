@@ -57,6 +57,7 @@ public class ConfluenceAttachmentsTest {
     private final List<Map<String, String>> sentHeaders = new ArrayList<Map<String, String>>();
     private final Map<String, ConfluenceHttpResponse> byPath = new HashMap<String, ConfluenceHttpResponse>();
     private ConfluenceHttpResponse restLogin;
+    private String extraAttachments = "";
     private ConfluenceHttpResponse withSession;
 
     private ConfluenceKnowledgeSource source(boolean includeAttachments) {
@@ -69,7 +70,7 @@ public class ConfluenceAttachmentsTest {
             }
             if (path.equals("/confluence/rest/api/content/7/child/attachment")) {
                 return json("{\"results\":[" + PDF_ATTACHMENT + "," + SHEET_ATTACHMENT + "," + UNKNOWN_ATTACHMENT
-                        + "],\"size\":3,\"_links\":{}}");
+                        + extraAttachments + "],\"size\":3,\"_links\":{}}");
             }
             if (path.equals("/confluence/rest/api/content/att101")) {
                 return json(PDF_ATTACHMENT);
@@ -285,5 +286,35 @@ public class ConfluenceAttachmentsTest {
             assertEquals(Kind.ACCESS_DENIED, e.kind());
             assertTrue(e.getMessage(), e.getMessage().endsWith("(auch mit Sitzungs-Cookie aus der REST-Anmeldung)"));
         }
+    }
+
+    @Test
+    public void anEntryWithoutUsableIdCostsOnlyItselfNotTheWholeList() throws Exception {
+        extraAttachments = "," + attachmentJson("104", "ohne-praefix.txt", "text/plain", 3, "1")
+                + "," + attachmentJson("att105", "zahl.txt", "text/plain", 3, "1").replace("\"id\":\"att105\"",
+                "\"id\":105")
+                + "," + attachmentJson("att106", "ohne-id.txt", "text/plain", 3, "1").replace("\"id\":\"att106\",", "")
+                + "," + attachmentJson("att107", "objekt-id.txt", "text/plain", 3, "1").replace("\"id\":\"att107\"",
+                "\"id\":{\"value\":107}")
+                + "," + attachmentJson("att108", "fremd.txt", "text/plain", 3, "1").replace("\"id\":\"att108\"",
+                "\"id\":\"x-108\"");
+
+        List<PageView.Attachment> attachments = source(false).pageView(page()).attachments();
+
+        List<String> names = new ArrayList<String>();
+        for (PageView.Attachment attachment : attachments) {
+            names.add(attachment.fileName() + "=" + attachment.id());
+        }
+        assertEquals(Arrays.asList("Handbuch Beispiel.pdf=att101", "Planung.xlsx=att102", "daten.bin=att103",
+                "ohne-praefix.txt=att104", "zahl.txt=att105"), names);
+    }
+
+    @Test
+    public void theIdShapeIsNamedWithoutItsValue() {
+        assertEquals("fehlt", ConfluenceRestClient.idShape(new com.google.gson.JsonObject()));
+        assertEquals("hat unerwartete Form (5 Zeichen, Text)", ConfluenceRestClient.idShape(
+                com.google.gson.JsonParser.parseString("{\"id\":\"x-108\"}").getAsJsonObject()));
+        assertEquals("att42", ConfluenceRestClient.attachmentId(
+                com.google.gson.JsonParser.parseString("{\"id\":42}").getAsJsonObject()));
     }
 }

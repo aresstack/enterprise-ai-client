@@ -151,6 +151,12 @@ final class ConfluenceRestClient {
                 "Anhänge", max, new Item<Attachment>() {
                     @Override
                     public Attachment map(JsonObject json) throws KnowledgeSourceException {
+                        if (attachmentId(json) == null) {
+                            // Ein Eintrag ohne brauchbare ID kostet nur sich selbst, nicht die ganze Liste.
+                            LOG.warning("[Confluence] Anhänge: Eintrag übersprungen, ID " + idShape(json)
+                                    + " (erwartet att<Ziffern> oder Ziffern)");
+                            return null;
+                        }
                         Attachment attachment = toAttachment(json, contentId);
                         return accept.test(attachment) ? attachment : null;
                     }
@@ -858,9 +864,9 @@ final class ConfluenceRestClient {
     }
 
     private static Attachment toAttachment(JsonObject json, String containerId) throws KnowledgeSourceException {
-        String id = string(json, "id");
-        if (!ConfluenceIds.isAttachmentId(id)) {
-            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Anhang ohne gültige ID");
+        String id = attachmentId(json);
+        if (id == null) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Anhang ohne gültige ID (" + idShape(json) + ")");
         }
         JsonObject version = object(json, "version");
         JsonObject metadata = object(json, "metadata");
@@ -882,6 +888,40 @@ final class ConfluenceRestClient {
                 mediaType == null ? "application/octet-stream" : mediaType, size,
                 version == null ? null : string(version, "number"), version == null ? null : instant(string(version, "when")),
                 links == null ? null : string(links, "download"), links == null ? null : string(links, "webui"));
+    }
+
+    /**
+     * Die Anhang-ID im Format {@code att<Ziffern>} oder {@code null}. Confluence nennt Anhänge in der REST-API
+     * {@code att123}; eine reine Ziffernfolge (als Text oder JSON-Zahl) ist dieselbe Content-ID ohne Präfix und wird
+     * ergänzt.
+     */
+    static String attachmentId(JsonObject json) {
+        String id = string(json, "id");
+        if (id == null) {
+            return null;
+        }
+        id = id.trim();
+        if (ConfluenceIds.isContentId(id)) {
+            id = "att" + id;
+        }
+        return ConfluenceIds.isAttachmentId(id) ? id : null;
+    }
+
+    /** Wie die ID aussah, ohne ihren Wert: für Meldungen und Logzeilen. */
+    static String idShape(JsonObject json) {
+        JsonElement value = json == null ? null : json.get("id");
+        if (value == null || value.isJsonNull()) {
+            return "fehlt";
+        }
+        if (!value.isJsonPrimitive()) {
+            return "ist kein Wert (" + (value.isJsonArray() ? "Liste" : "Objekt") + ")";
+        }
+        String text = value.getAsString();
+        if (text.trim().isEmpty()) {
+            return "ist leer";
+        }
+        return "hat unerwartete Form (" + text.length() + " Zeichen, " + (value.getAsJsonPrimitive().isNumber()
+                ? "Zahl" : "Text") + ")";
     }
 
     /** {@code results} eines Listen-Endpunkts; fehlt es, ist die Antwort fehlerhaft, nicht leer. */

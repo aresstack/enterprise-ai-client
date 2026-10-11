@@ -30,6 +30,9 @@ import java.util.regex.Pattern;
  */
 final class ConfluencePageView {
 
+    private static final java.util.logging.Logger LOG =
+            java.util.logging.Logger.getLogger(ConfluencePageView.class.getName());
+
     final String html;
     final List<InlineImage> images;
 
@@ -181,6 +184,11 @@ final class ConfluencePageView {
             String revision = text(diagram, "revision");
             // Wie das Plugin selbst (drawio-reader.js): die Vorschau genau der eingebundenen Diagrammrevision.
             String query = revision.matches("\\d+") ? "?version=" + revision + "&api=v2" : "";
+            if (query.isEmpty()) {
+                // ohne Revision lädt Confluence die jüngste Vorschau; das kann eine andere Fassung sein als eingebunden
+                LOG.info("[Confluence] draw.io-Diagramm ohne lesbare Revision (" + (revision.isEmpty() ? "fehlt"
+                        : "nicht numerisch") + "): Vorschau ohne version, also die jüngste");
+            }
             String src = baseUri + "download/attachments/" + owner + "/" + encodeSegment(preview) + query;
             if (!name.isEmpty()) {
                 // Für den Bildlader: das Diagramm selbst (REST des Plugins), die Vorschau bleibt der Rückfall.
