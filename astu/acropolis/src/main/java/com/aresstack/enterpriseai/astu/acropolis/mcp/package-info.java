@@ -6,8 +6,8 @@
  *
  * <p>Suche füllt den Index (MainframeMate): {@code knowledge_search} durchsucht die Quellen live und den Index
  * hybrid; die Live-Treffer lädt der Vorlader ({@code KnowledgePrefetchService}) im Hintergrund und indexiert sie nur
- * bei geänderter Revision bzw. geändertem Inhalts-Hash. {@code knowledge_read} liest über den Priority-Lader (Cache,
- * sonst sofort) und nimmt das Dokument bei Bedarf in den Index auf. Ein Seitenbudget verbrauchen die Werkzeuge nicht.
+ * bei geänderter Revision bzw. geändertem Inhalts-Hash. {@code knowledge_read} liest auf dem Thread des Agenten (Cache,
+ * sonst sofort; der Priority-Thread gehört dem Klick des Benutzers) und nimmt das Dokument bei Bedarf in den Index auf. Ein Seitenbudget verbrauchen die Werkzeuge nicht.
  *
  * <p>Die Handler rufen nur Application-Use-Cases; Port-Meldungen gelangen nie in eine Antwort.
  */

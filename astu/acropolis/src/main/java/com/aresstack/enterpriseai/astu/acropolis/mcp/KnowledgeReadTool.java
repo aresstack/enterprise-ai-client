@@ -24,7 +24,7 @@ import java.util.List;
  * ({@code confluence:47110815}) oder einer Passage
  * ({@code confluence:47110815@3fa9c2d1e0b4#p3@9f2c41ab-5e07d1c3}) wird zuerst aus
  * dem Index beantwortet: Referenz (id, url, Revision, Inhalts-Hash) und die aufbereiteten Passagen mit ihren IDs. Die
- * Quelle wird nur bei unbekanntem oder geändertem Stand gefragt, über den Priority-Lader (an der Vorlade-Warteschlange
+ * Quelle wird nur bei unbekanntem oder geändertem Stand gefragt, auf dem Thread des Agenten (an der Vorlade-Warteschlange
  * vorbei), danach wird indexiert und wieder aus dem Index geliefert. Bei einer Passage-ID kommen diese Passage und
  * ihre Nachbarn.
  */

@@ -17,7 +17,7 @@ import java.util.function.Predicate;
  * <ul>
  *   <li>{@value #KNOWLEDGE_SEARCH}: Quellen live durchsuchen (die Treffer lädt der Vorlader im Hintergrund
  *       und indexiert sie), dazu hybride Suche im Index (Parameter {@code query}, optional {@code limit}),</li>
- *   <li>{@value #KNOWLEDGE_READ}: ein Dokument aus einem Treffer lesen (Priority-Lader, auch nicht indexierte
+ *   <li>{@value #KNOWLEDGE_READ}: ein Dokument aus einem Treffer lesen (Cache, sonst sofort, auch nicht indexierte
  *       Treffer); es wird bei Bedarf indexiert
  *       (Parameter {@code id}).</li>
  * </ul>

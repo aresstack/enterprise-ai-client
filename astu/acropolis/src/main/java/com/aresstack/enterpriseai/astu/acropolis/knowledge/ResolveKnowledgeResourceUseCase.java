@@ -21,8 +21,8 @@ import java.util.Optional;
  * Referenz ({@link KnowledgeResourceRef}) und die schon aufbereiteten Passagen mit ihren {@link KnowledgePassageId}s.
  * Gelesen wird über {@link LoadKnowledgeDocumentUseCase} und damit über die corenth-Kette
  * {@code KnowledgeBookmarks} → {@code MediatedKnowledgeDocuments} → {@code MediatedResourceService}. Die Quelle wird nur gefragt, wenn der Index die Ressource nicht kennt, ihre Revision unbekannt ist, ein Suchtreffer
- * inzwischen eine andere Revision meldete oder die Zerlegung sich geändert hat. Dann lädt der Priority-Lader, der
- * Index-Thread prüft den Hash, zerlegt bei Bedarf neu, und geliefert werden wieder die Passagen aus dem Index.
+ * inzwischen eine andere Revision meldete oder die Zerlegung sich geändert hat. Dann lädt der Agent auf seinem eigenen
+ * Thread (der Priority-Thread gehört wie in MainframeMate dem Klick des Benutzers), der Index-Thread prüft den Hash, zerlegt bei Bedarf neu, und geliefert werden wieder die Passagen aus dem Index.
  */
 public final class ResolveKnowledgeResourceUseCase {
 

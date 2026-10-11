@@ -7,7 +7,6 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.FavoritesPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.SourceSearchState;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.FoundResource;
-import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentNotIndexedException;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
@@ -209,12 +208,10 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 uiExecutor.execute(() -> reader.showLinks(link.key(), entries, "Diese Quelle meldet keine Einträge."));
             } else {
                 final KnowledgeResourceId id = KnowledgeResourceId.of(link.resourceId());
-                // Priority-Lader: Cache oder sofort, nie hinter dem Vorladen; danach wird die Seite indexiert.
-                final KnowledgeDocument document = prefetch.read(id, () -> browse.read(registration.port(), id));
+                // Priority-Thread: Cache oder sofort, nie hinter dem Vorladen; die Seite wird sofort aufbereitet.
+                final KnowledgeDocument document = prefetch.openSelected(registration.port(), id);
                 uiExecutor.execute(() -> reader.showMarkdown(link.key(), document.text()));
             }
-        } catch (KnowledgeDocumentNotIndexedException e) {
-            uiExecutor.execute(() -> reader.showProblem(link.key(), "Nicht lesbar (Protokoll)."));
         } catch (KnowledgeSourceException e) {
             LOG.log(Level.WARNING, "Lesen von " + link.key() + " fehlgeschlagen (" + e.kind() + ")", e);
             final String text = problemText(e);
