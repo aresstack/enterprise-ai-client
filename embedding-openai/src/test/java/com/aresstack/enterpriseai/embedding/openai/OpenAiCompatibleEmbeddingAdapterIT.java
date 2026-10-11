@@ -202,7 +202,9 @@ public class OpenAiCompatibleEmbeddingAdapterIT extends EmbeddingPortContractTes
     @Test
     public void httpErrorsBecomePortNeutralFailuresWithoutSecrets() {
         assertFailure(401, "{\"error\":{\"message\":\"invalid api key\"}}", EmbeddingFailureKind.AUTHENTICATION);
-        assertFailure(429, "", EmbeddingFailureKind.RATE_LIMITED);
+        // 429 einmal: der Adapter wiederholt und bekommt die Vektoren (dauerhaftes 429 im Unit-Test)
+        server.failNext(429, "");
+        assertEquals(1, adapter(EmbeddingInputMode.SINGLE_STRING).embed(Collections.singletonList("x")).size());
         assertFailure(500, "{\"error\":\"internal_error\"}", EmbeddingFailureKind.PROVIDER_ERROR);
         assertFailure(400, "{\"detail\":\"bad\"}", EmbeddingFailureKind.REJECTED);
     }

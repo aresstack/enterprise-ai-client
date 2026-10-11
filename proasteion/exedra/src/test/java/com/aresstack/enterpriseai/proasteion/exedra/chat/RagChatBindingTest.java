@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
+import com.aresstack.enterpriseai.proasteion.application.composition.LoggingRetrievalObserver;
 
 import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
@@ -758,7 +759,15 @@ public class RagChatBindingTest {
     @Test
     public void readPageCountsAsContextWhenTheSemanticPathFails() throws Exception {
         // Akzeptanztest 4: RAG findet nichts (Volltext leer, Embeddings fallen aus), knowledge_read liest die Seite.
-        final Fixture fixture = fixture(index, new FailingEmbeddings(embeddings));
+        final RagChatUseCase rag = new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index,
+                new FailingEmbeddings(embeddings), space, null).withObserver(new LoggingRetrievalObserver()),
+                new PromptContextAssembler(null));
+        final Fixture fixture = onEdt(new Callable<Fixture>() {
+            @Override
+            public Fixture call() {
+                return new Fixture(rag);
+            }
+        });
         final ScriptedToolChat toolChat = new ScriptedToolChat().readPage().answer("Laut Seite: drei Monate.");
         final List<String> log = captureLog();
         sendWithPage(fixture, toolChat, pageTool("SEITENTEXT Kündigungsfrist drei Monate"));
@@ -856,7 +865,7 @@ public class RagChatBindingTest {
 
     private static List<String> captureLog() {
         final List<String> lines = Collections.synchronizedList(new ArrayList<String>());
-        java.util.logging.Logger.getLogger(RagChatBinding.class.getName()).addHandler(new java.util.logging.Handler() {
+        java.util.logging.Logger.getLogger(LoggingRetrievalObserver.class.getName()).addHandler(new java.util.logging.Handler() {
             @Override
             public void publish(java.util.logging.LogRecord record) {
                 lines.add(record.getMessage());

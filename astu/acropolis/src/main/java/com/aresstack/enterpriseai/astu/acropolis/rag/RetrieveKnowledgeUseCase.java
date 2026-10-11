@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.rag;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeTokenCounter;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
@@ -46,10 +47,21 @@ import java.util.function.Supplier;
  * erweiterte Menge hätte seinen Platz direkt nach der Erweiterung; die Kategorie RERANK ist noch nicht ausführbar
  * angebunden.
  *
+ * <p>Länge der Anfrage: Für die semantische Suche wird eine Anfrage über {@link #MAX_QUERY_TOKENS} Token an einer
+ * Wortgrenze gekürzt, statt den Embedding-Dienst mit einem Text über dessen Tokengrenze scheitern zu lassen (E5:
+ * 512). Die Grenze ist dieselbe wie die der indexierten Passagen ({@code PassageSegmentation}); die Volltextsuche
+ * bekommt die ganze Anfrage. Kürzungen und ausgefallene Suchpfade meldet der {@link RetrievalObserver}
+ * ({@link #withObserver}), damit sie im technischen Log stehen.
+ *
  * <p>Blockiert für die Dauer von Embedding-Aufruf und Indexsuche; Aufrufer aus der Oberfläche rufen ihn nicht auf
  * dem Event-Thread auf. Zustandslos und threadsicher, soweit die Ports es sind.
  */
 public final class RetrieveKnowledgeUseCase {
+
+    /** Längste Anfrage für das Embedding; dieselbe Grenze wie für indexierte Passagen. */
+    public static final int MAX_QUERY_TOKENS = 350;
+
+    private static final KnowledgeTokenCounter QUERY_TOKENS = KnowledgeTokenCounter.wordsAndSymbols();
 
     private final KnowledgeIndexPort index;
     private final EmbeddingPort embeddings;
@@ -58,6 +70,7 @@ public final class RetrieveKnowledgeUseCase {
     private final ReciprocalRankFusion fusion;
     private final KnowledgeRelationsPort relations;
     private final Supplier<RetrievalSettings> relationSettings;
+    private final RetrievalObserver observer;
 
     /**
      * @param index      der Wissensindex
@@ -91,6 +104,7 @@ public final class RetrieveKnowledgeUseCase {
         this.fusion = new ReciprocalRankFusion(effective);
         this.relations = null;
         this.relationSettings = null;
+        this.observer = RetrievalObserver.none();
     }
 
     /**
@@ -113,10 +127,11 @@ public final class RetrieveKnowledgeUseCase {
         this.fusion = new ReciprocalRankFusion(effective);
         this.relations = null;
         this.relationSettings = null;
+        this.observer = RetrievalObserver.none();
     }
 
     private RetrieveKnowledgeUseCase(RetrieveKnowledgeUseCase base, KnowledgeRelationsPort relations,
-                                     Supplier<RetrievalSettings> relationSettings) {
+                                     Supplier<RetrievalSettings> relationSettings, RetrievalObserver observer) {
         this.index = base.index;
         this.embeddings = base.embeddings;
         this.space = base.space;
@@ -124,6 +139,15 @@ public final class RetrieveKnowledgeUseCase {
         this.fusion = base.fusion;
         this.relations = relations;
         this.relationSettings = relationSettings;
+        this.observer = observer;
+    }
+
+    /** Kopie, die Kürzungen und ausgefallene Suchpfade an {@code observer} meldet. */
+    public RetrieveKnowledgeUseCase withObserver(RetrievalObserver observer) {
+        if (observer == null) {
+            throw new IllegalArgumentException("observer must not be null");
+        }
+        return new RetrieveKnowledgeUseCase(this, relations, relationSettings, observer);
     }
 
     /**
@@ -136,7 +160,8 @@ public final class RetrieveKnowledgeUseCase {
             throw new IllegalArgumentException("relations must not be null");
         }
         final RetrievalSettings own = settings;
-        return new RetrieveKnowledgeUseCase(this, relations, liveSettings == null ? () -> own : liveSettings);
+        return new RetrieveKnowledgeUseCase(this, relations, liveSettings == null ? () -> own : liveSettings,
+                observer);
     }
 
     public EmbeddingModelIdentity space() {
@@ -200,6 +225,9 @@ public final class RetrieveKnowledgeUseCase {
             }
         }
 
+        for (RetrievalWarning warning : warnings) {
+            observer.pathFailed(warning);
+        }
         if (failedPaths == activePaths) {
             throw new KnowledgeRetrievalException(warnings, lastFailure);
         }
@@ -255,8 +283,37 @@ public final class RetrieveKnowledgeUseCase {
         return expanded;
     }
 
+    /** Die Anfrage, höchstens {@link #MAX_QUERY_TOKENS} Token lang, an einer Wortgrenze gekürzt. */
+    private String shortened(String query) {
+        int tokens = QUERY_TOKENS.count(query);
+        if (tokens <= MAX_QUERY_TOKENS) {
+            return query;
+        }
+        StringBuilder kept = new StringBuilder();
+        int keptTokens = 0;
+        for (String word : query.trim().split("\\s+")) {
+            int wordTokens = QUERY_TOKENS.count(word);
+            if (keptTokens + wordTokens > MAX_QUERY_TOKENS) {
+                break;
+            }
+            if (kept.length() > 0) {
+                kept.append(' ');
+            }
+            kept.append(word);
+            keptTokens += wordTokens;
+        }
+        if (kept.length() == 0) {
+            // ein einziges überlanges "Wort": höchstens ein Token je Zeichen
+            String head = query.trim().substring(0, Math.min(query.trim().length(), MAX_QUERY_TOKENS));
+            kept.append(head);
+            keptTokens = QUERY_TOKENS.count(head);
+        }
+        observer.queryShortened(tokens, keptTokens);
+        return kept.toString();
+    }
+
     private List<KnowledgeSearchHit> semanticSearch(String query, Collection<SourceAddress> filter) {
-        EmbeddingVector vector = embeddings.embedQueries(Collections.singletonList(query)).get(0);
+        EmbeddingVector vector = embeddings.embedQueries(Collections.singletonList(shortened(query))).get(0);
         if (!space().equals(vector.identity())) {
             // Der Port hat seine Welt gewechselt; niemals in einem fremden Namespace suchen.
             throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE,

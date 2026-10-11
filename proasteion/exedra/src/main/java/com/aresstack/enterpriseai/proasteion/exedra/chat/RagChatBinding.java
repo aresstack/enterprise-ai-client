@@ -21,7 +21,6 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagOptions;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagSource;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPath;
-import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalWarning;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
@@ -61,7 +60,7 @@ import java.util.logging.Logger;
  *       auf dem Event-Thread. Sobald der Turn steht, kommen seine Quellen an die Antwort und Hinweise (Suche ganz
  *       oder teilweise ausgefallen, keine Treffer) als eigene Hinweiszeile in den Verlauf; Deltas, Abschluss,
  *       Abbruch und Fehler laufen weiter über den {@code ChatTurn} der Antwort. Jeder ausgefallene Suchpfad steht
- *       mit seiner Ursache im technischen Log.</li>
+ *       mit seiner Ursache im technischen Log ({@code RetrievalObserver} der Composition Root).</li>
  *   <li><b>Hinweis zur Wissensbeschaffung</b>: bewertet wird der ganze Turn ({@link KnowledgeAcquisition}), nicht
  *       nur RAG. Auf dem Werkzeugweg kommt der Hinweis deshalb erst nach der Antwort: hat {@code knowledge_read}
  *       eine Seite geliefert, heißt ein ausgefallener Suchpfad nicht „ohne Kontext“.</li>
@@ -505,7 +504,6 @@ public final class RagChatBinding implements ChatShellActions {
         if (!request.answer.hasSources()) {
             model.attachSources(request.answer, describe(ragTurn.sources()));
         }
-        logRetrieval(ragTurn);
         request.ragTurn = ragTurn;
         // Ohne Werkzeuge steht die Wissensbeschaffung jetzt fest; mit Werkzeugen erst, wenn die Antwort fertig ist.
         if (!request.toolPath || request.ended) {
@@ -536,20 +534,6 @@ public final class RagChatBinding implements ChatShellActions {
         String notice = notice(acquisition);
         if (notice != null) {
             model.addNotice(notice);
-        }
-    }
-
-    /**
-     * Schreibt jeden ausgefallenen Suchpfad mit Ursache ins technische Log: Pfad, Fehlerart und Meldung des Ports
-     * (laut Port-Vertrag ohne Secrets und ohne Anfragetext), nie die Frage selbst.
-     */
-    private static void logRetrieval(RagChatTurn turn) {
-        if (!turn.retrievalRequested()) {
-            return;
-        }
-        for (RetrievalWarning warning : turn.warnings()) {
-            LOG.warning("Wissenssuche: Suchpfad " + warning.path() + " ausgefallen"
-                    + (turn.retrievalFailed() ? " (alle Suchpfade ausgefallen)" : "") + ": " + warning.message());
         }
     }
 

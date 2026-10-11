@@ -60,6 +60,31 @@ public class OpenAiCompatibleEmbeddingAdapterTest {
     }
 
     @Test
+    public void overloadIsRetriedWithBackoffBeforeItFails() {
+        final List<Integer> statuses = new ArrayList<Integer>(Arrays.asList(429, 503, 200));
+        final List<Long> waits = new ArrayList<Long>();
+        EmbeddingHttpTransport busy = new EmbeddingHttpTransport() {
+            @Override
+            public HttpResult post(URI endpoint, String jsonBody, char[] bearerToken, long max) {
+                int status = statuses.remove(0);
+                return new HttpResult(status, status == 200 ? "{\"data\":[{\"embedding\":[1,0]}]}" : "");
+            }
+        };
+        new OpenAiCompatibleEmbeddingAdapter(CONFIG, tokens(), busy, waits::add).embed(Collections.singletonList("a"));
+        assertEquals(Arrays.asList(500L, 1500L), waits);
+
+        statuses.addAll(Arrays.asList(429, 429, 429, 200));
+        try {
+            new OpenAiCompatibleEmbeddingAdapter(CONFIG, tokens(), busy, millis -> { })
+                    .embed(Collections.singletonList("a"));
+            fail("expected RATE_LIMITED after three attempts");
+        } catch (EmbeddingException expected) {
+            assertEquals(EmbeddingFailureKind.RATE_LIMITED, expected.kind());
+            assertEquals("kein vierter Versuch", Collections.singletonList(200), statuses);
+        }
+    }
+
+    @Test
     public void transportExceptionsBecomeUnavailable() {
         EmbeddingHttpTransport failing = new EmbeddingHttpTransport() {
             @Override

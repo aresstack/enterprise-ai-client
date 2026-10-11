@@ -26,6 +26,10 @@ import java.util.List;
  * führen zu {@link EmbeddingException}; es gibt keine Zero-Vector-Fallbacks, keine Teilergebnisse und keinen
  * Wechsel auf ein anderes Modell.
  *
+ * <p>Überlast: Antwortet der Dienst mit HTTP 429 oder 503, wird derselbe Request nach einer Pause wiederholt
+ * (500 ms, dann 1500 ms; höchstens drei Versuche), bevor der Fehler gilt. So scheitert eine Suchanfrage nicht
+ * daran, dass gleichzeitig die eigene Vorladung Passagen einbettet. Alle anderen Fehler gelten sofort.
+ *
  * <p>Herkunft: Transport-Naht, strikte Validierung und „kein Fallback“ aus askai-java8
  * ({@code HttpEmbeddingPortAdapter}); OpenAI-Wireformat ({@code /embeddings}, {@code data[].embedding}, Bearer)
  * aus MainframeMate ({@code MultiProviderEmbeddingClient#embedOpenAIBatch}).
@@ -36,6 +40,15 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
     private final BearerTokenSource tokenSource;
     private final EmbeddingHttpTransport transport;
     private final EmbeddingModelIdentity identity;
+    private final Sleeper sleeper;
+
+    /** Wartezeiten vor dem zweiten und dritten Versuch bei HTTP 429/503. */
+    private static final long[] RETRY_DELAYS_MILLIS = {500L, 1500L};
+
+    /** Wartet zwischen zwei Versuchen (in Tests ersetzbar). */
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
 
     public OpenAiCompatibleEmbeddingAdapter(OpenAiCompatibleEmbeddingConfiguration configuration,
                                             BearerTokenSource tokenSource) {
@@ -44,6 +57,12 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
 
     OpenAiCompatibleEmbeddingAdapter(OpenAiCompatibleEmbeddingConfiguration configuration,
                                      BearerTokenSource tokenSource, EmbeddingHttpTransport transport) {
+        this(configuration, tokenSource, transport, Thread::sleep);
+    }
+
+    OpenAiCompatibleEmbeddingAdapter(OpenAiCompatibleEmbeddingConfiguration configuration,
+                                     BearerTokenSource tokenSource, EmbeddingHttpTransport transport,
+                                     Sleeper sleeper) {
         this.configuration = requireConfiguration(configuration);
         if (tokenSource == null) {
             throw new IllegalArgumentException("tokenSource must not be null");
@@ -54,6 +73,7 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
         this.tokenSource = tokenSource;
         this.transport = transport;
         this.identity = configuration.modelIdentity();
+        this.sleeper = sleeper;
     }
 
     @Override
@@ -106,6 +126,15 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
 
     private List<EmbeddingVector> call(String requestBody, int expectedCount) {
         HttpResult result = post(requestBody, maxResponseBytes(expectedCount));
+        for (int retry = 0; retry < RETRY_DELAYS_MILLIS.length && overloaded(result.status); retry++) {
+            try {
+                sleeper.sleep(RETRY_DELAYS_MILLIS[retry]);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            result = post(requestBody, maxResponseBytes(expectedCount));
+        }
         if (result.status != 200) {
             throw EmbeddingErrorMapper.fromStatus(configuration.endpoint().toString(), result.status, result.body);
         }
@@ -121,6 +150,11 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
             }
         }
         return Collections.unmodifiableList(vectors);
+    }
+
+    /** Überlast des Dienstes, die sich mit kurzem Warten erfahrungsgemäß löst. */
+    private static boolean overloaded(int status) {
+        return status == 429 || status == 503;
     }
 
     private HttpResult post(String requestBody, long maxResponseBytes) {

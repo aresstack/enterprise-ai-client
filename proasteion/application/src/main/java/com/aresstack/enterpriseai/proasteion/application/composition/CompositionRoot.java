@@ -154,7 +154,7 @@ public final class CompositionRoot {
         // Schwelle und Anzahl gelten ohne Neustart.
         this.retrieval = new RetrieveKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
                 knowledge.retrieval()).withRelations(new IndexKnowledgeRelations(ports.index()),
-                settings.get(c -> c.knowledge().retrieval()));
+                settings.get(c -> c.knowledge().retrieval())).withObserver(new LoggingRetrievalObserver());
         this.contextAssembler = new PromptContextAssembler(knowledge.context());
         // Indexiert wird wie askai arch in semantische Passagen: Struktur zuerst, Satzgrenzen aus dem OpenNLP-Modell
         // der eingestellten Sprache, Themenwechsel über Satzfenster, eigenes Embedding je Passage. Ändert sich Text,

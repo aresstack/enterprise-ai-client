@@ -154,6 +154,33 @@ public class RetrieveKnowledgeUseCaseTest {
     }
 
     @Test
+    public void overlongQueryIsShortenedForTheEmbeddingAndReported() {
+        final List<String> reports = new java.util.ArrayList<String>();
+        StringBuilder query = new StringBuilder("Linux");
+        for (int i = 0; i < 400; i++) {
+            query.append(" wort").append(i);
+        }
+        useCase(null).withObserver(new RetrievalObserver() {
+            @Override
+            public void queryShortened(int tokens, int limit) {
+                reports.add(tokens + ">" + limit);
+            }
+
+            @Override
+            public void pathFailed(RetrievalWarning warning) {
+                reports.add(warning.path().name());
+            }
+        }).retrieve(query.toString());
+
+        String embedded = embeddings.calls().get(embeddings.calls().size() - 1).get(0);
+        assertTrue(embedded.startsWith("Linux wort0"));
+        assertTrue(com.aresstack.enterpriseai.astu.knowledge.KnowledgeTokenCounter.wordsAndSymbols().count(embedded)
+                <= RetrieveKnowledgeUseCase.MAX_QUERY_TOKENS);
+        // das Skript-Embedding kennt den gekürzten Text nicht und fällt aus: auch das erfährt der Beobachter
+        assertEquals(java.util.Arrays.asList("401>" + RetrieveKnowledgeUseCase.MAX_QUERY_TOKENS, "SEMANTIC"), reports);
+    }
+
+    @Test
     public void keywordIndexFailureDegradesToSemanticWithWarning() {
         index.failKeyword = true;
 
