@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.research.domain.state.oo.ResearchStateIds;
 import com.aresstack.enterpriseai.research.runtime.team.ChatMessage;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChatResult;
+import com.aresstack.enterpriseai.research.runtime.team.OutlineChangeRequest;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -264,9 +265,33 @@ public final class ResearchControlTools {
                         return rejected == null ? McpToolResult.ok("OK") : McpToolResult.error(rejected);
                     }
                 }, McpToolParameter.string("document_json", true, "Das Dokument als JSON")));
+        tools.add(McpToolContribution.of("document_section_save",
+                "Speichert ein fertig geschriebenes Kapitel des Dokuments als Zwischenstand (index ab 0, heading, "
+                        + "text mit [[passage-id]], passages_json {passage-id: resource-id}); nur in der Phase "
+                        + "Dokument. Ein späterer Fehler lässt die gespeicherten Kapitel bestehen.",
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        String rejected = host.saveDocumentSection((int) call.getInteger("index", -1L),
+                                call.getString("heading"), call.getString("text"), call.getString("passages_json"));
+                        return rejected == null ? McpToolResult.ok("OK") : McpToolResult.error(rejected);
+                    }
+                }, McpToolParameter.integer("index", true, "Kapitelnummer ab 0"),
+                McpToolParameter.string("heading", true, "Überschrift des Kapitels"),
+                McpToolParameter.string("text", true, "Text des Kapitels mit Passagen-Markern"),
+                McpToolParameter.string("passages_json", false, "{passage-id: resource-id}")));
+        tools.add(McpToolContribution.of("document_draft",
+                "Der gespeicherte Zwischenstand des Dokuments zur aktuellen Gliederung als JSON "
+                        + "{outline, sections:[{heading, text, passages}]}; zum Fortsetzen nach einem Fehler.",
+                new McpToolHandler() {
+                    @Override
+                    public McpToolResult invoke(McpToolCall call) {
+                        return McpToolResult.ok(host.documentDraftJson());
+                    }
+                }));
         tools.add(McpToolContribution.of("project_source_add",
-                "Notiert eine gelesene Seite als Quelle des Projekts: beim direkten Suchauftrag in der Konzeptphase "
-                        + "und bei Nachfragen in der Phase Dokument. "
+                "Notiert eine gelesene Seite als Quelle des Projekts, in jeder Phase: beim direkten Suchauftrag und "
+                        + "bei Nachfragen, wenn die Quellen des Projekts nicht reichen. "
                         + "Beispiel: capture_id=\"123456\" title=\"Betriebshandbuch\"",
                 new McpToolHandler() {
                     @Override
@@ -401,44 +426,44 @@ public final class ResearchControlTools {
 
     /**
      * Der Startbefehl des Nutzers (askai arch: das {@code research:}-Präfix; dazu „Recherche starten“): der Host
-     * schließt das Konzept ab und startet die Phase Quellen. Das Modell kann keine Phase wechseln.
+     * schließt das Konzept ab und startet die Phase Quellen, aber nur mit sinnvollem Auftrag (Konzeptkarte oder
+     * erfasster Auftrag; ein Auftrag hinter dem Präfix zählt). Das Modell kann keine Phase wechseln.
      *
      * @return {@code null}, wenn der Text kein Startbefehl ist; sonst leer (der Agent recherchiert weiter) oder
      *         der Grund, warum nicht gestartet wurde
      */
     static String startResearchIfAsked(ResearchAgentHost host, String text) {
-        String lower = text == null ? "" : text.trim().toLowerCase(java.util.Locale.ROOT);
-        if (!(lower.startsWith("research:") || lower.startsWith("recherche:")
-                || lower.startsWith("recherche starten"))) {
+        String trimmed = text == null ? "" : text.trim();
+        String lower = trimmed.toLowerCase(java.util.Locale.ROOT);
+        String prefix = null;
+        for (String candidate : new String[]{"research:", "recherche:", "recherche starten"}) {
+            if (lower.startsWith(candidate)) {
+                prefix = candidate;
+                break;
+            }
+        }
+        if (prefix == null) {
             return null;
         }
-        if (host.isWritable(ResearchStateIds.RESEARCH)) {
+        String task = trimmed.substring(prefix.length()).replaceFirst("^[\\s:.!-]+", "").trim();
+        if (!task.isEmpty() && ResearchStateIds.SCOPING.equals(host.phaseId())) {
+            host.conceptHost().recordMissionIfAbsent(task);
+        }
+        String rejected = host.startAutonomousResearch();
+        if (rejected == null) {
             return "";
         }
-        if (ResearchStateIds.SCOPING.equals(host.phaseId())) {
-            if (ResearchStateIds.NEW.equals(host.stateId())) {
-                host.dispatch(ResearchCommandType.START);
-            }
-            String rejected = host.dispatch(ResearchCommandType.SUBMIT_SCOPE);
-            if (rejected == null) {
-                rejected = host.dispatch(ResearchCommandType.START_RESEARCH);
-            }
-            return rejected == null ? "" : "Die Recherche kann nicht starten: " + rejected;
-        }
-        if (ResearchStateIds.RESEARCH.equals(host.phaseId())
-                && ResearchStateIds.WAITING.equals(host.stateId())) {
-            String rejected = host.dispatch(ResearchCommandType.START_RESEARCH);
-            return rejected == null ? "" : "Die Recherche kann nicht starten: " + rejected;
-        }
-        return "Die Recherche kann in der Phase " + host.phaseId() + "/" + host.stateId() + " nicht starten.";
+        return rejected.startsWith("Für die autonome Recherche") || rejected.startsWith("Die Recherche kann")
+                ? rejected : "Die Recherche kann nicht starten: " + rejected;
     }
 
     /**
-     * Eine Nachricht, während die Gliederung auf Freigabe wartet, ist ein Änderungswunsch: der Host geht über
-     * REQUEST_OUTLINE_CHANGES zurück in die Gliederung, der Agent überarbeitet sie mit dieser Nachricht.
+     * Wartet die Gliederung auf Freigabe, ist nur ein erkennbarer Änderungswunsch ({@link OutlineChangeRequest})
+     * ein Auftrag zum Überarbeiten: der Host geht über REQUEST_OUTLINE_CHANGES zurück in die Gliederung, der Agent
+     * überarbeitet sie mit dieser Nachricht. Jede andere Nachricht ist eine Frage an den Projektkorpus.
      */
     static void requestOutlineChangesIfAsked(ResearchAgentHost host, String text) {
-        if (text != null && !text.trim().isEmpty() && ResearchStateIds.OUTLINE.equals(host.phaseId())
+        if (OutlineChangeRequest.isChangeRequest(text) && ResearchStateIds.OUTLINE.equals(host.phaseId())
                 && ResearchStateIds.WAITING_APPROVAL.equals(host.stateId())) {
             host.dispatch(ResearchCommandType.REQUEST_OUTLINE_CHANGES);
         }

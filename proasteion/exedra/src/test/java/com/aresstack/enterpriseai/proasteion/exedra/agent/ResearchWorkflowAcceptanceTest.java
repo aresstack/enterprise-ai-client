@@ -65,6 +65,22 @@ public class ResearchWorkflowAcceptanceTest {
         refresh(parts);
         assertEquals(Arrays.asList("Recherche starten"), onEdt(() -> parts.strip().actionLabels()));
 
+        // Ohne Auftrag bleibt es beim Konzept: kein Phasenwechsel, kein Auftrag an den Agenten, ein Hinweis
+        perform(parts, ResearchWorkflow.START_RESEARCH);
+        assertEquals("scoping", host.phaseId());
+        assertTrue(prompts.isEmpty());
+        String notices = onEdt(() -> {
+            StringBuilder text = new StringBuilder();
+            for (com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry entry : chat.getEntries()) {
+                text.append(entry.getText()).append('\n');
+            }
+            return text.toString();
+        });
+        assertTrue(notices, notices.contains("fehlt noch ein Auftrag"));
+
+        // Phase 1 bleibt ein Recherche-Chat: die erste Frage wird zum Auftrag
+        call(host, "research_turn_begin", "text", "Was ist IAR und wer betreut es?");
+
         // Recherche starten (Tag) → SUBMIT_SCOPE, START_RESEARCH → research/running, Auftrag an den Agenten
         perform(parts, ResearchWorkflow.START_RESEARCH);
         assertEquals("research", host.phaseId());

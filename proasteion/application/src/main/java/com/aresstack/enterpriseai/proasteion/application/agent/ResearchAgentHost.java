@@ -493,8 +493,11 @@ public final class ResearchAgentHost {
     }
 
     /**
-     * Ende des Laufs ({@code research_run_finished}): der Host vermerkt Grund und Zähler und geht in den
-     * Freigabe-Übergang der Phase Quellen (RESEARCH/RUNNING → REQUEST_EVIDENCE_REVIEW → WAITING_APPROVAL).
+     * Ende des Laufs ({@code research_run_finished}): der Host vermerkt Grund und Zähler. Nur ein regulär beendeter
+     * Lauf geht in den Freigabe-Übergang der Phase Quellen (RESEARCH/RUNNING → REQUEST_EVIDENCE_REVIEW →
+     * WAITING_APPROVAL); ein Abbruch durch den Nutzer pausiert die Phase (PAUSE, fortsetzbar), ein Fehler (Wissenssuche
+     * nicht erreichbar) lässt den Zustand stehen, damit „Recherche fortsetzen“ neu startet (askai arch
+     * {@code ResearchAgentSession}: Stoppgrund entscheidet über den Übergang).
      *
      * @return die Zusammenfassung der gefundenen Quellen für den Chat
      */
@@ -504,13 +507,30 @@ public final class ResearchAgentHost {
             runStatus = runStatus.finished(stopReason, pages, accepted);
             writeRunStatus(projectDirectory, runStatus);
         }
-        if (isWritable(ResearchStateIds.RESEARCH)) {
+        boolean running = isWritable(ResearchStateIds.RESEARCH);
+        if (running && USER_CANCELLED.equals(stopReason)) {
+            dispatch(ResearchCommandType.PAUSE);
+            return "Die Quellensuche ist angehalten (" + pages + (pages == 1 ? " Seite" : " Seiten") + " gelesen, "
+                    + sourceRefs().size() + " Quellen im Projekt). Mit „Recherche fortsetzen“ geht sie weiter; "
+                    + "Fragen beantworte ich auch so.";
+        }
+        if (running && FAILED_STOPS.contains(stopReason)) {
+            fireStateChangedLater();
+            return "Die Quellensuche ist fehlgeschlagen (" + ResearchRunStatus.reasonText(stopReason) + "). Die "
+                    + "bisher übernommenen Quellen bleiben im Projekt; mit „Recherche fortsetzen“ starte ich neu.";
+        }
+        if (running) {
             dispatch(ResearchCommandType.REQUEST_EVIDENCE_REVIEW);
         } else {
             fireStateChangedLater();
         }
         return evidenceSummary();
     }
+
+    private static final String USER_CANCELLED = "USER_CANCELLED";
+    /** Stoppgründe, nach denen nichts zur Freigabe vorliegt, weil der Lauf nicht arbeiten konnte. */
+    private static final java.util.Set<String> FAILED_STOPS = new java.util.HashSet<String>(java.util.Arrays.asList(
+            "MCP_UNAVAILABLE", "SEARCH_TECHNICAL_PROBLEM", "ERROR_BUDGET_EXHAUSTED", "SCOPE_CONTROL_UNAVAILABLE"));
 
     /** Die verständliche Zusammenfassung der Phase Quellen (Punkt 8 der Anforderung). */
     public String evidenceSummary() {
@@ -656,6 +676,7 @@ public final class ResearchAgentHost {
                 sourceRefs());
         synchronized (this) {
             writeText(new File(projectDirectory, DOCUMENT_FILE), document.toJson());
+            clearDocumentDraft(); // das fertige Dokument ersetzt den Zwischenstand
         }
         LOG.info("[research-document] saved: " + document.sections().size() + " sections, "
                 + document.sources().size() + " sources, " + document.claims().size() + " claims");
@@ -689,15 +710,186 @@ public final class ResearchAgentHost {
     }
 
     /**
-     * Eine bei einer Nachfrage gefundene weitere Seite kommt ins Projekt (Phase Dokument); dieselbe Ablage wie
-     * {@code source_accept}.
+     * Eine beim direkten Suchauftrag oder bei einer Nachfrage gelesene weitere Seite kommt ins Projekt (alle Phasen);
+     * dieselbe Ablage wie {@code source_accept}.
      */
     public String addFollowUpSource(String captureId, String title, String url) {
-        // Konzeptphase: der direkte Suchauftrag notiert seine gelesenen Seiten; Dokument: Nachfragen.
-        if (!ResearchStateIds.DRAFT.equals(phaseId()) && !ResearchStateIds.SCOPING.equals(phaseId())) {
+        // In jeder Phase: der direkte Suchauftrag (Konzept, Quellen) und jede Nachfrage (Quellen, Gliederung,
+        // Dokument) übernimmt die gelesenen Seiten ins Projekt, wenn der Projektkorpus nicht reicht.
+        return acceptSource(captureId, title, url);
+    }
+
+    // ------------------------------------------------------------------ Start der autonomen Recherche (Phase 2)
+
+    /** Begrüßungen und Füllwörter sind kein Recherche-Auftrag. */
+    private static final java.util.Set<String> NO_BRIEF = new java.util.HashSet<String>(java.util.Arrays.asList(
+            "hallo", "hi", "hey", "moin", "servus", "guten", "tag", "morgen", "abend", "danke", "ok", "okay", "ja",
+            "nein", "test", "hello", "thanks", "recherche", "starten", "research"));
+
+    /**
+     * Was für die autonome Recherche fehlt: {@code null}, wenn ein sinnvoller Auftrag vorliegt (mindestens eine
+     * Konzeptkarte oder ein erfasster Auftrag, der mehr als eine Begrüßung ist), sonst der Hinweis für den Nutzer.
+     */
+    public String researchBriefGap() {
+        if (!com.aresstack.enterpriseai.research.concept.ConceptTopicScanner
+                .collectCardPaths(conceptDocumentJson()).isEmpty()) {
+            return null;
+        }
+        String mission = currentScopeDraft().getMission();
+        for (String word : (mission == null ? "" : mission).toLowerCase(java.util.Locale.ROOT)
+                .split("[^\\p{L}\\p{N}]+")) {
+            if (word.length() >= 2 && !NO_BRIEF.contains(word)) {
+                return null;
+            }
+        }
+        return "Für die autonome Recherche fehlt noch ein Auftrag. Beschreibe im Chat, was recherchiert werden soll, "
+                + "oder lege im Konzept mindestens eine Karte an. Einzelne Fragen beantworte ich dir auch ohne "
+                + "Konzept direkt aus den Wissensquellen.";
+    }
+
+    /**
+     * Startet die autonome Recherche (Phase Quellen) nur mit sinnvollem Auftrag: aus dem Konzept über SUBMIT_SCOPE
+     * und START_RESEARCH, aus „wartet auf Start“ über START_RESEARCH; ein laufender Lauf startet neu. Ohne Auftrag
+     * bleibt die Phase Konzept.
+     *
+     * @return {@code null} bei Erfolg, sonst der Grund (für den Nutzer)
+     */
+    public String startAutonomousResearch() {
+        String phase = phaseId();
+        String state = stateId();
+        if (ResearchStateIds.RESEARCH.equals(phase) && ResearchStateIds.RUNNING.equals(state)) {
+            return null;
+        }
+        if (ResearchStateIds.RESEARCH.equals(phase) && ResearchStateIds.PAUSED.equals(state)) {
+            return dispatch(ResearchCommandType.RESUME); // ein angehaltener Lauf geht weiter
+        }
+        boolean fromConcept = ResearchStateIds.SCOPING.equals(phase);
+        boolean waiting = ResearchStateIds.RESEARCH.equals(phase) && ResearchStateIds.WAITING.equals(state);
+        if (!fromConcept && !waiting) {
+            return "Die Recherche kann in der Phase " + ResearchWorkflow.titleOf(phase) + " nicht starten.";
+        }
+        String gap = researchBriefGap();
+        if (gap != null) {
+            LOG.info("[research-state] Recherche nicht gestartet: kein Auftrag");
+            return gap;
+        }
+        if (fromConcept) {
+            if (ResearchStateIds.NEW.equals(state)) {
+                markGreeted(); // ohne Begrüßung gilt das Konzept als begonnen (scoping/new → running)
+            }
+            String rejection = dispatch(ResearchCommandType.SUBMIT_SCOPE);
+            if (rejection != null) {
+                return rejection;
+            }
+        }
+        return dispatch(ResearchCommandType.START_RESEARCH);
+    }
+
+    // ------------------------------------------------------------------ Dokument-Zwischenstand (je Kapitel)
+
+    private static final String DOCUMENT_DRAFT_FILE = "document-draft.json";
+
+    /**
+     * Speichert ein fertig geschriebenes Kapitel des Dokuments sofort (nur in Phase Dokument/„running“), damit ein
+     * Fehler bei einem späteren Kapitel die früheren nicht vernichtet. Der Zwischenstand gehört zur aktuellen
+     * Gliederung; ändert sie sich, beginnt er neu.
+     *
+     * @param index      Kapitelnummer ab 0
+     * @param passagesJson {@code {passage-id: resource-id}} der Belege des Kapitels
+     * @return {@code null} bei Erfolg, sonst der Grund
+     */
+    public String saveDocumentSection(int index, String heading, String text, String passagesJson) {
+        if (!isWritable(ResearchStateIds.DRAFT)) {
             return "Not allowed in the current state (" + phaseId() + "/" + stateId() + ").";
         }
-        return acceptSource(captureId, title, url);
+        if (index < 0) {
+            return "invalid index";
+        }
+        String outline = outline();
+        synchronized (this) {
+            com.google.gson.JsonObject draft = readDocumentDraft(outline);
+            com.google.gson.JsonArray sections = draft.getAsJsonArray("sections");
+            if (index > sections.size()) {
+                return "Kapitel " + (index + 1) + " folgt nicht auf den Zwischenstand (" + sections.size()
+                        + " Kapitel gespeichert).";
+            }
+            com.google.gson.JsonObject section = new com.google.gson.JsonObject();
+            section.addProperty("heading", heading == null ? "" : heading);
+            section.addProperty("text", text == null ? "" : text);
+            com.google.gson.JsonObject passages = new com.google.gson.JsonObject();
+            try {
+                if (passagesJson != null && !passagesJson.trim().isEmpty()) {
+                    passages = com.google.gson.JsonParser.parseString(passagesJson).getAsJsonObject();
+                }
+            } catch (RuntimeException invalid) {
+                return "invalid passages_json: " + invalid.getMessage();
+            }
+            section.add("passages", passages);
+            com.google.gson.JsonArray kept = new com.google.gson.JsonArray();
+            for (int i = 0; i < index; i++) {
+                kept.add(sections.get(i));
+            }
+            kept.add(section);
+            draft.add("sections", kept);
+            writeAtomically(new File(projectDirectory, DOCUMENT_DRAFT_FILE), draft.toString());
+        }
+        LOG.info("[research-document] Kapitel " + (index + 1) + " gespeichert");
+        return null;
+    }
+
+    /** Der Zwischenstand zur aktuellen Gliederung als JSON {@code {outline, sections:[{heading, text, passages}]}}. */
+    public String documentDraftJson() {
+        String outline = outline();
+        synchronized (this) {
+            return readDocumentDraft(outline).toString();
+        }
+    }
+
+    /** Wie viele Kapitel des Dokuments schon gespeichert sind (zur aktuellen Gliederung). */
+    public int documentDraftSectionCount() {
+        String outline = outline();
+        synchronized (this) {
+            return readDocumentDraft(outline).getAsJsonArray("sections").size();
+        }
+    }
+
+    private com.google.gson.JsonObject readDocumentDraft(String outline) {
+        ensureOpen();
+        String json = readText(new File(projectDirectory, DOCUMENT_DRAFT_FILE));
+        com.google.gson.JsonObject draft = null;
+        try {
+            if (!json.trim().isEmpty()) {
+                draft = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+            }
+        } catch (RuntimeException unreadable) {
+            LOG.warning("Dokument-Zwischenstand nicht lesbar: " + unreadable.getMessage());
+        }
+        String current = outline == null ? "" : outline.trim();
+        if (draft == null || !draft.has("outline") || !current.equals(draft.get("outline").getAsString().trim())
+                || !draft.has("sections") || !draft.get("sections").isJsonArray()) {
+            draft = new com.google.gson.JsonObject();
+            draft.addProperty("outline", current);
+            draft.add("sections", new com.google.gson.JsonArray());
+        }
+        return draft;
+    }
+
+    private void clearDocumentDraft() {
+        File draft = new File(projectDirectory, DOCUMENT_DRAFT_FILE);
+        if (draft.isFile() && !draft.delete()) {
+            LOG.warning("Dokument-Zwischenstand nicht gelöscht: " + draft);
+        }
+    }
+
+    private static void writeAtomically(File file, String text) {
+        File temp = new File(file.getParentFile(), file.getName() + ".tmp");
+        writeText(temp, text);
+        try {
+            java.nio.file.Files.move(temp.toPath(), file.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException notMoved) {
+            LOG.warning("Nicht gespeichert: " + file.getName() + ": " + notMoved.getMessage());
+        }
     }
 
     private static String readText(File file) {
