@@ -920,6 +920,25 @@ public final class ResearchAgentHost {
         return conceptHost;
     }
 
+    /**
+     * Die Konzeptwerkzeuge für den Werkzeugsatz des Agenten, ohne ein Projekt anzulegen: ohne Projekt die eines
+     * frischen (Konzept/neu, nur lesen). Angelegt wird das Projekt erst, wenn ein Werkzeug aufgerufen wird.
+     */
+    synchronized List<com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution> conceptToolsPreview() {
+        if (conceptHost == null && existingProject() == null) {
+            return ResearchConceptTools.freshProjectTools();
+        }
+        return conceptHost().tools();
+    }
+
+    /** Ob Suchen angeboten wurden; ohne Projekt nein (legt nichts an). */
+    synchronized boolean searchTagsOffered() {
+        if (conceptHost == null && existingProject() == null) {
+            return false;
+        }
+        return conceptHost().searchTagsOffered();
+    }
+
     /** Das Konzeptpapier, nur wenn schon ein Projekt existiert (für die Anzeige; legt nichts an). */
     public ConceptBranchService existingConceptService() {
         synchronized (this) {

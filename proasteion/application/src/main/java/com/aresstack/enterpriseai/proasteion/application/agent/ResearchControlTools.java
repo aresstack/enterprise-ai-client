@@ -49,7 +49,7 @@ public final class ResearchControlTools {
                         status.addProperty("phase", host.phaseId());
                         status.addProperty("state", host.stateId());
                         status.addProperty("greeted", greeted);
-                        status.addProperty("searchTagsOffered", host.conceptHost().searchTagsOffered());
+                        status.addProperty("searchTagsOffered", host.searchTagsOffered());
                         status.addProperty("model", model.modelName());
                         return McpToolResult.ok(status.toString());
                     }
@@ -384,7 +384,8 @@ public final class ResearchControlTools {
                     McpToolParameter.string("excerpt", false, "Auszug"),
                     McpToolParameter.string("score", false, "Relevanz als Dezimalzahl")));
         }
-        for (final McpToolContribution concept : host.conceptHost().tools()) {
+        // Nur lesen: der Werkzeugsatz legt kein Projekt an; erst ein Aufruf öffnet es.
+        for (final McpToolContribution concept : host.conceptToolsPreview()) {
             tools.add(new McpToolContribution(concept.getName(), concept.getDescription(), concept.getParameters(),
                     new McpToolHandler() {
                         @Override

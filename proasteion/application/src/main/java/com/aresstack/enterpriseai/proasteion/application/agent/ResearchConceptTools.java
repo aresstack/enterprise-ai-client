@@ -67,6 +67,16 @@ public final class ResearchConceptTools {
         return tools;
     }
 
+    /**
+     * Das Werkzeugset eines noch nicht angelegten Projekts (Konzept/neu: nur lesen), ohne es anzulegen. Nur für die
+     * Beschreibung des Werkzeugsatzes: ausgeführt wird jeder Aufruf über den Host, der das Projekt dann öffnet.
+     */
+    static List<McpToolContribution> freshProjectTools() {
+        List<McpToolContribution> tools = new ArrayList<McpToolContribution>();
+        tools.add(conceptReadTool(null));
+        return tools;
+    }
+
     /** Serverseitige Nachprüfung beim Ausführen (Sichtbarkeit ist keine Berechtigung). */
     private static McpToolResult requireWritable(Context ctx) {
         if (!ctx.scopingWritable()) {
