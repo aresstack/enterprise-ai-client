@@ -539,12 +539,11 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         refreshStatus();
     }
 
+    /** Ohne „Signal“-Text: dafür gibt es Wellenform und Pegelbalken; so ändert die Zeile beim Sprechen ihre Breite nicht. */
     private String recordingStatus() {
         long seconds = Math.max(0, (System.currentTimeMillis() - recordingStartedMillis) / 1000L);
-        String signal = dictation.clipping() ? "ÜBERSTEUERT"
-                : levelBar.getValue() >= waveform.thresholdPercent() ? "Signal" : "kein Signal";
-        return "● Aufnahme " + (seconds / 60) + ":" + String.format("%02d", seconds % 60) + " · " + signal
-                + "  (Stopp: erkennen · Senden: erkennen und senden · ✕/Esc: verwerfen)";
+        return "● Aufnahme " + (seconds / 60) + ":" + String.format("%02d", seconds % 60)
+                + "   ·   Stopp: erkennen   ·   Senden: erkennen und senden   ·   ✕ / Esc: verwerfen";
     }
 
     /** Ob gerade eine Antwort läuft (dann zeigt die Fläche Stop und den Akzentrand). */

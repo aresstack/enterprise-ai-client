@@ -18,19 +18,19 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
 /**
- * Die Statuszeile des Composers: eine eigene Zeile direkt ÜBER dem Composer-Rahmen (außerhalb davon), mit fester Höhe
- * und linksbündigem Text, damit nichts über Wellenform oder Eingabetext liegt und beim Sprechen nichts hin- und
- * herwandert. Der Platz ist immer reserviert, damit der Composer beim Erscheinen nicht springt. Rechts ein dünnes ✕,
- * das die Zeile wegklickt. Zu lange Texte enden mit „…“; den vollen Text nennt der Tooltip des Composers.
+ * Die Statuszeile des Composers: die runde Plakette, mittig in einer eigenen Zeile direkt ÜBER dem Composer-Rahmen
+ * (außerhalb davon), damit nichts über Wellenform oder Eingabetext liegt. Der Platz ist immer reserviert, damit der
+ * Composer beim Erscheinen nicht springt. Direkt rechts neben dem Text ein dünnes ✕, das die Zeile wegklickt. Zu lange Texte enden mit „…“; den vollen Text nennt der Tooltip des Composers.
  */
 final class ComposerStatusLine extends JComponent {
 
     private static final long serialVersionUID = 1L;
-    private static final int HEIGHT = 20;
-    private static final int PAD_LEFT = 12;
-    private static final int CLOSE_SIZE = 8;
+    private static final int HEIGHT = 22;
+    private static final int PAD_H = 10;
+    private static final int PAD_V = 2;
+    private static final int GAP = 10;
+    private static final int CLOSE_SIZE = 7;
     private static final int CLOSE_HIT = 16;
-    private static final int CLOSE_RIGHT = 10;
 
     /** Ton der Zeile: Hinweis, laufendes Diktat, Fehler. */
     enum Tone {
@@ -49,6 +49,7 @@ final class ComposerStatusLine extends JComponent {
     private Tone tone = Tone.MUTED;
     private Runnable onClose;
     private boolean closeHover;
+    private transient Rectangle lastPill;
 
     ComposerStatusLine() {
         setOpaque(false);
@@ -119,14 +120,26 @@ final class ComposerStatusLine extends JComponent {
         }
     }
 
+    /** Die Plakette mittig in der Zeile; das ✕ sitzt direkt rechts neben dem Text in ihr. */
+    private Rectangle pillBounds(FontMetrics metrics, String shown) {
+        int width = PAD_H + metrics.stringWidth(shown) + GAP + CLOSE_SIZE + PAD_H;
+        int height = metrics.getHeight() + 2 * PAD_V;
+        return new Rectangle((getWidth() - width) / 2, (getHeight() - height) / 2, width, height);
+    }
+
     private Rectangle closeBounds() {
-        int x = getWidth() - CLOSE_RIGHT - CLOSE_HIT;
-        return new Rectangle(x, (getHeight() - CLOSE_HIT) / 2, CLOSE_HIT, CLOSE_HIT);
+        Rectangle pill = lastPill;
+        if (pill == null) {
+            return new Rectangle();
+        }
+        int x = pill.x + pill.width - PAD_H - CLOSE_SIZE - (CLOSE_HIT - CLOSE_SIZE) / 2;
+        return new Rectangle(x, pill.y + (pill.height - CLOSE_HIT) / 2, CLOSE_HIT, CLOSE_HIT);
     }
 
     @Override
     protected void paintComponent(Graphics graphics) {
         if (text.isEmpty() || getWidth() <= 0) {
+            lastPill = null;
             return;
         }
         Graphics2D g2 = (Graphics2D) graphics.create();
@@ -138,16 +151,20 @@ final class ComposerStatusLine extends JComponent {
                 g2.setFont(base.deriveFont(Font.BOLD, 11.5f));
             }
             FontMetrics metrics = g2.getFontMetrics();
-            Rectangle close = closeBounds();
-            String shown = fit(text, metrics, close.x - PAD_LEFT - 8);
-            int baseline = (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent();
+            String shown = fit(text, metrics, getWidth() - 2 * PAD_H - GAP - CLOSE_SIZE - 8);
+            Rectangle pill = pillBounds(metrics, shown);
+            lastPill = pill;
+            g2.setColor(withAlpha(ResearchUiPalette.LIGHT_CONTROL_BG, 235));
+            g2.fillRoundRect(pill.x, pill.y, pill.width, pill.height, pill.height, pill.height);
+            g2.setColor(withAlpha(tone.color, 120));
+            g2.drawRoundRect(pill.x, pill.y, pill.width - 1, pill.height - 1, pill.height, pill.height);
             g2.setColor(tone.color);
-            g2.drawString(shown, PAD_LEFT, baseline);
+            g2.drawString(shown, pill.x + PAD_H, pill.y + PAD_V + metrics.getAscent());
 
-            // Dünnes Kreuz zum Wegklicken, rechts in der Ecke.
-            int cx = close.x + close.width / 2;
-            int cy = close.y + close.height / 2;
+            // Dünnes Kreuz zum Wegklicken, direkt rechts neben dem Text.
             int half = CLOSE_SIZE / 2;
+            int cx = pill.x + pill.width - PAD_H - half;
+            int cy = pill.y + pill.height / 2;
             g2.setColor(closeHover ? ResearchUiPalette.TEXT_DARK : ResearchUiPalette.LIGHT_TEXT_MUTED);
             g2.setStroke(new BasicStroke(1.1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             g2.drawLine(cx - half, cy - half, cx + half, cy + half);
@@ -168,5 +185,9 @@ final class ComposerStatusLine extends JComponent {
             end--;
         }
         return value.substring(0, end).trim() + ellipsis;
+    }
+
+    private static Color withAlpha(Color color, int alpha) {
+        return new Color(color.getRed(), color.getGreen(), color.getBlue(), alpha);
     }
 }
