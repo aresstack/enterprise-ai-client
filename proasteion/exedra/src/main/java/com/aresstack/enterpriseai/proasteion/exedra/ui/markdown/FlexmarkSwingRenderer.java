@@ -53,9 +53,20 @@ final class FlexmarkSwingRenderer {
     }
 
     JPanel render(String markdown, boolean renderMermaid) {
-        Node document = parser.parse(markdown == null ? "" : SvgMarkdownBlocks.fence(markdown));
-        return renderContainer(document, renderMermaid, true);
+        String source = markdown == null ? "" : markdown;
+        String fenced = SvgMarkdownBlocks.fence(source);
+        Node document = parser.parse(fenced);
+        // Nur wenn der geparste Text der übergebene ist, stimmen die Quellpositionen der Blöcke mit ihm überein.
+        tagSourceOffsets = fenced.equals(source);
+        try {
+            return renderContainer(document, renderMermaid, true);
+        } finally {
+            tagSourceOffsets = false;
+        }
     }
+
+    /** Ob die Blöcke der obersten Ebene gerade ihre Quellposition bekommen ({@link MarkdownMessageView#SOURCE_START}). */
+    private boolean tagSourceOffsets;
 
     private JPanel renderContainer(Node container, boolean renderMermaid, boolean allowUnwrap) {
         JPanel panel = verticalPanel();
@@ -63,6 +74,10 @@ final class FlexmarkSwingRenderer {
         while (child != null) {
             JComponent component = renderBlock(child, renderMermaid, allowUnwrap);
             if (component != null) {
+                if (tagSourceOffsets && container.getParent() == null) {
+                    component.putClientProperty(MarkdownMessageView.SOURCE_START,
+                            Integer.valueOf(child.getStartOffset()));
+                }
                 component.setAlignmentX(Component.LEFT_ALIGNMENT);
                 panel.add(component);
                 panel.add(Box.createVerticalStrut(blockGap(child)));

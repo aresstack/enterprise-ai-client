@@ -22,6 +22,12 @@ import java.awt.Insets;
  */
 public final class MarkdownMessageView extends JPanel implements WidthAwareHeight {
 
+    /**
+     * Client-Property der gerenderten Blöcke oberster Ebene: ihre Startposition (Zeichen) im Markdown-Text, sofern
+     * {@link #sourceOffsetsExact()}. Damit springt der Lesebereich zu Quellpositionen der Dokumentnavigation.
+     */
+    public static final String SOURCE_START = "enterpriseai.markdown.sourceStart";
+
     private static final int MIN_STREAM_RENDER_DELAY_MILLIS = 90;
     private static final int MAX_STREAM_RENDER_DELAY_MILLIS = 2000;
     private static final int RENDER_COST_FACTOR = 3;
@@ -30,6 +36,7 @@ public final class MarkdownMessageView extends JPanel implements WidthAwareHeigh
     private final FlexmarkSwingRenderer renderer;
     private final Timer renderTimer;
     private boolean streaming;
+    private boolean sourceOffsetsExact;
 
     public MarkdownMessageView(MarkdownTheme theme, DesktopLinkOpener linkOpener,
                                MermaidImageRenderer mermaidImageRenderer) {
@@ -104,6 +111,38 @@ public final class MarkdownMessageView extends JPanel implements WidthAwareHeigh
         return contentHeight + insets.top + insets.bottom;
     }
 
+    /**
+     * {@code true}, wenn die Blöcke oberster Ebene ({@link #renderedBlocks()}) ihre Startposition im übergebenen
+     * Markdown-Text tragen ({@link #SOURCE_START}); sonst wurde der Text vor dem Rendern umgeformt.
+     */
+    public boolean sourceOffsetsExact() {
+        return sourceOffsetsExact;
+    }
+
+    /** Die gerenderten Blöcke oberster Ebene in Lesereihenfolge (ohne Abstandhalter). */
+    public java.util.List<javax.swing.JComponent> renderedBlocks() {
+        java.util.List<javax.swing.JComponent> blocks = new java.util.ArrayList<javax.swing.JComponent>();
+        Component content = ((BorderLayout) getLayout()).getLayoutComponent(BorderLayout.CENTER);
+        if (content instanceof java.awt.Container) {
+            for (Component child : ((java.awt.Container) content).getComponents()) {
+                if (child instanceof javax.swing.JComponent && !(child instanceof javax.swing.Box.Filler)) {
+                    blocks.add((javax.swing.JComponent) child);
+                }
+            }
+        }
+        return blocks;
+    }
+
+    private static boolean hasSourceOffsets(JPanel rendered) {
+        for (Component child : rendered.getComponents()) {
+            if (child instanceof javax.swing.JComponent
+                    && ((javax.swing.JComponent) child).getClientProperty(SOURCE_START) != null) {
+                return true;
+            }
+        }
+        return rendered.getComponentCount() == 0;
+    }
+
     private void renderThrottled() {
         long started = System.nanoTime();
         renderNow();
@@ -117,7 +156,9 @@ public final class MarkdownMessageView extends JPanel implements WidthAwareHeigh
         removeAll();
         boolean complete = !streaming;
         String normalized = MarkdownResponseNormalizer.normalize(markdown.toString(), complete);
-        add(renderer.render(normalized, complete), BorderLayout.CENTER);
+        JPanel rendered = renderer.render(normalized, complete);
+        sourceOffsetsExact = normalized.equals(markdown.toString()) && hasSourceOffsets(rendered);
+        add(rendered, BorderLayout.CENTER);
         revalidate();
         repaint();
     }

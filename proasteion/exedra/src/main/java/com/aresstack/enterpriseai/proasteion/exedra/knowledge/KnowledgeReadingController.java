@@ -11,7 +11,9 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchServ
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SourceSearchOutcome;
+import com.aresstack.enterpriseai.astu.acropolis.navigation.BuildDocumentNavigationUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
+import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
@@ -50,6 +52,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     private final BrowseKnowledgeSourceUseCase browse;
     private final KnowledgePrefetchService prefetch;
     private final FavoritesStore favorites;
+    private final BuildDocumentNavigationUseCase navigation;
     private final Executor uiExecutor;
     private final Executor workExecutor;
     private int searchGeneration;
@@ -62,12 +65,14 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
      * @param enabledSources die angebundenen, angehakten Quellen (frisch je Suche gelesen)
      * @param lookup         die angebundene Quelle zur ID oder {@code null}
      * @param favorites      Ablage der Favoriten; {@code null}: ohne ★ und ohne Favoriten
+     * @param navigation     baut die Dokumentnavigation (Wolkenbanner); {@code null}: Dokumente ohne Banner
      */
     public KnowledgeReadingController(ChatWorkspacePanel workspace,
                                       Supplier<List<KnowledgeSourceRegistration>> enabledSources,
                                       Function<String, KnowledgeSourceRegistration> lookup,
                                       SearchKnowledgeSourcesUseCase search, BrowseKnowledgeSourceUseCase browse,
                                       KnowledgePrefetchService prefetch, FavoritesStore favorites,
+                                      BuildDocumentNavigationUseCase navigation,
                                       Executor uiExecutor, Executor workExecutor) {
         if (workspace == null || enabledSources == null || lookup == null || search == null || browse == null
                 || prefetch == null || uiExecutor == null || workExecutor == null) {
@@ -80,6 +85,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         this.browse = browse;
         this.prefetch = prefetch;
         this.favorites = favorites;
+        this.navigation = navigation;
         this.uiExecutor = uiExecutor;
         this.workExecutor = workExecutor;
     }
@@ -214,7 +220,21 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 final KnowledgeResourceId id = KnowledgeResourceId.of(link.resourceId());
                 // Priority-Thread: Cache oder sofort, nie hinter dem Vorladen; die Seite wird sofort aufbereitet.
                 final KnowledgeDocument document = prefetch.openSelected(registration.port(), id);
-                uiExecutor.execute(() -> reader.showMarkdown(link.key(), document.text()));
+                if (navigation == null) {
+                    uiExecutor.execute(() -> reader.showMarkdown(link.key(), document.text()));
+                    return;
+                }
+                // Sofort: Text und Originalüberschriften (oder die schon analysierte Navigation dieser Fassung). Der
+                // Banner zieht nach, sobald die Index-Pipeline genau diese Fassung aufbereitet hat (ohne Vorrang).
+                final DocumentNavigation outline = navigation.outline(document);
+                uiExecutor.execute(() -> reader.showDocument(link.key(), document.text(), outline));
+                if (outline.analysis() != DocumentNavigation.Analysis.SEMANTIC) {
+                    navigation.analyze(document).thenAccept(analyzed -> {
+                        if (analyzed != outline) {
+                            uiExecutor.execute(() -> reader.updateNavigation(link.key(), analyzed));
+                        }
+                    });
+                }
             }
         } catch (KnowledgeSourceException e) {
             LOG.log(Level.WARNING, "Lesen von " + link.key() + " fehlgeschlagen (" + e.kind() + ")", e);

@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.astu.acropolis.navigation.BuildDocumentNavigationUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.navigation.ChatSectionLabeler;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
 import com.aresstack.enterpriseai.proasteion.application.agent.AcpAgentLauncher;
 import com.aresstack.enterpriseai.proasteion.application.agent.AgentModelChoice;
@@ -118,6 +120,7 @@ public final class CompositionRoot {
     private volatile KnowledgeSourceCatalog liveSources;
     private final SearchDrivenIndexingUseCase searchIndexing;
     private final KnowledgePrefetchService prefetch;
+    private final BuildDocumentNavigationUseCase documentNavigation;
     private final ShutdownSequence shutdown;
     private java.util.concurrent.ExecutorService imagePool;
 
@@ -142,11 +145,13 @@ public final class CompositionRoot {
         // Indexiert wird wie askai arch in semantische Passagen: Struktur zuerst, Satzgrenzen aus dem OpenNLP-Modell
         // der eingestellten Sprache, Themenwechsel über Satzfenster, eigenes Embedding je Passage. Ändert sich Text,
         // Zerlegung oder Embedding-Modell, wird neu verarbeitet, sonst nicht.
+        final NlpModels nlpModels = NlpModels.inApplicationDirectory();
+        final String passageLanguage = knowledge.passageLanguage();
         this.indexing = new IndexKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
                 new KnowledgeChunker(knowledge.chunking()), knowledge.embeddingBatchSize())
                 .withPassages(new SemanticPassageSplitter(new com.aresstack.enterpriseai.astu.acropolis.passage.PassageSegmentation(
                         ports.embeddings(), new IndexSentenceSegmenter(
-                                NlpModels.inApplicationDirectory(),
+                                nlpModels,
                                 NlpModels.textAnalysis(),
                                 knowledge.passageLanguage()))));
         // Lesen lädt aus der Quelle, die die ID kennt (knowledge_read); das Gelesene kommt danach in den Index.
@@ -197,6 +202,14 @@ public final class CompositionRoot {
         this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, searchIndexing,
                 id -> !selection.isRestricted() || selection.isEnabled(id), config.agent().toolSettings());
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
+        // Dokumentnavigation im Lesebereich: Passagen der Index-Pipeline (askai arch PassageSegmentation) + TopicClusterer,
+        // ohne Vorrang in der Index-Warteschlange; ohne OpenNLP-Satzmodell nur Originalüberschriften. Themenabschnitte
+        // benennt das gewählte Chat-Modell (austauschbar), sonst bleibt die Bezeichnung aus der Analyse.
+        this.documentNavigation = new BuildDocumentNavigationUseCase(prefetch,
+                () -> nlpModels.hasSentenceModel(passageLanguage),
+                new ChatSectionLabeler(ports.chat(), modelKey(
+                        com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.CHAT)),
+                workExecutor);
         // Anhänge (Chat und Agent): Text über den Dokument-Port, Markdown/Klartext direkt, sonst Apache Tika.
         this.attachmentText = new DocumentAttachmentTextExtractor(DocumentExtraction.detector(),
                 DocumentExtraction.registry());
@@ -443,6 +456,11 @@ public final class CompositionRoot {
     /** Vorlader der Suchtreffer (Cache, Priority-Lesen, Indexierung als Nebenwirkung). */
     public KnowledgePrefetchService prefetch() {
         return prefetch;
+    }
+
+    /** Baut die Dokumentnavigation des Lesebereichs (Wolkenbanner). */
+    public BuildDocumentNavigationUseCase documentNavigation() {
+        return documentNavigation;
     }
 
     public SearchDrivenIndexingUseCase searchIndexing() {

@@ -340,6 +340,29 @@ public final class KnowledgePrefetchService {
     }
 
     /**
+     * Reiht ein geladenes Dokument zur Aufbereitung ein, ohne Vorrang (FIFO wie jede andere Seite), und meldet das
+     * Ergebnis, sobald der Index-Thread es erreicht. Ist die Fassung schon mit der aktuellen Zerlegung aufbereitet,
+     * ist das Ergebnis sofort da. Für Aufrufer, die nicht blockieren (Dokumentnavigation).
+     *
+     * @return das Ergebnis; scheitert die Aufbereitung, endet die Zukunft mit dem Fehler
+     */
+    public CompletableFuture<ResourceIndexingOutcome> whenIndexed(KnowledgeDocument document) {
+        if (document == null) {
+            throw new IllegalArgumentException("document must not be null");
+        }
+        java.util.Optional<com.aresstack.enterpriseai.astu.acropolis.chalcotheca.IndexedResourceState> state =
+                indexing.stateOf(document.id());
+        if (state.isPresent() && indexing.isPrepared(state.get())
+                && document.contentHash().equals(state.get().contentHash())) {
+            return CompletableFuture.completedFuture(ResourceIndexingOutcome.done(document.id(),
+                    document.resource().title(), IndexingStatus.UNCHANGED, 0));
+        }
+        CompletableFuture<ResourceIndexingOutcome> done = new CompletableFuture<ResourceIndexingOutcome>();
+        enqueueIndex(document, done, new java.util.concurrent.atomic.AtomicBoolean());
+        return done;
+    }
+
+    /**
      * Wie {@link #read}, aber am Speicher-Cache vorbei: für Ressourcen, deren Stand unklar oder geändert ist
      * ({@code load} holt dann typischerweise mit {@code REFRESH_EXTERNAL} neu).
      */

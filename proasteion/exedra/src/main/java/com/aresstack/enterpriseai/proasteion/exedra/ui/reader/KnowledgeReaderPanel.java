@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 
+import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.CopyrightFooter;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
@@ -74,6 +75,7 @@ public final class KnowledgeReaderPanel extends JPanel {
     static final String FAVORITE_ADD = "Als Favorit merken";
     static final String FAVORITE_REMOVE = "Aus den Favoriten entfernen";
     private static final String EMPTY_CARD = "empty";
+    private static final int PAGE_PADDING_TOP = 14;
 
     private final ComicPalette palette;
     private final MarkdownTheme theme;
@@ -199,6 +201,15 @@ public final class KnowledgeReaderPanel extends JPanel {
 
     /** Das Dokument als Markdown. */
     public void showMarkdown(String key, String markdown) {
+        showDocument(key, markdown, null);
+    }
+
+    /**
+     * Das Dokument als Markdown mit dem Navigationsbanner darüber (FA-07): Kapitel als Wolkenreihe, aufklappbar.
+     * {@code navigation} {@code null} oder leer: kein Banner. Der angezeigte Text ist genau {@code markdown}; die
+     * Quellpositionen der Navigation beziehen sich auf ihn.
+     */
+    public void showDocument(String key, String markdown, DocumentNavigation navigation) {
         Tab tab = tabs.get(key);
         if (tab == null) {
             return;
@@ -208,9 +219,39 @@ public final class KnowledgeReaderPanel extends JPanel {
         WidthTracking page = new WidthTracking(new BorderLayout());
         page.setBackground(ResearchUiPalette.LIGHT_CONTROL_BG);
         page.setOpaque(true);
-        page.setBorder(BorderFactory.createEmptyBorder(14, 20, 20, 20));
+        page.setBorder(BorderFactory.createEmptyBorder(PAGE_PADDING_TOP, 20, 20, 20));
         page.add(view, BorderLayout.NORTH);
-        replace(tab, scroll(page));
+        NavigableDocumentPage document = new NavigableDocumentPage(scroll(page), page, view, PAGE_PADDING_TOP);
+        document.setNavigation(navigation);
+        tab.document = document;
+        replace(tab, document);
+    }
+
+    /**
+     * Zieht die Navigation eines offenen Dokuments nach (z. B. sobald die semantische Analyse fertig ist), ohne das
+     * Dokument neu zu rendern oder die Leseposition zu verlieren. Nur für dieselbe Fassung ({@code captureId}).
+     */
+    public void updateNavigation(String key, DocumentNavigation navigation) {
+        Tab tab = tabs.get(key);
+        if (tab == null || tab.document == null || navigation == null) {
+            return;
+        }
+        DocumentNavigation current = tab.document.sky().navigation();
+        if (current != null && !current.captureId().equals(navigation.captureId())) {
+            return; // inzwischen eine andere Fassung angezeigt
+        }
+        tab.document.setNavigation(navigation);
+    }
+
+    /** Der Navigationsbanner des Reiters oder {@code null} (kein Dokument). */
+    DocumentNavigationSky navigationSky(String key) {
+        Tab tab = tabs.get(key);
+        return tab == null || tab.document == null ? null : tab.document.sky();
+    }
+
+    NavigableDocumentPage documentPage(String key) {
+        Tab tab = tabs.get(key);
+        return tab == null ? null : tab.document;
     }
 
     /** Die Ressourcen einer Quelle; ein Klick öffnet sie als Vorschau, ein Doppelklick heftet an. */
@@ -368,6 +409,9 @@ public final class KnowledgeReaderPanel extends JPanel {
         }
         content.setName(tab.card);
         tab.content = content;
+        if (content != tab.document) {
+            tab.document = null;
+        }
         deck.add(content, tab.card);
         refresh();
     }
@@ -426,6 +470,7 @@ public final class KnowledgeReaderPanel extends JPanel {
         boolean pinned;
         JComponent content;
         final List<FavoriteStarButton> stars = new ArrayList<FavoriteStarButton>();
+        NavigableDocumentPage document;
 
         Tab(ReaderLink link, boolean pinned, String card) {
             this.link = link;

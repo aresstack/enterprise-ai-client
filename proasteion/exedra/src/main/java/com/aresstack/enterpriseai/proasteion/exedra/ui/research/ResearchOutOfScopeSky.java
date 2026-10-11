@@ -18,7 +18,6 @@ import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.LinearGradientPaint;
 import java.awt.Rectangle;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
@@ -109,29 +108,8 @@ public final class ResearchOutOfScopeSky extends JPanel {
                 cloudScroll.getVerticalScrollBar()); // the ONE shared AskAI scrollbar look
         // Wheel priority: an EXPANDED sky with internal overflow scrolls its clouds first; when
         // there is nothing to scroll internally, the event is handed onward so the TRANSCRIPT
-        // scrolls — never both areas at once. (The default scroll-pane wheel handling would
-        // swallow the event even with nothing to scroll, killing chat scrolling over the sky.)
-        cloudScroll.setWheelScrollingEnabled(false);
-        cloudScroll.addMouseWheelListener(event -> {
-            javax.swing.BoundedRangeModel model = cloudScroll.getVerticalScrollBar().getModel();
-            boolean scrollable = model.getExtent() > 0
-                    && model.getExtent() < model.getMaximum() - model.getMinimum();
-            if (scrollable) {
-                int delta = (int) Math.round(event.getPreciseWheelRotation()
-                        * event.getScrollAmount() * 16);
-                if (delta == 0 && event.getPreciseWheelRotation() != 0) {
-                    delta = event.getPreciseWheelRotation() < 0 ? -1 : 1;
-                }
-                model.setValue(model.getValue() + delta);
-                event.consume();
-            } else {
-                java.awt.Container parent = getParent();
-                if (parent != null) {
-                    parent.dispatchEvent(javax.swing.SwingUtilities.convertMouseEvent(
-                            (java.awt.Component) event.getSource(), event, parent));
-                }
-            }
-        });
+        // scrolls — never both areas at once (shared mechanism, see SkyClouds).
+        com.aresstack.enterpriseai.ui.comic.paint.SkyClouds.installWheelPriority(cloudScroll, this);
         add(cloudScroll);
         cloudFlow.add(moreCloud);
         cloudFlow.add(addCloud);
@@ -258,29 +236,9 @@ public final class ResearchOutOfScopeSky extends JPanel {
             if (skyHeight <= 0) {
                 return;
             }
-            Color top = ResearchUiPalette.SKY_TOP;
             // Air, not a panel: strongly covering at the very top, bubbles faintly visible through
-            // the middle, fully transparent at the bottom — a LONG soft ramp instead of a filled
-            // rectangle, so no horizontal edge is ever perceptible.
-            float contentStop = Math.max(0.1f, Math.min(0.85f,
-                    contentBottom / (float) skyHeight));
-            LinearGradientPaint sky = new LinearGradientPaint(0f, 0f, 0f, skyHeight,
-                    new float[]{0f, contentStop * 0.55f, contentStop, 1f},
-                    new Color[]{
-                            new Color(top.getRed(), top.getGreen(), top.getBlue(), 242),
-                            new Color(top.getRed(), top.getGreen(), top.getBlue(), 205),
-                            new Color(top.getRed(), top.getGreen(), top.getBlue(), 105),
-                            new Color(top.getRed(), top.getGreen(), top.getBlue(), 0)});
-            g2.setPaint(sky);
-            g2.fillRect(0, 0, getWidth(), skyHeight);
-
-            // Polish: two very faint white cloud forms drifting in the background.
-            g2.setColor(new Color(255, 255, 255, 30));
-            int w = getWidth();
-            g2.fill(new Ellipse2D.Float(w * 0.08f, contentBottom * 0.15f, w * 0.28f,
-                    Math.max(18f, contentBottom * 0.4f)));
-            g2.fill(new Ellipse2D.Float(w * 0.58f, contentBottom * 0.45f, w * 0.34f,
-                    Math.max(16f, contentBottom * 0.35f)));
+            // the middle, fully transparent at the bottom (shared mechanism, see SkyClouds).
+            com.aresstack.enterpriseai.ui.comic.paint.SkyClouds.paintSky(g2, getWidth(), contentBottom, skyHeight);
         } finally {
             g2.dispose();
         }
@@ -482,35 +440,18 @@ public final class ResearchOutOfScopeSky extends JPanel {
 
     // ------------------------------------------------------------------ shared cloud painting
 
-    /** The soft cloud silhouette: rounded body with a gently irregular top contour — no emoji. */
+    /** The soft cloud silhouette (shared with the reader's navigation banner, see SkyClouds). */
     private static Area cloudShape(int width, int height) {
-        float bodyTop = 7f;
-        Area cloud = new Area(new RoundRectangle2D.Float(0.6f, bodyTop, width - 1.2f,
-                height - bodyTop - 0.6f, height - bodyTop, height - bodyTop));
-        if (width > 46) {
-            cloud.add(new Area(new Ellipse2D.Float(width * 0.16f, 2.5f, 15f, 15f)));
-            cloud.add(new Area(new Ellipse2D.Float(width * 0.42f, 0.8f, 18f, 18f)));
-            cloud.add(new Area(new Ellipse2D.Float(width * 0.66f, 3.2f, 13f, 13f)));
-        }
-        return cloud;
+        return com.aresstack.enterpriseai.ui.comic.paint.SkyClouds.cloudShape(width, height);
     }
 
     private static void paintCloudBase(Graphics2D g2, int width, int height, boolean hovered) {
-        Area shape = cloudShape(width, height);
-        g2.setColor(hovered ? ResearchUiPalette.CLOUD_HOVER_SURFACE
-                : ResearchUiPalette.CLOUD_SURFACE);
-        g2.fill(shape);
-        g2.setColor(hovered ? ResearchUiPalette.CLOUD_HOVER_BORDER
-                : ResearchUiPalette.CLOUD_BORDER);
-        g2.setStroke(new BasicStroke(1.2f));
-        g2.draw(shape);
+        com.aresstack.enterpriseai.ui.comic.paint.SkyClouds.paintCloudBase(g2, width, height, hovered);
     }
 
     /** Text baseline for the cloud body (the lower, calm part of the silhouette). */
     private static int cloudTextY(FontMetrics metrics, int height) {
-        float bodyTop = 7f;
-        return Math.round(bodyTop + (height - bodyTop - metrics.getHeight()) / 2f)
-                + metrics.getAscent();
+        return com.aresstack.enterpriseai.ui.comic.paint.SkyClouds.cloudTextY(metrics, height);
     }
 
     // ------------------------------------------------------------------ the wrap panel

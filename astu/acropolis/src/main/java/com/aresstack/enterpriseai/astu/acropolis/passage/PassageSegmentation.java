@@ -215,33 +215,8 @@ public final class PassageSegmentation {
     private static double boundaryStrength(List<EmbeddingVector> vectors, int boundaryAfter) {
         int leftFrom = Math.max(0, boundaryAfter - WINDOW_SIZE + 1);
         int rightTo = Math.min(vectors.size(), boundaryAfter + 1 + WINDOW_SIZE);
-        return cosine(mean(vectors.subList(leftFrom, boundaryAfter + 1)),
-                mean(vectors.subList(boundaryAfter + 1, rightTo)));
-    }
-
-    private static double[] mean(List<EmbeddingVector> vectors) {
-        double[] sum = new double[vectors.get(0).dimension()];
-        for (EmbeddingVector vector : vectors) {
-            for (int d = 0; d < sum.length; d++) {
-                sum[d] += vector.valueAt(d);
-            }
-        }
-        for (int d = 0; d < sum.length; d++) {
-            sum[d] /= vectors.size();
-        }
-        return sum;
-    }
-
-    private static double cosine(double[] left, double[] right) {
-        double dot = 0;
-        double leftNorm = 0;
-        double rightNorm = 0;
-        for (int d = 0; d < left.length; d++) {
-            dot += left[d] * right[d];
-            leftNorm += left[d] * left[d];
-            rightNorm += right[d] * right[d];
-        }
-        return leftNorm == 0 || rightNorm == 0 ? 0 : dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
+        return VectorMath.cosine(VectorMath.meanValues(vectors.subList(leftFrom, boundaryAfter + 1)),
+                VectorMath.meanValues(vectors.subList(boundaryAfter + 1, rightTo)));
     }
 
     /** Die Blöcke, wie die Quelle sie aus ihrem Dokumentbaum liefert (askai: die Struktur geht vor). */

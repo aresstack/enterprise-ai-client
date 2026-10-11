@@ -189,8 +189,8 @@ public final class ShellAssembly {
                 new SearchKnowledgeSourcesUseCase(root.ports().index(), root.ports().embeddingSpaceSource(),
                         root.workExecutor()).withIndexedHits(),
                 new BrowseKnowledgeSourceUseCase(KnowledgeDocumentReader.direct()), root.prefetch(),
-                new FavoritesStore(chatsDirectory.resolveSibling(FAVORITES_FILE)), root.uiExecutor(),
-                root.workExecutor());
+                new FavoritesStore(chatsDirectory.resolveSibling(FAVORITES_FILE)), root.documentNavigation(),
+                root.uiExecutor(), root.workExecutor());
         sources.setReading(reading);
         reading.attach();
         final ShellView view = new ShellView(workspace, chatModel, chatActions, agent, sources, chatShell.composer(),

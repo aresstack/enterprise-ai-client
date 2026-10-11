@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.markdown;
 
 import javax.swing.JTextPane;
+import javax.swing.text.DefaultCaret;
 import javax.swing.text.View;
 import java.awt.Dimension;
 import java.awt.Insets;
@@ -13,6 +14,11 @@ final class WrappingTextPane extends JTextPane {
         setOpaque(false);
         setBorder(null);
         setFocusable(true);
+        // Nur lesen: Einfügen des Texts setzt keine Schreibmarke, die den Leser per scrollRectToVisible ans Ende
+        // eines Dokuments rollen würde. Markieren mit der Maus bleibt möglich.
+        if (getCaret() instanceof DefaultCaret) {
+            ((DefaultCaret) getCaret()).setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
+        }
     }
 
     @Override

@@ -88,6 +88,9 @@ public class KnowledgeReaderPanelTest {
     }
 
     private static JScrollPane find(Component component) {
+        if (!component.isVisible()) {
+            return null; // z. B. der ausgeblendete Navigationsbanner über der Seite
+        }
         if (component instanceof JScrollPane) {
             return (JScrollPane) component;
         }
