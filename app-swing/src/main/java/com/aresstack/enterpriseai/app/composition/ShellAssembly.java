@@ -313,6 +313,10 @@ public final class ShellAssembly {
                 root.workExecutor(),
                 root.clock(), root.zone());
         controller.setVaultTitles(() -> vaultTitles(ports.secrets()));
+        controller.setPasswordStore(new com.aresstack.enterpriseai.app.settings.VaultPasswordStore(
+                () -> com.aresstack.enterpriseai.app.security.SecretVaults.of(ports.secrets()), root.workExecutor(),
+                root.uiExecutor(), (url, user, password, alias) ->
+                        ConfluenceEntryCheck.check(root.config().network(), url, user, password, alias)));
         controller.setVaultCertificateAliases(title -> vaultCertificateAlias(ports.secrets(), title));
         controller.setVaultCertificateAliasWriter((title, alias) -> storeVaultCertificateAlias(ports.secrets(), title,
                 alias));

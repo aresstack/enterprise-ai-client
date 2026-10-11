@@ -36,6 +36,11 @@ public interface SourceActions {
         onResult.accept(Collections.<String>emptyList());
     }
 
+    /** Die Passwortverwaltung für „➕ Neu“ am KeePass-Eintrag. */
+    default PasswordStore passwordStore() {
+        return PasswordStore.unavailable("In dieser Umgebung nicht verfügbar.");
+    }
+
     /**
      * Der Zertifikat-Alias, den MainframeMate im KeePass-Eintrag ablegt ({@code MM_CertAlias}), zur Vorbelegung des
      * Felds „Zertifikat“; das Ergebnis kommt später auf dem EDT, leer, wenn der Eintrag keinen trägt oder KeePass

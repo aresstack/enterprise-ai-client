@@ -42,6 +42,21 @@ interface KeePassRpcTransport {
             return java.util.Collections.emptyList();
         }
 
+        /** Legt einen Eintrag in der Wurzelgruppe an ({@code AddLogin}). */
+        default void addEntry(KeePassEntry entry) throws KeePassRpcException {
+            throw new KeePassRpcException(KeePassRpcException.Kind.PROTOCOL, "Anlegen nicht unterstützt");
+        }
+
+        /** Ersetzt den Eintrag {@code existing} durch {@code entry} ({@code UpdateLogin}). */
+        default void updateEntry(KeePassEntry entry, KeePassEntry existing) throws KeePassRpcException {
+            throw new KeePassRpcException(KeePassRpcException.Kind.PROTOCOL, "Ändern nicht unterstützt");
+        }
+
+        /** Löscht den Eintrag ({@code RemoveEntry}). */
+        default void removeEntry(KeePassEntry existing) throws KeePassRpcException {
+            throw new KeePassRpcException(KeePassRpcException.Kind.PROTOCOL, "Löschen nicht unterstützt");
+        }
+
         @Override
         void close();
     }

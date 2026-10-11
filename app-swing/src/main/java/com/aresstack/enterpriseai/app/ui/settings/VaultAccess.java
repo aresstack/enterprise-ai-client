@@ -1,15 +1,19 @@
 package com.aresstack.enterpriseai.app.ui.settings;
 
+import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.text.JTextComponent;
+import java.awt.BorderLayout;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Supplier;
 
 /**
  * Zugang zu einem Dienst wie in MainframeMate: „KeePass“ (Standard) mit Auswahl des Eintrags, der Benutzer,
@@ -21,6 +25,7 @@ final class VaultAccess {
 
     static final String MODE_KEEPASS = "KeePass";
     static final String MODE_MANUAL = "Manuell";
+    static final String NEW_ENTRY = "➕ Neu";
     static final String ADVANCED_CLOSED = "▸ Erweitert";
     static final String ADVANCED_OPEN = "▾ Erweitert";
     private static final String ASK = "ask:";
@@ -122,6 +127,35 @@ final class VaultAccess {
         toggle.setHorizontalAlignment(JButton.LEFT);
         toggle.setToolTipText("Weitere Angaben; leer lassen genügt in der Regel");
         return toggle;
+    }
+
+    /**
+     * Eintragsauswahl mit „➕ Neu“ dahinter: legt über die Passwortverwaltung einen KeePass-Eintrag an (Kategorie
+     * vorbelegt) und wählt ihn danach aus.
+     */
+    static JPanel withNewEntry(final JComboBox<String> entry, final Supplier<PasswordStore> store,
+                               final Supplier<String> category, final ComicPalette palette) {
+        JPanel row = new JPanel(new BorderLayout(6, 0));
+        row.setOpaque(false);
+        row.add(entry, BorderLayout.CENTER);
+        ComposerButton add = new ComposerButton(null, NEW_ENTRY, false, "Neuen KeePass-Eintrag anlegen");
+        add.addActionListener(event -> {
+            String saved = PasswordEntryDialog.show(row, store.get(), null,
+                    PasswordEntryDialog.categoryFor(category.get()), palette);
+            if (saved != null) {
+                List<String> titles = new ArrayList<String>();
+                for (int i = 0; i < entry.getItemCount(); i++) {
+                    titles.add(entry.getItemAt(i));
+                }
+                if (!titles.contains(saved)) {
+                    titles.add(saved);
+                }
+                setText(entry, saved);
+                setEntries(entry, titles);
+            }
+        });
+        row.add(add, BorderLayout.EAST);
+        return row;
     }
 
     /** Für Tests: das Eingabefeld der Eintragsauswahl. */

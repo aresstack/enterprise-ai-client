@@ -47,6 +47,14 @@ public interface SettingsDialogActions {
     }
 
     /**
+     * Die Passwortverwaltung (Reiter „KeePass“, „➕ Neu“ am KeePass-Eintrag) mit den KeePass-Einstellungen des
+     * Entwurfs; ohne Verdrahtung scheitert jeder Zugriff mit einer Meldung.
+     */
+    default PasswordStore passwordStore(SettingsForm form) {
+        return PasswordStore.unavailable("In dieser Umgebung nicht verfügbar.");
+    }
+
+    /**
      * Prüft mit dem Entwurf Schritt für Schritt den Weg zum KI-Dienst (API-Key aus KeePass, Proxy-Route,
      * HTTPS-Verbindung, {@code GET /models}, Chat- und Embedding-Modell) und meldet jeden Schritt, sobald er feststeht, danach genau einmal
      * {@link ConnectionCheckListener#onFinished}; alles auf dem EDT. Ohne Verdrahtung meldet die Vorgabe, dass der

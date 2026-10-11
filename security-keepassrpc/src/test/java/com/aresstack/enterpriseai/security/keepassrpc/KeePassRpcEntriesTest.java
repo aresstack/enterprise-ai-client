@@ -34,6 +34,24 @@ public class KeePassRpcEntriesTest {
     }
 
     @Test
+    public void loginDtoRoundTripsLikeMainframeMate() {
+        java.util.Map<String, String> fields = new java.util.LinkedHashMap<String, String>();
+        fields.put("MM_Category", "Confluence");
+        fields.put("MM_CertAlias", "my-cert");
+        KeePassEntry written = new KeePassEntry("Confluence", "alice", "pw".toCharArray(), null, fields, "", "",
+                "https://wiki.example/");
+        com.google.gson.JsonArray list = new com.google.gson.JsonArray();
+        list.add(KeePassRpcEntries.login(written));
+
+        KeePassEntry read = KeePassRpcEntries.exactTitleMatch(list, "Confluence");
+        assertEquals("alice", read.userName());
+        assertArrayEquals("pw".toCharArray(), read.password());
+        assertEquals("https://wiki.example/", read.url());
+        assertEquals("my-cert", read.attributes().get("MM_CertAlias"));
+        assertEquals("Confluence", read.attributes().get("MM_Category"));
+    }
+
+    @Test
     public void noMatchOrNoArrayGivesNull() {
         assertNull(KeePassRpcEntries.exactTitleMatch(JsonParser.parseString("[{\"title\":\"A\"}]"), "B"));
         assertNull(KeePassRpcEntries.exactTitleMatch(JsonParser.parseString("{}"), "B"));

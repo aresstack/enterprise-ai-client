@@ -6,6 +6,9 @@ import com.aresstack.enterpriseai.security.api.SecretMaterial;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException.Reason;
+import com.aresstack.enterpriseai.security.api.SecretVault;
+import com.aresstack.enterpriseai.security.api.VaultEntry;
+import com.aresstack.enterpriseai.security.api.VaultEntryDraft;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,11 +32,16 @@ import java.util.logging.Logger;
  * {@link Reason#NOT_FOUND}; Pairing-Passwort falsch oder Schlüssel nach neuem Pairing weiter abgelehnt →
  * {@link Reason#ACCESS_DENIED}; Pairing abgebrochen → {@link Reason#CANCELLED}.
  *
+ * <p>Als {@link SecretVault} legt er Einträge wie MainframeMate {@code KeePassRpcClient} an, ändert und löscht sie
+ * ({@code AddLogin}, {@code UpdateLogin}, {@code RemoveEntry}); Zusatzfelder ({@code MM_*}) stehen als
+ * {@code FFTtext} in {@code formFieldList}. Lehnt KeePassRPC einen Schreibzugriff ab, meldet er
+ * {@link Reason#ACCESS_DENIED}.
+ *
  * <p>Herkunft: Architektur nach corenth {@code KeePassRpcSecretMaterialProvider} (schmale Lookup-Naht hinter dem
  * Provider), Funktion nach MainframeMate {@code KeePassProvider}/{@code KeePassRpcClient}; die unvollständige
  * Reflection-Bindung aus corenth wurde nicht übernommen.
  */
-public final class KeePassRpcSecretProvider implements SecretProvider {
+public final class KeePassRpcSecretProvider implements SecretProvider, SecretVault {
 
     private static final Logger LOG = Logger.getLogger(KeePassRpcSecretProvider.class.getName());
     private static final String SCHEME = "keepass:";
@@ -157,6 +165,128 @@ public final class KeePassRpcSecretProvider implements SecretProvider {
                 }
             }
         });
+    }
+
+    @Override
+    public synchronized List<VaultEntry> list() throws SecretUnavailableException {
+        return inSession(SecretRef.of("keepass:*"), new SessionCall<List<VaultEntry>>() {
+            @Override
+            public List<VaultEntry> run(KeePassRpcTransport.Session session) throws KeePassRpcException {
+                List<VaultEntry> entries = new ArrayList<VaultEntry>();
+                Set<String> seen = new HashSet<String>();
+                for (KeePassEntry entry : session.allEntries()) {
+                    try {
+                        if (!entry.title().trim().isEmpty() && seen.add(entry.title().trim())) {
+                            entries.add(new VaultEntry(entry.title(), entry.userName(),
+                                    entry.url(),
+                                    entry.attributes()));
+                        }
+                    } finally {
+                        entry.close();
+                    }
+                }
+                return entries;
+            }
+        });
+    }
+
+    @Override
+    public synchronized VaultEntryDraft read(String title) throws SecretUnavailableException {
+        final SecretRef ref = refOf(title);
+        return inSession(ref, new SessionCall<VaultEntryDraft>() {
+            @Override
+            public VaultEntryDraft run(KeePassRpcTransport.Session session)
+                    throws KeePassRpcException, SecretUnavailableException {
+                KeePassEntry entry = existing(session, ref);
+                try {
+                    return new VaultEntryDraft(entry.title(), entry.userName(), entry.password(),
+                            entry.url(), entry.attributes());
+                } finally {
+                    entry.close();
+                }
+            }
+        });
+    }
+
+    @Override
+    public synchronized void save(final VaultEntryDraft draft) throws SecretUnavailableException {
+        if (draft == null) {
+            throw new IllegalArgumentException("Eintrag darf nicht null sein");
+        }
+        final SecretRef ref = refOf(draft.title());
+        inSession(ref, new SessionCall<Void>() {
+            @Override
+            public Void run(KeePassRpcTransport.Session session)
+                    throws KeePassRpcException, SecretUnavailableException {
+                char[] password = draft.copyPassword();
+                KeePassEntry existing = session.findEntryByTitle(draft.title());
+                try (KeePassEntry entry = new KeePassEntry(draft.title(), draft.userName(), password,
+                        draft.location(), draft.fields(), "", "", draft.location())) {
+                    if (existing == null) {
+                        session.addEntry(entry);
+                    } else {
+                        session.updateEntry(entry, existing);
+                    }
+                    LOG.info("KeePass-Eintrag " + (existing == null ? "angelegt" : "geändert") + ": "
+                            + draft.title());
+                    return null;
+                } catch (KeePassRpcException e) {
+                    throw rejected(ref, e);
+                } finally {
+                    Arrays.fill(password, '\0');
+                    if (existing != null) {
+                        existing.close();
+                    }
+                }
+            }
+        });
+    }
+
+    @Override
+    public synchronized void remove(String title) throws SecretUnavailableException {
+        final SecretRef ref = refOf(title);
+        inSession(ref, new SessionCall<Void>() {
+            @Override
+            public Void run(KeePassRpcTransport.Session session)
+                    throws KeePassRpcException, SecretUnavailableException {
+                KeePassEntry existing = existing(session, ref);
+                try {
+                    session.removeEntry(existing);
+                    LOG.info("KeePass-Eintrag gelöscht: " + existing.title());
+                    return null;
+                } catch (KeePassRpcException e) {
+                    throw rejected(ref, e);
+                } finally {
+                    existing.close();
+                }
+            }
+        });
+    }
+
+    private static KeePassEntry existing(KeePassRpcTransport.Session session, SecretRef ref)
+            throws KeePassRpcException, SecretUnavailableException {
+        KeePassEntry entry = session.findEntryByTitle(entryTitleOf(ref));
+        if (entry == null) {
+            throw new SecretUnavailableException(Reason.NOT_FOUND, ref, "kein KeePass-Eintrag mit diesem Titel");
+        }
+        return entry;
+    }
+
+    private static SecretRef refOf(String title) {
+        if (title == null || title.trim().isEmpty()) {
+            throw new IllegalArgumentException("Titel darf nicht leer sein");
+        }
+        return SecretRef.of(title.trim());
+    }
+
+    /** Verbindungsfehler bleiben Verbindungsfehler; eine Fehlerantwort von KeePassRPC ist eine Ablehnung. */
+    private static KeePassRpcException rejected(SecretRef ref, KeePassRpcException e)
+            throws SecretUnavailableException {
+        if (e.kind() == KeePassRpcException.Kind.PROTOCOL) {
+            throw new SecretUnavailableException(Reason.ACCESS_DENIED, ref,
+                    "KeePassRPC lehnt ab: " + e.getMessage(), e);
+        }
+        return e;
     }
 
     /**

@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Protokoll und Nachrichtenformat aus MainframeMate {@code KeePassRpcClient} und
  * {@code KeePassRpcPairingDialog} (dort gegen KeePass 2.x/KeePassRPC erprobt, Protokoll {@code 1.7.2}, Referenz:
  * <a href="https://forum.kee.pm/t/keepassrpc-technical-detail/2364">KeePassRPC technical detail</a> und der
- * Go-Client {@code gkp}). Übernommen ist nur das Lesen von Einträgen; Anlegen/Ändern/Löschen aus MainframeMate
- * braucht dieses Projekt nicht. Abweichungen: kein Logging von Nachrichteninhalten (MainframeMate loggte
+ * Go-Client {@code gkp}). Lesen wie dort; Anlegen/Ändern/Löschen wie MainframeMate {@code addLogin}/
+ * {@code updateLogin}/{@code removeEntry} für die Passwortverwaltung. Abweichungen: kein Logging von Nachrichteninhalten (MainframeMate loggte
  * entschlüsselte Antworten auf FINE, also inklusive Passwörtern), Einträge nur bei exakt passendem Titel statt
  * "erster Treffer der URL-Suche", Base64 über {@code java.util.Base64} statt {@code javax.xml.bind}.
  */
@@ -304,6 +304,51 @@ final class WebSocketKeePassRpcTransport implements KeePassRpcTransport {
         @Override
         public java.util.List<KeePassEntry> allEntries() throws KeePassRpcException {
             return KeePassRpcEntries.withoutSecrets(call("GetAllEntries", new JsonArray()));
+        }
+
+        @Override
+        public void addEntry(KeePassEntry entry) throws KeePassRpcException {
+            // AddLogin(login, parentUUID, dbFileName): leer = Wurzelgruppe der aktiven Datenbank
+            JsonArray params = new JsonArray();
+            params.add(KeePassRpcEntries.login(entry));
+            params.add("");
+            params.add("");
+            callAny("AddLogin", params);
+        }
+
+        @Override
+        public void updateEntry(KeePassEntry entry, KeePassEntry existing) throws KeePassRpcException {
+            // UpdateLogin(login, oldLoginUUID, urlMergeMode, dbFileName); KeePassRPC verlangt einen Dateinamen
+            JsonObject login = KeePassRpcEntries.login(entry);
+            login.addProperty("uniqueID", existing.uniqueId());
+            JsonArray params = new JsonArray();
+            params.add(login);
+            params.add(existing.uniqueId());
+            params.add(2); // 2 = URLs ersetzen
+            params.add(databaseFile(existing));
+            callAny("UpdateLogin", params);
+        }
+
+        @Override
+        public void removeEntry(KeePassEntry existing) throws KeePassRpcException {
+            // RemoveEntry(uuid, dbFileName)
+            JsonArray params = new JsonArray();
+            params.add(existing.uniqueId());
+            params.add(databaseFile(existing));
+            JsonElement result = callAny("RemoveEntry", params);
+            if (result != null && result.isJsonPrimitive() && result.getAsJsonPrimitive().isBoolean()
+                    && !result.getAsBoolean()) {
+                throw protocol("KeePassRPC hat das Löschen abgelehnt");
+            }
+        }
+
+        /** Datei des Eintrags, sonst die aktive Datenbank, sonst {@code *} wie MainframeMate. */
+        private String databaseFile(KeePassEntry existing) {
+            if (!existing.databaseFile().isEmpty()) {
+                return existing.databaseFile();
+            }
+            String name = databaseFileName();
+            return name.isEmpty() ? "*" : name;
         }
 
         private JsonArray call(String method, JsonArray params) throws KeePassRpcException {

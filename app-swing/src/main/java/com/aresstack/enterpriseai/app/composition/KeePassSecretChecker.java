@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.app.composition;
 import com.aresstack.enterpriseai.app.config.KeePassConfig;
 import com.aresstack.enterpriseai.app.security.FilePairingKeyStore;
 import com.aresstack.enterpriseai.app.security.SecretProbe;
+import com.aresstack.enterpriseai.app.security.SecretVaults;
 import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.app.settings.SecretChecker;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
@@ -10,6 +11,7 @@ import com.aresstack.enterpriseai.domain.security.SecretRef;
 import com.aresstack.enterpriseai.security.api.SecretEntry;
 import com.aresstack.enterpriseai.security.api.SecretProvider;
 import com.aresstack.enterpriseai.security.api.SecretUnavailableException;
+import com.aresstack.enterpriseai.security.api.SecretVault;
 import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
 import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
@@ -94,6 +96,20 @@ public final class KeePassSecretChecker implements SecretChecker {
         }
         Collections.sort(titles, String.CASE_INSENSITIVE_ORDER);
         return titles;
+    }
+
+    @Override
+    public SecretVault vault(KeePassConfig keePass) {
+        if (keePass == null || !keePass.enabled()) {
+            return SecretVaults.of(null);
+        }
+        return SecretVaults.of(provider(keePass));
+    }
+
+    @Override
+    public String testConfluence(com.aresstack.enterpriseai.app.config.NetworkConfig network, String url, String user,
+                                 char[] password, String certAlias) throws Exception {
+        return ConfluenceEntryCheck.check(network, url, user, password, certAlias);
     }
 
     private SecretProvider provider(KeePassConfig keePass) {

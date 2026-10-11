@@ -54,7 +54,9 @@ final class ServiceTab {
         chat.component("Zugang", access, "KeePass: API-Key und URL aus dem KeePass-Eintrag. Manuell: URL hier "
                 + "angeben, der API-Key wird beim ersten Zugriff abgefragt und nicht gespeichert.");
         entry = VaultAccess.entryChoice(palette);
-        entryRow = chat.component("KeePass-Eintrag", entry, "Eintrag mit dem API-Key im Passwortfeld und der "
+        entryRow = chat.component("KeePass-Eintrag", VaultAccess.withNewEntry(entry,
+                () -> actions == null ? PasswordStore.unavailable("In dieser Umgebung nicht verfügbar.")
+                : actions.passwordStore(form.get()), () -> "KI-Dienst", palette), "Eintrag mit dem API-Key im Passwortfeld und der "
                 + "Basis-URL im URL-Feld");
         secretCheck = new SecretCheckRow(actions, form, new Supplier<String>() {
             @Override

@@ -40,6 +40,7 @@ final class SourceEditor {
     private final boolean typeSelectable;
     private final Consumer<String> typeChanged;
     private final Consumer<Consumer<List<String>>> vaultEntries;
+    private final java.util.function.Supplier<PasswordStore> passwordStore;
     private final BiConsumer<String, Consumer<String>> vaultCertificateAlias;
     private final JPanel panel = new JPanel(new BorderLayout());
     private final Map<String, JComponent> inputs = new LinkedHashMap<String, JComponent>();
@@ -76,16 +77,19 @@ final class SourceEditor {
      */
     SourceEditor(ComicPalette palette, List<KnowledgeSourceType> types, boolean typeSelectable,
                  Consumer<String> typeChanged, Consumer<Consumer<List<String>>> vaultEntries) {
-        this(palette, types, typeSelectable, typeChanged, vaultEntries, null);
+        this(palette, types, typeSelectable, typeChanged, vaultEntries, null, null);
     }
 
     /**
      * @param vaultCertificateAlias liefert zum Titel eines KeePass-Eintrags dessen {@code MM_CertAlias} (asynchron,
      *                              auf dem EDT); {@code null} = keine Vorbelegung des Zertifikats
+     * @param passwordStore         Passwortverwaltung für „➕ Neu“; {@code null} = ohne Knopf
      */
     SourceEditor(ComicPalette palette, List<KnowledgeSourceType> types, boolean typeSelectable,
                  Consumer<String> typeChanged, Consumer<Consumer<List<String>>> vaultEntries,
-                 BiConsumer<String, Consumer<String>> vaultCertificateAlias) {
+                 BiConsumer<String, Consumer<String>> vaultCertificateAlias,
+                 java.util.function.Supplier<PasswordStore> passwordStore) {
+        this.passwordStore = passwordStore;
         this.palette = palette;
         this.vaultCertificateAlias = vaultCertificateAlias;
         this.types = new ArrayList<KnowledgeSourceType>(types);
@@ -180,7 +184,11 @@ final class SourceEditor {
             });
             if (!manual) {
                 entryChoice = VaultAccess.entryChoice(palette);
-                rows.component("KeePass-Eintrag", entryChoice, secret.hint().isEmpty() ? null : secret.hint());
+                final KnowledgeSourceType entryType = type;
+                rows.component("KeePass-Eintrag", passwordStore == null ? entryChoice
+                        : VaultAccess.withNewEntry(entryChoice, passwordStore,
+                                () -> entryType == null ? "" : entryType.displayName(), palette),
+                        secret.hint().isEmpty() ? null : secret.hint());
                 VaultAccess.setEntries(entryChoice, entries == null ? Collections.<String>emptyList() : entries);
                 VaultAccess.setText(entryChoice, VaultAccess.title(source.settings().get(secret.key())));
                 entryChoice.addActionListener(event -> requestCertificateAlias());

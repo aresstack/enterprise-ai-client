@@ -16,6 +16,7 @@ import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.app.ui.settings.LocalVoiceInstallProgress;
 import com.aresstack.enterpriseai.app.ui.settings.LocalVoiceSearchCallback;
 import com.aresstack.enterpriseai.app.ui.settings.NetworkLogListener;
+import com.aresstack.enterpriseai.app.ui.settings.PasswordStore;
 import com.aresstack.enterpriseai.app.ui.settings.NlpModelOffer;
 import com.aresstack.enterpriseai.app.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.app.ui.settings.SecretCheckResult;
@@ -380,6 +381,35 @@ public final class FileSettingsActions implements SettingsDialogActions {
         } catch (RuntimeException rejected) {
             onResult.accept(Collections.<String>emptyList());
         }
+    }
+
+    @Override
+    public PasswordStore passwordStore(SettingsForm form) {
+        if (form == null) {
+            throw new IllegalArgumentException("form must not be null");
+        }
+        final KeePassConfig keePass;
+        try {
+            keePass = AppConfigLoader.keePassSection(SettingsMapper.merge(current(), form));
+        } catch (IOException | RuntimeException e) {
+            return PasswordStore.unavailable("Die KeePass-Einstellungen sind ungültig.");
+        }
+        if (secretChecker == null) {
+            return PasswordStore.unavailable("KeePass ist hier nicht verfügbar.");
+        }
+        if (!keePass.enabled()) {
+            return PasswordStore.unavailable("KeePassRPC ist ausgeschaltet.");
+        }
+        NetworkConfig network;
+        try {
+            network = AppConfigLoader.networkSection(SettingsMapper.merge(current(), form));
+        } catch (IOException | RuntimeException e) {
+            network = null;
+        }
+        final NetworkConfig testNetwork = network;
+        return new VaultPasswordStore(() -> secretChecker.vault(keePass), worker, ui,
+                testNetwork == null ? null : (url, user, password, alias) ->
+                        secretChecker.testConfluence(testNetwork, url, user, password, alias));
     }
 
     /**
