@@ -108,6 +108,30 @@ public class OpenAiRequestWriterTest {
                 body.getAsJsonArray("messages").get(0).getAsJsonObject().get("content").getAsString());
     }
 
+    @Test
+    public void writesToolsToolCallsAndToolResultsWithoutToolChoice() {
+        JsonObject body = write(writer, new ChatRequest(Arrays.asList(ChatMessage.user("Suche X"),
+                ChatMessage.assistantToolCalls("", Collections.singletonList(
+                        new com.aresstack.enterpriseai.domain.chat.ChatToolCall("call_1", "knowledge_search",
+                                "{\"query\":\"X\"}"))),
+                ChatMessage.tool("call_1", "Treffer")), null,
+                Collections.singletonList(new com.aresstack.enterpriseai.domain.chat.ChatToolDefinition(
+                        "knowledge_search", "Sucht", "{\"type\":\"object\",\"properties\":{\"query\":"
+                        + "{\"type\":\"string\"}}}"))), false);
+
+        JsonObject tool = body.getAsJsonArray("tools").get(0).getAsJsonObject();
+        assertEquals("function", tool.get("type").getAsString());
+        assertEquals("knowledge_search", tool.getAsJsonObject("function").get("name").getAsString());
+        assertTrue(tool.getAsJsonObject("function").getAsJsonObject("parameters").has("properties"));
+        assertFalse(body.has("tool_choice"));
+        JsonArray messages = body.getAsJsonArray("messages");
+        JsonObject call = messages.get(1).getAsJsonObject().getAsJsonArray("tool_calls").get(0).getAsJsonObject();
+        assertEquals("call_1", call.get("id").getAsString());
+        assertEquals("{\"query\":\"X\"}", call.getAsJsonObject("function").get("arguments").getAsString());
+        assertEquals("tool", role(messages, 2));
+        assertEquals("call_1", messages.get(2).getAsJsonObject().get("tool_call_id").getAsString());
+    }
+
     private static JsonObject write(OpenAiRequestWriter writer, ChatRequest request, boolean stream) {
         return JsonParser.parseString(writer.write(request, stream)).getAsJsonObject();
     }

@@ -17,6 +17,25 @@ public class OpenAiResponseParserTest {
     private final OpenAiResponseParser parser = new OpenAiResponseParser();
 
     @Test
+    public void parsesToolCallsInCompletionAndAccumulatesStreamedOnes() {
+        ChatResponse response = parser.parseCompletion("{\"choices\":[{\"message\":{\"role\":\"assistant\","
+                + "\"content\":null,\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":"
+                + "{\"name\":\"knowledge_search\",\"arguments\":\"{\\\"query\\\":\\\"X\\\"}\"}}]},"
+                + "\"finish_reason\":\"tool_calls\"}]}");
+        assertEquals(ChatFinishReason.TOOL_CALLS, response.finishReason());
+        assertEquals("knowledge_search", response.message().toolCalls().get(0).name());
+        assertEquals("{\"query\":\"X\"}", response.message().toolCalls().get(0).argumentsJson());
+
+        OpenAiResponseParser.ToolCallAccumulator calls = new OpenAiResponseParser.ToolCallAccumulator();
+        calls.add(parser.parseChunk("{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c2\","
+                + "\"function\":{\"name\":\"knowledge_read\",\"arguments\":\"{\\\"id\\\":\"}}]}}]}").toolCalls);
+        calls.add(parser.parseChunk("{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,"
+                + "\"function\":{\"arguments\":\"\\\"p1\\\"}\"}}]}}]}").toolCalls);
+        assertEquals("c2", calls.calls().get(0).id());
+        assertEquals("{\"id\":\"p1\"}", calls.calls().get(0).argumentsJson());
+    }
+
+    @Test
     public void parsesCompletion() {
         ChatResponse response = parser.parseCompletion("{\"id\":\"x\",\"model\":\"gpt-intern\",\"choices\":[{\"index\":0,"
                 + "\"message\":{\"role\":\"assistant\",\"content\":\"Hallo\"},\"finish_reason\":\"stop\"}],"

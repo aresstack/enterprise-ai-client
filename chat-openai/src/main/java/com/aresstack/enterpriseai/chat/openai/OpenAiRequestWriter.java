@@ -5,8 +5,12 @@ import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
 import com.aresstack.enterpriseai.domain.chat.ChatMessage;
 import com.aresstack.enterpriseai.domain.chat.ChatOptions;
 import com.aresstack.enterpriseai.domain.chat.ChatRequest;
+import com.aresstack.enterpriseai.domain.chat.ChatToolCall;
+import com.aresstack.enterpriseai.domain.chat.ChatToolDefinition;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 
 /** Übersetzt eine neutrale {@link ChatRequest} in den JSON-Body von {@code /chat/completions}. */
 final class OpenAiRequestWriter {
@@ -29,9 +33,46 @@ final class OpenAiRequestWriter {
             JsonObject json = new JsonObject();
             json.addProperty("role", roleOf(message));
             json.addProperty("content", message.content());
+            if (message.hasToolCalls()) {
+                JsonArray calls = new JsonArray();
+                for (ChatToolCall call : message.toolCalls()) {
+                    JsonObject function = new JsonObject();
+                    function.addProperty("name", call.name());
+                    function.addProperty("arguments", call.argumentsJson());
+                    JsonObject entry = new JsonObject();
+                    entry.addProperty("id", call.id());
+                    entry.addProperty("type", "function");
+                    entry.add("function", function);
+                    calls.add(entry);
+                }
+                json.add("tool_calls", calls);
+            }
+            if (message.toolCallId() != null) {
+                json.addProperty("tool_call_id", message.toolCallId());
+            }
             messages.add(json);
         }
         body.add("messages", messages);
+        if (!request.tools().isEmpty()) {
+            // Werkzeuge nur als "tools"; tool_choice wird nie gesendet (der Server entscheidet selbst).
+            JsonArray tools = new JsonArray();
+            for (ChatToolDefinition tool : request.tools()) {
+                JsonObject function = new JsonObject();
+                function.addProperty("name", tool.name());
+                function.addProperty("description", tool.description());
+                try {
+                    function.add("parameters", JsonParser.parseString(tool.parametersSchemaJson()));
+                } catch (JsonParseException invalid) {
+                    throw new ChatCompletionException(ChatErrorKind.INVALID_REQUEST,
+                            "tool " + tool.name() + " has an invalid parameter schema");
+                }
+                JsonObject entry = new JsonObject();
+                entry.addProperty("type", "function");
+                entry.add("function", function);
+                tools.add(entry);
+            }
+            body.add("tools", tools);
+        }
 
         // Streaming nur über den Body; der Server ignoriert ?stream=true als Queryparameter.
         body.addProperty("stream", stream);
@@ -77,6 +118,8 @@ final class OpenAiRequestWriter {
                 return "user";
             case ASSISTANT:
                 return "assistant";
+            case TOOL:
+                return "tool";
             default:
                 throw new IllegalArgumentException("unsupported role " + message.role());
         }

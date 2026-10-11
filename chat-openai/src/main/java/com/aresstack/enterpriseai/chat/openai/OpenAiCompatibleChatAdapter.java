@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.chat.api.ResponsesResult;
 import com.aresstack.enterpriseai.domain.chat.ChatMessage;
 import com.aresstack.enterpriseai.domain.chat.ChatRequest;
 import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.domain.chat.ChatToolCall;
 import com.aresstack.enterpriseai.domain.chat.ChatUsage;
 
 import java.io.BufferedReader;
@@ -21,6 +22,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.nio.charset.Charset;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -214,6 +216,7 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort, Re
     private void readEvents(InputStream input, StreamTask task) throws IOException {
         BufferedReader reader = new BufferedReader(new InputStreamReader(input, UTF_8));
         StringBuilder text = new StringBuilder();
+        OpenAiResponseParser.ToolCallAccumulator toolCalls = new OpenAiResponseParser.ToolCallAccumulator();
         String finishReason = null;
         String model = null;
         ChatUsage usage = ChatUsage.notReported();
@@ -233,6 +236,7 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort, Re
                 text.append(chunk.content);
                 task.delta(chunk.content);
             }
+            toolCalls.add(chunk.toolCalls);
             if (chunk.finishReason != null) {
                 finishReason = chunk.finishReason;
             }
@@ -246,8 +250,10 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort, Re
         if (task.isCancelRequested()) {
             task.cancelled();
         } else if (done || finishReason != null) {
-            task.complete(new ChatResponse(ChatMessage.assistant(text.toString()),
-                    OpenAiResponseParser.finishReason(finishReason), usage, model));
+            List<ChatToolCall> calls = toolCalls.calls();
+            ChatMessage message = calls.isEmpty() ? ChatMessage.assistant(text.toString())
+                    : ChatMessage.assistantToolCalls(text.toString(), calls);
+            task.complete(new ChatResponse(message, OpenAiResponseParser.finishReason(finishReason), usage, model));
         } else {
             task.fail(new ChatCompletionException(ChatErrorKind.TRANSPORT, "stream ended before [DONE]"));
         }

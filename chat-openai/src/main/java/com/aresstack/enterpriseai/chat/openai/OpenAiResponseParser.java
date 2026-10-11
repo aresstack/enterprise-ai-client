@@ -5,12 +5,19 @@ import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
 import com.aresstack.enterpriseai.domain.chat.ChatFinishReason;
 import com.aresstack.enterpriseai.domain.chat.ChatMessage;
 import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.domain.chat.ChatToolCall;
 import com.aresstack.enterpriseai.domain.chat.ChatUsage;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /** Liest Antworten und Stream-Chunks von {@code /chat/completions}. Zustandslos. */
 final class OpenAiResponseParser {
@@ -21,12 +28,64 @@ final class OpenAiResponseParser {
         final String finishReason;
         final String model;
         final ChatUsage usage;
+        /** Teilstücke von {@code delta.tool_calls}; leer ohne Werkzeugaufrufe. */
+        final List<ToolCallDelta> toolCalls;
 
-        Chunk(String content, String finishReason, String model, ChatUsage usage) {
+        Chunk(String content, String finishReason, String model, ChatUsage usage, List<ToolCallDelta> toolCalls) {
             this.content = content;
             this.finishReason = finishReason;
             this.model = model;
             this.usage = usage;
+            this.toolCalls = toolCalls;
+        }
+    }
+
+    /** Ein Stück eines gestreamten Werkzeugaufrufs; die Teile eines Aufrufs teilen den {@code index}. */
+    static final class ToolCallDelta {
+        final int index;
+        final String id;
+        final String name;
+        final String arguments;
+
+        ToolCallDelta(int index, String id, String name, String arguments) {
+            this.index = index;
+            this.id = id;
+            this.name = name;
+            this.arguments = arguments;
+        }
+    }
+
+    /** Setzt die Teilstücke gestreamter Werkzeugaufrufe je {@code index} zusammen. */
+    static final class ToolCallAccumulator {
+        private final Map<Integer, String[]> calls = new TreeMap<Integer, String[]>();
+
+        void add(List<ToolCallDelta> deltas) {
+            for (ToolCallDelta delta : deltas) {
+                String[] call = calls.get(Integer.valueOf(delta.index));
+                if (call == null) {
+                    call = new String[] {"", "", ""};
+                    calls.put(Integer.valueOf(delta.index), call);
+                }
+                if (delta.id != null && !delta.id.isEmpty()) {
+                    call[0] = delta.id;
+                }
+                if (delta.name != null && !delta.name.isEmpty()) {
+                    call[1] = call[1] + delta.name;
+                }
+                if (delta.arguments != null) {
+                    call[2] = call[2] + delta.arguments;
+                }
+            }
+        }
+
+        List<ChatToolCall> calls() {
+            List<ChatToolCall> result = new ArrayList<ChatToolCall>();
+            for (String[] call : calls.values()) {
+                if (!call[1].isEmpty()) {
+                    result.add(new ChatToolCall(call[0], call[1], call[2]));
+                }
+            }
+            return result;
         }
     }
 
@@ -39,12 +98,18 @@ final class OpenAiResponseParser {
             throw protocol("response contains no choices");
         }
         String content = "";
+        List<ChatToolCall> calls = new ArrayList<ChatToolCall>();
         JsonObject message = object(choice, "message");
         if (message != null) {
             String value = string(message, "content");
             content = value == null ? "" : value;
+            ToolCallAccumulator accumulator = new ToolCallAccumulator();
+            accumulator.add(toolCallDeltas(message));
+            calls = accumulator.calls();
         }
-        return new ChatResponse(ChatMessage.assistant(content), finishReason(string(choice, "finish_reason")),
+        ChatMessage assistant = calls.isEmpty() ? ChatMessage.assistant(content)
+                : ChatMessage.assistantToolCalls(content, calls);
+        return new ChatResponse(assistant, finishReason(string(choice, "finish_reason")),
                 usage(root), string(root, "model"));
     }
 
@@ -55,6 +120,7 @@ final class OpenAiResponseParser {
         JsonObject choice = firstChoice(root);
         String content = null;
         String finish = null;
+        List<ToolCallDelta> toolCalls = Collections.<ToolCallDelta>emptyList();
         if (choice != null) {
             JsonObject delta = object(choice, "delta");
             if (delta == null) {
@@ -63,10 +129,40 @@ final class OpenAiResponseParser {
             }
             if (delta != null) {
                 content = string(delta, "content");
+                toolCalls = toolCallDeltas(delta);
             }
             finish = string(choice, "finish_reason");
         }
-        return new Chunk(content, finish, string(root, "model"), root.has("usage") ? usage(root) : null);
+        return new Chunk(content, finish, string(root, "model"), root.has("usage") ? usage(root) : null,
+                toolCalls);
+    }
+
+    /** {@code tool_calls} einer Nachricht oder eines Deltas; ohne {@code index} zählt die Position. */
+    private static List<ToolCallDelta> toolCallDeltas(JsonObject message) {
+        JsonElement element = message.get("tool_calls");
+        if (element == null || !element.isJsonArray()) {
+            return Collections.<ToolCallDelta>emptyList();
+        }
+        List<ToolCallDelta> result = new ArrayList<ToolCallDelta>();
+        JsonArray array = element.getAsJsonArray();
+        for (int i = 0; i < array.size(); i++) {
+            if (!array.get(i).isJsonObject()) {
+                continue;
+            }
+            JsonObject call = array.get(i).getAsJsonObject();
+            int index = integer(call, "index");
+            JsonObject function = object(call, "function");
+            String arguments = null;
+            if (function != null) {
+                JsonElement args = function.get("arguments");
+                if (args != null && !args.isJsonNull()) {
+                    arguments = args.isJsonPrimitive() ? args.getAsString() : args.toString();
+                }
+            }
+            result.add(new ToolCallDelta(index >= 0 ? index : i, string(call, "id"),
+                    function == null ? null : string(function, "name"), arguments));
+        }
+        return result;
     }
 
     static ChatFinishReason finishReason(String value) {
@@ -81,6 +177,9 @@ final class OpenAiResponseParser {
         }
         if ("content_filter".equals(value)) {
             return ChatFinishReason.CONTENT_FILTER;
+        }
+        if ("tool_calls".equals(value) || "function_call".equals(value)) {
+            return ChatFinishReason.TOOL_CALLS;
         }
         return ChatFinishReason.UNKNOWN;
     }
