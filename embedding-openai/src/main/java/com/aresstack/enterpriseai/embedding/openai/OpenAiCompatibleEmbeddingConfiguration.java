@@ -79,7 +79,16 @@ public final class OpenAiCompatibleEmbeddingConfiguration {
      * {@link Builder#identityAttribute} gesetzten Merkmale. Bewusst ohne URL, Timeouts oder Zugangsdaten.
      */
     public EmbeddingModelIdentity modelIdentity() {
-        EmbeddingModelIdentity identity = EmbeddingModelIdentity.of(modelId, dimension).withAttribute("encoding", "float");
+        return modelIdentity(dimension);
+    }
+
+    /**
+     * Wie {@link #modelIdentity()}, aber mit der Dimension, die der Dienst tatsächlich liefert (Modellerkennung des
+     * Adapters, wenn die konfigurierte Dimension nicht stimmt).
+     */
+    public EmbeddingModelIdentity modelIdentity(int actualDimension) {
+        EmbeddingModelIdentity identity = EmbeddingModelIdentity.of(modelId, actualDimension)
+                .withAttribute("encoding", "float");
         for (Map.Entry<String, String> entry : identityAttributes.entrySet()) {
             identity = identity.withAttribute(entry.getKey(), entry.getValue());
         }

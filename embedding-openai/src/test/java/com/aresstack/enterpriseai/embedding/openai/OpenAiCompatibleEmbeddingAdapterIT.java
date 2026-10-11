@@ -209,10 +209,26 @@ public class OpenAiCompatibleEmbeddingAdapterIT extends EmbeddingPortContractTes
         assertFailure(400, "{\"detail\":\"bad\"}", EmbeddingFailureKind.REJECTED);
     }
 
+    /**
+     * Konfiguriert ist eine andere Dimension, als der Dienst liefert (Feldbefund: 768 konfiguriert, 2000 geliefert):
+     * der Adapter übernimmt die gelieferte, seine Welt wechselt; uneinheitliche Längen bleiben ungültig.
+     */
     @Test
-    public void wrongDimensionIsRejectedWithoutFallback() {
+    public void deviatingDimensionOfTheServiceIsAdoptedButMixedLengthsAreRejected() {
+        OpenAiCompatibleEmbeddingAdapter adapter = adapter(EmbeddingInputMode.SINGLE_STRING);
+        com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity configured = adapter.modelIdentity();
         server.respondWith("{\"data\":[{\"index\":0,\"embedding\":[1,2,3]}]}");
-        assertInvalid(Collections.singletonList("x"));
+        com.aresstack.enterpriseai.embedding.api.EmbeddingBatch batch =
+                adapter.embed(Collections.singletonList("x"));
+        assertEquals(3, batch.get(0).dimension());
+        assertEquals(3, adapter.modelIdentity().dimension());
+        assertEquals(adapter.modelIdentity(), batch.identity());
+        assertFalse("neue Welt, neuer Namensraum",
+                configured.fingerprint().equals(adapter.modelIdentity().fingerprint()));
+        assertEquals(configured.attributes(), adapter.modelIdentity().attributes());
+
+        server.respondWith("{\"data\":[{\"index\":0,\"embedding\":[1,2,3]},{\"index\":1,\"embedding\":[1,2]}]}");
+        assertInvalid(java.util.Arrays.asList("x", "y"), EmbeddingInputMode.ARRAY_UNVERIFIED);
     }
 
     @Test
@@ -250,7 +266,9 @@ public class OpenAiCompatibleEmbeddingAdapterIT extends EmbeddingPortContractTes
     public void failureInTheMiddleOfABatchYieldsNoPartialResult() {
         OpenAiCompatibleEmbeddingAdapter adapter = adapter(EmbeddingInputMode.SINGLE_STRING);
         adapter.embed(Collections.singletonList("warm-up"));
-        server.respondWith("{\"data\":[{\"index\":0,\"embedding\":[1]}]}");
+        // Eine abweichende Länge übernimmt der Adapter inzwischen (Modellerkennung); ungültig bleibt ein Wert,
+        // der nicht endlich ist.
+        server.respondWith("{\"data\":[{\"index\":0,\"embedding\":[1e39,0,0,0,0,0,0,0]}]}");
         try {
             adapter.embed(Arrays.asList("a", "b"));
             fail("expected INVALID_RESPONSE");
@@ -302,8 +320,12 @@ public class OpenAiCompatibleEmbeddingAdapterIT extends EmbeddingPortContractTes
     }
 
     private void assertInvalid(List<String> texts) {
+        assertInvalid(texts, EmbeddingInputMode.SINGLE_STRING);
+    }
+
+    private void assertInvalid(List<String> texts, EmbeddingInputMode mode) {
         try {
-            adapter(EmbeddingInputMode.SINGLE_STRING).embed(texts);
+            adapter(mode).embed(texts);
             fail("expected INVALID_RESPONSE");
         } catch (EmbeddingException expected) {
             assertEquals(EmbeddingFailureKind.INVALID_RESPONSE, expected.kind());
