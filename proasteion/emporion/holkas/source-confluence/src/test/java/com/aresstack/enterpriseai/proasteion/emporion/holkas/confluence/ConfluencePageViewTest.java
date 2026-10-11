@@ -171,6 +171,31 @@ public class ConfluencePageViewTest {
                 view.images.get(0).src);
     }
 
+    /** export_view ohne Diagrammdaten, nur das Vorschaubild: Name und Revision kommen aus body.storage. */
+    @Test
+    public void withoutDiagramDataTheMacroParametersFromStorageMarkThePreview() {
+        String body = "<p><span class=\"confluence-embedded-file-wrapper\"><img class=\"confluence-embedded-image\""
+                + " src=\"/confluence/download/attachments/42/Bild%20A.png?version=55&amp;modificationDate=1700000000000"
+                + "&amp;api=v2\"></span></p><p><img src=\"/confluence/download/attachments/42/Foto.png\"></p>"
+                + "<p><img src=\"/confluence/download/attachments/99/Fremd.png?version=2\"></p>";
+        String storage = "<p><ac:structured-macro ac:name=\"drawio\" ac:schema-version=\"1\">"
+                + "<ac:parameter ac:name=\"diagramName\">Bild A</ac:parameter>"
+                + "<ac:parameter ac:name=\"revision\">55</ac:parameter></ac:structured-macro></p>"
+                + "<ac:structured-macro ac:name=\"inc-drawio\"><ac:parameter ac:name=\"diagramName\">Fremd"
+                + "</ac:parameter><ac:parameter ac:name=\"pageId\">99</ac:parameter>"
+                + "<ac:parameter ac:name=\"revision\">2</ac:parameter></ac:structured-macro>";
+
+        ConfluencePageView view = ConfluencePageView.of(body, BASE, null, storage, "42");
+
+        assertEquals(3, view.images.size());
+        assertEquals(BASE + "download/attachments/42/Bild%20A.png?version=55&api=v2#drawio=Bild%20A&page=42&revision=55",
+                view.images.get(0).src);
+        assertEquals("ein gewöhnliches Bild bleibt gewöhnlich", BASE + "download/attachments/42/Foto.png",
+                view.images.get(1).src);
+        assertEquals(BASE + "download/attachments/99/Fremd.png?version=2&api=v2#drawio=Fremd&page=99&revision=2",
+                view.images.get(2).src);
+    }
+
     @Test
     public void spacesAndUmlautsInImageAddressesAreEncoded() {
         ConfluencePageView view = ConfluencePageView.of(

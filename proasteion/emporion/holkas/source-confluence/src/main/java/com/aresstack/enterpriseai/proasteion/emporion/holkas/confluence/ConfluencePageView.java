@@ -82,8 +82,25 @@ final class ConfluencePageView {
      *                   Bilder anderer Hosts bleiben fremd.
      */
     static ConfluencePageView of(String bodyHtml, String baseUri, String serverBase) {
+        return of(bodyHtml, baseUri, serverBase, null, null);
+    }
+
+    /**
+     * @param storage {@code body.storage} der Seite oder {@code null}: draw.io-Makros mit Name und Revision, falls
+     *                {@code export_view} nur das Vorschaubild ohne {@code data-diagramdata} liefert
+     * @param pageId  ID der Seite (Eigentümer der Diagramme ohne eigenes {@code pageId}) oder {@code null}
+     */
+    static ConfluencePageView of(String bodyHtml, String baseUri, String serverBase, String storage, String pageId) {
         Document doc = Jsoup.parseBodyFragment(bodyHtml == null ? "" : bodyHtml, baseUri);
-        drawioPreviews(doc, baseUri); // vor dem Entfernen versteckter Elemente: die Diagrammdaten sind versteckt
+        // vor dem Entfernen versteckter Elemente: die Diagrammdaten sind versteckt
+        int fromData = drawioPreviews(doc, baseUri);
+        int fromStorage = storageDrawioPreviews(doc, baseUri, storage, pageId);
+        if (fromData + fromStorage > 0 || (storage != null && storage.contains("ac:name=\"drawio"))
+                || (storage != null && storage.contains("ac:name=\"inc-drawio"))) {
+            LOG.info("[Confluence] draw.io: Seite " + pageId + ": Bilder gekennzeichnet aus Diagrammdaten=" + fromData
+                    + ", aus Makroparametern=" + fromStorage + ", Makros im Seitenquelltext="
+                    + (storage == null ? "unbekannt" : String.valueOf(storageMacros(storage).size())));
+        }
         doc.select("script, noscript, iframe, object, embed, applet, form, input, button, select, textarea").remove();
         doc.select("style, svg").remove();
         // Wie ConfluenceHtmlText: Versteckte Lade-/Platzhalterzeilen und Bedienelemente nicht zeigen; Swings
@@ -156,7 +173,9 @@ final class ConfluencePageView {
     /** Fragmentschlüssel an der Vorschauadresse eines draw.io-Diagramms: {@code #drawio=<Name>&page=<Id>&revision=<n>}. */
     static final String DRAWIO_FRAGMENT = "drawio";
 
-    static void drawioPreviews(Document doc, String baseUri) {
+    /** @return Zahl der gekennzeichneten draw.io-Bilder */
+    static int drawioPreviews(Document doc, String baseUri) {
+        int marked = 0;
         for (Element data : doc.select("[data-diagramdata]")) {
             JsonObject diagram;
             try {
@@ -206,18 +225,91 @@ final class ConfluencePageView {
                     present.add(img);
                 }
             }
+            marked++;
             if (!present.isEmpty()) {
                 for (Element img : present) {
-                    img.attr("src", src).attr("alt", alt).removeAttr("srcset");
+                    img.attr("src", src).attr("alt", alt).attr(DRAWIO_MARK, "1").removeAttr("srcset");
                 }
                 continue;
             }
             Element image = new Element("img")
                     .attr("src", src)
                     .attr("alt", alt)
+                    .attr(DRAWIO_MARK, "1")
                     .attr("data-linked-resource-default-alias", preview);
             anchor.after(new Element("p").appendChild(image));
         }
+        return marked;
+    }
+
+    /** Merkt im Dokument, welches Bild schon als draw.io-Zeichnung gekennzeichnet ist (wird nicht ausgegeben). */
+    private static final String DRAWIO_MARK = "data-ea-drawio";
+
+    /**
+     * Zweiter Weg ohne {@code data-diagramdata}: Rendert {@code export_view} das Makro nur als Vorschaubild
+     * ({@code /download/attachments/<Seite>/<Name>.png}), kommen Name, Revision und Eigentümerseite aus den
+     * Makroparametern in {@code body.storage} ({@code diagramName}, {@code revision}, bei {@code inc-drawio}
+     * {@code pageId}). Gekennzeichnet werden nur Bilder, deren Pfad genau diese Vorschau ist.
+     *
+     * @return Zahl der gekennzeichneten Bilder
+     */
+    static int storageDrawioPreviews(Document doc, String baseUri, String storage, String pageId) {
+        if (storage == null || storage.isEmpty()) {
+            return 0;
+        }
+        int marked = 0;
+        for (String[] macro : storageMacros(storage)) {
+            String name = macro[0];
+            String owner = macro[1].isEmpty() ? (pageId == null ? "" : pageId) : macro[1];
+            String revision = macro[2];
+            if (name.isEmpty() || !owner.matches("\\d+")) {
+                continue;
+            }
+            String preview = name + ".png";
+            boolean numeric = revision.matches("\\d+");
+            String src = baseUri + "download/attachments/" + owner + "/" + encodeSegment(preview)
+                    + (numeric ? "?version=" + revision + "&api=v2" : "")
+                    + "#" + DRAWIO_FRAGMENT + "=" + encodeSegment(name) + "&page=" + owner
+                    + (numeric ? "&revision=" + revision : "");
+            for (Element img : doc.select("img")) {
+                if (!img.hasAttr(DRAWIO_MARK) && isPreview(img.attr("src"), owner, preview)) {
+                    img.attr("src", src).attr("alt", name).attr(DRAWIO_MARK, "1").removeAttr("srcset");
+                    marked++;
+                }
+            }
+        }
+        return marked;
+    }
+
+    /** draw.io-Makros im Seitenquelltext als {@code {diagramName, pageId oder "", revision oder ""}}. */
+    static List<String[]> storageMacros(String storage) {
+        List<String[]> macros = new ArrayList<String[]>();
+        Document xml = Jsoup.parse(storage, "", org.jsoup.parser.Parser.xmlParser());
+        for (Element macro : xml.getElementsByTag("ac:structured-macro")) {
+            String kind = macro.attr("ac:name");
+            if (!kind.equals("drawio") && !kind.equals("drawio-sketch") && !kind.equals("inc-drawio")) {
+                continue;
+            }
+            String name = "";
+            String page = "";
+            String revision = "";
+            for (Element parameter : macro.children()) {
+                if (!parameter.tagName().equals("ac:parameter")) {
+                    continue;
+                }
+                String key = parameter.attr("ac:name");
+                String value = parameter.text().trim();
+                if (key.equals("diagramName")) {
+                    name = value;
+                } else if (key.equals("pageId")) {
+                    page = value;
+                } else if (key.equals("revision")) {
+                    revision = value;
+                }
+            }
+            macros.add(new String[] {name, page, revision});
+        }
+        return macros;
     }
 
     /** Zeigt {@code src} (ohne Query, dekodiert) auf {@code …/download/attachments|thumbnails/<owner>/<preview>}? */

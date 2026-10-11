@@ -47,9 +47,11 @@ final class ConfluenceRestClient {
      * Für die Lese-Ansicht zusätzlich {@code body.export_view}: Confluence rendert dabei Makros, die
      * {@code body.view} nur als Lade-Platzhalter liefert und erst im Browser per Script füllt (Jira-Vorgänge und
      * Jira-Tabellen: „Getting issue details...“, nur die Kopfzeile). {@code body.view} bleibt Rückfall, falls
-     * {@code export_view} leer ist; der Index liest weiter {@code body.view}.
+     * {@code export_view} leer ist; der Index liest weiter {@code body.view}. {@code body.storage} liefert die
+     * draw.io-Makros mit ihren Parametern, auch wenn {@code export_view} nur das Vorschaubild ohne Diagrammdaten
+     * rendert.
      */
-    private static final String READING_EXPAND = "body.export_view," + PAGE_EXPAND;
+    private static final String READING_EXPAND = "body.export_view,body.storage," + PAGE_EXPAND;
     /** Felder für Seiten ohne Inhalt (Startpunkte, Kindseiten, Suchtreffer); Labels sind nicht Standard. */
     private static final String LIST_EXPAND = "version,space,metadata.labels";
     /** Confluence Data Center liefert Zeitstempel auch mit kompaktem Offset ({@code +1100}), kein ISO-8601. */
@@ -127,7 +129,8 @@ final class ConfluenceRestClient {
         if (!"page".equals(string(json, "type"))) {
             throw new KnowledgeSourceException(Kind.NOT_FOUND, "Inhalt " + contentId + " ist keine Seite");
         }
-        return toPage(json, true);
+        JsonObject storage = object(object(json, "body"), "storage");
+        return toPage(json, true).withStorage(storage == null ? null : string(storage, "value"));
     }
 
     /** Direkte Kindseiten in Confluence-Reihenfolge, höchstens {@code max}. */
@@ -1062,15 +1065,17 @@ final class ConfluenceRestClient {
          * {@code export_view} absolute Bildadressen schreibt; {@code null}, wenn sie fehlt.
          */
         final String serverBase;
+        /** {@code body.storage} der Lese-Ansicht (draw.io-Makroparameter); sonst {@code null}. */
+        final String storage;
 
         Page(String id, String title, String spaceKey, String version, Instant modifiedAt,
              String parentId, String html, String webUi, List<String> labels) {
-            this(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, "", null);
+            this(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, "", null, null);
         }
 
         private Page(String id, String title, String spaceKey, String version, Instant modifiedAt,
                      String parentId, String html, String webUi, List<String> labels, String excerpt,
-                     String serverBase) {
+                     String serverBase, String storage) {
             this.id = id;
             this.title = title;
             this.spaceKey = spaceKey;
@@ -1082,15 +1087,22 @@ final class ConfluenceRestClient {
             this.labels = Collections.unmodifiableList(labels);
             this.excerpt = excerpt;
             this.serverBase = serverBase;
+            this.storage = storage;
         }
 
         Page withExcerpt(String excerpt) {
             return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
-                    serverBase);
+                    serverBase, storage);
         }
 
         Page withServerBase(String base) {
-            return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt, base);
+            return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt, base,
+                    storage);
+        }
+
+        Page withStorage(String storageValue) {
+            return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
+                    serverBase, storageValue);
         }
     }
 

@@ -195,7 +195,8 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 Page loaded = client.readingPage(session, parsed.contentId);
                 String base = config.baseUrl().toString();
                 base = base.endsWith("/") ? base : base + "/";
-                ConfluencePageView view = ConfluencePageView.of(loaded.html, base, loaded.serverBase);
+                ConfluencePageView view = ConfluencePageView.of(loaded.html, base, loaded.serverBase,
+                        loaded.storage, loaded.id);
                 List<PageView.Image> images = new ArrayList<PageView.Image>();
                 for (ConfluencePageView.InlineImage image : view.images) {
                     images.add(new PageView.Image(image.src, image.title, image.attachmentId == null ? null

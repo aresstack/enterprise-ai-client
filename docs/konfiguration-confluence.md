@@ -75,7 +75,12 @@ source.1.allowInsecureHttp=false
   `/download/attachments/{owningPageId}/{previewName}?version={revision}&api=v2` (ohne lesbare Revision: ohne Query,
   also die jüngste Vorschau, mit Logzeile) und dem Kennzeichen `#drawio={Name}&page={owningPageId}&revision={revision}`.
   Liefert Confluence im Makro (oder anderswo auf der Seite) schon ein `<img>` auf genau diese Vorschau, bekommt dieses
-  Bild dieselbe Adresse samt Kennzeichen; es wird nie als gewöhnliches Bild geladen. Der Lader holt zuerst das Diagramm selbst
+  Bild dieselbe Adresse samt Kennzeichen; es wird nie als gewöhnliches Bild geladen. Fehlen in `export_view` die Diagrammdaten
+  (nur das Vorschaubild), kommen Name, Revision und bei `inc-drawio` die Eigentümerseite aus den Makroparametern in
+  `body.storage` (`diagramName`, `revision`, `pageId`); gekennzeichnet wird dann jedes Bild auf
+  `/download/attachments/{Seite}/{diagramName}.png`. Je Seite mit draw.io-Makros eine Logzeile
+  `[Confluence] draw.io: Seite … Bilder gekennzeichnet aus Diagrammdaten=…, aus Makroparametern=…, Makros im
+  Seitenquelltext=…`. Der Lader holt zuerst das Diagramm selbst
   (`/rest/drawio/1.0/diagram/crud/{Name}/{owningPageId}?revision={revision}`) und zeichnet es mit JGraphX als SVG
   (`DrawioDiagramRenderer`); enthält es Formen, die JGraphX nicht kennt, oder scheitert der Abruf, kommt die
   PNG-Vorschau. Angleichungen (kippbar): HTML-Beschriftungen als Text, draw.io-Farbwörter und -Standardfarben,
