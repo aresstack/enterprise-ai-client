@@ -397,6 +397,17 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
         }
     }
 
+    /** Alle angebundenen Quellen, angehakt oder nicht (ohne „gilt nach Neustart“ und ohne die gerade entfernten). */
+    public List<KnowledgeSourceRegistration> liveRegistrations() {
+        List<KnowledgeSourceRegistration> connected = new ArrayList<KnowledgeSourceRegistration>();
+        for (Map.Entry<String, KnowledgeSourceRegistration> entry : live.entrySet()) {
+            if (!pendingRestart.contains(entry.getKey()) && !removing.contains(entry.getKey())) {
+                connected.add(entry.getValue());
+            }
+        }
+        return connected;
+    }
+
     /** Die angebundenen, angehakten Quellen in Anzeigereihenfolge (die Suchleiste durchsucht genau diese). */
     public List<KnowledgeSourceRegistration> enabledRegistrations() {
         List<KnowledgeSourceRegistration> enabled = new ArrayList<KnowledgeSourceRegistration>();

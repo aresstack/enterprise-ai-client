@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * {@code knowledge_search(query, limit)}: Quellen live durchsuchen, neue oder geänderte Treffer im Rahmen von
@@ -39,16 +40,16 @@ final class KnowledgeSearchTool implements McpToolHandler {
 
     private final RetrieveKnowledgeUseCase retrieval;
     private final SearchDrivenIndexingUseCase live;
-    private final KnowledgeSourceCatalog catalog;
+    private final Supplier<KnowledgeSourceCatalog> catalogs;
     private final Predicate<KnowledgeSourceId> enabled;
     private final KnowledgeToolSettings settings;
 
     KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
-                        KnowledgeSourceCatalog catalog, Predicate<KnowledgeSourceId> enabled,
+                        Supplier<KnowledgeSourceCatalog> catalogs, Predicate<KnowledgeSourceId> enabled,
                         KnowledgeToolSettings settings) {
         this.retrieval = retrieval;
         this.live = live;
-        this.catalog = catalog;
+        this.catalogs = catalogs;
         this.enabled = enabled;
         this.settings = settings;
     }
@@ -80,7 +81,9 @@ final class KnowledgeSearchTool implements McpToolHandler {
         }
         int limit = (int) Math.min(requested, Math.max(1, retrieval.settings().maxResults()));
         String text = query.trim();
-        // Nur angehakte Quellen: abgewählte werden weder live gefragt noch im Index durchsucht.
+        // Die Quellen von jetzt (auch zur Laufzeit hinzugefügte), davon nur die angehakten: abgewählte werden
+        // weder live gefragt noch im Index durchsucht.
+        KnowledgeSourceCatalog catalog = catalogs.get();
         List<KnowledgeSourceId> sources = new ArrayList<KnowledgeSourceId>();
         for (KnowledgeSourceId id : catalog.ids()) {
             if (enabled.test(id)) {

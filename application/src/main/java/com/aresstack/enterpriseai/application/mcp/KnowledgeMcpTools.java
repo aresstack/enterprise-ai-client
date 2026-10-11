@@ -55,7 +55,7 @@ public final class KnowledgeMcpTools {
             throw new IllegalArgumentException("retrieval, documents und live sind Pflicht");
         }
         this.settings = settings == null ? KnowledgeToolSettings.defaults() : settings;
-        this.search = new KnowledgeSearchTool(retrieval, live, documents.catalog(), enabled, this.settings);
+        this.search = new KnowledgeSearchTool(retrieval, live, documents::catalog, enabled, this.settings);
         this.read = new KnowledgeReadTool(documents, live, this.settings);
     }
 

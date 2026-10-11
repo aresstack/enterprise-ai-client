@@ -35,14 +35,14 @@ import java.util.function.Supplier;
  */
 public final class LoadKnowledgeDocumentUseCase {
 
-    private final KnowledgeSourceCatalog catalog;
+    private final Supplier<KnowledgeSourceCatalog> catalog;
     private final KnowledgeIndexPort index;
     private final Supplier<EmbeddingModelIdentity> space;
     private final KnowledgeDocumentReader reader;
 
     /** Ohne Index: Die Quellen entscheiden, welche ID sie kennen; jede akzeptierte ID wird geladen. */
     public LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog) {
-        this(catalog, null, null, false, KnowledgeDocumentReader.direct());
+        this(fixed(catalog), null, null, false, KnowledgeDocumentReader.direct());
     }
 
     /**
@@ -53,16 +53,23 @@ public final class LoadKnowledgeDocumentUseCase {
      */
     public LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog, KnowledgeIndexPort index,
                                         EmbeddingModelIdentity space) {
-        this(catalog, index, space == null ? null : () -> space, true, KnowledgeDocumentReader.direct());
+        this(fixed(catalog), index, space == null ? null : () -> space, true, KnowledgeDocumentReader.direct());
     }
 
     /** Wie oben, mit wechselnder Embedding-Welt (Einstellungen gelten ohne Neustart): je Aufruf gelesen. */
     public LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog, KnowledgeIndexPort index,
                                         Supplier<EmbeddingModelIdentity> space) {
-        this(catalog, index, space, true, KnowledgeDocumentReader.direct());
+        this(fixed(catalog), index, space, true, KnowledgeDocumentReader.direct());
     }
 
-    private LoadKnowledgeDocumentUseCase(KnowledgeSourceCatalog catalog, KnowledgeIndexPort index,
+    private static Supplier<KnowledgeSourceCatalog> fixed(KnowledgeSourceCatalog catalog) {
+        if (catalog == null) {
+            throw new IllegalArgumentException("catalog ist Pflicht");
+        }
+        return () -> catalog;
+    }
+
+    private LoadKnowledgeDocumentUseCase(Supplier<KnowledgeSourceCatalog> catalog, KnowledgeIndexPort index,
                                          Supplier<EmbeddingModelIdentity> space, boolean gated,
                                          KnowledgeDocumentReader reader) {
         if (catalog == null) {
@@ -85,8 +92,21 @@ public final class LoadKnowledgeDocumentUseCase {
         return new LoadKnowledgeDocumentUseCase(catalog, index, space, index != null, value);
     }
 
+    /**
+     * Derselbe Use Case über eine wechselnde Quellenliste (Quellen kommen zur Laufzeit hinzu oder gehen): je Aufruf
+     * gelesen, ohne Neustart.
+     */
+    public LoadKnowledgeDocumentUseCase withCatalog(Supplier<KnowledgeSourceCatalog> value) {
+        if (value == null) {
+            throw new IllegalArgumentException("catalog ist Pflicht");
+        }
+        return new LoadKnowledgeDocumentUseCase(value, index, space, index != null, reader);
+    }
+
+    /** Die aktuelle Quellenliste. */
     public KnowledgeSourceCatalog catalog() {
-        return catalog;
+        KnowledgeSourceCatalog current = catalog.get();
+        return current == null ? KnowledgeSourceCatalog.empty() : current;
     }
 
     /** {@code true}, wenn nur indexierte Ressourcen geladen werden. */
@@ -108,14 +128,15 @@ public final class LoadKnowledgeDocumentUseCase {
         if (resourceId == null) {
             throw new IllegalArgumentException("resourceId ist Pflicht");
         }
+        KnowledgeSourceCatalog current = catalog();
         if (index != null) {
-            KnowledgeSourceId owner = indexedSourceOf(resourceId);
+            KnowledgeSourceId owner = indexedSourceOf(current, resourceId);
             if (owner == null) {
                 throw new KnowledgeDocumentNotIndexedException(resourceId, null);
             }
-            return reader.read(owner, catalog.find(owner).port(), resourceId);
+            return reader.read(owner, current.find(owner).port(), resourceId);
         }
-        for (KnowledgeSourceRegistration registration : catalog.registrations()) {
+        for (KnowledgeSourceRegistration registration : current.registrations()) {
             try {
                 return reader.read(registration.sourceId(), registration.port(), resourceId);
             } catch (KnowledgeSourceException e) {
@@ -141,7 +162,7 @@ public final class LoadKnowledgeDocumentUseCase {
         if (resourceId == null || sourceId == null) {
             throw new IllegalArgumentException("resourceId und sourceId sind Pflicht");
         }
-        KnowledgeSourceRegistration registration = catalog.find(sourceId);
+        KnowledgeSourceRegistration registration = catalog().find(sourceId);
         if (registration == null) {
             throw new KnowledgeSourceException(KnowledgeSourceException.Kind.NOT_FOUND,
                     "Quelle " + sourceId + " ist nicht konfiguriert");
@@ -153,8 +174,8 @@ public final class LoadKnowledgeDocumentUseCase {
     }
 
     /** Die konfigurierte Quelle, unter der die Ressource im Namespace indexiert ist, oder {@code null}. */
-    private KnowledgeSourceId indexedSourceOf(KnowledgeResourceId resourceId) {
-        for (KnowledgeSourceId sourceId : catalog.ids()) {
+    private KnowledgeSourceId indexedSourceOf(KnowledgeSourceCatalog current, KnowledgeResourceId resourceId) {
+        for (KnowledgeSourceId sourceId : current.ids()) {
             if (index.resourceIds(space.get(), sourceId).contains(resourceId)) {
                 return sourceId;
             }
