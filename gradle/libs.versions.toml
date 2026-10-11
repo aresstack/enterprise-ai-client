@@ -21,7 +21,7 @@ mermaidJava = "0.2.0-beta.2"
 tika = "2.9.1"
 commonsNet = "3.9.0"
 huggingface4j = "0.1.1"
-onnxruntime = "1.20.0"
+onnxruntime = "1.30.0"
 
 [libraries]
 # Test

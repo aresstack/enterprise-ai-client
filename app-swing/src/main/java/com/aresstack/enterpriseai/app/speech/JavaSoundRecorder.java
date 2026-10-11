@@ -26,6 +26,9 @@ final class JavaSoundRecorder {
     private final ByteArrayOutputStream captured = new ByteArrayOutputStream();
     private final Thread reader;
     private volatile boolean running = true;
+    /** Spitzenwert seit dem letzten {@link #consumeRecentPeak()} (16 Bit, Betrag) für die Pegelanzeige. */
+    private volatile int recentPeak;
+    private volatile boolean clipped;
 
     private JavaSoundRecorder(TargetDataLine line, AudioFormat format) {
         this.line = line;
@@ -68,12 +71,42 @@ final class JavaSoundRecorder {
         long limit = (long) (MAX_SECONDS * format.getSampleRate() * format.getFrameSize());
         while (running) {
             int count = line.read(buffer, 0, buffer.length);
+            if (count > 0) {
+                measure(buffer, count);
+            }
             if (count > 0 && captured.size() < limit) {
                 synchronized (captured) {
                     captured.write(buffer, 0, count);
                 }
             }
         }
+    }
+
+    /** Pegel wie arch {@code AudioLevelMeter}: Spitzenbetrag je Puffer, übersteuert ab Vollausschlag. */
+    private void measure(byte[] pcm, int count) {
+        int peak = recentPeak;
+        for (int offset = 0; offset + 1 < count; offset += 2) {
+            int magnitude = Math.abs((int) (short) ((pcm[offset] & 0xFF) | (pcm[offset + 1] << 8)));
+            if (magnitude > peak) {
+                peak = magnitude;
+            }
+            if (magnitude >= Short.MAX_VALUE) {
+                clipped = true;
+            }
+        }
+        recentPeak = peak;
+    }
+
+    /** Der Spitzenwert seit dem letzten Aufruf (live, nicht das Maximum der ganzen Aufnahme). */
+    int consumeRecentPeak() {
+        int value = recentPeak;
+        recentPeak = 0;
+        return value;
+    }
+
+    /** Ob die Aufnahme irgendwann übersteuert war. */
+    boolean clipped() {
+        return clipped;
     }
 
     /** Beendet die Aufnahme; 16 kHz mono. */

@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * {@link SpeechRecognitionPort} für ein lokal installiertes Sprachmodell mit Audio-Eingang (Gemma 4 E2B als
@@ -36,6 +37,7 @@ public final class LocalSpeechRecognitionAdapter implements SpeechRecognitionPor
             + "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 "
             + "instead of three.";
     private static final String[] GRAPH_VARIANTS = {"_q4", "_quantized", "_int8", "_uint8", "_q4f16", "_fp16", ""};
+    private static final Logger LOG = Logger.getLogger(LocalSpeechRecognitionAdapter.class.getName());
 
     private final String catalogId;
     private final Path modelRoot;
@@ -107,21 +109,35 @@ public final class LocalSpeechRecognitionAdapter implements SpeechRecognitionPor
 
     /** Der Graph {@code <prefix><variante>.onnx} im Modellordner oder in {@code onnx/}; bevorzugt quantisiert. */
     static Path graph(Path directory, String prefix) throws IOException {
+        return graphs(directory, prefix).get(0);
+    }
+
+    /**
+     * Alle vorhandenen Varianten von {@code <prefix>*.onnx} in der Reihenfolge der Vorliebe; lädt die Laufzeit die
+     * erste nicht, versucht die Spracheingabe die nächste.
+     */
+    static List<Path> graphs(Path directory, String prefix) throws IOException {
+        List<Path> found = new ArrayList<Path>();
         for (String variant : GRAPH_VARIANTS) {
             for (Path folder : new Path[] {directory.resolve("onnx"), directory}) {
                 Path file = folder.resolve(prefix + variant + ".onnx");
                 if (Files.isRegularFile(file)) {
-                    return file;
+                    found.add(file);
                 }
             }
         }
-        throw new IOException(prefix + "*.onnx fehlt in " + directory);
+        if (found.isEmpty()) {
+            throw new IOException(prefix + "*.onnx fehlt in " + directory);
+        }
+        return found;
     }
 
     /** Ein geladenes Modell: Tokenizer, Merkmale, Prompt-Bausteine und Stopp-Token. */
     private static final class LoadedModel {
         final String id;
-        final AudioModelGraphs graphs;
+        /** Je Graph (Audio-Encoder, Token-Einbettung, Decoder) die vorhandenen Varianten und die gerade gewählte. */
+        final List<List<Path>> candidates = new ArrayList<List<Path>>();
+        final int[] chosen = new int[3];
         final HfTokenizer tokenizer;
         final AudioFeatureExtractor features;
         final long bos;
@@ -136,8 +152,9 @@ public final class LocalSpeechRecognitionAdapter implements SpeechRecognitionPor
 
         LoadedModel(String id, Path directory) throws IOException, TokenizerFormatException {
             this.id = id;
-            graphs = new AudioModelGraphs(graph(directory, "audio_encoder"), graph(directory, "embed_tokens"),
-                    graph(directory, "decoder_model_merged"));
+            candidates.add(graphs(directory, "audio_encoder"));
+            candidates.add(graphs(directory, "embed_tokens"));
+            candidates.add(graphs(directory, "decoder_model_merged"));
             Map<String, Object> config = Json.read(LocalModelFiles.require(directory, "config.json"));
             Map<String, Object> textConfig = Json.object(config.get("text_config"));
             tokenizer = HfTokenizer.load(LocalModelFiles.require(directory, "tokenizer.json"));
@@ -209,7 +226,7 @@ public final class LocalSpeechRecognitionAdapter implements SpeechRecognitionPor
             if (extracted.frames == 0) {
                 return "";
             }
-            try (AudioPromptSession session = runtime.open(graphs)) {
+            try (AudioPromptSession session = open(runtime)) {
                 int audioTokens = session.encodeAudio(extracted.values, extracted.frames, extracted.bins,
                         extracted.mask);
                 if (audioTokens <= 0) {
@@ -250,6 +267,51 @@ public final class LocalSpeechRecognitionAdapter implements SpeechRecognitionPor
             } catch (TextRuntimeException failed) {
                 throw new SpeechRecognitionException(failed.getMessage(), failed);
             }
+        }
+
+        /**
+         * Öffnet die gewählten Graphen; lädt die Laufzeit einen davon nicht (z. B. ein Operator-Stand, den diese
+         * ONNX-Runtime-Version nicht kennt), kommt die nächste vorhandene Variante dieses Graphen dran, mit Grund im
+         * Protokoll. Ohne weitere Variante geht der Fehler mit verständlichem Text an den Benutzer.
+         */
+        private AudioPromptSession open(AudioLanguageModelRuntime runtime) throws SpeechRecognitionException {
+            while (true) {
+                try {
+                    return runtime.open(new AudioModelGraphs(current(0), current(1), current(2)));
+                } catch (TextRuntimeException failed) {
+                    String message = failed.getMessage() == null ? "" : failed.getMessage();
+                    int broken = -1;
+                    for (int i = 0; i < chosen.length; i++) {
+                        if (message.contains(current(i).getFileName().toString())) {
+                            broken = i;
+                        }
+                    }
+                    if (broken < 0 || chosen[broken] + 1 >= candidates.get(broken).size()) {
+                        throw new SpeechRecognitionException(explain(broken, message), failed);
+                    }
+                    Path rejected = current(broken);
+                    chosen[broken]++;
+                    LOG.warning("Spracheingabe: " + rejected.getFileName() + " lädt nicht (" + message + "); nehme "
+                            + current(broken).getFileName());
+                }
+            }
+        }
+
+        private Path current(int graph) {
+            return candidates.get(graph).get(chosen[graph]);
+        }
+
+        private String explain(int broken, String message) {
+            if (broken < 0) {
+                return message;
+            }
+            String file = current(broken).getFileName().toString();
+            if (message.contains("ORT_INVALID_GRAPH") || message.contains("ORT_NOT_IMPLEMENTED")) {
+                return "Die ONNX Runtime im Client kann " + file + " von " + id + " nicht laden: das Modell nutzt "
+                        + "einen Operator-Stand, den diese Laufzeit nicht kennt, und eine andere Variante dieses "
+                        + "Graphen ist nicht installiert. Technisch: " + message;
+            }
+            return message;
         }
 
         /** Ohne Denk-Kanal ({@code <|channel>…<channel|>}) und ohne Sonder-Token; eine Zeile. */

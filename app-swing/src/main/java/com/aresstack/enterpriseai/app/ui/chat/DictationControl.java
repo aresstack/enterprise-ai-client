@@ -2,7 +2,8 @@ package com.aresstack.enterpriseai.app.ui.chat;
 
 /**
  * Bedienabsicht „Diktieren“ für den Composer (wie {@link ReadAloudControl} nur Absichten, keine Ports): Mikrofon an,
- * Mikrofon aus und erkennen, der erkannte Text landet am Cursor im Eingabefeld. Ist keine Spracheingabe verfügbar
+ * Mikrofon aus und erkennen, verwerfen, nach einem Fehler erneut erkennen; dazu der Live-Pegel für Pegelbalken und
+ * Wellenform. Der erkannte Text landet am Cursor im Eingabefeld. Ist keine Spracheingabe verfügbar
  * (kein STT-Modell gewählt oder nicht installiert), bleibt der Mikrofon-Knopf deaktiviert und sein Tooltip nennt den
  * Grund. Alle Methoden laufen auf dem EDT, die Rückrufe ebenso.
  */
@@ -34,6 +35,21 @@ public interface DictationControl {
 
     /** Verwirft Aufnahme bzw. Erkennung ohne Ergebnis; idempotent. */
     void cancel();
+
+    /**
+     * Der Mikrofonpegel seit dem letzten Aufruf in Prozent auf der dB-Skala (0 = -60 dB, 100 = Vollausschlag), 0
+     * ohne laufende Aufnahme. Der Composer fragt ihn während der Aufnahme alle 100 ms ab (Pegelbalken, Wellenform).
+     */
+    int level();
+
+    /** Ob die laufende Aufnahme übersteuert war. */
+    boolean clipping();
+
+    /** Ob die letzte Aufnahme nach einem Fehlschlag noch einmal erkannt werden kann. */
+    boolean canRetry();
+
+    /** Erkennt die letzte fehlgeschlagene Aufnahme erneut; das Ergebnis kommt über {@link Result}. */
+    void retry(Result result);
 
     void addListener(Listener listener);
 }

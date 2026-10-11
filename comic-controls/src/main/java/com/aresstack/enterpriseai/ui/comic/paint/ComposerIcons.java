@@ -49,15 +49,15 @@ public final class ComposerIcons {
         };
     }
 
-    /** A microphone (dictation): capsule, cradle arc, stem and foot. Own addition. */
+    /** The microphone (dictation) exactly as in arch: capsule, cradle arc, stem and foot. */
     public static StrokeIcon microphone() {
         return new StrokeIcon() {
             @Override
             protected void paint(Graphics2D g2) {
-                g2.drawRoundRect(5, 1, 5, 8, 5, 5);
-                g2.drawArc(3, 4, 9, 8, 180, 180);
-                g2.drawLine(7, 12, 7, 14);
-                g2.drawLine(5, 14, 10, 14);
+                g2.drawRoundRect(5, 1, 6, 9, 6, 6);
+                g2.drawArc(3, 5, 10, 8, 180, 180);
+                g2.drawLine(8, 13, 8, 15);
+                g2.drawLine(5, 15, 11, 15);
             }
         };
     }

@@ -48,6 +48,8 @@ public final class Dictation implements DictationControl {
     private volatile String description = NO_MODEL;
     private JavaSoundRecorder recorder;
     private Result pending;
+    /** Die zuletzt fehlgeschlagene Aufnahme (für „Erneut“); weg nach Erfolg, Verwerfen oder neuer Aufnahme. */
+    private RecordedSpeech failedSpeech;
     /** Jede Aufnahme und jedes Verwerfen zählt hoch; ein altes Ergebnis kommt nicht mehr an. */
     private long generation;
 
@@ -87,6 +89,7 @@ public final class Dictation implements DictationControl {
     @Override
     public void start(Result result) {
         cancel();
+        failedSpeech = null;
         generation++;
         if (service == null) {
             result.failed(description);
@@ -116,7 +119,41 @@ public final class Dictation implements DictationControl {
             result.failed(description);
             return;
         }
-        final RecordedSpeech speech = active.stop();
+        transcribe(active.stop(), result, current);
+    }
+
+    @Override
+    public boolean canRetry() {
+        return failedSpeech != null && service != null;
+    }
+
+    @Override
+    public void retry(Result result) {
+        RecordedSpeech speech = failedSpeech;
+        DictationService current = service;
+        cancel();
+        if (speech == null || current == null) {
+            result.failed(current == null ? description : "Keine Aufnahme zum Wiederholen");
+            return;
+        }
+        transcribe(speech, result, current);
+    }
+
+    @Override
+    public int level() {
+        JavaSoundRecorder active = recorder;
+        return active == null ? 0 : DecibelLevelScale.percentFromPeak(active.consumeRecentPeak());
+    }
+
+    @Override
+    public boolean clipping() {
+        JavaSoundRecorder active = recorder;
+        return active != null && active.clipped();
+    }
+
+    /** Erkennt im Hintergrund; Ergebnis auf dem EDT, nur wenn inzwischen nichts verworfen oder neu begonnen wurde. */
+    private void transcribe(final RecordedSpeech speech, final Result result, final DictationService current) {
+        failedSpeech = null;
         final long expected = generation;
         worker.execute(new Runnable() {
             @Override
@@ -144,6 +181,7 @@ public final class Dictation implements DictationControl {
                             return;
                         }
                         if (message != null) {
+                            failedSpeech = speech;
                             result.failed(message);
                         } else {
                             result.recognized(recognized);

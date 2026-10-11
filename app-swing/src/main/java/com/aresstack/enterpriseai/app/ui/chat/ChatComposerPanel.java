@@ -11,14 +11,19 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JFileChooser;
-import javax.swing.JLabel;
+import javax.swing.JLayeredPane;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import javax.swing.UIManager;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
@@ -27,6 +32,7 @@ import javax.swing.text.DefaultEditorKit;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Graphics;
@@ -51,10 +57,13 @@ import java.util.function.Supplier;
 
 /**
  * Der Composer nach askai-java8 (arch, {@code ChatComposerPanel}): EINE abgerundete Fläche, darin der rahmenlose
- * Editor und eine Fußzeile wie in arch. Links Modell ▾ und Denkaufwand ▾, in der Mitte die Statuszeile, rechts
- * Büroklammer und genau EIN Hauptknopf: „Senden“ (Akzentblau) solange nichts läuft, „Stop“ (Rot) während eine
- * Antwort streamt — nie beide. Audiodatei und Mikrofon aus arch gehören nicht zum Enterprise-Client (keine
- * Spracheingabe, keine Audio-Pipeline) und fehlen daher. Einen RAG-Schalter gibt es nicht (in arch gab es ihn nie): ob Wissen
+ * Editor und eine Fußzeile wie in arch. Links Modell ▾ und Denkaufwand ▾ (beim Diktat dahinter Verwerfen ✕ bzw.
+ * „Erneut“), rechts Pegelbalken, Büroklammer, Mikrofon und genau EIN Hauptknopf: „Senden“ (Akzentblau) solange nichts
+ * läuft, „Stop“ (Rot) während eine Antwort streamt — nie beide. Die Statuszeile liegt als zentrierte volle Zeile über
+ * der Fußzeile. Spracheingabe wie arch: Mikrofon → Aufnahme (Knopf wird zum orangen Stopp-Quadrat, Fläche orange,
+ * Wellenform mit ziehbarer Signalschwelle über dem Editor, Pegelbalken) → Stopp erkennt (Knopf wird zum ✕ =
+ * Abbrechen); Esc verwirft, Strg+Umschalt+M schaltet um. Die Audiodatei-Abschrift aus arch fehlt (keine
+ * Audio-Pipeline). Einen RAG-Schalter gibt es nicht (in arch gab es ihn nie): ob Wissen
  * gesucht wird, folgt aus den aktivierten Wissensquellen. Die Fläche wird weiß und bekommt den blauen Rand,
  * sobald der Editor den Fokus hat oder eine Antwort läuft; Enter sendet, Umschalt+Enter bricht um.
  *
@@ -69,10 +78,17 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String ATTACH_TOOLTIP = "Dateien anhängen";
     static final String MODEL_PLACEHOLDER = "Modell";
     static final String STREAMING_STATUS = "Antwort wird erstellt …";
-    static final String DICTATE_TOOLTIP = "Diktieren";
+    static final String DICTATE_TOOLTIP = "Diktieren (Strg+Umschalt+M)";
     static final String RECORDING_TOOLTIP = "Aufnahme beenden und erkennen";
-    static final String RECORDING_STATUS = "Aufnahme läuft … Mikrofon erneut klicken zum Erkennen";
+    static final String CANCEL_TOOLTIP = "Erkennung abbrechen";
+    static final String DISCARD_TOOLTIP = "Aufnahme verwerfen (Esc)";
+    static final String RETRY_TOOLTIP = "Letzte Aufnahme erneut erkennen";
     static final String RECOGNIZING_STATUS = "Erkenne Sprache …";
+    static final String RECOGNIZED_STATUS = "Abschrift eingefügt. Text prüfen und senden.";
+    static final String EMPTY_STATUS = "Das Modell hat keinen Text geliefert – bitte noch einmal sprechen.";
+    static final String DISCARDED_STATUS = "Diktat verworfen.";
+    static final String CANCELLED_STATUS = "Erkennung abgebrochen.";
+    static final String FAILED_STATUS = "Spracheingabe fehlgeschlagen: ";
     /** Denkaufwand: Anzeige und Wert ({@code null} = Standard des Modells), wie arch „Think: …“. */
     private static final List<String> REASONING_LABELS = Collections.unmodifiableList(Arrays.asList(
             "Denken: Standard", "Denken: niedrig", "Denken: mittel", "Denken: hoch"));
@@ -85,21 +101,30 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private static final Color BORDER_FOCUSED = ResearchUiPalette.ACCENT_BLUE;
     private static final Color BACKGROUND_NORMAL = new Color(0xF5F6F7);
     private static final Color BACKGROUND_FOCUSED = Color.WHITE;
+    private static final Color BORDER_DICTATION = ResearchUiPalette.RECORDING_ORANGE;
+    private static final Color BACKGROUND_DICTATION = ResearchUiPalette.RECORDING_SURFACE;
+    private static final int LEVEL_INTERVAL_MILLIS = 100;
     private static final Color PRIMARY = ResearchUiPalette.ACCENT_BLUE;
     private static final Color DANGER = ResearchUiPalette.DANGER_RED;
-    private static final Color TEXT_MUTED = ResearchUiPalette.LIGHT_TEXT_MUTED;
     private static final String SEND_ACTION = "enterpriseai.send";
+    private static final String DICTATION_ACTION = "enterpriseai.dictation";
+    private static final String DISCARD_ACTION = "enterpriseai.discard";
 
     private final ChatShellModel model;
     private final ChatShellActions actions;
     private final ComposerButton modelButton;
     private final ComposerButton reasoningButton;
-    private final JLabel statusLabel = new JLabel(" ");
+    private final ComposerStatusLine statusLine = new ComposerStatusLine();
+    private final ComposerWaveformOverlay waveform = new ComposerWaveformOverlay();
+    private final JProgressBar levelBar = new JProgressBar(0, 100);
+    private final Timer levelTimer;
     private final PlaceholderTextArea editor;
     private final ComposerButton sendButton;
     private final ComposerButton stopButton;
     private final ComposerButton attachButton;
     private final ComposerButton micButton;
+    private final ComposerButton discardButton;
+    private final ComposerButton retryButton;
     private final ChatAttachmentStrip attachmentStrip;
     private Runnable modelAction;
     private Supplier<List<String>> modelChoices;
@@ -110,6 +135,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private DictationControl dictation;
     private DictationPhase dictationPhase = DictationPhase.IDLE;
     private String dictationNote;
+    private ComposerStatusLine.Tone dictationNoteTone = ComposerStatusLine.Tone.MUTED;
+    private long recordingStartedMillis;
 
     /** Wo das Diktat steht; der Mikrofon-Knopf und die Statuszeile folgen ihm. */
     private enum DictationPhase {
@@ -136,8 +163,20 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         attachButton.setVisible(actions.supportsAttachments());
         this.micButton = ComposerButton.iconButton(ComposerIcons.microphone(), DICTATE_TOOLTIP);
         micButton.getAccessibleContext().setAccessibleName(DICTATE_TOOLTIP);
-        micButton.setAccent(DANGER); // während der Aufnahme rot gefüllt
+        micButton.setAccent(BORDER_DICTATION); // während der Aufnahme orange gefüllt (arch RECORDING)
         micButton.setVisible(false);
+        this.discardButton = ComposerButton.iconButton(ComposerIcons.close(), DISCARD_TOOLTIP);
+        discardButton.getAccessibleContext().setAccessibleName(DISCARD_TOOLTIP);
+        discardButton.setVisible(false);
+        this.retryButton = new ComposerButton(ComposerIcons.refresh(), "Erneut", false, RETRY_TOOLTIP);
+        retryButton.setVisible(false);
+        levelBar.setOpaque(false);
+        levelBar.setBorderPainted(false);
+        levelBar.setPreferredSize(new Dimension(64, 6));
+        levelBar.setMaximumSize(new Dimension(64, 6));
+        levelBar.setToolTipText("Mikrofonpegel");
+        levelBar.setVisible(false);
+        this.levelTimer = new Timer(LEVEL_INTERVAL_MILLIS, event -> sampleLevel());
         this.attachmentStrip = new ChatAttachmentStrip(() -> refreshAttachmentState());
         buildUi();
         wireBehaviour();
@@ -274,9 +313,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         repaint();
     }
 
-    /** Die Statuszeile in der Mitte der Fußzeile. */
-    public JLabel statusLabel() {
-        return statusLabel;
+    /** Der Text der Statuszeile (zentriert über der Fußzeile); leer, wenn nichts zu melden ist. */
+    public String statusText() {
+        return statusLine.text();
     }
 
     /** Das Eingabefeld (für Tests, Demo und Composition Root, z. B. um den Fokus zu setzen). */
@@ -318,34 +357,80 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         return micButton;
     }
 
+    /** Verwerfen ✕ (nur während der Aufnahme sichtbar, wie arch). */
+    public ComposerButton discardButton() {
+        return discardButton;
+    }
+
+    /** „Erneut“: nach einem Fehlschlag die letzte Aufnahme noch einmal erkennen. */
+    public ComposerButton retryButton() {
+        return retryButton;
+    }
+
+    /** Mikrofon wie arch: in Ruhe aufnehmen, während der Aufnahme beenden und erkennen, während der Erkennung abbrechen. */
     private void toggleDictation() {
         if (dictation == null) {
             return;
         }
         if (dictationPhase == DictationPhase.RECORDING) {
             dictationPhase = DictationPhase.RECOGNIZING;
+            stopLevelMeter();
             refreshControls();
             dictation.finish();
             return;
         }
-        if (dictationPhase != DictationPhase.IDLE || !dictation.isAvailable()) {
+        if (dictationPhase == DictationPhase.RECOGNIZING) {
+            discardDictation();
             return;
         }
-        dictationNote = null;
+        if (!dictation.isAvailable() || model.canStop()) {
+            return;
+        }
+        setDictationNote(null, ComposerStatusLine.Tone.MUTED);
         dictationPhase = DictationPhase.RECORDING;
+        startLevelMeter();
         refreshControls();
-        dictation.start(new DictationControl.Result() {
+        dictation.start(dictationResult());
+    }
+
+    /** Esc bzw. ✕: Aufnahme verwerfen oder laufende Erkennung abbrechen, ohne Ergebnis. */
+    private void discardDictation() {
+        if (dictation == null || dictationPhase == DictationPhase.IDLE) {
+            return;
+        }
+        boolean recording = dictationPhase == DictationPhase.RECORDING;
+        dictation.cancel();
+        dictationPhase = DictationPhase.IDLE;
+        stopLevelMeter();
+        setDictationNote(recording ? DISCARDED_STATUS : CANCELLED_STATUS, ComposerStatusLine.Tone.MUTED);
+        refreshControls();
+    }
+
+    private void retryDictation() {
+        if (dictation == null || dictationPhase != DictationPhase.IDLE || !dictation.canRetry() || model.canStop()) {
+            return;
+        }
+        setDictationNote(null, ComposerStatusLine.Tone.MUTED);
+        dictationPhase = DictationPhase.RECOGNIZING;
+        refreshControls();
+        dictation.retry(dictationResult());
+    }
+
+    private DictationControl.Result dictationResult() {
+        return new DictationControl.Result() {
             @Override
             public void recognized(String text) {
                 dictationPhase = DictationPhase.IDLE;
+                stopLevelMeter();
                 if (text == null || text.trim().isEmpty()) {
-                    dictationNote = "Nichts erkannt";
+                    setDictationNote(EMPTY_STATUS, ComposerStatusLine.Tone.MUTED);
                 } else {
                     DictationInsertion insertion = DictationInsertion.insert(editor.getText(),
                             editor.getSelectionStart(), editor.getSelectionEnd(), text);
                     editor.setText(insertion.text);
                     editor.setCaretPosition(insertion.caret);
                     editor.requestFocusInWindow();
+                    setDictationNote(RECOGNIZED_STATUS, ComposerStatusLine.Tone.MUTED);
                 }
                 refreshControls();
             }
@@ -353,11 +438,76 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             @Override
             public void failed(String message) {
                 dictationPhase = DictationPhase.IDLE;
-                dictationNote = "Spracheingabe: " + message;
-                micButton.setToolTipText(dictationNote);
+                stopLevelMeter();
+                String reason = message == null || message.trim().isEmpty() ? "unbekannter Fehler" : message.trim();
+                setDictationNote(FAILED_STATUS + reason, ComposerStatusLine.Tone.ERROR);
                 refreshControls();
+                showDictationFailure(reason);
             }
-        });
+        };
+    }
+
+    private void setDictationNote(String note, ComposerStatusLine.Tone tone) {
+        dictationNote = note;
+        dictationNoteTone = tone;
+    }
+
+    /**
+     * Ein Fehler der Spracheingabe verpufft nicht im Protokoll (wie das Vorlesen seit 0.1.29): Meldung mit dem Grund
+     * und dem gewählten Modell, umbrochen, damit auch lange Laufzeit-Fehler lesbar bleiben.
+     */
+    private void showDictationFailure(String reason) {
+        if (!isShowing()) {
+            return;
+        }
+        JTextArea text = new JTextArea("Die Spracheingabe ist fehlgeschlagen.\n\n" + reason + "\n\n"
+                + dictation.description(), 0, 60);
+        text.setLineWrap(true);
+        text.setWrapStyleWord(true);
+        text.setEditable(false);
+        text.setOpaque(false);
+        text.setBorder(BorderFactory.createEmptyBorder());
+        JScrollPane scroll = new JScrollPane(text, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        scroll.setPreferredSize(new Dimension(520, Math.min(260, text.getPreferredSize().height + 40)));
+        JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(this), scroll, "Spracheingabe",
+                JOptionPane.WARNING_MESSAGE);
+    }
+
+    private void startLevelMeter() {
+        recordingStartedMillis = System.currentTimeMillis();
+        levelBar.setValue(0);
+        waveform.setActive(true);
+        levelTimer.restart();
+    }
+
+    private void stopLevelMeter() {
+        levelTimer.stop();
+        waveform.setActive(false);
+        levelBar.setValue(0);
+    }
+
+    /** Alle 100 ms während der Aufnahme: Pegel in Balken und Wellenform, Dauer und Signal in die Statuszeile. */
+    private void sampleLevel() {
+        if (dictation == null || dictationPhase != DictationPhase.RECORDING) {
+            levelTimer.stop();
+            return;
+        }
+        int level = dictation.level();
+        levelBar.setValue(level);
+        waveform.pushLevel(level);
+        refreshStatus();
+    }
+
+    private String recordingStatus() {
+        long seconds = Math.max(0, (System.currentTimeMillis() - recordingStartedMillis) / 1000L);
+        String signal = dictation.clipping() ? "ÜBERSTEUERT"
+                : levelBar.getValue() >= waveform.thresholdPercent() ? "Signal" : "kein Signal";
+        return "● Aufnahme " + (seconds / 60) + ":" + String.format("%02d", seconds % 60) + " · " + signal
+                + "  (Stopp: erkennen · ✕/Esc: verwerfen)";
     }
 
     /** Ob gerade eine Antwort läuft (dann zeigt die Fläche Stop und den Akzentrand). */
@@ -374,14 +524,20 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             RoundRectangle2D background = new RoundRectangle2D.Float(inset, inset, getWidth() - 2 * inset,
                     getHeight() - 2 * inset, ARC, ARC);
             boolean busy = isBusy();
-            g2.setColor(editorFocused ? BACKGROUND_FOCUSED : resolveBackground());
+            boolean dictating = isDictationActive();
+            g2.setColor(dictating ? BACKGROUND_DICTATION : editorFocused ? BACKGROUND_FOCUSED : resolveBackground());
             g2.fill(background);
-            g2.setColor(editorFocused || busy ? BORDER_FOCUSED : BORDER_NORMAL);
-            g2.setStroke(new BasicStroke(editorFocused || busy ? 1.6f : 1f));
+            g2.setColor(dictating ? BORDER_DICTATION : editorFocused || busy ? BORDER_FOCUSED : BORDER_NORMAL);
+            g2.setStroke(new BasicStroke(editorFocused || busy || dictating ? 1.6f : 1f));
             g2.draw(background);
         } finally {
             g2.dispose();
         }
+    }
+
+    /** Aufnahme oder Erkennung läuft (arch: Fläche orange, Senden gesperrt). */
+    private boolean isDictationActive() {
+        return dictationPhase != DictationPhase.IDLE;
     }
 
     private static Color resolveBackground() {
@@ -419,13 +575,40 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         editorScroll.setViewportBorder(BorderFactory.createEmptyBorder());
         editorScroll.setPreferredSize(new Dimension(520, MIN_EDITOR_HEIGHT));
 
+        // Wie arch: der Editor in einer Schichtung, damit die Wellenform ÜBER dem Text schwebt; darüber die
+        // Statuszeile als zentrierte volle Zeile direkt über der Fußzeile. Beide lassen Klicks zum Editor durch.
+        final JScrollPane scroll = editorScroll;
+        JLayeredPane editorLayers = new JLayeredPane() {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public void doLayout() {
+                for (Component child : getComponents()) {
+                    child.setBounds(0, 0, getWidth(), getHeight());
+                }
+            }
+
+            @Override
+            public Dimension getPreferredSize() {
+                return scroll.getPreferredSize();
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                return scroll.getMinimumSize();
+            }
+        };
+        editorLayers.add(editorScroll, JLayeredPane.DEFAULT_LAYER);
+        editorLayers.add(waveform, JLayeredPane.PALETTE_LAYER);
+        editorLayers.add(statusLine, JLayeredPane.MODAL_LAYER);
+
         add(attachmentStrip, BorderLayout.NORTH);
-        add(editorScroll, BorderLayout.CENTER);
+        add(editorLayers, BorderLayout.CENTER);
         add(buildFooter(), BorderLayout.SOUTH);
         setMinimumSize(new Dimension(320, 104));
     }
 
-    /** Die Fußzeile wie arch: links Modell und Denkaufwand, Mitte Status, rechts Anhang und Senden/Stop. */
+    /** Die Fußzeile wie arch: links Modell, Denkaufwand, Verwerfen/Erneut; rechts Pegel, Anhang, Mikrofon, Senden/Stop. */
     private JPanel buildFooter() {
         JPanel footer = new JPanel(new BorderLayout(8, 0));
         footer.setOpaque(false);
@@ -434,22 +617,22 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         west.setOpaque(false);
         west.add(modelButton);
         west.add(reasoningButton);
+        JPanel dictationActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
+        dictationActions.setOpaque(false);
+        dictationActions.add(discardButton);
+        dictationActions.add(retryButton);
+        west.add(dictationActions);
         footer.add(west, BorderLayout.WEST);
-
-        statusLabel.setForeground(TEXT_MUTED);
-        statusLabel.setFont(statusLabel.getFont().deriveFont(statusLabel.getFont().getSize2D() - 1f));
-        JPanel center = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        center.setOpaque(false);
-        center.add(statusLabel);
-        footer.add(center, BorderLayout.CENTER);
 
         JPanel east = new JPanel();
         east.setOpaque(false);
         east.setLayout(new BoxLayout(east, BoxLayout.X_AXIS));
         east.add(Box.createHorizontalGlue());
-        east.add(micButton);
-        east.add(Box.createHorizontalStrut(2));
+        east.add(levelBar);
+        east.add(Box.createHorizontalStrut(4));
         east.add(attachButton);
+        east.add(Box.createHorizontalStrut(4));
+        east.add(micButton); // Mikrofon direkt links von Senden (arch)
         east.add(Box.createHorizontalStrut(4));
         east.add(sendButton);
         east.add(stopButton);
@@ -508,6 +691,29 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         reasoningButton.addActionListener(event -> showReasoningMenu());
         attachButton.addActionListener(event -> chooseFiles());
         micButton.addActionListener(event -> toggleDictation());
+        discardButton.addActionListener(event -> discardDictation());
+        retryButton.addActionListener(event -> retryDictation());
+        editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_M,
+                InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK), DICTATION_ACTION);
+        editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), DISCARD_ACTION);
+        editor.getActionMap().put(DICTATION_ACTION, new AbstractAction() {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                if (micButton.isVisible() && micButton.isEnabled()) {
+                    toggleDictation();
+                }
+            }
+        });
+        editor.getActionMap().put(DISCARD_ACTION, new AbstractAction() {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                discardDictation();
+            }
+        });
 
         editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), SEND_ACTION);
         editor.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK),
@@ -557,43 +763,66 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         });
     }
 
+    /** Knopflogik wie arch {@code setDictationView}: Mikrofon / Stopp-Quadrat / ✕, Verwerfen, Erneut, Pegel. */
     private void refreshDictation(boolean busy) {
         if (dictation == null) {
             return;
         }
         boolean recording = dictationPhase == DictationPhase.RECORDING;
-        micButton.setEnabled(recording || (dictationPhase == DictationPhase.IDLE && !busy
-                && dictation.isAvailable()));
+        boolean recognizing = dictationPhase == DictationPhase.RECOGNIZING;
+        boolean idle = dictationPhase == DictationPhase.IDLE;
+        micButton.setEnabled(recording || recognizing || (!busy && dictation.isAvailable()));
+        micButton.setIcon(recording ? ComposerIcons.stop() : recognizing ? ComposerIcons.close()
+                : ComposerIcons.microphone());
         micButton.setEmphasized(recording);
-        if (recording) {
-            micButton.setToolTipText(RECORDING_TOOLTIP);
-        } else if (dictationNote == null || dictationPhase != DictationPhase.IDLE) {
-            micButton.setToolTipText(DICTATE_TOOLTIP + " (" + dictation.description() + ")");
+        micButton.setToolTipText(recording ? RECORDING_TOOLTIP : recognizing ? CANCEL_TOOLTIP
+                : DICTATE_TOOLTIP + " – " + dictation.description());
+        boolean layoutChanged = discardButton.isVisible() != recording
+                || retryButton.isVisible() != (idle && dictation.canRetry())
+                || levelBar.isVisible() != recording;
+        discardButton.setVisible(recording);
+        retryButton.setVisible(idle && dictation.canRetry());
+        retryButton.setEnabled(!busy);
+        levelBar.setVisible(recording);
+        if (layoutChanged) {
+            revalidate();
         }
     }
 
     /** Send/Stop: genau einer sichtbar; Send nur mit sendbarem Entwurf aktiv, Stop nur während einer Antwort. */
     private void refreshControls() {
         boolean busy = model.canStop();
-        sendButton.setEnabled(model.canSend(editor.getText()));
+        sendButton.setEnabled(model.canSend(editor.getText()) && !isDictationActive());
         stopButton.setEnabled(busy);
         attachButton.setEnabled(!busy);
         reasoningButton.setEnabled(!busy);
         refreshDictation(busy);
-        int pending = attachmentStrip.count();
-        String status = busy ? STREAMING_STATUS
-                : dictationPhase == DictationPhase.RECORDING ? RECORDING_STATUS
-                : dictationPhase == DictationPhase.RECOGNIZING ? RECOGNIZING_STATUS
-                : pending == 1 ? "1 Anhang vorgemerkt" : pending > 1 ? pending + " Anhänge vorgemerkt"
-                : dictationNote != null ? dictationNote : " ";
-        if (!status.equals(statusLabel.getText())) {
-            statusLabel.setText(status);
-        }
+        refreshStatus();
         if (sendButton.isVisible() == busy || stopButton.isVisible() != busy) {
             sendButton.setVisible(!busy);
             stopButton.setVisible(busy);
             revalidate();
         }
         repaint();
+    }
+
+    /** Die Statuszeile: Antwort, Aufnahme, Erkennung, vorgemerkte Anhänge, sonst die letzte Diktat-Meldung. */
+    private void refreshStatus() {
+        int pending = attachmentStrip.count();
+        if (model.canStop()) {
+            statusLine.show(STREAMING_STATUS, ComposerStatusLine.Tone.MUTED);
+        } else if (dictationPhase == DictationPhase.RECORDING) {
+            statusLine.show(recordingStatus(), ComposerStatusLine.Tone.DICTATION);
+        } else if (dictationPhase == DictationPhase.RECOGNIZING) {
+            statusLine.show(RECOGNIZING_STATUS, ComposerStatusLine.Tone.DICTATION);
+        } else if (dictationNote != null && dictationNoteTone == ComposerStatusLine.Tone.ERROR) {
+            statusLine.show(dictationNote, dictationNoteTone);
+        } else if (pending > 0) {
+            statusLine.show(pending == 1 ? "1 Anhang vorgemerkt" : pending + " Anhänge vorgemerkt",
+                    ComposerStatusLine.Tone.MUTED);
+        } else {
+            statusLine.show(dictationNote, dictationNoteTone);
+        }
+        setToolTipText(statusLine.text().isEmpty() ? null : statusLine.text());
     }
 }

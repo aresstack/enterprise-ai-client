@@ -40,6 +40,11 @@ public final class ResearchUiPalette {
     public static final Color ACCENT_BLUE = new Color(0x2979FF);
     /** The destructive red of the composer family (delete-all hover, stop button). */
     public static final Color DANGER_RED = new Color(0xD32F2F);
+    /** Dictation (arch {@code ChatComposerPanel}): orange border and stop fill while recording, warm surface. */
+    public static final Color RECORDING_ORANGE = new Color(0xF57C00);
+    public static final Color RECORDING_SURFACE = new Color(0xFFF8E1);
+    /** The comic dark green of the recording waveform over the composer editor (arch). */
+    public static final Color WAVE_GREEN = new Color(0x2E7D32);
 
     /** Light-chrome tokens for design-study controls embedded in the BRIGHT AskAI surfaces. */
     public static final Color LIGHT_CONTROL_BG = Color.WHITE;
