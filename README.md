@@ -77,8 +77,11 @@ java -jar enterprise-ai-client-<version>.jar
    gespeichert, „Modelle verwalten …“ öffnet die Einstellungen) und den Denkaufwand („Denken: Standard/niedrig/mittel/hoch“, gesendet als `reasoning_effort` bzw.
    `reasoning.effort`, gegen das Gateway UNVERIFIED), rechts Büroklammer und Senden/Stop; dazwischen eine Statuszeile.
 7. **Dateianhänge und Tool-Calls**: Die Büroklammer im Composer hängt Dateien an (Chips mit ✕ über dem Editor,
-   nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen laufen über
-   `POST <chat.baseUrl>/chat/completions` mit `tools` und ohne Streaming (`ChatCompletionsToolLoop`): Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
+   nach dem Senden als Chips unter der Nutzerblase). Unterhaltungen mit Anhängen, Seiten oder angehakter
+   Wissensquelle laufen über `POST <chat.baseUrl>/chat/completions` mit `tools`, gestreamt (`ChatCompletionsToolLoop`
+   setzt die `tool_calls` aus den Deltas zusammen). Mit angehakter Quelle oder Seiten bekommt das Modell den
+   Wissens-Werkzeugsatz des Agenten (`knowledge_search` über die angehakten Quellen, `knowledge_read`) aus dem
+   `ToolCatalog`, auch ohne Seite. Das Modell bekommt nur Kennung (`att-…`) und Namen der Anhänge
    und holt sich den Inhalt selbst über die Werkzeuge `read_attachment` und `search_attachment`; der Client führt
    sie lokal aus (Text über `document-tika`, also Apache Tika) und schickt nur das Ergebnis zurück
    (Aufruf als `assistant` mit `tool_calls`, Ergebnis als `role=tool` mit `tool_call_id`, höchstens 8 Runden, kein
