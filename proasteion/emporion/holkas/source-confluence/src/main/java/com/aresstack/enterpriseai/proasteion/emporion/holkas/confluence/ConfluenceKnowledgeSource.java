@@ -348,7 +348,8 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         Page page = client.page(session, pageId, true);
         String body = ConfluenceHtmlText.toText(page.html);
         String text = body.isEmpty() ? "# " + page.title : "# " + page.title + "\n\n" + body;
-        return KnowledgeDocument.of(pageResource(page, page.parentId), text);
+        return KnowledgeDocument.of(pageResource(page, page.parentId), text,
+                ConfluenceHtmlText.toBlocks(page.title, page.html));
     }
 
     private KnowledgeDocument loadAttachment(Session session, String attachmentId) throws KnowledgeSourceException {

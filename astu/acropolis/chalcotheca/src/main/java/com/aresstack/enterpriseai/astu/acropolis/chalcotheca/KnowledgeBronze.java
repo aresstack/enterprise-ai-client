@@ -5,12 +5,15 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -30,12 +33,15 @@ import java.util.TreeMap;
  * Text des Dokuments
  * </pre>
  *
+ * Strukturblöcke des Dokuments (askai {@code StructuralBlock}) stehen in Lesereihenfolge als
+ * {@code block=<Art>:<Länge des Pfads>:<Pfad><Text>} im Kopf, damit sie die Bronze-Kopie überstehen.
  * Werte sind zeilenweise kodiert ({@code \\}, {@code \n}, {@code \r}); UTF-8.
  */
 public final class KnowledgeBronze {
 
     static final String MAGIC = "bronze/knowledge-document/1";
     private static final String META = "meta.";
+    private static final String BLOCK = "block";
 
     private KnowledgeBronze() {
     }
@@ -64,6 +70,11 @@ public final class KnowledgeBronze {
         for (Map.Entry<String, String> entry : r.metadata().asMap().entrySet()) {
             line(out, META + entry.getKey(), entry.getValue());
         }
+        for (KnowledgeStructuralBlock block : document.blocks()) {
+            // Art, Länge des Pfads, Pfad, Text: Pfad und Text dürfen jedes Zeichen enthalten.
+            line(out, BLOCK, block.kind().name() + ':' + block.headingPath().length() + ':' + block.headingPath()
+                    + block.text());
+        }
         out.append('\n').append(document.text());
         return out.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -80,6 +91,7 @@ public final class KnowledgeBronze {
         }
         Map<String, String> header = new TreeMap<String, String>();
         Map<String, String> metadata = new TreeMap<String, String>();
+        List<KnowledgeStructuralBlock> blocks = new ArrayList<KnowledgeStructuralBlock>();
         for (String line : all.substring(MAGIC.length() + 1, headerEnd).split("\n")) {
             int eq = line.indexOf('=');
             if (eq <= 0) {
@@ -87,7 +99,9 @@ public final class KnowledgeBronze {
             }
             String key = unescape(line.substring(0, eq));
             String value = unescape(line.substring(eq + 1));
-            if (key.startsWith(META)) {
+            if (BLOCK.equals(key)) {
+                blocks.add(block(value));
+            } else if (key.startsWith(META)) {
                 metadata.put(key.substring(META.length()), value);
             } else {
                 header.put(key, value);
@@ -111,9 +125,22 @@ public final class KnowledgeBronze {
                 resource.location(URI.create(header.get("location")));
             }
             resource.metadata(KnowledgeMetadata.of(metadata));
-            return KnowledgeDocument.of(resource.build(), all.substring(headerEnd + 2));
+            return KnowledgeDocument.of(resource.build(), all.substring(headerEnd + 2), blocks);
         } catch (RuntimeException e) {
             throw new IOException("Bronze-Form eines Wissensdokuments unvollständig: " + e.getClass().getSimpleName());
+        }
+    }
+
+    private static KnowledgeStructuralBlock block(String value) throws IOException {
+        int kindEnd = value.indexOf(':');
+        int lengthEnd = kindEnd < 0 ? -1 : value.indexOf(':', kindEnd + 1);
+        try {
+            KnowledgeStructuralBlock.Kind kind = KnowledgeStructuralBlock.Kind.valueOf(value.substring(0, kindEnd));
+            int pathEnd = lengthEnd + 1 + Integer.parseInt(value.substring(kindEnd + 1, lengthEnd));
+            return new KnowledgeStructuralBlock(kind, value.substring(lengthEnd + 1, pathEnd),
+                    value.substring(pathEnd));
+        } catch (RuntimeException e) {
+            throw new IOException("ungültiger Strukturblock in der Bronze-Form");
         }
     }
 

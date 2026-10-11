@@ -1,6 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock.Kind;
 import org.junit.Test;
+
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 
@@ -57,5 +61,22 @@ public class ConfluenceHtmlTextTest {
     public void emptyAndNullInput() {
         assertEquals("", ConfluenceHtmlText.toText(null));
         assertEquals("", ConfluenceHtmlText.toText("<p>  </p>"));
+    }
+
+    @Test
+    public void blocksKeepTablesQuotesAndCodeAsHardBoundaries() {
+        List<KnowledgeStructuralBlock> blocks = ConfluenceHtmlText.toBlocks("Seite",
+                "<h2>Teil</h2><p>Ein Satz.</p><table><tr><th>Name</th><th>Wert</th></tr><tr><td>A</td><td>1</td></tr>"
+                        + "</table><blockquote><p>Zitat hier.</p></blockquote><ul><li>eins</li></ul>"
+                        + "<pre>int x;\n  y();</pre>");
+        assertEquals(new KnowledgeStructuralBlock(Kind.HEADING, "Seite", "Seite"), blocks.get(0));
+        assertEquals(new KnowledgeStructuralBlock(Kind.HEADING, "Seite > Teil", "Teil"), blocks.get(1));
+        assertEquals(new KnowledgeStructuralBlock(Kind.PARAGRAPH, "Seite > Teil", "Ein Satz."), blocks.get(2));
+        assertEquals(new KnowledgeStructuralBlock(Kind.TABLE_ROW, "Seite > Teil", "Name | Wert"), blocks.get(3));
+        assertEquals(new KnowledgeStructuralBlock(Kind.TABLE_ROW, "Seite > Teil", "A | 1"), blocks.get(4));
+        assertEquals(new KnowledgeStructuralBlock(Kind.QUOTE, "Seite > Teil", "Zitat hier."), blocks.get(5));
+        assertEquals(new KnowledgeStructuralBlock(Kind.LIST_ITEM, "Seite > Teil", "- eins"), blocks.get(6));
+        assertEquals(new KnowledgeStructuralBlock(Kind.CODE, "Seite > Teil", "int x;\n  y();"), blocks.get(7));
+        assertEquals(8, blocks.size());
     }
 }

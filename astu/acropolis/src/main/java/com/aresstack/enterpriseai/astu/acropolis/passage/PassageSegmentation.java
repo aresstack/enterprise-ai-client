@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.passage;
 
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeTokenCounter;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 
@@ -18,7 +19,9 @@ import java.util.regex.Pattern;
  * fertige Passage bekommt ihr EIGENES Embedding. Werte wie in arch (3, 0.35, 2, 8); dieselben Werte nutzt das
  * Vorlesen ({@code SemanticParagraphs}).
  *
- * <p>Die Blöcke liest sie aus dem Text der Quelle (Markdown-artig, wie {@code knowledge_read} ihn liefert):
+ * <p>Die Blöcke liefert die Quelle aus ihrem Dokumentbaum ({@link KnowledgeStructuralBlock}, askai
+ * {@code SourceCapture.StructuralBlock}); so bleiben Tabellenzeilen, Zitate und Code harte Grenzen. Nur Quellen ohne
+ * Struktur (Dateien, FTP, NDV) liefern bloßen Text; dann liest sie die Blöcke aus dem Markdown-artigen Text:
  * {@code #}-Überschriften, Code-Zäune, Listenpunkte, {@code |}-Tabellenzeilen, {@code >}-Zitate, sonst Absätze
  * zwischen Leerzeilen.
  *
@@ -35,7 +38,7 @@ public final class PassageSegmentation {
     static final int MIN_PASSAGE_SENTENCES = 2;
     static final int MAX_PASSAGE_SENTENCES = 8;
     /** Version der Zerlegung: ändert sie sich, entstehen neue Passage-IDs. */
-    public static final String SEGMENTATION_VERSION = "semantic-v1";
+    public static final String SEGMENTATION_VERSION = "semantic-v2";
     /** Höchstgröße einer Passage in Token (wie das bisherige Chunk-Budget), sonst an Wortgrenzen geteilt. */
     static final int MAX_PASSAGE_TOKENS = 350;
     /** Passage-Texte je Embedding-Aufruf. */
@@ -85,13 +88,21 @@ public final class PassageSegmentation {
                 + ";sentences=" + sentences.id();
     }
 
-    /** Die Passagen einer Quelle in Lesereihenfolge. */
+    /** Die Passagen einer Quelle in Lesereihenfolge; die Struktur wird aus dem Text gelesen. */
     public List<SourcePassage> segment(String sourceId, String text) {
+        return segment(sourceId, text, Collections.<KnowledgeStructuralBlock>emptyList());
+    }
+
+    /**
+     * Die Passagen einer Quelle in Lesereihenfolge. Liefert die Quelle Strukturblöcke, gelten genau diese; sonst wird
+     * die Struktur aus dem Text gelesen.
+     */
+    public List<SourcePassage> segment(String sourceId, String text, List<KnowledgeStructuralBlock> structure) {
         List<SourcePassage> passages = new ArrayList<SourcePassage>();
         List<String> pendingTexts = new ArrayList<String>();
         List<Object[]> pending = new ArrayList<Object[]>(); // {headingPath, firstSentence}
         int ordinal = 0;
-        for (Block block : blocksOf(text)) {
+        for (Block block : structure == null || structure.isEmpty() ? blocksOf(text) : blocksOf(structure)) {
             List<String> blockSentences = sentencesOf(block);
             int first = ordinal;
             ordinal += blockSentences.size();
@@ -231,6 +242,15 @@ public final class PassageSegmentation {
             rightNorm += right[d] * right[d];
         }
         return leftNorm == 0 || rightNorm == 0 ? 0 : dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
+    }
+
+    /** Die Blöcke, wie die Quelle sie aus ihrem Dokumentbaum liefert (askai: die Struktur geht vor). */
+    static List<Block> blocksOf(List<KnowledgeStructuralBlock> structure) {
+        List<Block> blocks = new ArrayList<Block>(structure.size());
+        for (KnowledgeStructuralBlock block : structure) {
+            blocks.add(new Block(BlockKind.valueOf(block.kind().name()), block.headingPath(), block.text()));
+        }
+        return blocks;
     }
 
     /** Die Strukturblöcke des Textes; Überschriften setzen den Abschnittspfad der folgenden Blöcke. */

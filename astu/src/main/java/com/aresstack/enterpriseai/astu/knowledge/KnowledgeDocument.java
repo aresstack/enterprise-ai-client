@@ -13,7 +13,12 @@ import java.text.Normalizer;
  * ausgedrückt – Überschriften als {@code #}-Zeilen, Absätze durch Leerzeilen getrennt, Listenpunkte als
  * {@code - }/{@code 1. }-Zeilen, Code in {@code ```}-Blöcken. HTML, Wiki-Markup oder Confluence-Storage-Format
  * wandelt der Adapter vorher um. Der Text wird beim Erzeugen auf Unicode-NFC und {@code \n}-Zeilenenden
- * normalisiert (Unicode-Leerzeichen wie U+00A0 werden zu {@code ' '}), damit gleiche Inhalte gleiche Chunks und gleiche {@link #contentHash()} ergeben.
+ * normalisiert (Unicode-Leerzeichen wie U+00A0 werden zu {@code ' '}), damit gleiche Inhalte gleiche Chunks und
+ * gleiche {@link #contentHash()} ergeben.
+ *
+ * <p>Wer die Struktur aus dem Dokumentbaum kennt (Confluence, MediaWiki), liefert zusätzlich {@link #blocks()} (askai
+ * {@code SourceCapture.StructuralBlock}); die Zerlegung nimmt dann diese Blöcke und rät die Struktur nicht aus dem
+ * Text. Leer heißt: nur der Text ist bekannt.
  */
 public final class KnowledgeDocument {
 
@@ -22,18 +27,41 @@ public final class KnowledgeDocument {
     private final KnowledgeResource resource;
     private final String text;
     private final String contentHash;
+    private final java.util.List<KnowledgeStructuralBlock> blocks;
 
-    private KnowledgeDocument(KnowledgeResource resource, String text) {
+    private KnowledgeDocument(KnowledgeResource resource, String text,
+                              java.util.List<KnowledgeStructuralBlock> blocks) {
         this.resource = resource;
         this.text = text;
         this.contentHash = sha256Hex(text);
+        this.blocks = blocks;
     }
 
     public static KnowledgeDocument of(KnowledgeResource resource, String text) {
+        return of(resource, text, null);
+    }
+
+    /** Mit den Strukturblöcken aus dem Dokumentbaum; ihr Text wird wie {@link #text()} normalisiert. */
+    public static KnowledgeDocument of(KnowledgeResource resource, String text,
+                                       java.util.List<KnowledgeStructuralBlock> blocks) {
         if (resource == null) {
             throw new IllegalArgumentException("Ressource fehlt");
         }
-        return new KnowledgeDocument(resource, normalize(text));
+        java.util.List<KnowledgeStructuralBlock> normalized = new java.util.ArrayList<KnowledgeStructuralBlock>();
+        if (blocks != null) {
+            for (KnowledgeStructuralBlock block : blocks) {
+                if (block != null) {
+                    normalized.add(new KnowledgeStructuralBlock(block.kind(), normalize(block.headingPath()),
+                            normalize(block.text())));
+                }
+            }
+        }
+        return new KnowledgeDocument(resource, normalize(text), java.util.Collections.unmodifiableList(normalized));
+    }
+
+    /** Die Strukturblöcke in Lesereihenfolge; leer, wenn die Quelle nur Text liefert. */
+    public java.util.List<KnowledgeStructuralBlock> blocks() {
+        return blocks;
     }
 
     /** NFC, {@code \n}-Zeilenenden, Unicode-Leerzeichen als {@code ' '}; {@code null} wird zu {@code ""}. */

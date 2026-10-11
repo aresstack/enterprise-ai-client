@@ -2,6 +2,8 @@ package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock;
+
 import java.util.List;
 
 /**
@@ -15,8 +17,13 @@ public interface KnowledgePassageSplitter {
     /** Kennung von Verfahren und Parametern; ändert sie sich, wird neu zerlegt. */
     String fingerprint();
 
-    /** Passagen in Lesereihenfolge; leer für leeren Text. */
-    List<Passage> split(String resourceId, String text) throws EmbeddingException;
+    /**
+     * Passagen in Lesereihenfolge; leer für leeren Text.
+     *
+     * @param structure die Strukturblöcke der Quelle (askai {@code StructuralBlock}); leer, wenn nur Text bekannt ist
+     */
+    List<Passage> split(String resourceId, String text, List<KnowledgeStructuralBlock> structure)
+            throws EmbeddingException;
 
     /** Eine Passage: Abschnittspfad (Überschriften, getrennt durch " > "), Text und Embedding des ganzen Textes. */
     final class Passage {

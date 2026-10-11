@@ -4,6 +4,8 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePassageSplit
 import com.aresstack.enterpriseai.astu.acropolis.passage.PassageSegmentation;
 import com.aresstack.enterpriseai.astu.acropolis.passage.SourcePassage;
 
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,8 +27,8 @@ public final class SemanticPassageSplitter implements KnowledgePassageSplitter {
     }
 
     @Override
-    public List<Passage> split(String resourceId, String text) {
-        List<SourcePassage> found = segmentation.segment(resourceId, text);
+    public List<Passage> split(String resourceId, String text, List<KnowledgeStructuralBlock> structure) {
+        List<SourcePassage> found = segmentation.segment(resourceId, text, structure);
         List<Passage> passages = new ArrayList<Passage>(found.size());
         for (SourcePassage passage : found) {
             passages.add(new Passage(passage.headingPath(), passage.text(), passage.vector()));

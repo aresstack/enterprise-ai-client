@@ -563,7 +563,7 @@ public final class IndexKnowledgeUseCase {
         try {
             List<KnowledgePassageSplitter.Passage> found = document.isBlank()
                     ? Collections.<KnowledgePassageSplitter.Passage>emptyList()
-                    : passages.split(target.value(), document.text());
+                    : passages.split(target.value(), document.text(), document.blocks());
             for (int i = 0; i < found.size(); i++) {
                 KnowledgePassageSplitter.Passage passage = found.get(i);
                 KnowledgeChunk chunk = new KnowledgeChunk(KnowledgeChunkId.of(target, i), resource.sourceId(),

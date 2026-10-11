@@ -106,7 +106,7 @@ public final class MediaWikiKnowledgeSource implements SearchableKnowledgeSource
         KnowledgeResource resource = resource(info, revision, null);
         String body = WikiHtmlText.toText(parsed.html());
         String text = body.isEmpty() ? "# " + resource.title() : "# " + resource.title() + "\n\n" + body;
-        return KnowledgeDocument.of(resource, text);
+        return KnowledgeDocument.of(resource, text, WikiHtmlText.toBlocks(resource.title(), parsed.html()));
     }
 
     @Override

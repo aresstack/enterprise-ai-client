@@ -1,6 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki;
 
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock.Kind;
 import org.junit.Test;
+
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -55,5 +59,21 @@ public class WikiHtmlTextTest {
         assertEquals("Zeile 1\nZeile 2", text);
         assertFalse(text.contains("<"));
         assertTrue(WikiHtmlText.toText("<h1>T</h1>").startsWith("# T"));
+    }
+
+    @Test
+    public void blocksKeepTablesQuotesAndPreformattedCode() {
+        List<KnowledgeStructuralBlock> blocks = WikiHtmlText.toBlocks("Hauptseite",
+                "<div class=\"mw-parser-output\"><h2><span class=\"mw-headline\">Abschnitt</span>"
+                        + "<span class=\"mw-editsection\">[bearbeiten]</span></h2>"
+                        + "<table><tr><td>a</td><td>1</td></tr></table>"
+                        + "<blockquote>Gesagt ist gesagt.</blockquote><pre>code  bleibt</pre></div>");
+        assertEquals(new KnowledgeStructuralBlock(Kind.HEADING, "Hauptseite", "Hauptseite"), blocks.get(0));
+        assertEquals(new KnowledgeStructuralBlock(Kind.HEADING, "Hauptseite > Abschnitt", "Abschnitt"), blocks.get(1));
+        assertEquals(new KnowledgeStructuralBlock(Kind.TABLE_ROW, "Hauptseite > Abschnitt", "a | 1"), blocks.get(2));
+        assertEquals(new KnowledgeStructuralBlock(Kind.QUOTE, "Hauptseite > Abschnitt", "Gesagt ist gesagt."),
+                blocks.get(3));
+        assertEquals(new KnowledgeStructuralBlock(Kind.CODE, "Hauptseite > Abschnitt", "code  bleibt"), blocks.get(4));
+        assertEquals(5, blocks.size());
     }
 }
