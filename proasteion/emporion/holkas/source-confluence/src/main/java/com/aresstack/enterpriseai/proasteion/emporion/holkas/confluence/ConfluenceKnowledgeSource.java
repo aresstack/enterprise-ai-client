@@ -203,7 +203,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         String base = config.baseUrl().toString();
         base = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
         // Gleicher Host in anderer Schreibweise (Groß-/Kleinschreibung, Standardport) ist nicht fremd.
-        final String src = ConfluencePageView.onBase(requested, base, base);
+        final String src = ConfluencePageView.onBase(requested, base, base, false);
         if (src == null || !src.startsWith(base + "/")) {
             // Fremde Bilder werden nie geladen (Angelo); der Text nennt beide Adressen, damit eine abweichende
             // Basis (etwa die Server-Basis-URL in export_view) sofort sichtbar ist.

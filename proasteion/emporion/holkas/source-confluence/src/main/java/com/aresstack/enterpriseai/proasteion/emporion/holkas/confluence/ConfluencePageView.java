@@ -91,7 +91,7 @@ final class ConfluencePageView {
             if (src.isEmpty()) {
                 src = raw;
             }
-            src = onBase(onBase(src, serverBase, baseUri), baseUri, baseUri);
+            src = onBase(onBase(src, serverBase, baseUri, true), baseUri, baseUri, false);
             img.attr("src", src);
             if (raw.startsWith("data:") || src.contains("/emoticons/") || src.contains("/icons/")) {
                 continue;
@@ -135,11 +135,11 @@ final class ConfluencePageView {
     }
 
     /**
-     * {@code src} unter {@code from} (gleiches Schema-unabhängiges Ziel: Host ohne Groß-/Kleinschreibung, Port mit
-     * Standardport gleichgesetzt, Pfad unter dem Kontextpfad von {@code from}) als Adresse unter {@code to}; sonst
-     * {@code src} unverändert. Ein Wechsel von https nach http wird nie übernommen: {@code to} bestimmt das Schema.
+     * {@code src} unter {@code from} (Host ohne Groß-/Kleinschreibung, Port mit Standardport gleichgesetzt, Pfad
+     * unter dem Kontextpfad von {@code from}) als Adresse unter {@code to}; sonst {@code src} unverändert. {@code to} bestimmt das Schema der Anfrage. {@code anyScheme}: auch ein anderes Schema
+     * gilt als dieselbe Basis (nur für die von Confluence selbst gemeldete Server-Basis); sonst muss es gleich sein.
      */
-    static String onBase(String src, String from, String to) {
+    static String onBase(String src, String from, String to, boolean anyScheme) {
         if (src == null || from == null || from.trim().isEmpty()) {
             return src;
         }
@@ -149,6 +149,9 @@ final class ConfluencePageView {
             image = new URI(src);
             base = new URI(from.trim());
         } catch (URISyntaxException e) {
+            return src;
+        }
+        if (!anyScheme && (image.getScheme() == null || !image.getScheme().equalsIgnoreCase(base.getScheme()))) {
             return src;
         }
         if (image.getHost() == null || base.getHost() == null || !image.getHost().equalsIgnoreCase(base.getHost())
