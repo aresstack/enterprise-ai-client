@@ -74,6 +74,25 @@ WebSocket-Transporte prüfen kann. Produktionscode darf Testfixtures nicht sehen
 Alle Fakes binden an `127.0.0.1`. Der Demo-Agent (`acp-demo-agent-all.jar`) und der Testagent
 `KnowledgeDemoAgentMain` (Testcode von `integration-tests`) sind echte Kindprozesse.
 
+Seit dieser Zählung hinzugekommen (ohne neuen Gesamtlauf):
+
+- **Einrichtungsassistent** (v0.14.0, `exedra`): `SetupStartupRulesTest` (die sechs Startregeln um
+  `setup.completed`: fehlende Datei öffnet den Assistenten und schlägt ein altes `true`, nur „Fertig“ setzt `true`,
+  Abbruch lässt `false`, Datei ohne Schlüssel startet wie bisher, Datei mit `false` öffnet den Assistenten mit ihren
+  Werten, headless unverändert), `FileSetupActionsTest` (Abschlussprüfung mit neun Punkten gegen `InMemoryVault`,
+  Zertifikats-Alias an der Quelle, fehlender API-Key und falsches Confluence-Passwort, unvollständige Modelle ohne
+  Datei und Fehlertexte ohne Properties-Schlüssel, Dimension aus dem Embedding-Test), `SettingsMapperTest`
+  `plainShowsNoPropertyKeys` (Klartext-Variante der Loader-Probleme).
+- **Reiter „Tools“** (v0.15.0): `ApplicationCompositionTest.disabledToolsLeaveChatAndAgentAndComeBackWithoutRestart`
+  (Katalog-Listen für Chat und Agent nach `reload()`), `AgentToolSettingsTest` (`exedra`: Speichern erreicht den
+  laufenden Agenten-Endpoint per `updateTools`, ohne Neustart, auch beim Wiedereinschalten),
+  `ChatCompletionsToolLoopTest.toolSwitchedOffDuringTheRoundIsNeitherOfferedNorRunAgain` (`acropolis`: laufende
+  Chat-Runde bietet ein abgeschaltetes Werkzeug ab dem nächsten Modellaufruf nicht mehr an und führt es nicht aus),
+  dazu Fälle in `RagChatBindingTest`, `FileSettingsActionsTest` und `SettingsPanelTest`.
+- **Semantische Suche** (v0.15.1): `RetrieveKnowledgeUseCaseTest` (Kürzung auf `MAX_QUERY_TOKENS`, Meldung an den
+  `RetrievalObserver`), `OpenAiCompatibleEmbeddingAdapterTest.overloadIsRetriedWithBackoffBeforeItFails`
+  (429/503 mit 500 ms und 1500 ms, kein vierter Versuch, Meldung mit Pfad statt Host).
+
 ## Besonderheiten
 
 - **Eigene JVM je Testklasse** (`forkEvery = 1`) in `mcp-solon-runtime`, `exedra` und `integration-tests`,

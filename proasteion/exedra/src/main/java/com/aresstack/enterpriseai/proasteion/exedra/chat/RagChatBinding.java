@@ -386,9 +386,11 @@ public final class RagChatBinding implements ChatShellActions {
                             if (knowledgeTools) {
                                 available.addAll(support.knowledgeTools());
                             }
-                            via = new ChatCompletionsToolLoop(support.chat(), new ToolRegistry(available),
-                                    support.loopExecutor(), activity(listener, request),
-                                    ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
+                            // Wer während der Runde ein Werkzeug abschaltet (Reiter „Tools“), nimmt es ab dem
+                            // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
+                            via = new ChatCompletionsToolLoop(support.chat(),
+                                    new ToolRegistry(available, support::isEnabled), support.loopExecutor(),
+                                    activity(listener, request), ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
                             if (options.isEnabled()) {
                                 showActivity(listener, RETRIEVING_ACTIVITY);
                             } else {

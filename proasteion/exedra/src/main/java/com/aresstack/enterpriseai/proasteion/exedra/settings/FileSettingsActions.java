@@ -201,6 +201,14 @@ public final class FileSettingsActions implements SettingsDialogActions {
 
     @Override
     public List<String> validate(SettingsForm form) {
+        return SettingsMapper.describe(problems(form));
+    }
+
+    /**
+     * Die Probleme des Entwurfs so, wie der Loader sie meldet ({@code schlüssel: Erwartung}); {@link #validate}
+     * setzt Feldnamen davor, der Einrichtungsassistent macht Klartext daraus ({@link SettingsMapper#plain}).
+     */
+    List<String> problems(SettingsForm form) {
         if (form == null) {
             throw new IllegalArgumentException("form must not be null");
         }
@@ -216,7 +224,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
             check.verify(config);
             return Collections.emptyList();
         } catch (AppConfigException e) {
-            return SettingsMapper.describe(e.problems());
+            return e.problems();
         } catch (RuntimeException e) {
             return Collections.singletonList("Konfiguration ungültig: " + e.getClass().getSimpleName());
         }

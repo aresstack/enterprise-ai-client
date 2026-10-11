@@ -13,6 +13,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Übersetzt zwischen der Konfigurationsdatei ({@link Properties}) und dem {@link SettingsForm} des Dialogs.
@@ -359,6 +361,56 @@ public final class SettingsMapper {
             }
         }
         return described;
+    }
+
+    /**
+     * Problemzeile des Loaders als Klartext ohne Properties-Schlüssel, für den Einrichtungsassistenten: der Schlüssel
+     * vorn wird zum Feldnamen, Schlüssel im Text ({@code Pflicht bei network.proxy.mode=MANUAL_PROXY}) ebenso. Ein
+     * Sammelschlüssel ({@code chat.*}) fällt weg, weil seine Meldung schon sagt, worum es geht. Zeilen ohne
+     * Schlüssel vorn bleiben, wie sie sind.
+     */
+    public static String plain(String problem) {
+        if (problem == null) {
+            return "";
+        }
+        int colon = problem.indexOf(": ");
+        if (colon <= 0 || !KEY.matcher(problem.substring(0, colon)).matches()) {
+            return plainKeys(problem);
+        }
+        String key = problem.substring(0, colon);
+        String expectation = plainKeys(problem.substring(colon + 2));
+        if (key.endsWith("*")) {
+            return expectation;
+        }
+        String label = labelFor(key);
+        return (label.equals(key) ? "Einstellung" : label) + ": " + expectation;
+    }
+
+    public static List<String> plain(List<String> problems) {
+        List<String> plain = new ArrayList<String>();
+        if (problems != null) {
+            for (String problem : problems) {
+                plain.add(plain(problem));
+            }
+        }
+        return plain;
+    }
+
+    /** Ein Properties-Schlüssel wie {@code chat.baseUrl}, {@code source.2.apiUrl} oder {@code retrieval.*}. */
+    private static final Pattern KEY =
+            Pattern.compile("[a-z][A-Za-z0-9]*(?:\\.(?:[A-Za-z0-9]+|\\*))+");
+
+    /** Ersetzt bekannte Schlüssel im Text durch ihren Feldnamen; unbekannte bleiben stehen. */
+    private static String plainKeys(String text) {
+        Matcher matcher = KEY.matcher(text.replace("SecretRef verwenden", "KeePass-Eintrag verwenden"));
+        StringBuffer out = new StringBuffer();
+        while (matcher.find()) {
+            String key = matcher.group();
+            String label = labelFor(key);
+            matcher.appendReplacement(out, Matcher.quoteReplacement(label));
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     // ------------------------------------------------------------------ Helfer

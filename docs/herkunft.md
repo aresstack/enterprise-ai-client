@@ -116,6 +116,17 @@ ausführliche Fassung.
 - MCP-Endpoint erreicht den Agenten über Umgebungsvariablen, nicht über ACP `session/new`.
 - Flaky Tests werden robust gemacht, nie abgeschwächt; Solon-Tests mit eigener JVM je Klasse.
 - Architekturregeln werden für Tests nicht geöffnet (AP25 Slice G nutzt einen Testagenten im Testcode).
+- Einrichtungsassistent (v0.14.0, `exedra` `ui.setup`, `FileSetupActions`): in keinem Referenz-Repository
+  vorhanden, neu nach Angelos Anforderung. Er baut nur aus Vorhandenem: Comic-Overlay (`ComicOverlayPanel`, Schließen-
+  Chip aus askai-java8), Knöpfe und Häkchen aus askai-java8 `arch` (`ComposerButton`, `ResearchCheckIcon`),
+  KeePass-Pairing, Verbindungstest und Modellkatalog des Einstellungen-Dialogs. Der Stand `setup.completed` liegt im
+  `ApplicationStateService`, nicht in der Konfiguration. Fehlertexte zeigen Feldnamen statt Properties-Schlüssel
+  (`SettingsMapper.plain`).
+- Werkzeuge an- und abschalten (v0.15.0, `tools.disabled`): neu. Eine Registry (`ToolCatalog`) für Chat und Agenten;
+  der Agent bekommt Änderungen über denselben Weg wie askai-java8 `arch` beim Phasenwechsel
+  (`ResearchControlEndpoint.refreshTools` → `PhaseToolSetController`), die Chat-Runde prüft je Modellaufruf.
+- Wiederholung bei HTTP 429/503 im Embedding-Adapter und Kürzung der Suchanfrage auf die Passagengrenze
+  (v0.15.1): neu, Ursache waren Suchausfälle bei gleichzeitiger Vorladung und Fragen über der Modellgrenze.
 
 ## Offen
 

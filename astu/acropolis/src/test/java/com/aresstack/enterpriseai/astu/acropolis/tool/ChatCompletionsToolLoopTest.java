@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -77,6 +78,42 @@ public class ChatCompletionsToolLoopTest {
         loop(8).complete(request());
         List<ChatMessage> second = chat.requests.get(1).messages();
         assertEquals("abc", second.get(second.size() - 1).toolCallId());
+    }
+
+    /** Reiter „Tools“ während der Runde: das abgeschaltete Werkzeug fehlt ab der nächsten Anfrage und läuft nicht mehr. */
+    @Test
+    public void toolSwitchedOffDuringTheRoundIsNeitherOfferedNorRunAgain() {
+        final AtomicBoolean active = new AtomicBoolean(true);
+        ToolRegistry switchable = new ToolRegistry(Collections.<AiTool>singletonList(new AiTool() {
+            @Override
+            public String name() {
+                return "knowledge_read";
+            }
+
+            @Override
+            public ToolDefinition definition() {
+                return ToolDefinition.function("knowledge_read", "liest", "{\"type\":\"object\",\"properties\":{}}");
+            }
+
+            @Override
+            public String execute(String arguments) {
+                executed.add(arguments);
+                active.set(false); // der Benutzer schaltet ab, während das Werkzeug läuft
+                return "Inhalt";
+            }
+        }), name -> active.get());
+        chat.script.add(toolCall("a"));
+        chat.script.add(toolCall("b"));
+        chat.script.add(answer("Fertig"));
+
+        ChatResponse response = new ChatCompletionsToolLoop(chat, switchable, DIRECT, null, 8).complete(request());
+
+        assertEquals("Fertig", response.content());
+        assertEquals(1, chat.requests.get(0).tools().size());
+        assertTrue("nach dem Abschalten nicht mehr angeboten", chat.requests.get(1).tools().isEmpty());
+        assertEquals("nur der erste Aufruf lief", 1, executed.size());
+        List<ChatMessage> third = chat.requests.get(2).messages();
+        assertTrue(third.get(third.size() - 1).content().startsWith(ToolRegistry.ERROR_PREFIX));
     }
 
     /** Über stream() läuft jede Runde gestreamt; die Schlussantwort kommt in Stücken, nicht am Stück. */
