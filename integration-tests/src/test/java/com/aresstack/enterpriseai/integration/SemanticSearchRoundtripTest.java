@@ -166,6 +166,45 @@ public class SemanticSearchRoundtripTest {
         assertEquals("kein selbst verursachtes 429", 0, server.rejectedCount());
     }
 
+    /**
+     * Feldbefund: konfiguriert sind 768 Dimensionen, der Dienst liefert 2000. Verdrahtet wie die Composition Root
+     * (Index und Suche lesen die Embedding-Welt je Aufruf vom Port): der Adapter übernimmt die gelieferte Dimension,
+     * Passagen und Frage liegen in derselben Welt, die semantische Suche trifft ohne Warnung.
+     */
+    @Test
+    public void configuredDimensionDiffersFromTheServiceAndSemanticSearchStillWorks() throws Exception {
+        server.close();
+        server = new FakeEmbeddingsServer(2000);
+        final OpenAiCompatibleEmbeddingAdapter live = new OpenAiCompatibleEmbeddingAdapter(
+                OpenAiCompatibleEmbeddingConfiguration.builder(server.baseUrl(), MODEL, 768).build(),
+                () -> "roundtrip-token".toCharArray());
+        assertEquals(768, live.modelIdentity().dimension());
+        java.util.function.Supplier<com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity> space =
+                live::modelIdentity;
+        IndexKnowledgeUseCase indexing = new IndexKnowledgeUseCase(index, live, space,
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()), 16)
+                .withPassages(new SemanticPassageSplitter(new PassageSegmentation(live)));
+        IndexingReport report = indexing.indexSource(SampleKnowledge.handbuch(), SampleKnowledge.scope(),
+                IndexingListener.none());
+        assertTrue("Aufbereitung ohne Dimensionsfehler: " + report.outcomes(), report.isComplete());
+        assertEquals("die Dimension des Dienstes gilt", 2000, live.modelIdentity().dimension());
+
+        RetrievalResult result = new RetrieveKnowledgeUseCase(index, live, space, null)
+                .withObserver(new RetrievalObserver() {
+                    @Override
+                    public void pathFailed(RetrievalWarning warning) {
+                        logged.add(warning);
+                    }
+                }).retrieve(QUESTION);
+
+        assertSemanticHit(result);
+        assertTrue(logged.toString(), logged.isEmpty());
+        RetrievedChunk top = result.hits().get(0);
+        assertEquals("Index und Frage in derselben Welt", live.modelIdentity(),
+                index.entry(live.modelIdentity(), top.chunk().id()).get().embedding().identity());
+        assertEquals(2000, index.entry(live.modelIdentity(), top.chunk().id()).get().embedding().dimension());
+    }
+
     /** Seiten mit langen Absätzen: viele Sätze, also viele Embedding-Anfragen beim Indexieren. */
     private static InMemoryKnowledgeSource largeSource(String sourceId, int pages) {
         InMemoryKnowledgeSource source = new InMemoryKnowledgeSource(sourceId);

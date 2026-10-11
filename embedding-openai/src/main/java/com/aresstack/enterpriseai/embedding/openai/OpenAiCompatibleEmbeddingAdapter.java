@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * {@link EmbeddingPort} für den {@code POST /embeddings}-Endpunkt der internen, OpenAI-/GPT-kompatiblen
@@ -22,9 +23,16 @@ import java.util.List;
  * UNVERIFIED-Array-Modus ein Request je Teil-Batch von höchstens {@code maxBatchSize} Texten. In beiden Fällen
  * gilt die Port-Garantie: ein Vektor je Text in Eingabereihenfolge, alle mit {@link #modelIdentity()}.
  *
- * <p>Streng statt still: Transportfehler, HTTP-Fehler, falsche Anzahl, falsche Dimension oder nicht-endliche Werte
- * führen zu {@link EmbeddingException}; es gibt keine Zero-Vector-Fallbacks, keine Teilergebnisse und keinen
+ * <p>Streng statt still: Transportfehler, HTTP-Fehler, falsche Anzahl, uneinheitliche Dimension oder nicht-endliche
+ * Werte führen zu {@link EmbeddingException}; es gibt keine Zero-Vector-Fallbacks, keine Teilergebnisse und keinen
  * Wechsel auf ein anderes Modell.
+ *
+ * <p>Modellerkennung der Dimension: Die konfigurierte Dimension ist eine Erwartung, die Wahrheit ist die Antwort des
+ * Dienstes. Liefert er Vektoren einer anderen (einheitlichen) Länge, übernimmt der Adapter diese Dimension, seine
+ * {@link #modelIdentity()} wechselt auf die erkannte Welt und eine Logzeile nennt konfigurierte und erkannte
+ * Dimension. Index und Suche lesen die Welt je Aufruf vom Port; damit liegen Passagen und Frage in einem neuen
+ * Namensraum derselben Dimension, der sich über die normale Aufbereitung neu füllt. Vorher scheiterte jeder Aufruf
+ * („vector has dimension 2000, expected 768“): keine Passage im Index, die semantische Suche „ausgefallen“.
  *
  * <p>Überlast: Antwortet der Dienst mit HTTP 429 oder 503, wird derselbe Request nach einer Pause wiederholt
  * (500 ms, dann 1500 ms; höchstens drei Versuche), bevor der Fehler gilt. So scheitert eine Suchanfrage nicht
@@ -45,8 +53,12 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
     private final OpenAiCompatibleEmbeddingConfiguration configuration;
     private final BearerTokenSource tokenSource;
     private final EmbeddingHttpTransport transport;
-    private final EmbeddingModelIdentity identity;
+    private volatile EmbeddingModelIdentity identity;
     private final Sleeper sleeper;
+
+    private static final Logger LOG = Logger.getLogger(OpenAiCompatibleEmbeddingAdapter.class.getName());
+    /** Obergrenze der Antwortgröße rechnet mindestens mit so vielen Werten je Vektor (Modellerkennung). */
+    static final int MAX_DETECTABLE_DIMENSION = 8192;
 
     /** Wartezeiten vor dem zweiten und dritten Versuch bei HTTP 429/503. */
     private static final long[] RETRY_DELAYS_MILLIS = {500L, 1500L};
@@ -119,7 +131,14 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
                 vectors.addAll(call(EmbeddingRequestWriter.singleInput(configuration.modelId(), text), 1, query));
             }
         }
-        return EmbeddingBatch.of(identity, inputs.size(), vectors);
+        EmbeddingModelIdentity world = vectors.get(vectors.size() - 1).identity();
+        try {
+            return EmbeddingBatch.of(world, inputs.size(), vectors);
+        } catch (IllegalArgumentException mixed) {
+            // Der Dienst hat mitten im Batch die Dimension gewechselt: keine Teilergebnisse.
+            throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE,
+                    "embeddings of model " + configuration.modelId() + " changed their dimension within one batch");
+        }
     }
 
     /**
@@ -161,10 +180,11 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
             throw EmbeddingErrorMapper.fromStatus(endpointPath(), result.status, result.body);
         }
         List<float[]> matrix = EmbeddingResponseParser.parse(result.body, expectedCount);
+        EmbeddingModelIdentity world = worldOf(matrix);
         List<EmbeddingVector> vectors = new ArrayList<EmbeddingVector>(matrix.size());
         for (int i = 0; i < matrix.size(); i++) {
             try {
-                vectors.add(EmbeddingVector.of(identity, matrix.get(i)));
+                vectors.add(EmbeddingVector.of(world, matrix.get(i)));
             } catch (IllegalArgumentException invalid) {
                 throw new EmbeddingException(EmbeddingFailureKind.INVALID_RESPONSE,
                         "embedding " + i + " of model " + configuration.modelId() + " is invalid: "
@@ -172,6 +192,40 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
             }
         }
         return Collections.unmodifiableList(vectors);
+    }
+
+    /**
+     * Die Welt der gelieferten Vektoren: die bisherige, oder die erkannte, wenn alle Vektoren der Antwort einheitlich
+     * eine andere Länge haben. Uneinheitliche oder leere Vektoren bleiben bei der bisherigen Welt und scheitern an
+     * deren Prüfung.
+     */
+    private EmbeddingModelIdentity worldOf(List<float[]> matrix) {
+        EmbeddingModelIdentity current = identity;
+        int length = matrix.isEmpty() || matrix.get(0) == null ? 0 : matrix.get(0).length;
+        if (length == 0 || length == current.dimension()) {
+            return current;
+        }
+        for (float[] vector : matrix) {
+            if (vector == null || vector.length != length) {
+                return current;
+            }
+        }
+        synchronized (this) {
+            if (identity.dimension() != length) {
+                EmbeddingModelIdentity detected = configuration.modelIdentity(length);
+                LOG.warning("Embedding-Dimension: konfiguriert " + configuration.dimension() + ", vom Dienst geliefert "
+                        + length + " (Modell " + configuration.modelId() + ", " + endpointPath() + "); übernommen. "
+                        + "Index und Suche nutzen ab jetzt den Namensraum " + detected.fingerprint().substring(0, 12)
+                        + "; „embedding.dimension“ in den Einstellungen auf " + length + " setzen.");
+                identity = detected;
+            }
+            return identity;
+        }
+    }
+
+    /** Die vom Dienst erkannte Dimension, sonst die konfigurierte. */
+    public int dimension() {
+        return identity.dimension();
     }
 
     /**
@@ -234,7 +288,8 @@ public final class OpenAiCompatibleEmbeddingAdapter implements EmbeddingPort {
      * Pretty-Printing) plus Rahmen. Schützt vor unbegrenztem Puffern einer fehlerhaften Antwort.
      */
     private long maxResponseBytes(int expectedCount) {
-        return expectedCount * (configuration.dimension() * 64L + 1024L) + 64L * 1024L;
+        long components = Math.max(identity.dimension(), MAX_DETECTABLE_DIMENSION);
+        return expectedCount * (components * 64L + 1024L) + 64L * 1024L;
     }
 
     /**
