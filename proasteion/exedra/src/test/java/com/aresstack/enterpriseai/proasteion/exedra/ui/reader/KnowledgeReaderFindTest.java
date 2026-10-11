@@ -47,6 +47,26 @@ public class KnowledgeReaderFindTest {
     }
 
     @Test
+    public void findMarksEveryHitInTheHtmlReadingView() throws Exception {
+        onEdt(() -> {
+            KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette());
+            ReaderLink page = new ReaderLink("wiki", "confluence:confluence.invalid/page/1", "Seite", "", "");
+            reader.open(page, true);
+            reader.showHtml(page.key(), "<h2>Zabak</h2><p>Zabak steht hier</p><table><tr><td>und zabak</td></tr>"
+                    + "</table>", "https://confluence.invalid/", java.util.Collections.emptyList(),
+                    (image, done) -> done.accept(null));
+            assertNotNull(reader.findBar(page.key()));
+            assertEquals(3, reader.searchFor("zabak"));
+            ReaderHtmlView view = reader.htmlView(page.key());
+            assertSame(view, reader.findHit(page.key(), 0));
+            javax.swing.text.Highlighter.Highlight[] marks = view.getHighlighter().getHighlights();
+            assertEquals("alle Treffer markiert", 3, marks.length);
+            assertEquals(0, reader.searchFor(""));
+            assertEquals(0, view.getHighlighter().getHighlights().length);
+        });
+    }
+
+    @Test
     public void reorderingKeepsPreviewAndPinnedState() throws Exception {
         onEdt(() -> {
             KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette());

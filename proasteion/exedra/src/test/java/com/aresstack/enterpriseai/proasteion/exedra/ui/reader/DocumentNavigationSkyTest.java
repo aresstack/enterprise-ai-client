@@ -15,6 +15,7 @@ import java.awt.event.MouseWheelEvent;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -117,12 +118,14 @@ public class DocumentNavigationSkyTest {
                 html.append("<p>").append(LONG).append(LONG).append(LONG).append("</p>");
             }
             html.append("<h3>").append(chapter).append(" Details</h3><p>").append(LONG).append("</p>");
+            if ("Installation".equals(chapter)) {
+                html.append("<p>Hier steht Zabak einmal.</p>");
+            }
         }
         return html.toString();
     }
 
-    @Test
-    public void clickInTheHtmlReadingViewHitsTheHeading() throws Exception {
+    private static KnowledgeReaderPanel htmlReader() throws Exception {
         final KnowledgeReaderPanel[] holder = new KnowledgeReaderPanel[1];
         SwingUtilities.invokeAndWait(() -> {
             KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette());
@@ -138,8 +141,43 @@ public class DocumentNavigationSkyTest {
             }
             holder[0] = reader;
         });
+        return holder[0];
+    }
+
+    @Test
+    public void findHitInTheHtmlReadingViewLandsBelowTheBanner() throws Exception {
+        KnowledgeReaderPanel reader = htmlReader();
         SwingUtilities.invokeAndWait(() -> {
-            KnowledgeReaderPanel reader = holder[0];
+            DocumentNavigationSky sky = reader.navigationSky(key());
+            ReaderHtmlView view = reader.htmlView(key());
+            JViewport viewport = reader.documentPage(key()).scroll().getViewport();
+            int covered = sky.coveredHeight();
+            assertTrue(covered > 0);
+            viewport.setViewPosition(new java.awt.Point(0,
+                    Math.max(0, viewport.getView().getHeight() - viewport.getExtentSize().height)));
+            assertTrue(viewport.getViewPosition().y > 0);
+            assertEquals(1, reader.searchFor("zabak"));
+            assertSame(view, reader.findHit(key(), 0));
+            javax.swing.text.Highlighter.Highlight[] marks = view.getHighlighter().getHighlights();
+            assertEquals(1, marks.length);
+            int top;
+            try {
+                @SuppressWarnings("deprecation")
+                java.awt.Rectangle rect = view.modelToView(marks[0].getStartOffset());
+                top = SwingUtilities.convertPoint(view, rect.getLocation(), viewport).y;
+            } catch (javax.swing.text.BadLocationException e) {
+                throw new AssertionError(e);
+            }
+            assertTrue("Treffer unter dem Banner: " + top + " vs " + covered, top >= covered);
+            assertTrue("Treffer im Bild", top < viewport.getExtentSize().height);
+            assertEquals("Banner bleibt oben", covered, sky.coveredHeight());
+        });
+    }
+
+    @Test
+    public void clickInTheHtmlReadingViewHitsTheHeading() throws Exception {
+        KnowledgeReaderPanel reader = htmlReader();
+        SwingUtilities.invokeAndWait(() -> {
             DocumentNavigationSky sky = reader.navigationSky(key());
             NavigableDocumentPage page = reader.documentPage(key());
             ReaderHtmlView view = reader.htmlView(key());
