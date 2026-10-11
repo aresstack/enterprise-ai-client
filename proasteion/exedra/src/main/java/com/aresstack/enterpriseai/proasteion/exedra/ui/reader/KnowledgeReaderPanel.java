@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownMessageV
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidImageRenderer;
 import com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight;
+import com.aresstack.enterpriseai.ui.comic.control.ComicFindBar;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
@@ -18,12 +19,14 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPainter;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
 import javax.swing.JScrollPane;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
@@ -39,6 +42,9 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.Rectangle;
+import java.awt.event.ActionEvent;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
@@ -46,6 +52,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Der Lesebereich statt des Chats, wie der Lese-Tab in MainframeMate: oben die Lese-Reiter, darunter Titel, Fundstelle,
@@ -55,6 +62,10 @@ import java.util.Map;
  * <p>Ein einfacher Klick öffnet einen Verweis als <b>Vorschau</b>: Es gibt höchstens einen Vorschau-Reiter (Titel
  * kursiv), den der nächste einfache Klick ersetzt. Ein Doppelklick, „Anheften“ oder ein Doppelklick auf den Reiter
  * heftet ihn fest an; angeheftete Reiter bleiben, bis man sie mit ✕ schließt.</p>
+ *
+ * <p>Unten in jedem Reiter mit Inhalt liegt die Amber-Suchleiste aus MainframeMates {@code ConfluenceReaderTab}
+ * („Im Dokument suchen…“): Enter markiert alle Fundstellen im eigenen Reiter gelb und zeigt die erste; Rechtsklick
+ * schaltet „Treffer einzeln durchgehen“ (◀ ▶) ein. Strg+F setzt den Cursor in die Leiste des aktiven Reiters.</p>
  */
 public final class KnowledgeReaderPanel extends JPanel {
 
@@ -74,6 +85,7 @@ public final class KnowledgeReaderPanel extends JPanel {
     static final String PIN_TOOLTIP = "Anheften (bleibt offen, bis du ihn schließt)";
     static final String FAVORITE_ADD = "Als Favorit merken";
     static final String FAVORITE_REMOVE = "Aus den Favoriten entfernen";
+    static final String FIND_PLACEHOLDER = "Im Dokument suchen\u2026";
     private static final String EMPTY_CARD = "empty";
     private static final int PAGE_PADDING_TOP = 14;
 
@@ -92,6 +104,8 @@ public final class KnowledgeReaderPanel extends JPanel {
     private String activeKey;
     private int cardCounter;
     private Listener listener;
+    private boolean stepSearch;
+    private Consumer<Boolean> stepSearchChanged;
 
     public KnowledgeReaderPanel(ComicPalette palette) {
         this(palette, DesktopLinkOpener.systemDefault(), CachingMermaidImageRenderer.forChat());
@@ -152,7 +166,68 @@ public final class KnowledgeReaderPanel extends JPanel {
         add(north, BorderLayout.NORTH);
         add(deck, BorderLayout.CENTER);
         add(CopyrightFooter.placedLikeChat(), BorderLayout.SOUTH);
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK),
+                "reader.find");
+        getActionMap().put("reader.find", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                if (isShowing()) {
+                    focusFindBar();
+                }
+            }
+        });
         refresh();
+    }
+
+    /**
+     * Ob „Treffer einzeln durchgehen“ eingeschaltet ist und wer die Änderung per Rechtsklick erfährt (MainframeMate
+     * merkt sich das im Anwendungszustand).
+     */
+    public void setStepSearch(boolean enabled, Consumer<Boolean> changed) {
+        this.stepSearch = enabled;
+        this.stepSearchChanged = changed;
+        for (Tab tab : tabs.values()) {
+            if (tab.findBar != null) {
+                tab.findBar.setStepSearchEnabled(enabled);
+                tab.find.setStepping(enabled);
+            }
+        }
+    }
+
+    /** Setzt den Cursor in die Suchleiste des aktiven Reiters (wie {@code focusSearchField()} in MainframeMate). */
+    public void focusFindBar() {
+        Tab tab = tabs.get(activeKey);
+        if (tab != null && tab.findBar != null) {
+            tab.findBar.focusAndSelectAll();
+        }
+    }
+
+    /** Sucht im aktiven Reiter wie Enter in der Suchleiste ({@code searchFor} in MainframeMate). */
+    public int searchFor(String query) {
+        Tab tab = tabs.get(activeKey);
+        if (tab == null || tab.findBar == null) {
+            return 0;
+        }
+        tab.findBar.setText(query == null ? "" : query);
+        return tab.find.search(query);
+    }
+
+    /** Die Suchleiste des Reiters oder {@code null}, solange er nichts zum Durchsuchen hat. */
+    public ComicFindBar findBar(String key) {
+        Tab tab = tabs.get(key);
+        return tab == null ? null : tab.findBar;
+    }
+
+    /** Die Komponente, in der der Reiter {@code key} gerade Fundstelle {@code index} markiert hat (für Tests). */
+    java.awt.Component findHit(String key, int index) {
+        Tab tab = tabs.get(key);
+        return tab == null || tab.find == null || index >= tab.find.hitCount() ? null : tab.find.hitComponent(index);
+    }
+
+    /** Anzahl der markierten Fundstellen im Reiter {@code key}. */
+    public int findHitCount(String key) {
+        Tab tab = tabs.get(key);
+        return tab == null || tab.find == null ? 0 : tab.find.hitCount();
     }
 
     public void setListener(Listener listener) {
@@ -224,7 +299,7 @@ public final class KnowledgeReaderPanel extends JPanel {
         NavigableDocumentPage document = new NavigableDocumentPage(scroll(page), page, view, PAGE_PADDING_TOP);
         document.setNavigation(navigation);
         tab.document = document;
-        replace(tab, document);
+        replace(tab, searchable(tab, document, page));
     }
 
     /**
@@ -284,7 +359,7 @@ public final class KnowledgeReaderPanel extends JPanel {
             list.add(row);
         }
         list.add(Box.createVerticalGlue());
-        replace(tab, scroll(list));
+        replace(tab, searchable(tab, scroll(list), list));
     }
 
     /** Eine Meldung statt des Inhalts (z. B. Quelle nicht erreichbar). */
@@ -293,6 +368,8 @@ public final class KnowledgeReaderPanel extends JPanel {
         if (tab != null) {
             JLabel label = message(text);
             label.setForeground(ResearchUiPalette.DANGER_RED);
+            tab.findBar = null;
+            tab.find = null;
             replace(tab, label);
         }
     }
@@ -409,8 +486,8 @@ public final class KnowledgeReaderPanel extends JPanel {
         }
         content.setName(tab.card);
         tab.content = content;
-        if (content != tab.document) {
-            tab.document = null;
+        if (tab.document != null && !SwingUtilities.isDescendingFrom(tab.document, content)) {
+            tab.document = null; // die Suchleiste legt das Dokument in einen Rahmen, das Dokument bleibt dasselbe
         }
         deck.add(content, tab.card);
         refresh();
@@ -454,6 +531,58 @@ public final class KnowledgeReaderPanel extends JPanel {
         return label;
     }
 
+    /** Der Inhalt im Rollbereich, darunter die Amber-Suchleiste, die nur diesen Reiter durchsucht. */
+    private JComponent searchable(Tab tab, JComponent content, final JComponent view) {
+        final ReaderFind find = new ReaderFind(view);
+        find.setStepping(stepSearch);
+        final ComicFindBar bar = new ComicFindBar(FIND_PLACEHOLDER);
+        bar.setStepSearchEnabled(stepSearch);
+        bar.addSearchAction(event -> find.search(bar.getText()));
+        bar.setPrevAction(event -> find.previous());
+        bar.setNextAction(event -> find.next());
+        bar.setStepSearchModeListener(enabled -> {
+            stepSearch = enabled;
+            for (Tab other : tabs.values()) {
+                if (other.findBar != null) {
+                    other.findBar.setStepSearchEnabled(enabled);
+                    other.find.setStepping(enabled);
+                }
+            }
+            if (stepSearchChanged != null) {
+                stepSearchChanged.accept(enabled);
+            }
+        });
+        bar.setExitListener(new ComicFindBar.FindBarExitListener() {
+            @Override
+            public void onExitUp() {
+                view.scrollRectToVisible(new Rectangle(0, 0, 1, 1));
+                view.requestFocusInWindow();
+            }
+
+            @Override
+            public void onExitDown() {
+                view.scrollRectToVisible(new Rectangle(0, Math.max(0, view.getHeight() - 1), 1, 1));
+                view.requestFocusInWindow();
+            }
+
+            @Override
+            public void onDismiss() {
+                view.requestFocusInWindow();
+            }
+        });
+        tab.findBar = bar;
+        tab.find = find;
+        JPanel south = new JPanel(new BorderLayout());
+        south.setOpaque(false);
+        south.setBorder(BorderFactory.createEmptyBorder(0, 12, 8, 12));
+        south.add(bar, BorderLayout.CENTER);
+        JPanel page = new JPanel(new BorderLayout());
+        page.setOpaque(false);
+        page.add(content, BorderLayout.CENTER);
+        page.add(south, BorderLayout.SOUTH);
+        return page;
+    }
+
     private JScrollPane scroll(JComponent view) {
         JScrollPane scroll = new ComicScrollPane(view, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER, palette);
@@ -471,6 +600,8 @@ public final class KnowledgeReaderPanel extends JPanel {
         JComponent content;
         final List<FavoriteStarButton> stars = new ArrayList<FavoriteStarButton>();
         NavigableDocumentPage document;
+        ComicFindBar findBar;
+        ReaderFind find;
 
         Tab(ReaderLink link, boolean pinned, String card) {
             this.link = link;

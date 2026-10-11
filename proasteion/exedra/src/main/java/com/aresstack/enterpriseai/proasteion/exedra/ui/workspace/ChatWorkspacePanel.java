@@ -113,6 +113,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private static final int SIDEBAR_WIDTH_SAVE_DELAY_MS = 300;
     static final String STATE_BURGER_PINNED = "chat.burgerPinned";
     static final String STATE_SIDEBAR_WIDTH = "chat.sidebar.width";
+    /** „Treffer einzeln durchgehen“ der Suchleiste im Lesebereich (wie MainframeMates Find-Bar-Zustand). */
+    static final String STATE_READER_STEP_SEARCH = "reader.findBar.stepSearch";
     private static final int LIST_REFRESH_DELAY_MS = 150;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.GERMANY);
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd.MM.", Locale.GERMANY);
@@ -234,6 +236,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         if (applicationState.getBoolean(STATE_BURGER_PINNED, false)) {
             openDrawer();
         }
+        reader.setStepSearch(applicationState.getBoolean(STATE_READER_STEP_SEARCH, false),
+                enabled -> applicationState.putAndSave(STATE_READER_STEP_SEARCH, Boolean.toString(enabled)));
     }
 
     /** Merkt, ob der Drawer eingerastet ist (wirkungslos, solange kein Zustand gebunden ist). */

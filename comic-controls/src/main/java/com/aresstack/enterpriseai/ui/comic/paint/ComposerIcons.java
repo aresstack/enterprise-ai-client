@@ -5,7 +5,8 @@ import java.awt.geom.Line2D;
 
 /**
  * AskAI's composer glyph set as reusable {@link StrokeIcon}s (send, stop, hamburger, gear, plus,
- * chevrons, close); pencil, refresh and microphone are own additions for list rows. The reference geometry is
+ * chevrons, close); pencil, refresh and microphone are own additions for list rows, the return arrow replaces
+ * MainframeMate's find-bar glyph ↵. The reference geometry is
  * verbatim — no icon assets, every glyph is drawn with the owning component's foreground.
  */
 public final class ComposerIcons {
@@ -174,6 +175,19 @@ public final class ComposerIcons {
             protected void paint(Graphics2D g2) {
                 g2.drawLine(4, 4, 12, 12);
                 g2.drawLine(12, 4, 4, 12);
+            }
+        };
+    }
+
+    /** The return arrow (MainframeMate's find-bar ↵, "start search"): a hook down from the top right to an arrow. */
+    public static StrokeIcon enter() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawLine(12, 3, 12, 9);
+                g2.drawLine(12, 9, 4, 9);
+                g2.drawLine(4, 9, 7, 6);
+                g2.drawLine(4, 9, 7, 12);
             }
         };
     }
