@@ -21,6 +21,20 @@ public interface SecretChecker {
         return null;
     }
 
+    /** Die Eintragsverwaltung (Passwortverwaltung) mit diesen KeePass-Einstellungen; nie auf dem EDT benutzen. */
+    default com.aresstack.enterpriseai.security.api.SecretVault vault(KeePassConfig keePass) {
+        return com.aresstack.enterpriseai.app.security.SecretVaults.of(null);
+    }
+
+    /**
+     * „🔗 Verbindung testen“ für einen Confluence-Eintrag mit den eingegebenen Werten; Meldung bei Erfolg, sonst
+     * eine Ausnahme mit der Ursache. Nie auf dem EDT.
+     */
+    default String testConfluence(com.aresstack.enterpriseai.app.config.NetworkConfig network, String url,
+                                  String user, char[] password, String certAlias) throws Exception {
+        throw new UnsupportedOperationException("Verbindungstest hier nicht verfügbar");
+    }
+
     /** Die Titel aller KeePass-Einträge zur Auswahl; darf blockieren (Pairing), nie auf dem EDT. */
     default List<String> entryTitles(KeePassConfig keePass) throws Exception {
         return Collections.emptyList();

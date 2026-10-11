@@ -13,7 +13,7 @@ import java.util.List;
  * Neustart übernimmt: alle Adapter halten diese eine Instanz, jede Anfrage geht an den aktuellen Provider, den
  * {@link #replace} nach dem Speichern austauscht. Hält selbst kein Secret.
  */
-public final class LiveSecretProvider implements SecretProvider {
+public final class LiveSecretProvider implements SecretProvider, com.aresstack.enterpriseai.security.api.SecretVault {
 
     private volatile SecretProvider current;
 
@@ -61,5 +61,27 @@ public final class LiveSecretProvider implements SecretProvider {
     @Override
     public String toString() {
         return "LiveSecretProvider[" + current + "]";
+    }
+
+    @Override
+    public List<com.aresstack.enterpriseai.security.api.VaultEntry> list() throws SecretUnavailableException {
+        return SecretVaults.of(current).list();
+    }
+
+    @Override
+    public com.aresstack.enterpriseai.security.api.VaultEntryDraft read(String title)
+            throws SecretUnavailableException {
+        return SecretVaults.of(current).read(title);
+    }
+
+    @Override
+    public void save(com.aresstack.enterpriseai.security.api.VaultEntryDraft entry)
+            throws SecretUnavailableException {
+        SecretVaults.of(current).save(entry);
+    }
+
+    @Override
+    public void remove(String title) throws SecretUnavailableException {
+        SecretVaults.of(current).remove(title);
     }
 }

@@ -91,7 +91,7 @@ public final class SourcePanel extends JPanel {
         this.originalId = originalId;
         this.palette = palette;
         this.editor = new SourceEditor(palette, types, originalId == null, this::typeChanged, actions::vaultEntries,
-                actions::vaultCertificateAlias);
+                actions::vaultCertificateAlias, actions::passwordStore);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = new ComposerButton(null, CANCEL_LABEL, false);

@@ -20,6 +20,7 @@ final class SecurityTab {
     private final JTextField clientDisplayName;
     private final JComboBox<String> pairingKeyStore;
     private final SecretCheckRow secretCheck;
+    private final PasswordManagerPanel passwords;
     private final JPanel panel;
 
     SecurityTab(SettingsDialogActions actions, final Supplier<SettingsForm> form, ComicPalette palette) {
@@ -44,8 +45,12 @@ final class SecurityTab {
         }, palette);
         rows.component(null, secretCheck, null);
 
+        passwords = new PasswordManagerPanel(() -> actions == null ? PasswordStore.unavailable("In dieser Umgebung nicht verfügbar.")
+                : actions.passwordStore(form.get()), palette);
+
         panel = FormRows.column(palette,
-                FormRows.plate("KeePassRPC", palette.getAccentOrange(), rows.panel(), palette));
+                FormRows.plate("KeePassRPC", palette.getAccentOrange(), rows.panel(), palette),
+                FormRows.plate("Passwörter", palette.getNavigationBlue(), passwords.panel(), palette));
     }
 
     JPanel panel() {
@@ -82,6 +87,10 @@ final class SecurityTab {
 
     JComboBox<String> pairingKeyStore() {
         return pairingKeyStore;
+    }
+
+    PasswordManagerPanel passwords() {
+        return passwords;
     }
 
     SecretCheckRow secretCheck() {

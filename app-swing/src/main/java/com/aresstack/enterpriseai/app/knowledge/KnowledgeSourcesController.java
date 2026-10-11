@@ -106,6 +106,7 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
     private KnowledgeSourceManagement editing;
     private SourceEditorLauncher launcher;
     private volatile Supplier<List<String>> vaultTitles;
+    private volatile com.aresstack.enterpriseai.app.ui.settings.PasswordStore passwordStore;
     private volatile Function<String, String> vaultCertificateAliases;
     private volatile BiConsumer<String, String> vaultCertificateAliasWriter;
     private String running;
@@ -187,6 +188,11 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
 
     public void setVaultTitles(Supplier<List<String>> titles) {
         this.vaultTitles = titles;
+    }
+
+    /** Die Passwortverwaltung für „➕ Neu“ am KeePass-Eintrag im Quellen-Dialog. */
+    public void setPasswordStore(com.aresstack.enterpriseai.app.ui.settings.PasswordStore store) {
+        this.passwordStore = store;
     }
 
     /** Zum Titel eines KeePass-Eintrags dessen {@code MM_CertAlias} (Vorbelegung des Zertifikats im Quellen-Dialog). */
@@ -460,6 +466,13 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             @Override
             public SourceDefinition draft(String typeId) {
                 return target.draft(typeId, taken());
+            }
+
+            @Override
+            public com.aresstack.enterpriseai.app.ui.settings.PasswordStore passwordStore() {
+                com.aresstack.enterpriseai.app.ui.settings.PasswordStore store = passwordStore;
+                return store == null ? com.aresstack.enterpriseai.app.ui.settings.PasswordStore.unavailable(
+                        "KeePass ist hier nicht verfügbar.") : store;
             }
 
             @Override

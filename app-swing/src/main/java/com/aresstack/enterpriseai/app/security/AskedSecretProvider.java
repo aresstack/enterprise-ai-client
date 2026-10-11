@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * anderen Referenzen gehen unverändert an den Tresor (KeePass). Der Benutzer sieht das Präfix nie; der
  * Einstellungen-Dialog schreibt es, wenn „Manuell“ gewählt ist.
  */
-public final class AskedSecretProvider implements SecretProvider {
+public final class AskedSecretProvider implements SecretProvider, com.aresstack.enterpriseai.security.api.SecretVault {
 
     /** Präfix der manuell abgefragten Referenzen. */
     public static final String SCHEME = "ask:";
@@ -165,5 +165,27 @@ public final class AskedSecretProvider implements SecretProvider {
     @Override
     public String toString() {
         return "AskedSecretProvider[" + vault + "]";
+    }
+
+    @Override
+    public List<com.aresstack.enterpriseai.security.api.VaultEntry> list() throws SecretUnavailableException {
+        return SecretVaults.of(vault).list();
+    }
+
+    @Override
+    public com.aresstack.enterpriseai.security.api.VaultEntryDraft read(String title)
+            throws SecretUnavailableException {
+        return SecretVaults.of(vault).read(title);
+    }
+
+    @Override
+    public void save(com.aresstack.enterpriseai.security.api.VaultEntryDraft entry)
+            throws SecretUnavailableException {
+        SecretVaults.of(vault).save(entry);
+    }
+
+    @Override
+    public void remove(String title) throws SecretUnavailableException {
+        SecretVaults.of(vault).remove(title);
     }
 }

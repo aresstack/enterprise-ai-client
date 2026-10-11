@@ -29,10 +29,9 @@ final class KeePassRpcEntries {
                 String password = firstNonNull(string(entry, "password"), formField(entry, "FFTpassword"));
                 char[] passwordChars = password == null ? new char[0] : password.toCharArray();
                 try {
-                    return new KeePassEntry(entryTitle,
-                            firstNonNull(string(entry, "usernameValue"), string(entry, "username"),
-                                    formField(entry, "FFTusername")),
-                            passwordChars, location(entry), attributes(entry));
+                    return new KeePassEntry(entryTitle, userName(entry),
+                            passwordChars, location(entry), attributes(entry), string(entry, "uniqueID"),
+                            databaseFile(entry), url(entry));
                 } finally {
                     java.util.Arrays.fill(passwordChars, '\0');
                 }
@@ -90,7 +89,7 @@ final class KeePassRpcEntries {
         return copy;
     }
 
-    /** Alle Einträge mit Titel und Adresse, ohne Benutzer und Passwort (Auswahlliste). */
+    /** Alle Einträge mit Titel, Benutzer, Adresse und Zusatzfeldern, ohne Passwort (Auswahlliste, Verwaltung). */
     static java.util.List<KeePassEntry> withoutSecrets(JsonElement result) {
         java.util.List<KeePassEntry> entries = new java.util.ArrayList<KeePassEntry>();
         if (result == null || !result.isJsonArray()) {
@@ -100,9 +99,11 @@ final class KeePassRpcEntries {
             if (!element.isJsonObject()) {
                 continue;
             }
-            String title = string(element.getAsJsonObject(), "title");
+            JsonObject entry = element.getAsJsonObject();
+            String title = string(entry, "title");
             if (title != null && !title.trim().isEmpty()) {
-                entries.add(new KeePassEntry(title.trim(), "", new char[0], location(element.getAsJsonObject())));
+                entries.add(new KeePassEntry(title.trim(), userName(entry), new char[0], location(entry),
+                        attributes(entry), string(entry, "uniqueID"), databaseFile(entry), url(entry)));
             }
         }
         return entries;
@@ -172,6 +173,80 @@ final class KeePassRpcEntries {
             }
         }
         return attributes;
+    }
+
+    private static String userName(JsonObject entry) {
+        return firstNonNull(string(entry, "usernameValue"), string(entry, "username"), formField(entry, "FFTusername"));
+    }
+
+    /**
+     * Die erste URL des Eintrags wie gespeichert; der Titel als Platzhalter (MainframeMate, Einträge ohne URL) zählt
+     * nicht.
+     */
+    static String url(JsonObject entry) {
+        String title = string(entry, "title");
+        for (String name : new String[] {"uRLs", "url", "URLs"}) {
+            JsonElement value = entry.get(name);
+            JsonElement first = value != null && value.isJsonArray() && value.getAsJsonArray().size() > 0
+                    ? value.getAsJsonArray().get(0) : value;
+            if (first != null && first.isJsonPrimitive()) {
+                String url = first.getAsString().trim();
+                if (!url.isEmpty() && (title == null || !url.equals(title.trim()))) {
+                    return url;
+                }
+                return "";
+            }
+        }
+        return "";
+    }
+
+    /** Datenbankdatei wie MainframeMate sie liest: {@code dbFileName}, sonst {@code db}. */
+    static String databaseFile(JsonObject entry) {
+        String file = firstNonNull(string(entry, "dbFileName"), string(entry, "db"));
+        if (file == null) {
+            JsonElement db = entry.get("db");
+            if (db != null && db.isJsonObject()) {
+                file = string(db.getAsJsonObject(), "fileName");
+            }
+        }
+        return file == null ? "" : file;
+    }
+
+    /**
+     * Login-DTO (Version 1) für {@code AddLogin}/{@code UpdateLogin} wie MainframeMate
+     * {@code KeePassRpcClient.addLogin}: Benutzer und Passwort als {@code FFTusername}/{@code FFTpassword}, jedes
+     * Zusatzfeld als {@code FFTtext}; ohne Adresse steht der Titel als Platzhalter in {@code uRLs}, damit
+     * {@code FindLogins} den Eintrag findet.
+     */
+    static JsonObject login(KeePassEntry entry) {
+        com.google.gson.JsonArray formFields = new com.google.gson.JsonArray();
+        formFields.add(formFieldObject("KeePass username", entry.userName(), "FFTusername", ""));
+        formFields.add(formFieldObject("KeePass password", new String(entry.password()), "FFTpassword", ""));
+        for (java.util.Map.Entry<String, String> field : entry.attributes().entrySet()) {
+            formFields.add(formFieldObject(field.getKey(), field.getValue(), "FFTtext", field.getKey()));
+        }
+        JsonObject login = new JsonObject();
+        login.addProperty("title", entry.title());
+        login.add("formFieldList", formFields);
+        if (!entry.uniqueId().isEmpty()) {
+            login.addProperty("uniqueID", entry.uniqueId());
+        }
+        com.google.gson.JsonArray urls = new com.google.gson.JsonArray();
+        String location = entry.url();
+        urls.add(location.isEmpty() ? entry.title() : location);
+        login.add("uRLs", urls);
+        return login;
+    }
+
+    private static JsonObject formFieldObject(String name, String value, String type, String id) {
+        JsonObject field = new JsonObject();
+        field.addProperty("name", name);
+        field.addProperty("displayName", name);
+        field.addProperty("value", value == null ? "" : value);
+        field.addProperty("type", type);
+        field.addProperty("id", id);
+        field.addProperty("page", -1);
+        return field;
     }
 
     private static String formField(JsonObject entry, String type) {
