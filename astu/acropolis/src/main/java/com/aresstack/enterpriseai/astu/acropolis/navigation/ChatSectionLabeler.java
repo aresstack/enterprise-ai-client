@@ -14,12 +14,13 @@ import java.util.regex.Pattern;
 
 /**
  * Kurze Navigationsbezeichnungen (z. B. „Belegannahme und Verarbeitung“) über den vorhandenen Chat-Port mit dem
- * gewählten Chat-Modell, eine Anfrage je Dokumentfassung für alle Themenabschnitte. Scheitert die Anfrage oder ist kein
- * Chat-Modell gewählt, bleiben die Bezeichnungen aus der Analyse.
+ * gewählten Chat-Modell, je Dokumentfassung eine Anfrage je {@value #BATCH_SIZE} Themenabschnitte (41 Abschnitte: 40 + 1).
+ * Scheitert eine Anfrage, behält nur ihr Paket die Bezeichnungen aus der Analyse; ohne gewähltes Chat-Modell alle.
  */
 public final class ChatSectionLabeler implements SectionLabeler {
 
-    static final int MAX_SECTIONS = 40;
+    /** Abschnitte je Modellaufruf; keine Obergrenze für die Benennung (Angelo, 11.10.2026). */
+    static final int BATCH_SIZE = 40;
     static final int MAX_CHARS_PER_SECTION = 700;
     static final int MAX_LABEL_CHARS = 60;
     static final String INSTRUCTION = "Du benennst Abschnitte eines Dokuments für eine Navigationsleiste. "
@@ -45,10 +46,26 @@ public final class ChatSectionLabeler implements SectionLabeler {
     @Override
     public List<String> labels(String documentTitle, List<String> sectionTexts) {
         String selected = model.get();
-        if (selected == null || selected.trim().isEmpty() || sectionTexts == null || sectionTexts.isEmpty()
-                || sectionTexts.size() > MAX_SECTIONS) {
+        if (selected == null || selected.trim().isEmpty() || sectionTexts == null || sectionTexts.isEmpty()) {
             return null;
         }
+        List<String> labels = new ArrayList<String>(sectionTexts.size());
+        for (int from = 0; from < sectionTexts.size(); from += BATCH_SIZE) {
+            List<String> batch = sectionTexts.subList(from, Math.min(sectionTexts.size(), from + BATCH_SIZE));
+            List<String> named;
+            try {
+                named = labelBatch(documentTitle, batch, selected);
+            } catch (RuntimeException failed) {
+                named = null; // dieses Paket behält die Analyse-Bezeichnungen
+            }
+            for (int i = 0; i < batch.size(); i++) {
+                labels.add(named == null ? null : named.get(i));
+            }
+        }
+        return labels;
+    }
+
+    private List<String> labelBatch(String documentTitle, List<String> sectionTexts, String selected) {
         StringBuilder prompt = new StringBuilder();
         if (documentTitle != null && !documentTitle.trim().isEmpty()) {
             prompt.append("Dokument: ").append(documentTitle.trim()).append("\n\n");

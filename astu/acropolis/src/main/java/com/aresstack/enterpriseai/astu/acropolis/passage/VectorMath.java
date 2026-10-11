@@ -5,11 +5,11 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import java.util.List;
 
 /**
- * Cosinus und Mittelwert mit Fingerabdruck-Schutz, aus askai-java8 arch {@code VectorMath}: Vektoren verschiedener
- * Embedding-Modelle oder Dimensionen werden NIE verglichen oder gemittelt (harter Fehler, kein Rauschen). Der
- * Cosinus zweier {@link EmbeddingVector} ist {@link EmbeddingVector#cosineSimilarity}, der dieselbe Prüfung macht.
- * Abweichung von arch: Mittelwerte werden in {@code double} summiert (wie die Passagenbildung des Clients seit .94),
- * damit sich keine Passagengrenze verschiebt.
+ * Cosinus und Mittelwert mit Fingerabdruck-Schutz nach askai-java8 arch {@code VectorMath}, nicht wörtlich übernommen:
+ * Vektoren verschiedener Embedding-Modelle oder Dimensionen werden wie dort NIE verglichen oder gemittelt (harter
+ * Fehler, kein Rauschen). Abweichungen: der Cosinus zweier {@link EmbeddingVector} ist das vorhandene
+ * {@link EmbeddingVector#cosineSimilarity} (dieselbe Prüfung), Mittelwerte werden in {@code double} statt
+ * {@code float} summiert (wie die Passagenbildung des Clients seit .94), damit sich keine Passagengrenze verschiebt.
  */
 public final class VectorMath {
 

@@ -9,8 +9,8 @@ import java.util.List;
 
 /**
  * Hierarchisches AGGLOMERATIVES Clustering über Passagenvektoren mit Cosinus-Distanz und Average Linkage, aus
- * askai-java8 arch {@code TopicClusterer} (Rechnung wörtlich): keine feste Themenzahl, kleine Einzelthemen bleiben
- * sichtbar. Deterministisch: Gleichstände entscheidet die Eingabereihenfolge. Titel und Zusammenfassung stammen aus
+ * askai-java8 arch {@code TopicClusterer} (Ablauf wie arch; Cosinus und Mittelwert über {@link VectorMath}, das nicht
+ * wörtlich übernommen ist): keine feste Themenzahl, kleine Einzelthemen bleiben sichtbar. Deterministisch: Gleichstände entscheidet die Eingabereihenfolge. Titel und Zusammenfassung stammen aus
  * dem repräsentativen Mitglied (dem Schwerpunkt am nächsten); die Mitgliedschaft hängt nie von dieser Formulierung ab.
  *
  * <p>Angepasst an den Client: Eingabe sind {@link Member} (ID, Text, {@link EmbeddingVector}) statt research-domain
