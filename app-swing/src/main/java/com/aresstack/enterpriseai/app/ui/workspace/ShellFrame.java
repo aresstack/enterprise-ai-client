@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.app.ui.workspace;
 
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
-import com.aresstack.enterpriseai.ui.comic.control.ComicWindowCloseButton;
+import com.aresstack.enterpriseai.ui.comic.control.ComicWindowHoldCloseButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowResizer;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowShape;
@@ -14,12 +14,14 @@ import javax.swing.JPanel;
 import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.Frame;
 import java.awt.event.WindowEvent;
 
 /**
  * Das rahmenlose Hauptfenster: {@code setUndecorated(true)}, eine Tintenkontur als Fensterrand, dessen Polster
  * zugleich die Greifzone zum Vergrößern ist, die schlanke Kopfzeile der Arbeitsfläche als Zieh-Fläche und das
- * Comic-✕ ({@link ComicWindowCloseButton}) ganz rechts darin. Die Ecken sind rund wie beim Windows-11-Rahmen des
+ * Comic-✕ ({@link ComicWindowHoldCloseButton}) ganz rechts darin: Hover zeigt Minimieren, ein Klick minimiert,
+ * erst Gedrückthalten schließt. Die Ecken sind rund wie beim Windows-11-Rahmen des
  * askai-Fensters ({@link ComicWindowShape}), maximiert eckig. Schließen läuft über {@code WINDOW_CLOSING}, damit
  * die Fenster-Listener der Composition Root (Shutdown) wie gewohnt greifen. Braucht ein Display; der
  * Headless-Start und der Smoke-Test der Composition Root berühren diese Klasse nicht.
@@ -28,7 +30,6 @@ public final class ShellFrame {
 
     static final int WINDOW_PADDING = 4;
     static final int RESIZE_GRIP = 6;
-    static final String CLOSE_TOOLTIP = "Schließen";
 
     private ShellFrame() {
     }
@@ -45,6 +46,11 @@ public final class ShellFrame {
             @Override
             public void run() {
                 frame.dispatchEvent(new WindowEvent(frame, WindowEvent.WINDOW_CLOSING));
+            }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                frame.setState(Frame.ICONIFIED);
             }
         });
         frame.setContentPane(content);
@@ -64,15 +70,28 @@ public final class ShellFrame {
      */
     public static JPanel content(String title, ChatWorkspacePanel workspace, ComicPalette palette,
                                  Runnable closeAction) {
-        if (workspace == null || palette == null || closeAction == null) {
-            throw new IllegalArgumentException("workspace, palette and closeAction must not be null");
+        return content(title, workspace, palette, closeAction, new Runnable() {
+            @Override
+            public void run() {
+            }
+        });
+    }
+
+    /**
+     * @param closeAction    was Gedrückthalten des ✕ tut (im Fenster: {@code WINDOW_CLOSING} auslösen)
+     * @param minimizeAction was ein Klick auf das ✕ tut (im Fenster: ikonifizieren)
+     */
+    public static JPanel content(String title, ChatWorkspacePanel workspace, ComicPalette palette,
+                                 Runnable closeAction, Runnable minimizeAction) {
+        if (workspace == null || palette == null || closeAction == null || minimizeAction == null) {
+            throw new IllegalArgumentException("workspace, palette, closeAction and minimizeAction must not be null");
         }
         JPanel content = new JPanel(new BorderLayout());
         content.setBackground(palette.getSurface());
         content.setBorder(ComicBorder.windowBorder(palette, WINDOW_PADDING));
         content.add(workspace, BorderLayout.CENTER);
         workspace.setWindowTitle(title);
-        workspace.setWindowControls(new ComicWindowCloseButton(palette, closeAction, CLOSE_TOOLTIP, 24));
+        workspace.setWindowControls(new ComicWindowHoldCloseButton(palette, minimizeAction, closeAction, 24));
         ComicWindowDragger.install(workspace.topBar());
         ComicWindowResizer.install(content, RESIZE_GRIP);
         return content;

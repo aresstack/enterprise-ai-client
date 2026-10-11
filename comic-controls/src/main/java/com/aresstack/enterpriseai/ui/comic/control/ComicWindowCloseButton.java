@@ -47,6 +47,11 @@ public class ComicWindowCloseButton extends JButton {
         addActionListener(e -> closeAction.run());
     }
 
+    /** The palette the chip paints with (for subclasses that vary the glyph). */
+    protected ComicPalette palette() {
+        return palette;
+    }
+
     /** Whether the chip currently paints red (hovered or pressed). */
     public boolean isHot() {
         return getModel().isRollover() || getModel().isPressed();
