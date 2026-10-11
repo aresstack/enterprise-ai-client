@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.kipitz;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelDescriptor;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelDescriptor;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

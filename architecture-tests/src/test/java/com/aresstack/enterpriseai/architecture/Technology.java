@@ -14,13 +14,13 @@ enum Technology {
     SWING("Swing/AWT", libraries("javax.swing..", "java.awt..")),
     HTTP("HTTP", libraries("java.net.http..", "okhttp3..", "org.apache.http..", "org.apache.hc..",
             "com.sun.net.httpserver..")),
-    LUCENE("Lucene", libraries("org.apache.lucene.."), "knowledge.lucene"),
+    LUCENE("Lucene", libraries("org.apache.lucene.."), "astu.acropolis.chalcotheca.anagraphai"),
     SOLON("Solon", libraries("org.noear.solon..")),
     ACP_SDK("ACP SDK", libraries("com.agentclientprotocol..", "reactor.."), "acp.solon"),
-    MCP_SDK("MCP SDK", libraries("org.noear.solon.ai.mcp..", "io.modelcontextprotocol.."), "mcp.solon"),
-    KEEPASS("KeePass/KeePassRPC", libraries("org.java_websocket.."), "security.keepassrpc"),
-    JWBF("JWBF/MediaWiki", libraries("net.sourceforge.jwbf.."), "source.mediawiki"),
-    CONFLUENCE("Confluence", libraries(), "source.confluence");
+    MCP_SDK("MCP SDK", libraries("org.noear.solon.ai.mcp..", "io.modelcontextprotocol.."), "proasteion.katagogion.solon"),
+    KEEPASS("KeePass/KeePassRPC", libraries("org.java_websocket.."), "proasteion.platform.security.keepassrpc"),
+    JWBF("JWBF/MediaWiki", libraries("net.sourceforge.jwbf.."), "proasteion.emporion.holkas.mediawiki"),
+    CONFLUENCE("Confluence", libraries(), "proasteion.emporion.holkas.confluence");
 
     private final String label;
     private final String[] libraryPackages;

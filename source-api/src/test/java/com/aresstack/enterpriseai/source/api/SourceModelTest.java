@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.source.api;
 
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import org.junit.Test;
 

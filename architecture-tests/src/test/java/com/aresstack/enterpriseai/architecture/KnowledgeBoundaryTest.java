@@ -27,10 +27,10 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  */
 public class KnowledgeBoundaryTest {
 
-    private static final String DOMAIN_KNOWLEDGE = "com.aresstack.enterpriseai.domain.knowledge..";
-    private static final String DOMAIN_EMBEDDING = "com.aresstack.enterpriseai.domain.embedding..";
-    private static final String KNOWLEDGE_API = "com.aresstack.enterpriseai.knowledge.api..";
-    private static final String KNOWLEDGE_LUCENE = "com.aresstack.enterpriseai.knowledge.lucene..";
+    private static final String DOMAIN_KNOWLEDGE = "com.aresstack.enterpriseai.astu.knowledge..";
+    private static final String DOMAIN_EMBEDDING = "com.aresstack.enterpriseai.astu.embedding..";
+    private static final String KNOWLEDGE_API = "com.aresstack.enterpriseai.astu.acropolis.chalcotheca..";
+    private static final String KNOWLEDGE_LUCENE = "com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai..";
 
     private static JavaClasses productionClasses;
 
@@ -52,7 +52,7 @@ public class KnowledgeBoundaryTest {
                         "java.util..", "java.net..", "java.nio.charset..", "java.security..", "java.text..",
                         "java.time..")
                 .allowEmptyShould(true);
-        Violations.assertNone("domain.knowledge", Violations.of(Arrays.asList(rule), productionClasses));
+        Violations.assertNone("astu.knowledge", Violations.of(Arrays.asList(rule), productionClasses));
     }
 
     /**
@@ -81,28 +81,32 @@ public class KnowledgeBoundaryTest {
                 Violations.of(Arrays.asList(rule), productionClasses));
     }
 
-    /** Der Index-Port sieht nur Wissens- und Embedding-Wertobjekte und das JDK; kein Lucene, kein Dateisystem. */
+    /**
+     * Die Chalcotheca (Index-Port und Bronze-Archiv, ohne die in ihr liegenden anagraphai und tamias) sieht nur
+     * Wissens-, Embedding- und Ressourcen-Wertobjekte, den Wächter und das JDK; kein Lucene.
+     */
     @Test
     public void knowledgeApiSeesOnlyKnowledgeAndEmbeddingValues() {
-        ArchRule rule = classes().that().resideInAPackage(KNOWLEDGE_API)
+        ArchRule rule = classes().that(ModuleRegistry.standard().module("chalcotheca").classes())
                 .should().onlyDependOnClassesThat().resideInAnyPackage(KNOWLEDGE_API, DOMAIN_KNOWLEDGE,
-                        DOMAIN_EMBEDDING, "java.lang..", "java.util..")
+                        DOMAIN_EMBEDDING, "com.aresstack.enterpriseai.astu.resource..", "java.lang..", "java.util..",
+                        "java.io..", "java.net..", "java.nio.charset..", "java.security..", "java.time..")
                 .allowEmptyShould(true);
-        Violations.assertNone("knowledge.api", Violations.of(Arrays.asList(rule), productionClasses));
+        Violations.assertNone("astu.acropolis.chalcotheca", Violations.of(Arrays.asList(rule), productionClasses));
     }
 
-    /** Lucene ist ausschließlich in knowledge-lucene sichtbar. */
+    /** Lucene ist ausschließlich in anagraphai sichtbar. */
     @Test
     public void luceneOnlyInKnowledgeLucene() {
         ArchRule rule = noClasses().that().resideOutsideOfPackage(KNOWLEDGE_LUCENE)
                 .should().dependOnClassesThat().resideInAPackage("org.apache.lucene..")
                 .allowEmptyShould(true);
-        Violations.assertNone("Lucene außerhalb von knowledge-lucene",
+        Violations.assertNone("Lucene außerhalb von anagraphai",
                 Violations.of(Arrays.asList(rule), productionClasses));
     }
 
     /**
-     * Von knowledge-lucene ist nur der Port-Adapter selbst öffentlich; Text-/Vektorindex und Lucene-Abbildung
+     * Von anagraphai ist nur der Port-Adapter selbst öffentlich; Text-/Vektorindex und Lucene-Abbildung
      * bleiben paketintern, damit keine Adaptertypen das Modul verlassen.
      */
     @Test
@@ -112,7 +116,7 @@ public class KnowledgeBoundaryTest {
                 .and().areTopLevelClasses()
                 .should().haveSimpleName("LuceneKnowledgeIndex")
                 .allowEmptyShould(true);
-        Violations.assertNone("öffentliche Typen in knowledge-lucene",
+        Violations.assertNone("öffentliche Typen in anagraphai",
                 Violations.of(Arrays.asList(rule), productionClasses));
     }
 }

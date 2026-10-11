@@ -137,7 +137,7 @@ network.tls.useWindowsCaStores=true
 | `network.tls.useJvmDefault`, `useWindowsRoot`, `useWindowsCaStores` | Vertrauensquellen: JVM-`cacerts`, Windows-ROOT, Windows Root+Intermediate (Windows-Quellen nur unter Windows). Der alte Schalter `useWindowsCertificateStore` gilt für beide Windows-Quellen, solange die neuen fehlen. |
 | `network.tls.caCertificatesFile` | Weitere CA-Zertifikate (PEM oder DER). |
 
-`HttpRoutes` (Port `HttpRoutePort` aus `http-api`) löst die Route je Ziel (`scheme://host:port`) auf, außerhalb
+`HttpRoutes` (Port `HttpRoutePort` aus `network`) löst die Route je Ziel (`scheme://host:port`) auf, außerhalb
 des EDT, mit hartem Timeout und Cache (Erfolg 10 min, Fehler 1 min). Jede `HttpURLConnection` von Chat,
 Embeddings, MediaWiki und Confluence bekommt die Route und die `SSLSocketFactory` aus win-trust-java einzeln;
 es gibt keinen globalen `ProxySelector` und keine globale `SSLSocketFactory`. `NOT_IMPLEMENTED` und `ERROR` werden

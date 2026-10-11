@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.source.api;
 
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 
 import java.net.URI;
 

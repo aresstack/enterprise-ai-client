@@ -1,17 +1,17 @@
 package com.aresstack.enterpriseai.integration.live;
 
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
-import com.aresstack.enterpriseai.domain.security.SecretRef;
-import com.aresstack.enterpriseai.security.api.SecretMaterial;
-import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.security.SecretRef;
+import com.aresstack.enterpriseai.adyton.SecretMaterial;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcSecretProvider;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
-import com.aresstack.enterpriseai.source.confluence.ConfluenceConfig;
-import com.aresstack.enterpriseai.source.confluence.ConfluenceKnowledgeSource;
-import com.aresstack.enterpriseai.source.confluence.UrlConnectionConfluenceTransport;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.ConfluenceConfig;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.ConfluenceKnowledgeSource;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.UrlConnectionConfluenceTransport;
 import org.junit.Test;
 
 import java.net.URI;

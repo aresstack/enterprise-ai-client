@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.embedding.api.testing;
 
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import org.junit.Test;

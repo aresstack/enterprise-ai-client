@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.acp.research;
 
-import com.aresstack.enterpriseai.mcp.api.McpToolCallException;
-import com.aresstack.enterpriseai.mcp.api.McpToolClient;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolClient;
 import com.aresstack.enterpriseai.research.runtime.json.MiniJson;
 import com.aresstack.enterpriseai.research.runtime.loop.ToolInvoker;
 

@@ -1,12 +1,12 @@
 package com.aresstack.enterpriseai.embedding.openai;
 
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingVector;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
-import com.aresstack.enterpriseai.http.api.HttpRoute;
-import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoute;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.embedding.api.testing.EmbeddingPortContractTest;
 import org.junit.After;
 import org.junit.Before;

@@ -2,8 +2,8 @@ package com.aresstack.enterpriseai.chat.openai;
 
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
-import com.aresstack.enterpriseai.domain.chat.ChatFinishReason;
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatFinishReason;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;

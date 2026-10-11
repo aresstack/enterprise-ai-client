@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.embedding.api;
 
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingVector;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 
 import java.util.ArrayList;
 import java.util.Collections;

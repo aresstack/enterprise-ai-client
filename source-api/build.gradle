@@ -6,7 +6,7 @@ description = 'Generischer Knowledge-Source-Port (Strang E).'
 apply plugin: 'java-test-fixtures'
 
 dependencies {
-    api project(':domain')
+    api project(':astu')
 
     testFixturesApi libs.junit
 }

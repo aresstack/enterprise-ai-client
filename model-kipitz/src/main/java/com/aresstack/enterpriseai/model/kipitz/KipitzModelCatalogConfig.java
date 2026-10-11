@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.kipitz;
 
-import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 
 import javax.net.ssl.SSLSocketFactory;
 import java.net.URI;

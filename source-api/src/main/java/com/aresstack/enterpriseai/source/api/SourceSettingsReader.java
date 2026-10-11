@@ -1,9 +1,9 @@
 package com.aresstack.enterpriseai.source.api;
 
-import com.aresstack.enterpriseai.domain.security.SecretRef;
-import com.aresstack.enterpriseai.domain.source.KnowledgeSourceType;
-import com.aresstack.enterpriseai.domain.source.SourceSettingField;
-import com.aresstack.enterpriseai.domain.source.SourceSettings;
+import com.aresstack.enterpriseai.astu.security.SecretRef;
+import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
+import com.aresstack.enterpriseai.astu.source.SourceSettingField;
+import com.aresstack.enterpriseai.astu.source.SourceSettings;
 
 import java.net.URI;
 import java.net.URISyntaxException;

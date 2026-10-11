@@ -1,35 +1,35 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.application.agent.archfixture.AgentUseCaseUsingAcp;
-import com.aresstack.enterpriseai.application.agent.archfixture.AgentUseCaseUsingMcp;
-import com.aresstack.enterpriseai.application.chat.archfixture.ChatUseCaseUsingIndex;
-import com.aresstack.enterpriseai.application.knowledge.archfixture.IndexingUsingChat;
-import com.aresstack.enterpriseai.application.rag.archfixture.RagUsingSource;
-import com.aresstack.enterpriseai.app.ui.agent.archfixture.ModeSwitchUsingUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.agent.archfixture.AgentUseCaseUsingAcp;
+import com.aresstack.enterpriseai.astu.acropolis.agent.archfixture.AgentUseCaseUsingMcp;
+import com.aresstack.enterpriseai.astu.acropolis.chat.archfixture.ChatUseCaseUsingIndex;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.archfixture.IndexingUsingChat;
+import com.aresstack.enterpriseai.astu.acropolis.rag.archfixture.RagUsingSource;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.archfixture.ModeSwitchUsingUseCase;
 import com.aresstack.enterpriseai.chat.api.archfixture.FakeChatPort;
 import com.aresstack.enterpriseai.chat.api.archfixture.boundary.PortUsingEmbedding;
 import com.aresstack.enterpriseai.chat.openai.archfixture.GlobalClientHolder;
 import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterLeakingConnection;
 import com.aresstack.enterpriseai.chat.openai.archfixture.tech.LuceneInChatAdapter;
-import com.aresstack.enterpriseai.domain.archfixture.NeutralValue;
-import com.aresstack.enterpriseai.domain.chat.archfixture.ChatValueUsingEmbedding;
-import com.aresstack.enterpriseai.domain.chat.archfixture.FakeChatValue;
-import com.aresstack.enterpriseai.domain.embedding.archfixture.FakeVector;
-import com.aresstack.enterpriseai.domain.embedding.archfixture.VectorUsingChat;
-import com.aresstack.enterpriseai.domain.knowledge.archfixture.ChunkUsingChat;
-import com.aresstack.enterpriseai.domain.knowledge.archfixture.ChunkUsingJdkCharacterData;
-import com.aresstack.enterpriseai.domain.knowledge.archfixture.FakeChunk;
+import com.aresstack.enterpriseai.astu.archfixture.NeutralValue;
+import com.aresstack.enterpriseai.astu.chat.archfixture.ChatValueUsingEmbedding;
+import com.aresstack.enterpriseai.astu.chat.archfixture.FakeChatValue;
+import com.aresstack.enterpriseai.astu.embedding.archfixture.FakeVector;
+import com.aresstack.enterpriseai.astu.embedding.archfixture.VectorUsingChat;
+import com.aresstack.enterpriseai.astu.knowledge.archfixture.ChunkUsingChat;
+import com.aresstack.enterpriseai.astu.knowledge.archfixture.ChunkUsingJdkCharacterData;
+import com.aresstack.enterpriseai.astu.knowledge.archfixture.FakeChunk;
 import com.aresstack.enterpriseai.embedding.api.archfixture.FakeEmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.archfixture.boundary.PortUsingKnowledge;
 import com.aresstack.enterpriseai.embedding.openai.archfixture.PublicWireDto;
 import com.aresstack.enterpriseai.embedding.openai.archfixture.signature.AdapterExposingGson;
-import com.aresstack.enterpriseai.knowledge.api.archfixture.FakeKnowledgeIndexPort;
-import com.aresstack.enterpriseai.knowledge.api.archfixture.boundary.PortUsingSource;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneAdapter;
-import com.aresstack.enterpriseai.mcp.api.archfixture.FakeMcpRegistry;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.archfixture.FakeKnowledgeIndexPort;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.archfixture.boundary.PortUsingSource;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.FakeLuceneAdapter;
+import com.aresstack.enterpriseai.proasteion.katagogion.archfixture.FakeMcpRegistry;
 import com.aresstack.enterpriseai.source.api.archfixture.FakeKnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.archfixture.PortKnowingAdapter;
-import com.aresstack.enterpriseai.source.mediawiki.archfixture.FakeWikiAdapter;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.archfixture.FakeWikiAdapter;
 import org.junit.Test;
 
 import java.io.File;
@@ -200,34 +200,34 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void unknownAllowedDependencyIsDetected() {
         ExistingRuleProbe.assertRuleFails(ModuleRegistryTest.class, "allowedDependenciesReferToRegisteredModules",
-                withAllowedDependencies("chat-api", "domain", "source-sharepoint"), "source-sharepoint");
+                withAllowedDependencies("chat-api", "astu", "source-sharepoint"), "source-sharepoint");
     }
 
     @Test
     public void adapterSeeingAnotherAdapterInTheRegistryIsDetected() {
         ExistingRuleProbe.assertRuleFails(ModuleRegistryTest.class, "allowedDependenciesFollowTheLayering",
-                withAllowedDependencies("knowledge-lucene", "domain", "knowledge-api", "chat-openai"),
-                "knowledge-lucene (ADAPTER) darf chat-openai (ADAPTER) nicht sehen");
+                withAllowedDependencies("anagraphai", "astu", "chalcotheca", "chat-openai"),
+                "anagraphai (ADAPTER) darf chat-openai (ADAPTER) nicht sehen");
     }
 
     @Test
     public void portSeeingItsAdapterInTheRegistryIsDetected() {
         ExistingRuleProbe.assertRuleFails(ModuleRegistryTest.class, "ap24ForbiddenModuleEdgesStayForbidden",
-                withAllowedDependencies("chat-api", "domain", "chat-openai"), "chat-api -> chat-openai");
+                withAllowedDependencies("chat-api", "astu", "chat-openai"), "chat-api -> chat-openai");
     }
 
     @Test
     public void applicationSeeingAnAdapterInTheRegistryIsDetected() {
-        Set<String> allowed = new LinkedHashSet<String>(STANDARD.module("application").allowedDependencies());
-        allowed.add("knowledge-lucene");
+        Set<String> allowed = new LinkedHashSet<String>(STANDARD.module("acropolis").allowedDependencies());
+        allowed.add("anagraphai");
         ExistingRuleProbe.assertRuleFails(ModuleRegistryTest.class, "ap24ForbiddenModuleEdgesStayForbidden",
-                withAllowedDependencies("application", allowed.toArray(new String[0])), "application -> knowledge-lucene");
+                withAllowedDependencies("acropolis", allowed.toArray(new String[0])), "acropolis -> anagraphai");
     }
 
     @Test
     public void adapterWithoutPortInTheRegistryIsDetected() {
         ExistingRuleProbe.assertRuleFails(ModuleRegistryTest.class, "everyAdapterMaySeeAtLeastOnePort",
-                withAllowedDependencies("chat-openai", "domain"), "chat-openai implementiert keinen Port");
+                withAllowedDependencies("chat-openai", "astu"), "chat-openai implementiert keinen Port");
     }
 
     @Test
@@ -235,7 +235,7 @@ public class ExistingRulesDetectViolationsTest {
         ModuleRegistry.Builder builder = new ModuleRegistry.Builder();
         for (ArchitectureModule module : STANDARD.modules()) {
             String[] allowed = module.allowedDependencies().toArray(new String[0]);
-            if (module.name().equals("domain")) {
+            if (module.name().equals("astu")) {
                 allowed = new String[] {"chat-api"};
             }
             builder.module(module.name(), suffix(module), module.kind(), module.owner(), allowed);
@@ -246,7 +246,7 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void overlappingBasePackagesAreDetected() {
         ModuleRegistry.Builder builder = copyOfStandard();
-        builder.module("chat-all", "chat", ModuleKind.PORT, "Test", "domain");
+        builder.module("chat-all", "chat", ModuleKind.PORT, "Test", "astu");
         ExistingRuleProbe.assertRuleFails(ModuleRegistryTest.class, "basePackagesAreDisjoint", builder.build(), "überdeckt");
     }
 
@@ -255,10 +255,10 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void registeredModuleMissingInGradleIsDetected() {
         Set<String> modules = new LinkedHashSet<String>(STANDARD.names());
-        modules.remove("domain");
+        modules.remove("astu");
         BuildModel model = new BuildModel(modules, new HashMap<String, Set<String>>(),
                 new HashMap<String, Set<String>>(), new HashMap<String, List<File>>());
-        ExistingRuleProbe.assertRuleFails(BuildModelTest.class, "everyRegisteredModuleExists", model, "domain");
+        ExistingRuleProbe.assertRuleFails(BuildModelTest.class, "everyRegisteredModuleExists", model, "astu");
     }
 
     @Test

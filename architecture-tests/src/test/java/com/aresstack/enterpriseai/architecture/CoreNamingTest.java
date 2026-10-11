@@ -1,10 +1,10 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.application.archfixture.naming.MultiProviderChatService;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.naming.MultiProviderChatService;
 import com.aresstack.enterpriseai.chat.api.archfixture.naming.OllamaChatPort;
 import com.aresstack.enterpriseai.chat.openai.archfixture.naming.OpenAiCompatibleFake;
-import com.aresstack.enterpriseai.domain.archfixture.naming.ChatProvider;
-import com.aresstack.enterpriseai.domain.archfixture.naming.NeutralRole;
+import com.aresstack.enterpriseai.astu.archfixture.naming.ChatProvider;
+import com.aresstack.enterpriseai.astu.archfixture.naming.NeutralRole;
 import org.junit.Test;
 
 import java.util.Collections;

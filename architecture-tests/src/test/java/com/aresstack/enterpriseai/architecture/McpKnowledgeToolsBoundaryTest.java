@@ -1,14 +1,14 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.application.mcp.archfixture.ToolTouchingSecret;
-import com.aresstack.enterpriseai.application.mcp.archfixture.ToolUsingIndexPort;
-import com.aresstack.enterpriseai.application.mcp.archfixture.ToolUsingLuceneAdapter;
-import com.aresstack.enterpriseai.application.mcp.archfixture.ToolUsingOnlyUseCases;
-import com.aresstack.enterpriseai.application.mcp.archfixture.ToolUsingSourcePort;
-import com.aresstack.enterpriseai.application.mcp.archfixture.usecase.FakeUseCase;
-import com.aresstack.enterpriseai.knowledge.api.archfixture.FakeIndexPort;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneAdapter;
-import com.aresstack.enterpriseai.security.api.archfixture.secret.FakeSecretMaterial;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.archfixture.ToolTouchingSecret;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.archfixture.ToolUsingIndexPort;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.archfixture.ToolUsingLuceneAdapter;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.archfixture.ToolUsingOnlyUseCases;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.archfixture.ToolUsingSourcePort;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.archfixture.usecase.FakeUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.archfixture.FakeIndexPort;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.FakeLuceneAdapter;
+import com.aresstack.enterpriseai.adyton.archfixture.secret.FakeSecretMaterial;
 import com.aresstack.enterpriseai.source.api.archfixture.FakeSourcePort;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -33,24 +33,24 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * AP20: Die MCP-Wissenswerkzeuge in {@code application.mcp} sprechen ausschließlich mit Application-Use-Cases.
+ * AP20: Die MCP-Wissenswerkzeuge in {@code astu.acropolis.mcp} sprechen ausschließlich mit Application-Use-Cases.
  *
  * <ul>
  *   <li>Erlaubt sind nur JDK (java.lang, java.util, java.time, java.net.URI), Knowledge-Domain, die Fehlerart des
  *       Source-Ports ({@code KnowledgeSourceException} samt {@code Kind}), der MCP-Port-Vertrag und die Use-Case-Pakete
- *       {@code application.rag} und {@code application.knowledge}. Kein Adapter (Lucene, Solon, HTTP, Swing,
+ *       {@code astu.acropolis.rag} und {@code astu.acropolis.knowledge}. Kein Adapter (Lucene, Solon, HTTP, Swing,
  *       MediaWiki, Confluence), kein Chat, kein ACP, kein Security-Typ.</li>
  *   <li>Index-, Embedding- und Quell-Port (samt {@code SourceScope}) erreichen die Werkzeuge nur über die Use Cases,
  *       nie direkt; aus {@code source.api} bleibt ihnen allein die Fehlerart.</li>
  *   <li>Die Use Cases und der Chat-Pfad kennen die Werkzeuge nicht (Richtung: Werkzeug → Use Case).</li>
  * </ul>
- * Secret-Material ist für application insgesamt bereits durch {@link SecretBoundaryTest} gesperrt; die Regel hier
+ * Secret-Material ist für acropolis insgesamt bereits durch {@link SecretBoundaryTest} gesperrt; die Regel hier
  * macht zusätzlich jeden Security-Typ (auch den loggbaren {@code SecretRef}) für die Werkzeuge unerreichbar.
  */
 public class McpKnowledgeToolsBoundaryTest {
 
     private static final String ROOT = ModuleRegistry.ROOT_PACKAGE;
-    private static final String APPLICATION_MCP = ROOT + ".application.mcp..";
+    private static final String APPLICATION_MCP = ROOT + ".astu.acropolis.mcp..";
     private static final String SOURCE_EXCEPTION = ROOT + ".source.api.KnowledgeSourceException";
 
     private static JavaClasses productionClasses;
@@ -74,8 +74,8 @@ public class McpKnowledgeToolsBoundaryTest {
     static ArchRule toolsSeeOnlyUseCasesKnowledgeDomainAndMcpContract() {
         DescribedPredicate<JavaClass> allowed = resideInAnyPackage(
                 "java.lang..", "java.util..", "java.time..", "java.net..",
-                ROOT + ".domain.knowledge..", ROOT + ".mcp.api..",
-                ROOT + ".application.rag..", ROOT + ".application.knowledge..", APPLICATION_MCP)
+                ROOT + ".astu.knowledge..", ROOT + ".proasteion.katagogion..",
+                ROOT + ".astu.acropolis.rag..", ROOT + ".astu.acropolis.knowledge..", APPLICATION_MCP)
                 .or(sourceErrorKind());
         return classes().that().resideInAPackage(APPLICATION_MCP)
                 .should().onlyDependOnClassesThat(allowed)
@@ -86,7 +86,7 @@ public class McpKnowledgeToolsBoundaryTest {
     }
 
     static ArchRule toolsReachPortsOnlyThroughUseCases() {
-        DescribedPredicate<JavaClass> ports = resideInAnyPackage(ROOT + ".knowledge.api..", ROOT + ".embedding.api..")
+        DescribedPredicate<JavaClass> ports = resideInAnyPackage(ROOT + ".astu.acropolis.chalcotheca..", ROOT + ".embedding.api..")
                 .or(resideInAnyPackage(ROOT + ".source.api..").and(DescribedPredicate.not(sourceErrorKind())))
                 .as("Index-, Embedding- oder Quell-Port (außer der Fehlerart KnowledgeSourceException)");
         return noClasses().that().resideInAPackage(APPLICATION_MCP)
@@ -97,9 +97,12 @@ public class McpKnowledgeToolsBoundaryTest {
     }
 
     static ArchRule useCasesAndChatPathDoNotKnowTheTools() {
-        return noClasses().that().resideInAnyPackage(ROOT + ".application.rag..", ROOT + ".application.knowledge..",
-                        ROOT + ".application.chat..", ROOT + ".application.agent..", ROOT + ".domain..",
-                        ROOT + ".chat..", ROOT + ".knowledge..", ROOT + ".embedding..", ROOT + ".source..")
+        // astu ohne die in ihm geschachtelten Module (acropolis mit den Werkzeugen selbst liegt darin).
+        return noClasses().that(resideInAnyPackage(ROOT + ".astu.acropolis.rag..", ROOT + ".astu.acropolis.knowledge..",
+                        ROOT + ".astu.acropolis.chat..", ROOT + ".astu.acropolis.agent..",
+                        ROOT + ".astu.acropolis.chalcotheca..", ROOT + ".chat..", ROOT + ".knowledge..",
+                        ROOT + ".embedding..", ROOT + ".source..")
+                        .or(ModuleRegistry.standard().module("astu").classes()))
                 .should().dependOnClassesThat().resideInAPackage(APPLICATION_MCP)
                 .because("die Werkzeuge liegen außen um die Use Cases; Kern, Ports und Chat-Pfad kennen MCP nicht")
                 .allowEmptyShould(true);
@@ -118,12 +121,12 @@ public class McpKnowledgeToolsBoundaryTest {
     @Test
     public void toolClassesExist() {
         // Die Regeln oben dürfen nicht leer laufen, weil das Paket umbenannt wurde.
-        assertTrue(productionClasses.containPackage(ROOT + ".application.mcp"));
-        assertTrue(productionClasses.contain(ROOT + ".application.mcp.KnowledgeMcpTools"));
-        assertTrue(productionClasses.contain(ROOT + ".application.knowledge.LoadKnowledgeDocumentUseCase"));
-        assertTrue(productionClasses.contain(ROOT + ".application.knowledge.RefreshKnowledgeSourceUseCase"));
+        assertTrue(productionClasses.containPackage(ROOT + ".astu.acropolis.mcp"));
+        assertTrue(productionClasses.contain(ROOT + ".astu.acropolis.mcp.KnowledgeMcpTools"));
+        assertTrue(productionClasses.contain(ROOT + ".astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase"));
+        assertTrue(productionClasses.contain(ROOT + ".astu.acropolis.knowledge.RefreshKnowledgeSourceUseCase"));
         // Die Werkzeuge nutzen die erlaubte Fehlerart tatsächlich; die Ausnahme in der Regel ist also nicht leer.
-        assertTrue(productionClasses.get(ROOT + ".application.mcp.KnowledgeReadTool")
+        assertTrue(productionClasses.get(ROOT + ".astu.acropolis.mcp.KnowledgeReadTool")
                 .getDirectDependenciesFromSelf().toString().contains(SOURCE_EXCEPTION));
     }
 

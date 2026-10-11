@@ -6,39 +6,39 @@ description = 'AP25: Integrations- und Vertical-Slice-Tests A–G über alle Mod
 
 dependencies {
     // Kern und Ports
-    testImplementation project(':domain')
-    testImplementation project(':application')
+    testImplementation project(':astu')
+    testImplementation project(':astu:acropolis')
     testImplementation project(':chat-api')
     testImplementation project(':embedding-api')
-    testImplementation project(':knowledge-api')
+    testImplementation project(':astu:acropolis:chalcotheca')
     testImplementation project(':source-api')
-    testImplementation project(':security-api')
+    testImplementation project(':adyton')
     testImplementation project(':acp-client-api')
-    testImplementation project(':mcp-runtime-api')
+    testImplementation project(':proasteion:katagogion')
     // Adapter (Instanziierung in den Slices spielt die Rolle der Composition Root nach bzw. nutzt AdapterAssembly)
     testImplementation project(':chat-openai')
     testImplementation project(':embedding-openai')
-    testImplementation project(':knowledge-lucene')
-    testImplementation project(':source-mediawiki')
-    testImplementation project(':source-confluence')
-    testImplementation project(':security-keepassrpc')
+    testImplementation project(':astu:acropolis:chalcotheca:anagraphai')
+    testImplementation project(':proasteion:emporion:holkas:source-mediawiki')
+    testImplementation project(':proasteion:emporion:holkas:source-confluence')
+    testImplementation project(':proasteion:platform:security-keepassrpc')
     testImplementation project(':acp-solon-client')
-    testImplementation project(':mcp-solon-runtime')
+    testImplementation project(':proasteion:katagogion:mcp-solon-runtime')
     // Oberfläche und Composition Root
     testImplementation project(':comic-controls')
-    testImplementation project(':app-swing')
+    testImplementation project(':proasteion:exedra')
 
     // Testfixtures der Stränge: Fake-Ports, In-Memory-Index und -Quelle, MCP-Test-Tools, Fake-HTTP-Server
     // (/chat/completions, /embeddings), Fake-MediaWiki, Fake-Confluence, Fake-KeePassRPC.
     testImplementation testFixtures(project(':chat-api'))
     testImplementation testFixtures(project(':embedding-api'))
-    testImplementation testFixtures(project(':knowledge-api'))
+    testImplementation testFixtures(project(':astu:acropolis:chalcotheca'))
     testImplementation testFixtures(project(':source-api'))
-    testImplementation testFixtures(project(':mcp-runtime-api'))
-    testImplementation testFixtures(project(':app-swing'))
-    testImplementation testFixtures(project(':source-mediawiki'))
-    testImplementation testFixtures(project(':source-confluence'))
-    testImplementation testFixtures(project(':security-keepassrpc'))
+    testImplementation testFixtures(project(':proasteion:katagogion'))
+    testImplementation testFixtures(project(':proasteion:exedra'))
+    testImplementation testFixtures(project(':proasteion:emporion:holkas:source-mediawiki'))
+    testImplementation testFixtures(project(':proasteion:emporion:holkas:source-confluence'))
+    testImplementation testFixtures(project(':proasteion:platform:security-keepassrpc'))
 
     // Die aufgezeichneten Anfragen der Fake-HTTP-Server sind Gson-Objekte.
     testImplementation libs.gson
@@ -52,7 +52,7 @@ dependencies {
     testRuntimeOnly libs.slf4j.nop
 }
 
-// Slice E/G: der Demo-Agent aus acp-demo-agent läuft als echter Kindprozess (java -jar). Wie in app-swing keine
+// Slice E/G: der Demo-Agent aus acp-demo-agent läuft als echter Kindprozess (java -jar). Wie in exedra keine
 // Projektabhängigkeit auf acp-demo-agent, nur das gebaute Jar als Testeingabe.
 def demoAgentJar = rootProject.file('acp-demo-agent/build/libs/acp-demo-agent-all.jar')
 

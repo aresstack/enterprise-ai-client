@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.domain.archfixture.NeutralValue;
+import com.aresstack.enterpriseai.astu.archfixture.NeutralValue;
 import org.junit.Test;
 
 import java.io.File;
@@ -52,12 +52,12 @@ public class Java8CompatibilityTest {
     @Test
     public void compileStepWithoutRelease8IsDetected() {
         Properties properties = new Properties();
-        properties.setProperty("modules", "domain,chat-api");
-        properties.setProperty("compileTasks.domain", "compileJava=release=11,compileTestJava=release=8");
+        properties.setProperty("modules", "astu,chat-api");
+        properties.setProperty("compileTasks.astu", "compileJava=release=11,compileTestJava=release=8");
         properties.setProperty("compileTasks.chat-api", "compileTestJava=release=8");
         List<String> violations = Java8CompatibilityRules.compileTargetViolations(new BuildModelExtension(properties), true);
         assertEquals(violations.toString(), 2, violations.size());
-        assertTrue(violations.toString(), violations.toString().contains("domain:compileJava zielt auf release=11"));
+        assertTrue(violations.toString(), violations.toString().contains("astu:compileJava zielt auf release=11"));
         assertTrue(violations.toString(), violations.toString().contains("chat-api: kein compileJava-Schritt"));
         // Auf JDK 8 wird target=1.8 erwartet: beide domain-Schritte, der fehlende und der vorhandene chat-api-Schritt.
         assertEquals(4, Java8CompatibilityRules.compileTargetViolations(new BuildModelExtension(properties), false).size());

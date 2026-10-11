@@ -1,8 +1,8 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
-import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
-import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
 import com.aresstack.enterpriseai.model.api.LocalVoiceProvisioning;

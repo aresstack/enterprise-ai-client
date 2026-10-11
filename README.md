@@ -25,8 +25,8 @@ java -jar enterprise-ai-client-<version>.jar
 
 ```bash
 ./gradlew build                 # alle Module, alle Tests inklusive Architektur- und Slice-Tests; baut und prüft auch das Fat Jar
-./gradlew :app-swing:run        # Anwendung starten
-./gradlew :app-swing:fatJar     # nur das Fat Jar: app-swing/build/libs/enterprise-ai-client-<version>-SNAPSHOT.jar
+./gradlew :proasteion:exedra:run        # Anwendung starten
+./gradlew :proasteion:exedra:fatJar     # nur das Fat Jar: exedra/build/libs/enterprise-ai-client-<version>-SNAPSHOT.jar
 ```
 
 1. **Bauen**: `./gradlew build`. Ohne Netzwerk zu Maven Central schlägt der erste Lauf fehl; einfach
@@ -43,7 +43,7 @@ java -jar enterprise-ai-client-<version>.jar
    sie kommen zur Laufzeit aus KeePass (Plugin
    KeePassRPC). Die Datei lässt sich weiterhin von Hand pflegen (Feineinstellungen wie Timeouts stehen nur
    dort). Alternativ: `-Denterpriseai.config=/pfad/zur/datei`.
-3. **Starten**: `./gradlew :app-swing:run` oder `java -jar enterprise-ai-client-<version>.jar`. Ohne erreichbares
+3. **Starten**: `./gradlew :proasteion:exedra:run` oder `java -jar enterprise-ai-client-<version>.jar`. Ohne erreichbares
    KeePass startet die Anwendung trotzdem und meldet, welche Secrets fehlen; Anfragen scheitern dann mit einem
    Authentifizierungsfehler.
 4. **Chatten**: Frage eintippen, Senden (Enter; Umschalt+Enter für eine neue Zeile). Antworten streamen und
@@ -67,7 +67,7 @@ java -jar enterprise-ai-client-<version>.jar
    Entfernen einer Quelle werden auch ihre Archiveinträge zurückgezogen.
    **Lokale Dateien**: „+ Quelle“ mit Typ „Lokale Dateien“ legt eine Quelle `type=files` an
    („Verzeichnis wählen …“); das Verzeichnis wird rekursiv gelesen. Erkennung und Extraktion stammen aus corenth
-   `deigma` (Module `document-api` und `document-tika`, Quelle `source-localfiles`): Text und Markdown direkt,
+   `deigma` (Module `deigma` und `document-tika`, Quelle `source-localfiles`): Text und Markdown direkt,
    PDF, Word, Excel, PowerPoint, OpenDocument, RTF, HTML und Mails über Apache Tika 2.9.1 wie in MainframeMate.
    Die Tika-Parser vergrößern das Fat Jar deutlich.
 6. **RAG verwenden**: Einen RAG-Schalter gibt es nicht (wie in askai-java8 arch). Sind Wissensquellen
@@ -100,9 +100,9 @@ java -jar enterprise-ai-client-<version>.jar
    dem Hamburger wechselt in die Agent-Ansicht; der erste Auftrag startet
    den Prozess; er erhält die Wissenswerkzeuge über einen MCP-Endpoint, der nur für diesen Prozess gilt.
 
-Demos ohne Enterprise-API und ohne KeePass: `./gradlew :app-swing:runChatDemo` (Chat gegen einen Fake-Port),
-`:app-swing:runRagDemo` (echte Chat- und Embedding-Adapter gegen lokale Fake-HTTP-Server, Lucene-Index im
-Temp-Verzeichnis), `:app-swing:runAgentDemo` (Chat gegen Fake-Port plus Demo-Agent als Kindprozess).
+Demos ohne Enterprise-API und ohne KeePass: `./gradlew :proasteion:exedra:runChatDemo` (Chat gegen einen Fake-Port),
+`:proasteion:exedra:runRagDemo` (echte Chat- und Embedding-Adapter gegen lokale Fake-HTTP-Server, Lucene-Index im
+Temp-Verzeichnis), `:proasteion:exedra:runAgentDemo` (Chat gegen Fake-Port plus Demo-Agent als Kindprozess).
 
 ## Modellverwaltung
 
@@ -116,25 +116,25 @@ Stand liegt in `model-catalog.properties`. Funktionen ohne passendes Modell zeig
 ## Abhängigkeitsrichtung
 
 ```
-app-swing  ──►  comic-controls
+exedra  ──►  comic-controls
    │
-   ├──►  application  ──►  chat-api, embedding-api, knowledge-api, source-api,
-   │          │             security-api, acp-client-api, mcp-runtime-api
-   │          └────────────────────────────────────────────────────────────►  domain
+   ├──►  acropolis  ──►  chat-api, embedding-api, chalcotheca, source-api,
+   │          │             adyton, acp-client-api, katagogion
+   │          └────────────────────────────────────────────────────────────►  astu
    │                                                                            ▲
    └──►  Adapter  ──►  ihr Port-Modul  ─────────────────────────────────────────┘
           chat-openai → chat-api            source-mediawiki  → source-api
-          embedding-openai → embedding-api  source-confluence → source-api + security-api
-          knowledge-lucene → knowledge-api  security-keepassrpc → security-api
-          acp-solon-client → acp-client-api mcp-solon-runtime → mcp-runtime-api
+          embedding-openai → embedding-api  source-confluence → source-api + adyton
+          anagraphai → chalcotheca  security-keepassrpc → adyton
+          acp-solon-client → acp-client-api mcp-solon-runtime → katagogion
 
-Pfeile zeigen "darf verwenden". domain kennt niemanden. Die Ports chat-, embedding-, knowledge-, source- und
-security-api kennen nur domain; acp-client-api und mcp-runtime-api sind eigenständig. application kennt domain
-und alle Ports. Ein Adapter kennt seinen Port, domain und seine Bibliothek; source-confluence zusätzlich
-security-api. app-swing ist der einzige Ort, an dem Adapter konstruiert werden.
+Pfeile zeigen "darf verwenden". astu kennt niemanden. Die Ports chat-, embedding-, knowledge-, source- und
+adyton kennen nur astu; acp-client-api und katagogion sind eigenständig. acropolis kennt astu
+und alle Ports. Ein Adapter kennt seinen Port, astu und seine Bibliothek; source-confluence zusätzlich
+adyton. exedra ist der einzige Ort, an dem Adapter konstruiert werden.
 ```
 
-Swing nur in `app-swing` und `comic-controls`; Bibliotheken nur in ihrem Adapter; kein Logging-Framework, keine
+Swing nur in `exedra` und `comic-controls`; Bibliotheken nur in ihrem Adapter; kein Logging-Framework, keine
 Konsolenausgabe außerhalb des Demo-Agenten; keine fremden Hostnamen, Modellnamen oder Schlüssel als Literale im
 Code. Die vollständigen Regeln prüft `./gradlew :architecture-tests:test`.
 

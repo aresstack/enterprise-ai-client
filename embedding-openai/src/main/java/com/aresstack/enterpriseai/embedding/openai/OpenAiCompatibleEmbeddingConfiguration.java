@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.embedding.openai;
 
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
-import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 
 import javax.net.ssl.SSLSocketFactory;
 import java.net.Proxy;

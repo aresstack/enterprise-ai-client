@@ -1,11 +1,11 @@
 package com.aresstack.enterpriseai.architecture;
 
 import com.aresstack.enterpriseai.acp.demo.archfixture.logging.DemoAgentWritingStderr;
-import com.aresstack.enterpriseai.application.archfixture.logging.UseCaseWithLogger;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.logging.UseCaseWithLogger;
 import com.aresstack.enterpriseai.chat.openai.archfixture.logging.AdapterPrintingStackTrace;
 import com.aresstack.enterpriseai.chat.openai.archfixture.logging.AdapterUsingSlf4j;
-import com.aresstack.enterpriseai.domain.archfixture.logging.ValuePrintingToStdout;
-import com.aresstack.enterpriseai.security.keepassrpc.archfixture.logging.AdapterWithJulLogger;
+import com.aresstack.enterpriseai.astu.archfixture.logging.ValuePrintingToStdout;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.archfixture.logging.AdapterWithJulLogger;
 import org.junit.Test;
 
 import java.util.Collections;

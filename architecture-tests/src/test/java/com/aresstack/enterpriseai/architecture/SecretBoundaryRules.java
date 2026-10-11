@@ -20,32 +20,32 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  *
  * <p>Die Regeln arbeiten über den voll qualifizierten Typnamen, damit {@code SecretBoundaryTest} sie auf die
  * echten Produktionsklassen und auf Fixtures mit einem Stellvertretertyp anwenden kann, ohne dass
- * {@code architecture-tests} {@code security-api} auf dem Klassenpfad braucht.
+ * {@code architecture-tests} {@code adyton} auf dem Klassenpfad braucht.
  */
 final class SecretBoundaryRules {
 
-    static final String SECRET_MATERIAL = "com.aresstack.enterpriseai.security.api.SecretMaterial";
+    static final String SECRET_MATERIAL = "com.aresstack.enterpriseai.adyton.SecretMaterial";
 
     /**
      * Module, die Secret-Material sehen dürfen: der Port selbst, der Security-Adapter und Adapter, die sich mit
      * Credentials aus dem Security-Port bei einem externen System anmelden. Das sind genau die Module, die laut
-     * {@link ModuleRegistry} {@code security-api} sehen dürfen, ohne Kern zu sein. Jedes andere, auch jedes neu
+     * {@link ModuleRegistry} {@code adyton} sehen dürfen, ohne Kern zu sein. Jedes andere, auch jedes neu
      * registrierte Modul, ist gesperrt; eine Erweiterung (z. B. API-Key des Chat-Adapters über einen
      * {@code SecretRef}) ist eine bewusste Architekturentscheidung: Registry, ARCHITECTURE.md und diese Liste.
      */
     static List<String> modulesAllowedToUseSecretMaterial() {
-        return Collections.unmodifiableList(Arrays.asList("security-api", "security-keepassrpc", "source-confluence",
+        return Collections.unmodifiableList(Arrays.asList("adyton", "security-keepassrpc", "source-confluence",
                 "source-ftp", "source-ndv"));
     }
 
     /**
      * Pakete außerhalb dieser Module, die Secret-Material sehen dürfen (AP23): die Brücken der Composition Root in
-     * {@code app.security}, die den API-Key des Chat-/Embedding-Adapters und die Wiki-Anmeldung je Aufruf über
+     * {@code proasteion.exedra.security}, die den API-Key des Chat-/Embedding-Adapters und die Wiki-Anmeldung je Aufruf über
      * {@code SecretProvider.withSecret} holen. Paketgenau, damit Konfiguration, Shell, Bindings und der Rest von
-     * {@code app-swing} gesperrt bleiben; die Feldregel gilt auch hier.
+     * {@code exedra} gesperrt bleiben; die Feldregel gilt auch hier.
      */
     static List<String> packagesAllowedToUseSecretMaterial() {
-        return Collections.singletonList(ModuleRegistry.ROOT_PACKAGE + ".app.security..");
+        return Collections.singletonList(ModuleRegistry.ROOT_PACKAGE + ".proasteion.exedra.security..");
     }
 
     private SecretBoundaryRules() {
@@ -53,18 +53,18 @@ final class SecretBoundaryRules {
 
     /** Domain, Application, UI, Knowledge, ACP, MCP und alle übrigen Module referenzieren Secret-Material nicht. */
     static ArchRule secretMaterialOnlyInAllowedModules(ModuleRegistry registry, String secretMaterialType) {
-        List<String> forbidden = new ArrayList<String>();
+        List<ArchitectureModule> forbidden = new ArrayList<ArchitectureModule>();
         for (ArchitectureModule module : registry.modules()) {
             if (!modulesAllowedToUseSecretMaterial().contains(module.name())) {
-                forbidden.add(module.packagePattern());
+                forbidden.add(module);
             }
         }
         return noClasses()
-                .that().resideInAnyPackage(forbidden.toArray(new String[0]))
+                .that(ArchitectureModule.classesOf(forbidden))
                 .and().resideOutsideOfPackages(packagesAllowedToUseSecretMaterial().toArray(new String[0]))
                 .should().dependOnClassesThat().haveFullyQualifiedName(secretMaterialType)
                 .because("Secret-Material darf Domain, Application, UI und Knowledge nie erreichen; sie tragen "
-                        + "nur den SecretRef (AP13); in app-swing sieht es allein app.security (AP23)")
+                        + "nur den SecretRef (AP13); in exedra sieht es allein app.security (AP23)")
                 .allowEmptyShould(true);
     }
 

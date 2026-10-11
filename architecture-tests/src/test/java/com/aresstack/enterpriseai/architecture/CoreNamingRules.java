@@ -15,7 +15,7 @@ import java.util.Locale;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 
 /**
- * Nachtrag 1 und 19: Der Kern (domain, application, *-api) kennt genau einen Port je Fähigkeit und keinen
+ * Nachtrag 1 und 19: Der Kern (astu, acropolis, *-api) kennt genau einen Port je Fähigkeit und keinen
  * Provider. Weder Klassennamen noch Enum-Konstanten dürfen einen Anbieter (OpenAI, Ollama, Claude, llama.cpp
  * ...) oder eine Multi-Provider-Abstraktion benennen. Adapter dürfen den Provider im Namen tragen
  * ({@code OpenAiCompatibleChatAdapter}).
@@ -36,7 +36,7 @@ final class CoreNamingRules {
 
     static ArchRule coreClassesAreNotNamedAfterProviders(ModuleRegistry registry) {
         return classes()
-                .that().resideInAnyPackage(corePackages(registry))
+                .that(ArchitectureRules.coreClasses(registry))
                 .should(notBeNamedAfterAProvider())
                 .because("der Kern kennt ChatCompletionPort und EmbeddingPort, keine Provider und keine "
                         + "Multi-Provider-Abstraktion (Nachtrag 1, 19)")
@@ -45,7 +45,7 @@ final class CoreNamingRules {
 
     static ArchRule coreEnumsHaveNoProviderConstants(ModuleRegistry registry) {
         return classes()
-                .that().resideInAnyPackage(corePackages(registry))
+                .that(ArchitectureRules.coreClasses(registry))
                 .and().areEnums()
                 .should(haveNoProviderConstant())
                 .because("Provider-Enums wie OPENAI, CLAUDE, OLLAMA, LLAMA_CPP gehören nicht in den Kern (Nachtrag 1)")

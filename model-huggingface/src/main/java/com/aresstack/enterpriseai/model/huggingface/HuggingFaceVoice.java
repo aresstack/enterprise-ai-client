@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 
 import java.util.ArrayList;
 import java.util.Collections;

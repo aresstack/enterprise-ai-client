@@ -2,11 +2,11 @@ package com.aresstack.enterpriseai.chat.openai;
 
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
-import com.aresstack.enterpriseai.domain.chat.ChatFinishReason;
-import com.aresstack.enterpriseai.domain.chat.ChatMessage;
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
-import com.aresstack.enterpriseai.domain.chat.ChatToolCall;
-import com.aresstack.enterpriseai.domain.chat.ChatUsage;
+import com.aresstack.enterpriseai.astu.chat.ChatFinishReason;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatToolCall;
+import com.aresstack.enterpriseai.astu.chat.ChatUsage;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

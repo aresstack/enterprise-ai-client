@@ -8,19 +8,19 @@ MediaWiki oder den Index.
 ## Module
 
 ```
-mcp-runtime-api    frameworkfreie Verträge (keine Solon-/MCP-SDK-Typen)
+katagogion    frameworkfreie Verträge (keine Solon-/MCP-SDK-Typen)
       ↑
 mcp-solon-runtime  Adapter: MCP Streamable HTTP über org.noear solon / solon-boot-jdkhttp / solon-ai-mcp 3.10.1
-application.mcp    die Wissenswerkzeuge als McpToolContribution (nur Use Cases)
+acropolis.mcp    die Wissenswerkzeuge als McpToolContribution (nur Use Cases)
 ```
 
-Beide Module stammen aus askai-java8 (`mcp-runtime-api`, `mcp-solon-runtime`); keine eigene
+Beide Module stammen aus askai-java8 (`katagogion`, `mcp-solon-runtime`); keine eigene
 MCP-Wire-Implementierung. Geändert: `McpServerRegistry.shutdown()`, `McpToolClient.listTools()`,
 `McpToolCallException` als eigene Klasse, Tool-Namensregel `[A-Za-z0-9_.-]{1,128}` geprüft, kein statischer
 Port-Zustand in der Runtime, Tool-Fehler als MCP-`isError`-Ergebnis statt Exception, Token-Vergleich in
 konstanter Zeit.
 
-### Verträge in `mcp-runtime-api`
+### Verträge in `katagogion`
 
 | Seite | Typen |
 |---|---|
@@ -47,13 +47,13 @@ gefälschter Handle wird still ignoriert und löst keine Exception aus, die Toke
 Solon ist prozessglobal: Die erste Registrierung bootet den Solon-Server einmal je JVM, alle
 `SolonMcpServerRuntime`-Instanzen teilen ihn, `shutdown()` entfernt nur die eigenen Endpoints. Den Server selbst
 gibt `SolonMcpServerRuntime.stopSharedServer()` beim endgültigen Beenden der Anwendung frei (sonst halten
-Nicht-Daemon-Threads die JVM am Leben). Deshalb laufen die Tests von `mcp-solon-runtime` und `app-swing` mit
+Nicht-Daemon-Threads die JVM am Leben). Deshalb laufen die Tests von `mcp-solon-runtime` und `exedra` mit
 einer eigenen JVM je Testklasse (`forkEvery = 1`).
 
-## Die Wissenswerkzeuge (`application.mcp.KnowledgeMcpTools`)
+## Die Wissenswerkzeuge (`astu.acropolis.mcp.KnowledgeMcpTools`)
 
 ```
-MCP-Client → McpServerRegistry (mcp-solon-runtime) → McpToolContribution (application.mcp)
+MCP-Client → McpServerRegistry (mcp-solon-runtime) → McpToolContribution (acropolis.mcp)
           → RetrieveKnowledgeUseCase / LoadKnowledgeDocumentUseCase / RefreshKnowledgeSourceUseCase
           → KnowledgeIndexPort / EmbeddingPort / KnowledgeSourcePort → Adapter
 ```
@@ -89,7 +89,7 @@ Parameter sind flach (`source_ids` als kommagetrennte Zeichenkette), weil der MC
 4. Beim Beenden der Anwendung: `SolonMcpServerRuntime.shutdown()` und `stopSharedServer()`, danach wird der
    Lucene-Index geschlossen (`ShutdownSequence`).
 
-Für Tests ohne Netzwerk stehen in den Testfixtures von `mcp-runtime-api` die In-Process-Referenzen
+Für Tests ohne Netzwerk stehen in den Testfixtures von `katagogion` die In-Process-Referenzen
 `InProcessMcpServerRegistry` und `InProcessMcpToolClientFactory` bereit; `KnowledgeMcpToolsRoundTripTest` in
-`application` und `ApplicationCompositionTest` in `app-swing` nutzen sie. Der Roundtrip über den echten
+`acropolis` und `ApplicationCompositionTest` in `exedra` nutzen sie. Der Roundtrip über den echten
 Solon-Transport läuft in `SolonMcpRoundTripTest` (Testwerkzeuge `ping`, `echo`) und `AgentModeRoundTripTest`.

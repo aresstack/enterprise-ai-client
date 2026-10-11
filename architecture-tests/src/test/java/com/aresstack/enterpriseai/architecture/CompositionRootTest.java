@@ -1,14 +1,14 @@
 package com.aresstack.enterpriseai.architecture;
 
 import com.aresstack.enterpriseai.acp.demo.archfixture.config.DemoAgentReadingEnvironment;
-import com.aresstack.enterpriseai.app.archfixture.config.CompositionRootReadingEnvironment;
-import com.aresstack.enterpriseai.application.archfixture.config.UseCaseReadingPreferences;
-import com.aresstack.enterpriseai.application.archfixture.config.UseCaseUsingServiceLoader;
+import com.aresstack.enterpriseai.proasteion.exedra.archfixture.config.CompositionRootReadingEnvironment;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.config.UseCaseReadingPreferences;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.config.UseCaseUsingServiceLoader;
 import com.aresstack.enterpriseai.chat.api.archfixture.FakeChatPort;
 import com.aresstack.enterpriseai.chat.openai.archfixture.AdapterImplementingItsPort;
 import com.aresstack.enterpriseai.chat.openai.archfixture.FakeChatAdapter;
 import com.aresstack.enterpriseai.chat.openai.archfixture.config.AdapterReadingEnvironment;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.config.IndexLoadingProperties;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.config.IndexLoadingProperties;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -18,8 +18,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Composition nur in app-swing: Konfiguration wird nur dort gelesen, keine ServiceLoader-Lookups, jeder
- * Adapter steht hinter einem Port-Interface. {@code main} nur in app-swing und acp-demo-agent prüft
+ * Composition nur in exedra: Konfiguration wird nur dort gelesen, keine ServiceLoader-Lookups, jeder
+ * Adapter steht hinter einem Port-Interface. {@code main} nur in exedra und acp-demo-agent prüft
  * {@code ClassBoundaryTest.mainMethodsOnlyInCompositionRoot}.
  */
 public class CompositionRootTest {
@@ -74,6 +74,6 @@ public class CompositionRootTest {
 
         List<String> withoutImplementation = CompositionRootRules.adaptersWithoutPortImplementation(REGISTRY,
                 ProductionClasses.of(FakeChatAdapter.class));
-        assertTrue(withoutImplementation.toString(), withoutImplementation.toString().contains("chat-openai implementiert kein Interface aus [chat-api, http-api]"));
+        assertTrue(withoutImplementation.toString(), withoutImplementation.toString().contains("chat-openai implementiert kein Interface aus [chat-api, network]"));
     }
 }

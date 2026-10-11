@@ -38,10 +38,10 @@ Ausgaben. Updates (`AcpUpdate`) unterscheiden Nachrichtentext, Überlegungen und
 
 ```mermaid
 sequenceDiagram
-    participant UI as Agent-Ansicht (app.ui)
+    participant UI as Agent-Ansicht (proasteion.exedra.ui)
     participant B as AgentServiceBinding
-    participant S as AgentService (application.agent)
-    participant L as AcpAgentLauncher (app.agent)
+    participant S as AgentService (acropolis.agent)
+    participant L as AcpAgentLauncher (proasteion.exedra.agent)
     participant R as McpServerRegistry
     participant C as SolonAcpAgentConnector
     participant P as Agentenprozess
@@ -65,13 +65,13 @@ sequenceDiagram
     L->>R: unregisterEndpoint (Token ungültig)
 ```
 
-- **`AgentService`** (`application.agent`) hält Prozess, Verbindung und eine Session, höchstens einen Auftrag
+- **`AgentService`** (`astu.acropolis.agent`) hält Prozess, Verbindung und eine Session, höchstens einen Auftrag
   gleichzeitig und ein eigenes Transkript, getrennt vom `ChatService`. Ein Abbruch endet erst, wenn der Agent
   ihn bestätigt; ein zwischen zwei Aufträgen beendeter Agent wird beim nächsten Auftrag ersetzt (neue Session,
   alter Kontext verloren); einen automatischen Neustart ohne Nutzeraktion gibt es nicht. Fehler sind
   `AgentFailure` (`START_FAILED`, `SESSION_FAILED`, `PROMPT_FAILED`, `AGENT_TERMINATED`, `CLOSED`) ohne Details
   aus Agent oder SDK.
-- **`AgentLauncher`** ist das Port-Interface des Use Case; die Implementierung `app.agent.AcpAgentLauncher`
+- **`AgentLauncher`** ist das Port-Interface des Use Case; die Implementierung `proasteion.exedra.agent.AcpAgentLauncher`
   liegt in der Composition Root. Dadurch laufen Launch-Umgebung, Endpoint-URL und Token nie durch den Use Case.
 - **MCP-Übergabe**: Je Agentenprozess registriert der Launcher einen frischen Endpoint (neuer Token) und legt
   ihn als Umgebungsvariablen in den Prozess (`AgentMcpEnvironment`): `ENTERPRISE_AI_MCP_ENDPOINT_ID`,
@@ -80,16 +80,16 @@ sequenceDiagram
   Endpoint abgemeldet. ACP `session/new` selbst sendet eine leere `mcpServers`-Liste; eine Übergabe über ACP
   wäre eine Vertragsänderung in `acp-client-api` und `acp-solon-client` (siehe
   [Einschränkungen](einschraenkungen.md)).
-- **Oberfläche**: `app.ui.workspace.ChatWorkspacePanel` mit der Modus-Pille `[ Chat ▾ ]`/`[ Agent ▾ ]` neben dem
+- **Oberfläche**: `proasteion.exedra.ui.workspace.ChatWorkspacePanel` mit der Modus-Pille `[ Chat ▾ ]`/`[ Agent ▾ ]` neben dem
   Hamburger (`ResearchPillDropdown`; ohne `agent.enabled` ist „Agent“ deaktiviert). Jede Ansicht ist eine eigene
   `ChatShellPanel` mit eigenem Model; Verläufe und Sessions
   mischen sich nicht. Überlegungen des Agenten stehen im Transkript, nicht in der Antwortblase; Tool-Updates
   zeigt die Oberfläche derzeit nicht.
 
-Architekturtest `AgentModeBoundaryTest`: Der Chat-Pfad (`domain.chat`, `chat.api`, `chat.openai`,
-`application.chat`, `app.chat`, `app.ui.chat`) kennt weder ACP noch MCP; ACP- und MCP-Typen kommen außerhalb
-ihrer Module nur in `application.agent`, `application.mcp`, `app.agent` und der Composition Root vor;
-`application.agent` sieht nur den ACP-Port; `app.ui.agent` ist reine Oberfläche.
+Architekturtest `AgentModeBoundaryTest`: Der Chat-Pfad (`astu.chat`, `chat.api`, `chat.openai`,
+`astu.acropolis.chat`, `proasteion.exedra.chat`, `proasteion.exedra.ui.chat`) kennt weder ACP noch MCP; ACP- und MCP-Typen kommen außerhalb
+ihrer Module nur in `astu.acropolis.agent`, `astu.acropolis.mcp`, `proasteion.exedra.agent` und der Composition Root vor;
+`astu.acropolis.agent` sieht nur den ACP-Port; `proasteion.exedra.ui.agent` ist reine Oberfläche.
 
 ## Konfiguration (`agent.*`)
 
@@ -114,7 +114,7 @@ Prozessende wird erst beim nächsten Request oder Request-Timeout erkannt (Stand
 
 `acp-demo-agent` (`DemoAcpAgentMain`, aus askai-java8) ist ein Java-8-Prozess, der auf jeden Prompt eine
 Überlegung und mehrere Textstücke streamt. Er dient den Roundtrip-Tests (`SolonAcpRoundTripTest`,
-`AgentModeRoundTripTest`) und der Demo `./gradlew :app-swing:runAgentDemo`. Testhaken im Prompt: `slow`
+`AgentModeRoundTripTest`) und der Demo `./gradlew :proasteion:exedra:runAgentDemo`. Testhaken im Prompt: `slow`
 streamt gedrosselt, bis abgebrochen wird (20 ms je Nachricht, höchstens 500), `crash` beendet die JVM mitten im
 Turn, `count N` liefert nummerierte Stücke, `hang` schweigt drei Sekunden. Der Demo-Agent **ruft selbst keine
 MCP-Werkzeuge auf**; belegt ist damit die Verdrahtung, nicht ein Werkzeugaufruf. Den Nachweis, dass ein Agent

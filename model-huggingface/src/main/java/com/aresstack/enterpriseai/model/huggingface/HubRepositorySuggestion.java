@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 
 /**
  * Ein vorgeschlagenes Modell aus einem Hub-Repository, dessen Dateien erst beim Installieren aus dem Dateibaum des

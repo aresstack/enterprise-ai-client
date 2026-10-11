@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.text.local;
 
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingVector;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;

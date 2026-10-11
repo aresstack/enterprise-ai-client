@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.chat.api;
 
-import com.aresstack.enterpriseai.domain.chat.ChatMessage;
-import com.aresstack.enterpriseai.domain.chat.ChatOptions;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 
 import java.util.ArrayList;
 import java.util.Collections;

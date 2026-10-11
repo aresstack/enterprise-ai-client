@@ -1,13 +1,13 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.app.chat.archfixture.secret.ChatBindingTouchingSecret;
-import com.aresstack.enterpriseai.app.security.archfixture.secret.BridgeUsingSecretBriefly;
-import com.aresstack.enterpriseai.application.archfixture.secret.UseCaseTouchingSecret;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.secret.IndexStoringSecret;
-import com.aresstack.enterpriseai.security.api.archfixture.secret.FakeSecretMaterial;
-import com.aresstack.enterpriseai.security.api.archfixture.secret.PortCachingSecret;
-import com.aresstack.enterpriseai.source.confluence.archfixture.secret.AdapterStoringSecret;
-import com.aresstack.enterpriseai.source.confluence.archfixture.secret.AdapterUsingSecretBriefly;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.archfixture.secret.ChatBindingTouchingSecret;
+import com.aresstack.enterpriseai.proasteion.exedra.security.archfixture.secret.BridgeUsingSecretBriefly;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.secret.UseCaseTouchingSecret;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.secret.IndexStoringSecret;
+import com.aresstack.enterpriseai.adyton.archfixture.secret.FakeSecretMaterial;
+import com.aresstack.enterpriseai.adyton.archfixture.secret.PortCachingSecret;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.archfixture.secret.AdapterStoringSecret;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.archfixture.secret.AdapterUsingSecretBriefly;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import org.junit.BeforeClass;
@@ -65,11 +65,11 @@ public class SecretBoundaryTest {
     public void allowedModulesAreRegisteredAndMaySeeTheSecurityPort() {
         for (String module : SecretBoundaryRules.modulesAllowedToUseSecretMaterial()) {
             assertTrue(module, REGISTRY.contains(module));
-            assertTrue(module + " darf security-api laut Registry nicht sehen", module.equals("security-api")
-                    || REGISTRY.module(module).allowedDependencies().contains("security-api"));
+            assertTrue(module + " darf adyton laut Registry nicht sehen", module.equals("adyton")
+                    || REGISTRY.module(module).allowedDependencies().contains("adyton"));
         }
-        for (String forbidden : new String[] {"domain", "application", "app-swing", "comic-controls",
-                "knowledge-api", "knowledge-lucene", "mcp-runtime-api", "mcp-solon-runtime"}) {
+        for (String forbidden : new String[] {"astu", "acropolis", "exedra", "comic-controls",
+                "chalcotheca", "anagraphai", "katagogion", "mcp-solon-runtime"}) {
             assertTrue(forbidden, !SecretBoundaryRules.modulesAllowedToUseSecretMaterial().contains(forbidden));
         }
     }
@@ -77,7 +77,7 @@ public class SecretBoundaryTest {
     @Test
     public void allowedPackagesLieInTheCompositionRootOnly() {
         for (String pkg : SecretBoundaryRules.packagesAllowedToUseSecretMaterial()) {
-            assertTrue(pkg, pkg.startsWith(ModuleRegistry.ROOT_PACKAGE + ".app.security"));
+            assertTrue(pkg, pkg.startsWith(ModuleRegistry.ROOT_PACKAGE + ".proasteion.exedra.security"));
         }
     }
 
@@ -92,7 +92,7 @@ public class SecretBoundaryTest {
 
     @Test
     public void securityBridgeInTheCompositionRootUsingSecretMaterialBrieflyPasses() {
-        Violations.assertNone("app.security darf Secret-Material je Aufruf lesen (AP23)",
+        Violations.assertNone("proasteion.exedra.security darf Secret-Material je Aufruf lesen (AP23)",
                 Violations.of(SecretBoundaryRules.all(REGISTRY, FAKE_SECRET_MATERIAL),
                         importClasses(BridgeUsingSecretBriefly.class, FakeSecretMaterial.class)));
     }

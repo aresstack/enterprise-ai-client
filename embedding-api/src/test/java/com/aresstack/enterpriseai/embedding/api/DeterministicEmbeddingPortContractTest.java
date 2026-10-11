@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.embedding.api;
 
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingVector;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.testing.EmbeddingPortContractTest;
 import org.junit.Test;

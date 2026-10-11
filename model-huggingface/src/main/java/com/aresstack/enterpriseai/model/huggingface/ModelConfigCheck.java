@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

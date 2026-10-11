@@ -78,7 +78,7 @@ jobs:
             echo "version=$version"
             echo "release=$release"
             echo "tag=$tag"
-            echo "jar=app-swing/build/libs/enterprise-ai-client-$version.jar"
+            echo "jar=proasteion/exedra/build/libs/enterprise-ai-client-$version.jar"
           } >> "$GITHUB_OUTPUT"
           echo "Version $version, Tag $tag"
 

@@ -60,6 +60,14 @@ public class BuildModelTest {
             }
             ArchitectureModule module = REGISTRY.module(moduleName);
             List<File> directories = model.existingClassDirectoriesOf(moduleName);
+            if (module.kind() == ModuleKind.BOUNDARY) {
+                // Grenzmodule der Stadt (proasteion, emporion, platform) bleiben wie in corenth ohne Klassen.
+                if (!directories.isEmpty()
+                        && !new ClassFileImporter().importPaths(toPaths(directories)).isEmpty()) {
+                    violations.add(moduleName + " ist ein Grenzmodul und darf keine Klassen enthalten");
+                }
+                continue;
+            }
             if (directories.isEmpty()) {
                 violations.add(moduleName + " hat keine Produktionsklassen (mindestens die Modul-Anker-Klasse "
                         + "in " + module.basePackage() + " behalten)");

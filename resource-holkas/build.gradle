@@ -1,6 +1,0 @@
-description = 'Adapter: Holkas-Connectoren (corenth) für wiki, confluence und file über den Quellen-Ports.'
-
-dependencies {
-    api project(':resource-api')
-    api project(':source-api')
-}

@@ -3,13 +3,13 @@ package com.aresstack.enterpriseai.architecture;
 import com.aresstack.enterpriseai.acp.api.archfixture.FakeAcpSession;
 import com.aresstack.enterpriseai.acp.demo.archfixture.FakeDemoAgent;
 import com.aresstack.enterpriseai.acp.demo.archfixture.matrix.DemoAgentUsingPort;
-import com.aresstack.enterpriseai.app.archfixture.FakeShell;
-import com.aresstack.enterpriseai.app.archfixture.matrix.CompositionRootUsingDemoAgent;
-import com.aresstack.enterpriseai.app.archfixture.matrix.CompositionRootUsingEverything;
-import com.aresstack.enterpriseai.application.archfixture.NeutralUseCase;
-import com.aresstack.enterpriseai.application.archfixture.matrix.UseCaseUsingComicControls;
-import com.aresstack.enterpriseai.application.archfixture.matrix.UseCaseUsingCompositionRoot;
-import com.aresstack.enterpriseai.application.archfixture.matrix.UseCaseUsingDemoAgent;
+import com.aresstack.enterpriseai.proasteion.exedra.archfixture.FakeShell;
+import com.aresstack.enterpriseai.proasteion.exedra.archfixture.matrix.CompositionRootUsingDemoAgent;
+import com.aresstack.enterpriseai.proasteion.exedra.archfixture.matrix.CompositionRootUsingEverything;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.NeutralUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.matrix.UseCaseUsingComicControls;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.matrix.UseCaseUsingCompositionRoot;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.matrix.UseCaseUsingDemoAgent;
 import com.aresstack.enterpriseai.chat.api.archfixture.FakeChatPort;
 import com.aresstack.enterpriseai.chat.api.archfixture.matrix.PortUsingApplication;
 import com.aresstack.enterpriseai.chat.api.archfixture.matrix.PortUsingItsAdapter;
@@ -20,11 +20,11 @@ import com.aresstack.enterpriseai.chat.openai.archfixture.matrix.AdapterUsingCom
 import com.aresstack.enterpriseai.chat.openai.archfixture.matrix.AdapterUsingCompositionRoot;
 import com.aresstack.enterpriseai.chat.openai.archfixture.matrix.AdapterUsingDemoAgent;
 import com.aresstack.enterpriseai.chat.openai.archfixture.matrix.AdapterUsingOtherAdapter;
-import com.aresstack.enterpriseai.domain.archfixture.matrix.DomainUsingApplication;
-import com.aresstack.enterpriseai.domain.archfixture.matrix.DomainUsingPort;
-import com.aresstack.enterpriseai.domain.chat.archfixture.FakeChatValue;
+import com.aresstack.enterpriseai.astu.archfixture.matrix.DomainUsingApplication;
+import com.aresstack.enterpriseai.astu.archfixture.matrix.DomainUsingPort;
+import com.aresstack.enterpriseai.astu.chat.archfixture.FakeChatValue;
 import com.aresstack.enterpriseai.embedding.api.archfixture.FakeEmbeddingPort;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneAdapter;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.FakeLuceneAdapter;
 import com.aresstack.enterpriseai.ui.comic.archfixture.FakeComicPanel;
 import org.junit.Test;
 
@@ -34,9 +34,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Modulmatrix (ARCHITECTURE.md, AP1/AP24) mit Gegenbeispiel je verbotener Kante: domain → Port/Application,
- * Port → Adapter/Application/anderer Port, Adapter → Adapter/Application/app-swing/comic-controls,
- * Application → app-swing/comic-controls, jede Kante nach acp-demo-agent. Ergänzt
+ * Modulmatrix (ARCHITECTURE.md, AP1/AP24) mit Gegenbeispiel je verbotener Kante: astu → Port/Application,
+ * Port → Adapter/Application/anderer Port, Adapter → Adapter/Application/exedra/comic-controls,
+ * Application → exedra/comic-controls, jede Kante nach acp-demo-agent. Ergänzt
  * {@code RulesDetectViolationsTest.applicationUsingConcreteAdapterIsDetected}.
  */
 public class ModuleMatrixDetectViolationsTest {

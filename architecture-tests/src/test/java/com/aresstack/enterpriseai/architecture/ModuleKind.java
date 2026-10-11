@@ -5,10 +5,15 @@ package com.aresstack.enterpriseai.architecture;
  */
 enum ModuleKind {
 
+    /**
+     * Grenze der Stadt aus corenth ohne eigene Klassen (proasteion, emporion, platform): hält nur die darin
+     * geschachtelten Module zusammen.
+     */
+    BOUNDARY,
     /** Reine Fachobjekte; kennt nur das JDK. */
     DOMAIN,
 
-    /** Use Cases und Orchestrierung; kennt domain und Ports. */
+    /** Use Cases und Orchestrierung; kennt astu und Ports. */
     APPLICATION,
 
     /** Neutrale Port-Verträge einer Fähigkeit ({@code *-api}). */

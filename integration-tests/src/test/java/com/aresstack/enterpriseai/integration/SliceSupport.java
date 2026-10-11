@@ -1,10 +1,10 @@
 package com.aresstack.enterpriseai.integration;
 
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
-import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
-import com.aresstack.enterpriseai.app.ui.chat.ChatShellModelListener;
-import com.aresstack.enterpriseai.app.ui.chat.SourceReference;
-import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModelListener;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.integration.agent.KnowledgeDemoAgentMain;
 
 import javax.swing.SwingUtilities;

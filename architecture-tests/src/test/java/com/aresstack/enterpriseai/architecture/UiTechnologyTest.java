@@ -1,8 +1,8 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.app.ui.archfixture.tech.SwingInsideApp;
-import com.aresstack.enterpriseai.app.ui.archfixture.web.PanelUsingJavaFx;
-import com.aresstack.enterpriseai.app.ui.archfixture.web.ServletFrontend;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.archfixture.tech.SwingInsideApp;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.archfixture.web.PanelUsingJavaFx;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.archfixture.web.ServletFrontend;
 import com.aresstack.enterpriseai.ui.comic.archfixture.tech.SwingInsideComic;
 import org.junit.Test;
 
@@ -32,7 +32,7 @@ public class UiTechnologyTest {
 
     @Test
     public void swingInAppAndComicPasses() {
-        Violations.assertNone("Swing in app-swing/comic-controls ist erlaubt",
+        Violations.assertNone("Swing in exedra/comic-controls ist erlaubt",
                 Violations.of(Collections.singletonList(UiTechnologyRules.noWebFrontendOrOtherUiToolkit()),
                         ProductionClasses.of(SwingInsideApp.class, SwingInsideComic.class)));
     }

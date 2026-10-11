@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.embedding.openai;
 
-import com.aresstack.enterpriseai.domain.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;

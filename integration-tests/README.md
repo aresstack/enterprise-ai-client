@@ -1,6 +1,6 @@
 # integration-tests – Vertical-Slice-Tests A–G (AP25)
 
-Dieses Modul enthält nur Testcode. Es sieht alle Module (einschließlich `app-swing`) und die Testfixtures
+Dieses Modul enthält nur Testcode. Es sieht alle Module (einschließlich `exedra`) und die Testfixtures
 der Stränge und beweist Ende-zu-Ende, dass die Slices des Arbeitsauftrags zusammenspielen. Alle Gegenstellen
 sind lokale Fakes auf `127.0.0.1`; ein getrennter Lauf gegen echte Dienste ist standardmäßig aus.
 
@@ -13,8 +13,8 @@ sind lokale Fakes auf `127.0.0.1`; ein getrennter Lauf gegen echte Dienste ist s
 
 | Slice | Kette laut Auftrag | Test (dieses Modul) | Echte Bausteine | Fakes / Fixtures |
 |---|---|---|---|---|
-| A – Chat | Swing → Application → Chat-Port → OpenAI-kompatibles HTTP → Streaming → Bubble | `SliceAChatTest` | `ShellAssembly`, `CompositionRoot`, `RagChatBinding`, `ChatService`, `OpenAiCompatibleChatAdapter` | `FakeChatCompletionsServer` (app-swing, SSE) |
-| B – Knowledge | Fake-Quelle → Chunking → Embedding → Lucene + Vektoren → hybrides Retrieval | `SliceBKnowledgeTest` | `KnowledgeChunker`, `IndexKnowledgeUseCase`, `OpenAiCompatibleEmbeddingAdapter`, `LuceneKnowledgeIndex`, `RetrieveKnowledgeUseCase` | `InMemoryKnowledgeSource` (source-api), `FakeEmbeddingsServer` (app-swing) |
+| A – Chat | Swing → Application → Chat-Port → OpenAI-kompatibles HTTP → Streaming → Bubble | `SliceAChatTest` | `ShellAssembly`, `CompositionRoot`, `RagChatBinding`, `ChatService`, `OpenAiCompatibleChatAdapter` | `FakeChatCompletionsServer` (exedra, SSE) |
+| B – Knowledge | Fake-Quelle → Chunking → Embedding → Lucene + Vektoren → hybrides Retrieval | `SliceBKnowledgeTest` | `KnowledgeChunker`, `IndexKnowledgeUseCase`, `OpenAiCompatibleEmbeddingAdapter`, `LuceneKnowledgeIndex`, `RetrieveKnowledgeUseCase` | `InMemoryKnowledgeSource` (source-api), `FakeEmbeddingsServer` (exedra) |
 | C – MediaWiki | MediaWiki-Adapter → Knowledge-Pipeline → Suche | `SliceCMediaWikiTest` | `MediaWikiKnowledgeSource` mit HTTP-Transport und Login, Pipeline wie B | `FakeMediaWikiServer` + `FakeMediaWikiTransport` (source-mediawiki), `DeterministicEmbeddingPort` |
 | D – Confluence + KeePass | SecretRef → KeePass-Adapter → Confluence-Adapter → Knowledge-Pipeline | `SliceDConfluenceKeePassTest` | `KeePassRpcSecretProvider` (WebSocket, SRP-Pairing), `ConfluenceKnowledgeSource` mit `UrlConnectionConfluenceTransport`, Pipeline wie B | `FakeKeePassRpcServer` (security-keepassrpc), `FakeConfluenceServer` + `FakeConfluence` (source-confluence) |
 | E – ACP | Host → ACP → Demo-Agent | `SliceEAcpTest` | `AgentService`, `AcpAgentLauncher`, `SolonAcpAgentConnector`, Demo-Agent als Kindprozess (`acp-demo-agent-all.jar`) | – |
@@ -30,7 +30,7 @@ AP22 `RagShellIntegrationTest` (A + RAG ohne Composition Root), AP23 `Applicatio
 
 ## Entscheidungen
 
-- **Fakes als Testfixtures.** `FakeChatCompletionsServer`/`FakeEmbeddingsServer` (app-swing),
+- **Fakes als Testfixtures.** `FakeChatCompletionsServer`/`FakeEmbeddingsServer` (exedra),
   `FakeMediaWikiTransport` (source-mediawiki), `FakeConfluence` (source-confluence) und `FakeKeePassRpcServer`
   (security-keepassrpc) wurden unverändert in `src/testFixtures` der jeweiligen Module verschoben (Paket
   gleich, Sichtbarkeit `public`). Neu sind die HTTP-Hüllen `FakeMediaWikiServer` (JDK-HttpServer mit

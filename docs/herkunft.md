@@ -17,7 +17,7 @@ ausführliche Fassung.
 | Architekturtest-Modul mit expliziter Modulliste, ArchUnit 1.4.1, Klassenverzeichnisse per Systemeigenschaft | corenth (`architecture-tests`) | in eine Java-`ModuleRegistry` plus Gradle-Build-Modell überführt; Abhängigkeitsprüfung, Selbsttests, Bytecode-52-Prüfung |
 | Prinzip "Regel plus Gegenbeispiel im selben Modul" | corenth | Gegenbeispiele unter `<Modulpaket>.archfixture..`, Bibliotheks-Stubs unter `<lib>.archstub` |
 | Modulschnitt ACP/MCP/comic-controls, JUnit 4.13.2, Versionen acp-sdk/solon 3.10.1, Lucene 8.11.3, slf4j-nop | askai-java8 | unverändert übernommen |
-| Versionen Gson 2.10.1, OkHttp 4.9.3, jsoup 1.17.2, JWBF 3.1.1, Java-WebSocket 1.5.2 | MainframeMate (`app`, `wiki-integration`) | OkHttp und JWBF sind deklariert, aber von keinem Modul verwendet |
+| Versionen Gson 2.10.1, OkHttp 4.9.3, jsoup 1.17.2, JWBF 3.1.1, Java-WebSocket 1.5.2 | MainframeMate (`proasteion.exedra`, `wiki-integration`) | OkHttp und JWBF sind deklariert, aber von keinem Modul verwendet |
 
 ## Chat (AP2, AP3)
 
@@ -81,7 +81,7 @@ ausführliche Fassung.
 
 | Teil | Quelle | Geändert |
 |---|---|---|
-| `mcp-runtime-api` (`McpServerRegistry`, `McpToolContribution`, `McpToolClient` …) | askai-java8 `mcp-runtime-api` | `shutdown()`, `listTools()`, `McpToolCallException`, Namensregel, In-Process-Fixtures |
+| `katagogion` (`McpServerRegistry`, `McpToolContribution`, `McpToolClient` …) | askai-java8 `katagogion` | `shutdown()`, `listTools()`, `McpToolCallException`, Namensregel, In-Process-Fixtures |
 | `SolonMcpServerRuntime`, `SolonMcpToolClientFactory`: nur 127.0.0.1, Pfad `/mcp/<id>/<Token>` | askai-java8 `mcp-solon-runtime` | kein statischer Port-Zustand, Tool-Fehler als `isError`, Token-Vergleich in konstanter Zeit, `stopSharedServer()` |
 | Werkzeugkatalog als Fabrik, Fehler als Ergebnis, Ziel vor dem Aufruf auflösen | askai-java8 `ResearchBotDirectoryTools`, `ResearchBotSessionTools` | `KnowledgeMcpTools` nur über Use Cases |
 | Parameter `query`/`max_results`/`source_ids`, Snippet-Grenze, Gesamtgrenze 20.000 Zeichen | MainframeMate `SearchIndexTool`, `ReadChunksTool` | "Der Index führt": nur indexierte Dokumente, Refresh mit Skip und Prune |
@@ -91,7 +91,7 @@ ausführliche Fassung.
 | Teil | Quelle | Geändert |
 |---|---|---|
 | Comic-Komponenten (`comic-controls`) | askai-java8 | ohne flexmark, keine Abhängigkeiten; `TranscriptBubble` als gemeinsamer Vertrag von Text- und Markdown-Blase |
-| Markdown- und Mermaid-Rendering der Antworten (`app.ui.markdown`: `MarkdownMessageView`, `FlexmarkSwingRenderer`, `InlineMarkdownRenderer`, `CodeBlockPanel`, `MarkdownTablePanel`, `MermaidDiagramPanel`, `MermaidViewerDialog`, Normalisierer und Render-Kette; `app.ui.chat.AssistantMarkdownBubble`) | askai-java8 `arch` (`ui.markdown`, `ui.bubble.AssistantMarkdownBubble`) | in app-swing statt comic-controls; ohne geteilte Render-Instanz (`CachingMermaidImageRenderer.forChat()` je Verlauf), ohne Logging, `WidthAwareHeight` aus comic-controls, Streaming gedrosselt statt entprellt, deutsche Beschriftungen, Fenstersymbol vom Besitzer |
+| Markdown- und Mermaid-Rendering der Antworten (`proasteion.exedra.ui.markdown`: `MarkdownMessageView`, `FlexmarkSwingRenderer`, `InlineMarkdownRenderer`, `CodeBlockPanel`, `MarkdownTablePanel`, `MermaidDiagramPanel`, `MermaidViewerDialog`, Normalisierer und Render-Kette; `proasteion.exedra.ui.chat.AssistantMarkdownBubble`) | askai-java8 `arch` (`ui.markdown`, `ui.bubble.AssistantMarkdownBubble`) | in exedra statt comic-controls; ohne geteilte Render-Instanz (`CachingMermaidImageRenderer.forChat()` je Verlauf), ohne Logging, `WidthAwareHeight` aus comic-controls, Streaming gedrosselt statt entprellt, deutsche Beschriftungen, Fenstersymbol vom Besitzer |
 | Research-Tokens und Pillen (`ResearchUiPalette`, `ResearchUiMetrics`, `ResearchUiPainter`, `ResearchUiTypography`, `ResearchIconButton`, `ResearchPillButton`, `ResearchPillDropdown`), `ComicSplitPane`, `ComicSearchBar`, `ComicHoverMenu`, `ComicOverlayPanel`, `StrokeIcon`/`ComposerIcons`, `ComposerButton`/`ComposerToggleButton` | askai-java8 Zweig `arch` (`comic-controls`, `askai-app` `ui`) | Paket `ui.comic.*`; Typografie-Cache als Holder (keine veränderlichen statischen Felder); `ComicSearchBar` ohne statische Höhe; Pfeil-Logik der Reiterleiste ohne Flackern am Ende; Pille und Composer-Knöpfe per Tab erreichbar (Fokusring, Pfeiltasten an der Pille), ein Klick nimmt dem Editor den Fokus nicht |
 | Fenster-✕, Ziehen, Vergrößern (`ComicWindowCloseButton`, `ComicWindowDragger`, `ComicWindowResizer`) | askai-java8 `arch` `ComicOverlayPanel.CloseButton`, `AskAiFrame` | Malerei des ✕ einmal in `ComicWindowCloseButton`; `CloseButton` erbt davon |
 | Arbeitsfläche, Drawer, Composer (`ChatWorkspacePanel`, `ChatSidebarPanel`, `SidebarTabRibbon`, `ChatHistoryRow`, `ChatComposerPanel`) | askai-java8 `arch` `ChatWorkspacePanel`, `ChatSidebarPanel`, `SidebarTabRibbon`, `ChatComposerPanel` | ohne Sessions-Liste und Plugins: Modus-Pille Chat/Agent statt Chat-Tabs, Drawer-Seiten Chats und Wissensquellen, Composer mit RAG-Pille und Senden/Stop |
@@ -120,7 +120,7 @@ ausführliche Fassung.
 ## Offen
 
 - Ob `comic-controls` weitere Teile der askai-Vorlage weglässt, ist nicht dokumentiert (flexmark liegt seit 0.1.8 in
-  app-swing, siehe oben).
-- Welche Teile von corenth `pinakes` als Vorbild für `knowledge-lucene` dienten, nennt der Code nur für die
+  exedra, siehe oben).
+- Welche Teile von corenth `pinakes` als Vorbild für `anagraphai` dienten, nennt der Code nur für die
   Feldnamen (`LuceneLexicalIndex`); mehr ist nicht belegt.
 - Der Reflection-Zugriff auf ein Feld des acp-sdk (AP17) hängt an Version 3.10.1.

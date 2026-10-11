@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.model.api;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
-import com.aresstack.enterpriseai.domain.localruntime.LocalVoiceOffer;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 
 import java.nio.file.Path;
 import java.util.List;

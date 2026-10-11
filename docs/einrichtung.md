@@ -17,21 +17,21 @@
 ```bash
 ./gradlew build                        # alle Module kompilieren, alle Tests inklusive Architekturtests
 ./gradlew :architecture-tests:test     # nur die Architekturregeln
-./gradlew :application:test            # Tests eines Moduls
-./gradlew :app-swing:test --tests '*RagShellIntegrationTest'
+./gradlew :acropolis:test            # Tests eines Moduls
+./gradlew :proasteion:exedra:test --tests '*RagShellIntegrationTest'
 ```
 
 Alle Tests laufen ohne Netz und ohne Display: Swing-Tests sind headless, echte Protokollgrenzen werden über
 lokale Fake-Server geprüft, der Demo-Agent wird als Kindprozess aus dem gebauten Jar gestartet. Details und
-Besonderheiten (eigene JVM je Testklasse in `app-swing` und `mcp-solon-runtime`, optionaler Test gegen ein
+Besonderheiten (eigene JVM je Testklasse in `exedra` und `mcp-solon-runtime`, optionaler Test gegen ein
 echtes KeePass) stehen in der [Testanleitung](tests.md).
 
 ## Starten
 
 ```bash
-./gradlew :app-swing:run                                        # Konfiguration aus dem Benutzerverzeichnis
-./gradlew :app-swing:run -Denterpriseai.config=/pfad/zur/datei.properties
-./gradlew :app-swing:run -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis
+./gradlew :proasteion:exedra:run                                        # Konfiguration aus dem Benutzerverzeichnis
+./gradlew :proasteion:exedra:run -Denterpriseai.config=/pfad/zur/datei.properties
+./gradlew :proasteion:exedra:run -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis
 ```
 
 Ohne Gradle, mit dem fertigen Fat Jar (siehe [Fat Jar, Version und Releases](#fat-jar-version-und-releases)):
@@ -42,7 +42,7 @@ java -Denterpriseai.config=/pfad/zur/datei.properties -jar enterprise-ai-client-
 java -Denterpriseai.home=/pfad/zum/anwendungsverzeichnis -jar enterprise-ai-client-<version>.jar
 ```
 
-Einstiegspunkt ist `com.aresstack.enterpriseai.app.EnterpriseAiClientMain` (Modul `app-swing`). Ablauf beim
+Einstiegspunkt ist `com.aresstack.enterpriseai.proasteion.exedra.EnterpriseAiClientMain` (Modul `exedra`). Ablauf beim
 Start: Protokolldatei öffnen, Konfiguration beschaffen (Datei laden; fehlt sie oder lädt sie nicht, öffnet sich
 der Einstellungen-Dialog), Vertrauensregel (TLS) und Proxy-Regel installieren, Adapter bauen, Graphen
 komponieren, Shutdown-Hook registrieren, Fenster zeigen, Hintergrund-Indexierung starten.
@@ -65,7 +65,7 @@ Dialog erneut (die Vorlage allein wäre ladbar und würde sonst mit Beispiel-Adr
 (headless, etwa `smokeStartFatJar`) gibt es keinen Dialog: die Vorlage wird angelegt, der Hinweis geloggt,
 Exit-Code 2. Eine vorhandene Datei mit Fehlern öffnet den Dialog mit ihren Werten
 und den Problemen (headless: Meldung und Exit-Code 2). Die Vorlage selbst liegt im Repository unter
-`app-swing/src/main/resources/com/aresstack/enterpriseai/app/config/enterprise-ai-client.example.properties`
+`exedra/src/main/resources/com/aresstack/enterpriseai/proasteion/exedra/config/enterprise-ai-client.example.properties`
 und beschreibt jeden Schlüssel. Pflicht sind:
 
 ```properties
@@ -115,7 +115,7 @@ bearbeitet dieselbe Datei; niemand muss sie von Hand ausfüllen.
 - **In KeePass prüfen** löst den Eintrag mit den KeePass-Einstellungen des Entwurfs auf, pairt bei Bedarf über
   den Pairing-Dialog (der Pairing-Schlüssel landet in der konfigurierten Datei und gilt dann auch für den
   Start) und meldet nur, ob der Eintrag existiert und sein Passwortfeld gefüllt ist. Das Secret selbst verlässt
-  `app.security` nicht; der API-Key lässt sich im Dialog nicht eintippen (bewusst, siehe
+  `proasteion.exedra.security` nicht; der API-Key lässt sich im Dialog nicht eintippen (bewusst, siehe
   [KeePass-Konfiguration](konfiguration-keepass.md)).
 - **Verbindung zum KI-Dienst prüfen** (Reiter „Netzwerk & Agent“) geht mit dem aktuellen Entwurf, auch
   ungespeichert, denselben Weg wie der Start und zeigt jeden Schritt einzeln, grün, orange (Hinweis), rot
@@ -252,12 +252,12 @@ in … ms erkannt“).
 
 ## Demos ohne Backend
 
-Die Demos liegen im Testumfang von `app-swing` und brauchen weder Enterprise-API noch KeePass:
+Die Demos liegen im Testumfang von `exedra` und brauchen weder Enterprise-API noch KeePass:
 
 ```bash
-./gradlew :app-swing:runChatDemo     # Comic-Chat-Shell gegen FakeChatCompletionPort
-./gradlew :app-swing:runRagDemo      # Shell mit RAG: echte Adapter gegen lokale Fake-HTTP-Server, Lucene im Temp-Verzeichnis
-./gradlew :app-swing:runAgentDemo    # Chat (Fake) plus Agent-Modus mit dem Demo-Agenten als Kindprozess
+./gradlew :proasteion:exedra:runChatDemo     # Comic-Chat-Shell gegen FakeChatCompletionPort
+./gradlew :proasteion:exedra:runRagDemo      # Shell mit RAG: echte Adapter gegen lokale Fake-HTTP-Server, Lucene im Temp-Verzeichnis
+./gradlew :proasteion:exedra:runAgentDemo    # Chat (Fake) plus Agent-Modus mit dem Demo-Agenten als Kindprozess
 ```
 
 In der RAG-Demo simuliert "fehler" im Text einen HTTP 500, "langsam" lässt die Antwort hängen, bis Stop
@@ -269,16 +269,16 @@ lässt "slow" im Auftrag den Agenten streamen, bis Stop gedrückt wird.
 ### Fat Jar bauen
 
 ```bash
-./gradlew :app-swing:fatJar            # app-swing/build/libs/enterprise-ai-client-<version>-SNAPSHOT.jar
-./gradlew :app-swing:verifyFatJar      # Manifest, Vollständigkeit, ServiceLoader-Dateien, Hauptklasse ladbar
-./gradlew :app-swing:smokeStartFatJar  # headless starten ohne Konfiguration: Vorlage angelegt, Exit-Code 2
+./gradlew :proasteion:exedra:fatJar            # exedra/build/libs/enterprise-ai-client-<version>-SNAPSHOT.jar
+./gradlew :proasteion:exedra:verifyFatJar      # Manifest, Vollständigkeit, ServiceLoader-Dateien, Hauptklasse ladbar
+./gradlew :proasteion:exedra:smokeStartFatJar  # headless starten ohne Konfiguration: Vorlage angelegt, Exit-Code 2
 ./gradlew build                        # enthält alle drei (fatJar über assemble, die Prüfungen über check)
 ```
 
-Das Fat Jar enthält `app-swing` und alle Laufzeitabhängigkeiten (eigene Module, Lucene, Solon, Jackson, Gson,
+Das Fat Jar enthält `exedra` und alle Laufzeitabhängigkeiten (eigene Module, Lucene, Solon, Jackson, Gson,
 jsoup, Java-WebSocket, ACP-SDK, win-proxy-java mit GraalJS für PAC-Proxyskripte; mit GraalJS wächst das Jar von
 rund 16 auf rund 42 MB). Es entsteht ohne Zusatz-Plugin aus einer eigenen Jar-Task in
-`gradle/fat-jar.gradle` (eingebunden von `app-swing/build.gradle`), damit der Build auf JDK 8 wie auf JDK 21
+`gradle/fat-jar.gradle` (eingebunden von `exedra/build.gradle`), damit der Build auf JDK 8 wie auf JDK 21
 läuft. Dabei gilt:
 
 - `META-INF/services/*` aller Jars werden zusammengeführt. Das ist nötig, weil Jackson `JsonFactory` und

@@ -1,5 +1,5 @@
 // Fat Jar der Swing-Anwendung: alle Laufzeitabhängigkeiten in einem lauffähigen Jar mit Manifest
-// (java -jar enterprise-ai-client-<version>.jar). Eingebunden von app-swing/build.gradle (apply from).
+// (java -jar enterprise-ai-client-<version>.jar). Eingebunden von exedra/build.gradle (apply from).
 //
 // Bewusst eine eigene Jar-Task statt eines Plugins: sie läuft mit Gradle 8.14.3 auf JDK 8 und JDK 21
 // gleichermaßen, wie das Demo-Agent-Jar in acp-demo-agent. Gegenüber einfachem Zusammenkopieren:
@@ -183,7 +183,7 @@ def verifyFatJar = tasks.register('verifyFatJar') {
                 dir.eachFileRecurse(groovy.io.FileType.FILES) { File file ->
                     String name = dir.toPath().relativize(file.toPath()).toString().replace(File.separatorChar, '/' as char)
                     if (!excludedFromFatJar(name) && !name.startsWith(servicesPrefix) && !entries.contains(name)) {
-                        problems << "Eintrag ${name} (app-swing) fehlt im Fat Jar"
+                        problems << "Eintrag ${name} (exedra) fehlt im Fat Jar"
                     }
                 }
             }

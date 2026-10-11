@@ -1,0 +1,5 @@
+description = 'Tamias (corenth): Wächter am Archivschalter, Zugriffs- und Cache-Entscheidungen (ResourceAccessPolicy).'
+
+dependencies {
+    api project(':astu')
+}

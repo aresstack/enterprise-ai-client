@@ -1,5 +1,5 @@
 description = 'Port: Inferenz-Laufzeit der lokalen Sprachausgabe (Token-Ids zu Audio), austauschbar (Pilot ONNX Runtime).'
 
 dependencies {
-    api project(':domain')
+    api project(':astu')
 }

@@ -2,8 +2,8 @@ description = 'Adapter: Versorgung des Clients mit lokalen TTS-Stimmen vom Huggi
 
 dependencies {
     api project(':model-api')
-    // Proxy-Route je Anfrage über den neutralen Port http-api aus der Composition Root.
-    api project(':http-api')
+    // Proxy-Route je Anfrage über den neutralen Port network aus der Composition Root.
+    api project(':proasteion:platform:network')
     // Angelos Java-8-Hub-Client; bleibt im Adapter (implementation, nicht api).
     implementation libs.huggingface4j
     // Hub-Metadaten (Größe, LFS-SHA-256) je Datei lesen; nur paketintern.

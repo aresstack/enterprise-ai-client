@@ -15,16 +15,16 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * AP10: Grenzen der RAG-Orchestrierung in {@code application.rag} und der Indexierung in
- * {@code application.knowledge}, zusätzlich zu den allgemeinen Kernregeln. Retrieval, Kontextaufbau und RAG-Chat
+ * AP10: Grenzen der RAG-Orchestrierung in {@code astu.acropolis.rag} und der Indexierung in
+ * {@code astu.acropolis.knowledge}, zusätzlich zu den allgemeinen Kernregeln. Retrieval, Kontextaufbau und RAG-Chat
  * sprechen nur über Chat-Use-Case, Embedding- und Index-Port; die Indexierung zusätzlich über den Source-Port. Der
  * normale Chat-Pfad kennt beides nicht.
  */
 public class RagBoundaryTest {
 
     private static final String ROOT = ModuleRegistry.ROOT_PACKAGE;
-    private static final String APPLICATION_RAG = ROOT + ".application.rag..";
-    private static final String APPLICATION_KNOWLEDGE = ROOT + ".application.knowledge..";
+    private static final String APPLICATION_RAG = ROOT + ".astu.acropolis.rag..";
+    private static final String APPLICATION_KNOWLEDGE = ROOT + ".astu.acropolis.knowledge..";
 
     private static JavaClasses productionClasses;
 
@@ -43,9 +43,9 @@ public class RagBoundaryTest {
         assertRule(classes().that().resideInAPackage(APPLICATION_RAG)
                 .should().onlyDependOnClassesThat().resideInAnyPackage(
                         "java.lang..", "java.util..", "java.net..",
-                        ROOT + ".domain.chat..", ROOT + ".domain.embedding..", ROOT + ".domain.knowledge..",
-                        ROOT + ".chat.api..", ROOT + ".embedding.api..", ROOT + ".knowledge.api..",
-                        ROOT + ".application.chat..", APPLICATION_RAG)
+                        ROOT + ".astu.chat..", ROOT + ".astu.embedding..", ROOT + ".astu.knowledge..",
+                        ROOT + ".chat.api..", ROOT + ".embedding.api..", ROOT + ".astu.acropolis.chalcotheca..",
+                        ROOT + ".astu.acropolis.chat..", APPLICATION_RAG)
                 .because("RAG orchestriert nur Ports und den Chat-Use-Case; kein Adapter, keine Quelle, "
                         + "kein Security-, ACP- oder MCP-Typ"));
     }
@@ -55,8 +55,8 @@ public class RagBoundaryTest {
         assertRule(classes().that().resideInAPackage(APPLICATION_KNOWLEDGE)
                 .should().onlyDependOnClassesThat().resideInAnyPackage(
                         "java.lang..", "java.util..",
-                        ROOT + ".domain.embedding..", ROOT + ".domain.knowledge..",
-                        ROOT + ".embedding.api..", ROOT + ".knowledge.api..", ROOT + ".source.api..",
+                        ROOT + ".astu.embedding..", ROOT + ".astu.knowledge..",
+                        ROOT + ".embedding.api..", ROOT + ".astu.acropolis.chalcotheca..", ROOT + ".source.api..", ROOT + ".astu.resource..",
                         APPLICATION_KNOWLEDGE)
                 .because("die Indexierung kennt Quellen nur über den Source-Port; kein Adapter, kein Chat, "
                         + "kein Security-Typ – Zugangsdaten bleiben im Source-Adapter"));
@@ -64,10 +64,10 @@ public class RagBoundaryTest {
 
     @Test
     public void plainChatPathDoesNotKnowRag() {
-        assertRule(noClasses().that().resideInAnyPackage(ROOT + ".application.chat..", ROOT + ".domain.chat..",
+        assertRule(noClasses().that().resideInAnyPackage(ROOT + ".astu.acropolis.chat..", ROOT + ".astu.chat..",
                         ROOT + ".chat.api..")
                 .should().dependOnClassesThat().resideInAnyPackage(APPLICATION_RAG, APPLICATION_KNOWLEDGE,
-                        ROOT + ".knowledge.api..", ROOT + ".embedding.api..", ROOT + ".source.api..")
+                        ROOT + ".astu.acropolis.chalcotheca..", ROOT + ".embedding.api..", ROOT + ".source.api..")
                 .because("der normale Chat funktioniert ohne Retrieval; RAG legt sich von außen darum"));
     }
 

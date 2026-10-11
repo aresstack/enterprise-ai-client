@@ -1,5 +1,5 @@
 description = 'Port: Sprachausgabe (Text-to-Speech) und Spracheingabe (Speech-to-Text), neutral über Modellkennung, WAV-Audio und Aufnahme.'
 
 dependencies {
-    api project(':domain')
+    api project(':astu')
 }

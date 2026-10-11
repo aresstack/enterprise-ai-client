@@ -29,7 +29,7 @@ opennlp = "1.9.4"
 junit = { module = "junit:junit", version.ref = "junit" }
 archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
 
-# knowledge-lucene
+# anagraphai
 lucene-core = { module = "org.apache.lucene:lucene-core", version.ref = "lucene" }
 lucene-analyzers-common = { module = "org.apache.lucene:lucene-analyzers-common", version.ref = "lucene" }
 lucene-queryparser = { module = "org.apache.lucene:lucene-queryparser", version.ref = "lucene" }
@@ -50,16 +50,16 @@ jwbf = { module = "net.sourceforge:jwbf", version.ref = "jwbf" }
 java-websocket = { module = "org.java-websocket:Java-WebSocket", version.ref = "javaWebsocket" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 
-# app-swing (app.net): Proxy-Auflösung je Ziel-URL wie Browser und PowerShell (Angelos Bibliothek, Java 8; alle
+# exedra (app.net): Proxy-Auflösung je Ziel-URL wie Browser und PowerShell (Angelos Bibliothek, Java 8; alle
 # Modi DISABLED, MANUAL_PROXY, WINDOWS_STATIC_PROXY, PAC_URL_*, WINDOWS_NATIVE_*; bringt GraalJS 21.2 mit) und
 # TLS-Vertrauen aus JVM-cacerts, Windows-ROOT und Windows-Root/Intermediate-Export (win-trust-java). Beide nur in
-# app-swing als implementation; die Adapter sehen nur den Port http-api.
+# exedra als implementation; die Adapter sehen nur den Port network.
 win-proxy-java = { module = "com.aresstack:win-proxy-java", version.ref = "winProxy" }
 win-trust-java = { module = "com.aresstack:win-trust-java", version.ref = "winTrust" }
 
-# app-swing (app.ui.markdown): Markdown-Rendering der Antworten wie askai-java8 arch (flexmark 0.62.x ist die letzte
+# exedra (app.ui.markdown): Markdown-Rendering der Antworten wie askai-java8 arch (flexmark 0.62.x ist die letzte
 # Java-8-Linie; Tabellen, Autolinks, Durchstreichen) und Mermaid-Diagramme als Bild ohne Browser und ohne Netz
-# (mermaid-java: GraalJS 21.2 + Batik, dieselbe GraalJS-Version wie win-proxy-java). Nur in app-swing als implementation.
+# (mermaid-java: GraalJS 21.2 + Batik, dieselbe GraalJS-Version wie win-proxy-java). Nur in exedra als implementation.
 flexmark = { module = "com.vladsch.flexmark:flexmark", version.ref = "flexmark" }
 flexmark-ext-tables = { module = "com.vladsch.flexmark:flexmark-ext-tables", version.ref = "flexmark" }
 flexmark-ext-autolink = { module = "com.vladsch.flexmark:flexmark-ext-autolink", version.ref = "flexmark" }

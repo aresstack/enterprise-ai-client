@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.chat.openai.archfixture.matrix;
 
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneAdapter;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.FakeLuceneAdapter;
 
 /** Absichtlicher Verstoß: ein Adapter kennt einen anderen Adapter. */
 public final class AdapterUsingOtherAdapter {

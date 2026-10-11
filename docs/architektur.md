@@ -13,50 +13,50 @@ Application (Use Cases)
 Domain + Ports (*-api)
 ```
 
-- **Domain** (`domain`): providerneutrale Werttypen ohne Abhängigkeiten.
+- **Domain** (`astu`): providerneutrale Werttypen ohne Abhängigkeiten.
 - **Ports** (`*-api`): Interfaces plus port-spezifische Request-, Response- und Listener-Typen. Keine
   Implementierung, keine Provider-Typen.
-- **Application** (`application`): Use Cases gegen Ports. Kennt keinen Adapter, kein Swing, kein HTTP.
-- **Adapter** (`chat-openai`, `embedding-openai`, `knowledge-lucene`, `source-mediawiki`, `source-confluence`,
+- **Application** (`acropolis`): Use Cases gegen Ports. Kennt keinen Adapter, kein Swing, kein HTTP.
+- **Adapter** (`chat-openai`, `embedding-openai`, `anagraphai`, `source-mediawiki`, `source-confluence`,
   `security-keepassrpc`, `acp-solon-client`, `mcp-solon-runtime`): je genau eine technische Integration hinter
   genau einem Port. Technische DTOs, JSON und Fremdbibliotheken bleiben paketintern.
-- **UI** (`comic-controls`, `app-swing`): Swing/Java2D. `app-swing` ist zugleich die einzige Composition Root.
+- **UI** (`comic-controls`, `exedra`): Swing/Java2D. `exedra` ist zugleich die einzige Composition Root.
 
 ## Modulgraph
 
 ```mermaid
 flowchart TB
     subgraph root["Composition Root und UI"]
-        app["app-swing"]
+        app["exedra"]
         comic["comic-controls"]
     end
     subgraph adapters["Adapter"]
         chatO["chat-openai"]
         embO["embedding-openai"]
-        lucene["knowledge-lucene"]
+        lucene["anagraphai"]
         wiki["source-mediawiki"]
         conf["source-confluence"]
         keepass["security-keepassrpc"]
         acpS["acp-solon-client"]
         mcpS["mcp-solon-runtime"]
     end
-    application["application"]
+    acropolis["acropolis"]
     subgraph ports["Ports"]
         chatA["chat-api"]
         embA["embedding-api"]
-        knowA["knowledge-api"]
+        knowA["chalcotheca"]
         srcA["source-api"]
-        secA["security-api"]
+        secA["adyton"]
         acpA["acp-client-api"]
-        mcpA["mcp-runtime-api"]
+        mcpA["katagogion"]
     end
-    domain["domain"]
+    astu["astu"]
 
     app --> comic
-    app --> application
+    app --> acropolis
     app --> chatO & embO & lucene & wiki & conf & keepass & acpS & mcpS
-    application --> chatA & embA & knowA & srcA & secA & acpA & mcpA
-    application --> domain
+    acropolis --> chatA & embA & knowA & srcA & secA & acpA & mcpA
+    acropolis --> astu
     chatO --> chatA
     embO --> embA
     lucene --> knowA
@@ -66,27 +66,27 @@ flowchart TB
     keepass --> secA
     acpS --> acpA
     mcpS --> mcpA
-    chatA & embA & knowA & srcA & secA --> domain
+    chatA & embA & knowA & srcA & secA --> astu
 ```
 
 Nicht gezeichnet: `acp-demo-agent` (Testfixture, hängt von keinem Modul ab, kein Modul hängt davon ab) und
-`architecture-tests` (liest nur kompilierte Klassen). `acp-client-api` und `mcp-runtime-api` dürfen `domain`
+`architecture-tests` (liest nur kompilierte Klassen). `acp-client-api` und `katagogion` dürfen `astu`
 sehen, nutzen es aber nicht.
 
 Verbotene Kanten, die die Tests ausdrücklich rot machen:
 
-- `domain → irgendein Modul`
-- `*-api → Adapter`, `*-api → application`, `*-api → anderer Port`
-- `application → konkreter Adapter`
-- `Adapter → anderer Adapter`, `Adapter → application`, `Adapter → app-swing`
-- jede Abhängigkeit auf `app-swing`, `acp-demo-agent` oder `architecture-tests`
+- `astu → irgendein Modul`
+- `*-api → Adapter`, `*-api → acropolis`, `*-api → anderer Port`
+- `acropolis → konkreter Adapter`
+- `Adapter → anderer Adapter`, `Adapter → acropolis`, `Adapter → exedra`
+- jede Abhängigkeit auf `exedra`, `acp-demo-agent` oder `architecture-tests`
 
 ## Laufzeitsicht
 
 ```mermaid
 flowchart LR
-    user(["Benutzer"]) --> shell["ChatShellPanel\n(app.ui.chat)"]
-    shell --> binding["RagChatBinding\n(app.chat)"]
+    user(["Benutzer"]) --> shell["ChatShellPanel\n(proasteion.exedra.ui.chat)"]
+    shell --> binding["RagChatBinding\n(proasteion.exedra.chat)"]
     binding --> rag["RagChatUseCase"]
     rag --> retrieve["RetrieveKnowledgeUseCase"]
     rag --> chat["ChatService"]
@@ -98,12 +98,12 @@ flowchart LR
     cp -.-> chatA["OpenAiCompatibleChatAdapter"]
     chatA --> api["Enterprise-API\n/chat/completions"]
     embA --> api2["Enterprise-API\n/embeddings"]
-    chatA -. Token je Anfrage .-> secret["SecretBackedTokenSource\n(app.security)"]
+    chatA -. Token je Anfrage .-> secret["SecretBackedTokenSource\n(proasteion.exedra.security)"]
     secret --> sp[["SecretProvider"]]
     sp -.-> kp["KeePassRpcSecretProvider"]
 ```
 
-Die gestrichelten Kanten entstehen nur in der Composition Root (`app.composition.AdapterAssembly`,
+Die gestrichelten Kanten entstehen nur in der Composition Root (`proasteion.exedra.composition.AdapterAssembly`,
 `CompositionRoot`): Dort werden Adapter gebaut und in die Use Cases injiziert. Der Chat-Pfad funktioniert
 vollständig ohne RAG, ACP und MCP; RAG legt sich von außen um den `ChatService`, der Agent-Modus ist ein
 getrennter Zusatz (siehe [RAG-Datenfluss](rag-datenfluss.md), [ACP](acp.md), [MCP](mcp.md)).
@@ -111,12 +111,12 @@ getrennter Zusatz (siehe [RAG-Datenfluss](rag-datenfluss.md), [ACP](acp.md), [MC
 ## Grundsätze
 
 - **Konstruktor-Injektion überall**, keine globalen Singletons, kein `ServiceLoader`, kein nicht-finales
-  `static`. Konfiguration sind unveränderliche Snapshots, die nur `app-swing` aus der Properties-Datei liest.
+  `static`. Konfiguration sind unveränderliche Snapshots, die nur `exedra` aus der Properties-Datei liest.
 - **Technische Typen bleiben im Adapter.** Öffentliche Signaturen aller Adapter zeigen keine Bibliotheks- oder
   Transporttypen; Fremdbibliotheken werden mit `implementation` deklariert.
 - **Secrets**: `SecretRef` (ein Titel, loggbar) darf durch Konfiguration und Use Cases laufen,
   `SecretMaterial` nicht. Klartext existiert nur im Security-Adapter, im konsumierenden Adapter (Confluence)
-  und in den Brücken `app.security`, immer nur für die Dauer eines Aufrufs, nie in einem Feld, nie in Logs,
+  und in den Brücken `proasteion.exedra.security`, immer nur für die Dauer eines Aufrufs, nie in einem Feld, nie in Logs,
   Exceptions, `toString()`, Chat-Historie oder Indizes.
 - **Kein Logging-Framework.** Der Kern loggt nicht; Adapter und Composition Root nutzen höchstens
   `java.util.logging`. Die Anwendung schreibt dieses Protokoll in eine rollierende Datei unter
@@ -137,10 +137,10 @@ ARCHITECTURE.md, Abschnitt "Architekturtests"; eine Übersicht der Regelgruppen:
 | Gruppe | Beispiele | Testklassen |
 |---|---|---|
 | Modulschnitt und Richtung | Registry ↔ `settings.gradle`, erlaubte Kanten auf Klassen- und Gradle-Ebene, ein Basispaket je Modul | `BuildModelTest`, `ClassBoundaryTest`, `ModuleRegistryTest`, `SettingsGradleTest` |
-| Technologiegrenzen | Swing nur in UI, Lucene nur in knowledge-lucene, Solon/ACP-SDK/Reactor nur in ihren Adaptern, Positivliste des Kerns | `ClassBoundaryTest`, `UiTechnologyTest` |
+| Technologiegrenzen | Swing nur in UI, Lucene nur in anagraphai, Solon/ACP-SDK/Reactor nur in ihren Adaptern, Positivliste des Kerns | `ClassBoundaryTest`, `UiTechnologyTest` |
 | Adapter-Grenzen | keine Bibliothekstypen in öffentlichen Signaturen, keine Bibliothek als `api`, jeder Adapter implementiert ein Interface seines Ports | `AdapterSignatureTest`, `CompositionRootTest`, `ChatBoundaryTest`, `EmbeddingBoundaryTest`, `KnowledgeBoundaryTest`, `SourceBoundaryTest` |
-| Strang-Grenzen | Chat-Pfad kennt kein RAG/ACP/MCP; `application.mcp` nur über Use Cases; UI ohne Ports | `RagBoundaryTest`, `AgentModeBoundaryTest`, `McpKnowledgeToolsBoundaryTest`, `ComicUiBoundaryTest` |
-| Composition Root | Adapterkonstruktoren nur in `app.composition`; `System.getenv`/Preferences/`Properties.load` nur in app-swing; kein `ServiceLoader` | `CompositionRootBoundaryTest`, `CompositionRootTest` |
+| Strang-Grenzen | Chat-Pfad kennt kein RAG/ACP/MCP; `astu.acropolis.mcp` nur über Use Cases; UI ohne Ports | `RagBoundaryTest`, `AgentModeBoundaryTest`, `McpKnowledgeToolsBoundaryTest`, `ComicUiBoundaryTest` |
+| Composition Root | Adapterkonstruktoren nur in `proasteion.exedra.composition`; `System.getenv`/Preferences/`Properties.load` nur in exedra; kein `ServiceLoader` | `CompositionRootBoundaryTest`, `CompositionRootTest` |
 | Secrets und Logging | `SecretMaterial` nur in erlaubten Modulen und nie in Feldern; kein Logging-Framework, keine Konsole | `SecretBoundaryTest`, `LoggingBoundaryTest` |
 | Provider-Neutralität | keine Provider-Namen im Kern, keine Hosts/Modelle/Keys im Bytecode, kein `0.0.0.0` | `CoreNamingTest`, `HardcodedConfigurationTest` |
 | Testcode und Java 8 | Produktionscode kennt keine Testbibliothek und keine Fixtures; `--release 8` und Bytecode 52 überall | `TestCodeIsolationTest`, `Java8CompatibilityTest` |
@@ -160,6 +160,6 @@ Kompilieren ab).
 3. Zeile in der Modultabelle von ARCHITECTURE.md und in der [Modulübersicht](module.md).
 4. Eine neue Wissensquelle (z. B. SharePoint, lokale Dateien) implementiert `source-api`, erbt den
    `KnowledgeSourceContractTest` aus dessen Testfixtures und wird in `AdapterAssembly` gebaut; Kern und
-   `application` bleiben unverändert.
+   `acropolis` bleiben unverändert.
 
 Ohne Schritt 2 wird `BuildModelTest.everyGradleModuleIsRegistered` rot.

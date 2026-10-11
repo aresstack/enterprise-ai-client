@@ -4,12 +4,12 @@ import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
 import com.aresstack.enterpriseai.chat.api.ChatTask;
-import com.aresstack.enterpriseai.domain.chat.ChatFinishReason;
-import com.aresstack.enterpriseai.domain.chat.ChatMessage;
-import com.aresstack.enterpriseai.domain.chat.ChatRequest;
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
-import com.aresstack.enterpriseai.domain.chat.ChatRole;
-import com.aresstack.enterpriseai.domain.chat.ChatUsage;
+import com.aresstack.enterpriseai.astu.chat.ChatFinishReason;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatRole;
+import com.aresstack.enterpriseai.astu.chat.ChatUsage;
 
 import java.util.ArrayList;
 import java.util.Arrays;

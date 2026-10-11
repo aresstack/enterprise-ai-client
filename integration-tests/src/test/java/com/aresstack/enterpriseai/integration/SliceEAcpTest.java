@@ -3,13 +3,13 @@ package com.aresstack.enterpriseai.integration;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
 import com.aresstack.enterpriseai.acp.solon.SolonAcpAgentConnector;
-import com.aresstack.enterpriseai.app.agent.AcpAgentLauncher;
-import com.aresstack.enterpriseai.application.agent.AgentExchange;
-import com.aresstack.enterpriseai.application.agent.AgentFailure;
-import com.aresstack.enterpriseai.application.agent.AgentService;
-import com.aresstack.enterpriseai.application.agent.AgentStatus;
-import com.aresstack.enterpriseai.application.agent.AgentTurnListener;
-import com.aresstack.enterpriseai.application.agent.AgentTurnState;
+import com.aresstack.enterpriseai.proasteion.exedra.agent.AcpAgentLauncher;
+import com.aresstack.enterpriseai.astu.acropolis.agent.AgentExchange;
+import com.aresstack.enterpriseai.astu.acropolis.agent.AgentFailure;
+import com.aresstack.enterpriseai.astu.acropolis.agent.AgentService;
+import com.aresstack.enterpriseai.astu.acropolis.agent.AgentStatus;
+import com.aresstack.enterpriseai.astu.acropolis.agent.AgentTurnListener;
+import com.aresstack.enterpriseai.astu.acropolis.agent.AgentTurnState;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -32,7 +32,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Slice E – ACP: Host ({@code AgentService} aus application, {@code AcpAgentLauncher} aus app-swing) → ACP über
+ * Slice E – ACP: Host ({@code AgentService} aus acropolis, {@code AcpAgentLauncher} aus exedra) → ACP über
  * den echten Solon-Connector (STDIO, JSON-RPC) → Demo-Agent aus acp-demo-agent als eigener Java-8-Kindprozess.
  * Ohne MCP-Endpoint: hier zählt nur die Agentenverbindung (Streaming, Abbruch, Prozessende).
  */

@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.architecture;
 
 import com.aresstack.enterpriseai.chat.openai.archfixture.config.HardcodedEndpoint;
-import com.aresstack.enterpriseai.mcp.solon.archfixture.config.LoopbackOnly;
+import com.aresstack.enterpriseai.proasteion.katagogion.solon.archfixture.config.LoopbackOnly;
 import org.junit.Test;
 
 import java.io.File;

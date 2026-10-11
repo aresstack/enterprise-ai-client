@@ -61,5 +61,5 @@ source.wiki.readTimeoutMillis=30000
 ## Weitere Quellen
 
 Neue Quellen (SharePoint, lokale Dateien) implementieren `source-api`, erben den `KnowledgeSourceContractTest`
-aus dessen Testfixtures und werden in `app.composition.AdapterAssembly` aus einem eigenen
-`source.<id>.type` gebaut. Kern und `application` bleiben unverändert.
+aus dessen Testfixtures und werden in `proasteion.exedra.composition.AdapterAssembly` aus einem eigenen
+`source.<id>.type` gebaut. Kern und `acropolis` bleiben unverändert.

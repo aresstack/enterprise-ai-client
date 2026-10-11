@@ -33,7 +33,9 @@ final class SettingsGradleRules {
             String arguments = line.group(1).replaceFirst("//.*$", "");
             Matcher quoted = QUOTED.matcher(arguments);
             while (quoted.find()) {
-                includes.add(quoted.group(1).trim());
+                String include = quoted.group(1).trim();
+                // Geschachtelte Pfade wie in corenth (astu:acropolis:chalcotheca): registriert ist der Projektname.
+                includes.add(include.substring(include.lastIndexOf(':') + 1));
             }
         }
         return includes;

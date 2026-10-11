@@ -5,7 +5,7 @@ description = 'Port für Embeddings (Strang C).'
 apply plugin: 'java-test-fixtures'
 
 dependencies {
-    api project(':domain')
+    api project(':astu')
 
     testFixturesImplementation libs.junit
     testImplementation testFixtures(project(":embedding-api"))

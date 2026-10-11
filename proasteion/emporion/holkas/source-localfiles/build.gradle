@@ -1,0 +1,6 @@
+description = 'Adapter: lokales Verzeichnis als Knowledge Source. Erkennung und Extraktion über den Port deigma.'
+
+dependencies {
+    api project(':source-api')
+    api project(':proasteion:emporion:deigma')
+}

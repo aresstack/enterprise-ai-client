@@ -84,14 +84,14 @@ sequenceDiagram
   spürbar, KeePass muss entsperrt bleiben.
 - Lehnt KeePass den gespeicherten Schlüssel ab (Pairing in KeePass widerrufen), wird er verworfen und genau
   einmal neu gepairt.
-- Der Pairing-Dialog (`app.ui.security.KeePassPairingDialog`) läuft modal auf dem Event-Dispatch-Thread; der
+- Der Pairing-Dialog (`proasteion.exedra.ui.security.KeePassPairingDialog`) läuft modal auf dem Event-Dispatch-Thread; der
   Adapter ruft den Callback auf einem Arbeits-Thread. Headless oder Abbruch → `CANCELLED`.
 - Fehlerabbildung: KeePass nicht erreichbar → `NOT_AVAILABLE`; Eintrag fehlt → `NOT_FOUND`; Passwort falsch
   oder Schlüssel weiter abgelehnt → `ACCESS_DENIED`; Pairing abgebrochen → `CANCELLED`.
 - **Prüfen aus dem Einstellungen-Dialog**: „In KeePass prüfen“ (Reiter KI-Dienst und KeePass) baut mit den
-  KeePass-Werten des Entwurfs denselben `KeePassRpcSecretProvider` (`app.composition.KeePassSecretChecker`,
+  KeePass-Werten des Entwurfs denselben `KeePassRpcSecretProvider` (`proasteion.exedra.composition.KeePassSecretChecker`,
   Pairing über `SwingPairingCallback`, Schlüssel in der konfigurierten Datei oder nur im Speicher) und löst den
-  Eintrag einmal auf. `app.security.SecretProbe` sieht das Material nur, um „Passwortfeld gefüllt/leer“ zu
+  Eintrag einmal auf. `proasteion.exedra.security.SecretProbe` sieht das Material nur, um „Passwortfeld gefüllt/leer“ zu
   melden, und löscht es sofort; die Meldung nennt weder Inhalt noch Länge. Die vier Fehlerfälle werden in
   Klartext erklärt (Titel stimmt nicht, KeePass nicht erreichbar oder gesperrt, Pairing widerrufen, abgebrochen).
 
@@ -99,8 +99,8 @@ sequenceDiagram
 
 - `SecretRef` ist loggbar; `SecretMaterial` (ein `char[]`, `close()` löscht) lebt nur für die Dauer von
   `SecretProvider.withSecret`. Kein Feld in irgendeinem Modul hält `SecretMaterial` (`SecretBoundaryTest`).
-- Klartext kommt nur in `security-api`, `security-keepassrpc`, `source-confluence` und im Paket
-  `app.security` vor. Die Brücken `SecretBackedTokenSource` (Chat) und `SecretBackedBearerTokenSource`
+- Klartext kommt nur in `adyton`, `security-keepassrpc`, `source-confluence` und im Paket
+  `proasteion.exedra.security` vor. Die Brücken `SecretBackedTokenSource` (Chat) und `SecretBackedBearerTokenSource`
   (Embeddings) kopieren den Key je Anfrage und löschen ihn danach.
 - Bekannte Grenze: Der Chat-Adapter verlangt den Token als `String` (`OpenAiCompatibleChatConfig.TokenSource`),
   der sich nicht überschreiben lässt und bis zur Garbage Collection lebt. Eine `char[]`-Variante wäre eine

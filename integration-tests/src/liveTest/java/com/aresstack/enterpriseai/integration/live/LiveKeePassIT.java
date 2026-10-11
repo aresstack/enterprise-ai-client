@@ -1,13 +1,13 @@
 package com.aresstack.enterpriseai.integration.live;
 
-import com.aresstack.enterpriseai.app.security.FilePairingKeyStore;
-import com.aresstack.enterpriseai.app.security.SwingPairingCallback;
-import com.aresstack.enterpriseai.domain.security.SecretRef;
-import com.aresstack.enterpriseai.security.api.SecretMaterial;
-import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingCallback;
-import com.aresstack.enterpriseai.security.keepassrpc.KeePassPairingKeyStore;
-import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcConfig;
-import com.aresstack.enterpriseai.security.keepassrpc.KeePassRpcSecretProvider;
+import com.aresstack.enterpriseai.proasteion.exedra.security.FilePairingKeyStore;
+import com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback;
+import com.aresstack.enterpriseai.astu.security.SecretRef;
+import com.aresstack.enterpriseai.adyton.SecretMaterial;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingCallback;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingKeyStore;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcConfig;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcSecretProvider;
 import org.junit.Test;
 
 import java.awt.GraphicsEnvironment;

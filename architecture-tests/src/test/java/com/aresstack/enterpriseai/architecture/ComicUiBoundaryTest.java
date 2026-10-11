@@ -1,9 +1,9 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.app.ui.archfixture.UiCallingAdapter;
-import com.aresstack.enterpriseai.app.ui.archfixture.UiCallingPort;
-import com.aresstack.enterpriseai.app.ui.archfixture.UiOpeningHttp;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneAdapter;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.archfixture.UiCallingAdapter;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.archfixture.UiCallingPort;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.archfixture.UiOpeningHttp;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.FakeLuceneAdapter;
 import com.aresstack.enterpriseai.chat.api.archfixture.PortWithMain;
 import com.aresstack.enterpriseai.ui.comic.archfixture.ComicKnowingTheApp;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -26,18 +26,18 @@ import static org.junit.Assert.assertTrue;
  * Strang B (AP4): Grenzen der Comic-Oberfläche, zusätzlich zur Modulmatrix.
  *
  * <ul>
- *   <li>Die Oberfläche ({@code app.ui..}) erreicht Fachlogik nur über {@code application}: keine Adapter und
- *       keine Ports direkt, kein HTTP. Die Anbindung an Use Cases ({@code app.chat}) und die Composition Root
- *       liegen außerhalb von {@code app.ui}.</li>
+ *   <li>Die Oberfläche ({@code proasteion.exedra.ui..}) erreicht Fachlogik nur über {@code acropolis}: keine Adapter und
+ *       keine Ports direkt, kein HTTP. Die Anbindung an Use Cases ({@code proasteion.exedra.chat}) und die Composition Root
+ *       liegen außerhalb von {@code proasteion.exedra.ui}.</li>
  *   <li>{@code comic-controls} bleibt eine eigenständige Swing/Java2D-Bibliothek: nur JDK und eigene Typen.</li>
  * </ul>
  *
- * Swing außerhalb von app-swing/comic-controls verbietet bereits {@code ClassBoundaryTest.technologiesStayInTheirAdapter}.
+ * Swing außerhalb von exedra/comic-controls verbietet bereits {@code ClassBoundaryTest.technologiesStayInTheirAdapter}.
  * Jede Regel hat hier einen Selbsttest mit absichtlichem Verstoß.
  */
 public class ComicUiBoundaryTest {
 
-    static final String UI_PACKAGE = ModuleRegistry.ROOT_PACKAGE + ".app.ui..";
+    static final String UI_PACKAGE = ModuleRegistry.ROOT_PACKAGE + ".proasteion.exedra.ui..";
 
     private static final ModuleRegistry REGISTRY = ModuleRegistry.standard();
     private static JavaClasses productionClasses;
@@ -52,7 +52,7 @@ public class ComicUiBoundaryTest {
         productionClasses = new ClassFileImporter().importPaths(BuildModelTest.toPaths(directories));
     }
 
-    /** UI → nur application/domain/comic: Port- und Adapterpakete sind für {@code app.ui..} tabu. */
+    /** UI → nur application/domain/comic: Port- und Adapterpakete sind für {@code proasteion.exedra.ui..} tabu. */
     static ArchRule uiReachesPortsAndAdaptersOnlyThroughApplication(ModuleRegistry registry) {
         List<ArchitectureModule> hidden = registry.modulesOfKind(ModuleKind.PORT, ModuleKind.ADAPTER,
                 ModuleKind.TEST_FIXTURE);

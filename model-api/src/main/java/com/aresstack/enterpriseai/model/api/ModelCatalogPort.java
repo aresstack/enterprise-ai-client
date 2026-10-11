@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.api;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelDescriptor;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelDescriptor;
 
 import java.util.List;
 

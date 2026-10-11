@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.source.api;
 
-import com.aresstack.enterpriseai.domain.source.SourceDefinition;
+import com.aresstack.enterpriseai.astu.source.SourceDefinition;
 
 import java.io.IOException;
 import java.util.List;

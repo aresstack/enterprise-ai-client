@@ -1,9 +1,9 @@
 package com.aresstack.enterpriseai.source.api;
 
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
 
 import java.util.Collections;
 import java.util.List;

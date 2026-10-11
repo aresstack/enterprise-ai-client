@@ -8,11 +8,11 @@ import com.aresstack.enterpriseai.chat.api.ChatTask;
 import com.aresstack.enterpriseai.chat.api.ResponsesPort;
 import com.aresstack.enterpriseai.chat.api.ResponsesRequest;
 import com.aresstack.enterpriseai.chat.api.ResponsesResult;
-import com.aresstack.enterpriseai.domain.chat.ChatMessage;
-import com.aresstack.enterpriseai.domain.chat.ChatRequest;
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
-import com.aresstack.enterpriseai.domain.chat.ChatToolCall;
-import com.aresstack.enterpriseai.domain.chat.ChatUsage;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatToolCall;
+import com.aresstack.enterpriseai.astu.chat.ChatUsage;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;

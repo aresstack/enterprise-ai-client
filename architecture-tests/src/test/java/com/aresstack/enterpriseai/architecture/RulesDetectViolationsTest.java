@@ -1,12 +1,12 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.application.archfixture.ApplicationUsingAdapter;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.ApplicationUsingAdapter;
 import com.aresstack.enterpriseai.chat.api.archfixture.PortWithMain;
 import com.aresstack.enterpriseai.chat.openai.archfixture.GlobalClientHolder;
-import com.aresstack.enterpriseai.domain.archfixture.HttpInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.NeutralValue;
-import com.aresstack.enterpriseai.domain.archfixture.SwingInDomain;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneAdapter;
+import com.aresstack.enterpriseai.astu.archfixture.HttpInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.NeutralValue;
+import com.aresstack.enterpriseai.astu.archfixture.SwingInDomain;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.FakeLuceneAdapter;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import org.junit.Test;
@@ -54,7 +54,7 @@ public class RulesDetectViolationsTest {
         JavaClasses classes = importClasses(ApplicationUsingAdapter.class, FakeLuceneAdapter.class);
         List<String> violations = Violations.of(ArchitectureRules.moduleDependencyRules(registry), classes);
         assertEquals(violations.toString(), 1, violations.size());
-        assertTrue(violations.get(0), violations.get(0).contains("knowledge.lucene"));
+        assertTrue(violations.get(0), violations.get(0).contains("astu.acropolis.chalcotheca.anagraphai"));
     }
 
     @Test
@@ -95,16 +95,16 @@ public class RulesDetectViolationsTest {
     @Test
     public void forbiddenGradleDependenciesAreDetected() {
         Map<String, Set<String>> projectDependencies = new HashMap<String, Set<String>>();
-        projectDependencies.put("application", set("domain", "knowledge-lucene"));
-        projectDependencies.put("chat-api", set("domain", "chat-openai"));
+        projectDependencies.put("acropolis", set("astu", "anagraphai"));
+        projectDependencies.put("chat-api", set("astu", "chat-openai"));
         Map<String, Set<String>> externalDependencies = new HashMap<String, Set<String>>();
-        externalDependencies.put("domain", set("org.apache.lucene:lucene-core"));
+        externalDependencies.put("astu", set("org.apache.lucene:lucene-core"));
         externalDependencies.put("chat-openai", set("com.google.code.gson:gson", "org.apache.lucene:lucene-core"));
-        externalDependencies.put("knowledge-lucene", set("org.apache.lucene:lucene-core"));
+        externalDependencies.put("anagraphai", set("org.apache.lucene:lucene-core"));
         externalDependencies.put("mcp-solon-runtime", set("org.noear:solon", "org.noear:solon-ai-mcp"));
         externalDependencies.put("acp-solon-client", set("org.noear:acp-sdk", "org.noear:solon-ai-mcp"));
         Map<String, List<File>> classDirectories = new HashMap<String, List<File>>();
-        for (String module : Arrays.asList("application", "chat-api", "domain", "chat-openai", "knowledge-lucene",
+        for (String module : Arrays.asList("acropolis", "chat-api", "astu", "chat-openai", "anagraphai",
                 "mcp-solon-runtime", "acp-solon-client")) {
             classDirectories.put(module, Collections.<File>emptyList());
         }
@@ -113,19 +113,19 @@ public class RulesDetectViolationsTest {
 
         List<String> projectViolations = BuildModelRules.forbiddenProjectDependencies(model, registry);
         assertEquals(projectViolations.toString(), 2, projectViolations.size());
-        assertTrue(projectViolations.toString(), projectViolations.toString().contains("application -> knowledge-lucene"));
+        assertTrue(projectViolations.toString(), projectViolations.toString().contains("acropolis -> anagraphai"));
         assertTrue(projectViolations.toString(), projectViolations.toString().contains("chat-api -> chat-openai"));
 
         List<String> externalViolations = BuildModelRules.externalLibrariesInCore(model, registry);
         assertEquals(externalViolations.toString(), 1, externalViolations.size());
-        assertTrue(externalViolations.get(0), externalViolations.get(0).contains("domain -> org.apache.lucene"));
+        assertTrue(externalViolations.get(0), externalViolations.get(0).contains("astu -> org.apache.lucene"));
 
         List<String> confinementViolations = BuildModelRules.confinedLibrariesOutsideTheirModules(model);
         assertEquals(confinementViolations.toString(), 3, confinementViolations.size());
         assertTrue(confinementViolations.toString(),
                 confinementViolations.toString().contains("chat-openai -> org.apache.lucene:lucene-core"));
         assertTrue(confinementViolations.toString(),
-                confinementViolations.toString().contains("domain -> org.apache.lucene:lucene-core"));
+                confinementViolations.toString().contains("astu -> org.apache.lucene:lucene-core"));
         assertTrue(confinementViolations.toString(),
                 confinementViolations.toString().contains("acp-solon-client -> org.noear:solon-ai-mcp"));
     }

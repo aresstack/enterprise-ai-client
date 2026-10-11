@@ -1,25 +1,25 @@
 package com.aresstack.enterpriseai.integration;
 
-import com.aresstack.enterpriseai.app.chat.fakeapi.FakeChatCompletionsServer;
-import com.aresstack.enterpriseai.app.chat.fakeapi.FakeEmbeddingsServer;
-import com.aresstack.enterpriseai.app.composition.AdapterAssembly;
-import com.aresstack.enterpriseai.app.composition.ApplicationPorts;
-import com.aresstack.enterpriseai.app.composition.CompositionRoot;
-import com.aresstack.enterpriseai.app.composition.ShellAssembly;
-import com.aresstack.enterpriseai.app.config.AppConfig;
-import com.aresstack.enterpriseai.app.config.AppConfigLoader;
-import com.aresstack.enterpriseai.app.net.NetworkServices;
-import com.aresstack.enterpriseai.app.ui.chat.ChatComposerPanel;
-import com.aresstack.enterpriseai.app.ui.chat.ChatShellModel;
-import com.aresstack.enterpriseai.app.ui.chat.SourceReference;
-import com.aresstack.enterpriseai.app.ui.chat.TranscriptEntry;
-import com.aresstack.enterpriseai.application.knowledge.IndexingReport;
-import com.aresstack.enterpriseai.security.keepassrpc.FakeKeePassRpcServer;
-import com.aresstack.enterpriseai.security.keepassrpc.InMemoryPairingKeyStore;
-import com.aresstack.enterpriseai.source.confluence.FakeConfluence;
-import com.aresstack.enterpriseai.source.confluence.FakeConfluenceServer;
-import com.aresstack.enterpriseai.source.mediawiki.FakeMediaWikiServer;
-import com.aresstack.enterpriseai.source.mediawiki.FakeMediaWikiTransport;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.fakeapi.FakeChatCompletionsServer;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.fakeapi.FakeEmbeddingsServer;
+import com.aresstack.enterpriseai.proasteion.exedra.composition.AdapterAssembly;
+import com.aresstack.enterpriseai.proasteion.exedra.composition.ApplicationPorts;
+import com.aresstack.enterpriseai.proasteion.exedra.composition.CompositionRoot;
+import com.aresstack.enterpriseai.proasteion.exedra.composition.ShellAssembly;
+import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.exedra.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.exedra.net.NetworkServices;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatComposerPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexingReport;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.FakeKeePassRpcServer;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.InMemoryPairingKeyStore;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.FakeConfluence;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.FakeConfluenceServer;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.FakeMediaWikiServer;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.FakeMediaWikiTransport;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.After;
@@ -177,7 +177,7 @@ public class ConfiguredApplicationSliceTest {
         // Kein Startindex mehr: beide Quellen hier ausdrücklich ganz indexieren (wie „Alles indexieren“), mit
         // Zugangsdaten aus KeePass und über den echten Embedding-Adapter.
         List<IndexingReport> reports = new java.util.ArrayList<IndexingReport>();
-        for (com.aresstack.enterpriseai.application.knowledge.KnowledgeSourceRegistration registration
+        for (com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration registration
                 : root.ports().sources().registrations()) {
             reports.add(root.indexing().indexSource(registration.port(), registration.scope(), null));
         }

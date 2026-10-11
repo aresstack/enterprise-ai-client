@@ -28,7 +28,7 @@ Fähigkeit aus der Spalte UNVERIFIED gestrichen.
 ## Bewusste Grenzen
 
 - **Unicode im Chunker**: Satz- und Tokengrenzen nutzen seit `chunker-v2` den festen, versionierten
-  Zeichenklassen-Vertrag `UnicodeClasses` (`unicode-classes-v1`, `domain.knowledge`) statt der Unicode-Daten
+  Zeichenklassen-Vertrag `UnicodeClasses` (`unicode-classes-v1`, `astu.knowledge`) statt der Unicode-Daten
   des laufenden JDK; `UnicodeClassesTest` friert die vollständige Tabelle über einen Hash ein und läuft in der CI
   auf JDK 8 und 21 mit denselben Erwartungswerten, `KnowledgeBoundaryTest` verbietet `Character.isLetter`,
   `getType`, `BreakIterator` u. ä. außerhalb von `UnicodeClasses`. Der Vertrag ist bewusst klein: fein aufgelöst
@@ -48,7 +48,7 @@ Fähigkeit aus der Spalte UNVERIFIED gestrichen.
   ist kein Sprachmodell; belegt ist die Kette, nicht die Qualität einer Agentenantwort.
 - **Slice-Tests**: Die Fake-Embeddings hashen Texte; Rangfolgen des Semantikpfads sind in den Tests nicht
   fachlich aussagekräftig. Die Fake-Server nutzen den JDK-HttpServer ohne TLS; Proxy und mTLS werden nur in
-  Unit-Tests von `app-swing` geprüft. Der Start des Testagenten über ein Pathing-Jar ist unter Windows
+  Unit-Tests von `exedra` geprüft. Der Start des Testagenten über ein Pathing-Jar ist unter Windows
   ungetestet (CI ist Ubuntu).
 - **Secrets**: Der Chat-Adapter nimmt den Token als `String`, der bis zur Garbage Collection lebt; eine
   `char[]`-Variante wäre eine Vertragsänderung. Kein Cache für Secrets, also ein KeePassRPC-Aufruf je Anfrage.
@@ -70,7 +70,7 @@ Fähigkeit aus der Spalte UNVERIFIED gestrichen.
 
 ## Übergangsklassen
 
-`domain.DomainModule` und `application.ApplicationModule` waren Modul-Anker aus AP1 ohne Verwendung in
+`astu.DomainModule` und `astu.acropolis.ApplicationModule` waren Modul-Anker aus AP1 ohne Verwendung in
 Produktions- oder Testcode; der Aufräum-PR von AP26 hat sie nach dem Merge von AP25 entfernt (vorher erneut
 geprüft: keine Referenz außer der eigenen Definition, vollständiger Build mit Architekturtests grün). Weitere
 tote Übergangsklassen sind nicht bekannt; die Ankerklassen der Module ohne Produktionscode (`architecture-tests`

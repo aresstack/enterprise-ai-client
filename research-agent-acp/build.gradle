@@ -3,7 +3,7 @@ description = 'Der eingebaute Recherche-Agent als eigener Prozess (askai-java8 a
 dependencies {
     implementation project(':research-domain')
     implementation project(':research-agent-runtime')
-    implementation project(':mcp-runtime-api')
-    implementation project(':mcp-solon-runtime')
+    implementation project(':proasteion:katagogion')
+    implementation project(':proasteion:katagogion:mcp-solon-runtime')
     implementation libs.acp.sdk
 }

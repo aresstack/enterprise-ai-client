@@ -1,0 +1,10 @@
+description = 'Adapter: Lucene-BM25 plus exakte Cosine-Suche (Strang D). Einziges Modul mit Lucene.'
+
+dependencies {
+    api project(':astu:acropolis:chalcotheca')
+    implementation libs.lucene.core
+
+    // Vertragstest und Testdaten des Ports; deterministischer Embedding-Fake für den Vertical-Slice-Test (AP9).
+    testImplementation testFixtures(project(':astu:acropolis:chalcotheca'))
+    testImplementation testFixtures(project(':embedding-api'))
+}

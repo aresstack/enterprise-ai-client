@@ -1,11 +1,11 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.application.archfixture.testleak.UseCaseUsingFixture;
-import com.aresstack.enterpriseai.application.archfixture.testleak.UseCaseUsingTestkitPackage;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.testleak.UseCaseUsingFixture;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.testleak.UseCaseUsingTestkitPackage;
 import com.aresstack.enterpriseai.chat.api.archfixture.testleak.FakeTestFixturePort;
 import com.aresstack.enterpriseai.chat.openai.archfixture.testleak.AdapterUsingArchUnit;
 import com.aresstack.enterpriseai.chat.openai.archfixture.testleak.AdapterUsingJUnit;
-import com.aresstack.enterpriseai.mcp.api.testkit.archfixture.FakeToolkit;
+import com.aresstack.enterpriseai.proasteion.katagogion.testkit.archfixture.FakeToolkit;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import org.junit.BeforeClass;
@@ -98,11 +98,11 @@ public class TestCodeIsolationTest {
     @Test
     public void testFixturesInAProductionConfigurationAreDetected() {
         Properties properties = new Properties();
-        properties.setProperty("modules", "application,chat-api");
-        properties.setProperty("testFixtureDependencies.application", "chat-api");
+        properties.setProperty("modules", "acropolis,chat-api");
+        properties.setProperty("testFixtureDependencies.acropolis", "chat-api");
         List<String> violations = TestCodeIsolationRules.productionConfigurationsRequestingTestFixtures(
                 new BuildModelExtension(properties));
         assertEquals(violations.toString(), 1, violations.size());
-        assertTrue(violations.get(0), violations.get(0).contains("application -> testFixtures(chat-api)"));
+        assertTrue(violations.get(0), violations.get(0).contains("acropolis -> testFixtures(chat-api)"));
     }
 }

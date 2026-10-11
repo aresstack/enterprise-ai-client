@@ -6,7 +6,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
  * Nachtrag 3 und Auftrag: Die Oberfläche ist ausschließlich Swing/Java2D im Comic-Stil. Kein Web-Frontend,
- * kein JavaFX, kein anderes UI-Toolkit im Produktionscode. Swing selbst bleibt auf app-swing und
+ * kein JavaFX, kein anderes UI-Toolkit im Produktionscode. Swing selbst bleibt auf exedra und
  * comic-controls begrenzt ({@code ClassBoundaryTest.technologiesStayInTheirAdapter}).
  */
 final class UiTechnologyRules {

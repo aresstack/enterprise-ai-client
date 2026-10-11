@@ -1,8 +1,8 @@
 package com.aresstack.enterpriseai.chat.openai;
 
-import com.aresstack.enterpriseai.domain.chat.ChatMessage;
-import com.aresstack.enterpriseai.domain.chat.ChatOptions;
-import com.aresstack.enterpriseai.domain.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.chat.ChatOptions;
+import com.aresstack.enterpriseai.astu.chat.ChatRequest;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -112,10 +112,10 @@ public class OpenAiRequestWriterTest {
     public void writesToolsToolCallsAndToolResultsWithoutToolChoice() {
         JsonObject body = write(writer, new ChatRequest(Arrays.asList(ChatMessage.user("Suche X"),
                 ChatMessage.assistantToolCalls("", Collections.singletonList(
-                        new com.aresstack.enterpriseai.domain.chat.ChatToolCall("call_1", "knowledge_search",
+                        new com.aresstack.enterpriseai.astu.chat.ChatToolCall("call_1", "knowledge_search",
                                 "{\"query\":\"X\"}"))),
                 ChatMessage.tool("call_1", "Treffer")), null,
-                Collections.singletonList(new com.aresstack.enterpriseai.domain.chat.ChatToolDefinition(
+                Collections.singletonList(new com.aresstack.enterpriseai.astu.chat.ChatToolDefinition(
                         "knowledge_search", "Sucht", "{\"type\":\"object\",\"properties\":{\"query\":"
                         + "{\"type\":\"string\"}}}"))), false);
 

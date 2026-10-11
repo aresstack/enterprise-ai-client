@@ -19,7 +19,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
  */
 public class EmbeddingBoundaryTest {
 
-    private static final String DOMAIN_EMBEDDING = "com.aresstack.enterpriseai.domain.embedding..";
+    private static final String DOMAIN_EMBEDDING = "com.aresstack.enterpriseai.astu.embedding..";
     private static final String EMBEDDING_API = "com.aresstack.enterpriseai.embedding.api..";
     private static final String EMBEDDING_OPENAI = "com.aresstack.enterpriseai.embedding.openai..";
 
@@ -42,7 +42,7 @@ public class EmbeddingBoundaryTest {
                 .should().onlyDependOnClassesThat().resideInAnyPackage(
                         DOMAIN_EMBEDDING, "java.lang..", "java.util..", "java.nio.charset..", "java.security..")
                 .allowEmptyShould(true);
-        Violations.assertNone("domain.embedding", Violations.of(Arrays.asList(rule), productionClasses));
+        Violations.assertNone("astu.embedding", Violations.of(Arrays.asList(rule), productionClasses));
     }
 
     /** Der Port sieht nur seine Wertobjekte und das JDK, keine Adaptertypen, kein JSON, kein HTTP. */

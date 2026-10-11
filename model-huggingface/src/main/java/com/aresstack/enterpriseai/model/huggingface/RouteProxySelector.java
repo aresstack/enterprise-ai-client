@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
-import com.aresstack.enterpriseai.http.api.HttpRoute;
-import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoute;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;

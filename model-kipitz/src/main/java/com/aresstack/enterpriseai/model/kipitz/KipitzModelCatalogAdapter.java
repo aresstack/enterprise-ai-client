@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.kipitz;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelDescriptor;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelDescriptor;
 import com.aresstack.enterpriseai.model.api.ModelCatalogException;
 import com.aresstack.enterpriseai.model.api.ModelCatalogPort;
 

@@ -10,12 +10,12 @@ import com.agentclientprotocol.sdk.annotation.NewSession;
 import com.agentclientprotocol.sdk.annotation.Prompt;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import com.aresstack.enterpriseai.acp.api.AcpEndpointDescriptor;
-import com.aresstack.enterpriseai.app.agent.AgentMcpEnvironment;
-import com.aresstack.enterpriseai.application.mcp.KnowledgeMcpTools;
-import com.aresstack.enterpriseai.mcp.api.McpToolCallException;
-import com.aresstack.enterpriseai.mcp.api.McpToolClient;
-import com.aresstack.enterpriseai.mcp.api.McpToolClientFactory;
-import com.aresstack.enterpriseai.mcp.solon.SolonMcpToolClientFactory;
+import com.aresstack.enterpriseai.proasteion.exedra.agent.AgentMcpEnvironment;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCallException;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolClient;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolClientFactory;
+import com.aresstack.enterpriseai.proasteion.katagogion.solon.SolonMcpToolClientFactory;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;

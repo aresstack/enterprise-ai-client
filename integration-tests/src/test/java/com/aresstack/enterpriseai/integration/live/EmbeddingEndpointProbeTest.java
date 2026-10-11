@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.integration.live;
 
-import com.aresstack.enterpriseai.app.chat.fakeapi.FakeEmbeddingsServer;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.fakeapi.FakeEmbeddingsServer;
 import com.aresstack.enterpriseai.embedding.openai.BearerTokenSource;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
 import org.junit.After;

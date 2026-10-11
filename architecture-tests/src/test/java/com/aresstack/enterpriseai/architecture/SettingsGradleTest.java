@@ -33,16 +33,16 @@ public class SettingsGradleTest {
     @Test
     public void unregisteredIncludeIsDetected() {
         Set<String> includes = SettingsGradleRules.includes(
-                "rootProject.name = 'x'\ninclude 'domain'\n  include \"source-sharepoint\"\ninclude(':chat-api')\n// include 'commented'\n"
-                        + "include 'knowledge-api', 'knowledge-lucene' // 'kommentar'\ninclude(':embedding-api', \":embedding-openai\")\n"
+                "rootProject.name = 'x'\ninclude 'astu'\n  include \"source-sharepoint\"\ninclude(':chat-api')\n// include 'commented'\n"
+                        + "include 'chalcotheca', 'anagraphai' // 'kommentar'\ninclude(':embedding-api', \":embedding-openai\")\n"
                         + "includeBuild 'tooling'\n");
         assertEquals(includes.toString(), 7, includes.size());
-        assertTrue(includes.toString(), includes.contains("knowledge-lucene"));
+        assertTrue(includes.toString(), includes.contains("anagraphai"));
         assertTrue(includes.toString(), includes.contains("embedding-openai"));
         assertTrue(includes.toString(), !includes.contains("tooling") && !includes.contains("kommentar"));
         List<String> violations = SettingsGradleRules.unregisteredIncludes(includes, REGISTRY);
         assertEquals(violations.toString(), 1, violations.size());
         assertTrue(violations.get(0), violations.get(0).contains("source-sharepoint"));
-        assertTrue(SettingsGradleRules.registeredButNotIncluded(includes, REGISTRY).toString().contains("application"));
+        assertTrue(SettingsGradleRules.registeredButNotIncluded(includes, REGISTRY).toString().contains("acropolis"));
     }
 }

@@ -1,5 +1,5 @@
 description = 'Port: Modellkatalog einer Quelle (entfernt oder lokal), neutral über domain.modelcatalog.'
 
 dependencies {
-    api project(':domain')
+    api project(':astu')
 }

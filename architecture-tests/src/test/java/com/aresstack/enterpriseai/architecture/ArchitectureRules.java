@@ -27,7 +27,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods;
 final class ArchitectureRules {
 
     /**
-     * JDK-Pakete, die Kernmodule (domain, application, *-api) verwenden dürfen. Alles andere – Swing/AWT,
+     * JDK-Pakete, die Kernmodule (astu, acropolis, *-api) verwenden dürfen. Alles andere – Swing/AWT,
      * java.net-Verbindungen, java.sql, javax.*, jede Fremdbibliothek – ist im Kern verboten. Eine
      * Erweiterung ist eine Architekturentscheidung (Contract-Commit plus ARCHITECTURE.md).
      */
@@ -46,8 +46,8 @@ final class ArchitectureRules {
      */
     static Map<Technology, List<String>> confinedTechnologies() {
         Map<Technology, List<String>> confinement = new LinkedHashMap<Technology, List<String>>();
-        confinement.put(Technology.SWING, Arrays.asList("app-swing", "comic-controls"));
-        confinement.put(Technology.LUCENE, Arrays.asList("knowledge-lucene"));
+        confinement.put(Technology.SWING, Arrays.asList("exedra", "comic-controls"));
+        confinement.put(Technology.LUCENE, Arrays.asList("anagraphai"));
         confinement.put(Technology.ACP_SDK, Arrays.asList("acp-solon-client", "acp-demo-agent", "research-agent-acp"));
         confinement.put(Technology.SOLON, Arrays.asList("acp-solon-client", "acp-demo-agent", "mcp-solon-runtime"));
         confinement.put(Technology.MCP_SDK, Arrays.asList("mcp-solon-runtime"));
@@ -67,13 +67,9 @@ final class ArchitectureRules {
             if (forbidden.isEmpty()) {
                 continue;
             }
-            String[] forbiddenPackages = new String[forbidden.size()];
-            for (int i = 0; i < forbidden.size(); i++) {
-                forbiddenPackages[i] = forbidden.get(i).packagePattern();
-            }
             rules.add(noClasses()
-                    .that().resideInAPackage(source.packagePattern())
-                    .should().dependOnClassesThat().resideInAnyPackage(forbiddenPackages)
+                    .that(source.classes())
+                    .should().dependOnClassesThat(ArchitectureModule.classesOf(forbidden))
                     .because(source.name() + " (" + source.kind() + ") darf nur " + source.allowedDependencies()
                             + " sehen")
                     .allowEmptyShould(true));
@@ -81,12 +77,12 @@ final class ArchitectureRules {
         return rules;
     }
 
-    /** domain, application und *-api verwenden ausschließlich neutrale JDK-Typen und eigene Projekttypen. */
+    /** astu, acropolis und *-api verwenden ausschließlich neutrale JDK-Typen und eigene Projekttypen. */
     static ArchRule coreUsesOnlyNeutralJdk(ModuleRegistry registry) {
         return classes()
-                .that().resideInAnyPackage(packagePatterns(registry, coreModules(registry)))
+                .that(coreClasses(registry))
                 .should().onlyDependOnClassesThat(neutralForCore())
-                .because("der Kern (domain, application, *-api) darf keine Infrastruktur, kein Swing/AWT und "
+                .because("der Kern (astu, acropolis, *-api) darf keine Infrastruktur, kein Swing/AWT und "
                         + "keine Fremdbibliothek kennen")
                 .allowEmptyShould(true);
     }
@@ -94,18 +90,17 @@ final class ArchitectureRules {
     /** AP24-Tabelle: Kernmodule kennen keine der benannten Technologien. */
     static List<ArchRule> coreTechnologyRules(ModuleRegistry registry) {
         List<ArchRule> rules = new ArrayList<ArchRule>();
-        String[] corePackages = packagePatterns(registry, coreModules(registry));
         for (Technology technology : Technology.values()) {
             rules.add(noClasses()
-                    .that().resideInAnyPackage(corePackages)
+                    .that(coreClasses(registry))
                     .should().dependOnClassesThat(technology.predicate())
-                    .because("domain, application und *-api dürfen nicht von " + technology.label() + " abhängen")
+                    .because("astu, acropolis und *-api dürfen nicht von " + technology.label() + " abhängen")
                     .allowEmptyShould(true));
         }
         return rules;
     }
 
-    /** Lucene nur in knowledge-lucene, ACP SDK nur im ACP-Adapter/Demo-Agent, Solon MCP nur in mcp-solon-runtime ... */
+    /** Lucene nur in anagraphai, ACP SDK nur im ACP-Adapter/Demo-Agent, Solon MCP nur in mcp-solon-runtime ... */
     static List<ArchRule> technologyConfinementRules(ModuleRegistry registry) {
         List<ArchRule> rules = new ArrayList<ArchRule>();
         for (Map.Entry<Technology, List<String>> entry : confinedTechnologies().entrySet()) {
@@ -134,9 +129,9 @@ final class ArchitectureRules {
                 .that().haveName("main").and().areStatic()
                 .and().areDeclaredInClassesThat().resideInAPackage(ModuleRegistry.ROOT_PACKAGE + "..")
                 .and().areDeclaredInClassesThat().resideOutsideOfPackages(packagePatterns(registry,
-                        Arrays.asList("app-swing", "acp-demo-agent", "research-agent-acp")))
+                        Arrays.asList("exedra", "acp-demo-agent", "research-agent-acp")))
                 .should().haveRawParameterTypes(String[].class)
-                .because("die Anwendung wird ausschließlich in app-swing zusammengesetzt und gestartet")
+                .because("die Anwendung wird ausschließlich in exedra zusammengesetzt und gestartet")
                 .allowEmptyShould(true);
     }
 
@@ -161,12 +156,22 @@ final class ArchitectureRules {
         return names;
     }
 
-    private static String[] packagePatterns(ModuleRegistry registry, List<String> moduleNames) {
-        String[] patterns = new String[moduleNames.size()];
-        for (int i = 0; i < moduleNames.size(); i++) {
-            patterns[i] = registry.module(moduleNames.get(i)).packagePattern();
+    /** Klassen der Kernmodule, ohne die in ihnen geschachtelten Adapter (anagraphai liegt in chalcotheca). */
+    /** Paketmuster der Module einschließlich der in ihnen geschachtelten Module. */
+    static String[] packagePatterns(ModuleRegistry registry, List<String> modules) {
+        String[] patterns = new String[modules.size()];
+        for (int i = 0; i < patterns.length; i++) {
+            patterns[i] = registry.module(modules.get(i)).packagePattern();
         }
         return patterns;
+    }
+
+    static DescribedPredicate<JavaClass> coreClasses(ModuleRegistry registry) {
+        List<ArchitectureModule> core = new ArrayList<ArchitectureModule>();
+        for (String name : coreModules(registry)) {
+            core.add(registry.module(name));
+        }
+        return ArchitectureModule.classesOf(core);
     }
 
     private static DescribedPredicate<JavaClass> neutralForCore() {

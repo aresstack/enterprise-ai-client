@@ -1,0 +1,6 @@
+description = 'Adapter: Natural Development Server (NDV) als Knowledge Source. NATSPOD/PAL aus MainframeMate (ndv), Zugangsdaten über adyton.'
+
+dependencies {
+    api project(':source-api')
+    api project(':adyton')
+}

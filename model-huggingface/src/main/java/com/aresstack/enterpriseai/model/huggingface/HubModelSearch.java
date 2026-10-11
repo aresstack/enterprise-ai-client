@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
-import com.aresstack.enterpriseai.domain.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.huggingface.hub.HuggingFaceHub;
 import com.aresstack.huggingface.hub.HuggingFaceHubException;
 import com.aresstack.huggingface.hub.model.HubFile;

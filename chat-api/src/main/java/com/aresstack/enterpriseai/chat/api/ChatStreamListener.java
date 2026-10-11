@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.chat.api;
 
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 
 /**
  * Empfängt eine Streaming-Antwort. Reihenfolge und Exklusivität der Aufrufe regelt

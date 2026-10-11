@@ -1,11 +1,11 @@
 package com.aresstack.enterpriseai.source.api.testing;
 
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeDocument;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeMetadata;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResource;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeRevision;
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeSourceId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeSourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;

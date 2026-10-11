@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.chat.openai;
 
-import com.aresstack.enterpriseai.http.api.HttpRoutePort;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 
 import javax.net.ssl.SSLSocketFactory;
 import java.net.URI;
@@ -18,7 +18,7 @@ public final class OpenAiCompatibleChatConfig {
     /**
      * Liefert das Bearer-Token je Anfrage; {@code null} oder leer bedeutet "ohne Authorization-Header".
      * Die Composition Root implementiert sie über den Security-Port (z. B. {@code SecretProvider}), damit dieser
-     * Adapter security-api nicht kennen muss und der Klartext nur für die Dauer einer Anfrage existiert.
+     * Adapter adyton nicht kennen muss und der Klartext nur für die Dauer einer Anfrage existiert.
      */
     public interface TokenSource {
         String token();

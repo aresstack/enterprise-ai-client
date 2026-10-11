@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
  * Eingabeanzahl entsprechen. Tragen alle Einträge {@code index}, wird danach sortiert und Lücken/Doppelte werden
  * abgelehnt; fehlt {@code index} überall, gilt die Listenreihenfolge (wie MainframeMate es erprobt hat). Ein
  * Gemisch ist ungültig. {@code usage} wird ignoriert (beim Chat-Endpunkt real immer 0).
- * Dimension und Endlichkeit prüft danach {@link com.aresstack.enterpriseai.domain.embedding.EmbeddingVector}.
+ * Dimension und Endlichkeit prüft danach {@link com.aresstack.enterpriseai.astu.embedding.EmbeddingVector}.
  */
 final class EmbeddingResponseParser {
 

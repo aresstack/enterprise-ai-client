@@ -1,9 +1,9 @@
 description = 'Port für Chat-Completions (Strang A). Keine Provider-Typen.'
 
-// Testfixture FakeChatCompletionPort für Konsumenten des Ports (application, app-swing):
+// Testfixture FakeChatCompletionPort für Konsumenten des Ports (application, exedra):
 //   testImplementation testFixtures(project(':chat-api'))
 apply plugin: 'java-test-fixtures'
 
 dependencies {
-    api project(':domain')
+    api project(':astu')
 }

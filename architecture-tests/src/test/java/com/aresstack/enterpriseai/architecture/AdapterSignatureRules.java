@@ -39,12 +39,8 @@ final class AdapterSignatureRules {
 
     static ArchRule publicAdapterApiExposesNoLibraryTypes(ModuleRegistry registry) {
         List<ArchitectureModule> adapters = registry.modulesOfKind(ModuleKind.ADAPTER);
-        String[] packages = new String[adapters.size()];
-        for (int i = 0; i < packages.length; i++) {
-            packages[i] = adapters.get(i).packagePattern();
-        }
         return classes()
-                .that().resideInAnyPackage(packages).and().arePublic()
+                .that(ArchitectureModule.classesOf(adapters)).and().arePublic()
                 .should(exposeNoLibraryTypes())
                 .because("Bibliotheks- und Transporttypen verlassen den Adapter nicht; Konsumenten sehen nur "
                         + "Port, Konfiguration und Callback-Typen")

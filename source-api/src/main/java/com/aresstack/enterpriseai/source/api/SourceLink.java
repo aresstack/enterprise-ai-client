@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.source.api;
 
-import com.aresstack.enterpriseai.domain.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 
 /** Verweis von einer Ressource auf eine andere Ressource derselben Quelle. */
 public final class SourceLink {

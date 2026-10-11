@@ -10,42 +10,49 @@ dependencyResolutionManagement {
 
 rootProject.name = 'enterprise-ai-client'
 
+// Stadt aus corenth (ARCHITECTURE.md, „Die Stadt“): adyton, astu → acropolis → chalcotheca → {tamias, anagraphai},
+// proasteion → {exedra, katagogion, emporion → {holkas, deigma}, platform → {network, security-keepassrpc}}.
+// Grenzmodule ohne eigene Klassen: proasteion, emporion, platform.
+include 'proasteion'
+include 'proasteion:emporion'
+include 'proasteion:platform'
+
 // Kern
-include 'domain'
-include 'application'
+include 'astu'
+include 'astu:acropolis'
 
 // Strang A – Chat
 include 'chat-api'
 include 'chat-openai'
 
-// Strang N (Netz): neutraler Port für die HTTP-Route je Ziel-URL; Implementierung in app-swing (app.net).
-include 'http-api'
+// Strang N (Netz): neutraler Port für die HTTP-Route je Ziel-URL; Implementierung in exedra (app.net).
+include 'proasteion:platform:network'
 
 // Strang C – Embedding
 include 'embedding-api'
 include 'embedding-openai'
 
 // Strang D – Knowledge-Index
-include 'knowledge-api'
-include 'knowledge-lucene'
+include 'astu:acropolis:chalcotheca'
+include 'astu:acropolis:chalcotheca:tamias'
+include 'astu:acropolis:chalcotheca:anagraphai'
 
 // Strang E – Knowledge Sources (Strang F: source-confluence)
 include 'source-api'
-include 'source-mediawiki'
-include 'source-confluence'
-include 'source-localfiles'
+include 'proasteion:emporion:holkas:source-mediawiki'
+include 'proasteion:emporion:holkas:source-confluence'
+include 'proasteion:emporion:holkas:source-localfiles'
 // Mainframe über FTP (MVS-Datasets, COBOL)
-include 'source-ftp'
+include 'proasteion:emporion:holkas:source-ftp'
 // Mainframe: Natural über NDV
-include 'source-ndv'
+include 'proasteion:emporion:holkas:source-ndv'
 
 // Ressourcenschicht aus corenth: Port (AcquisitionPort, Bronze) und Holkas-Connectoren über den Quellen
-include 'resource-api'
-include 'resource-holkas'
+include 'proasteion:emporion:holkas'
 
 // Dokument-Extraktion (aus corenth deigma, Tika wie MainframeMate)
-include 'document-api'
-include 'document-tika'
+include 'proasteion:emporion:deigma'
+include 'proasteion:emporion:deigma:document-tika'
 
 // Modellverwaltung: Katalog-Port, Enterprise-API-Katalog (KIPITZ), Stimmen vom Hugging Face Hub
 include 'model-api'
@@ -66,8 +73,8 @@ include 'text-local'
 include 'text-onnx'
 
 // Strang F – Security
-include 'security-api'
-include 'security-keepassrpc'
+include 'adyton'
+include 'proasteion:platform:security-keepassrpc'
 
 // Strang G – ACP
 include 'acp-client-api'
@@ -75,8 +82,8 @@ include 'acp-solon-client'
 include 'acp-demo-agent'
 
 // Strang H – MCP
-include 'mcp-runtime-api'
-include 'mcp-solon-runtime'
+include 'proasteion:katagogion'
+include 'proasteion:katagogion:mcp-solon-runtime'
 
 // Research-Agent aus askai-java8 (Zweig arch): Fachkern mit Weidezaun
 include 'research-domain'
@@ -89,7 +96,7 @@ include 'research-agent-acp'
 
 // Strang B – Swing-Comic-UI und Composition Root
 include 'comic-controls'
-include 'app-swing'
+include 'proasteion:exedra'
 
 // AP24 – ausführbare Architekturregeln
 include 'architecture-tests'

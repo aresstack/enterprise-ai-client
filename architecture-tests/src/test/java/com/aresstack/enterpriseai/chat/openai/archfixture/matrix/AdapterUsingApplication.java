@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.chat.openai.archfixture.matrix;
 
-import com.aresstack.enterpriseai.application.archfixture.NeutralUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.NeutralUseCase;
 
 /** Absichtlicher Verstoß: ein Adapter kennt application. */
 public final class AdapterUsingApplication {

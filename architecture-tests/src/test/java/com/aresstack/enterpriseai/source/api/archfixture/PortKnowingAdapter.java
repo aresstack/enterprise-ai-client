@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.source.api.archfixture;
 
-import com.aresstack.enterpriseai.source.mediawiki.archfixture.FakeWikiAdapter;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.archfixture.FakeWikiAdapter;
 
 /** Absichtlicher Verstoß: source-api kennt einen Source-Adapter (SourceBoundaryTest). */
 public final class PortKnowingAdapter {

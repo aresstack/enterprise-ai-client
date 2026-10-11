@@ -1,0 +1,26 @@
+description = 'Use Cases und Orchestrierung (Chat, RAG, Indexierung, MCP-Wissenswerkzeuge). Sieht nur domain und die *-api-Ports.'
+
+dependencies {
+    api project(':astu')
+    api project(':chat-api')
+    api project(':embedding-api')
+    api project(':astu:acropolis:chalcotheca')
+    api project(':source-api')
+    api project(':adyton')
+    api project(':acp-client-api')
+    api project(':proasteion:katagogion')
+    api project(':astu:acropolis:chalcotheca')
+    api project(':model-api')
+    api project(':speech-api')
+}
+
+dependencies {
+    // Strang A: Fake-Chat-Port für die Tests des Chat-Use-Cases.
+    testImplementation testFixtures(project(':chat-api'))
+    // AP10: Fakes für Embedding und Wissensindex in den RAG-Tests.
+    testImplementation testFixtures(project(':embedding-api'))
+    testImplementation testFixtures(project(':astu:acropolis:chalcotheca'))
+    testImplementation testFixtures(project(':source-api'))
+    // AP20: In-Process-Registry und -Client für den MCP-Roundtrip der Wissenswerkzeuge (kein Netzwerk).
+    testImplementation testFixtures(project(':proasteion:katagogion'))
+}

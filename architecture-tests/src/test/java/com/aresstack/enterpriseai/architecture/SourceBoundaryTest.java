@@ -34,8 +34,8 @@ public class SourceBoundaryTest {
 
     private static final String ROOT = ModuleRegistry.ROOT_PACKAGE;
     private static final List<String> SOURCE_ADAPTER_PACKAGES = Arrays.asList(
-            ROOT + ".source.mediawiki", ROOT + ".source.confluence", ROOT + ".source.ftp",
-            ROOT + ".source.ndv");
+            ROOT + ".proasteion.emporion.holkas.mediawiki", ROOT + ".proasteion.emporion.holkas.confluence", ROOT + ".proasteion.emporion.holkas.ftp",
+            ROOT + ".proasteion.emporion.holkas.ndv");
     private static final List<String> LEAKING_TYPE_PREFIXES = Arrays.asList(
             "com.google.gson.", "org.jsoup.", "net.sourceforge.jwbf.", "okhttp3.", "org.apache.http.",
             "org.apache.hc.", "java.net.URLConnection", "java.net.HttpURLConnection", "java.net.CookieManager",
@@ -56,8 +56,8 @@ public class SourceBoundaryTest {
     @Test
     public void sourceApiDoesNotKnowAnySourceAdapter() {
         ArchRule rule = noClasses().that().resideInAPackage(ROOT + ".source.api..")
-                .should().dependOnClassesThat().resideInAnyPackage(ROOT + ".source.mediawiki..",
-                        ROOT + ".source.confluence..")
+                .should().dependOnClassesThat().resideInAnyPackage(ROOT + ".proasteion.emporion.holkas.mediawiki..",
+                        ROOT + ".proasteion.emporion.holkas.confluence..")
                 .allowEmptyShould(true);
         rule.check(productionClasses);
     }

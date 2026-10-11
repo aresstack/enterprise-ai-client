@@ -7,45 +7,45 @@ import com.aresstack.enterpriseai.acp.api.archfixture.tech.PortUsingSwing;
 import com.aresstack.enterpriseai.acp.demo.archfixture.tech.ReactorInsideDemoAgent;
 import com.aresstack.enterpriseai.acp.solon.archfixture.tech.AcpSdkInsideItsAdapter;
 import com.aresstack.enterpriseai.acp.solon.archfixture.tech.SolonMcpInAcpAdapter;
-import com.aresstack.enterpriseai.app.archfixture.tech.McpSdkInCompositionRoot;
-import com.aresstack.enterpriseai.app.ui.archfixture.tech.SwingInsideApp;
-import com.aresstack.enterpriseai.application.archfixture.tech.UseCaseUsingHttp;
-import com.aresstack.enterpriseai.application.archfixture.tech.UseCaseUsingLucene;
-import com.aresstack.enterpriseai.application.archfixture.tech.UseCaseUsingSwing;
+import com.aresstack.enterpriseai.proasteion.exedra.archfixture.tech.McpSdkInCompositionRoot;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.archfixture.tech.SwingInsideApp;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.tech.UseCaseUsingHttp;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.tech.UseCaseUsingLucene;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.tech.UseCaseUsingSwing;
 import com.aresstack.enterpriseai.chat.api.archfixture.tech.PortUsingGson;
 import com.aresstack.enterpriseai.chat.openai.archfixture.tech.LuceneInChatAdapter;
 import com.aresstack.enterpriseai.chat.openai.archfixture.tech.SolonInChatAdapter;
-import com.aresstack.enterpriseai.domain.archfixture.HttpInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.NeutralValue;
-import com.aresstack.enterpriseai.domain.archfixture.SwingInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.AcpSdkInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.ConfluenceAdapterInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.GsonInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.JsoupInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.JwbfInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.LuceneInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.McpSdkInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.MediaWikiAdapterInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.OkHttpInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.ReactorInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.SolonInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.SolonMcpInDomain;
-import com.aresstack.enterpriseai.domain.archfixture.tech.WebSocketInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.HttpInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.NeutralValue;
+import com.aresstack.enterpriseai.astu.archfixture.SwingInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.AcpSdkInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.ConfluenceAdapterInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.GsonInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.JsoupInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.JwbfInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.LuceneInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.McpSdkInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.MediaWikiAdapterInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.OkHttpInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.ReactorInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.SolonInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.SolonMcpInDomain;
+import com.aresstack.enterpriseai.astu.archfixture.tech.WebSocketInDomain;
 import com.aresstack.enterpriseai.embedding.api.archfixture.tech.PortUsingOkHttp;
-import com.aresstack.enterpriseai.knowledge.api.archfixture.tech.PortUsingLucene;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.tech.LuceneInsideItsAdapter;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.tech.SwingInLuceneAdapter;
-import com.aresstack.enterpriseai.mcp.api.archfixture.tech.PortUsingMcpSdk;
-import com.aresstack.enterpriseai.mcp.api.archfixture.tech.PortUsingSolonMcp;
-import com.aresstack.enterpriseai.mcp.solon.archfixture.tech.AcpSdkInMcpRuntime;
-import com.aresstack.enterpriseai.mcp.solon.archfixture.tech.ReactorInMcpRuntime;
-import com.aresstack.enterpriseai.mcp.solon.archfixture.tech.SolonMcpInsideItsRuntime;
-import com.aresstack.enterpriseai.security.api.archfixture.tech.PortUsingWebSocket;
-import com.aresstack.enterpriseai.security.keepassrpc.archfixture.tech.WebSocketInsideKeePass;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.archfixture.tech.PortUsingLucene;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.tech.LuceneInsideItsAdapter;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.tech.SwingInLuceneAdapter;
+import com.aresstack.enterpriseai.proasteion.katagogion.archfixture.tech.PortUsingMcpSdk;
+import com.aresstack.enterpriseai.proasteion.katagogion.archfixture.tech.PortUsingSolonMcp;
+import com.aresstack.enterpriseai.proasteion.katagogion.solon.archfixture.tech.AcpSdkInMcpRuntime;
+import com.aresstack.enterpriseai.proasteion.katagogion.solon.archfixture.tech.ReactorInMcpRuntime;
+import com.aresstack.enterpriseai.proasteion.katagogion.solon.archfixture.tech.SolonMcpInsideItsRuntime;
+import com.aresstack.enterpriseai.adyton.archfixture.tech.PortUsingWebSocket;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.archfixture.tech.WebSocketInsideKeePass;
 import com.aresstack.enterpriseai.source.api.archfixture.tech.PortUsingJwbf;
-import com.aresstack.enterpriseai.source.confluence.archfixture.tech.JwbfInConfluence;
-import com.aresstack.enterpriseai.source.mediawiki.archfixture.tech.JwbfInsideMediaWiki;
-import com.aresstack.enterpriseai.source.mediawiki.archfixture.tech.WebSocketInMediaWiki;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.archfixture.tech.JwbfInConfluence;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.archfixture.tech.JwbfInsideMediaWiki;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.archfixture.tech.WebSocketInMediaWiki;
 import com.aresstack.enterpriseai.ui.comic.archfixture.tech.SwingInsideComic;
 import org.junit.Test;
 
@@ -59,11 +59,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * AP24-Tabelle, Zeile für Zeile mit Gegenbeispiel: Der Kern (domain, application, *-api) kennt weder Swing,
+ * AP24-Tabelle, Zeile für Zeile mit Gegenbeispiel: Der Kern (astu, acropolis, *-api) kennt weder Swing,
  * HTTP, Lucene, Solon, ACP SDK, MCP SDK, KeePass(-Transport), JWBF/MediaWiki noch Confluence (auch nicht
  * Gson, jsoup, OkHttp, Reactor); begrenzte Technologien bleiben in ihrem Adapter. Die Bibliothekstypen sind
  * Stubs mit den echten Paketnamen ({@code org.apache.lucene.archstub} ...), weil die Regeln über Pakete
- * arbeiten. Ergänzt {@code RulesDetectViolationsTest} (Swing und HTTP in domain).
+ * arbeiten. Ergänzt {@code RulesDetectViolationsTest} (Swing und HTTP in astu).
  */
 public class TechnologyRulesDetectViolationsTest {
 

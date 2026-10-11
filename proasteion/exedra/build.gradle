@@ -1,0 +1,161 @@
+apply plugin: 'application'
+// AP25: Die Fake-HTTP-Server des RAG-Integrationstests (/chat/completions, /embeddings) liegen als Testfixtures
+// vor, damit integration-tests sie wiederverwendet: testImplementation testFixtures(project(':proasteion:exedra')).
+apply plugin: 'java-test-fixtures'
+
+description = 'Swing-Desktop-Anwendung und einzige Composition Root (Strang B, AP23).'
+
+application {
+    mainClass = 'com.aresstack.enterpriseai.proasteion.exedra.EnterpriseAiClientMain'
+}
+
+// Fat Jar mit Manifest (java -jar), Prüfung und Smoke-Start: Tasks fatJar, verifyFatJar, smokeStartFatJar
+// (hängen an assemble bzw. check). Versionsnummer in gradle.properties, Release-Workflow in
+// .github/workflows/release.yml; Erläuterung in docs/einrichtung.md.
+apply from: rootProject.file('gradle/fat-jar.gradle')
+
+dependencies {
+    implementation project(':astu:acropolis')
+    implementation project(':comic-controls')
+    implementation project(':chat-openai')
+    implementation project(':embedding-openai')
+    implementation project(':astu:acropolis:chalcotheca:anagraphai')
+    implementation project(':proasteion:emporion:holkas:source-mediawiki')
+    implementation project(':proasteion:emporion:holkas:source-confluence')
+    // Lokale Dateien als Quelle; Extraktion über document-tika (Klartext/Markdown ohne Tika, sonst Apache Tika).
+    implementation project(':proasteion:emporion:holkas:source-localfiles')
+    // Mainframe über FTP (MVS-Datasets, COBOL), Anmeldung über KeePass.
+    implementation project(':proasteion:emporion:holkas:source-ftp')
+    // Natural über NDV, Anmeldung über KeePass.
+    implementation project(':proasteion:emporion:holkas:source-ndv')
+    implementation project(':astu:acropolis:chalcotheca')
+    implementation project(':proasteion:emporion:holkas')
+    implementation project(':proasteion:emporion:deigma:document-tika')
+    implementation project(':proasteion:platform:security-keepassrpc')
+    implementation project(':acp-solon-client')
+    implementation project(':proasteion:katagogion:mcp-solon-runtime')
+    implementation project(':proasteion:platform:network')
+    // Modellverwaltung: Katalog der Enterprise-API und Stimmen vom Hugging Face Hub.
+    implementation project(':model-kipitz')
+    implementation project(':model-huggingface')
+    implementation project(':speech-api')
+    implementation project(':speech-runtime-api')
+    implementation project(':speech-local')
+    implementation project(':speech-onnx')
+    implementation project(':speech-opennlp')
+    implementation project(':text-runtime-api')
+    implementation project(':text-local')
+    implementation project(':text-onnx')
+    implementation project(':research-domain')
+    implementation project(':research-api')
+    implementation project(':research-scope')
+    implementation project(':research-store')
+    implementation project(':research-agent-runtime')
+    implementation project(':research-concept')
+    // Der eingebaute Recherche-Agent als eigener Prozess über ACP (askai-java8 arch: ResearchAgentMain). Nur zur
+    // Laufzeit: der Client startet ihn mit derselben Java-Laufzeit aus demselben Fat Jar (java -cp <jar> <Klasse>).
+    runtimeOnly project(':research-agent-acp')
+    // Proxy je Ziel in den Modi von win-proxy-java (PAC per PowerShell/VBScript/Windows-Einstellungen, fester
+    // Proxy, ...): app.net.HttpRoutes. Bringt GraalJS mit; das Fat Jar führt dessen ServiceLoader-Dateien zusammen.
+    implementation libs.win.proxy.java
+    // TLS-Vertrauen aus JVM-Truststore, Windows-ROOT und Windows Root/CA-Export: app.net.TrustPolicy.
+    implementation libs.win.trust.java
+    // Markdown-Rendering der Antworten (app.ui.markdown, aus askai-java8 arch): flexmark mit Tabellen, Autolinks und
+    // Durchstreichen; Mermaid-Zäune werden mit mermaid-java (GraalJS + Batik, ohne Browser und Netz) zu Bildern.
+    implementation libs.flexmark
+    implementation libs.flexmark.ext.tables
+    implementation libs.flexmark.ext.autolink
+    implementation libs.flexmark.ext.gfm.strikethrough
+    implementation libs.mermaid.java
+    // Chat-Historie (app.chat.FileChatHistoryStore, aus askai-java8 arch): ein JSON-Dokument je Chat.
+    implementation libs.gson
+
+    // Strang A: skriptbarer Fake-ChatCompletionPort für UI-Tests und die Demo.
+    testImplementation testFixtures(project(':chat-api'))
+    // AP21: Test-Tools (ping, echo) für den MCP-Endpoint des Agenten.
+    testImplementation testFixtures(project(':proasteion:katagogion'))
+    // AP22: Fakes für Embedding-Port, Wissensindex und Quelle in den RAG-Tests der Shell; AP23 nutzt sie im
+    // Kompositionstest (headless gegen Fakes statt Adapter).
+    testImplementation testFixtures(project(':embedding-api'))
+    testImplementation testFixtures(project(':astu:acropolis:chalcotheca'))
+    testImplementation testFixtures(project(':source-api'))
+    // KeePass-Probe des Einstellungen-Dialogs gegen den Fake-Server; der erweitert WebSocketServer, deshalb
+    // muss der Typ zum Kompilieren des Tests sichtbar sein (wie in integration-tests).
+    testImplementation testFixtures(project(':proasteion:platform:security-keepassrpc'))
+    testImplementation libs.java.websocket
+    // AP22: Die Fake-HTTP-Server des Integrationstests (/chat/completions, /embeddings) lesen und schreiben JSON;
+    // seit AP25 als Testfixtures (app.chat.fakeapi), die Tests dieses Moduls sehen sie weiterhin.
+    testFixturesImplementation libs.gson
+    testImplementation libs.gson
+}
+
+// AP23: Start der echten Anwendung (Composition Root). Konfigurationsdatei und Benutzerverzeichnis lassen sich
+// durchreichen: ./gradlew :proasteion:exedra:run -Denterpriseai.config=/pfad/zur/datei.properties
+tasks.named('run') {
+    ['enterpriseai.config', 'enterpriseai.home'].each { key ->
+        if (System.getProperty(key) != null) {
+            systemProperty key, System.getProperty(key)
+        }
+    }
+}
+
+// AP21: Der Agent-Modus-Roundtrip startet den Demo-Agenten als echten Kindprozess (java -jar). Wie in
+// acp-solon-client keine Projektabhängigkeit auf acp-demo-agent, nur das gebaute Jar als Testeingabe.
+def demoAgentJar = rootProject.file('acp-demo-agent/build/libs/acp-demo-agent-all.jar')
+
+tasks.withType(Test).configureEach {
+    // Swing-Tests laufen ohne Display (CI); Fenster werden nur in der Demo erzeugt.
+    systemProperty 'java.awt.headless', 'true'
+}
+
+tasks.named('test') {
+    dependsOn ':acp-demo-agent:demoAgentJar'
+    inputs.file(demoAgentJar).withPropertyName('demoAgentJar')
+    systemProperty 'acp.demo.agent.jar', demoAgentJar.absolutePath
+    systemProperty 'acp.agent.java.home', System.getProperty('java.home')
+    // Im Gradle-Build darf der Agent-Roundtrip nicht still übersprungen werden.
+    systemProperty 'acp.roundtrip.required', 'true'
+    // Der eingebaute Recherche-Agent startet im Roundtrip-Test als Kindprozess auf dem Testklassenpfad.
+    systemProperty 'research.agent.classpath', sourceSets.test.runtimeClasspath.asPath
+    // Solon (MCP-Endpoint des Agenten) ist prozessglobal: jede Testklasse in eigener JVM.
+    forkEvery = 1
+}
+
+tasks.register('runChatDemo', JavaExec) {
+    group = 'application'
+    description = 'Startet die Comic-Chat-Shell (AP4) mit einem Fake-Backend, ohne Server.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.proasteion.exedra.chat.ChatShellDemo'
+}
+
+tasks.register('runRagDemo', JavaExec) {
+    group = 'application'
+    description = 'Startet die Chat-Shell mit RAG (AP22) gegen Fake-Backends: Fake-Chat, deterministische Embeddings, In-Memory-Index.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.proasteion.exedra.chat.RagShellDemo'
+}
+
+tasks.register('runSettingsDemo', JavaExec) {
+    group = 'application'
+    description = 'Zeigt den Einstellungen-Dialog mit Attrappen (ohne Datei, ohne KeePass); --args="--screenshot datei.png" schreibt ihn headless als PNG.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogDemo'
+    systemProperty 'java.awt.headless', System.getProperty('java.awt.headless', 'false')
+}
+
+tasks.register('runUiScreenshots', JavaExec) {
+    group = 'demo'
+    description = 'Rendert die Abnahme-Bilder A–H der Oberfläche headless als PNG; --args="<Zielverzeichnis>".'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.proasteion.exedra.ui.UiScreenshotDemo'
+    systemProperty 'java.awt.headless', 'true'
+}
+
+tasks.register('runAgentDemo', JavaExec) {
+    group = 'application'
+    description = 'Startet die Shell mit Chat (Fake-Backend) und Agent-Modus (Demo-Agent über ACP, AP21).'
+    dependsOn ':acp-demo-agent:demoAgentJar'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.proasteion.exedra.agent.AgentShellDemo'
+    systemProperty 'acp.demo.agent.jar', demoAgentJar.absolutePath
+}

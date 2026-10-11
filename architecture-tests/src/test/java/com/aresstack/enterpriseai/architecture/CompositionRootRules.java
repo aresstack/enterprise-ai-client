@@ -12,7 +12,7 @@ import java.util.Properties;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Composition nur in app-swing (Auftrag AP1/AP23, ARCHITECTURE.md): Nur dort werden Konfiguration gelesen
+ * Composition nur in exedra (Auftrag AP1/AP23, ARCHITECTURE.md): Nur dort werden Konfiguration gelesen
  * und Adapter verdrahtet; Abhängigkeiten kommen über Konstruktoren, nicht über globale Lookups.
  *
  * <ul>
@@ -22,7 +22,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  *   <li>Kein {@code ServiceLoader} im Produktionscode.</li>
  *   <li>Jeder Adapter implementiert mindestens ein Interface seines Ports; "externe Systeme sind über Ports
  *       erreichbar".</li>
- *   <li>{@code main} nur in app-swing und acp-demo-agent: {@link ArchitectureRules#mainMethodsOnlyInCompositionRoot}.</li>
+ *   <li>{@code main} nur in exedra und acp-demo-agent: {@link ArchitectureRules#mainMethodsOnlyInCompositionRoot}.</li>
  * </ul>
  */
 final class CompositionRootRules {
@@ -33,7 +33,7 @@ final class CompositionRootRules {
     static ArchRule configurationIsReadOnlyInTheCompositionRoot(ModuleRegistry registry) {
         return noClasses()
                 .that().resideInAPackage(ModuleRegistry.ROOT_PACKAGE + "..")
-                .and().resideOutsideOfPackages(registry.module("app-swing").packagePattern(),
+                .and().resideOutsideOfPackages(registry.module("exedra").packagePattern(),
                         registry.module("acp-demo-agent").packagePattern(),
                         registry.module("research-agent-acp").packagePattern())
                 .should().callMethodWhere(LoggingRules.call(System.class, "getenv"))

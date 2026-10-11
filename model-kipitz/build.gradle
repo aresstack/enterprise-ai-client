@@ -4,8 +4,8 @@ dependencies {
     api project(':model-api')
     // Sprachausgabe der TTS-Modelle desselben Katalogs (POST <baseUrl>/audio/speech).
     api project(':speech-api')
-    // Route je Anfrage (Proxy-Entscheidung) über den neutralen Port http-api aus der Composition Root.
-    api project(':http-api')
+    // Route je Anfrage (Proxy-Entscheidung) über den neutralen Port network aus der Composition Root.
+    api project(':proasteion:platform:network')
     // JSON-Mapping bleibt im Adapter (implementation, nicht api), wie in chat-openai.
     implementation libs.gson
 }

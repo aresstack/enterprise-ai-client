@@ -1,12 +1,14 @@
 package com.aresstack.enterpriseai.architecture;
 
-import com.aresstack.enterpriseai.app.chat.archfixture.ChatBindingBuildingAdapter;
-import com.aresstack.enterpriseai.app.composition.archfixture.RootBuildingAdapter;
-import com.aresstack.enterpriseai.app.config.archfixture.ConfigBuildingAdapter;
-import com.aresstack.enterpriseai.app.security.archfixture.BridgeBuildingAdapterValue;
-import com.aresstack.enterpriseai.knowledge.api.archfixture.FakeIndexPortContract;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneAdapter;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.FakeLuceneIndex;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.archfixture.ChatBindingBuildingAdapter;
+import com.aresstack.enterpriseai.proasteion.exedra.composition.archfixture.RootBuildingAdapter;
+import com.aresstack.enterpriseai.proasteion.exedra.config.archfixture.ConfigBuildingAdapter;
+import com.aresstack.enterpriseai.proasteion.exedra.security.archfixture.BridgeBuildingAdapterValue;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.archfixture.FakeIndexPortContract;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.FakeLuceneAdapter;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.FakeLuceneIndex;
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
@@ -30,15 +32,15 @@ import static org.junit.Assert.assertTrue;
  * AP23: Adapter werden nur in der Composition Root instanziiert. Ein Adapter ist eine Klasse eines
  * Adaptermoduls, die eine Port-Schnittstelle implementiert ({@code LuceneKnowledgeIndex},
  * {@code KeePassRpcSecretProvider}, {@code SolonAcpAgentConnector} …). Außerhalb der Adaptermodule selbst ruft
- * allein {@code app.composition} ihre Konstruktoren auf; Konfiguration ({@code app.config}), Brücken
- * ({@code app.security}), Bindings, Shell und Kern bekommen Ports per Konstruktor. Wert- und
+ * allein {@code proasteion.exedra.composition} ihre Konstruktoren auf; Konfiguration ({@code proasteion.exedra.config}), Brücken
+ * ({@code proasteion.exedra.security}), Bindings, Shell und Kern bekommen Ports per Konstruktor. Wert- und
  * Konfigurationstypen der Adaptermodule ({@code KeePassRpcConfig}, {@code MediaWikiSiteConfig},
- * {@code MediaWikiCredentials}) bleiben überall in app-swing baubar; die Modulmatrix erlaubt das.
+ * {@code MediaWikiCredentials}) bleiben überall in exedra baubar; die Modulmatrix erlaubt das.
  */
 public class CompositionRootBoundaryTest {
 
     private static final ModuleRegistry REGISTRY = ModuleRegistry.standard();
-    static final String COMPOSITION_PACKAGE = ModuleRegistry.ROOT_PACKAGE + ".app.composition..";
+    static final String COMPOSITION_PACKAGE = ModuleRegistry.ROOT_PACKAGE + ".proasteion.exedra.composition..";
     private static JavaClasses productionClasses;
 
     @BeforeClass
@@ -68,7 +70,8 @@ public class CompositionRootBoundaryTest {
 
     static ArchRule adapterConstructorsOnlyCalledFromCompositionRoot(ModuleRegistry registry) {
         String[] adapters = adapterPackages(registry).toArray(new String[0]);
-        String[] ports = packagesOfKind(registry, ModuleKind.PORT).toArray(new String[0]);
+        // Genau die Klassen der Port-Module: in einem Port geschachtelte Adapter (anagraphai in chalcotheca) zählen nicht.
+        DescribedPredicate<JavaClass> ports = ArchitectureModule.classesOf(registry.modulesOfKind(ModuleKind.PORT));
         // Ein eigener Agentenprozess (AGENT_PROCESS) ist die Composition Root seiner JVM.
         String[] agentProcesses = packagesOfKind(registry, ModuleKind.AGENT_PROCESS).toArray(new String[0]);
         return noClasses()
@@ -76,7 +79,7 @@ public class CompositionRootBoundaryTest {
                 .and().resideOutsideOfPackage(COMPOSITION_PACKAGE)
                 .and().resideOutsideOfPackages(agentProcesses)
                 .should().callConstructorWhere(target(owner(
-                        resideInAnyPackage(adapters).and(assignableTo(resideInAnyPackage(ports))))))
+                        resideInAnyPackage(adapters).and(assignableTo(ports)))))
                 .because("Adapter (Klassen eines Adaptermoduls, die einen Port implementieren) entstehen nur in "
                         + "der Composition Root (app.composition); alles andere arbeitet gegen Ports (AP23)")
                 .allowEmptyShould(true);
@@ -85,9 +88,9 @@ public class CompositionRootBoundaryTest {
     @Test
     public void adapterModulesAreKnown() {
         List<String> adapters = adapterPackages(REGISTRY);
-        assertTrue(adapters.toString(), adapters.contains(ModuleRegistry.ROOT_PACKAGE + ".knowledge.lucene.."));
-        assertTrue(adapters.toString(), adapters.contains(ModuleRegistry.ROOT_PACKAGE + ".security.keepassrpc.."));
-        assertEquals(ModuleKind.COMPOSITION_ROOT, REGISTRY.module("app-swing").kind());
+        assertTrue(adapters.toString(), adapters.contains(ModuleRegistry.ROOT_PACKAGE + ".astu.acropolis.chalcotheca.anagraphai.."));
+        assertTrue(adapters.toString(), adapters.contains(ModuleRegistry.ROOT_PACKAGE + ".proasteion.platform.security.keepassrpc.."));
+        assertEquals(ModuleKind.COMPOSITION_ROOT, REGISTRY.module("exedra").kind());
     }
 
     @Test
@@ -110,7 +113,7 @@ public class CompositionRootBoundaryTest {
 
     @Test
     public void compositionRootConstructingAnAdapterPasses() {
-        Violations.assertNone("app.composition darf Adapter bauen",
+        Violations.assertNone("proasteion.exedra.composition darf Adapter bauen",
                 Violations.of(Collections.singletonList(adapterConstructorsOnlyCalledFromCompositionRoot(REGISTRY)),
                         importClasses(RootBuildingAdapter.class, FakeLuceneIndex.class, FakeIndexPortContract.class)));
     }

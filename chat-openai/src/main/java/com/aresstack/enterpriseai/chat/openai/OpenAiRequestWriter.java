@@ -2,11 +2,11 @@ package com.aresstack.enterpriseai.chat.openai;
 
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
-import com.aresstack.enterpriseai.domain.chat.ChatMessage;
-import com.aresstack.enterpriseai.domain.chat.ChatOptions;
-import com.aresstack.enterpriseai.domain.chat.ChatRequest;
-import com.aresstack.enterpriseai.domain.chat.ChatToolCall;
-import com.aresstack.enterpriseai.domain.chat.ChatToolDefinition;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.chat.ChatOptions;
+import com.aresstack.enterpriseai.astu.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatToolCall;
+import com.aresstack.enterpriseai.astu.chat.ChatToolDefinition;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
@@ -43,7 +43,7 @@ final class OpenAiRequestWriter {
                     text.addProperty("text", message.content());
                     parts.add(text);
                 }
-                for (com.aresstack.enterpriseai.domain.chat.ChatImage image : message.images()) {
+                for (com.aresstack.enterpriseai.astu.chat.ChatImage image : message.images()) {
                     JsonObject url = new JsonObject();
                     url.addProperty("url", "data:" + image.mediaType() + ";base64,"
                             + java.util.Base64.getEncoder().encodeToString(image.bytes()));

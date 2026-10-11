@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.model.kipitz;
 
-import com.aresstack.enterpriseai.http.api.HttpRoute;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoute;
 
 import javax.net.ssl.HttpsURLConnection;
 import java.io.IOException;

@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.chat.api;
 
-import com.aresstack.enterpriseai.domain.chat.ChatRequest;
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 
 /**
  * Port zu einem Chat-Modell. Implementierungen sind threadsicher und dürfen mehrere Anfragen gleichzeitig

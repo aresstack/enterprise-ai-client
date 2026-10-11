@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.embedding.api.archfixture.boundary;
 
-import com.aresstack.enterpriseai.domain.knowledge.archfixture.FakeChunk;
+import com.aresstack.enterpriseai.astu.knowledge.archfixture.FakeChunk;
 
 /** Absichtlicher Verstoß: der Embedding-Port kennt das Wissensmodell (EmbeddingBoundaryTest). */
 public final class PortUsingKnowledge {

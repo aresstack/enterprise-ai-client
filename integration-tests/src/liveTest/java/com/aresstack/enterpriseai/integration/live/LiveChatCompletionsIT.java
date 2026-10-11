@@ -1,15 +1,15 @@
 package com.aresstack.enterpriseai.integration.live;
 
-import com.aresstack.enterpriseai.application.chat.ChatService;
-import com.aresstack.enterpriseai.application.chat.ChatTurnListener;
+import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
+import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatConfig;
-import com.aresstack.enterpriseai.domain.chat.ChatConversationId;
-import com.aresstack.enterpriseai.domain.chat.ChatMessage;
-import com.aresstack.enterpriseai.domain.chat.ChatOptions;
-import com.aresstack.enterpriseai.domain.chat.ChatRequest;
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.chat.ChatOptions;
+import com.aresstack.enterpriseai.astu.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 import org.junit.Test;
 
 import java.net.URI;

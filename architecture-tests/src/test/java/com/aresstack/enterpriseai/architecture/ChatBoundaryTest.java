@@ -21,9 +21,9 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 public class ChatBoundaryTest {
 
     private static final String ROOT = ModuleRegistry.ROOT_PACKAGE;
-    private static final String DOMAIN_CHAT = ROOT + ".domain.chat..";
+    private static final String DOMAIN_CHAT = ROOT + ".astu.chat..";
     private static final String CHAT_API = ROOT + ".chat.api..";
-    private static final String APPLICATION_CHAT = ROOT + ".application.chat..";
+    private static final String APPLICATION_CHAT = ROOT + ".astu.acropolis.chat..";
     private static final String CHAT_OPENAI = ROOT + ".chat.openai..";
     private static final String[] JDK_BASICS = {"java.lang..", "java.util.."};
 
@@ -33,7 +33,7 @@ public class ChatBoundaryTest {
     public static void importProductionClasses() {
         BuildModel model = BuildModel.load();
         List<File> directories = new ArrayList<File>();
-        for (String module : Arrays.asList("domain", "chat-api", "application", "chat-openai")) {
+        for (String module : Arrays.asList("astu", "chat-api", "acropolis", "chat-openai")) {
             directories.addAll(model.existingClassDirectoriesOf(module));
         }
         productionClasses = new ClassFileImporter().importPaths(BuildModelTest.toPaths(directories));

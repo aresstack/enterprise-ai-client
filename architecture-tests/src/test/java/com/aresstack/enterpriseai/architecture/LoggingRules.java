@@ -14,8 +14,8 @@ import java.util.List;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Auftrag: keine Secrets in Logs. Statisch prüfbar ist, wo überhaupt geloggt werden kann: Der Kern (domain,
- * application, *-api) und die Comic-Bibliothek loggen nicht; Logging-Frameworks (SLF4J, Log4j, Logback)
+ * Auftrag: keine Secrets in Logs. Statisch prüfbar ist, wo überhaupt geloggt werden kann: Der Kern (astu,
+ * acropolis, *-api) und die Comic-Bibliothek loggen nicht; Logging-Frameworks (SLF4J, Log4j, Logback)
  * kommen im Produktionscode nirgends vor (Adapter dürfen {@code java.util.logging} nutzen); Konsolausgaben
  * und {@code printStackTrace} gibt es nur im Demo-Agenten, dessen STDERR das Log ist (AP17).
  */
@@ -28,12 +28,10 @@ final class LoggingRules {
     private LoggingRules() {
     }
 
-    /** domain, application, *-api und comic-controls loggen nicht, auch nicht über java.util.logging. */
+    /** astu, acropolis, *-api und comic-controls loggen nicht, auch nicht über java.util.logging. */
     static ArchRule coreAndUiLibraryDoNotLog(ModuleRegistry registry) {
-        List<String> packages = new ArrayList<String>(Arrays.asList(CoreNamingRules.corePackages(registry)));
-        packages.add(registry.module("comic-controls").packagePattern());
         return noClasses()
-                .that().resideInAnyPackage(packages.toArray(new String[0]))
+                .that(ArchitectureRules.coreClasses(registry).or(registry.module("comic-controls").classes()))
                 .should().dependOnClassesThat().resideInAnyPackage(LOGGING_FRAMEWORK_PACKAGES)
                 .because("der Kern hat keine Infrastruktur und kann so auch keine Secrets, Tokens oder "
                         + "Chat-Inhalte loggen; Logging ist Sache der Adapter und der Composition Root")

@@ -2,7 +2,7 @@
 
 Retrieval-Augmented Generation legt sich von außen um den normalen Chat: Vor der Antwort sucht die Anwendung
 in der Wissensbasis und gibt dem Modell nummerierte Auszüge als Kontext mit. Der Chat-Pfad selbst kennt RAG
-nicht (`RagBoundaryTest.plainChatPathDoesNotKnowRag`). Alle Use Cases liegen in `application` und sprechen
+nicht (`RagBoundaryTest.plainChatPathDoesNotKnowRag`). Alle Use Cases liegen in `acropolis` und sprechen
 nur mit Ports.
 
 ## Indexierung
@@ -11,7 +11,7 @@ nur mit Ports.
 flowchart LR
     src[["KnowledgeSourcePort\n(MediaWiki, Confluence)"]] -- "discover(scope)" --> idx["IndexKnowledgeUseCase"]
     src -- "load(id)" --> idx
-    idx -- "chunk(document)" --> chunker["KnowledgeChunker\n(domain)"]
+    idx -- "chunk(document)" --> chunker["KnowledgeChunker\n(astu)"]
     chunker --> idx
     idx -- "embed(texts) in Batches" --> emb[["EmbeddingPort"]]
     emb --> idx
@@ -30,7 +30,7 @@ einen Arbeits-Thread):
 3. **Load**: `load(id)` liefert das `KnowledgeDocument` (Klartext mit leichtgewichtigem Markdown, NFC-normalisiert,
    SHA-256 über den Inhalt). Weiterleitungen tragen die ID der Zielseite. `NOT_FOUND` entfernt die Chunks der
    Ressource (`REMOVED`), leerer Text ergibt `EMPTY`.
-4. **Chunking**: `KnowledgeChunker` (`domain.knowledge`) zerlegt entlang Überschriften und Sätzen mit
+4. **Chunking**: `KnowledgeChunker` (`astu.knowledge`) zerlegt entlang Überschriften und Sätzen mit
    Token-Budget (`knowledge.chunk.maxTokens`, Standard 350) und Satz-Overlap (`knowledge.chunk.overlapSentences`,
    Standard 1). Chunk-IDs sind deterministisch; der Text eines Chunks für das Embedding ist
    `chunk.textWithHeading()`.
@@ -49,7 +49,7 @@ zwei Ressourcen geprüft. Der Index ist ausschließlich eine wiederherstellbare 
 Dokumente der Quellen; `rebuild` baut ihn aus Einträgen neu auf.
 
 Auslöser: `knowledge.indexOnStartup=true` (Standard) indexiert beim Start alle Quellen nacheinander über die
-`KnowledgeIndexingBinding` (Statuszeile mit Abbrechen-Knopf, `app.knowledge.StartupIndexing`); ein Agent kann
+`KnowledgeIndexingBinding` (Statuszeile mit Abbrechen-Knopf, `proasteion.exedra.knowledge.StartupIndexing`); ein Agent kann
 `refresh_knowledge_source` aufrufen ([MCP](mcp.md)). Berichte landen im Log, nicht im Chat.
 
 ## Namespaces
@@ -111,7 +111,7 @@ sequenceDiagram
   und gilt nur für diesen Turn. In der Historie stehen nur die unveränderte Nutzerfrage und die Antwort;
   spätere Turns sehen den Kontext nicht. Die Rolle `developer` wird nie verwendet. RAG aus
   (`RagOptions.disabled()`) ist exakt `ChatService.send`.
-- **Shell** (`app.chat.RagChatBinding`, AP22): Während der Suche zeigt die leere Antwortblase "Wissen wird
+- **Shell** (`proasteion.exedra.chat.RagChatBinding`, AP22): Während der Suche zeigt die leere Antwortblase "Wissen wird
   gesucht …"; danach hängen die Quellen (`SourceReference`: Nummer, Titel, Überschrift, Ort, Stand, Score,
   Ränge) einklappbar an der Antwort. Warnungen, keine Treffer oder ein Ausfall der Suche werden eine eigene
   Hinweis-Blase. Stop während der Suche bricht den Turn ab, sobald er existiert; die Frage bleibt in der

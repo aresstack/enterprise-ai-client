@@ -25,97 +25,114 @@ final class ModuleRegistry {
     private final Map<String, ArchitectureModule> modules;
 
     private ModuleRegistry(Map<String, ArchitectureModule> modules) {
-        this.modules = Collections.unmodifiableMap(new LinkedHashMap<String, ArchitectureModule>(modules));
+        // Geschachtelte Basispakete wie in corenth: jedes Modul kennt die Pakete der in ihm liegenden Module.
+        Map<String, ArchitectureModule> withNested = new LinkedHashMap<String, ArchitectureModule>();
+        for (ArchitectureModule module : modules.values()) {
+            Set<String> nested = new LinkedHashSet<String>();
+            for (ArchitectureModule other : modules.values()) {
+                if (other != module && other.basePackage().startsWith(module.basePackage() + ".")) {
+                    nested.add(other.basePackage());
+                }
+            }
+            withNested.put(module.name(), module.withNested(nested));
+        }
+        this.modules = Collections.unmodifiableMap(withNested);
     }
 
     static ModuleRegistry standard() {
         return new Builder()
-                .module("domain", "domain", ModuleKind.DOMAIN, "Kern")
-                .module("application", "application", ModuleKind.APPLICATION, "Kern (AP10, AP20, AP21, AP23)",
-                        "domain", "chat-api", "embedding-api", "knowledge-api", "source-api", "security-api",
-                        "acp-client-api", "mcp-runtime-api", "resource-api", "model-api", "speech-api")
+                // Grenzmodule der Stadt (corenth) ohne eigene Klassen: Vorstadt, Hafen, Plattform.
+                .module("proasteion", "proasteion", ModuleKind.BOUNDARY, "Stadt")
+                .module("emporion", "proasteion.emporion", ModuleKind.BOUNDARY, "Stadt")
+                .module("platform", "proasteion.platform", ModuleKind.BOUNDARY, "Stadt")
 
-                .module("chat-api", "chat.api", ModuleKind.PORT, "A", "domain")
-                .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "domain", "chat-api", "http-api")
+                .module("astu", "astu", ModuleKind.DOMAIN, "Kern")
+                .module("acropolis", "astu.acropolis", ModuleKind.APPLICATION, "Kern (AP10, AP20, AP21, AP23)",
+                        "astu", "chat-api", "embedding-api", "chalcotheca", "tamias", "source-api", "adyton",
+                        "acp-client-api", "katagogion", "model-api", "speech-api")
+
+                .module("chat-api", "chat.api", ModuleKind.PORT, "A", "astu")
+                .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "astu", "chat-api", "network")
 
                 // Netz: HTTP-Route je Ziel-URL (Proxy-Entscheidung) als neutraler Port; die einzige
-                // Implementierung (win-proxy-java) liegt in app-swing (app.net.HttpRoutes).
-                .module("http-api", "http.api", ModuleKind.PORT, "N (Netz)", "domain")
+                // Implementierung (win-proxy-java) liegt in exedra (app.net.HttpRoutes).
+                .module("network", "proasteion.platform.network", ModuleKind.PORT, "N (Netz)", "astu")
 
-                .module("embedding-api", "embedding.api", ModuleKind.PORT, "C", "domain")
-                .module("embedding-openai", "embedding.openai", ModuleKind.ADAPTER, "C", "domain", "embedding-api",
-                        "http-api")
+                .module("embedding-api", "embedding.api", ModuleKind.PORT, "C", "astu")
+                .module("embedding-openai", "embedding.openai", ModuleKind.ADAPTER, "C", "astu", "embedding-api",
+                        "network")
 
-                .module("knowledge-api", "knowledge.api", ModuleKind.PORT, "D", "domain")
-                .module("knowledge-lucene", "knowledge.lucene", ModuleKind.ADAPTER, "D", "domain", "knowledge-api")
+                .module("anagraphai", "astu.acropolis.chalcotheca.anagraphai", ModuleKind.ADAPTER, "D", "astu", "chalcotheca")
 
-                .module("source-api", "source.api", ModuleKind.PORT, "E", "domain")
-                .module("source-mediawiki", "source.mediawiki", ModuleKind.ADAPTER, "E", "domain", "source-api",
-                        "http-api")
-                .module("source-confluence", "source.confluence", ModuleKind.ADAPTER, "F",
-                        "domain", "source-api", "security-api", "http-api")
-                // Lokale Dateien: Verzeichnis als Quelle; Erkennung/Extraktion nur über den Port document-api.
-                .module("source-localfiles", "source.localfiles", ModuleKind.ADAPTER, "E",
-                        "domain", "source-api", "document-api")
-                // FTP (MVS/z/OS): Datasets und PDS-Member; Commons Net adapterintern, Anmeldung über security-api.
-                .module("source-ftp", "source.ftp", ModuleKind.ADAPTER, "Quellen",
-                        "domain", "source-api", "security-api")
-                // NDV (Natural Development Server): NATSPOD/PAL aus MainframeMate, Anmeldung über security-api.
-                .module("source-ndv", "source.ndv", ModuleKind.ADAPTER, "Quellen",
-                        "domain", "source-api", "security-api")
+                .module("source-api", "source.api", ModuleKind.PORT, "E", "astu")
+                .module("source-mediawiki", "proasteion.emporion.holkas.mediawiki", ModuleKind.ADAPTER, "E", "astu", "source-api",
+                        "network")
+                .module("source-confluence", "proasteion.emporion.holkas.confluence", ModuleKind.ADAPTER, "F",
+                        "astu", "source-api", "adyton", "network")
+                // Lokale Dateien: Verzeichnis als Quelle; Erkennung/Extraktion nur über den Port deigma.
+                .module("source-localfiles", "proasteion.emporion.holkas.localfiles", ModuleKind.ADAPTER, "E",
+                        "astu", "source-api", "deigma")
+                // FTP (MVS/z/OS): Datasets und PDS-Member; Commons Net adapterintern, Anmeldung über adyton.
+                .module("source-ftp", "proasteion.emporion.holkas.ftp", ModuleKind.ADAPTER, "Quellen",
+                        "astu", "source-api", "adyton")
+                // NDV (Natural Development Server): NATSPOD/PAL aus MainframeMate, Anmeldung über adyton.
+                .module("source-ndv", "proasteion.emporion.holkas.ndv", ModuleKind.ADAPTER, "Quellen",
+                        "astu", "source-api", "adyton")
 
                 // Ressourcenschicht aus corenth: AcquisitionPort und Bronze-Typen (Port), Holkas-Connectoren über
                 // den Quellen-Ports (äußerer Adapterring, keine UI-API).
-                .module("resource-api", "resource.api", ModuleKind.PORT, "Ressourcen", "domain")
-                .module("resource-holkas", "resource.holkas", ModuleKind.ADAPTER, "Ressourcen",
-                        "domain", "resource-api", "source-api")
+                .module("chalcotheca", "astu.acropolis.chalcotheca", ModuleKind.PORT, "Ressourcen, D", "astu", "tamias")
+                // Tamias: Wächter am Archivschalter (ResourceAccessPolicy), liegt in chalcotheca.
+                .module("tamias", "astu.acropolis.chalcotheca.tamias", ModuleKind.PORT, "Ressourcen", "astu")
+                .module("holkas", "proasteion.emporion.holkas", ModuleKind.ADAPTER, "Ressourcen",
+                        "astu", "chalcotheca", "source-api")
 
                 // Dokument-Extraktion (aus corenth deigma): neutraler Port und Adapter mit Apache Tika.
-                .module("document-api", "document.api", ModuleKind.PORT, "Dokumente", "domain")
-                .module("document-tika", "document.tika", ModuleKind.ADAPTER, "Dokumente", "document-api")
+                .module("deigma", "proasteion.emporion.deigma", ModuleKind.PORT, "Dokumente", "astu")
+                .module("document-tika", "proasteion.emporion.deigma.tika", ModuleKind.ADAPTER, "Dokumente", "deigma")
 
                 // Modellverwaltung nach Kategorien: neutraler Katalog-Port, KIPITZ über GET /models.
-                .module("model-api", "model.api", ModuleKind.PORT, "Modelle", "domain")
+                .module("model-api", "model.api", ModuleKind.PORT, "Modelle", "astu")
                 // Der KIPITZ-Adapter bedient Katalog und Sprachausgabe seiner TTS-Modelle.
-                .module("model-kipitz", "model.kipitz", ModuleKind.ADAPTER, "Modelle", "domain", "model-api",
-                        "http-api", "speech-api")
+                .module("model-kipitz", "model.kipitz", ModuleKind.ADAPTER, "Modelle", "astu", "model-api",
+                        "network", "speech-api")
 
-                // Lokale Stimmen vom Hugging Face Hub (huggingface4j), Proxy-Route über http-api.
-                .module("model-huggingface", "model.huggingface", ModuleKind.ADAPTER, "Modelle", "domain",
-                        "model-api", "http-api")
+                // Lokale Stimmen vom Hugging Face Hub (huggingface4j), Proxy-Route über network.
+                .module("model-huggingface", "model.huggingface", ModuleKind.ADAPTER, "Modelle", "astu",
+                        "model-api", "network")
 
                 // Sprachausgabe: neutraler Port (Modell aus der Katalog-Kategorie TTS, Audio als WAV).
-                .module("speech-api", "speech.api", ModuleKind.PORT, "Sprache", "domain")
+                .module("speech-api", "speech.api", ModuleKind.PORT, "Sprache", "astu")
                 // Inferenz-Laufzeit lokaler Stimmen (Token-Ids zu Audio), austauschbar gegen eine eigene Engine.
-                .module("speech-runtime-api", "speech.runtime", ModuleKind.PORT, "Sprache", "domain")
+                .module("speech-runtime-api", "speech.runtime", ModuleKind.PORT, "Sprache", "astu")
                 // Lokale Stimmen im Prozess (Piper, VITS) über speech-runtime-api; kein externes Programm.
-                .module("speech-local", "speech.local", ModuleKind.ADAPTER, "Sprache", "domain", "speech-api",
+                .module("speech-local", "speech.local", ModuleKind.ADAPTER, "Sprache", "astu", "speech-api",
                         "speech-runtime-api")
                 // Pilot-Backend ONNX Runtime (Java-Bibliothek im Prozess); nur hier ONNX-Typen.
-                .module("speech-onnx", "speech.onnx", ModuleKind.ADAPTER, "Sprache", "domain",
+                .module("speech-onnx", "speech.onnx", ModuleKind.ADAPTER, "Sprache", "astu",
                         "speech-runtime-api")
                 // Satz- und Spracherkennung beim Vorlesen (Apache OpenNLP wie askai arch); nur hier OpenNLP-Typen.
-                .module("speech-opennlp", "speech.opennlp", ModuleKind.ADAPTER, "Sprache", "domain", "speech-api")
+                .module("speech-opennlp", "speech.opennlp", ModuleKind.ADAPTER, "Sprache", "astu", "speech-api")
 
                 // Inferenz-Laufzeit lokaler Text-Modelle (Encoder für Embeddings, Decoder für Chat), austauschbar.
-                .module("text-runtime-api", "text.runtime", ModuleKind.PORT, "Lokale Modelle", "domain")
+                .module("text-runtime-api", "text.runtime", ModuleKind.PORT, "Lokale Modelle", "astu")
                 // Lokale Embeddings, lokaler Chat und lokale Spracheingabe im Prozess: Tokenizer (tokenizer.json) in reinem Java, Pooling,
                 // Chat-Vorlage, Generierung; rechnet über text-runtime-api.
-                .module("text-local", "text.local", ModuleKind.ADAPTER, "Lokale Modelle", "domain", "embedding-api",
+                .module("text-local", "text.local", ModuleKind.ADAPTER, "Lokale Modelle", "astu", "embedding-api",
                         "chat-api", "text-runtime-api", "speech-api")
                 // Pilot-Backend ONNX Runtime (Java-Bibliothek im Prozess); nur hier ONNX-Typen für Text-Modelle.
-                .module("text-onnx", "text.onnx", ModuleKind.ADAPTER, "Lokale Modelle", "domain",
+                .module("text-onnx", "text.onnx", ModuleKind.ADAPTER, "Lokale Modelle", "astu",
                         "text-runtime-api")
 
-                .module("security-api", "security.api", ModuleKind.PORT, "F", "domain")
-                .module("security-keepassrpc", "security.keepassrpc", ModuleKind.ADAPTER, "F", "domain", "security-api")
+                .module("adyton", "adyton", ModuleKind.PORT, "F", "astu")
+                .module("security-keepassrpc", "proasteion.platform.security.keepassrpc", ModuleKind.ADAPTER, "F", "astu", "adyton")
 
-                .module("acp-client-api", "acp.api", ModuleKind.PORT, "G", "domain")
-                .module("acp-solon-client", "acp.solon", ModuleKind.ADAPTER, "G", "domain", "acp-client-api")
+                .module("acp-client-api", "acp.api", ModuleKind.PORT, "G", "astu")
+                .module("acp-solon-client", "acp.solon", ModuleKind.ADAPTER, "G", "astu", "acp-client-api")
                 .module("acp-demo-agent", "acp.demo", ModuleKind.TEST_FIXTURE, "G")
 
-                .module("mcp-runtime-api", "mcp.api", ModuleKind.PORT, "H", "domain")
-                .module("mcp-solon-runtime", "mcp.solon", ModuleKind.ADAPTER, "H", "domain", "mcp-runtime-api")
+                .module("katagogion", "proasteion.katagogion", ModuleKind.PORT, "H", "astu")
+                .module("mcp-solon-runtime", "proasteion.katagogion.solon", ModuleKind.ADAPTER, "H", "astu", "katagogion")
 
                 // Research-Agent aus askai-java8 (Zweig arch): reiner Fachkern (Projekt, Quellen, Weidezaun).
                 .module("research-domain", "research.domain", ModuleKind.DOMAIN, "Research")
@@ -138,17 +155,17 @@ final class ModuleRegistry {
                 // Der eingebaute Recherche-Agent als eigener Prozess (askai-java8 arch: ResearchAgentMain): ACP über
                 // STDIO zum Client, Research-Steuerung und Hauptmodell über den MCP-Endpoint des Hosts.
                 .module("research-agent-acp", "acp.research", ModuleKind.AGENT_PROCESS, "Research",
-                        "research-domain", "research-agent-runtime", "mcp-runtime-api", "mcp-solon-runtime")
+                        "research-domain", "research-agent-runtime", "katagogion", "mcp-solon-runtime")
 
                 .module("comic-controls", "ui.comic", ModuleKind.UI_LIBRARY, "B")
-                .module("app-swing", "app", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
-                        "domain", "application",
-                        "chat-api", "embedding-api", "knowledge-api", "source-api", "security-api",
-                        "acp-client-api", "mcp-runtime-api", "http-api",
-                        "chat-openai", "embedding-openai", "knowledge-lucene", "source-mediawiki",
+                .module("exedra", "proasteion.exedra", ModuleKind.COMPOSITION_ROOT, "B (AP4, AP22, AP23)",
+                        "astu", "acropolis",
+                        "chat-api", "embedding-api", "chalcotheca", "source-api", "adyton",
+                        "acp-client-api", "katagogion", "network",
+                        "chat-openai", "embedding-openai", "anagraphai", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
-                        "comic-controls", "document-api", "document-tika", "source-localfiles", "resource-api",
-                        "resource-holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
+                        "comic-controls", "deigma", "document-tika", "source-localfiles", "tamias",
+                        "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "speech-opennlp",
                         "text-runtime-api", "text-local", "text-onnx", "research-domain", "research-api",

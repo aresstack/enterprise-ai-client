@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.chat.openai;
 
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
-import com.aresstack.enterpriseai.domain.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 
 import java.util.ArrayList;
 import java.util.List;

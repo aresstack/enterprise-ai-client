@@ -5,9 +5,9 @@ import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterExten
 import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterHidingJson;
 import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterLeakingConnection;
 import com.aresstack.enterpriseai.chat.openai.archfixture.signature.AdapterParameterizingPort;
-import com.aresstack.enterpriseai.knowledge.lucene.archfixture.signature.IndexExposingLucene;
-import com.aresstack.enterpriseai.mcp.solon.archfixture.signature.RuntimeExposingSolon;
-import com.aresstack.enterpriseai.security.keepassrpc.archfixture.signature.AdapterExposingWebSocket;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.archfixture.signature.IndexExposingLucene;
+import com.aresstack.enterpriseai.proasteion.katagogion.solon.archfixture.signature.RuntimeExposingSolon;
+import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.archfixture.signature.AdapterExposingWebSocket;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -66,9 +66,9 @@ public class AdapterSignatureTest {
     @Test
     public void libraryDeclaredAsApiIsDetected() {
         Properties properties = new Properties();
-        properties.setProperty("modules", "chat-openai,app-swing");
+        properties.setProperty("modules", "chat-openai,exedra");
         properties.setProperty("exportedExternalDependencies.chat-openai", "com.google.code.gson:gson");
-        properties.setProperty("exportedExternalDependencies.app-swing", "com.google.code.gson:gson");
+        properties.setProperty("exportedExternalDependencies.exedra", "com.google.code.gson:gson");
         List<String> violations = AdapterSignatureRules.exportedLibraries(new BuildModelExtension(properties), REGISTRY);
         assertEquals(violations.toString(), 1, violations.size());
         assertTrue(violations.get(0), violations.get(0).contains("chat-openai -> com.google.code.gson:gson"));

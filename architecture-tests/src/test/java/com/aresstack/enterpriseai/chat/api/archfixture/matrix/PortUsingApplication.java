@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.chat.api.archfixture.matrix;
 
-import com.aresstack.enterpriseai.application.archfixture.NeutralUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.archfixture.NeutralUseCase;
 
 /** Absichtlicher Verstoß: ein Port kennt application. */
 public final class PortUsingApplication {
