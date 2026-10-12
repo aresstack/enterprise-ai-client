@@ -8,6 +8,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -29,6 +30,8 @@ public class ComicOverlayPanel extends JPanel {
 
     private final ComicPalette palette;
     private final CloseButton closeButton;
+    private final JPanel plate;
+    private Dimension plateLimit;
 
     public ComicOverlayPanel(String title, JComponent content, Runnable closeAction) {
         this(title, content, closeAction, ComicPalette.defaultPalette());
@@ -47,7 +50,7 @@ public class ComicOverlayPanel extends JPanel {
         addMouseMotionListener(new javax.swing.event.MouseInputAdapter() { });
         addMouseWheelListener(e -> { });
 
-        JPanel plate = new ComicSectionPanel(palette);
+        plate = new ComicSectionPanel(palette);
         plate.setLayout(new BorderLayout(0, 6));
         plate.setBorder(BorderFactory.createEmptyBorder(10, 14, 12, 14));
 
@@ -68,6 +71,30 @@ public class ComicOverlayPanel extends JPanel {
         constraints.weighty = 1;
         constraints.insets = new Insets(MARGIN, MARGIN, MARGIN, MARGIN);
         add(plate, constraints);
+    }
+
+    /**
+     * Caps the plate at {@code limit} (centered, backdrop all around) when the overlay is larger, e.g. when it
+     * covers a whole maximized window; {@code null} lets the plate fill the overlay minus the margin (default).
+     */
+    public void setPlateLimit(Dimension limit) {
+        this.plateLimit = limit == null ? null : new Dimension(limit);
+        revalidate();
+    }
+
+    @Override
+    public void doLayout() {
+        int horizontal = MARGIN;
+        int vertical = MARGIN;
+        if (plateLimit != null) {
+            horizontal = Math.max(MARGIN, (getWidth() - plateLimit.width) / 2);
+            vertical = Math.max(MARGIN, (getHeight() - plateLimit.height) / 2);
+        }
+        GridBagLayout layout = (GridBagLayout) getLayout();
+        GridBagConstraints constraints = layout.getConstraints(plate);
+        constraints.insets = new Insets(vertical, horizontal, vertical, horizontal);
+        layout.setConstraints(plate, constraints);
+        super.doLayout();
     }
 
     /** The overlay's ✕ (for tests and keyboard wiring). */

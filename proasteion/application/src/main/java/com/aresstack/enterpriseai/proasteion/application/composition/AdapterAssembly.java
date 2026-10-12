@@ -160,7 +160,9 @@ public final class AdapterAssembly {
      * @throws com.aresstack.enterpriseai.proasteion.application.config.AppConfigException wenn KeePass die URL nicht liefert
      */
     public static AppConfig withVaultLocations(AppConfig config, Properties properties, final SecretProvider secrets) {
-        if (config.chat() == null || config.chat().baseUrl() != null) {
+        // Ohne URL in der Datei lädt der Chat-Abschnitt gar nicht ({@code chat() == null}); genau dann ergänzt KeePass
+        // sie. Nur ein Chat MIT Basis-URL ist schon vollständig (VaultLocations liest KeePass nur bei Bedarf).
+        if (config.chat() != null && config.chat().baseUrl() != null) {
             return config;
         }
         return AppConfigLoader.fromProperties(VaultLocations.complete(properties, new VaultLocations.Lookup() {

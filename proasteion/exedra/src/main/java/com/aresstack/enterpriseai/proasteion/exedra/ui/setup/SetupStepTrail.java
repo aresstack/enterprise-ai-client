@@ -4,6 +4,8 @@ import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
+import javax.accessibility.AccessibleContext;
+import javax.accessibility.AccessibleRole;
 import javax.swing.JComponent;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -44,6 +46,25 @@ final class SetupStepTrail extends JComponent {
         getAccessibleContext().setAccessibleDescription("Schritt " + (currentStep + 1) + " von " + names.length
                 + ": " + names[currentStep]);
         repaint();
+    }
+
+    /**
+     * Ein eigener Kontext: {@link JComponent} selbst liefert keinen ({@code null}), dann scheiterte schon der Aufbau
+     * des Assistenten (Beschriftung im Konstruktor) und er erschien weder beim Erststart noch aus den Einstellungen.
+     */
+    @Override
+    public AccessibleContext getAccessibleContext() {
+        if (accessibleContext == null) {
+            accessibleContext = new AccessibleJComponent() {
+                private static final long serialVersionUID = 1L;
+
+                @Override
+                public AccessibleRole getAccessibleRole() {
+                    return AccessibleRole.PROGRESS_BAR;
+                }
+            };
+        }
+        return accessibleContext;
     }
 
     int current() {

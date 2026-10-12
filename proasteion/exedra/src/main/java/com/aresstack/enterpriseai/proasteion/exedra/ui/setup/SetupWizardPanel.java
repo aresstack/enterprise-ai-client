@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.setup;
 
+import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelDescriptor;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
@@ -7,6 +8,8 @@ import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.DownloadText;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordEntry;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordStore;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
@@ -27,6 +30,7 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JProgressBar;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import java.awt.BorderLayout;
@@ -36,6 +40,7 @@ import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -59,12 +64,15 @@ public final class SetupWizardPanel extends JPanel {
     private static final long serialVersionUID = 1L;
 
     public static final String TITLE = "Einrichtung";
-    private static final String[] STEP_NAMES = {"KeePass", "KI-Dienst", "Modelle", "Confluence", "Abschluss"};
+    private static final String[] STEP_NAMES = {"KeePass", "KI-Dienst", "Modelle", "Confluence", "Abschluss",
+            "Spracheingabe"};
     static final int STEP_KEEPASS = 0;
     static final int STEP_SERVICE = 1;
     static final int STEP_MODELS = 2;
     static final int STEP_CONFLUENCE = 3;
     static final int STEP_FINISH = 4;
+    /** Optional nach der bestandenen Abschlussprüfung: ein lokales Modell für die Spracheingabe (STT). */
+    static final int STEP_SPEECH = 5;
 
     /** Der Standardeintrag des KI-Dienstes in KeePass. */
     static final String DEFAULT_SERVICE_ENTRY = "Enterprise AI API";
@@ -91,6 +99,7 @@ public final class SetupWizardPanel extends JPanel {
     private final ComposerButton backButton;
     private final ComposerButton nextButton;
     private final ComposerButton finishButton;
+    private final ComposerButton skipButton;
 
     private SettingsForm form;
     private int step;
@@ -151,6 +160,16 @@ public final class SetupWizardPanel extends JPanel {
     private final ComposerButton finishRetry;
     private List<SetupCheck> lastChecks = Collections.emptyList();
 
+    // Schritt 6: Spracheingabe (optional)
+    private final JComboBox<String> speechModel = new JComboBox<String>();
+    private final ComposerButton speechInstall;
+    private final ComposerButton speechRetry;
+    private final JProgressBar speechProgress = new JProgressBar(0, 100);
+    private final JLabel speechStatus = statusLabel();
+    private List<LocalVoiceOffer> speechOffers = Collections.emptyList();
+    private boolean speechLoaded;
+    private boolean speechDownloading;
+
     public SetupWizardPanel(SettingsForm initial, SettingsDialogActions settings, SetupActions setup,
                             ComicPalette palette) {
         super(new BorderLayout(0, 8));
@@ -179,6 +198,10 @@ public final class SetupWizardPanel extends JPanel {
         this.certificateChoose = new ComposerButton(null, "Zertifikat wählen…", false);
         this.confluenceTest = ComposerButton.primary(null, "Verbindung testen", ResearchUiPalette.ACCENT_BLUE, null);
         this.finishRetry = new ComposerButton(null, "Erneut prüfen", false);
+        this.skipButton = new ComposerButton(null, "Überspringen", false,
+                "Ohne lokale Spracheingabe abschließen; später unter Einstellungen → Modelle → Lokale Modelle");
+        this.speechInstall = ComposerButton.primary(null, "Installieren", ResearchUiPalette.ACCENT_BLUE, null);
+        this.speechRetry = new ComposerButton(null, "Erneut versuchen", false);
         buildUi();
         wire();
         load(form);
@@ -196,6 +219,7 @@ public final class SetupWizardPanel extends JPanel {
         deck.add(modelsStep(), STEP_NAMES[STEP_MODELS]);
         deck.add(confluenceStep(), STEP_NAMES[STEP_CONFLUENCE]);
         deck.add(finishStep(), STEP_NAMES[STEP_FINISH]);
+        deck.add(speechStep(), STEP_NAMES[STEP_SPEECH]);
 
         errorPlate.setAccentStripe(palette.getAccentRed());
         errorPlate.setLayout(new BorderLayout(8, 0));
@@ -216,6 +240,7 @@ public final class SetupWizardPanel extends JPanel {
         JPanel buttons = transparent(new BorderLayout());
         JPanel left = transparent(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.add(cancelButton);
+        left.add(skipButton);
         JPanel right = transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.add(backButton);
         right.add(nextButton);
@@ -334,6 +359,23 @@ public final class SetupWizardPanel extends JPanel {
         return rows.panel();
     }
 
+    private JPanel speechStep() {
+        Rows rows = new Rows("Lokale Spracheingabe");
+        rows.note("Optional. Ein lokales Modell ermöglicht Spracheingabe ohne Cloud-STT. Dieser Schritt kann "
+                + "übersprungen und später unter Einstellungen → Modelle → Lokale Modelle nachgeholt werden. "
+                + "Das Modell wird einmal heruntergeladen und läuft danach im Client.");
+        rows.field("Modell", speechModel);
+        JPanel actions = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        actions.add(speechInstall);
+        actions.add(speechRetry);
+        rows.field("", actions);
+        speechProgress.setStringPainted(false);
+        speechProgress.setVisible(false);
+        rows.wide(speechProgress);
+        rows.field("", speechStatus);
+        return rows.panel();
+    }
+
     // ------------------------------------------------------------------ Verhalten
 
     private void wire() {
@@ -387,6 +429,14 @@ public final class SetupWizardPanel extends JPanel {
         });
         confluenceTest.addActionListener(e -> testConfluence());
         finishRetry.addActionListener(e -> runFinalCheck());
+        skipButton.addActionListener(e -> skipSpeech());
+        speechModel.addActionListener(e -> {
+            if (!busy) {
+                showSpeechChoice();
+            }
+        });
+        speechInstall.addActionListener(e -> installSpeech());
+        speechRetry.addActionListener(e -> installSpeech());
     }
 
     public void setOnFinished(Runnable callback) {
@@ -436,6 +486,8 @@ public final class SetupWizardPanel extends JPanel {
             preselectConfluenceEntry();
         } else if (index == STEP_FINISH) {
             runFinalCheck();
+        } else if (index == STEP_SPEECH && !speechLoaded) {
+            loadSpeechModels(null);
         }
         updateButtons();
     }
@@ -444,13 +496,24 @@ public final class SetupWizardPanel extends JPanel {
         done[STEP_MODELS] = !text(chatModel).isEmpty() && !text(embeddingModel).isEmpty()
                 && positive(embeddingDimension.getText());
         done[STEP_CONFLUENCE] = confluenceOk && (!certificateAlias.isEmpty() || withoutCertificate.isSelected());
+        done[STEP_SPEECH] = selectedSpeechOffer() != null && selectedSpeechOffer().isInstalled();
         trail.show(step, done);
-        backButton.setEnabled(step > 0 && !busy);
-        boolean last = step == STEP_FINISH;
-        nextButton.setVisible(!last);
-        finishButton.setVisible(last);
-        nextButton.setEnabled(!last && done[step] && !busy);
-        finishButton.setEnabled(last && done[STEP_FINISH] && !busy);
+        boolean speech = step == STEP_SPEECH;
+        backButton.setEnabled(step > 0 && !busy && !speechDownloading);
+        nextButton.setVisible(!speech);
+        finishButton.setVisible(speech);
+        nextButton.setEnabled(!speech && done[step] && !busy);
+        // Der Schritt „Spracheingabe“ blockiert nie: Überspringen geht immer, auch während eines Downloads.
+        finishButton.setEnabled(speech && done[STEP_FINISH] && done[STEP_SPEECH] && !busy && !speechDownloading);
+        cancelButton.setVisible(!speech);
+        skipButton.setVisible(speech);
+        skipButton.setEnabled(speech && done[STEP_FINISH]);
+        LocalVoiceOffer chosen = selectedSpeechOffer();
+        speechInstall.setVisible(chosen != null && !chosen.isInstalled() && errors[STEP_SPEECH] == null);
+        speechInstall.setEnabled(!busy && !speechDownloading);
+        speechRetry.setVisible(chosen != null && !chosen.isInstalled() && errors[STEP_SPEECH] != null
+                && !speechDownloading);
+        speechModel.setEnabled(!speechDownloading);
         String error = errors[step];
         errorPlate.setVisible(error != null && !error.isEmpty());
         errorText.setText(error == null ? "" : error);
@@ -965,9 +1028,188 @@ public final class SetupWizardPanel extends JPanel {
         if (!done[STEP_FINISH]) {
             return;
         }
+        if (step == STEP_SPEECH && done[STEP_SPEECH] && !saveSpeechChoice()) {
+            return;
+        }
         if (onFinished != null) {
             onFinished.run();
         }
+    }
+
+    // --- Schritt 6: Spracheingabe (optional)
+
+    /** Fertig ohne lokale Spracheingabe; die Grundeinrichtung ist mit der Abschlussprüfung schon gespeichert. */
+    private void skipSpeech() {
+        if (!done[STEP_FINISH]) {
+            return;
+        }
+        if (onFinished != null) {
+            onFinished.run();
+        }
+    }
+
+    /**
+     * Die lokalen Modelle der Kategorie Spracheingabe aus dem Modellverzeichnis des Entwurfs (installierte zuerst,
+     * dann Vorschläge), wie im Reiter „Lokale Modelle“.
+     *
+     * @param prefer die Kennungen, die vor dem Laden schon installiert waren ({@code null}: keine Installation lief);
+     *               ein danach neu installiertes Modell wird gewählt
+     */
+    private void loadSpeechModels(final List<String> prefer) {
+        clearError(STEP_SPEECH);
+        speechStatus.setText("Suche lokale Modelle für die Spracheingabe …");
+        setBusy(true);
+        settings.localVoices(collect(), offers -> {
+            setBusy(false);
+            speechLoaded = true;
+            List<LocalVoiceOffer> installed = new ArrayList<LocalVoiceOffer>();
+            List<LocalVoiceOffer> offered = new ArrayList<LocalVoiceOffer>();
+            for (LocalVoiceOffer offer : offers == null ? Collections.<LocalVoiceOffer>emptyList() : offers) {
+                if (offer.category() == ModelCategory.STT) {
+                    (offer.isInstalled() ? installed : offered).add(offer);
+                }
+            }
+            List<LocalVoiceOffer> all = new ArrayList<LocalVoiceOffer>(installed);
+            all.addAll(offered);
+            speechOffers = all;
+            List<String> labels = new ArrayList<String>();
+            for (LocalVoiceOffer offer : all) {
+                labels.add(speechLabel(offer));
+            }
+            LocalVoiceOffer chosen = preferredSpeechOffer(installed, offered, prefer);
+            busy = true;
+            try {
+                speechModel.setModel(new DefaultComboBoxModel<String>(labels.toArray(new String[0])));
+                speechModel.setSelectedIndex(chosen == null ? -1 : all.indexOf(chosen));
+            } finally {
+                busy = false;
+            }
+            if (all.isEmpty()) {
+                speechStatus.setText("Kein lokales Modell für die Spracheingabe verfügbar; bitte überspringen.");
+                updateButtons();
+                return;
+            }
+            showSpeechChoice();
+        });
+    }
+
+    /** Neu installiert vor bereits gewählt vor erstem installierten vor erstem Vorschlag. */
+    private LocalVoiceOffer preferredSpeechOffer(List<LocalVoiceOffer> installed, List<LocalVoiceOffer> offered,
+                                                List<String> prefer) {
+        if (prefer != null) {
+            for (LocalVoiceOffer offer : installed) {
+                if (!prefer.contains(offer.id())) {
+                    return offer;
+                }
+            }
+        }
+        String current = form.modelSelection(ModelCategory.STT.key());
+        for (LocalVoiceOffer offer : installed) {
+            if (settings.localVoiceSelection(offer.id()).equals(current)) {
+                return offer;
+            }
+        }
+        if (!installed.isEmpty()) {
+            return installed.get(0);
+        }
+        return offered.isEmpty() ? null : offered.get(0);
+    }
+
+    private static String speechLabel(LocalVoiceOffer offer) {
+        return offer.displayName() + (offer.isInstalled() ? " (installiert)" : "");
+    }
+
+    private LocalVoiceOffer selectedSpeechOffer() {
+        int index = speechModel.getSelectedIndex();
+        return index < 0 || index >= speechOffers.size() ? null : speechOffers.get(index);
+    }
+
+    private void showSpeechChoice() {
+        clearError(STEP_SPEECH);
+        LocalVoiceOffer chosen = selectedSpeechOffer();
+        if (chosen == null) {
+            speechStatus.setText("");
+        } else if (chosen.isInstalled()) {
+            speechStatus.setText("Installiert; „Fertig“ setzt es als Modell für die Spracheingabe.");
+        } else {
+            speechStatus.setText("Noch nicht installiert; „Installieren“ lädt es herunter. Bitte kurz warten oder "
+                    + "überspringen.");
+        }
+        updateButtons();
+    }
+
+    /** Installiert das gewählte Modell über den vorhandenen Weg des Reiters „Lokale Modelle“ und wählt es danach. */
+    private void installSpeech() {
+        final LocalVoiceOffer chosen = selectedSpeechOffer();
+        if (chosen == null || chosen.isInstalled() || speechDownloading) {
+            return;
+        }
+        final List<String> before = new ArrayList<String>();
+        for (LocalVoiceOffer offer : speechOffers) {
+            if (offer.isInstalled()) {
+                before.add(offer.id());
+            }
+        }
+        clearError(STEP_SPEECH);
+        speechDownloading = true;
+        speechProgress.setIndeterminate(true);
+        speechProgress.setValue(0);
+        speechProgress.setVisible(true);
+        speechStatus.setText("Installiere " + chosen.displayName() + " …");
+        updateButtons();
+        settings.installLocalVoice(collect(), chosen.id(), new LocalVoiceInstallProgress() {
+            @Override
+            public void progress(String line) {
+                speechProgress.setIndeterminate(true);
+                speechStatus.setText(line);
+            }
+
+            @Override
+            public void file(String name, int number, int count, long done, long total) {
+                int percent = DownloadText.percent(done, total);
+                speechProgress.setIndeterminate(percent < 0);
+                speechProgress.setValue(Math.max(0, percent));
+                speechStatus.setText(DownloadText.line(name, number, count, done, total));
+            }
+
+            @Override
+            public void finished(boolean installed, String message) {
+                speechDownloading = false;
+                speechProgress.setVisible(false);
+                if (!installed) {
+                    speechStatus.setText("Installation fehlgeschlagen.");
+                    fail(STEP_SPEECH, "Das Modell ließ sich nicht installieren: "
+                            + (message == null || message.isEmpty() ? "unbekannter Grund." : message)
+                            + " Erneut versuchen oder überspringen.");
+                    return;
+                }
+                speechStatus.setText(chosen.displayName() + " ist installiert.");
+                loadSpeechModels(before);
+            }
+        });
+    }
+
+    /**
+     * Speichert die Wahl wie der Reiter „Modelle“ ({@code model.stt} über die Modellauswahl des Entwurfs). Die
+     * übrige Konfiguration hat die Abschlussprüfung schon geschrieben; hier kommt nur die Auswahl dazu.
+     */
+    private boolean saveSpeechChoice() {
+        LocalVoiceOffer chosen = selectedSpeechOffer();
+        if (chosen == null || !chosen.isInstalled()) {
+            return true;
+        }
+        SettingsForm withSpeech = collect().toBuilder()
+                .modelSelection(ModelCategory.STT.key(), settings.localVoiceSelection(chosen.id())).build();
+        try {
+            settings.save(withSpeech);
+        } catch (IOException | RuntimeException e) {
+            fail(STEP_SPEECH, "Die Auswahl der Spracheingabe ließ sich nicht speichern ("
+                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())
+                    + "). Überspringen schließt die Einrichtung ohne sie ab.");
+            return false;
+        }
+        form = withSpeech;
+        return true;
     }
 
     // --- Netzwerk
@@ -1260,6 +1502,30 @@ public final class SetupWizardPanel extends JPanel {
 
     ComposerButton cancelButton() {
         return cancelButton;
+    }
+
+    ComposerButton skipButton() {
+        return skipButton;
+    }
+
+    JComboBox<String> speechModelChoice() {
+        return speechModel;
+    }
+
+    ComposerButton speechInstallButton() {
+        return speechInstall;
+    }
+
+    ComposerButton speechRetryButton() {
+        return speechRetry;
+    }
+
+    JProgressBar speechProgressBar() {
+        return speechProgress;
+    }
+
+    String speechStatusText() {
+        return speechStatus.getText();
     }
 
     ComposerButton networkButton() {

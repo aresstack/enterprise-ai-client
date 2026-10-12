@@ -37,9 +37,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogAc
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ToolOverview;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsPanel;
-import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatTranscriptPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions;
-import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardOverlay;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardWindow;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
@@ -200,7 +199,7 @@ public final class EnterpriseAiClientMain {
                 });
                 view.setSettingsAction(settingsAction(frame, file, settingsActions,
                         new CatalogToolOverview(root.toolCatalog()), palette, settings,
-                        setupAction(view, file, settingsActions, setupActions, palette, settings, setupState)));
+                        setupAction(frame, view, file, settingsActions, setupActions, palette, settings, setupState)));
                 view.setChatModels(modelCatalogs::cached, () -> installedLocalChats(localVoices,
                         settings.current().models().localModelRoot()), modelId -> {
                     try {
@@ -255,14 +254,15 @@ public final class EnterpriseAiClientMain {
      */
     /**
      * Der Einrichtungsassistent aus der laufenden Anwendung (Knopf „Einrichtungsassistent“ im Einstellungen-Dialog):
-     * dieselbe Komponente wie beim Erststart, hier als Comic-Overlay über dem Antwortfenster wie der
-     * Mermaid-Betrachter. „Fertig“ setzt den Einrichtungsstand, lädt die Einstellungen ohne Neustart neu und bindet
-     * die Confluence-Quelle sofort an; Abbrechen oder das ✕ schließen nur das Overlay.
+     * derselbe Lauf wie beim Erststart ({@link com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardRun}),
+     * hier als Comic-Overlay über dem ganzen Hauptfenster, egal ob Chat, Agent oder Lesebereich vorn liegt. „Fertig“
+     * setzt den Einrichtungsstand, lädt die Einstellungen ohne Neustart neu (bindet damit auch die Spracheingabe neu)
+     * und bindet die Confluence-Quelle sofort an; Abbrechen oder das ✕ schließen nur das Overlay.
      */
-    private static Runnable setupAction(final ShellAssembly.ShellView view, final ConfigurationFile file,
-                                        final SettingsDialogActions actions, final SetupActions setup,
-                                        final ComicPalette palette, final SettingsService settings,
-                                        final ConfigurationStartup.SetupState setupState) {
+    static Runnable setupAction(final JFrame frame, final ShellAssembly.ShellView view, final ConfigurationFile file,
+                                final SettingsDialogActions actions, final SetupActions setup,
+                                final ComicPalette palette, final SettingsService settings,
+                                final ConfigurationStartup.SetupState setupState) {
         return new Runnable() {
             @Override
             public void run() {
@@ -273,27 +273,22 @@ public final class EnterpriseAiClientMain {
                     LOG.log(Level.WARNING, "Konfigurationsdatei nicht lesbar", io);
                     current = SettingsMapper.firstStartDefaults();
                 }
-                final ChatTranscriptPanel transcript = view.workspace().chatShell().transcript();
-                final SetupWizardPanel wizard = new SetupWizardPanel(current, actions, setup, palette);
-                wizard.setOnCancel(transcript::closeTranscriptOverlay);
-                wizard.setOnFinished(new Runnable() {
-                    @Override
-                    public void run() {
-                        transcript.closeTranscriptOverlay();
-                        setupState.setCompleted(true);
-                        reloadInBackground(settings, "Einstellungen");
-                        try {
-                            for (SourceDefinition source : new FileSourceActions(file).definitions()) {
-                                if ("confluence".equals(source.typeId())) {
-                                    view.knowledgeSources().sourceSaved(source.address());
-                                }
+                SetupWizardOverlay.show(frame.getRootPane(), current, actions, setup, palette, completed -> {
+                    if (!completed) {
+                        return;
+                    }
+                    setupState.setCompleted(true);
+                    reloadInBackground(settings, "Einstellungen");
+                    try {
+                        for (SourceDefinition source : new FileSourceActions(file).definitions()) {
+                            if ("confluence".equals(source.typeId())) {
+                                view.knowledgeSources().sourceSaved(source.address());
                             }
-                        } catch (IOException | RuntimeException e) {
-                            LOG.log(Level.WARNING, "Confluence-Quelle nicht sofort angebunden", e);
                         }
+                    } catch (IOException | RuntimeException e) {
+                        LOG.log(Level.WARNING, "Confluence-Quelle nicht sofort angebunden", e);
                     }
                 });
-                transcript.showTranscriptOverlay(wizard, SetupWizardPanel.TITLE);
             }
         };
     }
