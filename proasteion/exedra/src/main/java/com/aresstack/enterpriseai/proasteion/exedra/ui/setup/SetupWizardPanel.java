@@ -17,6 +17,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogAc
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSectionPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
+import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.paint.ResearchCheckIcon;
 import com.aresstack.enterpriseai.ui.comic.paint.StrokeIcon;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
@@ -86,7 +87,7 @@ public final class SetupWizardPanel extends JPanel {
             SetupWizardMascot.Placement.LEFT, SetupWizardMascot.Placement.RIGHT, SetupWizardMascot.Placement.LEFT,
             SetupWizardMascot.Placement.CENTER, SetupWizardMascot.Placement.RIGHT};
     /** Vorgaben je Schritt: Höhe des Zauberers in logischen Pixeln (passend zum üblichen freien Platz). */
-    private static final int[] MASCOT_HEIGHTS = {230, 200, 210, 140, 220, 230};
+    private static final int[] MASCOT_HEIGHTS = {230, 200, 170, 110, 140, 230};
 
     /** Der Standardeintrag des KI-Dienstes in KeePass. */
     static final String DEFAULT_SERVICE_ENTRY = "Enterprise AI API";
@@ -181,7 +182,6 @@ public final class SetupWizardPanel extends JPanel {
     private final JComboBox<String> visionModel = new JComboBox<String>();
     private final JTextField embeddingDimension = new JTextField(8);
     private final JLabel modelsStatus = statusLabel();
-    private final JLabel dimensionStatus = statusLabel();
     private final ComposerButton modelsRefresh;
     private final ComposerButton dimensionMeasure;
     private boolean modelsLoaded;
@@ -267,8 +267,8 @@ public final class SetupWizardPanel extends JPanel {
         this.pairButton = ComposerButton.primary(null, "Mit KeePass verbinden", ResearchUiPalette.ACCENT_BLUE, null);
         this.serviceSave = new ComposerButton(null, "In KeePass speichern", false);
         this.serviceTest = ComposerButton.primary(null, "Verbindung testen", ResearchUiPalette.ACCENT_BLUE, null);
-        this.modelsRefresh = new ComposerButton(null, "Modelle abfragen", false);
-        this.dimensionMeasure = new ComposerButton(null, "Dimension ermitteln", false);
+        this.modelsRefresh = new ComposerButton(null, "Modelle neu laden", false);
+        this.dimensionMeasure = ComposerButton.iconButton(ComposerIcons.refresh(), "Dimension neu ermitteln");
         this.certificateChoose = new ComposerButton(null, "Zertifikat wählen…", false);
         this.confluenceChange = new ComposerButton(null, "Zugangsdaten ändern", false,
                 "URL, Benutzername oder Passwort bzw. Token im KeePass-Eintrag ändern");
@@ -385,25 +385,48 @@ public final class SetupWizardPanel extends JPanel {
 
     private JPanel modelsStep() {
         Rows rows = new Rows("Modelle");
-        rows.note("Die Liste kommt vom KI-Dienst; je Art ist ein Modell vorausgewählt. Die Vektorlänge des "
-                + "Embedding-Modells ermittelt ein kleiner Test-Aufruf. Sprachausgabe und Bildmodell sind optional; "
-                + "das Bildmodell beschreibt Bilder, etwa Bildanhänge aus Confluence.");
+        rows.note("Die passenden Modelle wurden vom KI-Dienst vorausgewählt. Chat und Embeddings sind erforderlich; "
+                + "Sprachausgabe und Bildverständnis sind optional.");
         chatModel.setEditable(true);
         embeddingModel.setEditable(true);
         speechOutputModel.setEditable(true);
         visionModel.setEditable(true);
-        rows.field("Chat-Modell", chatModel);
-        rows.field("Embedding-Modell", embeddingModel);
-        JPanel dimension = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        dimension.add(embeddingDimension);
-        dimension.add(dimensionMeasure);
-        rows.field("Embedding-Dimension", dimension);
-        rows.field("", dimensionStatus);
-        rows.field("Sprachausgabe", speechOutputModel);
-        rows.field("Bildmodell", visionModel);
-        rows.field("", buttonRow(modelsRefresh));
-        rows.field("", modelsStatus);
+        embeddingDimension.setColumns(7);
+        embeddingDimension.setToolTipText("Wird automatisch aus dem Embedding-Modell ermittelt; bei Bedarf editieren.");
+        rows.wide(modelGrid());
+        JPanel reload = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        reload.add(modelsRefresh);
+        reload.add(modelsStatus);
+        rows.wide(reload);
         return rows.panel();
+    }
+
+    private JPanel modelGrid() {
+        JPanel grid = transparent(new GridBagLayout());
+        addModelCell(grid, 0, 0, "Chat-Modell", chatModel);
+        addModelCell(grid, 1, 0, "Sprachausgabe", speechOutputModel);
+        addModelCell(grid, 0, 1, "Embedding-Modell", embeddingModel);
+        addModelCell(grid, 1, 1, "Bildverständnis", visionModel);
+        JPanel dimension = transparent(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        dimension.add(embeddingDimension);
+        dimension.add(javax.swing.Box.createHorizontalStrut(4));
+        dimension.add(dimensionMeasure);
+        addModelCell(grid, 0, 2, "Dimension", dimension);
+        return grid;
+    }
+
+    private void addModelCell(JPanel grid, int column, int row, String label, JComponent component) {
+        JPanel cell = transparent(new BorderLayout(0, 3));
+        cell.add(fieldLabel(label), BorderLayout.NORTH);
+        cell.add(component, BorderLayout.CENTER);
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridx = column;
+        c.gridy = row;
+        c.weightx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.NORTHWEST;
+        c.insets = new Insets(3, column == 0 ? 0 : 8, 3, column == 0 ? 8 : 0);
+        grid.add(cell, c);
     }
 
     private JPanel confluenceStep() {
@@ -1162,6 +1185,8 @@ public final class SetupWizardPanel extends JPanel {
         modelsLoaded = true;
         List<String> chats = models.chats();
         List<String> embeddings = models.embeddings();
+        List<String> speech = models.speech();
+        List<String> vision = models.vision();
         boolean wasBusy = busy;
         busy = true;
         try {
@@ -1171,11 +1196,10 @@ public final class SetupWizardPanel extends JPanel {
             setChoices(embeddingModel, embeddings, ModelPreselection.choose(embeddings, text(embeddingModel),
                     settings.preferredModel(ModelCategory.EMBEDDING),
                     settings.preferredModelMatch(ModelCategory.EMBEDDING)));
-            setChoices(speechOutputModel, models.speech(), ModelPreselection.choose(models.speech(),
-                    text(speechOutputModel), settings.preferredModel(ModelCategory.TTS),
-                    settings.preferredModelMatch(ModelCategory.TTS)));
-            setChoices(visionModel, models.vision(), ModelPreselection.choose(models.vision(),
-                    text(visionModel), settings.preferredModel(ModelCategory.VISION),
+            setChoices(speechOutputModel, speech, ModelPreselection.choose(speech, text(speechOutputModel),
+                    settings.preferredModel(ModelCategory.TTS), settings.preferredModelMatch(ModelCategory.TTS)));
+            setChoices(visionModel, vision, ModelPreselection.choose(vision, text(visionModel),
+                    settings.preferredModel(ModelCategory.VISION),
                     settings.preferredModelMatch(ModelCategory.VISION)));
         } finally {
             busy = wasBusy;
@@ -1187,8 +1211,8 @@ public final class SetupWizardPanel extends JPanel {
                 fail(STEP_MODELS, "Die Modellliste ist nicht abrufbar: " + reason);
             }
         } else {
-            modelsStatus.setText(chats.size() + " Chat-Modell(e), " + embeddings.size() + " Embedding-Modell(e). "
-                    + (chats.size() > 1 || embeddings.size() > 1 ? "Vorausgewählt; bei Bedarf ändern." : ""));
+            modelsStatus.setText(chats.size() + " Chat · " + embeddings.size() + " Embedding · " + speech.size()
+                    + " Sprache · " + vision.size() + " Bild");
         }
         measureDimension();
         updateButtons();
@@ -1215,7 +1239,7 @@ public final class SetupWizardPanel extends JPanel {
         measuredFor = model;
         form = collect();
         clearError(STEP_MODELS);
-        dimensionStatus.setText("Ermittle die Dimension mit einem Test-Aufruf …");
+        embeddingDimension.setToolTipText("Dimension wird automatisch ermittelt …");
         setBusy(true);
         setup.embeddingDimension(form, (dimension, error) -> {
             setBusy(false);
@@ -1224,10 +1248,10 @@ public final class SetupWizardPanel extends JPanel {
             }
             if (dimension != null && dimension > 0) {
                 embeddingDimension.setText(Integer.toString(dimension));
-                dimensionStatus.setText("Ermittelt: " + dimension + " Werte je Vektor.");
+                embeddingDimension.setToolTipText("Automatisch ermittelt: " + dimension + " Werte je Vektor.");
             } else {
                 measuredFor = "";
-                dimensionStatus.setText("Nicht automatisch ermittelbar; bitte die Dimension eintragen.");
+                embeddingDimension.setToolTipText("Nicht automatisch ermittelbar; bitte die Dimension eintragen.");
                 fail(STEP_MODELS, "Der Embedding-Test ist fehlgeschlagen: " + error
                         + " Die Dimension kann von Hand eingetragen werden.");
             }

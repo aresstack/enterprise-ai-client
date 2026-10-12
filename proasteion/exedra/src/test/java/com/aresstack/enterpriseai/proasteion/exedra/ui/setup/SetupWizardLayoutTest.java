@@ -121,6 +121,25 @@ public class SetupWizardLayoutTest {
     }
 
     @Test
+    public void modelsConfluenceAndFinishKeepMerlinVisibleAtTheDefaultWindowSize() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            SetupWizardRun run = openRun(new Dimension(SetupWizardWindow.WIDTH, SetupWizardWindow.HEIGHT));
+            SetupWizardPanel wizard = run.wizard();
+            wizard.welcomeBack();
+            int[] steps = {SetupWizardPanel.STEP_MODELS, SetupWizardPanel.STEP_CONFLUENCE,
+                    SetupWizardPanel.STEP_FINISH};
+            for (int step : steps) {
+                wizard.showStep(step);
+                layoutTree(run.overlay());
+                SetupWizardMascot mascot = wizard.mascotOf(step);
+                assertTrue("Schritt " + step + ": Merlin passt in den freien Bereich", mascot.fits());
+                assertFalse("Schritt " + step + ": Merlin hat einen Satz", mascot.spokenText().isEmpty());
+                assertTrue("Schritt " + step + ": Sprechblase ist sichtbar", mascot.bubble().isVisible());
+            }
+        });
+    }
+
+    @Test
     public void mascotIsHiddenInsteadOfCutWhenTheSpaceIsTooSmall() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             SetupWizardMascot mascot = new SetupWizardMascot(SetupWizardMascot.Art.load(), 100, SetupWizardMascot.Placement.CENTER, 10, 0,
