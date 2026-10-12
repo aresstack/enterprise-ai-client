@@ -72,7 +72,7 @@ final class IndexEditor {
             + "(retrieval.raw.windowChars, 100–10000; Standard 700).";
     static final String PREPARATION_NOTE = "Geladene Seiten landen sofort im Rohindex und sind für den Chat nutzbar. "
             + "Passagen, Embeddings und Navigation entstehen danach im Hintergrund, parallel und ohne den Chat "
-            + "aufzuhalten. Wie viele Seiten gleichzeitig geladen werden, steht unter System › Vorabladen. "
+            + "aufzuhalten. Wie viele Seiten gleichzeitig geladen werden, steht unter Netzwerk & Agent › Vorabladen (Prefetch). "
             + "Alle Werte gelten nach dem Speichern ohne Neustart.";
     static final String RAW_WORKERS_LABEL = "Rohindex-Worker";
     static final String RAW_WORKERS_HELP = "So viele geladene Seiten werden gleichzeitig in den Rohindex geschrieben "

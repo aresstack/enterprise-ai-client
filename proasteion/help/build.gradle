@@ -1,0 +1,38 @@
+description = 'Eingebaute Produkthilfe: Kapitel aus docs/help (Markdown) als Ressource im Jar, eigene BM25-Suche ohne ' +
+        'Netz und ohne Embedding-Modell, Use Cases. Die Werkzeuge app_help_search/app_help_read baut proasteion:application darauf.'
+
+
+// Die Hilfe hat genau eine Quelle: docs/help im Repository. Beim Build landet sie unter help/de/ im Jar, dazu das
+// Inhaltsverzeichnis contents.txt (eine Datei je Zeile), weil sich ein Classpath-Ordner nicht portabel auflisten lässt.
+def helpSource = rootProject.file('docs/help')
+def generatedHelp = layout.buildDirectory.dir('generated/help-resources')
+
+def helpResources = tasks.register('helpResources') {
+    description = 'Kopiert docs/help nach help/de und schreibt das Inhaltsverzeichnis.'
+    inputs.dir(helpSource)
+    outputs.dir(generatedHelp)
+    doLast {
+        File target = new File(generatedHelp.get().asFile, 'help/de')
+        project.delete(generatedHelp.get().asFile)
+        target.mkdirs()
+        List<String> names = []
+        helpSource.eachFileRecurse { File file ->
+            if (file.isFile() && file.name.endsWith('.md')) {
+                String name = helpSource.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+                names << name
+                File copy = new File(target, name)
+                copy.parentFile.mkdirs()
+                copy.bytes = file.bytes
+            }
+        }
+        names.sort()
+        new File(target, 'contents.txt').setText(names.join('\n') + '\n', 'UTF-8')
+    }
+}
+
+sourceSets.main.resources.srcDir(files(generatedHelp).builtBy(helpResources))
+
+// The documentation test checks every "since" against the version being built.
+tasks.named('test') {
+    systemProperty 'help.projectVersion', (rootProject.findProperty('projectVersion') ?: '').toString().trim()
+}

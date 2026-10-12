@@ -86,7 +86,7 @@ public final class ConnectionDiagnosis {
         if (text.contains("token source temporarily unavailable")) {
             return "KeePassRPC hat auch nach den eingestellten Wiederholungen nicht geantwortet; der API-Key selbst ist "
                     + "nicht als falsch erkannt. Läuft KeePass, ist die Datenbank entsperrt? Dann die Frage erneut "
-                    + "senden. Zeitlimit und Wiederholungen stehen unter Einstellungen → System → Zeitlimits und "
+                    + "senden. Zeitlimit und Wiederholungen stehen unter Einstellungen → Netzwerk & Agent → Zeitlimits und "
                     + "Wiederholungen (security.keepass.timeoutMillis, security.keepass.retryCount).";
         }
         if (text.contains("token source failed") || text.contains("secretaccessexception")) {
@@ -139,7 +139,7 @@ public final class ConnectionDiagnosis {
         if (has(chain, SocketTimeoutException.class)) {
             return "Zeitüberschreitung: Server oder Proxy antworten nicht. Netzverbindung und Proxy prüfen (die "
                     + "Route steht im Protokoll unter \"Proxy-Route\"); Fristen und Wiederholungen stehen unter "
-                    + "Einstellungen → System → Zeitlimits und Wiederholungen (chat.connectTimeoutMillis, "
+                    + "Einstellungen → Netzwerk & Agent → Zeitlimits und Wiederholungen (chat.connectTimeoutMillis, "
                     + "chat.readTimeoutMillis, chat.retryCount).";
         }
         if (has(chain, ConnectException.class) || has(chain, NoRouteToHostException.class)) {

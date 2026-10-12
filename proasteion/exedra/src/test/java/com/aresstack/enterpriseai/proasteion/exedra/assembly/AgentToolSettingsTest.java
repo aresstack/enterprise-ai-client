@@ -19,6 +19,7 @@ import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.proasteion.application.composition.AgentBackend;
+import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpTools;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
@@ -74,20 +75,20 @@ public class AgentToolSettingsTest {
             root.agentService().send("Hallo", new SilentTurn());
             awaitPublished(1);
             assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                     last());
 
             file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_SEARCH);
             settings.reload();
             assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), last());
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), last());
 
             int before = published.size();
             file.get().remove("tools.disabled");
             settings.reload();
             assertTrue("neu veröffentlicht", published.size() > before);
             assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                     last());
         } finally {
             root.agentService().close();

@@ -31,6 +31,7 @@ proasteion                            προάστειον Vorstadt: Ports und A
 ├── exedra                            ἐξέδρα     Swing-Schale                                       ← app-swing
 ├── katagogion                        καταγώγιον Herberge: Plugins, Tools, MCP                      ← mcp-runtime-api
 │   └── mcp-solon-runtime
+├── help                                         Eingebaute Produkthilfe (docs/help, app_help_*)
 ├── emporion                          ἐμπόριον   Hafen
 │   ├── holkas                        ὁλκάς      Frachtschiff: Connectoren holen Rohressourcen      ← resource-holkas
 │   │   └── source-mediawiki, source-confluence, source-localfiles, source-ftp, source-ndv, source-outlook,
@@ -155,6 +156,7 @@ Moduls liegen nur dort (geprüft).
 | `research-agent-acp` | AGENT_PROCESS | `acp.research` | research-domain, research-agent-runtime, katagogion, mcp-solon-runtime | Research |
 | `katagogion` | PORT | `proasteion.katagogion` | astu | H (AP18) |
 | `mcp-solon-runtime` | ADAPTER | `proasteion.katagogion.solon` | astu, katagogion | H (AP19) |
+| `help` | APPLICATION | `proasteion.help` | – | Hilfe: eingebaute Produkthilfe aus `docs/help`, eigene BM25-Suche ohne Netz und Embedding; die Werkzeuge `app_help_search`/`app_help_read` baut der Kompositionspunkt (`application.composition`) |
 | `comic-controls` | UI_LIBRARY | `ui.comic` | – | B (AP4) |
 | `application` | COMPOSITION_ROOT | `proasteion.application` | Ports, Adapter, acropolis (ohne UI) | ADR-0001 (corenth) |
 | `exedra` | UI_SHELL | `proasteion.exedra` | application, astu, acropolis, comic-controls und Ports (chat-api, chalcotheca, source-api, acp-client-api, network, speech-api, model-api); kein Adapter, kein adyton | B (AP4, AP22), AP23 |

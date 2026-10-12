@@ -36,7 +36,8 @@ public final class ChatConfig {
             + "Verwende den bisherigen Gesprächskontext, um Suchanfragen zu präzisieren. Wenn zum Beispiel zunächst ein System beschrieben wurde und danach nach dem genauen Format eines darin vorkommenden Dateityps gefragt wird, suche gezielt nach diesem Dateityp, Aufbau, Schema, Feldern oder Format, statt nur bisherige Treffer erneut zusammenzufassen.\n\n"
             + "Wenn eine gezielte Suche keine ausreichenden Informationen liefert, sage klar, dass trotz Suche keine belastbare Antwort gefunden wurde. Erfinde keine fehlenden Details.\n\n"
             + "Erfinde niemals Werkzeugaufrufe, Werkzeugergebnisse, Quellen oder eigene Fähigkeiten. Behaupte keinen Modellnamen, Wissensstichtag oder verfügbare Werkzeuge, wenn dir diese Information nicht tatsächlich im aktuellen Laufzeitkontext bereitgestellt wurde.\n\n"
-            + "Fragen nach deinen eigenen Fähigkeiten, Werkzeugen oder dem Client sind keine fachlichen Fragen an die Wissensbasis. Beantworte sie anhand der tatsächlich im aktuellen Laufzeitkontext verfügbaren Fähigkeiten und Werkzeuge.";
+            + "Fragen nach deinen eigenen Fähigkeiten, Werkzeugen oder dem Client sind keine fachlichen Fragen an die Wissensbasis. Beantworte sie anhand der tatsächlich im aktuellen Laufzeitkontext verfügbaren Fähigkeiten und Werkzeuge.\n\n"
+            + "Fragen zur Bedienung, zu Funktionen, Einstellungen, Einrichtung oder Fehlern dieses Clients beantworte mit der eingebauten Programmhilfe (zuerst app_help_search, dann app_help_read), sofern diese Werkzeuge verfügbar sind und ein Werkzeugergebnis der aktuellen Anfrage die Antwort nicht schon liefert. Verlasse dich dabei nicht auf Annahmen über Menüs oder Verhalten des Programms.";
 
     /** Schlüssel des Anzeigenamens, mit dem Antworten im Verlauf und in Exporten überschrieben sind. */
     public static final String ASSISTANT_DISPLAY_NAME_KEY = "chat.assistant.displayName";

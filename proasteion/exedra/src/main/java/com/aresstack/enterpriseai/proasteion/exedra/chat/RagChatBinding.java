@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
+import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpTools;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatDraft;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
@@ -143,6 +144,8 @@ public final class RagChatBinding implements ChatShellActions {
     static final String SEARCHING_ACTIVITY = "Durchsucht Anhang";
     static final String READING_PAGE_ACTIVITY = "Liest Seite";
     static final String SEARCHING_KNOWLEDGE_ACTIVITY = "Durchsucht Wissensquellen";
+    static final String SEARCHING_HELP_ACTIVITY = "Schlägt in der Programmhilfe nach";
+    static final String READING_HELP_ACTIVITY = "Liest Programmhilfe";
     static final String TOOL_FAILED = "fehlgeschlagen";
     static final String ATTACHMENTS_UNAVAILABLE_NOTICE =
             "Dateianhänge sind in dieser Sitzung nicht verfügbar; die Nachricht ging ohne sie hinaus.";
@@ -465,8 +468,12 @@ public final class RagChatBinding implements ChatShellActions {
                                     available.add(attachments.registry().find(name));
                                 }
                             }
-                            if (knowledgeTools) {
-                                available.addAll(support.knowledgeTools());
+                            // Offer the product help on every tool turn; knowledge tools only with something
+                            // to search or read.
+                            for (AiTool tool : support.knowledgeTools()) {
+                                if (knowledgeTools || isHelpTool(tool.name())) {
+                                    available.add(tool);
+                                }
                             }
                             extraContext = join(join(attachments.context(), ChatBookmark.context(chatPages)),
                                     join(ChatReferences.context(references), quoteContext));
@@ -690,19 +697,27 @@ public final class RagChatBinding implements ChatShellActions {
         }
     }
 
+    /** Tell whether {@code toolName} belongs to the built-in product help. */
+    static boolean isHelpTool(String toolName) {
+        return AppHelpMcpTools.APP_HELP_SEARCH.equals(toolName) || AppHelpMcpTools.APP_HELP_READ.equals(toolName);
+    }
+
     /** Überschrift der Werkzeugwolke. */
     static String toolTitle(String toolName) {
         return ReadAttachmentTool.NAME.equals(toolName) ? READING_ACTIVITY
                 : SearchAttachmentTool.NAME.equals(toolName) ? SEARCHING_ACTIVITY
                 : ChatBookmark.READ_TOOL.equals(toolName) ? READING_PAGE_ACTIVITY
                 : KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) ? SEARCHING_KNOWLEDGE_ACTIVITY
+                : AppHelpMcpTools.APP_HELP_SEARCH.equals(toolName) ? SEARCHING_HELP_ACTIVITY
+                : AppHelpMcpTools.APP_HELP_READ.equals(toolName) ? READING_HELP_ACTIVITY
                 : "Werkzeug " + toolName;
     }
 
     private static String toolKind(String toolName) {
-        return ReadAttachmentTool.NAME.equals(toolName) || ChatBookmark.READ_TOOL.equals(toolName) ? "read"
+        return ReadAttachmentTool.NAME.equals(toolName) || ChatBookmark.READ_TOOL.equals(toolName)
+                || AppHelpMcpTools.APP_HELP_READ.equals(toolName) ? "read"
                 : SearchAttachmentTool.NAME.equals(toolName) || KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName)
-                ? "search" : "other";
+                || AppHelpMcpTools.APP_HELP_SEARCH.equals(toolName) ? "search" : "other";
     }
 
     /**
@@ -718,7 +733,8 @@ public final class RagChatBinding implements ChatShellActions {
         } catch (IllegalArgumentException unreadable) {
             return "";
         }
-        if (KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) || SearchAttachmentTool.NAME.equals(toolName)) {
+        if (KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) || SearchAttachmentTool.NAME.equals(toolName)
+                || AppHelpMcpTools.APP_HELP_SEARCH.equals(toolName)) {
             return quoted(args.text("query"));
         }
         if (ChatBookmark.READ_TOOL.equals(toolName)) {

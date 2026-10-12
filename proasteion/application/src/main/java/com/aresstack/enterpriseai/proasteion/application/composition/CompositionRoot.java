@@ -45,6 +45,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.OneTimeCodePrompt;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SourceAttachmentReader;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.UnlockingDocumentReader;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.DocumentSourceFileTextExtractor;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
@@ -58,6 +59,8 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ActorType;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ClientResourceAccessPolicy;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
+import com.aresstack.enterpriseai.proasteion.help.ClasspathHelpDocuments;
+import com.aresstack.enterpriseai.proasteion.help.HelpCatalog;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.research.concept.ConceptBranchService;
 import com.aresstack.enterpriseai.research.concept.FileConceptStore;
@@ -78,6 +81,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongSupplier;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -99,6 +103,7 @@ public final class CompositionRoot {
     static final String ORIGIN_KNOWLEDGE = "Wissenswerkzeuge (KnowledgeMcpTools)";
     static final String ORIGIN_RESEARCH = "Recherche-Agent, je Phase (ResearchControlTools)";
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
+    static final String ORIGIN_HELP = "Produkthilfe (AppHelpMcpTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
     static final String NAVIGATION_DIRECTORY = "navigation";
@@ -278,6 +283,7 @@ public final class CompositionRoot {
                 offered::contributions);
         toolCatalog.registerDefinitions(ORIGIN_ATTACHMENTS, EnumSet.of(ToolChannel.CHAT),
                 AttachmentTools::definitions);
+        registerHelpTools(toolCatalog, config.agent().toolSettings());
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
         // Dokumentnavigation im Lesebereich: Passagen der Index-Pipeline (askai arch PassageSegmentation) + TopicClusterer,
         // ohne Vorrang in der Index-Warteschlange; ohne OpenNLP-Satzmodell nur Originalüberschriften. Analysierte Fassungen
@@ -515,6 +521,25 @@ public final class CompositionRoot {
 
     public RefreshKnowledgeSourceUseCase refresh() {
         return refresh;
+    }
+
+    /**
+     * Offer the bundled product help ({@code app_help_search}, {@code app_help_read}) to chat and agent. Use the
+     * response limits of the knowledge tools. Skip the tools with a warning if the help cannot be loaded; the
+     * application keeps working without them.
+     */
+    private static void registerHelpTools(ToolCatalog catalog, KnowledgeToolSettings limits) {
+        final AppHelpMcpTools help;
+        try {
+            help = AppHelpMcpTools.over(HelpCatalog.load(ClasspathHelpDocuments.bundled()),
+                    new AppHelpToolLimits(limits.maxResponseChars(), limits.snippetChars(), limits.defaultMaxResults()),
+                    CompositionRoot.class.getPackage() == null ? null
+                            : CompositionRoot.class.getPackage().getImplementationVersion());
+        } catch (java.io.IOException | RuntimeException e) {
+            LOG.log(Level.WARNING, "Produkthilfe nicht geladen, app_help_* fehlen: " + e.getMessage(), e);
+            return;
+        }
+        catalog.register(ORIGIN_HELP, EnumSet.of(ToolChannel.CHAT, ToolChannel.AGENT), help::contributions);
     }
 
     public KnowledgeMcpTools knowledgeTools() {

@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.settings.CatalogToolOverview
 import java.util.Map;
 import java.util.LinkedHashMap;
 import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
+import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpTools;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.proasteion.application.composition.StartupNotices;
 
@@ -201,7 +202,7 @@ public class ApplicationCompositionTest {
             names.add(tool.getName());
         }
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), names);
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names);
         assertEquals(3, root.knowledgeTools().settings().defaultMaxResults());
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
         final CompositionRoot composed = root;
@@ -254,7 +255,7 @@ public class ApplicationCompositionTest {
             chat.add(tool.name());
         }
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), chat);
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), chat);
     }
 
     @Test
@@ -269,9 +270,9 @@ public class ApplicationCompositionTest {
 
         // Abgeschaltet: weder Chat noch Agent bekommen es, die Registry zeigt es weiter (als aus).
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), names(root.agentTools()));
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names(root.agentTools()));
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), chatNames(root.knowledgeChatTools()));
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), chatNames(root.knowledgeChatTools()));
         assertFalse(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
         assertTrue(root.toolCatalog().isEnabled(SearchAttachmentTool.NAME));
         Map<String, ToolOverviewEntry> shown = new LinkedHashMap<String, ToolOverviewEntry>();
@@ -287,19 +288,19 @@ public class ApplicationCompositionTest {
         file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_READ);
         settings.reload();
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), names(root.agentTools()));
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names(root.agentTools()));
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 chatNames(root.knowledgeChatTools()));
         assertTrue(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
 
         file.get().remove("tools.disabled");
         settings.reload();
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 names(root.agentTools()));
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
-                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 chatNames(root.knowledgeChatTools()));
     }
 

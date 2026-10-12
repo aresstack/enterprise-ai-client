@@ -41,6 +41,8 @@ dependencies {
     // (agent.ResearchAgentHost mit Weidezaun, Konzeptpapier und Projektablage).
     implementation project(':acp-client-api')
     implementation project(':proasteion:katagogion')
+    // Eingebaute Produkthilfe (app_help_search, app_help_read) für Chat und Agent.
+    implementation project(':proasteion:help')
     implementation project(':research-domain')
     implementation project(':research-api')
     implementation project(':research-scope')

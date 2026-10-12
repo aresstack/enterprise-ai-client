@@ -93,6 +93,9 @@ include 'acp-demo-agent'
 include 'proasteion:katagogion'
 include 'proasteion:katagogion:mcp-solon-runtime'
 
+// Eingebaute Produkthilfe (docs/help) mit eigener Suche und den Werkzeugen app_help_search/app_help_read
+include 'proasteion:help'
+
 // Research-Agent aus askai-java8 (Zweig arch): Fachkern mit Weidezaun
 include 'research-domain'
 include 'research-api'

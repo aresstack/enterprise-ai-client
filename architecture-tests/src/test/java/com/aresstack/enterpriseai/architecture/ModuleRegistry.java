@@ -146,6 +146,9 @@ final class ModuleRegistry {
 
                 .module("katagogion", "proasteion.katagogion", ModuleKind.PORT, "H", "astu")
                 .module("mcp-solon-runtime", "proasteion.katagogion.solon", ModuleKind.ADAPTER, "H", "astu", "katagogion")
+                // Eingebaute Produkthilfe: Kapitel aus docs/help, eigene BM25-Suche ohne Netz und Embedding; die
+                // Werkzeuge app_help_search/app_help_read baut der Kompositionspunkt darauf.
+                .module("help", "proasteion.help", ModuleKind.APPLICATION, "Hilfe")
 
                 // Research-Agent aus askai-java8 (Zweig arch): reiner Fachkern (Projekt, Quellen, Weidezaun).
                 .module("research-domain", "research.domain", ModuleKind.DOMAIN, "Research")
@@ -184,7 +187,7 @@ final class ModuleRegistry {
                         "source-ndv", "source-outlook", "source-sharepoint", "source-betaview", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",
                         "research-api", "research-scope", "research-store", "research-agent-runtime",
-                        "research-concept", "research-agent-acp")
+                        "research-concept", "research-agent-acp", "help")
                 // Die Swing-Schale über dem Kompositionspunkt (corenth ADR-0001): kennt application, Kern, Ports und
                 // comic-controls, aber keinen Adapter; nicht holkas, deigma, tamias, anagraphai oder pinakes.
                 .module("exedra", "proasteion.exedra", ModuleKind.UI_SHELL, "B (AP4, AP22, AP23)",

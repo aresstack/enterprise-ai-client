@@ -83,7 +83,7 @@ public final class AppConfigLoader {
     public static final String RETRIEVAL_RAW_WINDOW_CHARS_KEY = "retrieval.raw.windowChars";
     /** Werkzeugrunden je Antwort im normalen Chat (1–32, Standard 8), danach eine Abschlussrunde ohne Werkzeuge. */
     public static final String CHAT_TOOLS_MAX_ROUNDS_KEY = "chat.tools.maxRounds";
-    /** Fristen und Wiederholungen der Modellanfrage (Einstellungen → System → Zeitlimits und Wiederholungen). */
+    /** Fristen und Wiederholungen der Modellanfrage (Einstellungen → Netzwerk & Agent → Zeitlimits und Wiederholungen). */
     public static final String CHAT_CONNECT_TIMEOUT_KEY = "chat.connectTimeoutMillis";
     public static final String CHAT_READ_TIMEOUT_KEY = "chat.readTimeoutMillis";
     public static final String CHAT_RETRY_COUNT_KEY = "chat.retryCount";
