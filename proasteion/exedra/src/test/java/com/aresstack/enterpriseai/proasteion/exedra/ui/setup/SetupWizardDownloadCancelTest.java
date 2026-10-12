@@ -41,7 +41,7 @@ public class SetupWizardDownloadCancelTest {
             SetupWizardRun run = new SetupWizardRun(SettingsMapper.firstStartDefaults(), settings, setup,
                     ComicPalette.defaultPalette(), ended::add);
             SetupWizardDriver.throughBasicSetup(run.wizard());
-            assertFalse("no stop button before a download", run.wizard().speechCancelButton().isVisible());
+            assertFalse("no stop button before a download", run.wizard().speechProgress().isVisible());
             SetupWizardDriver.install(run.wizard());
             assertTrue(run.wizard().isSpeechDownloading());
             wizard.set(run.wizard());
@@ -74,8 +74,7 @@ public class SetupWizardDownloadCancelTest {
             assertTrue(handle().isCancelled());
             transferNoticesCancel();
             assertFalse(wizard.isSpeechDownloading());
-            assertFalse("stop button gone", wizard.speechCancelButton().isVisible());
-            assertFalse(wizard.speechProgressBar().isVisible());
+            assertFalse(wizard.speechProgress().isVisible());
             assertEquals(SetupWizardPanel.SPEECH_CANCELLED, wizard.speechStatusText());
             assertNull("a stop is no failure", wizard.errorOf(SetupWizardPanel.STEP_SPEECH));
             assertFalse("nothing installed", wizard.isDone(SetupWizardPanel.STEP_SPEECH));

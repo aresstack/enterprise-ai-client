@@ -8,7 +8,7 @@ import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapsh
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
-import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.DownloadText;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.DownloadProgress;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceOffersCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordEntry;
@@ -34,7 +34,7 @@ import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
-import javax.swing.JProgressBar;
+import javax.swing.JButton;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.Timer;
@@ -231,10 +231,8 @@ public final class SetupWizardPanel extends JPanel {
     private final JComboBox<String> speechModel = new JComboBox<String>();
     private final ComposerButton speechInstall;
     private final ComposerButton speechRetry;
-    private final JProgressBar speechProgress = new JProgressBar(0, 100);
-    /** Progress bar plus the small stop button on its right; shown only while a download runs. */
-    private final JPanel speechProgressRow = transparent(new BorderLayout(6, 0));
-    private final ComposerButton speechCancel;
+    /** Thin bar with the stop cross and the file line; shown only while a download runs. */
+    private final DownloadProgress speechProgress = new DownloadProgress(SPEECH_CANCEL_HINT);
     /** The running download, {@code null} when none runs; stopping it cancels the real transfer. */
     private InstallCancellation speechDownload;
     /** Set once the wizard closes; late callbacks of a stopped download must not touch it any more. */
@@ -280,7 +278,6 @@ public final class SetupWizardPanel extends JPanel {
         this.skipButton = new ComposerButton(null, "Überspringen", false, SKIP_STEP_HINT);
         this.speechInstall = ComposerButton.primary(null, "Installieren", ResearchUiPalette.ACCENT_BLUE, null);
         this.speechRetry = new ComposerButton(null, "Erneut versuchen", false);
-        this.speechCancel = ComposerButton.iconButton(new CrossGlyph(), SPEECH_CANCEL_HINT);
         buildUi();
         wire();
         load(form);
@@ -520,11 +517,8 @@ public final class SetupWizardPanel extends JPanel {
         actions.add(speechInstall);
         actions.add(speechRetry);
         rows.field("", actions);
-        speechProgress.setStringPainted(false);
-        speechProgressRow.add(speechProgress, BorderLayout.CENTER);
-        speechProgressRow.add(speechCancel, BorderLayout.EAST);
-        speechProgressRow.setVisible(false);
-        rows.wide(speechProgressRow);
+        speechProgress.setVisible(false);
+        rows.stretched("", speechProgress);
         rows.field("", speechStatus);
         return rows.panel();
     }
@@ -594,7 +588,7 @@ public final class SetupWizardPanel extends JPanel {
             }
         });
         speechInstall.addActionListener(e -> installSpeech());
-        speechCancel.addActionListener(e -> stopSpeechDownload());
+        speechProgress.cancelButton().addActionListener(e -> stopSpeechDownload());
         speechRetry.addActionListener(e -> {
             if (speechLoadFailed) {
                 loadSpeechModels(null);
@@ -873,10 +867,7 @@ public final class SetupWizardPanel extends JPanel {
                 && errors[STEP_SPEECH] != null && !speechDownloading));
         speechRetry.setEnabled(!busy && !speechDownloading);
         speechModel.setEnabled(!speechDownloading);
-        speechProgressRow.setVisible(speechDownloading);
         speechProgress.setVisible(speechDownloading);
-        speechCancel.setVisible(speechDownloading);
-        speechCancel.setEnabled(speechDownloading && speechDownload != null && !speechDownload.isCancelled());
         String error = errors[step];
         errorPlate.setVisible(error != null && !error.isEmpty());
         errorText.setText(error == null ? "" : error);
@@ -1714,8 +1705,7 @@ public final class SetupWizardPanel extends JPanel {
         final InstallCancellation download = new InstallCancellation();
         speechDownload = download;
         speechDownloading = true;
-        speechProgress.setIndeterminate(true);
-        speechProgress.setValue(0);
+        speechProgress.reset("Vorbereiten …");
         speechStatus.setText("Installiere " + chosen.displayName() + " …");
         updateButtons();
         settings.installLocalVoice(collect(), chosen.id(), download, new LocalVoiceInstallProgress() {
@@ -1729,8 +1719,7 @@ public final class SetupWizardPanel extends JPanel {
                 if (stale() || download.isCancelled()) {
                     return;
                 }
-                speechProgress.setIndeterminate(true);
-                speechStatus.setText(line);
+                speechProgress.preparing(line);
             }
 
             @Override
@@ -1738,10 +1727,7 @@ public final class SetupWizardPanel extends JPanel {
                 if (stale() || download.isCancelled()) {
                     return;
                 }
-                int percent = DownloadText.percent(done, total);
-                speechProgress.setIndeterminate(percent < 0);
-                speechProgress.setValue(Math.max(0, percent));
-                speechStatus.setText(DownloadText.line(name, number, count, done, total));
+                speechProgress.file(name, number, count, done, total);
             }
 
             @Override
@@ -1785,7 +1771,7 @@ public final class SetupWizardPanel extends JPanel {
         if (download == null || !download.cancel()) {
             return;
         }
-        speechStatus.setText("Breche den Download ab …");
+        speechProgress.cancelling();
         updateButtons();
     }
 
@@ -1804,8 +1790,8 @@ public final class SetupWizardPanel extends JPanel {
         return speechDownloading;
     }
 
-    ComposerButton speechCancelButton() {
-        return speechCancel;
+    JButton speechCancelButton() {
+        return speechProgress.cancelButton();
     }
 
 
@@ -2187,7 +2173,7 @@ public final class SetupWizardPanel extends JPanel {
         return speechRetry;
     }
 
-    JProgressBar speechProgressBar() {
+    DownloadProgress speechProgress() {
         return speechProgress;
     }
 
@@ -2267,6 +2253,15 @@ public final class SetupWizardPanel extends JPanel {
             c.weightx = 1;
             panel.add(component, c);
             row++;
+        }
+
+        /** Like {@link #field}, but the component fills the field column, flush with the fields above it. */
+        void stretched(String label, JComponent component) {
+            field(label, component);
+            GridBagLayout layout = (GridBagLayout) panel.getLayout();
+            GridBagConstraints c = layout.getConstraints(component);
+            c.fill = GridBagConstraints.HORIZONTAL;
+            layout.setConstraints(component, c);
         }
 
         void wide(JComponent component) {

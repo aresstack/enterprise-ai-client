@@ -14,7 +14,6 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
-import javax.swing.JProgressBar;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.FlowLayout;
@@ -91,11 +90,11 @@ final class LocalVoiceList {
     private String rowKey;
     private String rowMessage;
     private boolean rowOk = true;
-    /** Download läuft in {@link #rowKey}: Balken und Text der aktuellen Datei. */
+    /** Download läuft in {@link #rowKey}: Balken, Stopp-Kreuz und Datei der aktuellen Übertragung. */
     private boolean downloading;
-    private int filePercent = -1;
-    private String fileText = "";
-    private JProgressBar rowBar;
+    private final DownloadProgress rowProgress = new DownloadProgress("Download abbrechen");
+    /** The running download, {@code null} when none runs; the stop cross cancels the real transfer. */
+    private InstallCancellation rowDownload;
     private JLabel rowLabel;
     private boolean rowRendered;
 
@@ -105,6 +104,7 @@ final class LocalVoiceList {
         this.form = form;
         this.listener = listener;
         this.palette = palette;
+        rowProgress.cancelButton().addActionListener(e -> stopDownload());
         lines.setOpaque(false);
         lines.setLayout(new BoxLayout(lines, BoxLayout.Y_AXIS));
         searchStatus.setFont(small(searchStatus.getFont()));
@@ -286,7 +286,6 @@ final class LocalVoiceList {
         lines.removeAll();
         buttons.clear();
         suggested.removeAll();
-        rowBar = null;
         rowLabel = null;
         rowRendered = false;
         for (LocalVoiceOffer offer : offers) {
@@ -393,12 +392,7 @@ final class LocalVoiceList {
     /** Unter der aktiven Zeile: Balken der aktuellen Datei („Datei n von m“ darin) oder Meldung. */
     private JComponent rowState() {
         if (downloading) {
-            rowBar = new JProgressBar(0, 100);
-            rowBar.setStringPainted(true);
-            rowBar.setForeground(palette.getAgentPetrol());
-            rowBar.getAccessibleContext().setAccessibleName("Download-Fortschritt");
-            paintBar();
-            return rowBar;
+            return rowProgress;
         }
         rowLabel = new WrappingLabel(rowMessage == null || rowMessage.isEmpty() ? " " : rowMessage);
         rowLabel.setFont(small(rowLabel.getFont()));
@@ -408,16 +402,6 @@ final class LocalVoiceList {
         return rowLabel;
     }
 
-    private void paintBar() {
-        if (rowBar == null) {
-            return;
-        }
-        rowBar.setIndeterminate(filePercent < 0);
-        rowBar.setValue(Math.max(0, filePercent));
-        rowBar.setString(fileText);
-        rowBar.setToolTipText(fileText);
-    }
-
     private void download(final LocalVoiceOffer offer, String key, final boolean update) {
         if (busy) {
             return;
@@ -425,28 +409,30 @@ final class LocalVoiceList {
         busy = true;
         rowKey = key;
         downloading = true;
-        filePercent = -1;
-        fileText = "Lade " + offer.displayName() + " …";
+        final InstallCancellation download = new InstallCancellation();
+        rowDownload = download;
+        rowProgress.reset("Vorbereiten …");
         fill();
         LocalVoiceInstallProgress progress = new LocalVoiceInstallProgress() {
             @Override
             public void progress(String line) {
-                filePercent = -1;
-                fileText = line;
-                paintBar();
+                if (!download.isCancelled()) {
+                    rowProgress.preparing(line);
+                }
             }
 
             @Override
             public void file(String name, int number, int count, long done, long total) {
-                filePercent = DownloadText.percent(done, total);
-                fileText = DownloadText.line(name, number, count, done, total);
-                paintBar();
+                if (!download.isCancelled()) {
+                    rowProgress.file(name, number, count, done, total);
+                }
             }
 
             @Override
             public void finished(boolean installed, String message) {
                 busy = false;
                 downloading = false;
+                rowDownload = null;
                 if (installed) {
                     showRow("✓ " + offer.displayName() + (update ? " aktualisiert."
                             : " installiert; wählbar oben unter „" + offer.category().displayName() + "“."), true);
@@ -457,9 +443,17 @@ final class LocalVoiceList {
             }
         };
         if (update) {
-            actions.updateLocalVoice(form.get(), offer.id(), new InstallCancellation(), progress);
+            actions.updateLocalVoice(form.get(), offer.id(), download, progress);
         } else {
-            actions.installLocalVoice(form.get(), offer.id(), new InstallCancellation(), progress);
+            actions.installLocalVoice(form.get(), offer.id(), download, progress);
+        }
+    }
+
+    /** Stop the running download for real; the result arrives as {@code cancelled}, the partial files stay. */
+    private void stopDownload() {
+        InstallCancellation download = rowDownload;
+        if (download != null && download.cancel()) {
+            rowProgress.cancelling();
         }
     }
 

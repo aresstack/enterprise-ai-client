@@ -87,13 +87,14 @@ public class SetupWizardSpeechStepTest {
             assertTrue("Überspringen geht immer", wizard.skipButton().isEnabled());
             SetupWizardDriver.install(wizard);
             assertEquals(SUGGESTION, settings.installRequests.get(0));
-            assertTrue("Fortschritt sichtbar", wizard.speechProgressBar().isVisible());
-            assertEquals(50, wizard.speechProgressBar().getValue());
-            assertTrue(wizard.speechStatusText(), wizard.speechStatusText().startsWith("Datei 1 von 3"));
+            assertTrue("Fortschritt sichtbar", wizard.speechProgress().isVisible());
+            assertEquals(50, wizard.speechProgress().bar().getValue());
+            assertTrue(wizard.speechProgress().caption(), wizard.speechProgress().caption().startsWith("Datei 1 von 3"));
+            assertTrue(wizard.speechProgress().bar().getString(), wizard.speechProgress().bar().getString().startsWith("50 %"));
             assertFalse("während des Downloads kein Fertig", wizard.finishButton().isEnabled());
             assertTrue("Überspringen auch während des Downloads", wizard.skipButton().isEnabled());
             settings.complete(settings.pendingInstalls.remove(0));
-            assertFalse(wizard.speechProgressBar().isVisible());
+            assertFalse(wizard.speechProgress().isVisible());
             assertEquals("Gemma 4 E2B (Spracheingabe) (installiert)", wizard.speechModelChoice().getSelectedItem());
             SetupWizardDriver.finish(wizard);
         });
