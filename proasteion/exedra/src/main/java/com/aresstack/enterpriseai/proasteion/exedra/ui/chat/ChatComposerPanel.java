@@ -47,6 +47,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -109,6 +110,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private static final Color BACKGROUND_FOCUSED = Color.WHITE;
     private static final Color BORDER_DICTATION = ResearchUiPalette.RECORDING_ORANGE;
     private static final Color BACKGROUND_DICTATION = ResearchUiPalette.RECORDING_SURFACE;
+    /** Rand, solange Dateien darüber schweben: gestrichelt, damit er sich vom Fokusrand abhebt. */
+    private static final BasicStroke DROP_STROKE = new BasicStroke(1.8f, BasicStroke.CAP_ROUND,
+            BasicStroke.JOIN_ROUND, 10f, new float[] {6f, 4f}, 0f);
     private static final int LEVEL_INTERVAL_MILLIS = 100;
     private static final Color PRIMARY = ResearchUiPalette.ACCENT_BLUE;
     private static final Color DANGER = ResearchUiPalette.DANGER_RED;
@@ -143,6 +147,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private String phaseId;
     private Consumer<String> phaseSelected;
     private File lastDirectory;
+    /** Die Dateiauswahl hinter der Büroklammer (in Tests ersetzbar); liefert die gewählten Dateien. */
+    private Supplier<List<Path>> fileChooser = this::showFileChooser;
+    /** Dateien schweben über dem Composer (Drag &amp; Drop): Rand gestrichelt im Akzentblau. */
+    private boolean dropHover;
     private boolean editorFocused;
     private DictationControl dictation;
     private DictationPhase dictationPhase = DictationPhase.IDLE;
@@ -286,12 +294,66 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     }
 
     private void chooseFiles() {
+        attachFiles(fileChooser.get());
+    }
+
+    /**
+     * Der eine Anhangspfad für Büroklammer und Drag &amp; Drop: nur Dateien (keine Ordner, wie die Dateiauswahl),
+     * vormerken, letzten Ordner merken, Fokus zurück in den Editor. Der Entwurfstext bleibt unberührt.
+     */
+    void attachFiles(List<Path> chosen) {
+        List<Path> files = new ArrayList<Path>();
+        if (chosen != null) {
+            for (Path file : chosen) {
+                if (file != null && !Files.isDirectory(file)) {
+                    files.add(file);
+                }
+            }
+        }
+        if (!files.isEmpty()) {
+            File parent = files.get(0).toAbsolutePath().toFile().getParentFile();
+            if (parent != null) {
+                lastDirectory = parent;
+            }
+            attachmentStrip.addAttachments(files);
+        }
+        editor.requestFocusInWindow();
+    }
+
+    /** Ob Anhänge gerade angenommen werden: dieselbe Freigabe wie die Büroklammer. */
+    boolean acceptsAttachments() {
+        return attachButton.isVisible() && attachButton.isEnabled();
+    }
+
+    /** Ersetzt die Dateiauswahl (Tests). */
+    void setFileChooser(Supplier<List<Path>> fileChooser) {
+        this.fileChooser = fileChooser;
+    }
+
+    /** Der zuletzt benutzte Ordner der Dateiauswahl. */
+    File lastDirectory() {
+        return lastDirectory;
+    }
+
+    /** Ob gerade Dateien über dem Composer schweben. */
+    boolean isDropHover() {
+        return dropHover;
+    }
+
+    private void setDropHover(boolean hover) {
+        if (dropHover != hover) {
+            dropHover = hover;
+            repaint();
+        }
+    }
+
+    private List<Path> showFileChooser() {
         JFileChooser chooser = new JFileChooser(lastDirectory);
         chooser.setDialogTitle(ATTACH_TOOLTIP);
         chooser.setMultiSelectionEnabled(true);
         chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
         if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
-            return;
+            return Collections.emptyList();
         }
         File[] selected = chooser.getSelectedFiles();
         List<Path> files = new ArrayList<Path>();
@@ -302,11 +364,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         } else if (chooser.getSelectedFile() != null) {
             files.add(chooser.getSelectedFile().toPath());
         }
-        if (!files.isEmpty()) {
-            lastDirectory = files.get(0).toFile().getParentFile();
-            attachmentStrip.addAttachments(files);
-        }
-        editor.requestFocusInWindow();
+        return files;
     }
 
     private void refreshAttachmentState() {
@@ -636,8 +694,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             boolean dictating = isDictationActive();
             g2.setColor(dictating ? BACKGROUND_DICTATION : editorFocused ? BACKGROUND_FOCUSED : resolveBackground());
             g2.fill(background);
-            g2.setColor(dictating ? BORDER_DICTATION : editorFocused || busy ? BORDER_FOCUSED : BORDER_NORMAL);
-            g2.setStroke(new BasicStroke(editorFocused || busy || dictating ? 1.6f : 1f));
+            g2.setColor(dictating ? BORDER_DICTATION
+                    : dropHover || editorFocused || busy ? BORDER_FOCUSED : BORDER_NORMAL);
+            g2.setStroke(dropHover ? DROP_STROKE
+                    : new BasicStroke(editorFocused || busy || dictating ? 1.6f : 1f));
             g2.draw(background);
         } finally {
             g2.dispose();
@@ -820,6 +880,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         reasoningButton.addActionListener(event -> showReasoningMenu());
         phaseButton.addActionListener(event -> showPhaseMenu());
         attachButton.addActionListener(event -> chooseFiles());
+        // Drag & Drop: Editor (Text geht weiter an seinen eigenen Handler) und die übrige Composer-Fläche.
+        ComposerFileDrop.install(editor, this::attachFiles, this::acceptsAttachments, this::setDropHover, true);
+        ComposerFileDrop.install(this, this::attachFiles, this::acceptsAttachments, this::setDropHover, false);
         micButton.addActionListener(event -> toggleDictation());
         discardButton.addActionListener(event -> discardDictation());
         retryButton.addActionListener(event -> retryDictation());
