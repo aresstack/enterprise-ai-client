@@ -85,6 +85,9 @@ public final class SettingsForm {
     private final String contextMaxSources;
     private final String retrievalMaxResults;
     private final String contextMaxTokens;
+    private final String contextMinSources;
+    private final String retrievalMaxFollowUps;
+    private final boolean retrievalRerank;
     private final Map<String, String> modelSelections;
     private final String localModelRoot;
 
@@ -135,6 +138,9 @@ public final class SettingsForm {
         this.contextMaxSources = b.contextMaxSources;
         this.retrievalMaxResults = b.retrievalMaxResults;
         this.contextMaxTokens = b.contextMaxTokens;
+        this.contextMinSources = b.contextMinSources;
+        this.retrievalMaxFollowUps = b.retrievalMaxFollowUps;
+        this.retrievalRerank = b.retrievalRerank;
         this.modelSelections = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.modelSelections));
         this.localModelRoot = b.localModelRoot;
     }
@@ -174,6 +180,9 @@ public final class SettingsForm {
                 .contextMaxSources(contextMaxSources)
                 .retrievalMaxResults(retrievalMaxResults)
                 .contextMaxTokens(contextMaxTokens)
+                .contextMinSources(contextMinSources)
+                .retrievalMaxFollowUps(retrievalMaxFollowUps)
+                .retrievalRerank(retrievalRerank)
                 .modelSelections(modelSelections)
                 .localModelRoot(localModelRoot);
     }
@@ -392,6 +401,21 @@ public final class SettingsForm {
         return contextMaxTokens;
     }
 
+    /** Mindestzahl unabhängiger Quellen, bevor die Evidenz reicht ({@code context.minSources}, 0 = nur Prüfung). */
+    public String contextMinSources() {
+        return contextMinSources;
+    }
+
+    /** Nachsuchen mit genauerer Anfrage im normalen Chat ({@code retrieval.maxFollowUps}, 0–5). */
+    public String retrievalMaxFollowUps() {
+        return retrievalMaxFollowUps;
+    }
+
+    /** Treffer vor der Übernahme gegen die Frage bewerten ({@code retrieval.rerank}). */
+    public boolean retrievalRerank() {
+        return retrievalRerank;
+    }
+
     /**
      * Modellauswahl der Kategorien ohne eigenes Feld (Schlüssel = Kategorieschlüssel wie {@code rerank},
      * {@code tts}; Wert {@code [<katalog>:]<modell>}). Chat und Embeddings stehen in {@link #chatModel()} und
@@ -466,6 +490,9 @@ public final class SettingsForm {
         private String contextMaxSources = "6";
         private String retrievalMaxResults = "10";
         private String contextMaxTokens = "1500";
+        private String contextMinSources = "1";
+        private String retrievalMaxFollowUps = "2";
+        private boolean retrievalRerank = true;
         private final Map<String, String> modelSelections = new LinkedHashMap<String, String>();
         private String localModelRoot = "";
 
@@ -700,6 +727,21 @@ public final class SettingsForm {
 
         public Builder contextMaxTokens(String value) {
             this.contextMaxTokens = text(value);
+            return this;
+        }
+
+        public Builder contextMinSources(String value) {
+            this.contextMinSources = text(value);
+            return this;
+        }
+
+        public Builder retrievalMaxFollowUps(String value) {
+            this.retrievalMaxFollowUps = text(value);
+            return this;
+        }
+
+        public Builder retrievalRerank(boolean value) {
+            this.retrievalRerank = value;
             return this;
         }
 

@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.proasteion.application.config;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
+import com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy;
+import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalSettings;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechChunking;
@@ -73,6 +75,12 @@ public final class AppConfigLoader {
     public static final String CONTEXT_MAX_TOKENS_KEY = "context.maxTokens";
     /** Höchstzahl der fusionierten Suchtreffer vor dem Kontextaufbau ({@link RetrievalSettings#maxResults()}). */
     public static final String RETRIEVAL_MAX_RESULTS_KEY = "retrieval.maxResults";
+    /** Mindestzahl unabhängiger Quellen, bevor die Evidenz als ausreichend gilt (0 = nur Prüfung, Standard 1). */
+    public static final String CONTEXT_MIN_SOURCES_KEY = "context.minSources";
+    /** Nachsuchen mit genauerer Anfrage, wenn die Treffer nicht reichen (0–5, Standard 2). */
+    public static final String RETRIEVAL_MAX_FOLLOW_UPS_KEY = "retrieval.maxFollowUps";
+    /** Treffer vor der Übernahme vom Chat-Modell gegen die Frage bewerten lassen (Standard true). */
+    public static final String RETRIEVAL_RERANK_KEY = "retrieval.rerank";
     /** Sprache des Satzmodells (OpenNLP) für die Passagenbildung beim Indexieren: de oder en. */
     public static final String KNOWLEDGE_PASSAGE_LANGUAGE_KEY = "knowledge.passages.language";
 
@@ -394,8 +402,14 @@ public final class AppConfigLoader {
             r.problem(KNOWLEDGE_PASSAGE_LANGUAGE_KEY, "Sprache der Passagen muss de oder en sein");
             passageLanguage = "de";
         }
+        EvidencePolicy evidence = EvidencePolicy.defaults()
+                .withMinSources(r.integer(CONTEXT_MIN_SOURCES_KEY, EvidencePolicy.DEFAULT_MIN_SOURCES, 0,
+                        EvidencePolicy.MAX_MIN_SOURCES))
+                .withMaxFollowUps(r.integer(RETRIEVAL_MAX_FOLLOW_UPS_KEY, FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS, 0,
+                        EvidencePolicy.MAX_FOLLOW_UPS))
+                .withReranking(r.bool(RETRIEVAL_RERANK_KEY, true));
         return new KnowledgeConfig(indexDirectory, chunking, batch, retrieval, context, prefetch,
-                passageLanguage);
+                passageLanguage, evidence);
     }
 
     /**

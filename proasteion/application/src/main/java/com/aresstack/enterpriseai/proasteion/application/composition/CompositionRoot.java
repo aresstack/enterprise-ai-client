@@ -39,6 +39,7 @@ import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPreparation;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.InMemoryResourceArchive;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.MediatedKnowledgeDocuments;
@@ -47,6 +48,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ActorIdentit
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ActorType;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ClientResourceAccessPolicy;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.research.concept.ConceptBranchService;
@@ -67,6 +69,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 import java.util.logging.Logger;
 
@@ -98,6 +101,8 @@ public final class CompositionRoot {
     static final int INDEXING_SHUTDOWN_WAIT_SECONDS = 10;
     /** Chat: auf so viele der ersten Live-Treffer wartet eine Frage, bis sie indexiert sind (der Rest lädt weiter). */
     static final int LIVE_SEARCH_PAGES = 4;
+    /** Chat, gestuft: auf so viele indexierte Live-Treffer wartet die erste Indexsuche einer Frage. */
+    static final int LIVE_SEARCH_FIRST_PAGES = 1;
     /** Chat: so viele Treffer je Quelle holt die Live-Suche (gehen alle an den Vorlader). */
     static final int LIVE_SEARCH_HITS = 10;
     /** Kanal der Vorlade-Serie des Chats. */
@@ -190,19 +195,11 @@ public final class CompositionRoot {
         this.prefetch = new KnowledgePrefetchService(indexing, resourceDocuments,
                 () -> settings.current().knowledge().prefetch());
         this.searchIndexing = new SearchDrivenIndexingUseCase(prefetch);
-        this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler, (query, sources) -> {
-            List<KnowledgeSourcePort> chosen = new ArrayList<KnowledgeSourcePort>();
-            for (KnowledgeSourceRegistration registration : liveSources.registrations()) {
-                if (sources.isEmpty() || sources.contains(registration.sourceId())) {
-                    chosen.add(registration.port());
-                }
-            }
-            SearchDrivenIndexingUseCase.Result result = searchIndexing.searchAndIndex(CHAT_PREFETCH_CHANNEL, chosen,
-                    query, LIVE_SEARCH_HITS, LIVE_SEARCH_PAGES);
-            if (!result.failures().isEmpty()) {
-                LOG.info("Live-Suche für den Chat: " + result.failures());
-            }
-        }, FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS));
+        // Adaptiv (Reranking, progressive Evidenz, gestufte Live-Suche); Grenzen gelten ohne Neustart ab dem nächsten
+        // Turn.
+        this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler, new ChatLiveSearch(),
+                FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS),
+                settings.get(c -> c.knowledge().evidence()));
         this.sourceSelection = new KnowledgeSourceSelection();
         for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
             boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt
@@ -799,5 +796,50 @@ public final class CompositionRoot {
             }
         });
         return sequence;
+    }
+
+    /**
+     * Live-Suche vor dem Retrieval des Chats: durchsucht die angehakten Quellen, der Vorlader indexiert die Treffer.
+     * Gestuft wartet eine Frage zuerst nur auf {@link #LIVE_SEARCH_FIRST_PAGES} indexierte Treffer und erst auf
+     * {@link #LIVE_SEARCH_PAGES}, wenn die Evidenz nicht reicht; die übrigen lädt der Vorlader weiter.
+     */
+    private final class ChatLiveSearch implements RetrievalPreparation {
+
+        @Override
+        public void prepare(String query, Collection<SourceAddress> sources) {
+            search(query, sources, LIVE_SEARCH_PAGES);
+        }
+
+        @Override
+        public Stage begin(String query, Collection<SourceAddress> sources) {
+            final SearchDrivenIndexingUseCase.Result result = search(query, sources, LIVE_SEARCH_FIRST_PAGES);
+            if (result.hits().size() <= LIVE_SEARCH_FIRST_PAGES) {
+                return Stage.DONE;
+            }
+            final AtomicBoolean waited = new AtomicBoolean();
+            return () -> {
+                if (waited.getAndSet(true)) {
+                    return false;
+                }
+                result.series().awaitIndexed(LIVE_SEARCH_PAGES, SearchDrivenIndexingUseCase.INDEX_WAIT_MILLIS);
+                return true;
+            };
+        }
+
+        private SearchDrivenIndexingUseCase.Result search(String query, Collection<SourceAddress> sources,
+                                                          int waitFor) {
+            List<KnowledgeSourcePort> chosen = new ArrayList<KnowledgeSourcePort>();
+            for (KnowledgeSourceRegistration registration : liveSources.registrations()) {
+                if (sources.isEmpty() || sources.contains(registration.sourceId())) {
+                    chosen.add(registration.port());
+                }
+            }
+            SearchDrivenIndexingUseCase.Result result = searchIndexing.searchAndIndex(CHAT_PREFETCH_CHANNEL, chosen,
+                    query, LIVE_SEARCH_HITS, waitFor);
+            if (!result.failures().isEmpty()) {
+                LOG.info("Live-Suche für den Chat: " + result.failures());
+            }
+            return result;
+        }
     }
 }

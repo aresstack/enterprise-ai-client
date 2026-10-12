@@ -23,7 +23,8 @@ final class ChatResearchCard {
     static final String LIVE_SEARCH = "Live-Suche in den Quellen …";
     static final String KEYWORD_SEARCH = "Volltextsuche …";
     static final String SEMANTIC_SEARCH = "Semantische Suche …";
-    static final String CHECKING = "Kontext wird geprüft …";
+    static final String CHECKING = "Prüfe Evidenz …";
+    static final String MORE_PAGES = "Lese weitere Treffer …";
     static final String NOT_ENOUGH = "Kontext reicht noch nicht, weitere Suche.";
     static final String PREPARING = "Antwort wird vorbereitet …";
     static final String CANCELLING = "Wird abgebrochen …";
@@ -73,6 +74,34 @@ final class ChatResearchCard {
 
     void step(String text) {
         current = text;
+        update();
+    }
+
+    /** Das Modell bewertet {@code count} neue Treffer gegen die Frage. */
+    void ranking(int count) {
+        current = "Bewerte " + count + " Treffer …";
+        update();
+    }
+
+    /** „14 Kandidaten, 3 relevant“. */
+    void ranked(int candidates, int relevant) {
+        lines.add(candidates + (candidates == 1 ? " Kandidat, " : " Kandidaten, ") + relevant + " relevant");
+        current = "";
+        update();
+    }
+
+    /** „1 Quelle: nicht ausreichend“ bzw. „2 Quellen: ausreichend“. */
+    void evidenceChecked(int contextSources, boolean sufficient) {
+        lines.add(contextSources + (contextSources == 1 ? " Quelle: " : " Quellen: ")
+                + (sufficient ? "ausreichend" : "nicht ausreichend"));
+        current = "";
+        update();
+    }
+
+    /** Die Obergrenze der Quellen im Kontext ist erreicht. */
+    void evidenceFull(int contextSources) {
+        lines.add("Obergrenze erreicht: " + contextSources + (contextSources == 1 ? " Quelle" : " Quellen"));
+        current = "";
         update();
     }
 

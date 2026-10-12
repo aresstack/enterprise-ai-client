@@ -37,6 +37,32 @@ public interface RetrievalProgress {
     default void searchFailed(String query) {
     }
 
+    /** Das Modell bewertet {@code candidates} neue Treffer gegen die Nachricht (adaptiver Modus). */
+    default void rankingStarted(int candidates) {
+    }
+
+    /**
+     * Die neuen Treffer einer Suche sind bewertet: {@code relevant} von {@code candidates} kommen für den Kontext in
+     * Frage (ohne Reranking alle).
+     */
+    default void candidatesRanked(int candidates, int relevant) {
+    }
+
+    /**
+     * Die Prüfung nach der Übernahme einer Quelle: mit {@code sources} Abschnitten aus {@code independent} Seiten
+     * reicht die Evidenz ({@code sufficient}) oder noch nicht (adaptiver Modus).
+     */
+    default void evidenceChecked(int sources, int independent, boolean sufficient) {
+    }
+
+    /** Die Obergrenze der Quellen im Kontext ist mit {@code sources} erreicht; es wird nicht weiter gesucht. */
+    default void evidenceFull(int sources) {
+    }
+
+    /** Es wird auf weitere Treffer der Live-Suche gewartet, weil die Evidenz noch nicht reicht. */
+    default void morePagesStarted() {
+    }
+
     /** Das Modell prüft, ob die bisherigen Treffer die Nachricht beantworten. */
     default void contextCheckStarted() {
     }

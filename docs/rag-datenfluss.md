@@ -136,6 +136,20 @@ sequenceDiagram
   und Index), höchstens zweimal, neue Treffer zuerst. Ein unlesbares Urteil, ein Fehler der Nebenanfrage oder
   eine wiederholte Anfrage beendet die Nachrecherche. Der Kontext nennt danach alle Suchanfragen und untersagt
   die Bitte um Dateien, solange Quellen angehakt sind (`RagChatTurn.queries()`).
+- **Adaptive Evidenz mit Reranking** (seit 0.36.0, im Client immer an): Die Treffer einer Suche bewertet das
+  Chat-Modell in einer Nebenanfrage gegen die Nachricht samt Verlauf (`RelevanceRanking`: je Abschnitt 0 = gehört
+  nicht zur Frage bis 3 = beantwortet sie direkt; übernommen ab 2, beste zuerst). Die passenden kommen einzeln in
+  den Kontext; nach jeder neuen Quelle (bis drei, danach am Ende des Trefferbündels) prüft `FollowUpResearch`, ob
+  die Evidenz reicht, und bei „reicht“ wird sofort geantwortet. Drei Grenzen (`EvidencePolicy`, Reiter „Index“):
+  `context.maxSources` ist die harte Obergrenze (erreicht = keine weitere Suche), `context.minSources` die
+  Mindestzahl unabhängiger Quellen (verschiedene Seiten, Standard 1, 0 = nur die Prüfung; fehlt sie, verlangt die
+  Prüfung eine Suchanfrage nach weiteren Belegen), `retrieval.maxFollowUps` die Nachsuchen (Standard 2). Die
+  Live-Suche ist gestuft: die erste Indexsuche wartet nur auf eine geladene Seite, auf vier erst, wenn die Evidenz
+  nicht reicht. `retrieval.rerank=false` übernimmt die Treffer ungeprüft in Suchreihenfolge (aber weiter einzeln
+  mit Prüfung); eine unlesbare Bewertung ebenso. Der Fortschritt steht in der Recherchekarte („14 Kandidaten,
+  3 relevant“, „1 Quelle: nicht ausreichend“, „2 Quellen: ausreichend“). Ein Cross-Encoder (Modellkategorie
+  RERANK) ist nicht angebunden; er hätte seinen Platz in `RelevanceRanking`. `retrieval.minSemanticScore` bleibt
+  -1: Cosine-Werte sind je Embedding-Modell verschieden skaliert.
 - **Shell** (`proasteion.exedra.chat.RagChatBinding`, AP22): Während der Suche zeigt die leere Antwortblase "Wissen wird
   gesucht …"; danach hängen die Quellen (`SourceReference`: Nummer, Titel, Überschrift, Ort, Stand, Score,
   Ränge) einklappbar an der Antwort. Warnungen, keine Treffer oder ein Ausfall der Suche werden eine eigene

@@ -165,7 +165,10 @@ public class ApplicationCompositionTest {
     public void ragQuestionCarriesSourcesAndContextAfterIndexing() throws Exception {
         final CompositionRoot root = compose(false);
         indexAll(root);
-        // Erst prüft die Nachrecherche, ob der Kontext reicht (Nebenanfrage), dann kommt die Antwort.
+        // Erst bewertet das Modell die Treffer gegen die Frage, dann prüft es nach der besten Quelle, ob sie reicht
+        // (beides Nebenanfragen), dann kommt die Antwort.
+        chatPort.enqueueAnswer("{\"scores\": [{\"id\": 1, \"score\": 3}, {\"id\": 2, \"score\": 3}, "
+                + "{\"id\": 3, \"score\": 3}, {\"id\": 4, \"score\": 3}, {\"id\": 5, \"score\": 3}]}");
         chatPort.enqueueAnswer("{\"sufficient\": true}");
         chatPort.enqueueAnswer("Am 31. März.");
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
@@ -186,7 +189,8 @@ public class ApplicationCompositionTest {
         assertTrue(system, system.contains("Antworte kurz."));
         assertTrue("Kontextblock im System-Anteil: " + system, system.contains("Resturlaub"));
         assertTrue(system, system.contains("- Wann verfällt der Resturlaub?"));
-        assertEquals("Prüfung und Antwort", 2, chatPort.requests().size());
+        assertEquals("Bewertung, Prüfung und Antwort", 3, chatPort.requests().size());
+        assertEquals("die Faktfrage endet nach der ersten ausreichenden Quelle", 1, answer.getSources().size());
     }
 
     @Test

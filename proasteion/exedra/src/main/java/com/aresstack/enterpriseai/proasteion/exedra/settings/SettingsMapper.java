@@ -5,6 +5,8 @@ import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
+import com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy;
+import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalSettings;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
@@ -154,6 +156,11 @@ public final class SettingsMapper {
                 String.valueOf(RetrievalSettings.DEFAULT_MAX_RESULTS)));
         b.contextMaxTokens(text(p, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY,
                 String.valueOf(ContextSettings.DEFAULT_MAX_CONTEXT_TOKENS)));
+        b.contextMinSources(text(p, AppConfigLoader.CONTEXT_MIN_SOURCES_KEY,
+                String.valueOf(EvidencePolicy.DEFAULT_MIN_SOURCES)));
+        b.retrievalMaxFollowUps(text(p, AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY,
+                String.valueOf(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS)));
+        b.retrievalRerank(bool(p, AppConfigLoader.RETRIEVAL_RERANK_KEY, true));
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 b.modelSelection(category.key(), text(p, ModelsConfig.keyOf(category), ""));
@@ -224,6 +231,9 @@ public final class SettingsMapper {
         put(set, AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY, form.retrievalMaxResults());
         put(set, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY, form.contextMaxTokens());
         put(set, AppConfigLoader.CONTEXT_MAX_SOURCES_KEY, form.contextMaxSources());
+        put(set, AppConfigLoader.CONTEXT_MIN_SOURCES_KEY, form.contextMinSources());
+        put(set, AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY, form.retrievalMaxFollowUps());
+        put(set, AppConfigLoader.RETRIEVAL_RERANK_KEY, form.retrievalRerank() ? "" : "false");
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 put(set, ModelsConfig.keyOf(category), form.modelSelection(category.key()));
@@ -370,6 +380,10 @@ public final class SettingsMapper {
                 return "Max. Retrieval-Treffer";
             case AppConfigLoader.CONTEXT_MAX_TOKENS_KEY:
                 return "Kontextbudget (Tokens)";
+            case AppConfigLoader.CONTEXT_MIN_SOURCES_KEY:
+                return "Mindestzahl unabhängiger Quellen";
+            case AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY:
+                return "Max. Nachsuchen";
             default:
                 return key;
         }

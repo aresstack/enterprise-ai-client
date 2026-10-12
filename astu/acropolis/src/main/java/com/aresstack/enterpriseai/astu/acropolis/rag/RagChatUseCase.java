@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Use Case "Chatten mit Wissen" (RAG): legt vor einen normalen Chat-Turn optional Retrieval und Kontextaufbau.
@@ -53,6 +54,9 @@ public final class RagChatUseCase {
     private final PromptContextAssembler assembler;
     private final RetrievalPreparation preparation;
     private final FollowUpResearch followUps;
+    /** Adaptiver Modus (Reranking, progressive Evidenz); {@code null} = feste Treffermenge wie bisher. */
+    private final Supplier<EvidencePolicy> evidence;
+    private final RelevanceRanking ranking = RelevanceRanking.byChatModel();
     /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
     private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
     /** Der zuletzt verwendete Wissenskontext je Konversation (nur mit Nachrecherche). */
@@ -72,6 +76,20 @@ public final class RagChatUseCase {
     /** @param followUps ob und wie oft nachgesucht wird, wenn der Kontext die Nachricht nicht beantwortet */
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
                           RetrievalPreparation preparation, FollowUpResearch followUps) {
+        this(chat, retrieval, assembler, preparation, followUps, null);
+    }
+
+    /**
+     * Adaptiver Modus: Treffer werden gegen die Nachricht bewertet ({@link RelevanceRanking}) und einzeln in den
+     * Kontext übernommen, beste zuerst; nach jeder neuen Quelle prüft {@code followUps}, ob die Evidenz reicht, und die
+     * Suche endet, sobald sie reicht. Die Grenzen kommen je Turn aus {@code evidence} (ohne Neustart); die Zahl der
+     * Nachsuchen von dort, nicht aus {@code followUps}.
+     *
+     * @param evidence Grenzen je Turn; {@code null} = fester Ablauf wie im Konstruktor ohne diesen Parameter
+     */
+    public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
+                          RetrievalPreparation preparation, FollowUpResearch followUps,
+                          Supplier<EvidencePolicy> evidence) {
         if (chat == null || retrieval == null) {
             throw new IllegalArgumentException("chat und retrieval sind Pflicht");
         }
@@ -80,6 +98,7 @@ public final class RagChatUseCase {
         this.assembler = assembler == null ? new PromptContextAssembler(ContextSettings.defaults()) : assembler;
         this.preparation = preparation == null ? RetrievalPreparation.none() : preparation;
         this.followUps = followUps == null ? FollowUpResearch.off() : followUps;
+        this.evidence = evidence;
     }
 
     /** Der gemeinsame Chat-Use-Case, über den Konversationen verwaltet werden. */
@@ -145,8 +164,12 @@ public final class RagChatUseCase {
             }
         }
         try {
-            return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via,
-                    progress == null ? RetrievalProgress.none() : progress);
+            RetrievalProgress steps = progress == null ? RetrievalProgress.none() : progress;
+            EvidencePolicy policy = evidence == null ? null : evidence.get();
+            if (policy != null) {
+                return sendAdaptive(id, userText, rag, options, listener, extraContext, via, steps, policy);
+            }
+            return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via, steps);
         } finally {
             synchronized (retrieving) {
                 retrieving.remove(id);
@@ -282,6 +305,265 @@ public final class RagChatUseCase {
             }
         }
         return all;
+    }
+
+    /** Wie die Übernahme eines Trefferbündels endete. */
+    private enum Intake {
+        /** Die Prüfung sagt „reicht“: sofort antworten. */
+        SUFFICIENT,
+        /** Die Obergrenze der Quellen ist erreicht. */
+        FULL,
+        /** Kein lesbares Urteil: mit dem Bisherigen antworten. */
+        NO_VERDICT,
+        /** Noch nicht genug; weitere Treffer oder eine Nachsuche können helfen. */
+        OPEN
+    }
+
+    /** Zustand der adaptiven Suche eines Turns. */
+    private final class Evidence {
+
+        final List<RetrievedChunk> accepted = new ArrayList<RetrievedChunk>();
+        final Set<String> seen = new HashSet<String>();
+        final EvidencePolicy policy;
+        final ChatService chatService;
+        final List<ChatMessage> history;
+        final String message;
+        final List<String> queries;
+        final ChatOptions options;
+        final RetrievalProgress progress;
+        int checkedAt = -1;
+        String suggestion;
+        /** Suchanfragen des früheren Wissenskontexts, den diese Nachricht weiterführt. */
+        List<String> priorQueries = Collections.emptyList();
+
+        Evidence(EvidencePolicy policy, List<ChatMessage> history, String message, List<String> queries,
+                 ChatOptions options, RetrievalProgress progress) {
+            this.policy = policy;
+            this.chatService = chat;
+            this.history = history;
+            this.message = message;
+            this.queries = queries;
+            this.options = options;
+            this.progress = progress;
+        }
+
+        /** Die noch nicht bewerteten Treffer, in Suchreihenfolge; merkt sie als gesehen. */
+        List<RetrievedChunk> fresh(List<RetrievedChunk> hits) {
+            List<RetrievedChunk> fresh = new ArrayList<RetrievedChunk>();
+            for (RetrievedChunk hit : hits) {
+                if (seen.add(hit.chunk().id().value())) {
+                    fresh.add(hit);
+                }
+            }
+            return fresh;
+        }
+
+        int maxSources() {
+            return assembler.settings().maxSources();
+        }
+
+        /** Die verlangte Mindestzahl, höchstens die Obergrenze (mehr ließe sich nie erfüllen). */
+        int minSources() {
+            return Math.min(policy.minSources(), maxSources());
+        }
+
+        int missingSources() {
+            return Math.max(0, minSources() - independentSources());
+        }
+
+        /** Verschiedene Seiten unter den übernommenen Abschnitten. */
+        int independentSources() {
+            Set<String> resources = new HashSet<String>();
+            for (RetrievedChunk hit : accepted) {
+                resources.add(hit.resource().id().value());
+            }
+            return resources.size();
+        }
+
+        /**
+         * Übernimmt relevante Treffer, beste zuerst, und prüft nach jeder neuen Quelle (bis {@link #STEPWISE_CHECKS}
+         * Quellen, danach am Ende des Bündels), ob die Evidenz reicht.
+         */
+        Intake take(List<RetrievedChunk> relevant, String query) {
+            for (RetrievedChunk hit : relevant) {
+                if (accepted.size() >= maxSources()) {
+                    progress.evidenceFull(accepted.size());
+                    return Intake.FULL;
+                }
+                List<RetrievedChunk> candidate = new ArrayList<RetrievedChunk>(accepted);
+                candidate.add(hit);
+                if (assembler.assemble(candidate).sources().size() < candidate.size()) {
+                    continue; // passt nicht mehr ins Token-Budget; ein kürzerer Abschnitt vielleicht schon
+                }
+                accepted.add(hit);
+                if (missingSources() > 0 || accepted.size() > STEPWISE_CHECKS) {
+                    continue;
+                }
+                Intake intake = check(query);
+                if (intake != Intake.OPEN) {
+                    return intake;
+                }
+            }
+            if (accepted.size() >= maxSources()) {
+                progress.evidenceFull(accepted.size());
+                return Intake.FULL;
+            }
+            if (missingSources() == 0 && accepted.size() > checkedAt && !accepted.isEmpty()) {
+                return check(query);
+            }
+            return Intake.OPEN;
+        }
+
+        /** Prüft die bisherige Evidenz; merkt sich die vorgeschlagene Nachsuche. */
+        Intake check(String query) {
+            progress.contextCheckStarted();
+            int missing = missingSources();
+            FollowUpResearch.Verdict verdict = followUps.check(chatService, history, message,
+                    all(priorQueries, queries), assembler.assemble(accepted).text(), missing, options);
+            checkedAt = accepted.size();
+            if (!verdict.isKnown()) {
+                return Intake.NO_VERDICT;
+            }
+            progress.evidenceChecked(accepted.size(), independentSources(), verdict.isSufficient());
+            if (verdict.isSufficient()) {
+                return Intake.SUFFICIENT;
+            }
+            suggestion = verdict.query();
+            return Intake.OPEN;
+        }
+    }
+
+    /** Bis zu so vielen Quellen wird nach jeder neuen geprüft, danach nur am Ende eines Trefferbündels (kippbar). */
+    static final int STEPWISE_CHECKS = 3;
+
+    private RagChatTurn sendAdaptive(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
+                                     ChatTurnListener listener, String extraContext, ChatCompletionPort via,
+                                     RetrievalProgress progress, EvidencePolicy policy) {
+        List<String> queries = new ArrayList<String>();
+        List<Integer> hitCounts = new ArrayList<Integer>();
+        List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
+        boolean failed = false;
+        List<ChatMessage> history = chat.conversation(id).messages();
+        Evidence evidence = new Evidence(policy, history, userText, queries, options, progress);
+        RelevanceRanking judge = policy.reranking() ? ranking : RelevanceRanking.off();
+        int maxSearches = 1 + policy.maxFollowUps();
+        Intake intake = Intake.OPEN;
+        String query = userText;
+        // Erst der Wissenskontext früherer Nachrichten: beantwortet er die neue, wird nicht gesucht. Passt er zum
+        // Thema, wird er zusammen mit den neuen Treffern gegen die Nachricht bewertet (hinter ihnen).
+        List<RetrievedChunk> carried = Collections.emptyList();
+        int reused = 0;
+        ConversationKnowledgeContext prior = contexts.get(id);
+        if (prior != null && !prior.isEmpty()) {
+            FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, prior.queries(),
+                    assembler.assemble(prior.hits()).text(), options);
+            if (verdict.isSufficient()) {
+                evidence.accepted.addAll(prior.hits());
+                evidence.priorQueries = prior.queries();
+                reused = assembler.assemble(prior.hits()).sources().size();
+                query = null;
+                intake = Intake.SUFFICIENT;
+                progress.reusingSources(reused);
+            } else if (verdict.isKnown()) {
+                if (verdict.isRelated()) {
+                    carried = prior.hits();
+                    evidence.priorQueries = prior.queries();
+                }
+                if (verdict.query() != null) {
+                    query = verdict.query();
+                }
+                progress.reuseInsufficient(query, carried.size());
+            }
+        }
+        while (query != null && intake == Intake.OPEN && !progress.isCancelled()) {
+            queries.add(query);
+            evidence.suggestion = null;
+            progress.searchStarted(query, queries.size(), maxSearches);
+            progress.liveSearchStarted(query);
+            RetrievalPreparation.Stage stage = RetrievalPreparation.Stage.DONE;
+            try {
+                stage = preparation.begin(query, rag.sources());
+            } catch (RuntimeException e) {
+                // Die Live-Suche ist eine Ergänzung; ohne sie antwortet der Turn aus dem vorhandenen Index.
+            }
+            if (progress.isCancelled()) {
+                queries.remove(queries.size() - 1);
+                break;
+            }
+            int checkedBefore = evidence.checkedAt;
+            for (int round = 0; ; round++) {
+                RetrievalResult result;
+                try {
+                    result = retrieval.retrieve(query, rag.sources(), progress);
+                } catch (KnowledgeRetrievalException e) {
+                    if (round == 0) {
+                        hitCounts.add(-1);
+                        progress.searchFailed(query);
+                        if (queries.size() == 1 && evidence.accepted.isEmpty() && carried.isEmpty()) {
+                            warnings.addAll(e.warnings());
+                            failed = true;
+                        } else if (queries.size() == 1 && evidence.accepted.isEmpty()) {
+                            evidence.accepted.addAll(carried); // die Suche fiel aus, der frühere Kontext bleibt
+                        }
+                    }
+                    intake = Intake.NO_VERDICT; // eine ausgefallene Suche lässt das Bisherige stehen
+                    break;
+                }
+                if (round == 0) {
+                    warnings.addAll(result.warnings()); // dieselbe Anfrage fällt beim Nachladen gleich aus
+                    hitCounts.add(result.hits().size());
+                    progress.hitsFound(query, result.hits().size());
+                } else {
+                    hitCounts.set(hitCounts.size() - 1, Math.max(hitCounts.get(hitCounts.size() - 1),
+                            result.hits().size()));
+                }
+                List<RetrievedChunk> fresh = evidence.fresh(round == 0 && queries.size() == 1
+                        ? newestFirst(result.hits(), carried) : result.hits());
+                if (!fresh.isEmpty()) {
+                    if (judge.isEnabled()) {
+                        progress.rankingStarted(fresh.size());
+                    }
+                    RelevanceRanking.Ranked ranked = judge.rank(chat, history, userText, query, fresh, options);
+                    progress.candidatesRanked(ranked.candidates(), ranked.relevant().size());
+                    intake = evidence.take(ranked.relevant(), query);
+                }
+                if (intake != Intake.OPEN || progress.isCancelled()) {
+                    break;
+                }
+                progress.morePagesStarted();
+                boolean more;
+                try {
+                    more = stage.awaitMore();
+                } catch (RuntimeException e) {
+                    more = false;
+                }
+                if (!more || progress.isCancelled()) {
+                    break;
+                }
+            }
+            if (intake != Intake.OPEN || progress.isCancelled() || queries.size() >= maxSearches) {
+                break;
+            }
+            if (evidence.checkedAt == checkedBefore || evidence.checkedAt < evidence.accepted.size()) {
+                // Diese Suche brachte keine geprüfte Evidenz (nichts Relevantes, Mindestzahl offen): das Urteil
+                // liefert die genauere Anfrage für die Nachsuche.
+                intake = evidence.check(query);
+                if (intake != Intake.OPEN) {
+                    break;
+                }
+            }
+            query = evidence.suggestion;
+        }
+        PromptContext context = failed ? PromptContext.empty(0) : assembler.assemble(evidence.accepted);
+        progress.contextReady(context.sources().size());
+        List<String> allQueries = all(evidence.priorQueries, queries);
+        if (!context.sources().isEmpty()) {
+            // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
+            contexts.put(id, new ConversationKnowledgeContext(allQueries, accepted(evidence.accepted, context)));
+        }
+        String combined = join(join(context.text(), searchNote(allQueries)), extraContext);
+        ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
+        return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts, reused);
     }
 
     /** Die Treffer der neuesten Suche zuerst, danach die älteren, die sie nicht schon enthält. */

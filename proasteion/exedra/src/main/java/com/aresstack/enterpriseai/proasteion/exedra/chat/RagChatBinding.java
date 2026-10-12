@@ -704,6 +704,31 @@ public final class RagChatBinding implements ChatShellActions {
             }
 
             @Override
+            public void rankingStarted(final int candidates) {
+                card(card -> card.ranking(candidates));
+            }
+
+            @Override
+            public void candidatesRanked(final int candidates, final int relevant) {
+                card(card -> card.ranked(candidates, relevant));
+            }
+
+            @Override
+            public void evidenceChecked(final int sources, int independent, final boolean sufficient) {
+                card(card -> card.evidenceChecked(sources, sufficient));
+            }
+
+            @Override
+            public void evidenceFull(final int sources) {
+                card(card -> card.evidenceFull(sources));
+            }
+
+            @Override
+            public void morePagesStarted() {
+                card(card -> card.step(ChatResearchCard.MORE_PAGES));
+            }
+
+            @Override
             public void contextCheckStarted() {
                 card(card -> card.step(ChatResearchCard.CHECKING));
             }
