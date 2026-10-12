@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.application.speech;
+package com.aresstack.enterpriseai.proasteion.application.resources;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,63 +18,81 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 /**
- * Das Ressourcen-Archiv neben dem Jar ({@code <prefix>*.zip}): ein ZIP mit Manifest, aus dem die OpenNLP-Modelle
- * ohne Download installiert werden. Ein Modell gilt nur dann als im Archiv vorhanden, wenn das Manifest es mit genau
- * der Größe und dem SHA-256 des Katalogs führt; beim Entpacken wird beides am Inhalt noch einmal geprüft.
+ * Das lokale Ressourcen-Bundle neben dem Jar ({@code <prefix>*.zip}): ein ZIP mit Manifest, aus dem Ressourcen ohne
+ * Download installiert werden. Eine Ressource gilt nur dann als vorhanden, wenn das Manifest sie mit genau der Größe
+ * und dem SHA-256 ihrer Beschreibung führt; beim Lesen wird beides am Inhalt noch einmal geprüft.
+ *
+ * <p>Manifest (Properties): {@code model.<id>.path}, {@code model.<id>.sha256}, {@code model.<id>.size}.
  */
-final class NlpResourceArchive {
+public final class LocalResourceSource {
 
     private final List<Path> directories;
     private final String prefix;
     private final String manifestName;
 
-    NlpResourceArchive(List<Path> directories, String prefix, String manifestName) {
+    /** Bundle-Hash zuletzt gelesen für (Pfad, Größe, Änderungszeit). */
+    private String hashedKey;
+    private String hashedValue;
+
+    /**
+     * @param directories  die Verzeichnisse, in denen der Reihe nach gesucht wird (meist Jar-, dann
+     *                     Anwendungsverzeichnis)
+     * @param prefix       Namensanfang des ZIP, leer = kein Bundle
+     * @param manifestName Name des Manifests im ZIP
+     */
+    public LocalResourceSource(List<Path> directories, String prefix, String manifestName) {
         this.directories = Collections.unmodifiableList(new ArrayList<Path>(directories));
         this.prefix = prefix == null ? "" : prefix.trim();
         this.manifestName = manifestName == null ? "" : manifestName.trim();
     }
 
-    /** Ob das Archiv das Modell mit genau dieser Größe und diesem SHA-256 anbietet. */
-    boolean offers(String id, long size, String sha256) {
+    /** Eine Quelle ohne Bundle. */
+    public static LocalResourceSource none() {
+        return new LocalResourceSource(Collections.<Path>emptyList(), null, null);
+    }
+
+    /** Ob das Bundle die Ressource mit genau dieser Größe und diesem SHA-256 anbietet. */
+    public boolean offers(ResourceDescriptor resource) {
         Path archive = locate();
         if (archive == null) {
             return false;
         }
         try (ZipFile zip = new ZipFile(archive.toFile())) {
-            return pathOf(zip, id, size, sha256) != null;
+            return pathOf(zip, resource) != null;
         } catch (IOException | RuntimeException unreadable) {
             return false;
         }
     }
 
     /**
-     * Der geprüfte Inhalt des Modells aus dem Archiv oder {@code null}, wenn es dort fehlt oder nicht stimmt (dann
+     * Der geprüfte Inhalt der Ressource aus dem Bundle oder {@code null}, wenn sie dort fehlt oder nicht stimmt (dann
      * wird heruntergeladen).
      */
-    byte[] read(String id, long size, String sha256) throws IOException {
+    public byte[] read(ResourceDescriptor resource) throws IOException {
         Path archive = locate();
         if (archive == null) {
             return null;
         }
         try (ZipFile zip = new ZipFile(archive.toFile())) {
-            String path = pathOf(zip, id, size, sha256);
+            String path = pathOf(zip, resource);
             ZipEntry entry = path == null ? null : zip.getEntry(path);
             if (entry == null) {
                 return null;
             }
             byte[] bytes;
             try (InputStream in = zip.getInputStream(entry)) {
-                bytes = readAll(in, size);
+                bytes = readAll(in, resource.size());
             }
-            if (bytes == null || (size >= 0 && bytes.length != size) || !NlpModels.sha256(bytes).equals(sha256)) {
+            if (bytes == null || (resource.size() >= 0 && bytes.length != resource.size())
+                    || !ResourceInstaller.sha256(bytes).equals(resource.sha256())) {
                 return null;
             }
             return bytes;
         }
     }
 
-    /** Das Archiv mit dem größten Namen im ersten Verzeichnis, das eines hat, oder {@code null}. */
-    Path locate() {
+    /** Das Bundle mit dem größten Namen im ersten Verzeichnis, das eines hat, oder {@code null}. */
+    public Path locate() {
         if (prefix.isEmpty()) {
             return null;
         }
@@ -100,7 +118,25 @@ final class NlpResourceArchive {
         return null;
     }
 
-    private String pathOf(ZipFile zip, String id, long size, String sha256) throws IOException {
+    /**
+     * SHA-256 des ganzen Bundles als seine Installationsversion oder {@code null} ohne Bundle; zwischengespeichert,
+     * solange Pfad, Größe und Änderungszeit gleich bleiben.
+     */
+    public synchronized String bundleSha256() throws IOException {
+        Path archive = locate();
+        if (archive == null) {
+            return null;
+        }
+        String key = archive.toAbsolutePath() + "|" + Files.size(archive) + "|"
+                + Files.getLastModifiedTime(archive).toMillis();
+        if (!key.equals(hashedKey)) {
+            hashedValue = ResourceInstaller.sha256(archive);
+            hashedKey = key;
+        }
+        return hashedValue;
+    }
+
+    private String pathOf(ZipFile zip, ResourceDescriptor resource) throws IOException {
         ZipEntry manifestEntry = manifestName.isEmpty() ? null : zip.getEntry(manifestName);
         if (manifestEntry == null) {
             return null;
@@ -109,11 +145,12 @@ final class NlpResourceArchive {
         try (Reader reader = new InputStreamReader(zip.getInputStream(manifestEntry), StandardCharsets.UTF_8)) {
             manifest.load(reader);
         }
-        String key = "model." + id + ".";
+        String key = "model." + resource.id() + ".";
         String path = manifest.getProperty(key + "path", "").trim();
         String listedSha = manifest.getProperty(key + "sha256", "").trim().toLowerCase(Locale.ROOT);
         String listedSize = manifest.getProperty(key + "size", "").trim();
-        if (path.isEmpty() || !listedSha.equals(sha256) || !listedSize.equals(String.valueOf(size))) {
+        if (path.isEmpty() || !listedSha.equals(resource.sha256())
+                || !listedSize.equals(String.valueOf(resource.size()))) {
             return null;
         }
         return zip.getEntry(path) == null ? null : path;

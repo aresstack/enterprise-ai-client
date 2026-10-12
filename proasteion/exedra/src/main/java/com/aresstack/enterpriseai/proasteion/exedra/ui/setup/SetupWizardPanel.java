@@ -1879,6 +1879,20 @@ public final class SetupWizardPanel extends JPanel {
             nlpLines.add(state, c);
             row++;
         }
+        String bundle = settings.resourceBundleNote();
+        if (bundle != null && !bundle.isEmpty()) {
+            GridBagConstraints c = new GridBagConstraints();
+            c.gridx = 0;
+            c.gridy = row;
+            c.gridwidth = 2;
+            c.anchor = GridBagConstraints.WEST;
+            c.insets = new Insets(2, 0, 0, 0);
+            JLabel note = new JLabel(bundle);
+            note.putClientProperty("html.disable", Boolean.TRUE);
+            note.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
+            note.setFont(ResearchUiTypography.regular(11.5f));
+            nlpLines.add(note, c);
+        }
         nlpLines.revalidate();
         nlpLines.repaint();
         updateButtons();

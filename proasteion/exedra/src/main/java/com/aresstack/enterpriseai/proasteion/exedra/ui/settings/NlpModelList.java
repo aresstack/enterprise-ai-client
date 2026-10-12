@@ -52,6 +52,14 @@ final class NlpModelList {
             @Override
             public void accept(List<NlpModelOffer> offers) {
                 lines.removeAll();
+                String bundle = actions.resourceBundleNote();
+                if (bundle != null && !bundle.isEmpty()) {
+                    JLabel note = new WrappingLabel(bundle);
+                    note.putClientProperty("html.disable", Boolean.TRUE);
+                    note.setForeground(FormRows.MUTED);
+                    note.setAlignmentX(JComponent.LEFT_ALIGNMENT);
+                    lines.add(note);
+                }
                 for (NlpModelOffer offer : offers) {
                     lines.add(line(offer));
                 }

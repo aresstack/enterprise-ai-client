@@ -200,6 +200,13 @@ public interface SettingsDialogActions {
     }
 
     /**
+     * Ein Satz zum Ressourcen-Archiv neben dem Jar (gefunden, schon installiert, geändert) oder leer ohne Archiv.
+     */
+    default String resourceBundleNote() {
+        return "";
+    }
+
+    /**
      * Installiert ein OpenNLP-Modell (zuerst aus dem Ressourcen-Archiv, sonst Download über die
      * Netzwerkeinstellungen des Entwurfs; Größe und SHA-256 geprüft); Ergebnis genau einmal auf dem EDT.
      */

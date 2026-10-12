@@ -91,7 +91,7 @@ Nach der Suche steht „n ladbare Modelle gefunden.“ oder „Keine im Client l
 
 ### Bereich „Text- und Sprachanalyse (OpenNLP)“
 
-Hinweis: „Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache; die Wortartenerkennung hilft beim Auswerten von Chat-Anfragen. Ohne diese Modelle wird an Satzzeichen geteilt. …“ Modelle: Satzerkennung Deutsch und Englisch, Spracherkennung, Wortartenerkennung Deutsch (`de-pos-maxent.bin`). Je Modell eine Zeile mit Stand und „Installieren“ (während des Ladens „Lade …“). Liegt das Ressourcen-Archiv `enterprise-ai-client-resources-<version>.zip` neben dem Jar oder im Anwendungsverzeichnis, steht „Im Ressourcen-Archiv“, und „Installieren“ entpackt das Modell daraus statt es zu laden. Größe und SHA-256 werden in beiden Fällen geprüft.
+Hinweis: „Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache; die Wortartenerkennung hilft beim Auswerten von Chat-Anfragen. Ohne diese Modelle wird an Satzzeichen geteilt. …“ Modelle: Satzerkennung Deutsch und Englisch, Spracherkennung, Tokenisierung Deutsch (`de-token.bin`), Wortartenerkennung Deutsch (`de-pos-maxent.bin`). Je Modell eine Zeile mit Stand und „Installieren“ (während des Ladens „Lade …“). Liegt das Ressourcen-Archiv `enterprise-ai-client-resources-<version>.zip` neben dem Jar oder im Anwendungsverzeichnis, steht „Im Ressourcen-Archiv“, und „Installieren“ entpackt das Modell daraus statt es zu laden. Größe und SHA-256 werden in beiden Fällen geprüft.
 
 ### Bereich „Modellverzeichnis“
 

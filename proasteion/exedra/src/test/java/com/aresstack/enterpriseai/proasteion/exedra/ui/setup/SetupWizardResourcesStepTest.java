@@ -56,10 +56,10 @@ public class SetupWizardResourcesStepTest {
         final SetupWizardPanel wizard = start();
         SwingUtilities.invokeAndWait(() -> {
             wizard.installAllButton().doClick();
-            assertEquals(Arrays.asList("sentence-de", "sentence-en", "langdetect", "pos-de"),
+            assertEquals(Arrays.asList("sentence-de", "sentence-en", "langdetect", "tokenize-de", "pos-de"),
                     settings.nlpInstallRequests);
             assertEquals(Arrays.asList("gemma-4-e2b"), settings.installRequests);
-            for (String id : Arrays.asList("sentence-de", "sentence-en", "langdetect", "pos-de")) {
+            for (String id : Arrays.asList("sentence-de", "sentence-en", "langdetect", "tokenize-de", "pos-de")) {
                 assertEquals(id, SetupWizardPanel.NLP_INSTALLED, wizard.nlpState(id));
             }
             assertTrue("Spracheingabe installiert", wizard.isDone(SetupWizardPanel.STEP_SPEECH));
@@ -74,7 +74,7 @@ public class SetupWizardResourcesStepTest {
         final SetupWizardPanel wizard = start();
         SwingUtilities.invokeAndWait(() -> {
             wizard.installAllButton().doClick();
-            assertEquals("alle versucht", 4, settings.nlpInstallRequests.size());
+            assertEquals("alle versucht", 5, settings.nlpInstallRequests.size());
             assertEquals(SetupWizardPanel.NLP_INSTALLED, wizard.nlpState("pos-de"));
             assertEquals("fehlgeschlagen", wizard.nlpState("langdetect"));
             String error = wizard.errorOf(SetupWizardPanel.STEP_SPEECH);

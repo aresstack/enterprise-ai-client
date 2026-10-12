@@ -177,6 +177,11 @@ public final class DraftSettingsActions implements SettingsDialogActions {
     }
 
     @Override
+    public String resourceBundleNote() {
+        return delegate.resourceBundleNote();
+    }
+
+    @Override
     public void installNlpModel(SettingsForm form, String id, BiConsumer<Boolean, String> onFinished) {
         delegate.installNlpModel(form, id, onFinished);
     }

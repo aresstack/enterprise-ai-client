@@ -71,6 +71,7 @@ final class WizardFakes {
                         nlp("sentence-de", "Satzerkennung Deutsch (de-sent.bin)", true),
                         nlp("sentence-en", "Satzerkennung Englisch (en-sent.bin)", true),
                         nlp("langdetect", "Spracherkennung, alle Sprachen (langdetect-183.bin)", false),
+                        nlp("tokenize-de", "Tokenisierung Deutsch (de-token.bin)", true),
                         nlp("pos-de", "Wortartenerkennung Deutsch (de-pos-maxent.bin)", true)));
         final List<String> nlpInstallRequests = new ArrayList<String>();
         /** Ids whose installation fails. */
@@ -81,6 +82,11 @@ final class WizardFakes {
                                                                                               boolean inArchive) {
             return new com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer(id, name, false,
                     inArchive);
+        }
+
+        @Override
+        public String resourceBundleNote() {
+            return "Ressourcen-Archiv gefunden: daraus wird ohne Download installiert.";
         }
 
         @Override

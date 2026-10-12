@@ -1,26 +1,20 @@
 package com.aresstack.enterpriseai.proasteion.application.speech;
 
-import com.aresstack.enterpriseai.proasteion.application.net.HttpConnections;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
-import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoute;
+import com.aresstack.enterpriseai.proasteion.application.resources.LocalResourceSource;
+import com.aresstack.enterpriseai.proasteion.application.resources.ResourceDescriptor;
+import com.aresstack.enterpriseai.proasteion.application.resources.ResourceInstaller;
 import com.aresstack.enterpriseai.speech.api.TextAnalysisEngine;
 import com.aresstack.enterpriseai.speech.api.TextAnalysisEngineLoader;
 import com.aresstack.enterpriseai.speech.opennlp.OpenNlpTextAnalysisEngine;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.Reader;
-import java.io.Writer;
-import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -43,7 +37,6 @@ public final class NlpModels {
     static final String MANIFEST = "nlp-model.properties";
     static final String SENTENCE = "sentence";
     static final String LANGUAGE = "language";
-    private static final int MAX_REDIRECTS = 5;
 
     private static final Logger LOG = Logger.getLogger(NlpModels.class.getName());
 
@@ -98,6 +91,7 @@ public final class NlpModels {
         private final String file;
         private final String sha256;
         private final long size;
+        private final ResourceDescriptor descriptor;
 
         Entry(String id, String name, String capability, String language, URI url, String file, String sha256,
               long size) {
@@ -109,6 +103,7 @@ public final class NlpModels {
             this.file = file;
             this.sha256 = sha256;
             this.size = size;
+            this.descriptor = new ResourceDescriptor(id, url, file, sha256, size);
         }
 
         public String id() {
@@ -133,31 +128,21 @@ public final class NlpModels {
         }
     }
 
-    /** Woher ein Modell beim Installieren käme. */
-    public enum Source {
-        /** Schon installiert. */
-        INSTALLED,
-        /** Aus dem Ressourcen-Archiv neben dem Jar. */
-        ARCHIVE,
-        /** Per Download. */
-        DOWNLOAD
-    }
-
     private final Path root;
     private final List<Entry> entries;
-    private final NlpResourceArchive archive;
+    private final ResourceInstaller installer;
 
     NlpModels(Path root, List<Entry> entries) {
-        this(root, entries, new NlpResourceArchive(Collections.<Path>emptyList(), null, null));
+        this(root, entries, LocalResourceSource.none());
     }
 
-    NlpModels(Path root, List<Entry> entries, NlpResourceArchive archive) {
+    NlpModels(Path root, List<Entry> entries, LocalResourceSource local) {
         if (root == null) {
             throw new IllegalArgumentException("root must not be null");
         }
         this.root = root;
         this.entries = Collections.unmodifiableList(new ArrayList<Entry>(entries));
-        this.archive = archive;
+        this.installer = new ResourceInstaller(local);
     }
 
     /** Die Liste aus {@code nlp-models.properties}, abgelegt unter {@code root}, ohne Ressourcen-Archiv. */
@@ -193,7 +178,7 @@ public final class NlpModels {
                     p.getProperty(key + "sha256", "").trim().toLowerCase(java.util.Locale.ROOT),
                     Long.parseLong(p.getProperty(key + "size", "-1").trim())));
         }
-        return new NlpModels(root, entries, new NlpResourceArchive(archiveDirectories,
+        return new NlpModels(root, entries, new LocalResourceSource(archiveDirectories,
                 p.getProperty("archive.prefix"), p.getProperty("archive.manifest")));
     }
 
@@ -211,10 +196,23 @@ public final class NlpModels {
         return false;
     }
 
-    /** Installiert = Manifest und Datei liegen da. */
+    /**
+     * Installiert = Manifest und Datei liegen da und das Manifest nennt den SHA-256 des Katalogs (ein neues Modell
+     * im Katalog gilt so als nicht installiert).
+     */
     public boolean isInstalled(Entry entry) {
-        return Files.isRegularFile(directory(entry).resolve(MANIFEST))
-                && Files.isRegularFile(directory(entry).resolve(entry.file));
+        Path manifest = directory(entry).resolve(MANIFEST);
+        if (!Files.isRegularFile(manifest) || !Files.isRegularFile(directory(entry).resolve(entry.file))) {
+            return false;
+        }
+        Properties recorded = new Properties();
+        try (Reader reader = Files.newBufferedReader(manifest, StandardCharsets.UTF_8)) {
+            recorded.load(reader);
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
+        }
+        String sha = recorded.getProperty("sha256", "").trim();
+        return sha.isEmpty() || sha.equalsIgnoreCase(entry.sha256);
     }
 
     /** Das Modell mit dieser Id oder {@code null}. */
@@ -228,59 +226,46 @@ public final class NlpModels {
     }
 
     /** Woher das Modell beim Installieren käme: installiert, aus dem Ressourcen-Archiv oder per Download. */
-    public Source source(Entry entry) {
+    public ResourceInstaller.Source source(Entry entry) {
         if (isInstalled(entry)) {
-            return Source.INSTALLED;
+            return ResourceInstaller.Source.INSTALLED;
         }
-        return archive.offers(entry.id, entry.size, entry.sha256) ? Source.ARCHIVE : Source.DOWNLOAD;
+        return installer.offersLocally(entry.descriptor) ? ResourceInstaller.Source.ARCHIVE
+                : ResourceInstaller.Source.DOWNLOAD;
+    }
+
+    /** Wie das Ressourcen-Archiv neben dem Jar zum zuletzt daraus installierten steht. */
+    public ResourceInstaller.BundleState bundleState() {
+        return installer.bundleState(root);
     }
 
     /**
      * Installiert das Modell aus dem Ressourcen-Archiv, wenn es dort mit genau Größe und SHA-256 liegt, sonst per
-     * Download (Weiterleitungen werden je Ziel neu geroutet); erst nach der Prüfung werden Datei und zuletzt das
-     * Manifest geschrieben. Blockiert.
+     * Download; erst nach der Prüfung werden Datei und zuletzt das Manifest geschrieben. Blockiert.
      *
-     * @return woher das Modell kam ({@link Source#INSTALLED}, wenn es schon da war)
+     * @param network die Netzwerkdienste für den Download oder {@code null} (dann nur aus dem Archiv)
+     * @return woher das Modell kam ({@link ResourceInstaller.Source#INSTALLED}, wenn es schon da war)
      */
-    public Source install(Entry entry, NetworkServices network) throws IOException {
+    public ResourceInstaller.Source install(Entry entry, NetworkServices network) throws IOException {
         if (isInstalled(entry)) {
-            return Source.INSTALLED;
+            return ResourceInstaller.Source.INSTALLED;
         }
-        byte[] bytes = null;
-        try {
-            bytes = archive.read(entry.id, entry.size, entry.sha256);
-        } catch (IOException | RuntimeException unreadable) {
-            LOG.log(Level.WARNING, "Ressourcen-Archiv nicht lesbar, lade " + entry.file, unreadable);
-        }
-        Source source = bytes == null ? Source.DOWNLOAD : Source.ARCHIVE;
-        if (bytes == null) {
-            if (network == null) {
-                throw new IOException(entry.file + ": nicht im Ressourcen-Archiv und kein Netzwerk angegeben");
-            }
-            bytes = download(entry.url, network);
-        }
-        if (entry.size >= 0 && bytes.length != entry.size) {
-            throw new IOException(entry.file + ": " + bytes.length + " Bytes statt " + entry.size);
-        }
-        String actual = sha256(bytes);
-        if (!actual.equals(entry.sha256)) {
-            throw new IOException(entry.file + ": SHA-256 stimmt nicht (" + actual + ")");
-        }
+        ResourceInstaller.Fetched fetched = installer.fetch(entry.descriptor, network);
         Path dir = directory(entry);
         Files.createDirectories(dir);
-        atomicWrite(dir.resolve(entry.file), bytes);
+        ResourceInstaller.atomicWrite(dir.resolve(entry.file), fetched.bytes());
         Properties manifest = new Properties();
         manifest.setProperty("id", entry.id);
         manifest.setProperty("capability", entry.capability);
         manifest.setProperty("language", entry.language);
         manifest.setProperty("file", entry.file);
         manifest.setProperty("sha256", entry.sha256);
-        ByteArrayOutputStream text = new ByteArrayOutputStream();
-        try (Writer writer = new java.io.OutputStreamWriter(text, StandardCharsets.UTF_8)) {
-            manifest.store(writer, null);
+        manifest.setProperty("source", fetched.source().name());
+        ResourceInstaller.writeProperties(dir.resolve(MANIFEST), manifest);
+        if (fetched.source() == ResourceInstaller.Source.ARCHIVE) {
+            installer.recordBundle(root);
         }
-        atomicWrite(dir.resolve(MANIFEST), text.toByteArray());
-        return source;
+        return fetched.source();
     }
 
     /** Lädt beim Vorlesen, was gerade installiert ist (wie arch bei jedem Start der Engine). */
@@ -313,67 +298,5 @@ public final class NlpModels {
 
     private Path directory(Entry entry) {
         return root.resolve(entry.id.replaceAll("[^a-zA-Z0-9._-]", "_"));
-    }
-
-    private static byte[] download(URI url, NetworkServices network) throws IOException {
-        URI target = url;
-        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
-            HttpRoute route = network.routes().routeFor(target);
-            HttpURLConnection connection = HttpConnections.open(target, route, network.tls(), network.userAgent());
-            try {
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(60000);
-                connection.setInstanceFollowRedirects(false);
-                int code = connection.getResponseCode();
-                if (code >= 300 && code < 400) {
-                    String location = connection.getHeaderField("Location");
-                    if (location == null) {
-                        throw new IOException("HTTP " + code + " ohne Ziel: " + target.getHost());
-                    }
-                    target = target.resolve(location);
-                    continue;
-                }
-                if (code != HttpURLConnection.HTTP_OK) {
-                    throw new IOException("HTTP " + code + " von " + target.getHost());
-                }
-                try (InputStream in = connection.getInputStream()) {
-                    ByteArrayOutputStream out = new ByteArrayOutputStream();
-                    byte[] buffer = new byte[64 * 1024];
-                    int read;
-                    while ((read = in.read(buffer)) >= 0) {
-                        out.write(buffer, 0, read);
-                    }
-                    return out.toByteArray();
-                }
-            } finally {
-                connection.disconnect();
-            }
-        }
-        throw new IOException("zu viele Weiterleitungen: " + url.getHost());
-    }
-
-    static String sha256(byte[] bytes) throws IOException {
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256").digest(bytes);
-            StringBuilder hex = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IOException("SHA-256 nicht verfügbar", e);
-        }
-    }
-
-    private static void atomicWrite(Path target, byte[] content) throws IOException {
-        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        try (OutputStream out = Files.newOutputStream(tmp)) {
-            out.write(content);
-        }
-        try {
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException atomicUnsupported) {
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-        }
     }
 }

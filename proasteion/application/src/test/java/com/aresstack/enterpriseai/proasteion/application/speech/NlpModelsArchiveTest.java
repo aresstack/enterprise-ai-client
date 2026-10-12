@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.speech;
 
+import com.aresstack.enterpriseai.proasteion.application.resources.LocalResourceSource;
+import com.aresstack.enterpriseai.proasteion.application.resources.ResourceInstaller;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -40,7 +42,7 @@ public class NlpModelsArchiveTest {
 
     private NlpModels models(Path jarDirectory, NlpModels.Entry entry) throws IOException {
         return new NlpModels(temp.newFolder("models").toPath(), Collections.singletonList(entry),
-                new NlpResourceArchive(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"));
+                new LocalResourceSource(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"));
     }
 
     private static void archive(Path file, String manifest, byte[] content) throws IOException {
@@ -61,27 +63,59 @@ public class NlpModelsArchiveTest {
 
     @Test
     public void installsFromTheArchiveWithoutNetwork() throws Exception {
-        String sha = NlpModels.sha256(MODEL);
+        String sha = ResourceInstaller.sha256(MODEL);
         Path jarDirectory = temp.newFolder("jar").toPath();
         archive(jarDirectory.resolve(PREFIX + "-0.53.0.zip"), manifest(sha, MODEL.length), MODEL);
         NlpModels.Entry entry = entry(sha, MODEL.length);
         NlpModels models = models(jarDirectory, entry);
 
-        assertEquals(NlpModels.Source.ARCHIVE, models.source(entry));
-        assertEquals(NlpModels.Source.ARCHIVE, models.install(entry, null));
+        assertEquals(ResourceInstaller.Source.ARCHIVE, models.source(entry));
+        assertEquals(ResourceInstaller.Source.ARCHIVE, models.install(entry, null));
         assertTrue(models.isInstalled(entry));
-        assertEquals(NlpModels.Source.INSTALLED, models.source(entry));
+        assertEquals(ResourceInstaller.Source.INSTALLED, models.source(entry));
+        assertEquals("bundle hash recorded", ResourceInstaller.BundleState.INSTALLED, models.bundleState());
+    }
+
+    @Test
+    public void aReplacedBundleIsRecognisedByItsHash() throws Exception {
+        String sha = ResourceInstaller.sha256(MODEL);
+        Path jarDirectory = temp.newFolder("jar").toPath();
+        Path bundle = jarDirectory.resolve(PREFIX + ".zip");
+        archive(bundle, manifest(sha, MODEL.length), MODEL);
+        NlpModels.Entry entry = entry(sha, MODEL.length);
+        NlpModels models = models(jarDirectory, entry);
+        assertEquals(ResourceInstaller.BundleState.NEW, models.bundleState());
+        models.install(entry, null);
+        assertEquals(ResourceInstaller.BundleState.INSTALLED, models.bundleState());
+        archive(bundle, manifest(sha, MODEL.length) + "# another build\n", MODEL);
+        Files.setLastModifiedTime(bundle, java.nio.file.attribute.FileTime.fromMillis(
+                Files.getLastModifiedTime(bundle).toMillis() + 2000));
+        assertEquals(ResourceInstaller.BundleState.CHANGED, models.bundleState());
+    }
+
+    @Test
+    public void aNewerCatalogModelIsNotTakenForInstalled() throws Exception {
+        String sha = ResourceInstaller.sha256(MODEL);
+        Path jarDirectory = temp.newFolder("jar").toPath();
+        archive(jarDirectory.resolve(PREFIX + ".zip"), manifest(sha, MODEL.length), MODEL);
+        Path root = temp.newFolder("root").toPath();
+        NlpModels.Entry entry = entry(sha, MODEL.length);
+        new NlpModels(root, Collections.singletonList(entry),
+                new LocalResourceSource(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"))
+                .install(entry, null);
+        NlpModels.Entry newer = entry(ResourceInstaller.sha256("newer".getBytes(StandardCharsets.UTF_8)), 5);
+        assertFalse(new NlpModels(root, Collections.singletonList(newer)).isInstalled(newer));
     }
 
     @Test
     public void aManifestThatDisagreesWithTheCatalogMeansDownload() throws Exception {
-        String sha = NlpModels.sha256(MODEL);
+        String sha = ResourceInstaller.sha256(MODEL);
         Path jarDirectory = temp.newFolder("jar").toPath();
         archive(jarDirectory.resolve(PREFIX + ".zip"), manifest(sha, MODEL.length + 1), MODEL);
         NlpModels.Entry entry = entry(sha, MODEL.length);
         NlpModels models = models(jarDirectory, entry);
 
-        assertEquals(NlpModels.Source.DOWNLOAD, models.source(entry));
+        assertEquals(ResourceInstaller.Source.DOWNLOAD, models.source(entry));
         try {
             models.install(entry, null);
             fail("without archive copy and without network nothing is installed");
@@ -92,7 +126,7 @@ public class NlpModelsArchiveTest {
 
     @Test
     public void tamperedContentIsNotInstalled() throws Exception {
-        String sha = NlpModels.sha256(MODEL);
+        String sha = ResourceInstaller.sha256(MODEL);
         byte[] tampered = Arrays.copyOf(MODEL, MODEL.length);
         tampered[0] = 'X';
         Path jarDirectory = temp.newFolder("jar").toPath();
@@ -110,13 +144,17 @@ public class NlpModelsArchiveTest {
 
     @Test
     public void withoutArchiveTheSourceIsDownload() throws Exception {
-        NlpModels.Entry entry = entry(NlpModels.sha256(MODEL), MODEL.length);
-        assertEquals(NlpModels.Source.DOWNLOAD, models(temp.newFolder("empty").toPath(), entry).source(entry));
+        NlpModels.Entry entry = entry(ResourceInstaller.sha256(MODEL), MODEL.length);
+        assertEquals(ResourceInstaller.Source.DOWNLOAD, models(temp.newFolder("empty").toPath(), entry).source(entry));
     }
 
     @Test
-    public void theCatalogListsTheGermanPosModel() {
+    public void theCatalogListsTheGermanTokenizerAndPosModel() {
         NlpModels models = NlpModels.standard(temp.getRoot().toPath());
+        NlpModels.Entry tokens = models.entry("tokenize-de");
+        assertTrue("tokenize-de im Katalog", tokens != null);
+        assertEquals("de-token.bin", tokens.file());
+        assertEquals("tokenize", tokens.capability());
         NlpModels.Entry pos = models.entry("pos-de");
         assertTrue("pos-de im Katalog", pos != null);
         assertEquals("de-pos-maxent.bin", pos.file());
@@ -126,13 +164,13 @@ public class NlpModelsArchiveTest {
 
     @Test
     public void installedFileHasTheArchiveContent() throws Exception {
-        String sha = NlpModels.sha256(MODEL);
+        String sha = ResourceInstaller.sha256(MODEL);
         Path jarDirectory = temp.newFolder("jar").toPath();
         archive(jarDirectory.resolve(PREFIX + ".zip"), manifest(sha, MODEL.length), MODEL);
         NlpModels.Entry entry = entry(sha, MODEL.length);
         Path root = temp.newFolder("root").toPath();
         NlpModels models = new NlpModels(root, Collections.singletonList(entry),
-                new NlpResourceArchive(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"));
+                new LocalResourceSource(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"));
         models.install(entry, null);
         assertArrayEquals(MODEL, Files.readAllBytes(root.resolve("pos-de").resolve("de-pos-maxent.bin")));
     }

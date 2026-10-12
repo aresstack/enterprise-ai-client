@@ -22,6 +22,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.VaultLocations;
 import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
+import com.aresstack.enterpriseai.proasteion.application.resources.ResourceInstaller;
 import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
@@ -727,12 +728,29 @@ public final class FileSettingsActions implements SettingsDialogActions {
         List<NlpModelOffer> offers = new ArrayList<NlpModelOffer>();
         if (nlpModels != null) {
             for (NlpModels.Entry entry : nlpModels.entries()) {
-                NlpModels.Source source = nlpModels.source(entry);
-                offers.add(new NlpModelOffer(entry.id(), entry.name(), source == NlpModels.Source.INSTALLED,
-                        source == NlpModels.Source.ARCHIVE));
+                ResourceInstaller.Source source = nlpModels.source(entry);
+                offers.add(new NlpModelOffer(entry.id(), entry.name(), source == ResourceInstaller.Source.INSTALLED,
+                        source == ResourceInstaller.Source.ARCHIVE));
             }
         }
         onResult.accept(offers);
+    }
+
+    @Override
+    public String resourceBundleNote() {
+        if (nlpModels == null) {
+            return "";
+        }
+        switch (nlpModels.bundleState()) {
+            case NEW:
+                return "Ressourcen-Archiv gefunden: daraus wird ohne Download installiert.";
+            case INSTALLED:
+                return "Dieses Ressourcen-Archiv ist bereits installiert.";
+            case CHANGED:
+                return "Neues oder geändertes Ressourcen-Archiv gefunden: fehlende Modelle kommen daraus.";
+            default:
+                return "";
+        }
     }
 
     /** Lädt mit den Netzwerkeinstellungen des Entwurfs; Ergebnis genau einmal auf dem EDT. */
@@ -757,9 +775,9 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     boolean ok;
                     String message;
                     try {
-                        NlpModels.Source source = nlpModels.install(entry, NetworkServices.from(network));
+                        ResourceInstaller.Source source = nlpModels.install(entry, NetworkServices.from(network));
                         ok = true;
-                        message = source == NlpModels.Source.ARCHIVE ? "✓ aus dem Ressourcen-Archiv installiert"
+                        message = source == ResourceInstaller.Source.ARCHIVE ? "✓ aus dem Ressourcen-Archiv installiert"
                                 : "✓ installiert";
                     } catch (IOException | RuntimeException e) {
                         ok = false;
