@@ -257,6 +257,99 @@ public class ImageSlideshowControlsTest {
         });
     }
 
+    /**
+     * Mit Einmalcode-Weg: freigeschaltete Quelle zeigt das Original zuerst; ist die Sitzung abgelaufen, wird nicht
+     * gefragt, sondern gerendert gezeigt; erst die ausdrückliche Wahl von „Original“ bringt die Abfrage, mit
+     * „Zurück zu Gerendert“.
+     */
+    @Test
+    public void originalIsPreferredWhenUnlockedAndTheCodeIsAskedOnlyOnExplicitChoice() throws Exception {
+        final byte[] svg = ("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"30\">"
+                + "<rect width=\"40\" height=\"30\" fill=\"red\"/></svg>").getBytes(StandardCharsets.UTF_8);
+        final String drawing = BASE + "download/attachments/42/Bild%20A.png?version=3&api=v2#drawio=Bild%20A&page=42"
+                + "&revision=3";
+        final boolean[] unlocked = {true};
+        final boolean[] expired = {false};
+        final ReaderSignIn challenge = new ReaderSignIn() {
+            public String service() {
+                return "Confluence";
+            }
+
+            public String message() {
+                return "Code per E-Mail";
+            }
+
+            public String error() {
+                return "";
+            }
+
+            public boolean resendAvailable() {
+                return true;
+            }
+
+            public void submit(char[] code, java.util.function.Consumer<ReaderSignIn> next,
+                               java.util.function.Consumer<String> failed) {
+                next.accept(null);
+            }
+
+            public void resend(java.util.function.Consumer<ReaderSignIn> next,
+                               java.util.function.Consumer<String> failed) {
+                next.accept(this);
+            }
+        };
+        final ReaderImageLoader loader = new ReaderImageLoader() {
+            @Override
+            public void load(ReaderImage image, java.util.function.Consumer<byte[]> done) {
+                throw new AssertionError("nur die Variante mit Einmalcode wird benutzt");
+            }
+
+            @Override
+            public void load(ReaderImage image, java.util.function.Consumer<byte[]> done,
+                             java.util.function.Consumer<String> failed,
+                             java.util.function.Consumer<ReaderSignIn> signIn) {
+                if (!image.src().endsWith("&view=original")) {
+                    done.accept(svg);
+                } else if (expired[0]) {
+                    signIn.accept(challenge);
+                } else {
+                    done.accept(png());
+                }
+            }
+
+            @Override
+            public boolean downloadsUnlocked() {
+                return unlocked[0];
+            }
+        };
+        final ImageSlideshowPanel[] holder = new ImageSlideshowPanel[1];
+        onEdt(() -> holder[0] = new ImageSlideshowPanel(new ReaderImageStore(Arrays.asList(
+                new ReaderImage(drawing, drawing, "Bild A")), loader), 0));
+        onEdt(() -> {
+            assertTrue("freigeschaltet: Original zuerst", holder[0].isShowingDrawioOriginal());
+            assertEquals("Bild A.png", ImageSlideshowPanel.fileName(holder[0].current(), holder[0].loadedCurrent()));
+        });
+
+        expired[0] = true;
+        onEdt(() -> holder[0] = new ImageSlideshowPanel(new ReaderImageStore(Arrays.asList(
+                new ReaderImage(drawing, drawing, "Bild A")), loader), 0));
+        final ImageSlideshowPanel show = holder[0];
+        onEdt(() -> {
+            assertFalse("abgelaufen: ohne Frage gerendert", show.isShowingDrawioOriginal());
+            assertTrue(show.signInPanel() == null);
+            assertTrue(show.showsPicture());
+            assertEquals("Original (Anmeldung nötig)", show.originalModeText());
+
+            show.showDrawio(true);
+            assertNotNull("ausdrücklich gewählt: Abfrage an Stelle des Bildes", show.signInPanel());
+            assertTrue(show.isShowingDrawioOriginal());
+
+            show.showDrawio(false);
+            assertTrue("Zurück zu Gerendert", show.signInPanel() == null);
+            assertFalse(show.isShowingDrawioOriginal());
+            assertTrue(show.showsPicture());
+        });
+    }
+
     // ------------------------------------------------------------------ Hilfen
 
     private static List<ReaderImage> images() {

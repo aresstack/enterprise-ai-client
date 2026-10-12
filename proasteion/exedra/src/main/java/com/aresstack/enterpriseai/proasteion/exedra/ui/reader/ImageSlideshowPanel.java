@@ -139,6 +139,12 @@ public final class ImageSlideshowPanel extends JPanel {
     private boolean drawioOriginal;
     /** Warum „Original“ zuletzt nicht ging ({@code null}: unbekannt oder ging). */
     private String originalProblem;
+    /**
+     * Ob der Benutzer Gerendert/Original selbst gewählt hat. Ohne eigene Wahl gilt: Original, sobald die Quelle
+     * Dateiabrufe freigeschaltet hat; die Einmalcode-Abfrage erscheint nur nach ausdrücklicher Wahl von Original.
+     */
+    private boolean drawioChosen;
+    static final String BACK_TO_RENDERED_TEXT = "Zurück zu Gerendert";
 
     // ---- Anhangsmodus ({@code attachment != null})
     private final ReaderAttachment attachment;
@@ -498,6 +504,9 @@ public final class ImageSlideshowPanel extends JPanel {
 
     private void loadCurrent() {
         final ReaderImage image = current();
+        if (!drawioChosen && originalProblem == null && attachment == null && isDrawio(image)) {
+            drawioOriginal = store.downloadsUnlocked(); // freigeschaltet: das Original zuerst
+        }
         final ReaderImage shown = displayed();
         hideSignIn();
         showImage();
@@ -510,6 +519,21 @@ public final class ImageSlideshowPanel extends JPanel {
         store.request(shown, loaded -> {
             if (current() != image || !displayed().key().equals(shown.key())) {
                 return; // inzwischen weitergeblättert oder umgeschaltet
+            }
+            if (loaded.signIn() != null && shown != image) {
+                if (drawioChosen) {
+                    // ausdrücklich Original gewählt: die Abfrage an Stelle des Bildes, mit dem Weg zurück
+                    showSignIn(loaded.signIn(), this::loadCurrent);
+                    if (signInPanel != null) {
+                        signInPanel.addAction(BACK_TO_RENDERED_TEXT, () -> showDrawio(false));
+                    }
+                } else {
+                    // nur vorgezogen (Sitzung abgelaufen): nicht fragen, die gerenderte Zeichnung zeigen
+                    originalProblem = "Einmalcode-Abfrage der Quelle";
+                    drawioOriginal = false;
+                    loadCurrent();
+                }
+                return;
             }
             if (!loaded.ok() && shown != image) {
                 // Original nicht ladbar (etwa Einmalcode-Abfrage statt PNG): sofort zurück auf die gerenderte
@@ -543,11 +567,15 @@ public final class ImageSlideshowPanel extends JPanel {
 
     /** Umschalten zwischen gerenderter Zeichnung und Original-Vorschau (nur bei draw.io-Zeichnungen). */
     public void showDrawio(boolean original) {
-        if (attachment != null || !isDrawio(current()) || drawioOriginal == original) {
+        if (attachment != null || !isDrawio(current())) {
             return;
         }
+        boolean change = drawioOriginal != original || signInPanel != null;
+        drawioChosen = true;
         drawioOriginal = original;
-        loadCurrent();
+        if (change) {
+            loadCurrent();
+        }
     }
 
     /** Ob gerade das Original einer draw.io-Zeichnung gewählt ist. */

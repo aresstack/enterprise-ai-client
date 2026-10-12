@@ -36,6 +36,14 @@ public interface ReaderImageLoader {
     }
 
     /**
+     * Ob die Quelle Dateiabrufe schon freigeschaltet hat (Einmalcode in dieser Sitzung gelöst). Dann zeigt die
+     * Diashow bei draw.io-Zeichnungen das Original bevorzugt. Ohne Einmalcode-Weg: {@code false}.
+     */
+    default boolean downloadsUnlocked() {
+        return false;
+    }
+
+    /**
      * Beschreibt genau dieses Bild (nur auf Abruf, nie beim Laden der Seite); {@code done} bekommt das Ergebnis.
      * Ohne Beschreibungsweg: ein Hinweis statt einer Beschreibung.
      *
