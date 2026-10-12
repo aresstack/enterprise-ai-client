@@ -32,6 +32,8 @@ public final class ResourceInstaller {
     /** Datei im Zielverzeichnis mit dem SHA-256 des zuletzt installierten Bundles. */
     static final String BUNDLE_MARKER = "resource-bundle.properties";
     private static final int MAX_REDIRECTS = 5;
+    /** Downloads per resource: a broken transfer or a mirror answering with something else gets one more try. */
+    private static final int DOWNLOAD_ATTEMPTS = 2;
 
     private static final Logger LOG = Logger.getLogger(ResourceInstaller.class.getName());
 
@@ -105,7 +107,21 @@ public final class ResourceInstaller {
         if (network == null || resource.url() == null) {
             throw new IOException(resource.file() + ": nicht im Ressourcen-Archiv und kein Download möglich");
         }
-        bytes = download(resource.url(), network);
+        IOException last = null;
+        for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+            try {
+                return new Fetched(downloadVerified(resource, network), Source.DOWNLOAD);
+            } catch (IOException failed) {
+                last = failed;
+                LOG.log(Level.WARNING, "Download " + attempt + " von " + DOWNLOAD_ATTEMPTS + " fehlgeschlagen: "
+                        + failed.getMessage());
+            }
+        }
+        throw last;
+    }
+
+    private static byte[] downloadVerified(ResourceDescriptor resource, NetworkServices network) throws IOException {
+        byte[] bytes = download(resource.url(), network);
         if (resource.size() >= 0 && bytes.length != resource.size()) {
             throw new IOException(resource.file() + ": " + bytes.length + " Bytes statt " + resource.size());
         }
@@ -113,7 +129,7 @@ public final class ResourceInstaller {
         if (!actual.equals(resource.sha256())) {
             throw new IOException(resource.file() + ": SHA-256 stimmt nicht (" + actual + ")");
         }
-        return new Fetched(bytes, Source.DOWNLOAD);
+        return bytes;
     }
 
     /** Merkt unter {@code root} den SHA-256 des Bundles, aus dem gerade installiert wurde. */

@@ -52,6 +52,11 @@ public final class SetupWizardMascot extends JComponent {
     static final int DEFAULT_BUBBLE_WIDTH = 340;
     /** Schmaler als das passt keine lesbare Sprechblase neben den Zauberer; dann bleibt sie weg. */
     static final int MIN_BUBBLE_WIDTH = 160;
+    /**
+     * Kleiner als das wird der Zauberer bei knappem Platz nicht: lieber gar nicht als winzig. Ein Schritt mit mehr
+     * Feldern verdrängt ihn so nicht mehr, solange diese Höhe frei bleibt.
+     */
+    static final int MIN_FIGURE_HEIGHT = 110;
     /** Abstand zwischen Zauberer, Sprechblase und Fragefeld. */
     /** Merlin am Rand der technischen Details: kleiner als in den Schritten. */
     static final int CORNER_HEIGHT = 150;
@@ -270,12 +275,20 @@ public final class SetupWizardMascot extends JComponent {
         return placement;
     }
 
-    /** Breite und Höhe des Zauberers, unabhängig vom Platz; leer ohne Bild. */
+    /**
+     * Breite und Höhe des Zauberers für die jetzige Fläche: die Vorgabehöhe, bei wenig Platz kleiner bis
+     * {@link #MIN_FIGURE_HEIGHT} (nie unter die Vorgabe selbst); leer ohne Bild.
+     */
     Dimension figureSize() {
         if (art == null) {
             return new Dimension(0, 0);
         }
-        return new Dimension(art.widthFor(height), height);
+        int shown = height;
+        if (getHeight() > 0) {
+            int floor = Math.min(height, MIN_FIGURE_HEIGHT);
+            shown = Math.max(floor, Math.min(height, getHeight() - gap));
+        }
+        return new Dimension(art.widthFor(shown), shown);
     }
 
     /** {@code true}, wenn der Zauberer an seinem Platz vollständig in die Fläche passt und gezeichnet wird. */

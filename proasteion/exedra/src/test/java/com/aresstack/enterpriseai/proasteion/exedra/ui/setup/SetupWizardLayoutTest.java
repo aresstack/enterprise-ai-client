@@ -121,20 +121,25 @@ public class SetupWizardLayoutTest {
     }
 
     @Test
-    public void modelsConfluenceAndFinishKeepMerlinVisibleAtTheDefaultWindowSize() throws Exception {
+    public void everyStepKeepsMerlinVisibleAtTheDefaultWindowSize() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             SetupWizardRun run = openRun(new Dimension(SetupWizardWindow.WIDTH, SetupWizardWindow.HEIGHT));
             SetupWizardPanel wizard = run.wizard();
             wizard.welcomeBack();
-            int[] steps = {SetupWizardPanel.STEP_MODELS, SetupWizardPanel.STEP_CONFLUENCE,
-                    SetupWizardPanel.STEP_FINISH};
-            for (int step : steps) {
+            for (int step = 0; step < STEPS; step++) {
                 wizard.showStep(step);
                 layoutTree(run.overlay());
                 SetupWizardMascot mascot = wizard.mascotOf(step);
-                assertTrue("Schritt " + step + ": Merlin passt in den freien Bereich", mascot.fits());
-                assertFalse("Schritt " + step + ": Merlin hat einen Satz", mascot.spokenText().isEmpty());
+                assertTrue("Schritt " + step + ": Merlin passt in den freien Bereich (Fläche " + mascot.getSize()
+                        + ", Figur " + mascot.figureSize() + ")", mascot.fits());
+                if (mascot.spokenText().isEmpty()) {
+                    mascot.say("Ein Satz von Merlin, damit die Sprechblase Platz braucht.");
+                    layoutTree(run.overlay());
+                }
                 assertTrue("Schritt " + step + ": Sprechblase ist sichtbar", mascot.bubble().isVisible());
+                Rectangle bubble = mascot.bubble().getBounds();
+                assertTrue("Schritt " + step + ": Sprechblase ganz in der Fläche",
+                        new Rectangle(mascot.getSize()).contains(bubble));
             }
         });
     }

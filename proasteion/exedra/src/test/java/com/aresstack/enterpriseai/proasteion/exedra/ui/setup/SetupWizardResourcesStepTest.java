@@ -69,6 +69,20 @@ public class SetupWizardResourcesStepTest {
     }
 
     @Test
+    public void theFailureReasonStaysVisibleWhileTheSpeechModelInstalls() throws Exception {
+        settings.nlpFailures.add("tokenize-de");
+        settings.offers.add(new LocalVoiceOffer("gemma-4-e2b", "Gemma 4 E2B", "", false, ModelCategory.STT));
+        settings.installedAs = "gemma-local";
+        final SetupWizardPanel wizard = start();
+        SwingUtilities.invokeAndWait(() -> {
+            wizard.installAllButton().doClick();
+            assertEquals("Spracheingabe trotzdem installiert", Arrays.asList("gemma-4-e2b"), settings.installRequests);
+            assertEquals("fehlgeschlagen", wizard.nlpState("tokenize-de"));
+            assertTrue(wizard.nlpNote(), wizard.nlpNote().startsWith("Tokenisierung Deutsch: HTTP 403"));
+        });
+    }
+
+    @Test
     public void aFailedModelKeepsTheOthersAndTheWizardGoing() throws Exception {
         settings.nlpFailures.add("langdetect");
         final SetupWizardPanel wizard = start();
@@ -80,6 +94,7 @@ public class SetupWizardResourcesStepTest {
             String error = wizard.errorOf(SetupWizardPanel.STEP_SPEECH);
             assertNotNull(error);
             assertTrue(error, error.contains("Spracherkennung, alle Sprachen (HTTP 403)"));
+            assertTrue(wizard.nlpNote(), wizard.nlpNote().contains("Spracherkennung, alle Sprachen: HTTP 403"));
             assertTrue("erneut versuchbar", wizard.installAllButton().isVisible());
             assertTrue("Überspringen geht immer", wizard.skipButton().isEnabled());
         });

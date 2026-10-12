@@ -1879,23 +1879,54 @@ public final class SetupWizardPanel extends JPanel {
             nlpLines.add(state, c);
             row++;
         }
+        // A failure stays readable here until the next attempt; the error plate is reused by the speech model.
+        String problems = nlpProblemText();
         String bundle = settings.resourceBundleNote();
-        if (bundle != null && !bundle.isEmpty()) {
+        String text = !problems.isEmpty() ? problems : bundle == null ? "" : bundle;
+        if (!text.isEmpty()) {
             GridBagConstraints c = new GridBagConstraints();
             c.gridx = 0;
             c.gridy = row;
             c.gridwidth = 2;
             c.anchor = GridBagConstraints.WEST;
+            c.fill = GridBagConstraints.HORIZONTAL;
             c.insets = new Insets(2, 0, 0, 0);
-            JLabel note = new JLabel(bundle);
+            JLabel note = new JLabel(text);
             note.putClientProperty("html.disable", Boolean.TRUE);
-            note.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
+            note.setName("nlp-note");
+            note.setToolTipText(text);
+            note.setForeground(problems.isEmpty() ? ResearchUiPalette.LIGHT_TEXT_MUTED : ResearchUiPalette.DANGER_RED);
             note.setFont(ResearchUiTypography.regular(11.5f));
+            note.setMinimumSize(new Dimension(0, note.getPreferredSize().height));
+            note.setPreferredSize(new Dimension(0, note.getPreferredSize().height));
             nlpLines.add(note, c);
         }
         nlpLines.revalidate();
         nlpLines.repaint();
         updateButtons();
+    }
+
+    /** Each failed OpenNLP model with its reason in one line, or empty. */
+    private String nlpProblemText() {
+        StringBuilder text = new StringBuilder();
+        for (NlpModelOffer offer : nlpOffers) {
+            String problem = nlpProblems.get(offer.id());
+            if (problem != null) {
+                text.append(text.length() == 0 ? "" : "; ").append(shortNlpName(offer.name())).append(": ")
+                        .append(problem.replaceFirst("^Installation fehlgeschlagen: ", ""));
+            }
+        }
+        return text.toString();
+    }
+
+    /** The note below the OpenNLP lines (archive state or failure reasons), or {@code null} without one. */
+    String nlpNote() {
+        for (Component part : nlpLines.getComponents()) {
+            if ("nlp-note".equals(part.getName())) {
+                return ((JLabel) part).getText();
+            }
+        }
+        return null;
     }
 
     /** Der Name ohne den Dateinamen in Klammern, damit die Zeile in die Breite des Assistenten passt. */
