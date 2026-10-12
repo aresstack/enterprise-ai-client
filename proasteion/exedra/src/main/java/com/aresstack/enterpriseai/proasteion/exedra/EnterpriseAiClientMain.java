@@ -203,8 +203,7 @@ public final class EnterpriseAiClientMain {
                 view.setSettingsAction(settingsAction(frame, file, settingsActions,
                         new CatalogToolOverview(root.toolCatalog()), palette, settings,
                         setupAction(frame, view, file, settingsActions, setupActions, palette, settings, setupState,
-                                () -> merlinVoice(settings.current(), modelCatalogs, network, chatToken,
-                                        textAnalysis))));
+                                () -> merlinVoice(settings.current(), modelCatalogs, network, chatToken))));
                 view.setChatModels(modelCatalogs::cached, () -> installedLocalChats(localVoices,
                         settings.current().models().localModelRoot()), modelId -> {
                     try {
@@ -359,12 +358,11 @@ public final class EnterpriseAiClientMain {
 
     /** Merlins Stimme aus dem aktuellen Stand; scheitert die Bindung, spricht er nicht (nur Sprechblase). */
     private static ReadAloudBinding merlinVoice(AppConfig current, ModelCatalogs catalogs, LiveNetwork network,
-                                                java.util.function.Supplier<String> chatToken,
-                                                TextAnalysisService textAnalysis) {
+                                                java.util.function.Supplier<String> chatToken) {
         try {
             ModelsConfig models = current.models();
             ReadAloudBinding voice = SpeechOutput.merlinVoice(models,
-                    catalogs.speech(current, models, network.current(), chatToken), textAnalysis);
+                    catalogs.speech(current, models, network.current(), chatToken));
             LOG.info(voice.description());
             return voice;
         } catch (RuntimeException e) {

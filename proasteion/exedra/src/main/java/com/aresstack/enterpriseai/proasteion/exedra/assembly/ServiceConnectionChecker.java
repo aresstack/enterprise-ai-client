@@ -128,7 +128,7 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
         ModelsConfig models = config.models();
         TextAnalysisService analysis = SpeechOutput.textAnalysis();
         final ReadAloudBinding merlin = SpeechOutput.merlinVoice(models,
-                catalogs.speech(config, models, network, token), analysis);
+                catalogs.speech(config, models, network, token));
         final ReadAloudBinding assistant = SpeechOutput.readAloud(models,
                 catalogs.speech(config, models, network, token), analysis);
         return new SetupVoices(merlin, assistant, name, () -> {
@@ -147,8 +147,7 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
         }
         ModelsConfig models = config.models();
         final ReadAloudBinding merlin = SpeechOutput.merlinVoice(models,
-                catalogs.speech(config, models, NetworkServices.from(config.network()), onceToken(config)),
-                SpeechOutput.textAnalysis());
+                catalogs.speech(config, models, NetworkServices.from(config.network()), onceToken(config)));
         return new SetupVoices(merlin, null, null, merlin::close);
     }
 

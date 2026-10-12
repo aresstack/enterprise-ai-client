@@ -7,14 +7,17 @@ import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * Verbindet den Play/Pause-Orb des Verlaufs mit dem {@link ReadAloudService}: vorgelesen wird in einem eigenen
- * Thread (nie auf dem EDT), immer nur eine Antwort; eine neue beendet die laufende. Ohne Dienst
+ * Thread (nie auf dem EDT), immer nur eine Antwort; eine neue bricht die laufende sofort ab, auch wenn diese noch auf
+ * ein Remote-Stück wartet, statt hinter ihr anzustehen (der neueste Satz gewinnt). Ohne Dienst
  * ({@link #unavailable}) bleibt der Orb deaktiviert und nennt den Grund.
  */
 public final class ReadAloudBinding implements ReadAloudControl {
@@ -29,6 +32,8 @@ public final class ReadAloudBinding implements ReadAloudControl {
     private final ExecutorService reader;
     /** Jede Ausgabe und jedes Stopp zählt hoch; eine wartende Ausgabe mit alter Nummer spricht nicht mehr. */
     private final AtomicLong generation = new AtomicLong();
+    /** Die laufende oder wartende Ausgabe; {@link #speak}, {@link #stop()} und {@link #close()} brechen sie ab. */
+    private Read active;
 
     private ReadAloudBinding(ReadAloudService service, String description, boolean autoStart, String traceContext) {
         this.service = service;
@@ -94,22 +99,61 @@ public final class ReadAloudBinding implements ReadAloudControl {
         }
         service.stop(); // beendet eine laufende Antwort
         final long mine = generation.incrementAndGet();
-        reader.execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    read(mine, markdown);
-                } finally {
-                    done(finished);
+        final Read read = new Read(finished);
+        synchronized (this) {
+            cancelActive();
+            active = read;
+            read.future = reader.submit(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        read(mine, markdown);
+                    } finally {
+                        read.finish();
+                    }
                 }
-            }
-        });
+            });
+        }
+    }
+
+    /** Bricht die aktive Ausgabe ab: ein Warten auf ein Remote-Stück endet per Interrupt, ihr Ende wird gemeldet. */
+    private synchronized void cancelActive() {
+        Read previous = active;
+        active = null;
+        if (previous != null) {
+            previous.cancel();
+        }
     }
 
     /** Meldet das Ende einer Ausgabe auf dem EDT. */
     private static void done(Runnable finished) {
         if (finished != null) {
             SwingUtilities.invokeLater(finished);
+        }
+    }
+
+    /** Eine Ausgabe mit ihrem Abschluss; das Ende meldet sie genau einmal, ob fertig gelesen oder abgebrochen. */
+    private static final class Read {
+
+        private final Runnable finished;
+        private final AtomicBoolean reported = new AtomicBoolean();
+        private Future<?> future;
+
+        Read(Runnable finished) {
+            this.finished = finished;
+        }
+
+        void cancel() {
+            if (future != null) {
+                future.cancel(true);
+            }
+            finish(); // auch eine nie gestartete Ausgabe meldet ihr Ende
+        }
+
+        void finish() {
+            if (reported.compareAndSet(false, true)) {
+                done(finished);
+            }
         }
     }
 
@@ -181,6 +225,7 @@ public final class ReadAloudBinding implements ReadAloudControl {
         generation.incrementAndGet();
         if (service != null) {
             service.stop();
+            cancelActive();
         }
     }
 
@@ -199,6 +244,7 @@ public final class ReadAloudBinding implements ReadAloudControl {
     public void close() {
         if (service != null) {
             service.stop();
+            cancelActive();
             reader.shutdownNow();
         }
     }

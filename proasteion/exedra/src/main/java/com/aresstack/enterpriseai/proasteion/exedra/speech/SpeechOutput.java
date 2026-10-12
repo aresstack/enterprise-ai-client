@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechSynthesisRegistry;
+import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechChunking;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
@@ -67,10 +68,10 @@ public final class SpeechOutput {
     /**
      * Merlins eigene Stimme im Einrichtungsassistenten ({@code setup.merlin.ttsModel}), unabhängig vom TTS-Modell des
      * Chats. Ist sie nicht gewählt oder ihre Quelle nicht verfügbar, gibt es bewusst keinen Rückfall auf
-     * {@code model.tts}: Merlin zeigt seine Sätze dann nur als Sprechblase.
+     * {@code model.tts}: Merlin zeigt seine Sätze dann nur als Sprechblase. Seine kurzen Sätze laufen ohne Textanalyse
+     * Satz für Satz: kein Laden der Sprachmodelle vor dem ersten Satz, der erste Satz erklingt, sobald er fertig ist.
      */
-    public static ReadAloudBinding merlinVoice(ModelsConfig models, SpeechSynthesisRegistry speech,
-                                               TextAnalysisService analysis) {
+    public static ReadAloudBinding merlinVoice(ModelsConfig models, SpeechSynthesisRegistry speech) {
         ModelReference voice = models.merlinVoice();
         if (voice == null) {
             return ReadAloudBinding.unavailable(NO_MERLIN_VOICE);
@@ -84,8 +85,7 @@ public final class SpeechOutput {
                 ? catalog.voice(voice.modelId(), TtsVoiceCatalog.Gender.MALE)
                 : ModelsConfig.resolveTtsVoice(voice, models.merlinSpeaker(), null, catalog);
         ReadAloudService service = new ReadAloudService(speech.require(voice.catalogId()), voice.modelId(),
-                speaker, new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
-                analysis);
+                speaker, new JavaSoundAudioPlayback(), SpeechChunking.SENTENCES, models.synthesisWorkers(), null);
         return ReadAloudBinding.available(service, "Merlins Stimme: " + voice.modelId()
                 + (speaker == null ? "" : " / " + speaker) + " (" + voice.catalogId() + ")", false,
                 "catalog=" + voice.catalogId());
