@@ -34,6 +34,11 @@ public final class ChatShellModel {
     private boolean ragEnabled;
     /** Die laufende Antwort ist ein weiterer Abschnitt desselben Auftrags (nach {@link #beginAnswerSection}). */
     private boolean continuedSection;
+    /**
+     * Antwortabschnitte, die nur entstanden, weil eine Wolke mitten in die Antwort kam; mit dem Ende des Auftrags
+     * verschwinden die Wolken, und diese Abschnitte gehören wieder zur Antwort davor (eine Antwortblase je Turn).
+     */
+    private final List<TranscriptEntry> splitSections = new ArrayList<TranscriptEntry>();
 
     /** @param clock liefert Epoch-Millisekunden für die Zeitstempel der Bubbles (im Test fest). */
     public ChatShellModel(LongSupplier clock) {
@@ -116,6 +121,7 @@ public final class ChatShellModel {
         }
         streamingEntry = newEntry(TranscriptEntry.Author.ASSISTANT, "", TranscriptEntry.State.STREAMING);
         continuedSection = false;
+        splitSections.clear();
         fireEntryAdded(streamingEntry);
         fireStateChanged();
         return streamingEntry;
@@ -206,6 +212,7 @@ public final class ChatShellModel {
                 fireEntryAdded(answer);
             } else {
                 streamingEntry = newEntry(TranscriptEntry.Author.ASSISTANT, "", TranscriptEntry.State.STREAMING);
+                splitSections.add(streamingEntry);
                 fireEntryAdded(streamingEntry);
             }
         }
@@ -223,7 +230,11 @@ public final class ChatShellModel {
         fireEntryUpdated(activity);
     }
 
-    /** Ein Arbeitsschritt ist beendet; die Wolke platzt und zeigt ihre Ergebniszeile. Unbekannte Kennung: nichts. */
+    /**
+     * Ein Arbeitsschritt ist beendet; die Wolke platzt und zeigt ihre Ergebniszeile, bis der Auftrag endet. Dann
+     * verschwinden die Wolken aus dem Verlauf (askai arch: transiente Gedanken- und Werkzeugwolken). Unbekannte
+     * Kennung: nichts.
+     */
     public void finishActivity(String key, boolean succeeded, String summary) {
         TranscriptEntry activity = activities.get(key);
         if (activity == null || activity.getState() != TranscriptEntry.State.STREAMING) {
@@ -355,25 +366,66 @@ public final class ChatShellModel {
     private void finishStreaming(TranscriptEntry.State state, String failure) {
         TranscriptEntry entry = requireStreaming();
         streamingEntry = null;
-        // Schritte, die beim Ende des Auftrags noch laufen, enden mit ihm (keine ewig drehende Wolke).
+        boolean hadActivities = !activities.isEmpty();
+        // Wolken sind vergänglich (askai arch): mit dem Ende des Auftrags verlassen sie das Modell. Nur ein Fehler
+        // bleibt stehen, wenn der Auftrag selbst nicht regulär endete; nach einer Antwort war er nur ein Zwischenschritt
+        // (etwa eine übersprungene Seite).
+        boolean answered = state == TranscriptEntry.State.COMPLETE;
         for (TranscriptEntry activity : activities.values()) {
             if (activity.getState() == TranscriptEntry.State.STREAMING) {
                 activity.finishActivity(TranscriptEntry.State.CANCELLED, "");
+            }
+            if (!answered && activity.getState() == TranscriptEntry.State.FAILED) {
                 fireEntryUpdated(activity);
+            } else {
+                entries.remove(activity);
+                fireEntryRemoved(activity);
             }
         }
-        boolean hadActivities = !activities.isEmpty();
         activities.clear();
         if (hadActivities && state != TranscriptEntry.State.FAILED && entry.getText().isEmpty()) {
             // Der leere Platzhalter hinter der letzten Wolke: die Antwort steht schon in früheren Abschnitten.
             entries.remove(entry);
             fireEntryRemoved(entry);
-            fireStateChanged();
-            return;
+        } else {
+            entry.finish(state, failure);
+            fireEntryUpdated(entry);
         }
-        entry.finish(state, failure);
-        fireEntryUpdated(entry);
+        mergeSplitSections();
         fireStateChanged();
+    }
+
+    /**
+     * Abschnitte, die nur eine (jetzt verschwundene) Wolke von der Antwort davor getrennt hat, kommen zurück in diese
+     * Antwort: ein Turn endet mit einer Antwortblase. Absichtlich getrennte Äußerungen
+     * ({@link #beginAnswerSection}) bleiben eigene Blasen.
+     */
+    private void mergeSplitSections() {
+        for (TranscriptEntry section : splitSections) {
+            int index = entries.indexOf(section);
+            if (index <= 0) {
+                continue;
+            }
+            TranscriptEntry previous = entries.get(index - 1);
+            if (previous.getAuthor() != TranscriptEntry.Author.ASSISTANT
+                    || previous.getState() != TranscriptEntry.State.COMPLETE) {
+                continue;
+            }
+            String text = section.getText().replaceFirst("^[\\r\\n]+", "");
+            if (!text.isEmpty()) {
+                previous.append("\n\n" + text);
+            }
+            if (section.getState() != TranscriptEntry.State.COMPLETE) {
+                previous.finish(section.getState(), section.getFailureMessage());
+            }
+            if (section.hasSources() && !previous.hasSources()) {
+                previous.setSources(section.getSources());
+            }
+            entries.remove(index);
+            fireEntryRemoved(section);
+            fireEntryUpdated(previous);
+        }
+        splitSections.clear();
     }
 
     private TranscriptEntry requireStreaming() {

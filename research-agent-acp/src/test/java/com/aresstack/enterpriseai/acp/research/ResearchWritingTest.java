@@ -72,6 +72,7 @@ public class ResearchWritingTest {
 
     private static final class Out implements ResearchAgentTurns.Output {
         final List<String> lines = new ArrayList<String>();
+        final List<String> thoughts = new ArrayList<String>();
 
         @Override
         public boolean isCancelled() {
@@ -81,6 +82,11 @@ public class ResearchWritingTest {
         @Override
         public void message(String text) {
             lines.add(text);
+        }
+
+        @Override
+        public void thought(String text) {
+            thoughts.add(text);
         }
     }
 
@@ -94,7 +100,7 @@ public class ResearchWritingTest {
         assertTrue(host.calls.contains("outline_propose"));
         String outline = (String) host.lastArgs.get("outline_propose").get("outline");
         assertTrue(outline, outline.startsWith("# Recherchebericht"));
-        assertTrue(reply, reply.contains("Gliederung freigeben"));
+        assertTrue(reply, reply.contains("„Dokument schreiben“"));
     }
 
     @Test
@@ -212,7 +218,8 @@ public class ResearchWritingTest {
         Out resumed = new Out();
         String done = new ResearchWriting(host, second).document(resumed);
         assertEquals("nur Kapitel 3 und 4 werden neu geschrieben", 2, second.calls);
-        assertTrue(resumed.lines.toString(), resumed.lines.get(0).contains("Ich setze bei Kapitel 3 fort"));
+        assertTrue(resumed.thoughts.toString(), resumed.thoughts.get(0).contains("Ich setze bei Kapitel 3 fort"));
+        assertTrue("Arbeitsschritte sind keine Antworten: " + resumed.lines, resumed.lines.isEmpty());
         assertTrue(done, done.contains("ist fertig (4 Abschnitte)"));
         assertTrue(host.document, host.document.contains("Text zu 1. Zweck."));
         assertTrue(host.document, host.document.contains("Text zu 3. Planung."));

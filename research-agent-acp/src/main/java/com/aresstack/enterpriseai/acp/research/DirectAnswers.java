@@ -52,10 +52,29 @@ final class DirectAnswers {
     private volatile boolean lastSucceeded;
 
     DirectAnswers(ToolInvoker host, MainModelChat model) {
+        this(host, model, KnowledgePages.reachability(host));
+    }
+
+    /** @param hostReachable fragt den Host, ob er noch antwortet (nach einem Verbindungsfehler eines Aufrufs) */
+    DirectAnswers(ToolInvoker host, MainModelChat model, java.util.function.BooleanSupplier hostReachable) {
         this.host = host;
         this.model = model;
-        this.pages = new KnowledgePages(host);
+        this.pages = new KnowledgePages(host, hostReachable);
     }
+
+    /**
+     * Liest eine Seite ({@code knowledge_read}) als Fehler genau dieses Treffers ({@link KnowledgePages#readPage}),
+     * als reiner Seitentext ohne die Kopfzeilen des Werkzeugs ({@link KnowledgePages#pageText}).
+     *
+     * @return der Seitentext; {@code null}, wenn der Treffer übersprungen wird
+     */
+    String readPage(String id) throws ToolInvoker.EndpointUnavailable {
+        String page = pages.readPage(id);
+        return page == null ? null : KnowledgePages.pageText(page);
+    }
+
+    /** Versuche je Seite bei einem Verbindungsfehler (der erste und genau ein zweiter). */
+    static final int READ_ATTEMPTS = KnowledgePages.READ_ATTEMPTS;
 
     /**
      * Ob die Nachricht Wissen aus den Quellen braucht, und wenn ja, mit welchen Suchanfragen. Entscheidet das Modell
@@ -167,7 +186,7 @@ final class DirectAnswers {
     /** Sucht, liest, notiert und beantwortet die Frage aus den gelesenen Quellen; die Recherche-Karte zeigt den Lauf. */
     String answer(String question, List<String> queries, ResearchAgentTurns.Output progress)
             throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
-        progress.message("Ich suche in den aktivierten Wissensquellen nach: " + join(queries));
+        progress.thought("Ich suche in den aktivierten Wissensquellen nach: " + join(queries));
         ResearchCard card = new ResearchCard(progress, queries, MAX_PAGES);
         card.searching();
         lastSucceeded = false;
@@ -224,16 +243,8 @@ final class DirectAnswers {
             }
             String title = hit.title.isEmpty() ? hit.id : hit.title;
             card.reading(title);
-            Map<String, Object> args = new LinkedHashMap<String, Object>();
-            args.put("id", hit.id);
-            String page;
-            try {
-                page = host.call(KnowledgePages.READ_TOOL, args);
-            } catch (ToolInvoker.ToolFailure unreadable) {
-                LOG.info("[direct] Seite nicht lesbar: " + hit.id + " " + unreadable.getMessage());
-                card.skipped(title);
-                continue;
-            }
+            // Das Budget zählt erfolgreich gelesene Seiten: ein unlesbarer Treffer macht Platz für den nächsten.
+            String page = readPage(hit.id);
             if (page == null || page.trim().isEmpty()) {
                 card.skipped(title);
                 continue;

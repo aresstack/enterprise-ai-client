@@ -67,7 +67,8 @@ final class InlineMarkdownRenderer {
 
     private void renderNode(Node node, StyledDocument document, SimpleAttributeSet inherited) {
         if (node instanceof Text) {
-            append(document, node.getChars().toString(), inherited);
+            // Backslash-Escapes (\[, \*) sind Markdown-Syntax, kein Text: gezeigt wird das Zeichen dahinter.
+            append(document, node.getChars().unescape(), inherited);
             return;
         }
         if (node instanceof SoftLineBreak || node instanceof HardLineBreak) {

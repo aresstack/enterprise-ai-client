@@ -38,6 +38,8 @@ public final class ResearchAgentMain {
     private static final Logger LOG = Logger.getLogger(ResearchAgentMain.class.getName());
     /** Hauptmodell-Antworten dauern; das Werkzeug wartet so lange wie eine Modellanfrage des Clients. */
     private static final Duration MCP_REQUEST_TIMEOUT = Duration.ofMinutes(10);
+    /** Frist je MCP-Anfrage in Sekunden (optional, Vorgabe zehn Minuten); Tests prüfen damit Zeitüberschreitungen. */
+    static final String ENV_MCP_REQUEST_TIMEOUT = "ENTERPRISE_AI_RESEARCH_MCP_TIMEOUT_SECONDS";
 
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
     private ResearchAgentEnvironment environment;
@@ -69,6 +71,16 @@ public final class ResearchAgentMain {
         System.exit(0);
     }
 
+    /** Die Frist je MCP-Anfrage: die Umgebungsvariable in Sekunden, sonst (leer, ungültig) zehn Minuten. */
+    static Duration requestTimeout(String seconds) {
+        try {
+            long value = seconds == null ? 0L : Long.parseLong(seconds.trim());
+            return value > 0L ? Duration.ofSeconds(value) : MCP_REQUEST_TIMEOUT;
+        } catch (NumberFormatException invalid) {
+            return MCP_REQUEST_TIMEOUT;
+        }
+    }
+
     @Initialize
     public AcpSchema.InitializeResponse initialize() {
         environment = ResearchAgentEnvironment.from(System.getenv());
@@ -87,7 +99,8 @@ public final class ResearchAgentMain {
         if (turns != null) {
             turns.close();
         }
-        McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(15), MCP_REQUEST_TIMEOUT)
+        McpToolClient client = new SolonMcpToolClientFactory(Duration.ofSeconds(15),
+                requestTimeout(System.getenv(ENV_MCP_REQUEST_TIMEOUT)))
                 .connect(environment.researchUrl(), environment.researchTransport());
         ResearchHostControl control = new ResearchHostControl(client);
         ResearchHostControl.Status status;
@@ -176,6 +189,11 @@ public final class ResearchAgentMain {
                 java.util.Collections.<String, Object>singletonMap(META_UTTERANCE, UTTERANCE_START));
     }
 
+    /** Eine Arbeitsmeldung als {@code agent_thought_chunk} (keine Antwort an den Nutzer). */
+    static AcpSchema.AgentThoughtChunk thought(String text) {
+        return new AcpSchema.AgentThoughtChunk("agent_thought_chunk", new AcpSchema.TextContent(text));
+    }
+
     /** {@code _meta}-Schlüssel wie {@code AcpToolCall.META_TOOL_KIND} des Clients: eigene Art neben {@code other}. */
     static final String META_TOOL_KIND = "aresstack/toolKind";
 
@@ -238,6 +256,14 @@ public final class ResearchAgentMain {
                     // Jede Äußerung des Turns eine eigene Blase (askai arch sayAsAgent); ein Host ohne diese
                     // Markierung sieht die Äußerungen wie bisher als Absätze einer Antwort.
                     send(ctx, utterance(message));
+                }
+            }
+
+            @Override
+            public void thought(String text) {
+                if (!cancelled.get() && text != null && !text.isEmpty()) {
+                    // Arbeitsmeldungen sind Gedanken, nie die Antwort: der Client zeigt sie als vergängliche Wolke.
+                    send(ctx, ResearchAgentMain.thought(text));
                 }
             }
 

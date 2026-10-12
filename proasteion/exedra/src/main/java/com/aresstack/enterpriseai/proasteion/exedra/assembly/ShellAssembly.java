@@ -214,22 +214,22 @@ public final class ShellAssembly {
         workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));
         reading.attach();
         if (agent != null && root.researchHost() != null) {
-            // Geführter Recherche-Workflow: Phasenleiste über dem Composer, Reiter Quellen/Gliederung/Dokument.
+            // Research-Workflow: Phase als drittes Dropdown im Composer (nur der Nutzer wechselt sie), Reiter
+            // Quellen/Gliederung/Dokument mit je eigener Play-Aktion, über dem Composer nur die gelben Suchvorschläge.
             final KnowledgeReadingController reader = reading;
             final ResearchWorkflowAssembly.Parts research = ResearchWorkflowAssembly.create(root.researchHost(),
                     agent.binding()::sendAction, chatModel, root.uiExecutor(),
                     (resourceId, title) -> reader.open(new ReaderLink(researchSourceId(root, sources, resourceId),
-                            resourceId, title, "", resourceId), true),
-                    drawer::showSidebarTab);
+                            resourceId, title, "", resourceId), true));
             workspace.addAgentTab(ResearchWorkflowAssembly.SOURCES_TAB, research.sources());
             workspace.addAgentTab(ResearchWorkflowAssembly.OUTLINE_TAB, research.outline());
             workspace.addAgentTab(ResearchWorkflowAssembly.DOCUMENT_TAB, research.document());
+            shell.composer().setPhaseChoices(research.phaseIds(), research.phaseTitles(), research::selectPhase);
+            research.onPhase(shell.composer()::showPhase);
             final ShellModeModel.Listener stripByMode = mode -> {
-                if (mode == ShellMode.AGENT && root.usesBuiltInAgent()) {
-                    shell.setComposerAccessory(research.strip());
-                } else {
-                    shell.setComposerAccessory(null);
-                }
+                boolean researchAgent = mode == ShellMode.AGENT && root.usesBuiltInAgent();
+                shell.setComposerAccessory(researchAgent ? research.strip() : null);
+                shell.composer().setPhaseControlVisible(researchAgent);
             };
             modes.addListener(stripByMode);
             stripByMode.modeChanged(modes.getMode());

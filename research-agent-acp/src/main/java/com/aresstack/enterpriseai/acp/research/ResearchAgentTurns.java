@@ -22,18 +22,19 @@ import java.util.function.BooleanSupplier;
 import java.util.logging.Logger;
 
 /**
- * Ein Turn des Agentenprozesses wie askai-java8 arch {@code ResearchAgentMain.prompt}: ist das Projekt noch
- * nicht begrüßt, begrüßt der Agent (und beantwortet eine mitgeschickte Nachricht im selben Turn), sonst
- * antwortet er; Konzeptpapier wie {@code conceptAwareRespond} (ein eindeutiges Ja/Nein auf eine offene
+ * Ein Turn des Agentenprozesses wie askai-java8 arch {@code ResearchAgentMain.prompt}: der Agent beantwortet die
+ * Nachricht des Nutzers mit genau einer Antwort (keine vorgeschaltete Begrüßung; ein neues Projekt gilt mit der ersten
+ * Nachricht als begonnen); Konzeptpapier wie {@code conceptAwareRespond} (ein eindeutiges Ja/Nein auf eine offene
  * Konfliktfrage beantwortet der Host selbst, ein Verschiebeauftrag läuft über die eigene Verschiebe-Generierung,
  * sonst treibt {@link ConceptToolRounds} die Konzeptwerkzeuge). Alle Werkzeuge gehen über MCP an den Host.
  *
- * <p>Research-Workflow: Phase Konzept ist ein interaktiver Recherche-Chat (jede Frage wird sofort in den
- * Wissensquellen recherchiert, ohne Konzeptpflicht und ohne Phasenwechsel). Den autonomen Lauf der Phase Quellen
- * startet nur der ausdrückliche Startbefehl („Recherche starten“, {@code research:}); jede andere Nachricht wird in
- * jeder Phase als Frage beantwortet, zuerst aus dem Projektkorpus, bei Lücken aus den Wissensquellen (mit Übernahme
- * der gelesenen Seiten). In der Phase Gliederung überarbeitet nur ein erkennbarer Änderungswunsch die Gliederung
- * ({@link OutlineChangeRequest}).
+ * <p>Research-Workflow: die Phase wählt allein der Nutzer; der Agent wechselt sie nie. Phase Konzept ist ein
+ * interaktiver Recherche-Chat (jede Frage wird sofort in den Wissensquellen recherchiert, ohne Konzeptpflicht). Den
+ * autonomen Lauf der Phase Quellen startet nur ihre Play-Aktion („Recherche starten“, {@code research:}), die
+ * Gliederung entsteht nur über die Play-Aktion der Phase Gliederung, das Dokument nur über die der Phase Dokument;
+ * jede andere Nachricht wird in jeder Phase als Frage beantwortet, zuerst aus dem Projektkorpus, bei Lücken aus den
+ * Wissensquellen (mit Übernahme der gelesenen Seiten). In der Phase Gliederung überarbeitet zusätzlich ein
+ * erkennbarer Änderungswunsch die Gliederung ({@link OutlineChangeRequest}).
  */
 final class ResearchAgentTurns {
 
@@ -43,11 +44,20 @@ final class ResearchAgentTurns {
             + "mir knowledge_search nicht an. Prüfe in den Einstellungen unter „Tools“, ob knowledge_search und "
             + "knowledge_read aktiv sind; dann suche ich sofort.";
 
-    /** Wohin sichtbare Nachrichten eines Turns gehen (ACP {@code sendMessage}). */
+    /**
+     * Wohin ein Turn spricht: {@link #message} ist ausschließlich die Antwort an den Nutzer (ACP
+     * {@code agent_message_chunk}); was der Agent gerade tut („suche nach …“, „schreibe Kapitel …“), ist ein
+     * {@link #thought Gedanke} (ACP {@code agent_thought_chunk}) und erscheint im Client nur als vergängliche
+     * Denkwolke.
+     */
     interface Output {
         boolean isCancelled();
 
         void message(String text);
+
+        /** Eine Arbeitsmeldung des Agenten, keine Antwort (ACP {@code agent_thought_chunk}). */
+        default void thought(String text) {
+        }
 
         /** Ein sichtbarer Werkzeugaufruf beginnt (ACP {@code tool_call}); {@code kind} wie ACP {@code ToolKind}. */
         default void toolStarted(String callId, String title, String kind, String input) {
@@ -184,7 +194,8 @@ final class ResearchAgentTurns {
     static boolean isActionPrompt(String text) {
         String trimmed = text == null ? "" : text.trim();
         return trimmed.isEmpty() || "Gliederung erstellen".equalsIgnoreCase(trimmed)
-                || "Dokument erstellen".equalsIgnoreCase(trimmed) || isStartCommand(trimmed);
+                || "Dokument erstellen".equalsIgnoreCase(trimmed) || "Dokument schreiben".equalsIgnoreCase(trimmed)
+                || isStartCommand(trimmed);
     }
 
     /**
@@ -255,7 +266,7 @@ final class ResearchAgentTurns {
                 // ohne Konzeptwerkzeuge: der Auftrag aus dem Suchplan des Hosts (Auftrag, Konzeptkarten)
                 task = host.call("research_search_plan", null).trim().replace('\n', ' ');
             }
-            turn.message("Ich starte die autonome Recherche anhand des Konzepts"
+            turn.thought("Ich starte die autonome Recherche anhand des Konzepts"
                     + (task.trim().isEmpty() ? "." : ": " + firstLine(task)));
             turn.message(research.finish(research.run(task, turn.output())));
             return;
@@ -282,19 +293,20 @@ final class ResearchAgentTurns {
                 return;
             }
         }
-        if (!teamAgent.hasGreeted() && !greeted) {
-            TeamAgentResult greeting = teamAgent.greet(view);
-            emit(turn, greeting);
-            if (greeting.isOk()) {
-                host.greeted();
-                // Eine Begrüßung trägt keinen Nutzertext; was der Nutzer schon geschrieben hat, wird im selben
-                // Turn beantwortet, damit nichts verloren geht.
-                if (!text.trim().isEmpty() && !turn.isCancelled()) {
-                    emit(turn, conceptAwareRespond(view, text, status.searchTagsOffered));
-                }
-            }
-        } else {
-            emit(turn, conceptAwareRespond(view, text, status.searchTagsOffered));
+        if (text.trim().isEmpty()) {
+            return; // ein leerer Turn ohne Nutzertext: keine Begrüßung, keine Antwort
+        }
+        markStarted(greeted);
+        emit(turn, conceptAwareRespond(view, text, status.searchTagsOffered));
+    }
+
+    /**
+     * Ein neues Projekt gilt mit der ersten Nachricht als begonnen (Konzept/neu → läuft). Es gibt keine sichtbare
+     * Begrüßung: die Nachricht des Nutzers bekommt genau eine fachliche Antwort.
+     */
+    private void markStarted(boolean greeted) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
+        if (!greeted) {
+            host.greeted();
         }
     }
 
@@ -325,13 +337,7 @@ final class ResearchAgentTurns {
     private void directTurn(Turn turn, TeamAgentStateView view, String text, ResearchHostControl.Status status,
                             boolean greeted, java.util.List<String> queries)
             throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
-        if (!teamAgent.hasGreeted() && !greeted) {
-            TeamAgentResult greeting = teamAgent.greet(view);
-            emit(turn, greeting);
-            if (greeting.isOk()) {
-                host.greeted();
-            }
-        }
+        markStarted(greeted);
         if (conceptTools.getAsBoolean() && !turn.isCancelled()) {
             TeamAgentResult concept = conceptAwareRespond(view, text, status.searchTagsOffered);
             if (concept.getStatus() == TeamAgentResult.Status.OK
@@ -592,6 +598,11 @@ final class ResearchAgentTurns {
                 }
 
                 @Override
+                public void thought(String text) {
+                    Turn.this.thought(text);
+                }
+
+                @Override
                 public void toolStarted(String callId, String title, String kind, String input) {
                     if (!output.isCancelled()) {
                         if (tools != null) {
@@ -623,6 +634,14 @@ final class ResearchAgentTurns {
                 return;
             }
             output.message(sent++ > 0 ? "\n\n" + text : text);
+        }
+
+        /** Eine Arbeitsmeldung: nie Teil der Antwort, nur Denkwolke (eine Zeile je Meldung). */
+        void thought(String text) {
+            if (text == null || text.trim().isEmpty() || output.isCancelled()) {
+                return;
+            }
+            output.thought(text.trim() + "\n");
         }
     }
 }

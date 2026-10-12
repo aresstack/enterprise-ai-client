@@ -31,7 +31,8 @@ public final class ResearchOutlineView extends JPanel {
 
     private static final String TREE = "tree";
     private static final String TEXT = "text";
-    private static final String EMPTY = "Noch keine Gliederung. Sie entsteht, sobald du die Quellen freigibst.";
+    private static final String EMPTY = "Noch keine Gliederung. Wähle die Phase „Gliederung“ und erstelle sie unten mit "
+            + "Play.";
 
     private final OutlineTreeView tree = new OutlineTreeView();
     private final JTextArea editor = new JTextArea();
@@ -40,6 +41,7 @@ public final class ResearchOutlineView extends JPanel {
     private final ComicButton saveButton = new ComicButton("Speichern");
     private final ComicButton discardButton = new ComicButton("Verwerfen");
     private final CardLayout cards = new CardLayout();
+    private final JPanel footer;
     private final JPanel body = new JPanel(cards);
     private SaveHandler saveHandler;
     private String markdown = "";
@@ -68,7 +70,7 @@ public final class ResearchOutlineView extends JPanel {
         buttons.add(editButton);
         buttons.add(discardButton);
         buttons.add(saveButton);
-        JPanel footer = new JPanel(new BorderLayout());
+        footer = new JPanel(new BorderLayout());
         footer.setOpaque(false);
         footer.add(status, BorderLayout.CENTER);
         footer.add(buttons, BorderLayout.EAST);
@@ -95,6 +97,12 @@ public final class ResearchOutlineView extends JPanel {
         render("", false);
     }
 
+    /** Die Play-Aktion des Reiters (unten mittig, über Statuszeile und Bearbeiten). */
+    public void setPlayBar(ResearchPlayBar bar) {
+        footer.add(bar, BorderLayout.NORTH);
+        revalidate();
+    }
+
     public void setSaveHandler(SaveHandler handler) {
         this.saveHandler = handler;
     }
@@ -107,9 +115,10 @@ public final class ResearchOutlineView extends JPanel {
         if (!editing) {
             editor.setText(markdown);
             status.setText(markdown.trim().isEmpty() ? EMPTY
-                    : editable ? "Klicke auf „Bearbeiten“, um die Gliederung zu korrigieren." : " ");
+                    : editable ? "Klicke auf „Bearbeiten“, um die Gliederung zu korrigieren."
+                    : "Bearbeiten in der Phase „Gliederung“.");
         } else if (!editable) {
-            stopEditing("Die Gliederung ist freigegeben; Änderungen sind nicht mehr möglich.");
+            status.setText("Speichern geht nur in der Phase „Gliederung“; dein Text bleibt stehen.");
         }
         updateButtons();
     }

@@ -47,6 +47,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ErrorCollector;
 import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestName;
 
 import javax.swing.SwingUtilities;
 import java.io.File;
@@ -78,13 +79,15 @@ import static org.junit.Assume.assumeTrue;
  * {@link AgentServiceBinding} → {@link AgentService} → ACP (Solon-Connector) → {@code ResearchAgentMain} als
  * Kindprozess → MCP-Endpoint des Hosts ({@link ResearchControlTools}, {@link PhaseToolSetController}) →
  * {@code knowledge_search}/{@code knowledge_read} einer Fake-Quelle → ACP-Updates → Denk-, Werkzeug- und
- * Recherche-Wolken → sichtbare Agentenantwort. Phasenwechsel kommen ausschließlich aus den Aktions-Tags der
- * Phasenleiste ({@link ResearchWorkflowAssembly}, wie {@code ResearchWorkflowAcceptanceTest}); das Hauptmodell ist ein
- * Skript, das seine Antworten aus den Auszügen baut, die es vom Agenten bekommt.
+ * Recherche-Wolken → sichtbare Agentenantwort. Die Phase wählt ausschließlich die Nutzerin (Dropdown), jede Arbeit
+ * startet ein Play-Knopf ihres Reiters ({@link ResearchWorkflowAssembly}, wie {@code ResearchWorkflowAcceptanceTest});
+ * das Hauptmodell ist ein Skript, das seine Antworten aus den Auszügen baut, die es vom Agenten bekommt. Nach jedem
+ * erfolgreichen Turn bleiben nur Frage und Antwort im Verlauf; die Wolken prüft der {@link CardRecorder}.
  *
- * <p>Abnahmeszenarien 2 (Direktrecherche in Phase 1), 3 (Folgefrage ohne Phasenzwang), 4 („Recherche starten“ erst
- * mit Konzept, autonomer Lauf aus Konzept und Weidezaun), 5 (Quellen freigeben → Gliederung), 6 (Gliederung freigeben
- * → Kapitel nacheinander → persistiertes Dokument) und 9 (Unicode über den ganzen Agentenprozess).
+ * <p>Abnahmeszenarien 2/A (Direktrecherche im Konzept, nur Frage und Antwort bleiben), B (Zeitüberschreitung beim
+ * ersten Treffer), 3 (Folgefrage ohne Phasenzwang), 4 (Play nur in der eigenen Phase und mit Auftrag), C
+ * (Play Quellen), D (Play Gliederung), E (Play Dokument, Kapitel nacheinander, persistiert) und 9 (Unicode über den
+ * ganzen Agentenprozess).
  */
 public class AgentModeEndToEndTest {
 
@@ -123,6 +126,13 @@ public class AgentModeEndToEndTest {
     @Rule
     public final ErrorCollector expected = new ErrorCollector();
 
+    @Rule
+    public final TestName testName = new TestName();
+
+    /** Szenario B: so lange hängt {@code knowledge_read} der ersten Seite (länger als die MCP-Frist des Agenten). */
+    private volatile long slowFirstReadMillis;
+    private final List<String> slowReads = new CopyOnWriteArrayList<String>();
+
     private SolonMcpServerRuntime mcp;
     private ExecutorService starts;
     private AgentService service;
@@ -148,6 +158,11 @@ public class AgentModeEndToEndTest {
         Map<String, String> env = new LinkedHashMap<String, String>();
         // Seitenbudget des autonomen Laufs wie die Einstellung agent.research.maxPages (kippbar: 4)
         env.put(EnvironmentRunBudget.ENV_MAX_PAGES, "4");
+        if (testName.getMethodName().startsWith("scenarioB")) {
+            // kurze MCP-Frist des Agenten, damit die hängende Seite wirklich in die Zeitüberschreitung läuft
+            env.put("ENTERPRISE_AI_RESEARCH_MCP_TIMEOUT_SECONDS", "3");
+            slowFirstReadMillis = 7_000L;
+        }
 
         projects = folder.newFolder("research");
         host = newHost(projects);
@@ -194,7 +209,6 @@ public class AgentModeEndToEndTest {
                 sentActions.add(visible);
                 binding.sendAction(visible, prompt);
             }, chat, SwingUtilities::invokeLater, (resourceId, title) -> {
-            }, title -> {
             });
             return null;
         });
@@ -223,6 +237,11 @@ public class AgentModeEndToEndTest {
     @Test
     public void scenario2_phase1SearchShowsResearchCardBudgetToolCloudsAndAnswersFromReadPages() throws Exception {
         List<TranscriptEntry> entries = ask(SEARCH_REQUEST);
+        // die Wolken des Turns (sie verschwinden nach dem erfolgreichen Ende aus dem Verlauf)
+        List<TranscriptEntry> clouds = cards.seen();
+
+        // Abnahme A: genau USER und eine ASSISTANT-Antwort bleiben, keine Begrüßung, keine Arbeitsmeldung
+        assertOnlyQuestionAndAnswer(entries, SEARCH_REQUEST);
 
         // Phase 1 bleibt Phase 1: kein autonomer Lauf, kein Phasenwechsel
         assertEquals("scoping", host.phaseId());
@@ -235,7 +254,7 @@ public class AgentModeEndToEndTest {
                 < knowledgeCalls.indexOf("knowledge_read " + PAGES[0][0]));
 
         // die Recherche-Wolke: Titel, Art, Budget 0/4 … 4/4 mit Balken in den Zwischenständen, Bilanz am Ende
-        TranscriptEntry card = activity(entries, "Recherche in Confluence");
+        TranscriptEntry card = activity(clouds, "Recherche in Confluence");
         expected.checkThat("Art der Recherche-Wolke nach ACP (ChatTranscriptPanel zeichnet nur \"research\" als Karte)",
                 card.getActivityKind(), is("research"));
         assertEquals(TranscriptEntry.State.COMPLETE, card.getState());
@@ -249,20 +268,22 @@ public class AgentModeEndToEndTest {
         assertTrue(states.toString(), containsBoth(states, "Wissensquelle: Confluence", "Treffer: 5"));
 
         // sichtbare Werkzeugaufrufe: Suche mit Anfrage und Treffern, jede gelesene Seite, die Notiz als Quelle
-        TranscriptEntry search = activity(entries, "Suche in den Wissensquellen");
+        TranscriptEntry search = activity(clouds, "Suche in den Wissensquellen");
         assertEquals("IAR", search.getText());
         assertEquals(TranscriptEntry.State.COMPLETE, search.getState());
         assertTrue(search.getActivitySummary(), search.getActivitySummary().startsWith("5 Treffer"));
         List<String> readTitles = new ArrayList<String>();
-        for (TranscriptEntry entry : activities(entries, "Lese Seite")) {
+        for (TranscriptEntry entry : activities(clouds, "Lese Seite")) {
             assertEquals(entry.getText() + ": " + entry.getActivitySummary(), TranscriptEntry.State.COMPLETE,
                     entry.getState());
             readTitles.add(entry.getText());
         }
         assertEquals(Arrays.asList(PAGES[0][1], PAGES[1][1], PAGES[2][1], PAGES[3][1]), readTitles);
         // das Notieren als Quelle zählt die Karte („4 Quellen übernommen“), keine eigene Wolke je Seite
-        assertEquals(0, activities(entries, "Quelle notieren").size());
-        assertTrue("Denkschritte als grüne Wolke", activity(entries, "Denke nach").isThinking());
+        assertEquals(0, activities(clouds, "Quelle notieren").size());
+        assertTrue("Denkschritte als grüne Wolke", activity(clouds, "Denke nach").isThinking());
+        assertTrue("die Arbeitsmeldung ist ein Gedanke, keine Antwort: " + cards.all(),
+                anyContains(cards.all(), "Ich suche in den aktivierten Wissensquellen nach"));
 
         // die gelesenen Seiten sind Quellen des Projekts
         assertEquals(Arrays.asList(PAGES[0][0], PAGES[1][0], PAGES[2][0], PAGES[3][0]), sourceIds());
@@ -278,6 +299,28 @@ public class AgentModeEndToEndTest {
         assertNoNotice(entries);
     }
 
+    // ------------------------------------------------------------------ Szenario B
+
+    @Test
+    public void scenarioB_aTimeoutOnTheFirstHitSkipsItAndTheTurnStillAnswersFromTheNextHits() throws Exception {
+        List<TranscriptEntry> entries = ask(SEARCH_REQUEST);
+
+        // Treffer 1 lief in die Zeitüberschreitung: ein Versuch und eine Wiederholung, dann übersprungen
+        assertEquals(slowReads.toString(), 2, slowReads.size());
+        assertFalse("die hängende Seite ist keine Quelle", sourceIds().contains(PAGES[0][0]));
+        // MAX_PAGES = 4 zählt erfolgreich gelesene Seiten: die nächsten vier Treffer
+        assertEquals(readIds.toString(), Arrays.asList(PAGES[1][0], PAGES[2][0], PAGES[3][0], PAGES[4][0]),
+                readIds);
+
+        // der Turn endet mit einer Antwort aus Treffer 2, ohne „Verbindung unterbrochen“
+        String answer = lastAnswer(entries);
+        assertTrue(answer, answer.contains("Der Pilot von IAR startet im Frühjahr"));
+        assertOnlyQuestionAndAnswer(entries, SEARCH_REQUEST);
+        assertNoNotice(entries);
+        TranscriptEntry card = activity(cards.seen(), "Recherche in Confluence");
+        assertEquals(TranscriptEntry.State.COMPLETE, card.getState());
+    }
+
     // ------------------------------------------------------------------ Szenario 3
 
     @Test
@@ -291,8 +334,12 @@ public class AgentModeEndToEndTest {
         assertEquals("scoping", host.phaseId());
         assertFalse(host.runStatus().hasRun());
         assertTrue(sentActions.toString(), sentActions.isEmpty());
-        // der Startknopf bleibt ein Angebot, kein Zwang
-        assertEquals(Arrays.asList("Recherche starten"), onEdt(() -> workflow.strip().actionLabels()));
+        // die Play-Aktion „Recherche starten“ gehört der Phase Quellen: im Konzept gesperrt, mit Hinweis
+        refresh();
+        assertFalse(onEdt(() -> workflow.play(ResearchWorkflow.PHASE_SOURCES).button().isEnabled()));
+        assertEquals("Phase ‚Quellen‘ auswählen, um die Recherche zu starten.",
+                onEdt(() -> workflow.play(ResearchWorkflow.PHASE_SOURCES).button().getToolTipText()));
+        assertOnlyQuestionAndAnswer(turn, FOLLOW_UP);
 
         // die Frage wird inhaltlich beantwortet
         String answer = lastAnswer(turn);
@@ -306,18 +353,24 @@ public class AgentModeEndToEndTest {
     // ------------------------------------------------------------------ Szenario 4
 
     @Test
-    public void scenario4_startResearchWithoutConceptIsRefusedAndStaysInPhase1() throws Exception {
+    public void scenario4_startResearchOutsideTheSourcePhaseOrWithoutBriefIsRefusedAndKeepsThePhase()
+            throws Exception {
         refresh();
-        perform(ResearchWorkflow.START_RESEARCH);
+        perform(ResearchWorkflow.PHASE_SOURCES);
         awaitIdle();
+        assertEquals("Play wechselt keine Phase", "scoping", host.phaseId());
 
-        assertEquals("ohne Konzept beginnt keine Phase 2", "scoping", host.phaseId());
+        selectPhase(ResearchWorkflow.PHASE_SOURCES);
+        click(ResearchWorkflow.PHASE_SOURCES);
+        awaitIdle();
+        assertEquals("research", host.phaseId());
         assertFalse(host.runStatus().hasRun());
         assertTrue("kein autonomer Lauf: " + knowledgeCalls, knowledgeCalls.isEmpty());
+        assertTrue(sentActions.toString(), sentActions.isEmpty());
     }
 
     @Test
-    public void scenario4to6_wholeWorkflowRunsThroughStripActionsAndTheAgentProcess() throws Exception {
+    public void scenario4to6_wholeWorkflowRunsThroughPhaseChoicesPlayButtonsAndTheAgentProcess() throws Exception {
         // Phase 1: Direktrecherche und Folgefrage legen das Konzept an (IAR, IAR/Meilensteine, IAR/Archiv)
         ask(SEARCH_REQUEST);
         ask(FOLLOW_UP);
@@ -330,12 +383,13 @@ public class AgentModeEndToEndTest {
         assertEquals("scoping", host.phaseId());
         assertFalse("vor dem Klick kein Lauf", host.runStatus().hasRun());
 
-        // Szenario 4: „Recherche starten“ (Tag) → erst jetzt Phase 2, autonomer Lauf aus Konzept + Weidezaun
+        // Szenario C: Phase „Quellen“ wählen, Play „Recherche starten“: autonomer Lauf aus Konzept + Weidezaun,
+        // die Phase bleibt Quellen
         int beforeRun = knowledgeCalls.size();
         int entriesBeforeRun = snapshot().size();
-        refresh();
-        assertEquals(Arrays.asList("Recherche starten"), onEdt(() -> workflow.strip().actionLabels()));
-        perform(ResearchWorkflow.START_RESEARCH);
+        selectPhase(ResearchWorkflow.PHASE_SOURCES);
+        assertEquals("nur das Wählen, noch kein Lauf", beforeRun, knowledgeCalls.size());
+        click(ResearchWorkflow.PHASE_SOURCES);
         awaitIdle();
         assertEquals(Arrays.asList("Recherche starten"), sentActions);
         assertEquals("research", host.phaseId());
@@ -351,34 +405,42 @@ public class AgentModeEndToEndTest {
                 is(false));
         List<TranscriptEntry> runTurn = snapshot();
         runTurn = runTurn.subList(entriesBeforeRun, runTurn.size());
-        assertFalse("sichtbare Suche im Lauf", activities(runTurn, "Suche in den Wissensquellen").isEmpty());
+        assertFalse("sichtbare Suche im Lauf", activities(cards.seen(), "Suche in den Wissensquellen").isEmpty());
         assertTrue(lastAnswer(runTurn), lastAnswer(runTurn).contains("Die Quellensuche ist abgeschlossen"));
+        assertOnlyQuestionAndAnswer(runTurn, "Recherche starten");
+        assertTrue(onEdt(() -> workflow.play(ResearchWorkflow.PHASE_SOURCES).button().isEnabled()));
 
-        // Szenario 5: „Quellen freigeben“ → Phase 3, der Agent legt die Gliederung vor
-        refresh();
-        assertEquals(Arrays.asList("Quellen freigeben", "Weiter recherchieren"),
-                onEdt(() -> workflow.strip().actionLabels()));
-        perform(ResearchWorkflow.APPROVE_EVIDENCE);
+        // Szenario D: Phase „Gliederung“ wählen, Play „Gliederung erstellen“: der Agent legt die Gliederung vor
+        selectPhase(ResearchWorkflow.PHASE_OUTLINE);
+        assertFalse("Play Quellen außerhalb der Phase gesperrt",
+                onEdt(() -> workflow.play(ResearchWorkflow.PHASE_SOURCES).button().isEnabled()));
+        int entriesBeforeOutline = snapshot().size();
+        click(ResearchWorkflow.PHASE_OUTLINE);
         awaitIdle();
         assertEquals("outline", host.phaseId());
         assertEquals("waiting_approval", host.stateId());
         assertTrue(host.outline(), host.outline().contains("## 2. Planung und Meilensteine"));
         List<TranscriptEntry> afterOutline = snapshot();
         assertTrue(lastAnswer(afterOutline), lastAnswer(afterOutline).contains("Vorschlag für die Gliederung"));
-        assertNotNull(activity(afterOutline, "Gliederung vorlegen"));
+        assertNotNull(activity(cards.seen(), "Gliederung vorlegen"));
+        assertOnlyQuestionAndAnswer(afterOutline.subList(entriesBeforeOutline, afterOutline.size()),
+                "Gliederung erstellen");
         assertTrue("Gliederung aus Konzept und Weidezaun", script.outlineRequest.contains("KONZEPT:")
                 && script.outlineRequest.contains("IAR") && script.outlineRequest.contains(EXCLUDED));
 
-        // Szenario 6: „Gliederung freigeben“ → Phase 4, Kapitel nacheinander, Dokument persistiert
-        refresh();
-        assertEquals(Arrays.asList("Gliederung freigeben", "Ändern"), onEdt(() -> workflow.strip().actionLabels()));
+        // Szenario E: Phase „Dokument“ wählen, Play „Dokument schreiben“: Kapitel nacheinander, Dokument persistiert
+        selectPhase(ResearchWorkflow.PHASE_DOCUMENT);
         int entriesBeforeDraft = snapshot().size();
-        perform(ResearchWorkflow.APPROVE_OUTLINE);
+        int cloudsBeforeDraft = cards.seen().size();
+        click(ResearchWorkflow.PHASE_DOCUMENT);
         awaitIdle();
+        assertEquals(Arrays.asList("Recherche starten", "Gliederung erstellen", "Dokument schreiben"), sentActions);
         assertEquals("draft", host.phaseId());
         assertEquals("waiting_approval", host.stateId());
         List<TranscriptEntry> draft = snapshot();
-        String draftText = allAnswers(draft.subList(entriesBeforeDraft, draft.size()));
+        assertOnlyQuestionAndAnswer(draft.subList(entriesBeforeDraft, draft.size()), "Dokument schreiben");
+        // die Schreibschritte sind Gedanken (transient), keine eigenen Antworten
+        String draftText = thoughts(cards.seen().subList(cloudsBeforeDraft, cards.seen().size()));
         int first = draftText.indexOf("Schreibe Abschnitt 1 von 3");
         int second = draftText.indexOf("Schreibe Abschnitt 2 von 3");
         int third = draftText.indexOf("Schreibe Abschnitt 3 von 3");
@@ -401,8 +463,7 @@ public class AgentModeEndToEndTest {
         assertNotNull(restarted.document());
         assertEquals(document.toMarkdown(), restarted.document().toMarkdown());
         refresh();
-        assertEquals(Arrays.asList("Dokument abschließen", "Dokument überarbeiten"),
-                onEdt(() -> workflow.strip().actionLabels()));
+        assertTrue(onEdt(() -> workflow.play(ResearchWorkflow.PHASE_DOCUMENT).button().isEnabled()));
         assertNoMojibake(snapshot());
     }
 
@@ -424,16 +485,16 @@ public class AgentModeEndToEndTest {
         String answer = lastAnswer(entries);
         assertTrue(answer, answer.contains("Zu „" + UNICODE + "“:"));
         assertTrue(answer, answer.contains("Sonderzeichen im Projekt: " + UNICODE));
-        TranscriptEntry card = activity(entries, "Recherche in Confluence");
+        TranscriptEntry card = activity(cards.seen(), "Recherche in Confluence");
         assertTrue(cards.texts(card.getActivityKey()).toString(),
                 anyContains(cards.texts(card.getActivityKey()), "„" + UNICODE + "“"));
         boolean searchCloud = false;
-        for (TranscriptEntry search : activities(entries, "Suche in den Wissensquellen")) {
+        for (TranscriptEntry search : activities(cards.seen(), "Suche in den Wissensquellen")) {
             searchCloud |= UNICODE.equals(search.getText());
         }
         assertTrue("Suchwolke mit der Anfrage", searchCloud);
-        assertTrue(activities(entries, "Lese Seite").get(0).getText(), activities(entries, "Lese Seite").get(0)
-                .getText().equals("IAR Übersicht"));
+        assertTrue(activities(cards.seen(), "Lese Seite").get(0).getText(), activities(cards.seen(), "Lese Seite")
+                .get(0).getText().equals("IAR Übersicht"));
         assertNoMojibake(entries);
         for (String text : cards.all()) {
             assertNoMojibake(text);
@@ -461,6 +522,15 @@ public class AgentModeEndToEndTest {
             public McpToolResult invoke(McpToolCall call) {
                 String id = call.getString("id");
                 knowledgeCalls.add("knowledge_read " + id);
+                if (slowFirstReadMillis > 0 && PAGES[0][0].equals(id)) {
+                    slowReads.add(id);
+                    try {
+                        Thread.sleep(slowFirstReadMillis);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                    // die Antwort kommt zu spät: der Agent hat die Anfrage schon aufgegeben
+                }
                 for (String[] page : PAGES) {
                     if (page[0].equals(id)) {
                         readIds.add(id);
@@ -498,11 +568,16 @@ public class AgentModeEndToEndTest {
         final List<String> sectionsWritten = new CopyOnWriteArrayList<String>();
         volatile String outlineRequest = "";
         volatile Integer persistedBeforeSecondSection;
-        private final ResearchAgentHost host;
+        private final java.util.function.Supplier<ResearchAgentHost> host;
         private boolean rootCard;
         private boolean childCards;
 
-        ScriptedModel(ResearchAgentHost host) {
+        ScriptedModel(final ResearchAgentHost host) {
+            this(() -> host);
+        }
+
+        /** Für die ganze Anwendung: der Host entsteht erst mit der Composition Root. */
+        ScriptedModel(java.util.function.Supplier<ResearchAgentHost> host) {
             this.host = host;
         }
 
@@ -542,7 +617,7 @@ public class AgentModeEndToEndTest {
             if (system.contains("Du schreibst einen Abschnitt")) {
                 String section = between(user, "ABSCHNITT: ", "\n");
                 if (sectionsWritten.size() == 1 && persistedBeforeSecondSection == null) {
-                    persistedBeforeSecondSection = host.documentDraftSectionCount();
+                    persistedBeforeSecondSection = host.get().documentDraftSectionCount();
                 }
                 sectionsWritten.add(section.replaceFirst("^\\d+\\.\\s*", ""));
                 return fromPassages(user, 3);
@@ -592,12 +667,34 @@ public class AgentModeEndToEndTest {
     }
 
     /** Schreibt jeden Zwischenstand der Recherche-Karte mit (Text je Hinzufügen und Aktualisieren). */
-    static final class CardRecorder implements ChatShellModelListener {
+    public static final class CardRecorder implements ChatShellModelListener {
         private final Map<String, List<String>> texts = new LinkedHashMap<String, List<String>>();
+        private final List<TranscriptEntry> seen = new ArrayList<TranscriptEntry>();
+        private final List<TranscriptEntry> removed = new ArrayList<TranscriptEntry>();
 
         @Override
         public void entryAdded(TranscriptEntry entry) {
+            synchronized (this) {
+                if (entry.getAuthor() == TranscriptEntry.Author.ACTIVITY) {
+                    seen.add(entry);
+                }
+            }
             record(entry);
+        }
+
+        @Override
+        public synchronized void entryRemoved(TranscriptEntry entry) {
+            removed.add(entry);
+        }
+
+        /** Jede Wolke, die im Verlauf stand, in ihrem letzten Zustand (auch die schon entfernten). */
+        public synchronized List<TranscriptEntry> seen() {
+            return new ArrayList<TranscriptEntry>(seen);
+        }
+
+        /** Was aus dem Verlauf entfernt wurde. */
+        synchronized List<TranscriptEntry> removed() {
+            return new ArrayList<TranscriptEntry>(removed);
         }
 
         @Override
@@ -621,12 +718,12 @@ public class AgentModeEndToEndTest {
             list.add(entry.getActivityTitle() + "\n" + entry.getText() + "\n" + entry.getActivitySummary());
         }
 
-        synchronized List<String> texts(String key) {
+        public synchronized List<String> texts(String key) {
             List<String> list = texts.get(key);
             return list == null ? Collections.<String>emptyList() : new ArrayList<String>(list);
         }
 
-        synchronized List<String> all() {
+        public synchronized List<String> all() {
             List<String> all = new ArrayList<String>();
             for (List<String> list : texts.values()) {
                 all.addAll(list);
@@ -655,12 +752,70 @@ public class AgentModeEndToEndTest {
         return snapshot();
     }
 
-    private void perform(final String action) throws Exception {
+    private void perform(final String phaseId) throws Exception {
         onEdt(() -> {
-            workflow.perform(action);
+            workflow.perform(phaseId);
             return null;
         });
         onEdt(() -> null);
+    }
+
+    /** Ein Klick auf den Play-Knopf des Reiters einer Phase (nur wirksam, wenn er aktiv ist). */
+    private void click(final String phaseId) throws Exception {
+        refresh();
+        onEdt(() -> {
+            assertTrue("Play " + phaseId + " aktiv", workflow.play(phaseId).button().isEnabled());
+            workflow.play(phaseId).button().doClick();
+            return null;
+        });
+        onEdt(() -> null);
+    }
+
+    /** Die Nutzerin wählt die Phase im Dropdown. */
+    private void selectPhase(final String phaseId) throws Exception {
+        onEdt(() -> {
+            workflow.selectPhase(phaseId);
+            return null;
+        });
+        refresh();
+        assertEquals(phaseId, host.phaseId());
+    }
+
+    /** Der Text aller Gedankenwolken in Reihenfolge. */
+    static String thoughts(List<TranscriptEntry> clouds) {
+        StringBuilder text = new StringBuilder();
+        for (TranscriptEntry entry : clouds) {
+            if (entry.isThinking()) {
+                text.append(entry.getText()).append('\n');
+            }
+        }
+        return text.toString();
+    }
+
+    /**
+     * Ein normaler Turn hinterlässt genau die Nutzernachricht und eine Antwort: keine Begrüßung, keine
+     * Arbeitsmeldung als Blase, keine stehen gebliebene erfolgreiche Wolke, kein Verbindungsfehler.
+     */
+    static void assertOnlyQuestionAndAnswer(List<TranscriptEntry> turn, String question) {
+        StringBuilder seen = new StringBuilder();
+        int users = 0;
+        int answers = 0;
+        for (TranscriptEntry entry : turn) {
+            seen.append(entry.getAuthor()).append(": ").append(entry.getText()).append(" | ")
+                    .append(entry.getActivityTitle()).append('\n');
+            if (entry.getAuthor() == TranscriptEntry.Author.USER) {
+                users++;
+                assertEquals(question, entry.getText().trim());
+            } else if (entry.getAuthor() == TranscriptEntry.Author.ASSISTANT) {
+                answers++;
+                assertFalse(entry.getText(), entry.getText().contains("Herzlich willkommen"));
+                assertFalse(entry.getText(), entry.getText().contains("Ich suche in den aktivierten Wissensquellen"));
+                assertFalse(entry.getText(), entry.getText().contains("Verbindung zum Client"));
+            }
+        }
+        assertEquals(seen.toString(), turn.size(), users + answers);
+        assertEquals(seen.toString(), 1, users);
+        assertEquals(seen.toString(), 1, answers);
     }
 
     private void refresh() throws Exception {

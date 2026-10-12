@@ -136,8 +136,8 @@ final class ResearchWriting {
         }
         host.call("outline_propose", single("outline", outline));
         return "Hier ist mein Vorschlag für die Gliederung:\n\n" + outline + "\n\nDu kannst sie im Reiter "
-                + "„Gliederung“ direkt korrigieren oder Änderungen hier im Chat beschreiben. Mit „Gliederung "
-                + "freigeben“ schreibe ich das Dokument.";
+                + "„Gliederung“ direkt korrigieren oder Änderungen hier im Chat beschreiben. Wähle danach die Phase "
+                + "„Dokument“ und starte dort „Dokument schreiben“.";
     }
 
     // ------------------------------------------------------------------ Dokument
@@ -164,15 +164,16 @@ final class ResearchWriting {
             written.append("## ").append(saved[0]).append("\n").append(saved[1]).append("\n\n");
         }
         if (!done.isEmpty() && done.size() < chapters.size()) {
-            progress.message(chaptersKept(done.size()) + " Ich setze bei Kapitel " + (done.size() + 1) + " fort.");
+            progress.thought(chaptersKept(done.size()) + " Ich setze bei Kapitel " + (done.size() + 1) + " fort.");
         }
         for (int index = done.size(); index < chapters.size(); index++) {
             Chapter chapter = chapters.get(index);
             if (progress.isCancelled()) {
-                return "Abgebrochen. " + chaptersKept(index) + " Mit „Dokument fortsetzen“ geht es bei Kapitel "
+                return "Abgebrochen. " + chaptersKept(index)
+                        + " Mit „Dokument schreiben“ im Reiter „Dokument“ geht es bei Kapitel "
                         + (index + 1) + " weiter.";
             }
-            progress.message("Schreibe Abschnitt " + (index + 1) + " von " + chapters.size() + ": "
+            progress.thought("Schreibe Abschnitt " + (index + 1) + " von " + chapters.size() + ": "
                     + chapter.heading);
             Map<String, String> chapterPassages = new LinkedHashMap<String, String>();
             String text;
@@ -232,9 +233,7 @@ final class ResearchWriting {
                 if (added >= FOLLOW_UP_PAGES || progress.isCancelled()) {
                     break;
                 }
-                Map<String, Object> read = new LinkedHashMap<String, Object>();
-                read.put("id", hit.id);
-                String page = host.call(KnowledgePages.READ_TOOL, read);
+                String page = direct.readPage(hit.id); // ein unlesbarer Treffer wird übersprungen
                 if (page == null || page.trim().isEmpty()) {
                     continue;
                 }
@@ -244,7 +243,7 @@ final class ResearchWriting {
                 add.put("url", hit.url);
                 String result = host.call("project_source_add", add);
                 if (!result.startsWith("ALREADY_ACCEPTED")) {
-                    progress.message("Neue Quelle im Projekt: " + (hit.title.isEmpty() ? hit.id : hit.title));
+                    progress.thought("Neue Quelle im Projekt: " + (hit.title.isEmpty() ? hit.id : hit.title));
                 }
                 added++;
             }
@@ -277,8 +276,8 @@ final class ResearchWriting {
     private static String chapterFailed(int index, Chapter chapter, String reason) {
         LOG.warning("[research-writing] Kapitel " + (index + 1) + " gescheitert: " + reason);
         return "Kapitel " + (index + 1) + " („" + chapter.heading + "“) konnte nicht geschrieben werden: " + reason
-                + "\n\n" + chaptersKept(index) + " Mit „Dokument fortsetzen“ schreibe ich ab Kapitel " + (index + 1)
-                + " weiter.";
+                + "\n\n" + chaptersKept(index) + " Mit „Dokument schreiben“ im Reiter „Dokument“ schreibe ich ab "
+                + "Kapitel " + (index + 1) + " weiter.";
     }
 
     /**
@@ -397,7 +396,7 @@ final class ResearchWriting {
             return "Die Quellen dieses Projekts beantworten das nicht, und die Wissenssuche ist gerade nicht aktiv. "
                     + "Prüfe in den Einstellungen unter „Tools“, ob knowledge_search und knowledge_read aktiv sind.";
         }
-        progress.message("Die Quellen des Projekts reichen dafür nicht; ich suche in den Wissensquellen nach.");
+        progress.thought("Die Quellen des Projekts reichen dafür nicht; ich suche in den Wissensquellen nach.");
         String fence = "";
         try {
             fence = host.call("research_scope_fence", null);

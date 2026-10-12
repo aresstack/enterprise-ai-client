@@ -42,9 +42,28 @@ public class AgentServiceBindingActivityTest {
     private AgentServiceBinding binding;
     private PromptDispatcher prompt;
 
+    /** Jede Wolke, die im Verlauf stand (nach dem Turn sind die erfolgreichen wieder entfernt). */
+    private final List<TranscriptEntry> seen = new ArrayList<TranscriptEntry>();
+
     @Before
     public void setUp() {
         model = new ChatShellModel(() -> 0L);
+        model.addListener(new com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModelListener() {
+            @Override
+            public void entryAdded(TranscriptEntry entry) {
+                if (entry.getAuthor() == TranscriptEntry.Author.ACTIVITY) {
+                    seen.add(entry);
+                }
+            }
+
+            @Override
+            public void entryUpdated(TranscriptEntry entry) {
+            }
+
+            @Override
+            public void stateChanged() {
+            }
+        });
         binding = new AgentServiceBinding(new AgentService(new ScriptedLauncher(), DIRECT), model, DIRECT);
     }
 
@@ -83,6 +102,9 @@ public class AgentServiceBindingActivityTest {
         assertEquals(TranscriptEntry.State.COMPLETE, thoughts.get(0).getState());
         assertEquals("2 Quellen übernommen", tools.get(0).getActivitySummary());
         assertFalse(model.isStreaming());
+        // askai: nach dem erfolgreichen Turn bleiben nur Frage und Antwort
+        assertEquals(2, model.getEntries().size());
+        assertEquals("IAR bündelt die Auswertung.", model.getEntries().get(1).getText());
     }
 
     @Test
@@ -139,7 +161,7 @@ public class AgentServiceBindingActivityTest {
 
     private List<TranscriptEntry> activities(boolean thinking) {
         List<TranscriptEntry> result = new ArrayList<TranscriptEntry>();
-        for (TranscriptEntry entry : model.getEntries()) {
+        for (TranscriptEntry entry : seen) {
             if (entry.getAuthor() == TranscriptEntry.Author.ACTIVITY && entry.isThinking() == thinking) {
                 result.add(entry);
             }

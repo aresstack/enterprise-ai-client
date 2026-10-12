@@ -11,7 +11,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchDocumentView;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchOutlineView;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchSourcesView;
-import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchWorkflowStrip;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchPlayBar;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.research.ResearchSearchTagStrip;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,11 +21,13 @@ import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
 /**
- * Verdrahtet den geführten Recherche-Workflow des Agent-Modus: die Phasenleiste mit den Aktions-Tags über dem
- * Composer und die Drawer-Reiter „Quellen“, „Gliederung“ und „Dokument“. Alles wird aus dem {@link ResearchAgentHost}
- * abgeleitet ({@link ResearchWorkflow}: Phase und Zustand der Zustandsmaschine, keine zweite Zustandsverwaltung) und
- * bei jeder Zustandsänderung des Hosts neu gezeichnet. Eine Aktion löst die vorhandenen Übergänge aus und schickt den
- * Auftrag an den Agenten wie eine Chatnachricht; die Textbefehle bleiben ein zweiter Weg.
+ * Verdrahtet den Research-Workflow des Agent-Modus in drei getrennten Ebenen ({@link ResearchWorkflow}): die vom
+ * Nutzer gewählte <b>Phase</b> (Dropdown im Composer, über {@link Parts#selectPhase} und {@link Parts#onPhase}), die
+ * <b>Artefakt-Reiter</b> „Quellen“, „Gliederung“ und „Dokument“ (reine Ansicht; der Reiter „Konzept“ kommt aus
+ * {@link ResearchConceptViewAssembly}) und je Reiter seine <b>Play-Aktion</b>, aktiv nur in der eigenen Phase.
+ * Keine Ebene schaltet eine andere um: Play ändert keine Phase, ein Reiterwechsel auch nicht. Über dem Composer
+ * stehen nur noch die gelben Suchvorschläge (Direktsuche, kein Phasenwechsel). Alles wird aus dem
+ * {@link ResearchAgentHost} abgeleitet und bei jeder Zustandsänderung neu gezeichnet.
  */
 public final class ResearchWorkflowAssembly {
 
@@ -43,30 +46,35 @@ public final class ResearchWorkflowAssembly {
         void send(String visibleText, String prompt);
     }
 
-    /** Wie die Oberfläche einen Drawer-Reiter zeigt. */
-    public interface TabShower {
-        void show(String title);
-    }
-
     /** Die gebauten Teile. */
     public static final class Parts {
-        private final ResearchWorkflowStrip strip;
+        private final ResearchSearchTagStrip strip;
         private final ResearchSourcesView sources;
         private final ResearchOutlineView outline;
         private final ResearchDocumentView document;
+        private final java.util.Map<String, ResearchPlayBar> plays;
+        private final ResearchWorkflow workflow;
         private final Runnable refresh;
         private final Consumer<String> perform;
         private final Consumer<String> search;
+        private final Consumer<String> select;
+        private final List<Consumer<String>> phaseListeners;
 
-        Parts(ResearchWorkflowStrip strip, ResearchSourcesView sources, ResearchOutlineView outline,
-              ResearchDocumentView document, Runnable refresh, Consumer<String> perform, Consumer<String> search) {
+        Parts(ResearchSearchTagStrip strip, ResearchSourcesView sources, ResearchOutlineView outline,
+              ResearchDocumentView document, java.util.Map<String, ResearchPlayBar> plays, ResearchWorkflow workflow,
+              Runnable refresh, Consumer<String> perform, Consumer<String> search, Consumer<String> select,
+              List<Consumer<String>> phaseListeners) {
             this.strip = strip;
             this.sources = sources;
             this.outline = outline;
             this.document = document;
+            this.plays = plays;
+            this.workflow = workflow;
             this.refresh = refresh;
             this.perform = perform;
             this.search = search;
+            this.select = select;
+            this.phaseListeners = phaseListeners;
         }
 
         /** Führt einen gelben Suchvorschlag aus wie ein Klick auf ihn (auf dem UI-Thread). */
@@ -74,7 +82,7 @@ public final class ResearchWorkflowAssembly {
             search.accept(query);
         }
 
-        public ResearchWorkflowStrip strip() {
+        public ResearchSearchTagStrip strip() {
             return strip;
         }
 
@@ -90,14 +98,48 @@ public final class ResearchWorkflowAssembly {
             return document;
         }
 
+        /** Die Play-Leiste des Reiters einer Phase ({@code research}, {@code outline}, {@code draft}). */
+        public ResearchPlayBar play(String phaseId) {
+            return plays.get(phaseId);
+        }
+
         /** Liest den Host neu und zeichnet alles (läuft auch auf jede Zustandsänderung). */
         public void refresh() {
             refresh.run();
         }
 
-        /** Führt eine Aktion aus wie ein Klick auf ihren Tag (auf dem UI-Thread). */
-        public void perform(String actionId) {
-            perform.accept(actionId);
+        /** Die Play-Aktion einer Phase wie ein Klick auf ihren Knopf (auf dem UI-Thread). */
+        public void perform(String phaseId) {
+            perform.accept(phaseId);
+        }
+
+        /** Der Nutzer wählt eine Phase (Dropdown; auf dem UI-Thread). */
+        public void selectPhase(String phaseId) {
+            select.accept(phaseId);
+        }
+
+        /** Kennungen der wählbaren Phasen in Produktreihenfolge. */
+        public List<String> phaseIds() {
+            List<String> ids = new ArrayList<String>();
+            for (ResearchWorkflow.PhaseChoice choice : workflow.phaseChoices()) {
+                ids.add(choice.id());
+            }
+            return ids;
+        }
+
+        /** Titel der wählbaren Phasen in Produktreihenfolge. */
+        public List<String> phaseTitles() {
+            List<String> titles = new ArrayList<String>();
+            for (ResearchWorkflow.PhaseChoice choice : workflow.phaseChoices()) {
+                titles.add(choice.title());
+            }
+            return titles;
+        }
+
+        /** Hört auf die aktive Phase (auf dem UI-Thread, bei jeder Zustandsänderung, sofort mit dem Stand). */
+        public void onPhase(Consumer<String> listener) {
+            phaseListeners.add(listener);
+            listener.accept(workflow.currentPhaseId());
         }
     }
 
@@ -106,18 +148,33 @@ public final class ResearchWorkflowAssembly {
 
     /** Muss auf dem UI-Thread gerufen werden. */
     public static Parts create(final ResearchAgentHost host, final ActionSender sender,
-                               final ChatShellModel chat, final Executor uiExecutor, final SourceOpener opener,
-                               final TabShower tabs) {
+                               final ChatShellModel chat, final Executor uiExecutor, final SourceOpener opener) {
         final ResearchWorkflow workflow = new ResearchWorkflow(host);
-        final ResearchWorkflowStrip strip = new ResearchWorkflowStrip();
+        final ResearchSearchTagStrip strip = new ResearchSearchTagStrip();
         final ResearchSourcesView sources = new ResearchSourcesView();
         final ResearchOutlineView outline = new ResearchOutlineView();
         final ResearchDocumentView document = new ResearchDocumentView();
+        final java.util.Map<String, ResearchPlayBar> plays = new java.util.LinkedHashMap<String, ResearchPlayBar>();
+        for (String phase : playPhases()) {
+            ResearchWorkflow.Play play = workflow.play(phase);
+            plays.put(phase, new ResearchPlayBar("research-play-" + phase, play.tooltip()));
+        }
+        sources.setPlayBar(plays.get(ResearchWorkflow.PHASE_SOURCES));
+        outline.setPlayBar(plays.get(ResearchWorkflow.PHASE_OUTLINE));
+        document.setPlayBar(plays.get(ResearchWorkflow.PHASE_DOCUMENT));
+        final List<Consumer<String>> phaseListeners = new java.util.concurrent.CopyOnWriteArrayList<Consumer<String>>();
 
         final Runnable render = new Runnable() {
             @Override
             public void run() {
-                final ResearchWorkflowStrip.Snapshot strip0 = stripSnapshot(workflow, host, chat.isStreaming());
+                final boolean busy = chat.isStreaming();
+                final ResearchSearchTagStrip.Snapshot tags = tagSnapshot(workflow, busy);
+                final String phase = workflow.currentPhaseId();
+                final java.util.Map<String, ResearchWorkflow.Play> playStates =
+                        new java.util.LinkedHashMap<String, ResearchWorkflow.Play>();
+                for (String id : playPhases()) {
+                    playStates.put(id, workflow.play(id));
+                }
                 final List<ResearchSourcesView.SourceItem> sourceItems = sourceItems(host);
                 final String runLine = runLine(host);
                 final String outlineText = host.outline();
@@ -129,42 +186,62 @@ public final class ResearchWorkflowAssembly {
                 uiExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
-                        strip.render(strip0);
+                        strip.render(tags);
+                        for (java.util.Map.Entry<String, ResearchWorkflow.Play> entry : playStates.entrySet()) {
+                            ResearchWorkflow.Play play = entry.getValue();
+                            plays.get(entry.getKey()).render(play.isEnabled() && !busy, play.isEnabled() && busy
+                                    ? "Der Agent arbeitet noch am vorherigen Auftrag." : play.tooltip());
+                        }
                         sources.render(sourceItems, runLine);
                         outline.render(outlineText, outlineEditable);
                         document.render(documentText, documentLine);
+                        for (Consumer<String> listener : phaseListeners) {
+                            listener.accept(phase);
+                        }
                     }
                 });
             }
         };
         final Consumer<String> perform = new Consumer<String>() {
             @Override
-            public void accept(String actionId) {
+            public void accept(String phaseId) {
                 if (chat.isStreaming()) {
                     chat.addNotice("Der Agent arbeitet noch am vorherigen Auftrag.");
                     return;
                 }
-                ResearchWorkflow.Result result = workflow.perform(actionId);
+                // Die Play-Aktion arbeitet nur in ihrer Phase und lässt die Phase, wie sie ist.
+                ResearchWorkflow.Result result = workflow.perform(phaseId);
                 if (result.rejection() != null) {
                     chat.addNotice("Nicht möglich: " + result.rejection());
-                } else if (ResearchWorkflow.CHANGE_OUTLINE.equals(result.view())) {
-                    tabs.show(OUTLINE_TAB);
-                    outline.startEditing();
                 } else if (result.prompt() != null) {
-                    if (ResearchWorkflow.APPROVE_OUTLINE.equals(actionId)) {
-                        tabs.show(DOCUMENT_TAB);
-                    } else if (ResearchWorkflow.APPROVE_EVIDENCE.equals(actionId)) {
-                        tabs.show(OUTLINE_TAB);
-                    } else if (ResearchWorkflow.START_RESEARCH.equals(actionId)
-                            || ResearchWorkflow.CONTINUE_RESEARCH.equals(actionId)) {
-                        tabs.show(SOURCES_TAB);
-                    }
                     sender.send(result.visibleText(), result.prompt());
                 }
                 render.run();
             }
         };
-        strip.setActionHandler(perform);
+        for (final String phase : playPhases()) {
+            plays.get(phase).setAction(new Runnable() {
+                @Override
+                public void run() {
+                    perform.accept(phase);
+                }
+            });
+        }
+        final Consumer<String> select = new Consumer<String>() {
+            @Override
+            public void accept(String phaseId) {
+                if (chat.isStreaming()) {
+                    chat.addNotice("Die Phase lässt sich wechseln, sobald der Agent mit dem Auftrag fertig ist.");
+                    render.run(); // das Dropdown zeigt wieder die gültige Phase
+                    return;
+                }
+                String rejection = workflow.selectPhase(phaseId);
+                if (rejection != null) {
+                    chat.addNotice("Nicht möglich: " + rejection);
+                }
+                render.run();
+            }
+        };
         // Ein gelber Vorschlag ist eine Direktrecherche genau dieser Anfrage, kein Phasenwechsel (askai arch:
         // ein Klick IST die Suche); der Agent meldet danach Haken oder Retry.
         final Consumer<String> search = new Consumer<String>() {
@@ -212,7 +289,7 @@ public final class ResearchWorkflowAssembly {
             }
         });
         host.addStateListener(render);
-        // Läuft ein Auftrag an oder endet er, ändern sich nur die Tags (gesperrt/frei).
+        // Läuft ein Auftrag an oder endet er, ändern sich nur Play-Knöpfe und Vorschläge (gesperrt/frei).
         chat.addListener(new ChatShellModelListener() {
             private boolean streaming = chat.isStreaming();
 
@@ -233,27 +310,23 @@ public final class ResearchWorkflowAssembly {
             }
         });
         render.run();
-        return new Parts(strip, sources, outline, document, render, perform, search);
+        return new Parts(strip, sources, outline, document, plays, workflow, render, perform, search, select,
+                phaseListeners);
     }
 
-    static ResearchWorkflowStrip.Snapshot stripSnapshot(ResearchWorkflow workflow, ResearchAgentHost host,
-                                                        boolean busy) {
-        List<ResearchWorkflowStrip.PhaseItem> phases = new ArrayList<ResearchWorkflowStrip.PhaseItem>();
-        for (ResearchWorkflow.Phase phase : workflow.phases()) {
-            phases.add(new ResearchWorkflowStrip.PhaseItem(phase.title(), phase.progress().name(),
-                    phase.stateLabel()));
-        }
-        List<ResearchWorkflowStrip.ActionItem> actions = new ArrayList<ResearchWorkflowStrip.ActionItem>();
-        for (ResearchWorkflow.Action action : workflow.actions()) {
-            actions.add(new ResearchWorkflowStrip.ActionItem(action.id(), action.label(), action.tooltip(),
-                    action.isEnabled()));
-        }
-        List<ResearchWorkflowStrip.SuggestionItem> suggestions = new ArrayList<ResearchWorkflowStrip.SuggestionItem>();
+    /** Die Phasen mit Play-Aktion (Reiter Quellen, Gliederung, Dokument); das Konzept hat keine. */
+    static List<String> playPhases() {
+        return java.util.Arrays.asList(ResearchWorkflow.PHASE_SOURCES, ResearchWorkflow.PHASE_OUTLINE,
+                ResearchWorkflow.PHASE_DOCUMENT);
+    }
+
+    static ResearchSearchTagStrip.Snapshot tagSnapshot(ResearchWorkflow workflow, boolean busy) {
+        List<ResearchSearchTagStrip.SuggestionItem> suggestions =
+                new ArrayList<ResearchSearchTagStrip.SuggestionItem>();
         for (ResearchAgentHost.SearchTag tag : workflow.searchTags()) {
-            suggestions.add(new ResearchWorkflowStrip.SuggestionItem(tag.query(), tag.purpose(), tag.status()));
+            suggestions.add(new ResearchSearchTagStrip.SuggestionItem(tag.query(), tag.purpose(), tag.status()));
         }
-        return new ResearchWorkflowStrip.Snapshot(phases,
-                workflow.showsRunProgress() ? host.runStatus().describe() : "", suggestions, actions, busy);
+        return new ResearchSearchTagStrip.Snapshot(suggestions, busy);
     }
 
     /** Das fertige Dokument, sonst der Zwischenstand eines abgebrochenen Schreiblaufs (Kapitel 1..n-1). */

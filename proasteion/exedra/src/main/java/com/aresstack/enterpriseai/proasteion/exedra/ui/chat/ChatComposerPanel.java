@@ -97,6 +97,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private static final List<String> REASONING_EFFORTS = Collections.unmodifiableList(Arrays.asList(
             null, "low", "medium", "high"));
 
+    static final String PHASE_PREFIX = "Phase: ";
+    static final String PHASE_TOOLTIP = "Agentenphase: bestimmt, welche Werkzeuge der Agent benutzen darf. Nur du "
+            + "wechselst sie.";
+
     private static final int ARC = 18;
     private static final int MIN_EDITOR_HEIGHT = 62;
     private static final Color BORDER_NORMAL = new Color(0xB8BDC5);
@@ -116,6 +120,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final ChatShellActions actions;
     private final ComposerButton modelButton;
     private final ComposerButton reasoningButton;
+    /** Die Agentenphase (nur im Agent-Modus sichtbar); wählt allein der Nutzer. */
+    private final ComposerButton phaseButton;
     private final ComposerStatusLine statusLine = new ComposerStatusLine();
     private final ComposerWaveformOverlay waveform = new ComposerWaveformOverlay();
     private final JProgressBar levelBar = new JProgressBar(0, 100);
@@ -132,6 +138,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private Supplier<List<String>> modelChoices;
     private Consumer<String> modelSelected;
     private String reasoningEffort;
+    private List<String> phaseIds = Collections.emptyList();
+    private List<String> phaseTitles = Collections.emptyList();
+    private String phaseId;
+    private Consumer<String> phaseSelected;
     private File lastDirectory;
     private boolean editorFocused;
     private DictationControl dictation;
@@ -166,6 +176,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.reasoningButton = new ComposerButton(ComposerIcons.chevronDown(), REASONING_LABELS.get(0), false,
                 "Denkaufwand (nur für Modelle, die ihn unterstützen)");
         reasoningButton.setHorizontalTextPosition(SwingConstants.LEFT);
+        this.phaseButton = new ComposerButton(ComposerIcons.chevronDown(), PHASE_PREFIX + "Konzept", false,
+                PHASE_TOOLTIP);
+        phaseButton.setHorizontalTextPosition(SwingConstants.LEFT);
+        phaseButton.setVisible(false);
         this.editor = new PlaceholderTextArea(PLACEHOLDER, 2, 40);
         this.sendButton = ComposerButton.primary(ComposerIcons.send(), SEND_LABEL, PRIMARY, "Senden (Enter)");
         this.stopButton = ComposerButton.primary(ComposerIcons.stop(), STOP_LABEL, DANGER, "Antwort abbrechen");
@@ -310,6 +324,52 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     public void setModelControlsVisible(boolean visible) {
         modelButton.setVisible(visible);
         reasoningButton.setVisible(visible);
+    }
+
+    /**
+     * Die wählbaren Agentenphasen (Kennung und Titel, gleiche Reihenfolge) und was eine Wahl bewirkt. Mit Phasen
+     * erscheint das dritte Dropdown rechts neben Modell und Denkaufwand; ohne verschwindet es.
+     */
+    public void setPhaseChoices(List<String> ids, List<String> titles, Consumer<String> onSelect) {
+        if (ids == null || titles == null || ids.size() != titles.size()) {
+            throw new IllegalArgumentException("ids and titles must have the same size");
+        }
+        this.phaseIds = Collections.unmodifiableList(new ArrayList<String>(ids));
+        this.phaseTitles = Collections.unmodifiableList(new ArrayList<String>(titles));
+        this.phaseSelected = onSelect;
+        phaseButton.setVisible(!ids.isEmpty());
+        showPhase(phaseId);
+    }
+
+    /** Zeigt die aktive Phase (vom Host gemeldet); ändert nichts am Host. */
+    public void showPhase(String id) {
+        this.phaseId = id;
+        int index = id == null ? -1 : phaseIds.indexOf(id);
+        String title = index < 0 ? (phaseTitles.isEmpty() ? "Konzept" : phaseTitles.get(0)) : phaseTitles.get(index);
+        phaseButton.setText(PHASE_PREFIX + title);
+        revalidate();
+        repaint();
+    }
+
+    /** Das Phasen-Dropdown ein- oder ausblenden (nur im Agent-Modus mit eingebautem Agenten). */
+    public void setPhaseControlVisible(boolean visible) {
+        phaseButton.setVisible(visible && !phaseIds.isEmpty());
+    }
+
+    public ComposerButton phaseButton() {
+        return phaseButton;
+    }
+
+    /** Die gezeigte Phase (Kennung). */
+    public String shownPhase() {
+        return phaseId;
+    }
+
+    /** Der Nutzer wählt eine Phase (wie im Dropdown): gemeldet wird sie; was gilt, zeigt danach {@link #showPhase}. */
+    public void selectPhase(String id) {
+        if (id != null && phaseIds.contains(id) && phaseSelected != null) {
+            phaseSelected.accept(id);
+        }
     }
 
     /** Der Name des Chat-Modells im Modellknopf (leer: „Modell“). */
@@ -671,6 +731,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         west.setOpaque(false);
         west.add(modelButton);
         west.add(reasoningButton);
+        west.add(phaseButton);
         JPanel dictationActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
         dictationActions.setOpaque(false);
         dictationActions.add(discardButton);
@@ -723,6 +784,20 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         menu.show(modelButton, 0, modelButton.getHeight());
     }
 
+    private void showPhaseMenu() {
+        JPopupMenu menu = new JPopupMenu();
+        javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
+        for (int i = 0; i < phaseIds.size(); i++) {
+            final String id = phaseIds.get(i);
+            javax.swing.JRadioButtonMenuItem item = new javax.swing.JRadioButtonMenuItem(phaseTitles.get(i),
+                    id.equals(phaseId));
+            group.add(item);
+            item.addActionListener(event -> selectPhase(id));
+            menu.add(item);
+        }
+        menu.show(phaseButton, 0, phaseButton.getHeight());
+    }
+
     private void showReasoningMenu() {
         JPopupMenu menu = new JPopupMenu();
         for (int i = 0; i < REASONING_LABELS.size(); i++) {
@@ -743,6 +818,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         });
         modelButton.addActionListener(event -> showModelMenu());
         reasoningButton.addActionListener(event -> showReasoningMenu());
+        phaseButton.addActionListener(event -> showPhaseMenu());
         attachButton.addActionListener(event -> chooseFiles());
         micButton.addActionListener(event -> toggleDictation());
         discardButton.addActionListener(event -> discardDictation());

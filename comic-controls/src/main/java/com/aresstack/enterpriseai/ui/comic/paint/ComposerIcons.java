@@ -40,6 +40,19 @@ public final class ComposerIcons {
         };
     }
 
+    /** The filled "play" triangle (a tab's autonomous work step). */
+    public static StrokeIcon play() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                int[] x = {5, 13, 5};
+                int[] y = {3, 8, 13};
+                g2.fillPolygon(x, y, 3);
+                g2.drawPolygon(x, y, 3);
+            }
+        };
+    }
+
     /** The filled "stop" square. */
     public static StrokeIcon stop() {
         return new StrokeIcon() {

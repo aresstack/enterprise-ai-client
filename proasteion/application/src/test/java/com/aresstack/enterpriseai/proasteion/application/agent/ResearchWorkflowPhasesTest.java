@@ -5,7 +5,6 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 import com.aresstack.enterpriseai.research.concept.ConceptBranchService;
 import com.aresstack.enterpriseai.research.concept.FileConceptStore;
-import com.aresstack.enterpriseai.research.domain.state.ResearchCommandType;
 import com.aresstack.enterpriseai.research.runtime.team.ChatMessage;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChatResult;
@@ -15,7 +14,6 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,9 +24,9 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Die Phasen- und Übergangslogik des Research-Workflows im Host: der autonome Lauf startet nur mit Auftrag, Fragen
- * lösen keine Übergänge aus, Quellen kommen in jeder Phase ins Projekt, der Stoppgrund entscheidet über die
- * Freigabe, und das Dokument wird Kapitel für Kapitel gespeichert.
+ * Die Phasenlogik des Research-Workflows im Host: nur der Nutzer wählt die Phase (beliebige Reihenfolge), jede
+ * Play-Aktion arbeitet nur in ihrer Phase und wechselt sie nie, der Agent ändert sie nicht, der autonome Lauf startet
+ * nur mit Auftrag, Quellen kommen in jeder Phase ins Projekt, und das Dokument wird Kapitel für Kapitel gespeichert.
  */
 public class ResearchWorkflowPhasesTest {
 
@@ -68,59 +66,115 @@ public class ResearchWorkflowPhasesTest {
         return tools.get(name).getHandler().invoke(new McpToolCall(name, args));
     }
 
-    private List<String> labels(ResearchWorkflow workflow) {
-        List<String> labels = new ArrayList<String>();
-        for (ResearchWorkflow.Action action : workflow.actions()) {
-            labels.add(action.label());
-        }
-        return labels;
-    }
-
     @Test
-    public void startingResearchWithoutABriefStaysInTheConceptWithAHint() throws Exception {
+    public void startingResearchWithoutABriefKeepsThePhaseWithAHint() throws Exception {
         ResearchAgentHost host = host(folder.newFolder("r"));
         ResearchWorkflow workflow = new ResearchWorkflow(host);
-        ResearchWorkflow.Result result = workflow.perform(ResearchWorkflow.START_RESEARCH);
-        assertTrue(String.valueOf(result.rejection()), result.rejection().contains("fehlt noch ein Auftrag"));
+        assertEquals("Phase ‚Quellen‘ auswählen, um die Recherche zu starten.",
+                workflow.perform(ResearchWorkflow.PHASE_SOURCES).rejection());
         assertEquals("scoping", host.phaseId());
+
+        assertNull(workflow.selectPhase(ResearchWorkflow.PHASE_SOURCES));
+        ResearchWorkflow.Result result = workflow.perform(ResearchWorkflow.PHASE_SOURCES);
+        assertTrue(String.valueOf(result.rejection()), result.rejection().contains("fehlt noch ein Auftrag"));
+        assertEquals("research", host.phaseId());
 
         // eine bloße Begrüßung ist kein Auftrag; der Textbefehl wird ebenso abgelehnt
         call(host, "research_turn_begin", "text", "Hallo");
         String text = call(host, "research_turn_begin", "text", "Recherche starten").getText();
         assertTrue(text, text.contains("fehlt noch ein Auftrag"));
-        assertEquals("scoping", host.phaseId());
+        assertEquals("research", host.phaseId());
     }
 
     @Test
-    public void aRecordedBriefOrTheResearchPrefixStartsTheSourcePhase() throws Exception {
+    public void aRecordedBriefStartsTheRunOnlyInTheSourcePhaseAndNeverSwitchesIt() throws Exception {
         ResearchAgentHost host = host(folder.newFolder("r"));
         call(host, "research_turn_begin", "text", "Was ist IAR und wer betreut es?");
-        assertNull(new ResearchWorkflow(host).perform(ResearchWorkflow.START_RESEARCH).rejection());
+        assertNull(new ResearchWorkflow(host).selectPhase(ResearchWorkflow.PHASE_SOURCES));
+        assertNull(new ResearchWorkflow(host).perform(ResearchWorkflow.PHASE_SOURCES).rejection());
         assertEquals("research", host.phaseId());
         assertEquals("running", host.stateId());
 
+        // der Präfix im Konzept wechselt die Phase nicht (nur der Nutzer wählt sie)
         ResearchAgentHost prefixed = host(folder.newFolder("p"));
+        call(prefixed, "research_turn_begin", "text", "research: IAR Einführung");
+        assertEquals("scoping", prefixed.phaseId());
+        assertNull(prefixed.selectPhase(ResearchWorkflow.PHASE_SOURCES));
         assertEquals("", call(prefixed, "research_turn_begin", "text", "research: IAR Einführung").getText());
-        assertEquals("research", prefixed.phaseId());
-        assertEquals("running", prefixed.stateId());
+        assertEquals("research/running", prefixed.phaseId() + "/" + prefixed.stateId());
     }
 
-    /** Bringt ein Projekt in die Phase Gliederung (wartet auf Freigabe). */
-    private ResearchAgentHost outlineWaiting(String name) throws Exception {
-        ResearchAgentHost host = host(folder.newFolder(name));
+    @Test
+    public void theUserPicksPhasesInAnyOrderAndThePlayOfAPhaseIsOnlyActiveThere() throws Exception {
+        ResearchAgentHost host = host(folder.newFolder("any"));
+        ResearchWorkflow workflow = new ResearchWorkflow(host);
+        assertEquals(4, workflow.phaseChoices().size());
+        assertNull(workflow.play(ResearchWorkflow.PHASE_CONCEPT));
+        for (String phase : new String[]{ResearchWorkflow.PHASE_DOCUMENT, ResearchWorkflow.PHASE_CONCEPT,
+                ResearchWorkflow.PHASE_OUTLINE, ResearchWorkflow.PHASE_SOURCES}) {
+            assertNull(workflow.selectPhase(phase));
+            assertEquals(phase, workflow.currentPhaseId());
+            for (String other : new String[]{ResearchWorkflow.PHASE_SOURCES, ResearchWorkflow.PHASE_OUTLINE,
+                    ResearchWorkflow.PHASE_DOCUMENT}) {
+                ResearchWorkflow.Play play = workflow.play(other);
+                assertEquals(phase + "/" + other, phase.equals(other), play.isEnabled());
+                if (!phase.equals(other)) {
+                    assertTrue(play.tooltip(), play.tooltip().startsWith("Phase ‚"));
+                    assertEquals(play.tooltip(), workflow.perform(other).rejection());
+                    assertEquals("eine fremde Play-Aktion wechselt die Phase nicht", phase, host.phaseId());
+                }
+            }
+        }
+        assertEquals("Phase ‚Dokument‘ auswählen, um das Dokument zu schreiben.",
+                workflow.play(ResearchWorkflow.PHASE_DOCUMENT).tooltip());
+        assertEquals("Recherche starten", workflow.play(ResearchWorkflow.PHASE_SOURCES).tooltip());
+        assertTrue(workflow.selectPhase("unbekannt").startsWith("Unbekannte Phase"));
+        assertEquals(ResearchWorkflow.PHASE_SOURCES, host.phaseId());
+    }
+
+    @Test
+    public void eachPlayStartsOnlyItsOwnActionAndKeepsThePhase() throws Exception {
+        ResearchAgentHost host = host(folder.newFolder("play"));
+        ResearchWorkflow workflow = new ResearchWorkflow(host);
         call(host, "research_turn_begin", "text", "IAR Einführung");
-        assertNull(host.startAutonomousResearch());
-        host.acceptSource(PAGE, "IAR Übersicht", "");
+
+        assertNull(workflow.selectPhase(ResearchWorkflow.PHASE_OUTLINE));
+        ResearchWorkflow.Result outline = workflow.perform(ResearchWorkflow.PHASE_OUTLINE);
+        assertNull(outline.rejection());
+        assertEquals("Gliederung erstellen", outline.prompt());
+        assertEquals("outline/running", host.phaseId() + "/" + host.stateId());
+
+        assertNull(workflow.selectPhase(ResearchWorkflow.PHASE_DOCUMENT));
+        ResearchWorkflow.Result document = workflow.perform(ResearchWorkflow.PHASE_DOCUMENT);
+        assertEquals("Dokument schreiben", document.prompt());
+        assertEquals("draft/running", host.phaseId() + "/" + host.stateId());
+
+        assertNull(workflow.selectPhase(ResearchWorkflow.PHASE_SOURCES));
+        ResearchWorkflow.Result research = workflow.perform(ResearchWorkflow.PHASE_SOURCES);
+        assertEquals("Recherche starten", research.prompt());
+        assertEquals("research/running", host.phaseId() + "/" + host.stateId());
+    }
+
+    @Test
+    public void theAgentCannotChangeThePhase() throws Exception {
+        ResearchAgentHost host = host(folder.newFolder("agent"));
+        // was über die Werkzeuge des Agenten läuft, bleibt in der Phase: Auftrag, Startbefehle, Lauf-Ende
+        call(host, "research_turn_begin", "text", "Recherche starten: IAR Einführung");
+        call(host, "research_turn_begin", "text", "Gliederung erstellen");
+        call(host, "research_turn_begin", "text", "Dokument schreiben");
+        assertEquals("scoping", host.phaseId());
+
+        assertNull(host.selectPhase(ResearchWorkflow.PHASE_SOURCES));
         host.reportRunFinished("SUFFICIENT_EVIDENCE", 1, 1);
-        assertNull(host.dispatch(ResearchCommandType.APPROVE_EVIDENCE));
-        assertNull(host.proposeOutline("# IAR\n\n## 1. Zweck\n- Wozu\n\n## 2. Planung\n- Wann\n"));
-        assertEquals("outline/waiting_approval", host.phaseId() + "/" + host.stateId());
-        return host;
+        assertEquals("research", host.phaseId());
+        call(host, "research_turn_begin", "text", "Gliederung erstellen");
+        assertEquals("research", host.phaseId());
     }
 
     @Test
     public void whileTheOutlineWaitsAQuestionIsNoChangeRequestButAChangeRequestIs() throws Exception {
-        ResearchAgentHost host = outlineWaiting("o");
+        ResearchAgentHost host = outlineWaitingIn(folder.newFolder("o"));
+        assertEquals("outline/waiting_approval", host.phaseId() + "/" + host.stateId());
         call(host, "research_turn_begin", "text", "Welche Meilensteine hat IAR?");
         assertEquals("waiting_approval", host.stateId());
         call(host, "research_turn_begin", "text", "Ergänze ein Kapitel zu den Kosten.");
@@ -129,7 +183,7 @@ public class ResearchWorkflowPhasesTest {
 
     @Test
     public void followUpSourcesAreAcceptedInEveryPhase() throws Exception {
-        ResearchAgentHost host = outlineWaiting("f");
+        ResearchAgentHost host = outlineWaitingIn(folder.newFolder("f"));
         McpToolResult added = call(host, "project_source_add", "capture_id", "confluence:wiki/page/1002",
                 "title", "IAR Planung", "url", "");
         assertFalse(added.getText(), added.isError());
@@ -137,15 +191,17 @@ public class ResearchWorkflowPhasesTest {
 
         ResearchAgentHost running = host(folder.newFolder("rr"));
         call(running, "research_turn_begin", "text", "IAR Einführung");
+        assertNull(running.selectPhase(ResearchWorkflow.PHASE_SOURCES));
         assertNull(running.startAutonomousResearch());
         assertFalse(call(running, "project_source_add", "capture_id", PAGE, "title", "IAR", "url", "").isError());
     }
 
     @Test
-    public void theStopReasonDecidesAboutTheEvidenceReview() throws Exception {
+    public void theStopReasonDecidesAboutTheRunStateButNeverAboutThePhase() throws Exception {
         ResearchAgentHost host = host(folder.newFolder("s"));
         ResearchWorkflow workflow = new ResearchWorkflow(host);
         call(host, "research_turn_begin", "text", "IAR Einführung");
+        assertNull(workflow.selectPhase(ResearchWorkflow.PHASE_SOURCES));
         assertNull(host.startAutonomousResearch());
 
         String failed = host.reportRunFinished("MCP_UNAVAILABLE", 0, 0);
@@ -154,20 +210,21 @@ public class ResearchWorkflowPhasesTest {
 
         host.reportRunFinished("USER_CANCELLED", 2, 0);
         assertEquals("ein Abbruch pausiert", "research/paused", host.phaseId() + "/" + host.stateId());
-        assertTrue(labels(workflow).toString(), labels(workflow).contains("Recherche fortsetzen"));
-        assertNull(workflow.perform(ResearchWorkflow.START_RESEARCH).rejection());
+        assertTrue(workflow.play(ResearchWorkflow.PHASE_SOURCES).isEnabled());
+        assertNull(workflow.perform(ResearchWorkflow.PHASE_SOURCES).rejection());
         assertEquals("running", host.stateId());
 
         host.reportRunFinished("PAGE_BUDGET_EXHAUSTED", 4, 1);
-        assertEquals("waiting_approval", host.stateId());
+        assertEquals("research/waiting_approval", host.phaseId() + "/" + host.stateId());
+        assertNull("nach dem Lauf startet Play erneut", workflow.perform(ResearchWorkflow.PHASE_SOURCES).rejection());
+        assertEquals("research/running", host.phaseId() + "/" + host.stateId());
     }
 
     @Test
     public void documentChaptersArePersistedOneByOneAndSurviveARestart() throws Exception {
         File root = folder.newFolder("d");
         ResearchAgentHost host = outlineWaitingIn(root);
-        assertNull(host.dispatch(ResearchCommandType.APPROVE_OUTLINE));
-        assertNull(host.dispatch(ResearchCommandType.START_DRAFTING));
+        assertNull(host.selectPhase(ResearchWorkflow.PHASE_DOCUMENT));
         assertEquals("draft/running", host.phaseId() + "/" + host.stateId());
 
         assertFalse(call(host, "document_section_save", "index", 0L, "heading", "1. Zweck", "text",
@@ -177,9 +234,9 @@ public class ResearchWorkflowPhasesTest {
         assertEquals(1, restarted.documentDraftSectionCount());
         assertTrue(restarted.documentDraftJson(), restarted.documentDraftJson().contains("IAR bündelt"));
         ResearchWorkflow workflow = new ResearchWorkflow(restarted);
-        assertTrue(labels(workflow).toString(), labels(workflow).contains("Dokument fortsetzen"));
-        assertEquals("Dokument fortsetzen",
-                workflow.perform(ResearchWorkflow.APPROVE_OUTLINE).visibleText());
+        assertTrue(workflow.play(ResearchWorkflow.PHASE_DOCUMENT).isEnabled());
+        assertTrue(workflow.documentDraftLine(), workflow.documentDraftLine().contains("„Dokument schreiben“"));
+        assertEquals("Dokument schreiben", workflow.perform(ResearchWorkflow.PHASE_DOCUMENT).visibleText());
 
         assertTrue("Lücken werden abgelehnt", call(restarted, "document_section_save", "index", 3L, "heading", "x",
                 "text", "y").isError());
@@ -190,15 +247,18 @@ public class ResearchWorkflowPhasesTest {
                 + "{\"heading\":\"1. Zweck\",\"text\":\"IAR bündelt die Auswertung.\"},"
                 + "{\"heading\":\"2. Planung\",\"text\":\"Pilot im Frühjahr.\"}],\"passages\":{}}").isError());
         assertEquals("das fertige Dokument ersetzt den Zwischenstand", 0, restarted.documentDraftSectionCount());
+        assertEquals("draft", restarted.phaseId());
     }
 
+    /** Bringt ein Projekt in die Phase Gliederung mit vorgelegter Gliederung. */
     private ResearchAgentHost outlineWaitingIn(File root) {
         ResearchAgentHost host = host(root);
         call(host, "research_turn_begin", "text", "IAR Einführung");
+        assertNull(host.selectPhase(ResearchWorkflow.PHASE_SOURCES));
         assertNull(host.startAutonomousResearch());
         host.acceptSource(PAGE, "IAR Übersicht", "");
         host.reportRunFinished("SUFFICIENT_EVIDENCE", 1, 1);
-        assertNull(host.dispatch(ResearchCommandType.APPROVE_EVIDENCE));
+        assertNull(host.selectPhase(ResearchWorkflow.PHASE_OUTLINE));
         assertNull(host.proposeOutline("# IAR\n\n## 1. Zweck\n- Wozu\n\n## 2. Planung\n- Wann\n"));
         return host;
     }

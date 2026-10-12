@@ -136,6 +136,21 @@ final class ResearchHostControl implements ToolInvoker {
         }
     }
 
+    /**
+     * Ob der Host-Endpoint gerade antwortet ({@code tools/list}). Unterscheidet einen Fehler, der nur einen
+     * einzelnen Aufruf betraf (Zeitüberschreitung einer langsamen Wissensquelle), von einem wirklich verlorenen Host.
+     */
+    boolean isReachable() {
+        try {
+            client.listTools();
+            return true;
+        } catch (McpToolCallException unavailable) {
+            return false;
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
+    }
+
     /** Werkzeugnamen des Endpoints (frisch vom Host). */
     Map<String, String> tools() throws EndpointUnavailable {
         try {

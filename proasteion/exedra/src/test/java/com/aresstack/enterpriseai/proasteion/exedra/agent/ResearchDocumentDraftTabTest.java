@@ -1,10 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.exedra.agent;
 
 import com.aresstack.enterpriseai.proasteion.application.agent.ResearchAgentHost;
+import com.aresstack.enterpriseai.proasteion.application.agent.ResearchWorkflow;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.research.concept.ConceptBranchService;
 import com.aresstack.enterpriseai.research.concept.FileConceptStore;
-import com.aresstack.enterpriseai.research.domain.state.ResearchCommandType;
 import com.aresstack.enterpriseai.research.store.FileResearchScopeDraftStore;
 import org.junit.Rule;
 import org.junit.Test;
@@ -34,20 +34,19 @@ public class ResearchDocumentDraftTabTest {
                 FileResearchScopeDraftStore::new,
                 directory -> new ConceptBranchService(new FileConceptStore(directory)));
         recordMission(host);
+        assertNull(host.selectPhase(ResearchWorkflow.PHASE_SOURCES));
         assertNull(host.startAutonomousResearch());
         host.acceptSource(PAGE, "IAR Übersicht", "");
         host.reportRunFinished("SUFFICIENT_EVIDENCE", 1, 1);
-        assertNull(host.dispatch(ResearchCommandType.APPROVE_EVIDENCE));
+        assertNull(host.selectPhase(ResearchWorkflow.PHASE_OUTLINE));
         assertNull(host.proposeOutline("# IAR\n\n## 1. Zweck\n- Wozu\n\n## 2. Planung\n- Wann\n\n## 3. Beteiligte\n"));
-        assertNull(host.dispatch(ResearchCommandType.APPROVE_OUTLINE));
-        assertNull(host.dispatch(ResearchCommandType.START_DRAFTING));
+        assertNull(host.selectPhase(ResearchWorkflow.PHASE_DOCUMENT));
         assertNull(host.saveDocumentSection(0, "1. Zweck", "IAR bündelt die Auswertung der Anträge. [[" + PASSAGE
                 + "]]", "{\"" + PASSAGE + "\":\"" + PAGE + "\"}"));
 
         final ChatShellModel chat = onEdt(() -> new ChatShellModel(System::currentTimeMillis));
-        final List<String> tabs = new ArrayList<String>();
         final ResearchWorkflowAssembly.Parts parts = onEdt(() -> ResearchWorkflowAssembly.create(host,
-                (visible, prompt) -> { }, chat, SwingUtilities::invokeLater, (id, title) -> { }, tabs::add));
+                (visible, prompt) -> { }, chat, SwingUtilities::invokeLater, (id, title) -> { }));
         onEdt(() -> {
             parts.refresh();
             return null;
@@ -59,8 +58,8 @@ public class ResearchDocumentDraftTabTest {
         assertTrue(markdown, markdown.contains("Auswertung der Anträge. [1]"));
         String line = onEdt(() -> parts.document().statusLine());
         assertTrue(line, line.contains("1 von 3 Kapiteln gespeichert"));
-        assertTrue(line, line.contains("Dokument fortsetzen"));
-        assertEquals(java.util.Arrays.asList("Dokument fortsetzen"), onEdt(() -> parts.strip().actionLabels()));
+        assertTrue(line, line.contains("„Dokument schreiben“"));
+        assertTrue(onEdt(() -> parts.play(ResearchWorkflow.PHASE_DOCUMENT).button().isEnabled()));
     }
 
     /** Der Auftrag wie aus der ersten Nutzernachricht (research_turn_begin). */

@@ -99,9 +99,16 @@ public class DirectModeAgentTest {
             return false;
         }
 
+        final List<String> thoughts = new ArrayList<String>();
+
         @Override
         public void message(String text) {
             messages.add(text);
+        }
+
+        @Override
+        public void thought(String text) {
+            thoughts.add(text);
         }
 
         @Override
@@ -181,7 +188,10 @@ public class DirectModeAgentTest {
         assertEquals("IAR", endpoint.lastArgs.get(KnowledgePages.SEARCH_TOOL).get("query"));
 
         String text = screen.all();
-        assertTrue(text, text.contains("Ich suche in den aktivierten Wissensquellen nach: \u201eIAR\u201c"));
+        // die Arbeitsmeldung ist ein Gedanke (transient), keine Antwort des Assistenten
+        assertTrue(screen.thoughts.toString(), String.valueOf(screen.thoughts)
+                .contains("Ich suche in den aktivierten Wissensquellen nach: \u201eIAR\u201c"));
+        assertFalse(text, text.contains("Ich suche in den aktivierten Wissensquellen"));
         assertTrue(text, text.contains("Auswertung der Anträge. [1]"));
         assertTrue(text, text.contains("[1] IAR Übersicht"));
         assertFalse(text, text.toLowerCase(java.util.Locale.ROOT).contains("keinen zugriff"));

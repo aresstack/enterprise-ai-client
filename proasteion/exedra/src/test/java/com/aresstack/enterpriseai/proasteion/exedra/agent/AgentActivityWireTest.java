@@ -69,10 +69,17 @@ public class AgentActivityWireTest {
         assertEquals(Arrays.asList("Erstens und mehr.", "Zweitens."), answers);
     }
 
+    /** Die Wolken des letzten Laufs (nach dem erfolgreichen Turn sind sie aus dem Verlauf entfernt). */
+    private com.aresstack.enterpriseai.proasteion.exedra.assembly.AgentModeEndToEndTest.CardRecorder clouds;
+
     private List<TranscriptEntry> run(final String prompt) throws Exception {
         final ChatShellModel model = new ChatShellModel(System::currentTimeMillis);
         final AgentServiceBinding binding = new AgentServiceBinding(agentService, model, ui);
-        ui.submit(() -> binding.sendRequested(prompt, false)).get(10, TimeUnit.SECONDS);
+        clouds = new com.aresstack.enterpriseai.proasteion.exedra.assembly.AgentModeEndToEndTest.CardRecorder();
+        ui.submit(() -> {
+            model.addListener(clouds);
+            binding.sendRequested(prompt, false);
+        }).get(10, TimeUnit.SECONDS);
         long deadline = System.currentTimeMillis() + 60_000L;
         while (System.currentTimeMillis() < deadline) {
             if (!ui.submit(model::isStreaming).get(10, TimeUnit.SECONDS)) {
@@ -90,11 +97,13 @@ public class AgentActivityWireTest {
         List<TranscriptEntry> thoughts = new ArrayList<TranscriptEntry>();
         List<TranscriptEntry> tools = new ArrayList<TranscriptEntry>();
         String answer = "";
+        for (TranscriptEntry entry : clouds.seen()) {
+            (entry.isThinking() ? thoughts : AgentToolActivity.KIND_PLAN.equals(entry.getActivityKind())
+                    ? plans : tools).add(entry);
+        }
         for (TranscriptEntry entry : entries) {
-            if (entry.getAuthor() == TranscriptEntry.Author.ACTIVITY) {
-                (entry.isThinking() ? thoughts : AgentToolActivity.KIND_PLAN.equals(entry.getActivityKind())
-                        ? plans : tools).add(entry);
-            } else if (entry.getAuthor() == TranscriptEntry.Author.ASSISTANT) {
+            assertTrue("keine Wolke nach dem Turn", entry.getAuthor() != TranscriptEntry.Author.ACTIVITY);
+            if (entry.getAuthor() == TranscriptEntry.Author.ASSISTANT) {
                 answer += entry.getText();
             }
         }

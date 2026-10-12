@@ -33,7 +33,8 @@ public final class ResearchDocumentView extends JPanel {
     /** Schema der Beleg-Links; geht nie an den Browser. */
     static final String SOURCE_SCHEME = "research-source:";
     private static final Pattern REFERENCE = Pattern.compile("(?<![\\[\\w])\\[(\\d{1,3})\\](?![\\](])");
-    private static final String EMPTY = "Noch kein Dokument. Es entsteht, sobald du die Gliederung freigibst.";
+    private static final String EMPTY = "Noch kein Dokument. Wähle die Phase „Dokument“ und schreibe es unten "
+            + "mit Play.";
 
     private final MarkdownMessageView markdownView;
     private final JLabel status = new JLabel(" ");
@@ -64,6 +65,12 @@ public final class ResearchDocumentView extends JPanel {
         add(new ComicScrollPane(page, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED), BorderLayout.CENTER);
         render("", "");
+    }
+
+    /** Die Play-Aktion des Reiters (unten mittig). */
+    public void setPlayBar(ResearchPlayBar bar) {
+        add(bar, BorderLayout.SOUTH);
+        revalidate();
     }
 
     /** Wer eine Quelle öffnet (Nummer im Dokument). */

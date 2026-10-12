@@ -8,6 +8,7 @@ import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import org.noear.solon.ai.mcp.client.McpClientProvider;
+import org.noear.solon.net.http.HttpTimeout;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -60,8 +61,22 @@ public final class SolonMcpToolClientFactory implements McpToolClientFactory {
                 .cacheSeconds(0)
                 .initializationTimeout(initializationTimeout)
                 .requestTimeout(requestTimeout)
+                .httpTimeout(httpTimeout(initializationTimeout, requestTimeout))
                 .build();
         return new SolonMcpToolClient(client, url, requestTimeout);
+    }
+
+    /**
+     * Die HTTP-Fristen des Transports: Lesen und Schreiben so lange wie eine Anfrage. Ohne sie gilt Solons Vorgabe von
+     * 60 s Lesefrist, und ein Werkzeug, das länger arbeitet (eine langsame Wissensquelle hinter {@code knowledge_read},
+     * eine lange Modellantwort), endet als {@code SocketTimeoutException}, obwohl der Endpoint lebt und antwortet.
+     */
+    static HttpTimeout httpTimeout(Duration initializationTimeout, Duration requestTimeout) {
+        return HttpTimeout.of(seconds(initializationTimeout), seconds(requestTimeout), seconds(requestTimeout));
+    }
+
+    private static int seconds(Duration duration) {
+        return (int) Math.max(1L, Math.min(Integer.MAX_VALUE, duration.getSeconds()));
     }
 
     /** JSON-RPC "Invalid params": so meldet der MCP-Server ein unbekanntes Tool oder ungültige Argumente. */

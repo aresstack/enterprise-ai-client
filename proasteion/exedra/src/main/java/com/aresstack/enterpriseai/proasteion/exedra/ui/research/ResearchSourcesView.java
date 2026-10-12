@@ -52,7 +52,8 @@ public final class ResearchSourcesView extends JPanel {
         }
     }
 
-    private static final String EMPTY = "Noch keine Quelle übernommen. Starte die Recherche, wenn das Konzept steht.";
+    private static final String EMPTY = "Noch keine Quelle übernommen. Wähle die Phase „Quellen“ und starte die "
+            + "Recherche unten mit Play, wenn das Konzept steht.";
 
     private final JLabel summary = new JLabel(" ");
     private final ListPanel list = new ListPanel();
@@ -73,6 +74,12 @@ public final class ResearchSourcesView extends JPanel {
         add(new ComicScrollPane(list, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER), BorderLayout.CENTER);
         render(null, "");
+    }
+
+    /** Die Play-Aktion des Reiters (unten mittig). */
+    public void setPlayBar(ResearchPlayBar bar) {
+        add(bar, BorderLayout.SOUTH);
+        revalidate();
     }
 
     /** Wer eine Quelle öffnet (Ressourcen-ID). */

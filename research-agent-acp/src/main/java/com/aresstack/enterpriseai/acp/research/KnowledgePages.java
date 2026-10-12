@@ -19,6 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 final class KnowledgePages implements ToolInvoker {
 
+    private static final java.util.logging.Logger LOG =
+            java.util.logging.Logger.getLogger(KnowledgePages.class.getName());
+
     static final String SEARCH_TOOL = "knowledge_search";
     static final String READ_TOOL = "knowledge_read";
     private static final String SCHEME = "knowledge:";
@@ -51,13 +54,71 @@ final class KnowledgePages implements ToolInvoker {
     }
 
     private final ToolInvoker host;
+    /** Ob der Host nach einem Verbindungsfehler noch antwortet (dann betraf der Fehler nur den einen Treffer). */
+    private final java.util.function.BooleanSupplier hostReachable;
     /** URL des Treffers → Dokument-ID für {@code knowledge_read}. */
     private final Map<String, String> idsByUrl = new ConcurrentHashMap<String, String>();
     private final Map<String, String> titlesById = new ConcurrentHashMap<String, String>();
     private final Map<String, String> urlsById = new ConcurrentHashMap<String, String>();
 
     KnowledgePages(ToolInvoker host) {
+        this(host, reachability(host));
+    }
+
+    /** @param hostReachable fragt den Host, ob er noch antwortet (nach einem Verbindungsfehler eines Aufrufs) */
+    KnowledgePages(ToolInvoker host, java.util.function.BooleanSupplier hostReachable) {
         this.host = host;
+        this.hostReachable = hostReachable;
+    }
+
+    /** Versuche je Seite bei einem Verbindungsfehler (der erste und genau ein zweiter). */
+    static final int READ_ATTEMPTS = 2;
+
+    /** Fragt {@code tools/list} des Hosts; ohne Host-Steuerung (Tests mit Fakes) gilt ein Verbindungsfehler als echt. */
+    static java.util.function.BooleanSupplier reachability(final ToolInvoker host) {
+        if (host instanceof ResearchHostControl) {
+            return new java.util.function.BooleanSupplier() {
+                @Override
+                public boolean getAsBoolean() {
+                    return ((ResearchHostControl) host).isReachable();
+                }
+            };
+        }
+        return new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return false;
+            }
+        };
+    }
+
+    /**
+     * Liest eine Seite ({@code knowledge_read}) als Fehler genau dieses Treffers: ein Werkzeugfehler überspringt ihn,
+     * ein Verbindungsfehler (Zeitüberschreitung der Quelle) bekommt genau einen zweiten Versuch, solange der Host
+     * antwortet; danach wird der Treffer übersprungen. Nur ein Host, der nicht mehr antwortet, beendet den Turn.
+     *
+     * @return der Seitentext; {@code null}, wenn der Treffer übersprungen wird
+     */
+    String readPage(String id) throws EndpointUnavailable {
+        Map<String, Object> args = new LinkedHashMap<String, Object>();
+        args.put("id", id);
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return host.call(READ_TOOL, args);
+            } catch (ToolFailure unreadable) {
+                LOG.info("[knowledge] Seite nicht lesbar: " + id + " " + unreadable.getMessage());
+                return null;
+            } catch (EndpointUnavailable lost) {
+                if (!hostReachable.getAsBoolean()) {
+                    throw lost;
+                }
+                LOG.info("[knowledge] Seite " + id + " Versuch " + attempt + " gescheitert, Host antwortet: "
+                        + lost.getMessage());
+                if (attempt >= READ_ATTEMPTS) {
+                    return null;
+                }
+            }
+        }
     }
 
     /** {@code knowledge_search}; jede Treffer-URL wird für das spätere Öffnen gemerkt. */
@@ -118,10 +179,44 @@ final class KnowledgePages implements ToolInvoker {
         return id;
     }
 
+    /** Kopfzeilen von {@code knowledge_read} vor dem Seitentext (Metadaten, nie Inhalt). */
+    private static final java.util.regex.Pattern HEADER = java.util.regex.Pattern.compile(
+            "(?i)^(title|id|url|source|version|contenthash|from|passages|passage|note):.*$");
+    /** Die Marke einer Passage ({@code [passage <id>] Überschrift}); die Überschrift bleibt. */
+    private static final java.util.regex.Pattern PASSAGE_MARK = java.util.regex.Pattern.compile(
+            "^\\[passage [^\\]]*\\]\\s*");
+
+    /**
+     * Der Seitentext einer {@code knowledge_read}-Antwort ohne Kopfzeilen und Passagen-Marken: nur was auf der Seite
+     * steht, damit Auszüge für das Modell keine IDs, Hashes oder Versionen tragen. Ohne Kopf bleibt der Text, wie er ist.
+     */
+    static String pageText(String readOutput) {
+        if (readOutput == null) {
+            return "";
+        }
+        String[] lines = readOutput.split("\\r?\\n", -1);
+        int start = 0;
+        while (start < lines.length && HEADER.matcher(lines[start].trim()).matches()) {
+            start++;
+        }
+        StringBuilder text = new StringBuilder();
+        for (int i = start; i < lines.length; i++) {
+            String line = PASSAGE_MARK.matcher(lines[i]).replaceFirst("");
+            text.append(line).append('\n');
+        }
+        return text.toString().trim();
+    }
+
+    /**
+     * Liest eine Seite des Laufs wie {@link #readPage}: eine Seite, die auch nach dem zweiten Versuch nicht kommt,
+     * ist ein Fehler genau dieser Seite (der Lauf geht mit dem nächsten Treffer weiter), kein toter Endpoint.
+     */
     private String read(String id) throws ToolFailure, EndpointUnavailable {
-        Map<String, Object> args = new LinkedHashMap<String, Object>();
-        args.put("id", id);
-        return host.call(READ_TOOL, args);
+        String text = readPage(id);
+        if (text == null) {
+            throw new ToolFailure("Seite übersprungen: " + id);
+        }
+        return text;
     }
 
     /** Die capture_id ist ein Token der Kopfzeile, also ohne Leerzeichen. */

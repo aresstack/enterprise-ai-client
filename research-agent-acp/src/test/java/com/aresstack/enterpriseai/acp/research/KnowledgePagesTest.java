@@ -109,4 +109,57 @@ public class KnowledgePagesTest {
         assertEquals("file", WebAcquisitionText.hostOf("file:///C:/daten/notizen.txt"));
         assertEquals("", WebAcquisitionText.hostOf("C:\\daten\\notizen.txt"));
     }
+
+    /**
+     * Im autonomen Lauf ist eine hängende Seite ein Fehler genau dieser Seite (der Lauf liest weiter), solange der Host
+     * antwortet; nur ein toter Host bleibt ein nicht erreichbarer Endpoint.
+     */
+    @Test
+    public void aTimedOutPageInTheRunIsAPageErrorWhileTheHostAnswers() throws Exception {
+        final int[] reads = new int[1];
+        ToolInvoker host = new ToolInvoker() {
+            @Override
+            public String call(String tool, Map<String, Object> args) throws EndpointUnavailable {
+                if (KnowledgePages.SEARCH_TOOL.equals(tool)) {
+                    return SEARCH_RESULT;
+                }
+                reads[0]++;
+                throw new EndpointUnavailable("Read timed out");
+            }
+        };
+        Map<String, Object> open = new java.util.LinkedHashMap<String, Object>();
+        open.put("url", "https://cf.intern/confluence/pages/viewpage.action?pageId=47110815");
+
+        KnowledgePages alive = new KnowledgePages(host, () -> true);
+        alive.search("Betriebshandbuch", 5);
+        try {
+            alive.call("web_open", open);
+            throw new AssertionError("expected a page error");
+        } catch (ToolInvoker.ToolFailure skipped) {
+            assertEquals(KnowledgePages.READ_ATTEMPTS, reads[0]);
+        }
+
+        reads[0] = 0;
+        KnowledgePages dead = new KnowledgePages(host, () -> false);
+        dead.search("Betriebshandbuch", 5);
+        try {
+            dead.call("web_open", open);
+            throw new AssertionError("expected the endpoint to be unavailable");
+        } catch (ToolInvoker.EndpointUnavailable gone) {
+            assertEquals(1, reads[0]);
+        }
+    }
+
+    /** Der Seitentext für Auszüge: ohne Kopfzeilen und Passagen-Marken von knowledge_read, Überschriften bleiben. */
+    @Test
+    public void pageTextDropsTheReadHeaderAndPassageMarks() {
+        String read = "title: IAR Planung\nid: wiki:1002\nsource: wiki\nversion: 1\ncontentHash: 4ebc71f025fb\n"
+                + "from: index\npassages: 2\n\n[passage wiki:1002@4ebc#p0@9bfd] Zeitplan\n"
+                + "Der Pilot von IAR startet im Frühjahr.\n\n[passage wiki:1002@4ebc#p1@9bfd]\n"
+                + "Die Planung verantwortet das Referat Planung.\n";
+        String text = KnowledgePages.pageText(read);
+        assertEquals("Zeitplan\nDer Pilot von IAR startet im Frühjahr.\n\n\n"
+                + "Die Planung verantwortet das Referat Planung.", text);
+        assertEquals("Ohne Kopf bleibt der Text.", KnowledgePages.pageText("Ohne Kopf bleibt der Text."));
+    }
 }

@@ -30,7 +30,7 @@ public class ChatTranscriptActivityTest {
     private final BubblePalette bubbles = BubblePalette.windowsPhoneInspired();
 
     @Test
-    public void activitiesSitBetweenAnswerSectionsInTurnOrder() {
+    public void activitiesSitBetweenAnswerSectionsInTurnOrderAndVanishWithTheTurn() {
         ChatShellModel model = new ChatShellModel(() -> 0L);
         model.addUserMessage("Was ist IAR?");
         model.beginAssistantMessage();
@@ -40,8 +40,8 @@ public class ChatTranscriptActivityTest {
         TranscriptEntry think = model.startActivity("call-2", "Denke nach", "think", "");
         model.finishActivity("call-2", true, "fertig");
         model.appendAssistantDelta("IAR bündelt die Auswertung.");
-        model.completeAssistantMessage();
 
+        // während des Turns: die Wolken stehen zwischen den Abschnitten der Antwort
         List<TranscriptEntry> entries = model.getEntries();
         assertEquals(5, entries.size());
         assertEquals(TranscriptEntry.Author.USER, entries.get(0).getAuthor());
@@ -53,7 +53,51 @@ public class ChatTranscriptActivityTest {
         assertEquals("1 Treffer: IAR Übersicht", search.getActivitySummary());
         assertTrue(think.isThinking());
         assertFalse(search.isThinking());
+
+        // nach dem Turn (askai): erfolgreiche Wolken sind aus dem Modell entfernt, die Antwort ist eine Blase
+        final List<TranscriptEntry> removed = new java.util.ArrayList<TranscriptEntry>();
+        model.addListener(new ChatShellModelListener() {
+            @Override
+            public void entryAdded(TranscriptEntry entry) {
+            }
+
+            @Override
+            public void entryUpdated(TranscriptEntry entry) {
+            }
+
+            @Override
+            public void stateChanged() {
+            }
+
+            @Override
+            public void entryRemoved(TranscriptEntry entry) {
+                removed.add(entry);
+            }
+        });
+        model.completeAssistantMessage();
+        entries = model.getEntries();
+        assertEquals(2, entries.size());
+        assertEquals(TranscriptEntry.Author.USER, entries.get(0).getAuthor());
+        assertEquals(TranscriptEntry.Author.ASSISTANT, entries.get(1).getAuthor());
+        assertEquals("Ich suche.\n\nIAR bündelt die Auswertung.", entries.get(1).getText());
+        assertTrue(removed.toString(), removed.contains(search) && removed.contains(think));
         assertFalse(model.isStreaming());
+    }
+
+    @Test
+    public void aFailedActivityStaysWhenTheTurnFails() {
+        ChatShellModel model = new ChatShellModel(() -> 0L);
+        model.addUserMessage("Was ist IAR?");
+        model.beginAssistantMessage();
+        TranscriptEntry ok = model.startActivity("call-1", "Suche in den Wissensquellen", "search", "IAR");
+        model.finishActivity("call-1", true, "1 Treffer");
+        TranscriptEntry broken = model.startActivity("call-2", "Lese Seite", "read", "IAR Übersicht");
+        model.finishActivity("call-2", false, "Seite nicht lesbar");
+        model.failAssistantMessage("Die Agentensitzung wurde beendet.");
+
+        List<TranscriptEntry> entries = model.getEntries();
+        assertFalse("erfolgreiche Wolke entfernt", entries.contains(ok));
+        assertTrue("der Fehler bleibt sichtbar", entries.contains(broken));
     }
 
     @Test
@@ -61,14 +105,13 @@ public class ChatTranscriptActivityTest {
         ChatShellModel model = new ChatShellModel(() -> 0L);
         model.addUserMessage("Was ist IAR?");
         model.beginAssistantMessage();
-        model.startActivity("call-1", "Suche in den Wissensquellen", "search", "IAR");
+        TranscriptEntry running = model.startActivity("call-1", "Suche in den Wissensquellen", "search", "IAR");
         List<TranscriptEntry> entries = model.getEntries();
         assertEquals(TranscriptEntry.Author.ACTIVITY, entries.get(1).getAuthor());
         assertEquals(TranscriptEntry.Author.ASSISTANT, entries.get(2).getAuthor());
         model.completeAssistantMessage();
-        assertEquals("laufender Schritt endet mit dem Auftrag", TranscriptEntry.State.CANCELLED,
-                model.getEntries().get(1).getState());
-        assertEquals("leerer Platzhalter entfällt", 2, model.getEntries().size());
+        assertEquals("laufender Schritt endet mit dem Auftrag", TranscriptEntry.State.CANCELLED, running.getState());
+        assertEquals("leerer Platzhalter und Wolke entfallen", 1, model.getEntries().size());
     }
 
     @Test

@@ -380,6 +380,74 @@ public final class ResearchAgentHost {
         return rejection;
     }
 
+    /**
+     * Der Nutzer wählt die Phase (Dropdown im Composer). Nur er wechselt sie; jede Reihenfolge ist erlaubt
+     * (Konzept → Quellen → Konzept → Dokument …), ohne Freigabeschritte. Die gewählte Phase läuft sofort
+     * ({@code running}), damit ihr Werkzeugsatz gilt; bleibt sie dieselbe, ändert sich nichts. Ein Wechsel geht an
+     * Werkzeugsatz und Ansicht.
+     *
+     * @return {@code null} bei Erfolg, sonst der Grund (unbekannte Phase)
+     */
+    public String selectPhase(String phaseId) {
+        if (!ResearchWorkflow.phaseOrder().contains(phaseId)) {
+            return "Unbekannte Phase: " + phaseId;
+        }
+        boolean leftOutline;
+        synchronized (this) {
+            ensureOpen();
+            if (phaseId.equals(state.getPhaseId())) {
+                return null;
+            }
+            leftOutline = ResearchStateIds.OUTLINE.equals(state.getPhaseId());
+            setRunning(phaseId);
+            LOG.info("[research-state] Phase vom Nutzer gewählt -> " + phaseId);
+        }
+        // Wer die Gliederung verlässt, nimmt sie mit: ihre Kapitel sind der Kontext der späteren Phasen.
+        if (leftOutline && !outline().trim().isEmpty()) {
+            recordOutcome(ResearchStateIds.OUTLINE, outlineOutcome());
+        }
+        fireStateChanged();
+        return null;
+    }
+
+    /**
+     * Vor der Play-Aktion einer Phase: die Phase bleibt, wie der Nutzer sie gewählt hat; nur ihr Laufzustand wird
+     * wieder {@code running} (etwa nach einer vorgelegten Gliederung), damit die Werkzeuge der Phase schreiben dürfen.
+     * Eine andere Phase lehnt die Aktion ab, ohne zu wechseln.
+     *
+     * @return {@code null} bei Erfolg, sonst der Grund
+     */
+    public String preparePhaseAction(String phaseId) {
+        boolean changed;
+        synchronized (this) {
+            ensureOpen();
+            if (!phaseId.equals(state.getPhaseId())) {
+                return "Phase „" + ResearchWorkflow.titleOf(phaseId) + "“ auswählen.";
+            }
+            changed = !ResearchStateIds.RUNNING.equals(state.getStateId());
+            if (changed) {
+                setRunning(phaseId);
+            }
+        }
+        if (changed) {
+            fireStateChanged();
+        }
+        return null;
+    }
+
+    /** Schreibt den Zustand {@code phaseId/running}; nur unter dem Monitor des Hosts. */
+    private void setRunning(String phaseId) {
+        if (ResearchStateIds.SCOPING.equals(phaseId) && !new File(projectDirectory, GREETED_MARKER).isFile()) {
+            try {
+                java.nio.file.Files.write(new File(projectDirectory, GREETED_MARKER).toPath(), new byte[0]);
+            } catch (IOException notWritten) {
+                LOG.warning("Beginn des Konzepts nicht vermerkt: " + notWritten.getMessage());
+            }
+        }
+        state = new ResearchStateMemento(phaseId, ResearchStateIds.RUNNING, null, state.getRevision() + 1, null);
+        writeState(projectDirectory, state);
+    }
+
     // ------------------------------------------------------------------ sources (askai source_accept/source_park)
 
     /**
@@ -612,7 +680,7 @@ public final class ResearchAgentHost {
      * Ende des Laufs ({@code research_run_finished}): der Host vermerkt Grund und Zähler. Nur ein regulär beendeter
      * Lauf geht in den Freigabe-Übergang der Phase Quellen (RESEARCH/RUNNING → REQUEST_EVIDENCE_REVIEW →
      * WAITING_APPROVAL); ein Abbruch durch den Nutzer pausiert die Phase (PAUSE, fortsetzbar), ein Fehler (Wissenssuche
-     * nicht erreichbar) lässt den Zustand stehen, damit „Recherche fortsetzen“ neu startet (askai arch
+     * nicht erreichbar) lässt den Zustand stehen, damit die Play-Aktion im Reiter „Quellen“ neu startet (askai arch
      * {@code ResearchAgentSession}: Stoppgrund entscheidet über den Übergang).
      *
      * @return die Zusammenfassung der gefundenen Quellen für den Chat
@@ -628,14 +696,14 @@ public final class ResearchAgentHost {
             dispatch(ResearchCommandType.PAUSE);
             return recordOutcome(ResearchStateIds.RESEARCH, "Die Quellensuche ist angehalten (" + pages
                     + (pages == 1 ? " Seite" : " Seiten") + " gelesen, " + sourceRefs().size()
-                    + " Quellen im Projekt). Mit „Recherche fortsetzen“ geht sie weiter; Fragen beantworte ich "
+                    + " Quellen im Projekt). Mit „Recherche starten“ im Reiter „Quellen“ geht sie weiter; Fragen beantworte ich "
                     + "auch so.");
         }
         if (running && FAILED_STOPS.contains(stopReason)) {
             fireStateChangedLater();
             return recordOutcome(ResearchStateIds.RESEARCH, "Die Quellensuche ist fehlgeschlagen ("
                     + ResearchRunStatus.reasonText(stopReason) + "). Die bisher übernommenen Quellen bleiben im "
-                    + "Projekt; mit „Recherche fortsetzen“ starte ich neu.");
+                    + "Projekt; mit „Recherche starten“ im Reiter „Quellen“ starte ich neu.");
         }
         if (running) {
             dispatch(ResearchCommandType.REQUEST_EVIDENCE_REVIEW);
@@ -696,7 +764,7 @@ public final class ResearchAgentHost {
                 .append(" gelesen, ").append(sources.size()).append(sources.size() == 1 ? " Quelle" : " Quellen")
                 .append(" im Projekt.");
         if (sources.isEmpty()) {
-            text.append("\n\nEs wurde noch keine passende Quelle übernommen. Mit „Weiter recherchieren“ sucht der "
+            text.append("\n\nEs wurde noch keine passende Quelle übernommen. Mit „Recherche starten“ im Reiter „Quellen“ sucht der "
                     + "Agent erneut; schärfe dazu gern vorher das Konzept oder den Weidezaun.");
             return text.toString();
         }
@@ -704,8 +772,8 @@ public final class ResearchAgentHost {
         for (ResearchSourceRef source : sources) {
             text.append("\n- ").append(source.title());
         }
-        text.append("\n\nDie Seiten stehen im Reiter „Quellen“. Mit „Quellen freigeben“ erstelle ich daraus die "
-                + "Gliederung, mit „Weiter recherchieren“ suche ich weitere Seiten.");
+        text.append("\n\nDie Seiten stehen im Reiter „Quellen“. Für die Gliederung wähle die Phase „Gliederung“ und "
+                + "starte sie im Reiter „Gliederung“; „Recherche starten“ sucht weitere Seiten.");
         return text.toString();
     }
 
@@ -905,41 +973,22 @@ public final class ResearchAgentHost {
     }
 
     /**
-     * Startet die autonome Recherche (Phase Quellen) nur mit sinnvollem Auftrag: aus dem Konzept über SUBMIT_SCOPE
-     * und START_RESEARCH, aus „wartet auf Start“ über START_RESEARCH; ein laufender Lauf startet neu. Ohne Auftrag
-     * bleibt die Phase Konzept.
+     * Bereitet die autonome Recherche (Play-Aktion der Phase Quellen) vor: nur in der vom Nutzer gewählten Phase
+     * Quellen und nur mit sinnvollem Auftrag. Die Phase wechselt dabei nie; der Laufzustand wird wieder
+     * {@code running} (auch nach einem angehaltenen oder beendeten Lauf).
      *
      * @return {@code null} bei Erfolg, sonst der Grund (für den Nutzer)
      */
     public String startAutonomousResearch() {
-        String phase = phaseId();
-        String state = stateId();
-        if (ResearchStateIds.RESEARCH.equals(phase) && ResearchStateIds.RUNNING.equals(state)) {
-            return null;
-        }
-        if (ResearchStateIds.RESEARCH.equals(phase) && ResearchStateIds.PAUSED.equals(state)) {
-            return dispatch(ResearchCommandType.RESUME); // ein angehaltener Lauf geht weiter
-        }
-        boolean fromConcept = ResearchStateIds.SCOPING.equals(phase);
-        boolean waiting = ResearchStateIds.RESEARCH.equals(phase) && ResearchStateIds.WAITING.equals(state);
-        if (!fromConcept && !waiting) {
-            return "Die Recherche kann in der Phase " + ResearchWorkflow.titleOf(phase) + " nicht starten.";
+        if (!ResearchStateIds.RESEARCH.equals(phaseId())) {
+            return "Phase „Quellen“ auswählen, um die Recherche zu starten.";
         }
         String gap = researchBriefGap();
         if (gap != null) {
             LOG.info("[research-state] Recherche nicht gestartet: kein Auftrag");
             return gap;
         }
-        if (fromConcept) {
-            if (ResearchStateIds.NEW.equals(state)) {
-                markGreeted(); // ohne Begrüßung gilt das Konzept als begonnen (scoping/new → running)
-            }
-            String rejection = dispatch(ResearchCommandType.SUBMIT_SCOPE);
-            if (rejection != null) {
-                return rejection;
-            }
-        }
-        return dispatch(ResearchCommandType.START_RESEARCH);
+        return preparePhaseAction(ResearchStateIds.RESEARCH);
     }
 
     // ------------------------------------------------------------------ gelbe Suchvorschläge (offer_searches)

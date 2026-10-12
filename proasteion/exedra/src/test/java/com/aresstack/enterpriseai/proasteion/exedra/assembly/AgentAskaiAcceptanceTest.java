@@ -178,8 +178,10 @@ public class AgentAskaiAcceptanceTest {
 
         // 1. Agent-Modus: der Verlauf des Agent-Modus mit seiner Bindung
         final AtomicReference<ChatShellModel> chat = new AtomicReference<ChatShellModel>();
+        final AgentModeEndToEndTest.CardRecorder cards = new AgentModeEndToEndTest.CardRecorder();
         SwingUtilities.invokeAndWait(() -> {
             chat.set(new ChatShellModel(System::currentTimeMillis));
+            chat.get().addListener(cards);
             // 2. die Frage, ohne Konzept vorab
             new AgentServiceBinding(service, chat.get(), SwingUtilities::invokeLater).sendRequested(QUESTION, false);
         });
@@ -189,16 +191,20 @@ public class AgentAskaiAcceptanceTest {
         // 3. das Konzept wird nebenbei ergänzt
         assertNotNull("Konzeptkarte IAR", host.existingConceptService().nodeIdAtPath(Arrays.asList("IAR")));
 
-        // 4. die Recherche startet sichtbar
+        // 4. die Recherche startet sichtbar: als Gedanke, nicht als Antwort; danach bleiben Frage und Antwort
         String text = allText(entries);
-        assertTrue(text, text.contains("Ich suche in den aktivierten Wissensquellen nach"));
+        assertTrue(cards.all().toString(), AgentModeEndToEndTest.anyContains(cards.all(),
+                "Ich suche in den aktivierten Wissensquellen nach"));
+        assertFalse(text, text.contains("Ich suche in den aktivierten Wissensquellen nach"));
+        AgentModeEndToEndTest.assertOnlyQuestionAndAnswer(entries, QUESTION);
+        List<TranscriptEntry> clouds = cards.seen();
 
         // 5. knowledge_search und knowledge_read laufen gegen die Quelle
         assertTrue(knowledgeCalls.toString(), knowledgeCalls.contains("knowledge_search IAR"));
         assertTrue(knowledgeCalls.toString(), knowledgeCalls.contains("knowledge_read " + PAGE));
 
         // 6. Werkzeugaufrufe und Zwischenschritte stehen im Verlauf, abgeschlossen mit Ergebnis
-        TranscriptEntry card = activity(entries, "Recherche in Confluence");
+        TranscriptEntry card = activity(clouds, "Recherche in Confluence");
         assertEquals("abgeschlossen: 1 Seite gelesen, 1 Treffer, 1 Quelle übernommen", card.getActivitySummary());
         // die Art „research“ übersteht die ACP-Leitung (kind: other + _meta), sonst zeichnet der Verlauf keine Karte
         assertEquals("research", card.getActivityKind());
@@ -206,7 +212,7 @@ public class AgentAskaiAcceptanceTest {
         assertTrue(card.getText(), card.getText().contains("IAR"));
         boolean search = false;
         boolean read = false;
-        for (TranscriptEntry entry : entries) {
+        for (TranscriptEntry entry : clouds) {
             String title = entry.getActivityTitle();
             search |= "Suche in den Wissensquellen".equals(title);
             read |= "Lese Seite".equals(title);
@@ -214,7 +220,7 @@ public class AgentAskaiAcceptanceTest {
         }
         assertTrue("Suchwolke", search);
         assertTrue("Lesewolke", read);
-        assertTrue("Denkschritte als grüne Wolke", activity(entries, "Denke nach").isThinking());
+        assertTrue("Denkschritte als grüne Wolke", activity(clouds, "Denke nach").isThinking());
 
         // 7. die gelesene Quelle ist im Projekt übernommen
         String sources = call(toolSet.current(), "research_sources");

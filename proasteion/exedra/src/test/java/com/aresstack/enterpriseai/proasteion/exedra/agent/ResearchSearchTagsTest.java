@@ -53,8 +53,7 @@ public class ResearchSearchTagsTest {
         final List<String> prompts = new ArrayList<String>();
         final ChatShellModel chat = onEdt(() -> new ChatShellModel(System::currentTimeMillis));
         final ResearchWorkflowAssembly.Parts parts = onEdt(() -> ResearchWorkflowAssembly.create(host,
-                (visible, prompt) -> prompts.add(prompt), chat, SwingUtilities::invokeLater, (id, title) -> { },
-                title -> { }));
+                (visible, prompt) -> prompts.add(prompt), chat, SwingUtilities::invokeLater, (id, title) -> { }));
         refresh(parts);
         assertEquals(Arrays.asList("IAR Betrieb", "IAR Planung"), onEdt(() -> parts.strip().suggestionLabels()));
 
@@ -113,8 +112,7 @@ public class ResearchSearchTagsTest {
         final List<String> prompts = new ArrayList<String>();
         final ChatShellModel chat = onEdt(() -> new ChatShellModel(System::currentTimeMillis));
         final ResearchWorkflowAssembly.Parts parts = onEdt(() -> ResearchWorkflowAssembly.create(host,
-                (visible, prompt) -> prompts.add(prompt), chat, SwingUtilities::invokeLater, (id, title) -> { },
-                title -> { }));
+                (visible, prompt) -> prompts.add(prompt), chat, SwingUtilities::invokeLater, (id, title) -> { }));
         onEdt(() -> {
             parts.search("IAR Betrieb");
             return null;

@@ -527,12 +527,13 @@ public final class ResearchControlTools {
     }
 
     /**
-     * Der Startbefehl des Nutzers (askai arch: das {@code research:}-Präfix; dazu „Recherche starten“): der Host
-     * schließt das Konzept ab und startet die Phase Quellen, aber nur mit sinnvollem Auftrag (Konzeptkarte oder
-     * erfasster Auftrag; ein Auftrag hinter dem Präfix zählt). Das Modell kann keine Phase wechseln.
+     * Der Startbefehl der Phase Quellen (Play-Aktion „Recherche starten“, askai arch: das {@code research:}-Präfix):
+     * nur, wenn der Nutzer die Phase Quellen gewählt hat, und nur mit sinnvollem Auftrag (Konzeptkarte oder erfasster
+     * Auftrag; ein Auftrag hinter dem Präfix zählt). Weder der Text noch das Modell wechseln je die Phase: in jeder
+     * anderen Phase ist der Text eine gewöhnliche Nachricht.
      *
-     * @return {@code null}, wenn der Text kein Startbefehl ist; sonst leer (der Agent recherchiert weiter) oder
-     *         der Grund, warum nicht gestartet wurde
+     * @return {@code null}, wenn der Text hier kein Startbefehl ist; sonst leer (der Agent recherchiert) oder der
+     *         Grund, warum nicht gestartet wurde
      */
     static String startResearchIfAsked(ResearchAgentHost host, String text) {
         String trimmed = text == null ? "" : text.trim();
@@ -544,19 +545,19 @@ public final class ResearchControlTools {
                 break;
             }
         }
-        if (prefix == null) {
+        if (prefix == null || !ResearchStateIds.RESEARCH.equals(host.phaseId())) {
             return null;
         }
         String task = trimmed.substring(prefix.length()).replaceFirst("^[\\s:.!-]+", "").trim();
-        if (!task.isEmpty() && ResearchStateIds.SCOPING.equals(host.phaseId())) {
+        if (!task.isEmpty()) {
             host.conceptHost().recordMissionIfAbsent(task);
         }
         String rejected = host.startAutonomousResearch();
         if (rejected == null) {
             return "";
         }
-        return rejected.startsWith("Für die autonome Recherche") || rejected.startsWith("Die Recherche kann")
-                ? rejected : "Die Recherche kann nicht starten: " + rejected;
+        return rejected.startsWith("Für die autonome Recherche") ? rejected
+                : "Die Recherche kann nicht starten: " + rejected;
     }
 
     /**

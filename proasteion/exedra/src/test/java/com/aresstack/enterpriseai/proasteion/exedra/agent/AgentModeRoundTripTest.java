@@ -151,6 +151,8 @@ public class AgentModeRoundTripTest {
 
     @Test
     public void chatAndAgentRunSideBySideWithSeparateTranscriptsAndSessions() throws Exception {
+        final com.aresstack.enterpriseai.proasteion.exedra.assembly.AgentModeEndToEndTest.CardRecorder seenClouds =
+                new com.aresstack.enterpriseai.proasteion.exedra.assembly.AgentModeEndToEndTest.CardRecorder();
         final ChatConversationId conversation = chatService.openConversation();
         final Shell shell = onEdt(new Callable<Shell>() {
             @Override
@@ -178,23 +180,25 @@ public class AgentModeRoundTripTest {
             public Void call() {
                 assertTrue(shell.modes.select(ShellMode.AGENT));
                 assertSame(shell.panel.agentShell(), shell.panel.visibleShell());
+                shell.agentModel.addListener(seenClouds);
                 shell.agentBinding().sendRequested("hello agent", false);
                 return null;
             }
         });
         awaitIdle(shell.agentModel);
         List<TranscriptEntry> withClouds = entries(shell.agentModel);
-        // Die Überlegung des Demo-Agenten steht als grüne Denkwolke im Verlauf (askai arch), nicht in der Antwort.
+        // Die Überlegung des Demo-Agenten stand als grüne Denkwolke im Verlauf (askai arch), nicht in der Antwort;
+        // nach dem erfolgreichen Turn ist sie wieder entfernt.
         List<TranscriptEntry> agentEntries = new java.util.ArrayList<TranscriptEntry>();
         boolean thoughtCloud = false;
-        for (TranscriptEntry entry : withClouds) {
-            if (entry.getAuthor() == TranscriptEntry.Author.ACTIVITY) {
-                thoughtCloud |= entry.isThinking();
-            } else {
-                agentEntries.add(entry);
-            }
+        for (TranscriptEntry entry : seenClouds.seen()) {
+            thoughtCloud |= entry.isThinking();
         }
-        assertTrue(withClouds.toString(), thoughtCloud);
+        for (TranscriptEntry entry : withClouds) {
+            assertFalse("Wolke nach dem Turn: " + entry, entry.getAuthor() == TranscriptEntry.Author.ACTIVITY);
+            agentEntries.add(entry);
+        }
+        assertTrue(seenClouds.seen().toString(), thoughtCloud);
         assertEquals(2, agentEntries.size());
         assertEquals("hello agent", agentEntries.get(0).getText());
         TranscriptEntry reply = agentEntries.get(1);
