@@ -7,6 +7,14 @@ public interface ToolActivityListener {
     void onToolCall(String toolName);
 
     /**
+     * Wie {@link #onToolCall(String)}, mit den Argumenten des Aufrufs (JSON, wie vom Modell), damit eine Anzeige den
+     * Suchbegriff oder die gelesene Seite nennen kann, bevor das Werkzeug läuft. Standard: {@link #onToolCall(String)}.
+     */
+    default void onToolCall(String toolName, String arguments) {
+        onToolCall(toolName);
+    }
+
+    /**
      * {@code toolName} ist fertig: {@code succeeded} ist {@code false}, wenn das Werkzeug geworfen oder ein
      * {@value ToolRegistry#ERROR_PREFIX}-Ergebnis geliefert hat. So weiß der Aufrufer, ob ein Werkzeug dem Turn
      * tatsächlich etwas geliefert hat (z. B. Wissenskontext über {@code knowledge_read}).

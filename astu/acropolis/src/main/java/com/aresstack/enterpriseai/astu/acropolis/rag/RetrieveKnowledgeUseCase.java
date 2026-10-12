@@ -185,6 +185,14 @@ public final class RetrieveKnowledgeUseCase {
      * @throws KnowledgeRetrievalException wenn alle aktiven Suchpfade ausgefallen sind
      */
     public RetrievalResult retrieve(String query, Collection<SourceAddress> sources) {
+        return retrieve(query, sources, RetrievalProgress.none());
+    }
+
+    /**
+     * Wie {@link #retrieve(String, Collection)}; meldet vor jedem Suchpfad an {@code progress}, welcher gerade läuft.
+     */
+    public RetrievalResult retrieve(String query, Collection<SourceAddress> sources, RetrievalProgress progress) {
+        RetrievalProgress steps = progress == null ? RetrievalProgress.none() : progress;
         if (query == null || query.trim().isEmpty()) {
             return RetrievalResult.empty();
         }
@@ -197,6 +205,7 @@ public final class RetrieveKnowledgeUseCase {
         List<KnowledgeSearchHit> keywordHits = Collections.emptyList();
         if (settings.keywordEnabled()) {
             activePaths++;
+            steps.pathStarted(RetrievalPath.KEYWORD);
             try {
                 keywordHits = index.keywordSearch(KnowledgeKeywordQuery.of(space(), query, settings.keywordCandidates())
                         .restrictedTo(filter));
@@ -211,6 +220,7 @@ public final class RetrieveKnowledgeUseCase {
         List<KnowledgeSearchHit> semanticHits = Collections.emptyList();
         if (settings.semanticEnabled()) {
             activePaths++;
+            steps.pathStarted(RetrievalPath.SEMANTIC);
             try {
                 semanticHits = semanticSearch(query, filter);
             } catch (EmbeddingException e) {

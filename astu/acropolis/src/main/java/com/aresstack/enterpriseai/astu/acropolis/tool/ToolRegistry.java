@@ -80,7 +80,7 @@ public final class ToolRegistry {
             return ERROR_PREFIX + " Werkzeug " + name + " ist abgeschaltet";
         }
         if (activity != null) {
-            activity.onToolCall(name);
+            activity.onToolCall(name, arguments);
         }
         String output;
         boolean succeeded;

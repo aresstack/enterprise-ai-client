@@ -103,6 +103,18 @@ public final class RagChatUseCase {
      */
     public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
                             ChatTurnListener listener, String extraContext, ChatCompletionPort via) {
+        return send(id, userText, rag, options, listener, extraContext, via, RetrievalProgress.none());
+    }
+
+    /**
+     * Wie {@link #send(ChatConversationId, String, RagOptions, ChatOptions, ChatTurnListener, String,
+     * ChatCompletionPort)}; die Wissenssuche meldet ihren Fortschritt an {@code progress}, während sie läuft. Meldet
+     * {@code progress} einen Abbruch, entfallen weitere Suchschritte; der Turn startet trotzdem (die Nachricht kommt in
+     * die Historie) und wird vom Aufrufer abgebrochen. Ohne RAG meldet {@code progress} nichts.
+     */
+    public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
+                            ChatTurnListener listener, String extraContext, ChatCompletionPort via,
+                            RetrievalProgress progress) {
         if (userText == null || userText.trim().isEmpty()) {
             throw new IllegalArgumentException("user text must not be blank");
         }
@@ -122,7 +134,8 @@ public final class RagChatUseCase {
             }
         }
         try {
-            return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via);
+            return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via,
+                    progress == null ? RetrievalProgress.none() : progress);
         } finally {
             synchronized (retrieving) {
                 retrieving.remove(id);
@@ -132,7 +145,7 @@ public final class RagChatUseCase {
 
     private RagChatTurn sendWithRetrieval(ChatConversationId id, String userText, RagOptions rag,
                                           ChatOptions options, ChatTurnListener listener, String extraContext,
-                                          ChatCompletionPort via) {
+                                          ChatCompletionPort via, RetrievalProgress progress) {
         List<String> queries = new ArrayList<String>();
         List<Integer> hitCounts = new ArrayList<Integer>();
         List<RetrievedChunk> hits = new ArrayList<RetrievedChunk>();
@@ -140,34 +153,45 @@ public final class RagChatUseCase {
         boolean failed = false;
         List<ChatMessage> history = followUps.isEnabled()
                 ? chat.conversation(id).messages() : Collections.<ChatMessage>emptyList();
+        int maxSearches = 1 + followUps.maxFollowUps();
         String query = userText;
-        while (query != null) {
+        while (query != null && !progress.isCancelled()) {
             queries.add(query);
+            progress.searchStarted(query, queries.size(), maxSearches);
+            progress.liveSearchStarted(query);
             try {
                 preparation.prepare(query, rag.sources());
             } catch (RuntimeException e) {
                 // Die Live-Suche ist eine Ergänzung; ohne sie antwortet der Turn aus dem vorhandenen Index.
             }
+            if (progress.isCancelled()) {
+                queries.remove(queries.size() - 1); // abgebrochen vor der Indexsuche: keine Suche mit Trefferzahl
+                break;
+            }
             try {
-                RetrievalResult result = retrieval.retrieve(query, rag.sources());
+                RetrievalResult result = retrieval.retrieve(query, rag.sources(), progress);
                 hitCounts.add(result.hits().size());
                 hits = newestFirst(result.hits(), hits);
                 warnings.addAll(result.warnings());
+                progress.hitsFound(query, result.hits().size());
             } catch (KnowledgeRetrievalException e) {
                 hitCounts.add(-1);
+                progress.searchFailed(query);
                 if (queries.size() == 1) {
                     warnings.addAll(e.warnings());
                     failed = true;
                 }
                 break; // eine ausgefallene Nachsuche lässt den bisherigen Kontext stehen
             }
-            if (queries.size() > followUps.maxFollowUps()) {
+            if (queries.size() > followUps.maxFollowUps() || progress.isCancelled()) {
                 break;
             }
+            progress.contextCheckStarted();
             query = followUps.nextQuery(chat, history, userText, queries, assembler.assemble(hits).text(),
                     options);
         }
         PromptContext context = failed ? PromptContext.empty(0) : assembler.assemble(hits);
+        progress.contextReady(context.sources().size());
         String combined = join(join(context.text(), followUps.isEnabled() ? searchNote(queries) : null),
                 extraContext);
         ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);

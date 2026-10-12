@@ -446,7 +446,7 @@ public class RagChatBindingTest {
                 fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true);
             }
         });
-        awaitActivity(fixture.model, RagChatBinding.RETRIEVING_ACTIVITY);
+        awaitActivity(fixture.model, ChatResearchCard.TITLE);
         assertTrue(gated.awaitSearch());
         onEdt(new Runnable() {
             @Override
@@ -862,7 +862,7 @@ public class RagChatBindingTest {
         ui.runWhile(new Callable<Boolean>() {
             @Override
             public Boolean call() {
-                return model.getEntries().get(1).getState() == TranscriptEntry.State.STREAMING;
+                return model.isStreaming(); // bis die Antwort A fertig ist; ihre Recherchekarte ist dann weg
             }
         });
         List<TranscriptEntry> entries = model.getEntries();
@@ -874,22 +874,25 @@ public class RagChatBindingTest {
         binding.sendRequested("Frage B", true); // B beginnt die Suche
         ui.runAll();                             // attach(A): Quellen an A, Zustand von B unberührt
         entries = model.getEntries();
-        assertEquals(4, entries.size());
+        assertEquals("Frage, Antwort, Frage B, Recherchekarte B, Antwort B", 5, entries.size());
         assertTrue("späte Quellen landen an der fertigen Antwort", entries.get(1).hasSources());
-        assertEquals(TranscriptEntry.State.STREAMING, entries.get(3).getState());
+        assertEquals(TranscriptEntry.Author.ACTIVITY, entries.get(3).getAuthor());
+        assertEquals(TranscriptEntry.State.STREAMING, entries.get(4).getState());
 
-        binding.stopRequested(); // während der Suche von B
-        work.runAll();           // Suche B und Turn B (hängt)
+        binding.stopRequested(); // während der Suche von B, bevor sie lief: ihre Suchschritte entfallen
+        work.runAll();           // Turn B (hängt)
         ui.runAll();             // attach(B) löst den Stop ein
         ui.runUntil("Antwort B abgebrochen", new Callable<Boolean>() {
             @Override
             public Boolean call() {
-                return model.getEntries().get(3).getState() != TranscriptEntry.State.STREAMING;
+                return !model.isStreaming();
             }
         });
         entries = model.getEntries();
+        assertEquals("Frage, Antwort, Frage B, Antwort B; kein Hinweis „ohne Treffer“", 4, entries.size());
         assertEquals(TranscriptEntry.State.CANCELLED, entries.get(3).getState());
-        assertTrue(entries.get(3).hasSources());
+        assertFalse("die übersprungene Suche bringt keine Quellen", entries.get(3).hasSources());
+        assertTrue(entries.get(1).hasSources());
         assertTrue(model.canSend("Nochmal"));
     }
 
@@ -1316,7 +1319,7 @@ public class RagChatBindingTest {
     }
 
     /** Hält jede Suche an, bis der Test sie freigibt: simuliert ein langsames Retrieval. */
-    private static final class GatedIndex implements KnowledgeIndexPort {
+    static final class GatedIndex implements KnowledgeIndexPort {
         private final KnowledgeIndexPort delegate;
         private final CountDownLatch searching = new CountDownLatch(1);
         private final CountDownLatch gate = new CountDownLatch(1);
@@ -1392,7 +1395,7 @@ public class RagChatBindingTest {
     }
 
     /** Beide Suchpfade fallen aus (z. B. beschädigtes Indexverzeichnis). */
-    private static final class FailingIndex implements KnowledgeIndexPort {
+    static final class FailingIndex implements KnowledgeIndexPort {
         @Override
         public void index(Collection<KnowledgeIndexEntry> entries) {
             throw new KnowledgeIndexException("index unavailable");

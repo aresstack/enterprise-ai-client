@@ -208,10 +208,12 @@ public final class ChatShellModel {
         fireEntryAdded(activity);
         if (answer != null) {
             if (reuseAnswer) {
+                answer.setBehindActivity(true);
                 entries.add(answer);
                 fireEntryAdded(answer);
             } else {
                 streamingEntry = newEntry(TranscriptEntry.Author.ASSISTANT, "", TranscriptEntry.State.STREAMING);
+                streamingEntry.setBehindActivity(true);
                 splitSections.add(streamingEntry);
                 fireEntryAdded(streamingEntry);
             }
@@ -383,8 +385,12 @@ public final class ChatShellModel {
             }
         }
         activities.clear();
-        if (hadActivities && state != TranscriptEntry.State.FAILED && entry.getText().isEmpty()) {
-            // Der leere Platzhalter hinter der letzten Wolke: die Antwort steht schon in früheren Abschnitten.
+        boolean earlierSection = continuedSection || splitSections.contains(entry);
+        if (hadActivities && entry.getText().isEmpty()
+                && (state == TranscriptEntry.State.COMPLETE
+                || state == TranscriptEntry.State.CANCELLED && earlierSection)) {
+            // Der leere Platzhalter hinter der letzten Wolke: die Antwort steht schon in früheren Abschnitten. Ein
+            // Abbruch vor dem ersten Antworttext bleibt als „abgebrochen“ stehen.
             entries.remove(entry);
             fireEntryRemoved(entry);
         } else {

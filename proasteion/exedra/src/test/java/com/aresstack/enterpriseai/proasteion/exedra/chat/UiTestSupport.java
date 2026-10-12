@@ -52,12 +52,18 @@ final class UiTestSupport {
         });
     }
 
-    static void awaitActivity(final ChatShellModel model, final String activity) throws Exception {
-        await("Aktivität " + activity, new Callable<Boolean>() {
+    /** Wartet auf eine Wolke ({@link TranscriptEntry.Author#ACTIVITY}), deren Titel oder Inhalt {@code fragment} enthält. */
+    static void awaitActivity(final ChatShellModel model, final String fragment) throws Exception {
+        await("Aktivität " + fragment, new Callable<Boolean>() {
             @Override
             public Boolean call() {
-                List<TranscriptEntry> entries = model.getEntries();
-                return !entries.isEmpty() && activity.equals(entries.get(entries.size() - 1).getActivity());
+                for (TranscriptEntry entry : model.getEntries()) {
+                    if (entry.getAuthor() == TranscriptEntry.Author.ACTIVITY
+                            && (entry.getActivityTitle().contains(fragment) || entry.getText().contains(fragment))) {
+                        return true;
+                    }
+                }
+                return false;
             }
         });
     }

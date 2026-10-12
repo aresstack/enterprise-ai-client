@@ -150,6 +150,39 @@ public class ChatTranscriptActivityTest {
         awaitGone(shell.get(), think.get());
     }
 
+    /**
+     * Hinter einer Wolke gibt es keine Platzhalter-Antwortblase: die leere Antwort ist unsichtbar, bis ihr erster Text
+     * kommt (Chat und Agent). Ohne Wolke bleibt der Platzhalter wie bisher.
+     */
+    @Test
+    public void emptyAnswerBehindAnActivityIsHiddenUntilItsFirstText() throws Exception {
+        final ChatShellModel model = new ChatShellModel(() -> 0L);
+        final AtomicReference<ChatShellPanel> shell = new AtomicReference<ChatShellPanel>();
+        final AtomicReference<TranscriptEntry> answer = new AtomicReference<TranscriptEntry>();
+        Edt.run(() -> {
+            shell.set(new ChatShellPanel(model, new RecordingActions(), comic, bubbles));
+            shell.get().setSize(800, 600);
+            shell.get().doLayout();
+            model.addUserMessage("Welche Komponenten gibt es?");
+            answer.set(model.beginAssistantMessage());
+            assertTrue("ohne Wolke: Platzhalter sichtbar", shell.get().transcript().isRowVisible(answer.get().getId()));
+            model.startActivity("research-1", "Recherche in den Wissensquellen", "research", "Suche 1 / 3");
+            assertTrue(answer.get().isPendingBehindActivity());
+            assertFalse("hinter der Karte: keine Antwortblase",
+                    shell.get().transcript().isRowVisible(answer.get().getId()));
+            model.finishActivity("research-1", true, "abgeschlossen");
+            assertFalse(shell.get().transcript().isRowVisible(answer.get().getId()));
+            model.appendAssistantDelta("Es gibt drei Komponenten.");
+            shell.get().transcript().flushPendingUpdates();
+            assertTrue("erster Antworttext: Blase erscheint",
+                    shell.get().transcript().isRowVisible(answer.get().getId()));
+            assertEquals("Es gibt drei Komponenten.", shell.get().transcript().bubbleFor(answer.get().getId())
+                    .getText());
+            model.completeAssistantMessage();
+            assertTrue(shell.get().transcript().isRowVisible(answer.get().getId()));
+        });
+    }
+
     @Test
     public void researchCardIsUpdatedInPlaceAndSettlesToItsSummary() throws Exception {
         final ChatShellModel model = new ChatShellModel(() -> 0L);

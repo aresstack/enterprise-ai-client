@@ -24,12 +24,14 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagOptions;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagSource;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPath;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalProgress;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.astu.acropolis.tool.FixedAnswerPort;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolArguments;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolRegistry;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
@@ -47,6 +49,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -59,9 +62,10 @@ import java.util.logging.Logger;
  * <ul>
  *   <li><b>RAG aus</b>: exakt der bisherige Weg ({@code RagOptions.disabled()} ist {@code ChatService.send}),
  *       gestartet auf dem UI-Thread.</li>
- *   <li><b>RAG an</b>: Nutzernachricht und leere Antwortblase erscheinen sofort, die Blase zeigt
- *       "{@value #RETRIEVING_ACTIVITY}"; das Retrieval blockiert und läuft deshalb auf {@code workExecutor}, nie
- *       auf dem Event-Thread. Sobald der Turn steht, kommen seine Quellen an die Antwort und Hinweise (Suche ganz
+ *   <li><b>RAG an</b>: Nutzernachricht und Recherchekarte ({@link ChatResearchCard}, die gelbe Werkzeugwolke wie
+ *       beim Agenten) erscheinen sofort; die Karte zählt Suchen, Schritte und Treffer live mit
+ *       ({@link RetrievalProgress}) und platzt, sobald der Turn steht. Die Antwortblase erscheint erst mit dem ersten
+ *       Antworttext. Das Retrieval blockiert und läuft deshalb auf {@code workExecutor}, nie auf dem Event-Thread. Sobald der Turn steht, kommen seine Quellen an die Antwort und Hinweise (Suche ganz
  *       oder teilweise ausgefallen, keine Treffer) als eigene Hinweiszeile in den Verlauf; Deltas, Abschluss,
  *       Abbruch und Fehler laufen weiter über den {@code ChatTurn} der Antwort. Jeder ausgefallene Suchpfad steht
  *       mit seiner Ursache im technischen Log ({@code RetrievalObserver} der Composition Root).</li>
@@ -73,8 +77,9 @@ import java.util.logging.Logger;
  *       jeder Nachricht außer Small Talk und Fragen nach dem Assistenten selbst ({@link KnowledgeQuestion}); reicht
  *       der Kontext nicht, sucht der {@link RagChatUseCase} mit einer genaueren Anfrage nach. Eine Frage nach dem
  *       Assistenten selbst beantwortet der Client aus den Werkzeugen des Turns ({@link ToolCapabilities}).</li>
- *   <li><b>Stop</b> während des Retrievals merkt sich den Wunsch und bricht den Turn ab, sobald er existiert;
- *       die Nutzerfrage bleibt dabei in der Historie (AP2-Regel), die Antwortblase endet als abgebrochen.</li>
+ *   <li><b>Stop</b> während des Retrievals merkt sich den Wunsch, lässt die restlichen Suchschritte aus und bricht
+ *       den Turn ab, sobald er existiert; die Nutzerfrage bleibt dabei in der Historie (AP2-Regel), die Karte endet
+ *       als abgebrochen und verschwindet mit dem Turn.</li>
  * </ul>
  *
  * <p>Suche und Abbruchwunsch gehören zur jeweiligen Anfrage ({@code Request}): beendet ein schnelles Backend
@@ -94,13 +99,13 @@ import java.util.logging.Logger;
  * kamen, zum Chat: das Modell kennt nur Titel und Bookmark und liest den Inhalt mit {@code knowledge_read}. Mit
  * angehakter Quelle oder Seiten bekommt das Modell den Wissens-Werkzeugsatz des Agenten ({@code knowledge_search} über
  * die angehakten Quellen, {@code knowledge_read}), auch ohne Seite: so kann es selbst weitere Seiten suchen und lesen.
- * Die Blase zeigt währenddessen, welches Werkzeug läuft; die Antwort erscheint wie ohne Werkzeuge Stück für Stück.
+ * Jeder Werkzeugaufruf ist eine eigene Werkzeugwolke mit Suchbegriff bzw. Seite aus seinen Argumenten (wie beim
+ * Agenten, vergänglich bis zum Ende des Turns); die Antwort erscheint wie ohne Werkzeuge Stück für Stück.
  */
 public final class RagChatBinding implements ChatShellActions {
 
     private static final Logger LOG = Logger.getLogger(RagChatBinding.class.getName());
 
-    static final String RETRIEVING_ACTIVITY = "Wissen wird gesucht …";
     static final String SEND_REJECTED = "Die Nachricht konnte nicht gesendet werden.";
     static final String RETRIEVAL_FAILED_NOTICE =
             "Die Wissenssuche ist ausgefallen. Die Antwort entstand ohne Kontext aus der Wissensbasis.";
@@ -118,12 +123,12 @@ public final class RagChatBinding implements ChatShellActions {
             "Die semantische Suche in der Wissensbasis ist ausgefallen. Die Seite wurde direkt gelesen.";
     static final String PAGE_READ_FAILED_NOTICE =
             "Die Seite konnte nicht gelesen werden. Die Antwort entstand ohne Kontext aus der Wissensbasis.";
-    static final String STORING_ACTIVITY = "Anhang wird abgelegt …";
-    static final String TOOLS_ACTIVITY = "Antwort wird erstellt …";
-    static final String READING_ACTIVITY = "Liest Anhang …";
-    static final String SEARCHING_ACTIVITY = "Durchsucht Anhang …";
-    static final String READING_PAGE_ACTIVITY = "Liest Seite …";
-    static final String SEARCHING_KNOWLEDGE_ACTIVITY = "Durchsucht Wissensquellen …";
+    static final String STORING_ACTIVITY = "Legt Anhang ab";
+    static final String READING_ACTIVITY = "Liest Anhang";
+    static final String SEARCHING_ACTIVITY = "Durchsucht Anhang";
+    static final String READING_PAGE_ACTIVITY = "Liest Seite";
+    static final String SEARCHING_KNOWLEDGE_ACTIVITY = "Durchsucht Wissensquellen";
+    static final String TOOL_FAILED = "fehlgeschlagen";
     static final String ATTACHMENTS_UNAVAILABLE_NOTICE =
             "Dateianhänge sind in dieser Sitzung nicht verfügbar; die Nachricht ging ohne sie hinaus.";
     static final String PAGES_UNAVAILABLE_NOTICE =
@@ -146,6 +151,7 @@ public final class RagChatBinding implements ChatShellActions {
     private ChatHistoryBinding history; // nur UI-Thread
     private String reasoningEffort; // nur UI-Thread; null = Standard des Modells
     private String chatModel; // nur UI-Thread; im Composer gewählt, null = Modell der Konfiguration
+    private int activitySeries; // fortlaufende Kennungen der Wolken (nur UI-Thread)
 
     /**
      * @param uiExecutor   führt Model-Änderungen auf dem UI-Thread aus
@@ -360,10 +366,18 @@ public final class RagChatBinding implements ChatShellActions {
         final ChatOptions chatOptions = turnOptions();
         final ToolSupport support = toolPath ? tools : null;
         final ChatConversationId conversation = conversationId;
-        final Request request = new Request(answer, listener, toolPath);
+        final Request request = new Request(answer, listener, toolPath, ++activitySeries);
         listener.request = request;
-        model.setAssistantActivity(!newFiles.isEmpty() ? STORING_ACTIVITY
-                : options.isEnabled() ? RETRIEVING_ACTIVITY : TOOLS_ACTIVITY);
+        // Arbeit des Clients steht in Wolken, nie in der Antwortblase: zuerst das Ablegen neuer Anhänge, dann die
+        // Recherchekarte der Wissenssuche.
+        final String storingKey = newFiles.isEmpty() ? null : "chat-store-" + request.series;
+        if (storingKey != null) {
+            model.startActivity(storingKey, STORING_ACTIVITY, "store", joinNames(names));
+        }
+        if (options.isEnabled()) {
+            request.card = new ChatResearchCard(model, "chat-research-" + request.series);
+            request.card.open();
+        }
         retrieving = request;
         try {
             workExecutor.execute(new Runnable() {
@@ -381,6 +395,7 @@ public final class RagChatBinding implements ChatShellActions {
                             if (!newFiles.isEmpty()) {
                                 // Erst nach erfolgreicher Ablage: ab jetzt läuft die Unterhaltung über die Werkzeuge,
                                 // und der gespeicherte Chat bekommt die Kennungen der Anhänge.
+                                listener.onUi(() -> model.finishActivity(storingKey, true, ""));
                                 uiExecutor.execute(() -> {
                                     if (conversation.equals(conversationId)) {
                                         conversationHasAttachments = true;
@@ -407,18 +422,15 @@ public final class RagChatBinding implements ChatShellActions {
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
                             via = new ChatCompletionsToolLoop(support.chat(),
                                     new ToolRegistry(available, support::isEnabled), support.loopExecutor(),
-                                    activity(listener, request, conversation), ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
-                            if (options.isEnabled()) {
-                                showActivity(listener, RETRIEVING_ACTIVITY);
-                            } else {
-                                showActivity(listener, TOOLS_ACTIVITY);
-                            }
+                                    activity(listener, request, conversation, support, chatPages),
+                                    ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
                             if (capabilityQuestion) {
                                 via = new FixedAnswerPort(ToolCapabilities.answer(definitions(available, support),
                                         chatOptions == null ? null : chatOptions.model()));
                             }
                         }
-                        turn = rag.send(conversation, text, options, chatOptions, listener, extraContext, via);
+                        turn = rag.send(conversation, text, options, chatOptions, listener, extraContext, via,
+                                progress(request));
                     } catch (final RuntimeException rejected) {
                         // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
                         LOG.log(Level.WARNING, "Nachricht nicht gestartet: " + rejected.getMessage(), rejected);
@@ -472,6 +484,10 @@ public final class RagChatBinding implements ChatShellActions {
             turn.cancel();
         } else if (retrieving != null) {
             retrieving.cancelRequested = true;
+            retrieving.cancelled = true;
+            if (retrieving.card != null) {
+                retrieving.card.cancelling();
+            }
         }
     }
 
@@ -499,25 +515,42 @@ public final class RagChatBinding implements ChatShellActions {
     }
 
     /**
-     * Zeigt in der laufenden Antwort, welches Werkzeug gerade läuft, und zählt für die Anfrage, ob Wissenswerkzeuge
-     * Kontext geliefert haben (läuft auf dem Thread der Werkzeug-Schleife).
+     * Jeder Werkzeugaufruf wird eine Werkzeugwolke (askai arch, wie beim Agenten): Titel nach Werkzeug, darunter
+     * Suchbegriff, Seite oder Anhang aus den Argumenten des Aufrufs; mit dem Ergebnis platzt sie. Zählt außerdem für
+     * die Anfrage, ob Wissenswerkzeuge Kontext geliefert haben. Läuft auf dem Thread der Werkzeug-Schleife, die ihre
+     * Aufrufe nacheinander ausführt.
      */
     private ToolActivityListener activity(final TurnListener listener, final Request request,
-                                          final ChatConversationId conversation) {
+                                          final ChatConversationId conversation, final ToolSupport support,
+                                          final List<ChatBookmark> pages) {
         return new ToolActivityListener() {
+            private final AtomicInteger calls = new AtomicInteger();
+            private volatile String runningKey;
+
             @Override
             public void onToolCall(String toolName) {
-                showActivity(listener, ReadAttachmentTool.NAME.equals(toolName) ? READING_ACTIVITY
-                        : SearchAttachmentTool.NAME.equals(toolName) ? SEARCHING_ACTIVITY
-                        : ChatBookmark.READ_TOOL.equals(toolName) ? READING_PAGE_ACTIVITY
-                        : KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) ? SEARCHING_KNOWLEDGE_ACTIVITY
-                        : "Werkzeug " + toolName + " …");
+                onToolCall(toolName, null);
             }
 
             @Override
-            public void onToolResult(String toolName, boolean succeeded) {
+            public void onToolCall(final String toolName, String arguments) {
+                final String key = "chat-tool-" + request.series + "-" + calls.incrementAndGet();
+                runningKey = key;
+                final String title = toolTitle(toolName);
+                final String kind = toolKind(toolName);
+                final String detail = toolDetail(toolName, arguments, support, conversation, pages);
+                listener.onUi(() -> model.startActivity(key, title, kind, detail));
+            }
+
+            @Override
+            public void onToolResult(String toolName, final boolean succeeded) {
                 if (KnowledgeAcquisition.deliversContext(toolName)) {
                     (succeeded ? request.toolReads : request.toolReadFails).incrementAndGet();
+                }
+                final String key = runningKey;
+                runningKey = null;
+                if (key != null) {
+                    listener.onUi(() -> model.finishActivity(key, succeeded, succeeded ? "" : TOOL_FAILED));
                 }
             }
 
@@ -535,15 +568,141 @@ public final class RagChatBinding implements ChatShellActions {
         };
     }
 
-    private void showActivity(TurnListener listener, final String text) {
-        listener.onUi(new Runnable() {
-            @Override
-            public void run() {
-                if (model.isStreaming()) {
-                    model.setAssistantActivity(text);
+    /** Überschrift der Werkzeugwolke. */
+    static String toolTitle(String toolName) {
+        return ReadAttachmentTool.NAME.equals(toolName) ? READING_ACTIVITY
+                : SearchAttachmentTool.NAME.equals(toolName) ? SEARCHING_ACTIVITY
+                : ChatBookmark.READ_TOOL.equals(toolName) ? READING_PAGE_ACTIVITY
+                : KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) ? SEARCHING_KNOWLEDGE_ACTIVITY
+                : "Werkzeug " + toolName;
+    }
+
+    private static String toolKind(String toolName) {
+        return ReadAttachmentTool.NAME.equals(toolName) || ChatBookmark.READ_TOOL.equals(toolName) ? "read"
+                : SearchAttachmentTool.NAME.equals(toolName) || KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName)
+                ? "search" : "other";
+    }
+
+    /**
+     * Was die Wolke unter dem Titel nennt, aus den Argumenten des Aufrufs (nie aus seinem Ergebnis): den Suchbegriff,
+     * bei {@code knowledge_read} den Titel einer Seite des Chats oder die Kennung, bei {@code read_attachment} den
+     * Dateinamen. Unlesbare Argumente ergeben eine leere Zeile.
+     */
+    static String toolDetail(String toolName, String arguments, ToolSupport support, ChatConversationId conversation,
+                             List<ChatBookmark> pages) {
+        ToolArguments args;
+        try {
+            args = ToolArguments.parse(arguments);
+        } catch (IllegalArgumentException unreadable) {
+            return "";
+        }
+        if (KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) || SearchAttachmentTool.NAME.equals(toolName)) {
+            return quoted(args.text("query"));
+        }
+        if (ChatBookmark.READ_TOOL.equals(toolName)) {
+            String id = args.text("id");
+            if (id == null) {
+                return "";
+            }
+            for (ChatBookmark page : pages) {
+                if (page.uri().equals(id.trim())) {
+                    return quoted(page.title());
                 }
             }
-        });
+            return quoted(id);
+        }
+        if (ReadAttachmentTool.NAME.equals(toolName)) {
+            String id = args.text("attachment_id");
+            if (id == null) {
+                return "";
+            }
+            try {
+                for (Attachment attachment : support.store().list(conversation)) {
+                    if (attachment.id().equals(id.trim())) {
+                        return quoted(attachment.fileName());
+                    }
+                }
+            } catch (RuntimeException unavailable) {
+                // ohne Liste der Anhänge nennt die Wolke die Kennung
+            }
+            return quoted(id);
+        }
+        return "";
+    }
+
+    private static String quoted(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return "";
+        }
+        String text = value.replace('\r', ' ').replace('\n', ' ').trim();
+        return "„" + (text.length() <= 120 ? text : text.substring(0, 120) + " …") + "“";
+    }
+
+    private static String joinNames(List<String> names) {
+        StringBuilder text = new StringBuilder();
+        for (String name : names) {
+            text.append(text.length() == 0 ? "" : "\n").append(name);
+        }
+        return text.toString();
+    }
+
+    /**
+     * Der Fortschritt der Wissenssuche dieser Anfrage auf ihre Recherchekarte (UI-Thread); ein Stop während der Suche
+     * lässt die restlichen Suchschritte aus.
+     */
+    private RetrievalProgress progress(final Request request) {
+        final TurnListener listener = request.listener;
+        return new RetrievalProgress() {
+            @Override
+            public void searchStarted(final String query, final int number, final int max) {
+                card(card -> card.searchStarted(query, number, max));
+            }
+
+            @Override
+            public void liveSearchStarted(String query) {
+                card(card -> card.step(ChatResearchCard.LIVE_SEARCH));
+            }
+
+            @Override
+            public void pathStarted(final RetrievalPath path) {
+                card(card -> card.step(path == RetrievalPath.KEYWORD ? ChatResearchCard.KEYWORD_SEARCH
+                        : ChatResearchCard.SEMANTIC_SEARCH));
+            }
+
+            @Override
+            public void hitsFound(String query, final int hits) {
+                card(card -> card.hitsFound(hits));
+            }
+
+            @Override
+            public void searchFailed(String query) {
+                card(ChatResearchCard::searchFailed);
+            }
+
+            @Override
+            public void contextCheckStarted() {
+                card(card -> card.step(ChatResearchCard.CHECKING));
+            }
+
+            @Override
+            public void contextReady(final int sources) {
+                card(card -> card.contextReady(sources));
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return request.cancelled;
+            }
+
+            private void card(final Consumer<ChatResearchCard> update) {
+                listener.onUi(() -> {
+                    ChatResearchCard card = request.card;
+                    if (card != null && card.isOpen() && !request.cancelRequested) {
+                        update.accept(card);
+                    }
+                });
+            }
+        };
     }
 
     /** Der RAG-Turn steht (UI-Thread): Quellen und Hinweise anbringen, Abbruchwunsch einlösen. */
@@ -557,6 +716,10 @@ public final class RagChatBinding implements ChatShellActions {
             model.attachSources(request.answer, describe(ragTurn.sources()));
         }
         request.ragTurn = ragTurn;
+        if (request.card != null && !request.cancelRequested) {
+            // Nach einem Stop bleibt die Karte bei „Wird abgebrochen …“; der Abbruch des Turns räumt sie weg.
+            request.card.finish();
+        }
         // Ohne Werkzeuge steht die Wissensbeschaffung jetzt fest; mit Werkzeugen erst, wenn die Antwort fertig ist.
         if (!request.toolPath || request.ended) {
             addNotice(request);
@@ -577,8 +740,8 @@ public final class RagChatBinding implements ChatShellActions {
 
     /** Der Hinweis zur Wissensbeschaffung der Anfrage, höchstens einmal (UI-Thread). */
     private void addNotice(Request request) {
-        if (request.noticed || request.ragTurn == null) {
-            return;
+        if (request.noticed || request.ragTurn == null || request.cancelRequested) {
+            return; // nach einem Stop zählt die abgebrochene Suche nicht als „ohne Treffer“
         }
         request.noticed = true;
         KnowledgeAcquisition acquisition = KnowledgeAcquisition.of(request.ragTurn, request.toolReads.get(),
@@ -670,15 +833,22 @@ public final class RagChatBinding implements ChatShellActions {
         final boolean toolPath;
         final AtomicInteger toolReads = new AtomicInteger();
         final AtomicInteger toolReadFails = new AtomicInteger();
+        /** Laufende Nummer der Anfrage für die Kennungen ihrer Wolken. */
+        final int series;
+        /** Die Recherchekarte, wenn die Anfrage sucht (nur UI-Thread). */
+        ChatResearchCard card;
         boolean cancelRequested;
+        /** {@link #cancelRequested}, für den Thread der Suche sichtbar. */
+        volatile boolean cancelled;
         RagChatTurn ragTurn;
         boolean ended;
         boolean noticed;
 
-        Request(TranscriptEntry answer, TurnListener listener, boolean toolPath) {
+        Request(TranscriptEntry answer, TurnListener listener, boolean toolPath, int series) {
             this.answer = answer;
             this.listener = listener;
             this.toolPath = toolPath;
+            this.series = series;
         }
     }
 
@@ -694,6 +864,9 @@ public final class RagChatBinding implements ChatShellActions {
             onUi(new Runnable() {
                 @Override
                 public void run() {
+                    if (request != null && request.card != null && !request.cancelRequested) {
+                        request.card.finish(); // die Antwort beginnt: die Recherche ist vorbei
+                    }
                     model.appendAssistantDelta(text);
                 }
             });
@@ -737,6 +910,11 @@ public final class RagChatBinding implements ChatShellActions {
                 public void run() {
                     closed = true;
                     runningTurn = null;
+                    if (request != null && request.card != null && !request.cancelRequested) {
+                        // Endet der Turn vor seinem ersten Antworttext (Fehler, leere Antwort), platzt die Karte jetzt;
+                        // eine ausgefallene Suche bleibt dann als Fehler stehen.
+                        request.card.finish();
+                    }
                     terminal.run();
                     if (request != null && request.toolPath) {
                         request.ended = true;

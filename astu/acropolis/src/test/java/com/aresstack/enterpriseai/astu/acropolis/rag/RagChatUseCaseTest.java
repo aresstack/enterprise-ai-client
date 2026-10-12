@@ -287,6 +287,84 @@ public class RagChatUseCaseTest {
                 chat.conversation(id).messages());
     }
 
+    /** Der Fortschritt kommt während der Suche, Schritt für Schritt, mit den Nachsuchen als weiteren Suchen. */
+    @Test
+    public void progressReportsEachSearchStepWhileItRuns() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        ChatConversationId id = chat.openConversation("System");
+        chatPort.enqueueAnswer("{\"sufficient\": false, \"query\": \"NIZZA Dateiformat\"}");
+        chatPort.enqueueAnswer("{\"sufficient\": true, \"query\": \"\"}");
+        chatPort.enqueueAnswer("Zeilen fester Länge [1].");
+        final List<String> steps = new java.util.ArrayList<String>();
+        RetrievalProgress progress = new RetrievalProgress() {
+            @Override
+            public void searchStarted(String query, int number, int max) {
+                steps.add("search " + number + "/" + max + " " + query);
+            }
+
+            @Override
+            public void liveSearchStarted(String query) {
+                steps.add("live");
+            }
+
+            @Override
+            public void pathStarted(RetrievalPath path) {
+                steps.add(path.name());
+            }
+
+            @Override
+            public void hitsFound(String query, int hits) {
+                steps.add("hits");
+            }
+
+            @Override
+            public void contextCheckStarted() {
+                steps.add("check");
+            }
+
+            @Override
+            public void contextReady(int sources) {
+                steps.add("ready " + sources);
+            }
+        };
+
+        RagChatTurn turn = research.send(id, FOLLOW_UP, RagOptions.enabled(), null, listener(), null, null,
+                progress);
+        awaitDone(turn);
+
+        assertEquals(Arrays.asList("search 1/3 " + FOLLOW_UP, "live", "KEYWORD", "SEMANTIC", "hits", "check",
+                "search 2/3 NIZZA Dateiformat", "live", "KEYWORD", "SEMANTIC", "hits", "check",
+                "ready " + turn.sources().size()), steps);
+        assertEquals("Exportdaten unverändert", Arrays.asList(FOLLOW_UP, "NIZZA Dateiformat"), turn.queries());
+    }
+
+    /** Ein Abbruch während der Suche lässt die weiteren Suchschritte aus; der Turn startet trotzdem. */
+    @Test
+    public void cancelledProgressSkipsFurtherSearches() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        ChatConversationId id = chat.openConversation("System");
+        chatPort.enqueueAnswer("Antwort");
+        final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        RetrievalProgress progress = new RetrievalProgress() {
+            @Override
+            public void hitsFound(String query, int hits) {
+                cancelled.set(true);
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return cancelled.get();
+            }
+        };
+
+        RagChatTurn turn = research.send(id, FOLLOW_UP, RagOptions.enabled(), null, listener(), null, null,
+                progress);
+        awaitDone(turn);
+
+        assertEquals(Collections.singletonList(FOLLOW_UP), turn.queries());
+        assertEquals("keine Kontextprüfung, nur die Antwort", 1, chatPort.requests().size());
+    }
+
     @Test
     public void sufficientContextAnswersAfterOneSearch() throws Exception {
         RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);

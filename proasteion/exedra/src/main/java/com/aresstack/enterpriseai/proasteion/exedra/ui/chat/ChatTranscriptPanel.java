@@ -267,6 +267,31 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         refresh(false);
     }
 
+    /**
+     * Eine leere Antwort hinter einer Wolke ihres Turns ist unsichtbar (samt Abstand), bis ihr erster Text kommt: die
+     * Wolken zeigen, woran gearbeitet wird, eine Platzhalterblase darunter wäre eine Antwort, die es noch nicht gibt.
+     */
+    private void showUnlessPending(RowState state, TranscriptEntry entry) {
+        if (state == null) {
+            return;
+        }
+        boolean visible = !entry.isPendingBehindActivity();
+        state.row.setVisible(visible);
+        int index = messageList.getComponentZOrder(state.row);
+        if (index >= 0 && index + 1 < messageList.getComponentCount()) {
+            Component next = messageList.getComponent(index + 1);
+            if (!(next instanceof BubbleMessageRow) && !(next instanceof JLabel)) {
+                next.setVisible(visible); // der Abstand hinter der Zeile
+            }
+        }
+    }
+
+    /** Ob die Zeile eines Eintrags zu sehen ist (für Tests); {@code false} auch ohne Zeile. */
+    boolean isRowVisible(long entryId) {
+        RowState state = rows.get(entryId);
+        return state != null && state.row.isVisible();
+    }
+
     private void removeRowAndSpacer(JComponent row) {
         int index = messageList.getComponentZOrder(row);
         if (index < 0) {
@@ -302,6 +327,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         state.row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.add(state.row);
         messageList.add(spacer());
+        showUnlessPending(state, entry);
         if (entry.getAuthor() == TranscriptEntry.Author.USER
                 && (!entry.getAttachments().isEmpty() || !entry.getPages().isEmpty())) {
             addAttachmentsRow(entry);
@@ -611,6 +637,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
                 state.header = header;
             }
         }
+        showUnlessPending(rows.get(entry.getId()), entry);
         if (entry.hasSources() && !sourceRows.containsKey(entry.getId())) {
             addSourcesRow(entry);
         }

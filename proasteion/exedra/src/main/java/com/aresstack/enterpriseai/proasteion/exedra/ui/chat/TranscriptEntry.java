@@ -45,6 +45,8 @@ public final class TranscriptEntry {
     private String activityTitle = "";
     private String activityKind = "";
     private String activitySummary = "";
+    /** Die laufende Antwort steht hinter einer Wolke ihres Turns (nur {@link Author#ASSISTANT}). */
+    private boolean behindActivity;
 
     TranscriptEntry(long id, Author author, long createdAtMillis, String text, State state) {
         this.id = id;
@@ -85,6 +87,18 @@ public final class TranscriptEntry {
      */
     public String getActivity() {
         return activity;
+    }
+
+    /**
+     * Eine noch leere, laufende Antwort, vor der in ihrem Turn schon eine Wolke steht: Die Oberfläche zeigt sie erst
+     * mit dem ersten Antworttext (die Wolken zeigen, woran gearbeitet wird; keine Platzhalterblase darunter).
+     */
+    public boolean isPendingBehindActivity() {
+        return behindActivity && author == Author.ASSISTANT && state == State.STREAMING && text.length() == 0;
+    }
+
+    void setBehindActivity(boolean value) {
+        this.behindActivity = value;
     }
 
     /**
