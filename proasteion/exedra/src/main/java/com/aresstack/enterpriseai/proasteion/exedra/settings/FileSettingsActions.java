@@ -87,6 +87,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private final Executor ui;
     private final ModelCatalogLoader models;
     private final LocalVoiceInstaller voices;
+    private static final java.util.logging.Logger NLP_LOG =
+            java.util.logging.Logger.getLogger(FileSettingsActions.class.getName());
     private final NlpModels nlpModels;
     /** Stimmen je TTS-Modell (Auswahl „Stimme“ im Einstellungsdialog). */
     private final TtsVoiceCatalog ttsVoiceCatalog = TtsVoiceCatalog.bundled();
@@ -780,6 +782,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
                         message = source == ResourceInstaller.Source.ARCHIVE ? "✓ aus dem Ressourcen-Archiv installiert"
                                 : "✓ installiert";
                     } catch (IOException | RuntimeException e) {
+                        NLP_LOG.log(java.util.logging.Level.WARNING,
+                                "OpenNLP-Modell " + entry.id() + " nicht installiert", e);
                         ok = false;
                         message = "Installation fehlgeschlagen: " + (e.getMessage() == null
                                 ? e.getClass().getSimpleName() : e.getMessage());

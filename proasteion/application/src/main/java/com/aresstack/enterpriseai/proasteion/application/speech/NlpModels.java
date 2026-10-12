@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.speech;
 
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
+import com.aresstack.enterpriseai.proasteion.application.resources.DownloadRetry;
 import com.aresstack.enterpriseai.proasteion.application.resources.LocalResourceSource;
 import com.aresstack.enterpriseai.proasteion.application.resources.ResourceDescriptor;
 import com.aresstack.enterpriseai.proasteion.application.resources.ResourceInstaller;
@@ -141,12 +142,16 @@ public final class NlpModels {
     }
 
     NlpModels(Path root, List<Entry> entries, LocalResourceSource local) {
+        this(root, entries, local, DownloadRetry.once());
+    }
+
+    NlpModels(Path root, List<Entry> entries, LocalResourceSource local, DownloadRetry retry) {
         if (root == null) {
             throw new IllegalArgumentException("root must not be null");
         }
         this.root = root;
         this.entries = Collections.unmodifiableList(new ArrayList<Entry>(entries));
-        this.installer = new ResourceInstaller(local);
+        this.installer = new ResourceInstaller(local, retry);
     }
 
     /** Die Liste aus {@code nlp-models.properties}, abgelegt unter {@code root}, ohne Ressourcen-Archiv. */
@@ -183,7 +188,8 @@ public final class NlpModels {
                     Long.parseLong(p.getProperty(key + "size", "-1").trim())));
         }
         return new NlpModels(root, entries, new LocalResourceSource(archiveDirectories,
-                p.getProperty("archive.prefix"), p.getProperty("archive.manifest")));
+                p.getProperty("archive.prefix"), p.getProperty("archive.manifest")),
+                DownloadRetry.parse(p.getProperty("download.attempts"), p.getProperty("download.retryPausesMillis")));
     }
 
     public List<Entry> entries() {

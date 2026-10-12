@@ -32,10 +32,6 @@ public final class ResourceInstaller {
     /** Datei im Zielverzeichnis mit dem SHA-256 des zuletzt installierten Bundles. */
     static final String BUNDLE_MARKER = "resource-bundle.properties";
     private static final int MAX_REDIRECTS = 5;
-    /** Downloads per resource: a broken transfer or a mirror answering with something else gets one more try. */
-    private static final int DOWNLOAD_ATTEMPTS = 2;
-    /** Pause before the second try, so a briefly overloaded mirror can recover. */
-    private static final long RETRY_PAUSE_MILLIS = 2000L;
 
     private static final Logger LOG = Logger.getLogger(ResourceInstaller.class.getName());
 
@@ -81,9 +77,16 @@ public final class ResourceInstaller {
     }
 
     private final LocalResourceSource local;
+    private final DownloadRetry retry;
 
     public ResourceInstaller(LocalResourceSource local) {
+        this(local, DownloadRetry.once());
+    }
+
+    /** @param retry Wiederholung nach vorübergehenden Netzwerkfehlern */
+    public ResourceInstaller(LocalResourceSource local, DownloadRetry retry) {
         this.local = local == null ? LocalResourceSource.none() : local;
+        this.retry = retry == null ? DownloadRetry.once() : retry;
     }
 
     /** Ob die Ressource aus dem Bundle käme. */
@@ -109,23 +112,23 @@ public final class ResourceInstaller {
         if (network == null || resource.url() == null) {
             throw new IOException(resource.file() + ": nicht im Ressourcen-Archiv und kein Download möglich");
         }
-        IOException last = null;
-        for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+        for (int attempt = 1; ; attempt++) {
             try {
-                if (attempt > 1) {
-                    Thread.sleep(RETRY_PAUSE_MILLIS);
-                }
                 return new Fetched(downloadVerified(resource, network), Source.DOWNLOAD);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IOException(resource.file() + ": Download unterbrochen", interrupted);
             } catch (IOException failed) {
-                last = failed;
-                LOG.log(Level.WARNING, "Download " + attempt + " von " + DOWNLOAD_ATTEMPTS + " fehlgeschlagen: "
-                        + failed.getMessage());
+                if (attempt >= retry.attempts() || !DownloadRetry.isTransient(failed)) {
+                    throw failed;
+                }
+                LOG.log(Level.WARNING, resource.file() + ": Versuch " + attempt + " von " + retry.attempts()
+                        + " fehlgeschlagen, neuer Versuch: " + failed);
+                try {
+                    Thread.sleep(retry.pauseBefore(attempt + 1));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException(resource.file() + ": Download unterbrochen", interrupted);
+                }
             }
         }
-        throw last;
     }
 
     private static byte[] downloadVerified(ResourceDescriptor resource, NetworkServices network) throws IOException {
@@ -252,7 +255,9 @@ public final class ResourceInstaller {
                     continue;
                 }
                 if (code != HttpURLConnection.HTTP_OK) {
-                    throw new IOException("HTTP " + code + " von " + target.getHost());
+                    String message = "HTTP " + code + " von " + target.getHost();
+                    throw DownloadRetry.TransientHttpException.applies(code)
+                            ? new DownloadRetry.TransientHttpException(message) : new IOException(message);
                 }
                 try (InputStream in = connection.getInputStream()) {
                     ByteArrayOutputStream out = new ByteArrayOutputStream();
