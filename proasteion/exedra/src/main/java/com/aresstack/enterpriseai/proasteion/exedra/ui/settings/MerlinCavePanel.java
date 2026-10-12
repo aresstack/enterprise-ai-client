@@ -3,32 +3,44 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.imageio.ImageIO;
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
-import javax.swing.JButton;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RadialGradientPaint;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.event.ActionEvent;
 import java.awt.event.HierarchyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Displays Merlin's cave with a lightweight, purely decorative Java2D overlay.
- * The image is never modified and no AI service is contacted.
+ * Merlin's crystal cave: an image-relative, animated comic scene, without external services.
+ * Every visual and interactive element is painted on top of the original illustration.
  */
 public final class MerlinCavePanel extends JPanel {
 
@@ -46,35 +58,15 @@ public final class MerlinCavePanel extends JPanel {
         add(title, BorderLayout.NORTH);
 
         BufferedImage image = loadCaveImage();
-        final CrystalScene scene = image == null ? null : new CrystalScene(image);
-        JPanel picture = scene == null ? missingImage(palette) : scene;
+        JPanel picture = image == null ? missingImage(palette) : new CrystalScene(image);
         picture.setPreferredSize(new Dimension(480, 280));
         add(picture, BorderLayout.CENTER);
 
-        JPanel footer = new JPanel(new BorderLayout(0, 8));
-        footer.setOpaque(false);
         JLabel status = new JLabel("Aufenthaltsort: Kristallhöhle  ·  Status: Standby seit Einführung der KI",
                 SwingConstants.CENTER);
         status.setForeground(palette.getInk());
-        footer.add(status, BorderLayout.NORTH);
-
-        JButton ask = new JButton("Merlin um Rat fragen");
-        ask.addActionListener(event -> {
-            if (scene != null && scene.isShowing()) {
-                scene.awaken(() -> showMerlinReply());
-            } else {
-                showMerlinReply();
-            }
-        });
-        footer.add(ask, BorderLayout.SOUTH);
-        add(footer, BorderLayout.SOUTH);
-    }
-
-    private void showMerlinReply() {
-        JOptionPane.showMessageDialog(this,
-                "Ach, jetzt erinnert ihr euch wieder an mich?\n"
-                + "Ruft mich, wenn eure künstliche Intelligenz versagt.",
-                "Merlin antwortet", JOptionPane.INFORMATION_MESSAGE);
+        status.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0));
+        add(status, BorderLayout.SOUTH);
     }
 
     private BufferedImage loadCaveImage() {
@@ -95,72 +87,168 @@ public final class MerlinCavePanel extends JPanel {
     }
 
     /**
-     * Paints light in image-relative coordinates, preserving alignment at every window size.
-     * The overlay is clipped to the scaled, centered image rectangle, so glints stay on their crystals.
+     * Coordinates refer to the actual 1536 x 839 illustration. Painting is transformed into
+     * image space, so it stays aligned when Swing letterboxes or scales the image.
      */
     private static final class CrystalScene extends JPanel {
         private static final long serialVersionUID = 1L;
         private static final int FRAME_DELAY_MS = 40;
-        private static final long AWAKEN_DURATION_NS = 1100000000L;
+        private static final long AWAKEN_DURATION_NS = 1250000000L;
+        private static final long SPEECH_DELAY_NS = 250000000L;
+        private static final long SPEECH_FADE_NS = 350000000L;
+        private static final long SPEECH_HOLD_NS = 6800000000L;
+        private static final long SPEECH_OUT_NS = 800000000L;
 
-        // Place glints on crystal tips of merlin-crystal-cave.jpg (fractions of image width/height);
-        // keep Merlin's face, the hologram text, the cave entrance and the floor dark.
+        // Actual crystals and glint-friendly facets (normalized to the original image).
         private static final double[][] CRYSTALS = {
-                {0.075, 0.167, 0.78}, {0.065, 0.715, 0.95}, {0.098, 0.560, 0.72},
-                {0.156, 0.632, 0.80}, {0.228, 0.680, 0.70}, {0.270, 0.540, 0.85},
-                {0.423, 0.036, 0.75}, {0.469, 0.477, 0.90}, {0.544, 0.215, 0.85},
-                {0.641, 0.131, 1.00}, {0.710, 0.215, 0.92}, {0.785, 0.298, 0.88},
-                {0.814, 0.513, 0.82}, {0.892, 0.500, 0.78}, {0.918, 0.274, 0.80},
-                {0.911, 0.787, 0.87}, {0.670, 0.820, 0.76}
+                {0.078, 0.159, 0.88}, {0.094, 0.470, 0.86}, {0.059, 0.664, 0.90},
+                {0.117, 0.778, 0.75}, {0.191, 0.464, 0.71}, {0.222, 0.672, 0.72},
+                {0.455, 0.435, 0.90}, {0.433, 0.638, 0.82}, {0.547, 0.180, 1.00},
+                {0.646, 0.075, 1.15}, {0.714, 0.187, 1.05}, {0.791, 0.282, 0.91},
+                {0.828, 0.648, 0.94}, {0.773, 0.659, 0.84}, {0.721, 0.768, 0.78},
+                {0.969, 0.540, 0.80}, {0.872, 0.789, 0.93}, {0.938, 0.808, 0.75}
         };
+
+        private static final String[] REPLIES = {
+                "Ach, jetzt erinnert ihr euch wieder an mich?",
+                "Eure KI hat wohl die Zauberformel vergessen.",
+                "Ich bin nicht veraltet. Ich bin legendär.",
+                "Nur keine Panik. Ich habe schon schlimmere Bugs gesehen."
+        };
+
+        // Merlin's head, robe and chair are at approximately x=840..1040, y=355..675.
+        private static final double MERLIN_X = 944.0;
+        private static final double MERLIN_Y = 522.0;
+        private static final double MERLIN_RADIUS_X = 124.0;
+        private static final double MERLIN_RADIUS_Y = 183.0;
+        private static final Color OUTLINE = new Color(30, 35, 62);
+        private static final Color CREAM = new Color(255, 250, 226);
+        private static final Color MAGIC = new Color(110, 232, 255);
 
         private final BufferedImage image;
         private final Timer timer;
-        private final long origin = System.nanoTime();
-        private long awakenStart = -1L;
-        private Runnable afterAwaken;
+        private final long originNs = System.nanoTime();
+        private boolean hovered;
+        private long awakenStartNs = -1L;
+        private long speechStartNs = -1L;
+        private int replyIndex = -1;
 
         private CrystalScene(BufferedImage image) {
             this.image = image;
             setOpaque(false);
-            timer = new Timer(FRAME_DELAY_MS, event -> {
-                if (awakenStart > 0L
-                        && System.nanoTime() - awakenStart >= AWAKEN_DURATION_NS) {
-                    awakenStart = -1L;
-                    Runnable callback = afterAwaken;
-                    afterAwaken = null;
-                    if (callback != null) {
-                        callback.run();
-                    }
-                }
-                repaint();
-            });
+            setFocusable(true);
+            getAccessibleContext().setAccessibleName("Merlin um Rat fragen");
+            getAccessibleContext().setAccessibleDescription(
+                    "Interaktive Kristallhöhle. Merlin mit Maus anklicken oder mit Eingabe aktivieren.");
+
+            timer = new Timer(FRAME_DELAY_MS, event -> repaint());
+            timer.setCoalesce(true);
             addHierarchyListener(event -> {
                 if ((event.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0) {
-                    if (isShowing()) {
-                        timer.start();
-                    } else {
-                        timer.stop();
-                        awakenStart = -1L;
-                        afterAwaken = null;
+                    syncAnimation();
+                }
+            });
+
+            addMouseMotionListener(new MouseMotionAdapter() {
+                @Override
+                public void mouseMoved(MouseEvent event) {
+                    setHover(isMerlinHit(event.getPoint()));
+                }
+            });
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseExited(MouseEvent event) {
+                    setHover(false);
+                }
+
+                @Override
+                public void mousePressed(MouseEvent event) {
+                    if (event.getButton() == MouseEvent.BUTTON1
+                            && isMerlinHit(event.getPoint())) {
+                        requestFocusInWindow();
+                        askMerlin();
                     }
+                }
+            });
+            getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke("ENTER"), "askMerlin");
+            getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke("SPACE"), "askMerlin");
+            getActionMap().put("askMerlin", new AbstractAction() {
+                @Override
+                public void actionPerformed(ActionEvent event) {
+                    askMerlin();
                 }
             });
         }
 
-        private void awaken(Runnable callback) {
-            if (awakenStart > 0L) {
+        @Override
+        public void addNotify() {
+            super.addNotify();
+            syncAnimation();
+        }
+
+        @Override
+        public void removeNotify() {
+            timer.stop();
+            hovered = false;
+            super.removeNotify();
+        }
+
+        private void syncAnimation() {
+            if (isShowing()) {
+                timer.start();
+            } else {
+                timer.stop();
+                hovered = false;
+            }
+        }
+
+        private void setHover(boolean value) {
+            if (hovered == value) {
                 return;
             }
-            afterAwaken = callback;
-            awakenStart = System.nanoTime();
+            hovered = value;
+            setCursor(value ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                    : Cursor.getDefaultCursor());
             repaint();
+        }
+
+        private boolean isMerlinHit(java.awt.Point point) {
+            Rectangle frame = imageBounds();
+            if (frame.width <= 0 || frame.height <= 0 || !frame.contains(point)) {
+                return false;
+            }
+            double imageX = (point.x - frame.x) * image.getWidth() / frame.getWidth();
+            double imageY = (point.y - frame.y) * image.getHeight() / frame.getHeight();
+            double dx = (imageX - MERLIN_X) / MERLIN_RADIUS_X;
+            double dy = (imageY - MERLIN_Y) / MERLIN_RADIUS_Y;
+            return dx * dx + dy * dy <= 1.0;
+        }
+
+        private void askMerlin() {
+            long now = System.nanoTime();
+            awakenStartNs = now;
+            speechStartNs = now + SPEECH_DELAY_NS;
+            replyIndex = (replyIndex + 1) % REPLIES.length;
+            repaint();
+        }
+
+        private Rectangle imageBounds() {
+            if (getWidth() <= 0 || getHeight() <= 0) {
+                return new Rectangle();
+            }
+            double scale = Math.min((double) getWidth() / image.getWidth(),
+                    (double) getHeight() / image.getHeight());
+            int width = Math.max(1, (int) Math.round(image.getWidth() * scale));
+            int height = Math.max(1, (int) Math.round(image.getHeight() * scale));
+            return new Rectangle((getWidth() - width) / 2, (getHeight() - height) / 2,
+                    width, height);
         }
 
         @Override
         protected void paintComponent(Graphics graphics) {
             super.paintComponent(graphics);
-            if (getWidth() <= 0 || getHeight() <= 0) {
+            Rectangle frame = imageBounds();
+            if (frame.width <= 0 || frame.height <= 0) {
                 return;
             }
             Graphics2D g = (Graphics2D) graphics.create();
@@ -168,18 +256,19 @@ public final class MerlinCavePanel extends JPanel {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                         RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                double scale = Math.min((double) getWidth() / image.getWidth(),
-                        (double) getHeight() / image.getHeight());
-                int width = (int) Math.round(image.getWidth() * scale);
-                int height = (int) Math.round(image.getHeight() * scale);
-                int x = (getWidth() - width) / 2;
-                int y = (getHeight() - height) / 2;
-                g.drawImage(image, x, y, width, height, this);
+                g.drawImage(image, frame.x, frame.y, frame.width, frame.height, this);
 
-                Graphics2D overlay = (Graphics2D) g.create(x, y, width, height);
+                Graphics2D overlay = (Graphics2D) g.create(frame.x, frame.y, frame.width, frame.height);
                 try {
-                    overlay.clipRect(0, 0, width, height);
-                    paintCrystalLights(overlay, width, height);
+                    overlay.clipRect(0, 0, frame.width, frame.height);
+                    overlay.scale(frame.width / (double) image.getWidth(),
+                            frame.height / (double) image.getHeight());
+                    long now = System.nanoTime();
+                    drawCrystalLights(overlay, now);
+                    if (hovered || isFocusOwner()) {
+                        drawMerlinHover(overlay);
+                    }
+                    drawSpeechBubble(overlay, now);
                 } finally {
                     overlay.dispose();
                 }
@@ -188,48 +277,168 @@ public final class MerlinCavePanel extends JPanel {
             }
         }
 
-        private void paintCrystalLights(Graphics2D g, int width, int height) {
-            double seconds = (System.nanoTime() - origin) / 1000000000.0;
+        private void drawCrystalLights(Graphics2D g, long now) {
+            double seconds = (now - originNs) / 1000000000.0;
             double surge = 0.0;
-            if (awakenStart > 0L) {
-                double progress = Math.min(1.0,
-                        (double) (System.nanoTime() - awakenStart) / AWAKEN_DURATION_NS);
-                surge = Math.sin(Math.PI * progress);
-            }
-            double unit = Math.max(1.0, Math.min(width, height) / 360.0);
-            for (int i = 0; i < CRYSTALS.length; i++) {
-                double[] crystal = CRYSTALS[i];
-                // Different slow rhythms create intermittent rather than synchronized sparkles.
-                double wave = Math.sin(seconds * (0.75 + (i % 4) * 0.13) + i * 2.43);
-                double pulse = Math.pow(Math.max(0.0, wave), 8.0);
-                double strength = Math.min(1.0, (0.12 + 0.82 * pulse + surge * 0.8)
-                        * crystal[2]);
-                double cx = crystal[0] * width;
-                double cy = crystal[1] * height;
-                float radius = (float) ((12.0 + 6.0 * crystal[2]) * unit);
-                float alpha = (float) (0.22 * strength);
-                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
-                g.setPaint(new RadialGradientPaint(new Point2D.Double(cx, cy), radius,
-                        new float[] {0f, 0.35f, 1f},
-                        new Color[] {new Color(235, 251, 255),
-                                new Color(111, 198, 255, 140),
-                                new Color(111, 198, 255, 0)}));
-                g.fillOval((int) (cx - radius), (int) (cy - radius),
-                        (int) (radius * 2), (int) (radius * 2));
-
-                if (pulse > 0.24 || surge > 0.15) {
-                    float glint = (float) Math.min(0.9, (pulse + surge) * 0.76);
-                    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, glint));
-                    g.setColor(new Color(242, 252, 255));
-                    g.setStroke(new BasicStroke((float) Math.max(0.7, unit * 0.8),
-                            BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                    double ray = (3.0 + 5.0 * strength) * unit;
-                    g.drawLine((int) (cx - ray), (int) cy, (int) (cx + ray), (int) cy);
-                    g.drawLine((int) cx, (int) (cy - ray * 1.4),
-                            (int) cx, (int) (cy + ray * 1.4));
+            if (awakenStartNs > 0L) {
+                double elapsed = (double) (now - awakenStartNs) / AWAKEN_DURATION_NS;
+                if (elapsed < 1.0) {
+                    surge = Math.sin(Math.PI * Math.max(0.0, elapsed));
                 }
             }
+            for (int i = 0; i < CRYSTALS.length; i++) {
+                double[] c = CRYSTALS[i];
+                double cx = c[0] * image.getWidth();
+                double cy = c[1] * image.getHeight();
+                double phase = seconds * (1.4 + (i % 4) * 0.19) + i * 2.12;
+                double wave = (1.0 + Math.sin(phase)) / 2.0;
+                double pulse = wave * wave;
+                double strength = Math.min(1.0, (0.24 + pulse * 0.8 + surge * 0.95) * c[2]);
+                float radius = (float) (28.0 + c[2] * 36.0 + surge * 14.0);
+                float alpha = (float) Math.min(0.8, 0.25 + 0.55 * strength);
+
+                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+                g.setPaint(new RadialGradientPaint(new Point2D.Double(cx, cy), radius,
+                        new float[] {0f, 0.22f, 0.64f, 1f},
+                        new Color[] {new Color(255, 255, 255, 245),
+                                new Color(160, 244, 255, 175),
+                                new Color(104, 167, 255, 65),
+                                new Color(104, 167, 255, 0)}));
+                g.fill(new Ellipse2D.Double(cx - radius, cy - radius, radius * 2, radius * 2));
+
+                if (pulse > 0.67 || (surge > 0.22 && i % 3 == 0)) {
+                    float glintAlpha = (float) Math.min(1.0,
+                            (pulse * 0.80 + surge * 0.82) * c[2]);
+                    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, glintAlpha));
+                    g.setColor(Color.WHITE);
+                    g.setStroke(new BasicStroke(3.2f, BasicStroke.CAP_ROUND,
+                            BasicStroke.JOIN_ROUND));
+                    double ray = (12.0 + 11.0 * strength + 5.0 * surge);
+                    g.drawLine((int) (cx - ray), (int) cy, (int) (cx + ray), (int) cy);
+                    g.drawLine((int) cx, (int) (cy - ray * 1.25),
+                            (int) cx, (int) (cy + ray * 1.25));
+                    g.setColor(new Color(255, 255, 245));
+                    g.fill(new Ellipse2D.Double(cx - 3.8, cy - 3.8, 7.6, 7.6));
+                }
+            }
+            if (surge > 0.0) {
+                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
+                        (float) (0.10 * surge)));
+                g.setColor(MAGIC);
+                g.fillRect(0, 0, image.getWidth(), image.getHeight());
+            }
             g.setComposite(AlphaComposite.SrcOver);
+        }
+
+        private void drawMerlinHover(Graphics2D g) {
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.70f));
+            g.setColor(MAGIC);
+            g.setStroke(new BasicStroke(4.0f, BasicStroke.CAP_ROUND,
+                    BasicStroke.JOIN_ROUND, 10f, new float[] {12f, 9f}, 0f));
+            g.draw(new Ellipse2D.Double(MERLIN_X - MERLIN_RADIUS_X, MERLIN_Y - MERLIN_RADIUS_Y,
+                    MERLIN_RADIUS_X * 2, MERLIN_RADIUS_Y * 2));
+            g.setComposite(AlphaComposite.SrcOver);
+
+            String label = "Merlin um Rat fragen";
+            Font font = new Font(Font.SANS_SERIF, Font.BOLD, 29);
+            g.setFont(font);
+            FontMetrics metrics = g.getFontMetrics();
+            double padding = 26;
+            double w = metrics.stringWidth(label) + padding * 2;
+            double h = 53;
+            double x = Math.max(10, Math.min(image.getWidth() - w - 10, MERLIN_X - w / 2));
+            double y = 694;
+            RoundRectangle2D.Double outline = new RoundRectangle2D.Double(x, y, w, h, 22, 22);
+            g.setColor(new Color(16, 27, 53, 230));
+            g.fill(outline);
+            g.setStroke(new BasicStroke(3f));
+            g.setColor(new Color(125, 235, 255));
+            g.draw(outline);
+            g.setColor(Color.WHITE);
+            g.drawString(label, (float) (x + padding), (float) (y + 36));
+        }
+
+        private void drawSpeechBubble(Graphics2D g, long now) {
+            if (speechStartNs < 0L || replyIndex < 0 || now < speechStartNs) {
+                return;
+            }
+            long elapsed = now - speechStartNs;
+            long disappearAt = SPEECH_FADE_NS + SPEECH_HOLD_NS;
+            if (elapsed >= disappearAt + SPEECH_OUT_NS) {
+                speechStartNs = -1L;
+                return;
+            }
+            double alpha = elapsed < SPEECH_FADE_NS
+                    ? elapsed / (double) SPEECH_FADE_NS
+                    : elapsed > disappearAt
+                            ? 1.0 - (elapsed - disappearAt) / (double) SPEECH_OUT_NS
+                            : 1.0;
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
+                    (float) Math.min(1.0, Math.max(0.0, alpha))));
+            drawComicBubble(g, REPLIES[replyIndex]);
+            g.setComposite(AlphaComposite.SrcOver);
+        }
+
+        private void drawComicBubble(Graphics2D g, String reply) {
+            double x = image.getWidth() * 0.357;
+            double y = image.getHeight() * 0.291;
+            double width = image.getWidth() * 0.242;
+            Font font = new Font(Font.SANS_SERIF, Font.BOLD, 31);
+            g.setFont(font);
+            FontMetrics metrics = g.getFontMetrics();
+            List<String> lines = wrapLines(reply, metrics, width - 56);
+            double height = Math.max(137, lines.size() * 41 + 47);
+            double radius = 40;
+
+            // Rounded panel plus triangular tail, pointing towards Merlin's left shoulder.
+            RoundRectangle2D.Double shadow = new RoundRectangle2D.Double(x + 8, y + 9,
+                    width, height, radius, radius);
+            g.setColor(new Color(14, 18, 42, 100));
+            g.fill(shadow);
+            Path2D.Double tail = new Path2D.Double();
+            tail.moveTo(x + width - 73, y + height - 6);
+            tail.lineTo(x + width + 25, y + height + 66);
+            tail.lineTo(x + width - 26, y + height - 77);
+            tail.closePath();
+            g.setColor(CREAM);
+            g.fill(tail);
+            g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(OUTLINE);
+            g.draw(tail);
+
+            RoundRectangle2D.Double shape = new RoundRectangle2D.Double(x, y,
+                    width, height, radius, radius);
+            g.setColor(CREAM);
+            g.fill(shape);
+            g.setColor(OUTLINE);
+            g.draw(shape);
+
+            g.setColor(OUTLINE);
+            float lineY = (float) (y + 40);
+            for (String line : lines) {
+                g.drawString(line, (float) (x + 28), lineY);
+                lineY += 41;
+            }
+        }
+
+        private List<String> wrapLines(String text, FontMetrics metrics, double maximumWidth) {
+            List<String> lines = new ArrayList<>();
+            StringBuilder current = new StringBuilder();
+            for (String word : text.split(" ")) {
+                String candidate = current.length() == 0 ? word : current + " " + word;
+                if (current.length() > 0 && metrics.stringWidth(candidate) > maximumWidth) {
+                    lines.add(current.toString());
+                    current.setLength(0);
+                    current.append(word);
+                } else {
+                    current.setLength(0);
+                    current.append(candidate);
+                }
+            }
+            if (current.length() > 0) {
+                lines.add(current.toString());
+            }
+            return lines;
         }
     }
 }
