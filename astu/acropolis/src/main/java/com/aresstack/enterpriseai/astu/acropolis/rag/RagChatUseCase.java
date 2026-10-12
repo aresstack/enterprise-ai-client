@@ -12,9 +12,11 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.planning.ConversationConte
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlan;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.ModelAnswerPlanningService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.ClarificationPort;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.LiteralEntityPreservationPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanContextFactory;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.UnresolvedTermQuestion;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.UserMessage;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
@@ -87,6 +89,7 @@ public final class RagChatUseCase {
     /** The answer planning step before every answer, read per turn; {@code null} = off. */
     private final Supplier<AnswerPlanningPolicy> planning;
     private final AnswerPlanContextFactory planContext = new AnswerPlanContextFactory();
+    private final LiteralEntityPreservationPolicy literalTerms = new LiteralEntityPreservationPolicy();
     /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
     private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
     /** Der zuletzt verwendete Wissenskontext je Konversation (nur mit Nachrecherche). */
@@ -318,7 +321,9 @@ public final class RagChatUseCase {
         if (reading.planRan() && !needsKnowledge(reading.answerPlan, policy)) {
             return withoutSearch(id, userText, options, listener, extraContext, via, progress);
         }
-        if (prior != null && !prior.isEmpty()) {
+        boolean resolving = reading.planned() && reading.answerPlan.resolvesTerm();
+        // A term to resolve is searched as said, not answered from what earlier messages found.
+        if (prior != null && !prior.isEmpty() && !resolving) {
             FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, origin,
                     analysis, prior.queries(), assembler.assemble(prior.hits()).text(), options);
             if (triage.isEnabled() && !verdict.isNeeded()) {
@@ -386,6 +391,9 @@ public final class RagChatUseCase {
             progress.contextCheckStarted();
             query = followUps.nextQuery(chat, history, userText, origin, all(priorQueries, queries),
                     assembler.assemble(hits).text(), options);
+            if (resolving && query != null && !reading.answerPlan.keepsResolvedTerm(query)) {
+                query = null; // another reading is a question to the user, never a search of its own
+            }
         }
         PromptContext context = failed ? PromptContext.empty(0) : assembler.assemble(hits);
         progress.contextReady(context.sources().size());
@@ -393,6 +401,10 @@ public final class RagChatUseCase {
         if (followUps.isEnabled() && !context.sources().isEmpty()) {
             // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
             contexts.put(id, new ConversationKnowledgeContext(allQueries, accepted(hits, context)));
+        }
+        if (resolving && !failed && context.sources().isEmpty() && !progress.isCancelled()) {
+            return unresolved(id, userText, options, listener, extraContext, reading, context, warnings, queries,
+                    hitCounts, reused);
         }
         String combined = join(join(context.text(), followUps.isEnabled()
                 ? searchNote(allQueries, !context.sources().isEmpty()) : null), extraContext);
@@ -583,7 +595,9 @@ public final class RagChatUseCase {
         if (reading.planRan() && !needsKnowledge(reading.answerPlan, planning)) {
             return withoutSearch(id, userText, options, listener, extraContext, via, progress);
         }
-        if (prior != null && !prior.isEmpty()) {
+        boolean resolving = reading.planned() && reading.answerPlan.resolvesTerm();
+        // A term to resolve is searched as said, not answered from what earlier messages found.
+        if (prior != null && !prior.isEmpty() && !resolving) {
             FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, origin,
                     analysis, prior.queries(), assembler.assemble(prior.hits()).text(), options);
             if (triage.isEnabled() && !verdict.isNeeded()) {
@@ -703,6 +717,9 @@ public final class RagChatUseCase {
                 break;
             }
             query = evidence.suggestion;
+            if (resolving && query != null && !reading.answerPlan.keepsResolvedTerm(query)) {
+                query = null; // another reading is a question to the user, never a search of its own
+            }
         }
         List<RetrievedChunk> chosen;
         String gap = null;
@@ -721,6 +738,10 @@ public final class RagChatUseCase {
         if (!context.sources().isEmpty()) {
             // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
             contexts.put(id, new ConversationKnowledgeContext(allQueries, accepted(chosen, context)));
+        }
+        if (resolving && !failed && context.sources().isEmpty() && !progress.isCancelled()) {
+            return unresolved(id, userText, options, listener, extraContext, reading, context, warnings, queries,
+                    hitCounts, reused);
         }
         String combined = join(join(join(context.text(), gap), searchNote(allQueries, !context.sources().isEmpty())),
                 extraContext);
@@ -809,11 +830,19 @@ public final class RagChatUseCase {
      * asks back instead of searching.
      */
     static boolean needsKnowledge(AnswerPlan plan, AnswerPlanningPolicy policy) {
-        return plan.nextAction() == NextAction.SEARCH_INTERNAL_KNOWLEDGE && plan.confidence() >= policy.askBelow();
+        if (plan.resolvesTerm()) {
+            return true;
+        }
+        // A literally kept term is searched first, however unsure the plan was about it.
+        return plan.nextAction() == NextAction.SEARCH_INTERNAL_KNOWLEDGE
+                && (plan.utteranceConfidence() >= policy.askBelow() || !plan.preservedTerms().isEmpty());
     }
 
-    /** The planned query, else the interpreted message, else the message itself. */
+    /** The term to resolve as said, else the planned query, else the interpreted message, else the message itself. */
     static String searchQuery(AnswerPlan plan, String userText) {
+        if (plan.resolvesTerm()) {
+            return plan.resolvedTerm();
+        }
         if (!plan.knowledgeQuery().isEmpty()) {
             return plan.knowledgeQuery();
         }
@@ -830,6 +859,19 @@ public final class RagChatUseCase {
                 new ClarificationPort(reading.answerPlan.clarificationQuestion()));
         return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
                 false);
+    }
+
+    /**
+     * The term to resolve was not found in the sources: ask back instead of answering from model knowledge, naming the
+     * other readings of the plan as questions. The question lands in the history like any answer.
+     */
+    private RagChatTurn unresolved(ChatConversationId id, String userText, ChatOptions options,
+                                   ChatTurnListener listener, String extraContext, TurnReading reading,
+                                   PromptContext context, List<RetrievalWarning> warnings, List<String> queries,
+                                   List<Integer> hitCounts, int reused) {
+        ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener,
+                new ClarificationPort(UnresolvedTermQuestion.of(reading.answerPlan)));
+        return new RagChatTurn(turn, true, context, warnings, false, queries, hitCounts, reused);
     }
 
     /**
@@ -856,8 +898,9 @@ public final class RagChatUseCase {
             progress.planningStarted();
         }
         List<ChatMessage> history = chat.conversation(id).messages();
-        AnswerPlan turn = new ModelAnswerPlanningService(chat, options).plan(
-                ConversationContext.of(history), new UserMessage(userText, origin), frame);
+        ConversationContext conversation = ConversationContext.of(history);
+        AnswerPlan turn = literalTerms.apply(new ModelAnswerPlanningService(chat, options).plan(
+                conversation, new UserMessage(userText, origin), frame), frame, conversation);
         String block = turn.isKnown() ? planContext.create(turn, policy) : null;
         analysisObserver.planned(userText, turn, block);
         if (progress != null) {

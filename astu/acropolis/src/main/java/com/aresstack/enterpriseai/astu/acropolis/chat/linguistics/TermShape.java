@@ -1,11 +1,11 @@
-package com.aresstack.enterpriseai.astu.acropolis.speech;
+package com.aresstack.enterpriseai.astu.acropolis.chat.linguistics;
 
 /**
  * The spelling of an acronym or identifier: at least two capitals that make up at least half of the letters, or
  * letters and digits mixed, or digits with several separators. Read from the characters only; says nothing about
  * meaning.
  */
-final class TermShape {
+public final class TermShape {
 
     private TermShape() {
     }
@@ -13,11 +13,11 @@ final class TermShape {
     /**
      * @param shouting whether the message is written mostly in capitals; then capitals mark no acronym
      */
-    static boolean isAcronymOrIdentifier(String token, boolean shouting) {
+    public static boolean isAcronymOrIdentifier(String token, boolean shouting) {
         return isIdentifier(token) || (!shouting && isAcronym(token));
     }
 
-    static boolean isAcronym(String token) {
+    public static boolean isAcronym(String token) {
         int letters = 0;
         int capitals = 0;
         for (int i = 0; i < token.length(); i++) {
@@ -34,7 +34,7 @@ final class TermShape {
         return capitals >= 2 && capitals * 2 >= letters;
     }
 
-    static boolean isIdentifier(String token) {
+    public static boolean isIdentifier(String token) {
         int letters = 0;
         int digits = 0;
         int separators = 0;
@@ -53,7 +53,7 @@ final class TermShape {
         return digits > 0 && token.length() >= 3 && (letters > 0 || separators >= 2);
     }
 
-    static int letters(String token) {
+    public static int letters(String token) {
         int letters = 0;
         for (int i = 0; i < token.length(); i++) {
             if (Character.isLetter(token.charAt(i))) {

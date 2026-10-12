@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.LinguisticAnal
 import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.LinguisticFrame;
 import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.LinguisticToken;
 import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.SentenceType;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.TermShape;
 import com.aresstack.enterpriseai.speech.api.TaggedToken;
 import com.aresstack.enterpriseai.speech.api.WordClass;
 

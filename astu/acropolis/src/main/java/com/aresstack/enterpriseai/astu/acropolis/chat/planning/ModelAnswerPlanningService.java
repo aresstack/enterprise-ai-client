@@ -42,37 +42,56 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
             + "weder zur Nachricht noch zum Verlauf, rekonstruiere die wahrscheinlich gemeinte Nachricht aus dem "
             + "Zusammenhang und behandle das auffällige Wort als vermutlichen Erkennungsfehler, nicht als neuen "
             + "Begriff.\n"
+            + "Modelliere Unsicherheit, statt sie zu beseitigen. Trenne zwei Fragen: Was hat der Nutzer gesagt "
+            + "(utteranceConfidence), und worauf verweist der genannte Begriff (resolutionConfidence)? Eine Abkürzung "
+            + "oder Kennung (auch klein geschrieben im Diktat) ist eine mögliche Äußerung, kein Fehler: Schreibe sie "
+            + "nie in eine bekanntere um, nur weil dir diese plausibler erscheint. Sie bleibt in interpretedText und "
+            + "literalTarget, wie sie dasteht; eine andere Lesart gehört nur nach alternativeInterpretations. Kam der "
+            + "Begriff schon früher im Gespräch vor, spricht das zusätzlich für die wörtliche Lesart.\n"
             + "Antworte ausschließlich mit einem JSON-Objekt dieser Form:\n"
-            + "{\"interpretedText\": \"\", \"intent\": \"QUESTION\", \"target\": \"\", \"targetKind\": \"NONE\", "
+            + "{\"interpretedText\": \"\", \"intent\": \"QUESTION\", \"target\": \"\", \"literalTarget\": \"\", "
+            + "\"targetKind\": \"NONE\", "
             + "\"informationNeed\": \"UNKNOWN\", \"organizationSpecificMeaningPossible\": false, "
             + "\"asrErrorLikely\": false, \"referencesPreviousAnswer\": false, \"corrections\": [{\"original\": \"\", \"interpretedAs\": \"\", "
-            + "\"reason\": \"\"}], \"ambiguity\": \"LOW\", \"confidence\": 0.0, \"nextAction\": \"ANSWER_DIRECTLY\", "
+            + "\"reason\": \"\"}], \"alternativeInterpretations\": [], \"ambiguity\": \"LOW\", \"utteranceConfidence\": 0.0, "
+            + "\"resolutionConfidence\": 0.0, \"nextAction\": \"ANSWER_DIRECTLY\", "
             + "\"knowledgeQuery\": \"\", \"clarificationQuestion\": \"\"}\n"
             + "- interpretedText: die wahrscheinlich gemeinte Nachricht. Korrigiere nur plausible Tipp- oder "
             + "Erkennungsfehler und löse Bezüge aus dem Verlauf auf; sonst übernimm sie unverändert. Erfinde nichts "
             + "hinzu.\n"
-            + "- corrections: nur tatsächlich geänderte Stellen, sonst [].\n"
+            + "- corrections: nur tatsächlich geänderte Stellen bei wahrscheinlichem Erkennungsfehler (der Satz ergibt "
+            + "so keinen Sinn, Satzbau und Verlauf deuten gemeinsam auf eine Falscherkennung), sonst []. Nie für eine "
+            + "Abkürzung oder Kennung, die so dastehen kann.\n"
             + "- referencesPreviousAnswer: true, wenn die Nachricht sich auf Begriffe oder Aussagen der letzten "
             + "Antwort des Assistenten bezieht.\n"
             + "- intent: GREETING, SMALL_TALK, QUESTION, REQUEST_DEFINITION, REQUEST_EXPLANATION, REQUEST_SEARCH, "
             + "TASK, ASSERTION, FEEDBACK oder UNKNOWN.\n"
             + "- target und targetKind: worum es geht; targetKind ist ACRONYM, IDENTIFIER, TERM, "
-            + "CURRENT_APPLICATION (dieses Programm), CONVERSATION_REFERENCE, TOPIC, NONE oder UNKNOWN.\n"
+            + "CURRENT_APPLICATION (dieses Programm), CONVERSATION_REFERENCE, TOPIC, NONE oder UNKNOWN. literalTarget: "
+            + "der Begriff genau so, wie er in der Nachricht steht.\n"
+            + "- alternativeInterpretations: andere mögliche Lesarten des Begriffs, etwa eine bekanntere Abkürzung; "
+            + "nur Hypothesen, sonst [].\n"
             + "- informationNeed: APPLICATION_HELP (Bedienung, Funktionen, Einstellungen dieses Programms), "
             + "INTERNAL_KNOWLEDGE (Wissen der Organisation), TERM_RESOLUTION (Bedeutung eines Begriffs, der im "
             + "aktuellen Kontext nicht eindeutig aufgelöst ist), GENERAL_KNOWLEDGE (allgemein eindeutiges Wissen), "
-            + "NO_INFORMATION_NEEDED (Gruß, Small Talk, Dank, Aussage, Meinung, Korrektur, Aufgabe ohne Wissensbedarf) "
+            + "NO_INFORMATION_NEEDED (Gruß, Small Talk, Dank, Aussage, Meinung, Aufgabe ohne Wissensbedarf) "
             + "oder UNKNOWN. Eine Aussage oder Meinung über einen Begriff braucht keine Information, auch wenn der "
-            + "Begriff unbekannt ist.\n"
+            + "Begriff unbekannt ist. Eine Korrektur, die eine Frage richtigstellt (\"ich meinte tatsächlich X\"), hat "
+            + "den Informationsbedarf dieser Frage, jetzt für X.\n"
             + "- organizationSpecificMeaningPossible: true, wenn ein Begriff (Abkürzung, Kennung, System-, Projekt- "
             + "oder Prozessname) in der Organisation des Nutzers eine eigene Bedeutung haben kann, auch wenn du eine "
             + "öffentliche Bedeutung kennst. Entscheidend ist nicht, ob du irgendeine Bedeutung kennst, sondern ob "
             + "der Begriff hier eindeutig aufgelöst ist.\n"
-            + "- ambiguity: LOW, MEDIUM oder HIGH. confidence: 0 bis 1, wie sicher deine Interpretation ist.\n"
+            + "- ambiguity: LOW, MEDIUM oder HIGH. utteranceConfidence: 0 bis 1, wie sicher du weißt, was der Nutzer "
+            + "gesagt und gemeint hat. resolutionConfidence: 0 bis 1, wie sicher du weißt, worauf der genannte Begriff "
+            + "hier verweist (niedrig für einen Begriff, der in der Organisation etwas Eigenes bedeuten kann).\n"
             + "- nextAction: ANSWER_DIRECTLY (kein zusätzliches Wissen nötig), USE_APPLICATION_HELP (Frage zu diesem "
             + "Programm), SEARCH_INTERNAL_KNOWLEDGE (Organisationswissen, ein hier nicht aufgelöster, möglicherweise "
-            + "organisationsspezifischer Begriff oder ein ausdrücklicher Suchauftrag), SEARCH_EXTERNAL_KNOWLEDGE "
-            + "(aktuelles Wissen von außerhalb der Organisation) oder ASK_CLARIFICATION.\n"
+            + "organisationsspezifischer Begriff oder ein ausdrücklicher Suchauftrag), RESOLVE_INTERNAL_TERM (die "
+            + "Äußerung ist klar, aber ein Begriff ist hier nicht aufgelöst und kann in der Organisation etwas Eigenes "
+            + "bedeuten: der Client sucht genau diesen Begriff, ohne Treffer fragt er nach und nennt dabei die "
+            + "Alternativen), SEARCH_EXTERNAL_KNOWLEDGE (aktuelles Wissen von außerhalb der Organisation) oder "
+            + "ASK_CLARIFICATION.\n"
             + "- ASK_CLARIFICATION nur, wenn verschiedene plausible Lesarten zu wesentlich unterschiedlichen Handlungen "
             + "oder Antworten führen und kein verfügbarer Schritt die Unklarheit auflösen kann, etwa ein Bezug, der "
             + "sich aus dem Verlauf nicht auflösen lässt, oder unklar ist, was getan werden soll. Ein unbekannter "
@@ -88,6 +107,7 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
             + "JSON-Objekt in der beschriebenen Form, ohne weiteren Text.";
 
     private static final Pattern NUMBER = Pattern.compile("-?\\d+(?:\\.\\d+)?");
+    private static final Pattern STRING = Pattern.compile("\"((?:\\\\.|[^\"\\\\])*)\"");
     private static final Pattern OBJECT = Pattern.compile("\\{[^{}]*\\}");
 
     private final ChatService chat;
@@ -200,6 +220,7 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
         String json = verdict.substring(start, end + 1);
         String intent = first(string(json, "intent"), string(json, "interpretedIntent"));
         String need = string(json, "informationNeed");
+        double utterance = number(json, "utteranceConfidence", number(json, "confidence", 0));
         String next = string(json, "nextAction");
         if (intent == null && need == null && next == null) {
             return AnswerPlan.failed(message.text(), message.origin(), "JSON without intent, informationNeed or "
@@ -218,7 +239,9 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
                 .likelySpeechRecognitionError(bool(json, "asrErrorLikely") || bool(json, "possibleAsrCorrection"))
                 .referencesPreviousAnswer(bool(json, "referencesPreviousAnswer"))
                 .ambiguity(constant(Ambiguity.class, string(json, "ambiguity"), Ambiguity.UNKNOWN))
-                .confidence(number(json, "confidence"))
+                .literalTarget(oneLine(string(json, "literalTarget")))
+                .utteranceConfidence(utterance)
+                .resolutionConfidence(number(json, "resolutionConfidence", utterance))
                 .knowledgeQuery(oneLine(string(json, "knowledgeQuery")))
                 .nextAction(constant(NextAction.class, next, NextAction.UNKNOWN))
                 .clarificationQuestion(oneLine(string(json, "clarificationQuestion")));
@@ -232,6 +255,14 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
                     turn.hint(new InterpretationHint(oneLine(original), oneLine(meant),
                             oneLine(string(entry.group(), "reason"))));
                 }
+            }
+        }
+        Matcher alternatives = Pattern.compile("\"alternativeInterpretations\"\\s*:\\s*\\[(.*?)\\]", Pattern.DOTALL)
+                .matcher(json);
+        if (alternatives.find()) {
+            Matcher entry = STRING.matcher(alternatives.group(1));
+            while (entry.find()) {
+                turn.alternativeInterpretation(oneLine(unescape(entry.group(1))));
             }
         }
         return turn.build();
@@ -251,15 +282,15 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
         return found.find() && Boolean.parseBoolean(found.group(1));
     }
 
-    private static double number(String json, String name) {
+    private static double number(String json, String name, double fallback) {
         Matcher found = Pattern.compile("\"" + name + "\"\\s*:\\s*\"?(" + NUMBER.pattern() + ")").matcher(json);
         if (!found.find()) {
-            return 0;
+            return fallback;
         }
         try {
             return Double.parseDouble(found.group(1));
         } catch (NumberFormatException e) {
-            return 0;
+            return fallback;
         }
     }
 

@@ -1063,6 +1063,153 @@ public class RagChatUseCaseTest {
     }
 
     /**
+     * Regression: a dictated abbreviation the conversation already used came back as a better-known one, and the
+     * answer explained that one from model knowledge. The rewrite is only a hypothesis now: the client searches the
+     * abbreviation as said, and without a hit asks back, naming the other reading as a question. No search for it, no
+     * answer from model knowledge.
+     */
+    @Test
+    public void aDictatedAbbreviationIsResolvedAsSaidAndTheRewriteOnlyAsked() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"intent\": \"REQUEST_DEFINITION\", \"confidence\": 0.9, "
+                + "\"nextAction\": \"ANSWER_DIRECTLY\"}");
+        chatPort.enqueueAnswer("Zu IAR habe ich nichts Genaues.");
+        RagChatUseCase planning = withPlanning(null, null);
+        awaitDone(planning.send(id, "Was ist IAR?", RagOptions.disabled(), null, listener(), null, null,
+                RetrievalProgress.none(), MessageOrigin.TYPED));
+
+        chatPort.enqueueAnswer("{\"interpretedText\": \"Was ist eine API?\", \"intent\": \"REQUEST_DEFINITION\", "
+                + "\"target\": \"API\", \"targetKind\": \"ACRONYM\", \"informationNeed\": \"GENERAL_KNOWLEDGE\", "
+                + "\"asrErrorLikely\": true, \"corrections\": [{\"original\": \"iar\", \"interpretedAs\": \"API\", "
+                + "\"reason\": \"bekannter\"}], \"confidence\": 0.7, \"nextAction\": \"ANSWER_DIRECTLY\"}");
+        embeddings.on("IAR", 0f, 1f, 0f);
+        RagChatTurn turn = planning.send(id, "was ist iar", RagOptions.enabled()
+                        .restrictedTo(Collections.singleton(SourceAddress.of("confluence"))), null, listener(), null,
+                null, RetrievalProgress.none(), MessageOrigin.SPEECH_TRANSCRIPT);
+        awaitDone(turn);
+
+        assertEquals("searched as said, never the rewrite", Collections.singletonList("IAR"), turn.queries());
+        assertEquals("first turn, its answer, the plan: no answer from model knowledge", 3,
+                chatPort.requests().size());
+        List<ChatMessage> history = chat.conversation(id).messages();
+        assertEquals(ChatMessage.user("was ist iar"), history.get(2));
+        assertEquals(ChatMessage.assistant("Ich habe in den internen Quellen nichts zu „IAR“ gefunden. Meintest du "
+                + "vielleicht „API“, oder steht „IAR“ für etwas anderes?"), history.get(3));
+    }
+
+    /**
+     * Acceptance: the analysis lists the abbreviation as a candidate, the plan replaces it in the interpreted message
+     * or in the search query. The client overrules the plan and resolves the abbreviation as said; the replacement is
+     * only named in the question, never searched.
+     */
+    @Test
+    public void anAbbreviationCandidateOverrulesAPlannedReplacement() throws Exception {
+        LinguisticAnalyzer analysis = new LinguisticAnalyzer() {
+            @Override
+            public LinguisticFrame analyze(String text, MessageOrigin origin) {
+                return LinguisticFrame.builder(origin).acronymCandidate("IAR").build();
+            }
+
+            @Override
+            public LinguisticFrame analyzeWithoutModels(String text, MessageOrigin origin) {
+                return analyze(text, origin);
+            }
+        };
+        embeddings.on("IAR", 0f, 1f, 0f);
+        String[] plans = {
+                "{\"interpretedText\": \"Was ist eine API?\", \"intent\": \"REQUEST_DEFINITION\", "
+                        + "\"informationNeed\": \"GENERAL_KNOWLEDGE\", \"confidence\": 0.9, "
+                        + "\"nextAction\": \"ANSWER_DIRECTLY\"}",
+                "{\"interpretedText\": \"Was ist IAR?\", \"intent\": \"REQUEST_DEFINITION\", "
+                        + "\"informationNeed\": \"INTERNAL_KNOWLEDGE\", \"confidence\": 0.9, "
+                        + "\"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\", \"knowledgeQuery\": \"API\"}"};
+        for (String plan : plans) {
+            ChatConversationId id = chat.openConversation();
+            int before = chatPort.requests().size();
+            chatPort.enqueueAnswer(plan);
+
+            RagChatTurn turn = withPlanning(analysis, null).send(id, "Was ist IAR?", RagOptions.enabled()
+                            .restrictedTo(Collections.singleton(SourceAddress.of("confluence"))), null, listener(),
+                    null, null, RetrievalProgress.none(), MessageOrigin.SPEECH_TRANSCRIPT);
+            awaitDone(turn);
+
+            assertEquals(plan, Collections.singletonList("IAR"), turn.queries());
+            assertEquals("only the plan reached the model", before + 1, chatPort.requests().size());
+            assertEquals(ChatMessage.assistant("Ich habe in den internen Quellen nichts zu „IAR“ gefunden. Meintest "
+                    + "du vielleicht „API“, oder steht „IAR“ für etwas anderes?"), chat.conversation(id).messages()
+                    .get(1));
+        }
+    }
+
+    /**
+     * Regression: the user insists on the abbreviation after an answer about another one. The plan keeps it but answers
+     * from model knowledge, labelled as a correction or as general knowledge. The meaning is still open, so the client
+     * resolves the abbreviation internally first; a direct answer without the search is forbidden.
+     */
+    @Test
+    public void insistingOnAnAbbreviationResolvesItInternallyFirst() throws Exception {
+        embeddings.on("IAR", 0f, 1f, 0f);
+        String[] plans = {
+                "{\"intent\": \"FEEDBACK\", \"target\": \"IAR\", \"targetKind\": \"ACRONYM\", "
+                        + "\"informationNeed\": \"NO_INFORMATION_NEEDED\", \"confidence\": 0.95, "
+                        + "\"nextAction\": \"ANSWER_DIRECTLY\"}",
+                "{\"intent\": \"REQUEST_DEFINITION\", \"target\": \"IAR\", \"literalTarget\": \"IAR\", "
+                        + "\"targetKind\": \"ACRONYM\", \"informationNeed\": \"GENERAL_KNOWLEDGE\", "
+                        + "\"organizationSpecificMeaningPossible\": false, \"utteranceConfidence\": 0.95, "
+                        + "\"resolutionConfidence\": 0.9, \"nextAction\": \"ANSWER_DIRECTLY\"}"};
+        for (String plan : plans) {
+            ChatConversationId id = chat.openConversation();
+            chatPort.enqueueAnswer("{\"interpretedText\": \"Was ist eine API?\", \"intent\": \"REQUEST_DEFINITION\", "
+                    + "\"informationNeed\": \"GENERAL_KNOWLEDGE\", \"confidence\": 0.9, "
+                    + "\"nextAction\": \"ANSWER_DIRECTLY\"}");
+            chatPort.enqueueAnswer("Eine API ist eine Programmierschnittstelle.");
+            RagChatUseCase planning = withPlanning(null, null);
+            awaitDone(planning.send(id, "was ist iar", RagOptions.disabled(), null, listener(), null, null,
+                    RetrievalProgress.none(), MessageOrigin.SPEECH_TRANSCRIPT));
+            int before = chatPort.requests().size();
+
+            chatPort.enqueueAnswer(plan);
+            RagChatTurn turn = planning.send(id, "Nein, das hast du falsch verstanden. Ich meinte tatsächlich IAR.",
+                    RagOptions.enabled().restrictedTo(Collections.singleton(SourceAddress.of("confluence"))), null,
+                    listener(), null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
+            awaitDone(turn);
+
+            assertEquals(plan, Collections.singletonList("IAR"), turn.queries());
+            assertEquals("no answer from model knowledge", before + 1, chatPort.requests().size());
+            assertEquals(ChatMessage.assistant("Ich habe in den internen Quellen nichts zu „IAR“ gefunden. Was ist "
+                    + "mit „IAR“ gemeint?"), chat.conversation(id).messages().get(3));
+        }
+    }
+
+    /** A term the plan resolves is searched as said; with a hit the answer gets the sources and the other reading. */
+    @Test
+    public void aTermToResolveIsAnsweredFromItsHits() throws Exception {
+        KnowledgeResource qzx = resource("wiki:QZX", "wiki");
+        index.index(Collections.singletonList(entry(qzx, 0, "QZX ist die Abrechnungsstrecke für Reisekosten",
+                vector(SPACE_3D, 0, 1, 0))));
+        embeddings.on("QZX", 0f, 1f, 0f);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"interpretedText\": \"Was ist QZX?\", \"intent\": \"REQUEST_DEFINITION\", "
+                + "\"target\": \"QZX\", \"literalTarget\": \"QZX\", \"targetKind\": \"ACRONYM\", "
+                + "\"informationNeed\": \"TERM_RESOLUTION\", \"alternativeInterpretations\": [\"API\"], "
+                + "\"utteranceConfidence\": 0.95, \"resolutionConfidence\": 0.2, "
+                + "\"nextAction\": \"RESOLVE_INTERNAL_TERM\"}");
+        chatPort.enqueueAnswer("QZX ist die Abrechnungsstrecke.");
+
+        RagChatTurn turn = withPlanning(null, null).send(id, "Was ist QZX?", RagOptions.enabled(), null,
+                listener(), null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertEquals(Collections.singletonList("QZX"), turn.queries());
+        assertEquals(qzx, turn.sources().get(0).resource());
+        String answer = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(answer, answer.contains("Abrechnungsstrecke für Reisekosten"));
+        assertTrue(answer, answer.contains("alternative-interpretations: API (nur Hypothesen"));
+        assertTrue(answer, answer.contains("utterance-confidence: 0.95"));
+        assertTrue(answer, answer.contains("resolution-confidence: 0.20"));
+    }
+
+    /**
      * The plan is the only decision before the answer: an unreadable plan gets one repair request, then the answer
      * decides alone with the original and the analysis; no triage, no search, and the reason reaches the observer.
      */
