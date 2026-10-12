@@ -24,6 +24,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
@@ -360,6 +361,11 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         @Override
         public void load(final ReaderImage image, final Consumer<byte[]> done, final Consumer<String> failed) {
             load(image, done, failed, null);
+        }
+
+        @Override
+        public boolean downloadsUnlocked() {
+            return browse.downloadAccess(port) == DownloadAccess.UNLOCKED;
         }
 
         @Override

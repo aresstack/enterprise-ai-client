@@ -118,7 +118,10 @@ source.1.allowInsecureHttp=false
   Im Bild-Viewer schaltet „Gerendert“/„Original“ je draw.io-Bild um: „Gerendert“ (Standard) ist die Zeichnung
   aus den Diagrammdaten über REST, ohne `/download/`; „Original“ hängt `&view=original` an das Fragment und lädt nur
   die PNG-Vorschau. Scheitert das Original (etwa an der Einmalcode-Abfrage), zeigt der Viewer sofort wieder die
-  gerenderte Zeichnung und der Knopf heißt „Original (Anmeldung nötig)“. Gespeichert wird, was zu sehen ist:
+  gerenderte Zeichnung und der Knopf heißt „Original (Anmeldung nötig)“. Hat die Quelle Dateiabrufe schon per
+  Einmalcode freigeschaltet, zeigt der Viewer ohne eigene Wahl das Original zuerst; ist die Sitzung abgelaufen, fragt
+  er dann nicht, sondern zeigt die gerenderte Zeichnung. Die Code-Eingabe erscheint nur, wenn man „Original“
+  ausdrücklich wählt, im Bildbereich mit „Zurück zu Gerendert“. Gespeichert wird, was zu sehen ist:
   gerendert als `.svg`, Original als `.png`.
   Logzeilen (INFO): `[Confluence] draw.io: rendere Diagramm name=… page=… revision=…`, danach
   `[Confluence] draw.io: SVG erzeugt (… Bytes)` oder

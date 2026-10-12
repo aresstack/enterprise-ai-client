@@ -61,6 +61,11 @@ public final class ReaderImageStore {
         return null;
     }
 
+    /** Ob die Quelle Dateiabrufe schon freigeschaltet hat ({@link ReaderImageLoader#downloadsUnlocked()}). */
+    public boolean downloadsUnlocked() {
+        return loader.downloadsUnlocked();
+    }
+
     /** Das schon geladene Bild oder {@code null}. */
     public Loaded loaded(ReaderImage image) {
         return loaded.get(image.key());
