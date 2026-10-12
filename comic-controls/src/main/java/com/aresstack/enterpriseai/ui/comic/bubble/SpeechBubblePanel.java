@@ -4,6 +4,7 @@ import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
@@ -59,6 +60,8 @@ public final class SpeechBubblePanel extends JPanel
     private final Color bubbleColor;
     private final Color textColor;
     private final JLabel headerLabel;
+    private static final int ACCESSORY_GAP = 4;
+    private JComponent headerAccessory;
     private final JPanel headerRow;
     private JLabel timestampLabel; // small stacked date/time next to the name, or null
     private final JTextArea textArea;
@@ -245,13 +248,47 @@ public final class SpeechBubblePanel extends JPanel
         refreshLayout();
     }
 
-    /** Header block size: the name plus the optional timestamp, no taller than the name. */
+    /**
+     * Places a small control (e.g. a copy button) right after the sender name in the header row; it never
+     * touches the text area, so selecting text and clicking links stay as they are. Replaces a previous one.
+     */
+    public void setHeaderAccessory(JComponent accessory) {
+        if (headerAccessory != null) {
+            int index = headerRow.getComponentZOrder(headerAccessory);
+            headerRow.remove(headerAccessory);
+            if (index > 0) {
+                headerRow.remove(index - 1); // the gap in front of it
+            }
+        }
+        headerAccessory = accessory;
+        if (accessory != null) {
+            // never taller than the name: the header (and so the bubble height) stays as without it
+            Dimension size = new Dimension(accessory.getPreferredSize().width,
+                    Math.min(accessory.getPreferredSize().height, headerLabel.getPreferredSize().height));
+            accessory.setPreferredSize(size);
+            accessory.setMaximumSize(size);
+            accessory.setAlignmentY(BOTTOM_ALIGNMENT);
+            int index = headerRow.getComponentZOrder(headerLabel) + 1;
+            headerRow.add(javax.swing.Box.createHorizontalStrut(ACCESSORY_GAP), index);
+            headerRow.add(accessory, index + 1);
+        }
+        refreshLayout();
+    }
+
+    /** Header block size: the name plus the optional accessory and timestamp, no taller than its parts. */
     private Dimension headerBlockSize() {
         Dimension label = headerLabel.getPreferredSize();
-        if (timestampLabel != null) {
-            return new Dimension(label.width + 6 + timestampLabel.getPreferredSize().width + 4, label.height);
+        int width = label.width;
+        int height = label.height;
+        if (headerAccessory != null) {
+            Dimension accessory = headerAccessory.getPreferredSize();
+            width += ACCESSORY_GAP + accessory.width;
+            height = Math.max(height, accessory.height);
         }
-        return label;
+        if (timestampLabel != null) {
+            width += 6 + timestampLabel.getPreferredSize().width + 4;
+        }
+        return new Dimension(width, height);
     }
 
     public void setMaximumBubbleWidth(int maximumBubbleWidth) {

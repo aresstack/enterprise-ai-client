@@ -593,6 +593,16 @@ final class ResearchConceptHost implements ResearchConceptTools.Context {
      */
     String offerSearchesCommand(String suggestionsJson) {
         List<SearchOffer> suggestions = parseOfferedSearches(suggestionsJson);
+        if (suggestions.isEmpty() && isEmptyArray(suggestionsJson)) {
+            // Der recherchierte Stand gibt keine Anschlussfrage her: der alte Satz passt nicht mehr und geht.
+            offeredSearches = Collections.emptyList();
+            technicalLog("offer_searches -> CLEARED");
+            owner.stateChanged();
+            com.google.gson.JsonObject reply = new com.google.gson.JsonObject();
+            reply.addProperty("result", "CLEARED");
+            reply.addProperty("count", 0);
+            return reply.toString();
+        }
         if (suggestions.isEmpty()) {
             return "No usable suggestion — every entry needs a non-empty \"query\". Example: "
                     + "[{\"query\":\"FreeRTOS ESP32 Grundlagen Tutorial\","
@@ -606,6 +616,15 @@ final class ResearchConceptHost implements ResearchConceptTools.Context {
         reply.addProperty("result", "OFFERED");
         reply.addProperty("count", suggestions.size());
         return reply.toString();
+    }
+
+    private static boolean isEmptyArray(String suggestionsJson) {
+        try {
+            com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(suggestionsJson);
+            return parsed.isJsonArray() && parsed.getAsJsonArray().size() == 0;
+        } catch (RuntimeException notJson) {
+            return false;
+        }
     }
 
     private static List<SearchOffer> parseOfferedSearches(String suggestionsJson) {

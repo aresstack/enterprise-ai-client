@@ -55,6 +55,11 @@ final class DirectAnswers {
     private final IntSupplier pageBudget;
     /** Ob die letzte Recherche gesucht und gelesen hat (für Haken oder Retry eines gelben Vorschlags). */
     private volatile boolean lastSucceeded;
+    /** Die Auszüge der Seiten, die die letzte Recherche tatsächlich gelesen hat (Grundlage der Suchvorschläge). */
+    private volatile List<ResearchWriting.Passage> lastRead = new ArrayList<ResearchWriting.Passage>();
+    /** Der Text dieser Seiten (Beleg für die Grounding-Prüfung der Suchvorschläge). */
+    private volatile String lastReadText = "";
+    private static final int READ_TEXT_CHARS = 200000;
 
     /** @param pageBudget das Seitenbudget je Recherche, je Recherche frisch gelesen (0 = unbegrenzt) */
     DirectAnswers(ToolInvoker host, MainModelChat model, IntSupplier pageBudget) {
@@ -199,6 +204,8 @@ final class DirectAnswers {
         ResearchCard card = new ResearchCard(progress, queries, maxPages);
         card.searching();
         lastSucceeded = false;
+        lastRead = new ArrayList<ResearchWriting.Passage>();
+        lastReadText = "";
         try {
             return research(question, queries, progress, card, maxPages);
         } finally {
@@ -245,6 +252,7 @@ final class DirectAnswers {
                     + "den Einstellungen, ob die Quelle angehakt ist, oder nenne mir einen anderen Begriff.";
         }
         List<ResearchWriting.Passage> excerpts = new ArrayList<ResearchWriting.Passage>();
+        StringBuilder readText = new StringBuilder();
         Map<String, KnowledgePages.Hit> read = new LinkedHashMap<String, KnowledgePages.Hit>();
         for (KnowledgePages.Hit hit : hits) {
             if (ResearchRunBudget.reached(read.size(), maxPages) || progress.isCancelled()) {
@@ -262,6 +270,9 @@ final class DirectAnswers {
             card.read(title, note(hit));
             excerpts.add(new ResearchWriting.Passage("page:" + hit.id, hit.id, hit.title,
                     excerpt(page, question + " " + join(queries))));
+            if (readText.length() < READ_TEXT_CHARS) {
+                readText.append(hit.title).append('\n').append(page).append("\n\n");
+            }
         }
         if (read.isEmpty()) {
             card.finish(false, "keine Seite lesbar");
@@ -269,6 +280,8 @@ final class DirectAnswers {
         }
         card.answering();
         lastSucceeded = true;
+        lastRead = new ArrayList<ResearchWriting.Passage>(excerpts);
+        lastReadText = readText.toString();
         // Die Auszüge der eben gelesenen Seiten gehen immer mit: eine Projektpassage derselben Seite kann nur die
         // Notiz (Titel, Snippet) sein und darf den gelesenen Seitentext nie verdrängen.
         List<ResearchWriting.Passage> passages = new ArrayList<ResearchWriting.Passage>(excerpts);
@@ -311,6 +324,16 @@ final class DirectAnswers {
     /** Ob die letzte {@link #answer} gesucht hat (ohne Fehler, Abbruch oder unlesbare Seiten). */
     boolean lastSucceeded() {
         return lastSucceeded;
+    }
+
+    /** Die Auszüge der Seiten, die die letzte {@link #answer} gelesen hat; leer ohne gelesene Seite. */
+    List<ResearchWriting.Passage> lastRead() {
+        return lastRead;
+    }
+
+    /** Der Text dieser Seiten; leer ohne gelesene Seite. */
+    String lastReadText() {
+        return lastReadText;
     }
 
     /** Treffer, die der Weidezaun ausschließt, fallen weg; ohne aktiven Zaun bleiben alle. */

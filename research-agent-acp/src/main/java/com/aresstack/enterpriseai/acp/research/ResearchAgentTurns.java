@@ -80,6 +80,8 @@ final class ResearchAgentTurns {
     private final ResearchRun research;
     private final ResearchWriting writing;
     private final DirectAnswers direct;
+    /** Die gelben Suchvorschläge entstehen nur hier, nach der Recherche und aus den gelesenen Seiten. */
+    private final GroundedSearchTags searchTags;
     private final ToolNarration narration = new ToolNarration();
 
     ResearchAgentTurns(ResearchHostControl host, ResearchTeamAgent teamAgent, MainModelChat mainModelChat,
@@ -96,6 +98,7 @@ final class ResearchAgentTurns {
         this.conceptTools = conceptTools;
         this.direct = research == null ? null : new DirectAnswers(host, mainModelChat, research::pageBudget);
         this.writing = research == null ? null : new ResearchWriting(host, mainModelChat, direct);
+        this.searchTags = research == null ? null : new GroundedSearchTags(host, mainModelChat);
     }
 
     /**
@@ -174,8 +177,13 @@ final class ResearchAgentTurns {
                 turn.message(SEARCH_UNAVAILABLE);
                 return;
             }
-            turn.message(direct.answer(query, java.util.Collections.singletonList(query), turn.output()));
+            java.util.List<String> queries = java.util.Collections.singletonList(query);
+            String answer = direct.answer(query, queries, turn.output());
+            turn.message(answer);
             succeeded = direct.lastSucceeded() && !turn.isCancelled();
+            if (succeeded) {
+                offerGroundedSearchTags(turn, query, answer, queries);
+            }
         } finally {
             if (!query.isEmpty()) {
                 Map<String, Object> args = new LinkedHashMap<String, Object>();
@@ -297,7 +305,7 @@ final class ResearchAgentTurns {
             return; // ein leerer Turn ohne Nutzertext: keine Begrüßung, keine Antwort
         }
         markStarted(greeted);
-        emit(turn, conceptAwareRespond(view, text, status.searchTagsOffered));
+        emit(turn, conceptAwareRespond(view, text, text));
     }
 
     /**
@@ -315,8 +323,12 @@ final class ResearchAgentTurns {
      * Turn beim Konzeptgespräch.
      */
     private boolean offersKnowledgeSearch() {
+        return offersTool(KnowledgePages.SEARCH_TOOL);
+    }
+
+    private boolean offersTool(String name) {
         try {
-            return host.tools().containsKey(KnowledgePages.SEARCH_TOOL);
+            return host.tools().containsKey(name);
         } catch (ToolInvoker.EndpointUnavailable unavailable) {
             return false;
         }
@@ -330,28 +342,60 @@ final class ResearchAgentTurns {
     }
 
     /**
-     * Der direkte Suchauftrag (ohne Konzeptpflicht): das Konzept wird wie in jedem Turn ergänzt, seine Antwort bleibt
-     * aber unsichtbar; sichtbar ist die Antwort aus den gelesenen Quellen. Die Quellen landen im Projekt, der
-     * geführte Workflow bleibt über „Recherche starten“ erreichbar.
+     * Der direkte Suchauftrag (ohne Konzeptpflicht): zuerst wird recherchiert (Projektkorpus oder Wissensquellen) und
+     * beantwortet, erst danach ergänzt das Konzept den recherchierten Stand (seine Antwort bleibt unsichtbar) und
+     * erst danach entstehen die gelben Suchvorschläge, aus den tatsächlich gelesenen Seiten. Vor der Recherche gibt
+     * es keinen Modellaufruf, der aus eigenem Wissen Karten oder Vorschläge erzeugen könnte.
      */
     private void directTurn(Turn turn, TeamAgentStateView view, String text, ResearchHostControl.Status status,
                             boolean greeted, java.util.List<String> queries)
             throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
         markStarted(greeted);
-        if (conceptTools.getAsBoolean() && !turn.isCancelled()) {
-            TeamAgentResult concept = conceptAwareRespond(view, text, status.searchTagsOffered);
+        // Projektkorpus zuerst (ohne Modellaufruf, solange das Projekt nichts Passendes hat); ein ausdrücklicher
+        // Suchauftrag („Suche in Confluence nach …“) sucht immer sofort in den Wissensquellen.
+        String fromCorpus = DirectAnswers.asksForSearch(text) ? null : writing.corpusAnswer(text);
+        String answer = fromCorpus != null ? fromCorpus : direct.answer(text, queries, turn.output());
+        turn.message(answer);
+        if (turn.isCancelled()) {
+            return;
+        }
+        boolean researched = fromCorpus == null && direct.lastSucceeded() && !direct.lastRead().isEmpty();
+        if (conceptTools.getAsBoolean() && (researched || fromCorpus != null)) {
+            TeamAgentResult concept = conceptAwareRespond(view, groundedConceptMessage(text, answer), text);
             if (concept.getStatus() == TeamAgentResult.Status.OK
                     && concept.getOutput() instanceof ScopingAssistantOutput) {
                 applyScopeUpdate((ScopingAssistantOutput) concept.getOutput());
             }
         }
-        if (turn.isCancelled()) {
+        if (researched && !turn.isCancelled()) {
+            offerGroundedSearchTags(turn, text, answer, queries);
+        }
+    }
+
+    private static final int GROUNDED_STATE_CHARS = 4000;
+
+    /** Die Nachricht ans Konzept nach der Recherche: die Frage und der recherchierte Stand als einzige Grundlage. */
+    static String groundedConceptMessage(String question, String answer) {
+        String state = answer == null ? "" : answer.trim();
+        if (state.length() > GROUNDED_STATE_CHARS) {
+            state = state.substring(0, GROUNDED_STATE_CHARS) + "…";
+        }
+        return question.trim() + "\n\n[Recherchierter Stand aus den gelesenen Quellen; Konzeptkarten nur hieraus "
+                + "ableiten, nichts aus eigenem Wissen ergänzen]\n" + state;
+    }
+
+    /**
+     * Der Post-Research-Schritt: aus Frage, gelesenen Auszügen, Antwort und Konzept entstehen die neuen gelben
+     * Suchvorschläge; sie ersetzen den bisherigen Satz. Ohne gelesene Seite entsteht nichts.
+     */
+    private void offerGroundedSearchTags(Turn turn, String question, String answer, java.util.List<String> queries)
+            throws ToolInvoker.EndpointUnavailable {
+        if (searchTags == null || turn.isCancelled() || direct.lastRead().isEmpty()
+                || !offersTool(GroundedSearchTags.OFFER_TOOL)) {
             return;
         }
-        // Projektkorpus zuerst (ohne Modellaufruf, solange das Projekt nichts Passendes hat); ein ausdrücklicher
-        // Suchauftrag („Suche in Confluence nach …“) sucht immer sofort in den Wissensquellen.
-        String fromCorpus = DirectAnswers.asksForSearch(text) ? null : writing.corpusAnswer(text);
-        turn.message(fromCorpus != null ? fromCorpus : direct.answer(text, queries, turn.output()));
+        searchTags.offerAfterResearch(question, direct.lastRead(), direct.lastReadText(), answer,
+                currentConceptRendered(), queries);
     }
 
     /** Der Auftrag ohne den Startbefehl ({@code research:} wie in askai, oder „Recherche starten“). */
@@ -373,12 +417,15 @@ final class ResearchAgentTurns {
         return line.length() > 160 ? line.substring(0, 160) + "…" : line;
     }
 
-    private TeamAgentResult conceptAwareRespond(final TeamAgentStateView view, String text,
-                                                boolean searchTagsOffered) {
+    /**
+     * @param text     was das Konzeptgespräch als Nachricht bekommt (nach einer Recherche mit dem recherchierten Stand)
+     * @param userText die Nachricht des Nutzers allein; sie bestimmt die Art des Turns ({@link ConceptTurnPolicy})
+     */
+    private TeamAgentResult conceptAwareRespond(final TeamAgentStateView view, String text, String userText) {
         if (!conceptTools.getAsBoolean()) {
             return teamAgent.respond(text, view);
         }
-        if (ConceptTurnPolicy.modeFor(text) == ConceptTurnPolicy.Mode.MOVE_TRUTH) {
+        if (ConceptTurnPolicy.modeFor(userText) == ConceptTurnPolicy.Mode.MOVE_TRUTH) {
             boolean german = true;
             conceptLog("dedicated move generation (two-field schema)");
             String conceptContext;
@@ -387,7 +434,7 @@ final class ResearchAgentTurns {
             } catch (Exception unavailable) {
                 conceptContext = "";
             }
-            ConceptAction move = MoveActionGenerator.generate(mainModelChat, text, conceptContext);
+            ConceptAction move = MoveActionGenerator.generate(mainModelChat, userText, conceptContext);
             String answer;
             if (move == null) {
                 conceptLog("dedicated move generation -> unclear (no guess, no mutation)");
@@ -445,8 +492,8 @@ final class ResearchAgentTurns {
                         conceptLog(message);
                     }
                 },
-                !searchTagsOffered, // nudge until the project offered its first tags (gate 9b)
-                ConceptTurnPolicy.modeFor(text), false, null);
+                false, // keine Vorschlags-Mahnung: Vorschläge entstehen nur nach der Recherche
+                ConceptTurnPolicy.modeFor(userText), false, null);
     }
 
     /** Das sichtbare Konzeptpapier vor jeder Inferenz (askai K2e: CURRENT_CONCEPT); leer bei Fehlern. */
@@ -505,9 +552,11 @@ final class ResearchAgentTurns {
                 args.put("decision", action.getDecision());
                 break;
             case OFFER:
-                toolName = "offer_searches";
-                args.put("suggestions_json", action.getSuggestionsJson());
-                break;
+                // Das Konzeptgespräch bietet nie selbst Suchvorschläge an: es kennt nur die Nachricht und sein eigenes
+                // Wissen. Die gelben Vorschläge entstehen nach der Recherche aus den gelesenen Seiten
+                // (GroundedSearchTags); dieser Aufruf erreicht den Host deshalb nie.
+                conceptLog("offer_searches from the concept dialog withheld (tags only after research)");
+                return OFFER_WITHHELD;
             case PROBE:
                 toolName = "scope_probe";
                 args.put("terms_json", action.getTermsJson());
@@ -527,6 +576,10 @@ final class ResearchAgentTurns {
         }
         return text;
     }
+
+    static final String OFFER_WITHHELD = "{\"result\":\"NOT_OFFERED\",\"reason\":\"Search suggestions are "
+            + "created by the application after the research, only from the pages actually read. Do not offer "
+            + "searches and do not claim that you offered any.\"}";
 
     private static ConceptAction wholeConceptRead() {
         return ConceptAction.parse(Collections.singletonMap("type", (Object) "read")).getAction();
