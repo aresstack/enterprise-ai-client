@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
@@ -119,6 +120,15 @@ public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, 
             throw unexpected("pageView " + value(page), e);
         }
     }
+
+    @Override
+
+    public DownloadAccess downloadAccess() {
+
+        return SourceCapabilities.downloadAccess(delegate);
+
+    }
+
 
     @Override
     public byte[] loadViewImage(String src) throws KnowledgeSourceException {

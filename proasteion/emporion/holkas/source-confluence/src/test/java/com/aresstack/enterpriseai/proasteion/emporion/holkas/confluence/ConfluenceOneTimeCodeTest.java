@@ -4,7 +4,9 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
-import com.aresstack.enterpriseai.source.api.OneTimeCodePrompt;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
+import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
+import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
 import com.aresstack.enterpriseai.source.api.PageView;
 import org.junit.After;
 import org.junit.Before;
@@ -36,7 +38,8 @@ import static org.junit.Assert.fail;
  * {@code mo2fa_return_url}, {@code resendOtpLinkClicked}, {@code sendOtpClicked}, Knopf {@code Validate}); Host,
  * Texte und Werte sind erfunden.
  *
- * <p>Abnahme: PDF öffnen → Abfrage → Code → PDF; danach ein Bild ohne neue Abfrage.
+ * <p>Abnahme: PDF öffnen → Abfrage → Code → PDF; danach ein Bild ohne neue Abfrage. Die Abfrage kommt als
+ * {@link OneTimeCodeRequiredException}; die Oberfläche zeigt sie im Anzeigebereich und lädt danach neu.
  */
 public class ConfluenceOneTimeCodeTest {
 
@@ -90,8 +93,6 @@ public class ConfluenceOneTimeCodeTest {
     private final List<Map<String, String>> fileRequests = new ArrayList<Map<String, String>>();
     private final List<String> posts = new ArrayList<String>();
     private final List<Map<String, String>> postHeaders = new ArrayList<Map<String, String>>();
-    private final List<OneTimeCodePrompt.Challenge> asked = new ArrayList<OneTimeCodePrompt.Challenge>();
-    private final List<OneTimeCodePrompt.Answer> answers = new ArrayList<OneTimeCodePrompt.Answer>();
     private boolean verified;
     private int sessions;
 
@@ -136,108 +137,105 @@ public class ConfluenceOneTimeCodeTest {
 
     @Test
     public void pdfAfterTheCodeAndThenAnImageWithoutAskingAgain() throws Exception {
-        answers.add(OneTimeCodePrompt.Answer.submit("482913".toCharArray()));
         ConfluenceKnowledgeSource source = source();
         PageView.Attachment pdf = source.pageView(page()).attachments().get(0);
+        assertEquals(DownloadAccess.OPEN, source.downloadAccess());
 
-        assertArrayEquals(PDF, source.loadAttachment(pdf));
-        assertEquals(1, asked.size());
-        OneTimeCodePrompt.Challenge challenge = asked.get(0);
+        OneTimeCodeChallenge challenge = challengeOf(() -> source.loadAttachment(pdf));
+        assertEquals(DownloadAccess.ONE_TIME_CODE_REQUIRED, source.downloadAccess());
         assertEquals("confluence.invalid", challenge.service());
         assertEquals("Einmalcode bestätigen", challenge.title());
+        assertEquals("Code per E-Mail gesendet.", challenge.message());
         assertTrue(challenge.resendAvailable());
+
+        assertNull("angenommen", challenge.submit("482913".toCharArray()));
+        assertEquals(DownloadAccess.UNLOCKED, source.downloadAccess());
         assertEquals(1, posts.size());
         assertTrue(posts.get(0), posts.get(0).contains("otpCode=482913")
                 && posts.get(0).contains("mo2fa_return_url=r%2B%C3%BCck%2Fsprung%3D%3D"));
         assertEquals("dieselbe Sitzung wie die Einmalcode-Seite", "JSESSIONID=sitzung-1",
                 postHeaders.get(0).get("Cookie"));
+
+        assertArrayEquals(PDF, source.loadAttachment(pdf));
         Map<String, String> last = fileRequests.get(fileRequests.size() - 1);
         assertEquals("JSESSIONID=sitzung-1", last.get("Cookie"));
         assertFalse("wie der Browser nur mit der Sitzung", last.containsKey("Authorization"));
-
-        assertArrayEquals(PNG, source.loadViewImage(BASE + "/download/attachments/7/bild.png?version=1"));
-        assertEquals("keine zweite Abfrage, solange die Sitzung gilt", 1, asked.size());
+        assertArrayEquals("keine zweite Abfrage, solange die Sitzung gilt", PNG,
+                source.loadViewImage(BASE + "/download/attachments/7/bild.png?version=1"));
         assertEquals(1, sessions);
-        for (String line : lines) {
-            assertFalse(line, line.contains("482913") || line.contains("sitzung-1") || line.contains("sprung"));
-        }
+        assertEquals(1, posts.size());
+
         boolean confirmed = false;
         for (String line : lines) {
+            assertFalse(line, line.contains("482913") || line.contains("sitzung-1") || line.contains("sprung"));
             confirmed |= line.startsWith("[Confluence] Einmalcode bestätigt");
         }
         assertTrue(lines.toString(), confirmed);
     }
 
     @Test
-    public void aWrongCodeAsksAgainWithTheMessageOfThePage() throws Exception {
-        answers.add(OneTimeCodePrompt.Answer.submit("000000".toCharArray()));
-        answers.add(OneTimeCodePrompt.Answer.submit("482913".toCharArray()));
-        ConfluenceKnowledgeSource source = source();
-
-        assertArrayEquals(PDF, source.loadAttachment(source.pageView(page()).attachments().get(0)));
-        assertEquals(2, asked.size());
-        assertEquals("", asked.get(0).error());
-        assertEquals("Ungültiger Code.", asked.get(1).error());
-    }
-
-    @Test
-    public void resendPostsTheResendSwitchAndAsksAgain() throws Exception {
-        answers.add(OneTimeCodePrompt.Answer.resend());
-        answers.add(OneTimeCodePrompt.Answer.submit("482913".toCharArray()));
-        ConfluenceKnowledgeSource source = source();
-
-        assertArrayEquals(PDF, source.loadAttachment(source.pageView(page()).attachments().get(0)));
-        assertEquals(2, posts.size());
-        assertTrue(posts.get(0), posts.get(0).contains("resendOtpLinkClicked=true")
-                && !posts.get(0).contains("Validate="));
-        assertEquals(2, asked.size());
-    }
-
-    @Test
-    public void cancellingFailsAndOtherFilesDoNotAskRightAgain() throws Exception {
-        answers.add(OneTimeCodePrompt.Answer.cancel());
+    public void aWrongCodeComesBackWithTheMessageOfThePage() throws Exception {
         ConfluenceKnowledgeSource source = source();
         PageView.Attachment pdf = source.pageView(page()).attachments().get(0);
-        try {
-            source.loadAttachment(pdf);
-            fail("ohne Code keine Datei");
-        } catch (KnowledgeSourceException e) {
-            assertEquals(Kind.ACCESS_DENIED, e.kind());
-            assertTrue(e.getMessage(), e.getMessage().contains("Einmalcode"));
-        }
-        try {
-            source.loadViewImage(BASE + "/download/attachments/7/bild.png");
-            fail("ohne Code kein Bild");
-        } catch (KnowledgeSourceException e) {
-            assertEquals(Kind.ACCESS_DENIED, e.kind());
-        }
-        assertEquals(1, asked.size());
-        assertTrue(posts.isEmpty());
+        OneTimeCodeChallenge challenge = challengeOf(() -> source.loadAttachment(pdf));
+
+        OneTimeCodeChallenge again = challenge.submit("000000".toCharArray());
+        assertNotNull(again);
+        assertEquals("Ungültiger Code.", again.error());
+        assertEquals(DownloadAccess.ONE_TIME_CODE_REQUIRED, source.downloadAccess());
+        assertNull(again.submit("482913".toCharArray()));
+        assertArrayEquals(PDF, source.loadAttachment(pdf));
     }
 
     @Test
-    public void withoutAWindowTheReasonNamesTheOneTimeCode() throws Exception {
-        ConfluenceKnowledgeSource source = new ConfluenceKnowledgeSource(SourceAddress.of("confluence-dc"),
-                ConfluenceConfig.builder(URI.create(BASE)).credentialRef(RecordingSecretProvider.REF).build(),
-                transport(), new RecordingSecretProvider());
+    public void resendPostsTheResendSwitchWithoutTheButton() throws Exception {
+        ConfluenceKnowledgeSource source = source();
+        PageView.Attachment pdf = source.pageView(page()).attachments().get(0);
+        OneTimeCodeChallenge challenge = challengeOf(() -> source.loadAttachment(pdf));
+
+        OneTimeCodeChallenge after = challenge.resend();
+        assertNotNull(after);
+        assertEquals(1, posts.size());
+        assertTrue(posts.get(0), posts.get(0).contains("resendOtpLinkClicked=true")
+                && !posts.get(0).contains("Validate="));
+        assertNull(after.submit("482913".toCharArray()));
+    }
+
+    @Test
+    public void anExpiredSessionAsksAgainOnlyWhenAFileIsRequested() throws Exception {
+        ConfluenceKnowledgeSource source = source();
+        PageView.Attachment pdf = source.pageView(page()).attachments().get(0);
+        assertNull(challengeOf(() -> source.loadAttachment(pdf)).submit("482913".toCharArray()));
+        assertArrayEquals(PDF, source.loadAttachment(pdf));
+
+        verified = false; // Sitzung auf dem Server abgelaufen
+        OneTimeCodeChallenge again = challengeOf(() -> source.loadViewImage(BASE + "/download/attachments/7/bild.png"));
+        assertEquals(DownloadAccess.ONE_TIME_CODE_REQUIRED, source.downloadAccess());
+        assertNull(again.submit("482913".toCharArray()));
+        assertArrayEquals(PNG, source.loadViewImage(BASE + "/download/attachments/7/bild.png"));
+    }
+
+    private interface Load {
+        byte[] run() throws KnowledgeSourceException;
+    }
+
+    private static OneTimeCodeChallenge challengeOf(Load load) throws KnowledgeSourceException {
         try {
-            source.loadAttachment(source.pageView(page()).attachments().get(0));
-            fail("ohne Abfrage keine Datei");
-        } catch (KnowledgeSourceException e) {
+            load.run();
+        } catch (OneTimeCodeRequiredException e) {
+            assertEquals(Kind.ACCESS_DENIED, e.kind());
             assertTrue(e.getMessage(), e.getMessage().contains("Einmalcode (OTP)"));
+            return e.challenge();
         }
+        fail("ohne Einmalcode keine Datei");
+        return null;
     }
 
     private ConfluenceKnowledgeSource source() {
-        OneTimeCodePrompt prompt = challenge -> {
-            asked.add(challenge);
-            return answers.isEmpty() ? OneTimeCodePrompt.Answer.cancel() : answers.remove(0);
-        };
         ConfluenceConfig config = ConfluenceConfig.builder(URI.create(BASE)).credentialRef(RecordingSecretProvider.REF)
                 .build();
         return new ConfluenceKnowledgeSource(SourceAddress.of("confluence-dc"), config, transport(),
-                new RecordingSecretProvider(), new VaultEntryOptions(new RecordingSecretProvider(),
-                RecordingSecretProvider.REF), prompt);
+                new RecordingSecretProvider());
     }
 
     /**

@@ -98,8 +98,7 @@ public final class ApplicationStart {
         // Zugang „KeePass“ ohne eingetragene URL: die Basis-URL steht im KeePass-Eintrag des API-Keys.
         config = AdapterAssembly.withVaultLocations(config, file.read(), secrets);
         final SettingsService settings = new SettingsService(config, settingsLoader(file, secrets, config, prompts));
-        final ApplicationPorts ports = AdapterAssembly.createWith(config, network, secrets, partitions,
-                prompts.oneTimeCodes());
+        final ApplicationPorts ports = AdapterAssembly.createWith(config, network, secrets, partitions);
         adoptSourceAddresses(file, ports, settings);
         applyProxyAuthentication(null, config, ports, localVoices);
         final CompositionRoot root = CompositionRoot.compose(settings, ports, uiExecutor, clock, zone);

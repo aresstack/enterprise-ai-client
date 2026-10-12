@@ -83,19 +83,21 @@ source.1.allowInsecureHttp=false
   mit `***` statt der Werte von Eingabefeldern und Token-Metafeldern; Header und Cookie-Werte stehen nie darin.
 - **Einmalcode (Zwei-Faktor-Plugin, OTP per E-Mail)**: Ist die HTML-Antwort eine Einmalcode-Seite (`TWO_FACTOR`),
   liest der Client das POST-Formular aus der unveränderten Seite (`OneTimeCodeForm`: Codefeld, versteckte Felder mit
-  ihren echten Werten, Absende-Knopf; Ziel nur auf der eingestellten Confluence) und fragt den Code im Comic-Dialog
-  „Anmeldung erforderlich“ ab (`OneTimeCodePrompt`, Swing: `OneTimeCodeDialog`). Das Formular geht über denselben
-  Transport (Proxy, TLS, Client-Zertifikat, User-Agent) mit Authorization und den Cookies der Web-Sitzung zurück;
-  gesetzte Cookies übernimmt die Sitzung (`ConfluenceWebSession`, je Quelle, nur im Speicher), Weiterleitungen werden
-  verfolgt, danach lädt der ursprüngliche Abruf neu. Weitere Dateien laden mit derselben Sitzung ohne neue Abfrage:
-  zuerst nur mit Cookies wie der Browser, reicht das nicht, mit Authorization und Cookies; kommt die Einmalcode-Seite
-  wieder (Sitzung abgelaufen), fragt der Dialog erneut. „Neuen Code senden“ setzt das versteckte Resend-Feld der Seite
-  auf `true`. Ein falscher Code zeigt den Dialog mit der Meldung der Seite erneut. Gleichzeitige Abrufe warten auf eine
-  einzige Abfrage. Abbrechen lässt den Abruf mit `ACCESS_DENIED` scheitern; danach fragt der Client 60 Sekunden lang
-  nicht erneut (kippbar). Code, Formularwerte und Cookie-Werte stehen in keiner Logzeile und werden nicht gespeichert;
-  ein Programmneustart beginnt ohne Sitzung. Logzeilen: `[Confluence] Einmalcode-Abfrage: formular=… ziel=… felder=…`,
-  `[Confluence] Einmalcode bestätigt: status=… sitzungsCookies=[Namen]`. Gilt für Bilder, Anhänge und Vorschauen der
-  Lese-Ansicht, nicht für die Indexierung (dort keine Abfrage).
+  ihren echten Werten, Absende-Knopf; Ziel nur auf der eingestellten Confluence) und meldet den Abruf mit
+  `OneTimeCodeRequiredException` samt `OneTimeCodeChallenge` (source-api). Kein Dialog: Der Anzeigebereich (Bild- oder
+  Anhang-Ansicht) wird selbst zur Abfrage (`ReaderSignInPanel`: „Zusätzliche Anmeldung erforderlich“, Hinweis der
+  Seite, OTP-Feld, „Code erneut senden“, „Bestätigen“). Das Formular geht über denselben Transport (Proxy, TLS,
+  Client-Zertifikat, User-Agent) mit Authorization und den Cookies der Web-Sitzung zurück; gesetzte Cookies übernimmt
+  die Sitzung (`ConfluenceWebSession`, je Quelle, nur im Speicher), Weiterleitungen werden verfolgt, danach lädt die
+  Ansicht die Datei neu. Weitere Bilder, Anhänge und Vorschauen laden mit derselben Sitzung ohne neue Abfrage: zuerst
+  nur mit Cookies wie der Browser, reicht das nicht, mit Authorization und Cookies. Läuft die Sitzung ab, kommt die
+  Abfrage erst beim nächsten Dateiabruf wieder. „Code erneut senden“ setzt wie das Skript der Seite das versteckte Feld
+  `resendOtpLinkClicked` auf `true` und sendet das Formular ohne Knopf. Ein falscher Code zeigt die Meldung der Seite
+  (sonst „Der Code wurde nicht angenommen.“). `PageViewSource.downloadAccess()` meldet `OPEN`,
+  `ONE_TIME_CODE_REQUIRED` oder `UNLOCKED` (für Ansichten mit eigenem Ersatz, etwa gerenderte draw.io-Diagramme).
+  Code, Formularwerte und Cookie-Werte stehen in keiner Logzeile und werden nicht gespeichert; ein Programmneustart
+  beginnt ohne Sitzung. Logzeilen: `[Confluence] Einmalcode-Abfrage: formular=… ziel=… felder=…`,
+  `[Confluence] Einmalcode bestätigt: status=… sitzungsCookies=[Namen]`. Die Indexierung fragt nie nach einem Code.
 - **draw.io** (`drawio`, `drawio-sketch`, `inc-drawio`, erkannt an jedem `data-diagramdata`, bevor versteckte
   Elemente entfernt werden): `previewName`, `owningPageId` (Rückfall `ceoId`) und `revision` kommen aus den
   Makrodaten, nie aus der angezeigten Seite. An der Makrostelle steht ein Bild mit der Vorschau

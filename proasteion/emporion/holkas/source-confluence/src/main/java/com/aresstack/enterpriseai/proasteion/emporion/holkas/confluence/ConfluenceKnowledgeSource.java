@@ -10,8 +10,10 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
-import com.aresstack.enterpriseai.source.api.OneTimeCodePrompt;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
+import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
+import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.ImageSource;
 import com.aresstack.enterpriseai.source.api.PageView;
@@ -101,13 +103,6 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
 
     ConfluenceKnowledgeSource(SourceAddress sourceId, ConfluenceConfig config,
                               ConfluenceHttpTransport transport, SecretProvider secrets, VaultEntryOptions options) {
-        this(sourceId, config, transport, secrets, options, OneTimeCodePrompt.refusing());
-    }
-
-    /** @param oneTimeCodes fragt den Einmalcode ab, wenn ein Zwei-Faktor-Plugin Dateien der Lese-Ansicht sperrt */
-    ConfluenceKnowledgeSource(SourceAddress sourceId, ConfluenceConfig config,
-                              ConfluenceHttpTransport transport, SecretProvider secrets, VaultEntryOptions options,
-                              OneTimeCodePrompt oneTimeCodes) {
         if (sourceId == null || config == null || transport == null) {
             throw new IllegalArgumentException("sourceId, config und transport sind Pflicht");
         }
@@ -117,7 +112,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         this.sourceId = sourceId;
         this.locator = locatorOf(config);
         this.config = config;
-        this.client = new ConfluenceRestClient(config, transport, oneTimeCodes);
+        this.client = new ConfluenceRestClient(config, transport);
         this.secrets = secrets;
         this.options = options;
     }
@@ -242,7 +237,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     @Override
     public byte[] loadAttachment(PageView.Attachment attachment) throws KnowledgeSourceException {
         final String id = attachmentIdOf(attachment);
-        return withSession(new Operation<byte[]>() {
+        return file(new Operation<byte[]>() {
             @Override
             public byte[] run(Session session) throws KnowledgeSourceException {
                 return client.readAttachment(session, client.attachment(session, id), readerMaxBytes());
@@ -261,7 +256,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         if (preview == null) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Vorschauart fehlt");
         }
-        return withSession(new Operation<byte[]>() {
+        return file(new Operation<byte[]>() {
             @Override
             public byte[] run(Session session) throws KnowledgeSourceException {
                 return client.conversion(session, client.attachment(session, id), conversionKind(preview),
@@ -315,7 +310,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, text);
         }
         final String path = src.substring(base.length());
-        return withSession(new Operation<byte[]>() {
+        return file(new Operation<byte[]>() {
             @Override
             public byte[] run(Session session) throws KnowledgeSourceException {
                 return client.viewImage(session, path);
@@ -687,6 +682,97 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     }
 
     // --- Anmeldung je Vorgang -----------------------------------------------------------------------------
+
+    /** Ob Dateien gerade ohne Einmalcode laden (Web-Sitzung dieser Quelle, nur im Speicher). */
+    @Override
+    public DownloadAccess downloadAccess() {
+        return client.downloadAccess();
+    }
+
+    /**
+     * Ein Dateiabruf der Lese-Ansicht (Bild, Anhang, Vorschau). Liefert Confluence statt der Datei die Einmalcode-Seite
+     * eines Zwei-Faktor-Plugins, geht deren Formular als {@link OneTimeCodeChallenge} an den Aufrufer; nach der
+     * Bestätigung lädt er neu, und weitere Dateien laden ohne Abfrage, solange die Sitzung gilt.
+     */
+    private byte[] file(Operation<byte[]> operation) throws KnowledgeSourceException {
+        try {
+            return withSession(operation);
+        } catch (ConfluenceRestClient.TwoFactorRequired required) {
+            OneTimeCodeForm form = client.oneTimeCodeForm(required);
+            if (form == null) {
+                throw new KnowledgeSourceException(Kind.ACCESS_DENIED, "Confluence verlangt einen Einmalcode (OTP), "
+                        + "die Seite hat aber kein bekanntes Formular dafür (" + required.getMessage() + ")", required);
+            }
+            throw new OneTimeCodeRequiredException("Confluence verlangt für Dateien einen Einmalcode (OTP) ("
+                    + required.getMessage() + ")", new FormChallenge(form), required);
+        }
+    }
+
+    /** Das Formular einer Einmalcode-Seite; Absenden über die Anmeldung dieser Quelle und ihre Web-Sitzung. */
+    private final class FormChallenge implements OneTimeCodeChallenge {
+        private final OneTimeCodeForm form;
+
+        FormChallenge(OneTimeCodeForm form) {
+            this.form = form;
+        }
+
+        @Override
+        public String service() {
+            return config.baseUrl().getHost();
+        }
+
+        @Override
+        public String title() {
+            return form.title();
+        }
+
+        @Override
+        public String message() {
+            return form.message();
+        }
+
+        @Override
+        public String error() {
+            return form.error();
+        }
+
+        @Override
+        public boolean resendAvailable() {
+            return form.resendAvailable();
+        }
+
+        @Override
+        public OneTimeCodeChallenge submit(final char[] code) throws KnowledgeSourceException {
+            if (code == null || code.length == 0) {
+                throw new IllegalArgumentException("code must not be empty");
+            }
+            return next(withSession(new Operation<OneTimeCodeForm>() {
+                @Override
+                public OneTimeCodeForm run(Session session) throws KnowledgeSourceException {
+                    return client.postOneTimeCode(session, form, code);
+                }
+            }));
+        }
+
+        @Override
+        public OneTimeCodeChallenge resend() throws KnowledgeSourceException {
+            return next(withSession(new Operation<OneTimeCodeForm>() {
+                @Override
+                public OneTimeCodeForm run(Session session) throws KnowledgeSourceException {
+                    return client.postOneTimeCode(session, form, null);
+                }
+            }));
+        }
+
+        private OneTimeCodeChallenge next(OneTimeCodeForm again) {
+            return again == null ? null : new FormChallenge(again);
+        }
+
+        @Override
+        public String toString() {
+            return "Einmalcode-Abfrage[" + service() + "]";
+        }
+    }
 
     private <T> T withSession(final Operation<T> operation) throws KnowledgeSourceException {
         final SecretRef ref = config.credentialRef();

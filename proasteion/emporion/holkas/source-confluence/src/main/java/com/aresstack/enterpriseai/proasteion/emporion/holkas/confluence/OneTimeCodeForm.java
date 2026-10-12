@@ -201,6 +201,12 @@ final class OneTimeCodeForm {
         return error;
     }
 
+    /** Dasselbe Formular mit anderer Fehlermeldung (eigener Text, wenn die Seite keinen nennt). */
+    OneTimeCodeForm withError(String text) {
+        return new OneTimeCodeForm(action, formId, codeField, resendField, fields, submit, title, message,
+                text == null ? "" : text);
+    }
+
     /** Namen der Felder, die zurückgehen (für Logzeilen), nie Werte. */
     List<String> fieldNames() {
         List<String> names = new ArrayList<String>(fields.keySet());

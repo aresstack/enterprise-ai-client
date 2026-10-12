@@ -15,4 +15,19 @@ public interface ReaderAttachmentLoader {
     default void preview(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed) {
         failed.accept("Die Quelle bietet keine Vorschau an.");
     }
+
+    /**
+     * Wie {@link #load(ReaderAttachment, Consumer, Consumer)}; verlangt die Quelle einen Einmalcode, bekommt
+     * {@code signIn} die Abfrage (danach lädt der Aufrufer neu).
+     */
+    default void load(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed,
+                      Consumer<ReaderSignIn> signIn) {
+        load(attachment, done, failed);
+    }
+
+    /** Wie {@link #preview(ReaderAttachment, Consumer, Consumer)}, mit Einmalcode-Abfrage an {@code signIn}. */
+    default void preview(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed,
+                         Consumer<ReaderSignIn> signIn) {
+        preview(attachment, done, failed);
+    }
 }

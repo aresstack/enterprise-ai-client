@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.PageView;
@@ -83,6 +84,14 @@ public final class BrowseKnowledgeSourceUseCase {
             throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Lese-Ansicht");
         }
         return ((PageViewSource) source).loadViewImage(src);
+    }
+
+    /**
+     * Ob Dateien der Quelle gerade ohne Einmalcode laden ({@link DownloadAccess}); eine Quelle ohne Lese-Ansicht ist
+     * {@link DownloadAccess#OPEN}.
+     */
+    public DownloadAccess downloadAccess(KnowledgeSourcePort source) {
+        return source instanceof PageViewSource ? ((PageViewSource) source).downloadAccess() : DownloadAccess.OPEN;
     }
 
     /** Die Originaldatei eines Anhangs aus {@link PageView#attachments()} über die Quelle (mit deren Anmeldung). */

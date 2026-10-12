@@ -165,6 +165,8 @@ public final class ImageSlideshowPanel extends JPanel {
     private final javax.swing.Timer sharpen = new javax.swing.Timer(250, event -> sharpenPage());
     /** Text statt Bild (Textansicht). */
     private boolean showingText;
+    /** Die Einmalcode-Abfrage an der Stelle der Datei, solange die Quelle sie verlangt. */
+    private ReaderSignInPanel signInPanel;
 
     public ImageSlideshowPanel(ReaderImageStore store, int startIndex) {
         this(requireImages(store), startIndex, null, null, null, null);
@@ -267,6 +269,9 @@ public final class ImageSlideshowPanel extends JPanel {
                 zoomOut.setBounds(zoomX, zoomY, BUTTON, BUTTON);
                 zoomIn.setBounds(zoomX + BUTTON + 4, zoomY, BUTTON, BUTTON);
                 zoomFit.setBounds(zoomX + 2 * (BUTTON + 4), zoomY, BUTTON, BUTTON);
+                if (signInPanel != null) {
+                    signInPanel.setBounds(0, 0, w, h);
+                }
             }
         });
         add(layers, BorderLayout.CENTER);
@@ -494,6 +499,7 @@ public final class ImageSlideshowPanel extends JPanel {
     private void loadCurrent() {
         final ReaderImage image = current();
         final ReaderImage shown = displayed();
+        hideSignIn();
         showImage();
         refreshDrawioToggle();
         hover(pointer);
@@ -511,6 +517,10 @@ public final class ImageSlideshowPanel extends JPanel {
                 originalProblem = loaded.failure();
                 drawioOriginal = false;
                 loadCurrent();
+                return;
+            }
+            if (loaded.signIn() != null) {
+                showSignIn(loaded.signIn(), this::loadCurrent);
                 return;
             }
             if (!loaded.ok()) {
@@ -926,6 +936,7 @@ public final class ImageSlideshowPanel extends JPanel {
 
     /** Lädt und zeigt den Anhang je nach Typ. */
     private void loadAttachment() {
+        hideSignIn();
         showingText = false;
         canvas.setStaticImage(null);
         busy.setVisible(true);
@@ -938,7 +949,8 @@ public final class ImageSlideshowPanel extends JPanel {
                 // Office zeichnet der Client nicht selbst: Vorschau der Quelle (PDF oder Bild).
                 busy.setText(LOADING_PREVIEW_TEXT);
                 attachmentLoader.preview(attachment, bytes -> show(bytes, true),
-                        reason -> showUnavailable(NO_PREVIEW_TEXT + "\n" + (reason == null ? "" : reason)));
+                        reason -> showUnavailable(NO_PREVIEW_TEXT + "\n" + (reason == null ? "" : reason)),
+                        signIn -> showSignIn(signIn, this::loadAttachment));
                 return;
             default:
                 busy.setText(LOADING_ATTACHMENT_TEXT);
@@ -1157,7 +1169,48 @@ public final class ImageSlideshowPanel extends JPanel {
             for (Consumer<String> listener : failures) {
                 listener.accept(reason);
             }
+        }, signIn -> {
+            originalWaiting = null; // nach der Bestätigung lädt der Anhang neu und meldet sich erneut
+            originalFailed = null;
+            showSignIn(signIn, this::loadAttachment);
         });
+    }
+
+    // ------------------------------------------------------------------ Einmalcode-Abfrage
+
+    /**
+     * Zeigt die Einmalcode-Abfrage der Quelle an der Stelle der Datei (kein eigener Dialog); nach der Bestätigung
+     * lädt {@code retry} die Datei neu.
+     */
+    private void showSignIn(ReaderSignIn signIn, Runnable retry) {
+        if (closed) {
+            return;
+        }
+        hideSignIn();
+        busy.setVisible(false);
+        canvas.setStaticImage(null);
+        signInPanel = new ReaderSignInPanel(signIn, () -> {
+            hideSignIn();
+            retry.run();
+        });
+        layers.add(signInPanel, Integer.valueOf(JLayeredPane.MODAL_LAYER.intValue() + 20));
+        signInPanel.setBounds(0, 0, layers.getWidth(), layers.getHeight());
+        layers.revalidate();
+        layers.repaint();
+        signInPanel.focusCode();
+    }
+
+    private void hideSignIn() {
+        if (signInPanel != null) {
+            layers.remove(signInPanel);
+            signInPanel = null;
+            layers.repaint();
+        }
+    }
+
+    /** Die gezeigte Einmalcode-Abfrage oder {@code null}. */
+    ReaderSignInPanel signInPanel() {
+        return signInPanel;
     }
 
     /** Ob die Originaldatei geladen ist. */

@@ -82,11 +82,14 @@ public final class ReaderImageStore {
         queue.add(done);
         waiting.put(image.key(), queue);
         loader.load(image, bytes -> finishLoading(image, Loaded.of(bytes)),
-                reason -> finishLoading(image, Loaded.failed(reason)));
+                reason -> finishLoading(image, Loaded.failed(reason)),
+                signIn -> finishLoading(image, Loaded.signInRequired(signIn)));
     }
 
     private void finishLoading(ReaderImage image, Loaded result) {
-        loaded.put(image.key(), result);
+        if (result.signIn() == null) {
+            loaded.put(image.key(), result); // eine Einmalcode-Abfrage nicht merken: danach lädt das Bild neu
+        }
         List<Consumer<Loaded>> listeners = waiting.remove(image.key());
         if (listeners != null) {
             for (Consumer<Loaded> listener : listeners) {
@@ -156,6 +159,7 @@ public final class ReaderImageStore {
         private final BufferedImage image;
         private final boolean svg;
         private final String failure;
+        private ReaderSignIn signIn;
 
         private Loaded(byte[] bytes, BufferedImage image, boolean svg, String failure) {
             this.bytes = bytes;
@@ -178,6 +182,19 @@ public final class ReaderImageStore {
         /** Nicht geladen, mit dem Grund der Quelle ({@code null}: unbekannt). */
         static Loaded failed(String reason) {
             return new Loaded(null, null, false, reason);
+        }
+
+        /** Nicht geladen: Die Quelle verlangt erst einen Einmalcode ({@link #signIn()}). */
+        static Loaded signInRequired(ReaderSignIn signIn) {
+            Loaded result = new Loaded(null, null, false, "Für dieses Bild ist eine zusätzliche Anmeldung "
+                    + "(Einmalcode) erforderlich.");
+            result.signIn = signIn;
+            return result;
+        }
+
+        /** Die Einmalcode-Abfrage, wenn das Bild erst danach lädt; sonst {@code null}. */
+        public ReaderSignIn signIn() {
+            return signIn;
         }
 
         public boolean ok() {

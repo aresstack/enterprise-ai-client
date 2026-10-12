@@ -38,4 +38,12 @@ public interface PageViewSource {
             throws KnowledgeSourceException {
         throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Vorschauen");
     }
+
+    /**
+     * Ob Dateien (Bilder, Anhänge, Vorschauen) gerade ohne Einmalcode laden. Ein Aufrufer mit eigenem Ersatz (etwa ein
+     * selbst gezeichnetes Diagramm) kann damit entscheiden, ob er das Original überhaupt anfragt.
+     */
+    default DownloadAccess downloadAccess() {
+        return DownloadAccess.OPEN;
+    }
 }

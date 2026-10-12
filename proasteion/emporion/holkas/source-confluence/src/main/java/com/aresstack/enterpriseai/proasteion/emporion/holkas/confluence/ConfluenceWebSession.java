@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,8 +18,8 @@ import java.util.Map;
 final class ConfluenceWebSession {
 
     private final Map<String, String> cookies = new LinkedHashMap<String, String>();
-    private int generation;
-    private boolean verified;
+    private DownloadAccess access = DownloadAccess.OPEN;
+    private boolean cookiesSuffice;
 
     /** Übernimmt {@code name=wert}-Paare aus {@code Set-Cookie}; leerer Wert löscht den Namen. */
     synchronized void absorb(List<String> setCookies) {
@@ -53,32 +55,38 @@ final class ConfluenceWebSession {
         return new ArrayList<String>(cookies.keySet());
     }
 
-    /** Zählt jede Bestätigung; ein Abruf, der vor ihr begann, erkennt daran, dass er neu laden kann. */
-    synchronized int generation() {
-        return generation;
+    /** Ob Dateien gerade ohne Einmalcode laden. */
+    synchronized DownloadAccess access() {
+        return access;
+    }
+
+    /** Die Einmalcode-Seite kam (erstmals oder nach Ablauf der Sitzung). */
+    synchronized void challenged() {
+        access = DownloadAccess.ONE_TIME_CODE_REQUIRED;
+        cookiesSuffice = false;
+    }
+
+    /** Der Einmalcode wurde angenommen; zuerst nur mit Cookies versuchen, wie der Browser. */
+    synchronized void unlocked() {
+        access = DownloadAccess.UNLOCKED;
+        cookiesSuffice = true;
     }
 
     /**
      * {@code true}, solange nach einer Bestätigung die Cookies allein (ohne Authorization, wie der Browser) gereicht
      * haben oder noch nicht versucht wurden.
      */
-    synchronized boolean verified() {
-        return verified;
-    }
-
-    /** Der Einmalcode wurde angenommen. */
-    synchronized void markVerified() {
-        verified = true;
-        generation++;
+    synchronized boolean cookiesSuffice() {
+        return cookiesSuffice;
     }
 
     /** Die Cookies allein reichen nicht (etwa ohne Benutzer in der Sitzung); weiter mit Authorization und Cookies. */
     synchronized void cookiesAloneInsufficient() {
-        verified = false;
+        cookiesSuffice = false;
     }
 
     @Override
     public synchronized String toString() {
-        return "ConfluenceWebSession[cookies=" + cookies.keySet() + ", verified=" + verified + "]";
+        return "ConfluenceWebSession[cookies=" + cookies.keySet() + ", " + access + "]";
     }
 }

@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
@@ -221,6 +222,19 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
         public PageView pageView(KnowledgeResourceId page) throws KnowledgeSourceException {
             return SourceCapabilities.pageView(port(), page);
         }
+
+        @Override
+
+        public DownloadAccess downloadAccess() {
+
+            KnowledgeSourcePort port;
+            synchronized (this) {
+                port = opened; // ohne Öffnen: keine KeePass-Abfrage nur für den Zustand
+            }
+            return port == null ? DownloadAccess.OPEN : SourceCapabilities.downloadAccess(port);
+
+        }
+
 
         @Override
         public byte[] loadViewImage(String src) throws KnowledgeSourceException {

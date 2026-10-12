@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
-import com.aresstack.enterpriseai.source.api.OneTimeCodePrompt;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -66,26 +66,14 @@ final class ConfluenceRestClient {
     private final ConfluenceHttpTransport transport;
     private final java.util.concurrent.atomic.AtomicInteger diagnosticFiles =
             new java.util.concurrent.atomic.AtomicInteger();
-    /** So oft hintereinander darf ein Abruf nach einer Bestätigung erneut auf die Einmalcode-Seite stoßen. */
-    static final int MAX_CHALLENGE_ROUNDS = 3;
-    /** So lange fragt die Quelle nach einem Abbruch nicht erneut (andere Bilder derselben Seite). */
-    static final long DECLINE_PAUSE_MILLIS = 60_000L;
-
-    private final OneTimeCodePrompt prompt;
     private final ConfluenceWebSession web = new ConfluenceWebSession();
+    /** Ein Formular zur Zeit: zwei Codes derselben Sitzung kreuzen sich nicht. */
     private final java.util.concurrent.locks.ReentrantLock challengeLock =
             new java.util.concurrent.locks.ReentrantLock();
-    private volatile long declinedUntil;
 
     ConfluenceRestClient(ConfluenceConfig config, ConfluenceHttpTransport transport) {
-        this(config, transport, OneTimeCodePrompt.refusing());
-    }
-
-    /** @param prompt fragt den Einmalcode ab, wenn ein Zwei-Faktor-Plugin Dateiabrufe sperrt */
-    ConfluenceRestClient(ConfluenceConfig config, ConfluenceHttpTransport transport, OneTimeCodePrompt prompt) {
         this.config = config;
         this.transport = transport;
-        this.prompt = prompt == null ? OneTimeCodePrompt.refusing() : prompt;
     }
 
     /** Der Space mit Startseiten-ID oder {@code null}, wenn es ihn nicht gibt. */
@@ -477,46 +465,112 @@ final class ConfluenceRestClient {
      *   <li>Nach einer Bestätigung zuerst nur mit den Cookies, wie der Browser. Reichen sie nicht (Anmeldeseite,
      *       401/403), weiter wie ohne Bestätigung.</li>
      *   <li>Mit Authorization und den Cookies der Sitzung (gegebenenfalls Sitzungs-Cookie-Neuversuch wie bisher).</li>
-     *   <li>Kommt die Einmalcode-Seite eines Zwei-Faktor-Plugins ({@link TwoFactorRequired}), fragt
-     *       {@link #solveChallenge} den Code ab, sendet das Formular in derselben Sitzung und der Abruf beginnt neu.
-     *       Wer gleichzeitig auf die Seite stößt, wartet und lädt nach der Bestätigung ohne eigene Abfrage.</li>
+     *   <li>Kommt die Einmalcode-Seite eines Zwei-Faktor-Plugins ({@link TwoFactorRequired}), gilt die Sitzung als
+     *       gesperrt und der Fehler geht mit der Seite an den Aufrufer; den Code sendet {@link #postOneTimeCode}, danach
+     *       lädt der Aufrufer neu.</li>
      * </ol>
      */
     private byte[] withWebSession(Session session, String accept, String what, Attempt attempt)
             throws KnowledgeSourceException {
-        TwoFactorRequired last = null;
-        for (int round = 0; round <= MAX_CHALLENGE_ROUNDS; round++) {
-            int generation = web.generation();
-            try {
-                if (web.verified()) {
-                    String cookies = web.cookieHeader();
-                    Map<String, String> headers = new LinkedHashMap<String, String>();
-                    headers.put("Accept", accept);
-                    if (cookies != null) {
-                        headers.put("Cookie", cookies);
-                    }
-                    try {
-                        return attempt.run(Collections.unmodifiableMap(headers));
-                    } catch (KnowledgeSourceException e) {
-                        if (e instanceof TwoFactorRequired || !needsSession(e)) {
-                            throw e;
-                        }
-                        LOG.info("[Confluence] " + what + ": Sitzungs-Cookies allein reichen nicht ("
-                                + e.kind() + "), weiter mit Anmeldung und Cookies");
-                        web.cookiesAloneInsufficient();
-                    }
+        try {
+            if (web.cookiesSuffice()) {
+                String cookies = web.cookieHeader();
+                Map<String, String> headers = new LinkedHashMap<String, String>();
+                headers.put("Accept", accept);
+                if (cookies != null) {
+                    headers.put("Cookie", cookies);
                 }
-                return withSessionCookie(session, accept, what, attempt);
-            } catch (TwoFactorRequired required) {
-                last = required;
-                if (round == MAX_CHALLENGE_ROUNDS) {
-                    break;
+                try {
+                    return attempt.run(Collections.unmodifiableMap(headers));
+                } catch (KnowledgeSourceException e) {
+                    if (e instanceof TwoFactorRequired || !needsSession(e)) {
+                        throw e;
+                    }
+                    LOG.info("[Confluence] " + what + ": Sitzungs-Cookies allein reichen nicht ("
+                            + e.kind() + "), weiter mit Anmeldung und Cookies");
+                    web.cookiesAloneInsufficient();
                 }
-                solveChallenge(session, required, generation, what);
             }
+            return withSessionCookie(session, accept, what, attempt);
+        } catch (TwoFactorRequired required) {
+            if (web.access() == DownloadAccess.UNLOCKED) {
+                LOG.info("[Confluence] " + what + ": Einmalcode-Sitzung abgelaufen, neue Bestätigung nötig");
+            }
+            web.challenged();
+            throw required;
         }
-        throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Confluence verlangt nach der Bestätigung "
-                + "weiterhin einen Einmalcode", last);
+    }
+
+    /** Ob Dateien gerade ohne Einmalcode laden (Zustand der Web-Sitzung). */
+    DownloadAccess downloadAccess() {
+        return web.access();
+    }
+
+    /** Das Formular der Einmalcode-Seite oder {@code null}, wenn die Seite keins hat, das hierher zurückgeht. */
+    OneTimeCodeForm oneTimeCodeForm(TwoFactorRequired required) {
+        OneTimeCodeForm form = OneTimeCodeForm.parse(required.page(), required.html(), config.baseUrl());
+        if (form != null) {
+            LOG.info("[Confluence] Einmalcode-Abfrage: formular=" + form.formId() + " ziel="
+                    + withoutQuery(form.action().toString()) + " felder=" + form.fieldNames() + " neuSenden="
+                    + form.resendAvailable() + " sitzungsCookies=" + web.cookieNames());
+        }
+        return form;
+    }
+
+    /**
+     * Sendet das Formular der Einmalcode-Seite über denselben Transport (Proxy, TLS, Client-Zertifikat, User-Agent) mit
+     * Authorization und den Cookies der Web-Sitzung; gesetzte Cookies übernimmt die Sitzung, Weiterleitungen folgt der
+     * Transport. {@code code == null}: neuen Code anfordern. Liefert {@code null}, wenn der Code angenommen wurde,
+     * sonst das Formular der Folgeseite (falscher Code, neuer Code gesendet). Code und Cookie-Werte stehen in keiner
+     * Logzeile.
+     */
+    OneTimeCodeForm postOneTimeCode(Session session, OneTimeCodeForm form, char[] code)
+            throws KnowledgeSourceException {
+        boolean resend = code == null;
+        if (resend && !form.resendAvailable()) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Diese Einmalcode-Seite kann keinen neuen Code senden");
+        }
+        challengeLock.lock();
+        try {
+            byte[] body = resend ? form.resendBody() : form.submitBody(code);
+            ConfluenceHttpResponse response;
+            try {
+                response = transport.postForm(form.action(),
+                        withWebCookies(session.headers("text/html,application/xhtml+xml,*/*;q=0.8")), body,
+                        config.maxResponseBytes());
+            } catch (IOException e) {
+                throw new KnowledgeSourceException(Kind.UNAVAILABLE, "Einmalcode nicht gesendet (" + cause(e) + ")",
+                        e);
+            } finally {
+                java.util.Arrays.fill(body, (byte) 0);
+            }
+            web.absorb(response.cookies());
+            URI at = response.uri() != null ? response.uri() : form.action();
+            OneTimeCodeForm again = baseMediaType(response.contentType()).contains("html")
+                    ? OneTimeCodeForm.parse(at, response.body(), config.baseUrl()) : null;
+            if (resend) {
+                LOG.info("[Confluence] Einmalcode: neuer Code angefordert, status=" + response.status());
+                if (again == null && !response.isSuccess()) {
+                    throw new KnowledgeSourceException(Kind.ACCESS_DENIED, "Neuer Einmalcode nicht angefordert: "
+                            + "Confluence antwortet mit HTTP " + response.status());
+                }
+                return again != null ? again : form.withError("");
+            }
+            if (again != null) {
+                LOG.info("[Confluence] Einmalcode nicht angenommen: status=" + response.status());
+                return again.error().isEmpty() ? again.withError("Der Code wurde nicht angenommen.") : again;
+            }
+            if (!response.isSuccess()) {
+                throw new KnowledgeSourceException(Kind.ACCESS_DENIED, "Einmalcode gesendet, Confluence antwortet "
+                        + "mit HTTP " + response.status());
+            }
+            web.unlocked();
+            LOG.info("[Confluence] Einmalcode bestätigt: status=" + response.status() + " sitzungsCookies="
+                    + web.cookieNames());
+            return null;
+        } finally {
+            challengeLock.unlock();
+        }
     }
 
     /** Die Header mit den Cookies der Web-Sitzung. */
@@ -528,103 +582,6 @@ final class ConfluenceRestClient {
         Map<String, String> copy = new LinkedHashMap<String, String>(headers);
         copy.put("Cookie", cookies);
         return Collections.unmodifiableMap(copy);
-    }
-
-    /**
-     * Fragt den Einmalcode ab und sendet das Formular der Seite über denselben Transport (Proxy, TLS,
-     * Client-Zertifikat, User-Agent) mit Authorization und den Cookies der Sitzung; gesetzte Cookies übernimmt die
-     * Sitzung. Kehrt zurück, wenn der Code angenommen wurde oder ein anderer Abruf das inzwischen erledigt hat; wirft
-     * bei Abbruch. Code und Cookie-Werte stehen in keiner Logzeile.
-     */
-    private void solveChallenge(Session session, TwoFactorRequired required, int generation, String what)
-            throws KnowledgeSourceException {
-        challengeLock.lock();
-        try {
-            if (web.generation() != generation) {
-                return; // ein anderer Abruf hat den Code inzwischen bestätigt
-            }
-            if (System.currentTimeMillis() < declinedUntil) {
-                throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Confluence verlangt einen "
-                        + "Einmalcode (OTP); die Abfrage wurde eben abgebrochen (" + required.getMessage() + ")", required);
-            }
-            OneTimeCodeForm form = OneTimeCodeForm.parse(required.page(), required.html(), config.baseUrl());
-            if (form == null) {
-                throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Confluence verlangt einen "
-                        + "Einmalcode, die Seite hat aber kein bekanntes Formular dafür", required);
-            }
-            LOG.info("[Confluence] Einmalcode-Abfrage: formular=" + form.formId() + " ziel="
-                    + withoutQuery(form.action().toString()) + " felder=" + form.fieldNames() + " neuSenden="
-                    + form.resendAvailable() + " sitzungsCookies=" + web.cookieNames());
-            String error = form.error();
-            while (true) {
-                OneTimeCodePrompt.Answer answer = prompt.ask(new OneTimeCodePrompt.Challenge(
-                        config.baseUrl().getHost(), form.title(), form.message(), error, form.resendAvailable()));
-                try {
-                    if (answer == null || answer.action() == OneTimeCodePrompt.Answer.Action.CANCEL) {
-                        declinedUntil = System.currentTimeMillis() + DECLINE_PAUSE_MILLIS;
-                        LOG.info("[Confluence] Einmalcode-Abfrage abgebrochen");
-                        throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Confluence verlangt einen "
-                                + "Einmalcode (OTP); Abfrage abgebrochen (" + required.getMessage() + ")", required);
-                    }
-                    boolean resend = answer.action() == OneTimeCodePrompt.Answer.Action.RESEND
-                            && form.resendAvailable();
-                    byte[] body;
-                    if (resend) {
-                        body = form.resendBody();
-                    } else {
-                        char[] code = answer.code();
-                        try {
-                            body = form.submitBody(code);
-                        } finally {
-                            java.util.Arrays.fill(code, '\0');
-                        }
-                    }
-                    ConfluenceHttpResponse response;
-                    try {
-                        response = transport.postForm(form.action(),
-                                withWebCookies(session.headers("text/html,application/xhtml+xml,*/*;q=0.8")), body,
-                                config.maxResponseBytes());
-                    } catch (IOException e) {
-                        throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Einmalcode nicht gesendet ("
-                                + cause(e) + ")", e);
-                    } finally {
-                        java.util.Arrays.fill(body, (byte) 0);
-                    }
-                    web.absorb(response.cookies());
-                    URI at = response.uri() != null ? response.uri() : form.action();
-                    OneTimeCodeForm again = baseMediaType(response.contentType()).contains("html")
-                            ? OneTimeCodeForm.parse(at, response.body(), config.baseUrl()) : null;
-                    if (resend) {
-                        LOG.info("[Confluence] Einmalcode: neuer Code angefordert, status=" + response.status());
-                        if (again != null) {
-                            form = again;
-                        }
-                        error = again == null ? "" : again.error();
-                        continue;
-                    }
-                    if (again != null) {
-                        LOG.info("[Confluence] Einmalcode nicht angenommen: status=" + response.status());
-                        form = again;
-                        error = again.error().isEmpty() ? "Der Code wurde nicht angenommen." : again.error();
-                        continue;
-                    }
-                    if (!response.isSuccess()) {
-                        throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Einmalcode gesendet, "
-                                + "Confluence antwortet mit HTTP " + response.status(), required);
-                    }
-                    web.markVerified();
-                    LOG.info("[Confluence] Einmalcode bestätigt: status=" + response.status() + " sitzungsCookies="
-                            + web.cookieNames());
-                    return;
-                } finally {
-                    if (answer != null) {
-                        answer.clear();
-                    }
-                }
-            }
-        } finally {
-            challengeLock.unlock();
-        }
     }
 
     /** Die Einmalcode-Seite eines Zwei-Faktor-Plugins statt der Datei; trägt die unveränderte Seite für das Formular. */

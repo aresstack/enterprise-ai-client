@@ -27,6 +27,15 @@ public interface ReaderImageLoader {
     }
 
     /**
+     * Wie {@link #load(ReaderImage, Consumer, Consumer)}; verlangt die Quelle einen Einmalcode, bekommt {@code signIn}
+     * die Abfrage (danach lädt der Aufrufer neu).
+     */
+    default void load(ReaderImage image, Consumer<byte[]> done, Consumer<String> failed,
+                      Consumer<ReaderSignIn> signIn) {
+        load(image, done, failed);
+    }
+
+    /**
      * Beschreibt genau dieses Bild (nur auf Abruf, nie beim Laden der Seite); {@code done} bekommt das Ergebnis.
      * Ohne Beschreibungsweg: ein Hinweis statt einer Beschreibung.
      *

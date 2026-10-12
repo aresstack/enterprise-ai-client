@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
@@ -126,6 +127,15 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
         public PageView pageView(KnowledgeResourceId page) throws KnowledgeSourceException {
             return SourceCapabilities.pageView(port, page);
         }
+
+        @Override
+
+        public DownloadAccess downloadAccess() {
+
+            return SourceCapabilities.downloadAccess(port);
+
+        }
+
 
         @Override
         public byte[] loadViewImage(String src) throws KnowledgeSourceException {

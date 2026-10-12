@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.PageView;
@@ -44,6 +45,10 @@ final class SourceCapabilities {
             throw unsupported(port, "keine Lese-Ansicht");
         }
         return ((PageViewSource) port).loadAttachmentPreview(attachment, preview);
+    }
+
+    static DownloadAccess downloadAccess(KnowledgeSourcePort port) {
+        return port instanceof PageViewSource ? ((PageViewSource) port).downloadAccess() : DownloadAccess.OPEN;
     }
 
     private static KnowledgeSourceException unsupported(KnowledgeSourcePort port, String what) {

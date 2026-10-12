@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderAttachmentLo
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImageDescription;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImageLoader;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderSignIn;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatWorkspacePanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.FavoritesPanel;
@@ -24,6 +25,8 @@ import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
+import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
+import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.SourceScope;
@@ -356,12 +359,27 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
          */
         @Override
         public void load(final ReaderImage image, final Consumer<byte[]> done, final Consumer<String> failed) {
+            load(image, done, failed, null);
+        }
+
+        @Override
+        public void load(final ReaderImage image, final Consumer<byte[]> done, final Consumer<String> failed,
+                         final Consumer<ReaderSignIn> signIn) {
             final String address = withoutQuery(image.src());
             try {
                 workExecutor.execute(() -> {
                     try {
                         final byte[] bytes = browse.viewImage(port, image.src());
                         uiExecutor.execute(() -> done.accept(bytes));
+                    } catch (OneTimeCodeRequiredException e) {
+                        LOG.info("Bild verlangt einen Einmalcode: " + address);
+                        uiExecutor.execute(() -> {
+                            if (signIn != null) {
+                                signIn.accept(new SourceSignIn(e.challenge()));
+                            } else {
+                                failed.accept(e.getMessage());
+                            }
+                        });
                     } catch (KnowledgeSourceException e) {
                         final String reason = e.getMessage() == null || e.getMessage().trim().isEmpty()
                                 ? "Bild nicht ladbar (" + e.kind() + ", ohne Meldung der Quelle)" : e.getMessage();
@@ -424,17 +442,30 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
 
         @Override
         public void load(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed) {
-            fetch(attachment, "Anhang", source -> browse.attachment(port, source), done, failed);
+            load(attachment, done, failed, null);
+        }
+
+        @Override
+        public void load(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed,
+                         Consumer<ReaderSignIn> signIn) {
+            fetch(attachment, "Anhang", source -> browse.attachment(port, source), done, failed, signIn);
         }
 
         @Override
         public void preview(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed) {
+            preview(attachment, done, failed, null);
+        }
+
+        @Override
+        public void preview(ReaderAttachment attachment, Consumer<byte[]> done, Consumer<String> failed,
+                            Consumer<ReaderSignIn> signIn) {
             fetch(attachment, "Vorschau", source -> browse.attachmentPreview(port, source, previewOrder()), done,
-                    failed);
+                    failed, signIn);
         }
 
         private void fetch(final ReaderAttachment attachment, final String what, final SourceCall call,
-                           final Consumer<byte[]> done, final Consumer<String> failed) {
+                           final Consumer<byte[]> done, final Consumer<String> failed,
+                           final Consumer<ReaderSignIn> signIn) {
             final PageView.Attachment source = byKey.get(attachment.key());
             if (source == null) {
                 failed.accept(what + " gehört nicht zu dieser Seite.");
@@ -445,6 +476,15 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                     try {
                         final byte[] bytes = call.run(source);
                         uiExecutor.execute(() -> done.accept(bytes));
+                    } catch (OneTimeCodeRequiredException e) {
+                        LOG.info(what + " verlangt einen Einmalcode: " + source.id());
+                        uiExecutor.execute(() -> {
+                            if (signIn != null) {
+                                signIn.accept(new SourceSignIn(e.challenge()));
+                            } else {
+                                failed.accept(e.getMessage());
+                            }
+                        });
                     } catch (KnowledgeSourceException e) {
                         final String reason = e.getMessage() == null || e.getMessage().trim().isEmpty()
                                 ? what + " nicht ladbar (" + e.kind() + ", ohne Meldung der Quelle)" : e.getMessage();
@@ -460,6 +500,79 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 failed.accept(what + " nicht ladbar: Hintergrundarbeit abgelehnt (Protokoll).");
             }
         }
+    }
+
+    /**
+     * Die Einmalcode-Abfrage einer Quelle für den Anzeigebereich: Senden blockierend auf dem Arbeits-Executor,
+     * Rückrufe auf dem UI-Executor. Der Code wird nach dem Senden überschrieben und nie protokolliert.
+     */
+    private final class SourceSignIn implements ReaderSignIn {
+        private final OneTimeCodeChallenge challenge;
+
+        SourceSignIn(OneTimeCodeChallenge challenge) {
+            this.challenge = challenge;
+        }
+
+        @Override
+        public String service() {
+            return challenge.service();
+        }
+
+        @Override
+        public String message() {
+            return challenge.message();
+        }
+
+        @Override
+        public String error() {
+            return challenge.error();
+        }
+
+        @Override
+        public boolean resendAvailable() {
+            return challenge.resendAvailable();
+        }
+
+        @Override
+        public void submit(char[] code, Consumer<ReaderSignIn> next, Consumer<String> failed) {
+            final char[] copy = java.util.Arrays.copyOf(code, code.length);
+            send(() -> {
+                try {
+                    return challenge.submit(copy);
+                } finally {
+                    java.util.Arrays.fill(copy, '\0');
+                }
+            }, next, failed);
+        }
+
+        @Override
+        public void resend(Consumer<ReaderSignIn> next, Consumer<String> failed) {
+            send(challenge::resend, next, failed);
+        }
+
+        private void send(final ChallengeCall call, final Consumer<ReaderSignIn> next, final Consumer<String> failed) {
+            try {
+                workExecutor.execute(() -> {
+                    try {
+                        final OneTimeCodeChallenge again = call.run();
+                        uiExecutor.execute(() -> next.accept(again == null ? null : new SourceSignIn(again)));
+                    } catch (KnowledgeSourceException e) {
+                        LOG.warning("Einmalcode nicht gesendet (" + e.kind() + "): " + e.getMessage());
+                        uiExecutor.execute(() -> failed.accept(e.getMessage()));
+                    } catch (RuntimeException e) {
+                        LOG.log(Level.WARNING, "Einmalcode nicht gesendet", e);
+                        uiExecutor.execute(() -> failed.accept("Einmalcode nicht gesendet: unerwarteter Fehler "
+                                + "(Protokoll)."));
+                    }
+                });
+            } catch (RuntimeException rejected) {
+                failed.accept("Einmalcode nicht gesendet: Hintergrundarbeit abgelehnt (Protokoll).");
+            }
+        }
+    }
+
+    private interface ChallengeCall {
+        OneTimeCodeChallenge run() throws KnowledgeSourceException;
     }
 
     /** Ein blockierender Aufruf an die Quelle. */

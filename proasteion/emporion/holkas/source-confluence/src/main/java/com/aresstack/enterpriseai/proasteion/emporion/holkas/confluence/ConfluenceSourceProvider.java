@@ -9,7 +9,6 @@ import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
-import com.aresstack.enterpriseai.source.api.OneTimeCodePrompt;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SourceScope;
@@ -86,7 +85,6 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
     private final String userAgent;
     private final ClientCertificateSockets certificates;
     private final java.nio.file.Path diagnosticsDirectory;
-    private final OneTimeCodePrompt oneTimeCodes;
 
     /**
      * @param secrets          Security-Port für Benutzer/Passwort je Anfrage
@@ -106,17 +104,6 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
     public ConfluenceSourceProvider(SecretProvider secrets, HttpRoutePort routes, SSLSocketFactory sslSocketFactory,
                                     String userAgent, ClientCertificateSockets certificates,
                                     java.nio.file.Path diagnosticsDirectory) {
-        this(secrets, routes, sslSocketFactory, userAgent, certificates, diagnosticsDirectory,
-                OneTimeCodePrompt.refusing());
-    }
-
-    /**
-     * @param oneTimeCodes fragt den Einmalcode ab, wenn ein Zwei-Faktor-Plugin die Dateien sperrt (Oberfläche);
-     *                     {@code null} = keine Abfrage
-     */
-    public ConfluenceSourceProvider(SecretProvider secrets, HttpRoutePort routes, SSLSocketFactory sslSocketFactory,
-                                    String userAgent, ClientCertificateSockets certificates,
-                                    java.nio.file.Path diagnosticsDirectory, OneTimeCodePrompt oneTimeCodes) {
         if (secrets == null || certificates == null) {
             throw new IllegalArgumentException("secrets and certificates must not be null");
         }
@@ -126,7 +113,6 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
         this.userAgent = userAgent;
         this.certificates = certificates;
         this.diagnosticsDirectory = diagnosticsDirectory;
-        this.oneTimeCodes = oneTimeCodes == null ? OneTimeCodePrompt.refusing() : oneTimeCodes;
     }
 
     /** Der Typ ohne Laufzeitumgebung (Beschreibung, Felder). */
@@ -224,7 +210,7 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
                 transport.sslSocketFactory(sslSocketFactory);
             }
         }
-        return new ConfluenceKnowledgeSource(sourceId, config, transport.build(), secrets, options, oneTimeCodes);
+        return new ConfluenceKnowledgeSource(sourceId, config, transport.build(), secrets, options);
     }
 
     private static ConfluenceConfig config(SourceSettingsReader r) {
