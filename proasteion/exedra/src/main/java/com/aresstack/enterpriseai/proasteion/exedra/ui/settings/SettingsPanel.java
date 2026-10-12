@@ -83,7 +83,7 @@ public final class SettingsPanel extends JPanel {
             "Packt alle installierten lokalen KI- und Sprachmodelle in ein ZIP für eine Offline-Installation.";
     public static final String QUIT_LABEL = "Beenden";
     private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle",
-            "Sprachausgabe", "Index", "Tools", "Darstellung", "Technische Details"};
+            "Sprachausgabe", "Index", "Tools", "Darstellung", "Technische Details", "Merlins Kristallhöhle"};
     /** Index des Reiters „Modelle“ (Auswahl je Kategorie). */
     static final int MODELS_TAB = 3;
     /** Index der Kategorie „Sprachausgabe“. */
@@ -228,7 +228,7 @@ public final class SettingsPanel extends JPanel {
         tabs.setOpaque(false);
         ButtonGroup group = new ButtonGroup();
         JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel(), modelsTab.panel(),
-                speechTab.panel(), indexTab.panel(), toolsTab.panel(), appearanceTab.panel(), technicalPage()};
+                speechTab.panel(), indexTab.panel(), toolsTab.panel(), appearanceTab.panel(), technicalPage(), new MerlinCavePanel(palette)};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
             ComposerToggleButton button = new ComposerToggleButton(null, name, null);
