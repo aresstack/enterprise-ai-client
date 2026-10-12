@@ -43,6 +43,8 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.LayoutManager;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
@@ -53,6 +55,7 @@ import java.beans.PropertyChangeListener;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Der Chat-Verlauf als Sprechblasen im AskAI-Stil: Nutzer rechts (blau), Assistent links (petrol), Fehler
@@ -167,6 +170,13 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private long lastFlushNanos;
     private boolean flushedBefore;
     private int flushCount;
+    /** Wohin der Kopierknopf einer Blase schreibt (Systemzwischenablage; Tests setzen einen Ersatz). */
+    private Consumer<String> clipboard = new Consumer<String>() {
+        @Override
+        public void accept(String text) {
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
+        }
+    };
 
     public ChatTranscriptPanel(ChatShellModel model, ComicPalette comicPalette, BubblePalette bubblePalette) {
         this(model, comicPalette, bubblePalette, DesktopLinkOpener.systemDefault(),
@@ -576,6 +586,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         if (state == null || state.bubble == null) {
             return; // Hinweiszeilen ändern sich nicht
         }
+        state.entry = entry;
         if (entry.getState() == TranscriptEntry.State.FAILED) {
             // Die Blasenfarbe ist unveränderlich: eine fehlgeschlagene Antwort bekommt eine neue Fehlerblase.
             replaceRow(state, entry);
@@ -789,8 +800,9 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         if (!user && !failed) {
             AssistantMarkdownBubble bubble = createMarkdownBubble(entry, header, text);
             bubble.setHeaderTimestamp(entry.getCreatedAtMillis());
-            return new RowState(new BubbleMessageRow(bubble, side), bubble, header, text.length(),
-                    !entry.getText().isEmpty());
+            bubble.setHeaderAccessory(copyButton(entry, bubblePalette.getAssistantForeground()));
+            return withEntry(new RowState(new BubbleMessageRow(bubble, side), bubble, header, text.length(),
+                    !entry.getText().isEmpty()), entry);
         }
         Color background;
         Color foreground;
@@ -807,8 +819,78 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             bubble.setDetailsLabels(SHOW_DETAILS_LABEL, HIDE_DETAILS_LABEL);
             bubble.setDetails(failureDetails(entry.getFailureMessage()));
         }
-        return new RowState(new BubbleMessageRow(bubble, side), bubble, header, text.length(),
-                !entry.getText().isEmpty());
+        bubble.setHeaderAccessory(copyButton(entry, foreground));
+        return withEntry(new RowState(new BubbleMessageRow(bubble, side), bubble, header, text.length(),
+                !entry.getText().isEmpty()), entry);
+    }
+
+    private static RowState withEntry(RowState state, TranscriptEntry entry) {
+        state.entry = entry;
+        return state;
+    }
+
+    /**
+     * Der Kopierknopf einer persistenten Nachricht (Nutzer, Antwort, Fehler); er liest beim Klick den aktuellen Stand
+     * des Eintrags, nicht das Rendering.
+     */
+    private MessageCopyButton copyButton(TranscriptEntry entry, Color foreground) {
+        final long id = entry.getId();
+        final TranscriptEntry created = entry;
+        return new MessageCopyButton(new Color(foreground.getRed(), foreground.getGreen(), foreground.getBlue(), 200),
+                new java.util.function.Supplier<String>() {
+                    @Override
+                    public String get() {
+                        RowState state = rows.get(id);
+                        return copyText(state == null || state.entry == null ? created : state.entry);
+                    }
+                },
+                new Consumer<String>() {
+                    @Override
+                    public void accept(String text) {
+                        clipboard.accept(text);
+                    }
+                });
+    }
+
+    /**
+     * Was der Kopierknopf in die Zwischenablage legt: der ursprüngliche Text der Nachricht (bei Antworten der
+     * Markdown-Quelltext), ohne Kopfzeile, Zeitstempel und Quellenleiste; bei einem Fehler zusätzlich die ganze
+     * Fehlermeldung.
+     */
+    static String copyText(TranscriptEntry entry) {
+        String text = entry.getText();
+        if (entry.getState() == TranscriptEntry.State.FAILED) {
+            String failure = entry.getFailureMessage() == null ? "" : entry.getFailureMessage().trim();
+            return text.trim().isEmpty() ? failure : failure.isEmpty() ? text : text + "\n\n" + failure;
+        }
+        return text;
+    }
+
+    /** Leitet die Kopieraktion der Blasen um (Tests ohne Systemzwischenablage). */
+    void setClipboard(Consumer<String> clipboard) {
+        this.clipboard = clipboard;
+    }
+
+    /** Der Kopierknopf in der Kopfzeile einer Blase (für Tests), oder {@code null}. */
+    MessageCopyButton copyButtonFor(long entryId) {
+        RowState state = rows.get(entryId);
+        return state == null || state.bubble == null ? null
+                : findCopyButton((java.awt.Container) state.bubble);
+    }
+
+    private static MessageCopyButton findCopyButton(java.awt.Container container) {
+        for (Component child : container.getComponents()) {
+            if (child instanceof MessageCopyButton) {
+                return (MessageCopyButton) child;
+            }
+            if (child instanceof java.awt.Container) {
+                MessageCopyButton nested = findCopyButton((java.awt.Container) child);
+                if (nested != null) {
+                    return nested;
+                }
+            }
+        }
+        return null;
     }
 
     /** Eine Antwortblase mit Markdown-Körper; eine laufende Antwort beginnt im Streaming-Modus (gedrosselt gerendert). */
@@ -910,6 +992,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         boolean showsEntryText; // Blase zeigt den Eintragstext (nicht Platzhalter oder Aktivität)
         boolean streamed; // zuletzt im Zustand STREAMING gesehen (Ende live erlebt → automatisches Vorlesen)
         AnimatedThoughtBubblePanel thought; // die Wolke eines laufenden Arbeitsschritts, sonst null
+        TranscriptEntry entry; // der zuletzt angewandte Stand (Quelle des Kopierknopfs), bei Blasen
 
         RowState(JComponent row, TranscriptBubble bubble, String header, int shownLength,
                  boolean showsEntryText) {

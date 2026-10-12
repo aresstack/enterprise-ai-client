@@ -8,6 +8,8 @@ import com.aresstack.enterpriseai.ui.comic.bubble.SpeechBubblePanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.TranscriptBubble;
 import com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight;
 
+import javax.swing.Box;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.UIManager;
@@ -15,6 +17,7 @@ import javax.swing.border.EmptyBorder;
 import java.awt.AlphaComposite;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -118,6 +121,29 @@ final class AssistantMarkdownBubble extends JPanel implements WidthAwareHeight, 
         timestampLabel.setText(BubbleTimestamps.stackedHtml(epochMillis));
         timestampLabel.setToolTipText(full);
         headerLabel.setToolTipText(full);
+        revalidate();
+        repaint();
+    }
+
+    /** Ein kleines Bedienelement (Kopierknopf) direkt hinter dem Namen in der Kopfzeile; der Markdown-Körper bleibt unberührt. */
+    void setHeaderAccessory(JComponent accessory) {
+        if (!headerShown) {
+            return;
+        }
+        headerRow.remove(headerLabel);
+        JPanel name = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        name.setOpaque(false);
+        name.add(headerLabel);
+        if (accessory != null) {
+            // nie höher als der Name: die Kopfzeile und damit die Blasenhöhe bleiben wie ohne Knopf
+            java.awt.Dimension size = new java.awt.Dimension(accessory.getPreferredSize().width,
+                    Math.min(accessory.getPreferredSize().height, headerLabel.getPreferredSize().height));
+            accessory.setPreferredSize(size);
+            accessory.setMaximumSize(size);
+            name.add(Box.createHorizontalStrut(4));
+            name.add(accessory);
+        }
+        headerRow.add(name, BorderLayout.WEST);
         revalidate();
         repaint();
     }
