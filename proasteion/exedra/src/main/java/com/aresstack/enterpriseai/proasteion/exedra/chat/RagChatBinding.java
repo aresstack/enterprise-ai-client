@@ -434,7 +434,7 @@ public final class RagChatBinding implements ChatShellActions {
                     uiExecutor.execute(new Runnable() {
                         @Override
                         public void run() {
-                            attach(request, turn);
+                            attach(request, turn, conversation);
                         }
                     });
                 }
@@ -547,8 +547,12 @@ public final class RagChatBinding implements ChatShellActions {
     }
 
     /** Der RAG-Turn steht (UI-Thread): Quellen und Hinweise anbringen, Abbruchwunsch einlösen. */
-    private void attach(Request request, RagChatTurn ragTurn) {
+    private void attach(Request request, RagChatTurn ragTurn, ChatConversationId conversation) {
         ChatTurn turn = ragTurn.turn();
+        if (history != null && !ragTurn.queries().isEmpty()) {
+            // Diagnose (Chat-Export): Vorabsuche und Nachsuchen des Clients stehen vor den Werkzeugaufrufen des Modells.
+            history.searchesTraced(conversation, request.answer, ragTurn.queries(), ragTurn.hitCounts());
+        }
         if (!request.answer.hasSources()) {
             model.attachSources(request.answer, describe(ragTurn.sources()));
         }

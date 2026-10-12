@@ -19,20 +19,28 @@ public final class RagChatTurn {
     private final List<RetrievalWarning> warnings;
     private final boolean retrievalFailed;
     private final List<String> queries;
+    private final List<Integer> hitCounts;
 
     RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
                 boolean retrievalFailed) {
-        this(turn, retrievalRequested, context, warnings, retrievalFailed, Collections.<String>emptyList());
+        this(turn, retrievalRequested, context, warnings, retrievalFailed, Collections.<String>emptyList(),
+                Collections.<Integer>emptyList());
     }
 
     RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
-                boolean retrievalFailed, List<String> queries) {
+                boolean retrievalFailed, List<String> queries, List<Integer> hitCounts) {
         this.turn = turn;
         this.retrievalRequested = retrievalRequested;
         this.context = context;
         this.warnings = Collections.unmodifiableList(new ArrayList<RetrievalWarning>(warnings));
         this.retrievalFailed = retrievalFailed;
         this.queries = Collections.unmodifiableList(new ArrayList<String>(queries));
+        this.hitCounts = Collections.unmodifiableList(new ArrayList<Integer>(hitCounts));
+    }
+
+    /** Trefferzahl je Suchanfrage in der Reihenfolge von {@link #queries()}; -1, wenn die Suche ausfiel. */
+    public List<Integer> hitCounts() {
+        return hitCounts;
     }
 
     /** Die Suchanfragen dieser Nachricht, älteste zuerst (die erste ist die Nachricht selbst); leer bei RAG aus. */

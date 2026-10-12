@@ -275,8 +275,13 @@ public class RagChatBindingTest {
         com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord record = store.load(conversation.value());
         com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord answer = record.getMessages().get(1);
         assertTrue(answer.isAssistant());
-        assertEquals(1, answer.getToolCalls().size());
-        com.aresstack.enterpriseai.astu.acropolis.history.ToolCallRecord call = answer.getToolCalls().get(0);
+        assertEquals(2, answer.getToolCalls().size());
+        com.aresstack.enterpriseai.astu.acropolis.history.ToolCallRecord search = answer.getToolCalls().get(0);
+        assertEquals("die Vorabsuche des Clients steht vorn", ChatHistoryBinding.CLIENT_SEARCH, search.getName());
+        assertEquals("{\"query\":\"Suche Seiten zu SonarQube.\"}", search.getArguments());
+        assertTrue(search.isSucceeded());
+        assertTrue(search.getResult(), search.getResult().endsWith(" Treffer"));
+        com.aresstack.enterpriseai.astu.acropolis.history.ToolCallRecord call = answer.getToolCalls().get(1);
         assertEquals("knowledge_search", call.getName());
         assertEquals("{\"query\":\"SonarQube\"}", call.getArguments());
         assertTrue(call.isSucceeded());

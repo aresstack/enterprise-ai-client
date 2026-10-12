@@ -57,6 +57,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     private final LongSupplier clock;
     private final Map<Long, List<AttachmentRecord>> storedAttachments = new HashMap<Long, List<AttachmentRecord>>();
     /** Werkzeugaufrufe je Antwort (Zeilen-Kennung), für die Diagnose; gespeicherte kommen beim Öffnen zurück. */
+    /** Name, unter dem die Suchen des Clients (Vorabsuche, Nachsuchen) bei den Werkzeugaufrufen stehen. */
+    static final String CLIENT_SEARCH = "client_search";
     private final Map<Long, List<ToolCallRecord>> toolCalls = new HashMap<Long, List<ToolCallRecord>>();
     /** Quellen geöffneter Antworten (die wiederhergestellte Zeile zeigt sie nicht), damit Speichern sie behält. */
     private final Map<Long, List<SourceRecord>> restoredSources = new HashMap<Long, List<SourceRecord>>();
@@ -220,6 +222,34 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             toolCalls.put(answer.getId(), calls);
         }
         calls.add(new ToolCallRecord(toolName, arguments, succeeded, output, clock.getAsLong()));
+    }
+
+    /**
+     * Die Suchen des Clients vor einer Antwort (Vorabsuche und Nachsuchen, UI-Thread): sie kommen für die Diagnose als
+     * Werkzeugaufrufe {@value #CLIENT_SEARCH} vor denen des Modells in den gespeicherten Chat; Argument ist die
+     * Suchanfrage, Ergebnis die Trefferzahl. Gilt nur für die aktuelle Unterhaltung.
+     */
+    void searchesTraced(ChatConversationId conversation, TranscriptEntry answer, List<String> queries,
+                        List<Integer> hitCounts) {
+        if (answer == null || !conversation.equals(chat.conversationId())) {
+            return;
+        }
+        List<ToolCallRecord> searches = new ArrayList<ToolCallRecord>(queries.size());
+        for (int i = 0; i < queries.size(); i++) {
+            int hits = i < hitCounts.size() ? hitCounts.get(i) : -1;
+            searches.add(new ToolCallRecord(CLIENT_SEARCH, "{\"query\":" + jsonString(queries.get(i)) + "}",
+                    hits >= 0, hits >= 0 ? hits + " Treffer" : "Suche ausgefallen", clock.getAsLong()));
+        }
+        List<ToolCallRecord> calls = toolCalls.get(answer.getId());
+        if (calls == null) {
+            calls = new ArrayList<ToolCallRecord>();
+            toolCalls.put(answer.getId(), calls);
+        }
+        calls.addAll(0, searches);
+    }
+
+    private static String jsonString(String text) {
+        return new com.google.gson.JsonPrimitive(text).toString();
     }
 
     @Override

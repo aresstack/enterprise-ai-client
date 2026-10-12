@@ -134,6 +134,7 @@ public final class RagChatUseCase {
                                           ChatOptions options, ChatTurnListener listener, String extraContext,
                                           ChatCompletionPort via) {
         List<String> queries = new ArrayList<String>();
+        List<Integer> hitCounts = new ArrayList<Integer>();
         List<RetrievedChunk> hits = new ArrayList<RetrievedChunk>();
         List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
         boolean failed = false;
@@ -149,9 +150,11 @@ public final class RagChatUseCase {
             }
             try {
                 RetrievalResult result = retrieval.retrieve(query, rag.sources());
+                hitCounts.add(result.hits().size());
                 hits = newestFirst(result.hits(), hits);
                 warnings.addAll(result.warnings());
             } catch (KnowledgeRetrievalException e) {
+                hitCounts.add(-1);
                 if (queries.size() == 1) {
                     warnings.addAll(e.warnings());
                     failed = true;
@@ -168,7 +171,7 @@ public final class RagChatUseCase {
         String combined = join(join(context.text(), followUps.isEnabled() ? searchNote(queries) : null),
                 extraContext);
         ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
-        return new RagChatTurn(turn, true, context, warnings, failed, queries);
+        return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts);
     }
 
     /** Die Treffer der neuesten Suche zuerst, danach die älteren, die sie nicht schon enthält. */

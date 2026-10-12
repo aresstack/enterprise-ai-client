@@ -266,6 +266,8 @@ public class RagChatUseCaseTest {
         awaitDone(turn);
 
         assertEquals(Arrays.asList(FOLLOW_UP, "NIZZA Dateiformat"), turn.queries());
+        assertEquals(2, turn.hitCounts().size());
+        assertTrue(turn.hitCounts().get(1) > 0);
         assertEquals(2, index.semanticSearches);
         assertEquals("die neueste Suche steht vorn", NIZZA, turn.sources().get(0).resource());
         List<ChatRequest> requests = chatPort.requests();
