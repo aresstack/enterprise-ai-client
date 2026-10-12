@@ -111,6 +111,13 @@ public class SettingsMapperTest {
         expected.setProperty("chat.tools.maxRounds", "8");
         expected.setProperty("context.maxSources", "6");
         expected.setProperty("context.maxTokens", "1500");
+        expected.setProperty("retrieval.minIndependentSources", "1");
+        expected.setProperty("retrieval.keywordCandidates", "20");
+        expected.setProperty("retrieval.semanticCandidates", "20");
+        expected.setProperty("retrieval.maxFollowUps", "2");
+        expected.setProperty("retrieval.liveSearch.initialPages", "1");
+        expected.setProperty("retrieval.liveSearch.maxPages", "4");
+        expected.setProperty("retrieval.liveSearch.hitsPerSource", "10");
         assertEquals(expected, added);
         AppConfig config = AppConfigLoader.fromProperties(merged);
         assertEquals("test-chat", config.chat().model());
