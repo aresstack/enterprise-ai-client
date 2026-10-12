@@ -77,6 +77,15 @@ public final class SettingsForm {
     private final String prefetchMaxItems;
     private final String prefetchConcurrency;
     private final String prefetchCacheMaxMb;
+    private final String chatConnectTimeoutMillis;
+    private final String chatReadTimeoutMillis;
+    private final String chatRetryCount;
+    private final String chatRetryDelayMillis;
+    private final String keePassTimeoutMillis;
+    private final String keePassRetryCount;
+    private final String keePassRetryDelayMillis;
+    private final String sourceRetryCount;
+    private final String sourceRetryDelayMillis;
     private final String agentCommand;
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
@@ -141,6 +150,15 @@ public final class SettingsForm {
         this.prefetchMaxItems = b.prefetchMaxItems;
         this.prefetchConcurrency = b.prefetchConcurrency;
         this.prefetchCacheMaxMb = b.prefetchCacheMaxMb;
+        this.chatConnectTimeoutMillis = b.chatConnectTimeoutMillis;
+        this.chatReadTimeoutMillis = b.chatReadTimeoutMillis;
+        this.chatRetryCount = b.chatRetryCount;
+        this.chatRetryDelayMillis = b.chatRetryDelayMillis;
+        this.keePassTimeoutMillis = b.keePassTimeoutMillis;
+        this.keePassRetryCount = b.keePassRetryCount;
+        this.keePassRetryDelayMillis = b.keePassRetryDelayMillis;
+        this.sourceRetryCount = b.sourceRetryCount;
+        this.sourceRetryDelayMillis = b.sourceRetryDelayMillis;
         this.agentCommand = b.agentCommand;
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
@@ -196,6 +214,15 @@ public final class SettingsForm {
                 .prefetchMaxItems(prefetchMaxItems)
                 .prefetchConcurrency(prefetchConcurrency)
                 .prefetchCacheMaxMb(prefetchCacheMaxMb)
+                .chatConnectTimeoutMillis(chatConnectTimeoutMillis)
+                .chatReadTimeoutMillis(chatReadTimeoutMillis)
+                .chatRetryCount(chatRetryCount)
+                .chatRetryDelayMillis(chatRetryDelayMillis)
+                .keePassTimeoutMillis(keePassTimeoutMillis)
+                .keePassRetryCount(keePassRetryCount)
+                .keePassRetryDelayMillis(keePassRetryDelayMillis)
+                .sourceRetryCount(sourceRetryCount)
+                .sourceRetryDelayMillis(sourceRetryDelayMillis)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .researchMaxPages(researchMaxPages)
                 .chatToolsMaxRounds(chatToolsMaxRounds)
@@ -397,6 +424,51 @@ public final class SettingsForm {
         return prefetchCacheMaxMb;
     }
 
+    /** Chat: Frist für den Verbindungsaufbau in ms ({@code chat.connectTimeoutMillis}). Leer = Standard. */
+    public String chatConnectTimeoutMillis() {
+        return chatConnectTimeoutMillis;
+    }
+
+    /** Chat: Frist zwischen zwei empfangenen Datenstücken in ms ({@code chat.readTimeoutMillis}). Leer = Standard. */
+    public String chatReadTimeoutMillis() {
+        return chatReadTimeoutMillis;
+    }
+
+    /** Chat: Wiederholungen einer Modellanfrage nach einem vorübergehenden Fehler ({@code chat.retryCount}). Leer = Standard. */
+    public String chatRetryCount() {
+        return chatRetryCount;
+    }
+
+    /** Chat: Pause vor der ersten Wiederholung in ms ({@code chat.retryDelayMillis}). Leer = Standard. */
+    public String chatRetryDelayMillis() {
+        return chatRetryDelayMillis;
+    }
+
+    /** KeePassRPC: Frist je Zugriff in ms ({@code security.keepass.timeoutMillis}). Leer = Standard. */
+    public String keePassTimeoutMillis() {
+        return keePassTimeoutMillis;
+    }
+
+    /** KeePassRPC: Wiederholungen, wenn KeePass nicht antwortet ({@code security.keepass.retryCount}). Leer = Standard. */
+    public String keePassRetryCount() {
+        return keePassRetryCount;
+    }
+
+    /** KeePassRPC: Pause vor der ersten Wiederholung in ms ({@code security.keepass.retryDelayMillis}). Leer = Standard. */
+    public String keePassRetryDelayMillis() {
+        return keePassRetryDelayMillis;
+    }
+
+    /** Wissensquellen: Wiederholungen von Suche und Seitenabruf ({@code knowledge.sources.retryCount}). Leer = Standard. */
+    public String sourceRetryCount() {
+        return sourceRetryCount;
+    }
+
+    /** Wissensquellen: Pause vor der ersten Wiederholung in ms ({@code knowledge.sources.retryDelayMillis}). Leer = Standard. */
+    public String sourceRetryDelayMillis() {
+        return sourceRetryDelayMillis;
+    }
+
     public String agentCommand() {
         return agentCommand;
     }
@@ -570,6 +642,15 @@ public final class SettingsForm {
         private String prefetchMaxItems = "100";
         private String prefetchConcurrency = "4";
         private String prefetchCacheMaxMb = "50";
+        private String chatConnectTimeoutMillis = "";
+        private String chatReadTimeoutMillis = "";
+        private String chatRetryCount = "";
+        private String chatRetryDelayMillis = "";
+        private String keePassTimeoutMillis = "";
+        private String keePassRetryCount = "";
+        private String keePassRetryDelayMillis = "";
+        private String sourceRetryCount = "";
+        private String sourceRetryDelayMillis = "";
         private String agentCommand = "";
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
@@ -781,6 +862,51 @@ public final class SettingsForm {
 
         public Builder prefetchCacheMaxMb(String value) {
             this.prefetchCacheMaxMb = value;
+            return this;
+        }
+
+        public Builder chatConnectTimeoutMillis(String value) {
+            this.chatConnectTimeoutMillis = text(value);
+            return this;
+        }
+
+        public Builder chatReadTimeoutMillis(String value) {
+            this.chatReadTimeoutMillis = text(value);
+            return this;
+        }
+
+        public Builder chatRetryCount(String value) {
+            this.chatRetryCount = text(value);
+            return this;
+        }
+
+        public Builder chatRetryDelayMillis(String value) {
+            this.chatRetryDelayMillis = text(value);
+            return this;
+        }
+
+        public Builder keePassTimeoutMillis(String value) {
+            this.keePassTimeoutMillis = text(value);
+            return this;
+        }
+
+        public Builder keePassRetryCount(String value) {
+            this.keePassRetryCount = text(value);
+            return this;
+        }
+
+        public Builder keePassRetryDelayMillis(String value) {
+            this.keePassRetryDelayMillis = text(value);
+            return this;
+        }
+
+        public Builder sourceRetryCount(String value) {
+            this.sourceRetryCount = text(value);
+            return this;
+        }
+
+        public Builder sourceRetryDelayMillis(String value) {
+            this.sourceRetryDelayMillis = text(value);
             return this;
         }
 

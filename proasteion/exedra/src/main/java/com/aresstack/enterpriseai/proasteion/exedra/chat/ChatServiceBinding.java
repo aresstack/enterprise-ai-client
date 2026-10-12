@@ -111,6 +111,10 @@ public final class ChatServiceBinding implements ChatShellActions {
             case AUTHENTICATION:
                 reason = "Anmeldung am KI-Dienst fehlgeschlagen.";
                 break;
+            case CREDENTIALS_UNAVAILABLE:
+                reason = "Der API-Key konnte nach mehreren Versuchen nicht aus KeePass gelesen werden. KeePassRPC war "
+                        + "vorübergehend nicht verfügbar.";
+                break;
             case RATE_LIMITED:
                 reason = "Der KI-Dienst ist ausgelastet. Bitte später erneut versuchen.";
                 break;

@@ -236,7 +236,7 @@ public class RagShellIntegrationTest {
         });
         awaitIdle(shell.model);
         entries = entries(shell.model);
-        TranscriptEntry cancelled = entries.get(5);
+        TranscriptEntry cancelled = entries.get(entries.size() - 1); // die fertige Recherchekarte bleibt davor stehen
         assertEquals(TranscriptEntry.State.CANCELLED, cancelled.getState());
         assertEquals("Ich überlege", cancelled.getText());
         assertTrue("Quellen auch an der abgebrochenen Antwort", cancelled.hasSources());

@@ -59,6 +59,15 @@ final class SystemTab {
     private final JComboBox<String> prefetchMaxItems;
     private final JComboBox<String> prefetchConcurrency;
     private final JComboBox<String> prefetchCacheMaxMb;
+    private final JTextField chatConnectTimeout;
+    private final JTextField chatReadTimeout;
+    private final JTextField chatRetryCount;
+    private final JTextField chatRetryDelay;
+    private final JTextField keePassTimeout;
+    private final JTextField keePassRetryCount;
+    private final JTextField keePassRetryDelay;
+    private final JTextField sourceRetryCount;
+    private final JTextField sourceRetryDelay;
     private final JPanel panel;
 
     private String activeMode;
@@ -152,11 +161,35 @@ final class SystemTab {
         prefetchConcurrency.setEditable(true);
         prefetchCacheMaxMb.setEditable(true);
 
+        // Zeitlimits bleiben wie bisher; Wiederholungen fangen kurze Aussetzer ab, statt den ganzen Turn aufzugeben.
+        FormRows timing = new FormRows(palette);
+        timing.note("Vorübergehende Fehler (Verbindung, Zeitüberschreitung, HTTP 429/5xx, KeePass kurz nicht "
+                + "erreichbar) werden automatisch wiederholt; jede weitere Pause ist 2,5-mal so lang wie die vorige. "
+                + "Falsche Zugangsdaten, fehlende Einträge und abgelehnte Anfragen werden nie wiederholt.");
+        chatConnectTimeout = timing.textField("Chat: Verbindungs-Timeout (ms)",
+                "chat.connectTimeoutMillis, 0–3600000; 0 = ohne Frist");
+        chatReadTimeout = timing.textField("Chat: Lese-Timeout (ms)",
+                "chat.readTimeoutMillis, 0–3600000; Frist zwischen zwei Datenstücken der Antwort");
+        chatRetryCount = timing.textField("Chat: Wiederholungen",
+                "chat.retryCount, 0–10; je Modellanfrage, nur bevor Antworttext sichtbar ist; Werkzeuge laufen nie doppelt");
+        chatRetryDelay = timing.textField("Chat: Pause vor Wiederholung (ms)", "chat.retryDelayMillis, 0–30000");
+        keePassTimeout = timing.textField("KeePassRPC: Timeout (ms)", "security.keepass.timeoutMillis, 1–3600000");
+        keePassRetryCount = timing.textField("KeePassRPC: Wiederholungen",
+                "security.keepass.retryCount, 0–10; nur wenn KeePass nicht antwortet, nie bei fehlendem Eintrag");
+        keePassRetryDelay = timing.textField("KeePassRPC: Pause vor Wiederholung (ms)",
+                "security.keepass.retryDelayMillis, 0–30000");
+        sourceRetryCount = timing.textField("Wissensquellen: Wiederholungen",
+                "knowledge.sources.retryCount, 0–10; Suche und Seitenabruf, auch die Wissenssuche des Agenten");
+        sourceRetryDelay = timing.textField("Wissensquellen: Pause vor Wiederholung (ms)",
+                "knowledge.sources.retryDelayMillis, 0–30000");
+        timing.note("Im ungünstigsten Fall wartet ein Zugriff bis zu (Wiederholungen + 1) × Timeout.");
+
         panel = FormRows.column(palette,
                 FormRows.plate("Allgemein", palette.getNavigationBlue(), general.panel(), palette),
                 FormRows.plate("Proxy resolution", palette.getAccentOrange(), proxy.panel(), palette),
                 FormRows.plate("TLS certificate trust", palette.getAccentYellow(), tls.panel(), palette),
                 FormRows.plate("HTTP client & proxy authentication", palette.getAccentRed(), http.panel(), palette),
+                FormRows.plate("Zeitlimits und Wiederholungen", palette.getNavigationBlue(), timing.panel(), palette),
                 FormRows.plate("Agent-Modus (ACP)", palette.getAgentPetrol(), agent.panel(), palette),
                 FormRows.plate("Vorabladen (Prefetch)", palette.getNavigationBlue(), prefetch.panel(), palette));
 
@@ -404,6 +437,15 @@ final class SystemTab {
         prefetchMaxItems.setSelectedItem(form.prefetchMaxItems());
         prefetchConcurrency.setSelectedItem(form.prefetchConcurrency());
         prefetchCacheMaxMb.setSelectedItem(form.prefetchCacheMaxMb());
+        chatConnectTimeout.setText(form.chatConnectTimeoutMillis());
+        chatReadTimeout.setText(form.chatReadTimeoutMillis());
+        chatRetryCount.setText(form.chatRetryCount());
+        chatRetryDelay.setText(form.chatRetryDelayMillis());
+        keePassTimeout.setText(form.keePassTimeoutMillis());
+        keePassRetryCount.setText(form.keePassRetryCount());
+        keePassRetryDelay.setText(form.keePassRetryDelayMillis());
+        sourceRetryCount.setText(form.sourceRetryCount());
+        sourceRetryDelay.setText(form.sourceRetryDelayMillis());
         updateProxyAuthEnabled();
         updateFieldVisibility();
         appendModeHelp(mode);
@@ -448,7 +490,16 @@ final class SystemTab {
                 .researchMaxPages(researchMaxPages.getText())
                 .prefetchMaxItems(String.valueOf(prefetchMaxItems.getEditor().getItem()))
                 .prefetchConcurrency(String.valueOf(prefetchConcurrency.getEditor().getItem()))
-                .prefetchCacheMaxMb(String.valueOf(prefetchCacheMaxMb.getEditor().getItem()));
+                .prefetchCacheMaxMb(String.valueOf(prefetchCacheMaxMb.getEditor().getItem()))
+                .chatConnectTimeoutMillis(chatConnectTimeout.getText())
+                .chatReadTimeoutMillis(chatReadTimeout.getText())
+                .chatRetryCount(chatRetryCount.getText())
+                .chatRetryDelayMillis(chatRetryDelay.getText())
+                .keePassTimeoutMillis(keePassTimeout.getText())
+                .keePassRetryCount(keePassRetryCount.getText())
+                .keePassRetryDelayMillis(keePassRetryDelay.getText())
+                .sourceRetryCount(sourceRetryCount.getText())
+                .sourceRetryDelayMillis(sourceRetryDelay.getText());
     }
 
     JTextField windowTitle() {

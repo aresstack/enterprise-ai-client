@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.KnowledgeConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.LiveSearchConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
@@ -146,6 +148,16 @@ public final class SettingsMapper {
         b.prefetchMaxItems(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100"));
         b.prefetchConcurrency(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4"));
         b.prefetchCacheMaxMb(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CACHE_MB_KEY, "50"));
+        // Zeitlimits und Wiederholungen: fehlt ein Schlüssel, zeigt das Formular den Standard des Loaders.
+        b.chatConnectTimeoutMillis(text(p, AppConfigLoader.CHAT_CONNECT_TIMEOUT_KEY, String.valueOf(ChatConfig.DEFAULT_CONNECT_TIMEOUT_MILLIS)));
+        b.chatReadTimeoutMillis(text(p, AppConfigLoader.CHAT_READ_TIMEOUT_KEY, String.valueOf(ChatConfig.DEFAULT_READ_TIMEOUT_MILLIS)));
+        b.chatRetryCount(text(p, AppConfigLoader.CHAT_RETRY_COUNT_KEY, String.valueOf(ChatConfig.DEFAULT_RETRY_COUNT)));
+        b.chatRetryDelayMillis(text(p, AppConfigLoader.CHAT_RETRY_DELAY_KEY, String.valueOf(ChatConfig.DEFAULT_RETRY_DELAY_MILLIS)));
+        b.keePassTimeoutMillis(text(p, AppConfigLoader.KEEPASS_TIMEOUT_KEY, String.valueOf(KeePassConfig.DEFAULT_TIMEOUT_MILLIS)));
+        b.keePassRetryCount(text(p, AppConfigLoader.KEEPASS_RETRY_COUNT_KEY, String.valueOf(KeePassConfig.DEFAULT_RETRY_COUNT)));
+        b.keePassRetryDelayMillis(text(p, AppConfigLoader.KEEPASS_RETRY_DELAY_KEY, String.valueOf(KeePassConfig.DEFAULT_RETRY_DELAY_MILLIS)));
+        b.sourceRetryCount(text(p, AppConfigLoader.SOURCES_RETRY_COUNT_KEY, String.valueOf(KnowledgeConfig.DEFAULT_SOURCE_RETRY_COUNT)));
+        b.sourceRetryDelayMillis(text(p, AppConfigLoader.SOURCES_RETRY_DELAY_KEY, String.valueOf(KnowledgeConfig.DEFAULT_SOURCE_RETRY_DELAY_MILLIS)));
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
         b.agentArgs(text(p, KEY_AGENT_ARGS, ""));
         b.agentRequestTimeoutSeconds(text(p, KEY_AGENT_TIMEOUT, "30"));
@@ -237,6 +249,23 @@ public final class SettingsMapper {
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100".equals(form.prefetchMaxItems().trim()) ? "" : form.prefetchMaxItems().trim());
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4".equals(form.prefetchConcurrency().trim()) ? "" : form.prefetchConcurrency().trim());
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_CACHE_MB_KEY, "50".equals(form.prefetchCacheMaxMb().trim()) ? "" : form.prefetchCacheMaxMb().trim());
+        // Zeitlimits stehen wie in der Vorlage in der Datei; Wiederholungen nur, wenn sie vom Standard abweichen (ältere
+        // Dateien funktionieren ohne die neuen Schlüssel).
+        put(set, AppConfigLoader.CHAT_CONNECT_TIMEOUT_KEY, form.chatConnectTimeoutMillis());
+        put(set, AppConfigLoader.CHAT_READ_TIMEOUT_KEY, form.chatReadTimeoutMillis());
+        putUnlessDefault(set, AppConfigLoader.CHAT_RETRY_COUNT_KEY, form.chatRetryCount(),
+                ChatConfig.DEFAULT_RETRY_COUNT);
+        putUnlessDefault(set, AppConfigLoader.CHAT_RETRY_DELAY_KEY, form.chatRetryDelayMillis(),
+                ChatConfig.DEFAULT_RETRY_DELAY_MILLIS);
+        put(set, AppConfigLoader.KEEPASS_TIMEOUT_KEY, form.keePassTimeoutMillis());
+        putUnlessDefault(set, AppConfigLoader.KEEPASS_RETRY_COUNT_KEY, form.keePassRetryCount(),
+                KeePassConfig.DEFAULT_RETRY_COUNT);
+        putUnlessDefault(set, AppConfigLoader.KEEPASS_RETRY_DELAY_KEY, form.keePassRetryDelayMillis(),
+                KeePassConfig.DEFAULT_RETRY_DELAY_MILLIS);
+        putUnlessDefault(set, AppConfigLoader.SOURCES_RETRY_COUNT_KEY, form.sourceRetryCount(),
+                KnowledgeConfig.DEFAULT_SOURCE_RETRY_COUNT);
+        putUnlessDefault(set, AppConfigLoader.SOURCES_RETRY_DELAY_KEY, form.sourceRetryDelayMillis(),
+                KnowledgeConfig.DEFAULT_SOURCE_RETRY_DELAY_MILLIS);
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
         put(set, KEY_AGENT_TIMEOUT, form.agentRequestTimeoutSeconds());
@@ -404,6 +433,24 @@ public final class SettingsMapper {
                 return "Recherche-Budget (Seiten)";
             case AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY:
                 return "Max. Werkzeugrunden";
+            case AppConfigLoader.CHAT_CONNECT_TIMEOUT_KEY:
+                return "Chat: Verbindungs-Timeout (ms)";
+            case AppConfigLoader.CHAT_READ_TIMEOUT_KEY:
+                return "Chat: Lese-Timeout (ms)";
+            case AppConfigLoader.CHAT_RETRY_COUNT_KEY:
+                return "Chat: Wiederholungen";
+            case AppConfigLoader.CHAT_RETRY_DELAY_KEY:
+                return "Chat: Pause vor Wiederholung (ms)";
+            case AppConfigLoader.KEEPASS_TIMEOUT_KEY:
+                return "KeePassRPC: Timeout (ms)";
+            case AppConfigLoader.KEEPASS_RETRY_COUNT_KEY:
+                return "KeePassRPC: Wiederholungen";
+            case AppConfigLoader.KEEPASS_RETRY_DELAY_KEY:
+                return "KeePassRPC: Pause vor Wiederholung (ms)";
+            case AppConfigLoader.SOURCES_RETRY_COUNT_KEY:
+                return "Wissensquellen: Wiederholungen";
+            case AppConfigLoader.SOURCES_RETRY_DELAY_KEY:
+                return "Wissensquellen: Pause vor Wiederholung (ms)";
             case AppConfigLoader.CONTEXT_MAX_SOURCES_KEY:
                 return "Max. Quellen im Antwortkontext";
             case AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY:
@@ -522,6 +569,12 @@ public final class SettingsMapper {
 
     private static void put(Map<String, String> set, String key, String value) {
         set.put(key, value == null ? "" : value.trim());
+    }
+
+    /** Wie {@link #put}, aber der Standardwert wird entfernt statt geschrieben. */
+    private static void putUnlessDefault(Map<String, String> set, String key, String value, int defaultValue) {
+        String trimmed = value == null ? "" : value.trim();
+        set.put(key, String.valueOf(defaultValue).equals(trimmed) ? "" : trimmed);
     }
 
     private static Set<String> nonEmptyKeys(Map<String, String> changes) {

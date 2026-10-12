@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.application.config;
 import com.aresstack.enterpriseai.chat.openai.DeveloperRolePolicy;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
+import com.aresstack.enterpriseai.proasteion.application.retry.RetryPolicy;
 
 import java.net.URI;
 
@@ -11,6 +12,15 @@ import java.net.URI;
  * selbst steht nie in der Konfiguration; {@link #apiKeyRef()} ist der Titel des KeePass-Eintrags.
  */
 public final class ChatConfig {
+
+    /** {@code chat.connectTimeoutMillis}: Frist für den Verbindungsaufbau. */
+    public static final int DEFAULT_CONNECT_TIMEOUT_MILLIS = 10_000;
+    /** {@code chat.readTimeoutMillis}: Frist zwischen zwei empfangenen Datenstücken. */
+    public static final int DEFAULT_READ_TIMEOUT_MILLIS = 120_000;
+    /** {@code chat.retryCount}: Wiederholungen einer Modellanfrage nach einem vorübergehenden Fehler. */
+    public static final int DEFAULT_RETRY_COUNT = 2;
+    /** {@code chat.retryDelayMillis}: Pause vor der ersten Wiederholung (jede weitere länger). */
+    public static final int DEFAULT_RETRY_DELAY_MILLIS = 500;
 
     /**
      * Standard-System-Prompt des normalen Chats, wenn {@code chat.systemPrompt} fehlt oder leer ist; dieselbe
@@ -38,10 +48,11 @@ public final class ChatConfig {
     private final ChatOptions defaultOptions;
     private final boolean toolsEnabled;
     private final int maxToolRounds;
+    private final RetryPolicy retry;
 
     ChatConfig(URI baseUrl, String model, SecretRef apiKeyRef, String systemPrompt, int connectTimeoutMillis,
                int readTimeoutMillis, DeveloperRolePolicy developerRolePolicy, ChatOptions defaultOptions,
-               boolean toolsEnabled, int maxToolRounds) {
+               boolean toolsEnabled, int maxToolRounds, RetryPolicy retry) {
         this.baseUrl = baseUrl;
         this.model = model;
         this.apiKeyRef = apiKeyRef;
@@ -52,6 +63,7 @@ public final class ChatConfig {
         this.defaultOptions = defaultOptions;
         this.toolsEnabled = toolsEnabled;
         this.maxToolRounds = maxToolRounds;
+        this.retry = retry == null ? RetryPolicy.none() : retry;
     }
 
     /** Basis der API, z. B. {@code https://ki.intern.example/v1}; der Adapter hängt {@code chat/completions} an. */
@@ -106,11 +118,19 @@ public final class ChatConfig {
         return maxToolRounds;
     }
 
+    /**
+     * {@code chat.retryCount} und {@code chat.retryDelayMillis}: wie oft eine einzelne Modellanfrage nach einem
+     * vorübergehenden Fehler (Verbindung, HTTP 429, 5xx) erneut gesendet wird.
+     */
+    public RetryPolicy retry() {
+        return retry;
+    }
+
     @Override
     public String toString() {
         return "ChatConfig[baseUrl=" + baseUrl + ", model=" + model + ", apiKeyRef="
                 + (apiKeyRef == null ? "keine" : apiKeyRef) + ", systemPrompt="
                 + (systemPrompt == null ? "keiner" : systemPrompt.length() + " Zeichen") + ", developerRolePolicy="
-                + developerRolePolicy + ", toolsEnabled=" + toolsEnabled + ", maxToolRounds=" + maxToolRounds + "]";
+                + developerRolePolicy + ", toolsEnabled=" + toolsEnabled + ", maxToolRounds=" + maxToolRounds + ", retry=" + retry + "]";
     }
 }

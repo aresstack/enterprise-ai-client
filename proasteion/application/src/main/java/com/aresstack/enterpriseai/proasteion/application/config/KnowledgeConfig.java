@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
 import com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalSettings;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
+import com.aresstack.enterpriseai.proasteion.application.retry.RetryPolicy;
 
 import java.nio.file.Path;
 
@@ -15,6 +16,11 @@ import java.nio.file.Path;
  */
 public final class KnowledgeConfig {
 
+    /** {@code knowledge.sources.retryCount}: Wiederholungen eines Quellenzugriffs nach einem vorübergehenden Fehler. */
+    public static final int DEFAULT_SOURCE_RETRY_COUNT = 2;
+    /** {@code knowledge.sources.retryDelayMillis}: Pause vor der ersten Wiederholung (jede weitere länger). */
+    public static final int DEFAULT_SOURCE_RETRY_DELAY_MILLIS = 500;
+
     private final Path indexDirectory;
     private final KnowledgeChunkingPolicy chunking;
     private final int embeddingBatchSize;
@@ -24,18 +30,19 @@ public final class KnowledgeConfig {
     private final String passageLanguage;
     private final EvidencePolicy evidence;
     private final LiveSearchConfig liveSearch;
+    private final RetryPolicy sourceRetry;
 
     KnowledgeConfig(Path indexDirectory, KnowledgeChunkingPolicy chunking,
                     int embeddingBatchSize, RetrievalSettings retrieval, ContextSettings context,
                     KnowledgePrefetchService.Settings prefetch, String passageLanguage) {
         this(indexDirectory, chunking, embeddingBatchSize, retrieval, context, prefetch, passageLanguage,
-                EvidencePolicy.defaults(), LiveSearchConfig.defaults());
+                EvidencePolicy.defaults(), LiveSearchConfig.defaults(), RetryPolicy.none());
     }
 
     KnowledgeConfig(Path indexDirectory, KnowledgeChunkingPolicy chunking,
                     int embeddingBatchSize, RetrievalSettings retrieval, ContextSettings context,
                     KnowledgePrefetchService.Settings prefetch, String passageLanguage, EvidencePolicy evidence,
-                    LiveSearchConfig liveSearch) {
+                    LiveSearchConfig liveSearch, RetryPolicy sourceRetry) {
         this.indexDirectory = indexDirectory;
         this.chunking = chunking;
         this.embeddingBatchSize = embeddingBatchSize;
@@ -46,6 +53,16 @@ public final class KnowledgeConfig {
                 : passageLanguage.trim();
         this.evidence = evidence == null ? EvidencePolicy.defaults() : evidence;
         this.liveSearch = liveSearch == null ? LiveSearchConfig.defaults() : liveSearch;
+        this.sourceRetry = sourceRetry == null ? RetryPolicy.none() : sourceRetry;
+    }
+
+    /**
+     * {@code knowledge.sources.retryCount}/{@code knowledge.sources.retryDelayMillis}: Wiederholungen einer Suche oder
+     * eines Seitenabrufs, wenn die Quelle vorübergehend nicht erreichbar ist (Netz, Timeout, 5xx); nie bei fehlender
+     * Seite, verweigertem Zugriff oder fehlerhafter Antwort. Gilt auch für die Wissenssuche des Agenten.
+     */
+    public RetryPolicy sourceRetry() {
+        return sourceRetry;
     }
 
     /** Live-Suche des Chats vor dem Retrieval ({@code retrieval.liveSearch.*}). */
@@ -98,6 +115,6 @@ public final class KnowledgeConfig {
     public String toString() {
         return "KnowledgeConfig[indexDirectory=" + indexDirectory
                 + ", chunking=" + chunking + ", embeddingBatchSize=" + embeddingBatchSize + ", retrieval=" + retrieval
-                + ", context=" + context + ", prefetch=" + prefetch + ", evidence=" + evidence + ", liveSearch=" + liveSearch + "]";
+                + ", context=" + context + ", prefetch=" + prefetch + ", evidence=" + evidence + ", liveSearch=" + liveSearch + ", sourceRetry=" + sourceRetry + "]";
     }
 }

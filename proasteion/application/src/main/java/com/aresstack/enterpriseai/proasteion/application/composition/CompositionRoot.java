@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.proasteion.application.knowledge.RetryingSourceAccess;
+import com.aresstack.enterpriseai.proasteion.application.retry.RetryPolicy;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentReader;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ConcurrencyLimitedEmbeddingPort;
 
@@ -186,17 +189,21 @@ public final class CompositionRoot {
                 new InMemoryResourceArchive());
         this.resourceDocuments = new MediatedKnowledgeDocuments(resourceAccess,
                 new ActorIdentity("enterprise-ai-client-user", ActorType.HUMAN));
+        // Suche und Seitenabruf wiederholen vorübergehende Quellenfehler (knowledge.sources.retry*, ohne Neustart);
+        // scheitert eine Quelle trotzdem, gelten wie bisher die Treffer der übrigen.
+        RetryingSourceAccess sourceRetry = new RetryingSourceAccess(settings.get(c -> c.knowledge().sourceRetry()));
+        KnowledgeDocumentReader retryingDocuments = sourceRetry.reader(resourceDocuments);
         this.documents = new LoadKnowledgeDocumentUseCase(ports.sources())
-                .withReader(resourceDocuments).withCatalog(() -> liveSources);
+                .withReader(retryingDocuments).withCatalog(() -> liveSources);
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
         // Suche füllt den Index (MainframeMate) in zwei Ebenen: Quellen live durchsuchen, die Treffer lädt der
         // Vorlader (Lade-Pool, Priority-Thread) und schreibt sie sofort in den Rohindex (Ebene A, durchsuchbar ohne
         // Passagen und Embeddings); die Aufbereitungs-Worker zerlegen und betten nur neue oder geänderte ein
         // (Revision, dann Inhalts-Hash; Ebene B im Hintergrund). Kein Vollindex beim Start. Alle Pools gelten ohne
         // Neustart.
-        this.prefetch = new KnowledgePrefetchService(indexing, ports.rawIndex(), resourceDocuments,
+        this.prefetch = new KnowledgePrefetchService(indexing, ports.rawIndex(), retryingDocuments,
                 () -> settings.current().knowledge().prefetch());
-        this.searchIndexing = new SearchDrivenIndexingUseCase(prefetch);
+        this.searchIndexing = new SearchDrivenIndexingUseCase(prefetch, sourceRetry);
         // Adaptiv (ein Evidenz-Bewerter je Kandidatenrunde, gestufte Live-Suche). Alle Grenzen (Quellen, Mindestzahl,
         // Nachsuchen, Live-Suche, Kandidaten) gelten ohne Neustart ab dem nächsten Turn; FollowUpResearch prüft hier
         // nur den Wissenskontext früherer Nachrichten, die Zahl der Nachsuchen kommt aus retrieval.maxFollowUps.
@@ -335,6 +342,13 @@ public final class CompositionRoot {
                         research.launchSpec().getEnv());
                 env.put(com.aresstack.enterpriseai.research.runtime.loop.EnvironmentRunBudget.ENV_MAX_PAGES,
                         Integer.toString(settings.current().agent().researchMaxPages()));
+                // Wissenssuche des Agenten: dieselbe Wiederholungsregel wie die Quellenzugriffe des Hosts, für den
+                // Fall, dass der Aufruf über MCP selbst kurz scheitert.
+                RetryPolicy searchRetry = settings.current().knowledge().sourceRetry();
+                env.put(com.aresstack.enterpriseai.research.runtime.search.provider.RetryingSearchProvider.ENV_RETRY_COUNT,
+                        Integer.toString(searchRetry.retries()));
+                env.put(com.aresstack.enterpriseai.research.runtime.search.provider.RetryingSearchProvider.ENV_RETRY_DELAY_MILLIS,
+                        Long.toString(searchRetry.initialDelayMillis()));
                 com.aresstack.enterpriseai.acp.api.AgentLaunchSpec spec =
                         new com.aresstack.enterpriseai.acp.api.AgentLaunchSpec(research.launchSpec().getCommand(),
                                 research.launchSpec().getArgs(), env);
