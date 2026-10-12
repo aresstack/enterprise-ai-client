@@ -52,7 +52,7 @@ final class StagedLiveSearch implements RetrievalPreparation {
         final LiveSearchConfig current = limits.get();
         final Found found = searcher.search(sources, query, current.hitsPerSource(), current.initialPages());
         if (found.hits() <= current.initialPages() || current.maxPages() <= current.initialPages()) {
-            return Stage.DONE;
+            return Stage.done();
         }
         final AtomicBoolean waited = new AtomicBoolean();
         return () -> {

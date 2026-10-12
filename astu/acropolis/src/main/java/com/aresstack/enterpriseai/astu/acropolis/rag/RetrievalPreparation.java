@@ -24,14 +24,16 @@ public interface RetrievalPreparation {
      */
     default Stage begin(String query, Collection<SourceAddress> sources) {
         prepare(query, sources);
-        return Stage.DONE;
+        return Stage.done();
     }
 
     /** Eine begonnene Vorbereitung, deren übrige Treffer noch in den Index kommen können. */
     interface Stage {
 
         /** Nichts mehr nachzuladen. */
-        Stage DONE = () -> false;
+        static Stage done() {
+            return () -> false;
+        }
 
         /**
          * Wartet, bis weitere Treffer indexiert sind (blockiert).

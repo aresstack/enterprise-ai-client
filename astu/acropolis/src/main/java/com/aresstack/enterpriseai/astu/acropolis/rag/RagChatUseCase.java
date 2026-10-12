@@ -471,7 +471,7 @@ public final class RagChatUseCase {
             evidence.suggestion = null;
             progress.searchStarted(query, queries.size(), maxSearches);
             progress.liveSearchStarted(query);
-            RetrievalPreparation.Stage stage = RetrievalPreparation.Stage.DONE;
+            RetrievalPreparation.Stage stage = RetrievalPreparation.Stage.done();
             try {
                 stage = preparation.begin(query, rag.sources());
             } catch (RuntimeException e) {
