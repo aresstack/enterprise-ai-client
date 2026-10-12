@@ -148,6 +148,94 @@ public class RagChatBindingTest {
         assertEquals("Drei Monate [1].", history.get(1).content());
     }
 
+    /**
+     * Restore-Bug: die Quellen einer Antwort sind nach Schließen und Wiederöffnen des Chats wieder an der Antwort
+     * (dieselben Titel, Orte, Stände und Ränge), überleben erneutes Speichern, und ein Chat ohne Quellen öffnet weiter.
+     */
+    @Test
+    public void sourcesOfAnAnswerComeBackWhenTheChatIsReopened() throws Exception {
+        indexAll();
+        port.enqueueAnswer("Drei Monate [1].");
+        final Fixture fixture = fixture(index, embeddings);
+        final FileChatHistoryStore store = new FileChatHistoryStore(folder.newFolder("chats").toPath());
+        final ChatHistoryBinding history = onEdt(new Callable<ChatHistoryBinding>() {
+            @Override
+            public ChatHistoryBinding call() {
+                return new ChatHistoryBinding(store, chat, fixture.binding, fixture.model, "Antworte knapp.",
+                        () -> 5L);
+            }
+        });
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+        final List<SourceReference> before = entries(fixture.model).get(1).getSources();
+        assertFalse("Quellen vor dem Schließen", before.isEmpty());
+
+        // Ein alter Chat ohne Quellen (vor 0.30.0) liegt daneben.
+        com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord old =
+                new com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord("alt", 1L);
+        old.getMessages().add(new com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord(
+                com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord.ROLE_USER, "Was ist IAR?", 1L,
+                null));
+        old.getMessages().add(new com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord(
+                com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord.ROLE_ASSISTANT, "Ein Verfahren.",
+                2L, null));
+        old.setTitle("Was ist IAR?");
+        store.save(old);
+
+        // Schließen (anderen Chat öffnen) und wieder öffnen.
+        assertTrue(onEdt(new Callable<Boolean>() {
+            @Override
+            public Boolean call() {
+                return history.open("alt");
+            }
+        }));
+        List<TranscriptEntry> oldEntries = entries(fixture.model);
+        assertEquals(2, oldEntries.size());
+        assertFalse("alter Chat ohne Quellen", oldEntries.get(1).hasSources());
+        assertTrue(onEdt(new Callable<Boolean>() {
+            @Override
+            public Boolean call() {
+                return history.open(conversation.value());
+            }
+        }));
+
+        TranscriptEntry answer = entries(fixture.model).get(1);
+        assertTrue("Quellenliste wieder da", answer.hasSources());
+        assertSameSources(before, answer.getSources());
+
+        // Erneutes Speichern (eine Notiz löst es aus) verliert keine Quellen.
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.model.addNotice("Hinweis");
+            }
+        });
+        com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord saved = store.load(conversation.value());
+        assertEquals(3, saved.getMessages().size());
+        assertSameSources(before, ChatHistoryBinding.referencesOf(saved.getMessages().get(1).getSources()));
+    }
+
+    private static void assertSameSources(List<SourceReference> expected, List<SourceReference> actual) {
+        assertEquals(expected.size(), actual.size());
+        for (int i = 0; i < expected.size(); i++) {
+            SourceReference a = expected.get(i);
+            SourceReference b = actual.get(i);
+            assertEquals(a.getNumber(), b.getNumber());
+            assertEquals(a.getTitle(), b.getTitle());
+            assertEquals(a.getHeading(), b.getHeading());
+            assertEquals(a.getLocation(), b.getLocation());
+            assertEquals(a.getRevision(), b.getRevision());
+            assertEquals(a.getScore(), b.getScore(), 1e-9);
+            assertEquals(a.getKeywordRank(), b.getKeywordRank());
+            assertEquals(a.getSemanticRank(), b.getSemanticRank());
+        }
+    }
+
     @Test
     public void pageBookmarkJoinsTheChatWithoutPageText() throws Exception {
         port.enqueueAnswer("Gelesen");

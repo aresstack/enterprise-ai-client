@@ -64,8 +64,6 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     /** Name, unter dem die Suchen des Clients (Vorabsuche, Nachsuchen) bei den Werkzeugaufrufen stehen. */
     static final String CLIENT_SEARCH = "client_search";
     private final Map<Long, List<ToolCallRecord>> toolCalls = new HashMap<Long, List<ToolCallRecord>>();
-    /** Quellen geöffneter Antworten (die wiederhergestellte Zeile zeigt sie nicht), damit Speichern sie behält. */
-    private final Map<Long, List<SourceRecord>> restoredSources = new HashMap<Long, List<SourceRecord>>();
     private ChatConversationId recordedConversation;
     private long createdAt;
     private String renamedTitle; // vom Nutzer gewählter Titel des aktuellen Chats, sonst null
@@ -159,7 +157,6 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             model.clear();
             storedAttachments.clear();
             toolCalls.clear();
-            restoredSources.clear();
             for (ChatMessageRecord message : record.getMessages()) {
                 restore(message);
             }
@@ -305,7 +302,6 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         if (!restoring) {
             storedAttachments.clear();
             toolCalls.clear();
-            restoredSources.clear();
         }
     }
 
@@ -332,8 +328,11 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             if (!message.getToolCalls().isEmpty()) {
                 toolCalls.put(entry.getId(), new ArrayList<ToolCallRecord>(message.getToolCalls()));
             }
-            if (!message.getSources().isEmpty()) {
-                restoredSources.put(entry.getId(), new ArrayList<SourceRecord>(message.getSources()));
+            // Die gespeicherten Quellen gehören wieder an die Antwort: dieselbe aufklappbare Quellenliste wie vor dem
+            // Schließen, und beim nächsten Speichern kommen sie aus der Zeile selbst (kein Schattenzustand).
+            List<SourceReference> sources = referencesOf(message.getSources());
+            if (!sources.isEmpty()) {
+                model.attachSources(entry, sources);
             }
         } else if (message.isInfo() && !message.getText().trim().isEmpty()) {
             model.restoreEntry(TranscriptEntry.Author.NOTICE, message.getText(), message.getCreatedAt(),
@@ -428,11 +427,10 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         return names;
     }
 
-    /** Die Quellen einer Antwort, wie angezeigt; bei einer geöffneten Antwort die gespeicherten. */
-    private List<SourceRecord> sourcesOf(TranscriptEntry entry) {
+    /** Die Quellen einer Antwort, wie angezeigt (auch bei einer geöffneten Antwort hängen sie an der Zeile). */
+    static List<SourceRecord> sourcesOf(TranscriptEntry entry) {
         if (!entry.hasSources()) {
-            List<SourceRecord> restored = restoredSources.get(entry.getId());
-            return restored != null ? restored : Collections.<SourceRecord>emptyList();
+            return Collections.<SourceRecord>emptyList();
         }
         List<SourceRecord> records = new ArrayList<SourceRecord>(entry.getSources().size());
         for (SourceReference source : entry.getSources()) {
@@ -441,6 +439,24 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                     source.getSemanticRank()));
         }
         return records;
+    }
+
+    /**
+     * Die gespeicherten Quellen einer Antwort als Anzeigewerte, in ihrer Reihenfolge. Einträge, aus denen sich keine
+     * Quelle bilden lässt (ohne Titel, Ort oder gültige Nummer), werden übergangen; der Rest bleibt sichtbar.
+     */
+    static List<SourceReference> referencesOf(List<SourceRecord> records) {
+        List<SourceReference> references = new ArrayList<SourceReference>(records.size());
+        for (SourceRecord record : records) {
+            try {
+                references.add(new SourceReference(record.getNumber(), record.getTitle(), record.getHeading(),
+                        record.getLocation(), record.getRevision(), record.getScore(),
+                        Math.max(0, record.getKeywordRank()), Math.max(0, record.getSemanticRank())));
+            } catch (IllegalArgumentException unusable) {
+                // unvollständiger Eintrag: diese Quelle fällt weg
+            }
+        }
+        return references;
     }
 
     /** Die Seiten einer Nutzernachricht: nur Bookmark und Titel. */
