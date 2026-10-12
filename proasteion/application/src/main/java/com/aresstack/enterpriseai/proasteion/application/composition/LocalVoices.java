@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
 import com.aresstack.enterpriseai.proasteion.application.security.ProxyAuthenticator;
 import com.aresstack.enterpriseai.proasteion.application.settings.LocalVoiceInstaller;
 import com.aresstack.enterpriseai.astu.acropolis.localruntime.LocalVoiceService;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoute;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
@@ -111,18 +112,20 @@ public final class LocalVoices implements LocalVoiceInstaller {
 
     @Override
     public void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
-                        LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
+                        LocalVoiceInstallListener listener, InstallCancellation cancellation)
+            throws LocalVoiceInstallException {
         installProxyAuthentication(network, keePass);
         HttpRoutes routes = HttpRoutes.from(network);
-        new LocalVoiceService(provisioning(routes)).install(voiceId, modelRoot, listener);
+        new LocalVoiceService(provisioning(routes)).install(voiceId, modelRoot, listener, cancellation);
     }
 
     @Override
     public void update(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
-                       LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
+                       LocalVoiceInstallListener listener, InstallCancellation cancellation)
+            throws LocalVoiceInstallException {
         installProxyAuthentication(network, keePass);
         HttpRoutes routes = HttpRoutes.from(network);
-        new LocalVoiceService(provisioning(routes)).update(voiceId, modelRoot, listener);
+        new LocalVoiceService(provisioning(routes)).update(voiceId, modelRoot, listener, cancellation);
     }
 
     @Override

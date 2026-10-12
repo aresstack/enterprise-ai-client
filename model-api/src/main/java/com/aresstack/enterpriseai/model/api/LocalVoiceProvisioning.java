@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.model.api;
 
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 
 import java.nio.file.Path;
@@ -27,15 +28,17 @@ public interface LocalVoiceProvisioning {
     /**
      * Installiert die Stimme nach {@code modelRoot/<id>}; ist sie vollständig da, passiert nichts. Unterbrochene
      * Downloads werden fortgesetzt, eine halbe Installation ist für den Client nie sichtbar. Blockiert (Netz).
+     *
+     * @param cancellation stop the transfer when requested and throw {@link LocalVoiceInstallCancelledException}
      */
-    void install(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+    void install(String voiceId, Path modelRoot, LocalVoiceInstallListener listener, InstallCancellation cancellation)
             throws LocalVoiceInstallException;
 
     /**
      * Lädt alle Dateien der Stimme neu und ersetzt sie unter {@code modelRoot/<id>}; die Auswahl bleibt unberührt.
      * Blockiert (Netz).
      */
-    void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+    void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener, InstallCancellation cancellation)
             throws LocalVoiceInstallException;
 
     /** Entfernt die Stimme aus {@code modelRoot/<id>}; ist sie nicht da, passiert nichts. Blockiert. */

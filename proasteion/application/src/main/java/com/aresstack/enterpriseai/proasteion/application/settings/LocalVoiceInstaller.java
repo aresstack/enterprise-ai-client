@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.application.settings;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
@@ -24,12 +25,14 @@ public interface LocalVoiceInstaller {
             throws LocalVoiceInstallException;
 
     /** @param keePass KeePass-Abschnitt des Entwurfs für die Proxy-Anmeldung (BASIC) oder {@code null} */
-    void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
+    void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
+                 LocalVoiceInstallListener listener, InstallCancellation cancellation)
             throws LocalVoiceInstallException;
 
     /** Wie {@link #install}, lädt aber auch eine vollständige Stimme neu. */
     void update(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
-                LocalVoiceInstallListener listener) throws LocalVoiceInstallException;
+                LocalVoiceInstallListener listener, InstallCancellation cancellation)
+            throws LocalVoiceInstallException;
 
     void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException;
 }

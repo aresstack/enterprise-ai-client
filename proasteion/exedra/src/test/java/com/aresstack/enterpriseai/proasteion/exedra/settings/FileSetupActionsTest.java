@@ -221,4 +221,36 @@ public class FileSetupActionsTest {
         assertEquals("embedding-model", checkedConfigs.get(0).embedding().model());
         assertEquals(SERVICE_URL, checkedConfigs.get(0).embedding().baseUrl().toString());
     }
+    @Test
+    public void missingChatModelFailsOnlyItsOwnPoints() {
+        SettingsForm withoutChat = wizardForm().toBuilder().chatModel("").build();
+        List<SetupCheck> checks = actions().verify(withoutChat,
+                new ConfluenceSetup("Confluence", CONFLUENCE_URL, "jdoe", ""));
+
+        assertTrue(checks.get(0).toString(), checks.get(0).isOk());
+        assertTrue("reachable despite the missing chat model: " + checks.get(1), checks.get(1).isOk());
+        assertTrue("API key readable from the wizard's reference: " + checks.get(2), checks.get(2).isOk());
+        assertFalse(checks.get(3).isOk());
+        assertTrue(checks.get(4).toString(), checks.get(4).isOk());
+        assertTrue(checks.get(5).toString(), checks.get(5).isOk());
+        assertTrue("Confluence itself works: " + checks.get(6), checks.get(6).isOk());
+        assertFalse(checks.get(7).isOk());
+        assertEquals("no fake Confluence error", FileSetupActions.SOURCE_PENDING, checks.get(7).detail());
+        assertFalse(checks.get(8).isOk());
+        assertFalse("invalid draft still writes nothing", Files.exists(configPath()));
+        assertEquals("the probe ran with a placeholder model", FileSetupActions.MODEL_PLACEHOLDER,
+                checkedConfigs.get(0).chat().model());
+    }
+
+    @Test
+    public void unknownKeePassEntryFailsOnlyTheKeyAndDependentConnectionPoints() {
+        SettingsForm wrongEntry = wizardForm().toBuilder().chatApiKeyRef("keepass:Missing entry").build();
+        List<SetupCheck> checks = actions().verify(wrongEntry, null);
+
+        assertTrue(checks.get(0).toString(), checks.get(0).isOk());
+        assertFalse(checks.get(2).toString(), checks.get(2).isOk());
+        assertTrue(checks.get(3).toString(), checks.get(3).isOk());
+        assertTrue(checks.get(4).toString(), checks.get(4).isOk());
+        assertTrue(checks.get(5).toString(), checks.get(5).isOk());
+    }
 }

@@ -14,8 +14,8 @@ import java.util.function.Consumer;
 
 /**
  * Bereitet die Modelle des Assistenten vor: fragt den Modellkatalog des KI-Dienstes ab (gleich nach dem erfolgreichen
- * Verbindungstest im Hintergrund, nicht erst beim Betreten von „Modelle“) und schlägt je Art ein Modell vor: das schon
- * eingetragene, sonst das einzige angebotene. Bei mehreren Modellen ohne Eintrag bleibt die Wahl beim Benutzer.
+ * Verbindungstest im Hintergrund, nicht erst beim Betreten von „Modelle“). Which model gets selected decides
+ * {@link ModelPreselection}.
  */
 final class WizardModelBootstrap {
 
@@ -24,11 +24,13 @@ final class WizardModelBootstrap {
         private final ModelCatalogSnapshot snapshot;
         private final List<String> chats;
         private final List<String> embeddings;
+        private final List<String> speech;
 
-        Models(ModelCatalogSnapshot snapshot, List<String> chats, List<String> embeddings) {
+        Models(ModelCatalogSnapshot snapshot, List<String> chats, List<String> embeddings, List<String> speech) {
             this.snapshot = snapshot;
             this.chats = Collections.unmodifiableList(new ArrayList<String>(chats));
             this.embeddings = Collections.unmodifiableList(new ArrayList<String>(embeddings));
+            this.speech = Collections.unmodifiableList(new ArrayList<String>(speech));
         }
 
         ModelCatalogSnapshot snapshot() {
@@ -41,6 +43,11 @@ final class WizardModelBootstrap {
 
         List<String> embeddings() {
             return embeddings;
+        }
+
+        /** The remote speech output (TTS) models for {@code model.tts}. */
+        List<String> speech() {
+            return speech;
         }
     }
 
@@ -56,15 +63,8 @@ final class WizardModelBootstrap {
     /** Fragt die Modelle des Entwurfs ab; {@code done} kommt auf dem EDT. */
     void prepare(SettingsForm form, final Consumer<Models> done) {
         settings.refreshModels(form, snapshot -> done.accept(new Models(snapshot,
-                remoteModels(snapshot, ModelCategory.CHAT), remoteModels(snapshot, ModelCategory.EMBEDDING))));
-    }
-
-    /** Das vorgeschlagene Modell: das eingetragene, sonst das einzige angebotene, sonst leer. */
-    static String preferred(List<String> offered, String configured) {
-        if (configured != null && !configured.trim().isEmpty()) {
-            return configured.trim();
-        }
-        return offered.size() == 1 ? offered.get(0) : "";
+                remoteModels(snapshot, ModelCategory.CHAT), remoteModels(snapshot, ModelCategory.EMBEDDING),
+                remoteModels(snapshot, ModelCategory.TTS))));
     }
 
     private List<String> remoteModels(ModelCatalogSnapshot snapshot, ModelCategory category) {

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
@@ -456,9 +457,9 @@ final class LocalVoiceList {
             }
         };
         if (update) {
-            actions.updateLocalVoice(form.get(), offer.id(), progress);
+            actions.updateLocalVoice(form.get(), offer.id(), new InstallCancellation(), progress);
         } else {
-            actions.installLocalVoice(form.get(), offer.id(), progress);
+            actions.installLocalVoice(form.get(), offer.id(), new InstallCancellation(), progress);
         }
     }
 

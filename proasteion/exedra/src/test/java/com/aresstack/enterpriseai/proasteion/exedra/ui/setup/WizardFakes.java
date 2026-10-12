@@ -1,6 +1,11 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.setup;
 
+import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelDescriptor;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
@@ -36,6 +41,15 @@ final class WizardFakes {
         /** Ohne Eintrag schließt die Installation sofort erfolgreich ab und meldet {@link #installedAs}. */
         final List<LocalVoiceInstallProgress> pendingInstalls = new ArrayList<LocalVoiceInstallProgress>();
         final List<String> installRequests = new ArrayList<String>();
+        /** The cancellation handle of every requested install, in order. */
+        final List<InstallCancellation> installCancellations = new ArrayList<InstallCancellation>();
+        /** Models offered by the catalog query of step 3: chat ids and embedding ids. */
+        final List<String> chatModels = new ArrayList<String>();
+        final List<String> embeddingModels = new ArrayList<String>();
+        final List<String> speechModels = new ArrayList<String>();
+        final Map<ModelCategory, List<String>> preferredMatch =
+                new java.util.EnumMap<ModelCategory, List<String>>(ModelCategory.class);
+        final Map<ModelCategory, String> preferred = new java.util.EnumMap<ModelCategory, String>(ModelCategory.class);
         boolean holdInstalls;
         String installFailure;
         String installedAs;
@@ -130,7 +144,41 @@ final class WizardFakes {
 
         @Override
         public void refreshModels(SettingsForm form, Consumer<ModelCatalogSnapshot> onResult) {
-            onResult.accept(ModelCatalogSnapshot.empty());
+            List<ModelDescriptor> models = new ArrayList<ModelDescriptor>();
+            for (String id : chatModels) {
+                models.add(descriptor(id, ModelCategory.CHAT));
+            }
+            for (String id : embeddingModels) {
+                models.add(descriptor(id, ModelCategory.EMBEDDING));
+            }
+            for (String id : speechModels) {
+                models.add(ModelDescriptor.builder("default", id).inputModalities(Collections.singletonList("text"))
+                        .outputModalities(Collections.singletonList("audio")).build());
+            }
+            onResult.accept(models.isEmpty() ? ModelCatalogSnapshot.empty()
+                    : new ModelCatalogSnapshot(models, Collections.<CatalogStatus>emptyList()));
+        }
+
+        @Override
+        public String storedModel(ModelReference reference) {
+            return reference.modelId();
+        }
+
+        private static ModelDescriptor descriptor(String id, ModelCategory category) {
+            return ModelDescriptor.builder("default", id).capabilities(Collections.singletonList(
+                    category == ModelCategory.CHAT ? "chat" : "embeddings")).build();
+        }
+
+        @Override
+        public List<String> preferredModelMatch(ModelCategory category) {
+            List<String> match = preferredMatch.get(category);
+            return match == null ? Collections.<String>emptyList() : match;
+        }
+
+        @Override
+        public String preferredModel(ModelCategory category) {
+            String model = preferred.get(category);
+            return model == null ? "" : model;
         }
 
         @Override
@@ -143,8 +191,10 @@ final class WizardFakes {
         }
 
         @Override
-        public void installLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
+        public void installLocalVoice(SettingsForm form, String voiceId, InstallCancellation cancellation,
+                                      LocalVoiceInstallProgress progress) {
             installRequests.add(voiceId);
+            installCancellations.add(cancellation);
             progress.file("audio_encoder_q4.onnx", 1, 3, 512L * 1024, 1024L * 1024);
             if (holdInstalls) {
                 pendingInstalls.add(progress);
@@ -160,7 +210,7 @@ final class WizardFakes {
                 return;
             }
             offers.add(new LocalVoiceOffer(installedAs, "Gemma 4 E2B (Spracheingabe)", "", true,
-                    com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.STT));
+                    ModelCategory.STT));
             progress.finished(true, "installiert");
         }
 

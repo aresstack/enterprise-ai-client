@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.setup;
 
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.CatalogStatus;
@@ -95,6 +96,8 @@ public final class SetupWizardPanel extends JPanel {
     /** Ohne Stimme bleibt eine Zeile der Übergabe so lange stehen: je Zeichen, mindestens {@link #MIN_READING_MILLIS}. */
     private static final int READING_MILLIS_PER_CHARACTER = 60;
     private static final int MIN_READING_MILLIS = 1800;
+    private static final String SPEECH_CANCEL_HINT = "Download abbrechen";
+    static final String SPEECH_CANCELLED = "Download abgebrochen. Das Modell wurde nicht installiert.";
     private static final String SKIP_STEP_HINT = "Ohne Prüfung zum nächsten Schritt; Eingaben bleiben erhalten";
     static final String CONFLUENCE_SKIPPED = "Betriebsbereit. Confluence ist übersprungen und lässt sich später "
             + "in der Seitenleiste unter Wissensquellen einrichten.";
@@ -173,6 +176,8 @@ public final class SetupWizardPanel extends JPanel {
     // Schritt 3: Modelle
     private final JComboBox<String> chatModel = new JComboBox<String>();
     private final JComboBox<String> embeddingModel = new JComboBox<String>();
+    /** The chat's speech output ({@code model.tts}); never Merlin's own voice ({@code setup.merlin.*}). */
+    private final JComboBox<String> speechOutputModel = new JComboBox<String>();
     private final JTextField embeddingDimension = new JTextField(8);
     private final JLabel modelsStatus = statusLabel();
     private final JLabel dimensionStatus = statusLabel();
@@ -223,6 +228,13 @@ public final class SetupWizardPanel extends JPanel {
     private final ComposerButton speechInstall;
     private final ComposerButton speechRetry;
     private final JProgressBar speechProgress = new JProgressBar(0, 100);
+    /** Progress bar plus the small stop button on its right; shown only while a download runs. */
+    private final JPanel speechProgressRow = transparent(new BorderLayout(6, 0));
+    private final ComposerButton speechCancel;
+    /** The running download, {@code null} when none runs; stopping it cancels the real transfer. */
+    private InstallCancellation speechDownload;
+    /** Set once the wizard closes; late callbacks of a stopped download must not touch it any more. */
+    private boolean closed;
     private final JLabel speechStatus = statusLabel();
     private List<LocalVoiceOffer> speechOffers = Collections.emptyList();
     private boolean speechLoaded;
@@ -264,6 +276,7 @@ public final class SetupWizardPanel extends JPanel {
         this.skipButton = new ComposerButton(null, "Überspringen", false, SKIP_STEP_HINT);
         this.speechInstall = ComposerButton.primary(null, "Installieren", ResearchUiPalette.ACCENT_BLUE, null);
         this.speechRetry = new ComposerButton(null, "Erneut versuchen", false);
+        this.speechCancel = ComposerButton.iconButton(new CrossGlyph(), SPEECH_CANCEL_HINT);
         buildUi();
         wire();
         load(form);
@@ -371,10 +384,11 @@ public final class SetupWizardPanel extends JPanel {
 
     private JPanel modelsStep() {
         Rows rows = new Rows("Modelle");
-        rows.note("Die Liste kommt vom KI-Dienst. Gibt es je Art genau ein Modell, ist es schon gewählt. Die "
-                + "Vektorlänge des Embedding-Modells ermittelt ein kleiner Test-Aufruf.");
+        rows.note("Die Liste kommt vom KI-Dienst; je Art ist ein Modell vorausgewählt. Die Vektorlänge des "
+                + "Embedding-Modells ermittelt ein kleiner Test-Aufruf. Sprachausgabe ist optional.");
         chatModel.setEditable(true);
         embeddingModel.setEditable(true);
+        speechOutputModel.setEditable(true);
         rows.field("Chat-Modell", chatModel);
         rows.field("Embedding-Modell", embeddingModel);
         JPanel dimension = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
@@ -382,6 +396,7 @@ public final class SetupWizardPanel extends JPanel {
         dimension.add(dimensionMeasure);
         rows.field("Embedding-Dimension", dimension);
         rows.field("", dimensionStatus);
+        rows.field("Sprachausgabe", speechOutputModel);
         rows.field("", buttonRow(modelsRefresh));
         rows.field("", modelsStatus);
         return rows.panel();
@@ -476,8 +491,10 @@ public final class SetupWizardPanel extends JPanel {
         actions.add(speechRetry);
         rows.field("", actions);
         speechProgress.setStringPainted(false);
-        speechProgress.setVisible(false);
-        rows.wide(speechProgress);
+        speechProgressRow.add(speechProgress, BorderLayout.CENTER);
+        speechProgressRow.add(speechCancel, BorderLayout.EAST);
+        speechProgressRow.setVisible(false);
+        rows.wide(speechProgressRow);
         rows.field("", speechStatus);
         return rows.panel();
     }
@@ -547,6 +564,7 @@ public final class SetupWizardPanel extends JPanel {
             }
         });
         speechInstall.addActionListener(e -> installSpeech());
+        speechCancel.addActionListener(e -> stopSpeechDownload());
         speechRetry.addActionListener(e -> {
             if (speechLoadFailed) {
                 loadSpeechModels(null);
@@ -571,6 +589,7 @@ public final class SetupWizardPanel extends JPanel {
 
     /** Bricht ab (auch für das ✕ des Overlays und Escape). */
     public void cancel() {
+        close();
         if (onCancel != null) {
             onCancel.run();
         }
@@ -824,6 +843,10 @@ public final class SetupWizardPanel extends JPanel {
                 && errors[STEP_SPEECH] != null && !speechDownloading));
         speechRetry.setEnabled(!busy && !speechDownloading);
         speechModel.setEnabled(!speechDownloading);
+        speechProgressRow.setVisible(speechDownloading);
+        speechProgress.setVisible(speechDownloading);
+        speechCancel.setVisible(speechDownloading);
+        speechCancel.setEnabled(speechDownloading && speechDownload != null && !speechDownload.isCancelled());
         String error = errors[step];
         errorPlate.setVisible(error != null && !error.isEmpty());
         errorText.setText(error == null ? "" : error);
@@ -1138,8 +1161,15 @@ public final class SetupWizardPanel extends JPanel {
         boolean wasBusy = busy;
         busy = true;
         try {
-            setChoices(chatModel, chats, WizardModelBootstrap.preferred(chats, text(chatModel)));
-            setChoices(embeddingModel, embeddings, WizardModelBootstrap.preferred(embeddings, text(embeddingModel)));
+            // Keep a choice that is still offered; else pick the preferred model, silently falling back.
+            setChoices(chatModel, chats, ModelPreselection.choose(chats, text(chatModel),
+                    settings.preferredModel(ModelCategory.CHAT), settings.preferredModelMatch(ModelCategory.CHAT)));
+            setChoices(embeddingModel, embeddings, ModelPreselection.choose(embeddings, text(embeddingModel),
+                    settings.preferredModel(ModelCategory.EMBEDDING),
+                    settings.preferredModelMatch(ModelCategory.EMBEDDING)));
+            setChoices(speechOutputModel, models.speech(), ModelPreselection.choose(models.speech(),
+                    text(speechOutputModel), settings.preferredModel(ModelCategory.TTS),
+                    settings.preferredModelMatch(ModelCategory.TTS)));
         } finally {
             busy = wasBusy;
         }
@@ -1151,7 +1181,7 @@ public final class SetupWizardPanel extends JPanel {
             }
         } else {
             modelsStatus.setText(chats.size() + " Chat-Modell(e), " + embeddings.size() + " Embedding-Modell(e). "
-                    + (chats.size() > 1 || embeddings.size() > 1 ? "Bitte auswählen." : ""));
+                    + (chats.size() > 1 || embeddings.size() > 1 ? "Vorausgewählt; bei Bedarf ändern." : ""));
         }
         measureDimension();
         updateButtons();
@@ -1502,6 +1532,7 @@ public final class SetupWizardPanel extends JPanel {
         if (step == STEP_SPEECH && done[STEP_SPEECH] && !saveSpeechChoice()) {
             return;
         }
+        close();
         complete();
     }
 
@@ -1512,6 +1543,7 @@ public final class SetupWizardPanel extends JPanel {
         if (!done[STEP_FINISH]) {
             return;
         }
+        close();
         complete();
     }
 
@@ -1645,21 +1677,33 @@ public final class SetupWizardPanel extends JPanel {
             }
         }
         clearError(STEP_SPEECH);
+        final InstallCancellation download = new InstallCancellation();
+        speechDownload = download;
         speechDownloading = true;
         speechProgress.setIndeterminate(true);
         speechProgress.setValue(0);
-        speechProgress.setVisible(true);
         speechStatus.setText("Installiere " + chosen.displayName() + " …");
         updateButtons();
-        settings.installLocalVoice(collect(), chosen.id(), new LocalVoiceInstallProgress() {
+        settings.installLocalVoice(collect(), chosen.id(), download, new LocalVoiceInstallProgress() {
+            /** Ignore callbacks of a stopped or replaced download and of a closed wizard. */
+            private boolean stale() {
+                return closed || speechDownload != download;
+            }
+
             @Override
             public void progress(String line) {
+                if (stale() || download.isCancelled()) {
+                    return;
+                }
                 speechProgress.setIndeterminate(true);
                 speechStatus.setText(line);
             }
 
             @Override
             public void file(String name, int number, int count, long done, long total) {
+                if (stale() || download.isCancelled()) {
+                    return;
+                }
                 int percent = DownloadText.percent(done, total);
                 speechProgress.setIndeterminate(percent < 0);
                 speechProgress.setValue(Math.max(0, percent));
@@ -1668,8 +1712,11 @@ public final class SetupWizardPanel extends JPanel {
 
             @Override
             public void finished(boolean installed, String message) {
+                if (stale()) {
+                    return;
+                }
+                speechDownload = null;
                 speechDownloading = false;
-                speechProgress.setVisible(false);
                 if (!installed) {
                     speechStatus.setText("Installation fehlgeschlagen.");
                     fail(STEP_SPEECH, "Das Modell ließ sich nicht installieren: "
@@ -1680,8 +1727,53 @@ public final class SetupWizardPanel extends JPanel {
                 speechStatus.setText(chosen.displayName() + " ist installiert.");
                 loadSpeechModels(before);
             }
+
+            @Override
+            public void cancelled(String message) {
+                if (stale()) {
+                    return;
+                }
+                speechDownload = null;
+                speechDownloading = false;
+                speechStatus.setText(SPEECH_CANCELLED);
+                updateButtons();
+            }
         });
     }
+
+    /**
+     * Stop the running download for real: the transfer ends at its next data block and the partial files stay for a
+     * later resume. The wizard stays usable; the result arrives as {@code cancelled}, or as {@code finished} when the
+     * installation was already complete.
+     */
+    void stopSpeechDownload() {
+        InstallCancellation download = speechDownload;
+        if (download == null || !download.cancel()) {
+            return;
+        }
+        speechStatus.setText("Breche den Download ab …");
+        updateButtons();
+    }
+
+    /** Stop a running download before the wizard goes away and ignore everything it reports afterwards. */
+    private void close() {
+        InstallCancellation download = speechDownload;
+        if (download != null) {
+            download.cancel();
+        }
+        closed = true;
+        speechDownload = null;
+        speechDownloading = false;
+    }
+
+    boolean isSpeechDownloading() {
+        return speechDownloading;
+    }
+
+    ComposerButton speechCancelButton() {
+        return speechCancel;
+    }
+
 
     /**
      * Speichert die Wahl wie der Reiter „Modelle“ ({@code model.stt} über die Modellauswahl des Entwurfs). Die
@@ -1732,6 +1824,7 @@ public final class SetupWizardPanel extends JPanel {
             setText(serviceEntry, stripPrefix(initial.chatApiKeyRef()));
             setText(chatModel, initial.chatModel());
             setText(embeddingModel, initial.embeddingModel());
+            setText(speechOutputModel, initial.modelSelection(ModelCategory.TTS.key()));
             embeddingDimension.setText(initial.embeddingDimension());
         } finally {
             busy = false;
@@ -1753,6 +1846,10 @@ public final class SetupWizardPanel extends JPanel {
         }
         b.chatModel(text(chatModel)).embeddingModel(text(embeddingModel))
                 .embeddingDimension(embeddingDimension.getText());
+        String speechOutput = text(speechOutputModel);
+        if (!speechOutput.isEmpty()) {
+            b.modelSelection(ModelCategory.TTS.key(), speechOutput);
+        }
         return b.build();
     }
 
@@ -1977,6 +2074,10 @@ public final class SetupWizardPanel extends JPanel {
 
     JComboBox<String> chatModelChoice() {
         return chatModel;
+    }
+
+    JComboBox<String> speechOutputModelChoice() {
+        return speechOutputModel;
     }
 
     JComboBox<String> embeddingModelChoice() {

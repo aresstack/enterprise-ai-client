@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.PreferredModels;
 import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.JavaSoundAudioPlayback;
@@ -35,8 +36,10 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogAc
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
+import com.aresstack.enterpriseai.model.api.LocalVoiceInstallCancelledException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
@@ -86,6 +89,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private final NlpModels nlpModels;
     /** Stimmen je TTS-Modell (Auswahl „Stimme“ im Einstellungsdialog). */
     private final TtsVoiceCatalog ttsVoiceCatalog = TtsVoiceCatalog.bundled();
+    private final PreferredModels preferredModels = PreferredModels.bundled();
 
     /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
@@ -612,20 +616,33 @@ public final class FileSettingsActions implements SettingsDialogActions {
      * Fortschritt höchstens einmal je Prozentpunkt und Datei.
      */
     @Override
-    public void installLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
-        download(form, voiceId, progress, false);
+    public void installLocalVoice(SettingsForm form, String voiceId, InstallCancellation cancellation,
+                                  LocalVoiceInstallProgress progress) {
+        download(form, voiceId, cancellation, progress, false);
     }
 
     @Override
-    public void updateLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
-        download(form, voiceId, progress, true);
+    public void updateLocalVoice(SettingsForm form, String voiceId, InstallCancellation cancellation,
+                                 LocalVoiceInstallProgress progress) {
+        download(form, voiceId, cancellation, progress, true);
     }
 
-    private void download(SettingsForm form, final String voiceId, final LocalVoiceInstallProgress progress,
-                          final boolean update) {
+    @Override
+    public String preferredModel(ModelCategory category) {
+        return preferredModels.model(category.key());
+    }
+
+    @Override
+    public List<String> preferredModelMatch(ModelCategory category) {
+        return preferredModels.match(category.key());
+    }
+
+    private void download(SettingsForm form, final String voiceId, InstallCancellation requested,
+                          final LocalVoiceInstallProgress progress, final boolean update) {
         if (form == null || voiceId == null || progress == null) {
             throw new IllegalArgumentException("form, voiceId and progress must not be null");
         }
+        final InstallCancellation cancellation = requested == null ? new InstallCancellation() : requested;
         if (voices == null) {
             progress.finished(false, "In dieser Umgebung nicht verfügbar.");
             return;
@@ -656,7 +673,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
                                 // nur bei geändertem Prozent (bzw. MB ohne Größe) an den EDT, nicht je Puffer
                                 final String line = number + "/" + count + ":" + file + ":"
                                         + (total > 0 ? done * 100 / total : done / (1024L * 1024L));
-                                if (line.equals(lastLine)) {
+                                if (line.equals(lastLine) || cancellation.isCancelled()) {
                                     return;
                                 }
                                 lastLine = line;
@@ -669,12 +686,20 @@ public final class FileSettingsActions implements SettingsDialogActions {
                             }
                         };
                         if (update) {
-                            voices.update(network, keePass, voiceId, root, listener);
+                            voices.update(network, keePass, voiceId, root, listener, cancellation);
                         } else {
-                            voices.install(network, keePass, voiceId, root, listener);
+                            voices.install(network, keePass, voiceId, root, listener, cancellation);
                         }
                         ok = true;
                         message = (update ? "Aktualisiert in " : "Installiert in ") + root.resolve(voiceId);
+                    } catch (final LocalVoiceInstallCancelledException e) {
+                        ui.execute(new Runnable() {
+                            @Override
+                            public void run() {
+                                progress.cancelled(e.getMessage());
+                            }
+                        });
+                        return;
                     } catch (LocalVoiceInstallException e) {
                         ok = false;
                         message = e.getMessage();

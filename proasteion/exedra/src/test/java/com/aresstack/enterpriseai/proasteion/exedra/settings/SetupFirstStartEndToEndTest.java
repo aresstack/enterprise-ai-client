@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
@@ -138,14 +139,14 @@ public class SetupFirstStartEndToEndTest {
 
         @Override
         public void install(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
-                            LocalVoiceInstallListener listener) {
+                            LocalVoiceInstallListener listener, InstallCancellation cancellation) {
             listener.progress("audio_encoder_q4.onnx", 1, 1, 1024, 1024);
             installed.add(voiceId);
         }
 
         @Override
         public void update(NetworkConfig network, KeePassConfig keePass, String voiceId, Path modelRoot,
-                           LocalVoiceInstallListener listener) {
+                           LocalVoiceInstallListener listener, InstallCancellation cancellation) {
         }
 
         @Override

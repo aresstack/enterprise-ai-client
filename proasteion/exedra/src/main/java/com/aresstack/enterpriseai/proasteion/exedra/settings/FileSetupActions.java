@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationC
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.proasteion.application.settings.FileSourceActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.CertificatePicker;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SecretCheckResult;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialog;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
@@ -60,6 +61,12 @@ public final class FileSetupActions implements SetupActions {
     static final String CHECK_CONFLUENCE = "Confluence-Zugang funktioniert";
     static final String CHECK_SOURCE = "Confluence-Quelle ist gespeichert und aktiviert";
     static final String CHECK_LOADS = "Konfiguration lässt sich vollständig laden";
+    /** Detail of the source point while the basic settings are incomplete and nothing was written. */
+    static final String SOURCE_PENDING = "Noch nicht gespeichert, weil die Grundeinstellungen unvollständig sind.";
+    /** Title of the API-key step of the connection probe. */
+    static final String PROBE_KEY = "API-Key";
+    /** Stands in for a model not chosen yet, like the connection test of step 2. */
+    static final String MODEL_PLACEHOLDER = "-";
     /** Name der Quelle unter Wissensquellen. */
     static final String SOURCE_TITLE = "Confluence";
 
@@ -101,7 +108,7 @@ public final class FileSetupActions implements SetupActions {
         }
         SettingsForm.Builder probe = form.toBuilder().embeddingDimension("1");
         if (form.chatModel().isEmpty()) {
-            probe.chatModel("-");
+            probe.chatModel(MODEL_PLACEHOLDER);
         }
         final AppConfig config;
         final Properties merged;
@@ -273,18 +280,23 @@ public final class FileSetupActions implements SetupActions {
      * Quelle und die beiden Confluence-Punkte.
      */
     List<SetupCheck> verify(SettingsForm form, ConfluenceSetup confluence) {
-        String loadProblem = null;
+        // Keep the points independent: a missing model fails only its own point, never KeePass, service or API key.
+        String saveProblem = null;
+        boolean incomplete = false;
         try {
             settings.save(form);
         } catch (IllegalArgumentException e) {
-            loadProblem = "Angaben unvollständig: " + join(SettingsMapper.plain(settings.problems(form)));
+            incomplete = true;
+            saveProblem = "Angaben unvollständig: " + join(SettingsMapper.plain(settings.problems(form)));
         } catch (IOException e) {
-            loadProblem = "Konfigurationsdatei nicht schreibbar (" + e.getClass().getSimpleName() + ").";
+            saveProblem = "Konfigurationsdatei nicht schreibbar (" + e.getClass().getSimpleName() + ").";
         }
         SourceDefinition source = confluence == null ? null : ConfluenceEntryCheck.definition(SOURCE_TITLE,
                 confluence.baseUrl(), confluence.entryTitle(), confluence.certificateAlias());
         String sourceProblem = null;
-        if (loadProblem == null && source != null) {
+        if (saveProblem != null) {
+            sourceProblem = incomplete ? SOURCE_PENDING : saveProblem;
+        } else if (source != null) {
             try {
                 sources.save(source, null);
             } catch (IOException | RuntimeException e) {
@@ -292,32 +304,14 @@ public final class FileSetupActions implements SetupActions {
             }
         }
         AppConfig config = null;
-        Properties stored = null;
-        if (loadProblem == null) {
+        String loadProblem = saveProblem;
+        if (saveProblem == null) {
             try {
-                stored = file().read();
                 config = AppConfigLoader.load(file().path());
                 check.verify(config);
             } catch (AppConfigException e) {
                 config = null;
                 loadProblem = join(SettingsMapper.plain(e.problems()));
-            } catch (IOException e) {
-                config = null;
-                loadProblem = "Konfigurationsdatei nicht lesbar (" + e.getClass().getSimpleName() + ").";
-            }
-        }
-
-        // Ohne eingetragene Basis-URL kommt sie aus dem KeePass-Eintrag (VaultLocations); erst damit gibt es
-        // Chat- und Embedding-Abschnitt.
-        AppConfig effective = null;
-        String locateProblem = loadProblem;
-        if (config != null) {
-            try {
-                effective = located(config, stored);
-            } catch (AppConfigException e) {
-                locateProblem = join(SettingsMapper.plain(e.problems()));
-            } catch (RuntimeException e) {
-                locateProblem = message(e);
             }
         }
 
@@ -341,57 +335,27 @@ public final class FileSetupActions implements SetupActions {
         } catch (KeePassAccess.Failure | RuntimeException e) {
             checks.add(SetupCheck.failed(CHECK_KEEPASS, message(e)));
         }
-        // 2. KI-Dienst erreichbar
-        if (effective == null || effective.chat() == null) {
-            checks.add(SetupCheck.failed(CHECK_SERVICE, "Konfiguration unvollständig: " + locateProblem));
-        } else {
-            final List<String> failures = new ArrayList<String>();
-            boolean reachable;
-            try {
-                reachable = connection.check(effective, step -> {
-                    if (step.isFailure()) {
-                        failures.add(step.title() + ": " + step.detail());
-                    }
-                });
-            } catch (RuntimeException e) {
-                reachable = false;
-                failures.add(message(e));
-            }
-            checks.add(reachable && failures.isEmpty() ? SetupCheck.ok(CHECK_SERVICE, "")
-                    : SetupCheck.failed(CHECK_SERVICE, failures.isEmpty() ? "Verbindungstest fehlgeschlagen"
-                    : join(failures)));
-        }
-        // 3. API-Key lesbar
-        SecretRef apiKey = effective == null || effective.chat() == null ? null : effective.chat().apiKeyRef();
-        if (keePass == null || apiKey == null) {
-            checks.add(SetupCheck.failed(CHECK_API_KEY, "kein KeePass-Eintrag für den KI-Dienst"));
-        } else {
-            SecretCheckResult result;
-            try {
-                result = secrets.check(keePass, apiKey);
-            } catch (RuntimeException e) {
-                result = SecretCheckResult.failed(message(e));
-            }
-            checks.add(result.isSuccess() ? SetupCheck.ok(CHECK_API_KEY, "")
-                    : SetupCheck.failed(CHECK_API_KEY, result.message()));
-        }
-        // 4.–6. Modelle und Dimension
-        String chatModel = effective == null || effective.chat() == null ? null : effective.chat().model();
-        checks.add(!blank(chatModel) && !"-".equals(chatModel) ? SetupCheck.ok(CHECK_CHAT_MODEL, chatModel)
+        // 2. KI-Dienst erreichbar: the same probe as step 2, with placeholders for models not chosen yet
+        checks.add(serviceCheck(form));
+        // 3. API-Key lesbar: the reference the wizard chose, independent of a complete chat section
+        checks.add(apiKeyCheck(form, keePass));
+        // 4.–6. Modelle und Dimension, as entered in the wizard
+        String chatModel = form.chatModel().trim();
+        checks.add(!chatModel.isEmpty() && !MODEL_PLACEHOLDER.equals(chatModel)
+                ? SetupCheck.ok(CHECK_CHAT_MODEL, chatModel)
                 : SetupCheck.failed(CHECK_CHAT_MODEL, "kein Chat-Modell gewählt"));
-        String embeddingModel = effective == null || effective.embedding() == null ? null
-                : effective.embedding().model();
-        checks.add(!blank(embeddingModel) && !"-".equals(embeddingModel)
+        String embeddingModel = form.embeddingModel().trim();
+        checks.add(!embeddingModel.isEmpty() && !MODEL_PLACEHOLDER.equals(embeddingModel)
                 ? SetupCheck.ok(CHECK_EMBEDDING_MODEL, embeddingModel)
                 : SetupCheck.failed(CHECK_EMBEDDING_MODEL, "kein Embedding-Modell gewählt"));
-        checks.add(effective != null && effective.embedding() != null && effective.embedding().dimension() > 0
-                ? SetupCheck.ok(CHECK_DIMENSION, Integer.toString(effective.embedding().dimension()))
+        int dimension = positiveOrZero(form.embeddingDimension());
+        checks.add(dimension > 0 ? SetupCheck.ok(CHECK_DIMENSION, Integer.toString(dimension))
                 : SetupCheck.failed(CHECK_DIMENSION, "unbekannt"));
         if (confluence != null) {
             // 7. Confluence-Zugang (Spaces abrufbar) mit den Zugangsdaten aus KeePass
             checks.add(confluenceCheck(vault, network, confluence));
             // 8. Quelle gespeichert und aktiviert
-            checks.add(sourceCheck(source, sourceProblem == null ? loadProblem : sourceProblem));
+            checks.add(sourceCheck(source, sourceProblem));
         }
         // 9. Konfiguration lädt vollständig
         checks.add(config != null ? SetupCheck.ok(CHECK_LOADS, "")
@@ -400,6 +364,79 @@ public final class FileSetupActions implements SetupActions {
             LOG.info("Einrichtung: " + item);
         }
         return checks;
+    }
+
+    /** Runs the connection probe of step 2 on the draft; missing models become placeholders. */
+    private SetupCheck serviceCheck(SettingsForm form) {
+        AppConfig probe;
+        try {
+            Properties merged = SettingsMapper.merge(current(), probeForm(form));
+            probe = located(AppConfigLoader.fromProperties(merged), merged);
+        } catch (AppConfigException e) {
+            return SetupCheck.failed(CHECK_SERVICE, "Angaben unvollständig: "
+                    + join(SettingsMapper.plain(e.problems())));
+        } catch (IOException | RuntimeException e) {
+            return SetupCheck.failed(CHECK_SERVICE, message(e));
+        }
+        final List<String> failures = new ArrayList<String>();
+        boolean reachable;
+        try {
+            reachable = connection.check(probe, step -> {
+                if (step.isFailure() || (PROBE_KEY.equals(step.title())
+                        && step.status() != ConnectionCheckStep.Status.OK)) {
+                    failures.add(step.title() + ": " + step.detail());
+                }
+            });
+        } catch (RuntimeException e) {
+            reachable = false;
+            failures.add(message(e));
+        }
+        return reachable && failures.isEmpty() ? SetupCheck.ok(CHECK_SERVICE, "")
+                : SetupCheck.failed(CHECK_SERVICE, failures.isEmpty() ? "Verbindungstest fehlgeschlagen"
+                : join(failures));
+    }
+
+    /** Reads the API key through the KeePass section and the reference of the draft. */
+    private SetupCheck apiKeyCheck(SettingsForm form, KeePassConfig keePass) {
+        String ref = form.chatApiKeyRef() == null ? "" : form.chatApiKeyRef().trim();
+        if (ref.isEmpty()) {
+            return SetupCheck.failed(CHECK_API_KEY, "kein KeePass-Eintrag für den KI-Dienst gewählt");
+        }
+        if (keePass == null) {
+            return SetupCheck.failed(CHECK_API_KEY, "KeePass-Einstellungen ungültig");
+        }
+        SecretCheckResult result;
+        try {
+            result = secrets.check(keePass, SecretRef.of(ref));
+        } catch (RuntimeException e) {
+            result = SecretCheckResult.failed(message(e));
+        }
+        return result.isSuccess() ? SetupCheck.ok(CHECK_API_KEY, "")
+                : SetupCheck.failed(CHECK_API_KEY, result.message());
+    }
+
+    /** Same placeholders as the connection test of step 2. */
+    static SettingsForm probeForm(SettingsForm form) {
+        SettingsForm.Builder probe = form.toBuilder();
+        if (form.chatModel().trim().isEmpty()) {
+            probe.chatModel(MODEL_PLACEHOLDER);
+        }
+        if (form.embeddingModel().trim().isEmpty()) {
+            probe.embeddingModel(MODEL_PLACEHOLDER);
+        }
+        if (positiveOrZero(form.embeddingDimension()) <= 0) {
+            probe.embeddingDimension("1");
+        }
+        return probe.build();
+    }
+
+    private static int positiveOrZero(String text) {
+        try {
+            int value = Integer.parseInt(text == null ? "" : text.trim());
+            return Math.max(0, value);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private SetupCheck confluenceCheck(KeePassAccess vault, NetworkConfig network, ConfluenceSetup confluence) {
@@ -486,10 +523,6 @@ public final class FileSetupActions implements SetupActions {
         } catch (RuntimeException e) {
             rejected.run();
         }
-    }
-
-    private static boolean blank(String text) {
-        return text == null || text.trim().isEmpty();
     }
 
     private static String message(Throwable e) {

@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 
@@ -103,6 +104,22 @@ public interface SettingsDialogActions {
                 new CatalogStatus("modelle", "Modellquellen", false, "in dieser Umgebung nicht verfügbar"))));
     }
 
+    /**
+     * Return the model the setup wizard selects by itself for the category (chat or embedding) while nothing is chosen
+     * yet; empty for none. The wizard falls back to the first offered model.
+     */
+    default String preferredModel(ModelCategory category) {
+        return "";
+    }
+
+    /**
+     * Return the words a fallback model must all contain when the preferred model is not offered; empty means the
+     * part of the preferred id after its last slash.
+     */
+    default List<String> preferredModelMatch(ModelCategory category) {
+        return Collections.<String>emptyList();
+    }
+
     /** Liest eine gespeicherte Auswahl {@code [<katalog>:]<modell>}; {@code null} bei leerem Text. */
     default ModelReference parseModel(String text) {
         return ModelReference.parse(text, Collections.<String>emptyList(), "default");
@@ -129,9 +146,12 @@ public interface SettingsDialogActions {
 
     /**
      * Installiert eine Stimme ins Modellverzeichnis des Entwurfs (Download über die Netzwerkeinstellungen des
-     * Entwurfs); Fortschritt und Ende auf dem EDT.
+     * Entwurfs); Fortschritt und Ende auf dem EDT. Once {@code cancellation} is requested, the transfer stops and
+     * {@link LocalVoiceInstallProgress#cancelled} follows instead of {@code finished}; a late request after a
+     * completed installation changes nothing.
      */
-    default void installLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
+    default void installLocalVoice(SettingsForm form, String voiceId, InstallCancellation cancellation,
+                                   LocalVoiceInstallProgress progress) {
         progress.finished(false, "In dieser Umgebung nicht verfügbar.");
     }
 
@@ -156,7 +176,8 @@ public interface SettingsDialogActions {
     }
 
     /** Lädt eine installierte Stimme neu (wie {@link #installLocalVoice}); ändert keine Auswahl. */
-    default void updateLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
+    default void updateLocalVoice(SettingsForm form, String voiceId, InstallCancellation cancellation,
+                                  LocalVoiceInstallProgress progress) {
         progress.finished(false, "In dieser Umgebung nicht verfügbar.");
     }
 

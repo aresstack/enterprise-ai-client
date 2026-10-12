@@ -1,8 +1,10 @@
 package com.aresstack.enterpriseai.model.huggingface;
 
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
+import com.aresstack.enterpriseai.model.api.LocalVoiceInstallCancelledException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
 import com.aresstack.enterpriseai.model.api.LocalVoiceProvisioning;
@@ -132,22 +134,22 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     }
 
     @Override
-    public void install(String voiceId, Path modelRoot, final LocalVoiceInstallListener listener)
-            throws LocalVoiceInstallException {
+    public void install(String voiceId, Path modelRoot, final LocalVoiceInstallListener listener,
+                        InstallCancellation cancellation) throws LocalVoiceInstallException {
         HuggingFaceVoice voice = find(voiceId, modelRoot);
         Path target = modelRoot.resolve(voice.id());
         if (complete(target, voice)) {
             return;
         }
-        download(voice, modelRoot, target, listener);
+        download(voice, modelRoot, target, listener, cancellation);
     }
 
     /** Lädt alle Dateien neu; die bisherige Stimme bleibt nutzbar, bis die neuen Dateien geprüft da sind. */
     @Override
-    public void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
-            throws LocalVoiceInstallException {
+    public void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener,
+                       InstallCancellation cancellation) throws LocalVoiceInstallException {
         HuggingFaceVoice voice = find(voiceId, modelRoot);
-        download(voice, modelRoot, modelRoot.resolve(voice.id()), listener);
+        download(voice, modelRoot, modelRoot.resolve(voice.id()), listener, cancellation);
     }
 
     private LocalVoiceOffer offer(HuggingFaceVoice voice, Path modelRoot) {
@@ -192,8 +194,10 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     }
 
     private void download(HuggingFaceVoice voice, Path modelRoot, Path target,
-                          final LocalVoiceInstallListener listener) throws LocalVoiceInstallException {
+                          final LocalVoiceInstallListener listener, final InstallCancellation cancellation)
+            throws LocalVoiceInstallException {
         requireEndpoint();
+        stopIfCancelled(cancellation);
         Path staging = modelRoot.resolve("." + voice.id() + STAGING_SUFFIX);
         try {
             Files.createDirectories(staging);
@@ -211,7 +215,9 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
             final int number = i + 1;
             final int count = files.size();
             Path destination = staging.resolve(voice.localName(file));
+            stopIfCancelled(cancellation);
             HubFileIndex.Entry expected = expected(index, voice, file);
+            stopIfCancelled(cancellation);
             try {
                 Files.createDirectories(destination.getParent());
             } catch (IOException e) {
@@ -224,23 +230,36 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
                         .onProgress(new ProgressListener() {
                             @Override
                             public void onProgress(DownloadProgress progress) {
+                                // Abort the copy loop of huggingface4j: it closes file and connection, the .part
+                                // file stays for a later resume.
+                                if (cancellation != null && cancellation.isCancelled()) {
+                                    throw new TransferStopped();
+                                }
                                 listener.progress(name, number, count, progress.getBytesDownloaded(),
                                         progress.getTotalBytes());
                             }
                         }).execute();
+            } catch (TransferStopped e) {
+                throw cancelled();
             } catch (HuggingFaceHubException e) {
+                stopIfCancelled(cancellation);
                 throw new LocalVoiceInstallException("Download von " + name + " fehlgeschlagen: " + e.getMessage(), e);
             } catch (RuntimeException e) {
+                stopIfCancelled(cancellation);
                 throw new LocalVoiceInstallException("Download von " + name + " fehlgeschlagen: " + e, e);
             }
+            stopIfCancelled(cancellation);
             verify(destination, expected);
             ModelConfigCheck.check(destination, voice.category());
         }
+        // Check right before the folder becomes visible, so a stopped download never shows up as installed.
+        stopIfCancelled(cancellation);
         try {
             VoiceSource.write(voice, staging);
         } catch (IOException e) {
             throw new LocalVoiceInstallException("Herkunft der Stimme nicht speicherbar: " + e.getMessage(), e);
         }
+        stopIfCancelled(cancellation);
         moveIntoPlace(staging, target);
         if (!complete(target, voice)) {
             throw new LocalVoiceInstallException("Modell " + voice.id() + " ist nach dem Download unvollständig.");
@@ -355,6 +374,25 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
                     + " (Revision " + voice.revision() + ").");
         }
         return entry;
+    }
+
+    private static void stopIfCancelled(InstallCancellation cancellation) throws LocalVoiceInstallCancelledException {
+        if (cancellation != null && cancellation.isCancelled()) {
+            throw cancelled();
+        }
+    }
+
+    private static LocalVoiceInstallCancelledException cancelled() {
+        return new LocalVoiceInstallCancelledException("Download abgebrochen. Das Modell wurde nicht installiert.");
+    }
+
+    /** Unwinds the transfer loop of huggingface4j from inside its progress callback. */
+    private static final class TransferStopped extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        TransferStopped() {
+            super("transfer stopped", null, false, false);
+        }
     }
 
     /** Größe immer, SHA-256 bei LFS-Dateien; bei Abweichung tatsächliche Werte melden und Datei verwerfen. */

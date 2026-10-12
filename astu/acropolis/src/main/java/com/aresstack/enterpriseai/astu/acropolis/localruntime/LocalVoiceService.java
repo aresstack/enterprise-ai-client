@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.localruntime;
 
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
@@ -36,8 +37,8 @@ public final class LocalVoiceService {
         return provisioning.search(query == null ? "" : query.trim(), category, modelRoot);
     }
 
-    public void install(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
-            throws LocalVoiceInstallException {
+    public void install(String voiceId, Path modelRoot, LocalVoiceInstallListener listener,
+                        InstallCancellation cancellation) throws LocalVoiceInstallException {
         requireRoot(modelRoot);
         if (voiceId == null || voiceId.trim().isEmpty()) {
             throw new IllegalArgumentException("voiceId must not be blank");
@@ -47,11 +48,11 @@ public final class LocalVoiceService {
             public void progress(String file, int number, int count, long done, long total) {
                 // niemand hört zu
             }
-        } : listener);
+        } : listener, cancellation == null ? new InstallCancellation() : cancellation);
     }
 
-    public void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener)
-            throws LocalVoiceInstallException {
+    public void update(String voiceId, Path modelRoot, LocalVoiceInstallListener listener,
+                       InstallCancellation cancellation) throws LocalVoiceInstallException {
         requireRoot(modelRoot);
         if (voiceId == null || voiceId.trim().isEmpty()) {
             throw new IllegalArgumentException("voiceId must not be blank");
@@ -61,7 +62,7 @@ public final class LocalVoiceService {
             public void progress(String file, int number, int count, long done, long total) {
                 // niemand hört zu
             }
-        } : listener);
+        } : listener, cancellation == null ? new InstallCancellation() : cancellation);
     }
 
     public void remove(String voiceId, Path modelRoot) throws LocalVoiceInstallException {

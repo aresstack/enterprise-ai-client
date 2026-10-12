@@ -98,7 +98,14 @@ er nirgends, auch nicht in Fehlermeldungen (dort stehen die Feldnamen, z. B. „
    ai“, sonst „Enterprise AI API“), liest Basis-URL und API-Key daraus und testet die Verbindung. Fehlt etwas,
    lassen sich Basis-URL und API-Key eintragen und „In KeePass speichern“; der API-Key landet nie in der
    Konfigurationsdatei, `chat.baseUrl` bleibt leer und kommt beim Start aus dem Eintrag.
-3. **Modelle**: Chat- und Embedding-Modell aus `GET /models`; die Embedding-Dimension misst ein Probe-Embedding.
+3. **Modelle**: Chat- und Embedding-Modell aus `GET /models`, ohne Klick vorausgewählt: eine noch angebotene Wahl
+   bleibt, sonst das Vorzugsmodell aus `setup-models.properties` (neben `PreferredModels`, Vorgabe
+   `openai/gpt-oss-120b` bzw. `danielheinz/e5-base-sts-en-de`), sonst genau ein Modell, dessen Kennung den Teil nach
+   dem letzten „/“ enthält, sonst das erste angebotene. Gleich danach misst ein Probe-Embedding die Dimension;
+   „Dimension ermitteln“ ist nur noch die manuelle Wiederholung. Die Zeile „Sprachausgabe“ wählt ebenso das
+   TTS-Modell des Chats (`model.tts`, Vorgabe `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`, sonst ein eindeutiger Treffer mit
+   „qwen3-tts“ und „customvoice“, sonst das erste TTS-Modell); Merlins eigene Stimme (`setup.merlin.*`) bleibt davon
+   unberührt.
 4. **Confluence** (optional): KeePass-Eintrag mit URL, Benutzer und Passwort bzw. Token, optional ein
    Client-Zertifikat aus dem Windows-Zertifikatspeicher; Netzwerkeinstellungen über den Netzwerk-Reiter des
    Einstellungen-Dialogs. Ein vollständiger Eintrag (URL und Passwort bzw. Token) verlangt keine Eingabe: der
@@ -109,7 +116,11 @@ er nirgends, auch nicht in Fehlermeldungen (dort stehen die Feldnamen, z. B. „
    „Mit KeePass verbinden“ vorbei, lesen „KI-Dienst“ und „Confluence“ die Eintragsliste selbst nach.
 5. **Abschlussprüfung**: schreibt Konfiguration und Confluence-Quelle und prüft neun Punkte (KeePass gekoppelt,
    KI-Dienst erreichbar, API-Key lesbar, Chat-Modell, Embedding-Modell, Dimension, Confluence-Zugang, Quelle
-   gespeichert und aktiviert, Konfiguration lädt vollständig). „Fertig“ gibt es erst, wenn alle grün sind. Ist
+   gespeichert und aktiviert, Konfiguration lädt vollständig). Die Punkte hängen nicht voneinander ab: „KI-Dienst
+   erreichbar“ läuft wie der Test in Schritt 2 mit Platzhaltern für fehlende Modelle, „API-Key lesbar“ liest den
+   gewählten KeePass-Eintrag direkt; ein fehlendes Modell färbt nur seinen eigenen Punkt und „Konfiguration lädt“
+   rot. Solange die Grundeinstellungen unvollständig sind, schreibt die Prüfung nichts, und die Quelle meldet „Noch
+   nicht gespeichert, weil die Grundeinstellungen unvollständig sind.“ „Fertig“ gibt es erst, wenn alle grün sind. Ist
    Confluence übersprungen, entfallen Quelle und die beiden Confluence-Punkte; Confluence lässt sich später in der
    Seitenleiste unter Wissensquellen einrichten.
 
@@ -297,6 +308,13 @@ dann gleich, wechselt der Server das Modell nur bei gleichzeitigen Anfragen. Der
 denselben `text`-Fingerabdruck, so lassen sich gleiche Requests über mehrere Läufe vergleichen.
 
 ### Spracheingabe (lokal)
+
+Im letzten Schritt des Einrichtungsassistenten steht rechts neben dem Download-Fortschritt ein kleines Kreuz, nur
+solange ein Download läuft. Es bricht den echten Transfer ab (beim nächsten empfangenen Datenblock; Verbindung und
+Datei werden geschlossen), ebenso „Überspringen“ und das Schließen des Assistenten. Der Abbruch ist kein Fehler:
+„Download abgebrochen. Das Modell wurde nicht installiert.“ Die angefangene Datei (`.<id>.download/….part`) bleibt
+liegen, ein späteres „Installieren“ setzt sie mit einer Range-Anfrage fort; als installiert erscheint der Ordner erst
+nach vollständigem, geprüftem Download. War der Download beim Klick schon fertig, bleibt das Modell installiert.
 
 Der Mikrofon-Knopf im Eingabefeld nimmt über Java Sound auf (Klick: Aufnahme an, zweiter Klick: Aufnahme aus und
 erkennen); der erkannte Text landet am Cursor und wird nicht gesendet. Erkannt wird mit dem Modell aus `model.stt`.

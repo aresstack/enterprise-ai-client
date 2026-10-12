@@ -16,4 +16,12 @@ public interface LocalVoiceInstallProgress {
 
     /** Genau einmal am Ende; {@code message} nennt bei Fehlern den Grund. */
     void finished(boolean installed, String message);
+
+    /**
+     * Report a download the user stopped, instead of {@link #finished}: exactly once, never together with it. The
+     * model is not installed; a later attempt resumes the partial download.
+     */
+    default void cancelled(String message) {
+        finished(false, message);
+    }
 }

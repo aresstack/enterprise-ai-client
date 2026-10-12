@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.setup;
 
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
@@ -123,8 +124,9 @@ public final class DraftSettingsActions implements SettingsDialogActions {
     }
 
     @Override
-    public void installLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
-        delegate.installLocalVoice(form, voiceId, progress);
+    public void installLocalVoice(SettingsForm form, String voiceId, InstallCancellation cancellation,
+                                  LocalVoiceInstallProgress progress) {
+        delegate.installLocalVoice(form, voiceId, cancellation, progress);
     }
 
     @Override
@@ -144,8 +146,19 @@ public final class DraftSettingsActions implements SettingsDialogActions {
     }
 
     @Override
-    public void updateLocalVoice(SettingsForm form, String voiceId, LocalVoiceInstallProgress progress) {
-        delegate.updateLocalVoice(form, voiceId, progress);
+    public void updateLocalVoice(SettingsForm form, String voiceId, InstallCancellation cancellation,
+                                 LocalVoiceInstallProgress progress) {
+        delegate.updateLocalVoice(form, voiceId, cancellation, progress);
+    }
+
+    @Override
+    public String preferredModel(ModelCategory category) {
+        return delegate.preferredModel(category);
+    }
+
+    @Override
+    public List<String> preferredModelMatch(ModelCategory category) {
+        return delegate.preferredModelMatch(category);
     }
 
     @Override
