@@ -67,8 +67,8 @@ Wo genau der Ordner liegt, beschreibt [Die Konfigurationsdatei](help:settings.co
 Der Knopf „Offline-Paket erstellen …“ direkt rechts neben „Einstellungsordner öffnen“ (Tooltip: „Packt alle installierten lokalen KI- und Sprachmodelle in ein ZIP für eine Offline-Installation.“) packt alles, was auf diesem Rechner lokal installiert ist, in ein einziges ZIP: die OpenNLP-Modelle der Textanalyse und alle vollständig installierten lokalen Modelle (Spracheingabe, Sprachausgabe, Embedding- und Chat-Modelle), je Modell den ganzen Ordner aus dem Modellverzeichnis. Halb geladene Downloads kommen nicht hinein.
 
 1. Klicke „Offline-Paket erstellen …“. Ein Speichern-Dialog schlägt den Ordner des Jars und den Namen `enterprise-ai-client-resources-yyyyMMdd-HHmmss.zip` vor (Datum und Uhrzeit).
-2. Während des Packens zeigt ein dünner Balken in der Fußzeile die Datei und den Fortschritt. Das kleine Kreuz daneben bricht ab; dann bleibt keine Datei zurück.
-3. Danach steht neben dem Knopf, was im Paket ist und wie groß es ist.
+2. Während des Packens tritt an die Stelle des Knopfs ein Fortschrittsbalken über die ganze freie Breite der Fußzeile, mit Menge und Datei („Datei n von m“). Das kleine Kreuz rechts daneben bricht ab; der Balken bleibt, bis das Packen wirklich beendet ist, danach bleibt keine Datei zurück.
+3. Danach erscheint wieder der Knopf. Sein Tooltip nennt das Ergebnis (was im Paket ist und wie groß es ist); ein Fehler erscheint zusätzlich als Meldung.
 
 Das ZIP wird nicht komprimiert (Modelle lassen sich kaum packen, so geht es schneller) und erst unter seinem Namen sichtbar, wenn es vollständig ist. Ein Manifest im ZIP nennt Größe und SHA-256 jeder Datei.
 

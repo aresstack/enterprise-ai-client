@@ -250,8 +250,12 @@ public class SettingsPanelTest {
                 assertSame(target, actions.offlineTarget);
                 assertFalse("the button is hidden while exporting", visibleIn(button, panel));
                 assertTrue(visibleIn(panel.offlineProgress(), panel));
-                assertTrue("the progress takes the free width",
-                        panel.offlineProgress().bar().getWidth() > 2 * button.getPreferredSize().width);
+                java.awt.Container area = panel.offlineProgress().getParent();
+                java.awt.Insets insets = area.getInsets();
+                assertEquals("the progress takes the whole export area", area.getWidth() - insets.left - insets.right,
+                        panel.offlineProgress().getWidth());
+                assertTrue("the bar is wider than the button was",
+                        panel.offlineProgress().bar().getWidth() > button.getPreferredSize().width);
                 assertEquals("starts where the button was", x(button, panel), x(panel.offlineProgress(), panel));
                 actions.offlineProgress.file("model.onnx", 2, 5, 50, 100);
                 assertEquals(50, panel.offlineProgress().bar().getValue());
@@ -262,7 +266,14 @@ public class SettingsPanelTest {
                 actions.offlineProgress.cancelled("Erstellen abgebrochen. Es wurde kein Offline-Paket geschrieben.");
                 assertFalse(visibleIn(panel.offlineProgress(), panel));
                 assertTrue(visibleIn(button, panel));
-                assertEquals("Erstellen abgebrochen. Es wurde kein Offline-Paket geschrieben.", panel.offlineStatus());
+                assertEquals("Erstellen abgebrochen. Es wurde kein Offline-Paket geschrieben.", panel.offlineResult());
+
+                panel.exportOfflinePackage(target);
+                actions.offlineProgress.finished(true, "Offline-Paket geschrieben: " + actions.offlineName);
+                layoutTree(panel);
+                assertTrue("back to the button", visibleIn(button, panel));
+                assertEquals("no result text next to the button", 1, button.getParent().getComponentCount());
+                assertTrue(button.getToolTipText().contains("Offline-Paket geschrieben"));
             }
         });
     }
