@@ -218,12 +218,15 @@ public final class SettingsMapper {
         // beim Laden übernommen und verschwindet beim Speichern (removals), damit es den Wert nie überdeckt.
         put(set, KEY_RESEARCH_MAX_PAGES, String.valueOf(AgentConfig.DEFAULT_RESEARCH_MAX_PAGES)
                 .equals(form.researchMaxPages().trim()) ? "" : form.researchMaxPages().trim());
-        // Werkzeugrunden und RAG-Limits des normalen Chats: der Wert bleibt in der Datei, wie er gespeichert wurde
-        // (die Vorlage nennt retrieval.maxResults und context.* ausdrücklich); leer heißt Standard.
-        put(set, AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY, form.chatToolsMaxRounds());
-        put(set, AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY, form.retrievalMaxResults());
-        put(set, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY, form.contextMaxTokens());
-        put(set, AppConfigLoader.CONTEXT_MAX_SOURCES_KEY, form.contextMaxSources());
+        // Werkzeugrunden und RAG-Limits des normalen Chats: Standardwerte stehen nicht in der Datei (der Loader kennt sie).
+        putUnlessDefault(set, AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY, form.chatToolsMaxRounds(),
+                ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
+        putUnlessDefault(set, AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY, form.retrievalMaxResults(),
+                RetrievalSettings.DEFAULT_MAX_RESULTS);
+        putUnlessDefault(set, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY, form.contextMaxTokens(),
+                ContextSettings.DEFAULT_MAX_CONTEXT_TOKENS);
+        putUnlessDefault(set, AppConfigLoader.CONTEXT_MAX_SOURCES_KEY, form.contextMaxSources(),
+                ContextSettings.DEFAULT_MAX_SOURCES);
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 put(set, ModelsConfig.keyOf(category), form.modelSelection(category.key()));
@@ -456,6 +459,11 @@ public final class SettingsMapper {
 
     private static void put(Map<String, String> set, String key, String value) {
         set.put(key, value == null ? "" : value.trim());
+    }
+
+    private static void putUnlessDefault(Map<String, String> set, String key, String value, int def) {
+        String trimmed = value == null ? "" : value.trim();
+        set.put(key, String.valueOf(def).equals(trimmed) ? "" : trimmed);
     }
 
     private static Set<String> nonEmptyKeys(Map<String, String> changes) {
