@@ -33,7 +33,9 @@ public class DictationOriginTest {
         Edt.run(() -> {
             Composer composer = new Composer();
             composer.dictate("Aklima bitte erstmal das Programm");
-            composer.panel.composer().editor().setText("Erklär mir bitte erstmal das Programm");
+            javax.swing.JTextArea editor = (javax.swing.JTextArea) composer.panel.composer().editor();
+            editor.select(0, "Aklima".length());
+            editor.replaceSelection("Erklär mir");
             composer.panel.composer().sendButton().doClick();
 
             assertEquals(MessageOrigin.SPEECH_TRANSCRIPT, composer.actions.drafts.get(0).origin());

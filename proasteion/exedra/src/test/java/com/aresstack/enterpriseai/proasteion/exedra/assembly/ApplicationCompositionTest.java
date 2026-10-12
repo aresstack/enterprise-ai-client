@@ -166,6 +166,8 @@ public class ApplicationCompositionTest {
     public void ragQuestionCarriesSourcesAndContextAfterIndexing() throws Exception {
         final CompositionRoot root = compose(false);
         indexAll(root);
+        // Erst die Vorprüfung (Nebenanfrage): die Frage braucht Wissen und wird mit sich selbst gesucht.
+        chatPort.enqueueAnswer("{\"search\": true, \"query\": \"Wann verfällt der Resturlaub?\"}");
         // Ein Bewerter-Aufruf je Kandidatenrunde (Nebenanfrage): der beste Treffer reicht, dann kommt die Antwort.
         chatPort.enqueueAnswer("{\"ranked\": [{\"id\": \"c1\", \"relevant\": true}], \"minimumEvidence\": [\"c1\"], "
                 + "\"sufficient\": true, \"missing\": \"\", \"nextQuery\": \"\"}");

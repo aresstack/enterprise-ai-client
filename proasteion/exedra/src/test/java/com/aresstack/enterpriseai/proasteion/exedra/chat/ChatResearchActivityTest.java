@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase
 import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalTriage;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPreparation;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
@@ -271,15 +272,29 @@ public class ChatResearchActivityTest {
         assertFalse(chat.isBusy(conversation));
     }
 
+    /** Small talk: the card shows the model's triage and ends without any search ("keine Suche nötig"). */
     @Test
-    public void smallTalkShowsNoResearchCard() throws Exception {
+    public void smallTalkEndsTheResearchCardWithoutSearch() throws Exception {
         indexAll();
+        port.enqueueAnswer("{\"search\": false, \"query\": \"\"}");
         port.enqueueAnswer("Hallo zurück");
-        Shell shell = shell(index, FollowUpResearch.upTo(2));
+        final RagChatUseCase rag = new RagChatUseCase(chat,
+                new RetrieveKnowledgeUseCase(index, embeddings, space, null), new PromptContextAssembler(null),
+                RetrievalPreparation.none(), FollowUpResearch.upTo(2), null, RetrievalTriage.byModel());
+        Shell shell = onEdt(new Callable<Shell>() {
+            @Override
+            public Shell call() {
+                return new Shell(rag);
+            }
+        });
         send(shell, "Hi");
         awaitIdle(shell.model);
 
-        assertTrue(shell.recorder.addedActivities.toString(), shell.recorder.addedActivities.isEmpty());
+        assertEquals(shell.recorder.addedActivities.toString(), 1, shell.recorder.addedActivities.size());
+        List<String> states = shell.recorder.textsOf(shell.recorder.addedActivities.get(0));
+        assertTrue(states.toString(), states.toString().contains(ChatResearchCard.TRIAGE));
+        assertFalse(states.toString(), states.toString().contains("Suche 1"));
+        assertEquals("one triage, one answer", 2, port.requests().size());
         assertEquals(2, entries(shell.model).size());
     }
 
