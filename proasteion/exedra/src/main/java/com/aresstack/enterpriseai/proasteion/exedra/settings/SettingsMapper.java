@@ -159,6 +159,8 @@ public final class SettingsMapper {
         b.bubbleAssistantForeground(bubbleColor(p, BubbleColorsConfig.ASSISTANT_FOREGROUND_KEY,
                 BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND));
         b.speechVoices(ModelsConfig.parseSpeechVoices(text(p, ModelsConfig.SPEECH_VOICES_KEY, "")));
+        b.merlinVoice(text(p, ModelsConfig.MERLIN_VOICE_KEY, ModelsConfig.defaultMerlinVoice()));
+        b.merlinSpeaker(text(p, ModelsConfig.MERLIN_SPEAKER_KEY, ModelsConfig.defaultMerlinSpeaker()));
         b.prefetchMaxItems(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100"));
         b.prefetchConcurrency(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4"));
         b.prefetchCacheMaxMb(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CACHE_MB_KEY, "50"));
@@ -274,6 +276,11 @@ public final class SettingsMapper {
                 bubbleColorValue(form.bubbleAssistantForeground(), BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND));
         // Stimme je TTS-Modell; ohne Eintrag gilt der Standard des Modells (steht nicht in der Datei).
         put(set, ModelsConfig.SPEECH_VOICES_KEY, ModelsConfig.formatSpeechVoices(form.speechVoices()));
+        // Merlins Stimme: nur eine Abweichung von der Vorgabe steht in der Datei.
+        put(set, ModelsConfig.MERLIN_VOICE_KEY,
+                ModelsConfig.defaultMerlinVoice().equals(form.merlinVoice()) ? "" : form.merlinVoice());
+        put(set, ModelsConfig.MERLIN_SPEAKER_KEY,
+                ModelsConfig.defaultMerlinSpeaker().equals(form.merlinSpeaker()) ? "" : form.merlinSpeaker());
         // Vorladen: Standardwerte (100 Treffer, 4 Abrufe, 50 MB) stehen nicht in der Datei.
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100".equals(form.prefetchMaxItems().trim()) ? "" : form.prefetchMaxItems().trim());
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4".equals(form.prefetchConcurrency().trim()) ? "" : form.prefetchConcurrency().trim());

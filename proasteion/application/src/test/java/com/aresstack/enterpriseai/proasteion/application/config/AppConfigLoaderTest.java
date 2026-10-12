@@ -145,6 +145,23 @@ public class AppConfigLoaderTest {
     }
 
     @Test
+    public void merlinHasHisOwnVoiceIndependentOfTheChatTts() throws Exception {
+        Properties p = minimal();
+        String standard = ModelsConfig.defaultMerlinVoice();
+        assertFalse("Vorgabe aus merlin.properties", standard.isEmpty());
+        assertEquals(ModelsConfig.parse(standard).modelId(),
+                AppConfigLoader.fromProperties(p).models().merlinVoice().modelId());
+        p.setProperty(ModelsConfig.MERLIN_VOICE_KEY, "local:merlin-voice");
+        ModelsConfig models = AppConfigLoader.fromProperties(p).models();
+        assertEquals("local", models.merlinVoice().catalogId());
+        assertEquals("merlin-voice", models.merlinVoice().modelId());
+        assertEquals("fester Sprecher aus der Vorgabe", ModelsConfig.defaultMerlinSpeaker(), models.merlinSpeaker());
+        assertFalse(models.merlinSpeaker().isEmpty());
+        p.setProperty(ModelsConfig.MERLIN_SPEAKER_KEY, "merlin-speaker");
+        assertEquals("merlin-speaker", AppConfigLoader.fromProperties(p).models().merlinSpeaker());
+    }
+
+    @Test
     public void ownSystemPromptIsKeptExactly() throws Exception {
         Properties p = minimal();
         p.setProperty("chat.systemPrompt", "Du bist ein hilfreicher Assistent. Antworte auf Deutsch.");

@@ -6,12 +6,17 @@ import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelSelections;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 /**
  * Modellverwaltung: die eine Auswahl je {@link ModelCategory} und das Modellverzeichnis der lokalen Stimmen. Chat und
@@ -45,6 +50,18 @@ public final class ModelsConfig {
      */
     public static final String SPEECH_VOICES_KEY = "speech.voices";
 
+    /**
+     * Merlins Stimme im Einrichtungsassistenten ({@code [<katalog>:]<modell>}), getrennt vom TTS-Modell des Chats;
+     * Vorgabe aus {@code merlin.properties} neben dieser Klasse.
+     */
+    public static final String MERLIN_VOICE_KEY = "setup.merlin.ttsModel";
+    /**
+     * Merlins fester Sprecher dieses Modells ({@code voice} der Anfrage), damit er nicht je Absatz anders klingt; nie
+     * {@code speech.voice} des Chats. Vorgabe aus {@code merlin.properties}.
+     */
+    public static final String MERLIN_SPEAKER_KEY = "setup.merlin.ttsVoice";
+    static final String MERLIN_RESOURCE = "merlin.properties";
+
     /** Katalog der lokal installierten Modelle (Stimmen, Embeddings, Chat): Auswahl {@code local:<ordner>}. */
     public static final String LOCAL_CATALOG_ID = "local";
 
@@ -55,6 +72,8 @@ public final class ModelsConfig {
     private final String speechVoice;
     private final Map<String, String> speechVoices;
     private final Path localModelRoot;
+    private final ModelReference merlinVoice;
+    private final String merlinSpeaker;
 
     ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
                  int synthesisWorkers, String speechVoice, Path localModelRoot) {
@@ -64,6 +83,13 @@ public final class ModelsConfig {
 
     ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
                  int synthesisWorkers, String speechVoice, Map<String, String> speechVoices, Path localModelRoot) {
+        this(selections, readAloudAutoStart, readAloudChunking, synthesisWorkers, speechVoice, speechVoices,
+                localModelRoot, parse(defaultMerlinVoice()), defaultMerlinSpeaker());
+    }
+
+    ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
+                 int synthesisWorkers, String speechVoice, Map<String, String> speechVoices, Path localModelRoot,
+                 ModelReference merlinVoice, String merlinSpeaker) {
         if (localModelRoot == null) {
             throw new IllegalArgumentException("localModelRoot must not be null");
         }
@@ -75,6 +101,48 @@ public final class ModelsConfig {
         this.readAloudAutoStart = readAloudAutoStart;
         this.readAloudChunking = readAloudChunking == null ? SpeechChunking.PARAGRAPHS : readAloudChunking;
         this.synthesisWorkers = synthesisWorkers;
+        this.merlinVoice = merlinVoice;
+        this.merlinSpeaker = merlinSpeaker == null ? "" : merlinSpeaker.trim();
+    }
+
+    /** Die Vorgabe für Merlins Stimme aus {@code merlin.properties}; leer, wenn die Datei fehlt. */
+    public static String defaultMerlinVoice() {
+        return merlinDefault(MERLIN_VOICE_KEY);
+    }
+
+    /** Die Vorgabe für Merlins Sprecher aus {@code merlin.properties}; leer, wenn die Datei fehlt. */
+    public static String defaultMerlinSpeaker() {
+        return merlinDefault(MERLIN_SPEAKER_KEY);
+    }
+
+    private static String merlinDefault(String key) {
+        Properties defaults = new Properties();
+        InputStream in = ModelsConfig.class.getResourceAsStream(MERLIN_RESOURCE);
+        if (in == null) {
+            return "";
+        }
+        try {
+            defaults.load(new InputStreamReader(in, StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            return "";
+        } finally {
+            try {
+                in.close();
+            } catch (IOException ignored) {
+                // nur gelesen
+            }
+        }
+        return defaults.getProperty(key, "").trim();
+    }
+
+    /** Merlins Stimme ({@link #MERLIN_VOICE_KEY}) oder {@code null}: dann spricht Merlin nicht, nur Sprechblasen. */
+    public ModelReference merlinVoice() {
+        return merlinVoice;
+    }
+
+    /** Merlins Sprecher ({@link #MERLIN_SPEAKER_KEY}); leer = Vorgabe des Dienstes. */
+    public String merlinSpeaker() {
+        return merlinSpeaker;
     }
 
     /** Die bekannten Kataloge (Präfixe einer Auswahl). */

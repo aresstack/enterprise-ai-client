@@ -83,7 +83,13 @@ public final class ReadAloudBinding implements ReadAloudControl {
 
     @Override
     public void speak(final String markdown) {
+        speak(markdown, null);
+    }
+
+    @Override
+    public void speak(final String markdown, final Runnable finished) {
         if (service == null) {
+            done(finished);
             return;
         }
         service.stop(); // beendet eine laufende Antwort
@@ -91,40 +97,55 @@ public final class ReadAloudBinding implements ReadAloudControl {
         reader.execute(new Runnable() {
             @Override
             public void run() {
-                if (generation.get() != mine) {
-                    return; // inzwischen pausiert oder von einer neueren Antwort abgelöst
-                }
-                final boolean[] reported = new boolean[1]; // eine Meldung je Vorlesen, nicht je Abschnitt
                 try {
-                    service.speak(markdown, new ReadAloudService.Listener() {
-                        @Override
-                        public void failed(String message) {
-                            LOG.warning("Vorlesen: " + message);
-                            if (!reported[0]) {
-                                reported[0] = true;
-                                showFailure(message);
-                            }
-                        }
-
-                        @Override
-                        public void chunkRequested(ReadAloudService.ChunkTrace trace) {
-                            LOG.info(requestLine(trace, traceContext));
-                        }
-
-                        @Override
-                        public void chunkSynthesized(ReadAloudService.ChunkTrace trace,
-                                                     ReadAloudService.WavFormat wav) {
-                            LOG.info(audioLine(trace, wav));
-                        }
-                    });
-                } catch (RuntimeException e) {
-                    LOG.log(Level.WARNING, "Vorlesen fehlgeschlagen", e);
-                    if (!reported[0]) {
-                        showFailure(e.getClass().getSimpleName());
-                    }
+                    read(mine, markdown);
+                } finally {
+                    done(finished);
                 }
             }
         });
+    }
+
+    /** Meldet das Ende einer Ausgabe auf dem EDT. */
+    private static void done(Runnable finished) {
+        if (finished != null) {
+            SwingUtilities.invokeLater(finished);
+        }
+    }
+
+    private void read(long mine, String markdown) {
+        if (generation.get() != mine) {
+            return; // inzwischen pausiert oder von einer neueren Antwort abgelöst
+        }
+        final boolean[] reported = new boolean[1]; // eine Meldung je Vorlesen, nicht je Abschnitt
+        try {
+            service.speak(markdown, new ReadAloudService.Listener() {
+                @Override
+                public void failed(String message) {
+                    LOG.warning("Vorlesen: " + message);
+                    if (!reported[0]) {
+                        reported[0] = true;
+                        showFailure(message);
+                    }
+                }
+
+                @Override
+                public void chunkRequested(ReadAloudService.ChunkTrace trace) {
+                    LOG.info(requestLine(trace, traceContext));
+                }
+
+                @Override
+                public void chunkSynthesized(ReadAloudService.ChunkTrace trace,
+                                             ReadAloudService.WavFormat wav) {
+                    LOG.info(audioLine(trace, wav));
+                }
+            });
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Vorlesen fehlgeschlagen", e);
+            if (!reported[0]) {
+                showFailure(e.getClass().getSimpleName());
+            }
+        }
     }
 
     /**

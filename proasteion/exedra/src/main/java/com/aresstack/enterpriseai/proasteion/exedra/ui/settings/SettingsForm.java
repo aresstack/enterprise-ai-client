@@ -83,6 +83,8 @@ public final class SettingsForm {
     private final String bubbleAssistantBackground;
     private final String bubbleAssistantForeground;
     private final Map<String, String> speechVoices;
+    private final String merlinVoice;
+    private final String merlinSpeaker;
     private final String prefetchMaxItems;
     private final String prefetchConcurrency;
     private final String prefetchCacheMaxMb;
@@ -163,6 +165,8 @@ public final class SettingsForm {
         this.bubbleAssistantBackground = b.bubbleAssistantBackground;
         this.bubbleAssistantForeground = b.bubbleAssistantForeground;
         this.speechVoices = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.speechVoices));
+        this.merlinVoice = b.merlinVoice;
+        this.merlinSpeaker = b.merlinSpeaker;
         this.prefetchMaxItems = b.prefetchMaxItems;
         this.prefetchConcurrency = b.prefetchConcurrency;
         this.prefetchCacheMaxMb = b.prefetchCacheMaxMb;
@@ -234,6 +238,8 @@ public final class SettingsForm {
                 .bubbleAssistantBackground(bubbleAssistantBackground)
                 .bubbleAssistantForeground(bubbleAssistantForeground)
                 .speechVoices(speechVoices)
+                .merlinVoice(merlinVoice)
+                .merlinSpeaker(merlinSpeaker)
                 .prefetchMaxItems(prefetchMaxItems)
                 .prefetchConcurrency(prefetchConcurrency)
                 .prefetchCacheMaxMb(prefetchCacheMaxMb)
@@ -468,6 +474,16 @@ public final class SettingsForm {
     /** Die Stimme je TTS-Modell ({@code speech.voices}): gespeicherte Modellauswahl → Stimme. */
     public Map<String, String> speechVoices() {
         return speechVoices;
+    }
+
+    /** Merlins Stimme im Einrichtungsassistenten ({@code setup.merlin.ttsModel}); leer = Vorgabe. */
+    public String merlinVoice() {
+        return merlinVoice;
+    }
+
+    /** Merlins fester Sprecher ({@code setup.merlin.ttsVoice}). */
+    public String merlinSpeaker() {
+        return merlinSpeaker;
     }
 
     /** Vorladen: höchstens so viele Treffer ab der Cursorposition ({@code knowledge.prefetch.maxItems}). */
@@ -709,6 +725,8 @@ public final class SettingsForm {
         private String bubbleAssistantForeground =
                 BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND);
         private final Map<String, String> speechVoices = new LinkedHashMap<String, String>();
+        private String merlinVoice = "";
+        private String merlinSpeaker = "";
         private String prefetchMaxItems = "100";
         private String prefetchConcurrency = "4";
         private String prefetchCacheMaxMb = "50";
@@ -937,6 +955,16 @@ public final class SettingsForm {
                     }
                 }
             }
+            return this;
+        }
+
+        public Builder merlinSpeaker(String value) {
+            this.merlinSpeaker = text(value);
+            return this;
+        }
+
+        public Builder merlinVoice(String value) {
+            this.merlinVoice = text(value);
             return this;
         }
 

@@ -31,6 +31,7 @@ public final class SetupWizardWindow extends JDialog {
         setUndecorated(true);
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         run = new SetupWizardRun(initial, settings, setup, palette, completed -> dispose());
+        run.wizard().setHandoff(true); // Erststart oder unterbrochene Einrichtung: „Fertig“ übergibt an die Tochter
         ComicWindowDragger.install(run.overlay());
         addWindowListener(new WindowAdapter() {
             @Override

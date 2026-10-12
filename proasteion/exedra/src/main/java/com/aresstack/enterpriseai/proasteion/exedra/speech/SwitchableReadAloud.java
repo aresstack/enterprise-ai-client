@@ -53,6 +53,11 @@ public final class SwitchableReadAloud implements ReadAloudControl {
     }
 
     @Override
+    public void speak(String markdown, Runnable finished) {
+        current.speak(markdown, finished);
+    }
+
+    @Override
     public void stop() {
         current.stop();
     }

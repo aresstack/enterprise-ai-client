@@ -22,6 +22,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.ConfluenceSetup;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.DraftSettingsActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupCheck;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupVoices;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.swing.SwingUtilities;
@@ -127,6 +128,81 @@ public final class FileSetupActions implements SetupActions {
             final String failure = error;
             ui.execute(() -> done.accept(measured, failure));
         }, () -> done.accept(null, "Der Embedding-Test konnte nicht gestartet werden."));
+    }
+
+    // ------------------------------------------------------------------ Merlin
+
+    @Override
+    public void ask(SettingsForm form, final String system, final String question,
+                    final BiConsumer<String, String> done) {
+        if (form == null || system == null || question == null || done == null) {
+            throw new IllegalArgumentException("form, system, question and done must not be null");
+        }
+        if (form.chatModel().isEmpty()) {
+            done.accept(null, "Noch kein Chat-Modell gewählt.");
+            return;
+        }
+        SettingsForm.Builder probe = form.toBuilder();
+        // Für die Frage ohne Belang, die Konfiguration verlangt aber Werte (wie der Embedding-Test beim Chat-Modell).
+        if (form.embeddingModel().isEmpty()) {
+            probe.embeddingModel("-");
+        }
+        if (form.embeddingDimension().isEmpty()) {
+            probe.embeddingDimension("1");
+        }
+        final AppConfig config;
+        final Properties merged;
+        try {
+            merged = SettingsMapper.merge(current(), probe.build());
+            config = AppConfigLoader.fromProperties(merged);
+        } catch (AppConfigException e) {
+            done.accept(null, "Angaben unvollständig: " + join(SettingsMapper.plain(e.problems())));
+            return;
+        } catch (IOException | RuntimeException e) {
+            done.accept(null, "Angaben nicht lesbar (" + e.getClass().getSimpleName() + ").");
+            return;
+        }
+        submit(() -> {
+            String answer = null;
+            String error = null;
+            try {
+                answer = connection.ask(located(config, merged), system, question);
+            } catch (Exception e) {
+                LOG.log(Level.INFO, "Frage an Merlin fehlgeschlagen: " + e.getClass().getSimpleName());
+                error = message(e);
+            }
+            final String delivered = answer;
+            final String failure = error;
+            ui.execute(() -> done.accept(delivered, failure));
+        }, () -> done.accept(null, "Die Frage konnte nicht gestellt werden."));
+    }
+
+    @Override
+    public void voices(SettingsForm form, final Consumer<SetupVoices> done) {
+        if (form == null || done == null) {
+            throw new IllegalArgumentException("form and done must not be null");
+        }
+        final AppConfig config;
+        final Properties merged;
+        try {
+            merged = SettingsMapper.merge(current(), form);
+            config = AppConfigLoader.fromProperties(merged);
+        } catch (IOException | RuntimeException e) {
+            LOG.log(Level.INFO, "Stimmen der Übergabe nicht gebunden: " + e.getClass().getSimpleName());
+            done.accept(SetupVoices.silent(null));
+            return;
+        }
+        submit(() -> {
+            SetupVoices voices;
+            try {
+                voices = connection.voices(located(config, merged));
+            } catch (RuntimeException e) {
+                LOG.log(Level.INFO, "Stimmen der Übergabe nicht gebunden: " + e.getClass().getSimpleName());
+                voices = SetupVoices.silent(null);
+            }
+            final SetupVoices bound = voices;
+            ui.execute(() -> done.accept(bound));
+        }, () -> done.accept(SetupVoices.silent(null)));
     }
 
     // ------------------------------------------------------------------ Abschluss

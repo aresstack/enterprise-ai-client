@@ -175,6 +175,28 @@ final class WizardFakes {
         final List<SettingsForm> finished = new ArrayList<SettingsForm>();
         /** Die Confluence-Angaben je Abschlussprüfung ({@code null}: übersprungen). */
         final List<ConfluenceSetup> confluences = new ArrayList<ConfluenceSetup>();
+        final List<String> questions = new ArrayList<String>();
+        final List<String> systems = new ArrayList<String>();
+        /** Merlins Antwort aufs freie Fragen; {@code null} = Fehler {@link #askFailure}. */
+        String answer = "Ganz einfach: erst KeePass, dann der Rest.";
+        String askFailure = "HTTP 503";
+
+        @Override
+        public void ask(SettingsForm form, String system, String question, BiConsumer<String, String> done) {
+            systems.add(system);
+            questions.add(question);
+            done.accept(answer, answer == null ? askFailure : null);
+        }
+
+        /** Stimmen der Übergabe; {@code null} = nur Sprechblasen. */
+        SetupVoices voices;
+        int voicesRequested;
+
+        @Override
+        public void voices(SettingsForm form, Consumer<SetupVoices> done) {
+            voicesRequested++;
+            done.accept(voices == null ? SetupVoices.silent("Testtochter") : voices);
+        }
 
         @Override
         public void embeddingDimension(SettingsForm form, BiConsumer<Integer, String> done) {

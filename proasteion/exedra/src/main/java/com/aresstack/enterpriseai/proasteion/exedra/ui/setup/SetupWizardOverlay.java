@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.setup;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
@@ -34,6 +35,17 @@ public final class SetupWizardOverlay {
      */
     public static SetupWizardRun show(JRootPane window, SettingsForm initial, SettingsDialogActions settings,
                                       SetupActions setup, ComicPalette palette, final Consumer<Boolean> ended) {
+        return show(window, initial, settings, setup, palette, null, ended);
+    }
+
+    /**
+     * Wie {@link #show(JRootPane, SettingsForm, SettingsDialogActions, SetupActions, ComicPalette, Consumer)}, als
+     * späterer Aufruf: Merlin begrüßt als Wiedersehen und spricht mit der Stimme der Anwendung, falls ein TTS-Modell
+     * gewählt ist ({@code voice} darf {@code null} sein).
+     */
+    public static SetupWizardRun show(JRootPane window, SettingsForm initial, SettingsDialogActions settings,
+                                      SetupActions setup, ComicPalette palette, ReadAloudControl voice,
+                                      final Consumer<Boolean> ended) {
         if (window == null || ended == null) {
             throw new IllegalArgumentException("window and ended must not be null");
         }
@@ -63,6 +75,8 @@ public final class SetupWizardOverlay {
         layers.putClientProperty(NAME, run[0]);
         layers.add(run[0].overlay(), JLayeredPane.MODAL_LAYER);
         fit(layers, run[0]);
+        run[0].wizard().setVoice(voice);
+        run[0].wizard().welcomeBack();
         run[0].wizard().requestFocusInWindow();
         return run[0];
     }

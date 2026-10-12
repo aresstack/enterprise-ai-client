@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ProxyAuthMode;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.winproxy.ProxyMode;
@@ -65,6 +66,18 @@ public class SettingsMapperTest {
                 SettingsMapper.fromProperties(p).chatSystemPrompt());
         p.setProperty("chat.systemPrompt", "Sei knapp.");
         assertEquals("Sei knapp.", SettingsMapper.fromProperties(p).chatSystemPrompt());
+    }
+
+    @Test
+    public void merlinVoiceIsShownWithItsDefaultAndOnlyADeviationIsWritten() {
+        Properties current = valid();
+        SettingsForm form = SettingsMapper.fromProperties(current);
+        assertEquals(ModelsConfig.defaultMerlinVoice(), form.merlinVoice());
+        assertNull("Vorgabe bleibt aus der Datei",
+                SettingsMapper.merge(current, form).getProperty(ModelsConfig.MERLIN_VOICE_KEY));
+        Properties merged = SettingsMapper.merge(current, form.toBuilder().merlinVoice("local:merlin-voice").build());
+        assertEquals("local:merlin-voice", merged.getProperty(ModelsConfig.MERLIN_VOICE_KEY));
+        assertEquals("local:merlin-voice", SettingsMapper.fromProperties(merged).merlinVoice());
     }
 
     @Test

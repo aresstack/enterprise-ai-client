@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardMascot;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSectionPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
@@ -119,6 +120,12 @@ public final class SettingsPanel extends JPanel {
     private final ToolsTab toolsTab;
     private final AppearanceTab appearanceTab;
     private final JTextArea technicalText = new JTextArea();
+    private final JTextArea technicalStatus = new JTextArea();
+    private final SetupWizardMascot merlin;
+    private final ComposerButton technicalConnection = new ComposerButton(null, "Verbindung testen", false,
+            "Weg zum KI-Dienst mit den Angaben dieses Dialogs prüfen");
+    private final ComposerButton technicalWizardButton = new ComposerButton(null,
+            "Einrichtungsassistent erneut starten", false, "Merlin führt noch einmal durch die Einrichtung");
     private final List<ComposerToggleButton> tabButtons = new ArrayList<ComposerToggleButton>();
     private final JPanel header = new JPanel(new BorderLayout(8, 0));
     private final JPanel windowControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -166,6 +173,7 @@ public final class SettingsPanel extends JPanel {
         this.indexTab = new IndexEditor(palette);
         this.toolsTab = new ToolsTab(tools, palette);
         this.appearanceTab = new AppearanceTab(palette);
+        this.merlin = SetupWizardMascot.corner(palette);
         // Der Name unter „Sprachausgabe“ steht sofort auch über der Antwort-Vorschau unter „Darstellung“.
         speechTab.assistantName().onNameChanged(appearanceTab::setAssistantName);
         this.problemsPlate = new ComicSectionPanel(palette);
@@ -286,7 +294,11 @@ public final class SettingsPanel extends JPanel {
         add(south, BorderLayout.SOUTH);
     }
 
-    /** Technische Details (askai arch): Protokolldatei und ihre letzten Zeilen, nur lesend. */
+    /**
+     * Technische Details (askai arch): Protokolldatei und ihre letzten Zeilen, nur lesend. Darüber die Werkzeuge für
+     * den Maschinenraum (Einrichtungsassistent, Konfiguration prüfen, Verbindungstest, Ordner öffnen), rechts unten
+     * Merlin als Hausmeister dieses Bereichs.
+     */
     private JPanel technicalPage() {
         JPanel page = new JPanel(new BorderLayout(0, 6));
         page.setOpaque(false);
@@ -300,12 +312,75 @@ public final class SettingsPanel extends JPanel {
         technicalText.getAccessibleContext().setAccessibleName("Technische Details");
         ComposerButton reload = new ComposerButton(null, "Aktualisieren", false);
         reload.addActionListener(event -> loadTechnicalDetails());
-        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        ComposerButton validate = new ComposerButton(null, "Konfiguration prüfen", false,
+                "Prüft die Angaben dieses Dialogs, ohne zu speichern");
+        validate.addActionListener(event -> checkConfiguration());
+        technicalConnection.addActionListener(event -> testConnectionFromTechnical());
+        ComposerButton folder = new ComposerButton(null, OPEN_FOLDER_LABEL, false,
+                "Ordner mit Konfiguration und Protokoll öffnen");
+        folder.addActionListener(event -> openSettingsFolder());
+        technicalWizardButton.setVisible(false);
+        technicalWizardButton.addActionListener(event -> setupWizardButton.doClick());
+        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         bar.setOpaque(false);
         bar.add(reload);
-        page.add(bar, BorderLayout.NORTH);
+        bar.add(technicalWizardButton);
+        bar.add(validate);
+        bar.add(technicalConnection);
+        bar.add(folder);
+        technicalStatus.setEditable(false);
+        technicalStatus.setFocusable(false);
+        technicalStatus.setLineWrap(true);
+        technicalStatus.setWrapStyleWord(true);
+        technicalStatus.setOpaque(false);
+        technicalStatus.setForeground(palette.getInk());
+        technicalStatus.setVisible(false);
+        JPanel north = new JPanel(new BorderLayout(0, 6));
+        north.setOpaque(false);
+        north.add(bar, BorderLayout.NORTH);
+        north.add(technicalStatus, BorderLayout.CENTER);
+        page.add(north, BorderLayout.NORTH);
         page.add(technicalText, BorderLayout.CENTER);
+        page.add(merlin, BorderLayout.SOUTH);
         return page;
+    }
+
+    /** „Konfiguration prüfen“: die Prüfung des Speicherns über dem Entwurf, ohne zu speichern. */
+    private void checkConfiguration() {
+        List<String> problems = actions.validate(toForm());
+        technicalStatus.setText(problems == null || problems.isEmpty() ? "Konfiguration in Ordnung."
+                : "Konfiguration unvollständig:\n• " + String.join("\n• ", problems));
+        technicalStatus.setVisible(true);
+        revalidate();
+    }
+
+    /** „Verbindung testen“: derselbe Test wie im Reiter KI-Dienst, die Schritte als Zeilen. */
+    private void testConnectionFromTechnical() {
+        technicalConnection.setEnabled(false);
+        final StringBuilder lines = new StringBuilder("Verbindungstest läuft …");
+        technicalStatus.setText(lines.toString());
+        technicalStatus.setVisible(true);
+        revalidate();
+        lines.setLength(0);
+        actions.checkConnection(toForm(), new ConnectionCheckListener() {
+            @Override
+            public void onStep(ConnectionCheckStep step) {
+                lines.append(step.isFailure() ? "Fehler – " : "OK – ").append(step.title());
+                if (step.detail() != null && !step.detail().isEmpty()) {
+                    lines.append(": ").append(step.detail());
+                }
+                lines.append('\n');
+                technicalStatus.setText(lines.toString().trim());
+            }
+
+            @Override
+            public void onFinished(boolean success) {
+                technicalConnection.setEnabled(true);
+                lines.append(success ? "Verbindung in Ordnung." : "Verbindungstest fehlgeschlagen.");
+                technicalStatus.setText(lines.toString().trim());
+                revalidate();
+            }
+        });
     }
 
     private void loadTechnicalDetails() {
@@ -375,6 +450,7 @@ public final class SettingsPanel extends JPanel {
             setupWizardButton.removeActionListener(listener);
         }
         setupWizardButton.setVisible(action != null && mode == Mode.EDIT);
+        technicalWizardButton.setVisible(setupWizardButton.isVisible());
         if (action != null) {
             setupWizardButton.addActionListener(e -> {
                 cancel();
@@ -612,6 +688,23 @@ public final class SettingsPanel extends JPanel {
     /** Kategorie „Sprachausgabe“ (für Tests). */
     SpeechTab speechTab() {
         return speechTab;
+    }
+
+    /** Merlin am Rand der technischen Details (Tests). */
+    SetupWizardMascot technicalMerlin() {
+        return merlin;
+    }
+
+    JTextArea technicalStatus() {
+        return technicalStatus;
+    }
+
+    void checkConfigurationForTest() {
+        checkConfiguration();
+    }
+
+    void testConnectionForTest() {
+        testConnectionFromTechnical();
     }
 
     ModelsTab modelsTab() {

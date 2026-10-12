@@ -57,6 +57,8 @@ final class SpeechTab {
     private final JComboBox<String> chunking;
     private final JComboBox<String> workers;
     private final AssistantNameSection assistantName;
+    private final JTextField merlinVoice;
+    private final JTextField merlinSpeaker;
     private final JPanel panel;
 
     SpeechTab(ModelsTab models, SettingsDialogActions actions, Supplier<SettingsForm> form, ComicPalette palette) {
@@ -137,10 +139,18 @@ final class SpeechTab {
                 "1", "2", "3", "4", "5", "6", "7", "8");
         speech.note("Absätze sind der beste Kompromiss aus Klang und Wartezeit: Sätze klingen früher, aber "
                 + "abgehackter, die ganze Antwort klingt am natürlichsten, beginnt aber erst nach der ganzen Synthese.");
+        FormRows merlin = new FormRows(palette);
+        merlin.note("Merlin, der Begleiter des Einrichtungsassistenten, hat eine eigene Stimme, unabhängig vom "
+                + "TTS-Modell des Chats. Ist sie nicht verfügbar, zeigt er seine Sätze nur als Sprechblase.");
+        merlinVoice = merlin.textField("Stimme von Merlin",
+                "TTS-Modell als [Katalog:]Modell, z. B. das der Enterprise-API (setup.merlin.ttsModel)");
+        merlinSpeaker = merlin.textField("Sprecher von Merlin",
+                "Fester Sprecher dieses Modells, damit Merlin immer gleich klingt (setup.merlin.ttsVoice)");
         assistantName = new AssistantNameSection(palette);
         panel = FormRows.column(palette, assistantName.panel(),
                 FormRows.plate("Modell und Stimme", palette.getNavigationBlue(), voiceRows.panel(), palette),
-                FormRows.plate("Sprachausgabe", palette.getAgentPetrol(), speech.panel(), palette));
+                FormRows.plate("Sprachausgabe", palette.getAgentPetrol(), speech.panel(), palette),
+                FormRows.plate("Merlin", palette.getAgentPetrol(), merlin.panel(), palette));
         showVoice();
     }
 
@@ -166,6 +176,8 @@ final class SpeechTab {
         readAloudAutoStart.setSelected(form.readAloudAutoStart());
         chunking.setSelectedIndex(chunkingIndex(form.readAloudChunking()));
         workers.setSelectedItem(workersItem(form.synthesisWorkers()));
+        merlinVoice.setText(form.merlinVoice());
+        merlinSpeaker.setText(form.merlinSpeaker());
     }
 
     void store(SettingsForm.Builder b) {
@@ -174,6 +186,8 @@ final class SpeechTab {
         b.readAloudAutoStart(readAloudAutoStart.isSelected());
         b.readAloudChunking(chunkingValue(chunking.getSelectedIndex()));
         b.synthesisWorkers((String) workers.getSelectedItem());
+        b.merlinVoice(merlinVoice.getText());
+        b.merlinSpeaker(merlinSpeaker.getText());
     }
 
     /** Die Stimme des gewählten Modells: gespeichert, sonst wie zur Laufzeit (frühere globale oder Standard). */

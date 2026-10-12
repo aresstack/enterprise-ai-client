@@ -69,6 +69,7 @@ public final class SetupWizardRun {
         }
         finished = true;
         completed = done;
+        wizard.stopVoice();
         ended.accept(done);
     }
 

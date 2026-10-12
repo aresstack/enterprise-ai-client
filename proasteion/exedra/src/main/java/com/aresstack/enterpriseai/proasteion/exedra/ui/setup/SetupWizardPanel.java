@@ -2,10 +2,9 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.setup;
 
 import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
-import com.aresstack.enterpriseai.astu.modelcatalog.ModelDescriptor;
-import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.DownloadText;
@@ -31,9 +30,12 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JProgressBar;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.FlowLayout;
@@ -90,6 +92,9 @@ public final class SetupWizardPanel extends JPanel {
     static final String DEFAULT_CONFLUENCE_ENTRY = "Confluence";
     static final String NEW_ENTRY_HINT = "(neuer Eintrag)";
     private static final String KEEPASS_PREFIX = "keepass:";
+    /** Ohne Stimme bleibt eine Zeile der Übergabe so lange stehen: je Zeichen, mindestens {@link #MIN_READING_MILLIS}. */
+    private static final int READING_MILLIS_PER_CHARACTER = 60;
+    private static final int MIN_READING_MILLIS = 1800;
     private static final String SKIP_STEP_HINT = "Ohne Prüfung zum nächsten Schritt; Eingaben bleiben erhalten";
     static final String CONFLUENCE_SKIPPED = "Betriebsbereit. Confluence ist übersprungen und lässt sich später "
             + "in der Seitenleiste unter Wissensquellen einrichten.";
@@ -123,6 +128,18 @@ public final class SetupWizardPanel extends JPanel {
     private Runnable onFinished;
     private Runnable onCancel;
     private boolean busy;
+
+    // Merlin: feste Texte (WizardGuide), Sprechblase oder Stimme (WizardNarrator), Modelle vorbereiten
+    private final WizardGuide guide = new WizardGuide();
+    private final WizardNarrator narrator = new WizardNarrator(text -> mascotOf(step).say(text));
+    private final WizardModelBootstrap bootstrap;
+    /** Merlin spricht erst, wenn der KI-Dienst verbunden ist (oder bei einem späteren Aufruf von Anfang an). */
+    private boolean merlinAwake;
+    private boolean serviceAnnounced;
+    private boolean handoff;
+    private boolean handingOff;
+    private SetupVoices handoffVoices;
+    private int readingPace = READING_MILLIS_PER_CHARACTER;
 
     // Schritt 1: KeePass
     private final JTextField keePassHost = new JTextField(16);
@@ -160,6 +177,8 @@ public final class SetupWizardPanel extends JPanel {
     private final ComposerButton modelsRefresh;
     private final ComposerButton dimensionMeasure;
     private boolean modelsLoaded;
+    /** Die Modellabfrage läuft schon im Hintergrund (nach dem erfolgreichen Verbindungstest). */
+    private boolean modelsPreparing;
     private String measuredFor = "";
 
     // Schritt 4: Confluence
@@ -219,6 +238,7 @@ public final class SetupWizardPanel extends JPanel {
         this.settings = settings;
         this.setup = setup;
         this.palette = palette;
+        this.bootstrap = new WizardModelBootstrap(settings);
         setOpaque(false);
         this.trail = new SetupStepTrail(STEP_NAMES, palette);
         this.errorPlate = new ComicSectionPanel(palette);
@@ -578,6 +598,158 @@ public final class SetupWizardPanel extends JPanel {
         showStep(index);
     }
 
+    // ------------------------------------------------------------------ Merlin
+
+    /**
+     * Ein späterer Aufruf (aus den Einstellungen): der KI-Dienst ist schon eingerichtet, Merlin ist von Anfang an
+     * wach und begrüßt als Wiedersehen statt sich ein zweites Mal vorzustellen.
+     */
+    public void welcomeBack() {
+        wakeMerlin(true);
+    }
+
+    /** Die Stimme der Anwendung (Vorlesen); ohne gewähltes TTS-Modell bleibt es bei Sprechblasen. */
+    public void setVoice(ReadAloudControl voice) {
+        narrator.setVoice(voice);
+    }
+
+    /** Beendet eine laufende Sprachausgabe Merlins (Assistent geschlossen). */
+    void stopVoice() {
+        narrator.stop();
+        if (handoffVoices != null) {
+            handoffVoices.close();
+            handoffVoices = null;
+        }
+    }
+
+    /**
+     * Ob „Fertig“ die Übergabe an den Chat-Assistenten spielt: nur beim ersten erfolgreichen Abschluss, nicht bei
+     * jedem späteren Aufruf aus den Einstellungen.
+     */
+    public void setHandoff(boolean firstCompletion) {
+        this.handoff = firstCompletion;
+    }
+
+    boolean isHandingOff() {
+        return handingOff;
+    }
+
+    /** Wie lange eine Zeile ohne Stimme stehen bleibt, je Zeichen (Tests: 0 = sofort weiter). */
+    void setReadingPace(int millisPerCharacter) {
+        this.readingPace = Math.max(0, millisPerCharacter);
+    }
+
+    /** „Fertig“ mit gespeicherter Einrichtung: beim ersten Mal erst die Übergabe, danach schließen. */
+    private void complete() {
+        if (handingOff) {
+            return;
+        }
+        if (!handoff) {
+            closeWizard();
+            return;
+        }
+        handingOff = true;
+        updateButtons();
+        trail.setNavigable(false);
+        setup.voices(collect(), voices -> {
+            handoffVoices = voices == null ? SetupVoices.silent(null) : voices;
+            narrator.stop();
+            handoffLine(0);
+        });
+    }
+
+    /**
+     * Zeile {@code index} der Übergabe: Merlin mit seiner Stimme, der Chat-Assistent mit ihrer und ihrem Namen. Die
+     * nächste Zeile kommt erst, wenn diese zu Ende gesprochen ist (ohne Stimme nach einer Lesepause); nach der letzten
+     * schließt der Assistent.
+     */
+    private void handoffLine(final int index) {
+        final SetupVoices voices = handoffVoices;
+        if (voices == null) {
+            return; // inzwischen abgebrochen
+        }
+        if (index >= WizardGuide.handoffLines()) {
+            handoffVoices = null;
+            voices.close();
+            closeWizard();
+            return;
+        }
+        WizardGuide.Line line = WizardGuide.handoff(index);
+        mascotOf(step).say(line.merlin ? WizardGuide.NAME : voices.assistantName(), line.text);
+        ReadAloudControl voice = line.merlin ? voices.merlin() : voices.assistant();
+        Runnable next = () -> {
+            if (handoffVoices == voices) {
+                handoffLine(index + 1);
+            }
+        };
+        if (voice != null && voice.isAvailable()) {
+            voice.speak(line.text, next);
+        } else if (readingPace == 0) {
+            next.run();
+        } else {
+            Timer pause = new Timer(Math.max(MIN_READING_MILLIS, line.text.length() * readingPace), e -> next.run());
+            pause.setRepeats(false);
+            pause.start();
+        }
+    }
+
+    private void closeWizard() {
+        if (onFinished != null) {
+            onFinished.run();
+        }
+    }
+
+    private void wakeMerlin(boolean returning) {
+        if (merlinAwake) {
+            return;
+        }
+        merlinAwake = true;
+        narrator.say(guide.greeting(returning));
+    }
+
+    /** Eine freie Frage geht nur, wenn Merlin wach ist und ein Chat-Modell feststeht. */
+    boolean canAskMerlin() {
+        return merlinAwake && !text(chatModel).isEmpty();
+    }
+
+    boolean isMerlinAwake() {
+        return merlinAwake;
+    }
+
+    /** Das Menü beim Klick auf Merlin: feste Antworten, Überspringen und (mit Chat-Modell) eine freie Frage. */
+    JPopupMenu merlinMenu() {
+        final int current = step;
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem what = new JMenuItem("Was muss ich hier machen?");
+        what.addActionListener(e -> narrator.say(guide.whatToDo(current)));
+        menu.add(what);
+        JMenuItem why = new JMenuItem("Warum brauche ich das?");
+        why.addActionListener(e -> narrator.say(guide.whyNeeded(current)));
+        menu.add(why);
+        JMenuItem skip = new JMenuItem("Diesen Schritt überspringen");
+        skip.setEnabled(skipButton.isEnabled());
+        skip.addActionListener(e -> skip());
+        menu.add(skip);
+        JMenuItem ask = new JMenuItem("Eigene Frage stellen …");
+        ask.setEnabled(canAskMerlin());
+        ask.setToolTipText(canAskMerlin() ? null : "Geht, sobald der KI-Dienst verbunden und ein Chat-Modell gewählt ist");
+        ask.addActionListener(e -> mascotOf(current).askQuestion(this::askMerlin));
+        menu.add(ask);
+        return menu;
+    }
+
+    /** Die freie Frage an das Chat-Modell des Entwurfs; Merlins Rahmen kommt aus {@link WizardGuide}. */
+    void askMerlin(String question) {
+        if (!canAskMerlin() || question == null || question.trim().isEmpty()) {
+            return;
+        }
+        narrator.show(WizardGuide.THINKING);
+        setup.ask(collect(), guide.systemPrompt(step), question.trim(), (answer, error) -> {
+            boolean answered = answer != null && !answer.trim().isEmpty();
+            narrator.say(answered ? answer.trim() : WizardGuide.NO_ANSWER);
+        });
+    }
+
     /** „Überspringen“: weiter zum nächsten Schritt; im letzten Schritt ohne lokale Spracheingabe abschließen. */
     private void skip() {
         if (step == STEP_SPEECH) {
@@ -594,9 +766,15 @@ public final class SetupWizardPanel extends JPanel {
         form = collect();
         step = index;
         cards.show(deck, STEP_NAMES[index]);
+        for (SetupWizardMascot mascot : mascots) {
+            mascot.say(null);
+        }
+        if (merlinAwake) {
+            narrator.say(guide.enteredStep(index));
+        }
         if (index == STEP_SERVICE && serviceRead == null && !done[STEP_SERVICE]) {
             withEntries(this::preselectServiceEntry);
-        } else if (index == STEP_MODELS && !modelsLoaded) {
+        } else if (index == STEP_MODELS && !modelsLoaded && !modelsPreparing) {
             refreshModels();
         } else if (index == STEP_CONFLUENCE && confluenceRead == null && !confluenceOk) {
             withEntries(this::preselectConfluenceEntry);
@@ -626,7 +804,13 @@ public final class SetupWizardPanel extends JPanel {
         // das geht erst nach bestandener Abschlussprüfung.
         skipButton.setEnabled(speech ? done[STEP_FINISH] : !busy);
         skipButton.setToolTipText(speech ? SKIP_SPEECH_HINT : SKIP_STEP_HINT);
-        trail.setNavigable(!busy && !speechDownloading);
+        trail.setNavigable(!busy && !speechDownloading && !handingOff);
+        if (handingOff) { // die Übergabe läuft bis zum Ende, dann schließt der Assistent selbst
+            backButton.setEnabled(false);
+            nextButton.setEnabled(false);
+            finishButton.setEnabled(false);
+            skipButton.setEnabled(false);
+        }
         LocalVoiceOffer chosen = selectedSpeechOffer();
         speechInstall.setVisible(chosen != null && !chosen.isInstalled() && errors[STEP_SPEECH] == null);
         speechInstall.setEnabled(!busy && !speechDownloading);
@@ -646,6 +830,9 @@ public final class SetupWizardPanel extends JPanel {
     private void fail(int index, String message) {
         errors[index] = message;
         updateButtons();
+        if (merlinAwake && index == step) {
+            narrator.say(guide.stepFailed(index));
+        }
     }
 
     private void clearError(int index) {
@@ -705,6 +892,9 @@ public final class SetupWizardPanel extends JPanel {
         done[STEP_KEEPASS] = true;
         keePassStatus.setText("Gekoppelt; " + entries.size() + " Einträge lesbar.");
         fillEntryChoices();
+        if (step == STEP_KEEPASS) { // nicht beim stillen Nachladen in späteren Schritten
+            narrator.say(WizardGuide.KEEPASS_OK);
+        }
     }
 
     /** Hinweis, solange die Eintragsliste nicht gelesen ist. */
@@ -851,6 +1041,7 @@ public final class SetupWizardPanel extends JPanel {
                     done[STEP_SERVICE] = true;
                     serviceStatus.setText("Der KI-Dienst ist erreichbar; der API-Key wurde gelesen.");
                     updateButtons();
+                    prepareModelsAndWakeMerlin();
                     return;
                 }
                 serviceStatus.setText("Verbindung fehlgeschlagen.");
@@ -873,50 +1064,68 @@ public final class SetupWizardPanel extends JPanel {
         clearError(STEP_MODELS);
         modelsStatus.setText("Frage die Modelle des KI-Dienstes ab …");
         setBusy(true);
-        settings.refreshModels(form, snapshot -> {
+        bootstrap.prepare(form, models -> {
             setBusy(false);
-            modelsLoaded = true;
-            List<String> chats = remoteModels(snapshot, ModelCategory.CHAT);
-            List<String> embeddings = remoteModels(snapshot, ModelCategory.EMBEDDING);
-            busy = true;
-            try {
-                setChoices(chatModel, chats, text(chatModel).isEmpty() && chats.size() == 1 ? chats.get(0)
-                        : text(chatModel));
-                setChoices(embeddingModel, embeddings, text(embeddingModel).isEmpty() && embeddings.size() == 1
-                        ? embeddings.get(0) : text(embeddingModel));
-            } finally {
-                busy = false;
-            }
-            if (chats.isEmpty() && embeddings.isEmpty()) {
-                modelsStatus.setText("Keine Modelle gefunden; die Namen lassen sich auch eintragen.");
-                String reason = failedStatus(snapshot);
-                if (reason != null) {
-                    fail(STEP_MODELS, "Die Modellliste ist nicht abrufbar: " + reason);
-                }
-            } else {
-                modelsStatus.setText(chats.size() + " Chat-Modell(e), " + embeddings.size() + " Embedding-Modell(e). "
-                        + (chats.size() > 1 || embeddings.size() > 1 ? "Bitte auswählen." : ""));
-            }
-            measureDimension();
-            updateButtons();
+            applyModels(models);
         });
     }
 
-    private List<String> remoteModels(ModelCatalogSnapshot snapshot, ModelCategory category) {
-        List<String> ids = new ArrayList<String>();
-        if (snapshot == null) {
-            return ids;
+    /**
+     * Nach dem erfolgreichen Verbindungstest: Modellkatalog im Hintergrund abfragen und je Art das eingetragene bzw.
+     * einzige Modell vorwählen (ohne den Schritt zu sperren); danach wacht Merlin auf und stellt sich vor.
+     */
+    private void prepareModelsAndWakeMerlin() {
+        if (modelsLoaded || modelsPreparing) {
+            serviceAnswered();
+            return;
         }
-        for (ModelDescriptor descriptor : snapshot.modelsFor(category)) {
-            ModelReference reference = new ModelReference(descriptor.catalogId(), descriptor.modelId());
-            if (!settings.isLocal(reference)) {
-                String stored = settings.storedModel(reference);
-                if (!ids.contains(stored)) {
-                    ids.add(stored);
-                }
+        modelsPreparing = true;
+        modelsStatus.setText("Frage die Modelle des KI-Dienstes ab …");
+        bootstrap.prepare(collect(), models -> {
+            modelsPreparing = false;
+            applyModels(models);
+            serviceAnswered();
+        });
+    }
+
+    /** Der KI-Dienst antwortet: beim ersten Mal stellt Merlin sich vor, danach meldet er den Erfolg. */
+    private void serviceAnswered() {
+        if (serviceAnnounced) {
+            return; // ein zweiter erfolgreicher Test (Nachladen) überschreibt die Vorstellung nicht
+        }
+        serviceAnnounced = true;
+        if (merlinAwake) {
+            narrator.say(WizardGuide.SERVICE_OK);
+            return;
+        }
+        merlinAwake = true;
+        narrator.say(guide.greeting(false) + "\n\n" + WizardGuide.SERVICE_OK);
+    }
+
+    private void applyModels(WizardModelBootstrap.Models models) {
+        modelsLoaded = true;
+        List<String> chats = models.chats();
+        List<String> embeddings = models.embeddings();
+        boolean wasBusy = busy;
+        busy = true;
+        try {
+            setChoices(chatModel, chats, WizardModelBootstrap.preferred(chats, text(chatModel)));
+            setChoices(embeddingModel, embeddings, WizardModelBootstrap.preferred(embeddings, text(embeddingModel)));
+        } finally {
+            busy = wasBusy;
+        }
+        if (chats.isEmpty() && embeddings.isEmpty()) {
+            modelsStatus.setText("Keine Modelle gefunden; die Namen lassen sich auch eintragen.");
+            String reason = failedStatus(models.snapshot());
+            if (reason != null) {
+                fail(STEP_MODELS, "Die Modellliste ist nicht abrufbar: " + reason);
             }
+        } else {
+            modelsStatus.setText(chats.size() + " Chat-Modell(e), " + embeddings.size() + " Embedding-Modell(e). "
+                    + (chats.size() > 1 || embeddings.size() > 1 ? "Bitte auswählen." : ""));
         }
-        return ids;
+        measureDimension();
+        updateButtons();
     }
 
     private static String failedStatus(ModelCatalogSnapshot snapshot) {
@@ -1264,9 +1473,7 @@ public final class SetupWizardPanel extends JPanel {
         if (step == STEP_SPEECH && done[STEP_SPEECH] && !saveSpeechChoice()) {
             return;
         }
-        if (onFinished != null) {
-            onFinished.run();
-        }
+        complete();
     }
 
     // --- Schritt 6: Spracheingabe (optional)
@@ -1276,9 +1483,7 @@ public final class SetupWizardPanel extends JPanel {
         if (!done[STEP_FINISH]) {
             return;
         }
-        if (onFinished != null) {
-            onFinished.run();
-        }
+        complete();
     }
 
     /**
@@ -1916,7 +2121,8 @@ public final class SetupWizardPanel extends JPanel {
             SetupWizardMascot.Art stepArt = SetupWizardMascot.Art.load(STEP_MASCOTS[index]);
             SetupWizardMascot mascot = new SetupWizardMascot(stepArt != null ? stepArt : SetupWizardMascot.Art.load(),
                     MASCOT_HEIGHTS[index], MASCOT_PLACEMENTS[index], SetupWizardMascot.DEFAULT_GAP,
-                    SetupWizardMascot.DEFAULT_SIDE_INSET);
+                    SetupWizardMascot.DEFAULT_SIDE_INSET, palette);
+            mascot.setOnFigureClicked(point -> merlinMenu().show(mascot, point.x, point.y));
             mascots.add(mascot);
             page.add(mascot, BorderLayout.CENTER);
             return page;

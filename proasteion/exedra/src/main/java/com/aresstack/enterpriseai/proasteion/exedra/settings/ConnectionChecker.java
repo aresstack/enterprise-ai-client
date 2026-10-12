@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupVoices;
 
 import java.util.function.Consumer;
 
@@ -23,5 +24,22 @@ public interface ConnectionChecker {
      */
     default int embeddingDimension(AppConfig config) throws Exception {
         throw new UnsupportedOperationException("Embedding-Test in dieser Umgebung nicht verfügbar");
+    }
+
+    /**
+     * Merlins freie Frage im Einrichtungsassistenten: ein einzelner Aufruf von {@code chat.model} mit Rahmen und
+     * Frage, ohne Werkzeuge. Blockiert; wirft mit der Ursache, wenn der Aufruf scheitert.
+     */
+    default String ask(AppConfig config, String system, String question) throws Exception {
+        throw new UnsupportedOperationException("Freie Fragen in dieser Umgebung nicht verfügbar");
+    }
+
+    /**
+     * Die Stimmen der Übergabe am Ende der ersten Einrichtung: Merlin ({@code setup.merlin.ttsModel}) und der
+     * Chat-Assistent ({@code model.tts}, {@code chat.assistant.displayName}). Ohne Sprachausgabe in dieser Umgebung:
+     * nur Sprechblasen.
+     */
+    default SetupVoices voices(AppConfig config) {
+        return SetupVoices.silent(null);
     }
 }

@@ -81,6 +81,16 @@ public final class SettingsAssembly {
      */
     public static com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions setup(
             SettingsDialogActions settings, com.aresstack.enterpriseai.ui.comic.theme.ComicPalette palette) {
+        return setup(settings, palette, null);
+    }
+
+    /**
+     * Wie {@link #setup(SettingsDialogActions, com.aresstack.enterpriseai.ui.comic.theme.ComicPalette)}; mit
+     * {@code catalogs} sprechen Merlin und der Chat-Assistent bei der Übergabe am Ende der ersten Einrichtung.
+     */
+    public static com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions setup(
+            SettingsDialogActions settings, com.aresstack.enterpriseai.ui.comic.theme.ComicPalette palette,
+            ModelCatalogs catalogs) {
         if (!(settings instanceof FileSettingsActions)) {
             throw new IllegalArgumentException("settings must be the file-backed settings actions");
         }
@@ -93,7 +103,7 @@ public final class SettingsAssembly {
             }
         });
         return new com.aresstack.enterpriseai.proasteion.exedra.settings.FileSetupActions(
-                (FileSettingsActions) settings, new KeePassSecretChecker(), new ServiceConnectionChecker(),
+                (FileSettingsActions) settings, new KeePassSecretChecker(), new ServiceConnectionChecker(catalogs),
                 configurationCheck(), worker, new Executor() {
                     @Override
                     public void execute(Runnable command) {

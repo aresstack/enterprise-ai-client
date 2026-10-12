@@ -123,7 +123,8 @@ public class SetupWizardLayoutTest {
     @Test
     public void mascotIsHiddenInsteadOfCutWhenTheSpaceIsTooSmall() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
-            SetupWizardMascot mascot = new SetupWizardMascot(SetupWizardMascot.Art.load(), 100, SetupWizardMascot.Placement.CENTER, 10, 0);
+            SetupWizardMascot mascot = new SetupWizardMascot(SetupWizardMascot.Art.load(), 100, SetupWizardMascot.Placement.CENTER, 10, 0,
+                    palette);
             Dimension figure = mascot.figureSize();
             assertTrue(figure.width > 0);
             mascot.setSize(figure.width, figure.height + 10);
@@ -189,6 +190,7 @@ public class SetupWizardLayoutTest {
             return;
         }
         SetupWizardPanel wizard = run.wizard();
+        wizard.welcomeBack(); // mit Merlins Sprechblasen
         JComponent overlay = run.overlay();
         for (int step = 0; step < STEPS; step++) {
             wizard.showStep(step);

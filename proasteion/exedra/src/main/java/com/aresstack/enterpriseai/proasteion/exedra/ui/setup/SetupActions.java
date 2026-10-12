@@ -43,4 +43,21 @@ public interface SetupActions {
      * @return der Alias oder {@code null} bei Abbruch
      */
     String chooseCertificate(Component parent, String current);
+
+    /**
+     * Eine freie Frage an Merlin: ein einzelner Aufruf des Chat-Modells aus dem Entwurf (Rahmen {@code system},
+     * Frage {@code question}), ohne Werkzeuge und ohne Verlauf. Ergebnis ist die Antwort oder ({@code null},
+     * Meldung). Ohne Chat-Anbindung (Tests, Umgebungen ohne Dienst) antwortet die Vorgabe mit „nicht verfügbar“.
+     */
+    default void ask(SettingsForm form, String system, String question, BiConsumer<String, String> done) {
+        done.accept(null, "Freie Fragen sind hier nicht verfügbar.");
+    }
+
+    /**
+     * Die Stimmen der Übergabe nach der ersten Einrichtung (Merlin und der Chat-Assistent mit Namen), gebunden an die
+     * gespeicherte Einrichtung; {@code done} kommt auf dem EDT. Ohne Sprachausgabe nur Sprechblasen.
+     */
+    default void voices(SettingsForm form, Consumer<SetupVoices> done) {
+        done.accept(SetupVoices.silent(null));
+    }
 }

@@ -39,6 +39,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ToolOverview;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions;
+import com.aresstack.enterpriseai.proasteion.exedra.speech.ReadAloudBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardOverlay;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardWindow;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
@@ -56,6 +57,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -93,7 +95,7 @@ public final class EnterpriseAiClientMain {
         final SettingsDialogActions settingsActions = headless ? null
                 : SettingsAssembly.create(file, modelCatalogs, localVoices);
         final SetupActions setupActions = headless ? null
-                : SettingsAssembly.setup(settingsActions, ComicPalette.defaultPalette());
+                : SettingsAssembly.setup(settingsActions, ComicPalette.defaultPalette(), modelCatalogs);
         // Anwendungszustand (askai arch / MainframeMate): Fenster, Drawer, angehakte Spaces je Quelle und der
         // Einrichtungsstand (setup.completed). Er liegt neben der Konfigurationsdatei und braucht sie nicht, deshalb
         // entsteht er vor ihr: der Erststart entscheidet mit ihm, ob der Einrichtungsassistent erscheint.
@@ -200,7 +202,9 @@ public final class EnterpriseAiClientMain {
                 });
                 view.setSettingsAction(settingsAction(frame, file, settingsActions,
                         new CatalogToolOverview(root.toolCatalog()), palette, settings,
-                        setupAction(frame, view, file, settingsActions, setupActions, palette, settings, setupState)));
+                        setupAction(frame, view, file, settingsActions, setupActions, palette, settings, setupState,
+                                () -> merlinVoice(settings.current(), modelCatalogs, network, chatToken,
+                                        textAnalysis))));
                 view.setChatModels(modelCatalogs::cached, () -> installedLocalChats(localVoices,
                         settings.current().models().localModelRoot()), modelId -> {
                     try {
@@ -258,12 +262,15 @@ public final class EnterpriseAiClientMain {
      * derselbe Lauf wie beim Erststart ({@link com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardRun}),
      * hier als Comic-Overlay über dem ganzen Hauptfenster, egal ob Chat, Agent oder Lesebereich vorn liegt. „Fertig“
      * setzt den Einrichtungsstand, lädt die Einstellungen ohne Neustart neu (bindet damit auch die Spracheingabe neu)
-     * und bindet die Confluence-Quelle sofort an; Abbrechen oder das ✕ schließen nur das Overlay.
+     * und bindet die Confluence-Quelle sofort an; Abbrechen oder das ✕ schließen nur das Overlay. Merlin begrüßt hier
+     * als Wiedersehen und spricht mit seiner eigenen Stimme ({@code setup.merlin.ttsModel}), gebunden beim Öffnen und
+     * geschlossen mit dem Overlay; ist sie nicht erreichbar, bleibt es bei der Sprechblase.
      */
     static Runnable setupAction(final JFrame frame, final ShellAssembly.ShellView view, final ConfigurationFile file,
                                 final SettingsDialogActions actions, final SetupActions setup,
                                 final ComicPalette palette, final SettingsService settings,
-                                final ConfigurationStartup.SetupState setupState) {
+                                final ConfigurationStartup.SetupState setupState,
+                                final Supplier<ReadAloudBinding> merlinVoice) {
         return new Runnable() {
             @Override
             public void run() {
@@ -274,7 +281,10 @@ public final class EnterpriseAiClientMain {
                     LOG.log(Level.WARNING, "Konfigurationsdatei nicht lesbar", io);
                     current = SettingsMapper.firstStartDefaults();
                 }
-                SetupWizardOverlay.show(frame.getRootPane(), current, actions, setup, palette, completed -> {
+                final ReadAloudBinding voice = merlinVoice.get();
+                final boolean firstCompletion = !Boolean.TRUE.equals(setupState.completed());
+                SetupWizardOverlay.show(frame.getRootPane(), current, actions, setup, palette, voice, completed -> {
+                    voice.close();
                     if (!completed) {
                         return;
                     }
@@ -289,7 +299,7 @@ public final class EnterpriseAiClientMain {
                     } catch (IOException | RuntimeException e) {
                         LOG.log(Level.WARNING, "Confluence-Quelle nicht sofort angebunden", e);
                     }
-                });
+                }).wizard().setHandoff(firstCompletion);
             }
         };
     }
@@ -345,6 +355,22 @@ public final class EnterpriseAiClientMain {
         }, "enterprise-ai-settings-reload");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    /** Merlins Stimme aus dem aktuellen Stand; scheitert die Bindung, spricht er nicht (nur Sprechblase). */
+    private static ReadAloudBinding merlinVoice(AppConfig current, ModelCatalogs catalogs, LiveNetwork network,
+                                                java.util.function.Supplier<String> chatToken,
+                                                TextAnalysisService textAnalysis) {
+        try {
+            ModelsConfig models = current.models();
+            ReadAloudBinding voice = SpeechOutput.merlinVoice(models,
+                    catalogs.speech(current, models, network.current(), chatToken), textAnalysis);
+            LOG.info(voice.description());
+            return voice;
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Merlins Stimme nicht gebunden: " + e.getClass().getSimpleName());
+            return ReadAloudBinding.unavailable("Merlins Stimme nicht verfügbar");
+        }
     }
 
     /** Bindet Sprachausgabe und Spracheingabe an die gespeicherte TTS-/STT-Auswahl (auf dem EDT). */

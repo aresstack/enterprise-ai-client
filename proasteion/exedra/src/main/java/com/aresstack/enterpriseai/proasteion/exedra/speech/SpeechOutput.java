@@ -21,6 +21,9 @@ public final class SpeechOutput {
     static final String NO_PORT = "Sprachausgabe aus: die Quelle des gewählten TTS-Modells ist nicht verfügbar "
             + "(lokale Stimme installiert? Einstellungen → Modelle → Lokale Modelle)";
 
+    static final String NO_MERLIN_VOICE = "Merlin spricht nicht: keine Stimme gewählt (setup.merlin.ttsModel)";
+    static final String NO_MERLIN_PORT = "Merlin spricht nicht: die Quelle seiner Stimme ist nicht verfügbar";
+
     private SpeechOutput() {
     }
 
@@ -59,5 +62,32 @@ public final class SpeechOutput {
         return ReadAloudBinding.available(service, "Stimme: " + selected.modelId()
                 + (voice == null ? "" : " / " + voice) + " (" + selected.catalogId() + ")",
                 models.readAloudAutoStart(), "catalog=" + selected.catalogId());
+    }
+
+    /**
+     * Merlins eigene Stimme im Einrichtungsassistenten ({@code setup.merlin.ttsModel}), unabhängig vom TTS-Modell des
+     * Chats. Ist sie nicht gewählt oder ihre Quelle nicht verfügbar, gibt es bewusst keinen Rückfall auf
+     * {@code model.tts}: Merlin zeigt seine Sätze dann nur als Sprechblase.
+     */
+    public static ReadAloudBinding merlinVoice(ModelsConfig models, SpeechSynthesisRegistry speech,
+                                               TextAnalysisService analysis) {
+        ModelReference voice = models.merlinVoice();
+        if (voice == null) {
+            return ReadAloudBinding.unavailable(NO_MERLIN_VOICE);
+        }
+        if (!speech.supports(voice.catalogId())) {
+            return ReadAloudBinding.unavailable(NO_MERLIN_PORT);
+        }
+        // Fester Sprecher (setup.merlin.ttsVoice), sonst die männliche Stimme seines Modells; nie speech.voice des Chats.
+        TtsVoiceCatalog catalog = TtsVoiceCatalog.bundled();
+        String speaker = models.merlinSpeaker().isEmpty() && !ModelsConfig.LOCAL_CATALOG_ID.equals(voice.catalogId())
+                ? catalog.voice(voice.modelId(), TtsVoiceCatalog.Gender.MALE)
+                : ModelsConfig.resolveTtsVoice(voice, models.merlinSpeaker(), null, catalog);
+        ReadAloudService service = new ReadAloudService(speech.require(voice.catalogId()), voice.modelId(),
+                speaker, new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
+                analysis);
+        return ReadAloudBinding.available(service, "Merlins Stimme: " + voice.modelId()
+                + (speaker == null ? "" : " / " + speaker) + " (" + voice.catalogId() + ")", false,
+                "catalog=" + voice.catalogId());
     }
 }

@@ -2,20 +2,27 @@ package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
 import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
 
+import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
+import com.aresstack.enterpriseai.proasteion.application.composition.ModelCatalogs;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
 import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
 import com.aresstack.enterpriseai.proasteion.exedra.security.DialogCredentialPrompt;
 import com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.ConnectionChecker;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.ConnectionProbe;
+import com.aresstack.enterpriseai.proasteion.exedra.speech.ReadAloudBinding;
+import com.aresstack.enterpriseai.proasteion.exedra.speech.SpeechOutput;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupVoices;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 
 import java.io.IOException;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Der Verbindungstest des Einstellungen-Dialogs: holt den API-Key wie die Anwendung über den Tresorzugang des
@@ -26,22 +33,34 @@ import java.util.function.Consumer;
 public final class ServiceConnectionChecker implements ConnectionChecker {
 
     private final KeePassSecretChecker.PairingCallbackFactory pairing;
+    private final ModelCatalogs catalogs;
 
     /** Produktiv: der Swing-Pairing-Dialog. */
     public ServiceConnectionChecker() {
+        this((ModelCatalogs) null);
+    }
+
+    public ServiceConnectionChecker(KeePassSecretChecker.PairingCallbackFactory pairing) {
+        this(pairing, null);
+    }
+
+    /** Produktiv mit Sprachausgabe: die Übergabe am Ende der ersten Einrichtung spricht über diese Modellquellen. */
+    public ServiceConnectionChecker(ModelCatalogs catalogs) {
         this(new KeePassSecretChecker.PairingCallbackFactory() {
             @Override
             public PairingPrompt forAddress(String keePassAddress) {
                 return new SwingPairingCallback(keePassAddress);
             }
-        });
+        }, catalogs);
     }
 
-    public ServiceConnectionChecker(KeePassSecretChecker.PairingCallbackFactory pairing) {
+    /** @param catalogs Modellquellen für die Stimmen der Übergabe oder {@code null} (dann nur Sprechblasen) */
+    public ServiceConnectionChecker(KeePassSecretChecker.PairingCallbackFactory pairing, ModelCatalogs catalogs) {
         if (pairing == null) {
             throw new IllegalArgumentException("pairing must not be null");
         }
         this.pairing = pairing;
+        this.catalogs = catalogs;
     }
 
     @Override
@@ -78,6 +97,64 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
             }
         }
         return AdapterAssembly.embeddingDimension(config.embedding(), token, NetworkServices.from(config.network()));
+    }
+
+    /** Merlins freie Frage: API-Key des Chats wie beim Verbindungstest, dann ein Aufruf über den Chat-Adapter. */
+    @Override
+    public String ask(AppConfig config, String system, String question) throws Exception {
+        if (config == null || config.chat() == null) {
+            throw new IllegalArgumentException("config with chat section required");
+        }
+        return AdapterAssembly.askOnce(config.chat(), chatToken(config, pairing), NetworkServices.from(config.network()),
+                system, question);
+    }
+
+    /**
+     * Merlins Stimme ({@code setup.merlin.ttsModel}, ohne die Stimme des Chats) und die des Chat-Assistenten
+     * ({@code model.tts}) über die Modellquellen der Anwendung. Der API-Key wird erst beim ersten Sprechen geholt,
+     * einmal für beide.
+     */
+    @Override
+    public SetupVoices voices(final AppConfig config) {
+        if (config == null || config.chat() == null) {
+            throw new IllegalArgumentException("config with chat section required");
+        }
+        String name = assistantName(config);
+        if (catalogs == null) {
+            return SetupVoices.silent(name);
+        }
+        NetworkServices network = NetworkServices.from(config.network());
+        Supplier<String> token = new Supplier<String>() {
+            private boolean loaded;
+            private String key;
+
+            @Override
+            public synchronized String get() {
+                if (!loaded) {
+                    loaded = true;
+                    try {
+                        key = chatToken(config, pairing);
+                    } catch (IOException e) {
+                        key = null; // ohne Key antwortet der Dienst mit dem Grund, das Vorlesen meldet ihn
+                    }
+                }
+                return key;
+            }
+        };
+        ModelsConfig models = config.models();
+        TextAnalysisService analysis = SpeechOutput.textAnalysis();
+        final ReadAloudBinding merlin = SpeechOutput.merlinVoice(models,
+                catalogs.speech(config, models, network, token), analysis);
+        final ReadAloudBinding assistant = SpeechOutput.readAloud(models,
+                catalogs.speech(config, models, network, token), analysis);
+        return new SetupVoices(merlin, assistant, name, () -> {
+            merlin.close();
+            assistant.close();
+        });
+    }
+
+    private static String assistantName(AppConfig config) {
+        return config.chat().assistantDisplayName();
     }
 
     /**

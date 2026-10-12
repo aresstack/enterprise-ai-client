@@ -24,6 +24,17 @@ public interface ReadAloudControl {
     /** Liest diese Antwort vor; eine laufende Ausgabe endet vorher. Kehrt sofort zurück. */
     void speak(String markdown);
 
+    /**
+     * Wie {@link #speak(String)}, meldet danach auf dem EDT, dass die Ausgabe vorbei ist (fertig gesprochen,
+     * fehlgeschlagen, gestoppt oder abgelöst); ohne Sprachausgabe sofort. Für Abläufe, die auf das Ende warten.
+     */
+    default void speak(String markdown, Runnable finished) {
+        speak(markdown);
+        if (finished != null) {
+            finished.run();
+        }
+    }
+
     /** Beendet die laufende Ausgabe; idempotent. */
     void stop();
 

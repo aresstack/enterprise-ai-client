@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.astu.chat.ChatOptions;
+import com.aresstack.enterpriseai.astu.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.acp.api.AgentLaunchSpec;
 import com.aresstack.enterpriseai.acp.solon.SolonAcpAgentConnector;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
@@ -289,6 +292,31 @@ public final class AdapterAssembly {
                 .userAgent(network.userAgent())
                 .build();
         return new OpenAiCompatibleChatAdapter(adapterConfig);
+    }
+
+    /**
+     * Eine einzelne Frage an das Chat-Modell ohne Werkzeuge und ohne Verlauf (Merlin im Einrichtungsassistenten):
+     * derselbe Adapter, dieselbe Route und dieselben TLS-Quellen wie die Anwendung, der API-Key kommt vom Aufrufer.
+     * Blockiert; wirft {@code ChatCompletionException}, wenn der Aufruf scheitert.
+     *
+     * @param token API-Key oder {@code null} (dann ohne Authorization)
+     */
+    public static String askOnce(ChatConfig chat, final String token, NetworkServices network, String system,
+                                 String question) {
+        OpenAiCompatibleChatConfig adapterConfig = OpenAiCompatibleChatConfig.builder(chat.baseUrl(), chat.model())
+                .bearerToken(OpenAiCompatibleChatConfig.TokenSource.fixed(token))
+                .connectTimeoutMillis(chat.connectTimeoutMillis())
+                .readTimeoutMillis(chat.readTimeoutMillis())
+                .developerRolePolicy(chat.developerRolePolicy())
+                .routes(network.routes())
+                .sslSocketFactory(network.tls())
+                .userAgent(network.userAgent())
+                .build();
+        List<ChatMessage> messages = new ArrayList<ChatMessage>();
+        messages.add(ChatMessage.system(system));
+        messages.add(ChatMessage.user(question));
+        return new OpenAiCompatibleChatAdapter(adapterConfig).complete(new ChatRequest(messages, ChatOptions.defaults()))
+                .content();
     }
 
     public static OpenAiCompatibleEmbeddingAdapter embeddings(EmbeddingConfig embedding, SecretProvider secrets,
