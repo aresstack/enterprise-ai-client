@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.model.kipitz;
 
+import com.aresstack.enterpriseai.speech.api.SpeechSynthesisException;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
@@ -35,6 +36,7 @@ import java.util.logging.Logger;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Parallele Requests an {@code /audio/speech} tragen alle dasselbe {@code model} (und dieselbe {@code voice}); die
@@ -82,6 +84,28 @@ public class KipitzSpeechAdapterTest {
                 out.close();
             }
         });
+        // Mimic the Orpheus validation of the service: speakers are case-sensitive.
+        server.createContext("/strict/audio/speech", new HttpHandler() {
+            @Override
+            public void handle(HttpExchange exchange) throws IOException {
+                JsonObject body = JsonParser.parseString(new String(readAll(exchange.getRequestBody()),
+                        StandardCharsets.UTF_8)).getAsJsonObject();
+                bodies.add(body);
+                String voice = body.has("voice") ? body.get("voice").getAsString() : "";
+                boolean known = Arrays.asList("Jana", "Thomas", "Max").contains(voice);
+                byte[] answer = known
+                        ? new byte[]{'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V', 'E'}
+                        : ("{\"detail\":[{\"type\":\"literal_error\",\"loc\":[\"body\",\"voice\"],"
+                        + "\"msg\":\"Input should be 'Jana', 'Thomas' or 'Max'\",\"input\":\"" + voice
+                        + "\",\"echo\":\"" + body.get("input").getAsString() + "\"}]}")
+                        .getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", known ? "audio/wav" : "application/json");
+                exchange.sendResponseHeaders(known ? 200 : 422, answer.length);
+                OutputStream out = exchange.getResponseBody();
+                out.write(answer);
+                out.close();
+            }
+        });
         server.start();
         log.addHandler(capture);
     }
@@ -102,7 +126,7 @@ public class KipitzSpeechAdapterTest {
                     public String get() {
                         return TOKEN;
                     }
-                }).build(), "thomas");
+                }).build(), "Thomas");
         ExecutorService workers = Executors.newFixedThreadPool(3);
         List<Future<?>> futures = new ArrayList<Future<?>>();
         for (final String paragraph : Arrays.asList("Absatz eins.", "Absatz zwei.", "Absatz drei.",
@@ -122,7 +146,7 @@ public class KipitzSpeechAdapterTest {
         assertEquals(5, bodies.size());
         for (JsonObject body : bodies) {
             assertEquals("orpheus-tts-3b-de", body.get("model").getAsString());
-            assertEquals("thomas", body.get("voice").getAsString());
+            assertEquals("Thomas", body.get("voice").getAsString());
             assertEquals("wav", body.get("response_format").getAsString());
         }
         int requests = 0;
@@ -133,7 +157,7 @@ public class KipitzSpeechAdapterTest {
             assertFalse(line, line.contains("nie loggen"));
             if (line.startsWith("TTS HTTP request:")) {
                 requests++;
-                assertTrue(line, line.contains(" model=orpheus-tts-3b-de voice=thomas "));
+                assertTrue(line, line.contains(" model=orpheus-tts-3b-de voice=Thomas "));
             } else if (line.startsWith("TTS HTTP response:")) {
                 responses++;
                 assertTrue(line, line.contains("x-served-model=orpheus-tts-3b-de"));
@@ -152,6 +176,36 @@ public class KipitzSpeechAdapterTest {
         adapter.synthesize("qwen3-tts", "Ein Absatz.");
         assertEquals("Vivian", bodies.get(0).get("voice").getAsString());
         assertFalse(bodies.get(1).has("voice"));
+    }
+
+    @Test
+    public void merlinRequestSendsTheSpeakerExactlyAsConfigured() throws Exception {
+        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(strictBase()).build(),
+                null);
+        adapter.synthesize("orpheus-tts-3b-de", "Thomas", "Willkommen.");
+        assertEquals(1, bodies.size());
+        assertEquals("orpheus-tts-3b-de", bodies.get(0).get("model").getAsString());
+        assertEquals("Thomas", bodies.get(0).get("voice").getAsString());
+    }
+
+    @Test
+    public void wrongSpeakerCaseReportsTheValidationTextOnly() throws Exception {
+        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(strictBase()).build(),
+                null);
+        try {
+            adapter.synthesize("orpheus-tts-3b-de", "thomas", "Vertraulicher Absatz.");
+            fail("lowercase speaker must be rejected by the service");
+        } catch (SpeechSynthesisException e) {
+            assertEquals("thomas", bodies.get(0).get("voice").getAsString());
+            assertTrue(e.getMessage(), e.getMessage().contains("HTTP 422"));
+            assertTrue(e.getMessage(), e.getMessage().contains("Input should be 'Jana', 'Thomas' or 'Max'"));
+            assertFalse(e.getMessage(), e.getMessage().contains("Vertraulicher"));
+        }
+    }
+
+    private URI strictBase() {
+        return URI.create("http://" + InetAddress.getLoopbackAddress().getHostAddress() + ":"
+                + server.getAddress().getPort() + "/strict");
     }
 
     @Test

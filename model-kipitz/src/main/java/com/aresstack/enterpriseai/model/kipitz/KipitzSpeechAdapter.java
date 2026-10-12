@@ -3,7 +3,10 @@ package com.aresstack.enterpriseai.model.kipitz;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisException;
 import com.aresstack.enterpriseai.speech.api.SpeechSynthesisPort;
 import com.aresstack.enterpriseai.speech.api.SynthesizedSpeech;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -23,8 +26,8 @@ import java.util.logging.Logger;
 /**
  * {@link SpeechSynthesisPort} der Enterprise-API für TTS-Modelle aus demselben Katalog: {@code POST
  * <baseUrl>/audio/speech} (OpenAI-kompatibel, {@code response_format=wav}) über Route, TLS und Token des Katalogs.
- * UNVERIFIED: der Endpunkt ist mit den KIPITZ-TTS-Modellen noch nicht praktisch getestet. Fehlermeldungen nennen nur
- * den Status, nie Token oder Antwortkörper.
+ * UNVERIFIED: der Endpunkt ist mit den KIPITZ-TTS-Modellen noch nicht praktisch getestet. Fehlermeldungen nennen den
+ * Status und höchstens den Prüftext des JSON-Fehlers (error.message, detail[].msg), nie Token oder Antwortkörper.
  *
  * <p>Diagnose je Request (java.util.logging, Logger dieser Klasse): Modell, Stimme, Worker-Thread, Länge und
  * Fingerabdruck des Textes (SHA-256-Präfix, nie der Text), danach Status, Dauer, Größe, Content-Type und die
@@ -37,6 +40,8 @@ public final class KipitzSpeechAdapter implements SpeechSynthesisPort {
     private static final int MIN_READ_TIMEOUT_MILLIS = 120000;
     private static final int MAX_AUDIO_BYTES = 64 * 1024 * 1024;
     private static final int MAX_HEADER_VALUE = 120;
+    private static final int MAX_ERROR_BODY = 8192;
+    private static final int MAX_ERROR_MESSAGE = 240;
     private static final Logger LOG = Logger.getLogger(KipitzSpeechAdapter.class.getName());
 
     private final KipitzModelCatalogConfig config;
@@ -110,7 +115,9 @@ public final class KipitzSpeechAdapter implements SpeechSynthesisPort {
                 if (status != 200) {
                     LOG.info(responseLine(modelId, worker, status, millisSince(started), -1,
                             connection.getContentType(), served));
-                    throw new SpeechSynthesisException("Sprachausgabe der Enterprise-API: HTTP " + status);
+                    String reason = errorMessage(connection.getErrorStream());
+                    throw new SpeechSynthesisException("Sprachausgabe der Enterprise-API: HTTP " + status
+                            + (reason.isEmpty() ? "" : " (" + reason + ")"));
                 }
                 byte[] wav = read(connection.getInputStream());
                 LOG.info(responseLine(modelId, worker, status, millisSince(started), wav.length,
@@ -169,6 +176,62 @@ public final class KipitzSpeechAdapter implements SpeechSynthesisPort {
             }
         }
         return picked.isEmpty() ? "none" : picked.toString();
+    }
+
+    /**
+     * Extract only the validation text of a JSON error body ({@code error.message}, {@code detail[].msg} or a
+     * string {@code detail}), for example "Input should be 'Jana', 'Thomas' or 'Max'". Never return the raw body or
+     * the echoed {@code input}, so neither request text nor secrets reach the message.
+     */
+    static String errorMessage(InputStream in) {
+        if (in == null) {
+            return "";
+        }
+        try {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] chunk = new byte[2048];
+            try {
+                int read;
+                while (buffer.size() < MAX_ERROR_BODY && (read = in.read(chunk)) != -1) {
+                    buffer.write(chunk, 0, Math.min(read, MAX_ERROR_BODY - buffer.size()));
+                }
+            } finally {
+                in.close();
+            }
+            JsonElement root = JsonParser.parseString(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
+            if (!root.isJsonObject()) {
+                return "";
+            }
+            JsonObject object = root.getAsJsonObject();
+            StringBuilder message = new StringBuilder();
+            if (object.has("error") && object.get("error").isJsonObject()) {
+                appendString(message, object.getAsJsonObject("error").get("message"));
+            }
+            JsonElement detail = object.get("detail");
+            if (detail != null && detail.isJsonArray()) {
+                JsonArray items = detail.getAsJsonArray();
+                for (JsonElement item : items) {
+                    if (item.isJsonObject()) {
+                        appendString(message, item.getAsJsonObject().get("msg"));
+                    }
+                }
+            } else {
+                appendString(message, detail);
+            }
+            String text = message.toString().replaceAll("\\s+", " ").trim();
+            return text.length() > MAX_ERROR_MESSAGE ? text.substring(0, MAX_ERROR_MESSAGE) + "…" : text;
+        } catch (IOException | RuntimeException e) {
+            return "";
+        }
+    }
+
+    private static void appendString(StringBuilder message, JsonElement value) {
+        if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+            if (message.length() > 0) {
+                message.append("; ");
+            }
+            message.append(value.getAsString());
+        }
     }
 
     private static String fingerprint(String text) {

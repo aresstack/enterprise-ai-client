@@ -46,7 +46,7 @@ public final class ModelsConfig {
 
     /**
      * Die Stimme je TTS-Modell: {@code <katalog>:<modell>=<stimme>;…}, z. B.
-     * {@code kipitz:orpheus-tts-3b-de=thomas;kipitz:qwen3-tts=Vivian}.
+     * {@code kipitz:orpheus-tts-3b-de=Thomas;kipitz:qwen3-tts=Vivian}.
      */
     public static final String SPEECH_VOICES_KEY = "speech.voices";
 

@@ -62,7 +62,7 @@ public class SwitchableReadAloudTest {
     public void diagnosticLinesNameChunkModelVoiceAndWorkerButNoText() {
         ReadAloudService.ChunkTrace[] seen = new ReadAloudService.ChunkTrace[1];
         Speaker speaker = new Speaker("orpheus-tts-3b-de", null);
-        ReadAloudService service = new ReadAloudService(speaker.port, "orpheus-tts-3b-de", "thomas",
+        ReadAloudService service = new ReadAloudService(speaker.port, "orpheus-tts-3b-de", "Thomas",
                 speaker.playback, SpeechChunking.PARAGRAPHS, 2, null);
         final List<String> lines = new CopyOnWriteArrayList<String>();
         service.speak("Geheimer Absatztext.", new ReadAloudService.Listener() {
@@ -83,7 +83,7 @@ public class SwitchableReadAloudTest {
         assertEquals(2, lines.size());
         String request = lines.get(0);
         assertTrue(request, request.matches("TTS request: generation=\\d+ chunk=1/1 catalog=kipitz "
-                + "model=orpheus-tts-3b-de voice=thomas worker=enterprise-ai-tts-worker-\\d+-1 chars=\\d+"));
+                + "model=orpheus-tts-3b-de voice=Thomas worker=enterprise-ai-tts-worker-\\d+-1 chars=\\d+"));
         for (String line : lines) {
             assertTrue(line, !line.contains("Geheim"));
         }

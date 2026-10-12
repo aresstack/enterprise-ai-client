@@ -32,7 +32,7 @@ public class ReadAloudServiceTest {
     public void everyParagraphOfOneAnswerUsesTheModelAndVoiceSelectedAtStart() {
         RecordingPort port = new RecordingPort(20);
         RecordingPlayback playback = new RecordingPlayback();
-        ReadAloudService service = new ReadAloudService(port, ORPHEUS, "thomas", playback,
+        ReadAloudService service = new ReadAloudService(port, ORPHEUS, "Thomas", playback,
                 SpeechChunking.PARAGRAPHS, 4, null);
         final List<ReadAloudService.ChunkTrace> requested = new CopyOnWriteArrayList<ReadAloudService.ChunkTrace>();
         final List<ReadAloudService.ChunkTrace> synthesized = new CopyOnWriteArrayList<ReadAloudService.ChunkTrace>();
@@ -56,7 +56,7 @@ public class ReadAloudServiceTest {
 
         assertEquals(5, port.models.size());
         assertEquals(Collections.singleton(ORPHEUS), new HashSet<String>(port.models));
-        assertEquals(Collections.singleton("thomas"), new HashSet<String>(port.voices));
+        assertEquals(Collections.singleton("Thomas"), new HashSet<String>(port.voices));
         assertTrue("mehrere Worker parallel: " + port.workers, port.workers.size() > 1);
         assertEquals(5, playback.played.size());
         for (String played : playback.played) {
@@ -68,7 +68,7 @@ public class ReadAloudServiceTest {
         Set<Long> generations = new HashSet<Long>();
         for (ReadAloudService.ChunkTrace trace : requested) {
             assertEquals(ORPHEUS, trace.modelId());
-            assertEquals("thomas", trace.voice());
+            assertEquals("Thomas", trace.voice());
             assertEquals(5, trace.count());
             assertTrue(trace.worker(), trace.worker().startsWith("enterprise-ai-tts-worker-" + trace.generation()));
             indices.add(trace.index());

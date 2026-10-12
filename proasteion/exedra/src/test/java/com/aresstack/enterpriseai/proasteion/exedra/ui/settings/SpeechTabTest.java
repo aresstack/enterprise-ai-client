@@ -43,7 +43,7 @@ public class SpeechTabTest {
         @Override
         public List<String> ttsVoices(String modelSelection) {
             if (modelSelection.contains("orpheus")) {
-                return Arrays.asList("thomas", "max", "jana");
+                return Arrays.asList("Thomas", "Max", "Jana");
             }
             return modelSelection.contains("qwen") ? Arrays.asList("Vivian", "Serena", "Ryan")
                     : Collections.<String>emptyList();
@@ -61,7 +61,7 @@ public class SpeechTabTest {
 
         @Override
         public String ttsVoiceGender(String modelSelection, String voice) {
-            return "thomas".equals(voice) ? "männlich" : "";
+            return "Thomas".equals(voice) ? "männlich" : "";
         }
 
         @Override
@@ -83,7 +83,7 @@ public class SpeechTabTest {
                         ComicPalette.defaultPalette());
                 SpeechTab tab = panel.speechTab();
                 JTextField field = (JTextField) tab.voice().getEditor().getEditorComponent();
-                assertEquals("thomas", field.getText());
+                assertEquals("Thomas", field.getText());
                 assertEquals(3, tab.voice().getItemCount());
                 assertTrue(tab.voice().isEnabled());
                 assertTrue("Standardstimme wird nicht als Wahl gespeichert",
@@ -98,7 +98,7 @@ public class SpeechTabTest {
                 assertTrue(stored.keySet().iterator().next().endsWith("qwen3-tts"));
 
                 panel.modelsTab().selection(ModelCategory.TTS).set("orpheus-tts-3b-de");
-                assertEquals("Orpheus spricht nicht mit der Qwen-Stimme", "thomas", field.getText());
+                assertEquals("Orpheus spricht nicht mit der Qwen-Stimme", "Thomas", field.getText());
                 panel.modelsTab().selection(ModelCategory.TTS).set("qwen3-tts");
                 assertEquals("Serena", field.getText());
 
