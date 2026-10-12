@@ -301,6 +301,10 @@ public final class OpenAiCompatibleChatAdapter implements ChatCompletionPort {
             token = source.token();
         } catch (RuntimeException e) {
             // Ursache bewusst nicht anhängen: ihre Meldung könnte Secret-Material enthalten.
+            if (source.isTransient(e)) {
+                throw new ChatCompletionException(ChatErrorKind.CREDENTIALS_UNAVAILABLE,
+                        "token source temporarily unavailable: " + e.getClass().getSimpleName());
+            }
             throw new ChatCompletionException(ChatErrorKind.AUTHENTICATION,
                     "token source failed: " + e.getClass().getSimpleName());
         }

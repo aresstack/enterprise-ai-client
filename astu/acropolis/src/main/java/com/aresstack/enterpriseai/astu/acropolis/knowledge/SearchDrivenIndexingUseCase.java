@@ -42,6 +42,7 @@ public final class SearchDrivenIndexingUseCase {
     public static final long INDEX_WAIT_MILLIS = 60_000L;
 
     private final KnowledgePrefetchService prefetch;
+    private final SourceCalls sourceCalls;
 
     /** Mit eigenem Vorlader (direktes Lesen aus der Quelle, Standard-Einstellungen). */
     public SearchDrivenIndexingUseCase(IndexKnowledgeUseCase indexing) {
@@ -50,10 +51,20 @@ public final class SearchDrivenIndexingUseCase {
     }
 
     public SearchDrivenIndexingUseCase(KnowledgePrefetchService prefetch) {
-        if (prefetch == null) {
-            throw new IllegalArgumentException("prefetch ist Pflicht");
+        this(prefetch, SourceCalls.direct());
+    }
+
+    /**
+     * @param sourceCalls wie die Suche einer Quelle aufgerufen wird (Composition Root: Wiederholung bei vorübergehenden
+     *                    Fehlern); scheitert eine Quelle trotzdem, steht sie in {@link Result#failures()} und die
+     *                    Treffer der übrigen gelten
+     */
+    public SearchDrivenIndexingUseCase(KnowledgePrefetchService prefetch, SourceCalls sourceCalls) {
+        if (prefetch == null || sourceCalls == null) {
+            throw new IllegalArgumentException("prefetch und sourceCalls sind Pflicht");
         }
         this.prefetch = prefetch;
+        this.sourceCalls = sourceCalls;
     }
 
     /** Der Vorlader (Cache, Priority-Lesen) dieser Suche. */
@@ -105,8 +116,10 @@ public final class SearchDrivenIndexingUseCase {
             if (!(source instanceof SearchableKnowledgeSource)) {
                 continue;
             }
+            final SearchableKnowledgeSource searchable = (SearchableKnowledgeSource) source;
+            final SourceQuery sourceQuery = new SourceQuery(query.trim(), hitLimit);
             try {
-                perSource.add(((SearchableKnowledgeSource) source).search(new SourceQuery(query.trim(), hitLimit)));
+                perSource.add(sourceCalls.call(() -> searchable.search(sourceQuery)));
                 searched.add(source);
             } catch (KnowledgeSourceException e) {
                 if (e.kind() != KnowledgeSourceException.Kind.UNSUPPORTED) {

@@ -264,6 +264,36 @@ public class OpenAiCompatibleChatAdapterTest {
     }
 
     @Test
+    public void transientTokenFailureIsNotReportedAsAuthenticationError() throws Exception {
+        OpenAiCompatibleChatAdapter vaultDown = new OpenAiCompatibleChatAdapter(
+                OpenAiCompatibleChatConfig.builder(server.baseUrl(), "m").bearerToken(
+                        new OpenAiCompatibleChatConfig.TokenSource() {
+                            @Override
+                            public String token() {
+                                throw new IllegalStateException("vault not reachable");
+                            }
+
+                            @Override
+                            public boolean isTransient(RuntimeException failure) {
+                                return true;
+                            }
+                        }).build());
+        RecordingStreamListener listener = new RecordingStreamListener();
+        vaultDown.stream(request("x"), listener);
+        listener.awaitTerminal();
+
+        assertEquals(ChatErrorKind.CREDENTIALS_UNAVAILABLE, listener.error.kind());
+        assertEquals("token source temporarily unavailable: IllegalStateException", listener.error.getMessage());
+        assertEquals(0, server.requestCount());
+        try {
+            vaultDown.complete(request("x"));
+            fail();
+        } catch (ChatCompletionException e) {
+            assertEquals(ChatErrorKind.CREDENTIALS_UNAVAILABLE, e.kind());
+        }
+    }
+
+    @Test
     public void failingTokenSourceEndsTheStreamWithAnAuthenticationError() throws Exception {
         OpenAiCompatibleChatAdapter broken = new OpenAiCompatibleChatAdapter(
                 OpenAiCompatibleChatConfig.builder(server.baseUrl(), "m").bearerToken(

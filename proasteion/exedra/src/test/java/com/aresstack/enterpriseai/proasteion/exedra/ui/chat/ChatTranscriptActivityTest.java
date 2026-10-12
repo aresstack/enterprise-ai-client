@@ -85,7 +85,7 @@ public class ChatTranscriptActivityTest {
     }
 
     @Test
-    public void aFailedActivityStaysWhenTheTurnFails() {
+    public void everyActivityStaysWithItsEndStateWhenTheTurnFails() {
         ChatShellModel model = new ChatShellModel(() -> 0L);
         model.addUserMessage("Was ist IAR?");
         model.beginAssistantMessage();
@@ -96,8 +96,46 @@ public class ChatTranscriptActivityTest {
         model.failAssistantMessage("Die Agentensitzung wurde beendet.");
 
         List<TranscriptEntry> entries = model.getEntries();
-        assertFalse("erfolgreiche Wolke entfernt", entries.contains(ok));
+        assertTrue("erfolgreiche Wolke bleibt", entries.contains(ok));
+        assertEquals(TranscriptEntry.State.COMPLETE, ok.getState());
         assertTrue("der Fehler bleibt sichtbar", entries.contains(broken));
+        assertEquals(TranscriptEntry.State.FAILED, broken.getState());
+    }
+
+    @Test
+    public void successfulSearchesStayVisibleWhenALaterModelCallFails() {
+        ChatShellModel model = new ChatShellModel(() -> 0L);
+        model.addUserMessage("Welche Schulungen gibt es?");
+        model.beginAssistantMessage();
+        TranscriptEntry first = model.startActivity("call-1", "Durchsucht Wissensquellen", "search", "Schulung");
+        model.finishActivity("call-1", true, "3 Treffer");
+        TranscriptEntry second = model.startActivity("call-2", "Durchsucht Wissensquellen", "search", "Weiterbildung");
+        model.finishActivity("call-2", true, "2 Treffer");
+        TranscriptEntry third = model.startActivity("call-3", "Durchsucht Wissensquellen", "search", "Lehren");
+        model.finishActivity("call-3", true, "1 Treffer");
+        model.failAssistantMessage("Der API-Key konnte nach mehreren Versuchen nicht aus KeePass gelesen werden.");
+
+        List<TranscriptEntry> entries = model.getEntries();
+        assertTrue(entries.contains(first) && entries.contains(second) && entries.contains(third));
+        TranscriptEntry failure = entries.get(entries.size() - 1);
+        assertEquals(TranscriptEntry.State.FAILED, failure.getState());
+        assertFalse(model.isStreaming());
+    }
+
+    @Test
+    public void stopKeepsFinishedStepsAndDropsTheRunningOne() {
+        ChatShellModel model = new ChatShellModel(() -> 0L);
+        model.addUserMessage("Was ist IAR?");
+        model.beginAssistantMessage();
+        TranscriptEntry done = model.startActivity("call-1", "Suche in den Wissensquellen", "search", "IAR");
+        model.finishActivity("call-1", true, "1 Treffer");
+        TranscriptEntry running = model.startActivity("call-2", "Lese Seite", "read", "IAR Übersicht");
+        model.cancelAssistantMessage();
+
+        List<TranscriptEntry> entries = model.getEntries();
+        assertTrue("erledigte Suche bleibt", entries.contains(done));
+        assertFalse("laufender Schritt verschwindet beim Stop", entries.contains(running));
+        assertEquals(TranscriptEntry.State.CANCELLED, running.getState());
     }
 
     @Test

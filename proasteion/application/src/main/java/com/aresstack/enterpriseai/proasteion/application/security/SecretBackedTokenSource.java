@@ -67,6 +67,16 @@ public final class SecretBackedTokenSource implements OpenAiCompatibleChatConfig
         }
     }
 
+    /**
+     * Nur „Ablage nicht erreichbar“ ist vorübergehend (der Retry-Decorator des Security-Ports hat dann schon
+     * wiederholt); ein fehlender Eintrag, ein abgelehnter Zugriff oder ein abgebrochenes Pairing nicht.
+     */
+    @Override
+    public boolean isTransient(RuntimeException failure) {
+        return failure instanceof SecretAccessException
+                && ((SecretAccessException) failure).reason() == SecretUnavailableException.Reason.NOT_AVAILABLE;
+    }
+
     @Override
     public String toString() {
         return "SecretBackedTokenSource[" + ref + "]";

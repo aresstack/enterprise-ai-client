@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
 import com.aresstack.enterpriseai.chat.api.ChatTask;
 import com.aresstack.enterpriseai.chat.openai.OpenAiCompatibleChatAdapter;
+import com.aresstack.enterpriseai.proasteion.application.chat.RetryingChatCompletionPort;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
@@ -123,7 +124,9 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
         // Prozess über ONNX Runtime (Chat und Embeddings hier, Stimmen in ModelCatalogs).
         OpenAiCompatibleChatAdapter chatAdapter = AdapterAssembly.chat(config.chat(), secrets, network);
         Map<String, ChatCompletionPort> chats = new LinkedHashMap<String, ChatCompletionPort>();
-        chats.put(KipitzModelCatalogAdapter.CATALOG_ID, chatAdapter);
+        // Jede einzelne Modellanfrage an die Enterprise-API wird nach einem vorübergehenden Fehler wiederholt
+        // (chat.retryCount); lokale Modelle haben keinen Netzweg und laufen ohne.
+        chats.put(KipitzModelCatalogAdapter.CATALOG_ID, new RetryingChatCompletionPort(chatAdapter, config.chat().retry()));
         // lokale Chat-Modelle: geladen erst bei der ersten Anfrage, Modell = Ordnername der Auswahl
         chats.put(ModelsConfig.LOCAL_CATALOG_ID, new LocalChatAdapter(config.models().localModelRoot(), decoder));
         ChatModelExecutorRegistry chatModels = new ChatModelExecutorRegistry(chats,

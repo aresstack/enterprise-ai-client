@@ -23,6 +23,16 @@ public final class OpenAiCompatibleChatConfig {
     public interface TokenSource {
         String token();
 
+        /**
+         * {@code true}, wenn {@code failure} aus {@link #token()} nur ein vorübergehendes Problem der Ablage war (z. B.
+         * Passwortmanager kurz nicht erreichbar) und nichts über die Gültigkeit der Zugangsdaten sagt. Der Adapter
+         * meldet das als {@link com.aresstack.enterpriseai.chat.api.ChatErrorKind#CREDENTIALS_UNAVAILABLE} statt als
+         * Anmeldefehler. Standard: nein.
+         */
+        default boolean isTransient(RuntimeException failure) {
+            return false;
+        }
+
         /** Fester Token, z. B. für Tests oder lokale Konfiguration. */
         static TokenSource fixed(final String token) {
             return new TokenSource() {

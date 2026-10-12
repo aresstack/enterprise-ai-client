@@ -200,6 +200,20 @@ public class ChatServiceBindingTest {
         assertTrue(keePass, keePass.contains(ChatServiceBinding.HINT_PREFIX + "Der API-Key konnte nicht aus KeePass"));
     }
 
+    /** Ein KeePass-Aussetzer nach allen Wiederholungen ist kein falscher API-Key; ein echtes 401 bleibt Anmeldefehler. */
+    @Test
+    public void transientKeePassFailureIsNotShownAsLoginFailure() {
+        String text = ChatServiceBinding.describe(new ChatCompletionException(ChatErrorKind.CREDENTIALS_UNAVAILABLE,
+                "token source temporarily unavailable: SecretAccessException"));
+        String[] lines = text.split("\n");
+        assertEquals("Der API-Key konnte nach mehreren Versuchen nicht aus KeePass gelesen werden. KeePassRPC war "
+                + "vorübergehend nicht verfügbar.", lines[0]);
+        assertFalse(text, text.contains("Anmeldung am KI-Dienst fehlgeschlagen"));
+        assertTrue(lines[2], lines[2].startsWith(ChatServiceBinding.HINT_PREFIX + "KeePassRPC hat auch nach"));
+        assertTrue(ChatServiceBinding.headline(new ChatCompletionException(ChatErrorKind.AUTHENTICATION, 401,
+                "HTTP 401", null)).startsWith("Anmeldung am KI-Dienst fehlgeschlagen."));
+    }
+
     private final class Fixture {
         final ChatShellModel model = new ChatShellModel(() -> 0L);
         final ChatServiceBinding binding = new ChatServiceBinding(service, conversation, model, EDT);

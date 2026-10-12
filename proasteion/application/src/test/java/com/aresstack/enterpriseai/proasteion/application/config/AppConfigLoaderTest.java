@@ -96,6 +96,45 @@ public class AppConfigLoaderTest {
         assertEquals(0, zero.evidence().maxFollowUps());
     }
 
+    /** Ältere Dateien ohne die neuen Schlüssel bekommen die Standard-Wiederholungen; 0 schaltet sie ab. */
+    @Test
+    public void retriesHaveBackwardCompatibleDefaultsAndAreConfigurable() throws Exception {
+        Properties p = minimal();
+        AppConfig defaults = AppConfigLoader.fromProperties(p);
+        assertEquals(10000, defaults.chat().connectTimeoutMillis());
+        assertEquals(120000, defaults.chat().readTimeoutMillis());
+        assertEquals(2, defaults.chat().retry().retries());
+        assertEquals(500L, defaults.chat().retry().initialDelayMillis());
+        assertEquals(2, defaults.keePass().retry().retries());
+        assertEquals(300L, defaults.keePass().retry().initialDelayMillis());
+        assertEquals(750L, defaults.keePass().retry().delayBeforeRetry(2));
+        assertEquals(2, defaults.knowledge().sourceRetry().retries());
+
+        p.setProperty("chat.retryCount", "0");
+        p.setProperty("security.keepass.retryCount", "5");
+        p.setProperty("security.keepass.retryDelayMillis", "100");
+        p.setProperty("knowledge.sources.retryCount", "1");
+        p.setProperty("knowledge.sources.retryDelayMillis", "0");
+        AppConfig set = AppConfigLoader.fromProperties(p);
+        assertEquals(0, set.chat().retry().retries());
+        assertEquals(5, set.keePass().retry().retries());
+        assertEquals(100L, set.keePass().retry().initialDelayMillis());
+        assertEquals(1, set.knowledge().sourceRetry().retries());
+        assertEquals("keine unbekannten Schlüssel: " + set.warnings(), defaults.warnings(), set.warnings());
+        assertEquals("die Wiederholungszahl tauscht die KeePass-Anbindung nicht aus",
+                defaults.keePass().toString(), set.keePass().toString());
+
+        p.setProperty("chat.retryCount", "-1");
+        p.setProperty("knowledge.sources.retryDelayMillis", "99999");
+        try {
+            AppConfigLoader.fromProperties(p);
+            fail();
+        } catch (AppConfigException e) {
+            assertTrue(e.problems().toString(), e.problems().toString().contains("chat.retryCount"));
+            assertTrue(e.problems().toString(), e.problems().toString().contains("knowledge.sources.retryDelayMillis"));
+        }
+    }
+
     @Test
     public void missingOrBlankSystemPromptMeansTheDefault() throws Exception {
         Properties p = minimal();

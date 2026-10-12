@@ -124,6 +124,9 @@ public class SettingsMapperTest {
         expected.setProperty("knowledge.enrichment.workers", "4");
         expected.setProperty("embedding.maxConcurrency", "4");
         expected.setProperty("knowledge.embeddingBatchSize", "16");
+        expected.setProperty("chat.connectTimeoutMillis", "10000");
+        expected.setProperty("chat.readTimeoutMillis", "120000");
+        expected.setProperty("security.keepass.timeoutMillis", "15000");
         assertEquals(expected, added);
         AppConfig config = AppConfigLoader.fromProperties(merged);
         assertEquals("test-chat", config.chat().model());
@@ -249,6 +252,53 @@ public class SettingsMapperTest {
         }
         assertNull("Beispielquellen der Vorlage gehören nicht in die erste eigene Konfiguration",
                 merged.getProperty("source.1.type"));
+    }
+
+    @Test
+    public void timeoutsAndRetriesAreLoadedSavedAndValidated() {
+        Properties current = valid();
+        SettingsForm defaults = SettingsMapper.fromProperties(current);
+        assertEquals("10000", defaults.chatConnectTimeoutMillis());
+        assertEquals("120000", defaults.chatReadTimeoutMillis());
+        assertEquals("2", defaults.chatRetryCount());
+        assertEquals("500", defaults.chatRetryDelayMillis());
+        assertEquals("15000", defaults.keePassTimeoutMillis());
+        assertEquals("2", defaults.keePassRetryCount());
+        assertEquals("300", defaults.keePassRetryDelayMillis());
+        assertEquals("2", defaults.sourceRetryCount());
+        assertEquals("500", defaults.sourceRetryDelayMillis());
+        Properties unchanged = SettingsMapper.merge(current, defaults);
+        assertNull("Standard-Wiederholungen stehen nicht in der Datei", unchanged.getProperty("chat.retryCount"));
+        assertNull(unchanged.getProperty("security.keepass.retryCount"));
+        assertNull(unchanged.getProperty("knowledge.sources.retryCount"));
+
+        SettingsForm changed = defaults.toBuilder().chatReadTimeoutMillis("90000").chatRetryCount("4")
+                .chatRetryDelayMillis("1000").keePassTimeoutMillis("5000").keePassRetryCount("3")
+                .keePassRetryDelayMillis("200").sourceRetryCount("0").sourceRetryDelayMillis("250").build();
+        Properties merged = SettingsMapper.merge(current, changed);
+        assertEquals("4", merged.getProperty("chat.retryCount"));
+        assertEquals("3", merged.getProperty("security.keepass.retryCount"));
+        assertEquals("0", merged.getProperty("knowledge.sources.retryCount"));
+        AppConfig config = AppConfigLoader.fromProperties(merged);
+        assertEquals(90000, config.chat().readTimeoutMillis());
+        assertEquals(4, config.chat().retry().retries());
+        assertEquals(1000L, config.chat().retry().initialDelayMillis());
+        assertEquals(5000, config.keePass().rpc().timeoutMillis());
+        assertEquals(3, config.keePass().retry().retries());
+        assertEquals(200L, config.keePass().retry().initialDelayMillis());
+        assertEquals(0, config.knowledge().sourceRetry().retries());
+        assertEquals("4", SettingsMapper.fromProperties(merged).chatRetryCount());
+
+        Properties invalid = SettingsMapper.merge(current, changed.toBuilder().chatRetryCount("11")
+                .keePassRetryDelayMillis("-1").build());
+        try {
+            AppConfigLoader.fromProperties(invalid);
+            fail("außerhalb der Grenzen");
+        } catch (AppConfigException e) {
+            String described = SettingsMapper.describe(e.problems()).toString();
+            assertTrue(described, described.contains("Chat: Wiederholungen (chat.retryCount)"));
+            assertTrue(described, described.contains("(security.keepass.retryDelayMillis)"));
+        }
     }
 
     @Test

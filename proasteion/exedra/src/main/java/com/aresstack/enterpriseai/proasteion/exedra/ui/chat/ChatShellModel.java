@@ -409,15 +409,17 @@ public final class ChatShellModel {
         TranscriptEntry entry = requireStreaming();
         streamingEntry = null;
         boolean hadActivities = !activities.isEmpty();
-        // Wolken sind vergänglich (askai arch): mit dem Ende des Auftrags verlassen sie das Modell. Nur ein Fehler
-        // bleibt stehen, wenn der Auftrag selbst nicht regulär endete; nach einer Antwort war er nur ein Zwischenschritt
-        // (etwa eine übersprungene Seite).
+        // Wolken sind vergänglich (askai arch): nach einer Antwort verlassen sie das Modell. Endet der Auftrag mit einem
+        // Fehler oder Abbruch, bleiben alle Schritte des Turns mit ihrem tatsächlichen Endzustand stehen: ein später
+        // gescheiterter Modellaufruf löscht die vorher erfolgreich gelaufenen Suchen nicht aus dem Verlauf. Nur ein
+        // Schritt, der beim Ende noch lief (etwa die Recherche-Karte vor dem Stop), hat kein Ergebnis und entfällt.
         boolean answered = state == TranscriptEntry.State.COMPLETE;
         for (TranscriptEntry activity : activities.values()) {
-            if (activity.getState() == TranscriptEntry.State.STREAMING) {
+            boolean running = activity.getState() == TranscriptEntry.State.STREAMING;
+            if (running) {
                 activity.finishActivity(TranscriptEntry.State.CANCELLED, "");
             }
-            if (!answered && activity.getState() == TranscriptEntry.State.FAILED) {
+            if (!answered && !running) {
                 fireEntryUpdated(activity);
             } else {
                 entries.remove(activity);

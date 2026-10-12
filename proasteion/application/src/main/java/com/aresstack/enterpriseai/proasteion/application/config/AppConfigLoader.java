@@ -22,6 +22,7 @@ import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.embedding.openai.EmbeddingInputMode;
 import com.aresstack.enterpriseai.embedding.openai.OpenAiCompatibleEmbeddingConfiguration;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcConfig;
+import com.aresstack.enterpriseai.proasteion.application.retry.RetryPolicy;
 import com.aresstack.winproxy.ProxyMode;
 
 import java.io.IOException;
@@ -82,6 +83,18 @@ public final class AppConfigLoader {
     public static final String RETRIEVAL_RAW_WINDOW_CHARS_KEY = "retrieval.raw.windowChars";
     /** Werkzeugrunden je Antwort im normalen Chat (1–32, Standard 8), danach eine Abschlussrunde ohne Werkzeuge. */
     public static final String CHAT_TOOLS_MAX_ROUNDS_KEY = "chat.tools.maxRounds";
+    /** Fristen und Wiederholungen der Modellanfrage (Einstellungen → System → Zeitlimits und Wiederholungen). */
+    public static final String CHAT_CONNECT_TIMEOUT_KEY = "chat.connectTimeoutMillis";
+    public static final String CHAT_READ_TIMEOUT_KEY = "chat.readTimeoutMillis";
+    public static final String CHAT_RETRY_COUNT_KEY = "chat.retryCount";
+    public static final String CHAT_RETRY_DELAY_KEY = "chat.retryDelayMillis";
+    /** Frist und Wiederholungen der KeePassRPC-Zugriffe. */
+    public static final String KEEPASS_TIMEOUT_KEY = "security.keepass.timeoutMillis";
+    public static final String KEEPASS_RETRY_COUNT_KEY = "security.keepass.retryCount";
+    public static final String KEEPASS_RETRY_DELAY_KEY = "security.keepass.retryDelayMillis";
+    /** Wiederholungen der Quellenzugriffe (Live-Suche, Seitenabruf, Wissenssuche des Agenten). */
+    public static final String SOURCES_RETRY_COUNT_KEY = "knowledge.sources.retryCount";
+    public static final String SOURCES_RETRY_DELAY_KEY = "knowledge.sources.retryDelayMillis";
     /** Höchstzahl der Suchauszüge im RAG-Kontext einer normalen Chat-Antwort ({@link ContextSettings#maxSources()}). */
     public static final String CONTEXT_MAX_SOURCES_KEY = "context.maxSources";
     /** Token-Budget des RAG-Kontextblocks ({@link ContextSettings#maxContextTokens()}). */
@@ -248,8 +261,10 @@ public final class AppConfigLoader {
             r.problem("chat.apiKeyRef", "fehlt (Titel des KeePass-Eintrags mit dem API-Key)");
         }
         String systemPrompt = r.text("chat.systemPrompt", ChatConfig.DEFAULT_SYSTEM_PROMPT);
-        int connect = r.integer("chat.connectTimeoutMillis", 10000, 0, MAX_TIMEOUT);
-        int read = r.integer("chat.readTimeoutMillis", 120000, 0, MAX_TIMEOUT);
+        int connect = r.integer(CHAT_CONNECT_TIMEOUT_KEY, ChatConfig.DEFAULT_CONNECT_TIMEOUT_MILLIS, 0, MAX_TIMEOUT);
+        int read = r.integer(CHAT_READ_TIMEOUT_KEY, ChatConfig.DEFAULT_READ_TIMEOUT_MILLIS, 0, MAX_TIMEOUT);
+        RetryPolicy retry = retry(r, CHAT_RETRY_COUNT_KEY, ChatConfig.DEFAULT_RETRY_COUNT, CHAT_RETRY_DELAY_KEY,
+                ChatConfig.DEFAULT_RETRY_DELAY_MILLIS);
         DeveloperRolePolicy policy = r.enumValue("chat.developerRolePolicy", DeveloperRolePolicy.class,
                 DeveloperRolePolicy.REJECT);
         ChatOptions defaults;
@@ -279,7 +294,7 @@ public final class AppConfigLoader {
         int maxToolRounds = r.integer(CHAT_TOOLS_MAX_ROUNDS_KEY, ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS,
                 ChatCompletionsToolLoop.MIN_MAX_ROUNDS, ChatCompletionsToolLoop.MAX_MAX_ROUNDS);
         return new ChatConfig(baseUrl, model, apiKeyRef, systemPrompt, connect, read, policy, defaults, tools,
-                maxToolRounds);
+                maxToolRounds, retry);
     }
 
     /**
@@ -455,7 +470,20 @@ public final class AppConfigLoader {
                 r.integer(LIVE_SEARCH_HITS_PER_SOURCE_KEY, LiveSearchConfig.DEFAULT_HITS_PER_SOURCE, 1,
                         LiveSearchConfig.MAX_HITS_PER_SOURCE));
         return new KnowledgeConfig(indexDirectory, chunking, batch, retrieval, context, prefetch,
-                passageLanguage, evidence, liveSearch);
+                passageLanguage, evidence, liveSearch, retry(r, SOURCES_RETRY_COUNT_KEY,
+                        KnowledgeConfig.DEFAULT_SOURCE_RETRY_COUNT, SOURCES_RETRY_DELAY_KEY,
+                        KnowledgeConfig.DEFAULT_SOURCE_RETRY_DELAY_MILLIS));
+    }
+
+    /**
+     * Eine Wiederholungsregel aus Anzahl (0–{@link RetryPolicy#MAX_RETRIES}, 0 = nie wiederholen) und Anfangspause
+     * (0–{@link RetryPolicy#MAX_INITIAL_DELAY_MILLIS} ms). Fehlen beide Schlüssel, gilt der Standard.
+     */
+    private static RetryPolicy retry(ConfigReader r, String countKey, int defaultCount, String delayKey,
+                                     int defaultDelay) {
+        int count = r.integer(countKey, defaultCount, 0, RetryPolicy.MAX_RETRIES);
+        int delay = r.integer(delayKey, defaultDelay, 0, RetryPolicy.MAX_INITIAL_DELAY_MILLIS);
+        return RetryPolicy.of(count, delay);
     }
 
     /**
@@ -564,14 +592,15 @@ public final class AppConfigLoader {
                     .origin(r.text("security.keepass.origin", KeePassRpcConfig.DEFAULT_ORIGIN))
                     .clientId(r.text("security.keepass.clientId", KeePassRpcConfig.DEFAULT_CLIENT_ID))
                     .clientDisplayName(r.text("security.keepass.clientDisplayName", "Enterprise AI Client"))
-                    .timeoutMillis(r.integer("security.keepass.timeoutMillis", KeePassRpcConfig.DEFAULT_TIMEOUT_MILLIS,
+                    .timeoutMillis(r.integer(KEEPASS_TIMEOUT_KEY, KeePassRpcConfig.DEFAULT_TIMEOUT_MILLIS,
                             1, MAX_TIMEOUT))
                     .build();
         } catch (IllegalArgumentException e) {
             r.problem("security.keepass.*", "KeePassRPC-Einstellung ungültig (siehe Beispielkonfiguration)");
             rpc = KeePassRpcConfig.defaults();
         }
-        return new KeePassConfig(enabled, rpc, keyFile);
+        return new KeePassConfig(enabled, rpc, keyFile, retry(r, KEEPASS_RETRY_COUNT_KEY,
+                KeePassConfig.DEFAULT_RETRY_COUNT, KEEPASS_RETRY_DELAY_KEY, KeePassConfig.DEFAULT_RETRY_DELAY_MILLIS));
     }
 
     /**

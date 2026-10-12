@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.acp.research;
 
+import com.aresstack.enterpriseai.research.runtime.search.provider.RetryingSearchProvider;
 import com.aresstack.enterpriseai.research.runtime.acquire.ServiceSearchScopeControlPort;
 import com.aresstack.enterpriseai.research.runtime.loop.EnvironmentRunBudget;
 import com.aresstack.enterpriseai.research.runtime.loop.ResearchLoop;
@@ -130,7 +131,10 @@ final class ResearchRun {
                 report("SEARCHING", query, "", "", running.getProgress());
             }
         });
-        loop.setSearchStrategy(new SingleProviderSearchStrategy(provider, SearchEngine.PROVIDER_DEFAULT),
+        // Ein kurz gescheiterter Aufruf von knowledge_search wird nach der Einstellung des Hosts wiederholt
+        // (knowledge.sources.retry*), statt die Suche dieser Runde sofort aufzugeben.
+        loop.setSearchStrategy(new SingleProviderSearchStrategy(
+                RetryingSearchProvider.fromEnvironment(provider, environment), SearchEngine.PROVIDER_DEFAULT),
                 "Wissensquellen");
         loop.setSourceAcceptancePort(pages.acceptance());
         loop.setReranker(new Bm25CandidateReranker());

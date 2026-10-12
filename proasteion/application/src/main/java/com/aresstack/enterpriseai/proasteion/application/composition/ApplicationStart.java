@@ -12,6 +12,8 @@ import com.aresstack.enterpriseai.proasteion.application.knowledge.SourcePartiti
 import com.aresstack.enterpriseai.proasteion.application.net.LiveNetwork;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.application.security.LiveSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.RetryingSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.retry.RetryPolicy;
 import com.aresstack.enterpriseai.proasteion.application.security.ProxyAuthenticator;
 import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
@@ -94,10 +96,14 @@ public final class ApplicationStart {
                 + networkConfig.describeTrust());
         LOG.info("User-Agent: " + network.current().userAgent());
         ProxyAuthenticator.allowBasicTunneling();
-        final LiveSecretProvider secrets = new LiveSecretProvider(vault(config, prompts));
+        // KeePass-Wiederholungen gelten ohne Neustart und ohne neue Anbindung (kein neues Pairing): der Decorator liest
+        // die Regel je Zugriff aus diesem Halter, den das Laden der Einstellungen nachführt.
+        final AtomicReference<RetryPolicy> keePassRetry = new AtomicReference<RetryPolicy>(config.keePass().retry());
+        final LiveSecretProvider secrets = new LiveSecretProvider(vault(config, prompts, keePassRetry));
         // Zugang „KeePass“ ohne eingetragene URL: die Basis-URL steht im KeePass-Eintrag des API-Keys.
         config = AdapterAssembly.withVaultLocations(config, file.read(), secrets);
-        final SettingsService settings = new SettingsService(config, settingsLoader(file, secrets, config, prompts));
+        final SettingsService settings = new SettingsService(config, settingsLoader(file, secrets, config, prompts,
+                keePassRetry));
         final ApplicationPorts ports = AdapterAssembly.createWith(config, network, secrets, partitions);
         adoptSourceAddresses(file, ports, settings);
         applyProxyAuthentication(null, config, ports, localVoices);
@@ -144,10 +150,15 @@ public final class ApplicationStart {
         };
     }
 
-    /** Der KeePass- bzw. „Manuell“-Port nach den KeePass-Einstellungen, mit Pairing-Dialog für deren Adresse. */
-    private static SecretProvider vault(AppConfig config, UserPrompts prompts) {
-        return AdapterAssembly.secrets(config, prompts.pairing(
-                config.keePass().rpc().host() + ":" + config.keePass().rpc().port()), prompts.credentials());
+    /**
+     * Der KeePass- bzw. „Manuell“-Port nach den KeePass-Einstellungen, mit Pairing-Dialog für deren Adresse; lesende
+     * Zugriffe wiederholt er, solange KeePassRPC vorübergehend nicht erreichbar ist ({@code security.keepass.retry*}).
+     */
+    private static SecretProvider vault(AppConfig config, UserPrompts prompts,
+                                        final AtomicReference<RetryPolicy> retry) {
+        return new RetryingSecretProvider(AdapterAssembly.secrets(config, prompts.pairing(
+                config.keePass().rpc().host() + ":" + config.keePass().rpc().port()), prompts.credentials()),
+                retry::get);
     }
 
     /**
@@ -156,16 +167,18 @@ public final class ApplicationStart {
      */
     private static SettingsService.Loader settingsLoader(final ConfigurationFile file,
                                                          final LiveSecretProvider secrets, AppConfig started,
-                                                         final UserPrompts prompts) {
+                                                         final UserPrompts prompts,
+                                                         final AtomicReference<RetryPolicy> keePassRetry) {
         final AtomicReference<String> keePass = new AtomicReference<String>(started.keePass().toString());
         return new SettingsService.Loader() {
             @Override
             public AppConfig load() throws IOException {
                 Properties properties = file.read();
                 AppConfig loaded = AppConfigLoader.fromProperties(properties);
+                keePassRetry.set(loaded.keePass().retry());
                 String vault = loaded.keePass().toString();
                 if (!vault.equals(keePass.get())) {
-                    secrets.replace(vault(loaded, prompts));
+                    secrets.replace(vault(loaded, prompts, keePassRetry));
                     keePass.set(vault);
                     LOG.info("KeePass-Anbindung neu: " + vault);
                 }
