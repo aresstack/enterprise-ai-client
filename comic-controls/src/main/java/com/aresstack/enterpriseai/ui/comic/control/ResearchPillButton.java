@@ -22,7 +22,7 @@ public class ResearchPillButton extends JButton {
     private final int paddingH;
     private Color normalFill = ResearchUiPalette.SECONDARY_SURFACE;
     private Color hoverFill = ResearchUiPalette.SECONDARY_HOVER;
-    private Color pressedFill = ResearchUiPalette.PURPLE_PRIMARY;
+    private Color pressedFill = ResearchUiPalette.ACCENT_BLUE;
     private Color normalForeground = ResearchUiPalette.TEXT_PRIMARY;
     private Color hoverForeground = ResearchUiPalette.TEXT_PRIMARY;
     private Color pressedForeground = Color.WHITE;

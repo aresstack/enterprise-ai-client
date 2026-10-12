@@ -24,18 +24,14 @@ public final class ResearchUiPalette {
     public static final Color TEXT_MUTED = new Color(0xADB5C7);
     public static final Color TEXT_DARK = new Color(0x171C29);
 
-    public static final Color PURPLE_PRIMARY = new Color(0x5E3BA3);
-    public static final Color PURPLE_ACTION = new Color(0x754DB8);
-    /** Hover shade between primary and action purple (phase pill hover). */
-    public static final Color PURPLE_HOVER = new Color(0x6943AD);
-
     public static final Color BORDER_DARK = new Color(0x5E6370);
     public static final Color BORDER_WINDOW = new Color(0x38404D);
 
     /**
      * THE AskAI accent blue of the active navigation (the highlighted Chats ribbon entry / composer
-     * primary — {@code ChatComposerPanel} reads its PRIMARY from here). The phase selector and the
-     * chat-list selection use exactly this token; no second blue palette exists.
+     * primary — {@code ChatComposerPanel} reads its PRIMARY from here). The phase selector, the
+     * chat-list selection and the pressed state of {@code ResearchPillButton} ("+ Neuer Chat") use
+     * exactly this token; no second blue palette and no purple accent exist.
      */
     public static final Color ACCENT_BLUE = new Color(0x2979FF);
     /** The destructive red of the composer family (delete-all hover, stop button). */
