@@ -23,7 +23,6 @@ import javax.swing.Box;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JSeparator;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Font;
@@ -55,7 +54,9 @@ final class FlexmarkSwingRenderer {
     }
 
     JPanel render(String markdown, boolean renderMermaid) {
-        String source = markdown == null ? "" : markdown;
+        // Sonderleerzeichen hinter Blockmarken ersetzt BlockMarkerSpacing Zeichen für Zeichen: Die Länge bleibt,
+        // die Quellpositionen gelten weiter für den übergebenen Text.
+        String source = BlockMarkerSpacing.normalize(markdown == null ? "" : markdown);
         String fenced = SvgMarkdownBlocks.fence(source);
         Node document = parser.parse(fenced);
         // Nur wenn der geparste Text der übergebene ist, stimmen die Quellpositionen der Blöcke mit ihm überein.
@@ -122,9 +123,7 @@ final class FlexmarkSwingRenderer {
             return new MarkdownTablePanel((TableBlock) node, theme, inlineRenderer, linkOpener);
         }
         if (node instanceof ThematicBreak) {
-            JSeparator separator = new JSeparator();
-            separator.setForeground(theme.getSeparatorColor());
-            return separator;
+            return new MarkdownRule(theme.getSeparatorColor());
         }
         if (node.hasChildren()) {
             return renderContainer(node, renderMermaid, allowUnwrap);

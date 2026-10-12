@@ -23,6 +23,7 @@ public final class MarkdownTheme {
     private final Color quoteBorder;
     private final Color separatorColor;
     private final Color errorForeground;
+    private final Color tableHeaderBackground;
 
     public MarkdownTheme(Font bodyFont,
                          Font codeFont,
@@ -42,6 +43,9 @@ public final class MarkdownTheme {
         this.quoteBorder = quoteBorder;
         this.separatorColor = separatorColor;
         this.errorForeground = errorForeground;
+        // Der Tabellenkopf hebt sich eine Stufe vom Zellgrund ab, ohne eine eigene Farbe einzuführen.
+        this.tableHeaderBackground = codeBackground == null || foreground == null
+                ? codeBackground : blend(codeBackground, foreground, 0.12f);
     }
 
     /**
@@ -132,6 +136,11 @@ public final class MarkdownTheme {
 
     public Color getSeparatorColor() {
         return separatorColor;
+    }
+
+    /** Grund des Tabellenkopfs: der Zellgrund ({@link #getCodeBackground()}) eine Stufe zur Schrift hin. */
+    public Color getTableHeaderBackground() {
+        return tableHeaderBackground;
     }
 
     public Color getErrorForeground() {

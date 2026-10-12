@@ -82,11 +82,11 @@ public final class MermaidViewerDialog extends JDialog {
         final JLayeredPane layered = new JLayeredPane();
         layered.setLayout(null);
 
-        final OverlayButton zoomOut = new OverlayButton("➖", ZOOM_BUTTON_SIZE, "Verkleinern (−)");
-        final OverlayButton zoomIn = new OverlayButton("➕", ZOOM_BUTTON_SIZE, "Vergrößern (+)");
-        final OverlayButton zoomReset = new OverlayButton("🔄", ZOOM_BUTTON_SIZE, "Einpassen (0)");
-        final OverlayButton copyBtn = new OverlayButton("⧉", OVERLAY_SIZE, "Bild kopieren");
-        final OverlayButton saveBtn = new OverlayButton("💾", OVERLAY_SIZE, "Als PNG speichern");
+        final OverlayButton zoomOut = new OverlayButton(DiagramViewerIcons.zoomOut(), ZOOM_BUTTON_SIZE, "Verkleinern (−)");
+        final OverlayButton zoomIn = new OverlayButton(DiagramViewerIcons.zoomIn(), ZOOM_BUTTON_SIZE, "Vergrößern (+)");
+        final OverlayButton zoomReset = new OverlayButton(DiagramViewerIcons.fit(), ZOOM_BUTTON_SIZE, "Einpassen (0)");
+        final OverlayButton copyBtn = new OverlayButton(DiagramViewerIcons.copy(), OVERLAY_SIZE, "Bild kopieren");
+        final OverlayButton saveBtn = new OverlayButton(DiagramViewerIcons.save(), OVERLAY_SIZE, "Als PNG speichern");
 
         layered.add(imagePanel, JLayeredPane.DEFAULT_LAYER);
         layered.add(zoomOut, JLayeredPane.PALETTE_LAYER);
@@ -420,14 +420,13 @@ public final class MermaidViewerDialog extends JDialog {
 
     /** Halbtransparenter runder Überlagerungsknopf. */
     private static final class OverlayButton extends JPanel {
-        OverlayButton(String symbol, int size, String tooltip) {
+        OverlayButton(javax.swing.Icon symbol, int size, String tooltip) {
             super(new BorderLayout());
             setOpaque(false);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             setToolTipText(tooltip);
             JLabel label = new JLabel(symbol, SwingConstants.CENTER);
             label.setForeground(new Color(255, 255, 255, 210));
-            label.setFont(label.getFont().deriveFont(Font.BOLD, 16f));
             add(label, BorderLayout.CENTER);
             setPreferredSize(new Dimension(size, size));
         }

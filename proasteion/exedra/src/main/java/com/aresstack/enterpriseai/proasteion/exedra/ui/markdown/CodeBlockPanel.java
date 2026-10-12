@@ -38,11 +38,14 @@ final class CodeBlockPanel extends JPanel {
         textArea.setFont(theme.getCodeFont());
         textArea.setForeground(theme.getForeground());
         textArea.setBackground(theme.getCodeBackground());
+        textArea.setSelectionColor(theme.getQuoteBorder());
+        textArea.setSelectedTextColor(theme.getForeground());
+        textArea.setCaretColor(theme.getForeground());
         textArea.setBorder(BorderFactory.createEmptyBorder(4, 2, 2, 2));
         textArea.setLineWrap(false);
 
         // Volle Höhe bis zur Kappung, darüber vertikal scrollbar; ein nötiger horizontaler Balken wird eingerechnet.
-        CappedScrollPane scrollPane = new CappedScrollPane(textArea, 200, 8);
+        CappedScrollPane scrollPane = new CappedScrollPane(textArea, 200, 8, theme);
         scrollPane.setBorder(null);
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);

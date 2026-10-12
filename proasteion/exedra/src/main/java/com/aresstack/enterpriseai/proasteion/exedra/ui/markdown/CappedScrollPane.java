@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.markdown;
 
 import com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight;
+import com.aresstack.enterpriseai.ui.comic.control.ComicScrollBarUI;
 
 import javax.swing.JScrollPane;
 import javax.swing.JViewport;
@@ -14,6 +15,10 @@ import java.awt.Insets;
  * horizontalen Scrollbalken, wird dessen Höhe eingerechnet, damit er nicht den Ausschnitt verkleinert und einem kurzen
  * Block zusätzlich einen vertikalen Scrollbalken beschert. Die Höhe hängt damit von der Breite ab
  * ({@link WidthAwareHeight}), was {@link MarkdownHeights} beim Layout der Blase berücksichtigt.
+ *
+ * <p>Beide Balken tragen die schlanken Comic-Balken ({@link ComicScrollBarUI}, ohne Pfeilknöpfe, transparente
+ * Schiene); der Daumen nimmt die gedämpfte Schriftfarbe der Blase und beim Ziehen ihre volle Schriftfarbe, damit er
+ * auf jeder Blasenfarbe sichtbar bleibt.</p>
  */
 class CappedScrollPane extends JScrollPane implements WidthAwareHeight {
 
@@ -26,11 +31,15 @@ class CappedScrollPane extends JScrollPane implements WidthAwareHeight {
      * @param view           der Inhalt (Textfläche oder Tabelle), der seine natürliche Größe meldet
      * @param preferredWidth die Wunschbreite, solange die Umgebung noch keine Breite vorgibt
      * @param extraHeight    Luft um den Inhalt, die zur natürlichen Höhe vor der Kappung hinzukommt
+     * @param theme          liefert die Daumenfarben der Comic-Balken
      */
-    CappedScrollPane(Component view, int preferredWidth, int extraHeight) {
+    CappedScrollPane(Component view, int preferredWidth, int extraHeight, MarkdownTheme theme) {
         super(view);
         this.preferredWidth = preferredWidth;
         this.extraHeight = extraHeight;
+        ComicScrollBarUI.install(getVerticalScrollBar(), theme.getMutedForeground(), theme.getForeground());
+        ComicScrollBarUI.install(getHorizontalScrollBar(), theme.getMutedForeground(), theme.getForeground());
+        setOpaque(false);
         setHorizontalScrollBarPolicy(HORIZONTAL_SCROLLBAR_AS_NEEDED);
         // Ab der Kappung scrollt der Inhalt vertikal, statt die restlichen Zeilen abzuschneiden.
         setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_AS_NEEDED);

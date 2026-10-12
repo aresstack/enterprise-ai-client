@@ -8,17 +8,21 @@ import com.vladsch.flexmark.util.ast.Node;
 
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.TableColumnModelEvent;
 import javax.swing.event.TableColumnModelListener;
+import javax.swing.plaf.basic.BasicTableHeaderUI;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.text.View;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -44,12 +48,14 @@ final class MarkdownTablePanel extends CappedScrollPane {
 
     static final int MAX_COLUMN_WIDTH = 420;
     private static final int CELL_PADDING = 18;
+    /** Stärke der Linie unter dem Spaltenkopf. */
+    private static final int HEADER_RULE = 2;
 
     private final DesktopLinkOpener linkOpener;
 
     MarkdownTablePanel(TableBlock tableBlock, MarkdownTheme theme, InlineMarkdownRenderer inlineRenderer,
                        DesktopLinkOpener linkOpener) {
-        super(new JTable(createModel(tableBlock, theme, inlineRenderer)), 400, 4);
+        super(new JTable(createModel(tableBlock, theme, inlineRenderer)), 400, 4, theme);
         this.linkOpener = linkOpener;
         final JTable table = (JTable) getViewport().getView();
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
@@ -69,25 +75,34 @@ final class MarkdownTablePanel extends CappedScrollPane {
         table.setIntercellSpacing(new Dimension(8, 4));
         table.setRowHeight(minimumRowHeight(table));
         JTableHeader header = table.getTableHeader();
-        header.setFont(theme.getBodyFont().deriveFont(Font.BOLD));
-        installRenderers(table, header);
+        installHeader(header, theme);
+        table.setDefaultRenderer(Object.class, new RichCellRenderer());
         fitColumns(table);
         updateRowHeights(table);
         table.getColumnModel().addColumnModelListener(new RowHeightUpdater(table));
         installLinkHandling(table);
         setBorder(BorderFactory.createLineBorder(theme.getSeparatorColor()));
+        // Steht rechts neben dem Kopf ein vertikaler Balken, setzt die Ecke den Kopf fort statt eines grauen Kastens.
+        JComponent corner = new JPanel();
+        corner.setBackground(theme.getTableHeaderBackground());
+        corner.setBorder(BorderFactory.createMatteBorder(0, 0, HEADER_RULE, 0, theme.getQuoteBorder()));
+        setCorner(UPPER_RIGHT_CORNER, corner);
     }
 
     /**
-     * Zellen zeigen ihren gesetzten Inhalt; Spaltentitel bleiben Text und werden nie als Swing-HTML gedeutet (ein
-     * „&lt;html&gt;…“ aus der Modellantwort bleibt Text).
+     * Der Spaltenkopf im Comic-Stil statt im Look-and-Feel (unter Windows ein gewölbter grauer Kopf): flacher Grund
+     * eine Stufe über den Zellen, fette Blasenschrift, linksbündig wie die Zellen, darunter eine kräftigere Linie.
+     * Die Basis-UI zeichnet nur die Renderer; Spalten lassen sich weiter in der Breite ziehen, aber nicht verschieben.
      */
-    private static void installRenderers(JTable table, JTableHeader header) {
-        table.setDefaultRenderer(Object.class, new RichCellRenderer());
-        TableCellRenderer headerRenderer = header.getDefaultRenderer();
-        if (headerRenderer instanceof JComponent) {
-            ((JComponent) headerRenderer).putClientProperty("html.disable", Boolean.TRUE);
-        }
+    private static void installHeader(JTableHeader header, MarkdownTheme theme) {
+        header.setUI(new BasicTableHeaderUI());
+        header.setReorderingAllowed(false);
+        header.setOpaque(true);
+        header.setBackground(theme.getTableHeaderBackground());
+        header.setForeground(theme.getForeground());
+        header.setFont(theme.getBodyFont().deriveFont(Font.BOLD));
+        header.setBorder(null);
+        header.setDefaultRenderer(new HeaderRenderer(theme));
     }
 
     private static DefaultTableModel createModel(TableBlock tableBlock, MarkdownTheme theme,
@@ -271,6 +286,41 @@ final class MarkdownTablePanel extends CappedScrollPane {
         @Override
         public String toString() {
             return text;
+        }
+    }
+
+    /**
+     * Spaltentitel als flaches Etikett; Titel bleiben Text und werden nie als Swing-HTML gedeutet (ein
+     * „&lt;html&gt;…“ aus der Modellantwort bleibt Text).
+     */
+    static final class HeaderRenderer extends JLabel implements TableCellRenderer {
+
+        private final Color rule;
+        private final Color divider;
+
+        HeaderRenderer(MarkdownTheme theme) {
+            putClientProperty("html.disable", Boolean.TRUE);
+            setOpaque(true);
+            setHorizontalAlignment(LEFT);
+            setVerticalAlignment(CENTER);
+            setBackground(theme.getTableHeaderBackground());
+            setForeground(theme.getForeground());
+            setFont(theme.getBodyFont().deriveFont(Font.BOLD));
+            this.rule = theme.getQuoteBorder();
+            this.divider = theme.getSeparatorColor();
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                                                       boolean hasFocus, int row, int column) {
+            setText(value == null ? "" : value.toString());
+            boolean last = table != null && column == table.getColumnCount() - 1;
+            setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(0, 0, HEADER_RULE, 0, rule),
+                    BorderFactory.createCompoundBorder(
+                            BorderFactory.createMatteBorder(0, 0, 0, last ? 0 : 1, divider),
+                            BorderFactory.createEmptyBorder(5, 6, 5, 6))));
+            return this;
         }
     }
 

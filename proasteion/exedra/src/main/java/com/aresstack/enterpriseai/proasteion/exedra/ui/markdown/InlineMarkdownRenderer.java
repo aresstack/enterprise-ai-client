@@ -44,6 +44,9 @@ final class InlineMarkdownRenderer {
         WrappingTextPane pane = new WrappingTextPane();
         pane.setFont(font);
         pane.setForeground(theme.getForeground());
+        // Markierung aus der Blasenfarbe statt des Look-and-Feel-Blaus; die Schrift bleibt lesbar.
+        pane.setSelectionColor(theme.getQuoteBorder());
+        pane.setSelectedTextColor(theme.getForeground());
         renderChildren(container, pane.getStyledDocument(), attributes(font));
         installLinkHandling(pane);
         return pane;

@@ -88,11 +88,11 @@ public final class MermaidViewerPanel extends JPanel {
         busy.setForeground(new Color(70, 70, 70, 200)); // legible on the (light) default surface
         busy.setFont(busy.getFont().deriveFont(Font.ITALIC, 12f));
 
-        final ViewerButton zoomOut = new ViewerButton("➖", 36, "Verkleinern (−)");
-        final ViewerButton zoomIn = new ViewerButton("➕", 36, "Vergrößern (+)");
-        final ViewerButton zoomFit = new ViewerButton("🔄", 36, "Einpassen (0)");
-        final ViewerButton copy = new ViewerButton("⧉", 36, "Bild kopieren");
-        final ViewerButton save = new ViewerButton("💾", 36, "Als PNG speichern");
+        final ViewerButton zoomOut = new ViewerButton(DiagramViewerIcons.zoomOut(), 36, "Verkleinern (−)");
+        final ViewerButton zoomIn = new ViewerButton(DiagramViewerIcons.zoomIn(), 36, "Vergrößern (+)");
+        final ViewerButton zoomFit = new ViewerButton(DiagramViewerIcons.fit(), 36, "Einpassen (0)");
+        final ViewerButton copy = new ViewerButton(DiagramViewerIcons.copy(), 36, "Bild kopieren");
+        final ViewerButton save = new ViewerButton(DiagramViewerIcons.save(), 36, "Als PNG speichern");
         zoomOut.onClick(() -> {
             canvas.zoomAt(1.0 / 1.25, null);
             updateInfo();
@@ -331,8 +331,8 @@ public final class MermaidViewerPanel extends JPanel {
                         + "Quelltext:\n" + diagramCode);
         details.setEditable(false);
         details.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        JScrollPane scroll = new JScrollPane(details);
-        scroll.setBorder(null);
+        JScrollPane scroll = new com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane(details,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         add(scroll, BorderLayout.CENTER);
         revalidate();
         repaint();
@@ -518,14 +518,13 @@ public final class MermaidViewerPanel extends JPanel {
     private static final class ViewerButton extends JPanel {
         private Runnable action;
 
-        ViewerButton(String symbol, int size, String tooltip) {
+        ViewerButton(javax.swing.Icon symbol, int size, String tooltip) {
             super(new BorderLayout());
             setOpaque(false);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             setToolTipText(tooltip);
             JLabel label = new JLabel(symbol, SwingConstants.CENTER);
             label.setForeground(new Color(255, 255, 255, 210));
-            label.setFont(label.getFont().deriveFont(Font.BOLD, 15f));
             add(label, BorderLayout.CENTER);
             setPreferredSize(new Dimension(size, size));
             addMouseListener(new MouseAdapter() {
