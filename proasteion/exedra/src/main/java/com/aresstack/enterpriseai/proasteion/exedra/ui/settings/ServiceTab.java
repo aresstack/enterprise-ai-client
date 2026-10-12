@@ -67,7 +67,7 @@ final class ServiceTab {
         secretCheckRow = chat.component(null, secretCheck, null);
         manualUrlRow = chat.textField(manualUrl, "Basis-URL *",
                 "Absolute http(s)-URL ohne Zugangsdaten, Query oder Fragment; meist bis /v1");
-        chatSystemPrompt = chat.textArea("System-Prompt", 3, "Optional: erste Nachricht jeder Konversation");
+        chatSystemPrompt = chat.textArea("System-Prompt", 6, "Erste Nachricht jeder Konversation; leer = Standard");
         advancedToggle = VaultAccess.advancedToggle(palette);
         chat.component(null, advancedToggle, null);
         overrideUrlRow = chat.textField(overrideUrl, "Basis-URL (sonst aus KeePass)",

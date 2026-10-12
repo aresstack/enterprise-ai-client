@@ -165,6 +165,8 @@ public class ApplicationCompositionTest {
     public void ragQuestionCarriesSourcesAndContextAfterIndexing() throws Exception {
         final CompositionRoot root = compose(false);
         indexAll(root);
+        // Erst prüft die Nachrecherche, ob der Kontext reicht (Nebenanfrage), dann kommt die Antwort.
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
         chatPort.enqueueAnswer("Am 31. März.");
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
         SwingUtilities.invokeAndWait(new Runnable() {
@@ -183,6 +185,8 @@ public class ApplicationCompositionTest {
         String system = chatPort.lastRequest().messages().get(0).content();
         assertTrue(system, system.contains("Antworte kurz."));
         assertTrue("Kontextblock im System-Anteil: " + system, system.contains("Resturlaub"));
+        assertTrue(system, system.contains("- Wann verfällt der Resturlaub?"));
+        assertEquals("Prüfung und Antwort", 2, chatPort.requests().size());
     }
 
     @Test

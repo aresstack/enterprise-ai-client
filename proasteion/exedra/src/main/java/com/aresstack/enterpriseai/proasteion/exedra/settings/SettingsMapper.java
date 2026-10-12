@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
@@ -96,7 +97,7 @@ public final class SettingsMapper {
         b.chatBaseUrl(text(p, KEY_CHAT_BASE_URL, ""));
         b.chatModel(text(p, KEY_CHAT_MODEL, ""));
         b.chatApiKeyRef(text(p, KEY_CHAT_API_KEY_REF, ""));
-        b.chatSystemPrompt(text(p, KEY_CHAT_SYSTEM_PROMPT, ""));
+        b.chatSystemPrompt(text(p, KEY_CHAT_SYSTEM_PROMPT, ChatConfig.DEFAULT_SYSTEM_PROMPT));
         b.embeddingBaseUrl(text(p, KEY_EMBEDDING_BASE_URL, ""));
         b.embeddingModel(text(p, KEY_EMBEDDING_MODEL, ""));
         b.embeddingDimension(text(p, KEY_EMBEDDING_DIMENSION, ""));

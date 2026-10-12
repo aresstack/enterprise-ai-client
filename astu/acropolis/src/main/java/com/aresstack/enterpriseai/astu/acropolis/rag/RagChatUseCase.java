@@ -7,6 +7,9 @@ import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 
+import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -21,6 +24,9 @@ import java.util.Set;
  *       Treffer baut der {@link PromptContextAssembler} zum Kontextblock, und
  *       {@link ChatService#sendWithContext} gibt ihn für genau diesen Turn als System-Anteil mit. In die
  *       Historie gelangen nur Nutzerfrage und Antwort.</li>
+ *   <li><b>Nachrecherche</b> ({@link FollowUpResearch}, wenn eingeschaltet): reicht der Kontext für die
+ *       Nachricht samt Verlauf nicht, wird mit einer genaueren Anfrage erneut gesucht (Live-Suche und Index), die
+ *       neuen Treffer stehen vorn. Danach nennt der Kontext die Suchanfragen und verbietet die Bitte um Dateien.</li>
  *   <li>Keine Treffer: Turn ohne Kontext, {@link RagChatTurn#sources()} ist leer.</li>
  *   <li>Retrieval ganz ausgefallen ({@link KnowledgeRetrievalException}): Turn ohne Kontext,
  *       {@link RagChatTurn#retrievalFailed()} ist gesetzt, damit die Oberfläche das anzeigen kann. Fällt nur ein
@@ -38,6 +44,7 @@ public final class RagChatUseCase {
     private final RetrieveKnowledgeUseCase retrieval;
     private final PromptContextAssembler assembler;
     private final RetrievalPreparation preparation;
+    private final FollowUpResearch followUps;
     /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
     private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
 
@@ -48,6 +55,12 @@ public final class RagChatUseCase {
     /** @param preparation läuft vor jedem Retrieval (z. B. Live-Suche der Quellen, die Treffer indexiert) */
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
                           RetrievalPreparation preparation) {
+        this(chat, retrieval, assembler, preparation, FollowUpResearch.off());
+    }
+
+    /** @param followUps ob und wie oft nachgesucht wird, wenn der Kontext die Nachricht nicht beantwortet */
+    public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
+                          RetrievalPreparation preparation, FollowUpResearch followUps) {
         if (chat == null || retrieval == null) {
             throw new IllegalArgumentException("chat und retrieval sind Pflicht");
         }
@@ -55,6 +68,7 @@ public final class RagChatUseCase {
         this.retrieval = retrieval;
         this.assembler = assembler == null ? new PromptContextAssembler(ContextSettings.defaults()) : assembler;
         this.preparation = preparation == null ? RetrievalPreparation.none() : preparation;
+        this.followUps = followUps == null ? FollowUpResearch.off() : followUps;
     }
 
     /** Der gemeinsame Chat-Use-Case, über den Konversationen verwaltet werden. */
@@ -119,26 +133,70 @@ public final class RagChatUseCase {
     private RagChatTurn sendWithRetrieval(ChatConversationId id, String userText, RagOptions rag,
                                           ChatOptions options, ChatTurnListener listener, String extraContext,
                                           ChatCompletionPort via) {
-        PromptContext context;
-        List<RetrievalWarning> warnings;
+        List<String> queries = new ArrayList<String>();
+        List<RetrievedChunk> hits = new ArrayList<RetrievedChunk>();
+        List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
         boolean failed = false;
-        try {
-            preparation.prepare(userText, rag.sources());
-        } catch (RuntimeException e) {
-            // Die Live-Suche ist eine Ergänzung; ohne sie antwortet der Turn aus dem vorhandenen Index.
+        List<ChatMessage> history = followUps.isEnabled()
+                ? chat.conversation(id).messages() : Collections.<ChatMessage>emptyList();
+        String query = userText;
+        while (query != null) {
+            queries.add(query);
+            try {
+                preparation.prepare(query, rag.sources());
+            } catch (RuntimeException e) {
+                // Die Live-Suche ist eine Ergänzung; ohne sie antwortet der Turn aus dem vorhandenen Index.
+            }
+            try {
+                RetrievalResult result = retrieval.retrieve(query, rag.sources());
+                hits = newestFirst(result.hits(), hits);
+                warnings.addAll(result.warnings());
+            } catch (KnowledgeRetrievalException e) {
+                if (queries.size() == 1) {
+                    warnings.addAll(e.warnings());
+                    failed = true;
+                }
+                break; // eine ausgefallene Nachsuche lässt den bisherigen Kontext stehen
+            }
+            if (queries.size() > followUps.maxFollowUps()) {
+                break;
+            }
+            query = followUps.nextQuery(chat, history, userText, queries, assembler.assemble(hits).text(),
+                    options);
         }
-        try {
-            RetrievalResult result = retrieval.retrieve(userText, rag.sources());
-            context = assembler.assemble(result.hits());
-            warnings = result.warnings();
-        } catch (KnowledgeRetrievalException e) {
-            context = PromptContext.empty(0);
-            warnings = e.warnings();
-            failed = true;
-        }
-        String combined = join(context.text(), extraContext);
+        PromptContext context = failed ? PromptContext.empty(0) : assembler.assemble(hits);
+        String combined = join(join(context.text(), followUps.isEnabled() ? searchNote(queries) : null),
+                extraContext);
         ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
-        return new RagChatTurn(turn, true, context, warnings, failed);
+        return new RagChatTurn(turn, true, context, warnings, failed, queries);
+    }
+
+    /** Die Treffer der neuesten Suche zuerst, danach die älteren, die sie nicht schon enthält. */
+    private static List<RetrievedChunk> newestFirst(List<RetrievedChunk> latest, List<RetrievedChunk> earlier) {
+        List<RetrievedChunk> merged = new ArrayList<RetrievedChunk>(latest);
+        Set<String> seen = new HashSet<String>();
+        for (RetrievedChunk hit : latest) {
+            seen.add(hit.chunk().id().value());
+        }
+        for (RetrievedChunk hit : earlier) {
+            if (seen.add(hit.chunk().id().value())) {
+                merged.add(hit);
+            }
+        }
+        return merged;
+    }
+
+    /** Was gesucht wurde, und dass eine Lücke nicht mit der Bitte um Dateien endet. */
+    static String searchNote(List<String> queries) {
+        StringBuilder note = new StringBuilder("In den angehakten Wissensquellen wurde gesucht mit:");
+        for (String query : queries) {
+            note.append("\n- ").append(query.replace('\r', ' ').replace('\n', ' ').trim());
+        }
+        note.append("\nBeantwortet der Kontext die Nachricht nicht, suche selbst mit knowledge_search und einer "
+                + "genaueren Anfrage und lies Treffer mit knowledge_read, sofern dir diese Werkzeuge zur Verfügung "
+                + "stehen. Reicht es danach immer noch nicht, sag das und nenne die Suchanfragen. Bitte den Nutzer "
+                + "nicht, Dateien oder Unterlagen anzuhängen: die Wissensquellen sind angehakt.");
+        return note.toString();
     }
 
     private static String join(String first, String second) {

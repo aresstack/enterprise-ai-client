@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 import com.aresstack.enterpriseai.astu.chat.ChatRequest;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -196,6 +197,21 @@ public final class ChatService {
                                     ChatTurnListener listener, ChatCompletionPort via) {
         return start(id, userText, context == null || context.trim().isEmpty() ? null : context, options, listener,
                 via == null ? chatPort : via);
+    }
+
+    /**
+     * Eine Nebenanfrage über den Standard-Port, die keine Konversation berührt (keine Historie, kein Turn), z. B. die
+     * Prüfung, ob gefundener Kontext eine Frage beantwortet. Blockiert bis zur Antwort.
+     *
+     * @param options überschreibt einzelne Standardoptionen dieses Service; {@code null} für keine
+     * @throws ChatCompletionException wenn der Provider nicht antwortet
+     */
+    public ChatResponse completeAside(List<ChatMessage> messages, ChatOptions options) {
+        if (messages == null || messages.isEmpty()) {
+            throw new IllegalArgumentException("messages must not be empty");
+        }
+        ChatOptions effective = options == null ? defaultOptions : options.withFallback(defaultOptions);
+        return chatPort.complete(new ChatRequest(new ArrayList<ChatMessage>(messages), effective));
     }
 
     private ChatTurn start(ChatConversationId id, String userText, String context, ChatOptions options,

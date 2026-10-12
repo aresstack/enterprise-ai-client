@@ -16,8 +16,9 @@ im Repository kommentiert jeden Wert.
 chat.baseUrl=https://ki.intern.example/v1
 chat.model=openai/gpt-oss-120b
 chat.apiKeyRef=keepass:Enterprise AI API
-# Optional
-chat.systemPrompt=Du bist ein hilfreicher Assistent. Antworte auf Deutsch.
+# Optional; fehlt der Eintrag oder ist er leer, gilt der Standard-Prompt (ChatConfig.DEFAULT_SYSTEM_PROMPT,
+# Wortlaut in der Beispielkonfiguration). Ein eigener Prompt bleibt unverändert.
+#chat.systemPrompt=Du bist ein hilfreicher Assistent. Antworte auf Deutsch.
 chat.connectTimeoutMillis=10000
 chat.readTimeoutMillis=120000
 chat.developerRolePolicy=REJECT

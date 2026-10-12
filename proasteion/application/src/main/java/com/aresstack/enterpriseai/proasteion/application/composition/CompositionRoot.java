@@ -37,6 +37,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingU
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTools;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
+import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.InMemoryResourceArchive;
@@ -200,7 +201,7 @@ public final class CompositionRoot {
             if (!result.failures().isEmpty()) {
                 LOG.info("Live-Suche für den Chat: " + result.failures());
             }
-        });
+        }, FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS));
         this.sourceSelection = new KnowledgeSourceSelection();
         for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
             boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt

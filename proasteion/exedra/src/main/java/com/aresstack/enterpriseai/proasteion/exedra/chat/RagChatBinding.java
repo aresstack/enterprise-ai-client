@@ -28,6 +28,7 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
+import com.aresstack.enterpriseai.astu.acropolis.tool.FixedAnswerPort;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolRegistry;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
@@ -68,9 +69,10 @@ import java.util.logging.Logger;
  *       nur RAG. Auf dem Werkzeugweg kommt der Hinweis deshalb erst nach der Antwort: hat {@code knowledge_read}
  *       eine Seite geliefert, heißt ein ausgefallener Suchpfad nicht „ohne Kontext“.</li>
  *   <li><b>Quellen</b>: gesucht wird nur in den Quellen, die der {@link RagSourceFilter} erlaubt (die Häkchen im
- *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche und ohne Hinweis als normaler Chat. Angehakt heißt
- *       „verfügbar“: ob vorab gesucht wird, entscheidet {@link KnowledgeQuestion} (Small Talk nie; mit
- *       {@code knowledge_search} nur bei erkennbarer Wissensfrage, sonst sucht das Modell selbst).</li>
+ *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche und ohne Hinweis als normaler Chat. Gesucht wird bei
+ *       jeder Nachricht außer Small Talk und Fragen nach dem Assistenten selbst ({@link KnowledgeQuestion}); reicht
+ *       der Kontext nicht, sucht der {@link RagChatUseCase} mit einer genaueren Anfrage nach. Eine Frage nach dem
+ *       Assistenten selbst beantwortet der Client aus den Werkzeugen des Turns ({@link ToolCapabilities}).</li>
  *   <li><b>Stop</b> während des Retrievals merkt sich den Wunsch und bricht den Turn ab, sobald er existiert;
  *       die Nutzerfrage bleibt dabei in der Historie (AP2-Regel), die Antwortblase endet als abgebrochen.</li>
  * </ul>
@@ -340,18 +342,18 @@ public final class RagChatBinding implements ChatShellActions {
                 && (ragOptions.isEnabled() || !chatPages.isEmpty());
         final boolean toolPath = tools != null && (tools.alwaysOn() || conversationHasAttachments
                 || !newFiles.isEmpty() || !chatPages.isEmpty() || knowledgeTools);
-        // Angehakte Quellen heißen „verfügbar“, nicht „bei jeder Nachricht suchen“: Small Talk und Fragen nach dem
-        // Assistenten selbst suchen nie; hat das Modell knowledge_search, sucht es selbst und vorab nur bei einer
-        // erkennbaren Wissensfrage.
-        if (ragOptions.isEnabled() && !KnowledgeQuestion.wantsRetrieval(text,
-                knowledgeTools && tools.knowledgeTool(KnowledgeMcpTools.KNOWLEDGE_SEARCH) != null)) {
+        // Small Talk und Fragen nach dem Assistenten selbst suchen nie; alles andere sucht in den angehakten Quellen,
+        // auch wenn das Modell knowledge_search hat (sonst antwortet es aus eigenem Wissen).
+        if (ragOptions.isEnabled() && !KnowledgeQuestion.wantsRetrieval(text)) {
             ragOptions = RagOptions.disabled();
         }
-        // Eine Frage nach den eigenen Werkzeugen beantwortet das Modell aus dem, was dieser Turn tatsächlich anbietet.
+        // Eine Frage nach dem Assistenten selbst beantwortet der Client aus dem, was dieser Turn tatsächlich anbietet;
+        // das Modell schreibt diese Antwort nicht (kein Selbstbild wie Modellname oder Wissensstand).
         final boolean capabilityQuestion = KnowledgeQuestion.isAssistantCapability(text);
         if (!ragOptions.isEnabled() && !toolPath) {
             startWithoutRetrieval(text, listener, capabilityQuestion
-                    ? ToolCapabilities.context(Collections.<ToolDefinition>emptyList(), chatModel) : null);
+                    ? new FixedAnswerPort(ToolCapabilities.answer(Collections.<ToolDefinition>emptyList(), chatModel))
+                    : null);
             return;
         }
         final RagOptions options = ragOptions;
@@ -401,10 +403,6 @@ public final class RagChatBinding implements ChatShellActions {
                                 available.addAll(support.knowledgeTools());
                             }
                             extraContext = join(attachments.context(), ChatBookmark.context(chatPages));
-                            if (capabilityQuestion) {
-                                extraContext = join(extraContext, ToolCapabilities.context(definitions(available,
-                                        support), chatOptions == null ? null : chatOptions.model()));
-                            }
                             // Wer während der Runde ein Werkzeug abschaltet (Reiter „Tools“), nimmt es ab dem
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
                             via = new ChatCompletionsToolLoop(support.chat(),
@@ -414,6 +412,10 @@ public final class RagChatBinding implements ChatShellActions {
                                 showActivity(listener, RETRIEVING_ACTIVITY);
                             } else {
                                 showActivity(listener, TOOLS_ACTIVITY);
+                            }
+                            if (capabilityQuestion) {
+                                via = new FixedAnswerPort(ToolCapabilities.answer(definitions(available, support),
+                                        chatOptions == null ? null : chatOptions.model()));
                             }
                         }
                         turn = rag.send(conversation, text, options, chatOptions, listener, extraContext, via);
@@ -474,10 +476,10 @@ public final class RagChatBinding implements ChatShellActions {
     }
 
     /** RAG aus: der bisherige Weg, synchron gestartet wie in {@link ChatServiceBinding}. */
-    private void startWithoutRetrieval(String text, TurnListener listener, String context) {
+    private void startWithoutRetrieval(String text, TurnListener listener, ChatCompletionPort via) {
         try {
-            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener, context,
-                    null).turn();
+            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener, null,
+                    via).turn();
             if (!turn.isDone()) {
                 runningTurn = turn;
             }

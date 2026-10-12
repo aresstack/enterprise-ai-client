@@ -18,14 +18,26 @@ public final class RagChatTurn {
     private final PromptContext context;
     private final List<RetrievalWarning> warnings;
     private final boolean retrievalFailed;
+    private final List<String> queries;
 
     RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
                 boolean retrievalFailed) {
+        this(turn, retrievalRequested, context, warnings, retrievalFailed, Collections.<String>emptyList());
+    }
+
+    RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
+                boolean retrievalFailed, List<String> queries) {
         this.turn = turn;
         this.retrievalRequested = retrievalRequested;
         this.context = context;
         this.warnings = Collections.unmodifiableList(new ArrayList<RetrievalWarning>(warnings));
         this.retrievalFailed = retrievalFailed;
+        this.queries = Collections.unmodifiableList(new ArrayList<String>(queries));
+    }
+
+    /** Die Suchanfragen dieser Nachricht, älteste zuerst (die erste ist die Nachricht selbst); leer bei RAG aus. */
+    public List<String> queries() {
+        return queries;
     }
 
     public ChatTurn turn() {

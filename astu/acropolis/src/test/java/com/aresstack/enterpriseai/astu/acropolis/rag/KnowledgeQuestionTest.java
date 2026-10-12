@@ -14,8 +14,7 @@ public class KnowledgeQuestionTest {
                 "ok", "Okay.", "Guten Morgen", "Wie geht's?", "Wie geht es dir?", "Tschüss, bis später", "👍",
                 "Super, danke!", "thanks"}) {
             assertTrue(message, KnowledgeQuestion.isSmallTalk(message));
-            assertFalse(message, KnowledgeQuestion.wantsRetrieval(message, true));
-            assertFalse(message, KnowledgeQuestion.wantsRetrieval(message, false));
+            assertFalse(message, KnowledgeQuestion.wantsRetrieval(message));
         }
     }
 
@@ -25,19 +24,18 @@ public class KnowledgeQuestionTest {
                 "Suche Seiten zu SonarQube.", "Erkläre mir den Build von IAR", "kannst du mir was über iar finden",
                 "Gibt es eine Doku zum Deployment", "IAR Installation?", "What is the release process"}) {
             assertFalse(message, KnowledgeQuestion.isSmallTalk(message));
-            assertTrue(message, KnowledgeQuestion.wantsRetrieval(message, true));
-            assertTrue(message, KnowledgeQuestion.wantsRetrieval(message, false));
+            assertTrue(message, KnowledgeQuestion.wantsRetrieval(message));
         }
     }
 
     @Test
-    public void otherMessagesLeaveTheSearchToTheModelWhenItHasTheTools() {
-        for (String message : new String[] {"Schreib mir ein Gedicht über Herbst", "IAR Installation",
-                "Danke, und jetzt die Installation von IAR"}) {
+    public void correctionsFollowUpsAndRequestsSearchToo() {
+        // Aus einem echten Verlauf: ohne Fragewort am Anfang antwortete das Modell aus eigenem Wissen.
+        for (String message : new String[] {"an kannst du mir sicherlich sagen was iar ist",
+                "das ist nicht was ich suche", "IAR Installation", "Danke, und jetzt die Installation von IAR",
+                "Schreib mir ein Gedicht über Herbst"}) {
             assertFalse(message, KnowledgeQuestion.isSmallTalk(message));
-            assertFalse(message, KnowledgeQuestion.wantsRetrieval(message, true));
-            assertTrue("ohne Werkzeuge ist die Vorabsuche der einzige Weg: " + message,
-                    KnowledgeQuestion.wantsRetrieval(message, false));
+            assertTrue(message, KnowledgeQuestion.wantsRetrieval(message));
         }
     }
 
@@ -49,8 +47,7 @@ public class KnowledgeQuestionTest {
                 "Welches Modell verwendest du?", "Kannst du Confluence durchsuchen?", "Was kannst du alles?",
                 "Hast du Zugriff auf das Internet?", "What tools do you have?"}) {
             assertEquals(message, KnowledgeQuestion.Kind.ASSISTANT_CAPABILITY, KnowledgeQuestion.classify(message));
-            assertFalse(message, KnowledgeQuestion.wantsRetrieval(message, true));
-            assertFalse(message, KnowledgeQuestion.wantsRetrieval(message, false));
+            assertFalse(message, KnowledgeQuestion.wantsRetrieval(message));
         }
     }
 
@@ -60,7 +57,7 @@ public class KnowledgeQuestionTest {
                 "Welche Tools gibt es für das Deployment?", "Hast du Infos zur Kündigungsfrist?",
                 "Welche MCP Tools nutzt IAR?", "Kannst du die Seite zu IAR lesen?"}) {
             assertEquals(message, KnowledgeQuestion.Kind.KNOWLEDGE_QUESTION, KnowledgeQuestion.classify(message));
-            assertTrue(message, KnowledgeQuestion.wantsRetrieval(message, true));
+            assertTrue(message, KnowledgeQuestion.wantsRetrieval(message));
         }
         assertEquals(KnowledgeQuestion.Kind.SMALL_TALK, KnowledgeQuestion.classify("Wie geht es dir?"));
         assertEquals(KnowledgeQuestion.Kind.OTHER, KnowledgeQuestion.classify("Schreib mir ein Gedicht"));

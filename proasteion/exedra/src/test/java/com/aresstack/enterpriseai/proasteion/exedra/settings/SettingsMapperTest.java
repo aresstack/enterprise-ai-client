@@ -59,6 +59,15 @@ public class SettingsMapperTest {
     }
 
     @Test
+    public void settingsShowTheDefaultSystemPromptWhenTheFileHasNone() {
+        Properties p = new Properties();
+        assertEquals(com.aresstack.enterpriseai.proasteion.application.config.ChatConfig.DEFAULT_SYSTEM_PROMPT,
+                SettingsMapper.fromProperties(p).chatSystemPrompt());
+        p.setProperty("chat.systemPrompt", "Sei knapp.");
+        assertEquals("Sei knapp.", SettingsMapper.fromProperties(p).chatSystemPrompt());
+    }
+
+    @Test
     public void readsTheManagedKeysIntoTheForm() {
         SettingsForm form = SettingsMapper.fromProperties(valid());
         assertEquals("Test-Client", form.windowTitle());

@@ -19,11 +19,10 @@ import java.util.Set;
  *       du recherchieren?“, „Welches Modell verwendest du?“): nie suchen. Die Antwort kommt aus dem Laufzeitzustand
  *       (angebotene Werkzeuge), nicht aus der Wissensbasis; deren Treffer zu „Recherche“ oder „Tool“ wären fremder
  *       Fachinhalt.</li>
- *   <li><b>Mit Wissens-Werkzeugen</b> ({@code knowledge_search}/{@code knowledge_read}): das Modell entscheidet
- *       selbst; vorab gesucht wird nur bei einer erkennbaren Wissensfrage ({@link #isRecognizableQuestion}:
- *       Fragezeichen, Fragewort oder Such-/Erklär-Auftrag am Anfang).</li>
- *   <li><b>Ohne Wissens-Werkzeuge</b>: die Vorabsuche ist der einzige Weg zum Wissen; gesucht wird bei allem außer
- *       Small Talk.</li>
+ *   <li><b>Alles andere</b> wird vorab gesucht, auch Korrekturen („das ist nicht, was ich suche“) und Rückfragen
+ *       ohne Fragewort am Anfang. Ob das Modell daneben {@code knowledge_search} hat, ändert daran nichts: ein
+ *       Modell mit Werkzeugen antwortete sonst aus eigenem Wissen, statt in den angehakten Quellen zu suchen.
+ *       Welche Anfrage für eine Rückfrage taugt, klärt danach die Nachrecherche des {@link RagChatUseCase}.</li>
  * </ul>
  *
  * <p>Die Wortlisten sind eine Heuristik (kippbar), keine Sprachanalyse. Rein und zustandslos.
@@ -98,7 +97,7 @@ public final class KnowledgeQuestion {
         ASSISTANT_CAPABILITY,
         /** Erkennbare Wissensfrage: vorab suchen. */
         KNOWLEDGE_QUESTION,
-        /** Alles andere: mit Wissens-Werkzeugen entscheidet das Modell, ohne wird vorab gesucht. */
+        /** Alles andere (Auftrag, Korrektur, Rückfrage ohne Fragewort): ebenfalls vorab suchen. */
         OTHER
     }
 
@@ -114,20 +113,12 @@ public final class KnowledgeQuestion {
     }
 
     /**
-     * @param knowledgeTools stehen dem Modell in diesem Turn {@code knowledge_search}/{@code knowledge_read} zur
-     *                       Verfügung?
-     * @return {@code true}, wenn vor der Antwort automatisch in den angehakten Quellen gesucht werden soll
+     * @return {@code true}, wenn vor der Antwort automatisch in den angehakten Quellen gesucht werden soll: bei allem
+     *         außer Small Talk und Fragen nach dem Assistenten selbst
      */
-    public static boolean wantsRetrieval(String message, boolean knowledgeTools) {
-        switch (classify(message)) {
-            case SMALL_TALK:
-            case ASSISTANT_CAPABILITY:
-                return false;
-            case KNOWLEDGE_QUESTION:
-                return true;
-            default:
-                return !knowledgeTools;
-        }
+    public static boolean wantsRetrieval(String message) {
+        Kind kind = classify(message);
+        return kind != Kind.SMALL_TALK && kind != Kind.ASSISTANT_CAPABILITY;
     }
 
     /**

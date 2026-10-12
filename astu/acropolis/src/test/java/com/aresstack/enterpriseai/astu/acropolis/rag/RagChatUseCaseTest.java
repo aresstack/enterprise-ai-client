@@ -34,6 +34,8 @@ public class RagChatUseCaseTest {
 
     private static final String QUESTION = "Wie installiere ich Java unter Linux?";
     private static final KnowledgeResource JAVA = resource("wiki:Java", "wiki");
+    private static final KnowledgeResource NIZZA = resource("wiki:NIZZA", "wiki");
+    private static final String FOLLOW_UP = "Aber welches Format haben sie genau??";
 
     private FakeChatCompletionPort chatPort;
     private ChatService chat;
@@ -243,6 +245,114 @@ public class RagChatUseCaseTest {
         assertEquals(Arrays.asList(ChatMessage.system("S"), ChatMessage.user("Hallo")),
                 chatPort.lastRequest().messages());
         assertNotEquals(0, chat.conversation(id).messages().size());
+    }
+
+    /**
+     * Realfehler: Auf die Rückfrage „Welches Format haben sie genau?“ suchte der Chat nur mit diesem Text, fand
+     * Fremdes und antwortete „steht nicht in den Quellen“. Mit Nachrecherche prüft das Modell den Kontext, nennt eine
+     * genauere Anfrage aus dem Verlauf, und erst nach der zweiten Suche wird geantwortet.
+     */
+    @Test
+    public void contextWithoutAnswerTriggersASecondSearchWithAPreciserQuery() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        ChatConversationId id = chat.openConversation("System");
+        chat.restoreConversation(id, "System", Arrays.asList(ChatMessage.user("Was ist NIZZA?"),
+                ChatMessage.assistant("NIZZA ist ein Fachsystem.")));
+        chatPort.enqueueAnswer("{\"sufficient\": false, \"query\": \"NIZZA Dateiformat\"}");
+        chatPort.enqueueAnswer("{\"sufficient\": true, \"query\": \"\"}");
+        chatPort.enqueueAnswer("Zeilen fester Länge [1].");
+
+        RagChatTurn turn = research.send(id, FOLLOW_UP, RagOptions.enabled(), listener());
+        awaitDone(turn);
+
+        assertEquals(Arrays.asList(FOLLOW_UP, "NIZZA Dateiformat"), turn.queries());
+        assertEquals(2, index.semanticSearches);
+        assertEquals("die neueste Suche steht vorn", NIZZA, turn.sources().get(0).resource());
+        List<ChatRequest> requests = chatPort.requests();
+        assertEquals("zwei Prüfungen, eine Antwort", 3, requests.size());
+        String firstCheck = requests.get(0).messages().get(1).content();
+        assertTrue(firstCheck, firstCheck.contains("Nutzer: Was ist NIZZA?"));
+        assertTrue(firstCheck, firstCheck.contains("Aktuelle Nachricht: " + FOLLOW_UP));
+        assertTrue(firstCheck, firstCheck.contains("openjdk"));
+        assertTrue(requests.get(1).messages().get(1).content().contains("- NIZZA Dateiformat"));
+        String system = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(system, system.contains("120 Zeichen"));
+        assertTrue(system, system.contains("- NIZZA Dateiformat"));
+        assertTrue(system, system.contains("Bitte den Nutzer nicht, Dateien oder Unterlagen anzuhängen"));
+        assertEquals("die Prüfungen stehen nicht in der Historie", Arrays.asList(
+                ChatMessage.user("Was ist NIZZA?"), ChatMessage.assistant("NIZZA ist ein Fachsystem."),
+                ChatMessage.user(FOLLOW_UP), ChatMessage.assistant("Zeilen fester Länge [1].")),
+                chat.conversation(id).messages());
+    }
+
+    @Test
+    public void sufficientContextAnswersAfterOneSearch() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+
+        RagChatTurn turn = research.send(id, QUESTION, RagOptions.enabled(), listener());
+        awaitDone(turn);
+
+        assertEquals(Collections.singletonList(QUESTION), turn.queries());
+        assertEquals(1, index.semanticSearches);
+        assertEquals(2, chatPort.requests().size());
+        assertEquals(JAVA, turn.sources().get(0).resource());
+    }
+
+    @Test
+    public void followUpsStopAtTheLimitAndOnARepeatedQuery() throws Exception {
+        embeddings.on("NIZZA Dateiformat", 0f, 0f, 1f).on("NIZZA Format Zeilen", 0f, 0f, 1f);
+        RagChatUseCase research = withFollowUps(2);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"sufficient\": false, \"query\": \"NIZZA Dateiformat\"}");
+        chatPort.enqueueAnswer("{\"sufficient\": false, \"query\": \"NIZZA Format Zeilen\"}");
+        chatPort.enqueueAnswer("Antwort");
+
+        RagChatTurn turn = research.send(id, QUESTION, RagOptions.enabled(), listener());
+        awaitDone(turn);
+
+        assertEquals("höchstens zwei Nachsuchen", 3, turn.queries().size());
+        assertEquals(3, chatPort.requests().size());
+        assertEquals("Antwort", chat.conversation(id).messages().get(1).content());
+
+        ChatConversationId other = chat.openConversation();
+        chatPort.enqueueAnswer("{\"sufficient\": false, \"query\": \"wie installiere ich java unter linux\"}");
+        chatPort.enqueueAnswer("Antwort");
+        RagChatTurn repeated = research.send(other, QUESTION, RagOptions.enabled(), listener());
+        awaitDone(repeated);
+        assertEquals("dieselbe Anfrage noch einmal sucht nicht", Collections.singletonList(QUESTION),
+                repeated.queries());
+    }
+
+    @Test
+    public void unreadableOrFailedCheckAnswersFromTheFirstSearch() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("Ich denke, das reicht.");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        RagChatTurn turn = research.send(id, QUESTION, RagOptions.enabled(), listener());
+        awaitDone(turn);
+        assertEquals(Collections.singletonList(QUESTION), turn.queries());
+        assertEquals("Mit apt [1].", chat.conversation(id).messages().get(1).content());
+
+        ChatConversationId other = chat.openConversation();
+        chatPort.enqueueError(new com.aresstack.enterpriseai.chat.api.ChatCompletionException(
+                com.aresstack.enterpriseai.chat.api.ChatErrorKind.TRANSPORT, "weg"));
+        chatPort.enqueueAnswer("Mit apt [1].");
+        RagChatTurn failed = research.send(other, QUESTION, RagOptions.enabled(), listener());
+        awaitDone(failed);
+        assertEquals(Collections.singletonList(QUESTION), failed.queries());
+        assertEquals("Mit apt [1].", chat.conversation(other).messages().get(1).content());
+    }
+
+    private RagChatUseCase withFollowUps(int maxFollowUps) {
+        index.index(Collections.singletonList(entry(NIZZA, 0,
+                "NIZZA Dateiformat: jede Zeile hat eine feste Länge von 120 Zeichen", vector(SPACE_3D, 0, 0, 1))));
+        embeddings.on(FOLLOW_UP, 1f, 0f, 0f).on("NIZZA Dateiformat", 0f, 0f, 1f);
+        return new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D, null),
+                new PromptContextAssembler(ContextSettings.defaults()), null, FollowUpResearch.upTo(maxFollowUps));
     }
 
     private RecordingListener listener() {

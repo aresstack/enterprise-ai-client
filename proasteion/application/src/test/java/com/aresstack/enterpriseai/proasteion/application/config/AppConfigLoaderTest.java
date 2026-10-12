@@ -62,6 +62,32 @@ public class AppConfigLoaderTest {
     }
 
     @Test
+    public void missingOrBlankSystemPromptMeansTheDefault() throws Exception {
+        Properties p = minimal();
+        p.remove("chat.systemPrompt");
+        assertEquals(ChatConfig.DEFAULT_SYSTEM_PROMPT, AppConfigLoader.fromProperties(p).chat().systemPrompt());
+        p.setProperty("chat.systemPrompt", "   ");
+        assertEquals(ChatConfig.DEFAULT_SYSTEM_PROMPT, AppConfigLoader.fromProperties(p).chat().systemPrompt());
+    }
+
+    @Test
+    public void ownSystemPromptIsKeptExactly() throws Exception {
+        Properties p = minimal();
+        p.setProperty("chat.systemPrompt", "Du bist ein hilfreicher Assistent. Antworte auf Deutsch.");
+        assertEquals("Du bist ein hilfreicher Assistent. Antworte auf Deutsch.",
+                AppConfigLoader.fromProperties(p).chat().systemPrompt());
+    }
+
+    /** Die Beispielkonfiguration (Vorlage jeder neuen Installation) trägt genau den zentralen Standard. */
+    @Test
+    public void exampleConfigurationCarriesTheDefaultSystemPrompt() throws Exception {
+        Properties p = new Properties();
+        p.load(new StringReader(AppConfigLoader.exampleConfiguration()));
+        assertEquals(ChatConfig.DEFAULT_SYSTEM_PROMPT, p.getProperty("chat.systemPrompt"));
+        assertTrue(ChatConfig.DEFAULT_SYSTEM_PROMPT.contains("suche selbstständig erneut"));
+    }
+
+    @Test
     public void exampleSourceBlocksLoadOnceUncommented() throws Exception {
         Properties p = new Properties();
         p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));

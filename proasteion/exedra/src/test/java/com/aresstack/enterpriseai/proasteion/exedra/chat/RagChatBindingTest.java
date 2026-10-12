@@ -540,11 +540,12 @@ public class RagChatBindingTest {
     }
 
     /**
-     * Mit Wissens-Werkzeugen entscheidet das Modell: Small Talk und Aufträge ohne erkennbare Wissensfrage gehen
-     * ohne Vorabsuche hinaus, knowledge_search wird aber angeboten; eine erkennbare Frage sucht weiterhin vorab.
+     * Realfehler: Mit Wissens-Werkzeugen gingen Nachrichten ohne Fragewort am Anfang („an kannst du mir sicherlich
+     * sagen was iar ist“, „das ist nicht was ich suche“) ohne Vorabsuche hinaus, und das Modell antwortete aus eigenem
+     * Wissen. Jetzt sucht alles außer Small Talk vorab; knowledge_search wird weiterhin angeboten.
      */
     @Test
-    public void withKnowledgeToolsOnlyARecognizableQuestionIsSearchedAhead() throws Exception {
+    public void withKnowledgeToolsEverythingButSmallTalkIsSearchedAhead() throws Exception {
         indexAll();
         final FailingEmbeddings failing = new FailingEmbeddings(embeddings);
         KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
@@ -558,7 +559,20 @@ public class RagChatBindingTest {
                                 new ArrayList<String>(), "")), false));
             }
         });
-        for (final String message : new String[] {"Hallo", "Schreib mir ein Gedicht über den Herbst"}) {
+        port.enqueueAnswer("Hallo");
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Hallo", true);
+            }
+        });
+        awaitIdle(fixture.model);
+        assertTrue(toolNames(port.lastRequest()).contains("knowledge_search"));
+        assertEquals("Small Talk sucht nicht", 0, failing.calls.get());
+
+        int expected = 0;
+        for (final String message : new String[] {"das ist nicht was ich suche",
+                "an kannst du mir sicherlich sagen was iar ist", "Wie lange ist die Kündigungsfrist?"}) {
             port.enqueueAnswer("Antwort");
             onEdt(new Runnable() {
                 @Override
@@ -568,19 +582,8 @@ public class RagChatBindingTest {
             });
             awaitIdle(fixture.model);
             assertTrue(toolNames(port.lastRequest()).contains("knowledge_search"));
+            assertEquals("vorab gesucht: " + message, ++expected, failing.calls.get());
         }
-        assertEquals("keine Vorabsuche", 0, failing.calls.get());
-        assertEquals(4, entries(fixture.model).size());
-
-        port.enqueueAnswer("Drei Monate");
-        onEdt(new Runnable() {
-            @Override
-            public void run() {
-                fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true);
-            }
-        });
-        awaitIdle(fixture.model);
-        assertEquals("die Frage wurde vorab gesucht", 1, failing.calls.get());
     }
 
     /**
@@ -608,7 +611,9 @@ public class RagChatBindingTest {
             }
         });
         counting.calls.set(0);
-        port.enqueueAnswer("Ich habe knowledge_search, knowledge_read und read_attachment.");
+        // Realfehler: das Modell nannte die Werkzeuge und dazu „GPT-4 mit Wissensstand bis Juni 2024“. Die Antwort
+        // schreibt jetzt der Client; ein Modellaufruf, der ein Selbstbild liefern könnte, findet nicht statt.
+        port.enqueueAnswer("Ich bin GPT-4 mit Wissensstand Juni 2024.");
         onEdt(new Runnable() {
             @Override
             public void run() {
@@ -619,19 +624,37 @@ public class RagChatBindingTest {
 
         assertEquals("keine Vorabsuche", 0, counting.calls.get());
         assertTrue(searches.isEmpty());
+        assertTrue("kein Modellaufruf", port.requests().isEmpty());
         List<TranscriptEntry> entries = entries(fixture.model);
         assertEquals("keine Hinweiszeile", 2, entries.size());
         assertFalse("keine Quellen", entries.get(1).hasSources());
-        String system = port.lastRequest().messages().get(0).content();
-        assertFalse(system, system.contains("KONTEXT"));
-        assertFalse(system, system.contains("IAR"));
-        assertTrue(system, system.contains("In diesem Turn verfügbare Werkzeuge:"));
-        List<String> offered = toolNames(port.lastRequest());
-        assertEquals(java.util.Arrays.asList("read_attachment", "knowledge_search", ChatBookmark.READ_TOOL), offered);
-        for (String tool : offered) {
-            assertTrue(system, system.contains("\n- " + tool));
+        String answer = entries.get(1).getText();
+        assertFalse(answer, answer.contains("GPT"));
+        assertFalse(answer, answer.contains("IAR"));
+        for (String tool : new String[] {"read_attachment", "knowledge_search", ChatBookmark.READ_TOOL}) {
+            assertTrue(answer, answer.contains("- **" + tool + "**"));
         }
-        assertFalse("abgeschaltet: " + system, system.contains("search_attachment"));
+        assertFalse("abgeschaltet: " + answer, answer.contains("search_attachment"));
+        assertTrue(answer, answer.contains("im Composer ist keines gewählt"));
+    }
+
+    /** Ein im Composer gewähltes Modell nennt die Fähigkeitsantwort; ein anderes Modell kennt sie nicht. */
+    @Test
+    public void capabilityAnswerNamesOnlyTheModelChosenInTheComposer() throws Exception {
+        final Fixture fixture = fixture(index, embeddings);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.modelChanged("modell-a");
+                fixture.binding.sendRequested("Welches Modell verwendest du?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+
+        assertTrue("kein Modellaufruf", port.requests().isEmpty());
+        String answer = entries(fixture.model).get(1).getText();
+        assertTrue(answer, answer.contains("**modell-a**"));
+        assertTrue(answer, answer.contains("keine Werkzeuge"));
     }
 
     /** Ohne Werkzeuge sagt der Fähigkeits-Kontext genau das, statt die Wissensbasis zu fragen. */
@@ -641,7 +664,6 @@ public class RagChatBindingTest {
         indexCapabilityTraps(counting);
         final Fixture fixture = fixture(index, counting);
         counting.calls.set(0);
-        port.enqueueAnswer("Keine.");
         onEdt(new Runnable() {
             @Override
             public void run() {
@@ -651,9 +673,10 @@ public class RagChatBindingTest {
         awaitIdle(fixture.model);
 
         assertEquals(0, counting.calls.get());
-        String system = port.lastRequest().messages().get(0).content();
-        assertFalse(system, system.contains("IAR"));
-        assertTrue(system, system.contains("keine Werkzeuge"));
+        assertTrue("kein Modellaufruf", port.requests().isEmpty());
+        String answer = entries(fixture.model).get(1).getText();
+        assertFalse(answer, answer.contains("IAR"));
+        assertTrue(answer, answer.contains("keine Werkzeuge"));
         assertFalse(entries(fixture.model).get(1).hasSources());
     }
 
@@ -687,7 +710,6 @@ public class RagChatBindingTest {
         assertTrue(entries(fixture.model).get(1).hasSources());
         String system = port.lastRequest().messages().get(0).content();
         assertTrue(system, system.contains("--- KONTEXT ---"));
-        assertFalse(system, system.contains("In diesem Turn verfügbare Werkzeuge:"));
     }
 
     /** Seiten, deren Begriffe einer Fähigkeitsfrage ähneln (Recherche, Tool, Rolle), aber Fachinhalt sind. */

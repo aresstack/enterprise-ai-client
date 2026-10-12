@@ -207,7 +207,7 @@ public final class AppConfigLoader {
         if (apiKeyRef == null && !r.has("chat.apiKeyRef")) {
             r.problem("chat.apiKeyRef", "fehlt (Titel des KeePass-Eintrags mit dem API-Key)");
         }
-        String systemPrompt = r.text("chat.systemPrompt", null);
+        String systemPrompt = r.text("chat.systemPrompt", ChatConfig.DEFAULT_SYSTEM_PROMPT);
         int connect = r.integer("chat.connectTimeoutMillis", 10000, 0, MAX_TIMEOUT);
         int read = r.integer("chat.readTimeoutMillis", 120000, 0, MAX_TIMEOUT);
         DeveloperRolePolicy policy = r.enumValue("chat.developerRolePolicy", DeveloperRolePolicy.class,

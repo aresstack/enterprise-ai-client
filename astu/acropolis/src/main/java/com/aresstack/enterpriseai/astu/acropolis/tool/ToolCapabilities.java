@@ -5,10 +5,11 @@ import com.aresstack.enterpriseai.chat.api.ToolDefinition;
 import java.util.List;
 
 /**
- * Der Fähigkeits-Kontext eines Turns: welche Werkzeuge dem Modell gerade angeboten werden, als System-Anteil für eine
- * Frage nach dem Assistenten selbst („Welche Tools hast du?“). Erzeugt wird er aus genau den Definitionen, die in
- * diesem Turn an das Modell gehen; abgeschaltete oder anderen Kanälen vorbehaltene Werkzeuge kommen darin nicht vor,
- * ein eigenes Werkzeugverzeichnis gibt es nicht. Rein und zustandslos.
+ * Die Antwort auf eine Frage nach dem Assistenten selbst („Welche Tools hast du?“, „Welches Modell verwendest du?“),
+ * geschrieben vom Client aus dem Laufzeitzustand des Turns: genau die Werkzeuge, die in diesem Turn an das Modell
+ * gingen, und das im Composer gewählte Chat-Modell. Das Modell formuliert diese Antwort nicht; so kann sein
+ * Selbstbild (Modellname, Wissensstand) nicht hineinrutschen. Abgeschaltete oder anderen Kanälen vorbehaltene
+ * Werkzeuge kommen nicht vor, ein eigenes Werkzeugverzeichnis gibt es nicht. Rein und zustandslos.
  */
 public final class ToolCapabilities {
 
@@ -17,29 +18,30 @@ public final class ToolCapabilities {
 
     /**
      * @param offered die in diesem Turn angebotenen Werkzeuge; {@code null} oder leer: keine
-     * @param model   das für diesen Turn gewählte Chat-Modell oder {@code null} (Standard der Einstellungen)
-     * @return System-Anteil mit den Werkzeugen und der Anweisung, Fragen nach den eigenen Fähigkeiten nur daraus zu
-     *         beantworten
+     * @param model   das im Composer gewählte Chat-Modell oder {@code null} (dann gilt das der Einstellungen, dessen
+     *                Name hier nicht bekannt ist)
+     * @return die Antwort als Markdown
      */
-    public static String context(List<ToolDefinition> offered, String model) {
+    public static String answer(List<ToolDefinition> offered, String model) {
         StringBuilder text = new StringBuilder();
-        text.append("Die Nachricht fragt nach dir selbst (Werkzeuge, Fähigkeiten, Modell). Beantworte sie nur aus "
-                + "dieser Laufzeitangabe, nicht aus Inhalten der Wissensquellen, und suche dafür nicht in den "
-                + "Wissensquellen. Nenne keine Werkzeuge, die hier nicht stehen.\n");
-        if (model != null && !model.trim().isEmpty()) {
-            text.append("Chat-Modell in diesem Turn: ").append(model.trim()).append('\n');
-        }
         if (offered == null || offered.isEmpty()) {
-            text.append("In diesem Turn stehen dir keine Werkzeuge zur Verfügung.");
-            return text.toString();
-        }
-        text.append("In diesem Turn verfügbare Werkzeuge:");
-        for (ToolDefinition tool : offered) {
-            text.append("\n- ").append(tool.name());
-            String description = tool.description() == null ? "" : tool.description().trim();
-            if (!description.isEmpty()) {
-                text.append(" — ").append(firstLine(description));
+            text.append("In diesem Chat stehen mir gerade keine Werkzeuge zur Verfügung. Ist im Seitenmenü eine "
+                    + "Wissensquelle angehakt, kann ich darin suchen und Seiten lesen.");
+        } else {
+            text.append("In diesem Chat stehen mir gerade diese Werkzeuge zur Verfügung:\n");
+            for (ToolDefinition tool : offered) {
+                text.append("\n- **").append(tool.name()).append("**");
+                String description = tool.description() == null ? "" : firstLine(tool.description().trim());
+                if (!description.isEmpty()) {
+                    text.append(": ").append(description);
+                }
             }
+        }
+        text.append("\n\n");
+        if (model != null && !model.trim().isEmpty()) {
+            text.append("Es antwortet das im Composer gewählte Chat-Modell **").append(model.trim()).append("**.");
+        } else {
+            text.append("Welches Chat-Modell antwortet, legen die Einstellungen fest; im Composer ist keines gewählt.");
         }
         return text.toString();
     }

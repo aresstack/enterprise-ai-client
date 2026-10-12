@@ -110,6 +110,18 @@ sequenceDiagram
   und gilt nur für diesen Turn. In der Historie stehen nur die unveränderte Nutzerfrage und die Antwort;
   spätere Turns sehen den Kontext nicht. Die Rolle `developer` wird nie verwendet. RAG aus
   (`RagOptions.disabled()`) ist exakt `ChatService.send`.
+- **Wann gesucht wird** (`KnowledgeQuestion`, seit 0.30.0): Mit angehakter Quelle sucht jede Nachricht außer
+  Small Talk und Fragen nach dem Assistenten selbst vorab, auch Korrekturen („das ist nicht, was ich suche“) und
+  Rückfragen ohne Fragewort, und auch dann, wenn das Modell `knowledge_search` hat. Eine Frage nach dem
+  Assistenten selbst („Welche Tools hast du?“) beantwortet der Client ohne Modellaufruf aus den Werkzeugen des
+  Turns und dem im Composer gewählten Modell (`ToolCapabilities.answer`, `FixedAnswerPort`).
+- **Nachrecherche** (`FollowUpResearch`, seit 0.30.0): Nach jeder Suche prüft das Modell in einer Nebenanfrage
+  (`ChatService.completeAside`: ohne Werkzeuge, ohne Streaming, nicht in der Historie) mit den letzten acht
+  Nachrichten des Verlaufs, ob der Kontext die Nachricht beantwortet. Antwort als JSON
+  `{"sufficient": …, "query": …}`; bei `false` sucht `RagChatUseCase` mit der genaueren Anfrage erneut (Live-Suche
+  und Index), höchstens zweimal, neue Treffer zuerst. Ein unlesbares Urteil, ein Fehler der Nebenanfrage oder
+  eine wiederholte Anfrage beendet die Nachrecherche. Der Kontext nennt danach alle Suchanfragen und untersagt
+  die Bitte um Dateien, solange Quellen angehakt sind (`RagChatTurn.queries()`).
 - **Shell** (`proasteion.exedra.chat.RagChatBinding`, AP22): Während der Suche zeigt die leere Antwortblase "Wissen wird
   gesucht …"; danach hängen die Quellen (`SourceReference`: Nummer, Titel, Überschrift, Ort, Stand, Score,
   Ränge) einklappbar an der Antwort. Warnungen, keine Treffer oder ein Ausfall der Suche werden eine eigene
