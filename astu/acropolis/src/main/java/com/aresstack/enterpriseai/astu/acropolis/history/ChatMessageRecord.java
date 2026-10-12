@@ -26,6 +26,8 @@ public final class ChatMessageRecord {
     private List<SourceRecord> sources;
     /** Werkzeugaufrufe einer Antwort in ihrer Reihenfolge; {@code null} bei Chats von vor 0.30.0. */
     private List<ToolCallRecord> toolCalls;
+    /** Ausdrückliche Verweise einer Nutzernachricht auf Ressourcen des Chats; {@code null} bei Chats ohne diese Angaben. */
+    private List<ResourceReferenceRecord> references;
 
     /** Für die Deserialisierung. */
     public ChatMessageRecord() {
@@ -72,6 +74,18 @@ public final class ChatMessageRecord {
     /** Hängt die Seiten dieser Nachricht an. */
     public ChatMessageRecord withBookmarks(List<BookmarkRecord> pages) {
         this.bookmarks = pages != null ? new ArrayList<BookmarkRecord>(pages) : new ArrayList<BookmarkRecord>();
+        return this;
+    }
+
+    /** Die ausdrücklichen Ressourcenverweise dieser Nutzernachricht; leer, wenn keine. */
+    public List<ResourceReferenceRecord> getReferences() {
+        return references != null ? references : new ArrayList<ResourceReferenceRecord>();
+    }
+
+    /** Hängt die ausdrücklichen Ressourcenverweise an; ohne Verweise bleibt das Feld weg (ältere Leser). */
+    public ChatMessageRecord withReferences(List<ResourceReferenceRecord> values) {
+        this.references = values == null || values.isEmpty() ? null
+                : new ArrayList<ResourceReferenceRecord>(values);
         return this;
     }
 

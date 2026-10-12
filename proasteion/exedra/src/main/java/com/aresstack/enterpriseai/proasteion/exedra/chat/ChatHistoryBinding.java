@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModelListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
@@ -13,6 +14,8 @@ import com.aresstack.enterpriseai.astu.acropolis.history.BookmarkRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatHistoryStore;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
+import com.aresstack.enterpriseai.astu.acropolis.history.ChatResourceCatalog;
+import com.aresstack.enterpriseai.astu.acropolis.history.ResourceReferenceRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.KnowledgeContextRecord;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ConversationKnowledgeContext;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
@@ -318,7 +321,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                 }
             }
             TranscriptEntry entry = model.restoreEntry(TranscriptEntry.Author.USER, message.getText(),
-                    message.getCreatedAt(), names, pages);
+                    message.getCreatedAt(), names, pages, resourcesOf(message.getReferences()));
             if (!message.getAttachments().isEmpty()) {
                 storedAttachments.put(entry.getId(), new ArrayList<AttachmentRecord>(message.getAttachments()));
             }
@@ -338,6 +341,70 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             model.restoreEntry(TranscriptEntry.Author.NOTICE, message.getText(), message.getCreatedAt(),
                     Collections.<String>emptyList());
         }
+    }
+
+    /**
+     * Die Ressourcen des aktuellen Chats (UI-Thread): Dateien, Seiten und verwendete Quellen als fachliche Projektion
+     * ({@link ChatResourceCatalog}) desselben Datensatzes, den Speichern schreiben würde; je stabiler Kennung einmal.
+     */
+    public List<ChatResource> resources() {
+        ChatRecord record = new ChatRecord(chat.conversationId().value(), 0L);
+        for (TranscriptEntry entry : model.getEntries()) {
+            ChatMessageRecord message = toRecord(entry);
+            if (message != null) {
+                record.getMessages().add(message);
+            }
+        }
+        ChatResourceCatalog catalog = ChatResourceCatalog.of(record);
+        List<ChatResource> resources = new ArrayList<ChatResource>(catalog.size());
+        for (AttachmentRecord attachment : catalog.attachments()) {
+            resources.add(new ChatResource(ChatResource.Kind.FILE, attachment.getId(), attachment.getFileName(),
+                    size(attachment.getSize())));
+        }
+        for (BookmarkRecord page : catalog.pages()) {
+            resources.add(new ChatResource(ChatResource.Kind.PAGE, page.getUri(), page.getTitle(), page.getUri()));
+        }
+        for (SourceRecord source : catalog.sources()) {
+            resources.add(new ChatResource(ChatResource.Kind.SOURCE, source.getResourceId(), source.getTitle(),
+                    source.getLocation()));
+        }
+        return resources;
+    }
+
+    private static String size(long bytes) {
+        if (bytes <= 0) {
+            return "";
+        }
+        return bytes < 1024 ? bytes + " B" : bytes < 1024 * 1024 ? (bytes / 1024) + " KB"
+                : (bytes / (1024 * 1024)) + " MB";
+    }
+
+    /** Die ausdrücklichen Verweise einer Nutzernachricht zum Speichern (Art, Kennung, Titel). */
+    static List<ResourceReferenceRecord> referenceRecordsOf(TranscriptEntry entry) {
+        List<ResourceReferenceRecord> records = new ArrayList<ResourceReferenceRecord>(entry.getReferences().size());
+        for (ChatResource reference : entry.getReferences()) {
+            String kind = reference.kind() == ChatResource.Kind.FILE ? ResourceReferenceRecord.KIND_ATTACHMENT
+                    : reference.kind() == ChatResource.Kind.PAGE ? ResourceReferenceRecord.KIND_PAGE
+                    : ResourceReferenceRecord.KIND_SOURCE;
+            records.add(new ResourceReferenceRecord(kind, reference.id(), reference.title()));
+        }
+        return records;
+    }
+
+    /** Gespeicherte Verweise als Anzeigewerte; unlesbare (unbekannte Art, ohne Kennung) fallen weg. */
+    static List<ChatResource> resourcesOf(List<ResourceReferenceRecord> records) {
+        List<ChatResource> resources = new ArrayList<ChatResource>(records.size());
+        for (ResourceReferenceRecord record : records) {
+            if (!record.isValid()) {
+                continue;
+            }
+            ChatResource.Kind kind = ResourceReferenceRecord.KIND_ATTACHMENT.equals(record.getKind())
+                    ? ChatResource.Kind.FILE
+                    : ResourceReferenceRecord.KIND_PAGE.equals(record.getKind()) ? ChatResource.Kind.PAGE
+                    : ChatResource.Kind.SOURCE;
+            resources.add(new ChatResource(kind, record.getId(), record.getTitle(), ""));
+        }
+        return resources;
     }
 
     /** Schreibt den aktuellen Chat aus den Zeilen des Models. */
@@ -379,7 +446,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         switch (entry.getAuthor()) {
             case USER:
                 return new ChatMessageRecord(ChatMessageRecord.ROLE_USER, entry.getText(),
-                        entry.getCreatedAtMillis(), attachmentsOf(entry)).withBookmarks(bookmarksOf(entry));
+                        entry.getCreatedAtMillis(), attachmentsOf(entry)).withBookmarks(bookmarksOf(entry))
+                        .withReferences(referenceRecordsOf(entry));
             case NOTICE:
                 return new ChatMessageRecord(ChatMessageRecord.ROLE_INFO, entry.getText(),
                         entry.getCreatedAtMillis(), null);
@@ -436,7 +504,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         for (SourceReference source : entry.getSources()) {
             records.add(new SourceRecord(source.getNumber(), source.getTitle(), source.getHeading(),
                     source.getLocation(), source.getRevision(), source.getScore(), source.getKeywordRank(),
-                    source.getSemanticRank()));
+                    source.getSemanticRank(), source.getSourceId(), source.getResourceId(), source.getChunkId()));
         }
         return records;
     }
@@ -451,7 +519,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             try {
                 references.add(new SourceReference(record.getNumber(), record.getTitle(), record.getHeading(),
                         record.getLocation(), record.getRevision(), record.getScore(),
-                        Math.max(0, record.getKeywordRank()), Math.max(0, record.getSemanticRank())));
+                        Math.max(0, record.getKeywordRank()), Math.max(0, record.getSemanticRank()),
+                        record.getSourceId(), record.getResourceId(), record.getChunkId()));
             } catch (IllegalArgumentException unusable) {
                 // unvollständiger Eintrag: diese Quelle fällt weg
             }

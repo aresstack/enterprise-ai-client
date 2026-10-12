@@ -289,7 +289,11 @@ public final class ShellAssembly {
 
             @Override
             public boolean open(String chatId) {
-                return history.open(chatId);
+                boolean opened = history.open(chatId);
+                if (opened) {
+                    chatShell.composer().refreshResources(); // die Dateien des Chats kennt erst der geöffnete Verlauf
+                }
+                return opened;
             }
 
             @Override

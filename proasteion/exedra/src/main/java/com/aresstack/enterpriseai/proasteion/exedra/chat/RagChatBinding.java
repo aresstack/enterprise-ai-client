@@ -2,7 +2,9 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatDraft;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
@@ -137,6 +139,8 @@ public final class RagChatBinding implements ChatShellActions {
     static final String TOOL_FAILED = "fehlgeschlagen";
     static final String ATTACHMENTS_UNAVAILABLE_NOTICE =
             "Dateianhänge sind in dieser Sitzung nicht verfügbar; die Nachricht ging ohne sie hinaus.";
+    static final String REFERENCES_UNAVAILABLE_NOTICE =
+            "Bezüge auf Ressourcen des Chats sind in dieser Sitzung nicht verfügbar; die Nachricht ging ohne sie hinaus.";
     static final String PAGES_UNAVAILABLE_NOTICE =
             "Seiten können in dieser Sitzung nicht zum Chat hinzugefügt werden; die Nachricht ging ohne sie hinaus.";
 
@@ -278,6 +282,12 @@ public final class RagChatBinding implements ChatShellActions {
         return options.build();
     }
 
+    /** Die Ressourcen der aktuellen Unterhaltung aus dem gespeicherten Verlauf; ohne Verlauf keine (UI-Thread). */
+    @Override
+    public List<ChatResource> chatResources() {
+        return history == null ? Collections.<ChatResource>emptyList() : history.resources();
+    }
+
     @Override
     public boolean supportsAttachments() {
         return tools != null;
@@ -304,6 +314,25 @@ public final class RagChatBinding implements ChatShellActions {
         if (!model.canSend(text)) {
             return;
         }
+        sendRequested(ChatDraft.of(text, ragEnabled).withAttachments(files).withPages(pages));
+    }
+
+    /**
+     * Der Weg des Composers (UI-Thread): Text, neue Dateien (werden der Unterhaltung als Anhänge hinzugefügt), Seiten
+     * (nur Titel und Bookmark) und ausdrückliche Verweise auf Ressourcen des Chats. Ein Verweis kopiert nichts: das
+     * Modell erfährt für diesen Turn nur Art, Titel und stabile Kennung (Attachment-ID, Bookmark, Resource-ID) und
+     * liest den Inhalt bei Bedarf mit den vorhandenen Werkzeugen; die sichtbare Nachricht bleibt der eingegebene Text.
+     */
+    @Override
+    public void sendRequested(ChatDraft draft) {
+        final String text = draft.text();
+        if (!model.canSend(text)) {
+            return;
+        }
+        boolean ragEnabled = draft.ragEnabled();
+        List<Path> files = draft.attachments();
+        List<ChatPage> pages = draft.pages();
+        final List<ChatResource> references = new ArrayList<ChatResource>(draft.references());
         final List<ChatPage> newPages = new ArrayList<ChatPage>();
         final List<ChatBookmark> newBookmarks = new ArrayList<ChatBookmark>();
         if (pages != null) {
@@ -331,7 +360,11 @@ public final class RagChatBinding implements ChatShellActions {
         for (Path file : newFiles) {
             names.add(file.getFileName().toString());
         }
-        final TranscriptEntry question = model.addUserMessage(text, names, newPages);
+        if (!references.isEmpty() && tools == null) {
+            model.addNotice(REFERENCES_UNAVAILABLE_NOTICE);
+            references.clear();
+        }
+        final TranscriptEntry question = model.addUserMessage(text, names, newPages, references);
         for (ChatBookmark bookmark : newBookmarks) {
             if (!bookmarks.contains(bookmark)) {
                 bookmarks.add(bookmark);
@@ -351,9 +384,9 @@ public final class RagChatBinding implements ChatShellActions {
         // Wissens-Werkzeuge, sobald es etwas zu suchen (angehakte Quelle) oder zu lesen (Seite) gibt; ein Bookmark
         // ist keine Voraussetzung für die Suche. Keine Quelle angehakt und keine Seite: normaler Chat.
         final boolean knowledgeTools = tools != null && !tools.knowledgeTools().isEmpty()
-                && (ragOptions.isEnabled() || !chatPages.isEmpty());
+                && (ragOptions.isEnabled() || !chatPages.isEmpty() || ChatReferences.needsKnowledge(references));
         final boolean toolPath = tools != null && (tools.alwaysOn() || conversationHasAttachments
-                || !newFiles.isEmpty() || !chatPages.isEmpty() || knowledgeTools);
+                || !newFiles.isEmpty() || !chatPages.isEmpty() || knowledgeTools || !references.isEmpty());
         // Small Talk und Fragen nach dem Assistenten selbst suchen nie; alles andere sucht in den angehakten Quellen,
         // auch wenn das Modell knowledge_search hat (sonst antwortet es aus eigenem Wissen).
         if (ragOptions.isEnabled() && !KnowledgeQuestion.wantsRetrieval(text)) {
@@ -423,7 +456,8 @@ public final class RagChatBinding implements ChatShellActions {
                             if (knowledgeTools) {
                                 available.addAll(support.knowledgeTools());
                             }
-                            extraContext = join(attachments.context(), ChatBookmark.context(chatPages));
+                            extraContext = join(join(attachments.context(), ChatBookmark.context(chatPages)),
+                                    ChatReferences.context(references));
                             // Wer während der Runde ein Werkzeug abschaltet (Reiter „Tools“), nimmt es ab dem
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
                             via = new ChatCompletionsToolLoop(support.chat(),
@@ -870,7 +904,8 @@ public final class RagChatBinding implements ChatShellActions {
                 : resource.id().value();
         return new SourceReference(source.number(), resource.title(), source.chunk().headingLine(), location,
                 revision(resource.revision()), hit.fusedScore(), hit.keywordRank().orElse(0),
-                hit.semanticRank().orElse(0));
+                hit.semanticRank().orElse(0), source.chunk().sourceId().value(), source.chunk().resourceId().value(),
+                source.chunk().id().value());
     }
 
     /** Stand als Text: Version und Zeitpunkt (Ortszeit), getrennt durch Komma; leer, wenn unbekannt. */

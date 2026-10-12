@@ -41,6 +41,7 @@ public final class TranscriptEntry {
     private List<SourceReference> sources = Collections.emptyList();
     private List<String> attachments = Collections.emptyList();
     private List<ChatPage> pages = Collections.emptyList();
+    private List<ChatResource> references = Collections.emptyList();
     private String activityKey = "";
     private String activityTitle = "";
     private String activityKind = "";
@@ -125,6 +126,18 @@ public final class TranscriptEntry {
 
     void setPages(List<ChatPage> values) {
         this.pages = Collections.unmodifiableList(new java.util.ArrayList<ChatPage>(values));
+    }
+
+    /**
+     * Ressourcen des Chats, auf die sich eine Nutzernachricht ausdrücklich bezog (Verweis-Chips); leer, wenn keine.
+     * Die Ressourcen selbst gehören dem Chat, nicht dieser Nachricht.
+     */
+    public List<ChatResource> getReferences() {
+        return references;
+    }
+
+    void setReferences(List<ChatResource> values) {
+        this.references = Collections.unmodifiableList(new java.util.ArrayList<ChatResource>(values));
     }
 
     /** Kennung des Werkzeugaufrufs (nur {@link Author#ACTIVITY}). */

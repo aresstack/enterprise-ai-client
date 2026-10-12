@@ -31,6 +31,29 @@ public interface ChatShellActions {
         sendRequested(text, ragEnabled, attachments);
     }
 
+    /**
+     * Der Nutzer will den Entwurf senden (Text, neue Dateien, Seiten, Verweise auf Ressourcen des Chats); das ist der
+     * Weg des Composers. Ohne eigene Umsetzung gehen Text, Dateien und Seiten über die älteren Methoden, Verweise
+     * gehen verloren.
+     */
+    default void sendRequested(ChatDraft draft) {
+        if (!draft.pages().isEmpty()) {
+            sendRequested(draft.text(), draft.ragEnabled(), draft.attachments(), draft.pages());
+        } else if (!draft.attachments().isEmpty()) {
+            sendRequested(draft.text(), draft.ragEnabled(), draft.attachments());
+        } else {
+            sendRequested(draft.text(), draft.ragEnabled());
+        }
+    }
+
+    /**
+     * Alle Ressourcen der aktuellen Unterhaltung (Dateien, Seiten, verwendete Quellen), je Ressource einmal, für die
+     * Ressourcenübersicht im Composer; leer, wenn die Anbindung keine kennt.
+     */
+    default List<ChatResource> chatResources() {
+        return java.util.Collections.emptyList();
+    }
+
     /** Ob die Anbindung Dateianhänge annimmt (dann zeigt der Composer die Büroklammer). */
     default boolean supportsAttachments() {
         return false;

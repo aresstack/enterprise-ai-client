@@ -100,6 +100,12 @@ public final class ChatShellModel {
 
     /** Wie oben, dazu die Seiten (Bookmarks), die mit der Nachricht in den Chat kommen. */
     public TranscriptEntry addUserMessage(String text, List<String> attachmentNames, List<ChatPage> pages) {
+        return addUserMessage(text, attachmentNames, pages, Collections.<ChatResource>emptyList());
+    }
+
+    /** Wie oben, dazu die Ressourcen des Chats, auf die sich die Nachricht ausdrücklich bezieht (Verweis-Chips). */
+    public TranscriptEntry addUserMessage(String text, List<String> attachmentNames, List<ChatPage> pages,
+                                          List<ChatResource> references) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("text must not be blank");
         }
@@ -109,6 +115,9 @@ public final class ChatShellModel {
         }
         if (pages != null && !pages.isEmpty()) {
             entry.setPages(pages);
+        }
+        if (references != null && !references.isEmpty()) {
+            entry.setReferences(references);
         }
         fireEntryAdded(entry);
         return entry;
@@ -340,6 +349,14 @@ public final class ChatShellModel {
     /** Wie oben, dazu die Seiten einer Nutzernachricht. */
     public TranscriptEntry restoreEntry(TranscriptEntry.Author author, String text, long createdAtMillis,
                                         List<String> attachmentNames, List<ChatPage> pages) {
+        return restoreEntry(author, text, createdAtMillis, attachmentNames, pages,
+                Collections.<ChatResource>emptyList());
+    }
+
+    /** Wie oben, dazu die ausdrücklichen Ressourcenverweise einer Nutzernachricht. */
+    public TranscriptEntry restoreEntry(TranscriptEntry.Author author, String text, long createdAtMillis,
+                                        List<String> attachmentNames, List<ChatPage> pages,
+                                        List<ChatResource> references) {
         if (author == null || text == null) {
             throw new IllegalArgumentException("author and text must not be null");
         }
@@ -354,6 +371,9 @@ public final class ChatShellModel {
         }
         if (pages != null && !pages.isEmpty()) {
             entry.setPages(pages);
+        }
+        if (references != null && !references.isEmpty()) {
+            entry.setReferences(references);
         }
         fireEntryAdded(entry);
         return entry;

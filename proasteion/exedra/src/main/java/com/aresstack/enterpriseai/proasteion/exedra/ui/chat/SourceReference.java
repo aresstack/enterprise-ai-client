@@ -19,6 +19,9 @@ public final class SourceReference {
     private final double score;
     private final int keywordRank;
     private final int semanticRank;
+    private final String sourceId;
+    private final String resourceId;
+    private final String chunkId;
 
     /**
      * @param number       Nummer ab 1, wie das Modell die Quelle zitiert
@@ -32,6 +35,15 @@ public final class SourceReference {
      */
     public SourceReference(int number, String title, String heading, String location, String revision, double score,
                            int keywordRank, int semanticRank) {
+        this(number, title, heading, location, revision, score, keywordRank, semanticRank, "", "", "");
+    }
+
+    /**
+     * Wie oben, dazu die Kennungen, unter denen die Anwendung die Quelle wieder findet (als Text; leer, wenn
+     * unbekannt): Wissensquelle, Ressource und Abschnitt. Die Shell zeigt sie nicht, sie reicht sie nur durch.
+     */
+    public SourceReference(int number, String title, String heading, String location, String revision, double score,
+                           int keywordRank, int semanticRank, String sourceId, String resourceId, String chunkId) {
         if (number < 1) {
             throw new IllegalArgumentException("number must be >= 1: " + number);
         }
@@ -52,6 +64,24 @@ public final class SourceReference {
         this.score = score;
         this.keywordRank = keywordRank;
         this.semanticRank = semanticRank;
+        this.sourceId = sourceId == null ? "" : sourceId.trim();
+        this.resourceId = resourceId == null ? "" : resourceId.trim();
+        this.chunkId = chunkId == null ? "" : chunkId.trim();
+    }
+
+    /** Kennung der Wissensquelle oder leer. */
+    public String getSourceId() {
+        return sourceId;
+    }
+
+    /** Kennung der Ressource oder leer (ältere gespeicherte Chats). */
+    public String getResourceId() {
+        return resourceId;
+    }
+
+    /** Kennung des Abschnitts oder leer. */
+    public String getChunkId() {
+        return chunkId;
     }
 
     public int getNumber() {

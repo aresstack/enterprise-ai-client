@@ -98,6 +98,14 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private static final List<String> REASONING_EFFORTS = Collections.unmodifiableList(Arrays.asList(
             null, "low", "medium", "high"));
 
+    static final String RESOURCES_PREFIX = "Ressourcen ";
+    static final String RESOURCES_TOOLTIP = "Alle Dateien, Seiten und Quellen dieses Chats; ein Klick nimmt eine "
+            + "Ressource als Bezug in die nächste Nachricht.";
+    static final String RESOURCES_FILES = "Dateien";
+    static final String RESOURCES_PAGES = "Seiten";
+    static final String RESOURCES_SOURCES = "Verwendete Quellen";
+    static final String RESOURCES_EMPTY = "Noch keine Ressourcen in diesem Chat";
+
     static final String PHASE_PREFIX = "Phase: ";
     static final String PHASE_TOOLTIP = "Agentenphase: bestimmt, welche Werkzeuge der Agent benutzen darf. Nur du "
             + "wechselst sie.";
@@ -124,6 +132,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final ChatShellActions actions;
     private final ComposerButton modelButton;
     private final ComposerButton reasoningButton;
+    /** Die Ressourcen des Chats (rechts neben „Denken“): Übersicht, Klick = Verweis-Chip. */
+    private final ComposerButton resourcesButton;
+    /** Zuletzt gezählte Ressourcen (gezählt wird nur bei fertigen Zeilen, nicht je Tastendruck). */
+    private int resourceCount;
     /** Die Agentenphase (nur im Agent-Modus sichtbar); wählt allein der Nutzer. */
     private final ComposerButton phaseButton;
     private final ComposerStatusLine statusLine = new ComposerStatusLine();
@@ -184,6 +196,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.reasoningButton = new ComposerButton(ComposerIcons.chevronDown(), REASONING_LABELS.get(0), false,
                 "Denkaufwand (nur für Modelle, die ihn unterstützen)");
         reasoningButton.setHorizontalTextPosition(SwingConstants.LEFT);
+        this.resourcesButton = new ComposerButton(ComposerIcons.chevronDown(), RESOURCES_PREFIX + "0", false,
+                RESOURCES_TOOLTIP);
+        resourcesButton.setHorizontalTextPosition(SwingConstants.LEFT);
         this.phaseButton = new ComposerButton(ComposerIcons.chevronDown(), PHASE_PREFIX + "Konzept", false,
                 PHASE_TOOLTIP);
         phaseButton.setHorizontalTextPosition(SwingConstants.LEFT);
@@ -219,17 +234,71 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
 
     @Override
     public void entryAdded(TranscriptEntry entry) {
-        // Verlauf ist Sache des Transcripts.
+        // Verlauf ist Sache des Transcripts; nur die Zahl der Ressourcen folgt fertigen Zeilen.
+        if (entry.getState() != TranscriptEntry.State.STREAMING) {
+            refreshResources();
+        }
     }
 
     @Override
     public void entryUpdated(TranscriptEntry entry) {
-        // Verlauf ist Sache des Transcripts.
+        if (entry.getState() != TranscriptEntry.State.STREAMING) {
+            refreshResources();
+        }
+    }
+
+    @Override
+    public void entriesCleared() {
+        // Neuer oder anderer Chat: Bezüge gehörten zu den Ressourcen des bisherigen; neue Dateien und Seiten bleiben.
+        attachmentStrip.clearReferences();
+        refreshResources();
     }
 
     @Override
     public void stateChanged() {
         refreshControls();
+    }
+
+    /** Die Ressourcen des Chats, wie die Anbindung sie kennt (je Ressource einmal). */
+    public List<ChatResource> resources() {
+        List<ChatResource> resources = actions.chatResources();
+        return resources == null ? Collections.<ChatResource>emptyList() : resources;
+    }
+
+    /** Zählt die Ressourcen des Chats neu („Ressourcen n“); ohne Ressourcen ist der Knopf inaktiv. */
+    public void refreshResources() {
+        int count = resources().size();
+        resourceCount = count;
+        String text = RESOURCES_PREFIX + count;
+        if (!text.equals(resourcesButton.getText())) {
+            resourcesButton.setText(text);
+            revalidate();
+            repaint();
+        }
+        resourcesButton.setEnabled(count > 0 && !model.canStop());
+    }
+
+    /**
+     * Übernimmt eine Ressource des Chats als Verweis-Chip in den Entwurf (wie ein Klick in der Übersicht): nichts wird
+     * geöffnet, gesendet oder erneut abgelegt; dieselbe Ressource nur einmal.
+     */
+    public void addReference(ChatResource resource) {
+        attachmentStrip.addReference(resource);
+        editor.requestFocusInWindow();
+    }
+
+    /** Nimmt einen Verweis-Chip zurück; die Ressource bleibt im Chat. */
+    public void removeReference(ChatResource resource) {
+        attachmentStrip.removeReference(resource);
+    }
+
+    /** Die vorgemerkten Verweise. */
+    public List<ChatResource> references() {
+        return attachmentStrip.getReferences();
+    }
+
+    public ComposerButton resourcesButton() {
+        return resourcesButton;
     }
 
     /** Sendet den Entwurf, wenn das Model es erlaubt; der Editor wird danach geleert. */
@@ -256,16 +325,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         }
         setDictationNote(null, ComposerStatusLine.Tone.MUTED); // die Diktat-Meldung endet spätestens mit dem Senden
         editor.setText("");
-        List<Path> attachments = attachmentStrip.getAttachments();
-        List<ChatPage> pages = attachmentStrip.getPages();
+        ChatDraft message = ChatDraft.of(draft, model.isRagEnabled())
+                .withAttachments(attachmentStrip.getAttachments())
+                .withPages(attachmentStrip.getPages())
+                .withReferences(attachmentStrip.getReferences());
         attachmentStrip.clear();
-        if (!pages.isEmpty()) {
-            actions.sendRequested(draft.trim(), model.isRagEnabled(), attachments, pages);
-        } else if (attachments.isEmpty()) {
-            actions.sendRequested(draft.trim(), model.isRagEnabled());
-        } else {
-            actions.sendRequested(draft.trim(), model.isRagEnabled(), attachments);
-        }
+        actions.sendRequested(message);
     }
 
     /** Merkt Dateien für die nächste Nachricht vor (bereits vorgemerkte werden übergangen). */
@@ -382,6 +447,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     public void setModelControlsVisible(boolean visible) {
         modelButton.setVisible(visible);
         reasoningButton.setVisible(visible);
+        resourcesButton.setVisible(visible);
     }
 
     /**
@@ -791,6 +857,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         west.setOpaque(false);
         west.add(modelButton);
         west.add(reasoningButton);
+        west.add(resourcesButton);
         west.add(phaseButton);
         JPanel dictationActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
         dictationActions.setOpaque(false);
@@ -869,6 +936,56 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         menu.show(reasoningButton, 0, reasoningButton.getHeight());
     }
 
+    /** Die Übersicht: Gruppen Dateien, Seiten, Verwendete Quellen; ein Klick nimmt die Ressource als Verweis. */
+    private void showResourcesMenu() {
+        JPopupMenu menu = resourcesMenu();
+        menu.show(resourcesButton, 0, resourcesButton.getHeight());
+    }
+
+    /** Die Übersicht als Menü (für Tests ohne Bildschirm: ohne es zu zeigen). */
+    JPopupMenu lastResourcesMenu() {
+        return resourcesMenu();
+    }
+
+    private JPopupMenu resourcesMenu() {
+        JPopupMenu menu = new JPopupMenu();
+        List<ChatResource> resources = resources();
+        List<ChatResource> chosen = attachmentStrip.getReferences();
+        if (resources.isEmpty()) {
+            JMenuItem empty = new JMenuItem(RESOURCES_EMPTY);
+            empty.setEnabled(false);
+            menu.add(empty);
+        }
+        addResourceGroup(menu, RESOURCES_FILES, ChatResource.Kind.FILE, resources, chosen);
+        addResourceGroup(menu, RESOURCES_PAGES, ChatResource.Kind.PAGE, resources, chosen);
+        addResourceGroup(menu, RESOURCES_SOURCES, ChatResource.Kind.SOURCE, resources, chosen);
+        return menu;
+    }
+
+    private void addResourceGroup(JPopupMenu menu, String title, ChatResource.Kind kind,
+                                  List<ChatResource> resources, List<ChatResource> chosen) {
+        boolean header = false;
+        for (final ChatResource resource : resources) {
+            if (resource.kind() != kind) {
+                continue;
+            }
+            if (!header) {
+                if (menu.getComponentCount() > 0) {
+                    menu.add(new javax.swing.JPopupMenu.Separator());
+                }
+                JMenuItem heading = new JMenuItem(title.toUpperCase(java.util.Locale.GERMAN));
+                heading.setEnabled(false);
+                menu.add(heading);
+                header = true;
+            }
+            JMenuItem item = new JMenuItem(resource.title(), ChatAttachmentStrip.iconOf(kind));
+            item.setToolTipText(ChatAttachmentStrip.referenceTooltip(resource));
+            item.setEnabled(!chosen.contains(resource));
+            item.addActionListener(event -> addReference(resource));
+            menu.add(item);
+        }
+    }
+
     private void wireBehaviour() {
         sendButton.addActionListener(event -> submit());
         stopButton.addActionListener(event -> {
@@ -878,6 +995,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         });
         modelButton.addActionListener(event -> showModelMenu());
         reasoningButton.addActionListener(event -> showReasoningMenu());
+        resourcesButton.addActionListener(event -> showResourcesMenu());
         phaseButton.addActionListener(event -> showPhaseMenu());
         attachButton.addActionListener(event -> chooseFiles());
         // Drag & Drop: Editor (Text geht weiter an seinen eigenen Handler) und die übrige Composer-Fläche.
@@ -995,6 +1113,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         stopButton.setEnabled(busy);
         attachButton.setEnabled(!busy);
         reasoningButton.setEnabled(!busy);
+        resourcesButton.setEnabled(!busy && resourceCount > 0);
         refreshDictation(busy);
         refreshStatus();
         if (sendButton.isVisible() == busy || stopButton.isVisible() != busy) {

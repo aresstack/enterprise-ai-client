@@ -1,8 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
 
+import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 
 import javax.swing.BorderFactory;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -23,7 +25,9 @@ import java.util.List;
 /**
  * Die Reihe der vorgemerkten Anhänge über dem Editor (nach askai-java8 arch, {@code ChatAttachmentStrip}): je
  * Datei ein Chip mit Namen und ✕, je Seite aus dem Lesebereich ein Chip mit ihrem Titel und ✕. Hält nur Pfade und
- * Bookmarks, nie Inhalte; doppelte Dateien und Seiten werden übergangen.
+ * Bookmarks, nie Inhalte; doppelte Dateien und Seiten werden übergangen. Dazu je ausdrücklichem Verweis auf eine
+ * Ressource des Chats ein Chip mit dem Symbol ihrer Art; sein ✕ nimmt nur den Bezug zurück, die Ressource bleibt im
+ * Chat.
  */
 final class ChatAttachmentStrip extends JPanel {
 
@@ -37,6 +41,7 @@ final class ChatAttachmentStrip extends JPanel {
 
     private final List<Path> attachments = new ArrayList<Path>();
     private final List<ChatPage> pages = new ArrayList<ChatPage>();
+    private final List<ChatResource> references = new ArrayList<ChatResource>();
     private final ChangeListener changeListener;
 
     ChatAttachmentStrip(ChangeListener changeListener) {
@@ -77,6 +82,32 @@ final class ChatAttachmentStrip extends JPanel {
         return Collections.unmodifiableList(new ArrayList<ChatPage>(pages));
     }
 
+    /** Merkt einen Verweis auf eine Ressource des Chats vor; denselben nur einmal. */
+    void addReference(ChatResource reference) {
+        if (reference != null && !references.contains(reference)) {
+            references.add(reference);
+            rebuild();
+        }
+    }
+
+    /** Nimmt den Verweis zurück (die Ressource selbst bleibt im Chat). */
+    void removeReference(ChatResource reference) {
+        if (references.remove(reference)) {
+            rebuild();
+        }
+    }
+
+    void clearReferences() {
+        if (!references.isEmpty()) {
+            references.clear();
+            rebuild();
+        }
+    }
+
+    List<ChatResource> getReferences() {
+        return Collections.unmodifiableList(new ArrayList<ChatResource>(references));
+    }
+
     void removeAttachment(Path file) {
         if (attachments.remove(file)) {
             rebuild();
@@ -84,9 +115,10 @@ final class ChatAttachmentStrip extends JPanel {
     }
 
     void clear() {
-        if (!attachments.isEmpty() || !pages.isEmpty()) {
+        if (!attachments.isEmpty() || !pages.isEmpty() || !references.isEmpty()) {
             attachments.clear();
             pages.clear();
+            references.clear();
             rebuild();
         }
     }
@@ -107,7 +139,13 @@ final class ChatAttachmentStrip extends JPanel {
         for (ChatPage page : pages) {
             add(createChip(page));
         }
-        setVisible(count() > 0);
+        for (final ChatResource reference : references) {
+            JButton remove = removeButton(reference.title());
+            remove.setToolTipText("Bezug auf " + reference.title() + " entfernen (bleibt im Chat)");
+            remove.addActionListener(event -> removeReference(reference));
+            add(referenceChip(reference, remove));
+        }
+        setVisible(count() + references.size() > 0);
         revalidate();
         repaint();
         if (changeListener != null) {
@@ -126,6 +164,32 @@ final class ChatAttachmentStrip extends JPanel {
         JButton remove = removeButton(page.title());
         remove.addActionListener(event -> removePage(page));
         return chip(page.title(), pageTooltip(page), remove);
+    }
+
+    /** Ein Verweis-Chip: Symbol der Art (Datei, Seite, Quelle), Titel, Tooltip mit Art und Zusatz. */
+    static JPanel referenceChip(ChatResource reference, Component trailing) {
+        JPanel chip = chip(reference.title(), referenceTooltip(reference), trailing);
+        ((JLabel) chip.getComponent(0)).setIcon(iconOf(reference.kind()));
+        return chip;
+    }
+
+    /** Das Symbol einer Ressourcenart (StrokeIcon wie im Composer). */
+    static Icon iconOf(ChatResource.Kind kind) {
+        switch (kind) {
+            case FILE:
+                return ComposerIcons.paperclip();
+            case PAGE:
+                return ComposerIcons.document();
+            default:
+                return ComposerIcons.magnifier();
+        }
+    }
+
+    static String referenceTooltip(ChatResource reference) {
+        String kind = reference.kind() == ChatResource.Kind.FILE ? "Datei"
+                : reference.kind() == ChatResource.Kind.PAGE ? "Seite" : "Quelle";
+        return "Bezug auf " + kind + ": " + reference.title()
+                + (reference.detail().isEmpty() ? "" : " (" + reference.detail() + ")");
     }
 
     /** Tooltip eines Seiten-Chips: das Bookmark, unter dem das Modell die Seite liest. */

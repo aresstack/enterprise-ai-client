@@ -220,6 +220,154 @@ public class RagChatBindingTest {
         assertSameSources(before, ChatHistoryBinding.referencesOf(saved.getMessages().get(1).getSources()));
     }
 
+    /**
+     * Ressourcenübersicht und Verweise (Akzeptanztests 5, 7, 8, 9, 12, 13, 14): die Ressourcen des Chats enthalten die
+     * Datei und jede verwendete Quelle einmal (über ihre Resource-ID); ein Verweis auf Datei und Quelle legt nichts
+     * erneut ab, nennt dem Modell nur die stabilen Kennungen, lässt die sichtbare Nachricht unverändert und kommt nach
+     * dem Wiederöffnen wieder an die Nutzernachricht.
+     */
+    @Test
+    public void referencesNameStableIdsAndComeBackAfterReopening() throws Exception {
+        indexAll();
+        port.enqueueAnswer("Drei Monate [1].");
+        port.enqueueAnswer("Weiterhin drei Monate [1].");
+        port.enqueueAnswer("Gemeint ist das Quartalsende.");
+        final Fixture fixture = fixture(index, embeddings);
+        final FileChatHistoryStore store = new FileChatHistoryStore(folder.newFolder("chats").toPath());
+        final FileAttachmentStore attachments = new FileAttachmentStore(folder.newFolder("ablage").toPath());
+        final java.nio.file.Path file = folder.newFile("IAR-Konzept.txt").toPath();
+        java.nio.file.Files.write(file, "IAR ist ein Verfahren.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        final ChatHistoryBinding history = onEdt(new Callable<ChatHistoryBinding>() {
+            @Override
+            public ChatHistoryBinding call() {
+                ChatHistoryBinding binding = new ChatHistoryBinding(store, chat, fixture.binding, fixture.model,
+                        "Antworte knapp.", () -> 5L);
+                fixture.binding.enableTools(new ToolSupport(port, attachments, (name, content) -> "",
+                        java.util.Arrays.asList(recordingTool("knowledge_search", new ArrayList<String>(), ""),
+                                recordingTool(ChatBookmark.READ_TOOL, new ArrayList<String>(), "SEITE")), false));
+                fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true,
+                        Collections.singletonList(file));
+                return binding;
+            }
+        });
+        awaitIdle(fixture.model);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Und die Kündigungsfrist im Detail?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+
+        List<com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource> resources = resources(fixture);
+        List<String> files = idsOf(resources, com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource.Kind.FILE);
+        List<String> sources = idsOf(resources,
+                com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource.Kind.SOURCE);
+        assertEquals("die Datei einmal", 1, files.size());
+        assertEquals(attachments.list(conversation).get(0).id(), files.get(0));
+        assertTrue("die verwendete Quelle ist dabei: " + sources, sources.contains(source.idOf("kuendigung").value()));
+        assertEquals("jede Quelle nur einmal", new java.util.LinkedHashSet<String>(sources).size(), sources.size());
+        java.util.Set<String> used = new java.util.LinkedHashSet<String>();
+        for (TranscriptEntry entry : entries(fixture.model)) {
+            for (SourceReference reference : entry.getSources()) {
+                used.add(reference.getResourceId());
+            }
+        }
+        assertEquals("alle verwendeten Quellen, jede einmal", new ArrayList<String>(used), sources);
+        assertTrue("dieselbe Quelle in zwei Antworten", countSourcesOf(fixture, source.idOf("kuendigung").value()) >= 2);
+
+        final List<com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource> chosen =
+                new ArrayList<com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource>();
+        for (com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource resource : resources) {
+            if (resource.kind() == com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource.Kind.FILE
+                    || resource.id().equals(source.idOf("kuendigung").value())) {
+                chosen.add(resource);
+            }
+        }
+        assertEquals(2, chosen.size());
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested(com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatDraft
+                        .of("Was genau ist damit gemeint?", false).withReferences(chosen));
+            }
+        });
+        awaitIdle(fixture.model);
+
+        assertEquals("keine zweite Dateikopie", 1, attachments.list(conversation).size());
+        List<ChatMessage> sent = port.lastRequest().messages();
+        String system = sent.get(0).content();
+        assertTrue(system, system.contains("id = " + files.get(0)));
+        assertTrue(system, system.contains("id = " + source.idOf("kuendigung").value()));
+        assertTrue(system, system.contains("read_attachment") && system.contains(ChatBookmark.READ_TOOL));
+        assertFalse("kein Dateiinhalt im Prompt", system.contains("IAR ist ein Verfahren."));
+        assertEquals("sichtbare Nachricht unverändert", "Was genau ist damit gemeint?",
+                sent.get(sent.size() - 1).content());
+        TranscriptEntry question = entries(fixture.model).get(4);
+        assertEquals("Was genau ist damit gemeint?", question.getText());
+        assertEquals(chosen, question.getReferences());
+        for (ChatMessage message : chat.conversation(conversation).messages()) {
+            assertFalse("Kennung nicht im Verlauf", message.content().contains("id = " + files.get(0)));
+        }
+
+        com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord saved = store.load(conversation.value());
+        assertEquals(2, saved.getMessages().get(4).getReferences().size());
+        assertEquals("source", saved.getMessages().get(4).getReferences().get(1).getKind());
+        assertTrue(saved.getMessages().get(0).getReferences().isEmpty());
+        assertFalse("Resource-ID an der gespeicherten Quelle",
+                saved.getMessages().get(1).getSources().get(0).getResourceId().isEmpty());
+
+        com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord other =
+                new com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord("anderer", 1L);
+        other.getMessages().add(new com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord(
+                com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord.ROLE_USER, "Hallo", 1L, null));
+        other.setTitle("Hallo");
+        store.save(other);
+        assertTrue(onEdt(new Callable<Boolean>() {
+            @Override
+            public Boolean call() {
+                return history.open("anderer") && history.open(conversation.value());
+            }
+        }));
+        TranscriptEntry reopened = entries(fixture.model).get(4);
+        assertEquals("Was genau ist damit gemeint?", reopened.getText());
+        assertEquals("Verweise nach dem Wiederöffnen", chosen, reopened.getReferences());
+        assertEquals("Ressourcen nach dem Wiederöffnen", resources, resources(fixture));
+    }
+
+    private List<com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource> resources(final Fixture fixture)
+            throws Exception {
+        return onEdt(new Callable<List<com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource>>() {
+            @Override
+            public List<com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource> call() {
+                return fixture.binding.chatResources();
+            }
+        });
+    }
+
+    private static List<String> idsOf(List<com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource> resources,
+                                      com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource.Kind kind) {
+        List<String> ids = new ArrayList<String>();
+        for (com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource resource : resources) {
+            if (resource.kind() == kind) {
+                ids.add(resource.id());
+            }
+        }
+        return ids;
+    }
+
+    private static int countSourcesOf(Fixture fixture, String resourceId) throws Exception {
+        int count = 0;
+        for (TranscriptEntry entry : entries(fixture.model)) {
+            for (SourceReference reference : entry.getSources()) {
+                if (resourceId.equals(reference.getResourceId())) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
     private static void assertSameSources(List<SourceReference> expected, List<SourceReference> actual) {
         assertEquals(expected.size(), actual.size());
         for (int i = 0; i < expected.size(); i++) {

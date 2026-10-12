@@ -2,7 +2,9 @@ package com.aresstack.enterpriseai.proasteion.exedra.agent;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellModeModel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatDraft;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 
@@ -69,6 +71,32 @@ public final class ModeSwitchingChatActions implements ChatShellActions {
             withPages.append("\nSeite: ").append(page.title()).append(" (").append(page.bookmark()).append(')');
         }
         agent.sendRequested(withPages.toString(), ragEnabled, attachments);
+    }
+
+    /**
+     * Der Entwurf des Composers: im Chat unverändert an den Chat; im Agent-Modus gehen Seiten wie oben als Zeilen an
+     * die Nachricht und Verweise als Zeilen „Bezug: Titel (Kennung)“, die der Agent mit seinen Werkzeugen auflöst.
+     */
+    @Override
+    public void sendRequested(ChatDraft draft) {
+        if (!agentMode()) {
+            chat.sendRequested(draft);
+            return;
+        }
+        StringBuilder text = new StringBuilder(draft.text());
+        for (ChatPage page : draft.pages()) {
+            text.append("\nSeite: ").append(page.title()).append(" (").append(page.bookmark()).append(')');
+        }
+        for (ChatResource reference : draft.references()) {
+            text.append("\nBezug: ").append(reference.title()).append(" (").append(reference.id()).append(')');
+        }
+        agent.sendRequested(text.toString(), draft.ragEnabled(), draft.attachments());
+    }
+
+    /** Die Ressourcen gehören dem Chat (derselbe Verlauf in beiden Modi). */
+    @Override
+    public List<ChatResource> chatResources() {
+        return chat.chatResources();
     }
 
     @Override
