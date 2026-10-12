@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
+import com.aresstack.enterpriseai.proasteion.application.config.BubbleColorsConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.KnowledgeConfig;
@@ -145,6 +146,14 @@ public final class SettingsMapper {
         b.readAloudAutoStart(bool(p, ModelsConfig.READ_ALOUD_AUTO_START_KEY, false));
         b.readAloudChunking(text(p, ModelsConfig.READ_ALOUD_CHUNKING_KEY, "PARAGRAPHS").toUpperCase(Locale.ROOT));
         b.synthesisWorkers(text(p, ModelsConfig.READ_ALOUD_WORKERS_KEY, "2"));
+        b.bubbleUserBackground(bubbleColor(p, BubbleColorsConfig.USER_BACKGROUND_KEY,
+                BubbleColorsConfig.DEFAULT_USER_BACKGROUND));
+        b.bubbleUserForeground(bubbleColor(p, BubbleColorsConfig.USER_FOREGROUND_KEY,
+                BubbleColorsConfig.DEFAULT_USER_FOREGROUND));
+        b.bubbleAssistantBackground(bubbleColor(p, BubbleColorsConfig.ASSISTANT_BACKGROUND_KEY,
+                BubbleColorsConfig.DEFAULT_ASSISTANT_BACKGROUND));
+        b.bubbleAssistantForeground(bubbleColor(p, BubbleColorsConfig.ASSISTANT_FOREGROUND_KEY,
+                BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND));
         b.prefetchMaxItems(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100"));
         b.prefetchConcurrency(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4"));
         b.prefetchCacheMaxMb(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CACHE_MB_KEY, "50"));
@@ -245,6 +254,15 @@ public final class SettingsMapper {
                 "PARAGRAPHS".equals(form.readAloudChunking()) ? "" : form.readAloudChunking());
         put(set, ModelsConfig.READ_ALOUD_WORKERS_KEY,
                 "2".equals(form.synthesisWorkers()) ? "" : form.synthesisWorkers());
+        // Blasenfarben: die Standardfarben stehen nicht in der Datei („Standard wiederherstellen“ entfernt die Schlüssel).
+        put(set, BubbleColorsConfig.USER_BACKGROUND_KEY,
+                bubbleColorValue(form.bubbleUserBackground(), BubbleColorsConfig.DEFAULT_USER_BACKGROUND));
+        put(set, BubbleColorsConfig.USER_FOREGROUND_KEY,
+                bubbleColorValue(form.bubbleUserForeground(), BubbleColorsConfig.DEFAULT_USER_FOREGROUND));
+        put(set, BubbleColorsConfig.ASSISTANT_BACKGROUND_KEY,
+                bubbleColorValue(form.bubbleAssistantBackground(), BubbleColorsConfig.DEFAULT_ASSISTANT_BACKGROUND));
+        put(set, BubbleColorsConfig.ASSISTANT_FOREGROUND_KEY,
+                bubbleColorValue(form.bubbleAssistantForeground(), BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND));
         // Vorladen: Standardwerte (100 Treffer, 4 Abrufe, 50 MB) stehen nicht in der Datei.
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100".equals(form.prefetchMaxItems().trim()) ? "" : form.prefetchMaxItems().trim());
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4".equals(form.prefetchConcurrency().trim()) ? "" : form.prefetchConcurrency().trim());
@@ -633,5 +651,24 @@ public final class SettingsMapper {
             sb.append(item);
         }
         return sb.toString();
+    }
+
+    /**
+     * Eine Blasenfarbe der Datei als {@code #RRGGBB}; fehlt sie, die Vorgabe. Ein unlesbarer Wert bleibt als Text
+     * stehen, damit der Dialog ihn als ungültig zeigt statt ihn still zu ersetzen.
+     */
+    private static String bubbleColor(Properties p, String key, int def) {
+        String value = text(p, key, "");
+        if (value.isEmpty()) {
+            return BubbleColorsConfig.hex(def);
+        }
+        Integer parsed = BubbleColorsConfig.parseHex(value);
+        return parsed == null ? value : BubbleColorsConfig.hex(parsed);
+    }
+
+    /** Die Standardfarbe und unlesbare Werte schreiben nichts (der Schlüssel entfällt, die Vorgabe gilt). */
+    static String bubbleColorValue(String value, int def) {
+        Integer parsed = BubbleColorsConfig.parseHex(value);
+        return parsed == null || parsed == def ? "" : BubbleColorsConfig.hex(parsed);
     }
 }

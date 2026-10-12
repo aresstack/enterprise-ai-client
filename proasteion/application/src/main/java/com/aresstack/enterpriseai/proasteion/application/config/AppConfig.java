@@ -24,11 +24,13 @@ public final class AppConfig {
     private final AgentConfig agent;
     private final ModelsConfig models;
     private final Set<String> disabledTools;
+    private final BubbleColorsConfig bubbleColors;
     private final List<String> warnings;
 
     AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
               List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
-              ModelsConfig models, Set<String> disabledTools, List<String> warnings) {
+              ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors,
+              List<String> warnings) {
         this.windowTitle = windowTitle;
         this.chat = chat;
         this.embedding = embedding;
@@ -39,6 +41,7 @@ public final class AppConfig {
         this.agent = agent;
         this.models = models;
         this.disabledTools = Collections.unmodifiableSet(new LinkedHashSet<String>(disabledTools));
+        this.bubbleColors = bubbleColors == null ? BubbleColorsConfig.defaults() : bubbleColors;
         this.warnings = Collections.unmodifiableList(new ArrayList<String>(warnings));
     }
 
@@ -89,6 +92,11 @@ public final class AppConfig {
     /** Ist das Werkzeug aktiv? Ohne Eintrag in {@code tools.disabled} ja. */
     public boolean isToolEnabled(String name) {
         return name != null && !disabledTools.contains(name);
+    }
+
+    /** Farben der Sprechblasen von Nutzer und Assistent ({@code chat.bubble.*}); ohne Schlüssel die Vorgaben. */
+    public BubbleColorsConfig bubbleColors() {
+        return bubbleColors;
     }
 
     public List<String> warnings() {

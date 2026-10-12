@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.proasteion.application.config.BubbleColorsConfig;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -74,6 +76,10 @@ public final class SettingsForm {
     private final boolean readAloudAutoStart;
     private final String readAloudChunking;
     private final String synthesisWorkers;
+    private final String bubbleUserBackground;
+    private final String bubbleUserForeground;
+    private final String bubbleAssistantBackground;
+    private final String bubbleAssistantForeground;
     private final String prefetchMaxItems;
     private final String prefetchConcurrency;
     private final String prefetchCacheMaxMb;
@@ -147,6 +153,10 @@ public final class SettingsForm {
         this.readAloudAutoStart = b.readAloudAutoStart;
         this.readAloudChunking = b.readAloudChunking;
         this.synthesisWorkers = b.synthesisWorkers;
+        this.bubbleUserBackground = b.bubbleUserBackground;
+        this.bubbleUserForeground = b.bubbleUserForeground;
+        this.bubbleAssistantBackground = b.bubbleAssistantBackground;
+        this.bubbleAssistantForeground = b.bubbleAssistantForeground;
         this.prefetchMaxItems = b.prefetchMaxItems;
         this.prefetchConcurrency = b.prefetchConcurrency;
         this.prefetchCacheMaxMb = b.prefetchCacheMaxMb;
@@ -211,6 +221,10 @@ public final class SettingsForm {
                 .readAloudAutoStart(readAloudAutoStart)
                 .readAloudChunking(readAloudChunking)
                 .synthesisWorkers(synthesisWorkers)
+                .bubbleUserBackground(bubbleUserBackground)
+                .bubbleUserForeground(bubbleUserForeground)
+                .bubbleAssistantBackground(bubbleAssistantBackground)
+                .bubbleAssistantForeground(bubbleAssistantForeground)
                 .prefetchMaxItems(prefetchMaxItems)
                 .prefetchConcurrency(prefetchConcurrency)
                 .prefetchCacheMaxMb(prefetchCacheMaxMb)
@@ -407,6 +421,26 @@ public final class SettingsForm {
     /** Parallele Synthesen beim Vorlesen ({@code speech.readAloud.synthesisWorkers}). */
     public String synthesisWorkers() {
         return synthesisWorkers;
+    }
+
+    /** Hintergrund der eigenen Blasen als {@code #RRGGBB} ({@code chat.bubble.user.background}). */
+    public String bubbleUserBackground() {
+        return bubbleUserBackground;
+    }
+
+    /** Schrift der eigenen Blasen als {@code #RRGGBB} ({@code chat.bubble.user.foreground}). */
+    public String bubbleUserForeground() {
+        return bubbleUserForeground;
+    }
+
+    /** Hintergrund der Antwortblasen als {@code #RRGGBB} ({@code chat.bubble.assistant.background}). */
+    public String bubbleAssistantBackground() {
+        return bubbleAssistantBackground;
+    }
+
+    /** Schrift der Antwortblasen als {@code #RRGGBB} ({@code chat.bubble.assistant.foreground}). */
+    public String bubbleAssistantForeground() {
+        return bubbleAssistantForeground;
     }
 
     /** Vorladen: höchstens so viele Treffer ab der Cursorposition ({@code knowledge.prefetch.maxItems}). */
@@ -639,6 +673,12 @@ public final class SettingsForm {
         private boolean readAloudAutoStart;
         private String readAloudChunking = "PARAGRAPHS";
         private String synthesisWorkers = "2";
+        private String bubbleUserBackground = BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_USER_BACKGROUND);
+        private String bubbleUserForeground = BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_USER_FOREGROUND);
+        private String bubbleAssistantBackground =
+                BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_ASSISTANT_BACKGROUND);
+        private String bubbleAssistantForeground =
+                BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND);
         private String prefetchMaxItems = "100";
         private String prefetchConcurrency = "4";
         private String prefetchCacheMaxMb = "50";
@@ -847,6 +887,26 @@ public final class SettingsForm {
 
         public Builder synthesisWorkers(String value) {
             this.synthesisWorkers = value;
+            return this;
+        }
+
+        public Builder bubbleUserBackground(String value) {
+            this.bubbleUserBackground = text(value);
+            return this;
+        }
+
+        public Builder bubbleUserForeground(String value) {
+            this.bubbleUserForeground = text(value);
+            return this;
+        }
+
+        public Builder bubbleAssistantBackground(String value) {
+            this.bubbleAssistantBackground = text(value);
+            return this;
+        }
+
+        public Builder bubbleAssistantForeground(String value) {
+            this.bubbleAssistantForeground = text(value);
             return this;
         }
 

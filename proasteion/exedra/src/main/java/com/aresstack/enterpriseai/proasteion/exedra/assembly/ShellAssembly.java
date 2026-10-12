@@ -191,6 +191,8 @@ public final class ShellAssembly {
             chatService.setSystemPrompt(chatActions.conversationId(), current.chat().systemPrompt());
             shell.composer().setModelName(current.chat().model());
             titled.setWindowTitle(current.windowTitle());
+            // Blasenfarben (Reiter „Darstellung“): bei neuen Farben baut der Verlauf Nutzer- und Antwortblasen neu auf.
+            shell.transcript().setBubblePalette(BubblePalettes.from(current.bubbleColors()));
         }));
         if (agent != null && root.researchHost() != null) {
             // askai: die Artefakt-Ansicht „Konzept“ (Konzeptbaum mit Inseln) als Drawer-Reiter im Agent-Modus

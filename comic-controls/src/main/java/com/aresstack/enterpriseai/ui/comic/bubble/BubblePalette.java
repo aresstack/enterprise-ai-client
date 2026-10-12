@@ -52,6 +52,17 @@ public final class BubblePalette {
                 new Color(0x6B6F76));
     }
 
+    /**
+     * Dieselbe Palette mit anderen Farben für Nutzer- und Assistentenblasen (die Einstellungen
+     * {@code chat.bubble.*}); Verlauf, Wolken, Fehler und Hinweise behalten ihre Farben.
+     */
+    public BubblePalette withConversationColors(Color userBackground, Color userForeground,
+                                                Color assistantBackground, Color assistantForeground) {
+        return new BubblePalette(transcriptBackground, userBackground, userForeground, assistantBackground,
+                assistantForeground, activityBackground, activityForeground, activityAccent, failureAccent,
+                infoForeground);
+    }
+
     public Color getTranscriptBackground() {
         return transcriptBackground;
     }
@@ -90,6 +101,37 @@ public final class BubblePalette {
 
     public Color getInfoForeground() {
         return infoForeground;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof BubblePalette)) {
+            return false;
+        }
+        BubblePalette that = (BubblePalette) other;
+        return transcriptBackground.equals(that.transcriptBackground) && userBackground.equals(that.userBackground)
+                && userForeground.equals(that.userForeground) && assistantBackground.equals(that.assistantBackground)
+                && assistantForeground.equals(that.assistantForeground)
+                && activityBackground.equals(that.activityBackground)
+                && activityForeground.equals(that.activityForeground) && activityAccent.equals(that.activityAccent)
+                && failureAccent.equals(that.failureAccent) && infoForeground.equals(that.infoForeground);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = transcriptBackground.hashCode();
+        result = 31 * result + userBackground.hashCode();
+        result = 31 * result + userForeground.hashCode();
+        result = 31 * result + assistantBackground.hashCode();
+        result = 31 * result + assistantForeground.hashCode();
+        result = 31 * result + activityBackground.hashCode();
+        result = 31 * result + activityForeground.hashCode();
+        result = 31 * result + activityAccent.hashCode();
+        result = 31 * result + failureAccent.hashCode();
+        return 31 * result + infoForeground.hashCode();
     }
 
     private static Color requireColor(Color color, String name) {

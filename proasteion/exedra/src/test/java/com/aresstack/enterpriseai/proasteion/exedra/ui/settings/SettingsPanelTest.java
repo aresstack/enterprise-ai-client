@@ -412,7 +412,7 @@ public class SettingsPanelTest {
             public void run() {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
-                assertEquals(8, SettingsPanel.tabCount());
+                assertEquals(9, SettingsPanel.tabCount());
                 for (int i = 0; i < SettingsPanel.tabCount(); i++) {
                     panel.tabButton(i).doClick();
                     assertTrue(panel.tabButton(i).isSelected());
@@ -435,7 +435,8 @@ public class SettingsPanelTest {
             @Override
             public void run() {
                 assertEquals("Tools", SettingsPanel.tabLabel(SettingsPanel.TOOLS_TAB));
-                assertEquals("Technische Details", SettingsPanel.tabLabel(SettingsPanel.TOOLS_TAB + 1));
+                assertEquals("Darstellung", SettingsPanel.tabLabel(SettingsPanel.TOOLS_TAB + 1));
+                assertEquals("Technische Details", SettingsPanel.tabLabel(SettingsPanel.TECHNICAL_TAB));
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, new ToolOverview() {
                             @Override

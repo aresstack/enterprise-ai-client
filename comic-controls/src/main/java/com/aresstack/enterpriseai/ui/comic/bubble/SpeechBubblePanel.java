@@ -106,6 +106,16 @@ public final class SpeechBubblePanel extends JPanel
         buildUi();
     }
 
+    /** Die Flächenfarbe der Blase. */
+    public Color getBubbleColor() {
+        return bubbleColor;
+    }
+
+    /** Die Schriftfarbe von Text, Kopfzeile, Zeitstempel und Details. */
+    public Color getTextColor() {
+        return textColor;
+    }
+
     public BubbleSide getSide() {
         return side;
     }

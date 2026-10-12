@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.markdown;
 
+import com.aresstack.enterpriseai.ui.comic.theme.ColorContrast;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 
 import javax.swing.UIManager;
@@ -59,7 +60,7 @@ public final class MarkdownTheme {
         Color fg = foreground == null ? color("Label.foreground", Color.DARK_GRAY) : foreground;
         Color bg = background == null ? color("TextArea.background", Color.WHITE) : background;
         Color muted = blend(bg, fg, 0.55f);
-        Color link = linkColorFor(fg);
+        Color link = linkColorFor(bg, fg);
         Color codeBackground = blend(bg, fg, 0.10f);
         Color quoteBorder = blend(bg, fg, 0.28f);
         Color separator = blend(bg, fg, 0.20f);
@@ -81,12 +82,16 @@ public final class MarkdownTheme {
         return base.deriveFont(Font.PLAIN, Math.max(MINIMUM_BODY_FONT_SIZE, base.getSize()));
     }
 
-    /** Auf dunklen Blasen (heller Text) wird das Akzentblau aufgehellt, sonst bliebe ein Link unleserlich. */
-    private static Color linkColorFor(Color foreground) {
-        if (luminance(foreground) > 0.6f) {
-            return blend(foreground, ResearchUiPalette.ACCENT_BLUE, 0.35f);
-        }
-        return color("Component.linkColor", ResearchUiPalette.ACCENT_BLUE);
+    /**
+     * Auf dunklen Blasen (heller Text) wird das Akzentblau aufgehellt, sonst bliebe ein Link unleserlich. Wäre der
+     * Akzent auf einer selbst gewählten Blasenfarbe trotzdem kaum lesbar (etwa Blau auf Blau), folgt der Link der
+     * Schriftfarbe; die Unterstreichung kennzeichnet ihn weiter.
+     */
+    private static Color linkColorFor(Color background, Color foreground) {
+        Color accent = luminance(foreground) > 0.6f
+                ? blend(foreground, ResearchUiPalette.ACCENT_BLUE, 0.35f)
+                : color("Component.linkColor", ResearchUiPalette.ACCENT_BLUE);
+        return ColorContrast.ratio(accent, background) >= ColorContrast.MINIMUM_LEGIBLE_ACCENT ? accent : foreground;
     }
 
     private static float luminance(Color color) {

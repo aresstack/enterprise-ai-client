@@ -54,6 +54,7 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -144,8 +145,9 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
 
     private final ChatShellModel model;
     private final ComicPalette comicPalette;
-    private final BubblePalette bubblePalette;
-    private final MarkdownTheme assistantTheme;
+    /** Farben der Blasen; neue Einstellungen tauschen sie über {@link #setBubblePalette} aus (UI-Thread). */
+    private BubblePalette bubblePalette;
+    private MarkdownTheme assistantTheme;
     private final DesktopLinkOpener linkOpener;
     private final MermaidImageRenderer mermaidImageRenderer;
     private final JPanel messageList = new WidthTrackingList();
@@ -324,6 +326,47 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
                 && !(messageList.getComponent(index) instanceof JLabel)) {
             messageList.remove(index); // der Abstand hinter der Zeile
         }
+    }
+
+    /**
+     * Übernimmt neue Blasenfarben ohne Neustart (Einstellungen „Darstellung“): die Blasen von Nutzer und Assistent
+     * werden mit ihrem aktuellen Stand neu aufgebaut, Wolken, Hinweise, Quellen und Anhänge bleiben unberührt. Eine
+     * laufende Antwort streamt in ihrer neuen Blase weiter. Gleiche Farben ändern nichts. Nur auf dem EDT.
+     */
+    public void setBubblePalette(BubblePalette palette) {
+        if (palette == null) {
+            throw new IllegalArgumentException("palette must not be null");
+        }
+        if (palette.equals(bubblePalette)) {
+            return;
+        }
+        flushPendingUpdates();
+        hideQuoteOverlay();
+        bubblePalette = palette;
+        assistantTheme = MarkdownTheme.forBubble(palette.getAssistantBackground(), palette.getAssistantForeground());
+        for (RowState state : new ArrayList<RowState>(rows.values())) {
+            TranscriptEntry entry = state.entry;
+            if (state.bubble == null || entry == null || !usesConversationColors(entry)) {
+                continue;
+            }
+            replaceRow(state, entry);
+            RowState replacement = rows.get(entry.getId());
+            replacement.streamed = state.streamed;
+            showUnlessPending(replacement, entry);
+        }
+        refresh(false);
+    }
+
+    /** Die Farben, mit denen der Verlauf gerade zeichnet (für Tests). */
+    BubblePalette bubblePalette() {
+        return bubblePalette;
+    }
+
+    /** Nutzer- und Antwortblasen folgen den einstellbaren Farben; Fehler, Hinweise und Wolken behalten ihre. */
+    private static boolean usesConversationColors(TranscriptEntry entry) {
+        return entry.getAuthor() == TranscriptEntry.Author.USER
+                || (entry.getAuthor() == TranscriptEntry.Author.ASSISTANT
+                && entry.getState() != TranscriptEntry.State.FAILED);
     }
 
     /** Die Gedankenwolke eines laufenden Arbeitsschritts (für Tests), sonst {@code null}. */

@@ -75,7 +75,7 @@ public final class SettingsPanel extends JPanel {
     public static final String OPEN_FOLDER_LABEL = "Einstellungsordner öffnen";
     public static final String QUIT_LABEL = "Beenden";
     private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle",
-            "Sprachausgabe", "Index", "Tools", "Technische Details"};
+            "Sprachausgabe", "Index", "Tools", "Darstellung", "Technische Details"};
     /** Index des Reiters „Modelle“ (Auswahl je Kategorie). */
     static final int MODELS_TAB = 3;
     /** Index der Kategorie „Sprachausgabe“. */
@@ -84,12 +84,14 @@ public final class SettingsPanel extends JPanel {
     static final int INDEX_TAB = 5;
     /** Index der Kategorie „Tools“ (Werkzeuge der zentralen Registry mit Häkchen „aktiv“). */
     static final int TOOLS_TAB = 6;
+    /** Index der Kategorie „Darstellung“ (Farben der Sprechblasen). */
+    static final int APPEARANCE_TAB = 7;
     /** Index der Kategorie „Technische Details“ (Protokoll). */
-    static final int TECHNICAL_TAB = 7;
+    static final int TECHNICAL_TAB = 8;
 
     /**
      * Die Kategorien in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle, Sprachausgabe, Index, Tools,
-     * Technische Details.
+     * Darstellung, Technische Details.
      */
     public static int tabCount() {
         return TAB_LABELS.length;
@@ -115,6 +117,7 @@ public final class SettingsPanel extends JPanel {
     private final SpeechTab speechTab;
     private final IndexEditor indexTab;
     private final ToolsTab toolsTab;
+    private final AppearanceTab appearanceTab;
     private final JTextArea technicalText = new JTextArea();
     private final List<ComposerToggleButton> tabButtons = new ArrayList<ComposerToggleButton>();
     private final JPanel header = new JPanel(new BorderLayout(8, 0));
@@ -162,6 +165,7 @@ public final class SettingsPanel extends JPanel {
         this.speechTab = new SpeechTab(palette);
         this.indexTab = new IndexEditor(palette);
         this.toolsTab = new ToolsTab(tools, palette);
+        this.appearanceTab = new AppearanceTab(palette);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START
@@ -201,7 +205,7 @@ public final class SettingsPanel extends JPanel {
         tabs.setOpaque(false);
         ButtonGroup group = new ButtonGroup();
         JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel(), modelsTab.panel(),
-                speechTab.panel(), indexTab.panel(), toolsTab.panel(), technicalPage()};
+                speechTab.panel(), indexTab.panel(), toolsTab.panel(), appearanceTab.panel(), technicalPage()};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
             ComposerToggleButton button = new ComposerToggleButton(null, name, null);
@@ -413,6 +417,7 @@ public final class SettingsPanel extends JPanel {
         speechTab.load(form);
         indexTab.load(form);
         toolsTab.load(form);
+        appearanceTab.load(form);
     }
 
     /** Der aktuelle Stand aller Felder als Formular, Quellen wie geladen. */
@@ -425,6 +430,7 @@ public final class SettingsPanel extends JPanel {
         speechTab.store(b);
         indexTab.store(b);
         toolsTab.store(b);
+        appearanceTab.store(b);
         return b.build();
     }
 
@@ -572,6 +578,10 @@ public final class SettingsPanel extends JPanel {
     }
 
     /** Die Kategorie „Tools“ (für Tests). */
+    AppearanceTab appearanceTab() {
+        return appearanceTab;
+    }
+
     ToolsTab toolsTab() {
         return toolsTab;
     }

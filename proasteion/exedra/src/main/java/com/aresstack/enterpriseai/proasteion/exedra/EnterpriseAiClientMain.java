@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.speech.SpeechOutput;
 import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
 import com.aresstack.enterpriseai.proasteion.application.composition.LocalVoices;
 import com.aresstack.enterpriseai.proasteion.exedra.assembly.SettingsAssembly;
+import com.aresstack.enterpriseai.proasteion.exedra.assembly.BubblePalettes;
 import com.aresstack.enterpriseai.proasteion.exedra.assembly.ShellAssembly;
 import com.aresstack.enterpriseai.proasteion.application.composition.StartupNotices;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
@@ -174,7 +175,7 @@ public final class EnterpriseAiClientMain {
             @Override
             public void run() {
                 ComicPalette palette = ComicPalette.defaultPalette();
-                BubblePalette bubbles = BubblePalette.windowsPhoneInspired();
+                BubblePalette bubbles = BubblePalettes.from(started.bubbleColors());
                 ShellAssembly.ShellView view = ShellAssembly.createShell(root, palette, bubbles);
                 final JFrame frame = ShellAssembly.createFrame(started.windowTitle(), view, palette);
                 frame.addWindowListener(new WindowAdapter() {

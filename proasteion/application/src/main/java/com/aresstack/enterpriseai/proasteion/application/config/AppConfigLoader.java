@@ -167,6 +167,7 @@ public final class AppConfigLoader {
         AgentConfig agent = agent(reader);
         ModelsConfig models = models(reader, warnings);
         Set<String> disabledTools = new LinkedHashSet<String>(reader.list("tools.disabled"));
+        BubbleColorsConfig bubbleColors = bubbleColors(reader, warnings);
 
         for (String unread : reader.unreadKeys()) {
             warnings.add("Unbekannter Konfigurationsschlüssel wird ignoriert: " + unread);
@@ -194,7 +195,7 @@ public final class AppConfigLoader {
             throw new AppConfigException(reader.problems());
         }
         return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models,
-                disabledTools, warnings);
+                disabledTools, bubbleColors, warnings);
     }
 
     /**
@@ -365,6 +366,36 @@ public final class AppConfigLoader {
                 r.integer(ModelsConfig.READ_ALOUD_WORKERS_KEY, ReadAloudService.DEFAULT_SYNTHESIS_WORKERS, 1,
                         ReadAloudService.MAX_SYNTHESIS_WORKERS),
                 r.text(ModelsConfig.SPEECH_VOICE_KEY, null), modelRoot);
+    }
+
+    /**
+     * Farben der Sprechblasen ({@code chat.bubble.user|assistant.background|foreground}, je {@code #RRGGBB}). Ein
+     * unlesbarer Wert hält den Start nicht auf: er wird als Hinweis gemeldet und die bisherige Farbe gilt.
+     */
+    private static BubbleColorsConfig bubbleColors(ConfigReader r, List<String> warnings) {
+        return new BubbleColorsConfig(
+                bubbleColor(r, BubbleColorsConfig.USER_BACKGROUND_KEY, BubbleColorsConfig.DEFAULT_USER_BACKGROUND,
+                        warnings),
+                bubbleColor(r, BubbleColorsConfig.USER_FOREGROUND_KEY, BubbleColorsConfig.DEFAULT_USER_FOREGROUND,
+                        warnings),
+                bubbleColor(r, BubbleColorsConfig.ASSISTANT_BACKGROUND_KEY,
+                        BubbleColorsConfig.DEFAULT_ASSISTANT_BACKGROUND, warnings),
+                bubbleColor(r, BubbleColorsConfig.ASSISTANT_FOREGROUND_KEY,
+                        BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND, warnings));
+    }
+
+    private static int bubbleColor(ConfigReader r, String key, int def, List<String> warnings) {
+        String text = r.text(key, null);
+        if (text == null) {
+            return def;
+        }
+        Integer parsed = BubbleColorsConfig.parseHex(text);
+        if (parsed == null) {
+            warnings.add(key + ": \"" + text + "\" ist keine Farbe im Format #RRGGBB; es gilt "
+                    + BubbleColorsConfig.hex(def) + ".");
+            return def;
+        }
+        return parsed;
     }
 
     private static KnowledgeConfig knowledge(ConfigReader r) {

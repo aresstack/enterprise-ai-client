@@ -81,6 +81,16 @@ final class AssistantMarkdownBubble extends JPanel implements WidthAwareHeight, 
         add(body, BorderLayout.CENTER);
     }
 
+    /** Die Flächenfarbe der Blase (für Tests). */
+    Color bubbleColor() {
+        return bubbleColor;
+    }
+
+    /** Die Schriftfarbe der Kopfzeile (für Tests). */
+    Color headerForeground() {
+        return headerForeground;
+    }
+
     /** Der Markdown-Körper, den der Verlauf mit Deltas füttert. */
     MarkdownMessageView view() {
         return body;
