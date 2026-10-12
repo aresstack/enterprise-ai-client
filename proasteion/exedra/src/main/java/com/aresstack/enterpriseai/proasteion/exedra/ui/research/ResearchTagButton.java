@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.research;
 
+import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
+
 import javax.swing.JButton;
 import java.awt.Color;
 import java.awt.Cursor;
@@ -18,8 +20,8 @@ import java.awt.RenderingHints;
  */
 public final class ResearchTagButton extends JButton {
 
-    static final Color SUGGESTION_BACKGROUND = new Color(0xF2C94C);
-    static final Color SUGGESTION_FOREGROUND = new Color(0x252525);
+    static final Color SUGGESTION_BACKGROUND = ResearchUiPalette.TAG_SUGGESTION_SURFACE;
+    static final Color SUGGESTION_FOREGROUND = ResearchUiPalette.TAG_SUGGESTION_TEXT;
     /** The action red — the bubble palette's alert tone, same chip geometry as the yellow suggestion. */
     static final Color ACTION_BACKGROUND = new Color(0xEB5757);
     static final Color ACTION_FOREGROUND = Color.WHITE;

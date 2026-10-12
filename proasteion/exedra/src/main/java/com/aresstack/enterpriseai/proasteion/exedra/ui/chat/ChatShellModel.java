@@ -106,6 +106,12 @@ public final class ChatShellModel {
     /** Wie oben, dazu die Ressourcen des Chats, auf die sich die Nachricht ausdrücklich bezieht (Verweis-Chips). */
     public TranscriptEntry addUserMessage(String text, List<String> attachmentNames, List<ChatPage> pages,
                                           List<ChatResource> references) {
+        return addUserMessage(text, attachmentNames, pages, references, Collections.<ChatQuote>emptyList());
+    }
+
+    /** Wie oben, dazu die zitierten Passagen früherer Antworten, auf die sich die Nachricht bezieht. */
+    public TranscriptEntry addUserMessage(String text, List<String> attachmentNames, List<ChatPage> pages,
+                                          List<ChatResource> references, List<ChatQuote> quotes) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("text must not be blank");
         }
@@ -118,6 +124,9 @@ public final class ChatShellModel {
         }
         if (references != null && !references.isEmpty()) {
             entry.setReferences(references);
+        }
+        if (quotes != null && !quotes.isEmpty()) {
+            entry.setQuotes(quotes);
         }
         fireEntryAdded(entry);
         return entry;
@@ -357,6 +366,14 @@ public final class ChatShellModel {
     public TranscriptEntry restoreEntry(TranscriptEntry.Author author, String text, long createdAtMillis,
                                         List<String> attachmentNames, List<ChatPage> pages,
                                         List<ChatResource> references) {
+        return restoreEntry(author, text, createdAtMillis, attachmentNames, pages, references,
+                Collections.<ChatQuote>emptyList());
+    }
+
+    /** Wie oben, dazu die zitierten Passagen einer Nutzernachricht. */
+    public TranscriptEntry restoreEntry(TranscriptEntry.Author author, String text, long createdAtMillis,
+                                        List<String> attachmentNames, List<ChatPage> pages,
+                                        List<ChatResource> references, List<ChatQuote> quotes) {
         if (author == null || text == null) {
             throw new IllegalArgumentException("author and text must not be null");
         }
@@ -374,6 +391,9 @@ public final class ChatShellModel {
         }
         if (references != null && !references.isEmpty()) {
             entry.setReferences(references);
+        }
+        if (quotes != null && !quotes.isEmpty()) {
+            entry.setQuotes(quotes);
         }
         fireEntryAdded(entry);
         return entry;

@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * Die Anhänge einer gesendeten Nutzernachricht als Chips direkt unter ihrer Blase (rechtsbündig), nach dem Senden
  * und nach dem Laden eines gespeicherten Chats — dieselben Chips wie im Composer, ohne ✕; Seiten (Bookmarks) mit
- * ihrem Titel, ausdrückliche Verweise mit dem Symbol ihrer Art.
+ * ihrem Titel, ausdrückliche Verweise mit dem Symbol ihrer Art, Zitate mit Anführungszeichen.
  */
 final class AttachmentChipsPanel extends JPanel {
 
@@ -17,6 +17,12 @@ final class AttachmentChipsPanel extends JPanel {
 
     /** Wie oben, dazu die ausdrücklichen Verweise auf Ressourcen des Chats (mit dem Symbol ihrer Art). */
     AttachmentChipsPanel(List<String> fileNames, List<ChatPage> pages, List<ChatResource> references) {
+        this(fileNames, pages, references, java.util.Collections.<ChatQuote>emptyList());
+    }
+
+    /** Wie oben, dazu die zitierten Passagen früherer Antworten. */
+    AttachmentChipsPanel(List<String> fileNames, List<ChatPage> pages, List<ChatResource> references,
+                         List<ChatQuote> quotes) {
         super(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         setOpaque(false);
         for (String fileName : fileNames) {
@@ -27,6 +33,9 @@ final class AttachmentChipsPanel extends JPanel {
         }
         for (ChatResource reference : references) {
             add(ChatAttachmentStrip.referenceChip(reference, null));
+        }
+        for (ChatQuote quote : quotes) {
+            add(ChatAttachmentStrip.quoteChip(quote, null));
         }
     }
 }

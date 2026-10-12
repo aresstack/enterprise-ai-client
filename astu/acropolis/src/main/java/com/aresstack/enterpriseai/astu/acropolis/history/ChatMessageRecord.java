@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Eine gespeicherte Nachricht (aus askai-java8 arch): Rolle, Text, Zeitpunkt, Anhänge und Seiten; bei Antworten
+ * Eine gespeicherte Nachricht (aus askai-java8 arch): Rolle, Text, Zeitpunkt, Anhänge, Seiten und Zitate; bei Antworten
  * zusätzlich Quellen und Werkzeugaufrufe (Diagnose).
  */
 public final class ChatMessageRecord {
@@ -22,6 +22,8 @@ public final class ChatMessageRecord {
     private List<AttachmentRecord> attachments = new ArrayList<AttachmentRecord>();
     /** Seiten, die mit dieser Nachricht in den Chat kamen (nur Bookmark und Titel). */
     private List<BookmarkRecord> bookmarks = new ArrayList<BookmarkRecord>();
+    /** Passagen früherer Antworten, auf die sich diese Nutzernachricht bezieht; {@code null} in älteren Chats ohne Zitate. */
+    private List<QuoteRecord> quotes;
     /** Quellen einer Antwort, wie angezeigt; {@code null} bei Chats von vor 0.30.0. */
     private List<SourceRecord> sources;
     /** Werkzeugaufrufe einer Antwort in ihrer Reihenfolge; {@code null} bei Chats von vor 0.30.0. */
@@ -86,6 +88,17 @@ public final class ChatMessageRecord {
     public ChatMessageRecord withReferences(List<ResourceReferenceRecord> values) {
         this.references = values == null || values.isEmpty() ? null
                 : new ArrayList<ResourceReferenceRecord>(values);
+        return this;
+    }
+
+    /** Die zitierten Passagen dieser Nutzernachricht; leer, wenn keine (oder ein älterer Chat). */
+    public List<QuoteRecord> getQuotes() {
+        return quotes != null ? quotes : new ArrayList<QuoteRecord>();
+    }
+
+    /** Hängt die zitierten Passagen dieser Nachricht an; ohne Zitate bleibt das Feld weg (wie in älteren Chats). */
+    public ChatMessageRecord withQuotes(List<QuoteRecord> quoted) {
+        this.quotes = quoted == null || quoted.isEmpty() ? null : new ArrayList<QuoteRecord>(quoted);
         return this;
     }
 

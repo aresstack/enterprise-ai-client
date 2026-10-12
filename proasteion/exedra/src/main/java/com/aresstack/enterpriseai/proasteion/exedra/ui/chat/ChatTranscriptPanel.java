@@ -7,6 +7,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownMessageV
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidViewerPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.QuoteSelection;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.QuoteSelectionListener;
 import com.aresstack.enterpriseai.ui.comic.bubble.AgentActivityBubblePanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.AnimatedThoughtBubblePanel;
 import com.aresstack.enterpriseai.ui.comic.bubble.AssistantThinkingBubblePanel;
@@ -137,6 +139,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     static final int FLUSH_INTERVAL_MILLIS = 30;
 
     private static final int NEAR_BOTTOM_PIXELS = 48;
+    private static final int QUOTE_OVERLAY_GAP = 6;
     private static final long FLUSH_INTERVAL_NANOS = FLUSH_INTERVAL_MILLIS * 1_000_000L;
 
     private final ChatShellModel model;
@@ -153,6 +156,14 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final Map<Long, TranscriptEntry> pending = new LinkedHashMap<Long, TranscriptEntry>();
     private final ReadAloudOrb readAloudOrb = new ReadAloudOrb();
     private final JLayeredPane layers = new JLayeredPane();
+    /** Das schwebende „Zitieren“ über einer Markierung in einer Antwort; unsichtbar ohne Markierung. */
+    private final QuoteOverlayButton quoteOverlay = new QuoteOverlayButton();
+    /** Nimmt zitierte Passagen an (der Composer); ohne ihn erscheint kein Overlay. */
+    private Consumer<ChatQuote> quoteHandler;
+    private long quotedEntryId;
+    private QuoteSelection quotedSelection;
+    /** Bildlaufstand beim Zeigen des Overlays (nur echtes Rollen blendet es aus, kein Layoutdurchlauf). */
+    private java.awt.Point quoteViewPosition;
     private JComponent transcriptSkyAccessory;
     private ComicOverlayPanel transcriptOverlay;
     private int topInset;
@@ -221,6 +232,16 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         });
         layers.add(scrollPane, JLayeredPane.DEFAULT_LAYER);
         layers.add(readAloudOrb, JLayeredPane.PALETTE_LAYER);
+        layers.add(quoteOverlay, JLayeredPane.POPUP_LAYER);
+        quoteOverlay.setVisible(false);
+        quoteOverlay.addActionListener(event -> acceptQuote());
+        // Beim Rollen wandert die Markierung weg: das Overlay schwebt nicht an der alten Stelle weiter.
+        scrollPane.getViewport().addChangeListener(event -> {
+            java.awt.Point position = scrollPane.getViewport().getViewPosition();
+            if (quoteOverlay.isVisible() && !position.equals(quoteViewPosition)) {
+                hideQuoteOverlay();
+            }
+        });
         readAloudOrb.setVisible(false);
         readAloudOrb.addActionListener(new ActionListener() {
             @Override
@@ -330,7 +351,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         showUnlessPending(state, entry);
         if (entry.getAuthor() == TranscriptEntry.Author.USER
                 && (!entry.getAttachments().isEmpty() || !entry.getPages().isEmpty()
-                || !entry.getReferences().isEmpty())) {
+                || !entry.getReferences().isEmpty() || !entry.getQuotes().isEmpty())) {
             addAttachmentsRow(entry);
         }
         if (entry.hasSources()) {
@@ -924,6 +945,18 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     /** Eine Antwortblase mit Markdown-Körper; eine laufende Antwort beginnt im Streaming-Modus (gedrosselt gerendert). */
     private AssistantMarkdownBubble createMarkdownBubble(TranscriptEntry entry, String header, String text) {
         MarkdownMessageView view = new MarkdownMessageView(assistantTheme, linkOpener, mermaidImageRenderer);
+        final long entryId = entry.getId();
+        view.setQuoteSelectionListener(new QuoteSelectionListener() {
+            @Override
+            public void selectionMade(QuoteSelection selection) {
+                showQuoteOverlay(entryId, selection);
+            }
+
+            @Override
+            public void selectionCleared() {
+                hideQuoteOverlay();
+            }
+        });
         if (entry.getState() == TranscriptEntry.State.STREAMING) {
             view.startStreaming();
             view.appendMarkdownDelta(text);
@@ -931,6 +964,75 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             view.setMarkdown(text);
         }
         return new AssistantMarkdownBubble(BubbleSide.LEFT, bubblePalette, header, view);
+    }
+
+    /**
+     * Wohin zitierte Passagen gehen (in der Shell: der Composer). Erst damit erscheint über einer Markierung in einer
+     * Antwort das Overlay „Zitieren“; {@code null} schaltet es ab.
+     */
+    public void setQuoteHandler(Consumer<ChatQuote> handler) {
+        this.quoteHandler = handler;
+        if (handler == null) {
+            hideQuoteOverlay();
+        }
+    }
+
+    /** Das Overlay „Zitieren“ (für Tests). */
+    QuoteOverlayButton quoteOverlay() {
+        return quoteOverlay;
+    }
+
+    /** Der Markdown-Körper der Antwort {@code entryId} oder {@code null} (für Tests). */
+    MarkdownMessageView markdownViewFor(long entryId) {
+        RowState state = rows.get(entryId);
+        return state != null && state.bubble instanceof AssistantMarkdownBubble
+                ? ((AssistantMarkdownBubble) state.bubble).view() : null;
+    }
+
+    /** Zeigt „Zitieren“ mittig über der Markierung (passt es oben nicht hin, darunter), im Verlauf gehalten. */
+    void showQuoteOverlay(long entryId, QuoteSelection selection) {
+        RowState state = rows.get(entryId);
+        if (quoteHandler == null || selection == null || state == null || state.entry == null
+                || state.entry.getAuthor() != TranscriptEntry.Author.ASSISTANT || selection.anchor() == null) {
+            hideQuoteOverlay();
+            return;
+        }
+        quotedEntryId = entryId;
+        quotedSelection = selection;
+        java.awt.Dimension size = quoteOverlay.getPreferredSize();
+        Rectangle area = SwingUtilities.convertRectangle(selection.anchor(), selection.bounds(), layers);
+        int x = area.x + area.width / 2 - size.width / 2;
+        x = Math.max(QUOTE_OVERLAY_GAP, Math.min(x, layers.getWidth() - size.width - QUOTE_OVERLAY_GAP));
+        int y = area.y - size.height - QUOTE_OVERLAY_GAP;
+        if (y < QUOTE_OVERLAY_GAP) {
+            y = area.y + area.height + QUOTE_OVERLAY_GAP;
+        }
+        quoteViewPosition = scrollPane.getViewport().getViewPosition();
+        quoteOverlay.setBounds(x, y, size.width, size.height);
+        quoteOverlay.setVisible(true);
+        layers.repaint();
+    }
+
+    void hideQuoteOverlay() {
+        quotedSelection = null;
+        if (quoteOverlay.isVisible()) {
+            quoteOverlay.setVisible(false);
+            layers.repaint();
+        }
+    }
+
+    /** „Zitieren“ geklickt: die Passage geht als {@link ChatQuote} an den Composer, die Markierung verschwindet. */
+    private void acceptQuote() {
+        QuoteSelection selection = quotedSelection;
+        RowState state = rows.get(quotedEntryId);
+        hideQuoteOverlay();
+        if (selection == null || state == null || state.entry == null || quoteHandler == null) {
+            return;
+        }
+        ChatQuote quote = new ChatQuote(state.entry.getId(), state.entry.getCreatedAtMillis(),
+                selection.selectedText(), selection.sourceStart(), selection.sourceEnd());
+        selection.clearHighlight();
+        quoteHandler.accept(quote);
     }
 
     /** Hängt die Quellenliste als eigene, links ausgerichtete Zeile direkt unter die Blase des Eintrags. */
@@ -948,7 +1050,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     /** Hängt die Anhang-Chips einer Nutzernachricht als eigene, rechts ausgerichtete Zeile unter ihre Blase. */
     private void addAttachmentsRow(TranscriptEntry entry) {
         AttachmentChipsPanel chips = new AttachmentChipsPanel(entry.getAttachments(), entry.getPages(),
-                entry.getReferences());
+                entry.getReferences(), entry.getQuotes());
         BubbleMessageRow row = new BubbleMessageRow(chips, BubbleSide.RIGHT);
         row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.add(row);

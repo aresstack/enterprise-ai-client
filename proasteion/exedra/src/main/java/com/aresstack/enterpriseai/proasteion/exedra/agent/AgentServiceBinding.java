@@ -1,6 +1,9 @@
 package com.aresstack.enterpriseai.proasteion.exedra.agent;
 
 import com.aresstack.enterpriseai.proasteion.application.agent.AgentModelChoice;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatQuote;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentFailure;
@@ -10,11 +13,13 @@ import com.aresstack.enterpriseai.astu.acropolis.agent.AgentToolActivity;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentTurnListener;
 
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtractor;
+import com.aresstack.enterpriseai.astu.acropolis.chat.QuotedPassage;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
 
@@ -84,22 +89,48 @@ public final class AgentServiceBinding implements ChatShellActions {
             sendRequested(text, ragEnabled);
             return;
         }
-        if (!model.canSend(text)) {
+        send(text, text, attachments, Collections.<ChatQuote>emptyList());
+    }
+
+    /**
+     * Zitate im Agent-Modus (UI-Thread): Im Verlauf steht {@code visibleText} mit den Zitat-Chips; der Agent bekommt
+     * vor {@code prompt} den Hinweis auf die zitierten Passagen ({@link QuotedPassage#context}), danach wie gewohnt
+     * den Text der Anhänge.
+     */
+    public void sendQuoted(String visibleText, String prompt, List<Path> attachments, List<ChatQuote> quotes) {
+        List<Path> files = attachments == null || !supportsAttachments()
+                ? Collections.<Path>emptyList() : attachments;
+        send(visibleText, prompt, files, quotes == null ? Collections.<ChatQuote>emptyList() : quotes);
+    }
+
+    private void send(String visibleText, String prompt, List<Path> attachments, List<ChatQuote> quotes) {
+        if (!model.canSend(visibleText)) {
             return;
         }
         List<String> names = new ArrayList<String>(attachments.size());
         for (Path file : attachments) {
             names.add(file.getFileName().toString());
         }
-        model.addUserMessage(text, names);
+        model.addUserMessage(visibleText, names, Collections.<ChatPage>emptyList(),
+                Collections.<ChatResource>emptyList(), quotes);
         model.beginAssistantMessage();
         final TurnListener listener = new TurnListener();
+        List<QuotedPassage> passages = new ArrayList<QuotedPassage>(quotes.size());
+        for (ChatQuote quote : quotes) {
+            passages.add(new QuotedPassage(quote.selectedText()));
+        }
+        String quoteContext = QuotedPassage.context(passages);
+        final String request = quoteContext == null ? prompt : quoteContext + "\n\n" + prompt;
+        if (attachments.isEmpty()) {
+            start(request, listener);
+            return;
+        }
         final List<Path> files = new ArrayList<Path>(attachments);
         cancelBeforeStart = false;
         workExecutor.execute(new Runnable() {
             @Override
             public void run() {
-                final String prompt = withAttachments(text, files, extractor);
+                final String withFiles = withAttachments(request, files, extractor);
                 uiExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
@@ -107,7 +138,7 @@ public final class AgentServiceBinding implements ChatShellActions {
                             listener.onCancelled();
                             return;
                         }
-                        start(prompt, listener);
+                        start(withFiles, listener);
                     }
                 });
             }

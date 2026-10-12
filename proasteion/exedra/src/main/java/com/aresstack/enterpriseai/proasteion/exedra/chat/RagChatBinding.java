@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatDraft;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatQuote;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
@@ -17,6 +18,10 @@ import com.aresstack.enterpriseai.astu.acropolis.attachment.SearchAttachmentTool
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
+import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteContext;
+import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteFollowUpSuggestion;
+import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteFollowUps;
+import com.aresstack.enterpriseai.astu.acropolis.chat.QuotedPassage;
 import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeAcquisition;
 import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeQuestion;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolCapabilities;
@@ -110,6 +115,8 @@ import java.util.logging.Logger;
 public final class RagChatBinding implements ChatShellActions {
 
     private static final Logger LOG = Logger.getLogger(RagChatBinding.class.getName());
+
+    private final QuoteFollowUps followUps = new QuoteFollowUps();
 
     /** Der Wissenskontext des vorigen Turns beantwortet die Frage; {@code %d} = Zahl der Quellen. */
     static final String REUSING_SOURCES_ACTIVITY = "Vorhandene Quellen werden verwendet (%d aus dem vorherigen Turn) …";
@@ -319,7 +326,8 @@ public final class RagChatBinding implements ChatShellActions {
 
     /**
      * Der Weg des Composers (UI-Thread): Text, neue Dateien (werden der Unterhaltung als Anhänge hinzugefügt), Seiten
-     * (nur Titel und Bookmark) und ausdrückliche Verweise auf Ressourcen des Chats. Ein Verweis kopiert nichts: das
+     * (nur Titel und Bookmark), ausdrückliche Verweise auf Ressourcen des Chats und Zitate früherer Antworten
+     * ({@link QuotedPassage#context}, nur für diesen Turn). Ein Verweis kopiert nichts: das
      * Modell erfährt für diesen Turn nur Art, Titel und stabile Kennung (Attachment-ID, Bookmark, Resource-ID) und
      * liest den Inhalt bei Bedarf mit den vorhandenen Werkzeugen; die sichtbare Nachricht bleibt der eingegebene Text.
      */
@@ -364,7 +372,11 @@ public final class RagChatBinding implements ChatShellActions {
             model.addNotice(REFERENCES_UNAVAILABLE_NOTICE);
             references.clear();
         }
-        final TranscriptEntry question = model.addUserMessage(text, names, newPages, references);
+        // Zitate stehen an der Nutzerzeile (Chips, gespeichert) und gehen für genau diesen Turn als zusätzlicher
+        // System-Anteil an das Modell, auf jedem Weg (normaler Chat, Wissenssuche, Werkzeuge).
+        final List<ChatQuote> quoted = new ArrayList<ChatQuote>(draft.quotes());
+        final String quoteContext = QuotedPassage.context(passagesOf(quoted));
+        final TranscriptEntry question = model.addUserMessage(text, names, newPages, references, quoted);
         for (ChatBookmark bookmark : newBookmarks) {
             if (!bookmarks.contains(bookmark)) {
                 bookmarks.add(bookmark);
@@ -396,7 +408,7 @@ public final class RagChatBinding implements ChatShellActions {
         // das Modell schreibt diese Antwort nicht (kein Selbstbild wie Modellname oder Wissensstand).
         final boolean capabilityQuestion = KnowledgeQuestion.isAssistantCapability(text);
         if (!ragOptions.isEnabled() && !toolPath) {
-            startWithoutRetrieval(text, listener, capabilityQuestion
+            startWithoutRetrieval(text, listener, quoteContext, capabilityQuestion
                     ? new FixedAnswerPort(ToolCapabilities.answer(Collections.<ToolDefinition>emptyList(), chatModel))
                     : null);
             return;
@@ -424,7 +436,7 @@ public final class RagChatBinding implements ChatShellActions {
                 public void run() {
                     final RagChatTurn turn;
                     try {
-                        String extraContext = null;
+                        String extraContext = quoteContext;
                         ChatCompletionPort via = null;
                         if (support != null) {
                             final List<Attachment> stored = new ArrayList<Attachment>(newFiles.size());
@@ -457,7 +469,7 @@ public final class RagChatBinding implements ChatShellActions {
                                 available.addAll(support.knowledgeTools());
                             }
                             extraContext = join(join(attachments.context(), ChatBookmark.context(chatPages)),
-                                    ChatReferences.context(references));
+                                    join(ChatReferences.context(references), quoteContext));
                             // Wer während der Runde ein Werkzeug abschaltet (Reiter „Tools“), nimmt es ab dem
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
                             via = new ChatCompletionsToolLoop(support.chat(),
@@ -508,6 +520,54 @@ public final class RagChatBinding implements ChatShellActions {
         return definitions;
     }
 
+    /**
+     * Anschlussfragen zu einem Zitat: eine Nebenanfrage ({@link QuoteFollowUps}, ohne Werkzeuge, nicht in der
+     * Historie) auf {@code workExecutor} mit der Passage und ihrem Umfeld aus der zitierten Antwort; das Ergebnis geht
+     * über {@code uiExecutor} an {@code suggestions}. Fällt sie aus oder nimmt der Executor nichts an, kommt nichts.
+     * Muss auf dem UI-Thread gerufen werden.
+     */
+    @Override
+    public void quoteFollowUpsRequested(ChatQuote quote, final Consumer<List<String>> suggestions) {
+        if (quote == null || suggestions == null) {
+            return;
+        }
+        String answer = "";
+        for (TranscriptEntry entry : model.getEntries()) {
+            if (entry.getId() == quote.messageId()) {
+                answer = entry.getText();
+            }
+        }
+        final QuoteContext context = QuoteContext.around(answer, quote.selectedText(), quote.sourceStart(),
+                quote.sourceEnd(), QuoteContext.DEFAULT_SURROUNDING_CHARS);
+        final ChatOptions options = turnOptions();
+        try {
+            workExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    List<QuoteFollowUpSuggestion> found = followUps.suggest(rag.chatService(), context, options);
+                    final List<String> texts = new ArrayList<String>(found.size());
+                    for (QuoteFollowUpSuggestion suggestion : found) {
+                        texts.add(suggestion.text());
+                    }
+                    if (!texts.isEmpty()) {
+                        uiExecutor.execute(() -> suggestions.accept(texts));
+                    }
+                }
+            });
+        } catch (RuntimeException rejected) {
+            // Arbeits-Executor nimmt nichts an (z. B. beim Beenden): ohne Vorschläge, das Zitat bleibt benutzbar.
+        }
+    }
+
+    /** Die zitierten Passagen für das Modell (nur der Text; Zeile und Position bleiben in der Oberfläche). */
+    static List<QuotedPassage> passagesOf(List<ChatQuote> quotes) {
+        List<QuotedPassage> passages = new ArrayList<QuotedPassage>(quotes.size());
+        for (ChatQuote quote : quotes) {
+            passages.add(new QuotedPassage(quote.selectedText()));
+        }
+        return passages;
+    }
+
     /** Zwei System-Anteile hintereinander; {@code null}, wenn beide fehlen. */
     private static String join(String first, String second) {
         if (first == null) {
@@ -531,11 +591,15 @@ public final class RagChatBinding implements ChatShellActions {
         }
     }
 
-    /** RAG aus: der bisherige Weg, synchron gestartet wie in {@link ChatServiceBinding}. */
-    private void startWithoutRetrieval(String text, TurnListener listener, ChatCompletionPort via) {
+    /**
+     * RAG aus: der bisherige Weg, synchron gestartet wie in {@link ChatServiceBinding}; {@code extraContext} (Zitate)
+     * nur für diesen Turn, sonst {@code null}.
+     */
+    private void startWithoutRetrieval(String text, TurnListener listener, String extraContext,
+                                       ChatCompletionPort via) {
         try {
-            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener, null,
-                    via).turn();
+            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener,
+                    extraContext, via).turn();
             if (!turn.isDone()) {
                 runningTurn = turn;
             }

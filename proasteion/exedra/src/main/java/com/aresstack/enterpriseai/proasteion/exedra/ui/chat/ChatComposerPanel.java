@@ -150,6 +150,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final ComposerButton discardButton;
     private final ComposerButton retryButton;
     private final ChatAttachmentStrip attachmentStrip;
+    /** Gelbe Anschlussfragen zum zuletzt zitierten Zitat ({@link #suggestionsFor}); leer unsichtbar. */
+    private final QuoteSuggestionStrip suggestionStrip;
+    /** Das Zitat, zu dem Vorschläge gezeigt werden oder unterwegs sind; {@code null} ohne. */
+    private ChatQuote suggestionsFor;
     private Runnable modelAction;
     private Supplier<List<String>> modelChoices;
     private Consumer<String> modelSelected;
@@ -226,6 +230,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         levelBar.setVisible(false);
         this.levelTimer = new Timer(LEVEL_INTERVAL_MILLIS, event -> sampleLevel());
         this.attachmentStrip = new ChatAttachmentStrip(() -> refreshAttachmentState());
+        this.suggestionStrip = new QuoteSuggestionStrip(this::takeSuggestion);
         buildUi();
         wireBehaviour();
         model.addListener(this);
@@ -328,7 +333,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         ChatDraft message = ChatDraft.of(draft, model.isRagEnabled())
                 .withAttachments(attachmentStrip.getAttachments())
                 .withPages(attachmentStrip.getPages())
-                .withReferences(attachmentStrip.getReferences());
+                .withReferences(attachmentStrip.getReferences())
+                .withQuotes(attachmentStrip.getQuotes());
         attachmentStrip.clear();
         actions.sendRequested(message);
     }
@@ -341,6 +347,72 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     /** Merkt eine Seite (Titel und Bookmark) für die nächste Nachricht vor; dieselbe Seite nur einmal. */
     public void addPage(ChatPage page) {
         attachmentStrip.addPage(page);
+    }
+
+    /**
+     * Merkt eine zitierte Passage einer Antwort für die nächste Nachricht vor (als Chip über dem Editor); dieselbe
+     * Passage nur einmal. Der Editortext bleibt unverändert; der Editor bekommt den Fokus, damit gleich die Frage
+     * dazu folgen kann.
+     */
+    public void addQuote(final ChatQuote quote) {
+        if (quote == null) {
+            return;
+        }
+        boolean added = !attachmentStrip.getQuotes().contains(quote);
+        attachmentStrip.addQuote(quote);
+        editor.requestFocusInWindow();
+        if (!added) {
+            return;
+        }
+        // Vorschläge nur für das zuletzt hinzugefügte Zitat; ein verspätetes Ergebnis zu einem ersetzten oder
+        // entfernten Zitat wird verworfen. Das Zitat ist sofort benutzbar, die Vorschläge kommen, wenn sie kommen.
+        suggestionsFor = quote;
+        suggestionStrip.clear();
+        actions.quoteFollowUpsRequested(quote, suggestions -> {
+            if (quote.equals(suggestionsFor) && attachmentStrip.getQuotes().contains(quote)) {
+                suggestionStrip.show(suggestions);
+                revalidate();
+                repaint();
+            }
+        });
+    }
+
+    /** Die gerade gezeigten Anschlussfragen zum zuletzt zitierten Zitat. */
+    public List<String> quoteSuggestions() {
+        return suggestionStrip.suggestions();
+    }
+
+    /** Die Reihe der Anschlussfragen (für Tests). */
+    QuoteSuggestionStrip quoteSuggestionStrip() {
+        return suggestionStrip;
+    }
+
+    /**
+     * Eine Anschlussfrage geht in den Editor, gesendet wird nicht: Ein leerer Entwurf wird zu ihr, ein vorhandener
+     * bleibt stehen und bekommt sie angehängt (in einer neuen Zeile). Die Schreibmarke steht danach am Ende.
+     */
+    void takeSuggestion(String suggestion) {
+        if (suggestion == null || suggestion.trim().isEmpty()) {
+            return;
+        }
+        String draft = editor.getText();
+        if (draft.trim().isEmpty()) {
+            editor.setText(suggestion.trim());
+        } else {
+            editor.setText(draft.endsWith("\n") ? draft + suggestion.trim() : draft + "\n" + suggestion.trim());
+        }
+        editor.setCaretPosition(editor.getDocument().getLength());
+        editor.requestFocusInWindow();
+    }
+
+    /** Entfernt ein vorgemerktes Zitat (wie das ✕ seines Chips). */
+    public void removeQuote(ChatQuote quote) {
+        attachmentStrip.removeQuote(quote);
+    }
+
+    /** Die vorgemerkten Zitate. */
+    public List<ChatQuote> quotes() {
+        return attachmentStrip.getQuotes();
     }
 
     /** Die vorgemerkten Seiten. */
@@ -433,8 +505,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     }
 
     private void refreshAttachmentState() {
+        if (suggestionsFor != null && !attachmentStrip.getQuotes().contains(suggestionsFor)) {
+            suggestionsFor = null; // Zitat entfernt oder gesendet: seine Vorschläge gehen mit
+            suggestionStrip.clear();
+        }
         refreshControls();
-        int count = attachmentStrip.count();
+        int count = attachmentStrip.count() - attachmentStrip.getQuotes().size();
         attachButton.setToolTipText(count > 0 ? ATTACH_TOOLTIP + " (" + count + " vorgemerkt)" : ATTACH_TOOLTIP);
         revalidate();
         repaint();
@@ -840,7 +916,11 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         JPanel body = new JPanel(new BorderLayout(0, 0));
         body.setOpaque(false);
         body.setBorder(new EmptyBorder(9, 11, 8, 8));
-        body.add(attachmentStrip, BorderLayout.NORTH);
+        JPanel pending = new JPanel(new BorderLayout(0, 0));
+        pending.setOpaque(false);
+        pending.add(attachmentStrip, BorderLayout.NORTH);
+        pending.add(suggestionStrip, BorderLayout.SOUTH);
+        body.add(pending, BorderLayout.NORTH);
         body.add(editorLayers, BorderLayout.CENTER);
         body.add(buildFooter(), BorderLayout.SOUTH);
         add(statusLine, BorderLayout.NORTH);
@@ -1126,7 +1206,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
 
     /** Die Statuszeile: Antwort, Aufnahme, Erkennung, vorgemerkte Anhänge, sonst die letzte Diktat-Meldung. */
     private void refreshStatus() {
-        int pending = attachmentStrip.count();
+        int quoted = attachmentStrip.getQuotes().size();
+        int pending = attachmentStrip.count() - quoted;
         StatusKind kind;
         String text;
         ComposerStatusLine.Tone tone = ComposerStatusLine.Tone.MUTED;
@@ -1145,9 +1226,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             kind = StatusKind.NOTE;
             text = dictationNote;
             tone = dictationNoteTone;
-        } else if (pending > 0) {
+        } else if (pending > 0 || quoted > 0) {
             kind = StatusKind.ATTACHMENTS;
-            text = pending == 1 ? "1 Anhang vorgemerkt" : pending + " Anhänge vorgemerkt";
+            text = pendingStatus(pending, quoted);
         } else {
             kind = StatusKind.NOTE;
             text = dictationNote;
@@ -1159,6 +1240,16 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         }
         statusLine.show(kind == dismissedStatus ? null : text, tone);
         setToolTipText(statusLine.text().isEmpty() ? null : statusLine.text());
+    }
+
+    /** „2 Anhänge vorgemerkt“, „1 Zitat vorgemerkt“ oder „1 Anhang, 2 Zitate vorgemerkt“. */
+    static String pendingStatus(int attachments, int quotes) {
+        String files = attachments == 1 ? "1 Anhang" : attachments + " Anhänge";
+        String quoted = quotes == 1 ? "1 Zitat" : quotes + " Zitate";
+        if (quotes == 0) {
+            return files + " vorgemerkt";
+        }
+        return (attachments == 0 ? quoted : files + ", " + quoted) + " vorgemerkt";
     }
 
     /** ✕ an der Statuszeile: Aufnahme/Erkennung abbrechen, eine Diktat-Meldung schließen, sonst bis zur nächsten Art ausblenden. */

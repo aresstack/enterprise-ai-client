@@ -55,6 +55,8 @@ public final class ChatShellPanel extends JPanel {
         this.transcript = new ChatTranscriptPanel(model, comicPalette, bubblePalette);
         this.statusBar = new KnowledgeStatusBar(knowledgeStatus, comicPalette);
         this.composer = new ChatComposerPanel(model, actions, comicPalette);
+        // Markierter Text einer Antwort → „Zitieren“ → Zitat-Chip im Composer.
+        this.transcript.setQuoteHandler(composer::addQuote);
         setBackground(comicPalette.getSurface());
 
         JPanel south = new JPanel(new BorderLayout());

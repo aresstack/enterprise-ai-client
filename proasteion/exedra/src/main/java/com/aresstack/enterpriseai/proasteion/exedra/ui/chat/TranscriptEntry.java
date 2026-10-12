@@ -42,6 +42,7 @@ public final class TranscriptEntry {
     private List<String> attachments = Collections.emptyList();
     private List<ChatPage> pages = Collections.emptyList();
     private List<ChatResource> references = Collections.emptyList();
+    private List<ChatQuote> quotes = Collections.emptyList();
     private String activityKey = "";
     private String activityTitle = "";
     private String activityKind = "";
@@ -138,6 +139,15 @@ public final class TranscriptEntry {
 
     void setReferences(List<ChatResource> values) {
         this.references = Collections.unmodifiableList(new java.util.ArrayList<ChatResource>(values));
+    }
+
+    /** Passagen früherer Antworten, auf die sich eine Nutzernachricht bezieht; leer, wenn sie keine zitiert. */
+    public List<ChatQuote> getQuotes() {
+        return quotes;
+    }
+
+    void setQuotes(List<ChatQuote> values) {
+        this.quotes = Collections.unmodifiableList(new java.util.ArrayList<ChatQuote>(values));
     }
 
     /** Kennung des Werkzeugaufrufs (nur {@link Author#ACTIVITY}). */

@@ -27,7 +27,8 @@ import java.util.List;
  * Datei ein Chip mit Namen und ✕, je Seite aus dem Lesebereich ein Chip mit ihrem Titel und ✕. Hält nur Pfade und
  * Bookmarks, nie Inhalte; doppelte Dateien und Seiten werden übergangen. Dazu je ausdrücklichem Verweis auf eine
  * Ressource des Chats ein Chip mit dem Symbol ihrer Art; sein ✕ nimmt nur den Bezug zurück, die Ressource bleibt im
- * Chat.
+ * Chat. Und je zitierter Passage einer Antwort ein Chip mit Anführungszeichen und ✕ ({@link ChatQuote}, fachlich
+ * kein Anhang).
  */
 final class ChatAttachmentStrip extends JPanel {
 
@@ -38,10 +39,13 @@ final class ChatAttachmentStrip extends JPanel {
 
     private static final Color CHIP_BG = new Color(0xECEFF3);
     private static final Color CHIP_BORDER = ResearchUiPalette.LIGHT_CONTROL_BORDER;
+    static final String QUOTE_NAME = "Zitat";
+    private static final int QUOTE_TOOLTIP_CHARS = 240;
 
     private final List<Path> attachments = new ArrayList<Path>();
     private final List<ChatPage> pages = new ArrayList<ChatPage>();
     private final List<ChatResource> references = new ArrayList<ChatResource>();
+    private final List<ChatQuote> quotes = new ArrayList<ChatQuote>();
     private final ChangeListener changeListener;
 
     ChatAttachmentStrip(ChangeListener changeListener) {
@@ -90,9 +94,23 @@ final class ChatAttachmentStrip extends JPanel {
         }
     }
 
+    /** Merkt eine zitierte Passage vor; dieselbe Passage derselben Antwort nur einmal. */
+    void addQuote(ChatQuote quote) {
+        if (quote != null && !quotes.contains(quote)) {
+            quotes.add(quote);
+            rebuild();
+        }
+    }
+
     /** Nimmt den Verweis zurück (die Ressource selbst bleibt im Chat). */
     void removeReference(ChatResource reference) {
         if (references.remove(reference)) {
+            rebuild();
+        }
+    }
+
+    void removeQuote(ChatQuote quote) {
+        if (quotes.remove(quote)) {
             rebuild();
         }
     }
@@ -108,6 +126,10 @@ final class ChatAttachmentStrip extends JPanel {
         return Collections.unmodifiableList(new ArrayList<ChatResource>(references));
     }
 
+    List<ChatQuote> getQuotes() {
+        return Collections.unmodifiableList(new ArrayList<ChatQuote>(quotes));
+    }
+
     void removeAttachment(Path file) {
         if (attachments.remove(file)) {
             rebuild();
@@ -115,10 +137,11 @@ final class ChatAttachmentStrip extends JPanel {
     }
 
     void clear() {
-        if (!attachments.isEmpty() || !pages.isEmpty() || !references.isEmpty()) {
+        if (!attachments.isEmpty() || !pages.isEmpty() || !references.isEmpty() || !quotes.isEmpty()) {
             attachments.clear();
             pages.clear();
             references.clear();
+            quotes.clear();
             rebuild();
         }
     }
@@ -128,7 +151,7 @@ final class ChatAttachmentStrip extends JPanel {
     }
 
     int count() {
-        return attachments.size() + pages.size();
+        return attachments.size() + pages.size() + quotes.size();
     }
 
     private void rebuild() {
@@ -144,6 +167,9 @@ final class ChatAttachmentStrip extends JPanel {
             remove.setToolTipText("Bezug auf " + reference.title() + " entfernen (bleibt im Chat)");
             remove.addActionListener(event -> removeReference(reference));
             add(referenceChip(reference, remove));
+        }
+        for (ChatQuote quote : quotes) {
+            add(createChip(quote));
         }
         setVisible(count() + references.size() > 0);
         revalidate();
@@ -190,6 +216,31 @@ final class ChatAttachmentStrip extends JPanel {
                 : reference.kind() == ChatResource.Kind.PAGE ? "Seite" : "Quelle";
         return "Bezug auf " + kind + ": " + reference.title()
                 + (reference.detail().isEmpty() ? "" : " (" + reference.detail() + ")");
+    }
+
+    private Component createChip(final ChatQuote quote) {
+        JButton remove = removeButton(QUOTE_NAME);
+        remove.addActionListener(event -> removeQuote(quote));
+        return quoteChip(quote, remove);
+    }
+
+    /** Ein Zitat-Chip: Anführungszeichen-Glyphe, der Anfang der Passage, im Tooltip die ganze (gekürzt). */
+    static JPanel quoteChip(ChatQuote quote, Component trailing) {
+        JPanel chip = chip(quoteLabel(quote), quoteTooltip(quote), trailing);
+        JLabel icon = new JLabel(new QuoteIcon());
+        icon.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+        chip.add(icon, BorderLayout.WEST);
+        chip.setName("composer.quoteChip");
+        return chip;
+    }
+
+    /** Die Passage einzeilig (Zeilenumbrüche und Mehrfach-Leerraum zu einem Leerzeichen). */
+    static String quoteLabel(ChatQuote quote) {
+        return quote.selectedText().trim().replaceAll("\\s+", " ");
+    }
+
+    static String quoteTooltip(ChatQuote quote) {
+        return QUOTE_NAME + ": \u201E" + ellipsize(quoteLabel(quote), QUOTE_TOOLTIP_CHARS) + "\u201C";
     }
 
     /** Tooltip eines Seiten-Chips: das Bookmark, unter dem das Modell die Seite liest. */

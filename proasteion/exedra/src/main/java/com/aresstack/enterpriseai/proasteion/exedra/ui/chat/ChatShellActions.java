@@ -32,9 +32,9 @@ public interface ChatShellActions {
     }
 
     /**
-     * Der Nutzer will den Entwurf senden (Text, neue Dateien, Seiten, Verweise auf Ressourcen des Chats); das ist der
+     * Der Nutzer will den Entwurf senden (Text, neue Dateien, Seiten, Verweise auf Ressourcen des Chats, Zitate); das ist der
      * Weg des Composers. Ohne eigene Umsetzung gehen Text, Dateien und Seiten über die älteren Methoden, Verweise
-     * gehen verloren.
+     * und Zitate gehen verloren.
      */
     default void sendRequested(ChatDraft draft) {
         if (!draft.pages().isEmpty()) {
@@ -52,6 +52,14 @@ public interface ChatShellActions {
      */
     default List<ChatResource> chatResources() {
         return java.util.Collections.emptyList();
+    }
+
+    /**
+     * Der Nutzer hat eine Passage zitiert: Die Anbindung darf im Hintergrund Anschlussfragen dazu erzeugen und reicht
+     * sie (auf dem UI-Thread) an {@code suggestions} weiter, höchstens einmal; ohne Vorschläge reicht sie nichts oder
+     * eine leere Liste weiter. Darf nie blockieren. Ohne eigene Umsetzung gibt es keine Vorschläge.
+     */
+    default void quoteFollowUpsRequested(ChatQuote quote, java.util.function.Consumer<List<String>> suggestions) {
     }
 
     /** Ob die Anbindung Dateianhänge annimmt (dann zeigt der Composer die Büroklammer). */

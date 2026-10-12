@@ -46,6 +46,12 @@ public final class ResearchUiPalette {
     /** The favorite star (MainframeMate's bookmarked ★ in the tab header) and its darker rim on bright surfaces. */
     public static final Color FAVORITE_YELLOW = new Color(0xFFC800);
     public static final Color FAVORITE_YELLOW_EDGE = new Color(0xC99A00);
+    /**
+     * The yellow suggestion tag above the composer (the research agent's search suggestions and the follow-up
+     * questions of a quote): the same yellow as the tool-call thought bubbles, with its dark text.
+     */
+    public static final Color TAG_SUGGESTION_SURFACE = new Color(0xF2C94C);
+    public static final Color TAG_SUGGESTION_TEXT = new Color(0x252525);
     /** The paper of the "Chats" scroll glyph in the drawer ribbon. */
     public static final Color SCROLL_PAPER = Color.WHITE;
 

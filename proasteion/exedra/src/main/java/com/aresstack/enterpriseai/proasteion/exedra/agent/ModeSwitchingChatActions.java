@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatDraft;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatQuote;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 
@@ -75,7 +76,8 @@ public final class ModeSwitchingChatActions implements ChatShellActions {
 
     /**
      * Der Entwurf des Composers: im Chat unverändert an den Chat; im Agent-Modus gehen Seiten wie oben als Zeilen an
-     * die Nachricht und Verweise als Zeilen „Bezug: Titel (Kennung)“, die der Agent mit seinen Werkzeugen auflöst.
+     * die Nachricht und Verweise als Zeilen „Bezug: Titel (Kennung)“, die der Agent mit seinen Werkzeugen auflöst;
+     * Zitate gehen als Hinweis vor den Auftrag ({@link AgentServiceBinding#sendQuoted}).
      */
     @Override
     public void sendRequested(ChatDraft draft) {
@@ -90,6 +92,11 @@ public final class ModeSwitchingChatActions implements ChatShellActions {
         for (ChatResource reference : draft.references()) {
             text.append("\nBezug: ").append(reference.title()).append(" (").append(reference.id()).append(')');
         }
+        if (!draft.quotes().isEmpty()) {
+            // Zitate: sichtbar bleibt der eingegebene Text mit den Zitat-Chips, der Agent bekommt den Hinweis davor.
+            agent.sendQuoted(draft.text(), text.toString(), draft.attachments(), draft.quotes());
+            return;
+        }
         agent.sendRequested(text.toString(), draft.ragEnabled(), draft.attachments());
     }
 
@@ -97,6 +104,12 @@ public final class ModeSwitchingChatActions implements ChatShellActions {
     @Override
     public List<ChatResource> chatResources() {
         return chat.chatResources();
+    }
+
+    /** Anschlussfragen zu einem Zitat stellt in beiden Modi der Chat (eine Nebenanfrage an das Chat-Modell). */
+    @Override
+    public void quoteFollowUpsRequested(ChatQuote quote, java.util.function.Consumer<List<String>> suggestions) {
+        chat.quoteFollowUpsRequested(quote, suggestions);
     }
 
     @Override

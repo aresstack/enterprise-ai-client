@@ -5,6 +5,8 @@ import com.aresstack.enterpriseai.proasteion.application.composition.LoggingRetr
 
 import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatDraft;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatQuote;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
@@ -523,6 +525,196 @@ public class RagChatBindingTest {
         assertTrue(call.isSucceeded());
         assertEquals("id: wiki:sonar", call.getResult());
         assertTrue(record.getMessages().get(0).getToolCalls().isEmpty());
+    }
+
+    /**
+     * Zitat aus einer früheren Antwort: Das Modell bekommt die Passage für genau diesen Turn als System-Anteil, die
+     * sichtbare und im Verlauf gespeicherte Nutzernachricht bleibt der eingegebene Text, der nächste Turn ist ohne.
+     */
+    @Test
+    public void quotedPassageGoesToTheModelForThisTurnOnly() throws Exception {
+        port.enqueueAnswer("NIZZA ist das Vorsystem für die Übermittlung.");
+        port.enqueueAnswer("Gemeint ist das System davor.");
+        port.enqueueAnswer("Gern.");
+        final Fixture fixture = fixture(index, embeddings);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Was ist NIZZA?", false);
+            }
+        });
+        awaitIdle(fixture.model);
+        final TranscriptEntry quotedAnswer = entries(fixture.model).get(1);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested(ChatDraft.of("Was meinst du hier mit Vorsystem?", false).withQuotes(
+                        Collections.singletonList(new ChatQuote(quotedAnswer.getId(),
+                                quotedAnswer.getCreatedAtMillis(), "das Vorsystem für die Übermittlung"))));
+            }
+        });
+        awaitIdle(fixture.model);
+
+        List<ChatMessage> sent = port.lastRequest().messages();
+        assertEquals(ChatRole.SYSTEM, sent.get(0).role());
+        String system = sent.get(0).content();
+        assertTrue(system, system.startsWith("Antworte knapp.\n\n"));
+        assertTrue(system, system.contains("folgende Passage aus einer früheren Assistentenantwort"));
+        assertTrue(system, system.contains("\u201Edas Vorsystem für die Übermittlung\u201C"));
+        assertEquals("sichtbarer Text unverändert an das Modell", "Was meinst du hier mit Vorsystem?",
+                sent.get(sent.size() - 1).content());
+
+        TranscriptEntry question = entries(fixture.model).get(2);
+        assertEquals("Was meinst du hier mit Vorsystem?", question.getText());
+        assertEquals(1, question.getQuotes().size());
+        assertEquals("Zitat zeigt auf die richtige Antwort", quotedAnswer.getId(),
+                question.getQuotes().get(0).messageId());
+        List<ChatMessage> history = chat.conversation(conversation).messages();
+        assertEquals("Was meinst du hier mit Vorsystem?", history.get(2).content());
+        for (ChatMessage message : history) {
+            assertFalse("kein Zitat-Kontext in der Historie", message.content().contains("früheren Assistentenantwort"));
+        }
+
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Danke.", false);
+            }
+        });
+        awaitIdle(fixture.model);
+        assertEquals("nächster Turn ohne Zitat", "Antworte knapp.", port.lastRequest().messages().get(0).content());
+    }
+
+    /**
+     * Anschlussfragen zu einem Zitat: Nebenanfrage mit der Passage und dem Umfeld ihrer Antwort, ohne Werkzeuge und
+     * ohne Historieneintrag; das Ergebnis kommt auf dem UI-Thread an.
+     */
+    @Test
+    public void quoteFollowUpsUseASideRequestWithTheAnswerAroundThePassage() throws Exception {
+        port.enqueueAnswer("NIZZA ist das Vorsystem für die Übermittlung an ZAUF.");
+        port.enqueueAnswer("{\"suggestions\": [\"Was bedeutet Vorsystem?\", \"Wofür steht ZAUF?\"]}");
+        final Fixture fixture = fixture(index, embeddings);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Was ist NIZZA?", false);
+            }
+        });
+        awaitIdle(fixture.model);
+        final TranscriptEntry answer = entries(fixture.model).get(1);
+        final java.util.concurrent.CompletableFuture<List<String>> received =
+                new java.util.concurrent.CompletableFuture<List<String>>();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.quoteFollowUpsRequested(new ChatQuote(answer.getId(), answer.getCreatedAtMillis(),
+                        "Vorsystem"), suggestions -> {
+                            assertTrue("auf dem UI-Thread", javax.swing.SwingUtilities.isEventDispatchThread());
+                            received.complete(suggestions);
+                        });
+            }
+        });
+
+        assertEquals(java.util.Arrays.asList("Was bedeutet Vorsystem?", "Wofür steht ZAUF?"),
+                received.get(10, java.util.concurrent.TimeUnit.SECONDS));
+        ChatRequest side = port.lastRequest();
+        assertTrue(side.messages().get(1).content().contains("NIZZA ist das Vorsystem für die Übermittlung"));
+        assertTrue(side.tools().isEmpty());
+        assertEquals("nicht in der Historie", 2, chat.conversation(conversation).messages().size());
+    }
+
+    /** Mehrere Zitate gehen in ihrer Reihenfolge an das Modell, auch auf dem Weg mit Wissenssuche. */
+    @Test
+    public void multipleQuotesAreSentInOrderAlsoWithRetrieval() throws Exception {
+        indexAll();
+        port.enqueueAnswer("Beides gilt.");
+        final Fixture fixture = fixture(index, embeddings);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested(ChatDraft.of("Wie hängen die Kündigungsfrist und der Urlaub zusammen?", true).withQuotes(
+                        java.util.Arrays.asList(new ChatQuote(7L, 1L, "drei Monate zum Quartalsende"),
+                                new ChatQuote(9L, 2L, "dreißig Tage Urlaub"))));
+            }
+        });
+        awaitIdle(fixture.model);
+
+        String system = port.lastRequest().messages().get(0).content();
+        assertTrue(system, system.contains("--- KONTEXT ---"));
+        int first = system.indexOf("1. \u201Edrei Monate zum Quartalsende\u201C");
+        int second = system.indexOf("2. \u201Edreißig Tage Urlaub\u201C");
+        assertTrue(system, first > 0 && second > first);
+        assertTrue(system, system.contains("folgende Passagen aus früheren Assistentenantworten"));
+        assertEquals(2, entries(fixture.model).get(0).getQuotes().size());
+    }
+
+    /**
+     * Ein gesendetes Zitat wird mit der Nutzernachricht gespeichert und zeigt nach dem Wiederöffnen wieder auf die
+     * Antwort, aus der es stammt; Chats ohne Zitate behalten ihr bisheriges Format (kein Feld „quotes“).
+     */
+    @Test
+    public void quotesAreStoredWithTheMessageAndRestoredOnTheirAnswer() throws Exception {
+        port.enqueueAnswer("NIZZA ist das Vorsystem.");
+        port.enqueueAnswer("Das System davor.");
+        final java.nio.file.Path chats = folder.newFolder("quote-chats").toPath();
+        final FileChatHistoryStore store = new FileChatHistoryStore(chats);
+        final Fixture fixture = fixture(index, embeddings);
+        final ChatHistoryBinding[] history = new ChatHistoryBinding[1];
+        long[] clock = {1000L};
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                history[0] = new ChatHistoryBinding(store, chat, fixture.binding, fixture.model, "Antworte knapp.",
+                        () -> clock[0]++);
+                fixture.binding.sendRequested("Was ist NIZZA?", false);
+            }
+        });
+        awaitIdle(fixture.model);
+        String before = new String(java.nio.file.Files.readAllBytes(chats.resolve(conversation.value() + ".json")),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertFalse("ohne Zitat kein neues Feld", before.contains("\"quotes\""));
+        final TranscriptEntry quotedAnswer = entries(fixture.model).get(1);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested(ChatDraft.of("Was meinst du mit Vorsystem?", false).withQuotes(
+                        Collections.singletonList(new ChatQuote(quotedAnswer.getId(),
+                                quotedAnswer.getCreatedAtMillis(), "Vorsystem", 13, 22))));
+            }
+        });
+        awaitIdle(fixture.model);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                // alle UI-Aufträge der Runde sind durch
+            }
+        });
+
+        com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord question =
+                store.load(conversation.value()).getMessages().get(2);
+        assertEquals("Was meinst du mit Vorsystem?", question.getText());
+        assertEquals(1, question.getQuotes().size());
+        assertEquals("Vorsystem", question.getQuotes().get(0).getText());
+        assertEquals(quotedAnswer.getCreatedAtMillis(), question.getQuotes().get(0).getSourceCreatedAt());
+        assertEquals(13, question.getQuotes().get(0).getSourceStart());
+        assertTrue("Anhänge und Seiten bleiben getrennt", question.getAttachments().isEmpty()
+                && question.getBookmarks().isEmpty());
+
+        final List<TranscriptEntry> restored = onEdt(new Callable<List<TranscriptEntry>>() {
+            @Override
+            public List<TranscriptEntry> call() {
+                assertTrue(history[0].open(conversation.value()));
+                return fixture.model.getEntries();
+            }
+        });
+        TranscriptEntry restoredQuestion = restored.get(2);
+        assertEquals("Was meinst du mit Vorsystem?", restoredQuestion.getText());
+        assertEquals(1, restoredQuestion.getQuotes().size());
+        ChatQuote quote = restoredQuestion.getQuotes().get(0);
+        assertEquals("Vorsystem", quote.selectedText());
+        assertEquals("zeigt auf die wiederhergestellte Antwort", restored.get(1).getId(), quote.messageId());
+        assertEquals(13, quote.sourceStart());
+        assertEquals(22, quote.sourceEnd());
     }
 
     /**

@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatResource;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatQuote;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModelListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
@@ -17,6 +18,7 @@ import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatResourceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.history.ResourceReferenceRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.KnowledgeContextRecord;
+import com.aresstack.enterpriseai.astu.acropolis.history.QuoteRecord;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ConversationKnowledgeContext;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
@@ -321,7 +323,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                 }
             }
             TranscriptEntry entry = model.restoreEntry(TranscriptEntry.Author.USER, message.getText(),
-                    message.getCreatedAt(), names, pages, resourcesOf(message.getReferences()));
+                    message.getCreatedAt(), names, pages, resourcesOf(message.getReferences()), quotesOf(message));
             if (!message.getAttachments().isEmpty()) {
                 storedAttachments.put(entry.getId(), new ArrayList<AttachmentRecord>(message.getAttachments()));
             }
@@ -447,7 +449,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             case USER:
                 return new ChatMessageRecord(ChatMessageRecord.ROLE_USER, entry.getText(),
                         entry.getCreatedAtMillis(), attachmentsOf(entry)).withBookmarks(bookmarksOf(entry))
-                        .withReferences(referenceRecordsOf(entry));
+                        .withReferences(referenceRecordsOf(entry)).withQuotes(quotesOf(entry));
             case NOTICE:
                 return new ChatMessageRecord(ChatMessageRecord.ROLE_INFO, entry.getText(),
                         entry.getCreatedAtMillis(), null);
@@ -526,6 +528,43 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             }
         }
         return references;
+    }
+
+    /** Die Zitate einer Nutzernachricht: Passage, Zeitpunkt der zitierten Antwort und Position in ihrem Markdown. */
+    private static List<QuoteRecord> quotesOf(TranscriptEntry entry) {
+        List<QuoteRecord> records = new ArrayList<QuoteRecord>(entry.getQuotes().size());
+        for (ChatQuote quote : entry.getQuotes()) {
+            records.add(new QuoteRecord(quote.selectedText(), quote.messageCreatedAtMillis(), quote.sourceStart(),
+                    quote.sourceEnd()));
+        }
+        return records;
+    }
+
+    /**
+     * Die gespeicherten Zitate einer Nutzernachricht, jeweils der wiederhergestellten Antwort mit demselben Zeitpunkt
+     * zugeordnet (die jüngste davor); ohne sie bleibt die Zeile unbekannt ({@code -1}), die Passage bleibt sichtbar.
+     */
+    private List<ChatQuote> quotesOf(ChatMessageRecord message) {
+        List<ChatQuote> quotes = new ArrayList<ChatQuote>();
+        for (QuoteRecord record : message.getQuotes()) {
+            if (record.getText().trim().isEmpty()) {
+                continue;
+            }
+            quotes.add(new ChatQuote(restoredAnswerId(record.getSourceCreatedAt()), record.getSourceCreatedAt(),
+                    record.getText(), record.getSourceStart(), record.getSourceEnd()));
+        }
+        return quotes;
+    }
+
+    private long restoredAnswerId(long createdAt) {
+        List<TranscriptEntry> entries = model.getEntries();
+        for (int index = entries.size() - 1; index >= 0; index--) {
+            TranscriptEntry entry = entries.get(index);
+            if (entry.getAuthor() == TranscriptEntry.Author.ASSISTANT && entry.getCreatedAtMillis() == createdAt) {
+                return entry.getId();
+            }
+        }
+        return -1L;
     }
 
     /** Die Seiten einer Nutzernachricht: nur Bookmark und Titel. */

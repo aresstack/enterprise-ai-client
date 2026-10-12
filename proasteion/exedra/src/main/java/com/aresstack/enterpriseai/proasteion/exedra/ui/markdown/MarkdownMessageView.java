@@ -9,6 +9,13 @@ import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Insets;
+import java.awt.Rectangle;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import javax.swing.event.CaretEvent;
+import javax.swing.event.CaretListener;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.JTextComponent;
 
 /**
  * Wiederverwendbare Assistentennachricht mit gedrosselten Streaming-Aktualisierungen (aus askai-java8
@@ -37,6 +44,8 @@ public final class MarkdownMessageView extends JPanel implements WidthAwareHeigh
     private final Timer renderTimer;
     private boolean streaming;
     private boolean sourceOffsetsExact;
+    private QuoteSelectionListener quoteListener;
+    private final SelectionWatcher selectionWatcher = new SelectionWatcher();
 
     public MarkdownMessageView(MarkdownTheme theme, DesktopLinkOpener linkOpener,
                                MermaidImageRenderer mermaidImageRenderer) {
@@ -133,6 +142,126 @@ public final class MarkdownMessageView extends JPanel implements WidthAwareHeigh
         return blocks;
     }
 
+    /**
+     * Meldet Textauswahlen in den gerenderten Blöcken (Zitieren): nach dem Loslassen der Maus mit markiertem Text
+     * {@link QuoteSelectionListener#selectionMade}, sonst {@link QuoteSelectionListener#selectionCleared}. Eine
+     * Auswahl reicht nie über mehrere Blöcke (je Block eine eigene Textkomponente). {@code null} schaltet ab.
+     */
+    public void setQuoteSelectionListener(QuoteSelectionListener listener) {
+        this.quoteListener = listener;
+    }
+
+    /**
+     * Die zitierbare Auswahl einer Textkomponente dieser Ansicht oder {@code null} ohne markierten Text. Die
+     * Quellposition wird nur angegeben, wenn sie eindeutig ist: die Blöcke tragen ihre Startposition
+     * ({@link #sourceOffsetsExact()}) und der markierte Text steht genau einmal wörtlich im Quelltext seines Blocks
+     * (Inline-Formatierung wie {@code **fett**} dazwischen macht die Position unbekannt, nicht falsch).
+     */
+    public QuoteSelection selectionOf(JTextComponent component) {
+        if (component == null) {
+            return null;
+        }
+        String selected = component.getSelectedText();
+        if (selected == null || selected.trim().isEmpty()) {
+            return null;
+        }
+        int[] source = sourceRange(component, selected);
+        return new QuoteSelection(selected, source[0], source[1], component, selectionBounds(component));
+    }
+
+    private int[] sourceRange(JTextComponent component, String selected) {
+        int[] unknown = {QuoteSelection.UNKNOWN_OFFSET, QuoteSelection.UNKNOWN_OFFSET};
+        if (!sourceOffsetsExact) {
+            return unknown;
+        }
+        java.util.List<javax.swing.JComponent> blocks = renderedBlocks();
+        for (int index = 0; index < blocks.size(); index++) {
+            javax.swing.JComponent block = blocks.get(index);
+            if (block != component && !SwingUtilities.isDescendingFrom(component, block)) {
+                continue;
+            }
+            Object start = block.getClientProperty(SOURCE_START);
+            if (!(start instanceof Integer)) {
+                return unknown;
+            }
+            int blockStart = (Integer) start;
+            int blockEnd = markdown.length();
+            for (int next = index + 1; next < blocks.size(); next++) {
+                Object nextStart = blocks.get(next).getClientProperty(SOURCE_START);
+                if (nextStart instanceof Integer) {
+                    blockEnd = (Integer) nextStart;
+                    break;
+                }
+            }
+            if (blockStart < 0 || blockEnd > markdown.length() || blockStart >= blockEnd) {
+                return unknown;
+            }
+            String blockSource = markdown.substring(blockStart, blockEnd);
+            int found = blockSource.indexOf(selected);
+            if (found < 0 || found != blockSource.lastIndexOf(selected)) {
+                return unknown;
+            }
+            return new int[]{blockStart + found, blockStart + found + selected.length()};
+        }
+        return unknown;
+    }
+
+    private static Rectangle selectionBounds(JTextComponent component) {
+        try {
+            Rectangle first = component.modelToView(component.getSelectionStart());
+            Rectangle last = component.modelToView(component.getSelectionEnd());
+            if (first == null || last == null) {
+                return new Rectangle(0, 0, component.getWidth(), component.getHeight());
+            }
+            return first.union(last);
+        } catch (BadLocationException outside) {
+            return new Rectangle(0, 0, component.getWidth(), component.getHeight());
+        }
+    }
+
+    private void watchSelections(Component component) {
+        if (component instanceof JTextComponent) {
+            component.addMouseListener(selectionWatcher);
+            ((JTextComponent) component).addCaretListener(selectionWatcher);
+        }
+        if (component instanceof java.awt.Container) {
+            for (Component child : ((java.awt.Container) component).getComponents()) {
+                watchSelections(child);
+            }
+        }
+    }
+
+    /** Ein Beobachter für alle Textkomponenten der Ansicht (sie werden bei jedem Rendering neu angelegt). */
+    private final class SelectionWatcher extends MouseAdapter implements CaretListener {
+
+        @Override
+        public void mousePressed(MouseEvent event) {
+            if (quoteListener != null) {
+                quoteListener.selectionCleared();
+            }
+        }
+
+        @Override
+        public void mouseReleased(MouseEvent event) {
+            if (quoteListener == null || !(event.getSource() instanceof JTextComponent)) {
+                return;
+            }
+            QuoteSelection selection = selectionOf((JTextComponent) event.getSource());
+            if (selection == null) {
+                quoteListener.selectionCleared();
+            } else {
+                quoteListener.selectionMade(selection);
+            }
+        }
+
+        @Override
+        public void caretUpdate(CaretEvent event) {
+            if (quoteListener != null && event.getDot() == event.getMark()) {
+                quoteListener.selectionCleared();
+            }
+        }
+    }
+
     private static boolean hasSourceOffsets(JPanel rendered) {
         for (Component child : rendered.getComponents()) {
             if (child instanceof javax.swing.JComponent
@@ -159,6 +288,7 @@ public final class MarkdownMessageView extends JPanel implements WidthAwareHeigh
         JPanel rendered = renderer.render(normalized, complete);
         sourceOffsetsExact = normalized.equals(markdown.toString()) && hasSourceOffsets(rendered);
         add(rendered, BorderLayout.CENTER);
+        watchSelections(rendered);
         revalidate();
         repaint();
     }

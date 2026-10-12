@@ -154,6 +154,13 @@ public final class ChatExport {
                 out.append("- Seite: ").append(string(bookmark, "title")).append(" <")
                         .append(string(bookmark, "uri")).append(">\n");
             }
+            JsonElement quotes = message.get("quotes");
+            if (quotes != null && quotes.isJsonArray()) {
+                for (JsonElement quote : quotes.getAsJsonArray()) {
+                    out.append("- Zitat: „").append(string(quote.getAsJsonObject(), "text").trim()
+                            .replaceAll("\\s+", " ")).append("“\n");
+                }
+            }
             JsonElement calls = message.get("toolCalls");
             if (calls != null && calls.isJsonArray()) {
                 for (JsonElement callElement : calls.getAsJsonArray()) {
