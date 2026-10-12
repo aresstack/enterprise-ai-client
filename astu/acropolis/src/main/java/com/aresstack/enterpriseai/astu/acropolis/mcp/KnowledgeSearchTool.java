@@ -62,9 +62,12 @@ final class KnowledgeSearchTool implements McpToolHandler {
 
     McpToolContribution contribution() {
         return McpToolContribution.of(NAME,
-                "Search the knowledge sources (e.g. Confluence, wiki) and the local knowledge index. Hits are "
-                        + "loaded and indexed in the background automatically. Use this first when you "
-                        + "need information about a topic, then read a hit with knowledge_read. "
+                "Search the user's knowledge sources (e.g. Confluence, wiki) and the local knowledge index. Hits "
+                        + "are loaded and indexed in the background automatically. Use this when the answer needs "
+                        + "subject-matter, internal or organization-specific information, then read a hit with "
+                        + "knowledge_read. Do not use it for greetings, small talk, questions about yourself or about "
+                        + "the application you are running in, corrections or complaints, and not merely because a "
+                        + "message contains an unknown word (it may be a typo or a speech recognition error). "
                         + "Example: query=\"RSL in IAR\", limit=4. "
                         + "Example: query=\"Was bedeutet Rückmeldeschlüssel bei IAR?\".",
                 this,
@@ -171,8 +174,10 @@ final class KnowledgeSearchTool implements McpToolHandler {
             }
         }
         if (shown == 0) {
-            out.append("No hits. Try other words — example: query=\"").append(ToolText.oneLine(query, 60))
-                    .append(" Anleitung\"");
+            out.append("No hits. Do not retry with variants or parts of the same terms. Check first whether the "
+                    + "message was understood correctly (typo, speech recognition error, reference to earlier "
+                    + "messages); if the meaning is unclear, ask the user. Search again only with clearly different "
+                    + "terms.");
         } else {
             out.append("\nRead a hit completely with knowledge_read — example: id=\"")
                     .append(firstShown).append("\"");

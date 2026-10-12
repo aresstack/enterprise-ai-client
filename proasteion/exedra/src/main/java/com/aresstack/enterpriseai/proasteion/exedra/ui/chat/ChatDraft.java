@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
 
+import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -20,15 +22,22 @@ public final class ChatDraft {
     private final List<ChatPage> pages;
     private final List<ChatResource> references;
     private final List<ChatQuote> quotes;
+    private final MessageOrigin origin;
 
     private ChatDraft(String text, boolean ragEnabled, List<Path> attachments, List<ChatPage> pages,
                       List<ChatResource> references, List<ChatQuote> quotes) {
+        this(text, ragEnabled, attachments, pages, references, quotes, MessageOrigin.TYPED);
+    }
+
+    private ChatDraft(String text, boolean ragEnabled, List<Path> attachments, List<ChatPage> pages,
+                      List<ChatResource> references, List<ChatQuote> quotes, MessageOrigin origin) {
         this.text = text;
         this.ragEnabled = ragEnabled;
         this.attachments = attachments;
         this.pages = pages;
         this.references = references;
         this.quotes = quotes;
+        this.origin = origin;
     }
 
     /** Ein Entwurf nur aus Text. */
@@ -43,12 +52,12 @@ public final class ChatDraft {
 
     /** Neue Dateien, die mit dieser Nachricht in den Chat kommen. */
     public ChatDraft withAttachments(List<Path> files) {
-        return new ChatDraft(text, ragEnabled, copy(files), pages, references, quotes);
+        return new ChatDraft(text, ragEnabled, copy(files), pages, references, quotes, origin);
     }
 
     /** Seiten (Titel und Bookmark), die mit dieser Nachricht in den Chat kommen. */
     public ChatDraft withPages(List<ChatPage> values) {
-        return new ChatDraft(text, ragEnabled, attachments, copy(values), references, quotes);
+        return new ChatDraft(text, ragEnabled, attachments, copy(values), references, quotes, origin);
     }
 
     /** Ressourcen des Chats, auf die sich diese Nachricht ausdrücklich bezieht (je Ressource einmal). */
@@ -61,7 +70,8 @@ public final class ChatDraft {
                 }
             }
         }
-        return new ChatDraft(text, ragEnabled, attachments, pages, Collections.unmodifiableList(distinct), quotes);
+        return new ChatDraft(text, ragEnabled, attachments, pages, Collections.unmodifiableList(distinct), quotes,
+                origin);
     }
 
     /**
@@ -77,7 +87,17 @@ public final class ChatDraft {
                 }
             }
         }
-        return new ChatDraft(text, ragEnabled, attachments, pages, references, Collections.unmodifiableList(distinct));
+        return new ChatDraft(text, ragEnabled, attachments, pages, references, Collections.unmodifiableList(distinct),
+                origin);
+    }
+
+    /**
+     * Wie die Nachricht entstand: {@link MessageOrigin#SPEECH_TRANSCRIPT}, sobald Text aus der Spracherkennung im
+     * Entwurf steht (auch nach Handkorrektur); das Modell erfährt es für diesen Turn.
+     */
+    public ChatDraft withOrigin(MessageOrigin value) {
+        return new ChatDraft(text, ragEnabled, attachments, pages, references, quotes,
+                value == null ? MessageOrigin.TYPED : value);
     }
 
     public String text() {
@@ -104,6 +124,10 @@ public final class ChatDraft {
         return quotes;
     }
 
+    public MessageOrigin origin() {
+        return origin;
+    }
+
     private static <T> List<T> copy(List<T> values) {
         List<T> copy = new ArrayList<T>();
         if (values != null) {
@@ -120,6 +144,6 @@ public final class ChatDraft {
     public String toString() {
         // Der Text gehört nicht in Logs.
         return "ChatDraft{length=" + text.length() + ", attachments=" + attachments.size() + ", pages=" + pages.size()
-                + ", references=" + references.size() + ", quotes=" + quotes.size() + '}';
+                + ", references=" + references.size() + ", quotes=" + quotes.size() + ", origin=" + origin + '}';
     }
 }

@@ -20,6 +20,8 @@ final class ChatResearchCard {
     static final String KIND = "research";
     static final String TITLE = "Recherche in den Wissensquellen";
     static final String STARTING = "Suche startet …";
+    static final String TRIAGE = "Prüfe, ob eine Suche nötig ist …";
+    static final String SKIPPED = "keine Suche nötig";
     static final String SEARCHING = "Suche läuft …";
     static final String LIVE_SEARCH = "Live-Suche in den Quellen …";
     static final String KEYWORD_SEARCH = "Volltextsuche …";
@@ -42,6 +44,7 @@ final class ChatResearchCard {
     private int hits;
     private int sources = -1;
     private boolean failed;
+    private boolean skipped;
     private boolean open;
 
     ChatResearchCard(ChatShellModel model, String key) {
@@ -146,6 +149,13 @@ final class ChatResearchCard {
         update();
     }
 
+    /** Die Nachricht braucht kein Wissen aus den Quellen: die Karte platzt gleich mit „keine Suche nötig“. */
+    void skipped() {
+        skipped = true;
+        current = PREPARING;
+        update();
+    }
+
     void cancelling() {
         current = CANCELLING;
         update();
@@ -163,6 +173,9 @@ final class ChatResearchCard {
 
     /** „abgeschlossen: 2 Suchen, 11 Treffer, 6 Quellen im Kontext“. */
     String summary() {
+        if (skipped && searches == 0) {
+            return SKIPPED;
+        }
         if (failed && hits == 0) {
             return "Wissenssuche ausgefallen";
         }

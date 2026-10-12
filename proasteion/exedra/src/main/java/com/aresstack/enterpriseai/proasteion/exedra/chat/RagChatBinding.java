@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
+import com.aresstack.enterpriseai.proasteion.application.chat.ToolUsePolicy;
 import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpTools;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatDraft;
@@ -19,6 +20,7 @@ import com.aresstack.enterpriseai.astu.acropolis.attachment.SearchAttachmentTool
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
+import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
 import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteContext;
 import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteFollowUpSuggestion;
 import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteFollowUps;
@@ -84,10 +86,14 @@ import java.util.logging.Logger;
  *       nur RAG. Auf dem Werkzeugweg kommt der Hinweis deshalb erst nach der Antwort: hat {@code knowledge_read}
  *       eine Seite geliefert, heißt ein ausgefallener Suchpfad nicht „ohne Kontext“.</li>
  *   <li><b>Quellen</b>: gesucht wird nur in den Quellen, die der {@link RagSourceFilter} erlaubt (die Häkchen im
- *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche und ohne Hinweis als normaler Chat. Gesucht wird bei
- *       jeder Nachricht außer Small Talk und Fragen nach dem Assistenten selbst ({@link KnowledgeQuestion}); reicht
- *       der Kontext nicht, sucht der {@link RagChatUseCase} mit einer genaueren Anfrage nach. Eine Frage nach dem
- *       Assistenten selbst beantwortet der Client aus den Werkzeugen des Turns ({@link ToolCapabilities}).</li>
+ *       Drawer); ist keine gewählt, läuft die Nachricht ohne Suche und ohne Hinweis als normaler Chat. Ob und womit
+ *       gesucht wird, entscheidet die Vorprüfung des {@link RagChatUseCase} (das Modell, keine Wortliste); reicht
+ *       der Kontext nicht, sucht er mit einer genaueren Anfrage nach. Eine Frage nach dem Assistenten selbst
+ *       ({@link KnowledgeQuestion}) beantwortet der Client aus den Werkzeugen des Turns ({@link ToolCapabilities}).</li>
+ *   <li><b>Herkunft</b>: eine diktierte Nachricht ({@link ChatDraft#origin()}) geht mit diesem Wissen an Vorprüfung
+ *       und Modell, damit es Erkennungsfehler aus dem Satz auflöst, statt nach ihnen zu suchen.</li>
+ *   <li><b>Werkzeugregeln</b> ({@link ToolUsePolicy}): jeder Turn mit Werkzeugen bekommt die Regeln des Clients
+ *       zur Werkzeugwahl, unabhängig vom System-Prompt der Konfiguration.</li>
  *   <li><b>Stop</b> während des Retrievals merkt sich den Wunsch, lässt die restlichen Suchschritte aus und bricht
  *       den Turn ab, sobald er existiert; die Nutzerfrage bleibt dabei in der Historie (AP2-Regel), die Karte endet
  *       als abgebrochen und verschwindet mit dem Turn.</li>
@@ -340,6 +346,7 @@ public final class RagChatBinding implements ChatShellActions {
         if (!model.canSend(text)) {
             return;
         }
+        final MessageOrigin origin = draft.origin();
         boolean ragEnabled = draft.ragEnabled();
         List<Path> files = draft.attachments();
         List<ChatPage> pages = draft.pages();
@@ -402,18 +409,18 @@ public final class RagChatBinding implements ChatShellActions {
                 && (ragOptions.isEnabled() || !chatPages.isEmpty() || ChatReferences.needsKnowledge(references));
         final boolean toolPath = tools != null && (tools.alwaysOn() || conversationHasAttachments
                 || !newFiles.isEmpty() || !chatPages.isEmpty() || knowledgeTools || !references.isEmpty());
-        // Small Talk und Fragen nach dem Assistenten selbst suchen nie; alles andere sucht in den angehakten Quellen,
-        // auch wenn das Modell knowledge_search hat (sonst antwortet es aus eigenem Wissen).
-        if (ragOptions.isEnabled() && !KnowledgeQuestion.wantsRetrieval(text)) {
+        // Eine Frage nach dem Assistenten selbst beantwortet der Client aus dem, was dieser Turn tatsächlich anbietet;
+        // das Modell schreibt diese Antwort nicht (kein Selbstbild wie Modellname oder Wissensstand), gesucht wird
+        // dafür nicht. Ob jede andere Nachricht mit angehakten Quellen wirklich sucht, entscheidet die Vorprüfung im
+        // Use Case.
+        final boolean capabilityQuestion = KnowledgeQuestion.isAssistantCapability(text);
+        if (capabilityQuestion) {
             ragOptions = RagOptions.disabled();
         }
-        // Eine Frage nach dem Assistenten selbst beantwortet der Client aus dem, was dieser Turn tatsächlich anbietet;
-        // das Modell schreibt diese Antwort nicht (kein Selbstbild wie Modellname oder Wissensstand).
-        final boolean capabilityQuestion = KnowledgeQuestion.isAssistantCapability(text);
         if (!ragOptions.isEnabled() && !toolPath) {
             startWithoutRetrieval(text, listener, quoteContext, capabilityQuestion
                     ? new FixedAnswerPort(ToolCapabilities.answer(Collections.<ToolDefinition>emptyList(), chatModel))
-                    : null);
+                    : null, origin);
             return;
         }
         final RagOptions options = ragOptions;
@@ -475,8 +482,13 @@ public final class RagChatBinding implements ChatShellActions {
                                     available.add(tool);
                                 }
                             }
-                            extraContext = join(join(attachments.context(), ChatBookmark.context(chatPages)),
-                                    join(ChatReferences.context(references), quoteContext));
+                            List<String> offered = new ArrayList<String>(available.size());
+                            for (AiTool tool : available) {
+                                offered.add(tool.name());
+                            }
+                            extraContext = join(ToolUsePolicy.context(offered),
+                                    join(join(attachments.context(), ChatBookmark.context(chatPages)),
+                                            join(ChatReferences.context(references), quoteContext)));
                             // Wer während der Runde ein Werkzeug abschaltet (Reiter „Tools“), nimmt es ab dem
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
                             via = new ChatCompletionsToolLoop(support.chat(),
@@ -489,7 +501,7 @@ public final class RagChatBinding implements ChatShellActions {
                             }
                         }
                         turn = rag.send(conversation, text, options, chatOptions, listener, extraContext, via,
-                                progress(request));
+                                progress(request), origin);
                     } catch (final RuntimeException rejected) {
                         // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
                         LOG.log(Level.WARNING, "Nachricht nicht gestartet: " + rejected.getMessage(), rejected);
@@ -603,10 +615,10 @@ public final class RagChatBinding implements ChatShellActions {
      * nur für diesen Turn, sonst {@code null}.
      */
     private void startWithoutRetrieval(String text, TurnListener listener, String extraContext,
-                                       ChatCompletionPort via) {
+                                       ChatCompletionPort via, MessageOrigin origin) {
         try {
             ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener,
-                    extraContext, via).turn();
+                    extraContext, via, RetrievalProgress.none(), origin).turn();
             if (!turn.isDone()) {
                 runningTurn = turn;
             }
@@ -850,6 +862,16 @@ public final class RagChatBinding implements ChatShellActions {
             @Override
             public void contextCheckStarted() {
                 card(card -> card.step(ChatResearchCard.CHECKING));
+            }
+
+            @Override
+            public void triageStarted() {
+                card(card -> card.step(ChatResearchCard.TRIAGE));
+            }
+
+            @Override
+            public void searchSkipped() {
+                card(ChatResearchCard::skipped);
             }
 
             @Override

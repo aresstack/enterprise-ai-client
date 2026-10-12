@@ -57,6 +57,7 @@ Der Pegelbalken zeigt dir laufend, wie laut das ankommende Signal ist. Liegt dei
 2. **Zerlegen**: Lange Aufnahmen werden für die Erkennung in Stücke von höchstens 30 Sekunden geteilt und nacheinander erkannt; die Ergebnisse werden zusammengesetzt.
 3. **Erkennung**: Das lokale Modell wandelt die Aufnahme in Text um. Das läuft im Programm selbst; es gibt keinen Netzwerkzugriff und keinen Aufruf des KI-Dienstes.
 4. **Einfügen**: Der Text wird ins Eingabefeld geschrieben. Gesendet wird er erst, wenn du auf „Senden“ klickst (außer im Fall „Diktieren und gleich senden“).
+5. **Als Diktat gekennzeichnet**: Eine Nachricht, deren Text aus der Spracherkennung stammt, geht mit dem Hinweis an das Chat-Modell, dass sie diktiert wurde, auch wenn du die Abschrift vorher von Hand korrigiert hast. Das Modell liest ein unbekanntes Wort dann eher als Erkennungsfehler eines ähnlich klingenden Wortes und sucht nicht danach. Leerst du das Eingabefeld und tippst neu, gilt die Nachricht wieder als getippt. Der Hinweis steht nicht im Verlauf.
 
 Datenschutz: Weil die Erkennung lokal läuft, verlässt die Aufnahme deinen Rechner nicht. Erst der erkannte Text geht beim Senden wie eine getippte Nachricht an das Chat-Modell. Siehe [Lokal oder Cloud](help:concepts.local-vs-cloud) und [Datenschutz](help:concepts.privacy).
 
@@ -95,7 +96,7 @@ Die erste Erkennung nach dem Start muss das Modell erst laden. Auch lange Aufnah
 
 ### Fachbegriffe werden falsch erkannt
 
-Das ist eine Grenze des Modells. Korrigiere solche Wörter im Eingabefeld vor dem Senden.
+Das ist eine Grenze des Modells. Korrigiere solche Wörter im Eingabefeld vor dem Senden. Übersiehst du einen Fehler, versucht der Assistent die gemeinte Aussage aus dem Satz zu erschließen und fragt bei echter Unklarheit nach („Meinst du …?“).
 
 ## Grenzen
 

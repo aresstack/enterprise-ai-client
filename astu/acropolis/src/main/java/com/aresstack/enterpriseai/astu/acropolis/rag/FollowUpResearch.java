@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
+import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 import com.aresstack.enterpriseai.astu.chat.ChatRole;
@@ -48,13 +49,17 @@ public final class FollowUpResearch {
     static final String PRIOR_INSTRUCTION = "Du prüfst für einen Wissens-Chat, ob die Abschnitte, die in dieser "
             + "Unterhaltung bereits gefunden wurden, die aktuelle Nachricht des Nutzers beantworten, ohne neu zu suchen. "
             + "Antworte ausschließlich mit einem JSON-Objekt der Form "
-            + "{\"sufficient\": true, \"related\": true, \"query\": \"\"}.\n"
+            + "{\"needed\": true, \"sufficient\": true, \"related\": true, \"query\": \"\"}.\n"
             + "- sufficient = true, wenn die Abschnitte die Nachricht beantworten.\n"
             + "- related = false, wenn die Nachricht ein anderes Thema hat als die Abschnitte.\n"
+            + "- needed = false, wenn die Nachricht gar kein Wissen aus den Wissensquellen braucht: Gruß, Small Talk, "
+            + "Dank, Fragen nach dir selbst oder zur Bedienung dieses Programms, Rückfragen, Korrekturen, Beschwerden. "
+            + "Ein unbekanntes Wort allein (womöglich ein Tipp- oder Erkennungsfehler) ist kein Grund zu suchen.\n"
             + "- Bei sufficient = false ist query eine neue, genauere Suchanfrage in wenigen Stichworten: löse Bezüge "
             + "aus dem Verlauf auf, nimm die gesuchte Einzelheit auf und wiederhole keine der bisherigen Suchanfragen.";
 
     private static final Pattern SUFFICIENT = Pattern.compile("\"sufficient\"\\s*:\\s*(true|false)");
+    private static final Pattern NEEDED = Pattern.compile("\"needed\"\\s*:\\s*(true|false)");
     private static final Pattern RELATED = Pattern.compile("\"related\"\\s*:\\s*(true|false)");
     private static final Pattern QUERY = Pattern.compile("\"query\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"");
 
@@ -93,9 +98,16 @@ public final class FollowUpResearch {
      */
     String nextQuery(ChatService chat, List<ChatMessage> history, String message, List<String> queries,
                      String context, ChatOptions options) {
+        return nextQuery(chat, history, message, MessageOrigin.TYPED, queries, context, options);
+    }
+
+    /** Wie oben; {@code origin} sagt der Prüfung, ob die Nachricht eine Abschrift der Spracherkennung ist. */
+    String nextQuery(ChatService chat, List<ChatMessage> history, String message, MessageOrigin origin,
+                     List<String> queries, String context, ChatOptions options) {
         String verdict;
         try {
-            verdict = chat.completeAside(request(history, message, queries, context), options).content();
+            verdict = chat.completeAside(request(INSTRUCTION, "Gefundener Kontext", history, message, origin, queries,
+                    context), options).content();
         } catch (ChatCompletionException e) {
             return null;
         } catch (RuntimeException e) {
@@ -118,19 +130,26 @@ public final class FollowUpResearch {
 
         /** Kein lesbares Urteil (Nebenanfrage gescheitert, unlesbare Antwort): normal suchen. */
         static PriorVerdict unknown() {
-            return new PriorVerdict(false, true, null, false);
+            return new PriorVerdict(false, true, null, false, true);
         }
 
         private final boolean sufficient;
         private final boolean related;
         private final String query;
         private final boolean known;
+        private final boolean needed;
 
-        private PriorVerdict(boolean sufficient, boolean related, String query, boolean known) {
+        private PriorVerdict(boolean sufficient, boolean related, String query, boolean known, boolean needed) {
             this.sufficient = sufficient;
             this.related = related;
             this.query = query;
             this.known = known;
+            this.needed = needed;
+        }
+
+        /** The message needs knowledge from the sources at all; {@code false} skips search and context. */
+        boolean isNeeded() {
+            return !known || needed;
         }
 
         boolean isKnown() {
@@ -162,10 +181,16 @@ public final class FollowUpResearch {
      */
     PriorVerdict checkPrior(ChatService chat, List<ChatMessage> history, String message, List<String> queries,
                             String context, ChatOptions options) {
+        return checkPrior(chat, history, message, MessageOrigin.TYPED, queries, context, options);
+    }
+
+    /** Wie oben; {@code origin} sagt der Prüfung, ob die Nachricht eine Abschrift der Spracherkennung ist. */
+    PriorVerdict checkPrior(ChatService chat, List<ChatMessage> history, String message, MessageOrigin origin,
+                            List<String> queries, String context, ChatOptions options) {
         String verdict;
         try {
             verdict = chat.completeAside(request(PRIOR_INSTRUCTION, "Bereits gefundener Kontext", history, message,
-                    queries, context), options).content();
+                    origin, queries, context), options).content();
         } catch (ChatCompletionException e) {
             return PriorVerdict.unknown();
         } catch (RuntimeException e) {
@@ -184,8 +209,10 @@ public final class FollowUpResearch {
         }
         Matcher related = RELATED.matcher(verdict);
         boolean isRelated = !related.find() || Boolean.parseBoolean(related.group(1));
+        Matcher needed = NEEDED.matcher(verdict);
+        boolean isNeeded = !needed.find() || Boolean.parseBoolean(needed.group(1));
         if (Boolean.parseBoolean(sufficient.group(1))) {
-            return new PriorVerdict(true, isRelated, null, true);
+            return new PriorVerdict(true, isRelated, null, true, isNeeded);
         }
         String query = null;
         Matcher found = QUERY.matcher(verdict);
@@ -201,16 +228,35 @@ public final class FollowUpResearch {
                 }
             }
         }
-        return new PriorVerdict(false, isRelated, query, true);
+        return new PriorVerdict(false, isRelated, query, true, isNeeded);
     }
 
     static List<ChatMessage> request(List<ChatMessage> history, String message, List<String> queries,
                                      String context) {
-        return request(INSTRUCTION, "Gefundener Kontext", history, message, queries, context);
+        return request(INSTRUCTION, "Gefundener Kontext", history, message, MessageOrigin.TYPED, queries, context);
     }
 
     private static List<ChatMessage> request(String instruction, String contextLabel, List<ChatMessage> history,
-                                             String message, List<String> queries, String context) {
+                                             String message, MessageOrigin origin, List<String> queries,
+                                             String context) {
+        StringBuilder text = conversation(history, message, origin);
+        text.append("Bisherige Suchanfragen:");
+        for (String query : queries) {
+            text.append("\n- ").append(query);
+        }
+        text.append("\n\n").append(contextLabel).append(":\n");
+        text.append(context == null || context.trim().isEmpty() ? "(nichts gefunden)" : context.trim());
+        List<ChatMessage> messages = new ArrayList<ChatMessage>(2);
+        messages.add(ChatMessage.system(instruction));
+        messages.add(ChatMessage.user(text.toString()));
+        return messages;
+    }
+
+    /**
+     * Verlauf (die letzten Nachrichten), Herkunftshinweis und aktuelle Nachricht für eine Nebenanfrage; endet mit
+     * einer Leerzeile.
+     */
+    static StringBuilder conversation(List<ChatMessage> history, String message, MessageOrigin origin) {
         StringBuilder text = new StringBuilder();
         List<ChatMessage> recent = history == null ? Collections.<ChatMessage>emptyList() : history;
         List<ChatMessage> shown = new ArrayList<ChatMessage>();
@@ -230,17 +276,12 @@ public final class FollowUpResearch {
             }
             text.append('\n');
         }
-        text.append("Aktuelle Nachricht: ").append(shorten(message)).append("\n\n");
-        text.append("Bisherige Suchanfragen:");
-        for (String query : queries) {
-            text.append("\n- ").append(query);
+        String note = origin == null ? null : origin.modelNote();
+        if (note != null) {
+            text.append("Herkunft der aktuellen Nachricht: ").append(note).append("\n\n");
         }
-        text.append("\n\n").append(contextLabel).append(":\n");
-        text.append(context == null || context.trim().isEmpty() ? "(nichts gefunden)" : context.trim());
-        List<ChatMessage> messages = new ArrayList<ChatMessage>(2);
-        messages.add(ChatMessage.system(instruction));
-        messages.add(ChatMessage.user(text.toString()));
-        return messages;
+        text.append("Aktuelle Nachricht: ").append(shorten(message)).append("\n\n");
+        return text;
     }
 
     /** Die Suchanfrage aus dem Urteil; {@code null} bei „reicht“, ohne Anfrage oder unlesbar. */

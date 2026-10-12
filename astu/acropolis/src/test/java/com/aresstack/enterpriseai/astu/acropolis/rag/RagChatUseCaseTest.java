@@ -562,6 +562,147 @@ public class RagChatUseCaseTest {
         }
     }
 
+    /**
+     * Real case: a greeting with checked sources was searched verbatim. With the triage the model decides that the
+     * message needs no knowledge: no search, no context block, no "no hits" turn.
+     */
+    @Test
+    public void triageSkipsTheSearchForMessagesThatNeedNoKnowledge() throws Exception {
+        RagChatUseCase triaged = withTriage(FollowUpResearch.off());
+        ChatConversationId id = chat.openConversation("System");
+        chatPort.enqueueAnswer("{\"search\": false, \"query\": \"\"}");
+        chatPort.enqueueAnswer("Ich kann dir helfen.");
+
+        RagChatTurn turn = triaged.send(id, "Hallo, was kannst du denn so alles für mich tun?",
+                RagOptions.enabled(), listener());
+        awaitDone(turn);
+
+        assertFalse(turn.retrievalRequested());
+        assertTrue(turn.queries().isEmpty());
+        assertEquals(0, index.keywordSearches + index.semanticSearches);
+        List<ChatRequest> requests = chatPort.requests();
+        assertEquals("one triage, one answer", 2, requests.size());
+        assertEquals(RetrievalTriage.INSTRUCTION, requests.get(0).messages().get(0).content());
+        assertEquals(Arrays.asList(ChatMessage.system("System"),
+                ChatMessage.user("Hallo, was kannst du denn so alles für mich tun?")),
+                chatPort.lastRequest().messages());
+    }
+
+    @Test
+    public void triageQueryReplacesTheVerbatimMessage() throws Exception {
+        RagChatUseCase triaged = withTriage(FollowUpResearch.off());
+        embeddings.on("Java Installation Linux", 1f, 0f, 0f);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"search\": true, \"query\": \"Java Installation Linux\"}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+
+        RagChatTurn turn = triaged.send(id, "und wie geht das jetzt unter linux", RagOptions.enabled(), listener());
+        awaitDone(turn);
+
+        assertTrue(turn.retrievalRequested());
+        assertEquals(Collections.singletonList("Java Installation Linux"), turn.queries());
+        assertEquals(JAVA, turn.sources().get(0).resource());
+    }
+
+    @Test
+    public void unreadableTriageSearchesWithTheMessageAsBefore() throws Exception {
+        RagChatUseCase triaged = withTriage(FollowUpResearch.off());
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("keine Ahnung");
+        chatPort.enqueueAnswer("Mit apt [1].");
+
+        RagChatTurn turn = triaged.send(id, QUESTION, RagOptions.enabled(), listener());
+        awaitDone(turn);
+
+        assertEquals(Collections.singletonList(QUESTION), turn.queries());
+        assertEquals(1, turn.sources().size());
+    }
+
+    /**
+     * Real case: dictation turned "Erklär mir" into an unknown word that was then searched four times. The origin
+     * reaches triage and answer turn, so the model can resolve the recognition error from the sentence.
+     */
+    @Test
+    public void speechTranscriptOriginReachesTriageAndAnswer() throws Exception {
+        RagChatUseCase triaged = withTriage(FollowUpResearch.off());
+        ChatConversationId id = chat.openConversation("System");
+        chatPort.enqueueAnswer("{\"search\": false}");
+        chatPort.enqueueAnswer("Gern, das Programm ...");
+
+        RagChatTurn turn = triaged.send(id, "Aklima bitte erstmal das Programm", RagOptions.enabled(), null,
+                listener(), null, null, RetrievalProgress.none(),
+                com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin.SPEECH_TRANSCRIPT);
+        awaitDone(turn);
+
+        String note = com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin.SPEECH_TRANSCRIPT.modelNote();
+        String triage = chatPort.requests().get(0).messages().get(1).content();
+        assertTrue(triage, triage.contains(note));
+        assertTrue(triage, triage.endsWith("Aktuelle Nachricht: Aklima bitte erstmal das Programm"));
+        assertEquals(ChatMessage.system("System\n\n" + note), chatPort.lastRequest().messages().get(0));
+        assertEquals("the note stays out of the history",
+                ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
+    }
+
+    @Test
+    public void typedMessagesWithoutRagCarryNoOriginNote() throws Exception {
+        ChatConversationId id = chat.openConversation("System");
+        chatPort.enqueueAnswer("Antwort");
+
+        RagChatTurn turn = rag.send(id, QUESTION, RagOptions.disabled(), null, listener(), null, null,
+                RetrievalProgress.none(), com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertEquals(Arrays.asList(ChatMessage.system("System"), ChatMessage.user(QUESTION)),
+                chatPort.lastRequest().messages());
+    }
+
+    /** After a search without hits the model is told not to try variants of the same terms. */
+    @Test
+    public void searchWithoutHitsAsksForUnderstandingInsteadOfVariants() throws Exception {
+        RagChatUseCase research = withFollowUps(1);
+        embeddings.on("Aklima", 0f, 1f, 0f);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Was meinst du?");
+
+        RagChatTurn turn = research.send(id, "Aklima", RagOptions.enabled()
+                .restrictedTo(Collections.singleton(SourceAddress.of("confluence"))), listener());
+        awaitDone(turn);
+
+        assertTrue(turn.sources().isEmpty());
+        String system = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(system, system.contains("Suche nicht mit Varianten oder Teilen derselben Begriffe weiter"));
+        assertFalse(system, system.contains("suche selbst mit knowledge_search"));
+    }
+
+    @Test
+    public void priorCheckCanDecideThatNoKnowledgeIsNeeded() throws Exception {
+        RagChatUseCase triaged = withTriage(FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS));
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"search\": true, \"query\": \"" + QUESTION + "\"}");
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        awaitDone(triaged.send(id, QUESTION, RagOptions.enabled(), listener()));
+        int searches = index.keywordSearches + index.semanticSearches;
+
+        chatPort.enqueueAnswer("{\"needed\": false, \"sufficient\": false, \"related\": false, \"query\": \"\"}");
+        chatPort.enqueueAnswer("Gern.");
+        RagChatTurn thanks = triaged.send(id, "Danke dir, das hat geholfen", RagOptions.enabled(), listener());
+        awaitDone(thanks);
+
+        assertFalse(thanks.retrievalRequested());
+        assertEquals(searches, index.keywordSearches + index.semanticSearches);
+        assertEquals(ChatRole.USER, chatPort.lastRequest().messages().get(0).role());
+        assertFalse("the earlier context stays for later messages",
+                triaged.knowledgeContext(id).isEmpty());
+    }
+
+    private RagChatUseCase withTriage(FollowUpResearch followUps) {
+        return new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D, null),
+                new PromptContextAssembler(ContextSettings.defaults()), null, followUps, null,
+                RetrievalTriage.byModel());
+    }
+
     private RagChatUseCase withFollowUps(int maxFollowUps) {
         return withFollowUps(maxFollowUps, null);
     }

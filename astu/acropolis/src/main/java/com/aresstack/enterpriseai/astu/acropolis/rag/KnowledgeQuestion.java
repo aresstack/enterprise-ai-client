@@ -7,48 +7,14 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Entscheidet für den normalen Chat, ob eine Nachricht vor der Antwort eine automatische Wissenssuche auslöst.
- * Angehakte Wissensquellen heißen „verfügbar“, nicht „bei jeder Nachricht suchen“ (wie askai arch: „a greeting
- * deserves a greeting … never manufacture a search just because the field exists“; MainframeMate sucht im Chat nur
- * in ausdrücklich angehängten Dokumenten).
+ * Erkennt im normalen Chat eine Frage nach dem Assistenten selbst („Welche Tools hast du?“, „Kannst du recherchieren?“,
+ * „Welches Modell verwendest du?“). Die Antwort darauf kommt aus dem Laufzeitzustand (angebotene Werkzeuge), nicht aus
+ * dem Modell oder der Wissensbasis. Ob eine Nachricht in den Quellen sucht, entscheidet nicht diese Klasse, sondern die
+ * Vorprüfung durch das Modell ({@link RetrievalTriage}).
  *
- * <ul>
- *   <li><b>Small Talk</b> ({@link #isSmallTalk}: Gruß, Dank, Zustimmung, Abschied; nur Wörter aus einer kurzen
- *       Liste, höchstens {@value #MAX_SMALL_TALK_WORDS} Wörter): nie suchen.</li>
- *   <li><b>Frage nach dem Assistenten selbst</b> ({@link #isAssistantCapability}: „Welche Tools hast du?“, „Kannst
- *       du recherchieren?“, „Welches Modell verwendest du?“): nie suchen. Die Antwort kommt aus dem Laufzeitzustand
- *       (angebotene Werkzeuge), nicht aus der Wissensbasis; deren Treffer zu „Recherche“ oder „Tool“ wären fremder
- *       Fachinhalt.</li>
- *   <li><b>Alles andere</b> wird vorab gesucht, auch Korrekturen („das ist nicht, was ich suche“) und Rückfragen
- *       ohne Fragewort am Anfang. Ob das Modell daneben {@code knowledge_search} hat, ändert daran nichts: ein
- *       Modell mit Werkzeugen antwortete sonst aus eigenem Wissen, statt in den angehakten Quellen zu suchen.
- *       Welche Anfrage für eine Rückfrage taugt, klärt danach die Nachrecherche des {@link RagChatUseCase}.</li>
- * </ul>
- *
- * <p>Die Wortlisten sind eine Heuristik (kippbar), keine Sprachanalyse. Rein und zustandslos.
+ * <p>Die Wortliste ist eine Heuristik (kippbar), keine Sprachanalyse. Rein und zustandslos.
  */
 public final class KnowledgeQuestion {
-
-    /** Mehr Wörter sind kein bloßer Gruß mehr, auch wenn jedes einzelne in der Liste steht. */
-    static final int MAX_SMALL_TALK_WORDS = 6;
-
-    private static final Set<String> SMALL_TALK = setOf(
-            "hi", "hallo", "halo", "hey", "hej", "moin", "servus", "grüß", "gruß", "grüezi", "gott", "guten",
-            "morgen", "tag", "abend", "nacht", "mahlzeit", "danke", "dank", "vielen", "herzlichen", "besten",
-            "dankeschön", "merci", "thx", "thanks", "thank", "you", "ok", "okay", "oki", "okey", "alles", "klar",
-            "super", "prima", "toll", "cool", "gut", "sehr", "passt", "perfekt", "genau", "ja", "nein", "jo", "jep",
-            "nö", "ne", "tschüss", "tschüs", "ciao", "bye", "bis", "später", "bald", "dann", "wie", "geht", "gehts",
-            "s", "es", "dir", "ihnen", "euch", "und", "selbst", "mir", "auch", "hello", "good", "morning", "evening",
-            "night", "yes", "no", "fine", "great", "nice", "bitte", "gerne", "gern", "lol", "haha");
-
-    private static final Set<String> QUESTION_STARTS = setOf(
-            "was", "wer", "wen", "wem", "wessen", "wie", "wo", "wann", "warum", "wieso", "weshalb", "welche",
-            "welcher", "welches", "welchen", "welchem", "woher", "wohin", "womit", "wozu", "worum", "wofür",
-            "worauf", "gibt", "gibts", "kannst", "könnt", "können", "koennen", "kann", "hast", "habt", "haben",
-            "ist", "sind", "erkläre", "erklär", "erklaere", "beschreibe", "beschreib", "zeig", "zeige", "nenne",
-            "nenn", "liste", "fasse", "fass", "suche", "such", "finde", "find", "recherchiere", "what", "how",
-            "who", "where", "when", "why", "which", "explain", "describe", "show", "list", "find", "search",
-            "tell", "is", "are", "can", "could", "does", "do", "summarize", "summarise");
 
     /**
      * Wörter, die den Assistenten ansprechen; eine Frage nach seinen Fähigkeiten enthält mindestens eines. Die
@@ -89,38 +55,6 @@ public final class KnowledgeQuestion {
     private KnowledgeQuestion() {
     }
 
-    /** Wovon eine Nachricht im normalen Chat handelt. */
-    public enum Kind {
-        /** Gruß, Dank, Zustimmung, Abschied: nie suchen. */
-        SMALL_TALK,
-        /** Frage nach den Fähigkeiten des Assistenten (Werkzeuge, Modell, Quellen): nie suchen. */
-        ASSISTANT_CAPABILITY,
-        /** Erkennbare Wissensfrage: vorab suchen. */
-        KNOWLEDGE_QUESTION,
-        /** Alles andere (Auftrag, Korrektur, Rückfrage ohne Fragewort): ebenfalls vorab suchen. */
-        OTHER
-    }
-
-    /** Ordnet eine Nachricht ein; Small Talk vor Fähigkeitsfrage vor Wissensfrage. */
-    public static Kind classify(String message) {
-        if (isSmallTalk(message)) {
-            return Kind.SMALL_TALK;
-        }
-        if (isAssistantCapability(message)) {
-            return Kind.ASSISTANT_CAPABILITY;
-        }
-        return isRecognizableQuestion(message) ? Kind.KNOWLEDGE_QUESTION : Kind.OTHER;
-    }
-
-    /**
-     * @return {@code true}, wenn vor der Antwort automatisch in den angehakten Quellen gesucht werden soll: bei allem
-     *         außer Small Talk und Fragen nach dem Assistenten selbst
-     */
-    public static boolean wantsRetrieval(String message) {
-        Kind kind = classify(message);
-        return kind != Kind.SMALL_TALK && kind != Kind.ASSISTANT_CAPABILITY;
-    }
-
     /**
      * Fragt die Nachricht nach dem Assistenten selbst („Hast du MCP-Tools?“, „Kannst du Dateien lesen?“)? Sie spricht
      * den Assistenten an und enthält nur Wörter über Fähigkeiten und Füllwörter, keinen Sachbegriff.
@@ -136,35 +70,6 @@ public final class KnowledgeQuestion {
             }
         }
         return addressed;
-    }
-
-    /** Gruß, Dank, Zustimmung oder Abschied ohne Sachanliegen („Hi“, „Hallo!“, „Danke dir“, „ok“). */
-    public static boolean isSmallTalk(String message) {
-        String[] words = words(message);
-        if (words.length == 0) {
-            return true; // nur Satzzeichen oder Emoji
-        }
-        if (words.length > MAX_SMALL_TALK_WORDS) {
-            return false;
-        }
-        for (String word : words) {
-            if (!SMALL_TALK.contains(word)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /** Fragezeichen, Fragewort oder Such-/Erklär-Auftrag am Anfang („Wie lange …“, „Suche Seiten zu …“). */
-    public static boolean isRecognizableQuestion(String message) {
-        if (message == null) {
-            return false;
-        }
-        if (message.indexOf('?') >= 0) {
-            return true;
-        }
-        String[] words = words(message);
-        return words.length > 0 && QUESTION_STARTS.contains(words[0]);
     }
 
     private static String[] words(String message) {

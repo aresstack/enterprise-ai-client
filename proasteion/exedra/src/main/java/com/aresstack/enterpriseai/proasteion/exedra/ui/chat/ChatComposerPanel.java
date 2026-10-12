@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
 
+import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.control.PlaceholderTextArea;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
@@ -175,6 +176,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private long recordingStartedMillis;
 
     private boolean sendAfterRecognition;
+    /** The draft contains text from speech recognition (stays set after manual edits until the draft is emptied). */
+    private boolean dictatedDraft;
     private StatusKind currentStatus;
     private StatusKind dismissedStatus;
 
@@ -329,12 +332,15 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             return;
         }
         setDictationNote(null, ComposerStatusLine.Tone.MUTED); // die Diktat-Meldung endet spätestens mit dem Senden
+        MessageOrigin origin = dictatedDraft ? MessageOrigin.SPEECH_TRANSCRIPT : MessageOrigin.TYPED;
         editor.setText("");
+        dictatedDraft = false;
         ChatDraft message = ChatDraft.of(draft, model.isRagEnabled())
                 .withAttachments(attachmentStrip.getAttachments())
                 .withPages(attachmentStrip.getPages())
                 .withReferences(attachmentStrip.getReferences())
-                .withQuotes(attachmentStrip.getQuotes());
+                .withQuotes(attachmentStrip.getQuotes())
+                .withOrigin(origin);
         attachmentStrip.clear();
         actions.sendRequested(message);
     }
@@ -732,6 +738,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                     DictationInsertion insertion = DictationInsertion.insert(editor.getText(),
                             editor.getSelectionStart(), editor.getSelectionEnd(), text);
                     editor.setText(insertion.text);
+                    dictatedDraft = true; // after setText: emptying the editor resets the mark
                     editor.setCaretPosition(insertion.caret);
                     editor.requestFocusInWindow();
                     setDictationNote(RECOGNIZED_STATUS, ComposerStatusLine.Tone.MUTED);
@@ -1128,6 +1135,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                 // Wer den Entwurf leert, braucht den Hinweis „Abschrift eingefügt“ nicht mehr (Fehler bleiben).
                 if (editor.getText().isEmpty() && dictationNoteTone != ComposerStatusLine.Tone.ERROR) {
                     setDictationNote(null, ComposerStatusLine.Tone.MUTED);
+                }
+                if (editor.getText().isEmpty()) {
+                    dictatedDraft = false; // a draft typed anew after clearing is no transcript
                 }
                 refreshControls();
             }

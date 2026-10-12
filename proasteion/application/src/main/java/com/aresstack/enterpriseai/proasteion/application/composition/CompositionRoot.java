@@ -49,6 +49,7 @@ import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.DocumentSourceFileTextExtractor;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalTriage;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.InMemoryResourceArchive;
@@ -260,7 +261,7 @@ public final class CompositionRoot {
         this.ragChat = new RagChatUseCase(chatService, retrieval.withRawDocuments(ports.rawIndex()), contextAssembler,
                 liveSearch,
                 FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS),
-                settings.get(c -> c.knowledge().evidence()));
+                settings.get(c -> c.knowledge().evidence()), RetrievalTriage.byModel());
         this.sourceSelection = new KnowledgeSourceSelection();
         for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
             boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt

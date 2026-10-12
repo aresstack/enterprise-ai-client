@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.astu.acropolis.rag;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
+import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
@@ -38,6 +39,13 @@ import java.util.function.Supplier;
  *       nächsten Suche prüft das Modell, ob sie die neue Nachricht schon beantworten; dann wird nicht gesucht. Sonst
  *       folgt eine gezielte Nachsuche; zum Thema passende frühere Treffer bleiben hinter den neuen, bei Themenwechsel
  *       fallen sie weg. {@code context.maxSources} und {@code context.maxTokens} gelten wie immer.</li>
+ *   <li><b>Vorprüfung</b> ({@link RetrievalTriage}, wenn eingeschaltet): vor der ersten Suche entscheidet das Modell,
+ *       ob die Nachricht Wissen aus den Quellen braucht und mit welcher Anfrage gesucht wird. Braucht sie keins (Gruß,
+ *       Frage nach dem Assistenten oder zum Programm, Korrektur, Beschwerde), läuft der Turn ohne Suche und ohne
+ *       Kontext ({@link RagChatTurn#retrievalRequested()} ist dann {@code false}). Mit früherem Wissenskontext
+ *       übernimmt die Prüfung des {@link FollowUpResearch} diese Entscheidung in derselben Nebenanfrage.</li>
+ *   <li><b>Herkunft</b> ({@link MessageOrigin}): stammt die Nachricht aus der Spracherkennung, erfahren Vorprüfung,
+ *       Nachrecherche und Antwortturn das als Hinweis (nur für diesen Turn).</li>
  *   <li>Keine Treffer: Turn ohne Kontext, {@link RagChatTurn#sources()} ist leer.</li>
  *   <li>Retrieval ganz ausgefallen ({@link KnowledgeRetrievalException}): Turn ohne Kontext,
  *       {@link RagChatTurn#retrievalFailed()} ist gesetzt, damit die Oberfläche das anzeigen kann. Fällt nur ein
@@ -59,6 +67,8 @@ public final class RagChatUseCase {
     /** Adaptiver Modus (Reranking, progressive Evidenz); {@code null} = feste Treffermenge wie bisher. */
     private final Supplier<EvidencePolicy> evidence;
     private final EvidenceEvaluator evaluator = new EvidenceEvaluator();
+    /** Ob vor der ersten Suche geprüft wird, ob und womit gesucht wird. */
+    private final RetrievalTriage triage;
     /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
     private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
     /** Der zuletzt verwendete Wissenskontext je Konversation (nur mit Nachrecherche). */
@@ -95,6 +105,18 @@ public final class RagChatUseCase {
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
                           RetrievalPreparation preparation, FollowUpResearch followUps,
                           Supplier<EvidencePolicy> evidence) {
+        this(chat, retrieval, assembler, preparation, followUps, evidence, RetrievalTriage.off());
+    }
+
+    /**
+     * Wie oben, mit Vorprüfung: vor der ersten Suche entscheidet {@code triage}, ob die Nachricht Wissen aus den
+     * Quellen braucht und mit welcher Anfrage gesucht wird.
+     *
+     * @param triage {@code null} = {@link RetrievalTriage#off()}
+     */
+    public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
+                          RetrievalPreparation preparation, FollowUpResearch followUps,
+                          Supplier<EvidencePolicy> evidence, RetrievalTriage triage) {
         if (chat == null || retrieval == null) {
             throw new IllegalArgumentException("chat und retrieval sind Pflicht");
         }
@@ -104,6 +126,7 @@ public final class RagChatUseCase {
         this.preparation = preparation == null ? RetrievalPreparation.none() : preparation;
         this.followUps = followUps == null ? FollowUpResearch.off() : followUps;
         this.evidence = evidence;
+        this.triage = triage == null ? RetrievalTriage.off() : triage;
     }
 
     /** Der gemeinsame Chat-Use-Case, über den Konversationen verwaltet werden. */
@@ -150,6 +173,22 @@ public final class RagChatUseCase {
     public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
                             ChatTurnListener listener, String extraContext, ChatCompletionPort via,
                             RetrievalProgress progress) {
+        return send(id, userText, rag, options, listener, extraContext, via, progress, MessageOrigin.TYPED);
+    }
+
+    /**
+     * Wie {@link #send(ChatConversationId, String, RagOptions, ChatOptions, ChatTurnListener, String,
+     * ChatCompletionPort, RetrievalProgress)}; {@code origin} sagt, wie die Nachricht entstand. Eine Abschrift der
+     * Spracherkennung bekommt für diesen Turn einen Hinweis an das Modell (vor {@code extraContext}), und Vorprüfung
+     * und Nachrecherche lesen sie als möglicherweise fehlerhaft erkannt.
+     *
+     * @param origin {@code null} = {@link MessageOrigin#TYPED}
+     */
+    public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
+                            ChatTurnListener listener, String extraContext, ChatCompletionPort via,
+                            RetrievalProgress progress, MessageOrigin origin) {
+        MessageOrigin from = origin == null ? MessageOrigin.TYPED : origin;
+        extraContext = join(from.modelNote(), extraContext);
         if (userText == null || userText.trim().isEmpty()) {
             throw new IllegalArgumentException("user text must not be blank");
         }
@@ -172,10 +211,10 @@ public final class RagChatUseCase {
             RetrievalProgress steps = progress == null ? RetrievalProgress.none() : progress;
             EvidencePolicy policy = evidence == null ? null : evidence.get();
             if (policy != null && policy.reranking()) {
-                return sendAdaptive(id, userText, rag, options, listener, extraContext, via, steps, policy);
+                return sendAdaptive(id, userText, rag, options, listener, extraContext, via, steps, policy, from);
             }
             return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via, steps,
-                    policy == null ? followUps : FollowUpResearch.upTo(policy.maxFollowUps()));
+                    policy == null ? followUps : FollowUpResearch.upTo(policy.maxFollowUps()), from);
         } finally {
             synchronized (retrieving) {
                 retrieving.remove(id);
@@ -186,13 +225,13 @@ public final class RagChatUseCase {
     private RagChatTurn sendWithRetrieval(ChatConversationId id, String userText, RagOptions rag,
                                           ChatOptions options, ChatTurnListener listener, String extraContext,
                                           ChatCompletionPort via, RetrievalProgress progress,
-                                          FollowUpResearch followUps) {
+                                          FollowUpResearch followUps, MessageOrigin origin) {
         List<String> queries = new ArrayList<String>();
         List<Integer> hitCounts = new ArrayList<Integer>();
         List<RetrievedChunk> hits = new ArrayList<RetrievedChunk>();
         List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
         boolean failed = false;
-        List<ChatMessage> history = followUps.isEnabled()
+        List<ChatMessage> history = followUps.isEnabled() || triage.isEnabled()
                 ? chat.conversation(id).messages() : Collections.<ChatMessage>emptyList();
         int maxSearches = 1 + followUps.maxFollowUps();
         String query = userText;
@@ -201,8 +240,11 @@ public final class RagChatUseCase {
         List<String> priorQueries = Collections.emptyList();
         int reused = 0;
         if (prior != null && !prior.isEmpty()) {
-            FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, prior.queries(),
-                    assembler.assemble(prior.hits()).text(), options);
+            FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, origin,
+                    prior.queries(), assembler.assemble(prior.hits()).text(), options);
+            if (triage.isEnabled() && !verdict.isNeeded()) {
+                return withoutSearch(id, userText, options, listener, extraContext, via, progress);
+            }
             if (verdict.isSufficient()) {
                 hits = new ArrayList<RetrievedChunk>(prior.hits());
                 priorQueries = prior.queries();
@@ -218,6 +260,15 @@ public final class RagChatUseCase {
                     query = verdict.query();
                 }
                 progress.reuseInsufficient(query, hits.size());
+            }
+        } else if (triage.isEnabled()) {
+            progress.triageStarted();
+            RetrievalTriage.Decision decision = triage.decide(chat, history, userText, origin, options);
+            if (!decision.isSearch()) {
+                return withoutSearch(id, userText, options, listener, extraContext, via, progress);
+            }
+            if (decision.query() != null) {
+                query = decision.query();
             }
         }
         while (query != null && !progress.isCancelled()) {
@@ -252,7 +303,7 @@ public final class RagChatUseCase {
                 break;
             }
             progress.contextCheckStarted();
-            query = followUps.nextQuery(chat, history, userText, all(priorQueries, queries),
+            query = followUps.nextQuery(chat, history, userText, origin, all(priorQueries, queries),
                     assembler.assemble(hits).text(), options);
         }
         PromptContext context = failed ? PromptContext.empty(0) : assembler.assemble(hits);
@@ -262,8 +313,8 @@ public final class RagChatUseCase {
             // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
             contexts.put(id, new ConversationKnowledgeContext(allQueries, accepted(hits, context)));
         }
-        String combined = join(join(context.text(), followUps.isEnabled() ? searchNote(allQueries) : null),
-                extraContext);
+        String combined = join(join(context.text(), followUps.isEnabled()
+                ? searchNote(allQueries, !context.sources().isEmpty()) : null), extraContext);
         ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
         return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts, reused);
     }
@@ -430,7 +481,7 @@ public final class RagChatUseCase {
 
     private RagChatTurn sendAdaptive(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
                                      ChatTurnListener listener, String extraContext, ChatCompletionPort via,
-                                     RetrievalProgress progress, EvidencePolicy policy) {
+                                     RetrievalProgress progress, EvidencePolicy policy, MessageOrigin origin) {
         List<String> queries = new ArrayList<String>();
         List<Integer> hitCounts = new ArrayList<Integer>();
         List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
@@ -446,8 +497,11 @@ public final class RagChatUseCase {
         int reused = 0;
         ConversationKnowledgeContext prior = contexts.get(id);
         if (prior != null && !prior.isEmpty()) {
-            FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, prior.queries(),
-                    assembler.assemble(prior.hits()).text(), options);
+            FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, origin,
+                    prior.queries(), assembler.assemble(prior.hits()).text(), options);
+            if (triage.isEnabled() && !verdict.isNeeded()) {
+                return withoutSearch(id, userText, options, listener, extraContext, via, progress);
+            }
             if (verdict.isSufficient()) {
                 evidence.selection = prior.hits();
                 evidence.priorQueries = prior.queries();
@@ -464,6 +518,15 @@ public final class RagChatUseCase {
                     query = verdict.query();
                 }
                 progress.reuseInsufficient(query, carried.size());
+            }
+        } else if (triage.isEnabled()) {
+            progress.triageStarted();
+            RetrievalTriage.Decision decision = triage.decide(chat, history, userText, origin, options);
+            if (!decision.isSearch()) {
+                return withoutSearch(id, userText, options, listener, extraContext, via, progress);
+            }
+            if (decision.query() != null) {
+                query = decision.query();
             }
         }
         while (query != null && outcome == null && !progress.isCancelled()) {
@@ -570,9 +633,23 @@ public final class RagChatUseCase {
             // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
             contexts.put(id, new ConversationKnowledgeContext(allQueries, accepted(chosen, context)));
         }
-        String combined = join(join(join(context.text(), gap), searchNote(allQueries)), extraContext);
+        String combined = join(join(join(context.text(), gap), searchNote(allQueries, !context.sources().isEmpty())),
+                extraContext);
         ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
         return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts, reused);
+    }
+
+    /**
+     * Die Nachricht braucht kein Wissen aus den Quellen (Urteil der Vorprüfung): der Turn läuft ohne Suche und ohne
+     * Kontextblock, der Wissenskontext früherer Nachrichten bleibt für spätere.
+     */
+    private RagChatTurn withoutSearch(ChatConversationId id, String userText, ChatOptions options,
+                                      ChatTurnListener listener, String extraContext, ChatCompletionPort via,
+                                      RetrievalProgress progress) {
+        progress.searchSkipped();
+        ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener, via);
+        return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
+                false);
     }
 
     /** Die Suche endete, ohne dass die Evidenz reicht: mit dem Vorhandenen antworten und die Lücke offen nennen. */
@@ -600,16 +677,29 @@ public final class RagChatUseCase {
         return merged;
     }
 
-    /** Was gesucht wurde, und dass eine Lücke nicht mit der Bitte um Dateien endet. */
-    static String searchNote(List<String> queries) {
+    /**
+     * Was gesucht wurde, wie es weitergeht, und dass eine Lücke nicht mit der Bitte um Dateien endet. Ohne Treffer
+     * steigt die Unsicherheit, nicht die Zahl der Suchen: keine Varianten desselben Begriffs, sondern erst prüfen, ob
+     * die Nachricht richtig verstanden ist.
+     */
+    static String searchNote(List<String> queries, boolean found) {
         StringBuilder note = new StringBuilder("In den angehakten Wissensquellen wurde gesucht mit:");
         for (String query : queries) {
             note.append("\n- ").append(query.replace('\r', ' ').replace('\n', ' ').trim());
         }
-        note.append("\nBeantwortet der Kontext die Nachricht nicht, suche selbst mit knowledge_search und einer "
-                + "genaueren Anfrage und lies Treffer mit knowledge_read, sofern dir diese Werkzeuge zur Verfügung "
-                + "stehen. Reicht es danach immer noch nicht, sag das und nenne die Suchanfragen. Bitte den Nutzer "
-                + "nicht, Dateien oder Unterlagen anzuhängen: die Wissensquellen sind angehakt.");
+        if (found) {
+            note.append("\nBeantwortet der Kontext die Nachricht nicht und braucht sie wirklich Wissen aus den "
+                    + "Quellen, suche selbst mit knowledge_search und einer genaueren, anders formulierten Anfrage und "
+                    + "lies Treffer mit knowledge_read, sofern dir diese Werkzeuge zur Verfügung stehen. Reicht es "
+                    + "danach immer noch nicht, sag das und nenne die Suchanfragen.");
+        } else {
+            note.append("\nDiese Suche fand nichts. Suche nicht mit Varianten oder Teilen derselben Begriffe weiter. "
+                    + "Prüfe stattdessen, ob du die Nachricht richtig verstanden hast (Tipp- oder Erkennungsfehler, "
+                    + "Bezug auf den Verlauf). Betrifft sie die Bedienung dieses Programms, nutze die eingebaute "
+                    + "Programmhilfe, sofern verfügbar. Ist das Anliegen unklar, frag kurz nach, statt weiter zu "
+                    + "suchen.");
+        }
+        note.append(" Bitte den Nutzer nicht, Dateien oder Unterlagen anzuhängen: die Wissensquellen sind angehakt.");
         return note.toString();
     }
 

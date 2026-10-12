@@ -87,6 +87,14 @@ public interface RetrievalProgress {
     default void reuseInsufficient(String query, int sources) {
     }
 
+    /** Das Modell prüft vor der ersten Suche, ob die Nachricht Wissen aus den Quellen braucht ({@link RetrievalTriage}). */
+    default void triageStarted() {
+    }
+
+    /** Die Nachricht braucht kein Wissen aus den Quellen; es wird nicht gesucht, der Turn startet ohne Kontext. */
+    default void searchSkipped() {
+    }
+
     /** {@code true}, wenn der Nutzer abgebrochen hat: weitere Suchschritte entfallen. */
     default boolean isCancelled() {
         return false;

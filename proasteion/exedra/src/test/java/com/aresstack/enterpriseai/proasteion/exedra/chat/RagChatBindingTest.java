@@ -16,6 +16,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalTriage;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
@@ -861,6 +862,26 @@ public class RagChatBindingTest {
         assertEquals("kein Embedding-Aufruf", embeddingCalls, embeddings.calls().size());
     }
 
+    /** A dictated message tells the model for this turn that it is a speech transcript; the history stays plain. */
+    @Test
+    public void dictatedMessageCarriesTheSpeechNoteIntoTheRequest() throws Exception {
+        port.enqueueAnswer("Gern, das Programm ...");
+        final Fixture fixture = fixture(index, embeddings);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested(ChatDraft.of("Aklima bitte erstmal das Programm", false)
+                        .withOrigin(com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin.SPEECH_TRANSCRIPT));
+            }
+        });
+        awaitIdle(fixture.model);
+
+        assertEquals("Antworte knapp.\n\n"
+                        + com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin.SPEECH_TRANSCRIPT.modelNote(),
+                port.lastRequest().messages().get(0).content());
+        assertEquals("Aklima bitte erstmal das Programm", entries(fixture.model).get(0).getText());
+    }
+
     @Test
     public void stopDuringRetrievalCancelsTheTurnAsSoonAsItExists() throws Exception {
         indexAll();
@@ -945,14 +966,17 @@ public class RagChatBindingTest {
 
     /**
      * Abnahme 1: „Hi“ bei eingeschalteter Wissenssuche und angehakter Quelle sucht nicht, bettet nichts ein und
-     * zeigt keinen Hinweis, selbst wenn die semantische Suche gerade ausfallen würde.
+     * zeigt keinen Hinweis, selbst wenn die semantische Suche gerade ausfallen würde. Das entscheidet die Vorprüfung
+     * durch das Modell, keine Wortliste; auch eine Beschwerde sucht dann nicht.
      */
     @Test
     public void smallTalkWithTickedSourceDoesNotSearchAndShowsNoNotice() throws Exception {
         indexAll();
         final FailingEmbeddings failing = new FailingEmbeddings(embeddings);
+        triage = RetrievalTriage.byModel();
         final Fixture fixture = fixture(index, failing);
-        for (final String greeting : new String[] {"Hi", "Danke!", "ok"}) {
+        for (final String greeting : new String[] {"Hi", "Danke!", "DU HAST EIN MIESES TOOL!"}) {
+            port.enqueueAnswer("{\"search\": false, \"query\": \"\"}");
             port.enqueueAnswer("Hallo zurück");
             onEdt(new Runnable() {
                 @Override
@@ -974,13 +998,15 @@ public class RagChatBindingTest {
 
     /**
      * Realfehler: Mit Wissens-Werkzeugen gingen Nachrichten ohne Fragewort am Anfang („an kannst du mir sicherlich
-     * sagen was iar ist“, „das ist nicht was ich suche“) ohne Vorabsuche hinaus, und das Modell antwortete aus eigenem
-     * Wissen. Jetzt sucht alles außer Small Talk vorab; knowledge_search wird weiterhin angeboten.
+     * sagen was iar ist“) ohne Vorabsuche hinaus, und das Modell antwortete aus eigenem Wissen. Später suchte der
+     * Client jede Nachricht wörtlich vorab, auch Gruß und Beschwerde. Jetzt entscheidet die Vorprüfung durch das
+     * Modell; knowledge_search wird weiterhin angeboten, mit den Werkzeugregeln des Clients.
      */
     @Test
-    public void withKnowledgeToolsEverythingButSmallTalkIsSearchedAhead() throws Exception {
+    public void withKnowledgeToolsTheTriageDecidesWhatIsSearchedAhead() throws Exception {
         indexAll();
         final FailingEmbeddings failing = new FailingEmbeddings(embeddings);
+        triage = RetrievalTriage.byModel();
         KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
         selection.register(source.sourceId(), true);
         final Fixture fixture = fixture(index, failing, selection);
@@ -992,20 +1018,23 @@ public class RagChatBindingTest {
                                 new ArrayList<String>(), "")), false));
             }
         });
+        port.enqueueAnswer("{\"search\": false}");
         port.enqueueAnswer("Hallo");
         onEdt(new Runnable() {
             @Override
             public void run() {
-                fixture.binding.sendRequested("Hallo", true);
+                fixture.binding.sendRequested("Hallo, was kannst du denn so alles für mich tun?", true);
             }
         });
         awaitIdle(fixture.model);
         assertTrue(toolNames(port.lastRequest()).contains("knowledge_search"));
+        assertTrue(port.lastRequest().messages().get(0).content().contains("[Werkzeugregeln des Clients]"));
         assertEquals("Small Talk sucht nicht", 0, failing.calls.get());
 
         int expected = 0;
-        for (final String message : new String[] {"das ist nicht was ich suche",
-                "an kannst du mir sicherlich sagen was iar ist", "Wie lange ist die Kündigungsfrist?"}) {
+        for (final String message : new String[] {"an kannst du mir sicherlich sagen was iar ist",
+                "Wie lange ist die Kündigungsfrist?"}) {
+            port.enqueueAnswer("{\"search\": true, \"query\": \"" + message + "\"}");
             port.enqueueAnswer("Antwort");
             onEdt(new Runnable() {
                 @Override
@@ -1649,6 +1678,9 @@ public class RagChatBindingTest {
                 .indexSource(source, SourceScope.of("urlaub", "kuendigung"), null);
     }
 
+    /** Vorprüfung der Fixtures dieses Tests; ohne sie wird jede Nachricht mit angehakter Quelle wörtlich gesucht. */
+    private RetrievalTriage triage = RetrievalTriage.off();
+
     private Fixture fixture(KnowledgeIndexPort indexPort, EmbeddingPort embeddingPort) throws Exception {
         return fixture(indexPort, embeddingPort, RagSourceFilter.unrestricted());
     }
@@ -1657,7 +1689,7 @@ public class RagChatBindingTest {
             throws Exception {
         final RagChatUseCase rag = new RagChatUseCase(chat,
                 new RetrieveKnowledgeUseCase(indexPort, embeddingPort, space, null),
-                new PromptContextAssembler(null));
+                new PromptContextAssembler(null), null, null, null, triage);
         return onEdt(new Callable<Fixture>() {
             @Override
             public Fixture call() {
