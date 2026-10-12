@@ -32,8 +32,10 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
+import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
@@ -43,6 +45,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -59,6 +62,7 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -120,6 +124,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private static final long DAY_MILLIS = 24L * 60L * 60L * 1000L;
     static final String DELETE_CHAT_LABEL = "Chat löschen";
     static final String RENAME_CHAT_LABEL = "Umbenennen …";
+    static final String EXPORT_CHAT_LABEL = "Chat exportieren …";
     static final String RESTORE_CHAT_LABEL = "Wiederherstellen";
     static final String DELETED_META = "Gelöscht";
 
@@ -710,7 +715,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         ChatHistoryRow.MenuSupplier menu = null;
         if (mode == ShellMode.CHAT && currentId != null && count > 0) {
             final String rowTitle = title;
-            menu = () -> deleteMenu(currentId, rowTitle);
+            menu = () -> chatMenu(currentId, rowTitle);
         }
         if (menu != null && currentId.equals(renamingChatId)) {
             chatListPanel.add(renameRow(currentId, title));
@@ -779,7 +784,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                     ? new ChatHistoryRow(chat.title(), DELETED_META, time, false, false, true, null,
                     () -> restoreMenu(chat.id()), () -> restoreChat(chat.id()), palette)
                     : new ChatHistoryRow(chat.title(), meta, time, false, false,
-                    () -> openSavedChat(chat.id()), () -> deleteMenu(chat.id(), chat.title()), palette);
+                    () -> openSavedChat(chat.id()), () -> chatMenu(chat.id(), chat.title()), palette);
             row.setAlignmentX(LEFT_ALIGNMENT);
             chatRows.add(row);
             chatListPanel.add(row);
@@ -884,8 +889,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         return menu;
     }
 
-    /** Das Menü einer Chat-Zeile: Umbenennen und Löschen (ohne Rückfrage, mit ↩ wie arch). */
-    private JPopupMenu deleteMenu(final String chatId, final String title) {
+    /** Das Menü einer Chat-Zeile: Umbenennen, Exportieren und Löschen (ohne Rückfrage, mit ↩ wie arch). */
+    JPopupMenu chatMenu(final String chatId, final String title) {
         JPopupMenu menu = new JPopupMenu();
         JMenuItem rename = new JMenuItem(RENAME_CHAT_LABEL);
         rename.addActionListener(event -> {
@@ -893,11 +898,61 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             refreshChatList();
         });
         menu.add(rename);
+        JMenuItem export = new JMenuItem(EXPORT_CHAT_LABEL);
+        export.setEnabled(actions != null && actions.canExportChats());
+        export.addActionListener(event -> exportChat(chatId, title));
+        menu.add(export);
         JMenuItem delete = new JMenuItem(DELETE_CHAT_LABEL);
         delete.setEnabled(!chatShell.model().isStreaming());
         delete.addActionListener(event -> deleteChat(chatId));
         menu.add(delete);
         return menu;
+    }
+
+    /**
+     * „Chat exportieren …“: normaler Speichern-Dialog mit JSON (maßgeblich) und Markdown; der Export kommt aus dem
+     * gespeicherten Chat, auch wenn er gerade nicht offen ist, und verändert ihn nicht.
+     */
+    private void exportChat(String chatId, String title) {
+        if (actions == null) {
+            return;
+        }
+        FileNameExtensionFilter json = new FileNameExtensionFilter("JSON (*.json)", "json");
+        FileNameExtensionFilter markdown = new FileNameExtensionFilter("Markdown (*.md)", "md");
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Chat exportieren");
+        chooser.setAcceptAllFileFilterUsed(false);
+        chooser.addChoosableFileFilter(json);
+        chooser.addChoosableFileFilter(markdown);
+        chooser.setFileFilter(json);
+        chooser.setSelectedFile(new File(ChatExportFileName.of(title, System.currentTimeMillis(),
+                ZoneId.systemDefault(), "json")));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
+            return;
+        }
+        File target = chooser.getSelectedFile();
+        String name = target.getName().toLowerCase(Locale.ROOT);
+        boolean asMarkdown = name.endsWith(".md") || !name.endsWith(".json") && chooser.getFileFilter() == markdown;
+        String extension = asMarkdown ? ".md" : ".json";
+        if (!name.endsWith(extension)) {
+            target = new File(target.getParentFile(), stripExtension(target.getName()) + extension);
+        }
+        if (target.exists() && JOptionPane.showConfirmDialog(this, target.getName() + " gibt es schon. Ersetzen?",
+                "Chat exportieren", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
+            return;
+        }
+        String problem = actions.exportChatRequested(chatId, target, asMarkdown);
+        if (problem != null) {
+            JOptionPane.showMessageDialog(this, problem, "Export fehlgeschlagen", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    private static String stripExtension(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".json")) {
+            return name.substring(0, name.length() - 5);
+        }
+        return lower.endsWith(".md") ? name.substring(0, name.length() - 3) : name;
     }
 
     // ------------------------------------------------------------------ Drawer-Verhalten (arch)

@@ -478,6 +478,46 @@ public class ChatWorkspacePanelTest {
         }
     }
 
+    @Test
+    public void chatMenuOffersRenameExportAndDeleteInThisOrder() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                workspace.setActions(new WorkspaceActions() {
+                    @Override
+                    public void newChatRequested(ShellMode mode) {
+                    }
+
+                    @Override
+                    public void settingsRequested() {
+                    }
+
+                    @Override
+                    public boolean canExportChats() {
+                        return true;
+                    }
+                });
+                javax.swing.JPopupMenu menu = workspace.chatMenu("chat-1", "Was ist IAR?");
+                List<String> labels = new ArrayList<String>();
+                for (Component item : menu.getComponents()) {
+                    labels.add(((javax.swing.JMenuItem) item).getText());
+                }
+                assertEquals(Arrays.asList("Umbenennen …", "Chat exportieren …", "Chat löschen"), labels);
+                assertTrue(menu.getComponent(1).isEnabled());
+            }
+        });
+    }
+
+    @Test
+    public void exportFileNameFollowsTitleAndTime() {
+        long millis = java.time.LocalDateTime.of(2026, 10, 12, 3, 43).atZone(java.time.ZoneId.of("UTC"))
+                .toInstant().toEpochMilli();
+        assertEquals("Was_ist_IAR_2026-10-12_0343.json",
+                ChatExportFileName.of("Was ist IAR?", millis, java.time.ZoneId.of("UTC"), "json"));
+        assertEquals("Chat_2026-10-12_0343.md", ChatExportFileName.of("  ", millis, java.time.ZoneId.of("UTC"), "md"));
+    }
+
     private ChatWorkspacePanel chatOnlyWorkspace() {
         ChatShellModel chatModel = new ChatShellModel(() -> 0L);
         ChatShellPanel chatShell = new ChatShellPanel(chatModel, new EchoActions(chatModel, "ok"), comic, bubbles);

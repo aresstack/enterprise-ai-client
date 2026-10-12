@@ -130,6 +130,17 @@ public final class ResearchAgentHost {
         fireStateChanged();
     }
 
+    /**
+     * Der Projektordner eines gespeicherten Chats, nur zum Lesen (Chat-Export): bindet den Host nicht um, legt nichts
+     * an und gilt auch für Chats, die gerade nicht offen sind; {@code null}, wenn der Chat kein Projekt hat.
+     */
+    public File existingProjectDirectoryOf(String chatId) {
+        if (chatId == null || chatId.trim().isEmpty()) {
+            return null;
+        }
+        return projects.exists(chatId) ? projects.directoryFor(chatId) : null;
+    }
+
     /** Der Chat, dem das offene Projekt gehört, oder {@code null}. */
     public synchronized String chatId() {
         return chatId;

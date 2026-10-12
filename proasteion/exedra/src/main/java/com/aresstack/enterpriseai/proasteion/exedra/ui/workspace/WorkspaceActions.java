@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellMode;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.List;
 
@@ -45,6 +46,22 @@ public interface WorkspaceActions {
 
     /** Ein Chat soll einen neuen Titel bekommen (askai arch: „Umbenennen“). */
     default void renameChatRequested(String chatId, String title) {
+    }
+
+    /** Ob „Chat exportieren …“ angeboten wird (nur mit Chat-Historie). */
+    default boolean canExportChats() {
+        return false;
+    }
+
+    /**
+     * Ein gespeicherter Chat soll in eine Datei exportiert werden („Chat exportieren …“): aus dem gespeicherten
+     * Zustand, ohne den Chat zu verändern.
+     *
+     * @param markdown {@code true} = Markdown, sonst JSON
+     * @return {@code null} bei Erfolg, sonst ein Satz für den Nutzer
+     */
+    default String exportChatRequested(String chatId, File target, boolean markdown) {
+        return "Export ist nicht verfügbar.";
     }
 
     /** Der vom Nutzer gewählte Titel des aktuellen Chats, oder {@code null} (dann die erste Nachricht). */

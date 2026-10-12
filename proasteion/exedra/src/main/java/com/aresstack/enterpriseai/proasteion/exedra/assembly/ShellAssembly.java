@@ -21,6 +21,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatHistoryBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileAttachmentStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.KnowledgeStatusModel;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatExport;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.RagChatBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ToolSupport;
@@ -59,6 +60,8 @@ import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -132,6 +135,10 @@ public final class ShellAssembly {
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,
                 systemPrompt, root.clock());
+        // „Chat exportieren …“: aus der Chat-Datei und dem Research-Projekt des Chats, nur lesend.
+        final ChatExport chatExport = new ChatExport(chatStore,
+                root.researchHost() == null ? null : root.researchHost()::existingProjectDirectoryOf, root.clock(),
+                ChatExport.class.getPackage().getImplementationVersion());
         final AgentModeAssembly.AgentView agent;
         final AgentService agentService;
         final ShellModeModel modes = new ShellModeModel(root.hasAgent());
@@ -346,6 +353,21 @@ public final class ShellAssembly {
             @Override
             public String currentChatTitle() {
                 return history.currentTitle();
+            }
+
+            @Override
+            public boolean canExportChats() {
+                return true;
+            }
+
+            @Override
+            public String exportChatRequested(String chatId, File target, boolean markdown) {
+                try {
+                    return chatExport.write(chatId, target.toPath(), markdown) ? null
+                            : "Der Chat ist nicht (mehr) gespeichert.";
+                } catch (IOException | RuntimeException failed) {
+                    return "Der Chat konnte nicht exportiert werden: " + failed.getMessage();
+                }
             }
 
             @Override
