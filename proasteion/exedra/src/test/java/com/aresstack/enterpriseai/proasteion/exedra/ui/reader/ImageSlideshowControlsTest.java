@@ -186,6 +186,77 @@ public class ImageSlideshowControlsTest {
         });
     }
 
+    /**
+     * draw.io: Umschalter „Gerendert“/„Original“. Standard ist die gerenderte Zeichnung; „Original“ lädt nur die
+     * Vorschau ({@code &view=original}); scheitert sie (Einmalcode-Abfrage), sofort zurück auf „Gerendert“ und der
+     * Knopf nennt die nötige Anmeldung. Speichern richtet sich nach dem gezeigten Inhalt.
+     */
+    @Test
+    public void drawioDiagramsSwitchBetweenRenderedAndOriginal() throws Exception {
+        final byte[] svg = ("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"30\">"
+                + "<rect width=\"40\" height=\"30\" fill=\"red\"/></svg>").getBytes(StandardCharsets.UTF_8);
+        final String drawing = BASE + "download/attachments/42/Bild%20A.png?version=3&api=v2#drawio=Bild%20A&page=42"
+                + "&revision=3";
+        final List<String> requested = new java.util.ArrayList<String>();
+        final boolean[] otp = {false};
+        ReaderImageLoader loader = new ReaderImageLoader() {
+            @Override
+            public void load(ReaderImage image, java.util.function.Consumer<byte[]> done) {
+                throw new AssertionError("nur die Variante mit Grund wird benutzt");
+            }
+
+            @Override
+            public void load(ReaderImage image, java.util.function.Consumer<byte[]> done,
+                             java.util.function.Consumer<String> failed) {
+                requested.add(image.src());
+                if (!image.src().endsWith("&view=original")) {
+                    done.accept(image.src().equals(drawing) ? svg : png());
+                } else if (otp[0]) {
+                    failed.accept("Bild: erwartet Bild, erhalten text/html [Seite: TWO_FACTOR „Einmalcode“]");
+                } else {
+                    done.accept(png());
+                }
+            }
+        };
+        final ImageSlideshowPanel[] holder = new ImageSlideshowPanel[1];
+        onEdt(() -> holder[0] = new ImageSlideshowPanel(new ReaderImageStore(Arrays.asList(
+                new ReaderImage(drawing, drawing, "Bild A"), new ReaderImage(A, A, "Foto")), loader), 0));
+        final ImageSlideshowPanel show = holder[0];
+        onEdt(() -> {
+            assertTrue("Umschalter bei draw.io", show.drawioToggleVisible());
+            assertFalse("Standard: gerendert", show.isShowingDrawioOriginal());
+            assertEquals(Arrays.asList(drawing), requested);
+            assertEquals("Bild A.svg", ImageSlideshowPanel.fileName(show.current(), show.loadedCurrent()));
+
+            show.showDrawio(true);
+            assertTrue(show.isShowingDrawioOriginal());
+            assertEquals(drawing + "&view=original", requested.get(requested.size() - 1));
+            assertTrue(show.showsPicture());
+            assertEquals("Bild A.png", ImageSlideshowPanel.fileName(show.current(), show.loadedCurrent()));
+
+            show.next();
+            assertFalse("kein Umschalter bei gewöhnlichen Bildern", show.drawioToggleVisible());
+            show.previous();
+            assertTrue("die Wahl gilt weiter", show.isShowingDrawioOriginal());
+
+            show.showDrawio(false);
+            assertFalse(show.isShowingDrawioOriginal());
+            assertEquals("Bild A.svg", ImageSlideshowPanel.fileName(show.current(), show.loadedCurrent()));
+        });
+
+        otp[0] = true;
+        final ImageSlideshowPanel[] fresh = new ImageSlideshowPanel[1];
+        onEdt(() -> fresh[0] = new ImageSlideshowPanel(new ReaderImageStore(Arrays.asList(
+                new ReaderImage(drawing, drawing, "Bild A")), loader), 0));
+        onEdt(() -> {
+            fresh[0].showDrawio(true);
+            assertFalse("zurück auf Gerendert", fresh[0].isShowingDrawioOriginal());
+            assertTrue(fresh[0].showsPicture());
+            assertEquals("Original (Anmeldung nötig)", fresh[0].originalModeText());
+            assertEquals("Bild A.svg", ImageSlideshowPanel.fileName(fresh[0].current(), fresh[0].loadedCurrent()));
+        });
+    }
+
     // ------------------------------------------------------------------ Hilfen
 
     private static List<ReaderImage> images() {

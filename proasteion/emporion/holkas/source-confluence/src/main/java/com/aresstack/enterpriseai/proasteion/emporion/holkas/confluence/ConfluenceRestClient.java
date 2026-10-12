@@ -339,6 +339,12 @@ final class ConfluenceRestClient {
         String fragment = hash < 0 ? null : path.substring(hash + 1);
         String preview = hash < 0 ? path : path.substring(0, hash);
         String drawio = null;
+        if (fragment != null && fragment.startsWith(ConfluencePageView.DRAWIO_FRAGMENT + "=")
+                && (fragment + "&").contains("&" + ConfluencePageView.DRAWIO_VIEW_ORIGINAL + "&")) {
+            // Umschalter „Original“ im Bild-Viewer: nur die von draw.io erzeugte PNG-Vorschau, keine Zeichnung.
+            LOG.info("[Confluence] draw.io: Original-Vorschau angefordert: " + withoutQuery(preview));
+            return previewImage(session, preview);
+        }
         if (fragment != null && fragment.startsWith(ConfluencePageView.DRAWIO_FRAGMENT + "=")) {
             // draw.io-Diagramm: erst die Zeichnung selbst (REST des Plugins, mxfile → SVG), sonst die PNG-Vorschau.
             try {

@@ -411,6 +411,19 @@ public class ConfluenceViewImageTest {
         assertTrue(logLines.isEmpty());
     }
 
+    /** Umschalter „Original“: nur die PNG-Vorschau, die Zeichnung wird nicht angefragt. */
+    @Test
+    public void theOriginalViewLoadsOnlyThePreviewPng() throws Exception {
+        drawio = diagram("rect");
+        response = new ConfluenceHttpResponse(200, "image/png", PNG);
+
+        assertArrayEquals(PNG, source().loadViewImage(DIAGRAM_IMAGE + "&view=original"));
+
+        assertEquals(1, requests.size());
+        assertEquals("/confluence/download/attachments/42/Bild%20A.png", requests.get(0).getRawPath());
+        assertEquals("version=3&api=v2", requests.get(0).getRawQuery());
+    }
+
     @Test
     public void whenDiagramAndPreviewFailBothReasonsAreNamed() {
         response = new ConfluenceHttpResponse(404, "application/json", new byte[0]);

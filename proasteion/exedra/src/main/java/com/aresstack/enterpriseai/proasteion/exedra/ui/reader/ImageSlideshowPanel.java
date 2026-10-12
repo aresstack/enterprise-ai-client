@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
@@ -126,6 +127,18 @@ public final class ImageSlideshowPanel extends JPanel {
             "Das Bild per KI beschreiben lassen");
     private int index;
     private boolean describing;
+
+    // ---- draw.io-Zeichnungen: „Gerendert“ (aus den Diagrammdaten, Standard) oder „Original“ (PNG-Vorschau)
+    static final String RENDERED_TEXT = "Gerendert";
+    static final String ORIGINAL_TEXT = "Original";
+    private final ComposerButton renderedMode = new ComposerButton(null, RENDERED_TEXT, false,
+            "Die draw.io-Zeichnung aus ihren Diagrammdaten zeigen (ohne Dateidownload)");
+    private final ComposerButton originalMode = new ComposerButton(null, ORIGINAL_TEXT, false,
+            "Die originale draw.io-Vorschau (PNG aus Confluence) zeigen");
+    /** Ob draw.io-Zeichnungen gerade als Original gezeigt werden; gilt für alle Zeichnungen der Diashow. */
+    private boolean drawioOriginal;
+    /** Warum „Original“ zuletzt nicht ging ({@code null}: unbekannt oder ging). */
+    private String originalProblem;
 
     // ---- Anhangsmodus ({@code attachment != null})
     private final ReaderAttachment attachment;
@@ -262,10 +275,17 @@ public final class ImageSlideshowPanel extends JPanel {
         descriptionMode.setFont(ResearchUiTypography.semiBold(12f));
         imageMode.addActionListener(event -> showImage());
         descriptionMode.addActionListener(event -> showDescription());
+        renderedMode.setFont(ResearchUiTypography.semiBold(12f));
+        originalMode.setFont(ResearchUiTypography.semiBold(12f));
+        renderedMode.addActionListener(event -> showDrawio(false));
+        originalMode.addActionListener(event -> showDrawio(true));
         JPanel toggle = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         toggle.setOpaque(false);
         toggle.add(imageMode);
         toggle.add(descriptionMode);
+        toggle.add(Box.createHorizontalStrut(12));
+        toggle.add(renderedMode);
+        toggle.add(originalMode);
         info.setFont(info.getFont().deriveFont(Font.ITALIC, 11f));
         info.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
         JPanel bar = new JPanel(new BorderLayout());
@@ -473,19 +493,33 @@ public final class ImageSlideshowPanel extends JPanel {
 
     private void loadCurrent() {
         final ReaderImage image = current();
+        final ReaderImage shown = displayed();
         showImage();
+        refreshDrawioToggle();
         hover(pointer);
         canvas.setStaticImage(null);
         busy.setText(LOADING_TEXT);
         busy.setVisible(true);
         info.setText((index + 1) + " / " + images.size() + "  —  " + image.label());
-        store.request(image, loaded -> {
-            if (current() != image) {
-                return; // inzwischen weitergeblättert
+        store.request(shown, loaded -> {
+            if (current() != image || !displayed().key().equals(shown.key())) {
+                return; // inzwischen weitergeblättert oder umgeschaltet
+            }
+            if (!loaded.ok() && shown != image) {
+                // Original nicht ladbar (etwa Einmalcode-Abfrage statt PNG): sofort zurück auf die gerenderte
+                // Zeichnung; der Umschalter nennt den Grund.
+                originalProblem = loaded.failure();
+                drawioOriginal = false;
+                loadCurrent();
+                return;
             }
             if (!loaded.ok()) {
                 busy.setText(failureText(loaded.failure()));
                 return;
+            }
+            if (shown != image) {
+                originalProblem = null;
+                refreshDrawioToggle();
             }
             busy.setVisible(false);
             if (loaded.isAnimatedGif()) {
@@ -495,6 +529,70 @@ public final class ImageSlideshowPanel extends JPanel {
             }
             updateInfo();
         });
+    }
+
+    /** Umschalten zwischen gerenderter Zeichnung und Original-Vorschau (nur bei draw.io-Zeichnungen). */
+    public void showDrawio(boolean original) {
+        if (attachment != null || !isDrawio(current()) || drawioOriginal == original) {
+            return;
+        }
+        drawioOriginal = original;
+        loadCurrent();
+    }
+
+    /** Ob gerade das Original einer draw.io-Zeichnung gewählt ist. */
+    public boolean isShowingDrawioOriginal() {
+        return drawioOriginal && isDrawio(current());
+    }
+
+    /** Ob der Umschalter Gerendert/Original sichtbar ist. */
+    boolean drawioToggleVisible() {
+        return renderedMode.isVisible();
+    }
+
+    /** Beschriftung des Knopfs „Original“ (mit Hinweis, wenn es zuletzt nicht ging). */
+    String originalModeText() {
+        return originalMode.getText();
+    }
+
+    /** Ein draw.io-Bild der Lese-Ansicht: die Quelle kennzeichnet es mit {@code #drawio=…} an der Vorschauadresse. */
+    static boolean isDrawio(ReaderImage image) {
+        return image != null && image.src().contains("#drawio=");
+    }
+
+    /** Das Bild, das gerade geladen und gezeigt wird: bei „Original“ die Vorschau-Variante der Zeichnung. */
+    private ReaderImage displayed() {
+        ReaderImage image = current();
+        if (!drawioOriginal || !isDrawio(image)) {
+            return image;
+        }
+        return new ReaderImage(image.key() + "&" + DRAWIO_VIEW_ORIGINAL, image.src() + "&" + DRAWIO_VIEW_ORIGINAL,
+                image.title());
+    }
+
+    /** Zusatz am Fragment, mit dem die Quelle nur die Original-Vorschau lädt. */
+    static final String DRAWIO_VIEW_ORIGINAL = "view=original";
+
+    private void refreshDrawioToggle() {
+        boolean drawio = attachment == null && isDrawio(current());
+        renderedMode.setVisible(drawio);
+        originalMode.setVisible(drawio);
+        renderedMode.setEmphasized(!drawioOriginal);
+        originalMode.setEmphasized(drawioOriginal);
+        if (originalProblem == null) {
+            originalMode.setText(ORIGINAL_TEXT);
+            originalMode.setToolTipText("Die originale draw.io-Vorschau (PNG aus Confluence) zeigen");
+        } else {
+            boolean login = needsLogin(originalProblem);
+            originalMode.setText(ORIGINAL_TEXT + (login ? " (Anmeldung nötig)" : " (nicht ladbar)"));
+            originalMode.setToolTipText("Zuletzt nicht ladbar: " + originalProblem);
+        }
+    }
+
+    /** Ob der Grund eine zusätzliche Anmeldung (Einmalcode) ist statt eines anderen Fehlers. */
+    static boolean needsLogin(String reason) {
+        String text = reason == null ? "" : reason;
+        return text.contains("TWO_FACTOR") || text.contains("Einmalcode") || text.contains("Anmeldung");
     }
 
     /** Der Grund aus der Quelle, umbrechend über die Breite des Overlays. */
@@ -664,7 +762,7 @@ public final class ImageSlideshowPanel extends JPanel {
             saveAttachment();
             return;
         }
-        ReaderImageStore.Loaded loaded = store.loaded(current());
+        ReaderImageStore.Loaded loaded = store.loaded(displayed());
         if (loaded == null || !loaded.ok()) {
             return;
         }
@@ -694,7 +792,7 @@ public final class ImageSlideshowPanel extends JPanel {
             }
             bytes = original;
         } else {
-            ReaderImageStore.Loaded loaded = store.loaded(current());
+            ReaderImageStore.Loaded loaded = store.loaded(displayed());
             if (loaded == null || !loaded.ok()) {
                 return SAVE_FAILED_PREFIX + "Das Bild ist nicht geladen.";
             }
@@ -755,7 +853,7 @@ public final class ImageSlideshowPanel extends JPanel {
 
     /** Das geladene aktuelle Bild oder {@code null} (für Tests). */
     ReaderImageStore.Loaded loadedCurrent() {
-        return store.loaded(current());
+        return store.loaded(displayed());
     }
 
     /** Wie MainframeMate {@code guessFileName}: der letzte Pfadteil der Adresse (dekodiert), sonst der Titel. */

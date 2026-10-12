@@ -208,6 +208,11 @@ final class ConfluencePageView {
      */
     /** Fragmentschlüssel an der Vorschauadresse eines draw.io-Diagramms: {@code #drawio=<Name>&page=<Id>&revision=<n>}. */
     static final String DRAWIO_FRAGMENT = "drawio";
+    /**
+     * Zusatz am draw.io-Fragment für den Umschalter „Original“ der Oberfläche: nur die PNG-Vorschau laden
+     * ({@code …#drawio=…&view=original}); ohne Zusatz die Zeichnung, mit der Vorschau als Rückfall.
+     */
+    static final String DRAWIO_VIEW_ORIGINAL = "view=original";
 
     /** @return Zahl der gekennzeichneten draw.io-Bilder */
     static int drawioPreviews(Document doc, String baseUri) {

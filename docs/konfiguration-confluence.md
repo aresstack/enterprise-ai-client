@@ -96,6 +96,11 @@ source.1.allowInsecureHttp=false
   PNG-Vorschau. Angleichungen (kippbar): HTML-Beschriftungen als Text, draw.io-Farbwörter und -Standardfarben,
   `note` als Rechteck. Selbst gezeichnet, weil JGraphX sie nicht kennt: Blockpfeil `mxgraph.arrows2.arrow` (`dx`,
   `dy`, `notch`, Richtung, Spiegelung) und UML-Schnittstelle `providedRequiredInterface` (Kugel und Pfanne, Drehung).
+  Im Bild-Viewer schaltet „Gerendert“/„Original“ je draw.io-Bild um: „Gerendert“ (Standard) ist die Zeichnung
+  aus den Diagrammdaten über REST, ohne `/download/`; „Original“ hängt `&view=original` an das Fragment und lädt nur
+  die PNG-Vorschau. Scheitert das Original (etwa an der Einmalcode-Abfrage), zeigt der Viewer sofort wieder die
+  gerenderte Zeichnung und der Knopf heißt „Original (Anmeldung nötig)“. Gespeichert wird, was zu sehen ist:
+  gerendert als `.svg`, Original als `.png`.
   Logzeilen (INFO): `[Confluence] draw.io: rendere Diagramm name=… page=… revision=…`, danach
   `[Confluence] draw.io: SVG erzeugt (… Bytes)` oder
   `[Confluence] draw.io: JGraphX nicht möglich (Grund), verwende PNG-Vorschau: …`.
