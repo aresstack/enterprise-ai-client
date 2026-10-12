@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.acp.research;
 
 import com.aresstack.enterpriseai.research.runtime.json.MiniJson;
+import com.aresstack.enterpriseai.research.runtime.loop.EnvironmentRunBudget;
 import com.aresstack.enterpriseai.research.runtime.loop.ToolInvoker;
 import com.aresstack.enterpriseai.research.runtime.team.ChatMessage;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
@@ -79,7 +80,8 @@ final class ResearchWriting {
     private final DirectAnswers direct;
 
     ResearchWriting(ToolInvoker host, MainModelChat model) {
-        this(host, model, new DirectAnswers(host, model));
+        this(host, model, new DirectAnswers(host, model,
+                () -> EnvironmentRunBudget.from(System.getenv()).getMaxPagesVisited()));
     }
 
     ResearchWriting(ToolInvoker host, MainModelChat model, DirectAnswers direct) {

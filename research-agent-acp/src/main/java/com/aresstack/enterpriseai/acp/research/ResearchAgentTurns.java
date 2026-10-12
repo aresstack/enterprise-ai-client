@@ -94,7 +94,7 @@ final class ResearchAgentTurns {
         this.teamAgent = teamAgent;
         this.mainModelChat = mainModelChat;
         this.conceptTools = conceptTools;
-        this.direct = research == null ? null : new DirectAnswers(host, mainModelChat);
+        this.direct = research == null ? null : new DirectAnswers(host, mainModelChat, research::pageBudget);
         this.writing = research == null ? null : new ResearchWriting(host, mainModelChat, direct);
     }
 

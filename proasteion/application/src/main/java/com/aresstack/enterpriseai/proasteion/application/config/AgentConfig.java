@@ -87,6 +87,6 @@ public final class AgentConfig {
     public String toString() {
         return "AgentConfig[enabled=" + enabled + (enabled ? ", command=" + command + ", args=" + args.size()
                 + ", requestTimeout=" + requestTimeout + ", mcpEndpointId=" + mcpEndpointId + ", tools=" + toolSettings : "")
-                + "]";
+                + ", researchMaxPages=" + researchMaxPages + "]";
     }
 }

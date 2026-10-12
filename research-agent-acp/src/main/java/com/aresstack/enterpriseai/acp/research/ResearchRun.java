@@ -50,6 +50,14 @@ final class ResearchRun {
     }
 
     /**
+     * Das Seitenbudget je Recherche ({@code agent.research.maxPages}, 0 = unbegrenzt) aus derselben Umgebung wie der
+     * Lauf; die interaktive Recherche der Phase Konzept ({@link DirectAnswers}) zählt gegen denselben Wert.
+     */
+    int pageBudget() {
+        return EnvironmentRunBudget.from(environment).getMaxPagesVisited();
+    }
+
+    /**
      * Beim Sitzungsende. Der Lauf ist EIN Orchestrator-Thread; Vorladen und Priority-Lesen macht der Host hinter
      * {@code knowledge_search}/{@code knowledge_read} (wie MainframeMate), der Agent hält keinen eigenen Seitenpool.
      */

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
+import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
@@ -63,6 +64,9 @@ public final class SettingsMapper {
     static final String KEY_AGENT_COMMAND = "agent.command";
     static final String KEY_AGENT_ARGS = "agent.args";
     static final String KEY_AGENT_TIMEOUT = "agent.requestTimeoutSeconds";
+    static final String KEY_RESEARCH_MAX_PAGES = "agent.research.maxPages";
+    /** Älterer Schlüssel des Seitenbudgets; gilt nur, solange {@link #KEY_RESEARCH_MAX_PAGES} fehlt. */
+    static final String KEY_LEGACY_TOOLS_MAX_PAGES = "agent.tools.maxPages";
     static final String SOURCE_PREFIX = "source.";
     /** Schlüssel des entfernten Java-21-Sidecars (bis 0.1.42); Speichern entfernt sie aus der Datei. */
     static final String KEY_LOCAL_JAVA = "models.local.java";
@@ -136,6 +140,8 @@ public final class SettingsMapper {
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
         b.agentArgs(text(p, KEY_AGENT_ARGS, ""));
         b.agentRequestTimeoutSeconds(text(p, KEY_AGENT_TIMEOUT, "30"));
+        b.researchMaxPages(text(p, KEY_RESEARCH_MAX_PAGES, text(p, KEY_LEGACY_TOOLS_MAX_PAGES,
+                String.valueOf(AgentConfig.DEFAULT_RESEARCH_MAX_PAGES))));
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 b.modelSelection(category.key(), text(p, ModelsConfig.keyOf(category), ""));
@@ -196,6 +202,10 @@ public final class SettingsMapper {
         put(set, KEY_AGENT_COMMAND, form.agentCommand());
         put(set, KEY_AGENT_ARGS, form.agentArgs());
         put(set, KEY_AGENT_TIMEOUT, form.agentRequestTimeoutSeconds());
+        // Recherche-Budget: der Standard 4 steht nicht in der Datei; das ältere agent.tools.maxPages hat das Formular
+        // beim Laden übernommen und verschwindet beim Speichern (removals), damit es den Wert nie überdeckt.
+        put(set, KEY_RESEARCH_MAX_PAGES, String.valueOf(AgentConfig.DEFAULT_RESEARCH_MAX_PAGES)
+                .equals(form.researchMaxPages().trim()) ? "" : form.researchMaxPages().trim());
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 put(set, ModelsConfig.keyOf(category), form.modelSelection(category.key()));
@@ -236,6 +246,7 @@ public final class SettingsMapper {
         }
         remove.add(KEY_LEGACY_PAC_DISCOVERY);
         remove.add(KEY_LEGACY_TLS_WINDOWS_STORE);
+        remove.add(KEY_LEGACY_TOOLS_MAX_PAGES);
         remove.removeAll(nonEmptyKeys(changes));
         return remove;
     }
@@ -331,6 +342,8 @@ public final class SettingsMapper {
                 return "Agent-Kommando";
             case KEY_AGENT_TIMEOUT:
                 return "Agent-Timeout";
+            case KEY_RESEARCH_MAX_PAGES:
+                return "Recherche-Budget (Seiten)";
             default:
                 return key;
         }

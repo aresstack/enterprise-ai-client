@@ -132,7 +132,9 @@ final class ResearchCard {
         }
         remember((noted ? "übernommen: " : "gelesen: ") + "„" + title + "“");
         current = "";
-        activity = pagesRead < Math.min(pageBudget, Math.max(hits, 0)) ? "Nächste Seite …" : "Inhalte werden bewertet …";
+        // Budget 0 = unbegrenzt: dann begrenzen nur die Treffer
+        int limit = pageBudget > 0 ? Math.min(pageBudget, Math.max(hits, 0)) : Math.max(hits, 0);
+        activity = pagesRead < limit ? "Nächste Seite …" : "Inhalte werden bewertet …";
         update();
     }
 
@@ -197,7 +199,8 @@ final class ResearchCard {
         if (showHits) {
             text.append("\nTreffer: ").append(hits < 0 ? "…" : String.valueOf(hits));
         }
-        int budget = hits < 0 ? pageBudget : Math.min(pageBudget, hits);
+        // Budget 0 = unbegrenzt: „Seiten: 17“ ohne Nenner, nie „17 / 0“
+        int budget = pageBudget <= 0 ? 0 : hits < 0 ? pageBudget : Math.min(pageBudget, hits);
         text.append("\nSeiten: ").append(pagesRead);
         if (budget > 0) {
             text.append(" / ").append(budget);

@@ -55,6 +55,7 @@ final class SystemTab {
     private final JTextField agentCommand;
     private final JTextField agentArgs;
     private final JTextField agentTimeout;
+    private final JTextField researchMaxPages;
     private final JComboBox<String> prefetchMaxItems;
     private final JComboBox<String> prefetchConcurrency;
     private final JComboBox<String> prefetchCacheMaxMb;
@@ -125,6 +126,12 @@ final class SystemTab {
         agentCommand = agent.textField("Kommando", "Programm, z. B. java");
         agentArgs = agent.textField("Argumente", "Shell-ähnlich, Anführungszeichen erlaubt, z. B. -jar \"C:/Pfad/agent.jar\"");
         agentTimeout = agent.textField("Timeout je Anfrage (Sekunden)", "Wartezeit auf Antworten des Agenten");
+        // Gilt für die interaktive Recherche (Phase Konzept) und den autonomen Lauf (Phase Quellen); das Vorladen
+        // unten zählt nicht dagegen.
+        researchMaxPages = agent.textField("Recherche-Budget (Seiten)",
+                "agent.research.maxPages, 0–10000; 0 = unbegrenzt");
+        agent.note("Maximale Zahl gelesener Seiten pro Recherchelauf.");
+        agent.note("0 = unbegrenzt.");
 
         // Wie MainframeMate „Vorabladen (Prefetch)“: Suchtreffer im Hintergrund laden und indexieren.
         FormRows prefetch = new FormRows(palette);
@@ -392,6 +399,7 @@ final class SystemTab {
         agentCommand.setText(form.agentCommand());
         agentArgs.setText(form.agentArgs());
         agentTimeout.setText(form.agentRequestTimeoutSeconds());
+        researchMaxPages.setText(form.researchMaxPages());
         prefetchMaxItems.setSelectedItem(form.prefetchMaxItems());
         prefetchConcurrency.setSelectedItem(form.prefetchConcurrency());
         prefetchCacheMaxMb.setSelectedItem(form.prefetchCacheMaxMb());
@@ -436,6 +444,7 @@ final class SystemTab {
                 .preferIpv6(preferIpv6.isSelected())
                 .agentEnabled(agentEnabled.isSelected()).agentCommand(agentCommand.getText())
                 .agentArgs(agentArgs.getText()).agentRequestTimeoutSeconds(agentTimeout.getText())
+                .researchMaxPages(researchMaxPages.getText())
                 .prefetchMaxItems(String.valueOf(prefetchMaxItems.getEditor().getItem()))
                 .prefetchConcurrency(String.valueOf(prefetchConcurrency.getEditor().getItem()))
                 .prefetchCacheMaxMb(String.valueOf(prefetchCacheMaxMb.getEditor().getItem()));
@@ -507,5 +516,9 @@ final class SystemTab {
 
     JTextField agentCommand() {
         return agentCommand;
+    }
+
+    JTextField researchMaxPages() {
+        return researchMaxPages;
     }
 }

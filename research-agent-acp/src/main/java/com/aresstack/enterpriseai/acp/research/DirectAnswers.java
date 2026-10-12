@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.acp.research;
 import com.aresstack.enterpriseai.research.runtime.acquire.SearchScopeControlPort;
 import com.aresstack.enterpriseai.research.runtime.acquire.ServiceSearchScopeControlPort;
 import com.aresstack.enterpriseai.research.runtime.json.MiniJson;
+import com.aresstack.enterpriseai.research.runtime.loop.ResearchRunBudget;
 import com.aresstack.enterpriseai.research.runtime.loop.ToolInvoker;
 import com.aresstack.enterpriseai.research.runtime.team.ChatMessage;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntSupplier;
 import java.util.logging.Logger;
 
 /**
@@ -31,8 +33,6 @@ final class DirectAnswers {
     private static final Logger LOG = Logger.getLogger(DirectAnswers.class.getName());
     static final int MAX_QUERIES = 4;
     static final int HITS_PER_QUERY = 6;
-    /** Seitenbudget der interaktiven Recherche in der Konzeptphase. */
-    static final int MAX_PAGES = 4;
     private static final int PROJECT_PASSAGES = 8;
     private static final int PAGE_EXCERPT_CHARS = 3000;
     private static final int OUTPUT_TOKENS = 3000;
@@ -48,18 +48,26 @@ final class DirectAnswers {
     private final ToolInvoker host;
     private final MainModelChat model;
     private final KnowledgePages pages;
+    /**
+     * Seitenbudget der interaktiven Recherche (gelesene Seiten je Recherche; 0 = unbegrenzt): dieselbe Einstellung
+     * {@code agent.research.maxPages} wie der autonome Lauf, vom Host in die Umgebung des Agentenprozesses gelegt.
+     */
+    private final IntSupplier pageBudget;
     /** Ob die letzte Recherche gesucht und gelesen hat (für Haken oder Retry eines gelben Vorschlags). */
     private volatile boolean lastSucceeded;
 
-    DirectAnswers(ToolInvoker host, MainModelChat model) {
-        this(host, model, KnowledgePages.reachability(host));
+    /** @param pageBudget das Seitenbudget je Recherche, je Recherche frisch gelesen (0 = unbegrenzt) */
+    DirectAnswers(ToolInvoker host, MainModelChat model, IntSupplier pageBudget) {
+        this(host, model, KnowledgePages.reachability(host), pageBudget);
     }
 
     /** @param hostReachable fragt den Host, ob er noch antwortet (nach einem Verbindungsfehler eines Aufrufs) */
-    DirectAnswers(ToolInvoker host, MainModelChat model, java.util.function.BooleanSupplier hostReachable) {
+    DirectAnswers(ToolInvoker host, MainModelChat model, java.util.function.BooleanSupplier hostReachable,
+                  IntSupplier pageBudget) {
         this.host = host;
         this.model = model;
         this.pages = new KnowledgePages(host, hostReachable);
+        this.pageBudget = pageBudget;
     }
 
     /**
@@ -187,18 +195,19 @@ final class DirectAnswers {
     String answer(String question, List<String> queries, ResearchAgentTurns.Output progress)
             throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
         progress.thought("Ich suche in den aktivierten Wissensquellen nach: " + join(queries));
-        ResearchCard card = new ResearchCard(progress, queries, MAX_PAGES);
+        int maxPages = Math.max(ResearchRunBudget.UNLIMITED, pageBudget.getAsInt());
+        ResearchCard card = new ResearchCard(progress, queries, maxPages);
         card.searching();
         lastSucceeded = false;
         try {
-            return research(question, queries, progress, card);
+            return research(question, queries, progress, card, maxPages);
         } finally {
             card.finish(true, "");
         }
     }
 
     private String research(String question, List<String> queries, ResearchAgentTurns.Output progress,
-                            ResearchCard card) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
+                            ResearchCard card, int maxPages) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
         List<KnowledgePages.Hit> hits = new ArrayList<KnowledgePages.Hit>();
         Set<String> seen = new HashSet<String>();
         List<List<KnowledgePages.Hit>> perQuery = new ArrayList<List<KnowledgePages.Hit>>();
@@ -238,7 +247,7 @@ final class DirectAnswers {
         List<ResearchWriting.Passage> excerpts = new ArrayList<ResearchWriting.Passage>();
         Map<String, KnowledgePages.Hit> read = new LinkedHashMap<String, KnowledgePages.Hit>();
         for (KnowledgePages.Hit hit : hits) {
-            if (read.size() >= MAX_PAGES || progress.isCancelled()) {
+            if (ResearchRunBudget.reached(read.size(), maxPages) || progress.isCancelled()) {
                 break;
             }
             String title = hit.title.isEmpty() ? hit.id : hit.title;

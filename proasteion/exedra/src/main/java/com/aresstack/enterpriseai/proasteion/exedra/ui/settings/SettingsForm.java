@@ -80,6 +80,7 @@ public final class SettingsForm {
     private final String agentCommand;
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
+    private final String researchMaxPages;
     private final Map<String, String> modelSelections;
     private final String localModelRoot;
 
@@ -125,6 +126,7 @@ public final class SettingsForm {
         this.agentCommand = b.agentCommand;
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
+        this.researchMaxPages = b.researchMaxPages;
         this.modelSelections = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.modelSelections));
         this.localModelRoot = b.localModelRoot;
     }
@@ -159,6 +161,7 @@ public final class SettingsForm {
                 .prefetchConcurrency(prefetchConcurrency)
                 .prefetchCacheMaxMb(prefetchCacheMaxMb)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
+                .researchMaxPages(researchMaxPages)
                 .modelSelections(modelSelections)
                 .localModelRoot(localModelRoot);
     }
@@ -352,6 +355,11 @@ public final class SettingsForm {
         return agentRequestTimeoutSeconds;
     }
 
+    /** Recherche-Budget: gelesene Seiten je Recherchelauf ({@code agent.research.maxPages}, 0 = unbegrenzt). */
+    public String researchMaxPages() {
+        return researchMaxPages;
+    }
+
     /**
      * Modellauswahl der Kategorien ohne eigenes Feld (Schlüssel = Kategorieschlüssel wie {@code rerank},
      * {@code tts}; Wert {@code [<katalog>:]<modell>}). Chat und Embeddings stehen in {@link #chatModel()} und
@@ -421,6 +429,7 @@ public final class SettingsForm {
         private String agentCommand = "";
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
+        private String researchMaxPages = "4";
         private final Map<String, String> modelSelections = new LinkedHashMap<String, String>();
         private String localModelRoot = "";
 
@@ -630,6 +639,11 @@ public final class SettingsForm {
 
         public Builder agentRequestTimeoutSeconds(String value) {
             this.agentRequestTimeoutSeconds = text(value);
+            return this;
+        }
+
+        public Builder researchMaxPages(String value) {
+            this.researchMaxPages = text(value);
             return this;
         }
 
