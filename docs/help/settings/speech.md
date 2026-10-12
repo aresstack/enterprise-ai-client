@@ -31,8 +31,8 @@ Die Auswahlliste „Sprachausgabe (TTS)“ ist dieselbe Auswahl wie im Reiter [M
 
 - **Beschriftung:** „Stimme“, eine Liste, in die du auch tippen kannst.
 - **Bedeutung:** Der Sprecher des gewählten TTS-Modells, so wie der Dienst ihn nennt (Tooltip: „… aus der Liste wählen oder eintippen. Lokale Stimmen haben genau einen Sprecher.“).
-- **Liste:** Die Liste zeigt die bekannten Sprecher des Modells, die Standardstimme zuerst. Neben dem Knopf „Stimme testen“ steht, ob eine bekannte Stimme männlich oder weiblich ist, etwa „Stimme thomas: männlich“.
-- **Standard:** die für dieses Modell gespeicherte Stimme; ist keine gespeichert, eine früher global eingestellte Stimme, wenn sie zum Modell passt; sonst die Standardstimme der Modellfamilie. Mitgeliefert sind zwei Familien: Orpheus (Standard „thomas“, außerdem „max“ und „jana“) und Qwen3-TTS (Standard „Vivian“, außerdem unter anderem „Serena“, „Ryan“ und „Aiden“). Hinweis: Diese Namen stammen aus den Modellkarten und sind gegen die Enterprise-API nicht geprüft; kennt dein Dienst andere Namen, tipp sie ein.
+- **Liste:** Die Liste zeigt die bekannten Sprecher des Modells, die Standardstimme zuerst. Neben dem Knopf „Stimme testen“ steht, ob eine bekannte Stimme männlich oder weiblich ist, etwa „Stimme Thomas: männlich“.
+- **Standard:** die für dieses Modell gespeicherte Stimme; ist keine gespeichert, eine früher global eingestellte Stimme, wenn sie zum Modell passt; sonst die Standardstimme der Modellfamilie. Mitgeliefert sind zwei Familien: Orpheus (Standard „Thomas“, außerdem „Max“ und „Jana“) und Qwen3-TTS (Standard „Vivian“, außerdem unter anderem „Serena“, „Ryan“ und „Aiden“). Hinweis: Sprechernamen sind exakt so einzugeben, wie der Dienst sie erwartet, auch Groß- und Kleinschreibung („thomas“ statt „Thomas“ lehnt der Dienst ab). Die Qwen3-TTS-Namen stammen aus der Modellkarte und sind gegen die Enterprise-API nicht geprüft; kennt dein Dienst andere Namen, tipp sie ein.
 - **Gesperrt:** wenn kein TTS-Modell gewählt ist oder eine lokale Stimme gewählt ist. Unter dem Feld steht dann „Kein TTS-Modell gewählt.“ bzw. „Lokale Stimme: genau ein Sprecher.“
 - **Je Modell:** Jede Eingabe gilt als ausdrückliche Wahl für genau das gewählte Modell. Wechselst du das Modell, erscheint dessen eigene Stimme; wechselst du zurück, ist deine frühere Wahl wieder da. Gespeichert wird das in `speech.voices`.
 
@@ -73,7 +73,7 @@ Hinweis im Dialog: „Merlin, der Begleiter des Einrichtungsassistenten, hat ein
 | Feld | Standard | Bedeutung |
 |---|---|---|
 | „Stimme von Merlin“ | das Modell `orpheus-tts-3b-de` der Enterprise-API (mit Katalogpräfix) | TTS-Modell als `[Katalog:]Modell` (Schlüssel `setup.merlin.ttsModel`). |
-| „Sprecher von Merlin“ | „thomas“ | Fester Sprecher dieses Modells, damit Merlin immer gleich klingt (Schlüssel `setup.merlin.ttsVoice`). |
+| „Sprecher von Merlin“ | „Thomas“ | Fester Sprecher dieses Modells, damit Merlin immer gleich klingt (Schlüssel `setup.merlin.ttsVoice`). |
 
 Merlin spricht nur mit dieser Stimme, nie mit der Stimme des Chats. Ist sie nicht erreichbar, weicht er nicht auf eine andere Stimme aus, sondern bleibt bei Sprechblasen. Nur Werte, die von der Vorgabe abweichen, landen in der Datei.
 
