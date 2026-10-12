@@ -130,7 +130,8 @@ final class SystemTab {
         // unten zählt nicht dagegen.
         researchMaxPages = agent.textField("Recherche-Budget (Seiten)",
                 "agent.research.maxPages, 0–10000; 0 = unbegrenzt");
-        agent.note("Maximale Zahl gelesener Seiten pro Recherchelauf.");
+        agent.note("Höchstzahl vollständig gelesener Seiten je Agent-Recherche.");
+        agent.note("Die Quellen einer normalen Chat-Antwort stellt der Reiter Index ein (Wissenssuche im Chat).");
         agent.note("0 = unbegrenzt.");
 
         // Wie MainframeMate „Vorabladen (Prefetch)“: Suchtreffer im Hintergrund laden und indexieren.

@@ -76,6 +76,25 @@ public class PromptContextAssemblerTest {
         assertFalse(context.text().contains("[3]"));
     }
 
+    /** context.maxSources ohne Neustart: 3 → höchstens drei Quellen, danach 10 → alle zwölf bis zehn. */
+    @Test
+    public void liveSettingsApplyFromTheNextAssembly() {
+        final java.util.concurrent.atomic.AtomicReference<ContextSettings> current =
+                new java.util.concurrent.atomic.AtomicReference<ContextSettings>(
+                        ContextSettings.defaults().withMaxSources(3).withMaxContextTokens(100000));
+        PromptContextAssembler assembler = PromptContextAssembler.live(current::get);
+        List<KnowledgeSearchHit> many = new ArrayList<KnowledgeSearchHit>();
+        for (int i = 0; i < 12; i++) {
+            many.add(hit(resource("t:" + i, "s"), 0, "Text " + i, 20.0 - i));
+        }
+        List<RetrievedChunk> fused = hits(many.toArray(new KnowledgeSearchHit[0]));
+
+        assertEquals(3, assembler.assemble(fused).sources().size());
+        current.set(ContextSettings.defaults().withMaxSources(10).withMaxContextTokens(100000));
+        assertEquals(10, assembler.assemble(fused).sources().size());
+        assertEquals(10, assembler.settings().maxSources());
+    }
+
     @Test
     public void stopsInFusionOrderWhenTheBudgetIsReached() {
         String small = "kurz";

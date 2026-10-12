@@ -23,7 +23,11 @@ import java.util.concurrent.RejectedExecutionException;
  * {@link ToolRegistry} als {@code tools} hinaus; solange die Antwort {@code tool_calls} enthält, führt die Schleife
  * sie aus, hängt Aufruf (assistant) und Ergebnis ({@code role=tool}) an den Verlauf dieser Anfrage und fragt erneut,
  * höchstens {@code maxRounds} Mal. Entscheidend sind die gelieferten {@code tool_calls}, nicht {@code finish_reason};
- * fehlt einem Aufruf die {@code id}, vergibt die Schleife {@code call_<runde>_<index>}. Über {@link #stream} läuft
+ * fehlt einem Aufruf die {@code id}, vergibt die Schleife {@code call_<runde>_<index>}. Verlangt das Modell nach
+ * {@code maxRounds} Runden noch ein Werkzeug, führt die Schleife es nicht mehr aus, sondern fragt ein letztes Mal ohne
+ * {@code tools} mit {@link #FINAL_ROUND_INSTRUCTION} (Abschlussrunde): die bisherigen Ergebnisse werden zur Antwort,
+ * statt mit den schon bezahlten Suchen verworfen zu werden. Erst wenn auch diese Runde keinen Text liefert, endet
+ * die Anfrage mit einem Fehler; die Benutzeranfrage wird nie von vorn wiederholt. Über {@link #stream} läuft
  * jede Runde gestreamt ({@code stream:true}, die {@code tool_calls} setzt der Adapter aus den Deltas zusammen, wie
  * MainframeMate {@code CloudChatManager}): Text erscheint sofort in der Blase, auch die Schlussantwort;
  * {@link #complete} fragt ohne Streaming.
@@ -36,6 +40,18 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
 
     /** Höchstzahl der Werkzeugrunden je Anfrage. */
     public static final int DEFAULT_MAX_ROUNDS = 8;
+    /** Kleinste und größte einstellbare Zahl der Werkzeugrunden ({@code chat.tools.maxRounds}); 0 gibt es nicht. */
+    public static final int MIN_MAX_ROUNDS = 1;
+    public static final int MAX_MAX_ROUNDS = 32;
+
+    /**
+     * Hinweis der Abschlussrunde, als Nachricht des Benutzers (eine {@code system}-Nachricht mitten im Verlauf lehnen
+     * manche Chat-Vorlagen ab, {@code developer} manche Server).
+     */
+    public static final String FINAL_ROUND_INSTRUCTION = "[Hinweis des Clients] Das Werkzeugbudget ist erschöpft. "
+            + "Verwende ausschließlich die bereits vorliegenden Werkzeugergebnisse. Führe keine weiteren Recherchen "
+            + "durch und gib jetzt die bestmögliche abschließende Antwort auf die ursprüngliche Benutzerfrage. Weise auf "
+            + "fehlende Informationen hin, statt weitere Werkzeuge anzufordern.";
 
     private final ChatCompletionPort chat;
     private final ToolRegistry tools;
@@ -117,8 +133,11 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
                 return null;
             }
             if (++round > maxRounds) {
-                throw new ChatCompletionException(ChatErrorKind.PROTOCOL,
-                        "das Modell hat nach " + maxRounds + " Werkzeugrunden noch keine Antwort gegeben");
+                response = finalRound(messages, request, task);
+                if (response == null) {
+                    return null;
+                }
+                break;
             }
             // Ohne id vom Server vergibt die Schleife eine eigene, damit Aufruf und Ergebnis zusammenpassen (ein
             // strenger Server lehnt eine leere tool_call_id ab).
@@ -149,6 +168,31 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
                 return new ChatResponse(ChatMessage.assistant(shown), response.finishReason(), response.usage(),
                         response.model());
             }
+        }
+        return response;
+    }
+
+    /**
+     * Abschlussrunde nach erschöpftem Werkzeugbudget: der Verlauf mit allen ausgeführten Aufrufen und Ergebnissen (die
+     * zuletzt verlangten Aufrufe laufen nicht mehr und bleiben draußen), dazu {@link #FINAL_ROUND_INSTRUCTION}, ohne
+     * {@code tools}, sodass keine weitere Werkzeugrunde entstehen kann. Liefert das Modell dennoch Aufrufe, zählt nur
+     * sein Text; ohne Text endet die Anfrage mit einem Fehler. {@code null} nach Abbruch.
+     */
+    private ChatResponse finalRound(List<ChatMessage> messages, ChatRequest request, ToolLoopTask task) {
+        List<ChatMessage> closing = new ArrayList<ChatMessage>(messages);
+        closing.add(ChatMessage.user(FINAL_ROUND_INSTRUCTION));
+        ChatResponse response = ask(new ChatRequest(closing, request.options(), new ArrayList<ChatToolDefinition>()),
+                task);
+        if (response == null) {
+            return null;
+        }
+        if (response.content().trim().isEmpty()) {
+            throw new ChatCompletionException(ChatErrorKind.PROTOCOL, "das Modell hat nach " + maxRounds
+                    + " Werkzeugrunden auch in der Abschlussrunde ohne Werkzeuge keine Antwort gegeben");
+        }
+        if (response.message().hasToolCalls()) {
+            return new ChatResponse(ChatMessage.assistant(response.content()), response.finishReason(),
+                    response.usage(), response.model());
         }
         return response;
     }

@@ -44,7 +44,18 @@ public final class FollowUpResearch {
             + "„das“ durch die gemeinten Begriffe ersetzen), nimm die gesuchte Einzelheit auf und wiederhole keine "
             + "der bisherigen Suchanfragen.";
 
+    /** Prüfung des Wissenskontexts aus früheren Nachrichten derselben Unterhaltung, bevor neu gesucht wird. */
+    static final String PRIOR_INSTRUCTION = "Du prüfst für einen Wissens-Chat, ob die Abschnitte, die in dieser "
+            + "Unterhaltung bereits gefunden wurden, die aktuelle Nachricht des Nutzers beantworten, ohne neu zu suchen. "
+            + "Antworte ausschließlich mit einem JSON-Objekt der Form "
+            + "{\"sufficient\": true, \"related\": true, \"query\": \"\"}.\n"
+            + "- sufficient = true, wenn die Abschnitte die Nachricht beantworten.\n"
+            + "- related = false, wenn die Nachricht ein anderes Thema hat als die Abschnitte.\n"
+            + "- Bei sufficient = false ist query eine neue, genauere Suchanfrage in wenigen Stichworten: löse Bezüge "
+            + "aus dem Verlauf auf, nimm die gesuchte Einzelheit auf und wiederhole keine der bisherigen Suchanfragen.";
+
     private static final Pattern SUFFICIENT = Pattern.compile("\"sufficient\"\\s*:\\s*(true|false)");
+    private static final Pattern RELATED = Pattern.compile("\"related\"\\s*:\\s*(true|false)");
     private static final Pattern QUERY = Pattern.compile("\"query\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"");
 
     private final int maxFollowUps;
@@ -102,8 +113,104 @@ public final class FollowUpResearch {
         return query;
     }
 
+    /** Urteil über den Wissenskontext früherer Nachrichten. */
+    static final class PriorVerdict {
+
+        /** Kein lesbares Urteil (Nebenanfrage gescheitert, unlesbare Antwort): normal suchen. */
+        static PriorVerdict unknown() {
+            return new PriorVerdict(false, true, null, false);
+        }
+
+        private final boolean sufficient;
+        private final boolean related;
+        private final String query;
+        private final boolean known;
+
+        private PriorVerdict(boolean sufficient, boolean related, String query, boolean known) {
+            this.sufficient = sufficient;
+            this.related = related;
+            this.query = query;
+            this.known = known;
+        }
+
+        boolean isKnown() {
+            return known;
+        }
+
+        /** Der frühere Kontext beantwortet die Nachricht; es wird nicht gesucht. */
+        boolean isSufficient() {
+            return known && sufficient;
+        }
+
+        /** Der frühere Kontext gehört zum Thema der Nachricht und darf neben neuen Treffern bleiben. */
+        boolean isRelated() {
+            return related;
+        }
+
+        /** Die gezielte Suchanfrage; {@code null}, wenn das Modell keine neue nannte. */
+        String query() {
+            return query;
+        }
+    }
+
+    /**
+     * Prüft vor jeder Suche, ob der Wissenskontext früherer Nachrichten dieser Unterhaltung die aktuelle Nachricht
+     * schon beantwortet (eine Nebenanfrage ohne Werkzeuge, nicht in der Historie).
+     *
+     * @param queries die Suchanfragen, aus denen der frühere Kontext stammt
+     * @param context der frühere Kontextblock
+     */
+    PriorVerdict checkPrior(ChatService chat, List<ChatMessage> history, String message, List<String> queries,
+                            String context, ChatOptions options) {
+        String verdict;
+        try {
+            verdict = chat.completeAside(request(PRIOR_INSTRUCTION, "Bereits gefundener Kontext", history, message,
+                    queries, context), options).content();
+        } catch (ChatCompletionException e) {
+            return PriorVerdict.unknown();
+        } catch (RuntimeException e) {
+            return PriorVerdict.unknown();
+        }
+        return parsePrior(verdict, queries);
+    }
+
+    static PriorVerdict parsePrior(String verdict, List<String> queries) {
+        if (verdict == null) {
+            return PriorVerdict.unknown();
+        }
+        Matcher sufficient = SUFFICIENT.matcher(verdict);
+        if (!sufficient.find()) {
+            return PriorVerdict.unknown();
+        }
+        Matcher related = RELATED.matcher(verdict);
+        boolean isRelated = !related.find() || Boolean.parseBoolean(related.group(1));
+        if (Boolean.parseBoolean(sufficient.group(1))) {
+            return new PriorVerdict(true, isRelated, null, true);
+        }
+        String query = null;
+        Matcher found = QUERY.matcher(verdict);
+        if (found.find()) {
+            String value = unescape(found.group(1)).replace('\r', ' ').replace('\n', ' ').trim();
+            query = value.isEmpty() ? null : value;
+        }
+        if (query != null && queries != null) {
+            for (String earlier : queries) {
+                if (normalize(earlier).equals(normalize(query))) {
+                    query = null; // eine schon gestellte Anfrage brächte dieselben Treffer
+                    break;
+                }
+            }
+        }
+        return new PriorVerdict(false, isRelated, query, true);
+    }
+
     static List<ChatMessage> request(List<ChatMessage> history, String message, List<String> queries,
                                      String context) {
+        return request(INSTRUCTION, "Gefundener Kontext", history, message, queries, context);
+    }
+
+    private static List<ChatMessage> request(String instruction, String contextLabel, List<ChatMessage> history,
+                                             String message, List<String> queries, String context) {
         StringBuilder text = new StringBuilder();
         List<ChatMessage> recent = history == null ? Collections.<ChatMessage>emptyList() : history;
         List<ChatMessage> shown = new ArrayList<ChatMessage>();
@@ -128,10 +235,10 @@ public final class FollowUpResearch {
         for (String query : queries) {
             text.append("\n- ").append(query);
         }
-        text.append("\n\nGefundener Kontext:\n");
+        text.append("\n\n").append(contextLabel).append(":\n");
         text.append(context == null || context.trim().isEmpty() ? "(nichts gefunden)" : context.trim());
         List<ChatMessage> messages = new ArrayList<ChatMessage>(2);
-        messages.add(ChatMessage.system(INSTRUCTION));
+        messages.add(ChatMessage.system(instruction));
         messages.add(ChatMessage.user(text.toString()));
         return messages;
     }

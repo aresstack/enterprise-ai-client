@@ -3,12 +3,14 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentStore;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtractor;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -30,6 +32,7 @@ public final class ToolSupport {
     private final Predicate<String> enabled;
     private final boolean alwaysOn;
     private final Executor loopExecutor;
+    private final IntSupplier maxRounds;
 
     /**
      * @param knowledgeTools der Wissens-Werkzeugsatz des Chats (Suche in den angehakten Quellen, Lesen von Treffern
@@ -60,6 +63,29 @@ public final class ToolSupport {
             thread.setDaemon(true);
             thread.start();
         };
+        this.maxRounds = () -> ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS;
+    }
+
+    private ToolSupport(ToolSupport base, IntSupplier maxRounds) {
+        this.chat = base.chat;
+        this.store = base.store;
+        this.extractor = base.extractor;
+        this.knowledgeTools = base.knowledgeTools;
+        this.enabled = base.enabled;
+        this.alwaysOn = base.alwaysOn;
+        this.loopExecutor = base.loopExecutor;
+        this.maxRounds = maxRounds;
+    }
+
+    /**
+     * Kopie, die die Höchstzahl der Werkzeugrunden ({@code chat.tools.maxRounds}) je Anfrage aus {@code maxRounds}
+     * liest, damit ein gespeicherter Wert ohne Neustart gilt.
+     */
+    public ToolSupport withMaxRounds(IntSupplier maxRounds) {
+        if (maxRounds == null) {
+            throw new IllegalArgumentException("maxRounds must not be null");
+        }
+        return new ToolSupport(this, maxRounds);
     }
 
     private static Supplier<List<AiTool>> fixed(List<AiTool> knowledgeTools) {
@@ -115,5 +141,10 @@ public final class ToolSupport {
 
     public Executor loopExecutor() {
         return loopExecutor;
+    }
+
+    /** Werkzeugrunden je Anfrage von jetzt, mindestens 1; danach antwortet das Modell ohne Werkzeuge. */
+    public int maxRounds() {
+        return Math.max(1, maxRounds.getAsInt());
     }
 }

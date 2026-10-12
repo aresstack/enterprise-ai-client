@@ -29,23 +29,34 @@ public final class RetrievedChunk {
     private final int semanticRank;
     private final double semanticScore;
     private final KnowledgeRelation relation;
+    /** Aus dem Index wiederhergestellt (Kontext eines früheren Turns), nicht in dieser Suche gefunden. */
+    private final boolean restored;
 
     RetrievedChunk(KnowledgeResource resource, KnowledgeChunk chunk, double fusedScore, int keywordRank,
                    double keywordScore, int semanticRank, double semanticScore) {
-        this(resource, chunk, fusedScore, keywordRank, keywordScore, semanticRank, semanticScore, null);
+        this(resource, chunk, fusedScore, keywordRank, keywordScore, semanticRank, semanticScore, null, false);
     }
 
     /** Ein über {@code relation} dazugekommener Nachbar eines Treffers. */
     static RetrievedChunk related(KnowledgeRelation relation, double fusedScore) {
-        return new RetrievedChunk(relation.resource(), relation.chunk(), fusedScore, 0, 0.0, 0, 0.0, relation);
+        return new RetrievedChunk(relation.resource(), relation.chunk(), fusedScore, 0, 0.0, 0, 0.0, relation, false);
+    }
+
+    /**
+     * Ein Auszug aus dem Wissenskontext eines früheren Turns, über seine Chunk-ID wieder aus dem Index geladen (etwa
+     * nach dem Öffnen eines gespeicherten Chats); ohne Rang in einem Suchpfad.
+     */
+    public static RetrievedChunk restored(KnowledgeResource resource, KnowledgeChunk chunk, double fusedScore) {
+        return new RetrievedChunk(resource, chunk, fusedScore, 0, 0.0, 0, 0.0, null, true);
     }
 
     private RetrievedChunk(KnowledgeResource resource, KnowledgeChunk chunk, double fusedScore, int keywordRank,
-                           double keywordScore, int semanticRank, double semanticScore, KnowledgeRelation relation) {
+                           double keywordScore, int semanticRank, double semanticScore, KnowledgeRelation relation,
+                           boolean restored) {
         if (resource == null || chunk == null) {
             throw new IllegalArgumentException("resource und chunk sind Pflicht");
         }
-        if (keywordRank <= 0 && semanticRank <= 0 && relation == null) {
+        if (keywordRank <= 0 && semanticRank <= 0 && relation == null && !restored) {
             throw new IllegalArgumentException("mindestens ein Suchpfad muss den Chunk gefunden haben");
         }
         this.resource = resource;
@@ -56,6 +67,12 @@ public final class RetrievedChunk {
         this.semanticRank = semanticRank;
         this.semanticScore = semanticScore;
         this.relation = relation;
+        this.restored = restored;
+    }
+
+    /** Aus dem Index wiederhergestellt statt in dieser Suche gefunden (siehe {@link #restored}). */
+    public boolean isRestored() {
+        return restored;
     }
 
     /** Absteigend nach RRF-Score, bei Gleichstand aufsteigend nach Chunk-ID – die Ordnung jedes Ergebnisses. */

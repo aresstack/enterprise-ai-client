@@ -8,6 +8,7 @@ import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JTextField;
 import java.awt.BorderLayout;
 import java.awt.Font;
 import java.util.LinkedHashMap;
@@ -32,12 +33,17 @@ final class ToolsTab {
     static final String ACTIVE_TOOLTIP = "Aktiv: dem Chat bzw. den Agenten anbieten";
     static final String EMPTY = "Keine Werkzeuge registriert. Die Übersicht füllt sich, sobald die Anwendung läuft.";
     static final String ORIGIN_PREFIX = "Herkunft: ";
+    static final String MAX_ROUNDS_LABEL = "Max. Werkzeugrunden";
+    static final String MAX_ROUNDS_HELP = "Werkzeugrunden je Antwort im normalen Chat (chat.tools.maxRounds, 1–32; "
+            + "Standard 8). Verlangt das Modell danach noch ein Werkzeug, antwortet es in einer letzten Runde ohne "
+            + "Werkzeuge aus den bisherigen Ergebnissen.";
     static final String REQUIRED_TOOLTIP = "Pflichtwerkzeug: ohne es startet bzw. arbeitet der Agent nicht; "
             + "es lässt sich nicht abschalten";
 
     private final ToolOverview overview;
     private final ComicPalette palette;
     private final JPanel lines = new JPanel();
+    private final JTextField maxRounds;
     private final Map<String, JCheckBox> boxes = new LinkedHashMap<String, JCheckBox>();
     /** Der Entwurf: abgeschaltete Werkzeuge, in Reihenfolge. */
     private final Set<String> disabled = new LinkedHashSet<String>();
@@ -53,7 +59,12 @@ final class ToolsTab {
         lines.setOpaque(false);
         lines.setLayout(new BoxLayout(lines, BoxLayout.Y_AXIS));
         rows.component(null, lines, null);
-        panel = FormRows.column(palette, FormRows.plate("Tools", palette.getAgentPetrol(), rows.panel(), palette));
+        FormRows loop = new FormRows(palette);
+        maxRounds = loop.textField(MAX_ROUNDS_LABEL, MAX_ROUNDS_HELP);
+        loop.note(MAX_ROUNDS_HELP);
+        panel = FormRows.column(palette,
+                FormRows.plate("Werkzeugrunden im Chat", palette.getAccentOrange(), loop.panel(), palette),
+                FormRows.plate("Tools", palette.getAgentPetrol(), rows.panel(), palette));
     }
 
     JPanel panel() {
@@ -133,6 +144,7 @@ final class ToolsTab {
     }
 
     void load(SettingsForm form) {
+        maxRounds.setText(form.chatToolsMaxRounds());
         disabled.clear();
         for (String item : form.disabledTools().split(",")) {
             if (!item.trim().isEmpty() && !required.contains(item.trim())) {
@@ -153,6 +165,7 @@ final class ToolsTab {
             text.append(text.length() == 0 ? "" : ",").append(name);
         }
         b.disabledTools(text.toString());
+        b.chatToolsMaxRounds(maxRounds.getText());
     }
 
     // Für Tests.
@@ -164,5 +177,9 @@ final class ToolsTab {
 
     JPanel lines() {
         return lines;
+    }
+
+    JTextField maxRounds() {
+        return maxRounds;
     }
 }

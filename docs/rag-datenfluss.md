@@ -105,10 +105,24 @@ sequenceDiagram
   `Quelle: … | Ort: … | Stand: …`, Chunk-Text, `--- ENDE KONTEXT ---`. Aufnahme in Fusionsreihenfolge bis
   `context.maxTokens` (Standard 1500, Schätzung über Wörter und Symbole, kein Modell-Tokenizer) oder
   `context.maxSources` (Standard 6). Rahmenmarker in Quelltexten werden neutralisiert; Ressourcen-Metadaten
-  gehen nicht in den Prompt.
+  gehen nicht in den Prompt. `context.maxSources`, `context.maxTokens` und `retrieval.maxResults` stehen in den
+  Einstellungen (Reiter „Index“, „Wissenssuche im Chat“) und gelten nach dem Speichern ab der nächsten Frage; sie
+  sind unabhängig vom Recherche-Budget des Agenten (`agent.research.maxPages`).
+- **Wissenskontext der Unterhaltung** (seit 0.35.0, mit Nachrecherche): Die Treffer des Kontextblocks bleiben je
+  Konversation (`ConversationKnowledgeContext`), auch wenn die Antwort danach scheitert, und kommen als Kennungen
+  (Chunk, Ressource, Quelle; nie der Text) in den gespeicherten Chat. Vor jeder Suche prüft das Modell in einer
+  Nebenanfrage, ob sie die neue Nachricht schon beantworten (`{"sufficient", "related", "query"}`): dann wird
+  nicht gesucht („Vorhandene Quellen werden verwendet“). Sonst folgt eine gezielte Nachsuche mit `query`; zum Thema
+  passende frühere Treffer bleiben hinter den neuen, bei `related=false` fallen sie weg. Ein unlesbares Urteil
+  sucht wie bisher.
+- **Werkzeugrunden** (`ChatCompletionsToolLoop`, `chat.tools.maxRounds`, 1–32, Standard 8, Reiter „Tools“):
+  Verlangt das Modell danach noch ein Werkzeug, läuft es nicht mehr; eine Abschlussrunde ohne `tools` mit allen
+  bisherigen Aufrufen und Ergebnissen und dem Hinweis, jetzt aus den vorliegenden Ergebnissen zu antworten, liefert
+  die Antwort. Erst wenn auch sie keinen Text bringt, scheitert die Antwort. Die Benutzeranfrage wird nie von vorn
+  wiederholt.
 - **Chat** (`ChatService.sendWithContext`): Der Kontext wird als System-Anteil an den System-Prompt angehängt
   und gilt nur für diesen Turn. In der Historie stehen nur die unveränderte Nutzerfrage und die Antwort;
-  spätere Turns sehen den Kontext nicht. Die Rolle `developer` wird nie verwendet. RAG aus
+  spätere Turns sehen den Kontextblock nur, wenn der Wissenskontext der Unterhaltung (unten) ihn erneut liefert. Die Rolle `developer` wird nie verwendet. RAG aus
   (`RagOptions.disabled()`) ist exakt `ChatService.send`.
 - **Wann gesucht wird** (`KnowledgeQuestion`, seit 0.30.0): Mit angehakter Quelle sucht jede Nachricht außer
   Small Talk und Fragen nach dem Assistenten selbst vorab, auch Korrekturen („das ist nicht, was ich suche“) und

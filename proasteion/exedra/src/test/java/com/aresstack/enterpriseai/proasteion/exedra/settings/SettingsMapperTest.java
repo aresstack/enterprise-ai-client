@@ -264,7 +264,10 @@ public class SettingsMapperTest {
                 SettingsMapper.describe("source.2.startPoints: fehlt"));
         assertEquals("CA-Datei (network.tls.caCertificatesFile): Datei nicht lesbar (NoSuchFileException)",
                 SettingsMapper.describe("network.tls.caCertificatesFile: Datei nicht lesbar (NoSuchFileException)"));
-        assertEquals("retrieval.maxResults: keine ganze Zahl", SettingsMapper.describe("retrieval.maxResults: keine ganze Zahl"));
+        assertEquals("retrieval.rankConstant: keine ganze Zahl",
+                SettingsMapper.describe("retrieval.rankConstant: keine ganze Zahl"));
+        assertEquals("Max. Quellen im Antwortkontext (context.maxSources): keine ganze Zahl",
+                SettingsMapper.describe("context.maxSources: keine ganze Zahl"));
         assertEquals("ohne Doppelpunkt", SettingsMapper.describe("ohne Doppelpunkt"));
     }
 
@@ -279,7 +282,7 @@ public class SettingsMapperTest {
                 SettingsMapper.plain("chat.*: Chat-Parameter ungültig (siehe Beispielkonfiguration)"));
         assertEquals("Basis-URL für Embeddings: darf keine Zugangsdaten enthalten (KeePass-Eintrag verwenden)",
                 SettingsMapper.plain("embedding.baseUrl: darf keine Zugangsdaten enthalten (SecretRef verwenden)"));
-        assertEquals("Einstellung: keine ganze Zahl", SettingsMapper.plain("retrieval.maxResults: keine ganze Zahl"));
+        assertEquals("Einstellung: keine ganze Zahl", SettingsMapper.plain("retrieval.rankConstant: keine ganze Zahl"));
         assertEquals("Konfigurationsdatei nicht lesbar: /tmp/x.properties (IOException)",
                 SettingsMapper.plain("Konfigurationsdatei nicht lesbar: /tmp/x.properties (IOException)"));
         for (String problem : SettingsMapper.plain(java.util.Arrays.asList("chat.model: fehlt (Pflichtangabe)",

@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexException;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeKeywordQuery;
@@ -25,6 +26,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -152,8 +154,9 @@ public final class RetrieveKnowledgeUseCase {
     }
 
     /**
-     * Kopie mit Nachbarschaftserweiterung über {@code relations}. Die {@code relation*}-Werte werden je Suche aus
-     * {@code liveSettings} gelesen (Einstellungen gelten ohne Neustart); {@code null} nimmt die eigenen Settings.
+     * Kopie mit Nachbarschaftserweiterung über {@code relations}. Die {@code relation*}-Werte und
+     * {@link RetrievalSettings#maxResults()} werden je Suche aus {@code liveSettings} gelesen (Einstellungen gelten
+     * ohne Neustart); {@code null} nimmt die eigenen Settings.
      */
     public RetrieveKnowledgeUseCase withRelations(KnowledgeRelationsPort relations,
                                                   Supplier<RetrievalSettings> liveSettings) {
@@ -173,6 +176,37 @@ public final class RetrieveKnowledgeUseCase {
         return settings;
     }
 
+    /** Höchstzahl der Treffer je Suche, von jetzt: aus den Live-Einstellungen, sonst aus den eigenen. */
+    public int maxResults() {
+        RetrievalSettings live = relationSettings == null ? null : relationSettings.get();
+        return (live == null ? settings : live).maxResults();
+    }
+
+    /**
+     * Lädt Auszüge eines früheren Wissenskontexts über ihre Chunk-IDs aus dem Index der aktuellen Embedding-Welt, in
+     * der gegebenen Reihenfolge, ohne zu suchen. Was dort fehlt (gelöscht, anderes Embedding-Modell), fällt weg;
+     * ein Indexfehler ergibt ein leeres Ergebnis.
+     */
+    public List<RetrievedChunk> restore(List<KnowledgeChunkId> chunkIds) {
+        List<RetrievedChunk> restored = new ArrayList<RetrievedChunk>();
+        if (chunkIds == null) {
+            return restored;
+        }
+        try {
+            for (int i = 0; i < chunkIds.size(); i++) {
+                Optional<KnowledgeIndexEntry> entry = index.entry(space(), chunkIds.get(i));
+                if (entry.isPresent()) {
+                    // Score fällt mit der Position: die Reihenfolge des früheren Kontextblocks bleibt.
+                    restored.add(RetrievedChunk.restored(entry.get().resource(), entry.get().chunk(),
+                            1.0 / (i + 1)));
+                }
+            }
+        } catch (KnowledgeIndexException e) {
+            return new ArrayList<RetrievedChunk>();
+        }
+        return restored;
+    }
+
     /** Sucht in allen Quellen. */
     public RetrievalResult retrieve(String query) {
         return retrieve(query, Collections.<SourceAddress>emptySet());
@@ -181,7 +215,7 @@ public final class RetrieveKnowledgeUseCase {
     /**
      * @param query   Suchtext, z. B. die Nutzerfrage; leer ergibt ein leeres Ergebnis ohne Portaufruf
      * @param sources nur in diesen Quellen suchen; leer oder {@code null} heißt alle
-     * @return höchstens {@link RetrievalSettings#maxResults()} fusionierte Treffer
+     * @return höchstens {@link #maxResults()} fusionierte Treffer
      * @throws KnowledgeRetrievalException wenn alle aktiven Suchpfade ausgefallen sind
      */
     public RetrievalResult retrieve(String query, Collection<SourceAddress> sources) {
@@ -243,8 +277,9 @@ public final class RetrieveKnowledgeUseCase {
             throw new KnowledgeRetrievalException(warnings, lastFailure);
         }
         List<RetrievedChunk> fused = expand(fusion.fuse(keywordHits, semanticHits), filter);
-        if (fused.size() > settings.maxResults()) {
-            fused = fused.subList(0, settings.maxResults());
+        int maxResults = maxResults();
+        if (fused.size() > maxResults) {
+            fused = fused.subList(0, maxResults);
         }
         return new RetrievalResult(fused, warnings);
     }

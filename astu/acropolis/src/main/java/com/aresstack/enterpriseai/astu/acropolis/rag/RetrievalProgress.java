@@ -45,6 +45,18 @@ public interface RetrievalProgress {
     default void contextReady(int sources) {
     }
 
+    /** Der Wissenskontext des vorigen Turns ({@code sources} Auszüge) beantwortet die Nachricht; es wird nicht gesucht. */
+    default void reusingSources(int sources) {
+    }
+
+    /**
+     * Der Wissenskontext des vorigen Turns reicht nicht; es folgt eine gezielte Nachsuche mit {@code query}.
+     *
+     * @param sources die Auszüge des vorigen Turns, die (zum Thema passend) im Kontext bleiben; 0 bei Themenwechsel
+     */
+    default void reuseInsufficient(String query, int sources) {
+    }
+
     /** {@code true}, wenn der Nutzer abgebrochen hat: weitere Suchschritte entfallen. */
     default boolean isCancelled() {
         return false;

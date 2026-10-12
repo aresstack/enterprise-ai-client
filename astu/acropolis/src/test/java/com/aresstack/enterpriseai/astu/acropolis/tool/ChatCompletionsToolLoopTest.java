@@ -155,18 +155,121 @@ public class ChatCompletionsToolLoopTest {
                 chat.requests.get(1).tools().get(0).name());
     }
 
+    /** Runden 1–8 verlangen je ein Werkzeug, danach noch eins: keine Ausnahme, sondern Abschlussrunde ohne tools. */
     @Test
-    public void stopsAfterMaxRounds() {
+    public void afterMaxRoundsAFinalRoundWithoutToolsAnswersFromTheResults() {
+        for (int i = 0; i < 9; i++) {
+            chat.script.add(toolCall("x" + i));
+        }
+        chat.script.add(answer("Aus den Ergebnissen"));
+
+        ChatResponse response = loop(8).complete(request());
+
+        assertEquals("Aus den Ergebnissen", response.content());
+        assertEquals("der neunte Aufruf läuft nicht mehr", 8, executed.size());
+        assertEquals(10, chat.requests.size());
+        ChatRequest closing = chat.requests.get(9);
+        assertTrue("keine Werkzeuge in der Abschlussrunde", closing.tools().isEmpty());
+        List<ChatMessage> messages = closing.messages();
+        ChatMessage hint = messages.get(messages.size() - 1);
+        assertEquals(ChatRole.USER, hint.role());
+        assertEquals(ChatCompletionsToolLoop.FINAL_ROUND_INSTRUCTION, hint.content());
+        int calls = 0;
+        int results = 0;
+        for (ChatMessage message : messages) {
+            calls += message.hasToolCalls() ? 1 : 0;
+            results += message.role() == ChatRole.TOOL ? 1 : 0;
+        }
+        assertEquals("alle ausgeführten Aufrufe bleiben im Verlauf", 8, calls);
+        assertEquals("alle Ergebnisse bleiben im Verlauf", 8, results);
+    }
+
+    /** Auch gestreamt: die Antwort der Abschlussrunde erscheint in der Blase und ist die fertige Antwort. */
+    @Test
+    public void streamedFinalRoundCompletesTheAnswer() {
+        for (int i = 0; i < 3; i++) {
+            chat.script.add(toolCall("s" + i));
+        }
+        chat.script.add(answer("Schluss"));
+        final ChatResponse[] completed = new ChatResponse[1];
+        final ChatCompletionException[] failed = new ChatCompletionException[1];
+        loop(2).stream(request(), new ChatStreamListener() {
+            @Override
+            public void onStart() {
+            }
+
+            @Override
+            public void onDelta(String text) {
+            }
+
+            @Override
+            public void onComplete(ChatResponse response) {
+                completed[0] = response;
+            }
+
+            @Override
+            public void onError(ChatCompletionException error) {
+                failed[0] = error;
+            }
+
+            @Override
+            public void onCancelled() {
+            }
+        });
+        assertEquals(null, failed[0]);
+        assertEquals("Schluss", completed[0].content());
+        assertEquals(2, executed.size());
+        assertTrue(chat.requests.get(3).tools().isEmpty());
+    }
+
+    /** Liefert auch die Abschlussrunde keinen Text, endet die Anfrage mit einem sauberen Fehler. */
+    @Test
+    public void failsCleanlyWhenTheFinalRoundGivesNoAnswer() {
         for (int i = 0; i < 4; i++) {
             chat.script.add(toolCall("x" + i));
         }
+        chat.script.add(toolCall("trotzdem"));
         try {
             loop(3).complete(request());
-            fail("Rundenlimit");
+            fail("ohne Text in der Abschlussrunde");
         } catch (ChatCompletionException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains("3 Werkzeugrunden"));
+            assertTrue(expected.getMessage(), expected.getMessage().contains("Abschlussrunde"));
         }
         assertEquals(3, executed.size());
+        assertEquals("genau eine Abschlussrunde, kein Neustart", 5, chat.requests.size());
+    }
+
+    /** Ein Transportfehler in der Abschlussrunde wird nicht verschluckt und nicht wiederholt. */
+    @Test
+    public void transportErrorInTheFinalRoundIsReported() {
+        for (int i = 0; i < 2; i++) {
+            chat.script.add(toolCall("x" + i));
+        }
+        chat.failOnRequest = 3;
+        try {
+            loop(1).complete(request());
+            fail("Transportfehler");
+        } catch (ChatCompletionException expected) {
+            assertEquals(com.aresstack.enterpriseai.chat.api.ChatErrorKind.TRANSPORT, expected.kind());
+        }
+        assertEquals(3, chat.requests.size());
+    }
+
+    /** Text neben trotzdem verlangten Aufrufen in der Abschlussrunde zählt als Antwort; Aufrufe laufen nicht. */
+    @Test
+    public void textOfAFinalRoundWithCallsIsTheAnswer() {
+        chat.script.add(toolCall("a"));
+        chat.script.add(toolCall("b"));
+        chat.script.add(new ChatResponse(ChatMessage.assistantToolCalls("Teilantwort", Collections.singletonList(
+                new ChatToolCall("c", "knowledge_read", "{}"))), ChatFinishReason.TOOL_CALLS,
+                ChatUsage.notReported(), "m"));
+
+        ChatResponse response = loop(1).complete(request());
+
+        assertEquals("Teilantwort", response.content());
+        assertTrue(!response.message().hasToolCalls());
+        assertEquals(1, executed.size());
     }
 
     @Test
@@ -228,10 +331,16 @@ public class ChatCompletionsToolLoopTest {
     private static final class ScriptedChat implements ChatCompletionPort {
         final LinkedList<ChatResponse> script = new LinkedList<ChatResponse>();
         final List<ChatRequest> requests = new ArrayList<ChatRequest>();
+        /** Die wievielte Anfrage (ab 1) mit einem Transportfehler scheitert; 0 = keine. */
+        int failOnRequest;
 
         @Override
         public ChatResponse complete(ChatRequest request) {
             requests.add(request);
+            if (requests.size() == failOnRequest) {
+                throw new ChatCompletionException(com.aresstack.enterpriseai.chat.api.ChatErrorKind.TRANSPORT,
+                        "503");
+            }
             return script.removeFirst();
         }
 

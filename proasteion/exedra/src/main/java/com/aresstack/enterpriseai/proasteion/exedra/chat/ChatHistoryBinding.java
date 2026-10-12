@@ -13,6 +13,10 @@ import com.aresstack.enterpriseai.astu.acropolis.history.BookmarkRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatHistoryStore;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
+import com.aresstack.enterpriseai.astu.acropolis.history.KnowledgeContextRecord;
+import com.aresstack.enterpriseai.astu.acropolis.rag.ConversationKnowledgeContext;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.acropolis.history.SourceRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ToolCallRecord;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
@@ -66,6 +70,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     private long createdAt;
     private String renamedTitle; // vom Nutzer gewählter Titel des aktuellen Chats, sonst null
     private boolean restoring;
+    /** Der gespeicherte Wissenskontext des geöffneten Chats, bis die Unterhaltung einen eigenen hat. */
+    private KnowledgeContextRecord openedKnowledge;
 
     public ChatHistoryBinding(ChatHistoryStore store, ChatService chatService, RagChatBinding chat,
                               ChatShellModel model, final String systemPrompt, LongSupplier clock) {
@@ -160,6 +166,19 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         } finally {
             restoring = false;
         }
+        openedKnowledge = record.getKnowledgeContext();
+        if (openedKnowledge != null && !openedKnowledge.getChunks().isEmpty()) {
+            // Die Auszüge kommen aus dem Index; eine passende Folgefrage muss dann nicht neu suchen.
+            List<KnowledgeChunkId> ids = new ArrayList<KnowledgeChunkId>();
+            for (KnowledgeContextRecord.Chunk chunk : openedKnowledge.getChunks()) {
+                try {
+                    ids.add(KnowledgeChunkId.parse(chunk.getChunkId()));
+                } catch (IllegalArgumentException invalid) {
+                    // unlesbare Kennung: dieser Auszug fällt weg
+                }
+            }
+            chat.restoreKnowledgeContext(target, openedKnowledge.getQueries(), ids);
+        }
         recordedConversation = target;
         createdAt = record.getCreatedAt();
         renamedTitle = record.isTitleEdited() ? record.getTitle() : null;
@@ -252,6 +271,16 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         return new com.google.gson.JsonPrimitive(text).toString();
     }
 
+    /**
+     * Der Wissenskontext der Unterhaltung steht fest (UI-Thread, vor der Antwort): er kommt sofort in den gespeicherten
+     * Chat, damit er auch eine gescheiterte Antwort und einen Neustart überlebt.
+     */
+    void knowledgeContextChanged(ChatConversationId conversation) {
+        if (conversation.equals(chat.conversationId())) {
+            save();
+        }
+    }
+
     @Override
     public void entryAdded(TranscriptEntry entry) {
         if (!restoring && entry.getState() != TranscriptEntry.State.STREAMING) {
@@ -319,6 +348,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         if (!conversation.equals(recordedConversation)) {
             recordedConversation = conversation;
             renamedTitle = null;
+            openedKnowledge = null;
             createdAt = entries.isEmpty() ? clock.getAsLong() : entries.get(0).getCreatedAtMillis();
         }
         ChatRecord record = new ChatRecord(conversation.value(), createdAt);
@@ -336,6 +366,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         if (title == null) {
             return; // ohne Nutzernachricht gibt es nichts zu speichern
         }
+        record.setKnowledgeContext(knowledgeOf(conversation));
         if (renamedTitle != null) {
             record.rename(renamedTitle);
         } else {
@@ -365,6 +396,23 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                         entry.getCreatedAtMillis(), null).withTrace(sourcesOf(entry), toolCalls.get(entry.getId()));
                 return entry.getState() == TranscriptEntry.State.CANCELLED ? answer.markCancelled() : answer;
         }
+    }
+
+    /**
+     * Der Wissenskontext zum Speichern: nur Suchanfragen und Kennungen der Auszüge (der Text steht im Index); solange
+     * ein geöffneter Chat noch keinen eigenen hat, der gespeicherte.
+     */
+    private KnowledgeContextRecord knowledgeOf(ChatConversationId conversation) {
+        ConversationKnowledgeContext context = chat.knowledgeContext(conversation);
+        if (context.isEmpty()) {
+            return conversation.equals(recordedConversation) ? openedKnowledge : null;
+        }
+        List<KnowledgeContextRecord.Chunk> chunks = new ArrayList<KnowledgeContextRecord.Chunk>();
+        for (RetrievedChunk hit : context.hits()) {
+            chunks.add(new KnowledgeContextRecord.Chunk(hit.chunk().id().value(), hit.chunk().resourceId().value(),
+                    hit.chunk().sourceId().value()));
+        }
+        return new KnowledgeContextRecord(context.queries(), chunks);
     }
 
     /** Die abgelegten Anhänge einer Nutzernachricht; solange die Ablage läuft, nur ihre Namen. */

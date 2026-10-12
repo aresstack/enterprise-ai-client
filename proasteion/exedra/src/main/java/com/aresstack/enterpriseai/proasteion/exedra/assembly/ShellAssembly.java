@@ -130,7 +130,9 @@ public final class ShellAssembly {
                     root.attachmentText(),
                     root::knowledgeChatTools,
                     root.toolCatalog()::isEnabled,
-                    root.config().chat().toolsEnabled()));
+                    root.config().chat().toolsEnabled())
+                    // Werkzeugrunden je Antwort: je Anfrage frisch aus den Einstellungen (ohne Neustart).
+                    .withMaxRounds(() -> root.config().chat().maxToolRounds()));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,

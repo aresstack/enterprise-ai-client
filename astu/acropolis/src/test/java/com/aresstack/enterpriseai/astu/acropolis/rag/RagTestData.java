@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeKeywordQuery;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSearchHit;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSemanticQuery;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
@@ -134,6 +135,11 @@ final class RagTestData {
         @Override
         public Optional<KnowledgeRevision> revisionOf(EmbeddingModelIdentity space, KnowledgeResourceId resourceId) {
             return delegate.revisionOf(space, resourceId);
+        }
+
+        @Override
+        public Optional<KnowledgeIndexEntry> entry(EmbeddingModelIdentity space, KnowledgeChunkId chunkId) {
+            return delegate.entry(space, chunkId);
         }
 
         @Override

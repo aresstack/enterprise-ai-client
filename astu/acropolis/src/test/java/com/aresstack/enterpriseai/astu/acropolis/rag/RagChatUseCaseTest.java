@@ -427,12 +427,152 @@ public class RagChatUseCaseTest {
         assertEquals("Mit apt [1].", chat.conversation(other).messages().get(1).content());
     }
 
+    /**
+     * Abnahme Realfehler: Turn 1 findet Quellen, die Antwort scheitert danach. Turn 2 („die Quellen hattest du
+     * schon …“) antwortet aus diesen Quellen ohne Live-Suche, ohne Indexsuche und ohne Embedding.
+     */
+    @Test
+    public void afterAFailedAnswerTheNextQuestionReusesTheFoundSourcesWithoutSearching() throws Exception {
+        CountingPreparation live = new CountingPreparation();
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS, live);
+        ChatConversationId id = chat.openConversation("System");
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueError(new com.aresstack.enterpriseai.chat.api.ChatCompletionException(
+                com.aresstack.enterpriseai.chat.api.ChatErrorKind.PROTOCOL, "nach 8 Werkzeugrunden"));
+        RagChatTurn first = research.send(id, QUESTION, RagOptions.enabled(), listener());
+        awaitDone(first);
+        assertEquals("failed", last.outcome());
+        int sources = first.sources().size();
+        assertTrue(sources > 0);
+        assertEquals(sources, research.knowledgeContext(id).hits().size());
+        int searches = index.keywordSearches + index.semanticSearches;
+        int embedded = embeddings.calls().size();
+        assertEquals(1, live.calls);
+
+        RecordingProgress progress = new RecordingProgress();
+        chatPort.enqueueAnswer("{\"sufficient\": true, \"related\": true, \"query\": \"\"}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        String again = "Die Quellen hattest du schon. Wie installiere ich Java?";
+        RagChatTurn second = research.send(id, again, RagOptions.enabled(), null, listener(), null, null, progress);
+        awaitDone(second);
+
+        assertEquals("keine neue Indexsuche", searches, index.keywordSearches + index.semanticSearches);
+        assertEquals("kein neues Embedding", embedded, embeddings.calls().size());
+        assertEquals("keine neue Live-Suche", 1, live.calls);
+        assertTrue(second.queries().isEmpty());
+        assertEquals(sources, second.reusedSources());
+        assertEquals(sources, second.sources().size());
+        assertEquals(JAVA, second.sources().get(0).resource());
+        assertEquals(Collections.singletonList("reuse " + sources), progress.events);
+        String system = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(system, system.contains("apt install openjdk-8-jdk"));
+        String check = chatPort.requests().get(chatPort.requests().size() - 2).messages().get(0).content();
+        assertEquals(FollowUpResearch.PRIOR_INSTRUCTION, check);
+    }
+
+    /** Reichen die vorhandenen Quellen nicht, sucht der Chat gezielt nach, statt den ersten Suchlauf zu wiederholen. */
+    @Test
+    public void insufficientEarlierSourcesLeadToATargetedSearchNotARepeat() throws Exception {
+        CountingPreparation live = new CountingPreparation();
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS, live);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        awaitDone(research.send(id, QUESTION, RagOptions.enabled(), listener()));
+        int semantic = index.semanticSearches;
+
+        RecordingProgress progress = new RecordingProgress();
+        chatPort.enqueueAnswer("{\"sufficient\": false, \"related\": true, \"query\": \"NIZZA Dateiformat\"}");
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("120 Zeichen [1].");
+        RagChatTurn turn = research.send(id, "Und welches Format gilt dabei genau?", RagOptions.enabled(), null,
+                listener(), null, null, progress);
+        awaitDone(turn);
+
+        assertEquals("nur die gezielte Nachsuche", Collections.singletonList("NIZZA Dateiformat"), turn.queries());
+        assertEquals(semantic + 1, index.semanticSearches);
+        assertEquals(2, live.calls);
+        assertEquals(0, turn.reusedSources());
+        assertEquals("die neue Suche steht vorn", NIZZA, turn.sources().get(0).resource());
+        assertEquals(1, progress.events.size());
+        assertTrue(progress.events.get(0), progress.events.get(0).startsWith("insufficient NIZZA Dateiformat"));
+        String system = chatPort.lastRequest().messages().get(0).content();
+        assertTrue("frühere und neue Anfrage im Suchhinweis", system.contains("- " + QUESTION)
+                && system.contains("- NIZZA Dateiformat"));
+    }
+
+    /** Nach dem Öffnen eines gespeicherten Chats kommt der Kontext über die Chunk-IDs aus dem Index zurück. */
+    @Test
+    public void restoredContextFromChunkIdsAnswersWithoutSearching() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        awaitDone(research.send(id, QUESTION, RagOptions.enabled(), listener()));
+        java.util.List<com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId> ids =
+                new java.util.ArrayList<com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId>();
+        for (RetrievedChunk hit : research.knowledgeContext(id).hits()) {
+            ids.add(com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId.parse(hit.chunk().id().value()));
+        }
+
+        RagChatUseCase reopened = new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D,
+                null), new PromptContextAssembler(ContextSettings.defaults()), null,
+                FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS));
+        reopened.restoreKnowledgeContext(id, Collections.singletonList(QUESTION), ids);
+        assertEquals(ids.size(), reopened.knowledgeContext(id).hits().size());
+        int searches = index.keywordSearches + index.semanticSearches;
+        chatPort.enqueueAnswer("{\"sufficient\": true, \"related\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        RagChatTurn turn = reopened.send(id, "Nochmal kurz: wie ging das?", RagOptions.enabled(), listener());
+        awaitDone(turn);
+
+        assertEquals(searches, index.keywordSearches + index.semanticSearches);
+        assertEquals(JAVA, turn.sources().get(0).resource());
+        assertTrue(turn.sources().get(0).hit().isRestored());
+    }
+
+    /** Ohne Nachrecherche bleibt alles wie bisher: jede Nachricht sucht, nichts wird gemerkt. */
+    @Test
+    public void withoutFollowUpsNothingIsKept() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        awaitDone(rag.send(id, QUESTION, RagOptions.enabled(), listener()));
+        assertTrue(rag.knowledgeContext(id).isEmpty());
+    }
+
+    private static final class CountingPreparation implements RetrievalPreparation {
+        volatile int calls;
+
+        @Override
+        public void prepare(String query, java.util.Collection<SourceAddress> sources) {
+            calls++;
+        }
+    }
+
+    private static final class RecordingProgress implements RetrievalProgress {
+        final List<String> events = new java.util.concurrent.CopyOnWriteArrayList<String>();
+
+        @Override
+        public void reusingSources(int sources) {
+            events.add("reuse " + sources);
+        }
+
+        @Override
+        public void reuseInsufficient(String query, int sources) {
+            events.add("insufficient " + query + " " + sources);
+        }
+    }
+
     private RagChatUseCase withFollowUps(int maxFollowUps) {
+        return withFollowUps(maxFollowUps, null);
+    }
+
+    private RagChatUseCase withFollowUps(int maxFollowUps, RetrievalPreparation preparation) {
         index.index(Collections.singletonList(entry(NIZZA, 0,
                 "NIZZA Dateiformat: jede Zeile hat eine feste Länge von 120 Zeichen", vector(SPACE_3D, 0, 0, 1))));
         embeddings.on(FOLLOW_UP, 1f, 0f, 0f).on("NIZZA Dateiformat", 0f, 0f, 1f);
         return new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D, null),
-                new PromptContextAssembler(ContextSettings.defaults()), null, FollowUpResearch.upTo(maxFollowUps));
+                new PromptContextAssembler(ContextSettings.defaults()), preparation,
+                FollowUpResearch.upTo(maxFollowUps));
     }
 
     private RecordingListener listener() {

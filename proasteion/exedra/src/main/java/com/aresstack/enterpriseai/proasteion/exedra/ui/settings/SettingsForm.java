@@ -81,6 +81,10 @@ public final class SettingsForm {
     private final String agentArgs;
     private final String agentRequestTimeoutSeconds;
     private final String researchMaxPages;
+    private final String chatToolsMaxRounds;
+    private final String contextMaxSources;
+    private final String retrievalMaxResults;
+    private final String contextMaxTokens;
     private final Map<String, String> modelSelections;
     private final String localModelRoot;
 
@@ -127,6 +131,10 @@ public final class SettingsForm {
         this.agentArgs = b.agentArgs;
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
         this.researchMaxPages = b.researchMaxPages;
+        this.chatToolsMaxRounds = b.chatToolsMaxRounds;
+        this.contextMaxSources = b.contextMaxSources;
+        this.retrievalMaxResults = b.retrievalMaxResults;
+        this.contextMaxTokens = b.contextMaxTokens;
         this.modelSelections = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.modelSelections));
         this.localModelRoot = b.localModelRoot;
     }
@@ -162,6 +170,10 @@ public final class SettingsForm {
                 .prefetchCacheMaxMb(prefetchCacheMaxMb)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .researchMaxPages(researchMaxPages)
+                .chatToolsMaxRounds(chatToolsMaxRounds)
+                .contextMaxSources(contextMaxSources)
+                .retrievalMaxResults(retrievalMaxResults)
+                .contextMaxTokens(contextMaxTokens)
                 .modelSelections(modelSelections)
                 .localModelRoot(localModelRoot);
     }
@@ -360,6 +372,26 @@ public final class SettingsForm {
         return researchMaxPages;
     }
 
+    /** Werkzeugrunden je Antwort im normalen Chat ({@code chat.tools.maxRounds}, 1–32). */
+    public String chatToolsMaxRounds() {
+        return chatToolsMaxRounds;
+    }
+
+    /** Suchauszüge im RAG-Kontext einer normalen Chat-Antwort ({@code context.maxSources}). */
+    public String contextMaxSources() {
+        return contextMaxSources;
+    }
+
+    /** Fusionierte Suchtreffer vor dem Kontextaufbau ({@code retrieval.maxResults}). */
+    public String retrievalMaxResults() {
+        return retrievalMaxResults;
+    }
+
+    /** Token-Budget des RAG-Kontextblocks ({@code context.maxTokens}). */
+    public String contextMaxTokens() {
+        return contextMaxTokens;
+    }
+
     /**
      * Modellauswahl der Kategorien ohne eigenes Feld (Schlüssel = Kategorieschlüssel wie {@code rerank},
      * {@code tts}; Wert {@code [<katalog>:]<modell>}). Chat und Embeddings stehen in {@link #chatModel()} und
@@ -430,6 +462,10 @@ public final class SettingsForm {
         private String agentArgs = "";
         private String agentRequestTimeoutSeconds = "30";
         private String researchMaxPages = "4";
+        private String chatToolsMaxRounds = "8";
+        private String contextMaxSources = "6";
+        private String retrievalMaxResults = "10";
+        private String contextMaxTokens = "1500";
         private final Map<String, String> modelSelections = new LinkedHashMap<String, String>();
         private String localModelRoot = "";
 
@@ -644,6 +680,26 @@ public final class SettingsForm {
 
         public Builder researchMaxPages(String value) {
             this.researchMaxPages = text(value);
+            return this;
+        }
+
+        public Builder chatToolsMaxRounds(String value) {
+            this.chatToolsMaxRounds = text(value);
+            return this;
+        }
+
+        public Builder contextMaxSources(String value) {
+            this.contextMaxSources = text(value);
+            return this;
+        }
+
+        public Builder retrievalMaxResults(String value) {
+            this.retrievalMaxResults = text(value);
+            return this;
+        }
+
+        public Builder contextMaxTokens(String value) {
+            this.contextMaxTokens = text(value);
             return this;
         }
 

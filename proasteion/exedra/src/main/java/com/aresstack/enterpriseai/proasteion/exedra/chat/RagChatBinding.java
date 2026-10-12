@@ -19,7 +19,9 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeAcquisition;
 import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeQuestion;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolCapabilities;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
+import com.aresstack.enterpriseai.astu.acropolis.rag.ConversationKnowledgeContext;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatTurn;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagOptions;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagSource;
@@ -48,6 +50,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -106,6 +109,9 @@ public final class RagChatBinding implements ChatShellActions {
 
     private static final Logger LOG = Logger.getLogger(RagChatBinding.class.getName());
 
+    /** Der Wissenskontext des vorigen Turns beantwortet die Frage; {@code %d} = Zahl der Quellen. */
+    static final String REUSING_SOURCES_ACTIVITY = "Vorhandene Quellen werden verwendet (%d aus dem vorherigen Turn) …";
+    static final String REUSE_INSUFFICIENT_ACTIVITY = "Vorhandene Quellen reichen nicht aus, gezielte Nachrecherche …";
     static final String SEND_REJECTED = "Die Nachricht konnte nicht gesendet werden.";
     static final String RETRIEVAL_FAILED_NOTICE =
             "Die Wissenssuche ist ausgefallen. Die Antwort entstand ohne Kontext aus der Wissensbasis.";
@@ -423,7 +429,7 @@ public final class RagChatBinding implements ChatShellActions {
                             via = new ChatCompletionsToolLoop(support.chat(),
                                     new ToolRegistry(available, support::isEnabled), support.loopExecutor(),
                                     activity(listener, request, conversation, support, chatPages),
-                                    ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
+                                    support.maxRounds());
                             if (capabilityQuestion) {
                                 via = new FixedAnswerPort(ToolCapabilities.answer(definitions(available, support),
                                         chatOptions == null ? null : chatOptions.model()));
@@ -568,6 +574,24 @@ public final class RagChatBinding implements ChatShellActions {
         };
     }
 
+    /** Der zuletzt verwendete Wissenskontext der Unterhaltung (für die Chat-Historie). */
+    ConversationKnowledgeContext knowledgeContext(ChatConversationId conversation) {
+        return rag.knowledgeContext(conversation);
+    }
+
+    /**
+     * Stellt den Wissenskontext eines geöffneten Chats aus seinen gespeicherten Chunk-IDs wieder her (Indexzugriff auf
+     * dem Arbeits-Executor).
+     */
+    void restoreKnowledgeContext(final ChatConversationId conversation, final List<String> queries,
+                                 final List<KnowledgeChunkId> chunkIds) {
+        try {
+            workExecutor.execute(() -> rag.restoreKnowledgeContext(conversation, queries, chunkIds));
+        } catch (RuntimeException rejected) {
+            // Ohne Arbeits-Thread sucht die nächste Frage eben neu.
+        }
+    }
+
     /** Überschrift der Werkzeugwolke. */
     static String toolTitle(String toolName) {
         return ReadAttachmentTool.NAME.equals(toolName) ? READING_ACTIVITY
@@ -685,6 +709,16 @@ public final class RagChatBinding implements ChatShellActions {
             }
 
             @Override
+            public void reusingSources(final int sources) {
+                card(card -> card.step(String.format(Locale.ROOT, REUSING_SOURCES_ACTIVITY, sources)));
+            }
+
+            @Override
+            public void reuseInsufficient(String query, int sources) {
+                card(card -> card.step(REUSE_INSUFFICIENT_ACTIVITY));
+            }
+
+            @Override
             public void contextReady(final int sources) {
                 card(card -> card.contextReady(sources));
             }
@@ -711,6 +745,10 @@ public final class RagChatBinding implements ChatShellActions {
         if (history != null && !ragTurn.queries().isEmpty()) {
             // Diagnose (Chat-Export): Vorabsuche und Nachsuchen des Clients stehen vor den Werkzeugaufrufen des Modells.
             history.searchesTraced(conversation, request.answer, ragTurn.queries(), ragTurn.hitCounts());
+        }
+        if (history != null && ragTurn.retrievalRequested()) {
+            // Der Wissenskontext steht vor der Antwort fest und bleibt, auch wenn die Antwort scheitert.
+            history.knowledgeContextChanged(conversation);
         }
         if (!request.answer.hasSources()) {
             model.attachSources(request.answer, describe(ragTurn.sources()));

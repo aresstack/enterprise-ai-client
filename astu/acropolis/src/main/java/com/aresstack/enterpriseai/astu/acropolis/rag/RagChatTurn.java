@@ -20,6 +20,7 @@ public final class RagChatTurn {
     private final boolean retrievalFailed;
     private final List<String> queries;
     private final List<Integer> hitCounts;
+    private final int reusedSources;
 
     RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
                 boolean retrievalFailed) {
@@ -29,6 +30,11 @@ public final class RagChatTurn {
 
     RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
                 boolean retrievalFailed, List<String> queries, List<Integer> hitCounts) {
+        this(turn, retrievalRequested, context, warnings, retrievalFailed, queries, hitCounts, 0);
+    }
+
+    RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
+                boolean retrievalFailed, List<String> queries, List<Integer> hitCounts, int reusedSources) {
         this.turn = turn;
         this.retrievalRequested = retrievalRequested;
         this.context = context;
@@ -36,6 +42,15 @@ public final class RagChatTurn {
         this.retrievalFailed = retrievalFailed;
         this.queries = Collections.unmodifiableList(new ArrayList<String>(queries));
         this.hitCounts = Collections.unmodifiableList(new ArrayList<Integer>(hitCounts));
+        this.reusedSources = reusedSources;
+    }
+
+    /**
+     * Auszüge aus dem Wissenskontext des vorigen Turns, mit denen dieser Turn ohne neue Suche antwortet; 0, wenn
+     * gesucht wurde.
+     */
+    public int reusedSources() {
+        return reusedSources;
     }
 
     /** Trefferzahl je Suchanfrage in der Reihenfolge von {@link #queries()}; -1, wenn die Suche ausfiel. */

@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalSettings;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechChunking;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.chat.openai.DeveloperRolePolicy;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
@@ -64,6 +65,14 @@ public final class AppConfigLoader {
     public static final String KNOWLEDGE_PREFETCH_CONCURRENCY_KEY = "knowledge.prefetch.concurrency";
     /** Vorladen: Größe des Speicher-Caches in MB (MainframeMate confluencePrefetchCacheMaxMb). */
     public static final String KNOWLEDGE_PREFETCH_CACHE_MB_KEY = "knowledge.prefetch.cacheMaxMb";
+    /** Werkzeugrunden je Antwort im normalen Chat (1–32, Standard 8), danach eine Abschlussrunde ohne Werkzeuge. */
+    public static final String CHAT_TOOLS_MAX_ROUNDS_KEY = "chat.tools.maxRounds";
+    /** Höchstzahl der Suchauszüge im RAG-Kontext einer normalen Chat-Antwort ({@link ContextSettings#maxSources()}). */
+    public static final String CONTEXT_MAX_SOURCES_KEY = "context.maxSources";
+    /** Token-Budget des RAG-Kontextblocks ({@link ContextSettings#maxContextTokens()}). */
+    public static final String CONTEXT_MAX_TOKENS_KEY = "context.maxTokens";
+    /** Höchstzahl der fusionierten Suchtreffer vor dem Kontextaufbau ({@link RetrievalSettings#maxResults()}). */
+    public static final String RETRIEVAL_MAX_RESULTS_KEY = "retrieval.maxResults";
     /** Sprache des Satzmodells (OpenNLP) für die Passagenbildung beim Indexieren: de oder en. */
     public static final String KNOWLEDGE_PASSAGE_LANGUAGE_KEY = "knowledge.passages.language";
 
@@ -235,7 +244,11 @@ public final class AppConfigLoader {
             return null;
         }
         boolean tools = r.bool("chat.tools.enabled", false);
-        return new ChatConfig(baseUrl, model, apiKeyRef, systemPrompt, connect, read, policy, defaults, tools);
+        // Kein 0 = unbegrenzt: ein Modell, das immer weiter Werkzeuge verlangt, hinge sonst endlos.
+        int maxToolRounds = r.integer(CHAT_TOOLS_MAX_ROUNDS_KEY, ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS,
+                ChatCompletionsToolLoop.MIN_MAX_ROUNDS, ChatCompletionsToolLoop.MAX_MAX_ROUNDS);
+        return new ChatConfig(baseUrl, model, apiKeyRef, systemPrompt, connect, read, policy, defaults, tools,
+                maxToolRounds);
     }
 
     /**
@@ -338,7 +351,7 @@ public final class AppConfigLoader {
                     .keywordWeight(r.decimal("retrieval.keywordWeight", 1.0, 0.0, 1000.0))
                     .semanticWeight(r.decimal("retrieval.semanticWeight", 1.0, 0.0, 1000.0))
                     .rankConstant(r.integer("retrieval.rankConstant", RetrievalSettings.DEFAULT_RANK_CONSTANT, 1, 100000))
-                    .maxResults(r.integer("retrieval.maxResults", RetrievalSettings.DEFAULT_MAX_RESULTS, 1,
+                    .maxResults(r.integer(RETRIEVAL_MAX_RESULTS_KEY, RetrievalSettings.DEFAULT_MAX_RESULTS, 1,
                             RetrievalSettings.MAX_CANDIDATES))
                     .minSemanticScore(r.decimal("retrieval.minSemanticScore", -1.0, -1.0, 1.0))
                     .relationsEnabled(r.bool("retrieval.relations.enabled", true))
@@ -358,9 +371,9 @@ public final class AppConfigLoader {
         ContextSettings context;
         try {
             context = ContextSettings.defaults()
-                    .withMaxContextTokens(r.integer("context.maxTokens", ContextSettings.DEFAULT_MAX_CONTEXT_TOKENS, 1,
+                    .withMaxContextTokens(r.integer(CONTEXT_MAX_TOKENS_KEY, ContextSettings.DEFAULT_MAX_CONTEXT_TOKENS, 1,
                             1000000))
-                    .withMaxSources(r.integer("context.maxSources", ContextSettings.DEFAULT_MAX_SOURCES, 1, 1000));
+                    .withMaxSources(r.integer(CONTEXT_MAX_SOURCES_KEY, ContextSettings.DEFAULT_MAX_SOURCES, 1, 1000));
             String instruction = r.text("context.instruction", null);
             if (instruction != null) {
                 context = context.withInstruction(instruction);

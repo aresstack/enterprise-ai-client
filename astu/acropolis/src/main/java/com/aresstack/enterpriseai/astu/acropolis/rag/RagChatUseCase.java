@@ -8,12 +8,15 @@ import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Use Case "Chatten mit Wissen" (RAG): legt vor einen normalen Chat-Turn optional Retrieval und Kontextaufbau.
@@ -27,6 +30,11 @@ import java.util.Set;
  *   <li><b>Nachrecherche</b> ({@link FollowUpResearch}, wenn eingeschaltet): reicht der Kontext für die
  *       Nachricht samt Verlauf nicht, wird mit einer genaueren Anfrage erneut gesucht (Live-Suche und Index), die
  *       neuen Treffer stehen vorn. Danach nennt der Kontext die Suchanfragen und verbietet die Bitte um Dateien.</li>
+ *   <li><b>Wissenskontext der Unterhaltung</b> (mit Nachrecherche): Die Treffer, die in den Kontextblock kamen, bleiben
+ *       je Konversation ({@link ConversationKnowledgeContext}), auch wenn die Antwort danach scheitert. Vor der
+ *       nächsten Suche prüft das Modell, ob sie die neue Nachricht schon beantworten; dann wird nicht gesucht. Sonst
+ *       folgt eine gezielte Nachsuche; zum Thema passende frühere Treffer bleiben hinter den neuen, bei Themenwechsel
+ *       fallen sie weg. {@code context.maxSources} und {@code context.maxTokens} gelten wie immer.</li>
  *   <li>Keine Treffer: Turn ohne Kontext, {@link RagChatTurn#sources()} ist leer.</li>
  *   <li>Retrieval ganz ausgefallen ({@link KnowledgeRetrievalException}): Turn ohne Kontext,
  *       {@link RagChatTurn#retrievalFailed()} ist gesetzt, damit die Oberfläche das anzeigen kann. Fällt nur ein
@@ -47,6 +55,9 @@ public final class RagChatUseCase {
     private final FollowUpResearch followUps;
     /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
     private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
+    /** Der zuletzt verwendete Wissenskontext je Konversation (nur mit Nachrecherche). */
+    private final Map<ChatConversationId, ConversationKnowledgeContext> contexts =
+            new ConcurrentHashMap<ChatConversationId, ConversationKnowledgeContext>();
 
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler) {
         this(chat, retrieval, assembler, RetrievalPreparation.none());
@@ -155,6 +166,30 @@ public final class RagChatUseCase {
                 ? chat.conversation(id).messages() : Collections.<ChatMessage>emptyList();
         int maxSearches = 1 + followUps.maxFollowUps();
         String query = userText;
+        // Erst der Wissenskontext früherer Nachrichten: beantwortet er die neue, wird nicht gesucht.
+        ConversationKnowledgeContext prior = followUps.isEnabled() ? contexts.get(id) : null;
+        List<String> priorQueries = Collections.emptyList();
+        int reused = 0;
+        if (prior != null && !prior.isEmpty()) {
+            FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, prior.queries(),
+                    assembler.assemble(prior.hits()).text(), options);
+            if (verdict.isSufficient()) {
+                hits = new ArrayList<RetrievedChunk>(prior.hits());
+                priorQueries = prior.queries();
+                reused = assembler.assemble(hits).sources().size();
+                query = null;
+                progress.reusingSources(reused);
+            } else if (verdict.isKnown()) {
+                if (verdict.isRelated()) {
+                    hits = new ArrayList<RetrievedChunk>(prior.hits());
+                    priorQueries = prior.queries();
+                }
+                if (verdict.query() != null) {
+                    query = verdict.query();
+                }
+                progress.reuseInsufficient(query, hits.size());
+            }
+        }
         while (query != null && !progress.isCancelled()) {
             queries.add(query);
             progress.searchStarted(query, queries.size(), maxSearches);
@@ -177,7 +212,7 @@ public final class RagChatUseCase {
             } catch (KnowledgeRetrievalException e) {
                 hitCounts.add(-1);
                 progress.searchFailed(query);
-                if (queries.size() == 1) {
+                if (queries.size() == 1 && hits.isEmpty()) {
                     warnings.addAll(e.warnings());
                     failed = true;
                 }
@@ -187,15 +222,66 @@ public final class RagChatUseCase {
                 break;
             }
             progress.contextCheckStarted();
-            query = followUps.nextQuery(chat, history, userText, queries, assembler.assemble(hits).text(),
-                    options);
+            query = followUps.nextQuery(chat, history, userText, all(priorQueries, queries),
+                    assembler.assemble(hits).text(), options);
         }
         PromptContext context = failed ? PromptContext.empty(0) : assembler.assemble(hits);
         progress.contextReady(context.sources().size());
-        String combined = join(join(context.text(), followUps.isEnabled() ? searchNote(queries) : null),
+        List<String> allQueries = all(priorQueries, queries);
+        if (followUps.isEnabled() && !context.sources().isEmpty()) {
+            // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
+            contexts.put(id, new ConversationKnowledgeContext(allQueries, accepted(hits, context)));
+        }
+        String combined = join(join(context.text(), followUps.isEnabled() ? searchNote(allQueries) : null),
                 extraContext);
         ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
-        return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts);
+        return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts, reused);
+    }
+
+    /**
+     * Der zuletzt verwendete Wissenskontext der Konversation (leer, wenn keiner), etwa zum Speichern mit dem Chat.
+     */
+    public ConversationKnowledgeContext knowledgeContext(ChatConversationId id) {
+        ConversationKnowledgeContext context = id == null ? null : contexts.get(id);
+        return context == null ? ConversationKnowledgeContext.empty() : context;
+    }
+
+    /**
+     * Setzt den Wissenskontext einer (geöffneten) Konversation aus gespeicherten Chunk-IDs: die Auszüge kommen aus dem
+     * Index, nicht aus der Chat-Datei. Fehlt dort alles, bleibt die Konversation ohne früheren Kontext.
+     */
+    public void restoreKnowledgeContext(ChatConversationId id, List<String> queries, List<KnowledgeChunkId> chunkIds) {
+        if (id == null) {
+            return;
+        }
+        List<RetrievedChunk> restored = retrieval.restore(chunkIds);
+        if (restored.isEmpty()) {
+            contexts.remove(id);
+        } else {
+            contexts.put(id, new ConversationKnowledgeContext(queries, restored));
+        }
+    }
+
+    /** Vergisst den Wissenskontext einer geschlossenen Konversation. */
+    public void forgetKnowledgeContext(ChatConversationId id) {
+        if (id != null) {
+            contexts.remove(id);
+        }
+    }
+
+    /** Die Treffer, die der Kontextblock aufnahm: er nimmt in Reihenfolge auf und bricht beim ersten ab. */
+    private static List<RetrievedChunk> accepted(List<RetrievedChunk> hits, PromptContext context) {
+        return new ArrayList<RetrievedChunk>(hits.subList(0, Math.min(hits.size(), context.sources().size())));
+    }
+
+    private static List<String> all(List<String> earlier, List<String> latest) {
+        List<String> all = new ArrayList<String>(earlier);
+        for (String query : latest) {
+            if (!all.contains(query)) {
+                all.add(query);
+            }
+        }
+        return all;
     }
 
     /** Die Treffer der neuesten Suche zuerst, danach die älteren, die sie nicht schon enthält. */

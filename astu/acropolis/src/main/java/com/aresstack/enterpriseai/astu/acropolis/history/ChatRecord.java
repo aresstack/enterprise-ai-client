@@ -16,6 +16,8 @@ public final class ChatRecord {
     private long createdAt;
     private long modifiedAt;
     private List<ChatMessageRecord> messages = new ArrayList<ChatMessageRecord>();
+    /** Der zuletzt verwendete Wissenskontext (nur Kennungen); {@code null} ohne oder bei älteren Chats. */
+    private KnowledgeContextRecord knowledgeContext;
 
     /** Für die Deserialisierung. */
     public ChatRecord() {
@@ -79,5 +81,14 @@ public final class ChatRecord {
             count += message.getAttachments().size();
         }
         return count;
+    }
+
+    /** Der zuletzt verwendete Wissenskontext; {@code null}, wenn keiner gespeichert ist. */
+    public KnowledgeContextRecord getKnowledgeContext() {
+        return knowledgeContext;
+    }
+
+    public void setKnowledgeContext(KnowledgeContextRecord knowledgeContext) {
+        this.knowledgeContext = knowledgeContext;
     }
 }

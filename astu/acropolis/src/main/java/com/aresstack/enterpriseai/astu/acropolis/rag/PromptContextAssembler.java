@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Baut aus fusionierten Treffern den Kontextblock für den Prompt. Treffer werden in Fusionsreihenfolge
@@ -34,14 +35,32 @@ public final class PromptContextAssembler {
     static final String BEGIN = "--- KONTEXT ---";
     static final String END = "--- ENDE KONTEXT ---";
 
-    private final ContextSettings settings;
+    private final Supplier<ContextSettings> settings;
 
     public PromptContextAssembler(ContextSettings settings) {
-        this.settings = settings == null ? ContextSettings.defaults() : settings;
+        final ContextSettings fixed = settings == null ? ContextSettings.defaults() : settings;
+        this.settings = () -> fixed;
     }
 
+    private PromptContextAssembler(Supplier<ContextSettings> settings) {
+        this.settings = settings;
+    }
+
+    /**
+     * Mit Einstellungen, die ohne Neustart gelten: {@code settings} wird je {@link #assemble} gelesen; liefert er
+     * {@code null}, gelten die Standardwerte.
+     */
+    public static PromptContextAssembler live(Supplier<ContextSettings> settings) {
+        if (settings == null) {
+            throw new IllegalArgumentException("settings must not be null");
+        }
+        return new PromptContextAssembler(settings);
+    }
+
+    /** Die Einstellungen von jetzt. */
     public ContextSettings settings() {
-        return settings;
+        ContextSettings current = settings.get();
+        return current == null ? ContextSettings.defaults() : current;
     }
 
     /**
@@ -52,6 +71,7 @@ public final class PromptContextAssembler {
         if (hits == null || hits.isEmpty()) {
             return PromptContext.empty(0);
         }
+        ContextSettings settings = settings();
         String head = settings.instruction().isEmpty() ? BEGIN : settings.instruction() + "\n\n" + BEGIN;
         StringBuilder entries = new StringBuilder();
         List<RagSource> sources = new ArrayList<RagSource>();

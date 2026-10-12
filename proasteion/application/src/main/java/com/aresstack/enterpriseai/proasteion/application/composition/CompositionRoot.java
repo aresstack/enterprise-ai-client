@@ -152,11 +152,12 @@ public final class CompositionRoot {
         this.chatService = new ChatService(ports.chat(), config.chat().defaultOptions());
         // Die Embedding-Welt als Funktion: ein anderes Embedding-Modell gilt ohne Neustart (eigener Namensraum).
         // Nachbarschaft (ähnliche Absätze, Nachbarabsätze, Abschnitt, Elternseite) aus dem Index abgeleitet;
-        // Schwelle und Anzahl gelten ohne Neustart.
+        // Schwelle, Anzahl und retrieval.maxResults gelten ohne Neustart.
         this.retrieval = new RetrieveKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
                 knowledge.retrieval()).withRelations(new IndexKnowledgeRelations(ports.index()),
                 settings.get(c -> c.knowledge().retrieval())).withObserver(new LoggingRetrievalObserver());
-        this.contextAssembler = new PromptContextAssembler(knowledge.context());
+        // Quellen- und Token-Budget des Antwortkontexts gelten ohne Neustart ab dem nächsten Turn.
+        this.contextAssembler = PromptContextAssembler.live(settings.get(c -> c.knowledge().context()));
         // Indexiert wird wie askai arch in semantische Passagen: Struktur zuerst, Satzgrenzen aus dem OpenNLP-Modell
         // der eingestellten Sprache, Themenwechsel über Satzfenster, eigenes Embedding je Passage. Ändert sich Text,
         // Zerlegung oder Embedding-Modell, wird neu verarbeitet, sonst nicht.

@@ -4,6 +4,9 @@ import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalSettings;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 
@@ -143,6 +146,14 @@ public final class SettingsMapper {
         b.agentRequestTimeoutSeconds(text(p, KEY_AGENT_TIMEOUT, "30"));
         b.researchMaxPages(text(p, KEY_RESEARCH_MAX_PAGES, text(p, KEY_LEGACY_TOOLS_MAX_PAGES,
                 String.valueOf(AgentConfig.DEFAULT_RESEARCH_MAX_PAGES))));
+        b.chatToolsMaxRounds(text(p, AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY,
+                String.valueOf(ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS)));
+        b.contextMaxSources(text(p, AppConfigLoader.CONTEXT_MAX_SOURCES_KEY,
+                String.valueOf(ContextSettings.DEFAULT_MAX_SOURCES)));
+        b.retrievalMaxResults(text(p, AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY,
+                String.valueOf(RetrievalSettings.DEFAULT_MAX_RESULTS)));
+        b.contextMaxTokens(text(p, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY,
+                String.valueOf(ContextSettings.DEFAULT_MAX_CONTEXT_TOKENS)));
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 b.modelSelection(category.key(), text(p, ModelsConfig.keyOf(category), ""));
@@ -207,6 +218,12 @@ public final class SettingsMapper {
         // beim Laden übernommen und verschwindet beim Speichern (removals), damit es den Wert nie überdeckt.
         put(set, KEY_RESEARCH_MAX_PAGES, String.valueOf(AgentConfig.DEFAULT_RESEARCH_MAX_PAGES)
                 .equals(form.researchMaxPages().trim()) ? "" : form.researchMaxPages().trim());
+        // Werkzeugrunden und RAG-Limits des normalen Chats: der Wert bleibt in der Datei, wie er gespeichert wurde
+        // (die Vorlage nennt retrieval.maxResults und context.* ausdrücklich); leer heißt Standard.
+        put(set, AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY, form.chatToolsMaxRounds());
+        put(set, AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY, form.retrievalMaxResults());
+        put(set, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY, form.contextMaxTokens());
+        put(set, AppConfigLoader.CONTEXT_MAX_SOURCES_KEY, form.contextMaxSources());
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 put(set, ModelsConfig.keyOf(category), form.modelSelection(category.key()));
@@ -345,6 +362,14 @@ public final class SettingsMapper {
                 return "Agent-Timeout";
             case KEY_RESEARCH_MAX_PAGES:
                 return "Recherche-Budget (Seiten)";
+            case AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY:
+                return "Max. Werkzeugrunden";
+            case AppConfigLoader.CONTEXT_MAX_SOURCES_KEY:
+                return "Max. Quellen im Antwortkontext";
+            case AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY:
+                return "Max. Retrieval-Treffer";
+            case AppConfigLoader.CONTEXT_MAX_TOKENS_KEY:
+                return "Kontextbudget (Tokens)";
             default:
                 return key;
         }

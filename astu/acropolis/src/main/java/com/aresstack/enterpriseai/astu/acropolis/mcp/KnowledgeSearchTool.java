@@ -85,7 +85,7 @@ final class KnowledgeSearchTool implements McpToolHandler {
             return McpToolResult.error("limit must be at least 1 — example: query=\"" + ToolText.oneLine(query, 80)
                     + "\", limit=4");
         }
-        int limit = (int) Math.min(requested, Math.max(1, retrieval.settings().maxResults()));
+        int limit = (int) Math.min(requested, Math.max(1, retrieval.maxResults()));
         String text = query.trim();
         // Die Quellen von jetzt (auch zur Laufzeit hinzugefügte), davon nur die angehakten: abgewählte werden
         // weder live gefragt noch im Index durchsucht.

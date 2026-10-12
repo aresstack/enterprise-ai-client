@@ -37,10 +37,11 @@ public final class ChatConfig {
     private final DeveloperRolePolicy developerRolePolicy;
     private final ChatOptions defaultOptions;
     private final boolean toolsEnabled;
+    private final int maxToolRounds;
 
     ChatConfig(URI baseUrl, String model, SecretRef apiKeyRef, String systemPrompt, int connectTimeoutMillis,
                int readTimeoutMillis, DeveloperRolePolicy developerRolePolicy, ChatOptions defaultOptions,
-               boolean toolsEnabled) {
+               boolean toolsEnabled, int maxToolRounds) {
         this.baseUrl = baseUrl;
         this.model = model;
         this.apiKeyRef = apiKeyRef;
@@ -50,6 +51,7 @@ public final class ChatConfig {
         this.developerRolePolicy = developerRolePolicy;
         this.defaultOptions = defaultOptions;
         this.toolsEnabled = toolsEnabled;
+        this.maxToolRounds = maxToolRounds;
     }
 
     /** Basis der API, z. B. {@code https://ki.intern.example/v1}; der Adapter hängt {@code chat/completions} an. */
@@ -96,11 +98,19 @@ public final class ChatConfig {
         return toolsEnabled;
     }
 
+    /**
+     * {@code chat.tools.maxRounds} (1–32, Standard 8): Werkzeugrunden je Antwort im normalen Chat; danach antwortet
+     * das Modell in einer Abschlussrunde ohne Werkzeuge aus den bisherigen Ergebnissen.
+     */
+    public int maxToolRounds() {
+        return maxToolRounds;
+    }
+
     @Override
     public String toString() {
         return "ChatConfig[baseUrl=" + baseUrl + ", model=" + model + ", apiKeyRef="
                 + (apiKeyRef == null ? "keine" : apiKeyRef) + ", systemPrompt="
                 + (systemPrompt == null ? "keiner" : systemPrompt.length() + " Zeichen") + ", developerRolePolicy="
-                + developerRolePolicy + ", toolsEnabled=" + toolsEnabled + "]";
+                + developerRolePolicy + ", toolsEnabled=" + toolsEnabled + ", maxToolRounds=" + maxToolRounds + "]";
     }
 }
