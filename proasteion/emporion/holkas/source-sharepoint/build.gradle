@@ -1,0 +1,13 @@
+description = 'Adapter: SharePoint-Dokumentbibliotheken als Knowledge Source (REST-API). Anmeldung über eine Brücke der Composition Root, Extraktion über den Port deigma.'
+
+dependencies {
+    api project(':source-api')
+    // Proxy-Route je Ziel (Port); die Umsetzung liefert die Composition Root.
+    api project(':proasteion:platform:network')
+    api project(':proasteion:emporion:deigma')
+
+    // Adapter-intern: JSON der SharePoint-REST-API.
+    implementation libs.gson
+
+    testImplementation testFixtures(project(':source-api'))
+}

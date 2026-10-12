@@ -18,7 +18,9 @@ import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
 import com.aresstack.enterpriseai.proasteion.application.security.ClientCertificateFactory;
 import com.aresstack.enterpriseai.proasteion.application.security.FilePairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedBearerTokenSource;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedBetaViewCredentialsProvider;
 import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedMediaWikiCredentialsProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedSharePointCredentialsProvider;
 import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.proasteion.application.security.UnavailableSecretProvider;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalog;
@@ -48,6 +50,8 @@ import com.aresstack.enterpriseai.proasteion.emporion.holkas.localfiles.LocalFil
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.NdvSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.outlook.OutlookSourceProvider;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.betaview.BetaViewSourceProvider;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.sharepoint.SharePointSourceProvider;
 
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -344,6 +348,13 @@ public final class AdapterAssembly {
         providers.add(new NdvSourceProvider(secrets));
         providers.add(new JesSourceProvider(secrets));
         providers.add(new OutlookSourceProvider());
+        // Anmeldung wie MediaWiki: die Quellen sehen nur ihren Credential-Callback, KeePass liest die Brücke.
+        providers.add(new SharePointSourceProvider(ref -> new SecretBackedSharePointCredentialsProvider(secrets, ref),
+                network.routes(), network.tls(), network.current().userAgent(),
+                DocumentExtraction.detector(), DocumentExtraction.registry()));
+        providers.add(new BetaViewSourceProvider(ref -> new SecretBackedBetaViewCredentialsProvider(secrets, ref),
+                network.routes(), network.tls(), network.current().userAgent(),
+                DocumentExtraction.detector(), DocumentExtraction.registry()));
         return providers;
     }
 

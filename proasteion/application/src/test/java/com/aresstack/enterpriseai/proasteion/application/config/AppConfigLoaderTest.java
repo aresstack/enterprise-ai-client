@@ -66,7 +66,7 @@ public class AppConfigLoaderTest {
         Properties p = new Properties();
         p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
         AppConfig config = AppConfigLoader.fromProperties(p);
-        assertEquals(7, config.sources().size());
+        assertEquals(9, config.sources().size());
         assertEquals("mediawiki", config.sources().get(0).typeId());
         assertEquals("confluence", config.sources().get(1).typeId());
         assertEquals("files", config.sources().get(2).typeId());
@@ -74,6 +74,8 @@ public class AppConfigLoaderTest {
         assertEquals("ndv", config.sources().get(4).typeId());
         assertEquals("jes", config.sources().get(5).typeId());
         assertEquals("outlook", config.sources().get(6).typeId());
+        assertEquals("sharepoint", config.sources().get(7).typeId());
+        assertEquals("betaview", config.sources().get(8).typeId());
         assertEquals("keine Warnungen erwartet: " + config.warnings(), 0, config.warnings().size());
     }
 

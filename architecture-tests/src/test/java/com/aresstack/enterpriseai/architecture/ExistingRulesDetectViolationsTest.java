@@ -202,7 +202,7 @@ public class ExistingRulesDetectViolationsTest {
     @Test
     public void unknownAllowedDependencyIsDetected() {
         ExistingRuleProbe.assertRuleFails(ModuleRegistryTest.class, "allowedDependenciesReferToRegisteredModules",
-                withAllowedDependencies("chat-api", "astu", "source-sharepoint"), "source-sharepoint");
+                withAllowedDependencies("chat-api", "astu", "source-gopher"), "source-gopher");
     }
 
     @Test

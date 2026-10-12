@@ -85,6 +85,12 @@ final class ModuleRegistry {
                 // Outlook-Postfachdateien (PST/OST): java-libpst adapterintern, Auswahl aus MainframeMate.
                 .module("source-outlook", "proasteion.emporion.holkas.outlook", ModuleKind.ADAPTER, "Quellen",
                         "astu", "source-api")
+                // SharePoint (REST) und BetaView (Weboberfläche aus MainframeMate): Anmeldung wie MediaWiki über einen
+                // Credential-Callback der Composition Root, ohne adyton; Extraktion über deigma.
+                .module("source-sharepoint", "proasteion.emporion.holkas.sharepoint", ModuleKind.ADAPTER, "Quellen",
+                        "astu", "source-api", "network", "deigma")
+                .module("source-betaview", "proasteion.emporion.holkas.betaview", ModuleKind.ADAPTER, "Quellen",
+                        "astu", "source-api", "network", "deigma")
 
                 // Ressourcenschicht aus corenth: AcquisitionPort und Bronze-Typen (Port), Holkas-Connectoren über
                 // den Quellen-Ports (äußerer Adapterring, keine UI-API).
@@ -175,7 +181,7 @@ final class ModuleRegistry {
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "deigma", "document-tika", "source-localfiles", "tamias",
                         "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
-                        "source-ndv", "source-outlook", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
+                        "source-ndv", "source-outlook", "source-sharepoint", "source-betaview", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",
                         "research-api", "research-scope", "research-store", "research-agent-runtime",
                         "research-concept", "research-agent-acp")

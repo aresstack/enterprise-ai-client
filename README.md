@@ -155,6 +155,8 @@ Code. Die vollständigen Regeln prüft `./gradlew :architecture-tests:test`.
 | KeePassRPC, Pairing, Secret-Referenzen | [docs/konfiguration-keepass.md](docs/konfiguration-keepass.md) |
 | MediaWiki als Wissensquelle | [docs/konfiguration-mediawiki.md](docs/konfiguration-mediawiki.md) |
 | Confluence Data Center als Wissensquelle | [docs/konfiguration-confluence.md](docs/konfiguration-confluence.md) |
+| SharePoint-Dokumentbibliotheken als Wissensquelle | [docs/konfiguration-sharepoint.md](docs/konfiguration-sharepoint.md) |
+| BetaView-Dokumentarchiv als Wissensquelle | [docs/konfiguration-betaview.md](docs/konfiguration-betaview.md) |
 | Indexierung, hybride Suche, Kontext, „Der Index führt“ | [docs/rag-datenfluss.md](docs/rag-datenfluss.md) |
 | Agent-Modus über ACP | [docs/acp.md](docs/acp.md) |
 | Wissenswerkzeuge über MCP | [docs/mcp.md](docs/mcp.md) |

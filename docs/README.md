@@ -14,6 +14,8 @@ ARCHITECTURE.md.
 | [KeePass-Konfiguration](konfiguration-keepass.md) | KeePassRPC, Pairing, Secret-Referenzen, Betrieb ohne KeePass |
 | [MediaWiki-Konfiguration](konfiguration-mediawiki.md) | Wiki als Wissensquelle: Startseiten, Crawl, Login |
 | [Confluence-Konfiguration](konfiguration-confluence.md) | Confluence Data Center als Wissensquelle, Zugangsdaten, mTLS |
+| [SharePoint-Konfiguration](konfiguration-sharepoint.md) | Dokumentbibliotheken einer SharePoint-Site über die REST-API |
+| [BetaView-Konfiguration](konfiguration-betaview.md) | BetaView-Dokumentarchiv: Ergebnisliste eines Favoriten |
 | [RAG-Datenfluss](rag-datenfluss.md) | Indexierung, hybride Suche, Kontextaufbau, "Der Index führt" |
 | [ACP](acp.md) | Agent Client Protocol: Agent-Modus, Module, Lebenszyklus, Demo-Agent |
 | [MCP](mcp.md) | Model Context Protocol: Endpoints, Tokens, Wissenswerkzeuge, Sicherheitsregeln |
