@@ -200,7 +200,8 @@ public class ApplicationCompositionTest {
         for (McpToolContribution tool : root.agentTools()) {
             names.add(tool.getName());
         }
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ), names);
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), names);
         assertEquals(3, root.knowledgeTools().settings().defaultMaxResults());
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
         final CompositionRoot composed = root;
@@ -252,7 +253,8 @@ public class ApplicationCompositionTest {
         for (AiTool tool : root.knowledgeChatTools()) {
             chat.add(tool.name());
         }
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ), chat);
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), chat);
     }
 
     @Test
@@ -266,8 +268,10 @@ public class ApplicationCompositionTest {
                 System::currentTimeMillis, ZoneId.of("Europe/Berlin"));
 
         // Abgeschaltet: weder Chat noch Agent bekommen es, die Registry zeigt es weiter (als aus).
-        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_READ), names(root.agentTools()));
-        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_READ), chatNames(root.knowledgeChatTools()));
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), names(root.agentTools()));
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), chatNames(root.knowledgeChatTools()));
         assertFalse(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
         assertTrue(root.toolCatalog().isEnabled(SearchAttachmentTool.NAME));
         Map<String, ToolOverviewEntry> shown = new LinkedHashMap<String, ToolOverviewEntry>();
@@ -282,16 +286,20 @@ public class ApplicationCompositionTest {
         // knowledge_read zusätzlich aus, knowledge_search wieder an: gilt nach dem Neuladen, ohne neue Komposition.
         file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_READ);
         settings.reload();
-        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_SEARCH), names(root.agentTools()));
-        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_SEARCH),
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), names(root.agentTools()));
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
                 chatNames(root.knowledgeChatTools()));
         assertTrue(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
 
         file.get().remove("tools.disabled");
         settings.reload();
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ),
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
                 names(root.agentTools()));
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ),
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
                 chatNames(root.knowledgeChatTools()));
     }
 

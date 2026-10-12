@@ -73,18 +73,21 @@ public class AgentToolSettingsTest {
         try {
             root.agentService().send("Hallo", new SilentTurn());
             awaitPublished(1);
-            assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ),
+            assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
                     last());
 
             file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_SEARCH);
             settings.reload();
-            assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_READ), last());
+            assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS), last());
 
             int before = published.size();
             file.get().remove("tools.disabled");
             settings.reload();
             assertTrue("neu veröffentlicht", published.size() > before);
-            assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ),
+            assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS),
                     last());
         } finally {
             root.agentService().close();
