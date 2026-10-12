@@ -17,6 +17,8 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeAcquisition;
 import com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeQuestion;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolCapabilities;
+import com.aresstack.enterpriseai.chat.api.ToolDefinition;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagOptions;
@@ -338,14 +340,18 @@ public final class RagChatBinding implements ChatShellActions {
                 && (ragOptions.isEnabled() || !chatPages.isEmpty());
         final boolean toolPath = tools != null && (tools.alwaysOn() || conversationHasAttachments
                 || !newFiles.isEmpty() || !chatPages.isEmpty() || knowledgeTools);
-        // Angehakte Quellen heißen „verfügbar“, nicht „bei jeder Nachricht suchen“: Small Talk sucht nie; hat das
-        // Modell knowledge_search, sucht es selbst und vorab nur bei einer erkennbaren Wissensfrage.
+        // Angehakte Quellen heißen „verfügbar“, nicht „bei jeder Nachricht suchen“: Small Talk und Fragen nach dem
+        // Assistenten selbst suchen nie; hat das Modell knowledge_search, sucht es selbst und vorab nur bei einer
+        // erkennbaren Wissensfrage.
         if (ragOptions.isEnabled() && !KnowledgeQuestion.wantsRetrieval(text,
                 knowledgeTools && tools.knowledgeTool(KnowledgeMcpTools.KNOWLEDGE_SEARCH) != null)) {
             ragOptions = RagOptions.disabled();
         }
+        // Eine Frage nach den eigenen Werkzeugen beantwortet das Modell aus dem, was dieser Turn tatsächlich anbietet.
+        final boolean capabilityQuestion = KnowledgeQuestion.isAssistantCapability(text);
         if (!ragOptions.isEnabled() && !toolPath) {
-            startWithoutRetrieval(text, listener);
+            startWithoutRetrieval(text, listener, capabilityQuestion
+                    ? ToolCapabilities.context(Collections.<ToolDefinition>emptyList(), chatModel) : null);
             return;
         }
         final RagOptions options = ragOptions;
@@ -384,7 +390,6 @@ public final class RagChatBinding implements ChatShellActions {
                             }
                             AttachmentTools attachments = new AttachmentTools(support.store(), support.extractor(),
                                     conversation);
-                            extraContext = join(attachments.context(), ChatBookmark.context(chatPages));
                             List<AiTool> available = new ArrayList<AiTool>();
                             // Nur aktive Werkzeuge (Reiter „Tools“); abgeschaltete bleiben registriert.
                             for (String name : new String[]{ReadAttachmentTool.NAME, SearchAttachmentTool.NAME}) {
@@ -394,6 +399,11 @@ public final class RagChatBinding implements ChatShellActions {
                             }
                             if (knowledgeTools) {
                                 available.addAll(support.knowledgeTools());
+                            }
+                            extraContext = join(attachments.context(), ChatBookmark.context(chatPages));
+                            if (capabilityQuestion) {
+                                extraContext = join(extraContext, ToolCapabilities.context(definitions(available,
+                                        support), chatOptions == null ? null : chatOptions.model()));
                             }
                             // Wer während der Runde ein Werkzeug abschaltet (Reiter „Tools“), nimmt es ab dem
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
@@ -433,6 +443,17 @@ public final class RagChatBinding implements ChatShellActions {
         }
     }
 
+    /** Die Definitionen der Werkzeuge, die gerade aktiv sind (wie sie die Werkzeug-Schleife anbietet). */
+    private static List<ToolDefinition> definitions(List<AiTool> available, ToolSupport support) {
+        List<ToolDefinition> definitions = new ArrayList<ToolDefinition>(available.size());
+        for (AiTool tool : available) {
+            if (support.isEnabled(tool.name())) {
+                definitions.add(tool.definition());
+            }
+        }
+        return definitions;
+    }
+
     /** Zwei System-Anteile hintereinander; {@code null}, wenn beide fehlen. */
     private static String join(String first, String second) {
         if (first == null) {
@@ -453,9 +474,10 @@ public final class RagChatBinding implements ChatShellActions {
     }
 
     /** RAG aus: der bisherige Weg, synchron gestartet wie in {@link ChatServiceBinding}. */
-    private void startWithoutRetrieval(String text, TurnListener listener) {
+    private void startWithoutRetrieval(String text, TurnListener listener, String context) {
         try {
-            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener).turn();
+            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener, context,
+                    null).turn();
             if (!turn.isDone()) {
                 runningTurn = turn;
             }

@@ -540,6 +540,125 @@ public class RagChatBindingTest {
         assertEquals("die Frage wurde vorab gesucht", 1, failing.calls.get());
     }
 
+    /**
+     * Realfehler: „Kannst Du auch Recherchieren? Hast Du MCP Tools? Welche?“ löste die Vorabsuche aus, und Seiten
+     * über Recherche-Rollen und Werkzeuge eines Fachsystems landeten als Kontext im Prompt. Eine Frage nach dem
+     * Assistenten selbst sucht nicht und bekommt stattdessen genau die Werkzeuge dieses Turns genannt; abgeschaltete
+     * fehlen.
+     */
+    @Test
+    public void capabilityQuestionDoesNotSearchAndNamesOnlyTheOfferedTools() throws Exception {
+        final CountingEmbeddings counting = new CountingEmbeddings(embeddings);
+        final InMemoryKnowledgeSource wiki = indexCapabilityTraps(counting);
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(wiki.sourceId(), true);
+        final Fixture fixture = fixture(index, counting, selection);
+        final List<String> searches = new ArrayList<String>();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.enableTools(new ToolSupport(port, new FileAttachmentStore(folder.getRoot().toPath()),
+                        (name, content) -> "", () -> java.util.Arrays.asList(
+                                recordingTool("knowledge_search", searches, ""),
+                                recordingTool(ChatBookmark.READ_TOOL, new ArrayList<String>(), "")),
+                        name -> !"search_attachment".equals(name), false));
+            }
+        });
+        counting.calls.set(0);
+        port.enqueueAnswer("Ich habe knowledge_search, knowledge_read und read_attachment.");
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Kannst Du auch Recherchieren? Hast Du MCP Tools? Welche?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+
+        assertEquals("keine Vorabsuche", 0, counting.calls.get());
+        assertTrue(searches.isEmpty());
+        List<TranscriptEntry> entries = entries(fixture.model);
+        assertEquals("keine Hinweiszeile", 2, entries.size());
+        assertFalse("keine Quellen", entries.get(1).hasSources());
+        String system = port.lastRequest().messages().get(0).content();
+        assertFalse(system, system.contains("KONTEXT"));
+        assertFalse(system, system.contains("IAR"));
+        assertTrue(system, system.contains("In diesem Turn verfügbare Werkzeuge:"));
+        List<String> offered = toolNames(port.lastRequest());
+        assertEquals(java.util.Arrays.asList("read_attachment", "knowledge_search", ChatBookmark.READ_TOOL), offered);
+        for (String tool : offered) {
+            assertTrue(system, system.contains("\n- " + tool));
+        }
+        assertFalse("abgeschaltet: " + system, system.contains("search_attachment"));
+    }
+
+    /** Ohne Werkzeuge sagt der Fähigkeits-Kontext genau das, statt die Wissensbasis zu fragen. */
+    @Test
+    public void capabilityQuestionWithoutToolsSaysSoAndDoesNotSearch() throws Exception {
+        final CountingEmbeddings counting = new CountingEmbeddings(embeddings);
+        indexCapabilityTraps(counting);
+        final Fixture fixture = fixture(index, counting);
+        counting.calls.set(0);
+        port.enqueueAnswer("Keine.");
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Welche Tools hast du?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+
+        assertEquals(0, counting.calls.get());
+        String system = port.lastRequest().messages().get(0).content();
+        assertFalse(system, system.contains("IAR"));
+        assertTrue(system, system.contains("keine Werkzeuge"));
+        assertFalse(entries(fixture.model).get(1).hasSources());
+    }
+
+    /** Eine echte Wissensfrage zum selben Fachsystem sucht weiterhin vorab und bekommt die Seiten als Quellen. */
+    @Test
+    public void knowledgeQuestionAboutTheSameSystemStillSearches() throws Exception {
+        final CountingEmbeddings counting = new CountingEmbeddings(embeddings);
+        final InMemoryKnowledgeSource wiki = indexCapabilityTraps(counting);
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(wiki.sourceId(), true);
+        final Fixture fixture = fixture(index, counting, selection);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.enableTools(new ToolSupport(port, new FileAttachmentStore(folder.getRoot().toPath()),
+                        (name, content) -> "", Collections.singletonList(recordingTool("knowledge_search",
+                                new ArrayList<String>(), "")), false));
+            }
+        });
+        counting.calls.set(0);
+        port.enqueueAnswer("IAR ist ein Fachsystem [1].");
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Was ist IAR?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+
+        assertTrue("vorab gesucht", counting.calls.get() > 0);
+        assertTrue(entries(fixture.model).get(1).hasSources());
+        String system = port.lastRequest().messages().get(0).content();
+        assertTrue(system, system.contains("--- KONTEXT ---"));
+        assertFalse(system, system.contains("In diesem Turn verfügbare Werkzeuge:"));
+    }
+
+    /** Seiten, deren Begriffe einer Fähigkeitsfrage ähneln (Recherche, Tool, Rolle), aber Fachinhalt sind. */
+    private InMemoryKnowledgeSource indexCapabilityTraps(EmbeddingPort embeddingPort) {
+        InMemoryKnowledgeSource wiki = new InMemoryKnowledgeSource("fachwiki")
+                .add("rollen", "IAR Rollen", "IAR Recherche: die Rolle Recherche darf Vorgänge recherchieren. "
+                        + "Tools und MCP Tools der Fachabteilung.")
+                .add("werkzeuge", "IAR Werkzeuge", "Tool für IAR: Hauptfunktion Recherche, Werkzeuge zum Testen.");
+        new IndexKnowledgeUseCase(index, embeddingPort, space,
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()))
+                .indexSource(wiki, SourceScope.of("rollen", "werkzeuge"), null);
+        return wiki;
+    }
+
     @Test
     public void deselectedSourcesAreNotSearched() throws Exception {
         indexAll();
@@ -1252,6 +1371,27 @@ public class RagChatBindingTest {
     }
 
     /** Der Embedding-Dienst ist nicht erreichbar: die semantische Suche fällt aus, die Volltextsuche bleibt. */
+    /** Zählt die Einbettungsaufrufe: jede Vorabsuche bettet die Frage ein. */
+    private static final class CountingEmbeddings implements EmbeddingPort {
+        private final EmbeddingPort delegate;
+        final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+
+        CountingEmbeddings(EmbeddingPort delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public EmbeddingModelIdentity modelIdentity() {
+            return delegate.modelIdentity();
+        }
+
+        @Override
+        public EmbeddingBatch embed(List<String> texts) {
+            calls.incrementAndGet();
+            return delegate.embed(texts);
+        }
+    }
+
     private static final class FailingEmbeddings implements EmbeddingPort {
         private final EmbeddingPort identityOf;
         final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
