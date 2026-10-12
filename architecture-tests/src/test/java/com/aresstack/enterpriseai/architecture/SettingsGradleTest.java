@@ -33,7 +33,7 @@ public class SettingsGradleTest {
     @Test
     public void unregisteredIncludeIsDetected() {
         Set<String> includes = SettingsGradleRules.includes(
-                "rootProject.name = 'x'\ninclude 'astu'\n  include \"source-sharepoint\"\ninclude(':chat-api')\n// include 'commented'\n"
+                "rootProject.name = 'x'\ninclude 'astu'\n  include \"source-gopher\"\ninclude(':chat-api')\n// include 'commented'\n"
                         + "include 'chalcotheca', 'anagraphai' // 'kommentar'\ninclude(':embedding-api', \":embedding-openai\")\n"
                         + "includeBuild 'tooling'\n");
         assertEquals(includes.toString(), 7, includes.size());
@@ -42,7 +42,7 @@ public class SettingsGradleTest {
         assertTrue(includes.toString(), !includes.contains("tooling") && !includes.contains("kommentar"));
         List<String> violations = SettingsGradleRules.unregisteredIncludes(includes, REGISTRY);
         assertEquals(violations.toString(), 1, violations.size());
-        assertTrue(violations.get(0), violations.get(0).contains("source-sharepoint"));
+        assertTrue(violations.get(0), violations.get(0).contains("source-gopher"));
         assertTrue(SettingsGradleRules.registeredButNotIncluded(includes, REGISTRY).toString().contains("acropolis"));
     }
 }
