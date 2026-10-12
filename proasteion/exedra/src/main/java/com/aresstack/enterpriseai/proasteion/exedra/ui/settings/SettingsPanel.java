@@ -162,7 +162,7 @@ public final class SettingsPanel extends JPanel {
         this.securityTab = new SecurityTab(actions, current, palette);
         this.systemTab = new SystemTab(actions, current, palette);
         this.modelsTab = new ModelsTab(actions, current, palette);
-        this.speechTab = new SpeechTab(palette);
+        this.speechTab = new SpeechTab(modelsTab, actions, current, palette);
         this.indexTab = new IndexEditor(palette);
         this.toolsTab = new ToolsTab(tools, palette);
         this.appearanceTab = new AppearanceTab(palette);
@@ -605,6 +605,11 @@ public final class SettingsPanel extends JPanel {
 
     SystemTab systemTab() {
         return systemTab;
+    }
+
+    /** Kategorie „Sprachausgabe“ (für Tests). */
+    SpeechTab speechTab() {
+        return speechTab;
     }
 
     ModelsTab modelsTab() {

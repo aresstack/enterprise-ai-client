@@ -144,6 +144,17 @@ public class KipitzSpeechAdapterTest {
     }
 
     @Test
+    public void requestedVoiceWinsOverTheConfiguredOne() throws Exception {
+        URI base = URI.create("http://" + InetAddress.getLoopbackAddress().getHostAddress() + ":"
+                + server.getAddress().getPort() + "/v1");
+        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(base).build(), null);
+        adapter.synthesize("qwen3-tts", "Vivian", "Ein Absatz.");
+        adapter.synthesize("qwen3-tts", "Ein Absatz.");
+        assertEquals("Vivian", bodies.get(0).get("voice").getAsString());
+        assertFalse(bodies.get(1).has("voice"));
+    }
+
+    @Test
     public void servedByKeepsModelHeadersOnly() {
         Map<String, List<String>> headers = new HashMap<String, List<String>>();
         headers.put(null, Collections.singletonList("HTTP/1.1 200 OK"));

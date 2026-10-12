@@ -70,7 +70,20 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
     /** Abfrage für den Dialog: Netz und Token aus dem Entwurf. */
     @Override
     public ModelCatalogSnapshot refresh(final AppConfig config) {
-        return refresh(config, NetworkServices.from(config.network()), new Supplier<String>() {
+        return refresh(config, NetworkServices.from(config.network()), dialogToken(config));
+    }
+
+    /**
+     * Die Sprachausgabe eines Entwurfs für „Stimme testen“ im Einstellungsdialog: Netz und Token wie bei
+     * {@link #refresh(AppConfig)}, Stimmen und Modellverzeichnis aus dem Entwurf.
+     */
+    @Override
+    public SpeechSynthesisRegistry speechPreview(AppConfig config) {
+        return speech(config, config.models(), NetworkServices.from(config.network()), dialogToken(config));
+    }
+
+    private Supplier<String> dialogToken(final AppConfig config) {
+        return new Supplier<String>() {
             @Override
             public String get() {
                 try {
@@ -79,7 +92,7 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
                     throw new IllegalStateException(e.getMessage(), e);
                 }
             }
-        });
+        };
     }
 
     /**

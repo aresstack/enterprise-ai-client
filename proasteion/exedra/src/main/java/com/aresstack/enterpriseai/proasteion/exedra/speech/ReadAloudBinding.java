@@ -23,7 +23,7 @@ public final class ReadAloudBinding implements ReadAloudControl {
 
     private final ReadAloudService service;
     private final String description;
-    /** Katalog und Stimme für die Diagnose je Stück ({@code catalog=… voice=…}), ohne Secrets. */
+    /** Katalog für die Diagnose je Stück ({@code catalog=…}), ohne Secrets. */
     private final String traceContext;
     private final boolean autoStart;
     private final ExecutorService reader;
@@ -51,7 +51,7 @@ public final class ReadAloudBinding implements ReadAloudControl {
     }
 
     /**
-     * @param traceContext Katalog und Stimme für die Diagnosezeile je Stück, z. B. {@code catalog=kipitz voice=none}
+     * @param traceContext Katalog für die Diagnosezeile je Stück, z. B. {@code catalog=kipitz}
      */
     public static ReadAloudBinding available(ReadAloudService service, String description, boolean autoStart,
                                              String traceContext) {
@@ -137,14 +137,16 @@ public final class ReadAloudBinding implements ReadAloudControl {
         if (traceContext != null && !traceContext.isEmpty()) {
             line.append(' ').append(traceContext);
         }
-        return line.append(" model=").append(trace.modelId()).append(" worker=").append(trace.worker())
+        return line.append(" model=").append(trace.modelId()).append(" voice=")
+                .append(trace.voice() == null ? "none" : trace.voice()).append(" worker=").append(trace.worker())
                 .append(" chars=").append(trace.characters()).toString();
     }
 
     /** Die Diagnosezeile nach dem Audio eines Stücks: dasselbe Stück mit dem Format, das zurückkam. */
     static String audioLine(ReadAloudService.ChunkTrace trace, ReadAloudService.WavFormat wav) {
         return "TTS audio: generation=" + trace.generation() + " chunk=" + trace.index() + "/" + trace.count()
-                + " model=" + trace.modelId() + " worker=" + trace.worker() + " wav=" + wav;
+                + " model=" + trace.modelId() + " voice=" + (trace.voice() == null ? "none" : trace.voice())
+                + " worker=" + trace.worker() + " wav=" + wav;
     }
 
     /** Eine Bindung ändert sich nie; den Austausch meldet {@link SwitchableReadAloud}. */

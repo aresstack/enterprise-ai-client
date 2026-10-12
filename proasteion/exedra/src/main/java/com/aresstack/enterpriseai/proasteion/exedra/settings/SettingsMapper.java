@@ -154,6 +154,7 @@ public final class SettingsMapper {
                 BubbleColorsConfig.DEFAULT_ASSISTANT_BACKGROUND));
         b.bubbleAssistantForeground(bubbleColor(p, BubbleColorsConfig.ASSISTANT_FOREGROUND_KEY,
                 BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND));
+        b.speechVoices(ModelsConfig.parseSpeechVoices(text(p, ModelsConfig.SPEECH_VOICES_KEY, "")));
         b.prefetchMaxItems(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100"));
         b.prefetchConcurrency(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4"));
         b.prefetchCacheMaxMb(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_CACHE_MB_KEY, "50"));
@@ -263,6 +264,8 @@ public final class SettingsMapper {
                 bubbleColorValue(form.bubbleAssistantBackground(), BubbleColorsConfig.DEFAULT_ASSISTANT_BACKGROUND));
         put(set, BubbleColorsConfig.ASSISTANT_FOREGROUND_KEY,
                 bubbleColorValue(form.bubbleAssistantForeground(), BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND));
+        // Stimme je TTS-Modell; ohne Eintrag gilt der Standard des Modells (steht nicht in der Datei).
+        put(set, ModelsConfig.SPEECH_VOICES_KEY, ModelsConfig.formatSpeechVoices(form.speechVoices()));
         // Vorladen: Standardwerte (100 Treffer, 4 Abrufe, 50 MB) stehen nicht in der Datei.
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100".equals(form.prefetchMaxItems().trim()) ? "" : form.prefetchMaxItems().trim());
         put(set, AppConfigLoader.KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, "4".equals(form.prefetchConcurrency().trim()) ? "" : form.prefetchConcurrency().trim());

@@ -61,6 +61,14 @@ public final class KipitzSpeechAdapter implements SpeechSynthesisPort {
 
     @Override
     public SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException {
+        return synthesize(modelId, null, text);
+    }
+
+    /** {@code voice} vor der Stimme aus der Konfiguration; ohne beide fehlt {@code voice} im Request. */
+    @Override
+    public SynthesizedSpeech synthesize(String modelId, String requestedVoice, String text)
+            throws SpeechSynthesisException {
+        String voice = requestedVoice == null || requestedVoice.trim().isEmpty() ? this.voice : requestedVoice.trim();
         if (modelId == null || modelId.trim().isEmpty() || text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("modelId and text must not be empty");
         }

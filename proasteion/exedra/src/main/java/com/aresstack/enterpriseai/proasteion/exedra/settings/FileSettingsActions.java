@@ -14,6 +14,9 @@ import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
+import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechSynthesisRegistry;
+import com.aresstack.enterpriseai.proasteion.exedra.speech.JavaSoundAudioPlayback;
 import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.VaultLocations;
 import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
@@ -69,6 +72,9 @@ public final class FileSettingsActions implements SettingsDialogActions {
     static final String STEP_CONFIGURATION = "Konfiguration";
     static final String STEP_TEST = "Verbindungstest";
 
+    /** Der Satz von „Stimme testen“. */
+    static final String VOICE_SAMPLE = "Hallo! So klinge ich, wenn ich dir Antworten vorlese.";
+
     private final ConfigurationFile file;
     private final SecretChecker secretChecker;
     private final ConnectionChecker connectionChecker;
@@ -78,6 +84,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private final ModelCatalogLoader models;
     private final LocalVoiceInstaller voices;
     private final NlpModels nlpModels;
+    /** Stimmen je TTS-Modell (Auswahl „Stimme“ im Einstellungsdialog). */
+    private final TtsVoiceCatalog ttsVoiceCatalog = TtsVoiceCatalog.bundled();
 
     /** Wie der Konstruktor mit {@link ConfigurationCheck}, ohne zusätzliche Prüfung (nur der Loader). */
     public FileSettingsActions(ConfigurationFile file, SecretChecker secretChecker, Executor worker, Executor ui) {
@@ -919,6 +927,125 @@ public final class FileSettingsActions implements SettingsDialogActions {
     @Override
     public ModelReference parseModel(String text) {
         return ModelsConfig.parse(text);
+    }
+
+    @Override
+    public List<String> ttsVoices(String modelSelection) {
+        ModelReference model = ModelsConfig.parse(modelSelection);
+        if (model == null || ModelsConfig.LOCAL_CATALOG_ID.equals(model.catalogId())) {
+            return Collections.<String>emptyList();
+        }
+        return ttsVoiceCatalog.voices(model.modelId());
+    }
+
+    @Override
+    public String ttsVoice(SettingsForm form, String modelSelection) {
+        ModelReference model = ModelsConfig.parse(modelSelection);
+        if (model == null || form == null) {
+            return "";
+        }
+        String legacy = null;
+        try {
+            legacy = current().getProperty(ModelsConfig.SPEECH_VOICE_KEY);
+        } catch (IOException | RuntimeException unreadable) {
+            // ohne Datei gilt nur der Entwurf
+        }
+        String voice = ModelsConfig.resolveTtsVoice(model, storedVoice(form, model), legacy, ttsVoiceCatalog);
+        return voice == null ? "" : voice;
+    }
+
+    @Override
+    public String ttsVoiceGender(String modelSelection, String voice) {
+        ModelReference model = ModelsConfig.parse(modelSelection);
+        TtsVoiceCatalog.Gender gender = model == null ? null : ttsVoiceCatalog.genderOf(model.modelId(), voice);
+        if (gender == null) {
+            return "";
+        }
+        return gender == TtsVoiceCatalog.Gender.MALE ? "männlich" : "weiblich";
+    }
+
+    /** Die im Entwurf für dieses Modell gespeicherte Stimme (Schlüssel mit oder ohne Katalogpräfix). */
+    private static String storedVoice(SettingsForm form, ModelReference model) {
+        for (Map.Entry<String, String> entry : form.speechVoices().entrySet()) {
+            if (model.equals(ModelsConfig.parse(entry.getKey()))) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public void testVoice(SettingsForm form, String modelSelection, final String voice,
+                          final Consumer<String> onResult) {
+        if (form == null || onResult == null) {
+            throw new IllegalArgumentException("form and onResult must not be null");
+        }
+        final ModelReference model = ModelsConfig.parse(modelSelection);
+        if (model == null) {
+            onResult.accept("Kein TTS-Modell gewählt.");
+            return;
+        }
+        if (models == null) {
+            onResult.accept("Stimme testen ist in dieser Umgebung nicht verfügbar.");
+            return;
+        }
+        SettingsForm.Builder probe = form.toBuilder();
+        if (form.chatModel().isEmpty()) {
+            probe.chatModel("-");
+        }
+        if (form.embeddingModel().isEmpty()) {
+            probe.embeddingModel("-");
+        }
+        if (form.embeddingDimension().isEmpty()) {
+            probe.embeddingDimension("1");
+        }
+        final AppConfig config;
+        final Properties merged;
+        try {
+            merged = SettingsMapper.merge(current(), probe.build());
+            config = AppConfigLoader.fromProperties(merged);
+        } catch (AppConfigException e) {
+            onResult.accept("Entwurf unvollständig: " + join(SettingsMapper.describe(e.problems())));
+            return;
+        } catch (IOException | RuntimeException e) {
+            onResult.accept("Entwurf nicht lesbar (" + e.getClass().getSimpleName() + ").");
+            return;
+        }
+        try {
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    String failure = null;
+                    try {
+                        SpeechSynthesisRegistry speech = models.speechPreview(located(config, merged));
+                        if (speech == null || !speech.supports(model.catalogId())) {
+                            failure = "Die Quelle dieses Modells kann hier nicht sprechen.";
+                        } else {
+                            byte[] wav = speech.require(model.catalogId())
+                                    .synthesize(model.modelId(), voice, VOICE_SAMPLE).wav();
+                            JavaSoundAudioPlayback playback = new JavaSoundAudioPlayback();
+                            playback.begin();
+                            try {
+                                playback.play(wav);
+                            } finally {
+                                playback.finish();
+                            }
+                        }
+                    } catch (Exception e) {
+                        failure = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    }
+                    final String delivered = failure;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            onResult.accept(delivered);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            onResult.accept("Test konnte nicht gestartet werden.");
+        }
     }
 
     /** Modelle der Enterprise-API ohne Präfix (wie bisher {@code chat.model}), lokale mit {@code local:}. */

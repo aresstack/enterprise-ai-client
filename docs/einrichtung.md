@@ -220,8 +220,8 @@ bleibt aktiv, jede neue Antwort wird dann automatisch vorgelesen, bis Pause es b
 automatisch vorlesen“ (Einstellungen → Sprachausgabe) ist der Orb schon beim Start aktiv. Vorgelesen wird mit dem Modell der Kategorie **TTS**
 (Einstellungen → Modelle, Schlüssel `model.tts`; genau eine Auswahl, entweder im Unterreiter „Cloud-Modelle“ oder
 „Lokale Modelle“, eine Wahl im einen wählt im anderen ab), gesprochen über die Quelle dieses Modells: ein TTS-Modell
-der Enterprise-API über `POST <chat.baseUrl>/audio/speech` (noch ungetestet; das Modell bestimmt die Stimme, der
-optionale Dateischlüssel `speech.voice` wird nur mitgeschickt, falls gesetzt), eine lokale Stimme im Client selbst
+der Enterprise-API über `POST <chat.baseUrl>/audio/speech` (noch ungetestet; mit fester Stimme, siehe unten), eine
+lokale Stimme im Client selbst
 (ONNX Runtime im Prozess, kein externes Programm, kein Java 21). Ohne TTS-Modell bleibt der Orb deaktiviert und nennt
 im Tooltip den Grund. Für eine lokale Stimme:
 
@@ -268,16 +268,25 @@ Funktion zur Wahl.
 paralleler Synthesen. Beides steht unter Einstellungen → Sprachausgabe. Das erste Stück rechnet allein und klingt,
 sobald es fertig ist; die übrigen rechnen währenddessen, gespielt wird lückenlos über eine offene Audioausgabe.
 
-Ein Vorlesevorgang spricht immer mit dem einen TTS-Modell, das beim Start der Antwort gewählt war; jedes Stück geht
+**Stimme je Modell.** TTS-Modelle mit mehreren Sprechern (Orpheus, Qwen3-TTS) wählen ohne feste Stimme bei jeder
+Anfrage selbst; beim absatzweisen Vorlesen klang dann jeder Absatz womöglich anders. Unter Einstellungen →
+Sprachausgabe stehen deshalb Modell und Stimme zusammen: die Liste zeigt die bekannten Sprecher des Modells, eintippen
+geht auch, „Stimme testen“ spricht einen kurzen Satz mit dem Entwurf. Die Stimme gilt je Modell (Schlüssel
+`speech.voices`, z. B. `kipitz:orpheus-tts-3b-de=thomas;kipitz:qwen3-tts=Vivian`); wer das Modell wechselt, bekommt
+dessen eigene Stimme. Ist für ein Modell keine gespeichert, gilt der frühere Schlüssel `speech.voice`, wenn er zum
+Modell passt, sonst die Standardstimme aus `tts-voices.properties` (Orpheus: `thomas`, Qwen3-TTS: `Vivian`; die Namen
+sind gegen die Enterprise-API ungeprüft). Lokale Stimmen haben genau einen Sprecher.
+
+Ein Vorlesevorgang spricht immer mit dem einen TTS-Modell und der einen Stimme, die beim Start der Antwort galten; jedes Stück geht
 mit dieser Kennung an den Dienst, auch bei mehreren Workern. Wird in den Einstellungen ein anderes Modell gespeichert,
 endet die laufende Ausgabe sofort (kein weiterer Absatz der alten Stimme), die neue Stimme spricht ab der nächsten
 Antwort bzw. dem nächsten Play. Je Stück stehen zwei Zeilen im Protokoll, ohne Text und ohne API-Key:
 
 ```
-TTS request: generation=3 chunk=2/5 catalog=kipitz voice=none model=<modell> worker=enterprise-ai-tts-worker-3-2 chars=412
-TTS HTTP request: POST audio/speech catalog=kipitz model=<modell> voice=none response_format=wav worker=enterprise-ai-tts-worker-3-2 chars=412 text=<sha256-präfix>
+TTS request: generation=3 chunk=2/5 catalog=kipitz model=<modell> voice=<stimme> worker=enterprise-ai-tts-worker-3-2 chars=412
+TTS HTTP request: POST audio/speech catalog=kipitz model=<modell> voice=<stimme> response_format=wav worker=enterprise-ai-tts-worker-3-2 chars=412 text=<sha256-präfix>
 TTS HTTP response: model=<modell> worker=enterprise-ai-tts-worker-3-2 status=200 millis=2140 bytes=391244 contentType=audio/wav servedBy=none
-TTS audio: generation=3 chunk=2/5 model=<modell> worker=enterprise-ai-tts-worker-3-2 wav=391244 bytes, 24000 Hz, 1 ch, 16 bit
+TTS audio: generation=3 chunk=2/5 model=<modell> voice=<stimme> worker=enterprise-ai-tts-worker-3-2 wav=391244 bytes, 24000 Hz, 1 ch, 16 bit
 ```
 
 `worker` verbindet die Zeilen eines Stücks. `servedBy` nennt Antwort-Header des Servers, die ein Modell oder Backend

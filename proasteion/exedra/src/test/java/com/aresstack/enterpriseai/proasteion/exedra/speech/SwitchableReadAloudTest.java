@@ -62,8 +62,8 @@ public class SwitchableReadAloudTest {
     public void diagnosticLinesNameChunkModelVoiceAndWorkerButNoText() {
         ReadAloudService.ChunkTrace[] seen = new ReadAloudService.ChunkTrace[1];
         Speaker speaker = new Speaker("orpheus-tts-3b-de", null);
-        ReadAloudService service = new ReadAloudService(speaker.port, "orpheus-tts-3b-de", speaker.playback,
-                SpeechChunking.PARAGRAPHS, 2);
+        ReadAloudService service = new ReadAloudService(speaker.port, "orpheus-tts-3b-de", "thomas",
+                speaker.playback, SpeechChunking.PARAGRAPHS, 2, null);
         final List<String> lines = new CopyOnWriteArrayList<String>();
         service.speak("Geheimer Absatztext.", new ReadAloudService.Listener() {
             @Override
@@ -72,7 +72,7 @@ public class SwitchableReadAloudTest {
 
             @Override
             public void chunkRequested(ReadAloudService.ChunkTrace trace) {
-                lines.add(ReadAloudBinding.requestLine(trace, "catalog=kipitz voice=none"));
+                lines.add(ReadAloudBinding.requestLine(trace, "catalog=kipitz"));
             }
 
             @Override
@@ -82,8 +82,8 @@ public class SwitchableReadAloudTest {
         });
         assertEquals(2, lines.size());
         String request = lines.get(0);
-        assertTrue(request, request.matches("TTS request: generation=\\d+ chunk=1/1 catalog=kipitz voice=none "
-                + "model=orpheus-tts-3b-de worker=enterprise-ai-tts-worker-\\d+-1 chars=\\d+"));
+        assertTrue(request, request.matches("TTS request: generation=\\d+ chunk=1/1 catalog=kipitz "
+                + "model=orpheus-tts-3b-de voice=thomas worker=enterprise-ai-tts-worker-\\d+-1 chars=\\d+"));
         for (String line : lines) {
             assertTrue(line, !line.contains("Geheim"));
         }
@@ -105,7 +105,7 @@ public class SwitchableReadAloudTest {
 
         ReadAloudBinding binding() {
             return ReadAloudBinding.available(new ReadAloudService(port, model, playback, SpeechChunking.PARAGRAPHS,
-                    2), "Stimme: " + model, false, "catalog=kipitz voice=none");
+                    2), "Stimme: " + model, false, "catalog=kipitz");
         }
     }
 

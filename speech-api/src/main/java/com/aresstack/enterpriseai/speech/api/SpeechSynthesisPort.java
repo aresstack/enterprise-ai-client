@@ -16,4 +16,15 @@ public interface SpeechSynthesisPort {
      * @throws SpeechSynthesisException wenn der Dienst nicht erreichbar ist oder das Modell nicht sprechen kann
      */
     SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException;
+
+    /**
+     * Wie {@link #synthesize(String, String)} mit einer festen Stimme (Sprecher) des Modells. Modelle mit mehreren
+     * Sprechern wählen ohne Stimme je Anfrage selbst, sodass Absätze derselben Antwort verschieden klingen können.
+     * Ports ohne Sprecherwahl (eine lokale Stimme ist genau ein Sprecher) übergehen {@code voice}.
+     *
+     * @param voice die Stimme des Modells; {@code null} oder leer = Standard des Ports
+     */
+    default SynthesizedSpeech synthesize(String modelId, String voice, String text) throws SpeechSynthesisException {
+        return synthesize(modelId, text);
+    }
 }

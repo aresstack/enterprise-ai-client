@@ -80,6 +80,7 @@ public final class SettingsForm {
     private final String bubbleUserForeground;
     private final String bubbleAssistantBackground;
     private final String bubbleAssistantForeground;
+    private final Map<String, String> speechVoices;
     private final String prefetchMaxItems;
     private final String prefetchConcurrency;
     private final String prefetchCacheMaxMb;
@@ -157,6 +158,7 @@ public final class SettingsForm {
         this.bubbleUserForeground = b.bubbleUserForeground;
         this.bubbleAssistantBackground = b.bubbleAssistantBackground;
         this.bubbleAssistantForeground = b.bubbleAssistantForeground;
+        this.speechVoices = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.speechVoices));
         this.prefetchMaxItems = b.prefetchMaxItems;
         this.prefetchConcurrency = b.prefetchConcurrency;
         this.prefetchCacheMaxMb = b.prefetchCacheMaxMb;
@@ -225,6 +227,7 @@ public final class SettingsForm {
                 .bubbleUserForeground(bubbleUserForeground)
                 .bubbleAssistantBackground(bubbleAssistantBackground)
                 .bubbleAssistantForeground(bubbleAssistantForeground)
+                .speechVoices(speechVoices)
                 .prefetchMaxItems(prefetchMaxItems)
                 .prefetchConcurrency(prefetchConcurrency)
                 .prefetchCacheMaxMb(prefetchCacheMaxMb)
@@ -441,6 +444,11 @@ public final class SettingsForm {
     /** Schrift der Antwortblasen als {@code #RRGGBB} ({@code chat.bubble.assistant.foreground}). */
     public String bubbleAssistantForeground() {
         return bubbleAssistantForeground;
+    }
+
+    /** Die Stimme je TTS-Modell ({@code speech.voices}): gespeicherte Modellauswahl → Stimme. */
+    public Map<String, String> speechVoices() {
+        return speechVoices;
     }
 
     /** Vorladen: höchstens so viele Treffer ab der Cursorposition ({@code knowledge.prefetch.maxItems}). */
@@ -679,6 +687,7 @@ public final class SettingsForm {
                 BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_ASSISTANT_BACKGROUND);
         private String bubbleAssistantForeground =
                 BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND);
+        private final Map<String, String> speechVoices = new LinkedHashMap<String, String>();
         private String prefetchMaxItems = "100";
         private String prefetchConcurrency = "4";
         private String prefetchCacheMaxMb = "50";
@@ -882,6 +891,21 @@ public final class SettingsForm {
 
         public Builder readAloudChunking(String value) {
             this.readAloudChunking = value;
+            return this;
+        }
+
+        /** Ersetzt die Stimmen je Modell; leere Stimmen fallen weg. */
+        public Builder speechVoices(Map<String, String> values) {
+            speechVoices.clear();
+            if (values != null) {
+                for (Map.Entry<String, String> entry : values.entrySet()) {
+                    String model = text(entry.getKey());
+                    String voice = text(entry.getValue());
+                    if (!model.isEmpty() && !voice.isEmpty()) {
+                        speechVoices.put(model, voice);
+                    }
+                }
+            }
             return this;
         }
 

@@ -352,7 +352,7 @@ public final class AppConfigLoader {
      * {@code model.<kategorie>}) und das Modellverzeichnis der lokalen Stimmen ({@code models.local.modelRoot}).
      * {@code speech.readAloud.autoStart} liest neue Antworten automatisch vor (wie askai arch, Standard aus),
      * {@code speech.readAloud.chunking} und {@code speech.readAloud.synthesisWorkers} wie {@code tts.chunking} und
-     * {@code tts.synthesisWorkers} in arch (Standard Absätze, 2); {@code speech.voice} ist die Stimme der Enterprise-Sprachausgabe.
+     * {@code tts.synthesisWorkers} in arch (Standard Absätze, 2); {@code speech.voices} die Stimme je TTS-Modell ({@code speech.voice} die frühere globale).
      */
     private static ModelsConfig models(ConfigReader r, List<String> warnings) {
         ModelSelections selections = ModelSelections.none();
@@ -365,7 +365,8 @@ public final class AppConfigLoader {
                 SpeechChunking.parse(r.text(ModelsConfig.READ_ALOUD_CHUNKING_KEY, null), SpeechChunking.PARAGRAPHS),
                 r.integer(ModelsConfig.READ_ALOUD_WORKERS_KEY, ReadAloudService.DEFAULT_SYNTHESIS_WORKERS, 1,
                         ReadAloudService.MAX_SYNTHESIS_WORKERS),
-                r.text(ModelsConfig.SPEECH_VOICE_KEY, null), modelRoot);
+                r.text(ModelsConfig.SPEECH_VOICE_KEY, null),
+                ModelsConfig.parseSpeechVoices(r.text(ModelsConfig.SPEECH_VOICES_KEY, null)), modelRoot);
     }
 
     /**

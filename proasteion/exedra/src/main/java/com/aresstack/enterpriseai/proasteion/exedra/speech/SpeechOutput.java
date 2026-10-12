@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.speech;
 
 import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
@@ -50,15 +51,13 @@ public final class SpeechOutput {
         if (!speech.supports(selected.catalogId())) {
             return ReadAloudBinding.unavailable(NO_PORT);
         }
+        // Feste Stimme je Modell: ohne sie wählen Modelle mit mehreren Sprechern je Absatz selbst.
+        String voice = models.ttsVoice(selected, TtsVoiceCatalog.bundled());
         ReadAloudService service = new ReadAloudService(speech.require(selected.catalogId()), selected.modelId(),
-                new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
+                voice, new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
                 analysis);
-        return ReadAloudBinding.available(service, "Stimme: " + selected.modelId() + " (" + selected.catalogId()
-                + ")", models.readAloudAutoStart(), traceContext(selected, models.speechVoice()));
-    }
-
-    /** Katalog und Stimme ({@code speech.voice}) der Diagnosezeile je Stück; keine Stimme = {@code none}. */
-    static String traceContext(ModelReference selected, String voice) {
-        return "catalog=" + selected.catalogId() + " voice=" + (voice == null ? "none" : voice);
+        return ReadAloudBinding.available(service, "Stimme: " + selected.modelId()
+                + (voice == null ? "" : " / " + voice) + " (" + selected.catalogId() + ")",
+                models.readAloudAutoStart(), "catalog=" + selected.catalogId());
     }
 }

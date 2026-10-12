@@ -190,4 +190,33 @@ public interface SettingsDialogActions {
     default String defaultDiscoveryScript(String proxyMode) {
         return "";
     }
+
+    /**
+     * Die bekannten Stimmen (Sprecher) des TTS-Modells dieser Auswahl, Standard zuerst; leer, wenn das Modell
+     * unbekannt ist oder lokal läuft (eine lokale Stimme ist genau ein Sprecher).
+     */
+    default List<String> ttsVoices(String modelSelection) {
+        return Collections.<String>emptyList();
+    }
+
+    /**
+     * Die Stimme, mit der das Modell im Entwurf spräche: die für das Modell gespeicherte, sonst die passende frühere
+     * globale ({@code speech.voice}), sonst die Standardstimme; leer, wenn keine gilt.
+     */
+    default String ttsVoice(SettingsForm form, String modelSelection) {
+        return "";
+    }
+
+    /** „männlich“, „weiblich“ oder leer für eine Stimme des Modells (Anzeige neben der Auswahl). */
+    default String ttsVoiceGender(String modelSelection, String voice) {
+        return "";
+    }
+
+    /**
+     * „Stimme testen“: spricht einen kurzen Satz mit Modell und Stimme des Entwurfs (Netz und Token wie die
+     * Modellabfrage). Ergebnis genau einmal auf dem EDT: {@code null} = gesprochen, sonst der Grund ohne Secrets.
+     */
+    default void testVoice(SettingsForm form, String modelSelection, String voice, Consumer<String> onResult) {
+        onResult.accept("In dieser Umgebung nicht verfügbar.");
+    }
 }

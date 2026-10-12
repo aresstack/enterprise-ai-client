@@ -9,7 +9,9 @@ import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Modellverwaltung: die eine Auswahl je {@link ModelCategory} und das Modellverzeichnis der lokalen Stimmen. Chat und
@@ -30,8 +32,18 @@ public final class ModelsConfig {
     /** Parallele Synthesen beim Vorlesen (askai arch {@code tts.synthesisWorkers}), 1 bis 8, Standard 2. */
     public static final String READ_ALOUD_WORKERS_KEY = "speech.readAloud.synthesisWorkers";
 
-    /** Stimme der Enterprise-Sprachausgabe ({@code voice} bei {@code /audio/speech}); leer = ohne. */
+    /**
+     * Früher die eine Stimme für jedes TTS-Modell ({@code voice} bei {@code /audio/speech}). Gültige Stimmen hängen vom
+     * Modell ab: gilt nur noch, wenn für das Modell keine Stimme in {@link #SPEECH_VOICES_KEY} steht und die Stimme zu
+     * ihm passt; der Einstellungsdialog übernimmt sie beim Speichern für das gewählte Modell.
+     */
     public static final String SPEECH_VOICE_KEY = "speech.voice";
+
+    /**
+     * Die Stimme je TTS-Modell: {@code <katalog>:<modell>=<stimme>;…}, z. B.
+     * {@code kipitz:orpheus-tts-3b-de=thomas;kipitz:qwen3-tts=Vivian}.
+     */
+    public static final String SPEECH_VOICES_KEY = "speech.voices";
 
     /** Katalog der lokal installierten Modelle (Stimmen, Embeddings, Chat): Auswahl {@code local:<ordner>}. */
     public static final String LOCAL_CATALOG_ID = "local";
@@ -41,15 +53,24 @@ public final class ModelsConfig {
     private final SpeechChunking readAloudChunking;
     private final int synthesisWorkers;
     private final String speechVoice;
+    private final Map<String, String> speechVoices;
     private final Path localModelRoot;
 
     ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
                  int synthesisWorkers, String speechVoice, Path localModelRoot) {
+        this(selections, readAloudAutoStart, readAloudChunking, synthesisWorkers, speechVoice,
+                Collections.<String, String>emptyMap(), localModelRoot);
+    }
+
+    ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
+                 int synthesisWorkers, String speechVoice, Map<String, String> speechVoices, Path localModelRoot) {
         if (localModelRoot == null) {
             throw new IllegalArgumentException("localModelRoot must not be null");
         }
         this.localModelRoot = localModelRoot;
         this.speechVoice = speechVoice == null || speechVoice.trim().isEmpty() ? null : speechVoice.trim();
+        this.speechVoices = Collections.unmodifiableMap(new LinkedHashMap<String, String>(
+                speechVoices == null ? Collections.<String, String>emptyMap() : speechVoices));
         this.selections = selections == null ? ModelSelections.none() : selections;
         this.readAloudAutoStart = readAloudAutoStart;
         this.readAloudChunking = readAloudChunking == null ? SpeechChunking.PARAGRAPHS : readAloudChunking;
@@ -107,9 +128,88 @@ public final class ModelsConfig {
         return synthesisWorkers;
     }
 
-    /** Stimme für die Sprachausgabe der Enterprise-API ({@code speech.voice}) oder {@code null}. */
+    /** Die frühere globale Stimme ({@code speech.voice}) oder {@code null}. */
     public String speechVoice() {
         return speechVoice;
+    }
+
+    /** Die gespeicherten Stimmen je Modell ({@code <katalog>:<modell>} → Stimme). */
+    public Map<String, String> speechVoices() {
+        return speechVoices;
+    }
+
+    /** Die für dieses Modell gespeicherte Stimme oder {@code null}. */
+    public String speechVoice(ModelReference model) {
+        return model == null ? null : speechVoices.get(model.key());
+    }
+
+    /**
+     * Die Stimme, mit der dieses TTS-Modell spricht: die für das Modell gespeicherte, sonst die frühere globale
+     * {@code speech.voice}, wenn sie zum Modell passt (oder der Katalog das Modell nicht kennt), sonst die
+     * Standardstimme des Modells; {@code null} nur, wenn nichts davon greift. Lokale Stimmen haben genau einen
+     * Sprecher: dort {@code null}.
+     */
+    public String ttsVoice(ModelReference model, TtsVoiceCatalog catalog) {
+        return resolveTtsVoice(model, speechVoice(model), speechVoice, catalog);
+    }
+
+    /**
+     * Wie {@link #ttsVoice}, mit gespeicherter Stimme des Modells und früherer globaler Stimme als Werte (für den
+     * Einstellungsdialog, der einen Entwurf zeigt).
+     */
+    public static String resolveTtsVoice(ModelReference model, String stored, String speechVoice,
+                                         TtsVoiceCatalog catalog) {
+        if (model == null || LOCAL_CATALOG_ID.equals(model.catalogId())) {
+            return null;
+        }
+        if (stored != null && !stored.trim().isEmpty()) {
+            return stored.trim();
+        }
+        String legacy = speechVoice == null || speechVoice.trim().isEmpty() ? null : speechVoice.trim();
+        boolean known = catalog != null && catalog.knows(model.modelId());
+        if (legacy != null && (!known || catalog.voices(model.modelId()).contains(legacy))) {
+            return legacy;
+        }
+        return known ? catalog.defaultVoice(model.modelId()) : null;
+    }
+
+    /** Liest {@code <katalog>:<modell>=<stimme>;…}; Modelle ohne Katalog gelten als Enterprise-API. */
+    public static Map<String, String> parseSpeechVoices(String text) {
+        Map<String, String> voices = new LinkedHashMap<String, String>();
+        if (text == null) {
+            return voices;
+        }
+        for (String entry : text.split(";")) {
+            int split = entry.lastIndexOf('=');
+            if (split <= 0) {
+                continue;
+            }
+            ModelReference model = parse(entry.substring(0, split));
+            String voice = entry.substring(split + 1).trim();
+            if (model != null && !voice.isEmpty()) {
+                voices.put(model.key(), voice);
+            }
+        }
+        return voices;
+    }
+
+    /** Schreibt die Stimmen je Modell als {@code <katalog>:<modell>=<stimme>;…}; leer, wenn keine. */
+    public static String formatSpeechVoices(Map<String, String> voices) {
+        StringBuilder text = new StringBuilder();
+        if (voices != null) {
+            for (Map.Entry<String, String> entry : voices.entrySet()) {
+                ModelReference model = parse(entry.getKey());
+                String voice = entry.getValue() == null ? "" : entry.getValue().trim();
+                if (model == null || voice.isEmpty()) {
+                    continue;
+                }
+                if (text.length() > 0) {
+                    text.append(';');
+                }
+                text.append(model.key()).append('=').append(voice);
+            }
+        }
+        return text.toString();
     }
 
     @Override

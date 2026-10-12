@@ -172,4 +172,24 @@ public final class DraftSettingsActions implements SettingsDialogActions {
     public String defaultDiscoveryScript(String proxyMode) {
         return delegate.defaultDiscoveryScript(proxyMode);
     }
+
+    @Override
+    public List<String> ttsVoices(String modelSelection) {
+        return delegate.ttsVoices(modelSelection);
+    }
+
+    @Override
+    public String ttsVoice(SettingsForm form, String modelSelection) {
+        return delegate.ttsVoice(form, modelSelection);
+    }
+
+    @Override
+    public String ttsVoiceGender(String modelSelection, String voice) {
+        return delegate.ttsVoiceGender(modelSelection, voice);
+    }
+
+    @Override
+    public void testVoice(SettingsForm form, String modelSelection, String voice, Consumer<String> onResult) {
+        delegate.testVoice(form, modelSelection, voice, onResult);
+    }
 }

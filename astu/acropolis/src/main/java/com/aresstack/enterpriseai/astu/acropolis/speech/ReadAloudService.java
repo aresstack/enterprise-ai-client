@@ -23,8 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * piper.exe und ohne Windows-Stimme: es spricht die eine Stimme des gewählten TTS-Modells, auch für Abschnitte, die
  * die Spracherkennung als Englisch erkennt (je Kategorie gibt es genau ein Modell).
  *
- * <p>Ein Vorlesevorgang spricht mit genau einem Modell: {@code modelId} ist final, und jedes Stück eines Vorgangs geht
- * mit dieser Kennung an den Port. Wechselt der Benutzer das TTS-Modell, entsteht ein neuer Dienst; der alte endet über
+ * <p>Ein Vorlesevorgang spricht mit genau einem Modell und einer Stimme: {@code modelId} und {@code voice} sind final,
+ * und jedes Stück eines Vorgangs geht mit beiden an den Port (ohne feste Stimme wählen Modelle mit mehreren Sprechern
+ * je Absatz selbst). Wechselt der Benutzer das TTS-Modell, entsteht ein neuer Dienst; der alte endet über
  * {@link #stop()} und spielt danach kein Stück mehr ab. Welches Modell je Stück angefragt wurde, meldet der
  * {@link Listener} (Diagnose ohne Text und ohne Secrets; geloggt wird außerhalb des Kerns).
  */
@@ -64,14 +65,17 @@ public final class ReadAloudService {
         private final int index;
         private final int count;
         private final String modelId;
+        private final String voice;
         private final String worker;
         private final int characters;
 
-        ChunkTrace(long generation, int index, int count, String modelId, String worker, int characters) {
+        ChunkTrace(long generation, int index, int count, String modelId, String voice, String worker,
+                   int characters) {
             this.generation = generation;
             this.index = index;
             this.count = count;
             this.modelId = modelId;
+            this.voice = voice;
             this.worker = worker;
             this.characters = characters;
         }
@@ -92,6 +96,11 @@ public final class ReadAloudService {
             return modelId;
         }
 
+        /** Die Stimme des Vorgangs oder {@code null} (Standard des Ports). */
+        public String voice() {
+            return voice;
+        }
+
         public String worker() {
             return worker;
         }
@@ -102,8 +111,8 @@ public final class ReadAloudService {
 
         @Override
         public String toString() {
-            return "generation=" + generation + " chunk=" + index + "/" + count + " model=" + modelId + " worker="
-                    + worker + " chars=" + characters;
+            return "generation=" + generation + " chunk=" + index + "/" + count + " model=" + modelId + " voice="
+                    + (voice == null ? "none" : voice) + " worker=" + worker + " chars=" + characters;
         }
     }
 
@@ -186,6 +195,7 @@ public final class ReadAloudService {
 
     private final SpeechSynthesisPort synthesis;
     private final String modelId;
+    private final String voice;
     private final AudioPlayback playback;
     private final SpeechChunking chunking;
     private final int workers;
@@ -216,11 +226,20 @@ public final class ReadAloudService {
      */
     public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, AudioPlayback playback,
                             SpeechChunking chunking, int workers, TextAnalysisService analysis) {
+        this(synthesis, modelId, null, playback, chunking, workers, analysis);
+    }
+
+    /**
+     * @param voice die feste Stimme des Modells für jedes Stück; {@code null} = Standard des Ports
+     */
+    public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, String voice, AudioPlayback playback,
+                            SpeechChunking chunking, int workers, TextAnalysisService analysis) {
         if (synthesis == null || modelId == null || modelId.trim().isEmpty() || playback == null) {
             throw new IllegalArgumentException("synthesis, modelId and playback must be set");
         }
         this.synthesis = synthesis;
         this.modelId = modelId;
+        this.voice = voice == null || voice.trim().isEmpty() ? null : voice.trim();
         this.playback = playback;
         this.chunking = chunking == null ? SpeechChunking.PARAGRAPHS : chunking;
         this.workers = Math.max(1, Math.min(MAX_SYNTHESIS_WORKERS, workers));
@@ -229,6 +248,11 @@ public final class ReadAloudService {
 
     public String modelId() {
         return modelId;
+    }
+
+    /** Die feste Stimme oder {@code null}. */
+    public String voice() {
+        return voice;
     }
 
     /**
@@ -331,12 +355,12 @@ public final class ReadAloudService {
                 if (!isCurrent(myGeneration)) {
                     return null; // abgelöst: kein Request mehr für einen beendeten Vorgang
                 }
-                ChunkTrace trace = new ChunkTrace(myGeneration, index, count, modelId,
+                ChunkTrace trace = new ChunkTrace(myGeneration, index, count, modelId, voice,
                         Thread.currentThread().getName(), chunk.length());
                 if (listener != null) {
                     listener.chunkRequested(trace);
                 }
-                byte[] wav = synthesis.synthesize(modelId, chunk).wav();
+                byte[] wav = synthesis.synthesize(modelId, voice, chunk).wav();
                 if (listener != null) {
                     listener.chunkSynthesized(trace, WavFormat.of(wav));
                 }
