@@ -168,7 +168,7 @@ public final class ReaderImageStore {
             if (bytes == null || bytes.length == 0) {
                 return new Loaded(null, null, false, bytes == null ? null : "Bild: leere Antwort (0 Bytes)");
             }
-            boolean svg = isSvg(bytes);
+            boolean svg = ReaderImageStore.isSvg(bytes);
             BufferedImage image = svg ? renderSvg(bytes) : decode(bytes);
             return new Loaded(image == null ? null : bytes, image, svg,
                     "Bilddaten nicht lesbar (" + bytes.length + " Bytes, " + (svg ? "SVG nicht darstellbar)"
@@ -195,6 +195,35 @@ public final class ReaderImageStore {
 
         public BufferedImage image() {
             return image;
+        }
+
+        /** Ob die Original-Bytes SVG sind (etwa eine draw.io-Zeichnung); gezeigt wird das Batik-Rasterbild. */
+        public boolean isSvg() {
+            return svg;
+        }
+
+        /**
+         * Dateiendung passend zum Inhalt der Original-Bytes ({@code svg}, {@code png}, {@code jpg}, {@code gif}),
+         * nie aus der Adresse geraten; {@code null}, wenn der Inhalt keinem bekannten Format entspricht.
+         */
+        public String extension() {
+            if (svg) {
+                return "svg";
+            }
+            String sniffed = bytes == null ? null : sniff(bytes);
+            if (sniffed == null) {
+                return null;
+            }
+            return sniffed.equals("image/jpeg") ? "jpg" : sniffed.substring("image/".length());
+        }
+
+        /** Das gezeigte Bild in {@code format} (ImageIO-Formatname, etwa {@code png}) kodiert. */
+        public byte[] encoded(String format) throws IOException {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            if (image == null || !ImageIO.write(image, format, out)) {
+                throw new IOException("Format " + format + " nicht schreibbar");
+            }
+            return out.toByteArray();
         }
 
         public boolean isAnimatedGif() {

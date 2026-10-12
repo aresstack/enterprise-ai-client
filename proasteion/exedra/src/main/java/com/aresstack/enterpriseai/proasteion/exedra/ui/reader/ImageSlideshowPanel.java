@@ -670,7 +670,7 @@ public final class ImageSlideshowPanel extends JPanel {
         }
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Bild speichern");
-        chooser.setSelectedFile(new File(fileName(current())));
+        chooser.setSelectedFile(new File(fileName(current(), loaded)));
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
@@ -698,7 +698,11 @@ public final class ImageSlideshowPanel extends JPanel {
             if (loaded == null || !loaded.ok()) {
                 return SAVE_FAILED_PREFIX + "Das Bild ist nicht geladen.";
             }
-            bytes = loaded.bytes();
+            try {
+                bytes = imageBytesFor(loaded, target.getName());
+            } catch (IOException ex) {
+                return SAVE_FAILED_PREFIX + ex.getMessage();
+            }
         }
         OutputStream out = null;
         try {
@@ -720,18 +724,74 @@ public final class ImageSlideshowPanel extends JPanel {
         }
     }
 
-    /** Wie MainframeMate {@code guessFileName}: der letzte Pfadteil der Adresse, sonst der Titel. */
+    /**
+     * Die Bytes, die unter {@code fileName} landen: das Original, wenn die Endung zum Inhalt passt (oder keine
+     * Bildendung ist); ein SVG unter einer Rasterendung wird als dieses Rasterformat kodiert, nie als SVG-Text unter
+     * {@code .png}.
+     */
+    static byte[] imageBytesFor(ReaderImageStore.Loaded loaded, String fileName) throws IOException {
+        String extension = extension(fileName);
+        if (loaded.isSvg() && RASTER_FORMATS.containsKey(extension)) {
+            return loaded.encoded(RASTER_FORMATS.get(extension));
+        }
+        return loaded.bytes();
+    }
+
+    /** Rasterendungen und ihr ImageIO-Formatname. */
+    private static final java.util.Map<String, String> RASTER_FORMATS = new java.util.HashMap<String, String>();
+
+    static {
+        RASTER_FORMATS.put("png", "png");
+        RASTER_FORMATS.put("jpg", "jpg");
+        RASTER_FORMATS.put("jpeg", "jpg");
+        RASTER_FORMATS.put("gif", "gif");
+        RASTER_FORMATS.put("bmp", "bmp");
+    }
+
+    private static String extension(String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        return dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** Das geladene aktuelle Bild oder {@code null} (für Tests). */
+    ReaderImageStore.Loaded loadedCurrent() {
+        return store.loaded(current());
+    }
+
+    /** Wie MainframeMate {@code guessFileName}: der letzte Pfadteil der Adresse (dekodiert), sonst der Titel. */
     static String fileName(ReaderImage image) {
         String path = image.src();
-        int query = path.indexOf('?');
-        if (query > 0) {
-            path = path.substring(0, query);
+        for (char end : new char[] {'#', '?'}) {
+            int at = path.indexOf(end);
+            if (at > 0) {
+                path = path.substring(0, at);
+            }
         }
         int slash = path.lastIndexOf('/');
         if (slash >= 0 && slash < path.length() - 1) {
-            return path.substring(slash + 1);
+            String last = path.substring(slash + 1);
+            try {
+                return java.net.URLDecoder.decode(last.replace("+", "%2B"), "UTF-8");
+            } catch (java.io.UnsupportedEncodingException | IllegalArgumentException e) {
+                return last;
+            }
         }
         return image.title().isEmpty() ? "bild.png" : image.title();
+    }
+
+    /**
+     * Der Vorschlag beim Speichern: Name aus der Adresse, Endung aus dem geladenen Inhalt (eine draw.io-Zeichnung
+     * hinter {@code …/Name.png#drawio=…} ist SVG und heißt {@code Name.svg}).
+     */
+    static String fileName(ReaderImage image, ReaderImageStore.Loaded loaded) {
+        String name = fileName(image);
+        String actual = loaded == null ? null : loaded.extension();
+        if (actual == null || actual.equals(extension(name)) || (actual.equals("jpg")
+                && extension(name).equals("jpeg"))) {
+            return name;
+        }
+        int dot = name.lastIndexOf('.');
+        return (dot > 0 ? name.substring(0, dot) : name) + "." + actual;
     }
 
     @Override

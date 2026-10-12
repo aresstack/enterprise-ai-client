@@ -152,6 +152,40 @@ public class ImageSlideshowControlsTest {
         onEdt(() -> assertTrue(show.infoText(), show.infoText().contains("(8 × 6)")));
     }
 
+    /** draw.io-Zeichnung: Adresse der PNG-Vorschau, geladen wird SVG; gespeichert wird nie SVG-Text als .png. */
+    @Test
+    public void aDrawioSvgBehindAPngAddressIsSavedAsSvgOrAsRealPng() throws Exception {
+        final byte[] svg = ("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"30\">"
+                + "<rect width=\"40\" height=\"30\" fill=\"red\"/></svg>").getBytes(StandardCharsets.UTF_8);
+        final String src = BASE + "download/attachments/42/Bild%20A.png?version=3&api=v2#drawio=Bild%20A&page=42"
+                + "&revision=3";
+        final ImageSlideshowPanel[] holder = new ImageSlideshowPanel[1];
+        onEdt(() -> holder[0] = new ImageSlideshowPanel(new ReaderImageStore(
+                Arrays.asList(new ReaderImage(src, src, "Bild A")), (image, done) -> done.accept(svg)), 0));
+        final ImageSlideshowPanel show = holder[0];
+        final File dir = Files.createTempDirectory("zeichnung").toFile();
+        dir.deleteOnExit();
+        onEdt(() -> {
+            ReaderImageStore.Loaded loaded = show.loadedCurrent();
+            assertTrue("Anzeige", loaded != null && loaded.ok());
+            assertEquals("Bild A.svg", ImageSlideshowPanel.fileName(show.current(), loaded));
+            try {
+                File asSvg = new File(dir, "Bild A.svg");
+                asSvg.deleteOnExit();
+                assertEquals(ImageSlideshowPanel.SAVED_PREFIX + "Bild A.svg", show.saveTo(asSvg));
+                assertArrayEquals(svg, Files.readAllBytes(asSvg.toPath()));
+                File asPng = new File(dir, "Bild A.png");
+                asPng.deleteOnExit();
+                assertEquals(ImageSlideshowPanel.SAVED_PREFIX + "Bild A.png", show.saveTo(asPng));
+                byte[] png = Files.readAllBytes(asPng.toPath());
+                assertArrayEquals(new byte[] {(byte) 0x89, 'P', 'N', 'G'}, Arrays.copyOf(png, 4));
+                assertNotNull("echtes PNG", ImageIO.read(asPng));
+            } catch (java.io.IOException e) {
+                throw new AssertionError(e);
+            }
+        });
+    }
+
     // ------------------------------------------------------------------ Hilfen
 
     private static List<ReaderImage> images() {
