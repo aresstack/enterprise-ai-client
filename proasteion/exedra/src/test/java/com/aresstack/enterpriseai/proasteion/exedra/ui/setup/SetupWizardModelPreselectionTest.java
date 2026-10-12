@@ -23,6 +23,7 @@ public class SetupWizardModelPreselectionTest {
     private static final String CHAT = "openai/gpt-oss-120b";
     private static final String EMBEDDING = "danielheinz/e5-base-sts-en-de";
     private static final String TTS = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice";
+    private static final String VISION = "Qwen/Qwen2.5-VL-72B-Instruct";
 
     private final WizardFakes.Settings settings = new WizardFakes.Settings();
     private final WizardFakes.Setup setup = new WizardFakes.Setup();
@@ -53,6 +54,9 @@ public class SetupWizardModelPreselectionTest {
         settings.preferred.put(ModelCategory.EMBEDDING, EMBEDDING);
         settings.preferred.put(ModelCategory.TTS, TTS);
         settings.preferredMatch.put(ModelCategory.TTS, Arrays.asList("qwen3-tts", "customvoice"));
+        settings.visionModels.addAll(Arrays.asList("google/gemma-3-27b-it", VISION));
+        settings.preferred.put(ModelCategory.VISION, VISION);
+        settings.preferredMatch.put(ModelCategory.VISION, Arrays.asList("qwen", "vl"));
     }
 
     @Test
@@ -65,6 +69,8 @@ public class SetupWizardModelPreselectionTest {
             assertEquals("chat speech output, not Merlin's voice", TTS,
                     wizard.speechOutputModelChoice().getSelectedItem());
             assertEquals(TTS, wizard.form().modelSelection(ModelCategory.TTS.key()));
+            assertEquals(VISION, wizard.visionModelChoice().getSelectedItem());
+            assertEquals(VISION, wizard.form().modelSelection(ModelCategory.VISION.key()));
             assertEquals("768", wizard.embeddingDimensionField().getText());
             assertTrue("step done without manual choice", wizard.isDone(SetupWizardPanel.STEP_MODELS));
             assertNull(wizard.errorOf(SetupWizardPanel.STEP_MODELS));
@@ -106,5 +112,8 @@ public class SetupWizardModelPreselectionTest {
         assertEquals("match words find another CustomVoice size", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
                 ModelPreselection.choose(Arrays.asList("canopylabs/orpheus-tts-3b-de", "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
                         "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"), "", TTS, Arrays.asList("qwen3-tts", "customvoice")));
+        assertEquals("match words find another Qwen VL size", "Qwen/Qwen2.5-VL-32B-Instruct",
+                ModelPreselection.choose(Arrays.asList("google/gemma-3-27b-it", "Qwen/Qwen2.5-VL-32B-Instruct"), "",
+                        VISION, Arrays.asList("qwen", "vl")));
     }
 }

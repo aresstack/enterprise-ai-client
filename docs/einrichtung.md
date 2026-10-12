@@ -105,7 +105,9 @@ er nirgends, auch nicht in Fehlermeldungen (dort stehen die Feldnamen, z. B. „
    „Dimension ermitteln“ ist nur noch die manuelle Wiederholung. Die Zeile „Sprachausgabe“ wählt ebenso das
    TTS-Modell des Chats (`model.tts`, Vorgabe `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`, sonst ein eindeutiger Treffer mit
    „qwen3-tts“ und „customvoice“, sonst das erste TTS-Modell); Merlins eigene Stimme (`setup.merlin.*`) bleibt davon
-   unberührt.
+   unberührt. Die Zeile „Bildmodell“ wählt nach derselben Reihenfolge das Modell für Bildbeschreibungen
+   (`model.vision`, etwa für Bildanhänge aus Confluence; Vorgabe `Qwen/Qwen2.5-VL-72B-Instruct`, sonst ein eindeutiger
+   Treffer mit „qwen“ und „vl“, sonst das erste Vision-Modell). Beide Zeilen sind optional.
 4. **Confluence** (optional): KeePass-Eintrag mit URL, Benutzer und Passwort bzw. Token, optional ein
    Client-Zertifikat aus dem Windows-Zertifikatspeicher; Netzwerkeinstellungen über den Netzwerk-Reiter des
    Einstellungen-Dialogs. Ein vollständiger Eintrag (URL und Passwort bzw. Token) verlangt keine Eingabe: der

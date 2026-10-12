@@ -47,6 +47,7 @@ final class WizardFakes {
         final List<String> chatModels = new ArrayList<String>();
         final List<String> embeddingModels = new ArrayList<String>();
         final List<String> speechModels = new ArrayList<String>();
+        final List<String> visionModels = new ArrayList<String>();
         final Map<ModelCategory, List<String>> preferredMatch =
                 new java.util.EnumMap<ModelCategory, List<String>>(ModelCategory.class);
         final Map<ModelCategory, String> preferred = new java.util.EnumMap<ModelCategory, String>(ModelCategory.class);
@@ -154,6 +155,10 @@ final class WizardFakes {
             for (String id : speechModels) {
                 models.add(ModelDescriptor.builder("default", id).inputModalities(Collections.singletonList("text"))
                         .outputModalities(Collections.singletonList("audio")).build());
+            }
+            for (String id : visionModels) {
+                models.add(ModelDescriptor.builder("default", id).capabilities(Collections.singletonList("vision"))
+                        .build());
             }
             onResult.accept(models.isEmpty() ? ModelCatalogSnapshot.empty()
                     : new ModelCatalogSnapshot(models, Collections.<CatalogStatus>emptyList()));

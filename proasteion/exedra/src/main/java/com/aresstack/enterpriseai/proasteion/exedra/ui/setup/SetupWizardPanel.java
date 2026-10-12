@@ -178,6 +178,7 @@ public final class SetupWizardPanel extends JPanel {
     private final JComboBox<String> embeddingModel = new JComboBox<String>();
     /** The chat's speech output ({@code model.tts}); never Merlin's own voice ({@code setup.merlin.*}). */
     private final JComboBox<String> speechOutputModel = new JComboBox<String>();
+    private final JComboBox<String> visionModel = new JComboBox<String>();
     private final JTextField embeddingDimension = new JTextField(8);
     private final JLabel modelsStatus = statusLabel();
     private final JLabel dimensionStatus = statusLabel();
@@ -385,10 +386,12 @@ public final class SetupWizardPanel extends JPanel {
     private JPanel modelsStep() {
         Rows rows = new Rows("Modelle");
         rows.note("Die Liste kommt vom KI-Dienst; je Art ist ein Modell vorausgewählt. Die Vektorlänge des "
-                + "Embedding-Modells ermittelt ein kleiner Test-Aufruf. Sprachausgabe ist optional.");
+                + "Embedding-Modells ermittelt ein kleiner Test-Aufruf. Sprachausgabe und Bildmodell sind optional; "
+                + "das Bildmodell beschreibt Bilder, etwa Bildanhänge aus Confluence.");
         chatModel.setEditable(true);
         embeddingModel.setEditable(true);
         speechOutputModel.setEditable(true);
+        visionModel.setEditable(true);
         rows.field("Chat-Modell", chatModel);
         rows.field("Embedding-Modell", embeddingModel);
         JPanel dimension = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
@@ -397,6 +400,7 @@ public final class SetupWizardPanel extends JPanel {
         rows.field("Embedding-Dimension", dimension);
         rows.field("", dimensionStatus);
         rows.field("Sprachausgabe", speechOutputModel);
+        rows.field("Bildmodell", visionModel);
         rows.field("", buttonRow(modelsRefresh));
         rows.field("", modelsStatus);
         return rows.panel();
@@ -1170,6 +1174,9 @@ public final class SetupWizardPanel extends JPanel {
             setChoices(speechOutputModel, models.speech(), ModelPreselection.choose(models.speech(),
                     text(speechOutputModel), settings.preferredModel(ModelCategory.TTS),
                     settings.preferredModelMatch(ModelCategory.TTS)));
+            setChoices(visionModel, models.vision(), ModelPreselection.choose(models.vision(),
+                    text(visionModel), settings.preferredModel(ModelCategory.VISION),
+                    settings.preferredModelMatch(ModelCategory.VISION)));
         } finally {
             busy = wasBusy;
         }
@@ -1825,6 +1832,7 @@ public final class SetupWizardPanel extends JPanel {
             setText(chatModel, initial.chatModel());
             setText(embeddingModel, initial.embeddingModel());
             setText(speechOutputModel, initial.modelSelection(ModelCategory.TTS.key()));
+            setText(visionModel, initial.modelSelection(ModelCategory.VISION.key()));
             embeddingDimension.setText(initial.embeddingDimension());
         } finally {
             busy = false;
@@ -1849,6 +1857,10 @@ public final class SetupWizardPanel extends JPanel {
         String speechOutput = text(speechOutputModel);
         if (!speechOutput.isEmpty()) {
             b.modelSelection(ModelCategory.TTS.key(), speechOutput);
+        }
+        String vision = text(visionModel);
+        if (!vision.isEmpty()) {
+            b.modelSelection(ModelCategory.VISION.key(), vision);
         }
         return b.build();
     }
@@ -2078,6 +2090,10 @@ public final class SetupWizardPanel extends JPanel {
 
     JComboBox<String> speechOutputModelChoice() {
         return speechOutputModel;
+    }
+
+    JComboBox<String> visionModelChoice() {
+        return visionModel;
     }
 
     JComboBox<String> embeddingModelChoice() {
