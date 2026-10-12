@@ -17,6 +17,9 @@ import java.util.TreeMap;
  */
 public final class KnowledgeMetadata {
 
+    /** Größe einer Datei-Ressource in Bytes (Dezimalzahl), wenn die Quelle sie kennt. */
+    public static final String FILE_SIZE = "file.size";
+
     private final SortedMap<String, String> entries;
 
     private KnowledgeMetadata(SortedMap<String, String> entries) {

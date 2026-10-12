@@ -26,7 +26,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Zwei kleine Werkzeuge; die Suche füllt den Index, Unverändertes wird nicht neu verarbeitet. */
+/** Drei kleine Werkzeuge; die Suche füllt den Index, Unverändertes wird nicht neu verarbeitet. */
 public class KnowledgeMcpToolsTest {
 
     private final DeterministicEmbeddingPort embeddings = DeterministicEmbeddingPort.withDimension(16);
@@ -52,10 +52,11 @@ public class KnowledgeMcpToolsTest {
     }
 
     @Test
-    public void onlyTwoToolsWithExamples() {
-        assertEquals(2, tools.contributions().size());
+    public void threeSmallToolsWithExamples() {
+        assertEquals(3, tools.contributions().size());
         assertEquals("knowledge_search", tools.knowledgeSearch().getName());
         assertEquals("knowledge_read", tools.knowledgeRead().getName());
+        assertEquals("knowledge_attachments", tools.knowledgeAttachments().getName());
         for (McpToolContribution tool : tools.contributions()) {
             assertTrue(tool.getName(), tool.getDescription().contains("Example:"));
         }
@@ -63,6 +64,14 @@ public class KnowledgeMcpToolsTest {
         assertTrue(missing.isError());
         assertTrue(missing.getText(), missing.getText().contains("example: query="));
         assertTrue(call(tools.knowledgeRead(), null, null).getText().contains("example: id="));
+    }
+
+    @Test
+    public void attachmentsOfASourceWithoutFilesAreAnError() {
+        McpToolResult result = call(tools.knowledgeAttachments(), "id", "wiki:Drucker");
+        assertTrue(result.isError());
+        assertTrue(result.getText(), result.getText().contains("No knowledge source lists attachments"));
+        assertTrue(call(tools.knowledgeAttachments(), null, null).getText().contains("example: id="));
     }
 
     @Test

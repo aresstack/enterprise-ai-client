@@ -18,6 +18,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchConceptViewAss
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchWorkflowAssembly;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatHistoryBinding;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatOneTimeCodePrompt;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileAttachmentStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.KnowledgeStatusModel;
@@ -183,6 +184,21 @@ public final class ShellAssembly {
             agent = null;
             chatShell = new ChatShellPanel(chatModel, chatActions, knowledgeStatus, palette, bubbles);
         }
+        // Einmalcode einer Quelle (etwa Confluence-Dateien hinter einem Zwei-Faktor-Plugin) direkt im Chat: der
+        // wartende Lesezugriff zeigt die Abfrage über dem Verlauf; der Code geht nur an die Quelle.
+        final ChatOneTimeCodePrompt oneTimeCodes = new ChatOneTimeCodePrompt(new ChatOneTimeCodePrompt.Overlay() {
+            @Override
+            public void show(javax.swing.JComponent content, String title, Runnable closed) {
+                chatShell.transcript().showTranscriptOverlay(content, title, closed);
+            }
+
+            @Override
+            public void close() {
+                chatShell.transcript().closeTranscriptOverlay();
+            }
+        }, root.uiExecutor());
+        chatModel.addListener(oneTimeCodes);
+        root.askOneTimeCodesWith(oneTimeCodes);
         chatShell.composer().setModelName(root.config().chat().model());
         // Anzeigename über den Antworten: aus den Einstellungen, nach jedem Speichern sofort (ohne Neustart).
         chatShell.transcript().setAssistantName(ChatConfig.assistantDisplayNameOf(root.config()));

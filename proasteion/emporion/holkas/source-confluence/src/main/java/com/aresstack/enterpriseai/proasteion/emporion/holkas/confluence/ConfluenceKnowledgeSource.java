@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
+import com.aresstack.enterpriseai.source.api.SourceFile;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.ImageSource;
 import com.aresstack.enterpriseai.source.api.PageView;
@@ -263,6 +264,53 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                         readerMaxBytes());
             }
         });
+    }
+
+    /** Alle Anhänge der Seite als Ressourcen, ohne Filter und unabhängig von {@code includeAttachments}. */
+    @Override
+    public List<KnowledgeResource> attachmentsOf(KnowledgeResourceId page) throws KnowledgeSourceException {
+        final ConfluenceIds.Parsed parsed = parse(page);
+        if (parsed.attachment) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Keine Seite: " + page.value());
+        }
+        return withSession(new Operation<List<KnowledgeResource>>() {
+            @Override
+            public List<KnowledgeResource> run(Session session) throws KnowledgeSourceException {
+                List<KnowledgeResource> result = new ArrayList<KnowledgeResource>();
+                for (Attachment attachment : client.attachments(session, parsed.contentId, MAX_READER_ATTACHMENTS,
+                        candidate -> true)) {
+                    result.add(attachmentResource(attachment));
+                }
+                return result;
+            }
+        });
+    }
+
+    @Override
+    public boolean isAttachment(KnowledgeResourceId id) {
+        ConfluenceIds.Parsed parsed = id == null ? null : ConfluenceIds.parse(locator, id);
+        return parsed != null && parsed.attachment;
+    }
+
+    /**
+     * Die Originaldatei eines Anhangs mit frischen Angaben aus Confluence, über denselben Dateiweg wie der Lesebereich
+     * (Einmalcode-Abfrage, Grenze für Lesen).
+     */
+    @Override
+    public SourceFile loadAttachmentFile(KnowledgeResourceId attachment) throws KnowledgeSourceException {
+        final ConfluenceIds.Parsed parsed = parse(attachment);
+        if (!parsed.attachment) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Kein Anhang: " + attachment.value());
+        }
+        final Attachment[] described = new Attachment[1];
+        byte[] content = file(new Operation<byte[]>() {
+            @Override
+            public byte[] run(Session session) throws KnowledgeSourceException {
+                described[0] = client.attachment(session, parsed.contentId);
+                return client.readAttachment(session, described[0], readerMaxBytes());
+            }
+        });
+        return new SourceFile(attachmentResource(described[0]), content);
     }
 
     static String conversionKind(PageView.Preview preview) {
@@ -575,6 +623,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         metadata.put("confluence.type", "attachment");
         if (attachment.size >= 0) {
             metadata.put("confluence.fileSize", String.valueOf(attachment.size));
+            metadata.put(KnowledgeMetadata.FILE_SIZE, String.valueOf(attachment.size));
         }
         return KnowledgeResource.builder(ConfluenceIds.attachment(locator, attachment.id), sourceId)
                 .title(attachment.title)

@@ -41,7 +41,11 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocument
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.RefreshKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTools;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.OneTimeCodePrompt;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.SourceAttachmentReader;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.UnlockingDocumentReader;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
+import com.aresstack.enterpriseai.proasteion.application.knowledge.DocumentSourceFileTextExtractor;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
@@ -98,6 +102,8 @@ public final class CompositionRoot {
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
     static final String NAVIGATION_DIRECTORY = "navigation";
+    /** Zwischenspeicher der Bildbeschreibungen, derselbe Ordner wie im Lesebereich. */
+    static final String IMAGE_DESCRIPTIONS_DIRECTORY = "image-descriptions";
 
     private static final Logger LOG = Logger.getLogger(CompositionRoot.class.getName());
     /** Wartezeit beim Beenden auf eine laufende Indexierung (danach wird der Index geschlossen). */
@@ -118,6 +124,9 @@ public final class CompositionRoot {
     private final LoadKnowledgeDocumentUseCase documents;
     private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeMcpTools knowledgeTools;
+    private volatile OneTimeCodePrompt oneTimeCodePrompt;
+    private final Object attachmentImagesLock = new Object();
+    private com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase attachmentImages;
     private final ToolCatalog toolCatalog;
     private final AgentService agentService;
     private final ResearchAgentHost researchHost;
@@ -192,9 +201,17 @@ public final class CompositionRoot {
         // Suche und Seitenabruf wiederholen vorübergehende Quellenfehler (knowledge.sources.retry*, ohne Neustart);
         // scheitert eine Quelle trotzdem, gelten wie bisher die Treffer der übrigen.
         RetryingSourceAccess sourceRetry = new RetryingSourceAccess(settings.get(c -> c.knowledge().sourceRetry()));
-        KnowledgeDocumentReader retryingDocuments = sourceRetry.reader(resourceDocuments);
+        // Dateianhänge (PDF, Office, Bilder) liest der Dateiweg der Quelle; der Text kommt aus der Dokumentextraktion
+        // bzw. der Bildbeschreibung und geht mit der Herkunft der Quelle wie eine Seite in Roh- und Wissensindex.
+        KnowledgeDocumentReader attachmentDocuments = new SourceAttachmentReader(resourceDocuments,
+                new DocumentSourceFileTextExtractor(DocumentExtraction.detector(), DocumentExtraction.registry(),
+                        this::attachmentImageDescriptions));
+        KnowledgeDocumentReader retryingDocuments = sourceRetry.reader(attachmentDocuments);
+        // Lesen auf Anforderung (knowledge_read, Klick) fragt nach dem Einmalcode einer Quelle und liest dann neu;
+        // das Vorladen im Hintergrund bekommt den Leser ohne Abfrage.
         this.documents = new LoadKnowledgeDocumentUseCase(ports.sources())
-                .withReader(retryingDocuments).withCatalog(() -> liveSources);
+                .withReader(new UnlockingDocumentReader(retryingDocuments, () -> oneTimeCodePrompt))
+                .withCatalog(() -> liveSources);
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
         // Suche füllt den Index (MainframeMate) in zwei Ebenen: Quellen live durchsuchen, die Treffer lädt der
         // Vorlader (Lade-Pool, Priority-Thread) und schreibt sie sofort in den Rohindex (Ebene A, durchsuchbar ohne
@@ -249,7 +266,8 @@ public final class CompositionRoot {
             }
             sourceSelection.register(registration.sourceId(), enabled);
         }
-        // Nur zwei Werkzeuge (knowledge_search, knowledge_read); durchsucht werden nur die angehakten Quellen.
+        // Wissenswerkzeuge (knowledge_search, knowledge_read, knowledge_attachments); durchsucht werden nur die
+        // angehakten Quellen.
         final KnowledgeSourceSelection selection = sourceSelection;
         this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, searchIndexing,
                 selection::isSearchable, config.agent().toolSettings());
@@ -580,6 +598,25 @@ public final class CompositionRoot {
                 ports.chat(), modelKey(com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.DOCUMENT_OCR),
                 modelKey(com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.VISION),
                 new FileImageAnalysisCache(directory));
+    }
+
+    /**
+     * Die Oberfläche für Einmalcodes (etwa Confluence-Dateien hinter einem Zwei-Faktor-Plugin): ein Lesezugriff auf
+     * Anforderung wartet, bis der Benutzer den Code eingegeben oder abgebrochen hat. {@code null}: keine Abfrage.
+     */
+    public void askOneTimeCodesWith(OneTimeCodePrompt prompt) {
+        this.oneTimeCodePrompt = prompt;
+    }
+
+    /** Bildbeschreibung für Bildanhänge, beim ersten Bild angelegt; derselbe Zwischenspeicher wie im Lesebereich. */
+    private com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase attachmentImageDescriptions() {
+        synchronized (attachmentImagesLock) {
+            if (attachmentImages == null) {
+                attachmentImages = readerImageDescriptions(AppPaths.configFile().toAbsolutePath().getParent()
+                        .resolve(IMAGE_DESCRIPTIONS_DIRECTORY));
+            }
+            return attachmentImages;
+        }
     }
 
     public ShutdownSequence shutdown() {

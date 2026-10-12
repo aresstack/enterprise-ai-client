@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.mcp;
 
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ListKnowledgeAttachmentsUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
@@ -12,14 +13,16 @@ import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * Die MCP-Wissenswerkzeuge für einen Endpoint eines {@code McpServerRegistry} – bewusst nur zwei, klein und mit
+ * Die MCP-Wissenswerkzeuge für einen Endpoint eines {@code McpServerRegistry} – bewusst wenige, klein und mit
  * Beispielen (askai arch, {@code ResearchConceptTools}):
  * <ul>
  *   <li>{@value #KNOWLEDGE_SEARCH}: Quellen live durchsuchen (die Treffer lädt der Vorlader im Hintergrund
  *       und indexiert sie), dazu hybride Suche im Index (Parameter {@code query}, optional {@code limit}),</li>
  *   <li>{@value #KNOWLEDGE_READ}: ein Dokument aus einem Treffer lesen (Cache, sonst sofort, auch nicht indexierte
  *       Treffer); es wird bei Bedarf indexiert
- *       (Parameter {@code id}).</li>
+ *       (Parameter {@code id}); auch Dateianhänge (PDF, Office, Bilder), notfalls nach Einmalcode,</li>
+ *   <li>{@value #KNOWLEDGE_ATTACHMENTS}: die Dateianhänge einer Seite auflisten, ohne sie zu laden (Parameter
+ *       {@code id}).</li>
  * </ul>
  * Kein Werkzeug zum Neuindexieren ganzer Quellen: Vollindexierung ist eine Funktion der Oberfläche, kein Werkzeug
  * für das Modell. Die verfügbaren Quellen sind die des Katalogs von {@code documents}.
@@ -28,10 +31,12 @@ public final class KnowledgeMcpTools {
 
     public static final String KNOWLEDGE_SEARCH = KnowledgeSearchTool.NAME;
     public static final String KNOWLEDGE_READ = KnowledgeReadTool.NAME;
+    public static final String KNOWLEDGE_ATTACHMENTS = KnowledgeAttachmentsTool.NAME;
 
     private final KnowledgeToolSettings settings;
     private final KnowledgeSearchTool search;
     private final KnowledgeReadTool read;
+    private final KnowledgeAttachmentsTool attachments;
     private volatile boolean shutdown;
 
     /**
@@ -58,15 +63,21 @@ public final class KnowledgeMcpTools {
         this.settings = settings == null ? KnowledgeToolSettings.defaults() : settings;
         this.search = new KnowledgeSearchTool(retrieval, live, documents::catalog, enabled, this.settings);
         this.read = new KnowledgeReadTool(documents, live, this.settings);
+        this.attachments = new KnowledgeAttachmentsTool(new ListKnowledgeAttachmentsUseCase(documents::catalog),
+                this.settings);
     }
 
     public KnowledgeToolSettings settings() {
         return settings;
     }
 
-    /** Beide Werkzeuge in fester Reihenfolge: Suche, Lesen. */
+    /** Alle Werkzeuge in fester Reihenfolge: Suche, Lesen, Anhänge. */
     public List<McpToolContribution> contributions() {
-        return Collections.unmodifiableList(Arrays.asList(knowledgeSearch(), knowledgeRead()));
+        return Collections.unmodifiableList(Arrays.asList(knowledgeSearch(), knowledgeRead(), knowledgeAttachments()));
+    }
+
+    public McpToolContribution knowledgeAttachments() {
+        return attachments.contribution();
     }
 
     public McpToolContribution knowledgeSearch() {

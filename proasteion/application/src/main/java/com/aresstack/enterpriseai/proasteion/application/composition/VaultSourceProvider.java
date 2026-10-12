@@ -18,6 +18,7 @@ import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.SourceFile;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
@@ -250,6 +251,26 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
         public byte[] loadAttachmentPreview(PageView.Attachment attachment, PageView.Preview preview)
                 throws KnowledgeSourceException {
             return SourceCapabilities.loadAttachmentPreview(port(), attachment, preview);
+        }
+
+        @Override
+        public List<KnowledgeResource> attachmentsOf(KnowledgeResourceId page) throws KnowledgeSourceException {
+            return SourceCapabilities.attachmentsOf(port(), page);
+        }
+
+        /** Answer only for an opened source: asking must not trigger a KeePass request. */
+        @Override
+        public boolean isAttachment(KnowledgeResourceId id) {
+            KnowledgeSourcePort port;
+            synchronized (this) {
+                port = opened;
+            }
+            return port != null && SourceCapabilities.isAttachment(port, id);
+        }
+
+        @Override
+        public SourceFile loadAttachmentFile(KnowledgeResourceId attachment) throws KnowledgeSourceException {
+            return SourceCapabilities.loadAttachmentFile(port(), attachment);
         }
 
         @Override

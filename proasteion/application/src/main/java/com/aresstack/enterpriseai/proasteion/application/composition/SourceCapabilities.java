@@ -1,11 +1,15 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
+import com.aresstack.enterpriseai.source.api.SourceFile;
+
+import java.util.List;
 
 /**
  * Reicht die optionale Fähigkeit {@link PageViewSource} (Lese-Ansicht) durch die Hüllen der Composition Root
@@ -45,6 +49,26 @@ final class SourceCapabilities {
             throw unsupported(port, "keine Lese-Ansicht");
         }
         return ((PageViewSource) port).loadAttachmentPreview(attachment, preview);
+    }
+
+    static List<KnowledgeResource> attachmentsOf(KnowledgeSourcePort port, KnowledgeResourceId page)
+            throws KnowledgeSourceException {
+        if (!(port instanceof PageViewSource)) {
+            throw unsupported(port, "keine Anhänge");
+        }
+        return ((PageViewSource) port).attachmentsOf(page);
+    }
+
+    static boolean isAttachment(KnowledgeSourcePort port, KnowledgeResourceId id) {
+        return port instanceof PageViewSource && ((PageViewSource) port).isAttachment(id);
+    }
+
+    static SourceFile loadAttachmentFile(KnowledgeSourcePort port, KnowledgeResourceId attachment)
+            throws KnowledgeSourceException {
+        if (!(port instanceof PageViewSource)) {
+            throw unsupported(port, "keine Anhänge");
+        }
+        return ((PageViewSource) port).loadAttachmentFile(attachment);
     }
 
     static DownloadAccess downloadAccess(KnowledgeSourcePort port) {

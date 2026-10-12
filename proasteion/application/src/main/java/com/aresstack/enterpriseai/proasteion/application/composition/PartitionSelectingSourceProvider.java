@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.SourceFile;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
@@ -151,6 +152,21 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
         public byte[] loadAttachmentPreview(PageView.Attachment attachment, PageView.Preview preview)
                 throws KnowledgeSourceException {
             return SourceCapabilities.loadAttachmentPreview(port, attachment, preview);
+        }
+
+        @Override
+        public List<KnowledgeResource> attachmentsOf(KnowledgeResourceId page) throws KnowledgeSourceException {
+            return SourceCapabilities.attachmentsOf(port, page);
+        }
+
+        @Override
+        public boolean isAttachment(KnowledgeResourceId id) {
+            return SourceCapabilities.isAttachment(port, id);
+        }
+
+        @Override
+        public SourceFile loadAttachmentFile(KnowledgeResourceId attachment) throws KnowledgeSourceException {
+            return SourceCapabilities.loadAttachmentFile(port, attachment);
         }
 
         @Override

@@ -1,6 +1,9 @@
 package com.aresstack.enterpriseai.source.api;
 
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+
+import java.util.List;
 
 /**
  * Optionale Fähigkeit einer Quelle: die Lese-Ansicht einer Seite, so wie die Quelle sie selbst darstellt (HTML mit
@@ -37,6 +40,28 @@ public interface PageViewSource {
     default byte[] loadAttachmentPreview(PageView.Attachment attachment, PageView.Preview preview)
             throws KnowledgeSourceException {
         throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Vorschauen");
+    }
+
+    /**
+     * Die Dateianhänge einer Seite als Ressourcen dieser Quelle, ohne Inhalt: Titel (Dateiname), Typ, Revision, Seite
+     * als Eltern, Größe in den Metadaten. Für Werkzeuge, die dem Modell Anhänge zeigen. Quellen ohne Anhänge:
+     * {@code UNSUPPORTED}.
+     */
+    default List<KnowledgeResource> attachmentsOf(KnowledgeResourceId page) throws KnowledgeSourceException {
+        throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Anhänge");
+    }
+
+    /** Ob die ID einen Dateianhang dieser Quelle bezeichnet; den liest {@link #loadAttachmentFile}, nicht {@code load}. */
+    default boolean isAttachment(KnowledgeResourceId id) {
+        return false;
+    }
+
+    /**
+     * Ein Dateianhang samt Ressource und Originalbytes über die Anmeldung der Quelle. Verlangt die Quelle dafür einen
+     * Einmalcode, kommt {@link OneTimeCodeRequiredException}. Keine Anhang-ID dieser Quelle: {@code UNSUPPORTED}.
+     */
+    default SourceFile loadAttachmentFile(KnowledgeResourceId attachment) throws KnowledgeSourceException {
+        throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNSUPPORTED, "Quelle ohne Anhänge");
     }
 
     /**

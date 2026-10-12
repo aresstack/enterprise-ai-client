@@ -55,8 +55,9 @@ final class KnowledgeReadTool implements McpToolHandler {
 
     McpToolContribution contribution() {
         return McpToolContribution.of(NAME,
-                "Read one document returned by knowledge_search, or a page bookmark the user added to the chat. Use "
-                        + "the exact id from a search hit (line \"id:\") or the bookmark as given. Example: " + EXAMPLE
+                "Read one document returned by knowledge_search, an attachment listed by knowledge_attachments, or a "
+                        + "page bookmark the user added to the chat. Use the exact id from a search hit or attachment "
+                        + "(line \"id:\") or the bookmark as given. Example: " + EXAMPLE
                         + ". Example: " + BOOKMARK_EXAMPLE + ".",
                 this,
                 McpToolParameter.string(PARAM_ID, true, "Document id from knowledge_search or a page bookmark. "
@@ -111,7 +112,8 @@ final class KnowledgeReadTool implements McpToolHandler {
                 return "No knowledge source knows " + document + ". Use an id from knowledge_search — example: "
                         + EXAMPLE;
             case ACCESS_DENIED:
-                return "Access to " + document + " was denied. Read another hit.";
+                return "Access to " + document + " was denied (files of some sources need a one-time code the user "
+                        + "did not enter). Read another hit.";
             case UNAVAILABLE:
                 return "The source of " + document + " is not reachable right now. Try again later.";
             default:

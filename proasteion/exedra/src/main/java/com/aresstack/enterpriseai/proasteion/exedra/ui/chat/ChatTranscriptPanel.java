@@ -171,6 +171,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private java.awt.Point quoteViewPosition;
     private JComponent transcriptSkyAccessory;
     private ComicOverlayPanel transcriptOverlay;
+    private Runnable transcriptOverlayClosed;
     private int topInset;
     /** Beobachtet die Inset-Property der Ebene (an ihr und ihren direkten Kindern). */
     private final PropertyChangeListener skyInsetListener = new PropertyChangeListener() {
@@ -436,6 +437,15 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         layers.repaint();
     }
 
+    /**
+     * Wie {@link #showTranscriptOverlay(JComponent, String)}; {@code closed} läuft einmal, sobald das Overlay schließt
+     * (✕, Esc, {@link #closeTranscriptOverlay()} oder ein neues Overlay). Nur auf dem EDT.
+     */
+    public void showTranscriptOverlay(JComponent content, String title, Runnable closed) {
+        showTranscriptOverlay(content, title);
+        transcriptOverlayClosed = closed;
+    }
+
     /** Zeigt einen Mermaid-Quelltext im vollen Betrachter ({@link MermaidViewerPanel}) als Overlay. */
     @Override
     public void showDiagramOverlay(String mermaidSource, String title) {
@@ -450,6 +460,11 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             transcriptOverlay = null;
             layers.revalidate();
             layers.repaint();
+            Runnable closed = transcriptOverlayClosed;
+            transcriptOverlayClosed = null;
+            if (closed != null) {
+                closed.run();
+            }
         }
     }
 

@@ -36,7 +36,7 @@ source.1.allowInsecureHttp=false
 | `startPoints` | Space-Key (`DEV` oder `space:DEV`), Seiten-ID (`123456` oder `page:123456`), persönlicher Space (`~alice`) oder eine Ressourcen-ID. |
 | `maxDepth`, `maxResources` | Tiefe der Kindseiten ab den Startpunkten und Obergrenze je Lauf; das Restbudget wird je Knoten weitergegeben. |
 | `pageSize` | Seitengröße der REST-Aufrufe; Paging folgt `_links.next`. |
-| `includeAttachments` | Anhänge als Ressourcen aufnehmen (nur Text: `text/*`, JSON, XML; PDF und Office → `UNSUPPORTED`). |
+| `includeAttachments` | Anhänge beim Vollindex als Ressourcen aufnehmen (nur Text: `text/*`, JSON, XML). PDF, Office und Bilder liest der Chat auf Anforderung (`knowledge_attachments`, `knowledge_read`). |
 | `searchSpaceKeys` | Spaces für `search` (CQL `type=page AND text ~ "…"`, optional `space in (…)`). |
 | `allowInsecureHttp` | `ConfluenceConfig.build()` lehnt Zugangsdaten über `http` ab; nur mit `true` (Entwicklung) erlaubt. |
 | `clientCertificate.alias` | Pflicht, sobald ein Client-Zertifikat konfiguriert ist; `AppConfigLoader` lehnt `keyStoreFile` oder `keyStorePasswordRef` ohne Alias ab. Ohne `keyStoreFile`: Alias des Zertifikats im Windows-Zertifikatsspeicher (Windows-MY), nur unter Windows. Mit `keyStoreFile`: Alias des Schlüsseleintrags in der PKCS12-Datei. |
@@ -98,6 +98,18 @@ source.1.allowInsecureHttp=false
   Code, Formularwerte und Cookie-Werte stehen in keiner Logzeile und werden nicht gespeichert; ein Programmneustart
   beginnt ohne Sitzung. Logzeilen: `[Confluence] Einmalcode-Abfrage: formular=… ziel=… felder=…`,
   `[Confluence] Einmalcode bestätigt: status=… sitzungsCookies=[Namen]`. Die Indexierung fragt nie nach einem Code.
+- **Anhänge im Chat und für den Agenten** (0.49.0): `knowledge_attachments(id)` listet die Anhänge einer Seite
+  (`PageViewSource.attachmentsOf`: Name, Typ, Größe `file.size`, Version, ID `confluence:<locator>/attachment/<attId>`),
+  ohne sie zu laden. `knowledge_read` mit einer Anhang-ID lädt die Datei über den Dateiweg des Lesebereichs
+  (`loadAttachmentFile`, Grenze wie im Lesebereich) und macht daraus Text: PDF, Office und Text über die
+  Dokumentextraktion (Tika, wie Chat-Anhänge), Bilder über die Bildbeschreibung (Modell der Kategorie VISION,
+  Zwischenspeicher `image-descriptions` wie im Lesebereich). Das Ergebnis ist ein Confluence-`KnowledgeDocument` mit
+  Seite als Eltern, Revision und Adresse und geht wie eine Seite in Roh- und Wissensindex; die Bytes werden verworfen.
+  Verlangt Confluence einen Einmalcode, wartet der Werkzeugaufruf (`UnlockingDocumentReader`), und über dem
+  Chat-Verlauf erscheint dieselbe Abfrage wie im Lesebereich mit „Abbrechen“ (`ChatOneTimeCodePrompt`). Der Code geht
+  direkt an `OneTimeCodeChallenge.submit(char[])`, nie an Modell, Verlauf, Werkzeugargumente, Export oder Protokoll;
+  danach wird einmal neu gelesen. „Abbrechen“ gilt je Quelle bis zur nächsten eigenen Nachricht. Das Vorladen im
+  Hintergrund fragt nie. `includeAttachments` bleibt der Schalter für den Vollindex (dort weiterhin nur Textanhänge).
 - **draw.io** (`drawio`, `drawio-sketch`, `inc-drawio`, erkannt an jedem `data-diagramdata`, bevor versteckte
   Elemente entfernt werden): `previewName`, `owningPageId` (Rückfall `ceoId`) und `revision` kommen aus den
   Makrodaten, nie aus der angezeigten Seite. An der Makrostelle steht ein Bild mit der Vorschau

@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeMetadata;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
@@ -8,6 +10,7 @@ import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
 import com.aresstack.enterpriseai.source.api.PageView;
+import com.aresstack.enterpriseai.source.api.SourceFile;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -213,6 +216,27 @@ public class ConfluenceOneTimeCodeTest {
         assertEquals(DownloadAccess.ONE_TIME_CODE_REQUIRED, source.downloadAccess());
         assertNull(again.submit("482913".toCharArray()));
         assertArrayEquals(PNG, source.loadViewImage(BASE + "/download/attachments/7/bild.png"));
+    }
+
+    @Test
+    public void attachmentsAreListedAndLoadedAsFilesWithTheirOriginAfterTheCode() throws Exception {
+        ConfluenceKnowledgeSource source = source();
+        List<KnowledgeResource> attachments = source.attachmentsOf(page());
+        assertEquals(1, attachments.size());
+        KnowledgeResource pdf = attachments.get(0);
+        assertTrue(source.isAttachment(pdf.id()));
+        assertFalse(source.isAttachment(page()));
+        assertEquals("Handbuch.pdf", pdf.title());
+        assertEquals("application/pdf", pdf.contentType());
+        assertEquals(page(), pdf.parentId().get());
+        assertEquals("10", pdf.metadata().get(KnowledgeMetadata.FILE_SIZE).get());
+
+        OneTimeCodeChallenge challenge = challengeOf(() -> source.loadAttachmentFile(pdf.id()).content());
+        assertNull(challenge.submit("482913".toCharArray()));
+        SourceFile file = source.loadAttachmentFile(pdf.id());
+        assertArrayEquals(PDF, file.content());
+        assertEquals(pdf.id(), file.resource().id());
+        assertEquals(page(), file.resource().parentId().get());
     }
 
     private interface Load {

@@ -9,7 +9,9 @@ import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.SourceFile;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 import com.aresstack.enterpriseai.source.api.SourceLink;
@@ -150,6 +152,37 @@ public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, 
             throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e : logged(what, e);
         } catch (RuntimeException e) {
             throw unexpected(what, e);
+        }
+    }
+
+    @Override
+    public List<KnowledgeResource> attachmentsOf(KnowledgeResourceId page) throws KnowledgeSourceException {
+        try {
+            return SourceCapabilities.attachmentsOf(delegate, page);
+        } catch (KnowledgeSourceException e) {
+            throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e : logged("attachmentsOf " + value(page), e);
+        } catch (RuntimeException e) {
+            throw unexpected("attachmentsOf " + value(page), e);
+        }
+    }
+
+    @Override
+    public boolean isAttachment(KnowledgeResourceId id) {
+        return SourceCapabilities.isAttachment(delegate, id);
+    }
+
+    /** A one-time code request is expected and goes to the caller without a warning. */
+    @Override
+    public SourceFile loadAttachmentFile(KnowledgeResourceId attachment) throws KnowledgeSourceException {
+        try {
+            return SourceCapabilities.loadAttachmentFile(delegate, attachment);
+        } catch (OneTimeCodeRequiredException e) {
+            throw e;
+        } catch (KnowledgeSourceException e) {
+            throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e
+                    : logged("loadAttachmentFile " + value(attachment), e);
+        } catch (RuntimeException e) {
+            throw unexpected("loadAttachmentFile " + value(attachment), e);
         }
     }
 
