@@ -66,10 +66,13 @@ public class TtsVoiceCatalogTest {
     }
 
     @Test
-    public void merlinsDaughterSpeaksWithOrpheusJanaByDefault() {
-        assertEquals("orpheus-tts-3b-de", PreferredModels.bundled().model("tts"));
+    public void merlinsDaughterSpeaksWithQwenVivianByDefault() {
+        assertEquals("Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", PreferredModels.bundled().model("tts"));
+        assertEquals("Vivian", ModelsConfig.resolveTtsVoice(ModelsConfig.parse("kipitz:"
+                + PreferredModels.bundled().model("tts")), null, null, catalog));
+        // A user who picks Orpheus for the assistant still hears a female speaker.
         assertEquals("Jana", ModelsConfig.resolveTtsVoice(orpheus, null, null, catalog));
-        // Merlin keeps his own male speaker on the same model.
+        // Merlin keeps his own male Orpheus speaker.
         assertEquals("Thomas", ModelsConfig.defaultMerlinSpeaker());
     }
 

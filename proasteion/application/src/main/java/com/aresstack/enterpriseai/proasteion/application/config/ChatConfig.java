@@ -55,7 +55,7 @@ public final class ChatConfig {
     public static final String ANSWER_PLANNING_ASK_BELOW_KEY = "chat.answerPlanning.askBelowPercent";
 
     /**
-     * Anzeigename ohne Eintrag: „Merlins Tochter“ passt zur weiblichen Standardstimme (Orpheus „Jana“), während Merlin
+     * Anzeigename ohne Eintrag: „Merlins Tochter“ passt zur weiblichen Standardstimme (Qwen3-TTS „Vivian“), während Merlin
      * die Figur des Einrichtungsassistenten bleibt. Nur Beschriftung; das Modell erfährt den Namen nicht, und ein
      * Wechsel der Stimme ändert ihn nie.
      */

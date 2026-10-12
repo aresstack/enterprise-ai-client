@@ -36,7 +36,7 @@ Der Schritt zeigt die Felder „Chat-Modell“, „Embedding-Modell“, „Embed
 Seit 0.48.2 wählt der Assistent je Art (Chat, Embedding, Sprachausgabe) ohne Klick ein Modell, nach einer festen Reihenfolge:
 
 1. Ist schon ein Modell gewählt und bietet der Dienst es noch an, bleibt es.
-2. Sonst das Vorzugsmodell, das mit dem Programm ausgeliefert wird (für Chat ein gpt-oss-120b, für Embeddings ein e5-base-sts-en-de, für die Sprachausgabe orpheus-tts-3b-de mit der Stimme „Jana“), wenn der Dienst genau dieses anbietet.
+2. Sonst das Vorzugsmodell, das mit dem Programm ausgeliefert wird (für Chat ein gpt-oss-120b, für Embeddings ein e5-base-sts-en-de, für die Sprachausgabe ein Qwen3-TTS-CustomVoice mit der Stimme „Vivian“), wenn der Dienst genau dieses anbietet.
 3. Sonst genau ein angebotenes Modell, dessen Name den Kern des Vorzugsmodells enthält. Passen mehrere, greift diese Regel nicht.
 4. Sonst das erste angebotene Modell dieser Art.
 
