@@ -37,6 +37,12 @@ public final class ReadAloudService {
     /** Obergrenze der Worker wie der Regler in arch (1 bis 8). */
     public static final int MAX_SYNTHESIS_WORKERS = 8;
 
+    /** Versuche je Stück: ein fehlgeschlagenes Stück wird einmal wiederholt, danach bricht das Vorlesen ab. */
+    public static final int DEFAULT_SYNTHESIS_ATTEMPTS = 2;
+
+    /** Obergrenze der Versuche je Stück. */
+    public static final int MAX_SYNTHESIS_ATTEMPTS = 5;
+
     /** Sprache der Antworten, wenn die Spracherkennung nichts erkennt (die Oberfläche ist deutsch). */
     static final String FALLBACK_LANGUAGE = "de";
 
@@ -199,6 +205,7 @@ public final class ReadAloudService {
     private final AudioPlayback playback;
     private final SpeechChunking chunking;
     private final int workers;
+    private final int attempts;
     private final TextAnalysisService analysis;
     private final Object lock = new Object();
     private long generation;
@@ -234,6 +241,15 @@ public final class ReadAloudService {
      */
     public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, String voice, AudioPlayback playback,
                             SpeechChunking chunking, int workers, TextAnalysisService analysis) {
+        this(synthesis, modelId, voice, playback, chunking, workers, DEFAULT_SYNTHESIS_ATTEMPTS, analysis);
+    }
+
+    /**
+     * @param attempts Versuche je Stück, 1 bis {@link #MAX_SYNTHESIS_ATTEMPTS}; scheitert ein Stück auch beim letzten,
+     *                 endet das Vorlesen dort mit einer Meldung statt das Stück still zu überspringen
+     */
+    public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, String voice, AudioPlayback playback,
+                            SpeechChunking chunking, int workers, int attempts, TextAnalysisService analysis) {
         if (synthesis == null || modelId == null || modelId.trim().isEmpty() || playback == null) {
             throw new IllegalArgumentException("synthesis, modelId and playback must be set");
         }
@@ -243,6 +259,7 @@ public final class ReadAloudService {
         this.playback = playback;
         this.chunking = chunking == null ? SpeechChunking.PARAGRAPHS : chunking;
         this.workers = Math.max(1, Math.min(MAX_SYNTHESIS_WORKERS, workers));
+        this.attempts = Math.max(1, Math.min(MAX_SYNTHESIS_ATTEMPTS, attempts));
         this.analysis = analysis;
     }
 
@@ -300,11 +317,14 @@ public final class ReadAloudService {
                     Thread.currentThread().interrupt();
                     return anySpoken;
                 } catch (ExecutionException failed) {
-                    reported = report(listener, reported, message(failed.getCause()));
-                    wav = null;
+                    // Stop here: skipping a missing chunk silently makes the answer jump ("third" → "fifth").
+                    report(listener, reported, "Vorlesen abgebrochen: Abschnitt " + (i + 1) + " von "
+                            + chunks.size() + " fehlt nach " + attempts + " Versuch" + (attempts == 1 ? "" : "en")
+                            + " (" + message(failed.getCause()) + ")");
+                    return anySpoken;
                 }
                 if (wav == null) {
-                    continue;
+                    return anySpoken; // superseded before the request
                 }
                 if (!isCurrent(myGeneration)) {
                     return anySpoken;
@@ -360,7 +380,16 @@ public final class ReadAloudService {
                 if (listener != null) {
                     listener.chunkRequested(trace);
                 }
-                byte[] wav = synthesis.synthesize(modelId, voice, chunk).wav();
+                byte[] wav = null;
+                for (int attempt = 1; wav == null; attempt++) {
+                    try {
+                        wav = synthesis.synthesize(modelId, voice, chunk).wav();
+                    } catch (SpeechSynthesisException | RuntimeException failed) {
+                        if (attempt >= attempts || !isCurrent(myGeneration)) {
+                            throw failed;
+                        }
+                    }
+                }
                 if (listener != null) {
                     listener.chunkSynthesized(trace, WavFormat.of(wav));
                 }

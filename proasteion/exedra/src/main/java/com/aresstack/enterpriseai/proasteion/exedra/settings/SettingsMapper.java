@@ -151,6 +151,7 @@ public final class SettingsMapper {
         b.readAloudAutoStart(bool(p, ModelsConfig.READ_ALOUD_AUTO_START_KEY, false));
         b.readAloudChunking(text(p, ModelsConfig.READ_ALOUD_CHUNKING_KEY, "PARAGRAPHS").toUpperCase(Locale.ROOT));
         b.synthesisWorkers(text(p, ModelsConfig.READ_ALOUD_WORKERS_KEY, "2"));
+        b.synthesisAttempts(text(p, ModelsConfig.READ_ALOUD_ATTEMPTS_KEY, "2"));
         b.bubbleUserBackground(bubbleColor(p, BubbleColorsConfig.USER_BACKGROUND_KEY,
                 BubbleColorsConfig.DEFAULT_USER_BACKGROUND));
         b.bubbleUserForeground(bubbleColor(p, BubbleColorsConfig.USER_FOREGROUND_KEY,
@@ -272,6 +273,8 @@ public final class SettingsMapper {
                 "PARAGRAPHS".equals(form.readAloudChunking()) ? "" : form.readAloudChunking());
         put(set, ModelsConfig.READ_ALOUD_WORKERS_KEY,
                 "2".equals(form.synthesisWorkers()) ? "" : form.synthesisWorkers());
+        put(set, ModelsConfig.READ_ALOUD_ATTEMPTS_KEY,
+                "2".equals(form.synthesisAttempts()) ? "" : form.synthesisAttempts());
         // Blasenfarben: die Standardfarben stehen nicht in der Datei („Standard wiederherstellen“ entfernt die Schlüssel).
         put(set, BubbleColorsConfig.USER_BACKGROUND_KEY,
                 bubbleColorValue(form.bubbleUserBackground(), BubbleColorsConfig.DEFAULT_USER_BACKGROUND));

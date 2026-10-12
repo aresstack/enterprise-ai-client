@@ -51,10 +51,11 @@ Hinweis im Dialog: „Ohne TTS-Modell bleibt der Play/Pause-Orb über dem Verlau
 | „Neue Antworten automatisch vorlesen“ | aus | Der Orb ist schon beim Start aktiv: jede neue Antwort wird sofort vorgelesen. |
 | „Einheit der Synthese“ | „Absätze“ | Wie die Antwort zum Vorlesen geteilt wird: „Absätze“, „Sätze“ oder „Ganze Antwort“. |
 | „Worker“ | 2 | Parallele Synthesen, die die Stücke im Hintergrund vorbereiten (1 bis 8). |
+| „Versuche je Abschnitt“ | 2 | Wie oft ein Abschnitt beim Dienst angefragt wird (1 bis 5). Scheitert er auch beim letzten Versuch, hört das Vorlesen dort mit einer Meldung auf, welcher Abschnitt fehlt; ein Abschnitt wird nie stillschweigend übersprungen (`speech.readAloud.synthesisAttempts`). |
 
 Unter den Feldern erklärt der Dialog: „Absätze sind der beste Kompromiss aus Klang und Wartezeit: Sätze klingen früher, aber abgehackter, die ganze Antwort klingt am natürlichsten, beginnt aber erst nach der ganzen Synthese.“ Alle Stücke rechnen im Hintergrund, gespielt wird in Lesereihenfolge; das erste klingt, sobald es fertig ist.
 
-Die Standardwerte (aus, Absätze, 2 Worker) schreibt der Dialog nicht in die Datei.
+Die Standardwerte (aus, Absätze, 2 Worker, 2 Versuche) schreibt der Dialog nicht in die Datei.
 
 ## Lokale Stimmen
 

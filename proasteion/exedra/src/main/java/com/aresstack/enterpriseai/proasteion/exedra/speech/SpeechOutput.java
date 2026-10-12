@@ -59,7 +59,7 @@ public final class SpeechOutput {
         String voice = models.ttsVoice(selected, TtsVoiceCatalog.bundled());
         ReadAloudService service = new ReadAloudService(speech.require(selected.catalogId()), selected.modelId(),
                 voice, new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
-                analysis);
+                models.synthesisAttempts(), analysis);
         return ReadAloudBinding.available(service, "Stimme: " + selected.modelId()
                 + (voice == null ? "" : " / " + voice) + " (" + selected.catalogId() + ")",
                 models.readAloudAutoStart(), "catalog=" + selected.catalogId());
@@ -85,7 +85,8 @@ public final class SpeechOutput {
                 ? catalog.voice(voice.modelId(), TtsVoiceCatalog.Gender.MALE)
                 : ModelsConfig.resolveTtsVoice(voice, models.merlinSpeaker(), null, catalog);
         ReadAloudService service = new ReadAloudService(speech.require(voice.catalogId()), voice.modelId(),
-                speaker, new JavaSoundAudioPlayback(), SpeechChunking.SENTENCES, models.synthesisWorkers(), null);
+                speaker, new JavaSoundAudioPlayback(), SpeechChunking.SENTENCES, models.synthesisWorkers(),
+                models.synthesisAttempts(), null);
         return ReadAloudBinding.available(service, "Merlins Stimme: " + voice.modelId()
                 + (speaker == null ? "" : " / " + speaker) + " (" + voice.catalogId() + ")", false,
                 "catalog=" + voice.catalogId());

@@ -26,8 +26,11 @@ public final class SpeechText {
     private static final Pattern LINK = Pattern.compile("\\[([^\\]]+)\\]\\([^)]*\\)");
     private static final Pattern URL = Pattern.compile("https?://\\S+");
     private static final Pattern INLINE_CODE = Pattern.compile("`([^`]*)`");
-    private static final Pattern LINE_MARKERS = Pattern.compile("(?m)^\\s*(#{1,6}\\s+|>\\s?|[-*+]\\s+|\\d+[.)]\\s+)");
-    private static final Pattern TABLE_RULE = Pattern.compile("(?m)^\\s*\\|?\\s*:?-{3,}.*$");
+    // Match horizontal whitespace only: \s would also swallow the blank line before a heading or list item and
+    // merge the paragraphs that PARAGRAPHS chunking relies on. Drop a table rule together with its own line end.
+    private static final Pattern LINE_MARKERS = Pattern.compile(
+            "(?m)^[ \\t]*(#{1,6}[ \\t]+|>[ \\t]?|[-*+][ \\t]+|\\d+[.)][ \\t]+)");
+    private static final Pattern TABLE_RULE = Pattern.compile("(?m)^[ \\t]*\\|?[ \\t]*:?-{3,}[^\\n]*\\n?");
     private static final Pattern EMPHASIS = Pattern.compile("(\\*\\*|__|\\*|_|~~)");
     private static final Pattern SPEAKABLE = Pattern.compile("[\\p{L}\\p{N}]");
     private static final Pattern SENTENCE_END = Pattern.compile("(?<=[.!?…:;])\\s+");
@@ -40,7 +43,7 @@ public final class SpeechText {
         if (markdown == null) {
             return "";
         }
-        String text = FENCE.matcher(markdown).replaceAll("\n\n");
+        String text = FENCE.matcher(markdown.replace("\r\n", "\n").replace('\r', '\n')).replaceAll("\n\n");
         text = IMAGE.matcher(text).replaceAll("$1");
         text = LINK.matcher(text).replaceAll("$1");
         text = URL.matcher(text).replaceAll("");

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.config;
 
+import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechChunking;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
@@ -38,6 +39,12 @@ public final class ModelsConfig {
     public static final String READ_ALOUD_WORKERS_KEY = "speech.readAloud.synthesisWorkers";
 
     /**
+     * Versuche je Vorlese-Stück, 1 bis 5, Standard 2: ein fehlgeschlagenes Stück wird wiederholt, danach endet das
+     * Vorlesen mit einer Meldung statt das Stück zu überspringen.
+     */
+    public static final String READ_ALOUD_ATTEMPTS_KEY = "speech.readAloud.synthesisAttempts";
+
+    /**
      * Früher die eine Stimme für jedes TTS-Modell ({@code voice} bei {@code /audio/speech}). Gültige Stimmen hängen vom
      * Modell ab: gilt nur noch, wenn für das Modell keine Stimme in {@link #SPEECH_VOICES_KEY} steht und die Stimme zu
      * ihm passt; der Einstellungsdialog übernimmt sie beim Speichern für das gewählte Modell.
@@ -69,6 +76,7 @@ public final class ModelsConfig {
     private final boolean readAloudAutoStart;
     private final SpeechChunking readAloudChunking;
     private final int synthesisWorkers;
+    private final int synthesisAttempts;
     private final String speechVoice;
     private final Map<String, String> speechVoices;
     private final Path localModelRoot;
@@ -90,6 +98,14 @@ public final class ModelsConfig {
     ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
                  int synthesisWorkers, String speechVoice, Map<String, String> speechVoices, Path localModelRoot,
                  ModelReference merlinVoice, String merlinSpeaker) {
+        this(selections, readAloudAutoStart, readAloudChunking, synthesisWorkers,
+                ReadAloudService.DEFAULT_SYNTHESIS_ATTEMPTS, speechVoice, speechVoices, localModelRoot, merlinVoice,
+                merlinSpeaker);
+    }
+
+    ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
+                 int synthesisWorkers, int synthesisAttempts, String speechVoice, Map<String, String> speechVoices,
+                 Path localModelRoot, ModelReference merlinVoice, String merlinSpeaker) {
         if (localModelRoot == null) {
             throw new IllegalArgumentException("localModelRoot must not be null");
         }
@@ -101,6 +117,7 @@ public final class ModelsConfig {
         this.readAloudAutoStart = readAloudAutoStart;
         this.readAloudChunking = readAloudChunking == null ? SpeechChunking.PARAGRAPHS : readAloudChunking;
         this.synthesisWorkers = synthesisWorkers;
+        this.synthesisAttempts = synthesisAttempts;
         this.merlinVoice = merlinVoice;
         this.merlinSpeaker = merlinSpeaker == null ? "" : merlinSpeaker.trim();
     }
@@ -194,6 +211,11 @@ public final class ModelsConfig {
     /** Parallele Synthesen beim Vorlesen. */
     public int synthesisWorkers() {
         return synthesisWorkers;
+    }
+
+    /** Versuche je Vorlese-Stück ({@link #READ_ALOUD_ATTEMPTS_KEY}). */
+    public int synthesisAttempts() {
+        return synthesisAttempts;
     }
 
     /** Die frühere globale Stimme ({@code speech.voice}) oder {@code null}. */

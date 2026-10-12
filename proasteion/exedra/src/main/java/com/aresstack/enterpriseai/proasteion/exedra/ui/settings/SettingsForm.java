@@ -78,6 +78,7 @@ public final class SettingsForm {
     private final boolean readAloudAutoStart;
     private final String readAloudChunking;
     private final String synthesisWorkers;
+    private final String synthesisAttempts;
     private final String bubbleUserBackground;
     private final String bubbleUserForeground;
     private final String bubbleAssistantBackground;
@@ -164,6 +165,7 @@ public final class SettingsForm {
         this.readAloudAutoStart = b.readAloudAutoStart;
         this.readAloudChunking = b.readAloudChunking;
         this.synthesisWorkers = b.synthesisWorkers;
+        this.synthesisAttempts = b.synthesisAttempts;
         this.bubbleUserBackground = b.bubbleUserBackground;
         this.bubbleUserForeground = b.bubbleUserForeground;
         this.bubbleAssistantBackground = b.bubbleAssistantBackground;
@@ -241,6 +243,7 @@ public final class SettingsForm {
                 .readAloudAutoStart(readAloudAutoStart)
                 .readAloudChunking(readAloudChunking)
                 .synthesisWorkers(synthesisWorkers)
+                .synthesisAttempts(synthesisAttempts)
                 .bubbleUserBackground(bubbleUserBackground)
                 .bubbleUserForeground(bubbleUserForeground)
                 .bubbleAssistantBackground(bubbleAssistantBackground)
@@ -460,6 +463,11 @@ public final class SettingsForm {
     /** Parallele Synthesen beim Vorlesen ({@code speech.readAloud.synthesisWorkers}). */
     public String synthesisWorkers() {
         return synthesisWorkers;
+    }
+
+    /** Versuche je Vorlese-Stück ({@code speech.readAloud.synthesisAttempts}). */
+    public String synthesisAttempts() {
+        return synthesisAttempts;
     }
 
     /** Hintergrund der eigenen Blasen als {@code #RRGGBB} ({@code chat.bubble.user.background}). */
@@ -749,6 +757,7 @@ public final class SettingsForm {
         private boolean readAloudAutoStart;
         private String readAloudChunking = "PARAGRAPHS";
         private String synthesisWorkers = "2";
+        private String synthesisAttempts = "2";
         private String bubbleUserBackground = BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_USER_BACKGROUND);
         private String bubbleUserForeground = BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_USER_FOREGROUND);
         private String bubbleAssistantBackground =
@@ -1005,6 +1014,11 @@ public final class SettingsForm {
 
         public Builder synthesisWorkers(String value) {
             this.synthesisWorkers = value;
+            return this;
+        }
+
+        public Builder synthesisAttempts(String value) {
+            this.synthesisAttempts = value;
             return this;
         }
 

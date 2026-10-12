@@ -56,6 +56,7 @@ final class SpeechTab {
     private final JCheckBox readAloudAutoStart;
     private final JComboBox<String> chunking;
     private final JComboBox<String> workers;
+    private final JComboBox<String> attempts;
     private final AssistantNameSection assistantName;
     private final JTextField merlinVoice;
     private final JTextField merlinSpeaker;
@@ -137,6 +138,10 @@ final class SpeechTab {
         workers = speech.comboBox("Worker",
                 "Parallele Synthesen, die die Stücke im Hintergrund vorbereiten (speech.readAloud.synthesisWorkers)",
                 "1", "2", "3", "4", "5", "6", "7", "8");
+        attempts = speech.comboBox("Versuche je Abschnitt",
+                "Wie oft ein Abschnitt angefragt wird, bevor das Vorlesen mit einer Meldung abbricht; ein fehlender "
+                        + "Abschnitt wird nie übersprungen (speech.readAloud.synthesisAttempts)",
+                "1", "2", "3", "4", "5");
         speech.note("Absätze sind der beste Kompromiss aus Klang und Wartezeit: Sätze klingen früher, aber "
                 + "abgehackter, die ganze Antwort klingt am natürlichsten, beginnt aber erst nach der ganzen Synthese.");
         FormRows merlin = new FormRows(palette);
@@ -176,6 +181,7 @@ final class SpeechTab {
         readAloudAutoStart.setSelected(form.readAloudAutoStart());
         chunking.setSelectedIndex(chunkingIndex(form.readAloudChunking()));
         workers.setSelectedItem(workersItem(form.synthesisWorkers()));
+        attempts.setSelectedItem(attemptsItem(form.synthesisAttempts()));
         merlinVoice.setText(form.merlinVoice());
         merlinSpeaker.setText(form.merlinSpeaker());
     }
@@ -186,6 +192,7 @@ final class SpeechTab {
         b.readAloudAutoStart(readAloudAutoStart.isSelected());
         b.readAloudChunking(chunkingValue(chunking.getSelectedIndex()));
         b.synthesisWorkers((String) workers.getSelectedItem());
+        b.synthesisAttempts((String) attempts.getSelectedItem());
         b.merlinVoice(merlinVoice.getText());
         b.merlinSpeaker(merlinSpeaker.getText());
     }
@@ -300,6 +307,14 @@ final class SpeechTab {
             default:
                 return "PARAGRAPHS";
         }
+    }
+
+    private static String attemptsItem(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.length() == 1 && trimmed.charAt(0) >= '1' && trimmed.charAt(0) <= '5') {
+            return trimmed;
+        }
+        return "2";
     }
 
     private static String workersItem(String value) {

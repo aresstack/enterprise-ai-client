@@ -109,6 +109,67 @@ public class ReadAloudServiceTest {
     }
 
     @Test
+    public void eachMarkdownSectionIsOneChunkInReadingOrder() {
+        RecordingPort port = new RecordingPort(0);
+        RecordingPlayback playback = new RecordingPlayback();
+        ReadAloudService service = new ReadAloudService(port, ORPHEUS, "Jana", playback,
+                SpeechChunking.PARAGRAPHS, 3, null);
+
+        assertTrue(service.speak(SpeechTextTest.NUMBERED_SECTIONS, failOnMessage()));
+
+        assertEquals(playback.played.toString(), 4, playback.played.size());
+        assertEquals(ORPHEUS + ":Einleitung.", playback.played.get(0));
+        assertTrue(playback.played.get(1), playback.played.get(1).startsWith(ORPHEUS + ":1. Fragen beantworten"));
+        assertTrue(playback.played.get(2), playback.played.get(2).startsWith(ORPHEUS + ":2. Dokumente"));
+        assertTrue(playback.played.get(3), playback.played.get(3).startsWith(ORPHEUS + ":3. Wissensdatenbank"));
+    }
+
+    @Test
+    public void aFailedChunkIsRequestedOnceMore() {
+        FlakyPort port = new FlakyPort("Dritter Absatz.", 1);
+        RecordingPlayback playback = new RecordingPlayback();
+        ReadAloudService service = new ReadAloudService(port, ORPHEUS, "Jana", playback,
+                SpeechChunking.PARAGRAPHS, 2, null);
+
+        assertTrue(service.speak(FIVE_PARAGRAPHS, failOnMessage()));
+
+        assertEquals(1, port.failuresOf("Dritter Absatz."));
+        assertEquals(5, playback.played.size());
+        assertEquals(ORPHEUS + ":Dritter Absatz.", playback.played.get(2));
+    }
+
+    @Test
+    public void aChunkThatKeepsFailingStopsReadingAloudInsteadOfSkippingIt() {
+        FlakyPort port = new FlakyPort("Dritter Absatz.", Integer.MAX_VALUE);
+        RecordingPlayback playback = new RecordingPlayback();
+        ReadAloudService service = new ReadAloudService(port, ORPHEUS, "Jana", playback,
+                SpeechChunking.PARAGRAPHS, 1, 2, null);
+        final List<String> messages = new CopyOnWriteArrayList<String>();
+
+        service.speak(FIVE_PARAGRAPHS, new ReadAloudService.Listener() {
+            @Override
+            public void failed(String message) {
+                messages.add(message);
+            }
+        });
+
+        assertEquals("first two chunks only, never the fourth after a missing third", 2, playback.played.size());
+        assertEquals(2, port.failuresOf("Dritter Absatz."));
+        assertEquals(messages.toString(), 1, messages.size());
+        assertTrue(messages.get(0), messages.get(0).startsWith("Vorlesen abgebrochen: Abschnitt 3 von 5"));
+        assertTrue(messages.get(0), messages.get(0).contains("Dienst nicht erreichbar"));
+    }
+
+    private static ReadAloudService.Listener failOnMessage() {
+        return new ReadAloudService.Listener() {
+            @Override
+            public void failed(String message) {
+                throw new AssertionError(message);
+            }
+        };
+    }
+
+    @Test
     public void wavFormatReadsTheRiffHeader() {
         byte[] wav = wav(24000, 1, 16);
         ReadAloudService.WavFormat format = ReadAloudService.WavFormat.of(wav);
@@ -181,6 +242,37 @@ public class ReadAloudServiceTest {
                 Thread.sleep(delayMillis);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            }
+            return new SynthesizedSpeech((modelId + ":" + text).getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    /** Fails the given chunk {@code failures} times, then answers like {@link RecordingPort}. */
+    static final class FlakyPort implements SpeechSynthesisPort {
+
+        private final String failing;
+        private final int failures;
+        private final List<String> failed = new CopyOnWriteArrayList<String>();
+
+        FlakyPort(String failing, int failures) {
+            this.failing = failing;
+            this.failures = failures;
+        }
+
+        int failuresOf(String text) {
+            return Collections.frequency(failed, text);
+        }
+
+        @Override
+        public String catalogId() {
+            return "kipitz";
+        }
+
+        @Override
+        public SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException {
+            if (text.equals(failing) && failuresOf(text) < failures) {
+                failed.add(text);
+                throw new SpeechSynthesisException("Dienst nicht erreichbar");
             }
             return new SynthesizedSpeech((modelId + ":" + text).getBytes(StandardCharsets.UTF_8));
         }

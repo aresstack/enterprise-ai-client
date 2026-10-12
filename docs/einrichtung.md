@@ -280,6 +280,8 @@ Funktion zur Wahl.
 `SENTENCES` (Sätze) oder `ANSWER` (ganze Antwort); `speech.readAloud.synthesisWorkers` (1–8, Standard 2) ist die Zahl
 paralleler Synthesen. Beides steht unter Einstellungen → Sprachausgabe. Das erste Stück rechnet allein und klingt,
 sobald es fertig ist; die übrigen rechnen währenddessen, gespielt wird lückenlos über eine offene Audioausgabe.
+`speech.readAloud.synthesisAttempts` (1–5, Standard 2) ist die Zahl der Versuche je Stück: scheitert ein Stück auch
+beim letzten, endet das Vorlesen dort mit der Meldung, welches Stück fehlt, statt es zu überspringen.
 
 **Stimme je Modell.** TTS-Modelle mit mehreren Sprechern (Orpheus, Qwen3-TTS) wählen ohne feste Stimme bei jeder
 Anfrage selbst; beim absatzweisen Vorlesen klang dann jeder Absatz womöglich anders. Unter Einstellungen →
