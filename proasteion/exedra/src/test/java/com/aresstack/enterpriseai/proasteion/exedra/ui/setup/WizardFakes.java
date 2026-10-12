@@ -86,7 +86,7 @@ final class WizardFakes {
 
         @Override
         public String resourceBundleNote() {
-            return "Ressourcen-Archiv gefunden: daraus wird ohne Download installiert.";
+            return "Offline-Paket gefunden: daraus wird ohne Download installiert.";
         }
 
         @Override

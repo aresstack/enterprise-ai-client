@@ -45,6 +45,16 @@ public final class SettingsDialogDemo {
         final List<SettingsForm> saved = new ArrayList<SettingsForm>();
 
         @Override
+        public java.io.File settingsFolder() {
+            return new File(System.getProperty("java.io.tmpdir"));
+        }
+
+        @Override
+        public String offlinePackageFileName() {
+            return "enterprise-ai-client-resources-20261012-210000.zip";
+        }
+
+        @Override
         public List<String> validate(SettingsForm form) {
             return Collections.emptyList();
         }

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.astu.localruntime.InstallCancellation;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupWizardMascot;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSectionPanel;
@@ -10,6 +11,9 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.JFileChooser;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.ButtonGroup;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -52,7 +56,7 @@ import java.util.function.Supplier;
  * │ …          │                             │  Karte im CardLayout
  * ├──────────────────────────────────────────┤
  * │ Probleme (rote Platte, nur bei Bedarf)    │
- * │ [Einstellungsordner öffnen]  [Abbrechen] [Speichern]│
+ * │ [Einstellungsordner öffnen] [Offline-Paket erstellen …]  [Abbrechen] [Speichern]│
  * └──────────────────────────────────────────┘
  * </pre>
  *
@@ -74,6 +78,9 @@ public final class SettingsPanel extends JPanel {
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
     public static final String OPEN_FOLDER_LABEL = "Einstellungsordner öffnen";
+    public static final String OFFLINE_PACKAGE_LABEL = "Offline-Paket erstellen …";
+    static final String OFFLINE_PACKAGE_HINT =
+            "Packt alle installierten lokalen KI- und Sprachmodelle in ein ZIP für eine Offline-Installation.";
     public static final String QUIT_LABEL = "Beenden";
     private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle",
             "Sprachausgabe", "Index", "Tools", "Darstellung", "Technische Details"};
@@ -139,6 +146,12 @@ public final class SettingsPanel extends JPanel {
             "Den Einrichtungsassistenten erneut öffnen (KeePass, KI-Dienst, Modelle, Confluence)");
     private final ComposerButton openFolderButton = new ComposerButton(null, OPEN_FOLDER_LABEL, false,
             "Den Ordner mit Konfiguration und Protokollen im Dateimanager öffnen");
+    private final ComposerButton offlinePackageButton = new ComposerButton(null, OFFLINE_PACKAGE_LABEL, false,
+            OFFLINE_PACKAGE_HINT);
+    private final DownloadProgress offlineProgress = new DownloadProgress("Erstellen abbrechen");
+    private final JLabel offlineStatus = new JLabel(" ");
+    /** Der laufende Export oder {@code null}. */
+    private InstallCancellation offlineExport;
     private Consumer<SettingsForm> onSaved;
     private Runnable onCancel;
     /** Der geladene Stand; liefert die Felder ohne Reiter (Quellen) unverändert in {@link #toForm()}. */
@@ -276,9 +289,21 @@ public final class SettingsPanel extends JPanel {
         folder.setBorder(BorderFactory.createEmptyBorder(4, 12, 0, 0));
         openFolderButton.setVisible(actions.settingsFolder() != null);
         folder.add(openFolderButton);
+        offlinePackageButton.setVisible(actions.offlinePackageFileName() != null);
+        folder.add(Box.createHorizontalStrut(8));
+        folder.add(offlinePackageButton);
+        offlineProgress.setVisible(false);
+        offlineStatus.setForeground(FormRows.MUTED);
+        offlineStatus.putClientProperty("html.disable", Boolean.TRUE);
+        JPanel offline = new JPanel(new BorderLayout());
+        offline.setOpaque(false);
+        offline.setBorder(BorderFactory.createEmptyBorder(4, 8, 0, 0));
+        offline.add(offlineProgress, BorderLayout.NORTH);
+        offline.add(offlineStatus, BorderLayout.CENTER);
         JPanel footer = new JPanel(new BorderLayout());
         footer.setOpaque(false);
         footer.add(folder, BorderLayout.WEST);
+        footer.add(offline, BorderLayout.CENTER);
         footer.add(buttons, BorderLayout.EAST);
         JPanel south = new JPanel(new BorderLayout(0, 6));
         south.setOpaque(false);
@@ -397,6 +422,8 @@ public final class SettingsPanel extends JPanel {
             }
         });
         openFolderButton.addActionListener(e -> openSettingsFolder());
+        offlinePackageButton.addActionListener(e -> chooseOfflinePackage());
+        offlineProgress.cancelButton().addActionListener(e -> stopOfflinePackage());
         cancelButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -439,6 +466,104 @@ public final class SettingsPanel extends JPanel {
 
     public ComposerButton openFolderButton() {
         return openFolderButton;
+    }
+
+    /** Fragt mit einem Speichern-Dialog nach dem Ziel (Vorschlag mit Zeitstempel) und erstellt dann das Paket. */
+    private void chooseOfflinePackage() {
+        String name = actions.offlinePackageFileName();
+        if (name == null || offlineExport != null) {
+            return;
+        }
+        JFileChooser chooser = new JFileChooser(actions.offlinePackageDirectory());
+        chooser.setDialogTitle(OFFLINE_PACKAGE_LABEL);
+        chooser.setFileFilter(new FileNameExtensionFilter("ZIP-Archiv (*.zip)", "zip"));
+        chooser.setSelectedFile(new File(chooser.getCurrentDirectory(), name));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
+            return;
+        }
+        File target = chooser.getSelectedFile();
+        if (!target.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
+            target = new File(target.getParentFile(), target.getName() + ".zip");
+        }
+        if (target.exists() && JOptionPane.showConfirmDialog(this, target.getName() + " gibt es schon. Ersetzen?",
+                OFFLINE_PACKAGE_LABEL, JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+            return;
+        }
+        exportOfflinePackage(target);
+    }
+
+    /**
+     * Erstellt das Offline-Paket nach {@code target} im Hintergrund: der dünne Balken zeigt die Datei, das X bricht
+     * ab (dann bleibt keine Datei zurück), am Ende steht das Ergebnis neben dem Knopf.
+     */
+    void exportOfflinePackage(File target) {
+        if (offlineExport != null) {
+            return;
+        }
+        final InstallCancellation cancellation = new InstallCancellation();
+        offlineExport = cancellation;
+        offlinePackageButton.setEnabled(false);
+        offlineStatus.setText(" ");
+        offlineStatus.setToolTipText(null);
+        offlineProgress.reset("Vorbereiten …");
+        offlineProgress.setVisible(true);
+        revalidate();
+        actions.exportOfflinePackage(toForm(), target, cancellation, new LocalVoiceInstallProgress() {
+            @Override
+            public void progress(String line) {
+                if (offlineExport == cancellation && !cancellation.isCancelled()) {
+                    offlineProgress.preparing(line);
+                }
+            }
+
+            @Override
+            public void file(String name, int number, int count, long done, long total) {
+                if (offlineExport == cancellation && !cancellation.isCancelled()) {
+                    offlineProgress.file(name, number, count, done, total);
+                }
+            }
+
+            @Override
+            public void finished(boolean written, String message) {
+                endOfflinePackage(cancellation, message);
+            }
+
+            @Override
+            public void cancelled(String message) {
+                endOfflinePackage(cancellation, message);
+            }
+        });
+    }
+
+    private void stopOfflinePackage() {
+        if (offlineExport != null && offlineExport.cancel()) {
+            offlineProgress.cancelling("Erstellen wird abgebrochen …");
+        }
+    }
+
+    private void endOfflinePackage(InstallCancellation cancellation, String message) {
+        if (offlineExport != cancellation) {
+            return;
+        }
+        offlineExport = null;
+        offlineProgress.setVisible(false);
+        offlinePackageButton.setEnabled(true);
+        offlineStatus.setText(message == null ? " " : message);
+        offlineStatus.setToolTipText(message);
+        revalidate();
+        repaint();
+    }
+
+    public ComposerButton offlinePackageButton() {
+        return offlinePackageButton;
+    }
+
+    DownloadProgress offlineProgress() {
+        return offlineProgress;
+    }
+
+    String offlineStatus() {
+        return offlineStatus.getText().trim();
     }
 
     /**

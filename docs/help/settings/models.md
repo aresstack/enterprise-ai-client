@@ -89,9 +89,11 @@ Nach der Suche steht „n ladbare Modelle gefunden.“ oder „Keine im Client l
 
 „Installieren“ lädt die Dateien über die Netzwerkeinstellungen des Entwurfs (Proxy, TLS) ins Modellverzeichnis. Unter der Zeile erscheint je Datei ein Fortschrittsbalken bis 100 Prozent mit „Datei n von m“. Danach meldet die Zeile zum Beispiel „… installiert; wählbar oben unter „Sprachausgabe (TTS)““. Während ein Download läuft, sind alle anderen Knöpfe gesperrt. Installieren wählt nichts aus: wähle das Modell danach im Bereich „Lokale Modelle je Funktion“ und speichere.
 
+Steht bei einem Modell „Im Offline-Paket“, liegt es in einem Offline-Paket neben dem Jar (erstellt mit Einstellungen → „Offline-Paket erstellen …“). „Installieren“ entpackt es dann ohne Netz und prüft jede Datei gegen Größe und SHA-256; das Paket zeigt auch Modelle, die hier weder vorgeschlagen noch gesucht wurden. Danach ist es ein normales installiertes Modell, das sich aktualisieren und entfernen lässt.
+
 ### Bereich „Text- und Sprachanalyse (OpenNLP)“
 
-Hinweis: „Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache; die Wortartenerkennung hilft beim Auswerten von Chat-Anfragen. Ohne diese Modelle wird an Satzzeichen geteilt. …“ Modelle: Satzerkennung Deutsch und Englisch, Spracherkennung, Tokenisierung Deutsch (`de-token.bin`), Wortartenerkennung Deutsch (`de-pos-maxent.bin`). Je Modell eine Zeile mit Stand und „Installieren“ (während des Ladens „Lade …“). Liegt das Ressourcen-Archiv `enterprise-ai-client-resources-<version>.zip` neben dem Jar oder im Anwendungsverzeichnis, steht „Im Ressourcen-Archiv“, und „Installieren“ entpackt das Modell daraus statt es zu laden. Größe und SHA-256 werden in beiden Fällen geprüft.
+Hinweis: „Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache; die Wortartenerkennung hilft beim Auswerten von Chat-Anfragen. Ohne diese Modelle wird an Satzzeichen geteilt. …“ Modelle: Satzerkennung Deutsch und Englisch, Spracherkennung, Tokenisierung Deutsch (`de-token.bin`), Wortartenerkennung Deutsch (`de-pos-maxent.bin`). Je Modell eine Zeile mit Stand und „Installieren“ (während des Ladens „Lade …“). Liegt ein Offline-Paket `enterprise-ai-client-resources-*.zip` neben dem Jar oder im Anwendungsverzeichnis, steht „Im Offline-Paket“, und „Installieren“ entpackt das Modell daraus statt es zu laden. Größe und SHA-256 werden in beiden Fällen geprüft.
 
 ### Bereich „Modellverzeichnis“
 

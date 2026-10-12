@@ -92,8 +92,13 @@ public final class DownloadProgress extends JPanel {
 
     /** The stop was requested; the transfer ends at its next data block. */
     public void cancelling() {
+        cancelling("Download wird abgebrochen …");
+    }
+
+    /** The stop was requested, with the text for this kind of transfer. */
+    public void cancelling(String text) {
         bar.setIndeterminate(true);
-        show("Download wird abgebrochen …");
+        show(text);
         cancel.setEnabled(false);
     }
 

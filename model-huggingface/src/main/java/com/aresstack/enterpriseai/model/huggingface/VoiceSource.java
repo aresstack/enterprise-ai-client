@@ -47,7 +47,19 @@ final class VoiceSource {
             return null;
         }
         try {
-            JsonObject source = JsonParser.parseString(new String(Files.readAllBytes(file), StandardCharsets.UTF_8))
+            return parse(directory.getFileName().toString(), Files.readAllBytes(file));
+        } catch (IOException unreadable) {
+            return null;
+        }
+    }
+
+    /** Die Stimme mit Ordnername {@code id} aus dem Inhalt einer Herkunftsdatei; {@code null}, wenn unbrauchbar. */
+    static HuggingFaceVoice parse(String id, byte[] content) {
+        if (content == null) {
+            return null;
+        }
+        try {
+            JsonObject source = JsonParser.parseString(new String(content, StandardCharsets.UTF_8))
                     .getAsJsonObject();
             List<String> files = new ArrayList<String>();
             if (source.has("files") && source.get("files").isJsonArray()) {
@@ -56,10 +68,10 @@ final class VoiceSource {
                 }
             }
             String category = text(source, "category");
-            return new HuggingFaceVoice(directory.getFileName().toString(), text(source, "name"),
+            return new HuggingFaceVoice(id, text(source, "name"),
                     text(source, "language"), text(source, "repository"), text(source, "revision"), files,
                     category == null ? ModelCategory.TTS : ModelCategory.valueOf(category));
-        } catch (IOException | RuntimeException unreadable) {
+        } catch (RuntimeException unreadable) {
             return null;
         }
     }

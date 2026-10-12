@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.model.api.LocalVoiceInstallCancelledException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
 import com.aresstack.enterpriseai.model.api.LocalVoiceProvisioning;
+import com.aresstack.enterpriseai.model.api.OfflineModelPackage;
 import com.aresstack.huggingface.hub.HuggingFaceHub;
 import com.aresstack.huggingface.hub.HuggingFaceHubException;
 import com.aresstack.huggingface.hub.download.DownloadProgress;
@@ -38,17 +39,21 @@ import java.util.Set;
  * {@code <Modellverzeichnis>/.<id>.download}, setzt abgebrochene Downloads fort ({@code .part}), prüft zuerst die
  * kleinen Konfigurationsdateien ({@link ModelConfigCheck}) und jede Datei gegen Größe und SHA-256 aus den
  * Hub-Metadaten ({@link HubFileIndex}), legt die Herkunft ab ({@link VoiceSource}) und verschiebt den fertigen Ordner
- * nach {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn der Client.
+ * nach {@code <Modellverzeichnis>/<id>}. Erst dann sieht ihn der Client. Liegt das Modell in einem Offline-Paket
+ * ({@link OfflineModelPackage}), kommt es zuerst von dort (geprüft entpackt nach {@code .<id>.offline}, dann ebenso
+ * verschoben); das Paket bietet auch Modelle an, die hier weder kuratiert noch gesucht wurden.
  */
 public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisioning {
 
     private static final String STAGING_SUFFIX = ".download";
+    private static final String PACKAGE_STAGING_SUFFIX = ".offline";
 
     private final List<HuggingFaceVoice> voices;
     private final List<HubRepositorySuggestion> suggested;
     private final Map<String, HuggingFaceVoice> discovered;
     private final String endpoint;
     private final HttpRoutePort routes;
+    private final OfflineModelPackage offline;
 
     /**
      * @param voices     die kuratierten Stimmen aus der Konfiguration
@@ -67,41 +72,91 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     public HuggingFaceVoiceProvisioning(List<HuggingFaceVoice> voices, List<HubRepositorySuggestion> suggested,
                                         Map<String, HuggingFaceVoice> discovered, String endpoint,
                                         HttpRoutePort routes) {
-        if (voices == null || suggested == null || discovered == null || endpoint == null || routes == null) {
-            throw new IllegalArgumentException("voices, suggested, discovered, endpoint and routes must not be null");
+        this(voices, suggested, discovered, endpoint, routes, OfflineModelPackage.none());
+    }
+
+    /** @param offline das Offline-Paket, aus dem vor dem Hub installiert wird */
+    public HuggingFaceVoiceProvisioning(List<HuggingFaceVoice> voices, List<HubRepositorySuggestion> suggested,
+                                        Map<String, HuggingFaceVoice> discovered, String endpoint,
+                                        HttpRoutePort routes, OfflineModelPackage offline) {
+        if (voices == null || suggested == null || discovered == null || endpoint == null || routes == null
+                || offline == null) {
+            throw new IllegalArgumentException(
+                    "voices, suggested, discovered, endpoint, routes and offline must not be null");
         }
         this.voices = Collections.unmodifiableList(new ArrayList<HuggingFaceVoice>(voices));
         this.suggested = Collections.unmodifiableList(new ArrayList<HubRepositorySuggestion>(suggested));
         this.discovered = discovered;
         this.endpoint = endpoint.trim();
         this.routes = routes;
+        this.offline = offline;
     }
 
     /**
-     * Kuratierte Stimmen, die vorgeschlagenen Repositorys (nicht installiert; installiert erscheinen sie unter ihrem
-     * Ordner), danach alle anderen installierten (mit Herkunftsdatei).
+     * Kuratierte Stimmen, die vorgeschlagenen Repositorys (nicht installiert; installiert oder im Offline-Paket
+     * erscheinen sie unter ihrem Ordner), danach alle anderen installierten (mit Herkunftsdatei) und zuletzt die
+     * übrigen Modelle des Offline-Pakets. Was nicht installiert ist, aber im Paket liegt, trägt den Vermerk.
      */
     @Override
     public List<LocalVoiceOffer> offers(Path modelRoot) {
+        List<HuggingFaceVoice> packaged = packaged();
+        Set<String> inPackage = new HashSet<String>();
+        for (HuggingFaceVoice voice : packaged) {
+            inPackage.add(voice.id());
+        }
         List<LocalVoiceOffer> offers = new ArrayList<LocalVoiceOffer>();
         Set<String> listed = new HashSet<String>();
         for (HuggingFaceVoice voice : voices) {
-            offers.add(offer(voice, modelRoot));
+            offers.add(offer(voice, modelRoot, inPackage));
             listed.add(voice.id());
         }
         List<HuggingFaceVoice> installed = installed(modelRoot);
         for (HubRepositorySuggestion suggestion : suggested) {
-            if (!installedFrom(installed, suggestion) && listed.add(suggestion.id())) {
+            if (!installedFrom(installed, suggestion) && !installedFrom(packaged, suggestion)
+                    && listed.add(suggestion.id())) {
                 offers.add(new LocalVoiceOffer(suggestion.id(), suggestion.displayName(), "", false,
                         suggestion.category()));
             }
         }
         for (HuggingFaceVoice voice : installed) {
             if (listed.add(voice.id())) {
-                offers.add(offer(voice, modelRoot));
+                offers.add(offer(voice, modelRoot, inPackage));
+            }
+        }
+        for (HuggingFaceVoice voice : packaged) {
+            if (listed.add(voice.id())) {
+                offers.add(offer(voice, modelRoot, inPackage));
             }
         }
         return offers;
+    }
+
+    /** Die Modelle des Offline-Pakets mit lesbarer Herkunftsdatei; ein unlesbares Paket bietet nichts an. */
+    private List<HuggingFaceVoice> packaged() {
+        List<HuggingFaceVoice> packaged = new ArrayList<HuggingFaceVoice>();
+        try {
+            for (String id : offline.modelIds()) {
+                HuggingFaceVoice voice = packagedVoice(id);
+                if (voice != null) {
+                    packaged.add(voice);
+                }
+            }
+        } catch (RuntimeException unreadable) {
+            return Collections.emptyList();
+        }
+        return packaged;
+    }
+
+    private HuggingFaceVoice packagedVoice(String id) {
+        if (id == null || !id.matches("[A-Za-z0-9._-]+") || id.startsWith(".")) {
+            return null;
+        }
+        try {
+            HuggingFaceVoice voice = VoiceSource.parse(id, offline.readFile(id, VoiceSource.FILE_NAME));
+            return voice == null || offline.category(id) != voice.category() ? null : voice;
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
     }
 
     private static boolean installedFrom(List<HuggingFaceVoice> installed, HubRepositorySuggestion suggestion) {
@@ -141,7 +196,84 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         if (complete(target, voice)) {
             return;
         }
+        if (packagedVoice(voice.id()) != null) {
+            try {
+                installFromPackage(voice, modelRoot, target, listener, cancellation);
+                return;
+            } catch (LocalVoiceInstallCancelledException stopped) {
+                throw stopped;
+            } catch (LocalVoiceInstallException packageFailed) {
+                if (endpoint.isEmpty()) {
+                    throw packageFailed;
+                }
+                try {
+                    download(voice, modelRoot, target, listener, cancellation);
+                    return;
+                } catch (LocalVoiceInstallCancelledException stopped) {
+                    throw stopped;
+                } catch (LocalVoiceInstallException hubFailed) {
+                    throw new LocalVoiceInstallException(packageFailed.getMessage() + " Download vom Hub: "
+                            + hubFailed.getMessage(), hubFailed);
+                }
+            }
+        }
         download(voice, modelRoot, target, listener, cancellation);
+    }
+
+    /**
+     * Entpackt den Modellordner geprüft aus dem Offline-Paket nach {@code .<id>.offline} und verschiebt ihn erst
+     * vollständig nach {@code target}; danach ist das Modell wie ein heruntergeladenes (Herkunftsdatei liegt bei).
+     */
+    private void installFromPackage(HuggingFaceVoice voice, Path modelRoot, Path target,
+                                    LocalVoiceInstallListener listener, InstallCancellation cancellation)
+            throws LocalVoiceInstallException {
+        stopIfCancelled(cancellation);
+        Path staging = modelRoot.resolve("." + voice.id() + PACKAGE_STAGING_SUFFIX);
+        try {
+            if (Files.exists(staging)) {
+                deleteTree(staging);
+            }
+            Files.createDirectories(staging);
+        } catch (IOException e) {
+            throw new LocalVoiceInstallException("Modellverzeichnis nicht beschreibbar: " + modelRoot + " ("
+                    + e.getMessage() + ")", e);
+        }
+        try {
+            try {
+                offline.extract(voice.id(), staging, listener, cancellation);
+            } catch (IOException | RuntimeException e) {
+                throw new LocalVoiceInstallException("Offline-Paket: " + voice.id() + " nicht entpackbar ("
+                        + e.getMessage() + ").", e);
+            }
+            stopIfCancelled(cancellation);
+            if (VoiceSource.read(staging) == null) {
+                VoiceSource.write(voice, staging);
+            }
+            if (!complete(staging, voice)) {
+                throw new LocalVoiceInstallException("Offline-Paket: " + voice.id() + " ist unvollständig.");
+            }
+            stopIfCancelled(cancellation);
+        } catch (LocalVoiceInstallException e) {
+            discard(staging);
+            throw e;
+        } catch (IOException e) {
+            discard(staging);
+            throw new LocalVoiceInstallException("Herkunft der Stimme nicht speicherbar: " + e.getMessage(), e);
+        }
+        moveIntoPlace(staging, target);
+        if (!complete(target, voice)) {
+            throw new LocalVoiceInstallException("Modell " + voice.id() + " ist nach dem Entpacken unvollständig.");
+        }
+    }
+
+    private static void discard(Path staging) {
+        try {
+            if (Files.exists(staging)) {
+                deleteTree(staging);
+            }
+        } catch (IOException ignored) {
+            // a leftover hidden folder is never shown as a model
+        }
     }
 
     /** Lädt alle Dateien neu; die bisherige Stimme bleibt nutzbar, bis die neuen Dateien geprüft da sind. */
@@ -153,8 +285,13 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
     }
 
     private LocalVoiceOffer offer(HuggingFaceVoice voice, Path modelRoot) {
-        return new LocalVoiceOffer(voice.id(), voice.displayName(), voice.language(),
-                complete(modelRoot.resolve(voice.id()), voice), voice.category());
+        return offer(voice, modelRoot, Collections.<String>emptySet());
+    }
+
+    private static LocalVoiceOffer offer(HuggingFaceVoice voice, Path modelRoot, Set<String> inPackage) {
+        boolean installed = complete(modelRoot.resolve(voice.id()), voice);
+        return new LocalVoiceOffer(voice.id(), voice.displayName(), voice.language(), installed, voice.category(),
+                !installed && inPackage.contains(voice.id()));
     }
 
     /** Installierte Stimmen mit Herkunftsdatei, nach Ordnername. */
@@ -282,7 +419,7 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         }
     }
 
-    /** Kuratiert, dann Suchtreffer, dann die Herkunftsdatei im installierten Ordner. */
+    /** Kuratiert, dann Suchtreffer, dann die Herkunftsdatei im installierten Ordner, dann im Offline-Paket. */
     private HuggingFaceVoice find(String voiceId, Path modelRoot) throws LocalVoiceInstallException {
         for (HuggingFaceVoice voice : voices) {
             if (voice.id().equals(voiceId)) {
@@ -297,6 +434,9 @@ public final class HuggingFaceVoiceProvisioning implements LocalVoiceProvisionin
         HuggingFaceVoice found = discovered.get(voiceId);
         if (found == null && voiceId != null && voiceId.matches("[A-Za-z0-9._-]+") && !voiceId.startsWith(".")) {
             found = VoiceSource.read(modelRoot.resolve(voiceId));
+        }
+        if (found == null) {
+            found = packagedVoice(voiceId);
         }
         if (found == null) {
             throw new LocalVoiceInstallException("Unbekanntes Modell: " + voiceId);

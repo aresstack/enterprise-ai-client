@@ -14,6 +14,7 @@ public final class LocalVoiceOffer {
     private final String language;
     private final boolean installed;
     private final ModelCategory category;
+    private final boolean inOfflinePackage;
 
     /** Eine Stimme (Kategorie TTS). */
     public LocalVoiceOffer(String id, String displayName, String language, boolean installed) {
@@ -22,6 +23,12 @@ public final class LocalVoiceOffer {
 
     public LocalVoiceOffer(String id, String displayName, String language, boolean installed,
                            ModelCategory category) {
+        this(id, displayName, language, installed, category, false);
+    }
+
+    /** @param inOfflinePackage ob die Installation aus dem Offline-Paket käme statt per Download */
+    public LocalVoiceOffer(String id, String displayName, String language, boolean installed,
+                           ModelCategory category, boolean inOfflinePackage) {
         if (id == null || id.trim().isEmpty()) {
             throw new IllegalArgumentException("id must not be blank");
         }
@@ -30,6 +37,13 @@ public final class LocalVoiceOffer {
         this.language = language == null ? "" : language.trim();
         this.installed = installed;
         this.category = category == null ? ModelCategory.TTS : category;
+        this.inOfflinePackage = inOfflinePackage;
+    }
+
+    /** Dasselbe Angebot mit dem Vermerk, ob es im Offline-Paket liegt. */
+    public LocalVoiceOffer withOfflinePackage(boolean inPackage) {
+        return inPackage == inOfflinePackage ? this
+                : new LocalVoiceOffer(id, displayName, language, installed, category, inPackage);
     }
 
     /** Wofür das Modell gewählt werden kann (TTS, EMBEDDING, CHAT). */
@@ -54,6 +68,11 @@ public final class LocalVoiceOffer {
         return installed;
     }
 
+    /** Ob die Installation aus dem Offline-Paket neben dem Jar käme (ohne Download). */
+    public boolean isInOfflinePackage() {
+        return inOfflinePackage;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -64,7 +83,8 @@ public final class LocalVoiceOffer {
         }
         LocalVoiceOffer that = (LocalVoiceOffer) other;
         return id.equals(that.id) && displayName.equals(that.displayName) && language.equals(that.language)
-                && installed == that.installed && category == that.category;
+                && installed == that.installed && category == that.category
+                && inOfflinePackage == that.inOfflinePackage;
     }
 
     @Override

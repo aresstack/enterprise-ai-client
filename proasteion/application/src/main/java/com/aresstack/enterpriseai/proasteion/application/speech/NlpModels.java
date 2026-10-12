@@ -2,7 +2,8 @@ package com.aresstack.enterpriseai.proasteion.application.speech;
 
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.application.resources.DownloadRetry;
-import com.aresstack.enterpriseai.proasteion.application.resources.LocalResourceSource;
+import com.aresstack.enterpriseai.proasteion.application.resources.OfflineResourceBundle;
+import com.aresstack.enterpriseai.proasteion.application.resources.OfflineResourceBundleExporter;
 import com.aresstack.enterpriseai.proasteion.application.resources.ResourceDescriptor;
 import com.aresstack.enterpriseai.proasteion.application.resources.ResourceInstaller;
 import com.aresstack.enterpriseai.speech.api.TextAnalysisEngine;
@@ -138,14 +139,14 @@ public final class NlpModels {
     private final ResourceInstaller installer;
 
     NlpModels(Path root, List<Entry> entries) {
-        this(root, entries, LocalResourceSource.none());
+        this(root, entries, OfflineResourceBundle.none());
     }
 
-    NlpModels(Path root, List<Entry> entries, LocalResourceSource local) {
+    NlpModels(Path root, List<Entry> entries, OfflineResourceBundle local) {
         this(root, entries, local, DownloadRetry.once());
     }
 
-    NlpModels(Path root, List<Entry> entries, LocalResourceSource local, DownloadRetry retry) {
+    NlpModels(Path root, List<Entry> entries, OfflineResourceBundle local, DownloadRetry retry) {
         if (root == null) {
             throw new IllegalArgumentException("root must not be null");
         }
@@ -187,8 +188,9 @@ public final class NlpModels {
                     p.getProperty(key + "sha256", "").trim().toLowerCase(java.util.Locale.ROOT),
                     Long.parseLong(p.getProperty(key + "size", "-1").trim())));
         }
-        return new NlpModels(root, entries, new LocalResourceSource(archiveDirectories,
-                p.getProperty("archive.prefix"), p.getProperty("archive.manifest")),
+        return new NlpModels(root, entries, new OfflineResourceBundle(archiveDirectories,
+                p.getProperty("archive.prefix"), p.getProperty("archive.manifest"), p.getProperty("archive.directory"),
+                p.getProperty("archive.localModelsDirectory")),
                 DownloadRetry.parse(p.getProperty("download.attempts"), p.getProperty("download.retryPausesMillis")));
     }
 
@@ -276,6 +278,20 @@ public final class NlpModels {
             installer.recordBundle(root);
         }
         return fetched.source();
+    }
+
+    /** Das Offline-Paket neben dem Jar, aus dem vor dem Download installiert wird (auch für lokale Modelle). */
+    public OfflineResourceBundle offlineBundle() {
+        return installer.bundle();
+    }
+
+    /** Nimmt die installierten Modelle, deren Datei genau dem Katalog entspricht, in ein Offline-Paket auf. */
+    public void addInstalledTo(OfflineResourceBundleExporter exporter) {
+        for (Entry entry : entries) {
+            if (isInstalled(entry)) {
+                exporter.addResource(entry.descriptor, directory(entry).resolve(entry.file));
+            }
+        }
     }
 
     /** Lädt beim Vorlesen, was gerade installiert ist (wie arch bei jedem Start der Engine). */

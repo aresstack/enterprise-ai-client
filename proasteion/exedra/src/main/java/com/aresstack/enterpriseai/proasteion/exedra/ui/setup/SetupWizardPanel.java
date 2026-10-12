@@ -111,13 +111,13 @@ public final class SetupWizardPanel extends JPanel {
     static final String CONFLUENCE_SKIPPED = "Betriebsbereit. Confluence ist übersprungen und lässt sich später "
             + "in der Seitenleiste unter Wissensquellen einrichten.";
     static final String NLP_INSTALLED = "installiert";
-    static final String NLP_IN_ARCHIVE = "im Ressourcen-Archiv";
+    static final String NLP_IN_ARCHIVE = "im Offline-Paket";
     static final String NLP_DOWNLOAD = "Download";
     static final String NLP_FAILED = "fehlgeschlagen";
     static final String NLP_RETRY = "Erneut";
     static final String NLP_STOPPED = "Installation angehalten; bereits installierte Modelle bleiben.";
     private static final String INSTALL_ALL_HINT = "Installiert alle fehlenden Ressourcen dieses Schritts: zuerst "
-            + "aus dem Ressourcen-Archiv neben dem Jar, sonst per Download";
+            + "aus dem Offline-Paket neben dem Jar, sonst per Download";
     private static final String SKIP_SPEECH_HINT =
             "Ohne lokale Spracheingabe abschließen; später unter Einstellungen → Modelle → Lokale Modelle";
     /** Platzhalter für Modelle, solange der Schritt „Modelle“ noch nicht gewählt hat (Verbindungstest). */
@@ -536,7 +536,7 @@ public final class SetupWizardPanel extends JPanel {
     private JPanel speechStep() {
         Rows rows = new Rows("Lokale KI- und Sprachressourcen");
         rows.note("Optional. Spracheingabe ohne Cloud-STT und Text- und Sprachanalyse mit OpenNLP laufen im Client. "
-                + "Liegt das Ressourcen-Archiv neben dem Jar, wird daraus installiert, sonst heruntergeladen. "
+                + "Liegt ein Offline-Paket neben dem Jar, wird daraus installiert, sonst heruntergeladen. "
                 + "Später unter Einstellungen → Modelle → Lokale Modelle.");
         rows.field("Spracheingabe", speechModel);
         rows.stretched("Textanalyse", nlpLines);
@@ -1702,7 +1702,8 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     private static String speechLabel(LocalVoiceOffer offer) {
-        return offer.displayName() + (offer.isInstalled() ? " (installiert)" : "");
+        return offer.displayName() + (offer.isInstalled() ? " (installiert)"
+                : offer.isInOfflinePackage() ? " (im Offline-Paket)" : "");
     }
 
     private LocalVoiceOffer selectedSpeechOffer() {
@@ -1717,6 +1718,8 @@ public final class SetupWizardPanel extends JPanel {
             speechStatus.setText("");
         } else if (chosen.isInstalled()) {
             speechStatus.setText("Installiert; „Fertig“ setzt es als Modell für die Spracheingabe.");
+        } else if (chosen.isInOfflinePackage()) {
+            speechStatus.setText("Im Offline-Paket; „Installieren“ entpackt es ohne Download.");
         } else {
             speechStatus.setText("Noch nicht installiert; „Installieren“ lädt es herunter. Bitte kurz warten oder "
                     + "überspringen.");
@@ -2004,7 +2007,7 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * „Alles installieren“: die fehlenden OpenNLP-Modelle nacheinander (aus dem Ressourcen-Archiv, sonst Download),
+     * „Alles installieren“: die fehlenden OpenNLP-Modelle nacheinander (aus dem Offline-Paket, sonst Download),
      * danach das gewählte Spracheingabe-Modell. Ein Fehler hält nichts auf; das X hält nach dem laufenden Modell an.
      */
     private void installAll() {
@@ -2046,7 +2049,7 @@ public final class SetupWizardPanel extends JPanel {
         }
         final NlpModelOffer offer = queue.get(index);
         String text = "Modell " + (index + 1) + " von " + queue.size() + ": " + shortNlpName(offer.name())
-                + (offer.isInArchive() ? " aus dem Ressourcen-Archiv …" : " wird geladen …");
+                + (offer.isInArchive() ? " aus dem Offline-Paket …" : " wird geladen …");
         speechProgress.preparing(text);
         speechStatus.setText(text);
         updateButtons();

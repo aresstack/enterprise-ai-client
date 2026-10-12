@@ -22,7 +22,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Holt eine beschriebene Ressource geprüft: zuerst aus dem lokalen Bundle ({@link LocalResourceSource}), sonst per
+ * Holt eine beschriebene Ressource geprüft: zuerst aus dem Offline-Paket ({@link OfflineResourceBundle}), sonst per
  * Download über die Netzwerkeinstellungen (Weiterleitungen je Ziel neu geroutet). Geschrieben wird erst nach der
  * Prüfung von Größe und SHA-256, atomar. Merkt sich außerdem, welches Bundle (über seinen SHA-256) zuletzt
  * installiert wurde, damit ein geändertes Bundle erkennbar ist. Weiß nichts davon, wofür die Ressourcen dienen.
@@ -76,17 +76,22 @@ public final class ResourceInstaller {
         }
     }
 
-    private final LocalResourceSource local;
+    private final OfflineResourceBundle local;
     private final DownloadRetry retry;
 
-    public ResourceInstaller(LocalResourceSource local) {
+    public ResourceInstaller(OfflineResourceBundle local) {
         this(local, DownloadRetry.once());
     }
 
     /** @param retry Wiederholung nach vorübergehenden Netzwerkfehlern */
-    public ResourceInstaller(LocalResourceSource local, DownloadRetry retry) {
-        this.local = local == null ? LocalResourceSource.none() : local;
+    public ResourceInstaller(OfflineResourceBundle local, DownloadRetry retry) {
+        this.local = local == null ? OfflineResourceBundle.none() : local;
         this.retry = retry == null ? DownloadRetry.once() : retry;
+    }
+
+    /** Das Offline-Paket, aus dem vor dem Download installiert wird. */
+    public OfflineResourceBundle bundle() {
+        return local;
     }
 
     /** Ob die Ressource aus dem Bundle käme. */
@@ -220,7 +225,7 @@ public final class ResourceInstaller {
         return hex(digest.digest());
     }
 
-    private static MessageDigest sha256Digest() throws IOException {
+    static MessageDigest sha256Digest() throws IOException {
         try {
             return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
@@ -228,7 +233,7 @@ public final class ResourceInstaller {
         }
     }
 
-    private static String hex(byte[] hash) {
+    static String hex(byte[] hash) {
         StringBuilder hex = new StringBuilder(hash.length * 2);
         for (byte b : hash) {
             hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));

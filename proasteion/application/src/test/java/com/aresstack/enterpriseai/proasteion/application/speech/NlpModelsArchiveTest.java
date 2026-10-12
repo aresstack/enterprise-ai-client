@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.speech;
 
-import com.aresstack.enterpriseai.proasteion.application.resources.LocalResourceSource;
+import com.aresstack.enterpriseai.proasteion.application.resources.OfflineResourceBundle;
 import com.aresstack.enterpriseai.proasteion.application.resources.ResourceInstaller;
 import org.junit.Rule;
 import org.junit.Test;
@@ -42,7 +42,7 @@ public class NlpModelsArchiveTest {
 
     private NlpModels models(Path jarDirectory, NlpModels.Entry entry) throws IOException {
         return new NlpModels(temp.newFolder("models").toPath(), Collections.singletonList(entry),
-                new LocalResourceSource(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"));
+                new OfflineResourceBundle(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"));
     }
 
     private static void archive(Path file, String manifest, byte[] content) throws IOException {
@@ -101,7 +101,7 @@ public class NlpModelsArchiveTest {
         Path root = temp.newFolder("root").toPath();
         NlpModels.Entry entry = entry(sha, MODEL.length);
         new NlpModels(root, Collections.singletonList(entry),
-                new LocalResourceSource(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"))
+                new OfflineResourceBundle(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"))
                 .install(entry, null);
         NlpModels.Entry newer = entry(ResourceInstaller.sha256("newer".getBytes(StandardCharsets.UTF_8)), 5);
         assertFalse(new NlpModels(root, Collections.singletonList(newer)).isInstalled(newer));
@@ -170,7 +170,7 @@ public class NlpModelsArchiveTest {
         NlpModels.Entry entry = entry(sha, MODEL.length);
         Path root = temp.newFolder("root").toPath();
         NlpModels models = new NlpModels(root, Collections.singletonList(entry),
-                new LocalResourceSource(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"));
+                new OfflineResourceBundle(Collections.singletonList(jarDirectory), PREFIX, "manifest.properties"));
         models.install(entry, null);
         assertArrayEquals(MODEL, Files.readAllBytes(root.resolve("pos-de").resolve("de-pos-maxent.bin")));
     }

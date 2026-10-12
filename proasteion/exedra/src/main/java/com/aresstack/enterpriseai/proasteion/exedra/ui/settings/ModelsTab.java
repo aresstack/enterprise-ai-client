@@ -162,7 +162,7 @@ final class ModelsTab {
         FormRows nlpNote = new FormRows(palette);
         nlpNote.note("Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache; die "
                 + "Wortartenerkennung hilft beim Auswerten von Chat-Anfragen. Ohne diese Modelle wird an Satzzeichen "
-                + "geteilt. Liegt das Ressourcen-Archiv (enterprise-ai-client-resources*.zip) neben dem Jar, wird "
+                + "geteilt. Liegt ein Offline-Paket (enterprise-ai-client-resources*.zip) neben dem Jar, wird "
                 + "daraus installiert, sonst heruntergeladen.");
         JPanel nlpContent = new JPanel(new BorderLayout(0, 4));
         nlpContent.setOpaque(false);

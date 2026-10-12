@@ -36,10 +36,28 @@ public class SettingsPanelTest {
                 ConnectionCheckStep.ok("GET /models", "HTTP 200: 1 Modell(e)"));
         boolean connectionSuccess = true;
         java.io.File folder;
+        String offlineName;
+        java.io.File offlineTarget;
+        com.aresstack.enterpriseai.astu.localruntime.InstallCancellation offlineCancellation;
+        LocalVoiceInstallProgress offlineProgress;
 
         @Override
         public java.io.File settingsFolder() {
             return folder;
+        }
+
+        @Override
+        public String offlinePackageFileName() {
+            return offlineName;
+        }
+
+        @Override
+        public void exportOfflinePackage(SettingsForm form, java.io.File target,
+                                         com.aresstack.enterpriseai.astu.localruntime.InstallCancellation cancellation,
+                                         LocalVoiceInstallProgress progress) {
+            offlineTarget = target;
+            offlineCancellation = cancellation;
+            offlineProgress = progress;
         }
 
         @Override
@@ -174,6 +192,46 @@ public class SettingsPanelTest {
                         without, palette).openFolderButton().isVisible());
                 assertTrue(new SettingsPanel(sample(), Collections.<String>emptyList(), SettingsPanel.Mode.EDIT,
                         with, palette).openFolderButton().isVisible());
+            }
+        });
+    }
+
+    @Test
+    public void offlinePackageButtonSitsRightOfTheFolderButtonAndExportsWithProgressAndCancel() throws Exception {
+        final ScriptedActions without = new ScriptedActions();
+        final ScriptedActions actions = new ScriptedActions();
+        actions.folder = new java.io.File(System.getProperty("java.io.tmpdir"));
+        actions.offlineName = "enterprise-ai-client-resources-20261012-210000.zip";
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                assertFalse(new SettingsPanel(sample(), Collections.<String>emptyList(), SettingsPanel.Mode.EDIT,
+                        without, palette).offlinePackageButton().isVisible());
+                SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
+                        SettingsPanel.Mode.EDIT, actions, palette);
+                javax.swing.JButton button = panel.offlinePackageButton();
+                assertTrue(button.isVisible());
+                assertEquals("Offline-Paket erstellen …", button.getText());
+                assertEquals("Packt alle installierten lokalen KI- und Sprachmodelle in ein ZIP für eine "
+                        + "Offline-Installation.", button.getToolTipText());
+                java.awt.Container bar = panel.openFolderButton().getParent();
+                assertSame("next to the folder button", bar, button.getParent());
+                List<java.awt.Component> order = Arrays.asList(bar.getComponents());
+                assertTrue(order.indexOf(button) > order.indexOf(panel.openFolderButton()));
+
+                java.io.File target = new java.io.File(actions.folder, actions.offlineName);
+                panel.exportOfflinePackage(target);
+                assertSame(target, actions.offlineTarget);
+                assertFalse("one export at a time", button.isEnabled());
+                assertTrue(panel.offlineProgress().isVisible());
+                actions.offlineProgress.file("model.onnx", 2, 5, 50, 100);
+                assertEquals(50, panel.offlineProgress().bar().getValue());
+                panel.offlineProgress().cancelButton().doClick();
+                assertTrue(actions.offlineCancellation.isCancelled());
+                actions.offlineProgress.cancelled("Erstellen abgebrochen. Es wurde kein Offline-Paket geschrieben.");
+                assertFalse(panel.offlineProgress().isVisible());
+                assertTrue(button.isEnabled());
+                assertEquals("Erstellen abgebrochen. Es wurde kein Offline-Paket geschrieben.", panel.offlineStatus());
             }
         });
     }

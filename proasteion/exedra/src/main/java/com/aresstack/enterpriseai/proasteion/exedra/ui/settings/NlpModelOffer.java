@@ -13,7 +13,7 @@ public final class NlpModelOffer {
     }
 
     /**
-     * @param inArchive ob das Modell im Ressourcen-Archiv neben dem Jar liegt (Installation ohne Download)
+     * @param inArchive ob das Modell im Offline-Paket neben dem Jar liegt (Installation ohne Download)
      */
     public NlpModelOffer(String id, String name, boolean installed, boolean inArchive) {
         if (id == null || id.trim().isEmpty()) {
@@ -37,7 +37,7 @@ public final class NlpModelOffer {
         return installed;
     }
 
-    /** Ob die Installation aus dem Ressourcen-Archiv käme statt per Download. */
+    /** Ob die Installation aus dem Offline-Paket käme statt per Download. */
     public boolean isInArchive() {
         return inArchive;
     }

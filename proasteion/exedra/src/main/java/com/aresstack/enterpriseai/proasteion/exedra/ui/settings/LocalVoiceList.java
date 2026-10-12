@@ -40,6 +40,7 @@ final class LocalVoiceList {
     static final String UPDATE_LABEL = "Aktualisieren";
     static final String NOT_INSTALLED = "Nicht installiert";
     static final String INSTALLED = "✓ installiert";
+    static final String IN_PACKAGE = "Im Offline-Paket";
     static final String NONE = "Noch keine lokalen Modelle installiert.";
     static final String NO_SUGGESTIONS = "Alle Vorschläge sind installiert.";
     static final String LOAD_FAILED = "Die lokalen Modelle ließen sich nicht ermitteln.";
@@ -338,11 +339,14 @@ final class LocalVoiceList {
         name.putClientProperty("html.disable", Boolean.TRUE);
         name.setForeground(palette.getInk());
         name.setToolTipText(offer.id());
-        JLabel state = new JLabel(offer.isInstalled() ? INSTALLED : NOT_INSTALLED);
+        JLabel state = new JLabel(offer.isInstalled() ? INSTALLED
+                : offer.isInOfflinePackage() ? IN_PACKAGE : NOT_INSTALLED);
         state.setForeground(offer.isInstalled() ? palette.getAgentPetrol() : FormRows.MUTED);
         ComicButton action = new ComicButton(offer.isInstalled() ? REMOVE_LABEL : INSTALL_LABEL, null,
                 offer.isInstalled() ? ComicButton.Accent.CRITICAL : ComicButton.Accent.ACTION, palette);
         action.setToolTipText(offer.isInstalled() ? "Löscht die Dateien der Stimme aus dem Modellverzeichnis"
+                : offer.isInOfflinePackage() ? "Entpackt das Modell aus dem Offline-Paket neben dem Jar ins "
+                + "Modellverzeichnis; Größe und SHA-256 jeder Datei werden geprüft"
                 : "Lädt die Dateien unverändert vom Hugging Face Hub ins Modellverzeichnis; gewählt wird in der TTS-Liste");
         action.getAccessibleContext().setAccessibleName(action.getText() + ": " + offer.displayName());
         action.addActionListener(new ActionListener() {

@@ -1,7 +1,7 @@
 ---
 id: settings.overview
 title: Der Dialog „Einstellungen“ im Überblick
-keywords: Einstellungen, Settings, Optionen, Konfiguration, Zahnrad, Einstellungsdialog, Speichern, Abbrechen, Einstellungsordner öffnen, Reiter, Kategorien, ohne Neustart, Probleme, Bitte korrigieren, Erststart, erster Start, Preferences, Options, Escape
+keywords: Einstellungen, Settings, Optionen, Konfiguration, Zahnrad, Einstellungsdialog, Speichern, Abbrechen, Einstellungsordner öffnen, Offline-Paket erstellen, Offline-Paket, Offline-Installation, ohne Netz, Reiter, Kategorien, ohne Neustart, Probleme, Bitte korrigieren, Erststart, erster Start, Preferences, Options, Escape
 ---
 
 # Der Dialog „Einstellungen“ im Überblick
@@ -24,7 +24,7 @@ Der Dialog ist modal: solange er offen ist, bedienst du das Hauptfenster nicht. 
 - **Oben** steht die Überschrift „Einstellungen“ und darunter ein Hinweis. Im normalen Betrieb lautet er: „Gespeicherte Änderungen gelten sofort, ohne Neustart.“ und „Mit KeePass stehen API-Key und URL im Eintrag; hier steht nur sein Titel.“ Rechts oben sitzt das Comic-✕ zum Schließen.
 - **Links** steht die Liste der Kategorien (Reiter) in dieser Reihenfolge: „KI-Dienst“, „KeePass“, „Netzwerk & Agent“, „Modelle“, „Sprachausgabe“, „Index“, „Tools“, „Darstellung“, „Technische Details“.
 - **Rechts** zeigt der Dialog den Inhalt der gewählten Kategorie, gegliedert in farbig abgesetzte Bereiche. Lange Seiten scrollen senkrecht.
-- **Unten** erscheint bei Bedarf eine rote Platte mit Problemen und ganz unten die Fußzeile: links „Einstellungsordner öffnen“, rechts „Einrichtungsassistent“ (nur wenn du den Dialog aus dem Hauptfenster geöffnet hast), „Abbrechen“ und „Speichern“.
+- **Unten** erscheint bei Bedarf eine rote Platte mit Problemen und ganz unten die Fußzeile: links „Einstellungsordner öffnen“ und „Offline-Paket erstellen …“, rechts „Einrichtungsassistent“ (nur wenn du den Dialog aus dem Hauptfenster geöffnet hast), „Abbrechen“ und „Speichern“.
 
 Einige Reiter laden beim ersten Anzeigen Daten im Hintergrund nach: „Modelle“ fragt die Modellquellen ab, „Sprachausgabe“ ebenfalls (für die TTS-Liste), „Tools“ liest bei jedem Anzeigen die aktuelle Werkzeugliste, und „Technische Details“ liest bei jedem Anzeigen das Protokoll neu.
 
@@ -61,6 +61,18 @@ Der Knopf „Einstellungsordner öffnen“ links in der Fußzeile (Tooltip: „D
 - Derselbe Knopf steht noch einmal im Reiter „Technische Details“.
 
 Wo genau der Ordner liegt, beschreibt [Die Konfigurationsdatei](help:settings.config-file).
+
+## Offline-Paket erstellen
+
+Der Knopf „Offline-Paket erstellen …“ direkt rechts neben „Einstellungsordner öffnen“ (Tooltip: „Packt alle installierten lokalen KI- und Sprachmodelle in ein ZIP für eine Offline-Installation.“) packt alles, was auf diesem Rechner lokal installiert ist, in ein einziges ZIP: die OpenNLP-Modelle der Textanalyse und alle vollständig installierten lokalen Modelle (Spracheingabe, Sprachausgabe, Embedding- und Chat-Modelle), je Modell den ganzen Ordner aus dem Modellverzeichnis. Halb geladene Downloads kommen nicht hinein.
+
+1. Klicke „Offline-Paket erstellen …“. Ein Speichern-Dialog schlägt den Ordner des Jars und den Namen `enterprise-ai-client-resources-yyyyMMdd-HHmmss.zip` vor (Datum und Uhrzeit).
+2. Während des Packens zeigt ein dünner Balken in der Fußzeile die Datei und den Fortschritt. Das kleine Kreuz daneben bricht ab; dann bleibt keine Datei zurück.
+3. Danach steht neben dem Knopf, was im Paket ist und wie groß es ist.
+
+Das ZIP wird nicht komprimiert (Modelle lassen sich kaum packen, so geht es schneller) und erst unter seinem Namen sichtbar, wenn es vollständig ist. Ein Manifest im ZIP nennt Größe und SHA-256 jeder Datei.
+
+**Auf dem Zielrechner:** Lege das ZIP neben das Jar (oder ins Anwendungsverzeichnis). Der Einrichtungsassistent und Einstellungen → Modelle → „Lokale Modelle“ zeigen dann bei den enthaltenen Modellen „Im Offline-Paket“, und „Installieren“ bzw. „Alles installieren“ entpackt sie ohne Netz. Jede Datei wird dabei gegen Größe und SHA-256 aus dem Manifest geprüft. Auch Modelle, die du auf dem Quellrechner frei gesucht hast, erscheinen so. Ein so installiertes Modell verhält sich wie ein heruntergeladenes: „Aktualisieren“ lädt es neu vom Hub, „Entfernen“ löscht es. Liegen mehrere Pakete im Ordner, gilt das mit dem größten Namen, also das neueste.
 
 ## Der Knopf „Einrichtungsassistent“
 

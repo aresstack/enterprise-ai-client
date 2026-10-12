@@ -193,25 +193,49 @@ public interface SettingsDialogActions {
 
     /**
      * Die OpenNLP-Modelle (Satz-, Sprach- und Wortartenerkennung) mit Installationsstand und ob sie im
-     * Ressourcen-Archiv neben dem Jar liegen, genau einmal auf dem EDT.
+     * Offline-Paket neben dem Jar liegen, genau einmal auf dem EDT.
      */
     default void nlpModels(Consumer<List<NlpModelOffer>> onResult) {
         onResult.accept(Collections.<NlpModelOffer>emptyList());
     }
 
     /**
-     * Ein Satz zum Ressourcen-Archiv neben dem Jar (gefunden, schon installiert, geändert) oder leer ohne Archiv.
+     * Ein Satz zum Offline-Paket neben dem Jar (gefunden, schon installiert, geändert) oder leer ohne Archiv.
      */
     default String resourceBundleNote() {
         return "";
     }
 
     /**
-     * Installiert ein OpenNLP-Modell (zuerst aus dem Ressourcen-Archiv, sonst Download über die
+     * Installiert ein OpenNLP-Modell (zuerst aus dem Offline-Paket, sonst Download über die
      * Netzwerkeinstellungen des Entwurfs; Größe und SHA-256 geprüft); Ergebnis genau einmal auf dem EDT.
      */
     default void installNlpModel(SettingsForm form, String id, BiConsumer<Boolean, String> onFinished) {
         onFinished.accept(Boolean.FALSE, "In dieser Umgebung nicht verfügbar.");
+    }
+
+    /**
+     * Der vorgeschlagene Dateiname für „Offline-Paket erstellen …“ ({@code
+     * enterprise-ai-client-resources-yyyyMMdd-HHmmss.zip}); {@code null}: ohne Knopf.
+     */
+    default String offlinePackageFileName() {
+        return null;
+    }
+
+    /** Der vorgeschlagene Ordner für das Offline-Paket (der des Jars) oder {@code null}. */
+    default java.io.File offlinePackageDirectory() {
+        return null;
+    }
+
+    /**
+     * Packt die installierten OpenNLP-Modelle und alle vollständig installierten lokalen Modelle (Modellverzeichnis
+     * des Entwurfs) nach {@code target}, ohne den EDT zu blockieren. Fortschritt je Datei über
+     * {@link LocalVoiceInstallProgress#file}, am Ende genau einmal {@code finished} oder nach einem Abbruch
+     * {@code cancelled}; ein Abbruch oder Fehler hinterlässt keine Datei.
+     */
+    default void exportOfflinePackage(SettingsForm form, java.io.File target, InstallCancellation cancellation,
+                                      LocalVoiceInstallProgress progress) {
+        progress.finished(false, "In dieser Umgebung nicht verfügbar.");
     }
 
     /** Das Standard-Ermittlungsskript der Bibliothek für einen Modus (PowerShell bzw. VBScript), sonst leer. */

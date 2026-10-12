@@ -15,6 +15,7 @@ import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoute;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallException;
 import com.aresstack.enterpriseai.model.api.LocalVoiceInstallListener;
+import com.aresstack.enterpriseai.model.api.OfflineModelPackage;
 import com.aresstack.enterpriseai.model.huggingface.HubRepositorySuggestion;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoice;
 import com.aresstack.enterpriseai.model.huggingface.HuggingFaceVoiceProvisioning;
@@ -52,9 +53,13 @@ public final class LocalVoices implements LocalVoiceInstaller {
     private final AtomicBoolean proxyAuthenticated = new AtomicBoolean();
     /** Pairing- und Zugangsdaten-Eingabe für die Proxy-Anmeldung beim Download (von der Oberfläche). */
     private final UserPrompts prompts;
+    /** Das Offline-Paket neben dem Jar; Modelle daraus kommen vor dem Hub. */
+    private final OfflineModelPackage offline;
 
     public LocalVoices(UserPrompts prompts) {
-        this(LocalVoicesConfig.curated(), LocalVoicesConfig.suggestions(), LocalVoicesConfig.hubEndpoint(), prompts);
+        this(LocalVoicesConfig.curated(), LocalVoicesConfig.suggestions(), LocalVoicesConfig.hubEndpoint(), prompts,
+                com.aresstack.enterpriseai.proasteion.application.speech.NlpModels.inApplicationDirectory()
+                        .offlineBundle());
     }
 
     LocalVoices(List<HuggingFaceVoice> curated, String hubEndpoint) {
@@ -67,9 +72,15 @@ public final class LocalVoices implements LocalVoiceInstaller {
 
     LocalVoices(List<HuggingFaceVoice> curated, List<HubRepositorySuggestion> suggested, String hubEndpoint,
                 UserPrompts prompts) {
-        if (prompts == null) {
-            throw new IllegalArgumentException("prompts must not be null");
+        this(curated, suggested, hubEndpoint, prompts, OfflineModelPackage.none());
+    }
+
+    LocalVoices(List<HuggingFaceVoice> curated, List<HubRepositorySuggestion> suggested, String hubEndpoint,
+                UserPrompts prompts, OfflineModelPackage offline) {
+        if (prompts == null || offline == null) {
+            throw new IllegalArgumentException("prompts and offline must not be null");
         }
+        this.offline = offline;
         this.curated = curated;
         this.suggested = suggested;
         this.hubEndpoint = hubEndpoint;
@@ -134,6 +145,6 @@ public final class LocalVoices implements LocalVoiceInstaller {
     }
 
     private HuggingFaceVoiceProvisioning provisioning(HttpRoutePort routes) {
-        return new HuggingFaceVoiceProvisioning(curated, suggested, discovered, hubEndpoint, routes);
+        return new HuggingFaceVoiceProvisioning(curated, suggested, discovered, hubEndpoint, routes, offline);
     }
 }

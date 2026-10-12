@@ -22,7 +22,9 @@ import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.VaultLocations;
 import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
+import com.aresstack.enterpriseai.proasteion.application.resources.OfflineResourceBundleExporter;
 import com.aresstack.enterpriseai.proasteion.application.resources.ResourceInstaller;
+import com.aresstack.enterpriseai.proasteion.application.settings.OfflinePackageExport;
 import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
@@ -90,6 +92,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
     private static final java.util.logging.Logger NLP_LOG =
             java.util.logging.Logger.getLogger(FileSettingsActions.class.getName());
     private final NlpModels nlpModels;
+    /** „Offline-Paket erstellen …“; {@code null} ohne OpenNLP-Liste. */
+    private final OfflinePackageExport offlinePackage;
     /** Stimmen je TTS-Modell (Auswahl „Stimme“ im Einstellungsdialog). */
     private final TtsVoiceCatalog ttsVoiceCatalog = TtsVoiceCatalog.bundled();
     private final PreferredModels preferredModels = PreferredModels.bundled();
@@ -162,6 +166,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
         this.models = models;
         this.voices = voices;
         this.nlpModels = nlpModels;
+        this.offlinePackage = nlpModels == null ? null : new OfflinePackageExport(nlpModels, voices);
     }
 
     /** Wie viel vom Ende der Protokolldatei „Technische Details“ zeigt. */
@@ -739,17 +744,104 @@ public final class FileSettingsActions implements SettingsDialogActions {
     }
 
     @Override
+    public String offlinePackageFileName() {
+        return offlinePackage == null ? null : offlinePackage.defaultFileName(new java.util.Date());
+    }
+
+    @Override
+    public java.io.File offlinePackageDirectory() {
+        Path directory = offlinePackage == null ? null : offlinePackage.defaultDirectory();
+        return directory == null ? null : directory.toFile();
+    }
+
+    /** Packt im Hintergrund; Fortschritt höchstens einmal je Prozentpunkt und Datei, Ergebnis genau einmal auf dem EDT. */
+    @Override
+    public void exportOfflinePackage(SettingsForm form, final java.io.File target,
+                                     InstallCancellation requested, final LocalVoiceInstallProgress progress) {
+        if (form == null || target == null || progress == null) {
+            throw new IllegalArgumentException("form, target and progress must not be null");
+        }
+        if (offlinePackage == null) {
+            progress.finished(false, "In dieser Umgebung nicht verfügbar.");
+            return;
+        }
+        final InstallCancellation cancellation = requested == null ? new InstallCancellation() : requested;
+        final Path root = localModelRoot(form);
+        try {
+            worker.execute(new Runnable() {
+                private String lastLine = "";
+
+                @Override
+                public void run() {
+                    OfflineResourceBundleExporter.Progress listener = new OfflineResourceBundleExporter.Progress() {
+                        @Override
+                        public void file(final String name, final int number, final int count, final long done,
+                                         final long total) {
+                            final String line = number + "/" + count + ":" + name + ":"
+                                    + (total > 0 ? done * 100 / total : 0);
+                            if (line.equals(lastLine) || cancellation.isCancelled()) {
+                                return;
+                            }
+                            lastLine = line;
+                            ui.execute(new Runnable() {
+                                @Override
+                                public void run() {
+                                    progress.file(name, number, count, done, total);
+                                }
+                            });
+                        }
+                    };
+                    boolean ok;
+                    String message;
+                    try {
+                        OfflineResourceBundleExporter.Summary summary = offlinePackage.export(target.toPath(), root,
+                                listener, cancellation);
+                        ok = true;
+                        message = "Offline-Paket geschrieben: " + target.getName() + " (" + summary.models()
+                                + " lokale Modelle, " + summary.resources() + " Sprachressourcen, "
+                                + summary.bytes() / (1024L * 1024L) + " MB). Neben das Jar kopiert, installiert der "
+                                + "Client daraus ohne Netz.";
+                    } catch (final OfflineResourceBundleExporter.Cancelled e) {
+                        ui.execute(new Runnable() {
+                            @Override
+                            public void run() {
+                                progress.cancelled(e.getMessage());
+                            }
+                        });
+                        return;
+                    } catch (IOException | RuntimeException e) {
+                        NLP_LOG.log(java.util.logging.Level.WARNING, "Offline-Paket nicht geschrieben: " + target, e);
+                        ok = false;
+                        message = "Offline-Paket nicht geschrieben: " + (e.getMessage() == null
+                                ? e.getClass().getSimpleName() : e.getMessage());
+                    }
+                    final boolean written = ok;
+                    final String result = message;
+                    ui.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            progress.finished(written, result);
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException rejected) {
+            progress.finished(false, "Das Erstellen konnte nicht gestartet werden.");
+        }
+    }
+
+    @Override
     public String resourceBundleNote() {
         if (nlpModels == null) {
             return "";
         }
         switch (nlpModels.bundleState()) {
             case NEW:
-                return "Ressourcen-Archiv gefunden: daraus wird ohne Download installiert.";
+                return "Offline-Paket gefunden: daraus wird ohne Download installiert.";
             case INSTALLED:
-                return "Dieses Ressourcen-Archiv ist bereits installiert.";
+                return "Dieses Offline-Paket ist bereits installiert.";
             case CHANGED:
-                return "Neues oder geändertes Ressourcen-Archiv gefunden: fehlende Modelle kommen daraus.";
+                return "Neues oder geändertes Offline-Paket gefunden: fehlende Modelle kommen daraus.";
             default:
                 return "";
         }
@@ -779,7 +871,7 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     try {
                         ResourceInstaller.Source source = nlpModels.install(entry, NetworkServices.from(network));
                         ok = true;
-                        message = source == ResourceInstaller.Source.ARCHIVE ? "✓ aus dem Ressourcen-Archiv installiert"
+                        message = source == ResourceInstaller.Source.ARCHIVE ? "✓ aus dem Offline-Paket installiert"
                                 : "✓ installiert";
                     } catch (IOException | RuntimeException e) {
                         NLP_LOG.log(java.util.logging.Level.WARNING,
