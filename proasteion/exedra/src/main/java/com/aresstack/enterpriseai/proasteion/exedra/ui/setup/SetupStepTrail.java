@@ -7,20 +7,27 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 import javax.accessibility.AccessibleContext;
 import javax.accessibility.AccessibleRole;
 import javax.swing.JComponent;
+import javax.swing.SwingUtilities;
 import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
+import java.util.function.IntConsumer;
 
 /**
  * Die Fortschrittsanzeige des Einrichtungsassistenten in Java2D: je Schritt ein Comic-Kreis mit Tintenkontur und
  * Nummer (erledigt: grün mit Haken, aktuell: blau), dazwischen Verbindungslinien, darunter der Name des Schritts.
+ * Zugleich Navigation: ein Klick auf einen Schritt springt dorthin, ohne Prüfung (der Gastgeber entscheidet über
+ * {@link #setOnSelect(IntConsumer)}); der Haken zeigt weiterhin nur echte Erfüllung.
  */
 final class SetupStepTrail extends JComponent {
 
@@ -31,6 +38,8 @@ final class SetupStepTrail extends JComponent {
     private final ComicPalette palette;
     private int current;
     private boolean[] done;
+    private IntConsumer onSelect;
+    private boolean navigable = true;
 
     SetupStepTrail(String[] names, ComicPalette palette) {
         this.names = names.clone();
@@ -38,6 +47,52 @@ final class SetupStepTrail extends JComponent {
         this.done = new boolean[names.length];
         setOpaque(false);
         getAccessibleContext().setAccessibleName("Fortschritt der Einrichtung");
+        MouseAdapter mouse = new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int index = stepAt(e.getX());
+                if (navigable && onSelect != null && SwingUtilities.isLeftMouseButton(e) && index >= 0) {
+                    onSelect.accept(index);
+                }
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int index = stepAt(e.getX());
+                boolean active = navigable && onSelect != null && index >= 0 && index != current;
+                setCursor(active ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+                setToolTipText(active ? "Zu „" + names[index] + "“ springen" : null);
+            }
+        };
+        addMouseListener(mouse);
+        addMouseMotionListener(mouse);
+    }
+
+    /** Wer auf Klicks reagiert (Index des Schritts); {@code null} = nur Anzeige. */
+    void setOnSelect(IntConsumer callback) {
+        this.onSelect = callback;
+    }
+
+    /** Ob Klicks gerade springen dürfen (nicht während einer laufenden Abfrage). */
+    void setNavigable(boolean value) {
+        this.navigable = value;
+        if (!value) {
+            setCursor(Cursor.getDefaultCursor());
+        }
+    }
+
+    /** Der Schritt unter einer x-Koordinate; -1 außerhalb. */
+    int stepAt(int x) {
+        if (getWidth() <= 0 || x < 0 || x >= getWidth()) {
+            return -1;
+        }
+        return Math.min(names.length - 1, x / Math.max(1, getWidth() / names.length));
+    }
+
+    /** Mitte des Kreises eines Schritts (für Tests und Klickziele). */
+    int centerOf(int index) {
+        int slot = getWidth() / names.length;
+        return slot * index + slot / 2;
     }
 
     void show(int currentStep, boolean[] completed) {

@@ -73,12 +73,25 @@ public final class SetupWizardPanel extends JPanel {
     static final int STEP_FINISH = 4;
     /** Optional nach der bestandenen Abschlussprüfung: ein lokales Modell für die Spracheingabe (STT). */
     static final int STEP_SPEECH = 5;
+    /** Je Schritt der Zauberer mit dem passenden Gegenstand (Schlüssel, Kugel, Karten, Buch, Haken, Mikrofon). */
+    private static final String[] STEP_MASCOTS = {"wizard/wizard-01-keepass.png", "wizard/wizard-02-ai-service.png",
+            "wizard/wizard-03-models.png", "wizard/wizard-04-confluence.png", "wizard/wizard-05-complete.png",
+            "wizard/wizard-06-speech.png"};
+    /** Vorgaben je Schritt: Platz des Zauberers im freien Bereich (wechselnd, damit es lebendig wirkt). */
+    private static final SetupWizardMascot.Placement[] MASCOT_PLACEMENTS = {SetupWizardMascot.Placement.RIGHT,
+            SetupWizardMascot.Placement.LEFT, SetupWizardMascot.Placement.RIGHT, SetupWizardMascot.Placement.LEFT,
+            SetupWizardMascot.Placement.CENTER, SetupWizardMascot.Placement.RIGHT};
+    /** Vorgaben je Schritt: Höhe des Zauberers in logischen Pixeln (passend zum üblichen freien Platz). */
+    private static final int[] MASCOT_HEIGHTS = {230, 200, 210, 140, 220, 230};
 
     /** Der Standardeintrag des KI-Dienstes in KeePass. */
     static final String DEFAULT_SERVICE_ENTRY = "Enterprise AI API";
     static final String DEFAULT_CONFLUENCE_ENTRY = "Confluence";
     static final String NEW_ENTRY_HINT = "(neuer Eintrag)";
     private static final String KEEPASS_PREFIX = "keepass:";
+    private static final String SKIP_STEP_HINT = "Ohne Prüfung zum nächsten Schritt; Eingaben bleiben erhalten";
+    private static final String SKIP_SPEECH_HINT =
+            "Ohne lokale Spracheingabe abschließen; später unter Einstellungen → Modelle → Lokale Modelle";
     /** Platzhalter für Modelle, solange der Schritt „Modelle“ noch nicht gewählt hat (Verbindungstest). */
     private static final String MODEL_PLACEHOLDER = "-";
     /** Schritte des Verbindungstests ({@code ConnectionProbe}), die das Netz betreffen bzw. den API-Key. */
@@ -100,6 +113,7 @@ public final class SetupWizardPanel extends JPanel {
     private final ComposerButton nextButton;
     private final ComposerButton finishButton;
     private final ComposerButton skipButton;
+    private final List<SetupWizardMascot> mascots = new ArrayList<SetupWizardMascot>();
 
     private SettingsForm form;
     private int step;
@@ -198,8 +212,7 @@ public final class SetupWizardPanel extends JPanel {
         this.certificateChoose = new ComposerButton(null, "Zertifikat wählen…", false);
         this.confluenceTest = ComposerButton.primary(null, "Verbindung testen", ResearchUiPalette.ACCENT_BLUE, null);
         this.finishRetry = new ComposerButton(null, "Erneut prüfen", false);
-        this.skipButton = new ComposerButton(null, "Überspringen", false,
-                "Ohne lokale Spracheingabe abschließen; später unter Einstellungen → Modelle → Lokale Modelle");
+        this.skipButton = new ComposerButton(null, "Überspringen", false, SKIP_STEP_HINT);
         this.speechInstall = ComposerButton.primary(null, "Installieren", ResearchUiPalette.ACCENT_BLUE, null);
         this.speechRetry = new ComposerButton(null, "Erneut versuchen", false);
         buildUi();
@@ -240,6 +253,7 @@ public final class SetupWizardPanel extends JPanel {
         JPanel buttons = transparent(new BorderLayout());
         JPanel left = transparent(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.add(cancelButton);
+        left.add(javax.swing.Box.createHorizontalStrut(8));
         left.add(skipButton);
         JPanel right = transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.add(backButton);
@@ -382,6 +396,7 @@ public final class SetupWizardPanel extends JPanel {
         cancelButton.addActionListener(e -> cancel());
         backButton.addActionListener(e -> showStep(step - 1));
         nextButton.addActionListener(e -> showStep(step + 1));
+        trail.setOnSelect(this::jumpTo);
         finishButton.addActionListener(e -> finish());
         networkButton.addActionListener(e -> editNetwork());
         pairButton.addActionListener(e -> pair());
@@ -429,7 +444,7 @@ public final class SetupWizardPanel extends JPanel {
         });
         confluenceTest.addActionListener(e -> testConfluence());
         finishRetry.addActionListener(e -> runFinalCheck());
-        skipButton.addActionListener(e -> skipSpeech());
+        skipButton.addActionListener(e -> skip());
         speechModel.addActionListener(e -> {
             if (!busy) {
                 showSpeechChoice();
@@ -471,6 +486,27 @@ public final class SetupWizardPanel extends JPanel {
         return errors[index];
     }
 
+    /**
+     * Springt ohne Prüfung zu einem Schritt (Klick in der Schrittleiste, „Überspringen“): Eingaben bleiben stehen,
+     * der Erfüllungsstatus der Schritte ändert sich dadurch nicht. Nur während einer laufenden Abfrage geht es nicht,
+     * damit deren Ergebnis nicht in einem anderen Schritt landet.
+     */
+    void jumpTo(int index) {
+        if (busy || speechDownloading || index == step) {
+            return;
+        }
+        showStep(index);
+    }
+
+    /** „Überspringen“: weiter zum nächsten Schritt; im letzten Schritt ohne lokale Spracheingabe abschließen. */
+    private void skip() {
+        if (step == STEP_SPEECH) {
+            skipSpeech();
+        } else {
+            jumpTo(step + 1);
+        }
+    }
+
     void showStep(int index) {
         if (index < 0 || index >= STEP_NAMES.length) {
             return;
@@ -506,8 +542,11 @@ public final class SetupWizardPanel extends JPanel {
         // Der Schritt „Spracheingabe“ blockiert nie: Überspringen geht immer, auch während eines Downloads.
         finishButton.setEnabled(speech && done[STEP_FINISH] && done[STEP_SPEECH] && !busy && !speechDownloading);
         cancelButton.setVisible(!speech);
-        skipButton.setVisible(speech);
-        skipButton.setEnabled(speech && done[STEP_FINISH]);
+        // „Überspringen“ in jedem Schritt: weiter ohne Prüfung; im letzten Schritt abschließen ohne Spracheingabe,
+        // das geht erst nach bestandener Abschlussprüfung.
+        skipButton.setEnabled(speech ? done[STEP_FINISH] : !busy);
+        skipButton.setToolTipText(speech ? SKIP_SPEECH_HINT : SKIP_STEP_HINT);
+        trail.setNavigable(!busy && !speechDownloading);
         LocalVoiceOffer chosen = selectedSpeechOffer();
         speechInstall.setVisible(chosen != null && !chosen.isInstalled() && errors[STEP_SPEECH] == null);
         speechInstall.setEnabled(!busy && !speechDownloading);
@@ -1536,6 +1575,20 @@ public final class SetupWizardPanel extends JPanel {
         return certificateAlias;
     }
 
+    /** Das Bild des Zauberers eines Schritts, relativ zu {@link SetupWizardMascot}. */
+    static String mascotResource(int index) {
+        return STEP_MASCOTS[index];
+    }
+
+    SetupStepTrail trail() {
+        return trail;
+    }
+
+    /** Der Zauberer des Schritts (in der Reihenfolge der Schritte). */
+    SetupWizardMascot mascotOf(int index) {
+        return mascots.get(index);
+    }
+
     // ------------------------------------------------------------------ Hilfsklassen
 
     /** Zeilen eines Schritts: Überschrift, Hinweis, dann Beschriftung und Feld. */
@@ -1552,6 +1605,7 @@ public final class SetupWizardPanel extends JPanel {
             c.gridwidth = 2;
             c.insets = new Insets(0, 0, 6, 0);
             panel.add(title, c);
+            row++;
         }
 
         void note(String text) {
@@ -1569,6 +1623,7 @@ public final class SetupWizardPanel extends JPanel {
             c.weightx = 1;
             c.insets = new Insets(0, 0, 8, 0);
             panel.add(note, c);
+            row++;
         }
 
         void field(String label, JComponent component) {
@@ -1599,7 +1654,7 @@ public final class SetupWizardPanel extends JPanel {
         private GridBagConstraints constraints(int column) {
             GridBagConstraints c = new GridBagConstraints();
             c.gridx = column;
-            c.gridy = row + 2;
+            c.gridy = row;
             c.anchor = GridBagConstraints.WEST;
             return c;
         }
@@ -1607,6 +1662,13 @@ public final class SetupWizardPanel extends JPanel {
         JPanel panel() {
             JPanel page = transparent(new BorderLayout());
             page.add(panel, BorderLayout.NORTH);
+            int index = mascots.size();
+            SetupWizardMascot.Art stepArt = SetupWizardMascot.Art.load(STEP_MASCOTS[index]);
+            SetupWizardMascot mascot = new SetupWizardMascot(stepArt != null ? stepArt : SetupWizardMascot.Art.load(),
+                    MASCOT_HEIGHTS[index], MASCOT_PLACEMENTS[index], SetupWizardMascot.DEFAULT_GAP,
+                    SetupWizardMascot.DEFAULT_SIDE_INSET);
+            mascots.add(mascot);
+            page.add(mascot, BorderLayout.CENTER);
             return page;
         }
     }
