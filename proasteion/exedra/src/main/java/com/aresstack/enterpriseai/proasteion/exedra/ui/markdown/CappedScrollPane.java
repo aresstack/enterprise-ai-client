@@ -43,6 +43,8 @@ class CappedScrollPane extends JScrollPane implements WidthAwareHeight {
         setHorizontalScrollBarPolicy(HORIZONTAL_SCROLLBAR_AS_NEEDED);
         // Ab der Kappung scrollt der Inhalt vertikal, statt die restlichen Zeilen abzuschneiden.
         setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_AS_NEEDED);
+        // Hand the wheel to the chat once this block has nothing left to scroll in that direction.
+        NestedScrollWheelRouter.install(this);
     }
 
     @Override
