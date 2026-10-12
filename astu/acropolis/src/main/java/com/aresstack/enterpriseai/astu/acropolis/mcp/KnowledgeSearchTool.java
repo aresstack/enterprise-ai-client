@@ -65,9 +65,12 @@ final class KnowledgeSearchTool implements McpToolHandler {
                 "Search the user's knowledge sources (e.g. Confluence, wiki) and the local knowledge index. Hits "
                         + "are loaded and indexed in the background automatically. Use this when the answer needs "
                         + "subject-matter, internal or organization-specific information, then read a hit with "
-                        + "knowledge_read. Do not use it for greetings, small talk, questions about yourself or about "
-                        + "the application you are running in, corrections or complaints, and not merely because a "
-                        + "message contains an unknown word (it may be a typo or a speech recognition error). "
+                        + "knowledge_read. Search first whenever a central term may have an organization-specific "
+                        + "meaning (acronym, identifier, system, project, process or unit name, document title), even "
+                        + "if you know a public meaning; an internal meaning takes precedence. Do not use it for "
+                        + "greetings, small talk, questions about yourself or about the application you are running "
+                        + "in, corrections or complaints, or for a word that is plainly a typo or speech recognition "
+                        + "error of a common word. "
                         + "Example: query=\"RSL in IAR\", limit=4. "
                         + "Example: query=\"Was bedeutet Rückmeldeschlüssel bei IAR?\".",
                 this,

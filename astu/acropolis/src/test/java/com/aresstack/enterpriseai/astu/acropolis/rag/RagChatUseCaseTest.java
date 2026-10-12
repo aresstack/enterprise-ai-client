@@ -697,6 +697,56 @@ public class RagChatUseCaseTest {
                 triaged.knowledgeContext(id).isEmpty());
     }
 
+    /**
+     * Real case: an internal acronym asked mid-conversation was declined by the triage because the model knew a public
+     * meaning. The routing asks whether a term may have an internal meaning, in the order help, internal terms, explicit
+     * lookups, else nothing; triage and the check of earlier context use the same rules.
+     */
+    @Test
+    public void routingAsksForAPossibleInternalMeaningNotForKnownTerms() {
+        String routing = RetrievalTriage.ROUTING;
+        int help = routing.indexOf("Programmhilfe");
+        int internal = routing.indexOf("Könnte er hier eine interne Bedeutung haben?");
+        int explicit = routing.indexOf("ausdrücklich darum, etwas nachzuschlagen");
+        int otherwise = routing.indexOf("4. Sonst search = false");
+        assertTrue(routing, help >= 0 && help < internal && internal < explicit && explicit < otherwise);
+        assertTrue(routing, routing.contains("auch wenn du eine öffentliche Bedeutung kennst"));
+        assertTrue(RetrievalTriage.INSTRUCTION.contains(routing));
+        assertTrue(FollowUpResearch.PRIOR_INSTRUCTION.contains(routing));
+    }
+
+    /** Mode "knowledge": an acronym asked in passing after an earlier turn is searched with the acronym. */
+    @Test
+    public void acronymAskedMidConversationIsSearched() throws Exception {
+        RagChatUseCase triaged = withTriage(FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS));
+        embeddings.on("QZX", 1f, 0f, 0f);
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"search\": true, \"query\": \"" + QUESTION + "\"}");
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        awaitDone(triaged.send(id, QUESTION, RagOptions.enabled(), listener()));
+
+        chatPort.enqueueAnswer("{\"needed\": true, \"sufficient\": false, \"related\": false, \"query\": \"QZX\"}");
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("QZX ist [1].");
+        RagChatTurn turn = triaged.send(id, "Okay, aber vorher muss ich wissen, was QZX ist.", RagOptions.enabled(),
+                listener());
+        awaitDone(turn);
+
+        assertTrue(turn.retrievalRequested());
+        assertTrue(turn.queries().toString(), turn.queries().contains("QZX"));
+    }
+
+    /** Without hits for an acronym the answer names the gap instead of silently picking a public meaning. */
+    @Test
+    public void searchWithoutHitsKeepsAPublicMeaningAsMereReading() {
+        String note = RagChatUseCase.searchNote(Collections.singletonList("QZX"), false);
+        assertTrue(note, note.contains("dass die internen Quellen dazu nichts enthalten"));
+        assertTrue(note, note.contains("wähle sie nicht stillschweigend"));
+        String found = RagChatUseCase.searchNote(Collections.singletonList("QZX"), true);
+        assertTrue(found, found.contains("hat sie Vorrang vor einer öffentlichen Bedeutung"));
+    }
+
     private RagChatUseCase withTriage(FollowUpResearch followUps) {
         return new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D, null),
                 new PromptContextAssembler(ContextSettings.defaults()), null, followUps, null,

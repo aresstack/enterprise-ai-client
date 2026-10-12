@@ -680,7 +680,8 @@ public final class RagChatUseCase {
     /**
      * Was gesucht wurde, wie es weitergeht, und dass eine Lücke nicht mit der Bitte um Dateien endet. Ohne Treffer
      * steigt die Unsicherheit, nicht die Zahl der Suchen: keine Varianten desselben Begriffs, sondern erst prüfen, ob
-     * die Nachricht richtig verstanden ist.
+     * die Nachricht richtig verstanden ist, und eine öffentliche Bedeutung nur als mögliche Lesart nennen. Eine interne
+     * Bedeutung im Kontext hat Vorrang.
      */
     static String searchNote(List<String> queries, boolean found) {
         StringBuilder note = new StringBuilder("In den angehakten Wissensquellen wurde gesucht mit:");
@@ -688,7 +689,9 @@ public final class RagChatUseCase {
             note.append("\n- ").append(query.replace('\r', ' ').replace('\n', ' ').trim());
         }
         if (found) {
-            note.append("\nBeantwortet der Kontext die Nachricht nicht und braucht sie wirklich Wissen aus den "
+            note.append("\nFindet sich im Kontext eine interne Bedeutung eines Begriffs, hat sie Vorrang vor einer "
+                    + "öffentlichen Bedeutung, die du kennst.");
+            note.append(" Beantwortet der Kontext die Nachricht nicht und braucht sie wirklich Wissen aus den "
                     + "Quellen, suche selbst mit knowledge_search und einer genaueren, anders formulierten Anfrage und "
                     + "lies Treffer mit knowledge_read, sofern dir diese Werkzeuge zur Verfügung stehen. Reicht es "
                     + "danach immer noch nicht, sag das und nenne die Suchanfragen.");
@@ -697,7 +700,10 @@ public final class RagChatUseCase {
                     + "Prüfe stattdessen, ob du die Nachricht richtig verstanden hast (Tipp- oder Erkennungsfehler, "
                     + "Bezug auf den Verlauf). Betrifft sie die Bedienung dieses Programms, nutze die eingebaute "
                     + "Programmhilfe, sofern verfügbar. Ist das Anliegen unklar, frag kurz nach, statt weiter zu "
-                    + "suchen.");
+                    + "suchen. Fragt die Nachricht nach einer Abkürzung, Kennung oder einem Namen, sag ausdrücklich, dass "
+                    + "die internen Quellen dazu nichts enthalten. Nennst du danach eine öffentliche Bedeutung, dann nur "
+                    + "als mögliche Lesart mit dem Hinweis, dass im fachlichen Kontext etwas anderes gemeint sein kann; "
+                    + "wähle sie nicht stillschweigend.");
         }
         note.append(" Bitte den Nutzer nicht, Dateien oder Unterlagen anzuhängen: die Wissensquellen sind angehakt.");
         return note.toString();

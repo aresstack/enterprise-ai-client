@@ -52,9 +52,9 @@ public final class FollowUpResearch {
             + "{\"needed\": true, \"sufficient\": true, \"related\": true, \"query\": \"\"}.\n"
             + "- sufficient = true, wenn die Abschnitte die Nachricht beantworten.\n"
             + "- related = false, wenn die Nachricht ein anderes Thema hat als die Abschnitte.\n"
-            + "- needed = false, wenn die Nachricht gar kein Wissen aus den Wissensquellen braucht: Gruß, Small Talk, "
-            + "Dank, Fragen nach dir selbst oder zur Bedienung dieses Programms, Rückfragen, Korrekturen, Beschwerden. "
-            + "Ein unbekanntes Wort allein (womöglich ein Tipp- oder Erkennungsfehler) ist kein Grund zu suchen.\n"
+            + "- needed entscheidest du wie search in diesen Regeln (needed = false heißt: kein Wissen aus den Quellen "
+            + "nötig; ein neuer, möglicherweise interner Begriff ist nicht durch die gefundenen Abschnitte "
+            + "beantwortet, wenn sie ihn nicht erklären):\n" + RetrievalTriage.ROUTING + "\n"
             + "- Bei sufficient = false ist query eine neue, genauere Suchanfrage in wenigen Stichworten: löse Bezüge "
             + "aus dem Verlauf auf, nimm die gesuchte Einzelheit auf und wiederhole keine der bisherigen Suchanfragen.";
 

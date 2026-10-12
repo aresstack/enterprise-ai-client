@@ -14,9 +14,10 @@ import java.util.regex.Pattern;
 /**
  * Decide before the first search of a RAG turn whether the message needs knowledge from the checked sources at all,
  * and with which query to search. Checked sources mean "available", not "search on every message": greetings,
- * questions about the assistant or about operating the application, follow-ups, corrections and complaints need no
- * search, and the verbatim message is rarely the best query (filler words, references to the history, recognition
- * errors of a dictation).
+ * questions about the assistant or about operating the application, corrections and complaints need no search. Terms
+ * that may carry an organization-specific meaning (acronyms, identifiers, system or project names) are searched even
+ * when the model knows a public meaning. The verbatim message is rarely the best query (filler words, references to
+ * the history, recognition errors of a dictation).
  *
  * <p>The model decides in an aside request (no tools, no streaming, not in the history), not a word list:
  * {@code {"search": true|false, "query": "..."}}. If the verdict is unreadable or the aside request fails, search with
@@ -24,19 +25,38 @@ import java.util.regex.Pattern;
  */
 public final class RetrievalTriage {
 
+    /**
+     * The routing rules shared by the triage and the check of earlier context, in this order: operating the application
+     * (built-in help), possibly organization-specific terms (search), explicit lookups (search), else no search. The
+     * question is whether a term may have an internal meaning here, not whether the model knows a public one.
+     */
+    static final String ROUTING = "Entscheide in dieser Reihenfolge:\n"
+            + "1. Geht es um die Bedienung, Funktionen, Einstellungen, Einrichtung oder Fehlermeldungen dieses Programms "
+            + "oder um einen Überblick über das Programm? Dann search = false; dafür gibt es die eingebaute "
+            + "Programmhilfe.\n"
+            + "2. Kann ein zentraler Begriff der Nachricht im Arbeitskontext eine organisationsspezifische Bedeutung "
+            + "haben: Abkürzung, Akronym, Kennung oder Aktenzeichen, System-, Projekt-, Produkt-, Prozess- oder "
+            + "Organisationsname, Dokumenttitel, Rolle oder unerklärter Fachbegriff? Dann search = true, auch wenn du "
+            + "eine öffentliche Bedeutung kennst. Die Frage ist nicht „Kenne ich den Begriff?“, sondern „Könnte er hier "
+            + "eine interne Bedeutung haben?“. Das gilt auch mitten im Gespräch und wenn die Frage beiläufig gestellt "
+            + "wird.\n"
+            + "3. Bittet der Nutzer ausdrücklich darum, etwas nachzuschlagen, zu finden, zu prüfen oder zu recherchieren? "
+            + "Dann search = true.\n"
+            + "4. Sonst search = false: Gruß, Small Talk, Dank, Zustimmung, Abschied; Fragen nach dir selbst, deinen "
+            + "Fähigkeiten oder Werkzeugen; Korrekturen, Beschwerden, Beschimpfungen und Äußerungen über das Gespräch "
+            + "selbst; Rückfragen, die der bisherige Verlauf beantwortet; eindeutig allgemeines Wissen ohne mögliche "
+            + "interne Bedeutung; Aufgaben ohne Wissen aus den Quellen (formulieren, übersetzen, rechnen).\n"
+            + "Ein Wort, das mit einem ähnlich klingenden gebräuchlichen Wort einen deutlich plausibleren Satz ergibt, "
+            + "ist eher ein Tipp- oder Erkennungsfehler: nimm diese Lesart und suche nicht nach dem falschen Wort. Das "
+            + "betrifft keine Abkürzungen und Kennungen, die als solche gemeint sind.";
+
     static final String INSTRUCTION = "Du entscheidest für einen Wissens-Chat, ob vor der Antwort in den "
             + "Wissensquellen des Nutzers (z. B. Confluence, Wiki, Dokumentablagen) gesucht werden muss. Antworte "
             + "ausschließlich mit einem JSON-Objekt der Form {\"search\": true, \"query\": \"\"}.\n"
-            + "- search = false bei Gruß, Small Talk, Dank, Zustimmung und Abschied; bei Fragen nach dir selbst, deinen "
-            + "Fähigkeiten oder Werkzeugen; bei Fragen zur Bedienung, zu Funktionen, Einstellungen oder Fehlern dieses "
-            + "Programms (dafür gibt es die eingebaute Programmhilfe); bei Rückfragen, Korrekturen, Beschwerden, "
-            + "Beschimpfungen und Äußerungen über das Gespräch selbst; bei Aufgaben, die kein Wissen aus den Quellen "
-            + "brauchen (formulieren, übersetzen, rechnen).\n"
-            + "- Ein unbekanntes Wort allein ist kein Grund zu suchen. Prüfe zuerst, ob es ein Tipp- oder "
-            + "Erkennungsfehler eines gebräuchlichen Wortes ist, mit dem der Satz Sinn ergibt.\n"
-            + "- search = true nur, wenn die Antwort fachliches, internes oder organisationsspezifisches Wissen aus den "
-            + "Quellen braucht. Dann ist query eine Suchanfrage in wenigen Stichworten: löse Bezüge aus dem Verlauf "
-            + "auf, korrigiere offensichtliche Tipp- und Erkennungsfehler und lass Füllwörter weg.";
+            + ROUTING + "\n"
+            + "Bei search = true ist query eine Suchanfrage in wenigen Stichworten: nimm den zentralen Begriff "
+            + "unverändert auf, löse Bezüge aus dem Verlauf auf, korrigiere offensichtliche Tipp- und Erkennungsfehler "
+            + "und lass Füllwörter weg.";
 
     private static final Pattern SEARCH = Pattern.compile("\"search\"\\s*:\\s*(true|false)");
     private static final Pattern QUERY = Pattern.compile("\"query\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"");

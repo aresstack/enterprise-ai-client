@@ -39,4 +39,12 @@ public class ToolUsePolicyTest {
         String attachmentsOnly = ToolUsePolicy.context(Collections.singletonList("read_attachment"));
         assertTrue(attachmentsOnly, attachmentsOnly.equals(ToolUsePolicy.GENERAL));
     }
+
+    /** Knowledge search takes precedence over a public meaning for terms that may be internal, and says the gap. */
+    @Test
+    public void possiblyInternalTermsGoToTheKnowledgeSources() {
+        String rules = ToolUsePolicy.context(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_SEARCH));
+        assertTrue(rules, rules.contains("auch wenn du eine öffentliche Bedeutung kennst"));
+        assertTrue(rules, rules.contains("nie stillschweigend"));
+    }
 }
