@@ -529,7 +529,9 @@ public class AgentModeEndToEndTest {
                     } catch (InterruptedException interrupted) {
                         Thread.currentThread().interrupt();
                     }
-                    // die Antwort kommt zu spät: der Agent hat die Anfrage schon aufgegeben
+                    // die Antwort kommt zu spät: der Agent hat die Anfrage schon aufgegeben, sie zählt nicht als
+                    // gelesen (läuft der Turn nach der Recherche noch weiter, käme sie sonst hinten in readIds an)
+                    return McpToolResult.ok(PAGES[0][1] + "\n\n" + PAGES[0][2]);
                 }
                 for (String[] page : PAGES) {
                     if (page[0].equals(id)) {
