@@ -34,6 +34,8 @@ public final class ResourceInstaller {
     private static final int MAX_REDIRECTS = 5;
     /** Downloads per resource: a broken transfer or a mirror answering with something else gets one more try. */
     private static final int DOWNLOAD_ATTEMPTS = 2;
+    /** Pause before the second try, so a briefly overloaded mirror can recover. */
+    private static final long RETRY_PAUSE_MILLIS = 2000L;
 
     private static final Logger LOG = Logger.getLogger(ResourceInstaller.class.getName());
 
@@ -110,7 +112,13 @@ public final class ResourceInstaller {
         IOException last = null;
         for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
             try {
+                if (attempt > 1) {
+                    Thread.sleep(RETRY_PAUSE_MILLIS);
+                }
                 return new Fetched(downloadVerified(resource, network), Source.DOWNLOAD);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IOException(resource.file() + ": Download unterbrochen", interrupted);
             } catch (IOException failed) {
                 last = failed;
                 LOG.log(Level.WARNING, "Download " + attempt + " von " + DOWNLOAD_ATTEMPTS + " fehlgeschlagen: "

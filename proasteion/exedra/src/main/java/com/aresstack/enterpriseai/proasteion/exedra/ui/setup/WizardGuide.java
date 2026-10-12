@@ -19,6 +19,8 @@ final class WizardGuide {
     static final String WELCOME_BACK = "Da bist du ja wieder. Was wollen wir diesmal an meiner Einrichtung ändern?";
     static final String KEEPASS_OK = "Sehr gut. Die Verbindung zu KeePass steht. Dann sehen wir uns jetzt den "
             + "KI-Dienst an.";
+    static final String RESOURCES_OK = "Wunderbar, alles ist installiert. Spracheingabe und Textanalyse laufen jetzt "
+            + "bei dir im Client.";
     static final String SERVICE_OK = "Ausgezeichnet. Der KI-Dienst antwortet. Jetzt suche ich uns passende Modelle "
             + "aus.";
     static final String FAILURE = "Das hat gerade nicht funktioniert. Deine Eingaben sind aber noch da – wir können "

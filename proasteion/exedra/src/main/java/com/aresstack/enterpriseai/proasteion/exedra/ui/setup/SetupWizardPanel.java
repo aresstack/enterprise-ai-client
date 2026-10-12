@@ -43,6 +43,7 @@ import javax.swing.text.View;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Graphics2D;
@@ -112,6 +113,8 @@ public final class SetupWizardPanel extends JPanel {
     static final String NLP_INSTALLED = "installiert";
     static final String NLP_IN_ARCHIVE = "im Ressourcen-Archiv";
     static final String NLP_DOWNLOAD = "Download";
+    static final String NLP_FAILED = "fehlgeschlagen";
+    static final String NLP_RETRY = "Erneut";
     static final String NLP_STOPPED = "Installation angehalten; bereits installierte Modelle bleiben.";
     private static final String INSTALL_ALL_HINT = "Installiert alle fehlenden Ressourcen dieses Schritts: zuerst "
             + "aus dem Ressourcen-Archiv neben dem Jar, sonst per Download";
@@ -1671,6 +1674,9 @@ public final class SetupWizardPanel extends JPanel {
             return;
         }
         showSpeechChoice();
+        if (prefer != null) {
+            announceResourcesIfComplete();
+        }
     }
 
     /** Neu installiert vor bereits gewählt vor erstem installierten vor erstem Vorschlag. */
@@ -1870,20 +1876,49 @@ public final class SetupWizardPanel extends JPanel {
             c.insets = new Insets(0, 0, 2, 0);
             String problem = nlpProblems.get(offer.id());
             JLabel state = new JLabel(offer.isInstalled() ? NLP_INSTALLED
-                    : problem != null ? "fehlgeschlagen" : offer.isInArchive() ? NLP_IN_ARCHIVE : NLP_DOWNLOAD);
+                    : problem != null ? NLP_FAILED : offer.isInArchive() ? NLP_IN_ARCHIVE : NLP_DOWNLOAD);
             state.setFont(ResearchUiTypography.regular(12f));
             state.setForeground(offer.isInstalled() ? ResearchUiPalette.WAVE_GREEN
                     : problem != null ? ResearchUiPalette.DANGER_RED : ResearchUiPalette.LIGHT_CONTROL_TEXT);
-            state.setToolTipText(problem);
             state.setName("nlp-state-" + offer.id());
-            nlpLines.add(state, c);
+            if (problem == null || offer.isInstalled()) {
+                nlpLines.add(state, c);
+                row++;
+                continue;
+            }
+            JPanel failed = transparent(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+            failed.add(state);
+            ComposerButton retry = new ComposerButton(null, NLP_RETRY, false, "Dieses Modell erneut installieren");
+            retry.setName("nlp-retry-" + offer.id());
+            retry.setEnabled(!busy && !installing());
+            retry.addActionListener(e -> retryNlp(offer));
+            failed.add(retry);
+            nlpLines.add(failed, c);
+            row++;
+            // The reason stays in its own line until the next attempt; the error plate belongs to the speech model.
+            c = new GridBagConstraints();
+            c.gridx = 0;
+            c.gridy = row;
+            c.gridwidth = 2;
+            c.anchor = GridBagConstraints.WEST;
+            c.fill = GridBagConstraints.HORIZONTAL;
+            c.weightx = 1;
+            c.insets = new Insets(0, 0, 4, 0);
+            JTextArea reason = new WrappedErrorText(() -> nlpLines.getWidth() > 0 ? nlpLines.getWidth() : getWidth() / 2);
+            reason.setText(problem.replaceFirst("^Installation fehlgeschlagen: ", ""));
+            reason.setEditable(false);
+            reason.setFocusable(false);
+            reason.setLineWrap(true);
+            reason.setWrapStyleWord(true);
+            reason.setOpaque(false);
+            reason.setForeground(ResearchUiPalette.DANGER_RED);
+            reason.setFont(ResearchUiTypography.regular(11.5f));
+            reason.setName("nlp-reason-" + offer.id());
+            nlpLines.add(reason, c);
             row++;
         }
-        // A failure stays readable here until the next attempt; the error plate is reused by the speech model.
-        String problems = nlpProblemText();
         String bundle = settings.resourceBundleNote();
-        String text = !problems.isEmpty() ? problems : bundle == null ? "" : bundle;
-        if (!text.isEmpty()) {
+        if (bundle != null && !bundle.isEmpty()) {
             GridBagConstraints c = new GridBagConstraints();
             c.gridx = 0;
             c.gridy = row;
@@ -1891,11 +1926,11 @@ public final class SetupWizardPanel extends JPanel {
             c.anchor = GridBagConstraints.WEST;
             c.fill = GridBagConstraints.HORIZONTAL;
             c.insets = new Insets(2, 0, 0, 0);
-            JLabel note = new JLabel(text);
+            JLabel note = new JLabel(bundle);
             note.putClientProperty("html.disable", Boolean.TRUE);
             note.setName("nlp-note");
-            note.setToolTipText(text);
-            note.setForeground(problems.isEmpty() ? ResearchUiPalette.LIGHT_TEXT_MUTED : ResearchUiPalette.DANGER_RED);
+            note.setToolTipText(bundle);
+            note.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
             note.setFont(ResearchUiTypography.regular(11.5f));
             note.setMinimumSize(new Dimension(0, note.getPreferredSize().height));
             note.setPreferredSize(new Dimension(0, note.getPreferredSize().height));
@@ -1906,27 +1941,50 @@ public final class SetupWizardPanel extends JPanel {
         updateButtons();
     }
 
-    /** Each failed OpenNLP model with its reason in one line, or empty. */
-    private String nlpProblemText() {
-        StringBuilder text = new StringBuilder();
-        for (NlpModelOffer offer : nlpOffers) {
-            String problem = nlpProblems.get(offer.id());
-            if (problem != null) {
-                text.append(text.length() == 0 ? "" : "; ").append(shortNlpName(offer.name())).append(": ")
-                        .append(problem.replaceFirst("^Installation fehlgeschlagen: ", ""));
-            }
-        }
-        return text.toString();
+    /** The archive note below the OpenNLP lines, or {@code null} without one. */
+    String nlpNote() {
+        return textOf("nlp-note");
     }
 
-    /** The note below the OpenNLP lines (archive state or failure reasons), or {@code null} without one. */
-    String nlpNote() {
+    /** The failure reason shown below an OpenNLP line, or {@code null} when it has none. */
+    String nlpReason(String id) {
+        return textOf("nlp-reason-" + id);
+    }
+
+    /** The retry button of a failed OpenNLP line, or {@code null}. */
+    ComposerButton nlpRetryButton(String id) {
         for (Component part : nlpLines.getComponents()) {
-            if ("nlp-note".equals(part.getName())) {
-                return ((JLabel) part).getText();
+            if (part instanceof Container) {
+                for (Component inner : ((Container) part).getComponents()) {
+                    if (("nlp-retry-" + id).equals(inner.getName())) {
+                        return (ComposerButton) inner;
+                    }
+                }
             }
         }
         return null;
+    }
+
+    private String textOf(String name) {
+        for (Component part : nlpLines.getComponents()) {
+            if (name.equals(part.getName())) {
+                return part instanceof JLabel ? ((JLabel) part).getText() : ((JTextArea) part).getText();
+            }
+        }
+        return null;
+    }
+
+    /** „Erneut“ in einer fehlgeschlagenen Zeile: nur dieses Modell, ohne das Spracheingabe-Modell. */
+    private void retryNlp(NlpModelOffer offer) {
+        if (busy || installing()) {
+            return;
+        }
+        nlpProblems.remove(offer.id());
+        speechAfterNlp = false;
+        nlpInstalling = true;
+        nlpStopRequested = false;
+        speechProgress.reset("Vorbereiten …");
+        installNlp(Collections.singletonList(offer), 0);
     }
 
     /** Der Name ohne den Dateinamen in Klammern, damit die Zeile in die Breite des Assistenten passt. */
@@ -2004,20 +2062,21 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     private void reportNlpProblems() {
-        if (nlpProblems.isEmpty()) {
-            speechStatus.setText("Text- und Sprachanalyse ist installiert.");
+        speechStatus.setText(nlpProblems.isEmpty() ? "Text- und Sprachanalyse ist installiert."
+                : "Nicht alle OpenNLP-Modelle ließen sich installieren; der Grund steht unter dem Modell.");
+    }
+
+    /**
+     * After an installation in step 6: once nothing is missing any more, Merlin says so, replacing an earlier
+     * failure line of this step.
+     */
+    private void announceResourcesIfComplete() {
+        LocalVoiceOffer chosen = selectedSpeechOffer();
+        if (step != STEP_SPEECH || installing() || !nlpProblems.isEmpty() || !missingNlpOffers().isEmpty()
+                || (chosen != null && !chosen.isInstalled())) {
             return;
         }
-        StringBuilder text = new StringBuilder("Nicht alle OpenNLP-Modelle ließen sich installieren:");
-        for (NlpModelOffer offer : nlpOffers) {
-            String problem = nlpProblems.get(offer.id());
-            if (problem != null) {
-                text.append(' ').append(shortNlpName(offer.name())).append(" (").append(problem).append(").");
-            }
-        }
-        text.append(" „Alles installieren“ versucht es erneut; Überspringen geht immer.");
-        speechStatus.setText("Installation teilweise fehlgeschlagen.");
-        fail(STEP_SPEECH, text.toString());
+        narrator.say(WizardGuide.RESOURCES_OK);
     }
 
     /** Nach den OpenNLP-Modellen das gewählte Spracheingabe-Modell, sofern „Alles installieren“ es mitnimmt. */
@@ -2028,6 +2087,7 @@ public final class SetupWizardPanel extends JPanel {
             installSpeech();
         } else {
             updateButtons();
+            announceResourcesIfComplete();
         }
     }
 
@@ -2428,6 +2488,13 @@ public final class SetupWizardPanel extends JPanel {
             if (("nlp-state-" + id).equals(part.getName())) {
                 return ((JLabel) part).getText();
             }
+            if (part instanceof Container) {
+                for (Component inner : ((Container) part).getComponents()) {
+                    if (("nlp-state-" + id).equals(inner.getName())) {
+                        return ((JLabel) inner).getText();
+                    }
+                }
+            }
         }
         return null;
     }
@@ -2558,6 +2625,17 @@ public final class SetupWizardPanel extends JPanel {
      * beim ersten Fehler eines Schritts die ganze Seite ein und verdrängte Felder und Merlin.
      */
     private final class WrappedErrorText extends JTextArea {
+        /** The width the text will get before its first layout; {@code null} = the error plate's. */
+        private final java.util.function.IntSupplier width;
+
+        WrappedErrorText() {
+            this(null);
+        }
+
+        WrappedErrorText(java.util.function.IntSupplier width) {
+            this.width = width;
+        }
+
         @Override
         public Dimension getPreferredSize() {
             int width = getWidth() > 0 ? getWidth() : expectedWidth();
@@ -2573,6 +2651,9 @@ public final class SetupWizardPanel extends JPanel {
         }
 
         private int expectedWidth() {
+            if (this.width != null) {
+                return this.width.getAsInt();
+            }
             Insets wizard = SetupWizardPanel.this.getInsets();
             Insets plate = errorPlate.getInsets();
             int width = SetupWizardPanel.this.getWidth() - wizard.left - wizard.right - plate.left - plate.right;

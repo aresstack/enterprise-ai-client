@@ -145,6 +145,28 @@ public class SetupWizardLayoutTest {
     }
 
     @Test
+    public void merlinStaysInStepSixWithAFailedModelAndItsReason() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            WizardFakes.Settings settings = new WizardFakes.Settings();
+            settings.nlpFailures.add("tokenize-de");
+            settings.nlpFailures.add("langdetect");
+            SetupWizardRun run = new SetupWizardRun(SettingsMapper.firstStartDefaults(), settings,
+                    new WizardFakes.Setup(), palette, completed -> {
+            });
+            run.overlay().setSize(new Dimension(SetupWizardWindow.WIDTH, SetupWizardWindow.HEIGHT));
+            SetupWizardPanel wizard = run.wizard();
+            wizard.showStep(SetupWizardPanel.STEP_SPEECH);
+            layoutTree(run.overlay());
+            wizard.installAllButton().doClick();
+            layoutTree(run.overlay());
+            layoutTree(run.overlay());
+            assertNotNull(wizard.nlpReason("tokenize-de"));
+            SetupWizardMascot mascot = wizard.mascotOf(SetupWizardPanel.STEP_SPEECH);
+            assertTrue("Merlin passt trotz Fehlerzeilen (Fläche " + mascot.getSize() + ")", mascot.fits());
+        });
+    }
+
+    @Test
     public void mascotIsHiddenInsteadOfCutWhenTheSpaceIsTooSmall() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             SetupWizardMascot mascot = new SetupWizardMascot(SetupWizardMascot.Art.load(), 100, SetupWizardMascot.Placement.CENTER, 10, 0,
