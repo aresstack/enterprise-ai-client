@@ -102,8 +102,10 @@ er nirgends, auch nicht in Fehlermeldungen (dort stehen die Feldnamen, z. B. „
 4. **Confluence** (optional): KeePass-Eintrag mit URL, Benutzer und Passwort bzw. Token, optional ein
    Client-Zertifikat aus dem Windows-Zertifikatspeicher; Netzwerkeinstellungen über den Netzwerk-Reiter des
    Einstellungen-Dialogs. Ein vollständiger Eintrag (URL und Passwort bzw. Token) verlangt keine Eingabe: der
-   Schritt zeigt nur, was vorhanden ist (ohne Secrets), und testet mit den Werten aus KeePass; die Felder erscheinen
-   bei neuem oder unvollständigem Eintrag und nach „Zugangsdaten ändern“. Springt man über die Schrittleiste an
+   Schritt zeigt nur, was vorhanden ist (ohne Secrets), und testet mit den Werten aus KeePass; bei einem
+   unvollständigen Eintrag fragt er nur das Fehlende ab (etwa die URL), bei einem neuen Titel alles; „Verbindung
+   testen“ schreibt es in den KeePass-Eintrag (URL ins Standardfeld, Zusatzfelder bleiben). „Zugangsdaten ändern“
+   zeigt alle Felder. Springt man über die Schrittleiste an
    „Mit KeePass verbinden“ vorbei, lesen „KI-Dienst“ und „Confluence“ die Eintragsliste selbst nach.
 5. **Abschlussprüfung**: schreibt Konfiguration und Confluence-Quelle und prüft neun Punkte (KeePass gekoppelt,
    KI-Dienst erreichbar, API-Key lesbar, Chat-Modell, Embedding-Modell, Dimension, Confluence-Zugang, Quelle

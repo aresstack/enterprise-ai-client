@@ -108,15 +108,65 @@ public class SetupWizardKeePassEntriesTest {
     }
 
     @Test
-    public void incompleteEntryShowsTheFields() throws Exception {
+    public void entryWithoutSecretAsksOnlyForTheSecret() throws Exception {
         settings.vault.put("Confluence", new PasswordEntry("Confluence", "jdoe", "https://wiki.example.invalid",
                 Collections.<String, String>emptyMap(), null));
         onEdt(() -> {
             SetupWizardPanel wizard = open();
             wizard.jumpTo(SetupWizardPanel.STEP_CONFLUENCE);
-            assertTrue(wizard.confluenceFieldsShown());
-            assertFalse(wizard.confluenceSummaryShown());
-            assertEquals("https://wiki.example.invalid", wizard.confluenceUrlField().getText());
+            assertTrue(wizard.confluenceSummaryShown());
+            assertTrue(wizard.confluenceSummaryText().contains("URL vorhanden"));
+            assertTrue(wizard.confluenceSummaryText().contains("Passwort bzw. Token fehlt"));
+            assertTrue("Passwort/Token", wizard.confluenceFieldShown(2));
+            assertFalse("URL steht schon in KeePass", wizard.confluenceFieldShown(0));
+            assertFalse(wizard.confluenceFieldShown(1));
+        });
+    }
+
+    @Test
+    public void entryWithoutUrlAsksOnlyForTheUrlAndStoresItInKeePass() throws Exception {
+        settings.vault.put("Confluence", new PasswordEntry("Confluence", "jdoe", "",
+                Collections.<String, String>singletonMap("MM_Custom", "bleibt"), "test-password".toCharArray()));
+        onEdt(() -> {
+            SetupWizardPanel wizard = open();
+            wizard.jumpTo(SetupWizardPanel.STEP_CONFLUENCE);
+            assertTrue(wizard.confluenceSummaryShown());
+            assertTrue(wizard.confluenceSummaryText().contains("URL fehlt"));
+            assertTrue("nur die URL wird verlangt", wizard.confluenceFieldShown(0));
+            assertFalse(wizard.confluenceFieldShown(1));
+            assertFalse(wizard.confluenceFieldShown(2));
+            wizard.confluenceUrlField().setText("https://wiki.example.invalid");
+            wizard.withoutCertificateBox().doClick();
+            wizard.confluenceTestButton().doClick();
+            assertTrue(String.valueOf(wizard.errorOf(SetupWizardPanel.STEP_CONFLUENCE)),
+                    wizard.isDone(SetupWizardPanel.STEP_CONFLUENCE));
+            PasswordEntry stored = settings.vault.get("Confluence");
+            assertEquals("URL im KeePass-Eintrag", "https://wiki.example.invalid", stored.url());
+            assertEquals("jdoe", stored.userName());
+            assertEquals("Passwort bleibt", "test-password", new String(stored.copyPassword()));
+            assertEquals("Zusatzfelder bleiben", "bleibt", stored.field("MM_Custom"));
+        });
+    }
+
+    @Test
+    public void newEntryNameStoresEverythingInKeePass() throws Exception {
+        onEdt(() -> {
+            SetupWizardPanel wizard = open();
+            wizard.jumpTo(SetupWizardPanel.STEP_CONFLUENCE);
+            wizard.confluenceEntryChoice().setSelectedItem("Wiki neu");
+            assertTrue(wizard.confluenceFieldShown(0));
+            assertTrue(wizard.confluenceFieldShown(1));
+            assertTrue(wizard.confluenceFieldShown(2));
+            wizard.confluenceUrlField().setText("https://wiki2.example.invalid");
+            wizard.confluenceUserField().setText("neu");
+            wizard.confluencePasswordField().setText("neu-geheim");
+            wizard.withoutCertificateBox().doClick();
+            wizard.confluenceTestButton().doClick();
+            PasswordEntry stored = settings.vault.get("Wiki neu");
+            assertEquals("https://wiki2.example.invalid", stored.url());
+            assertEquals("neu", stored.userName());
+            assertEquals("neu-geheim", new String(stored.copyPassword()));
+            assertTrue(wizard.isDone(SetupWizardPanel.STEP_CONFLUENCE));
         });
     }
 

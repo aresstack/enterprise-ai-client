@@ -173,6 +173,8 @@ public final class SetupWizardPanel extends JPanel {
     private final ComposerButton confluenceChange;
     /** URL, Benutzer und Passwort bzw. Token: nur bei neuem oder unvollständigem Eintrag oder zum Ändern. */
     private final JPanel confluenceManual = transparent(new GridBagLayout());
+    /** Je Zeile der Felder (URL, Benutzer, Passwort, Hinweis): Beschriftung und Feld, einzeln ein- und ausblendbar. */
+    private final List<List<JComponent>> manualRows = new ArrayList<List<JComponent>>();
     private final JTextField confluenceUrl = new JTextField(28);
     private final JTextField confluenceUser = new JTextField(20);
     private final JPasswordField confluencePassword = new JPasswordField(20);
@@ -411,13 +413,18 @@ public final class SetupWizardPanel extends JPanel {
 
     /** Eine Zeile der manuellen Confluence-Felder (Beschriftung, Feld). */
     private void manualRow(int row, String label, JComponent field) {
+        List<JComponent> parts = new ArrayList<JComponent>();
+        manualRows.add(parts);
+        parts.add(field);
         GridBagConstraints c = new GridBagConstraints();
         c.anchor = GridBagConstraints.WEST;
         c.insets = new Insets(3, 0, 3, 10);
         c.gridx = 0;
         c.gridy = row;
         if (!label.isEmpty()) {
-            confluenceManual.add(fieldLabel(label), c);
+            JLabel caption = fieldLabel(label);
+            parts.add(caption);
+            confluenceManual.add(caption, c);
         }
         c.gridx = 1;
         c.insets = new Insets(3, 0, 3, 0);
@@ -1049,22 +1056,43 @@ public final class SetupWizardPanel extends JPanel {
         return entry != null && !entry.url().trim().isEmpty() && entry.hasPassword();
     }
 
-    /** Status eines vollständigen Eintrags oder die Felder, je nach Eintrag und „Zugangsdaten ändern“. */
+    /**
+     * Status eines gelesenen Eintrags (was vorhanden ist, ohne Secrets) und darunter die Felder: bei neuem Eintrag
+     * und nach „Zugangsdaten ändern“ alle, bei einem unvollständigen nur die fehlenden (etwa die URL). Was hier
+     * eingetragen wird, schreibt „Verbindung testen“ in den KeePass-Eintrag, wie den Zertifikatsalias.
+     */
     private void showConfluenceCredentials() {
         String title = text(confluenceEntry);
+        boolean existing = confluenceRead != null;
         boolean complete = complete(confluenceRead);
-        boolean summary = complete && !confluenceEditing && !confluenceReading;
+        boolean summary = existing && !confluenceEditing && !confluenceReading;
         boolean manual = entriesLoaded && !title.isEmpty() && !confluenceReading && (!complete || confluenceEditing);
         if (summary) {
-            state(confluenceHasUrl, true, "URL vorhanden: " + confluenceRead.url());
+            boolean hasUrl = !confluenceRead.url().trim().isEmpty();
+            state(confluenceHasUrl, hasUrl, hasUrl ? "URL vorhanden: " + confluenceRead.url()
+                    : "URL fehlt: bitte unten eintragen, sie wird im KeePass-Eintrag gespeichert");
             String user = confluenceRead.userName().trim();
             state(confluenceHasUser, true, user.isEmpty()
                     ? "Kein Benutzername: Anmeldung mit persönlichem Zugriffstoken" : "Benutzername vorhanden");
-            state(confluenceHasSecret, true, user.isEmpty() ? "Token vorhanden" : "Passwort bzw. Token vorhanden");
+            boolean hasSecret = confluenceRead.hasPassword();
+            state(confluenceHasSecret, hasSecret, !hasSecret
+                    ? "Passwort bzw. Token fehlt: bitte unten eintragen, es wird im KeePass-Eintrag gespeichert"
+                    : user.isEmpty() ? "Token vorhanden" : "Passwort bzw. Token vorhanden");
         }
+        boolean all = !existing || confluenceEditing;
+        manualRowVisible(0, all || confluenceRead.url().trim().isEmpty());
+        manualRowVisible(1, all);
+        manualRowVisible(2, all || !confluenceRead.hasPassword());
+        manualRowVisible(3, all || !confluenceRead.hasPassword());
         confluenceSummary.setVisible(summary);
         confluenceManual.setVisible(manual);
         updateButtons();
+    }
+
+    private void manualRowVisible(int row, boolean visible) {
+        for (JComponent part : manualRows.get(row)) {
+            part.setVisible(visible);
+        }
     }
 
     /** Eine Statuszeile mit Haken oder Kreuz (StrokeIcon), ohne Secret. */
@@ -1642,6 +1670,11 @@ public final class SetupWizardPanel extends JPanel {
 
     boolean confluenceFieldsShown() {
         return confluenceManual.isVisible();
+    }
+
+    /** Ob die Feldzeile (0 URL, 1 Benutzer, 2 Passwort) gerade angeboten wird. */
+    boolean confluenceFieldShown(int row) {
+        return confluenceManual.isVisible() && manualRows.get(row).get(0).isVisible();
     }
 
     boolean confluenceSummaryShown() {
