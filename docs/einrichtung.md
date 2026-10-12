@@ -260,6 +260,25 @@ Funktion zur Wahl.
 paralleler Synthesen. Beides steht unter Einstellungen → Sprachausgabe. Das erste Stück rechnet allein und klingt,
 sobald es fertig ist; die übrigen rechnen währenddessen, gespielt wird lückenlos über eine offene Audioausgabe.
 
+Ein Vorlesevorgang spricht immer mit dem einen TTS-Modell, das beim Start der Antwort gewählt war; jedes Stück geht
+mit dieser Kennung an den Dienst, auch bei mehreren Workern. Wird in den Einstellungen ein anderes Modell gespeichert,
+endet die laufende Ausgabe sofort (kein weiterer Absatz der alten Stimme), die neue Stimme spricht ab der nächsten
+Antwort bzw. dem nächsten Play. Je Stück stehen zwei Zeilen im Protokoll, ohne Text und ohne API-Key:
+
+```
+TTS request: generation=3 chunk=2/5 catalog=kipitz voice=none model=<modell> worker=enterprise-ai-tts-worker-3-2 chars=412
+TTS HTTP request: POST audio/speech catalog=kipitz model=<modell> voice=none response_format=wav worker=enterprise-ai-tts-worker-3-2 chars=412 text=<sha256-präfix>
+TTS HTTP response: model=<modell> worker=enterprise-ai-tts-worker-3-2 status=200 millis=2140 bytes=391244 contentType=audio/wav servedBy=none
+TTS audio: generation=3 chunk=2/5 model=<modell> worker=enterprise-ai-tts-worker-3-2 wav=391244 bytes, 24000 Hz, 1 ch, 16 bit
+```
+
+`worker` verbindet die Zeilen eines Stücks. `servedBy` nennt Antwort-Header des Servers, die ein Modell oder Backend
+benennen (sonst `none`); Abtastrate und Kanäle zeigen, ob zwei Stücke vom selben Modell stammen können. Stehen in
+allen `TTS HTTP request`-Zeilen dasselbe `model` und dieselbe `voice` und klingen die Stücke trotzdem verschieden,
+antwortet der Server unterschiedlich. Zum Vergleich `speech.readAloud.synthesisWorkers=1` setzen: bleibt die Stimme
+dann gleich, wechselt der Server das Modell nur bei gleichzeitigen Anfragen. Derselbe Absatz hat in jedem Lauf
+denselben `text`-Fingerabdruck, so lassen sich gleiche Requests über mehrere Läufe vergleichen.
+
 ### Spracheingabe (lokal)
 
 Der Mikrofon-Knopf im Eingabefeld nimmt über Java Sound auf (Klick: Aufnahme an, zweiter Klick: Aufnahme aus und

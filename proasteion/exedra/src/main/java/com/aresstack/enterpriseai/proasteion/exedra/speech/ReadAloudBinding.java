@@ -23,14 +23,17 @@ public final class ReadAloudBinding implements ReadAloudControl {
 
     private final ReadAloudService service;
     private final String description;
+    /** Katalog und Stimme für die Diagnose je Stück ({@code catalog=… voice=…}), ohne Secrets. */
+    private final String traceContext;
     private final boolean autoStart;
     private final ExecutorService reader;
     /** Jede Ausgabe und jedes Stopp zählt hoch; eine wartende Ausgabe mit alter Nummer spricht nicht mehr. */
     private final AtomicLong generation = new AtomicLong();
 
-    private ReadAloudBinding(ReadAloudService service, String description, boolean autoStart) {
+    private ReadAloudBinding(ReadAloudService service, String description, boolean autoStart, String traceContext) {
         this.service = service;
         this.description = description;
+        this.traceContext = traceContext;
         this.autoStart = autoStart;
         this.reader = service == null ? null : Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
@@ -44,15 +47,23 @@ public final class ReadAloudBinding implements ReadAloudControl {
 
     /** Vorlesen mit diesem Dienst; {@code description} ist der Tooltip (Stimme). */
     public static ReadAloudBinding available(ReadAloudService service, String description, boolean autoStart) {
+        return available(service, description, autoStart, "");
+    }
+
+    /**
+     * @param traceContext Katalog und Stimme für die Diagnosezeile je Stück, z. B. {@code catalog=kipitz voice=none}
+     */
+    public static ReadAloudBinding available(ReadAloudService service, String description, boolean autoStart,
+                                             String traceContext) {
         if (service == null) {
             throw new IllegalArgumentException("service must not be null");
         }
-        return new ReadAloudBinding(service, description, autoStart);
+        return new ReadAloudBinding(service, description, autoStart, traceContext == null ? "" : traceContext);
     }
 
     /** Keine Sprachausgabe; {@code reason} erscheint im Tooltip des deaktivierten Orbs. */
     public static ReadAloudBinding unavailable(String reason) {
-        return new ReadAloudBinding(null, reason, false);
+        return new ReadAloudBinding(null, reason, false, "");
     }
 
     @Override
@@ -94,6 +105,17 @@ public final class ReadAloudBinding implements ReadAloudControl {
                                 showFailure(message);
                             }
                         }
+
+                        @Override
+                        public void chunkRequested(ReadAloudService.ChunkTrace trace) {
+                            LOG.info(requestLine(trace, traceContext));
+                        }
+
+                        @Override
+                        public void chunkSynthesized(ReadAloudService.ChunkTrace trace,
+                                                     ReadAloudService.WavFormat wav) {
+                            LOG.info(audioLine(trace, wav));
+                        }
                     });
                 } catch (RuntimeException e) {
                     LOG.log(Level.WARNING, "Vorlesen fehlgeschlagen", e);
@@ -103,6 +125,26 @@ public final class ReadAloudBinding implements ReadAloudControl {
                 }
             }
         });
+    }
+
+    /**
+     * Die Diagnosezeile vor dem Request eines Stücks: Vorgang, Stück, Katalog, Modell, Stimme, Worker. Nie Text oder
+     * Secrets; der Worker-Name taucht auch in der Zeile des Adapters auf.
+     */
+    static String requestLine(ReadAloudService.ChunkTrace trace, String traceContext) {
+        StringBuilder line = new StringBuilder("TTS request: generation=").append(trace.generation())
+                .append(" chunk=").append(trace.index()).append('/').append(trace.count());
+        if (traceContext != null && !traceContext.isEmpty()) {
+            line.append(' ').append(traceContext);
+        }
+        return line.append(" model=").append(trace.modelId()).append(" worker=").append(trace.worker())
+                .append(" chars=").append(trace.characters()).toString();
+    }
+
+    /** Die Diagnosezeile nach dem Audio eines Stücks: dasselbe Stück mit dem Format, das zurückkam. */
+    static String audioLine(ReadAloudService.ChunkTrace trace, ReadAloudService.WavFormat wav) {
+        return "TTS audio: generation=" + trace.generation() + " chunk=" + trace.index() + "/" + trace.count()
+                + " model=" + trace.modelId() + " worker=" + trace.worker() + " wav=" + wav;
     }
 
     /** Eine Bindung ändert sich nie; den Austausch meldet {@link SwitchableReadAloud}. */

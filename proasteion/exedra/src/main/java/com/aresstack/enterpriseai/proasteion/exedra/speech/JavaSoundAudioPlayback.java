@@ -15,7 +15,9 @@ import java.io.IOException;
  * Spielt WAV über eine {@link SourceDataLine} des Standardausgabegeräts ab (wie {@code playWav} in askai arch, ohne
  * Audio-DSP). Aufeinanderfolgende Stücke gleichen Formats laufen über dieselbe offene Leitung: kein Öffnen, Leerlaufen
  * und Schließen je Stück, also keine Lücke zwischen Absätzen oder Sätzen. {@link #finish()} lässt die Folge
- * ausklingen und schließt die Leitung, {@link #stop()} bricht ab und verwirft den Puffer.
+ * ausklingen und schließt die Leitung, {@link #stop()} bricht ab und verwirft den Puffer. Ein Stopp gilt bis zum
+ * nächsten {@link #begin()}: ein Stück, dessen Wiedergabe erst nach dem Stopp beginnen wollte, erklingt nicht mehr
+ * (sonst spräche nach einem Modellwechsel noch ein Absatz der alten Stimme neben der neuen).
  */
 public final class JavaSoundAudioPlayback implements AudioPlayback {
 
@@ -27,7 +29,17 @@ public final class JavaSoundAudioPlayback implements AudioPlayback {
     private boolean stopped;
 
     @Override
+    public void begin() {
+        synchronized (lock) {
+            stopped = false;
+        }
+    }
+
+    @Override
     public void play(byte[] wav) throws IOException {
+        if (isStopped()) {
+            return;
+        }
         AudioInputStream audio;
         try {
             audio = AudioSystem.getAudioInputStream(new ByteArrayInputStream(wav));
@@ -53,9 +65,10 @@ public final class JavaSoundAudioPlayback implements AudioPlayback {
     /** Die offene Leitung, wenn das Format passt; sonst wird die alte ausgespielt und eine neue geöffnet. */
     private SourceDataLine open(AudioFormat format) throws IOException {
         synchronized (lock) {
-            stopped = false;
             if (line != null && line.isOpen() && lineFormat != null && lineFormat.matches(format)) {
-                line.start();
+                if (!stopped) {
+                    line.start();
+                }
                 return line;
             }
         }
@@ -70,8 +83,11 @@ public final class JavaSoundAudioPlayback implements AudioPlayback {
         synchronized (lock) {
             line = opened;
             lineFormat = format;
-            stopped = false;
-            opened.start();
+            if (stopped) {
+                opened.stop(); // während des Öffnens gestoppt: nichts mehr ausgeben
+            } else {
+                opened.start();
+            }
         }
         return opened;
     }

@@ -54,6 +54,11 @@ public final class SpeechOutput {
                 new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
                 analysis);
         return ReadAloudBinding.available(service, "Stimme: " + selected.modelId() + " (" + selected.catalogId()
-                + ")", models.readAloudAutoStart());
+                + ")", models.readAloudAutoStart(), traceContext(selected, models.speechVoice()));
+    }
+
+    /** Katalog und Stimme ({@code speech.voice}) der Diagnosezeile je Stück; keine Stimme = {@code none}. */
+    static String traceContext(ModelReference selected, String voice) {
+        return "catalog=" + selected.catalogId() + " voice=" + (voice == null ? "none" : voice);
     }
 }
