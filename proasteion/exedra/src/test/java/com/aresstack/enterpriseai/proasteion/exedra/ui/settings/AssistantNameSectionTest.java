@@ -45,4 +45,18 @@ public class AssistantNameSectionTest {
         });
     }
 
+    @Test
+    public void appearancePreviewFollowsTheName() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AppearanceTab appearance = new AppearanceTab(ComicPalette.defaultPalette());
+            AssistantNameSection section = new AssistantNameSection(ComicPalette.defaultPalette());
+            section.onNameChanged(appearance::setAssistantName);
+            section.load(form("Morgana"));
+            assertEquals("Morgana", appearance.assistantName());
+            section.nameField().setText("Viviane");
+            assertEquals("Viviane", appearance.assistantName());
+            appearance.load(form(""));
+            assertEquals(AppearanceTab.ASSISTANT_HEADER, appearance.assistantName());
+        });
+    }
 }

@@ -37,7 +37,8 @@ final class AppearanceTab {
     static final String USER_PREVIEW_TEXT = "Und so sehen meine aus.";
     static final String ASSISTANT_PREVIEW_TEXT = "So sieht eine Antwort aus.";
     private static final String USER_HEADER = "Du";
-    private static final String ASSISTANT_HEADER = "Assistent";
+    /** Kopf der Antwort-Vorschau, bis ein Anzeigename geladen ist ({@link #setAssistantName}). */
+    static final String ASSISTANT_HEADER = "Assistent";
     private static final int PREVIEW_PADDING = 8;
     private static final int PAIR_GAP = 14;
 
@@ -53,6 +54,7 @@ final class AppearanceTab {
     private final JPanel panel;
     private SpeechBubblePanel userPreview;
     private SpeechBubblePanel assistantPreview;
+    private String assistantName = ASSISTANT_HEADER;
 
     AppearanceTab(ComicPalette palette) {
         this.palette = palette;
@@ -110,6 +112,7 @@ final class AppearanceTab {
     }
 
     void load(SettingsForm form) {
+        setAssistantName(form.assistantDisplayName());
         BubbleColorsConfig defaults = BubbleColorsConfig.defaults();
         userBackground.load(form.bubbleUserBackground(), new Color(defaults.userBackground()));
         userForeground.load(form.bubbleUserForeground(), new Color(defaults.userForeground()));
@@ -123,6 +126,21 @@ final class AppearanceTab {
         b.bubbleUserForeground(SettingsColors.hex(userForeground.color()));
         b.bubbleAssistantBackground(SettingsColors.hex(assistantBackground.color()));
         b.bubbleAssistantForeground(SettingsColors.hex(assistantForeground.color()));
+    }
+
+    /**
+     * Der Name über der Antwort-Vorschau ({@code chat.assistant.displayName}); folgt dem Feld unter „Sprachausgabe“,
+     * während der Dialog offen ist. Leer heißt {@link #ASSISTANT_HEADER}.
+     */
+    void setAssistantName(String name) {
+        assistantName = name == null || name.trim().isEmpty() ? ASSISTANT_HEADER : name.trim();
+        if (assistantPreview != null) {
+            assistantPreview.setHeader(assistantName);
+        }
+    }
+
+    String assistantName() {
+        return assistantName;
     }
 
     /** Die vier bisherigen Farben (Blau/Weiß, Petrol/Weiß). */
@@ -203,7 +221,7 @@ final class AppearanceTab {
     /** Vorschau neu aufbauen (die Blasenfarben sind fest je Blase) und die Warnungen prüfen. */
     private void refresh() {
         assistantPreview = new SpeechBubblePanel(BubbleSide.LEFT, assistantBackground.color(),
-                assistantForeground.color(), ASSISTANT_HEADER, ASSISTANT_PREVIEW_TEXT);
+                assistantForeground.color(), assistantName, ASSISTANT_PREVIEW_TEXT);
         userPreview = new SpeechBubblePanel(BubbleSide.RIGHT, userBackground.color(), userForeground.color(),
                 USER_HEADER, USER_PREVIEW_TEXT);
         preview.removeAll();

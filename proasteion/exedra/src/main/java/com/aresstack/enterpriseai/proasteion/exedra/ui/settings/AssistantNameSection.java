@@ -14,6 +14,7 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.util.function.Consumer;
 
 /**
  * Platte „Assistent“: der Name, mit dem Antworten im Verlauf, im Zitat- und im Word-/Markdown-Export überschrieben
@@ -32,6 +33,7 @@ final class AssistantNameSection {
     private final SpeechBubblePanel preview;
     private final JPanel panel;
     private String defaultName = "";
+    private Consumer<String> nameListener;
 
     AssistantNameSection(ComicPalette palette) {
         FormRows rows = new FormRows(palette);
@@ -95,6 +97,14 @@ final class AssistantNameSection {
         return shownName();
     }
 
+    /** Meldet jeden angezeigten Namen weiter (etwa an die Blasen-Vorschau unter „Darstellung“); nur einer. */
+    void onNameChanged(Consumer<String> listener) {
+        nameListener = listener;
+        if (listener != null) {
+            listener.accept(shownName());
+        }
+    }
+
     JTextField nameField() {
         return name;
     }
@@ -104,7 +114,11 @@ final class AssistantNameSection {
     }
 
     private void updatePreview() {
-        preview.setHeader(shownName());
+        String shown = shownName();
+        preview.setHeader(shown);
+        if (nameListener != null) {
+            nameListener.accept(shown);
+        }
     }
 
     private String shownName() {

@@ -166,6 +166,8 @@ public final class SettingsPanel extends JPanel {
         this.indexTab = new IndexEditor(palette);
         this.toolsTab = new ToolsTab(tools, palette);
         this.appearanceTab = new AppearanceTab(palette);
+        // Der Name unter „Sprachausgabe“ steht sofort auch über der Antwort-Vorschau unter „Darstellung“.
+        speechTab.assistantName().onNameChanged(appearanceTab::setAssistantName);
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = mode == Mode.FIRST_START
