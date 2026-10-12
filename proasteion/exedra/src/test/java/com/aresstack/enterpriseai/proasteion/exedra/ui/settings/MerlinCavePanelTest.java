@@ -4,7 +4,6 @@ import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Test;
 
 import javax.imageio.ImageIO;
-import javax.swing.JButton;
 import javax.swing.JLabel;
 import java.awt.Component;
 import java.awt.Container;
@@ -15,7 +14,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-/** Merlins Kristallhöhle: das Originalbild liegt auf dem Klassenpfad und ersetzt den Platzhalter. */
+/** Merlins Kristallhöhle: das Originalbild ersetzt den Platzhalter, Merlin selbst ist anklickbar. */
 public class MerlinCavePanelTest {
 
     @Test
@@ -29,11 +28,13 @@ public class MerlinCavePanelTest {
     }
 
     @Test
-    public void panelShowsImageInsteadOfPlaceholderAndKeepsStatusAndButton() {
+    public void panelShowsClickableMerlinInsteadOfPlaceholderAndKeepsStatus() {
         MerlinCavePanel panel = new MerlinCavePanel(ComicPalette.defaultPalette());
         assertFalse(containsLabel(panel, "Merlins Kristallhöhle wartet auf ihr Bild."));
         assertTrue(containsLabel(panel, "Aufenthaltsort: Kristallhöhle  ·  Status: Standby seit Einführung der KI"));
-        assertTrue(containsButton(panel, "Merlin um Rat fragen"));
+        Component scene = findByAccessibleName(panel, "Merlin um Rat fragen");
+        assertNotNull("Merlin muss in der Höhle anklickbar sein", scene);
+        assertTrue(scene.isFocusable());
     }
 
     private static boolean containsLabel(Container container, String text) {
@@ -48,15 +49,19 @@ public class MerlinCavePanelTest {
         return false;
     }
 
-    private static boolean containsButton(Container container, String text) {
+    private static Component findByAccessibleName(Container container, String name) {
         for (Component child : container.getComponents()) {
-            if (child instanceof JButton && text.equals(((JButton) child).getText())) {
-                return true;
+            if (child.getAccessibleContext() != null
+                    && name.equals(child.getAccessibleContext().getAccessibleName())) {
+                return child;
             }
-            if (child instanceof Container && containsButton((Container) child, text)) {
-                return true;
+            if (child instanceof Container) {
+                Component found = findByAccessibleName((Container) child, name);
+                if (found != null) {
+                    return found;
+                }
             }
         }
-        return false;
+        return null;
     }
 }
