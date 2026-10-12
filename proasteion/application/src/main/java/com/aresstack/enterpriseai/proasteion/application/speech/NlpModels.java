@@ -37,6 +37,10 @@ public final class NlpModels {
     static final String MANIFEST = "nlp-model.properties";
     static final String SENTENCE = "sentence";
     static final String LANGUAGE = "language";
+    /** Tokenizer model of a language, for the linguistic analysis of chat messages. */
+    public static final String TOKENIZE = "tokenize";
+    /** Part-of-speech model of a language, for the linguistic analysis of chat messages. */
+    public static final String POS = "pos";
 
     private static final Logger LOG = Logger.getLogger(NlpModels.class.getName());
 
@@ -275,6 +279,8 @@ public final class NlpModels {
             public TextAnalysisEngine load() {
                 Path languageModel = null;
                 Map<String, Path> sentenceModels = new LinkedHashMap<String, Path>();
+                Map<String, Path> tokenizerModels = new LinkedHashMap<String, Path>();
+                Map<String, Path> posModels = new LinkedHashMap<String, Path>();
                 for (Entry entry : entries) {
                     if (!isInstalled(entry)) {
                         continue;
@@ -284,13 +290,18 @@ public final class NlpModels {
                         languageModel = file;
                     } else if (SENTENCE.equals(entry.capability)) {
                         sentenceModels.put(entry.language, file);
+                    } else if (TOKENIZE.equals(entry.capability)) {
+                        tokenizerModels.put(entry.language, file);
+                    } else if (POS.equals(entry.capability)) {
+                        posModels.put(entry.language, file);
                     }
                 }
-                OpenNlpTextAnalysisEngine engine = OpenNlpTextAnalysisEngine.load(languageModel, sentenceModels);
+                OpenNlpTextAnalysisEngine engine = OpenNlpTextAnalysisEngine.load(languageModel, sentenceModels,
+                        tokenizerModels, posModels);
                 for (String problem : engine.problems()) {
                     LOG.log(Level.WARNING, "OpenNLP-Modell nicht ladbar: {0}", problem);
                 }
-                LOG.info("Textanalyse beim Vorlesen: " + engine);
+                LOG.info("Textanalyse: " + engine);
                 return engine;
             }
         };

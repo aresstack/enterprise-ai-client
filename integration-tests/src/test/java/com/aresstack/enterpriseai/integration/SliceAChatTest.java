@@ -79,6 +79,8 @@ public class SliceAChatTest {
         p.setProperty("chat.model", MODEL);
         p.setProperty("chat.apiKeyRef", "Enterprise AI API");
         p.setProperty("chat.systemPrompt", SYSTEM_PROMPT);
+        // This slice tests the streaming transport; the answer planning step has its own end-to-end test.
+        p.setProperty("chat.answerPlanning.enabled", "false");
         p.setProperty("embedding.model", "danielheinz/e5-base-sts-en-de");
         p.setProperty("embedding.dimension", "8");
         p.setProperty("knowledge.indexDirectory", temp.getRoot().toString());
@@ -135,7 +137,7 @@ public class SliceAChatTest {
         assertTrue("stream=true im Body", request.streamRequested());
         assertEquals("application/json; charset=utf-8", request.contentType());
         assertEquals(MODEL, request.body().get("model").getAsString());
-        assertEquals(SYSTEM_PROMPT, request.systemContent());
+        assertTrue(request.systemContent(), request.systemContent().startsWith(SYSTEM_PROMPT));
         List<String> messages = request.messages();
         assertEquals("user: Was ist die Antwort?", messages.get(messages.size() - 1));
 

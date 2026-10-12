@@ -4,6 +4,18 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.LinguisticAnalyzer;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.LinguisticFrame;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.TransientTurnContextFactory;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.TurnAnalysisObserver;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.ConversationContext;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlan;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.ModelAnswerPlanningService;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.ClarificationPort;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanContextFactory;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.UserMessage;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
@@ -69,6 +81,12 @@ public final class RagChatUseCase {
     private final EvidenceEvaluator evaluator = new EvidenceEvaluator();
     /** Ob vor der ersten Suche geprüft wird, ob und womit gesucht wird. */
     private final RetrievalTriage triage;
+    private final LinguisticAnalyzer analyzer;
+    private final TurnAnalysisObserver analysisObserver;
+    private final TransientTurnContextFactory turnContext = new TransientTurnContextFactory();
+    /** The answer planning step before every answer, read per turn; {@code null} = off. */
+    private final Supplier<AnswerPlanningPolicy> planning;
+    private final AnswerPlanContextFactory planContext = new AnswerPlanContextFactory();
     /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
     private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
     /** Der zuletzt verwendete Wissenskontext je Konversation (nur mit Nachrecherche). */
@@ -117,6 +135,37 @@ public final class RagChatUseCase {
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
                           RetrievalPreparation preparation, FollowUpResearch followUps,
                           Supplier<EvidencePolicy> evidence, RetrievalTriage triage) {
+        this(chat, retrieval, assembler, preparation, followUps, evidence, triage, null, null);
+    }
+
+    /**
+     * As above, with a linguistic analysis of every message: {@code analyzer} describes its form (source, sentence
+     * type, word classes, diagnostics), and the description reaches triage and answer as a transient
+     * {@code <client-turn-analysis>} block of this turn only. It decides nothing; the model decides.
+     *
+     * @param analyzer {@code null} = no analysis, only the origin note of a dictation
+     * @param observer learns each block for a diagnostic log; {@code null} = none
+     */
+    public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
+                          RetrievalPreparation preparation, FollowUpResearch followUps,
+                          Supplier<EvidencePolicy> evidence, RetrievalTriage triage, LinguisticAnalyzer analyzer,
+                          TurnAnalysisObserver observer) {
+        this(chat, retrieval, assembler, preparation, followUps, evidence, triage, analyzer, observer, null);
+    }
+
+    /**
+     * As above, with the answer planning step: before the answer, an aside request asks the model what the user most
+     * likely wanted to say and achieve ({@link ModelAnswerPlanningService}), from history, source, analysis and message.
+     * The answering call receives original and interpretation side by side ({@code <client-answer-plan>}) and
+     * chooses its action itself. With sources checked, the reading replaces the triage (one aside request, not two).
+     * Nothing of it is stored.
+     *
+     * @param planning read per turn; {@code null} = off
+     */
+    public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler,
+                          RetrievalPreparation preparation, FollowUpResearch followUps,
+                          Supplier<EvidencePolicy> evidence, RetrievalTriage triage, LinguisticAnalyzer analyzer,
+                          TurnAnalysisObserver observer, Supplier<AnswerPlanningPolicy> planning) {
         if (chat == null || retrieval == null) {
             throw new IllegalArgumentException("chat und retrieval sind Pflicht");
         }
@@ -127,6 +176,17 @@ public final class RagChatUseCase {
         this.followUps = followUps == null ? FollowUpResearch.off() : followUps;
         this.evidence = evidence;
         this.triage = triage == null ? RetrievalTriage.off() : triage;
+        this.analyzer = analyzer;
+        this.analysisObserver = observer == null ? TurnAnalysisObserver.none() : observer;
+        this.planning = planning;
+    }
+
+    /**
+     * Whether every turn runs the answer planning step, an extra model request before the answer. Such a turn must not
+     * start on the UI thread.
+     */
+    public boolean plansAnswers() {
+        return policy().isEnabled();
     }
 
     /** Der gemeinsame Chat-Use-Case, über den Konversationen verwaltet werden. */
@@ -188,14 +248,19 @@ public final class RagChatUseCase {
                             ChatTurnListener listener, String extraContext, ChatCompletionPort via,
                             RetrievalProgress progress, MessageOrigin origin) {
         MessageOrigin from = origin == null ? MessageOrigin.TYPED : origin;
-        extraContext = join(from.modelNote(), extraContext);
         if (userText == null || userText.trim().isEmpty()) {
             throw new IllegalArgumentException("user text must not be blank");
         }
         if (listener == null) {
             throw new IllegalArgumentException("listener must not be null");
         }
+        AnswerPlanningPolicy policy = policy();
         if (rag == null || !rag.isEnabled()) {
+            TurnReading reading = read(id, userText, from, options, policy, policy.isEnabled(), progress);
+            extraContext = join(reading.hint(from), extraContext);
+            if (reading.clarifies()) {
+                return clarify(id, userText, options, listener, extraContext, reading);
+            }
             ChatTurn turn = extraContext == null && via == null
                     ? chat.send(id, userText, options, listener)
                     : chat.sendWithContext(id, userText, extraContext, options, listener, via);
@@ -209,12 +274,19 @@ public final class RagChatUseCase {
         }
         try {
             RetrievalProgress steps = progress == null ? RetrievalProgress.none() : progress;
-            EvidencePolicy policy = evidence == null ? null : evidence.get();
-            if (policy != null && policy.reranking()) {
-                return sendAdaptive(id, userText, rag, options, listener, extraContext, via, steps, policy, from);
+            TurnReading reading = read(id, userText, from, options, policy, true, steps);
+            extraContext = join(reading.hint(from), extraContext);
+            if (reading.clarifies()) {
+                return clarify(id, userText, options, listener, extraContext, reading);
+            }
+            EvidencePolicy limits = evidence == null ? null : evidence.get();
+            if (limits != null && limits.reranking()) {
+                return sendAdaptive(id, userText, rag, options, listener, extraContext, via, steps, limits, from,
+                        reading, policy);
             }
             return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via, steps,
-                    policy == null ? followUps : FollowUpResearch.upTo(policy.maxFollowUps()), from);
+                    limits == null ? followUps : FollowUpResearch.upTo(limits.maxFollowUps()), from, reading,
+                    policy);
         } finally {
             synchronized (retrieving) {
                 retrieving.remove(id);
@@ -225,13 +297,16 @@ public final class RagChatUseCase {
     private RagChatTurn sendWithRetrieval(ChatConversationId id, String userText, RagOptions rag,
                                           ChatOptions options, ChatTurnListener listener, String extraContext,
                                           ChatCompletionPort via, RetrievalProgress progress,
-                                          FollowUpResearch followUps, MessageOrigin origin) {
+                                          FollowUpResearch followUps, MessageOrigin origin,
+                                          TurnReading reading, AnswerPlanningPolicy policy) {
+        String analysis = reading.modelHint();
         List<String> queries = new ArrayList<String>();
         List<Integer> hitCounts = new ArrayList<Integer>();
         List<RetrievedChunk> hits = new ArrayList<RetrievedChunk>();
         List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
         boolean failed = false;
-        List<ChatMessage> history = followUps.isEnabled() || triage.isEnabled()
+        List<ChatMessage> history = reading.history != null ? reading.history
+                : followUps.isEnabled() || triage.isEnabled()
                 ? chat.conversation(id).messages() : Collections.<ChatMessage>emptyList();
         int maxSearches = 1 + followUps.maxFollowUps();
         String query = userText;
@@ -239,9 +314,12 @@ public final class RagChatUseCase {
         ConversationKnowledgeContext prior = followUps.isEnabled() ? contexts.get(id) : null;
         List<String> priorQueries = Collections.emptyList();
         int reused = 0;
+        if (reading.planned() && !needsKnowledge(reading.answerPlan, policy)) {
+            return withoutSearch(id, userText, options, listener, extraContext, via, progress);
+        }
         if (prior != null && !prior.isEmpty()) {
             FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, origin,
-                    prior.queries(), assembler.assemble(prior.hits()).text(), options);
+                    analysis, prior.queries(), assembler.assemble(prior.hits()).text(), options);
             if (triage.isEnabled() && !verdict.isNeeded()) {
                 return withoutSearch(id, userText, options, listener, extraContext, via, progress);
             }
@@ -261,9 +339,11 @@ public final class RagChatUseCase {
                 }
                 progress.reuseInsufficient(query, hits.size());
             }
+        } else if (reading.planned()) {
+            query = searchQuery(reading.answerPlan, userText);
         } else if (triage.isEnabled()) {
             progress.triageStarted();
-            RetrievalTriage.Decision decision = triage.decide(chat, history, userText, origin, options);
+            RetrievalTriage.Decision decision = triage.decide(chat, history, userText, origin, analysis, options);
             if (!decision.isSearch()) {
                 return withoutSearch(id, userText, options, listener, extraContext, via, progress);
             }
@@ -481,12 +561,14 @@ public final class RagChatUseCase {
 
     private RagChatTurn sendAdaptive(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
                                      ChatTurnListener listener, String extraContext, ChatCompletionPort via,
-                                     RetrievalProgress progress, EvidencePolicy policy, MessageOrigin origin) {
+                                     RetrievalProgress progress, EvidencePolicy policy, MessageOrigin origin,
+                                     TurnReading reading, AnswerPlanningPolicy planning) {
+        String analysis = reading.modelHint();
         List<String> queries = new ArrayList<String>();
         List<Integer> hitCounts = new ArrayList<Integer>();
         List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
         boolean failed = false;
-        List<ChatMessage> history = chat.conversation(id).messages();
+        List<ChatMessage> history = reading.history != null ? reading.history : chat.conversation(id).messages();
         Evidence evidence = new Evidence(policy);
         int maxSearches = 1 + policy.maxFollowUps();
         Outcome outcome = null;
@@ -496,9 +578,12 @@ public final class RagChatUseCase {
         List<RetrievedChunk> carried = Collections.emptyList();
         int reused = 0;
         ConversationKnowledgeContext prior = contexts.get(id);
+        if (reading.planned() && !needsKnowledge(reading.answerPlan, planning)) {
+            return withoutSearch(id, userText, options, listener, extraContext, via, progress);
+        }
         if (prior != null && !prior.isEmpty()) {
             FollowUpResearch.PriorVerdict verdict = followUps.checkPrior(chat, history, userText, origin,
-                    prior.queries(), assembler.assemble(prior.hits()).text(), options);
+                    analysis, prior.queries(), assembler.assemble(prior.hits()).text(), options);
             if (triage.isEnabled() && !verdict.isNeeded()) {
                 return withoutSearch(id, userText, options, listener, extraContext, via, progress);
             }
@@ -519,9 +604,11 @@ public final class RagChatUseCase {
                 }
                 progress.reuseInsufficient(query, carried.size());
             }
+        } else if (reading.planned()) {
+            query = searchQuery(reading.answerPlan, userText);
         } else if (triage.isEnabled()) {
             progress.triageStarted();
-            RetrievalTriage.Decision decision = triage.decide(chat, history, userText, origin, options);
+            RetrievalTriage.Decision decision = triage.decide(chat, history, userText, origin, analysis, options);
             if (!decision.isSearch()) {
                 return withoutSearch(id, userText, options, listener, extraContext, via, progress);
             }
@@ -707,6 +794,114 @@ public final class RagChatUseCase {
         }
         note.append(" Bitte den Nutzer nicht, Dateien oder Unterlagen anzuhängen: die Wissensquellen sind angehakt.");
         return note.toString();
+    }
+
+    private AnswerPlanningPolicy policy() {
+        AnswerPlanningPolicy current = planning == null ? null : planning.get();
+        return current == null ? AnswerPlanningPolicy.off() : current;
+    }
+
+    /**
+     * Whether the answer needs the organization's sources according to the plan: the planned next step is the internal
+     * search and the planner is sure enough of its reading; below {@link AnswerPlanningPolicy#askBelow()} the answer
+     * asks back instead of searching.
+     */
+    static boolean needsKnowledge(AnswerPlan plan, AnswerPlanningPolicy policy) {
+        return plan.nextAction() == NextAction.SEARCH_INTERNAL_KNOWLEDGE && plan.confidence() >= policy.askBelow();
+    }
+
+    /** The planned query, else the interpreted message, else the message itself. */
+    static String searchQuery(AnswerPlan plan, String userText) {
+        if (!plan.knowledgeQuery().isEmpty()) {
+            return plan.knowledgeQuery();
+        }
+        return plan.interpretedText().trim().isEmpty() ? userText : plan.interpretedText();
+    }
+
+    /**
+     * Answer with the planned clarifying question instead of starting the main agent: no search, no answering call; the
+     * question lands in the history like any answer.
+     */
+    private RagChatTurn clarify(ChatConversationId id, String userText, ChatOptions options,
+                                ChatTurnListener listener, String extraContext, TurnReading reading) {
+        ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener,
+                new ClarificationPort(reading.answerPlan.clarificationQuestion()));
+        return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
+                false);
+    }
+
+    /**
+     * Analyse the message and, with the answer planning step on, read it. Without RAG and without the step the turn may
+     * start on the UI thread, so then no model is loaded and no request is made ({@code mayBlock} false).
+     */
+    private TurnReading read(ChatConversationId id, String userText, MessageOrigin origin, ChatOptions options,
+                             AnswerPlanningPolicy policy, boolean mayBlock, RetrievalProgress progress) {
+        LinguisticFrame frame = null;
+        String analysis = null;
+        if (analyzer != null) {
+            try {
+                frame = mayBlock ? analyzer.analyze(userText, origin) : analyzer.analyzeWithoutModels(userText, origin);
+            } catch (RuntimeException analysisFailed) {
+                frame = LinguisticAnalyzer.none().analyze(userText, origin);
+            }
+            analysis = turnContext.create(frame);
+            analysisObserver.analyzed(userText, origin, frame, analysis);
+        }
+        if (!policy.isEnabled() || !mayBlock) {
+            return new TurnReading(analysis, null, null, null);
+        }
+        if (progress != null) {
+            progress.planningStarted();
+        }
+        List<ChatMessage> history = chat.conversation(id).messages();
+        AnswerPlan turn = new ModelAnswerPlanningService(chat, options).plan(
+                ConversationContext.of(history), new UserMessage(userText, origin), frame);
+        String block = turn.isKnown() ? planContext.create(turn, policy) : null;
+        analysisObserver.planned(userText, turn, block);
+        if (progress != null) {
+            progress.planningFinished(turn.isKnown() ? turn.nextAction() : NextAction.UNKNOWN);
+        }
+        return new TurnReading(analysis, turn, block, history);
+    }
+
+    /** What the client learned about the current message before answering; lives for this turn only. */
+    static final class TurnReading {
+
+        /** The local analysis block, or {@code null}. */
+        final String analysis;
+        /** The reading of the answer planning step, or {@code null} when it did not run. */
+        final AnswerPlan answerPlan;
+        /** The block for the answering call, or {@code null} without a plan. */
+        final String planBlock;
+        /** The history the step saw, or {@code null}. */
+        final List<ChatMessage> history;
+
+        TurnReading(String analysis, AnswerPlan answerPlan, String planBlock, List<ChatMessage> history) {
+            this.analysis = analysis;
+            this.answerPlan = answerPlan;
+            this.planBlock = planBlock;
+            this.history = history;
+        }
+
+        boolean planned() {
+            return answerPlan != null && answerPlan.isKnown();
+        }
+
+        /** Whether the plan asks the user back instead of answering. */
+        boolean clarifies() {
+            return planned() && answerPlan.asksClarification();
+        }
+
+        /** What the model reads about the message: the reading, else the analysis, else nothing. */
+        String modelHint() {
+            return planBlock != null ? planBlock : analysis;
+        }
+
+        /** As {@link #modelHint()}, with the origin note of a dictation when there is neither. */
+        String hint(MessageOrigin origin) {
+            String hint = modelHint();
+            return hint != null ? hint : origin.modelNote();
+        }
     }
 
     private static String join(String first, String second) {

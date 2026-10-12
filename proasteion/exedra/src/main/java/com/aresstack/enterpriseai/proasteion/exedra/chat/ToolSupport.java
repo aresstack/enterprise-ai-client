@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentStore;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtractor;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ public final class ToolSupport {
     private final boolean alwaysOn;
     private final Executor loopExecutor;
     private final IntSupplier maxRounds;
+    private final ToolActivityListener diagnostics;
 
     /**
      * @param knowledgeTools der Wissens-Werkzeugsatz des Chats (Suche in den angehakten Quellen, Lesen von Treffern
@@ -64,9 +66,10 @@ public final class ToolSupport {
             thread.start();
         };
         this.maxRounds = () -> ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS;
+        this.diagnostics = null;
     }
 
-    private ToolSupport(ToolSupport base, IntSupplier maxRounds) {
+    private ToolSupport(ToolSupport base, IntSupplier maxRounds, ToolActivityListener diagnostics) {
         this.chat = base.chat;
         this.store = base.store;
         this.extractor = base.extractor;
@@ -75,6 +78,7 @@ public final class ToolSupport {
         this.alwaysOn = base.alwaysOn;
         this.loopExecutor = base.loopExecutor;
         this.maxRounds = maxRounds;
+        this.diagnostics = diagnostics;
     }
 
     /**
@@ -85,7 +89,17 @@ public final class ToolSupport {
         if (maxRounds == null) {
             throw new IllegalArgumentException("maxRounds must not be null");
         }
-        return new ToolSupport(this, maxRounds);
+        return new ToolSupport(this, maxRounds, diagnostics);
+    }
+
+    /** Copy that also reports every tool call of the chat to {@code diagnostics} (diagnostic log). */
+    public ToolSupport withDiagnostics(ToolActivityListener diagnostics) {
+        return new ToolSupport(this, maxRounds, diagnostics);
+    }
+
+    /** Where tool calls are reported for diagnosis, or {@code null}. */
+    public ToolActivityListener diagnostics() {
+        return diagnostics;
     }
 
     private static Supplier<List<AiTool>> fixed(List<AiTool> knowledgeTools) {

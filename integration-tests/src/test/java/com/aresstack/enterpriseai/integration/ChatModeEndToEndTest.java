@@ -200,6 +200,31 @@ public class ChatModeEndToEndTest {
         }
     }
 
+    /**
+     * The answer planning step reads every message before the answer; a greeting needs no information, so nothing is
+     * searched, and the answer sees original and interpretation.
+     */
+    @Test
+    public void scenario1_answerPlanningKeepsSmallTalkAwayFromTheSources() throws Exception {
+        indexAll();
+        int embeddingsBefore = embeddingsServer.requestCount();
+        chatServer.answerWith("Hallo!");
+        chatServer.answerAsidesWith("{\"interpretedText\": \"Hi\", \"intent\": \"GREETING\", "
+                + "\"informationNeed\": \"NO_INFORMATION_NEEDED\", \"ambiguity\": \"LOW\", \"confidence\": 0.99, "
+                + "\"nextAction\": \"ANSWER_DIRECTLY\"}");
+
+        send("Hi");
+
+        TranscriptEntry answer = lastEntry(model);
+        assertEquals(answer.getFailureMessage(), TranscriptEntry.State.COMPLETE, answer.getState());
+        expected.checkThat("keine Einbettung für einen Gruß", embeddingsServer.requestCount(), is(embeddingsBefore));
+        String system = chatServer.lastRequest().systemContent();
+        expected.checkThat(system, system.contains("<client-answer-plan>"), is(true));
+        expected.checkThat(system, system.contains("original-user-message: Hi"), is(true));
+        expected.checkThat(system, system.contains("intent: GREETING"), is(true));
+        expected.checkThat("Antwortplan und Antwort", chatServer.requests().size(), is(2));
+    }
+
     @Test
     public void scenario1_smallTalkOnAnEmptyKnowledgeBaseShowsNoRagWarning() throws Exception {
         chatServer.answerWith("Hallo!");

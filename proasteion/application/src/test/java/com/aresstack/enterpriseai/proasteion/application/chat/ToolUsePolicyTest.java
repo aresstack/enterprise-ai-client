@@ -44,7 +44,9 @@ public class ToolUsePolicyTest {
     @Test
     public void possiblyInternalTermsGoToTheKnowledgeSources() {
         String rules = ToolUsePolicy.context(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_SEARCH));
-        assertTrue(rules, rules.contains("auch wenn du eine öffentliche Bedeutung kennst"));
+        assertTrue(rules, rules.contains("nicht eindeutig aufgelöst ist und organisationsspezifisch sein könnte"));
+        assertTrue(rules, rules.contains("ersetzt die Suche nicht"));
+        assertTrue(rules, rules.contains("<client-turn-analysis> als Hinweis"));
         assertTrue(rules, rules.contains("nie stillschweigend"));
     }
 }

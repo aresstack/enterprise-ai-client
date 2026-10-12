@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
+
 /**
  * Fortschritt der Wissenssuche eines RAG-Turns, während sie läuft ({@link RagChatUseCase}): welche Suche gerade läuft
  * (die Nachricht selbst, danach die Nachsuchen der {@link FollowUpResearch}), welcher Schritt (Live-Suche, Volltext,
@@ -85,6 +87,18 @@ public interface RetrievalProgress {
      * @param sources die Auszüge des vorigen Turns, die (zum Thema passend) im Kontext bleiben; 0 bei Themenwechsel
      */
     default void reuseInsufficient(String query, int sources) {
+    }
+
+    /** The model plans the answer before anything else happens in this turn ({@code AnswerPlanningService}). */
+    default void planningStarted() {
+    }
+
+    /**
+     * The plan is ready.
+     *
+     * @param next the planned next step; {@code UNKNOWN} when no plan was obtained
+     */
+    default void planningFinished(NextAction next) {
     }
 
     /** Das Modell prüft vor der ersten Suche, ob die Nachricht Wissen aus den Quellen braucht ({@link RetrievalTriage}). */

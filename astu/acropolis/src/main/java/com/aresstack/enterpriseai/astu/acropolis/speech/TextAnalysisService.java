@@ -122,6 +122,37 @@ public final class TextAnalysisService {
         return engine == null ? null : engine.sentences(paragraph, languageCode);
     }
 
+    /**
+     * The language of a text ({@code de}, {@code en}), or {@code ""} when unknown or without a loaded engine. Call
+     * {@link #acquire(Object)} first.
+     */
+    public synchronized String detectLanguage(String text) {
+        return engine == null || !engine.detectsLanguages() ? "" : engine.detectLanguage(text);
+    }
+
+    /**
+     * The tokens of a sentence by the tokenizer model, or an empty list without a loaded engine or tokenizer model
+     * for the language. Call {@link #acquire(Object)} first.
+     */
+    public synchronized List<String> tokens(String sentence, String languageCode) {
+        if (engine == null || !engine.tokenizes(languageCode)) {
+            return Collections.emptyList();
+        }
+        return engine.tokens(sentence, languageCode);
+    }
+
+    /**
+     * The tagged tokens, or an empty list without a loaded engine or part-of-speech model for the language. Call
+     * {@link #acquire(Object)} first.
+     */
+    public synchronized List<com.aresstack.enterpriseai.speech.api.TaggedToken> tag(List<String> tokens,
+                                                                                 String languageCode) {
+        if (engine == null || !engine.tagsWordClasses(languageCode)) {
+            return Collections.emptyList();
+        }
+        return engine.tag(tokens, languageCode);
+    }
+
     /** Warum die Engine zuletzt nicht geladen werden konnte, sonst {@code null}. */
     public synchronized String loadProblem() {
         return loadProblem;

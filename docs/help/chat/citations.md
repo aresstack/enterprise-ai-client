@@ -10,7 +10,7 @@ Wenn der Assistent auf deine Wissensquellen zurückgreift, zeigt der Chat, worau
 
 ## Woher die Quellen kommen
 
-Sind im Drawer unter „Wissensquellen“ Quellen angehakt, sucht der Client vor der Antwort in diesen Quellen (zu erkennen an der gelben Recherchekarte „Recherche in den Wissensquellen“). Die passendsten Abschnitte gibt er dem Modell als nummerierten Kontextblock mit: Abschnitt [1], [2] und so weiter, jeweils mit Titel, Überschrift, Ort und Stand. Dazu bekommt das Modell die Anweisung, die Auszüge vorrangig zu verwenden, die genutzten Quellen mit ihrer Nummer zu nennen (zum Beispiel „[1]“) und zu sagen, wenn die Auszüge die Frage nicht beantworten.
+Sind im Drawer unter „Wissensquellen“ Quellen angehakt, sucht der Client vor der Antwort in diesen Quellen (zu erkennen an der gelben Recherchekarte „Internes Wissen durchsuchen“). Die passendsten Abschnitte gibt er dem Modell als nummerierten Kontextblock mit: Abschnitt [1], [2] und so weiter, jeweils mit Titel, Überschrift, Ort und Stand. Dazu bekommt das Modell die Anweisung, die Auszüge vorrangig zu verwenden, die genutzten Quellen mit ihrer Nummer zu nennen (zum Beispiel „[1]“) und zu sagen, wenn die Auszüge die Frage nicht beantworten.
 
 Die Nummern im Antworttext schreibt also das Modell selbst. Die Nummern in der Quellenliste unter der Antwort vergibt der Client. Beide gehören zusammen: „[2]“ im Text meint den Eintrag „[2]“ in der Liste.
 
@@ -44,7 +44,7 @@ Die Quellen werden mit der Antwort gespeichert. Öffnest du den Chat später wie
 
 ## Was die Quellenliste nicht zeigt
 
-Die Quellenliste zeigt die Abschnitte, die die automatische Wissenssuche des Clients vor der Antwort in den Kontext gegeben hat. Darüber hinaus kann das Modell mit Werkzeugen selbst suchen und Seiten lesen; das siehst du während der Antwort an den Wolken „Durchsucht Wissensquellen“ und „Liest Seite“. Was das Modell auf diesem Weg gelesen hat, steht nicht als nummerierte Quelle in der Liste. Für eine genaue Nachverfolgung enthält der JSON-Export je Antwort alle Werkzeugaufrufe.
+Die Quellenliste zeigt die Abschnitte, die die automatische Wissenssuche des Clients vor der Antwort in den Kontext gegeben hat. Darüber hinaus kann das Modell mit Werkzeugen selbst suchen und Seiten lesen; das siehst du während der Antwort an den Wolken „Internes Wissen durchsuchen“ und „Liest Seite“. Was das Modell auf diesem Weg gelesen hat, steht nicht als nummerierte Quelle in der Liste. Für eine genaue Nachverfolgung enthält der JSON-Export je Antwort alle Werkzeugaufrufe.
 
 Hat eine Antwort keine Quellenliste, hat die automatische Suche nichts beigetragen, etwa weil keine Wissensquelle angehakt war, die Frage Small Talk war oder keine passenden Abschnitte gefunden wurden. Im letzten Fall steht nach der Antwort eine Hinweiszeile wie „Keine passenden Abschnitte in der Wissensbasis gefunden. Die Antwort entstand ohne Kontext.“
 

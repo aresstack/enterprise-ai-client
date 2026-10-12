@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.config;
 
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
@@ -297,7 +298,12 @@ public final class AppConfigLoader {
         String assistantName = r.text(ChatConfig.ASSISTANT_DISPLAY_NAME_KEY,
                 ChatConfig.DEFAULT_ASSISTANT_DISPLAY_NAME);
         return new ChatConfig(baseUrl, model, apiKeyRef, systemPrompt, connect, read, policy, defaults, tools,
-                maxToolRounds, retry, assistantName);
+                maxToolRounds, retry, assistantName, r.bool(ChatConfig.TURN_ANALYSIS_LOG_KEY, false),
+                new AnswerPlanningPolicy(r.bool(ChatConfig.ANSWER_PLANNING_ENABLED_KEY, true),
+                        r.integer(ChatConfig.ANSWER_PLANNING_USE_AT_KEY, AnswerPlanningPolicy.DEFAULT_USE_AT_PERCENT, 0,
+                                100),
+                        r.integer(ChatConfig.ANSWER_PLANNING_ASK_BELOW_KEY,
+                                AnswerPlanningPolicy.DEFAULT_ASK_BELOW_PERCENT, 0, 100)));
     }
 
     /**

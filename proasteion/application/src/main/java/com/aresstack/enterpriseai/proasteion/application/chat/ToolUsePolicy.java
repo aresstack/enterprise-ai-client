@@ -6,34 +6,34 @@ import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpT
 import java.util.Collection;
 
 /**
- * Client rules for choosing tools in the chat, as system part of every turn with tools. They apply regardless of the
- * configured system prompt (it lives in the user's file and may be older): no tool for conversation, questions about
- * the assistant, corrections and complaints; a likely typo or recognition error is read, not searched; no variants of
- * the same term after a search without hits; questions about the application go to the built-in help first; terms
- * that may have an organization-specific meaning go to the knowledge sources before any public meaning. Name only what the
+ * Client principles for choosing tools in the chat, as system part of every turn with tools. They apply regardless of
+ * the configured system prompt (it lives in the user's file and may be older): the information need decides, the
+ * client's analysis is a hint, questions about the application go to the built-in help, terms that are not resolved
+ * and may be organization-specific go to the knowledge sources. Name only what the turn actually offers. Name only what the
  * turn actually offers. Pure and stateless.
  */
 public final class ToolUsePolicy {
 
-    static final String GENERAL = "[Werkzeugregeln des Clients] Nutze Werkzeuge nur, wenn die Antwort sie wirklich "
-            + "braucht. Begrüßungen, Small Talk, Dank, Fragen nach dir selbst und deinen Fähigkeiten, Korrekturen und "
-            + "Beschwerden beantwortest du direkt, ohne Werkzeug. Ergibt ein Wort mit einem ähnlich klingenden "
-            + "gebräuchlichen Wort einen deutlich plausibleren Satz, ist es eher ein Tipp- oder Erkennungsfehler: nimm "
-            + "diese Lesart und suche nicht danach. Bringt eine Suche keine Treffer, suche nicht mit Varianten oder "
-            + "Teilen derselben Begriffe weiter; prüfe dein Verständnis der Nachricht oder frag kurz nach.";
+    static final String GENERAL = "[Werkzeugregeln des Clients] Nutze den Antwortplan "
+            + "<client-answer-plan> bzw. die Analyse <client-turn-analysis> als Hinweis, nicht als Wahrheit. "
+            + "Entscheide anhand der aktuellen Äußerung, des Verlaufs und der verfügbaren Werkzeuge, ob zusätzliche "
+            + "Informationen nötig sind. Kein Werkzeug nur deshalb, weil ein Begriff unbekannt ist: "
+            + "Gruß, Dank, Korrektur, Beschwerde, Aussagen und Meinungen, Fragen an dich selbst und Allgemeinwissen "
+            + "beantwortest du direkt. Ist eine diktierte Nachricht auffällig, prüfe zuerst eine plausible "
+            + "Fehlerkennung, bevor du ein verdächtiges Wort als Namen behandelst oder danach suchst. Bringt eine Suche "
+            + "keine Treffer, suche nicht mit Varianten derselben Begriffe weiter, sondern prüfe dein Verständnis oder "
+            + "frag nach.";
 
-    static final String HELP_FIRST = "Fragen zu diesem Programm (Bedienung, Funktionen, Einstellungen, Einrichtung, "
-            + "Fehlermeldungen, ein Überblick über das Programm) beantwortest du zuerst mit "
-            + AppHelpMcpTools.APP_HELP_SEARCH + " und " + AppHelpMcpTools.APP_HELP_READ
-            + ", nicht mit den Wissensquellen des Nutzers.";
+    static final String HELP_FIRST = "Fragen zu diesem Programm (Bedienung, Oberfläche, Einstellungen, Funktionen, "
+            + "Einrichtung, Fehlermeldungen, ein Überblick) beantwortest du mit " + AppHelpMcpTools.APP_HELP_SEARCH
+            + " und " + AppHelpMcpTools.APP_HELP_READ + ", nicht mit den Wissensquellen des Nutzers.";
 
-    static final String KNOWLEDGE = KnowledgeMcpTools.KNOWLEDGE_SEARCH + " ist für Wissen, das organisationsspezifisch "
-            + "sein kann, nicht der Standardweg für jede Nachricht. Kann ein zentraler Begriff der Frage im "
-            + "Arbeitskontext eine interne Bedeutung haben (Abkürzung, Akronym, Kennung, System-, Projekt-, Prozess- "
-            + "oder Organisationsname, Dokumenttitel, unerklärter Fachbegriff), suche zuerst dort, auch wenn du eine "
-            + "öffentliche Bedeutung kennst, und ebenso, wenn der Nutzer ausdrücklich ums Nachschlagen bittet. Eine "
-            + "interne Bedeutung hat Vorrang. Findet die Suche nichts, sag das und nenne eine öffentliche Bedeutung nur "
-            + "als mögliche Lesart, nie stillschweigend.";
+    static final String KNOWLEDGE = KnowledgeMcpTools.KNOWLEDGE_SEARCH + " nutzt du, wenn der Nutzer etwas über einen "
+            + "Begriff wissen will, der im Kontext nicht eindeutig aufgelöst ist und organisationsspezifisch sein könnte "
+            + "(Abkürzung, interner System- oder Projektname, Organisationseinheit, Dokument, interner Prozess, "
+            + "unbekannter Fachbegriff), und wenn er ausdrücklich ums Suchen oder Nachschlagen bittet. Dass du "
+            + "irgendeine Bedeutung kennst, ersetzt die Suche nicht. Findet sie nichts, sag das und nenne eine "
+            + "öffentliche Bedeutung nur als mögliche Lesart, nie stillschweigend.";
 
     private ToolUsePolicy() {
     }

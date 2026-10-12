@@ -102,6 +102,10 @@ public final class SettingsForm {
     private final String agentRequestTimeoutSeconds;
     private final String researchMaxPages;
     private final String chatToolsMaxRounds;
+    private final boolean turnAnalysisLog;
+    private final boolean answerPlanningEnabled;
+    private final String answerPlanningUseAtPercent;
+    private final String answerPlanningAskBelowPercent;
     private final String contextMaxSources;
     private final String retrievalMaxResults;
     private final String contextMaxTokens;
@@ -184,6 +188,10 @@ public final class SettingsForm {
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
         this.researchMaxPages = b.researchMaxPages;
         this.chatToolsMaxRounds = b.chatToolsMaxRounds;
+        this.turnAnalysisLog = b.turnAnalysisLog;
+        this.answerPlanningEnabled = b.answerPlanningEnabled;
+        this.answerPlanningUseAtPercent = b.answerPlanningUseAtPercent;
+        this.answerPlanningAskBelowPercent = b.answerPlanningAskBelowPercent;
         this.contextMaxSources = b.contextMaxSources;
         this.retrievalMaxResults = b.retrievalMaxResults;
         this.contextMaxTokens = b.contextMaxTokens;
@@ -254,7 +262,10 @@ public final class SettingsForm {
                 .sourceRetryDelayMillis(sourceRetryDelayMillis)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .researchMaxPages(researchMaxPages)
-                .chatToolsMaxRounds(chatToolsMaxRounds)
+                .chatToolsMaxRounds(chatToolsMaxRounds).turnAnalysisLog(turnAnalysisLog)
+                .answerPlanningEnabled(answerPlanningEnabled)
+                .answerPlanningUseAtPercent(answerPlanningUseAtPercent)
+                .answerPlanningAskBelowPercent(answerPlanningAskBelowPercent)
                 .contextMaxSources(contextMaxSources)
                 .retrievalMaxResults(retrievalMaxResults)
                 .contextMaxTokens(contextMaxTokens)
@@ -568,6 +579,26 @@ public final class SettingsForm {
         return chatToolsMaxRounds;
     }
 
+    /** Whether each chat turn logs its linguistic analysis and tool calls. */
+    public boolean turnAnalysisLog() {
+        return turnAnalysisLog;
+    }
+
+    /** Whether every chat turn runs the answer planning step ({@code chat.answerPlanning.enabled}). */
+    public boolean answerPlanningEnabled() {
+        return answerPlanningEnabled;
+    }
+
+    /** Confidence in percent from which the reading is used ({@code chat.answerPlanning.useAtPercent}). */
+    public String answerPlanningUseAtPercent() {
+        return answerPlanningUseAtPercent;
+    }
+
+    /** Confidence in percent below which the answer asks back ({@code chat.answerPlanning.askBelowPercent}). */
+    public String answerPlanningAskBelowPercent() {
+        return answerPlanningAskBelowPercent;
+    }
+
     /** Suchauszüge im RAG-Kontext einer normalen Chat-Antwort ({@code context.maxSources}). */
     public String contextMaxSources() {
         return contextMaxSources;
@@ -744,6 +775,10 @@ public final class SettingsForm {
         private String agentRequestTimeoutSeconds = "30";
         private String researchMaxPages = "4";
         private String chatToolsMaxRounds = "8";
+        private boolean turnAnalysisLog;
+        private boolean answerPlanningEnabled = true;
+        private String answerPlanningUseAtPercent = "85";
+        private String answerPlanningAskBelowPercent = "60";
         private String contextMaxSources = "6";
         private String retrievalMaxResults = "10";
         private String contextMaxTokens = "1500";
@@ -1075,6 +1110,26 @@ public final class SettingsForm {
 
         public Builder researchMaxPages(String value) {
             this.researchMaxPages = text(value);
+            return this;
+        }
+
+        public Builder turnAnalysisLog(boolean value) {
+            this.turnAnalysisLog = value;
+            return this;
+        }
+
+        public Builder answerPlanningEnabled(boolean value) {
+            this.answerPlanningEnabled = value;
+            return this;
+        }
+
+        public Builder answerPlanningUseAtPercent(String value) {
+            this.answerPlanningUseAtPercent = text(value);
+            return this;
+        }
+
+        public Builder answerPlanningAskBelowPercent(String value) {
+            this.answerPlanningAskBelowPercent = text(value);
             return this;
         }
 

@@ -140,6 +140,8 @@ public class ShellConversationLifecycleTest {
     }
 
     private void ask(final ShellAssembly.ShellView view, String question, String answer) throws Exception {
+        chatPort.enqueueAnswer("{\"intent\": \"QUESTION\", \"informationNeed\": \"GENERAL_KNOWLEDGE\", "
+                + "\"confidence\": 0.9, \"nextAction\": \"ANSWER_DIRECTLY\"}"); // the answer plan
         chatPort.enqueueAnswer(answer);
         onEdt(() -> {
             view.chatActions().sendRequested(question, false);

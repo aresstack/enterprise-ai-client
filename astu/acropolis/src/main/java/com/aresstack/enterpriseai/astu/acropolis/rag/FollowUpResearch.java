@@ -106,8 +106,8 @@ public final class FollowUpResearch {
                      List<String> queries, String context, ChatOptions options) {
         String verdict;
         try {
-            verdict = chat.completeAside(request(INSTRUCTION, "Gefundener Kontext", history, message, origin, queries,
-                    context), options).content();
+            verdict = chat.completeAside(request(INSTRUCTION, "Gefundener Kontext", history, message, origin, null,
+                    queries, context), options).content();
         } catch (ChatCompletionException e) {
             return null;
         } catch (RuntimeException e) {
@@ -187,10 +187,16 @@ public final class FollowUpResearch {
     /** Wie oben; {@code origin} sagt der Prüfung, ob die Nachricht eine Abschrift der Spracherkennung ist. */
     PriorVerdict checkPrior(ChatService chat, List<ChatMessage> history, String message, MessageOrigin origin,
                             List<String> queries, String context, ChatOptions options) {
+        return checkPrior(chat, history, message, origin, null, queries, context, options);
+    }
+
+    /** As above, with the client's request analysis as a hint, or {@code null}. */
+    PriorVerdict checkPrior(ChatService chat, List<ChatMessage> history, String message, MessageOrigin origin,
+                            String analysis, List<String> queries, String context, ChatOptions options) {
         String verdict;
         try {
             verdict = chat.completeAside(request(PRIOR_INSTRUCTION, "Bereits gefundener Kontext", history, message,
-                    origin, queries, context), options).content();
+                    origin, analysis, queries, context), options).content();
         } catch (ChatCompletionException e) {
             return PriorVerdict.unknown();
         } catch (RuntimeException e) {
@@ -233,13 +239,14 @@ public final class FollowUpResearch {
 
     static List<ChatMessage> request(List<ChatMessage> history, String message, List<String> queries,
                                      String context) {
-        return request(INSTRUCTION, "Gefundener Kontext", history, message, MessageOrigin.TYPED, queries, context);
+        return request(INSTRUCTION, "Gefundener Kontext", history, message, MessageOrigin.TYPED, null, queries,
+                context);
     }
 
     private static List<ChatMessage> request(String instruction, String contextLabel, List<ChatMessage> history,
-                                             String message, MessageOrigin origin, List<String> queries,
-                                             String context) {
-        StringBuilder text = conversation(history, message, origin);
+                                             String message, MessageOrigin origin, String analysis,
+                                             List<String> queries, String context) {
+        StringBuilder text = conversation(history, message, origin, analysis);
         text.append("Bisherige Suchanfragen:");
         for (String query : queries) {
             text.append("\n- ").append(query);
@@ -257,6 +264,12 @@ public final class FollowUpResearch {
      * einer Leerzeile.
      */
     static StringBuilder conversation(List<ChatMessage> history, String message, MessageOrigin origin) {
+        return conversation(history, message, origin, null);
+    }
+
+    /** As above, with the client's request analysis ({@code null} = none) after the origin. */
+    static StringBuilder conversation(List<ChatMessage> history, String message, MessageOrigin origin,
+                                      String analysis) {
         StringBuilder text = new StringBuilder();
         List<ChatMessage> recent = history == null ? Collections.<ChatMessage>emptyList() : history;
         List<ChatMessage> shown = new ArrayList<ChatMessage>();
@@ -279,6 +292,9 @@ public final class FollowUpResearch {
         String note = origin == null ? null : origin.modelNote();
         if (note != null) {
             text.append("Herkunft der aktuellen Nachricht: ").append(note).append("\n\n");
+        }
+        if (analysis != null && !analysis.trim().isEmpty()) {
+            text.append(analysis.trim()).append("\n\n");
         }
         text.append("Aktuelle Nachricht: ").append(shorten(message)).append("\n\n");
         return text;

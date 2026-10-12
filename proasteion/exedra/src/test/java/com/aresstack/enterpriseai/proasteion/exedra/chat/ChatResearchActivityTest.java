@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
@@ -272,9 +273,9 @@ public class ChatResearchActivityTest {
         assertFalse(chat.isBusy(conversation));
     }
 
-    /** Small talk: the card shows the model's triage and ends without any search ("keine Suche nötig"). */
+    /** Small talk: the model's triage decides against a search, so no research card appears at all. */
     @Test
-    public void smallTalkEndsTheResearchCardWithoutSearch() throws Exception {
+    public void smallTalkShowsNoResearchCard() throws Exception {
         indexAll();
         port.enqueueAnswer("{\"search\": false, \"query\": \"\"}");
         port.enqueueAnswer("Hallo zurück");
@@ -290,12 +291,49 @@ public class ChatResearchActivityTest {
         send(shell, "Hi");
         awaitIdle(shell.model);
 
-        assertEquals(shell.recorder.addedActivities.toString(), 1, shell.recorder.addedActivities.size());
-        List<String> states = shell.recorder.textsOf(shell.recorder.addedActivities.get(0));
-        assertTrue(states.toString(), states.toString().contains(ChatResearchCard.TRIAGE));
-        assertFalse(states.toString(), states.toString().contains("Suche 1"));
+        assertTrue(shell.recorder.addedActivities.toString(), shell.recorder.addedActivities.isEmpty());
         assertEquals("one triage, one answer", 2, port.requests().size());
         assertEquals(2, entries(shell.model).size());
+    }
+
+    /** Every planned turn starts with the planning bubble; a greeting shows nothing else, a search adds the card. */
+    @Test
+    public void planningComesFirstAndOnlyAPlannedSearchShowsTheCard() throws Exception {
+        indexAll();
+        port.enqueueAnswer("{\"intent\": \"GREETING\", \"informationNeed\": \"NO_INFORMATION_NEEDED\", "
+                + "\"confidence\": 0.99, \"nextAction\": \"ANSWER_DIRECTLY\"}");
+        port.enqueueAnswer("Hallo zurück");
+        port.enqueueAnswer("{\"intent\": \"QUESTION\", \"informationNeed\": \"INTERNAL_KNOWLEDGE\", "
+                + "\"confidence\": 0.9, \"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\", "
+                + "\"knowledgeQuery\": \"Kündigungsfrist\"}");
+        port.enqueueAnswer("Drei Monate [1].");
+        final RagChatUseCase rag = new RagChatUseCase(chat,
+                new RetrieveKnowledgeUseCase(index, embeddings, space, null), new PromptContextAssembler(null),
+                RetrievalPreparation.none(), FollowUpResearch.off(), null, RetrievalTriage.byModel(), null, null,
+                () -> AnswerPlanningPolicy.defaults());
+        Shell shell = onEdt(new Callable<Shell>() {
+            @Override
+            public Shell call() {
+                return new Shell(rag);
+            }
+        });
+        send(shell, "Hi");
+        awaitIdle(shell.model);
+
+        assertEquals(shell.recorder.addedActivities.toString(), 1, shell.recorder.addedActivities.size());
+        TranscriptEntry planning = shell.recorder.addedActivities.get(0);
+        assertEquals(RagChatBinding.PLANNING_ACTIVITY, planning.getActivityTitle());
+        assertTrue(planning.isThinking());
+
+        send(shell, "Wie lange ist die Kündigungsfrist?");
+        awaitIdle(shell.model);
+
+        assertEquals(shell.recorder.addedActivities.toString(), 3, shell.recorder.addedActivities.size());
+        assertEquals(RagChatBinding.PLANNING_ACTIVITY, shell.recorder.addedActivities.get(1).getActivityTitle());
+        assertEquals(ChatResearchCard.TITLE, shell.recorder.addedActivities.get(2).getActivityTitle());
+        List<String> states = shell.recorder.textsOf(shell.recorder.addedActivities.get(2));
+        assertTrue(states.toString(), containsFragment(states, "Suche 1 / 1: „Kündigungsfrist“"));
+        assertEquals("plan and answer, twice", 4, port.requests().size());
     }
 
     @Test

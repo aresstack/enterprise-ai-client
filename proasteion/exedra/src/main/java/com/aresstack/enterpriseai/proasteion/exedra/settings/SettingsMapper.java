@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.BubbleColorsConfig;
@@ -181,6 +182,12 @@ public final class SettingsMapper {
                 String.valueOf(AgentConfig.DEFAULT_RESEARCH_MAX_PAGES))));
         b.chatToolsMaxRounds(text(p, AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY,
                 String.valueOf(ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS)));
+        b.turnAnalysisLog(bool(p, ChatConfig.TURN_ANALYSIS_LOG_KEY, false));
+        b.answerPlanningEnabled(bool(p, ChatConfig.ANSWER_PLANNING_ENABLED_KEY, true));
+        b.answerPlanningUseAtPercent(text(p, ChatConfig.ANSWER_PLANNING_USE_AT_KEY,
+                String.valueOf(AnswerPlanningPolicy.DEFAULT_USE_AT_PERCENT)));
+        b.answerPlanningAskBelowPercent(text(p, ChatConfig.ANSWER_PLANNING_ASK_BELOW_KEY,
+                String.valueOf(AnswerPlanningPolicy.DEFAULT_ASK_BELOW_PERCENT)));
         b.contextMaxSources(text(p, AppConfigLoader.CONTEXT_MAX_SOURCES_KEY,
                 String.valueOf(ContextSettings.DEFAULT_MAX_SOURCES)));
         b.retrievalMaxResults(text(p, AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY,
@@ -312,6 +319,13 @@ public final class SettingsMapper {
         // Werkzeugrunden und RAG-Limits des normalen Chats: der Wert bleibt in der Datei, wie er gespeichert wurde
         // (die Vorlage nennt retrieval.maxResults und context.* ausdrücklich); leer heißt Standard.
         put(set, AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY, form.chatToolsMaxRounds());
+        // Off is the default and stays out of the file.
+        put(set, ChatConfig.TURN_ANALYSIS_LOG_KEY, form.turnAnalysisLog() ? "true" : "");
+        put(set, ChatConfig.ANSWER_PLANNING_ENABLED_KEY, form.answerPlanningEnabled() ? "" : "false");
+        putUnlessDefault(set, ChatConfig.ANSWER_PLANNING_USE_AT_KEY, form.answerPlanningUseAtPercent(),
+                AnswerPlanningPolicy.DEFAULT_USE_AT_PERCENT);
+        putUnlessDefault(set, ChatConfig.ANSWER_PLANNING_ASK_BELOW_KEY, form.answerPlanningAskBelowPercent(),
+                AnswerPlanningPolicy.DEFAULT_ASK_BELOW_PERCENT);
         put(set, AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY, form.retrievalMaxResults());
         put(set, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY, form.contextMaxTokens());
         put(set, AppConfigLoader.CONTEXT_MAX_SOURCES_KEY, form.contextMaxSources());
@@ -469,6 +483,10 @@ public final class SettingsMapper {
                 return "Recherche-Budget (Seiten)";
             case AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY:
                 return "Max. Werkzeugrunden";
+            case ChatConfig.ANSWER_PLANNING_USE_AT_KEY:
+                return "Planen der Antwort: verwenden ab (%)";
+            case ChatConfig.ANSWER_PLANNING_ASK_BELOW_KEY:
+                return "Planen der Antwort: nachfragen unter (%)";
             case AppConfigLoader.CHAT_CONNECT_TIMEOUT_KEY:
                 return "Chat: Verbindungs-Timeout (ms)";
             case AppConfigLoader.CHAT_READ_TIMEOUT_KEY:

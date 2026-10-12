@@ -14,8 +14,18 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
 import org.junit.Before;
+import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.Diagnostic;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.LinguisticAnalyzer;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.LinguisticFrame;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.SentenceType;
+import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.TurnAnalysisObserver;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlan;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -699,18 +709,18 @@ public class RagChatUseCaseTest {
 
     /**
      * Real case: an internal acronym asked mid-conversation was declined by the triage because the model knew a public
-     * meaning. The routing asks whether a term may have an internal meaning, in the order help, internal terms, explicit
-     * lookups, else nothing; triage and the check of earlier context use the same rules.
+     * meaning. The principles ask whether a term is resolved in the context, not whether some meaning is known; triage
+     * and the check of earlier context share them, and the client analysis is only a hint.
      */
     @Test
-    public void routingAsksForAPossibleInternalMeaningNotForKnownTerms() {
+    public void principlesAskWhetherATermIsResolvedNotWhetherItIsKnown() {
         String routing = RetrievalTriage.ROUTING;
-        int help = routing.indexOf("Programmhilfe");
-        int internal = routing.indexOf("Könnte er hier eine interne Bedeutung haben?");
-        int explicit = routing.indexOf("ausdrücklich darum, etwas nachzuschlagen");
-        int otherwise = routing.indexOf("4. Sonst search = false");
-        assertTrue(routing, help >= 0 && help < internal && internal < explicit && explicit < otherwise);
-        assertTrue(routing, routing.contains("auch wenn du eine öffentliche Bedeutung kennst"));
+        assertTrue(routing, routing.contains("nicht, ob du irgendeine Bedeutung kennst, sondern ob der Begriff hier "
+                + "eindeutig aufgelöst ist"));
+        assertTrue(routing, routing.contains("<client-turn-analysis>"));
+        assertTrue(routing, routing.contains("als Hinweis zur Form der Nachricht, nicht als Wahrheit"));
+        assertTrue(routing, routing.indexOf("Anwendungshilfe") < routing.indexOf("Organisationswissen"));
+        assertTrue(routing, routing.contains("Ausdrücklicher Suchauftrag (search = true)"));
         assertTrue(RetrievalTriage.INSTRUCTION.contains(routing));
         assertTrue(FollowUpResearch.PRIOR_INSTRUCTION.contains(routing));
     }
@@ -745,6 +755,304 @@ public class RagChatUseCaseTest {
         assertTrue(note, note.contains("wähle sie nicht stillschweigend"));
         String found = RagChatUseCase.searchNote(Collections.singletonList("QZX"), true);
         assertTrue(found, found.contains("hat sie Vorrang vor einer öffentlichen Bedeutung"));
+    }
+
+    /**
+     * The analysis reaches triage and answer as a transient block of this turn; the stored message stays the user's
+     * text, and the observer sees the same block.
+     */
+    @Test
+    public void analysisBlockReachesTriageAndAnswerButNotTheHistory() throws Exception {
+        RecordingAnalyzer analyzer = new RecordingAnalyzer();
+        final List<String> observed = new ArrayList<String>();
+        RagChatUseCase analyzed = withAnalyzer(analyzer, new TurnAnalysisObserver() {
+            @Override
+            public void analyzed(String userText, MessageOrigin origin, LinguisticFrame frame, String block) {
+                observed.add(block);
+            }
+        });
+        ChatConversationId id = chat.openConversation("System");
+        chatPort.enqueueAnswer("{\"search\": false}");
+        chatPort.enqueueAnswer("Meinst du „Erklär mir“?");
+
+        awaitDone(analyzed.send(id, "Aklima bitte erstmal das Programm", RagOptions.enabled(), null, listener(), null,
+                null, RetrievalProgress.none(), MessageOrigin.SPEECH_TRANSCRIPT));
+
+        assertEquals(Collections.singletonList("analyze"), analyzer.calls);
+        assertEquals(1, observed.size());
+        String block = observed.get(0);
+        assertTrue(block, block.startsWith("<client-turn-analysis>") && block.endsWith("</client-turn-analysis>"));
+        assertTrue(block, block.contains("suspected-tokens: Aklima"));
+        String triage = chatPort.requests().get(0).messages().get(1).content();
+        assertTrue(triage, triage.contains(block + "\n\nAktuelle Nachricht: Aklima bitte erstmal das Programm"));
+        assertEquals(ChatMessage.system("System\n\n" + block), chatPort.lastRequest().messages().get(0));
+        assertEquals(ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
+    }
+
+    /** Without RAG the turn may start on the UI thread: the analysis then loads no models. */
+    @Test
+    public void withoutRagTheAnalysisLoadsNoModels() throws Exception {
+        RecordingAnalyzer analyzer = new RecordingAnalyzer();
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("Hallo!");
+
+        awaitDone(withAnalyzer(analyzer, null).send(id, "Hallo", RagOptions.disabled(), null, listener(), null, null,
+                RetrievalProgress.none(), MessageOrigin.TYPED));
+
+        assertEquals(Collections.singletonList("withoutModels"), analyzer.calls);
+        assertTrue(chatPort.lastRequest().messages().get(0).content().contains("source: TEXT"));
+    }
+
+    /**
+     * The answer planning step runs before every answer, even without sources: it sees source and analysis, and the
+     * answering call sees original and interpretation side by side. Only the original message is stored.
+     */
+    @Test
+    public void planningReadsTheTurnAndTheAnswerSeesOriginalAndInterpretation() throws Exception {
+        RecordingAnalyzer analyzer = new RecordingAnalyzer();
+        final List<String> planned = new ArrayList<String>();
+        RagChatUseCase reading = withPlanning(analyzer, new TurnAnalysisObserver() {
+            @Override
+            public void analyzed(String userText, MessageOrigin origin, LinguisticFrame frame, String block) {
+            }
+
+            @Override
+            public void planned(String userText, AnswerPlan turn, String block) {
+                planned.add(block);
+            }
+        });
+        ChatConversationId id = chat.openConversation("System");
+        chatPort.enqueueAnswer("{\"interpretedText\": \"Erklär mir bitte erstmal das Programm\", "
+                + "\"intent\": \"REQUEST_EXPLANATION\", \"target\": \"dieses Programm\", "
+                + "\"targetKind\": \"CURRENT_APPLICATION\", \"informationNeed\": \"APPLICATION_HELP\", "
+                + "\"asrErrorLikely\": true, \"corrections\": [{\"original\": \"Aklima\", "
+                + "\"interpretedAs\": \"Erklär mir\", \"reason\": \"no predicate\"}], \"ambiguity\": \"LOW\", "
+                + "\"confidence\": 0.93, \"nextAction\": \"USE_APPLICATION_HELP\", \"knowledgeQuery\": \"\"}");
+        chatPort.enqueueAnswer("Gern, das Programm ...");
+
+        assertTrue(reading.plansAnswers());
+        awaitDone(reading.send(id, "Aklima bitte erstmal das Programm", RagOptions.disabled(), null, listener(), null,
+                null, RetrievalProgress.none(), MessageOrigin.SPEECH_TRANSCRIPT));
+
+        assertEquals("the step may load models: it never runs on the UI thread",
+                Collections.singletonList("analyze"), analyzer.calls);
+        assertEquals(2, chatPort.requests().size());
+        List<ChatMessage> step = chatPort.requests().get(0).messages();
+        assertTrue(step.get(0).content(), step.get(0).content().startsWith("Du planst die Antwort"));
+        assertTrue(step.get(1).content(), step.get(1).content().contains("SPEECH (Diktat)"));
+        assertTrue(step.get(1).content(), step.get(1).content().contains("suspected-tokens: Aklima"));
+        String answer = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(answer, answer.contains("original-user-message: Aklima bitte erstmal das Programm"));
+        assertTrue(answer, answer.contains("likely-intended-meaning: Erklär mir bitte erstmal das Programm"));
+        assertTrue(answer, answer.contains("correction: \"Aklima\" -> \"Erklär mir\""));
+        assertTrue(answer, answer.contains("information-need: APPLICATION_HELP"));
+        assertTrue(answer, answer.contains("planned-next-action: USE_APPLICATION_HELP"));
+        assertTrue(answer, answer.contains("sag kurz, wie du die Nachricht verstanden hast"));
+        assertFalse("the answer reads the interpretation, not the raw analysis", answer.contains("<client-turn-analysis>"));
+        assertEquals(Collections.singletonList(answer.substring(answer.indexOf("<client-answer-plan>"))),
+                planned);
+        assertEquals(ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
+        assertEquals(2, chat.conversation(id).messages().size());
+    }
+
+    /** With sources checked the reading replaces the triage: one aside request, then the search with its query. */
+    @Test
+    public void withSourcesTheReadingReplacesTheTriage() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"interpretedText\": \"" + QUESTION + "\", \"intent\": \"QUESTION\", "
+                + "\"informationNeed\": \"INTERNAL_KNOWLEDGE\", \"confidence\": 0.9, "
+                + "\"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\", \"knowledgeQuery\": \"" + QUESTION + "\"}");
+        chatPort.enqueueAnswer("Mit apt.");
+
+        RagChatTurn turn = withPlanning(null, null).send(id, "wie installier ich jawa unter linux",
+                RagOptions.enabled(), null, listener(), null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertEquals(2, chatPort.requests().size());
+        assertEquals(Collections.singletonList(QUESTION), turn.queries());
+        assertFalse(turn.sources().isEmpty());
+    }
+
+    /** A statement about an unknown term needs no information: no search, the answer reacts directly. */
+    @Test
+    public void aStatementIsNotResearched() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"intent\": \"ASSERTION\", \"target\": \"QZX\", \"targetKind\": \"ACRONYM\", "
+                + "\"informationNeed\": \"NONE\", \"organizationSpecificMeaningPossible\": true, "
+                + "\"ambiguity\": \"HIGH\", \"confidence\": 0.95, \"nextAction\": \"ANSWER_DIRECTLY\", "
+                + "\"knowledgeQuery\": \"\"}");
+        chatPort.enqueueAnswer("Schön, dass es dir gefällt.");
+
+        RagChatTurn turn = withPlanning(null, null).send(id, "QZX ist ein super Tool.", RagOptions.enabled(),
+                null, listener(), null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertFalse(turn.retrievalRequested());
+        assertEquals(2, chatPort.requests().size());
+        String answer = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(answer, answer.contains("information-need: NO_INFORMATION_NEEDED"));
+        assertTrue(answer, answer.contains("organization-specific-meaning-possible: yes"));
+    }
+
+    /** Below the ask threshold the answer asks back instead of searching with an unsure reading. */
+    @Test
+    public void anUnsureReadingAsksBackInsteadOfSearching() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"intent\": \"QUESTION\", \"informationNeed\": \"TERM_RESOLUTION\", "
+                + "\"confidence\": 0.4, \"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\", "
+                + "\"knowledgeQuery\": \"" + QUESTION + "\"}");
+        chatPort.enqueueAnswer("Was meinst du genau?");
+
+        RagChatTurn turn = withPlanning(null, null).send(id, "jawa dings", RagOptions.enabled(), null,
+                listener(), null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertFalse(turn.retrievalRequested());
+        String answer = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(answer, answer.contains("Frag kurz und konkret nach"));
+    }
+
+    /** Without a planned query the search uses the interpreted message. */
+    @Test
+    public void aPlannedSearchWithoutQueryUsesTheInterpretedMessage() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"interpretedText\": \"" + QUESTION + "\", \"intent\": \"QUESTION\", "
+                + "\"informationNeed\": \"INTERNAL_KNOWLEDGE\", \"confidence\": 0.7, "
+                + "\"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\"}");
+        chatPort.enqueueAnswer("Mit apt.");
+
+        RagChatTurn turn = withPlanning(null, null).send(id, "wie installier ich jawa unter linux",
+                RagOptions.enabled(), null, listener(), null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertEquals(Collections.singletonList(QUESTION), turn.queries());
+    }
+
+    /**
+     * When plausible readings lead to substantially different actions the plan asks back: the question is the answer,
+     * the main agent never starts, nothing is searched, and the question stays in the history.
+     */
+    @Test
+    public void aClarifyingPlanAnswersWithTheQuestionWithoutTheMainAgent() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"intent\": \"TASK\", \"target\": \"es\", "
+                + "\"targetKind\": \"CONVERSATION_REFERENCE\", \"informationNeed\": \"UNKNOWN\", "
+                + "\"ambiguity\": \"HIGH\", \"confidence\": 0.5, \"nextAction\": \"ASK_CLARIFICATION\", "
+                + "\"clarificationQuestion\": \"Was soll ich löschen: den Entwurf oder den ganzen Chat?\"}");
+        final List<String> steps = new ArrayList<String>();
+        RetrievalProgress progress = new RetrievalProgress() {
+            @Override
+            public void planningStarted() {
+                steps.add("planning");
+            }
+
+            @Override
+            public void planningFinished(NextAction next) {
+                steps.add(next.name());
+            }
+
+            @Override
+            public void searchStarted(String query, int number, int max) {
+                steps.add("search");
+            }
+        };
+
+        RagChatTurn turn = withPlanning(null, null).send(id, "lösch es", RagOptions.enabled(), null, listener(),
+                null, null, progress, MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertEquals("only the planning request reached the model", 1, chatPort.requests().size());
+        assertFalse(turn.retrievalRequested());
+        assertEquals(Arrays.asList("planning", "ASK_CLARIFICATION"), steps);
+        List<ChatMessage> history = chat.conversation(id).messages();
+        assertEquals(ChatMessage.user("lösch es"), history.get(0));
+        assertEquals(ChatMessage.assistant("Was soll ich löschen: den Entwurf oder den ganzen Chat?"),
+                history.get(1));
+    }
+
+    /** An unknown term is no reason to ask back: the plan searches, and the progress reports the planning first. */
+    @Test
+    public void planningIsTheFirstStepOfEveryTurn() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"intent\": \"REQUEST_DEFINITION\", \"target\": \"QZX\", "
+                + "\"targetKind\": \"ACRONYM\", \"informationNeed\": \"TERM_RESOLUTION\", "
+                + "\"organizationSpecificMeaningPossible\": true, \"confidence\": 0.8, "
+                + "\"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\", \"knowledgeQuery\": \"QZX\"}");
+        chatPort.enqueueAnswer("QZX ist ...");
+        final List<String> steps = new ArrayList<String>();
+        RetrievalProgress progress = new RetrievalProgress() {
+            @Override
+            public void planningStarted() {
+                steps.add("planning");
+            }
+
+            @Override
+            public void planningFinished(NextAction next) {
+                steps.add(next.name());
+            }
+
+            @Override
+            public void triageStarted() {
+                steps.add("triage");
+            }
+
+            @Override
+            public void searchStarted(String query, int number, int max) {
+                steps.add("search " + query);
+            }
+        };
+
+        awaitDone(withPlanning(null, null).send(id, "Was ist QZX?", RagOptions.enabled(), null, listener(), null,
+                null, progress, MessageOrigin.TYPED));
+
+        assertEquals(Arrays.asList("planning", "SEARCH_INTERNAL_KNOWLEDGE", "search QZX"), steps);
+    }
+
+    /** An unreadable reading changes nothing: the triage decides as before, and the answer gets no understanding. */
+    @Test
+    public void anUnreadableReadingFallsBackToTheTriage() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("Das kann ich nicht sagen.");
+        chatPort.enqueueAnswer("{\"search\": false}");
+        chatPort.enqueueAnswer("Hallo!");
+
+        RagChatTurn turn = withPlanning(null, null).send(id, "Hallo", RagOptions.enabled(), null, listener(),
+                null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertEquals(3, chatPort.requests().size());
+        assertFalse(turn.retrievalRequested());
+        assertFalse(chatPort.lastRequest().messages().get(0).content().contains("<client-answer-plan>"));
+    }
+
+    private RagChatUseCase withPlanning(LinguisticAnalyzer analyzer, TurnAnalysisObserver observer) {
+        return new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D, null),
+                new PromptContextAssembler(ContextSettings.defaults()), null, FollowUpResearch.off(), null,
+                RetrievalTriage.byModel(), analyzer, observer, () -> AnswerPlanningPolicy.defaults());
+    }
+
+    private RagChatUseCase withAnalyzer(LinguisticAnalyzer analyzer, TurnAnalysisObserver observer) {
+        return new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D, null),
+                new PromptContextAssembler(ContextSettings.defaults()), null, FollowUpResearch.off(), null,
+                RetrievalTriage.byModel(), analyzer, observer);
+    }
+
+    /** Describes every message as a dictation with a suspected first word and records which method ran. */
+    private static final class RecordingAnalyzer implements LinguisticAnalyzer {
+        final List<String> calls = new ArrayList<String>();
+
+        @Override
+        public LinguisticFrame analyze(String text, MessageOrigin origin) {
+            calls.add("analyze");
+            return LinguisticFrame.builder(origin).language("de").sentenceType(SentenceType.REQUEST)
+                    .suspectedToken(text.split(" ")[0]).diagnostic(Diagnostic.POSSIBLE_ASR_ERROR).build();
+        }
+
+        @Override
+        public LinguisticFrame analyzeWithoutModels(String text, MessageOrigin origin) {
+            calls.add("withoutModels");
+            return LinguisticFrame.builder(origin).build();
+        }
     }
 
     private RagChatUseCase withTriage(FollowUpResearch followUps) {

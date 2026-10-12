@@ -1,7 +1,7 @@
 ---
 id: settings.tools
 title: Einstellungen – Reiter „Tools“
-keywords: Tools, Werkzeuge, Tool, Werkzeug abschalten, Werkzeug deaktivieren, aktiv, Häkchen, Registry, Werkzeugrunden, Tool-Calling, Function Calling, Pflichtwerkzeug, Chat, Agent, Recherche-Agent, Herkunft, Verfügbarkeit, tools.disabled, chat.tools.maxRounds, knowledge_search
+keywords: Tools, Werkzeuge, Tool, Werkzeug abschalten, Werkzeug deaktivieren, aktiv, Häkchen, Registry, Werkzeugrunden, Tool-Calling, Function Calling, Pflichtwerkzeug, Chat, Agent, Recherche-Agent, Herkunft, Verfügbarkeit, tools.disabled, chat.tools.maxRounds, knowledge_search, Diagnose, Werkzeugwahl protokollieren, chat.diagnostics.turnAnalysis, Planen der Antwort, Antwortplan, chat.answerPlanning.enabled, Nachfragen
 ---
 
 # Einstellungen – Reiter „Tools“
@@ -19,6 +19,18 @@ Der Reiter hat zwei Bereiche: oben „Werkzeugrunden im Chat“, darunter „Too
 - **Wirkung:** Verlangt das Modell nach der letzten erlaubten Runde noch ein Werkzeug, antwortet es in einer letzten Runde ohne Werkzeuge aus den bisherigen Ergebnissen. Du bekommst also immer eine Antwort, auch wenn das Limit erreicht ist.
 
 Der Wert wird in `chat.tools.maxRounds` gespeichert und steht auch dann in der Datei, wenn er dem Standard entspricht.
+
+Darunter steht das Häkchen „Werkzeugwahl protokollieren (Diagnose)“ (`chat.diagnostics.turnAnalysis`, Standard aus). Eingeschaltet schreibt das Programm je Chat-Nachricht den Nutzertext, die Herkunft (Text oder Diktat), die automatische Sprachanalyse, den Antwortplan, den an das Modell gesandten Hinweis und die folgenden Werkzeugaufrufe ins Protokoll. Das hilft zu verstehen, warum der Chat gesucht oder nicht gesucht hat. Weil der Nutzertext im Protokoll landet, schalte es nur zur Fehlersuche ein. Die Änderung gilt ab der nächsten Nachricht.
+
+## Bereich „Planen der Antwort“
+
+Das Häkchen „Antwort vor jeder Nachricht planen“ (`chat.answerPlanning.enabled`, Standard an) lässt den Client vor jeder Chat-Antwort das Modell in einem eigenen Aufruf fragen, was du wahrscheinlich sagen und erreichen wolltest (Erkennungsfehler eines Diktats, Bezüge auf den Verlauf, Absicht, Informationsbedarf) und was der nächste Schritt ist: direkt antworten, die Programmhilfe nutzen, internes oder externes Wissen durchsuchen oder nachfragen. Im Chat erscheint dafür zuerst „Planen der Antwort …“. Führen verschiedene plausible Lesarten zu wesentlich unterschiedlichen Antworten, ist die Rückfrage selbst die Antwort; ein unbekannter Begriff allein ist kein Grund zur Rückfrage, sondern zur Suche. Sonst sieht die Antwort deine Nachricht und den Plan nebeneinander. Der Schritt kostet einen zusätzlichen Modellaufruf je Nachricht.
+
+- „Interpretation verwenden ab (%)“ (`chat.answerPlanning.useAtPercent`, Standard 85): ab dieser Sicherheit arbeitet die Antwort mit der Lesart und sagt bei einer korrigierten Nachricht kurz, wie sie sie verstanden hat.
+- Zwischen beiden Werten gilt die Lesart nur als Hinweis; die Antwort führt auf ihrer Grundlage nichts Riskantes aus.
+- „Nachfragen unter (%)“ (`chat.answerPlanning.askBelowPercent`, Standard 60): darunter fragt die Antwort nach, und es wird nicht gesucht.
+
+Die Werte gelten ab der nächsten Nachricht, ohne Neustart. Standardwerte schreibt der Dialog nicht in die Datei.
 
 ## Bereich „Tools“: die Werkzeugliste
 

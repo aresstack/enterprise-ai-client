@@ -18,9 +18,8 @@ import java.util.List;
 final class ChatResearchCard {
 
     static final String KIND = "research";
-    static final String TITLE = "Recherche in den Wissensquellen";
+    static final String TITLE = "Internes Wissen durchsuchen";
     static final String STARTING = "Suche startet …";
-    static final String TRIAGE = "Prüfe, ob eine Suche nötig ist …";
     static final String SKIPPED = "keine Suche nötig";
     static final String SEARCHING = "Suche läuft …";
     static final String LIVE_SEARCH = "Live-Suche in den Quellen …";
@@ -46,6 +45,7 @@ final class ChatResearchCard {
     private boolean failed;
     private boolean skipped;
     private boolean open;
+    private boolean opened;
 
     ChatResearchCard(ChatShellModel model, String key) {
         this.model = model;
@@ -60,8 +60,12 @@ final class ChatResearchCard {
         return open;
     }
 
-    /** Die Karte erscheint (direkt nach dem Senden, vor dem ersten Suchschritt). */
+    /** Show the card with the first research step of the turn; once only, a finished card stays finished. */
     void open() {
+        if (opened) {
+            return;
+        }
+        opened = true;
         open = true;
         model.startActivity(key, TITLE, KIND, body());
     }

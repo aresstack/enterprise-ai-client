@@ -26,35 +26,35 @@ import java.util.regex.Pattern;
 public final class RetrievalTriage {
 
     /**
-     * The routing rules shared by the triage and the check of earlier context, in this order: operating the application
-     * (built-in help), possibly organization-specific terms (search), explicit lookups (search), else no search. The
-     * question is whether a term may have an internal meaning here, not whether the model knows a public one.
+     * The principles shared by the triage and the check of earlier context: the information need decides, not whether a
+     * word is unknown or known. A term the user asks about is looked up when it is not resolved in the context and may
+     * be organization-specific, even if a public meaning is known; the client's analysis block is a hint only.
      */
-    static final String ROUTING = "Entscheide in dieser Reihenfolge:\n"
-            + "1. Geht es um die Bedienung, Funktionen, Einstellungen, Einrichtung oder Fehlermeldungen dieses Programms "
-            + "oder um einen Überblick über das Programm? Dann search = false; dafür gibt es die eingebaute "
-            + "Programmhilfe.\n"
-            + "2. Kann ein zentraler Begriff der Nachricht im Arbeitskontext eine organisationsspezifische Bedeutung "
-            + "haben: Abkürzung, Akronym, Kennung oder Aktenzeichen, System-, Projekt-, Produkt-, Prozess- oder "
-            + "Organisationsname, Dokumenttitel, Rolle oder unerklärter Fachbegriff? Dann search = true, auch wenn du "
-            + "eine öffentliche Bedeutung kennst. Die Frage ist nicht „Kenne ich den Begriff?“, sondern „Könnte er hier "
-            + "eine interne Bedeutung haben?“. Das gilt auch mitten im Gespräch und wenn die Frage beiläufig gestellt "
-            + "wird.\n"
-            + "3. Bittet der Nutzer ausdrücklich darum, etwas nachzuschlagen, zu finden, zu prüfen oder zu recherchieren? "
-            + "Dann search = true.\n"
-            + "4. Sonst search = false: Gruß, Small Talk, Dank, Zustimmung, Abschied; Fragen nach dir selbst, deinen "
-            + "Fähigkeiten oder Werkzeugen; Korrekturen, Beschwerden, Beschimpfungen und Äußerungen über das Gespräch "
-            + "selbst; Rückfragen, die der bisherige Verlauf beantwortet; eindeutig allgemeines Wissen ohne mögliche "
-            + "interne Bedeutung; Aufgaben ohne Wissen aus den Quellen (formulieren, übersetzen, rechnen).\n"
-            + "Ein Wort, das mit einem ähnlich klingenden gebräuchlichen Wort einen deutlich plausibleren Satz ergibt, "
-            + "ist eher ein Tipp- oder Erkennungsfehler: nimm diese Lesart und suche nicht nach dem falschen Wort. Das "
-            + "betrifft keine Abkürzungen und Kennungen, die als solche gemeint sind.";
+    static final String ROUTING = "Nutze den Block <client-turn-analysis>, falls vorhanden, als Hinweis zur Form der "
+            + "Nachricht, nicht als Wahrheit. Entscheide nach der aktuellen Äußerung, dem Verlauf und dem "
+            + "Informationsbedarf:\n"
+            + "- Direkte Antwort (search = false), wenn kein Wissen aus den Quellen gebraucht wird: Gruß, Small Talk, "
+            + "Dank, Zustimmung, Korrektur, Beschwerde; Aussagen und Meinungen, auch mit unbekanntem Begriff; Fragen an "
+            + "dich selbst; Aufgaben wie formulieren oder übersetzen; allgemein eindeutige Begriffe und "
+            + "Allgemeinwissen.\n"
+            + "- Anwendungshilfe (search = false): Fragen zur Bedienung, Oberfläche, zu Einstellungen oder Funktionen "
+            + "dieses Programms; dafür gibt es die eingebaute Programmhilfe.\n"
+            + "- Organisationswissen (search = true): Der Nutzer will etwas über einen Begriff wissen, der im aktuellen "
+            + "Kontext nicht eindeutig aufgelöst ist und organisationsspezifisch sein könnte (Abkürzung, interner "
+            + "System- oder Projektname, Organisationseinheit, Dokumentbezeichnung, interner Prozess, unbekannter "
+            + "Fachbegriff). Entscheidend ist nicht, ob du irgendeine Bedeutung kennst, sondern ob der Begriff hier "
+            + "eindeutig aufgelöst ist.\n"
+            + "- Ausdrücklicher Suchauftrag (search = true): Der Nutzer bittet darum, etwas zu suchen, nachzuschlagen "
+            + "oder zu recherchieren.\n"
+            + "- Spracheingabe: Meldet die Analyse bei einer diktierten Nachricht einen möglichen Erkennungsfehler, "
+            + "prüfe zuerst eine plausible Fehlerkennung und suche nicht nach dem verdächtigen Wort.\n"
+            + "- Bezüge auf den Verlauf (es, das, dort) löse aus dem Verlauf auf.";
 
     static final String INSTRUCTION = "Du entscheidest für einen Wissens-Chat, ob vor der Antwort in den "
             + "Wissensquellen des Nutzers (z. B. Confluence, Wiki, Dokumentablagen) gesucht werden muss. Antworte "
             + "ausschließlich mit einem JSON-Objekt der Form {\"search\": true, \"query\": \"\"}.\n"
             + ROUTING + "\n"
-            + "Bei search = true ist query eine Suchanfrage in wenigen Stichworten: nimm den zentralen Begriff "
+            + "Bei search = true ist query eine Suchanfrage in wenigen Stichworten: nimm den gesuchten Begriff "
             + "unverändert auf, löse Bezüge aus dem Verlauf auf, korrigiere offensichtliche Tipp- und Erkennungsfehler "
             + "und lass Füllwörter weg.";
 
@@ -120,12 +120,18 @@ public final class RetrievalTriage {
      */
     Decision decide(ChatService chat, List<ChatMessage> history, String message, MessageOrigin origin,
                     ChatOptions options) {
+        return decide(chat, history, message, origin, null, options);
+    }
+
+    /** As above, with the client's request analysis as a hint for the model, or {@code null}. */
+    Decision decide(ChatService chat, List<ChatMessage> history, String message, MessageOrigin origin,
+                    String analysis, ChatOptions options) {
         if (!enabled) {
             return Decision.unknown();
         }
         String verdict;
         try {
-            verdict = chat.completeAside(request(history, message, origin), options).content();
+            verdict = chat.completeAside(request(history, message, origin, analysis), options).content();
         } catch (ChatCompletionException e) {
             return Decision.unknown();
         } catch (RuntimeException e) {
@@ -135,9 +141,15 @@ public final class RetrievalTriage {
     }
 
     static List<ChatMessage> request(List<ChatMessage> history, String message, MessageOrigin origin) {
+        return request(history, message, origin, null);
+    }
+
+    static List<ChatMessage> request(List<ChatMessage> history, String message, MessageOrigin origin,
+                                     String analysis) {
         List<ChatMessage> messages = new ArrayList<ChatMessage>(2);
         messages.add(ChatMessage.system(INSTRUCTION));
-        messages.add(ChatMessage.user(FollowUpResearch.conversation(history, message, origin).toString().trim()));
+        messages.add(ChatMessage.user(FollowUpResearch.conversation(history, message, origin, analysis).toString()
+                .trim()));
         return messages;
     }
 

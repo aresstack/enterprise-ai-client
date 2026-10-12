@@ -36,6 +36,7 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RagChatUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagOptions;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagSource;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPath;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalProgress;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
@@ -149,8 +150,11 @@ public final class RagChatBinding implements ChatShellActions {
     static final String READING_ACTIVITY = "Liest Anhang";
     static final String SEARCHING_ACTIVITY = "Durchsucht Anhang";
     static final String READING_PAGE_ACTIVITY = "Liest Seite";
-    static final String SEARCHING_KNOWLEDGE_ACTIVITY = "Durchsucht Wissensquellen";
-    static final String SEARCHING_HELP_ACTIVITY = "Schlägt in der Programmhilfe nach";
+    static final String SEARCHING_KNOWLEDGE_ACTIVITY = "Internes Wissen durchsuchen";
+    static final String SEARCHING_HELP_ACTIVITY = "Anwendungshilfe prüfen";
+    /** The first activity of every planned turn: the model plans the answer. */
+    static final String PLANNING_ACTIVITY = "Planen der Antwort …";
+    static final String PLANNING_KIND = "think";
     static final String READING_HELP_ACTIVITY = "Liest Programmhilfe";
     static final String TOOL_FAILED = "fehlgeschlagen";
     static final String ATTACHMENTS_UNAVAILABLE_NOTICE =
@@ -417,7 +421,8 @@ public final class RagChatBinding implements ChatShellActions {
         if (capabilityQuestion) {
             ragOptions = RagOptions.disabled();
         }
-        if (!ragOptions.isEnabled() && !toolPath) {
+        // The answer planning step is a model request before the answer: such a turn never starts on the UI thread.
+        if (!ragOptions.isEnabled() && !toolPath && !rag.plansAnswers()) {
             startWithoutRetrieval(text, listener, quoteContext, capabilityQuestion
                     ? new FixedAnswerPort(ToolCapabilities.answer(Collections.<ToolDefinition>emptyList(), chatModel))
                     : null, origin);
@@ -427,6 +432,7 @@ public final class RagChatBinding implements ChatShellActions {
         final ChatOptions chatOptions = turnOptions();
         final ToolSupport support = toolPath ? tools : null;
         final ChatConversationId conversation = conversationId;
+        final String answerModel = chatModel;
         final Request request = new Request(answer, listener, toolPath, ++activitySeries);
         listener.request = request;
         // Arbeit des Clients steht in Wolken, nie in der Antwortblase: zuerst das Ablegen neuer Anhänge, dann die
@@ -435,9 +441,13 @@ public final class RagChatBinding implements ChatShellActions {
         if (storingKey != null) {
             model.startActivity(storingKey, STORING_ACTIVITY, "store", joinNames(names));
         }
+        if (rag.plansAnswers()) {
+            request.planningKey = "chat-planning-" + request.series;
+            model.startActivity(request.planningKey, PLANNING_ACTIVITY, PLANNING_KIND, "");
+        }
         if (options.isEnabled()) {
+            // The card appears with the first research step; a turn that does not search shows none.
             request.card = new ChatResearchCard(model, "chat-research-" + request.series);
-            request.card.open();
         }
         retrieving = request;
         try {
@@ -447,7 +457,10 @@ public final class RagChatBinding implements ChatShellActions {
                     final RagChatTurn turn;
                     try {
                         String extraContext = quoteContext;
-                        ChatCompletionPort via = null;
+                        ChatCompletionPort via = capabilityQuestion && support == null
+                                ? new FixedAnswerPort(ToolCapabilities.answer(
+                                        Collections.<ToolDefinition>emptyList(), answerModel))
+                                : null;
                         if (support != null) {
                             final List<Attachment> stored = new ArrayList<Attachment>(newFiles.size());
                             for (Path file : newFiles) {
@@ -630,6 +643,7 @@ public final class RagChatBinding implements ChatShellActions {
 
     /** Die Anfrage kam nie zu einem Turn (UI-Thread): Suche beenden, Antwort als gescheitert schließen. */
     private void reject(Request request, String reason) {
+        endPlanning(request);
         if (retrieving == request) {
             retrieving = null;
         }
@@ -657,6 +671,9 @@ public final class RagChatBinding implements ChatShellActions {
 
             @Override
             public void onToolCall(final String toolName, String arguments) {
+                if (support.diagnostics() != null) {
+                    support.diagnostics().onToolCall(toolName, arguments);
+                }
                 final String key = "chat-tool-" + request.series + "-" + calls.incrementAndGet();
                 runningKey = key;
                 final String title = toolTitle(toolName);
@@ -667,6 +684,9 @@ public final class RagChatBinding implements ChatShellActions {
 
             @Override
             public void onToolResult(String toolName, final boolean succeeded) {
+                if (support.diagnostics() != null) {
+                    support.diagnostics().onToolResult(toolName, succeeded);
+                }
                 if (KnowledgeAcquisition.deliversContext(toolName)) {
                     (succeeded ? request.toolReads : request.toolReadFails).incrementAndGet();
                 }
@@ -865,13 +885,18 @@ public final class RagChatBinding implements ChatShellActions {
             }
 
             @Override
-            public void triageStarted() {
-                card(card -> card.step(ChatResearchCard.TRIAGE));
+            public void planningFinished(NextAction next) {
+                listener.onUi(() -> endPlanning(request));
             }
 
             @Override
             public void searchSkipped() {
-                card(ChatResearchCard::skipped);
+                listener.onUi(() -> {
+                    ChatResearchCard card = request.card;
+                    if (card != null && card.isOpen() && !request.cancelRequested) {
+                        card.skipped();
+                    }
+                });
             }
 
             @Override
@@ -897,7 +922,12 @@ public final class RagChatBinding implements ChatShellActions {
             private void card(final Consumer<ChatResearchCard> update) {
                 listener.onUi(() -> {
                     ChatResearchCard card = request.card;
-                    if (card != null && card.isOpen() && !request.cancelRequested) {
+                    if (card == null || request.cancelRequested) {
+                        return;
+                    }
+                    endPlanning(request);
+                    card.open();
+                    if (card.isOpen()) {
                         update.accept(card);
                     }
                 });
@@ -905,8 +935,21 @@ public final class RagChatBinding implements ChatShellActions {
         };
     }
 
+    /** The planning bubble of {@code request} settles and disappears (UI thread); harmless when it already did. */
+    private void endPlanning(Request request) {
+        String key = request.planningKey;
+        if (key == null) {
+            return;
+        }
+        request.planningKey = null;
+        if (model.isActivityRunning(key)) {
+            model.finishActivity(key, true, "");
+        }
+    }
+
     /** Der RAG-Turn steht (UI-Thread): Quellen und Hinweise anbringen, Abbruchwunsch einlösen. */
     private void attach(Request request, RagChatTurn ragTurn, ChatConversationId conversation) {
+        endPlanning(request);
         ChatTurn turn = ragTurn.turn();
         if (history != null && !ragTurn.queries().isEmpty()) {
             // Diagnose (Chat-Export): Vorabsuche und Nachsuchen des Clients stehen vor den Werkzeugaufrufen des Modells.
@@ -1042,6 +1085,8 @@ public final class RagChatBinding implements ChatShellActions {
         final int series;
         /** Die Recherchekarte, wenn die Anfrage sucht (nur UI-Thread). */
         ChatResearchCard card;
+        /** The running planning bubble, {@code null} once it settled or without planning (UI thread only). */
+        String planningKey;
         boolean cancelRequested;
         /** {@link #cancelRequested}, für den Thread der Suche sichtbar. */
         volatile boolean cancelled;
@@ -1069,6 +1114,9 @@ public final class RagChatBinding implements ChatShellActions {
             onUi(new Runnable() {
                 @Override
                 public void run() {
+                    if (request != null) {
+                        endPlanning(request);
+                    }
                     if (request != null && request.card != null && !request.cancelRequested) {
                         request.card.finish(); // die Antwort beginnt: die Recherche ist vorbei
                     }
@@ -1115,6 +1163,9 @@ public final class RagChatBinding implements ChatShellActions {
                 public void run() {
                     closed = true;
                     runningTurn = null;
+                    if (request != null) {
+                        endPlanning(request);
+                    }
                     if (request != null && request.card != null && !request.cancelRequested) {
                         // Endet der Turn vor seinem ersten Antworttext (Fehler, leere Antwort), platzt die Karte jetzt;
                         // eine ausgefallene Suche bleibt dann als Fehler stehen.

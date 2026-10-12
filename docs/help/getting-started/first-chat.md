@@ -1,7 +1,7 @@
 ---
 id: getting-started.first-chat
 title: Die erste Frage stellen
-keywords: erster Chat, erste Frage, Frage stellen, Nachricht senden, Senden, Enter, Stop, Eingabefeld, Chat starten, Wissensquellen anhaken, Häkchen, Quelle auswählen, Spaces, RAG, Wissenssuche, Recherche in den Wissensquellen, Recherchekarte, Quellen, Belege, Merlins Tochter, Antwort, Fehlerblase, Neuer Chat, Seitenleiste, Drawer, getting started, first chat
+keywords: erster Chat, erste Frage, Frage stellen, Nachricht senden, Senden, Enter, Stop, Eingabefeld, Chat starten, Wissensquellen anhaken, Häkchen, Quelle auswählen, Spaces, RAG, Wissenssuche, Internes Wissen durchsuchen, Planen der Antwort, Recherchekarte, Quellen, Belege, Merlins Tochter, Antwort, Fehlerblase, Neuer Chat, Seitenleiste, Drawer, getting started, first chat
 ---
 
 # Die erste Frage stellen
@@ -40,7 +40,7 @@ Die Häkchen gelten sofort, ohne Neustart, und der Client merkt sie sich über d
 
 Sobald mindestens eine Quelle angehakt ist, sucht der Client vor der Antwort in deinem Wissen. Ausgenommen sind Small Talk und Fragen an den Assistenten selbst (etwa „Welche Werkzeuge hast du?“); solche Fragen beantwortet der Client aus dem, was ihm tatsächlich zur Verfügung steht.
 
-1. **Recherche:** Unter deiner Frage erscheint sofort eine Karte „Recherche in den Wissensquellen“. Sie zeigt live, was gerade passiert, zum Beispiel „Live-Suche in den Quellen …“, „Volltextsuche …“, „Semantische Suche …“, „Prüfe Evidenz …“, die gestellten Suchanfragen und die Zahl der Treffer.
+1. **Recherche:** Unter deiner Frage erscheint zuerst „Planen der Antwort …“; sieht der Plan eine Suche vor, folgt die Karte „Internes Wissen durchsuchen“. Sie zeigt live, was gerade passiert, zum Beispiel „Live-Suche in den Quellen …“, „Volltextsuche …“, „Semantische Suche …“, „Prüfe Evidenz …“, die gestellten Suchanfragen und die Zahl der Treffer.
 2. **Live-Suche und Index:** Der Client fragt die angehakten Quellen direkt ab, lädt passende Seiten und legt sie sofort im lokalen Index ab. Zusätzlich sucht er im Index im Volltext und nach Bedeutung (über das Embedding-Modell). Die aufwendigere Aufbereitung der Seiten läuft danach im Hintergrund weiter und macht spätere Suchen besser.
 3. **Bewertung:** Das Chat-Modell prüft in einem eigenen kleinen Aufruf, welche Treffer zur Frage passen und ob sie reichen. Reicht es nicht, sucht der Client mit einer genaueren Anfrage weiter, aber nur in begrenztem Umfang.
 4. **Antwort:** Das Modell bekommt die passenden Auszüge nummeriert als Kontext und antwortet. Die Karte verschwindet, sobald die Antwort beginnt.

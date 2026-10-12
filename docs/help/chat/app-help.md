@@ -1,7 +1,7 @@
 ---
 id: chat.app-help
 title: Den Assistenten zum Programm fragen
-keywords: Programmhilfe, Hilfe, eingebaute Hilfe, Produkthilfe, Bedienung, wie geht, wie kann ich, wo finde ich, Einstellung finden, Frage zum Programm, Handbuch, Dokumentation, app_help_search, app_help_read, Schlägt in der Programmhilfe nach, Liest Programmhilfe, offline, help, how to, documentation, manual
+keywords: Programmhilfe, Hilfe, eingebaute Hilfe, Produkthilfe, Bedienung, wie geht, wie kann ich, wo finde ich, Einstellung finden, Frage zum Programm, Handbuch, Dokumentation, app_help_search, app_help_read, Anwendungshilfe prüfen, Liest Programmhilfe, offline, help, how to, documentation, manual
 ---
 
 # Den Assistenten zum Programm fragen
@@ -26,7 +26,7 @@ Typische Fragen, die der Assistent damit beantworten kann:
 2. Nenne, wenn du sie kennst, die Begriffe aus der Oberfläche: den Namen eines Reiters („Sprachausgabe“), die Aufschrift eines Knopfes („Chat exportieren …“) oder den Wortlaut einer Meldung. Das trifft die passenden Kapitel am besten.
 3. Sende die Frage.
 4. Während der Antwort siehst du Wolken wie bei anderen Werkzeugen:
-   - „Schlägt in der Programmhilfe nach“ mit dem Suchbegriff,
+   - „Anwendungshilfe prüfen“ mit dem Suchbegriff,
    - „Liest Programmhilfe“ mit dem gelesenen Kapitel.
 5. Die Antwort beruht auf den gelesenen Kapiteln. Folge den beschriebenen Schritten im Programm.
 
@@ -79,7 +79,7 @@ Ohne Häkchen wird ein Werkzeug weder dem Chat noch einem Agenten angeboten; es 
 
 Die Programmhilfe steht im Chat und im Agent-Modus zur Verfügung. Im Chat bietet der Client Werkzeuge allerdings nicht bei jeder Nachricht an, sondern nur, wenn er die Nachricht über seine Werkzeug-Schleife schickt.
 
-Wann der Chat die Hilfe anbietet: Die beiden Hilfewerkzeuge sind bei jeder Nachricht dabei, die über die Werkzeuge läuft. Das ist der Fall, sobald mindestens eine Wissensquelle angehakt ist, der Chat Dateianhänge oder Seiten aus dem Lesebereich enthält oder in der Konfigurationsdatei `chat.tools.enabled=true` steht. Ist nichts davon gegeben, läuft der Chat ganz ohne Werkzeuge und das Modell kann nicht nachschlagen. Erscheint bei deiner Frage keine Wolke „Schlägt in der Programmhilfe nach“, hake eine Wissensquelle an oder setze `chat.tools.enabled=true` und frag erneut.
+Wann der Chat die Hilfe anbietet: Die beiden Hilfewerkzeuge sind bei jeder Nachricht dabei, die über die Werkzeuge läuft. Das ist der Fall, sobald mindestens eine Wissensquelle angehakt ist, der Chat Dateianhänge oder Seiten aus dem Lesebereich enthält oder in der Konfigurationsdatei `chat.tools.enabled=true` steht. Ist nichts davon gegeben, läuft der Chat ganz ohne Werkzeuge und das Modell kann nicht nachschlagen. Erscheint bei deiner Frage keine Wolke „Anwendungshilfe prüfen“, hake eine Wissensquelle an oder setze `chat.tools.enabled=true` und frag erneut.
 
 Außerdem gilt: Ob und wann das Modell ein Werkzeug aufruft, entscheidet es selbst. Leistungsfähige Modelle tun das zuverlässig, schwächere vergessen es manchmal.
 
@@ -87,7 +87,7 @@ Außerdem gilt: Ob und wann das Modell ein Werkzeug aufruft, entscheidet es selb
 
 ### Der Assistent erfindet Menüs oder Einstellungen
 
-1. Erschien eine Wolke „Schlägt in der Programmhilfe nach“? Wenn nein, hat er nicht nachgeschlagen. Bitte ausdrücklich: „Schau in der Programmhilfe nach: Wie …?“
+1. Erschien eine Wolke „Anwendungshilfe prüfen“? Wenn nein, hat er nicht nachgeschlagen. Bitte ausdrücklich: „Schau in der Programmhilfe nach: Wie …?“
 2. Sind `app_help_search` und `app_help_read` unter Einstellungen → „Tools“ aktiv?
 3. Hast du im Feld „System-Prompt“ (Einstellungen → „KI-Dienst“) einen eigenen Prompt eingetragen? Ein leeres Feld bedeutet den Standard-Prompt mit der Anweisung zur Programmhilfe; ein eigener Prompt ersetzt ihn. Siehe [KI-Dienst einstellen](help:settings.ai-service).
 4. Unterstützt das gewählte Chat-Modell Werkzeugaufrufe? Probiere testweise ein anderes Modell.

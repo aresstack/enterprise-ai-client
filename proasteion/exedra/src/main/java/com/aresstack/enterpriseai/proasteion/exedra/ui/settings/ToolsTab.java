@@ -37,6 +37,23 @@ final class ToolsTab {
     static final String MAX_ROUNDS_HELP = "Werkzeugrunden je Antwort im normalen Chat (chat.tools.maxRounds, 1–32; "
             + "Standard 8). Verlangt das Modell danach noch ein Werkzeug, antwortet es in einer letzten Runde ohne "
             + "Werkzeuge aus den bisherigen Ergebnissen.";
+    static final String TURN_ANALYSIS_LABEL = "Werkzeugwahl protokollieren (Diagnose)";
+    static final String TURN_ANALYSIS_HELP = "Schreibt je Chat-Nachricht Nutzertext, Herkunft (Text oder Diktat), die "
+            + "linguistische Analyse, den Antwortplan, den an das Modell gesandten Hinweis und die "
+            + "folgenden Werkzeugaufrufe ins "
+            + "Protokoll (chat.diagnostics.turnAnalysis). Enthält Nutzertext; nur zur Fehlersuche einschalten.";
+    static final String PLANNING_LABEL = "Antwort vor jeder Nachricht planen";
+    static final String PLANNING_HELP = "Vor jeder Antwort fragt der Client das Modell in einem eigenen Aufruf, "
+            + "was du wahrscheinlich sagen und erreichen wolltest (Diktatfehler, Bezüge, Absicht) und was der nächste "
+            + "Schritt ist: direkt antworten, Programmhilfe, Suche oder Rückfrage. Die Antwort sieht deine Nachricht "
+            + "und diesen Plan nebeneinander (chat.answerPlanning.enabled). Kostet einen zusätzlichen Modellaufruf je "
+            + "Nachricht.";
+    static final String USE_AT_LABEL = "Interpretation verwenden ab (%)";
+    static final String USE_AT_HELP = "Ab dieser Sicherheit arbeitet die Antwort mit der Interpretation "
+            + "(chat.answerPlanning.useAtPercent, 0–100; Standard 85). Darunter gilt sie nur als Hinweis.";
+    static final String ASK_BELOW_LABEL = "Nachfragen unter (%)";
+    static final String ASK_BELOW_HELP = "Unter dieser Sicherheit fragt die Antwort nach, statt eine Lesart als Tatsache "
+            + "anzunehmen, und es wird nicht gesucht (chat.answerPlanning.askBelowPercent, 0–100; Standard 60).";
     static final String REQUIRED_TOOLTIP = "Pflichtwerkzeug: ohne es startet bzw. arbeitet der Agent nicht; "
             + "es lässt sich nicht abschalten";
 
@@ -44,6 +61,10 @@ final class ToolsTab {
     private final ComicPalette palette;
     private final JPanel lines = new JPanel();
     private final JTextField maxRounds;
+    private final JCheckBox turnAnalysisLog;
+    private final JCheckBox planning;
+    private final JTextField useAt;
+    private final JTextField askBelow;
     private final Map<String, JCheckBox> boxes = new LinkedHashMap<String, JCheckBox>();
     /** Der Entwurf: abgeschaltete Werkzeuge, in Reihenfolge. */
     private final Set<String> disabled = new LinkedHashSet<String>();
@@ -62,8 +83,18 @@ final class ToolsTab {
         FormRows loop = new FormRows(palette);
         maxRounds = loop.textField(MAX_ROUNDS_LABEL, MAX_ROUNDS_HELP);
         loop.note(MAX_ROUNDS_HELP);
+        turnAnalysisLog = loop.checkBox(TURN_ANALYSIS_LABEL, TURN_ANALYSIS_HELP);
+        loop.note(TURN_ANALYSIS_HELP);
+        FormRows reading = new FormRows(palette);
+        planning = reading.checkBox(PLANNING_LABEL, PLANNING_HELP);
+        reading.note(PLANNING_HELP);
+        useAt = reading.textField(USE_AT_LABEL, USE_AT_HELP);
+        reading.note(USE_AT_HELP);
+        askBelow = reading.textField(ASK_BELOW_LABEL, ASK_BELOW_HELP);
+        reading.note(ASK_BELOW_HELP);
         panel = FormRows.column(palette,
                 FormRows.plate("Werkzeugrunden im Chat", palette.getAccentOrange(), loop.panel(), palette),
+                FormRows.plate("Planen der Antwort", palette.getAccentOrange(), reading.panel(), palette),
                 FormRows.plate("Tools", palette.getAgentPetrol(), rows.panel(), palette));
     }
 
@@ -145,6 +176,10 @@ final class ToolsTab {
 
     void load(SettingsForm form) {
         maxRounds.setText(form.chatToolsMaxRounds());
+        turnAnalysisLog.setSelected(form.turnAnalysisLog());
+        planning.setSelected(form.answerPlanningEnabled());
+        useAt.setText(form.answerPlanningUseAtPercent());
+        askBelow.setText(form.answerPlanningAskBelowPercent());
         disabled.clear();
         for (String item : form.disabledTools().split(",")) {
             if (!item.trim().isEmpty() && !required.contains(item.trim())) {
@@ -166,6 +201,10 @@ final class ToolsTab {
         }
         b.disabledTools(text.toString());
         b.chatToolsMaxRounds(maxRounds.getText());
+        b.turnAnalysisLog(turnAnalysisLog.isSelected());
+        b.answerPlanningEnabled(planning.isSelected());
+        b.answerPlanningUseAtPercent(useAt.getText());
+        b.answerPlanningAskBelowPercent(askBelow.getText());
     }
 
     // Für Tests.

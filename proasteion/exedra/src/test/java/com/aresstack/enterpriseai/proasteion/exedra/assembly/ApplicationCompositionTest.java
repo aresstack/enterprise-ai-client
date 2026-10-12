@@ -131,6 +131,9 @@ public class ApplicationCompositionTest {
     @Test
     public void chatRoundTripThroughTheShell() throws Exception {
         final CompositionRoot root = compose(false);
+        // First the answer planning step (aside request), then the answer.
+        chatPort.enqueueAnswer("{\"intent\": \"GREETING\", \"informationNeed\": \"NO_INFORMATION_NEEDED\", "
+                + "\"confidence\": 0.99, \"nextAction\": \"ANSWER_DIRECTLY\"}");
         chatPort.enqueueAnswer("Hallo ", "aus dem Fake.");
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
         SwingUtilities.invokeAndWait(new Runnable() {
@@ -145,7 +148,11 @@ public class ApplicationCompositionTest {
         assertFalse(view.get().workspace().chatShell() == null);
         TranscriptEntry answer = awaitAnswer(view.get());
         assertEquals("Hallo aus dem Fake.", answer.getText());
-        assertEquals("Antworte kurz.", chatPort.lastRequest().messages().get(0).content());
+        String greeting = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(greeting, greeting.startsWith("Antworte kurz.\n\n<client-answer-plan>"));
+        assertTrue(greeting, greeting.contains("original-user-message: Hi"));
+        assertTrue(greeting, greeting.contains("intent: GREETING"));
+        assertEquals("Antwortplan und Antwort", 2, chatPort.requests().size());
         assertEquals(1, root.chatService().conversationIds().size());
         assertFalse(answer.hasSources());
 
@@ -166,8 +173,10 @@ public class ApplicationCompositionTest {
     public void ragQuestionCarriesSourcesAndContextAfterIndexing() throws Exception {
         final CompositionRoot root = compose(false);
         indexAll(root);
-        // Erst die Vorprüfung (Nebenanfrage): die Frage braucht Wissen und wird mit sich selbst gesucht.
-        chatPort.enqueueAnswer("{\"search\": true, \"query\": \"Wann verfällt der Resturlaub?\"}");
+        // Erst der Antwortplan (Nebenanfrage): die Frage braucht Wissen der Organisation und plant die Suche.
+        chatPort.enqueueAnswer("{\"intent\": \"QUESTION\", \"informationNeed\": \"INTERNAL_KNOWLEDGE\", "
+                + "\"confidence\": 0.95, \"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\", "
+                + "\"knowledgeQuery\": \"Wann verfällt der Resturlaub?\"}");
         // Ein Bewerter-Aufruf je Kandidatenrunde (Nebenanfrage): der beste Treffer reicht, dann kommt die Antwort.
         chatPort.enqueueAnswer("{\"ranked\": [{\"id\": \"c1\", \"relevant\": true}], \"minimumEvidence\": [\"c1\"], "
                 + "\"sufficient\": true, \"missing\": \"\", \"nextQuery\": \"\"}");
@@ -190,7 +199,7 @@ public class ApplicationCompositionTest {
         assertTrue(system, system.contains("Antworte kurz."));
         assertTrue("Kontextblock im System-Anteil: " + system, system.contains("Resturlaub"));
         assertTrue(system, system.contains("- Wann verfällt der Resturlaub?"));
-        assertEquals("Vorprüfung, Bewertung und Antwort", 3, chatPort.requests().size());
+        assertEquals("Antwortplan, Bewertung und Antwort", 3, chatPort.requests().size());
         assertEquals("die Faktfrage endet nach der ersten ausreichenden Quelle", 1, answer.getSources().size());
     }
 

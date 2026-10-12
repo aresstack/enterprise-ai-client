@@ -62,6 +62,8 @@ import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.proasteion.help.ClasspathHelpDocuments;
 import com.aresstack.enterpriseai.proasteion.help.HelpCatalog;
+import com.aresstack.enterpriseai.astu.acropolis.speech.ModelLinguisticAnalyzer;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.research.concept.ConceptBranchService;
 import com.aresstack.enterpriseai.research.concept.FileConceptStore;
@@ -125,6 +127,7 @@ public final class CompositionRoot {
     private final RetrieveKnowledgeUseCase retrieval;
     private final PromptContextAssembler contextAssembler;
     private final RagChatUseCase ragChat;
+    private final TurnDiagnosticsLog turnDiagnostics;
     private final IndexKnowledgeUseCase indexing;
     private final MediatedKnowledgeDocuments resourceDocuments;
     private final LoadKnowledgeDocumentUseCase documents;
@@ -258,10 +261,13 @@ public final class CompositionRoot {
                 });
         // Der Chat sucht zusätzlich im Rohindex: eine gerade geladene Seite ist mit ihren passendsten Textfenstern
         // Kandidat für die Evidenzbewertung, bevor Passagen und Embeddings fertig sind.
+        this.turnDiagnostics = new TurnDiagnosticsLog(() -> settings.current().chat().logsTurnAnalysis());
         this.ragChat = new RagChatUseCase(chatService, retrieval.withRawDocuments(ports.rawIndex()), contextAssembler,
                 liveSearch,
                 FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS),
-                settings.get(c -> c.knowledge().evidence()), RetrievalTriage.byModel());
+                settings.get(c -> c.knowledge().evidence()), RetrievalTriage.byModel(),
+                new ModelLinguisticAnalyzer(NlpModels.textAnalysis(), passageLanguage), turnDiagnostics,
+                () -> settings.current().chat().answerPlanning());
         this.sourceSelection = new KnowledgeSourceSelection();
         for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
             boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt
@@ -470,6 +476,11 @@ public final class CompositionRoot {
     }
 
     /** Die RAG-Variante des Chats; die Schale hängt die {@code RagChatBinding} (AP22) daran. */
+    /** The diagnostic log of the tool choice; reports tool calls when {@code chat.diagnostics.turnAnalysis} is on. */
+    public ToolActivityListener turnDiagnostics() {
+        return turnDiagnostics;
+    }
+
     public RagChatUseCase ragChat() {
         return ragChat;
     }
