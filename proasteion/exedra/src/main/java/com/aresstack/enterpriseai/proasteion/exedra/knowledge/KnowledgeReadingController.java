@@ -58,7 +58,8 @@ import java.util.logging.Logger;
  * Bildern an ihrer Stelle; die Bilder lädt er über die Quelle, eine Beschreibung erst, wenn die Diashow auf
  * „Beschreibung“ umschaltet ({@link SourceImageAnalysisUseCase#describe}, Modell der Kategorie VISION).</p>
  */
-public final class KnowledgeReadingController implements KnowledgeReaderPanel.Listener, FavoritesPanel.Actions {
+public final class KnowledgeReadingController implements KnowledgeReaderPanel.Listener, FavoritesPanel.Actions,
+        ChatSourceNavigation.Reading {
 
     private static final Logger LOG = Logger.getLogger(KnowledgeReadingController.class.getName());
     /** Kanal der Vorlade-Serie des Drawers. */
@@ -646,6 +647,42 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 workspace.favorites().select(added); // der nächste Favorit landet daneben
             }
         }
+    }
+
+    /**
+     * Save the link as a favorite in the folder the favorites page currently targets; keep it where it is if it
+     * already is one (never toggle it off).
+     *
+     * @return {@code true} if the link was new
+     */
+    public boolean addFavorite(ReaderLink link) {
+        if (favorites == null || link == null || link.isSource()) {
+            return false;
+        }
+        String added = favorites.add(link, workspace.favorites().targetFolderId());
+        publishFavorites();
+        if (added != null) {
+            workspace.favorites().select(added);
+        }
+        return added != null;
+    }
+
+    /**
+     * Save the links into a new favorites folder named {@code folderName} (numbered on collision); keep existing
+     * favorites in their folders.
+     *
+     * @return the outcome, {@code null} without favorites
+     */
+    public FavoritesStore.BulkSave addFavorites(String folderName, List<ReaderLink> links) {
+        if (favorites == null) {
+            return null;
+        }
+        FavoritesStore.BulkSave saved = favorites.addAllToNewFolder(folderName, links);
+        publishFavorites();
+        if (saved.folderId() != null) {
+            workspace.favorites().select(saved.folderId());
+        }
+        return saved;
     }
 
     @Override

@@ -18,6 +18,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -97,6 +98,76 @@ public final class FavoritesStore {
         childrenOf(folderId).add(node);
         save();
         return node.id;
+    }
+
+    /**
+     * Add the link to the end of {@code folderId} ({@code null}, unknown or not a folder = root) unless it already is
+     * a favorite anywhere in the tree. Never remove or move an existing favorite; use this instead of
+     * {@link #toggle(ReaderLink, String)} for every "save" action.
+     *
+     * @return the id of the new favorite, {@code null} if the link already was a favorite (or is {@code null})
+     */
+    public synchronized String add(ReaderLink link, String folderId) {
+        if (link == null || findLink(root, link) != null) {
+            return null;
+        }
+        Node node = Node.favorite(newId(), link);
+        childrenOf(folderId).add(node);
+        save();
+        return node.id;
+    }
+
+    /**
+     * Save all links into a new root folder named {@code baseName}, or {@code baseName (2)}, {@code (3)} ... when a
+     * root folder of that name exists. Count a link that already is a favorite as existing and leave it in its folder;
+     * count a link repeated in {@code links} once. Create no folder when nothing is new.
+     */
+    public synchronized BulkSave addAllToNewFolder(String baseName, List<ReaderLink> links) {
+        if (baseName == null || baseName.trim().isEmpty()) {
+            throw new IllegalArgumentException("baseName must not be blank");
+        }
+        Set<ReaderLink> distinct = new LinkedHashSet<ReaderLink>();
+        if (links != null) {
+            for (ReaderLink link : links) {
+                if (link != null && !link.isSource()) {
+                    distinct.add(link);
+                }
+            }
+        }
+        List<ReaderLink> fresh = new ArrayList<ReaderLink>();
+        int existing = 0;
+        for (ReaderLink link : distinct) {
+            if (findLink(root, link) != null) {
+                existing++;
+            } else {
+                fresh.add(link);
+            }
+        }
+        if (fresh.isEmpty()) {
+            return new BulkSave(null, null, 0, existing);
+        }
+        String name = uniqueRootFolderName(baseName.trim());
+        Node folder = Node.folder(newId(), name);
+        for (ReaderLink link : fresh) {
+            folder.children.add(Node.favorite(newId(), link));
+        }
+        root.add(folder);
+        save();
+        return new BulkSave(folder.id, name, fresh.size(), existing);
+    }
+
+    private String uniqueRootFolderName(String baseName) {
+        Set<String> taken = new HashSet<String>();
+        for (Node node : root) {
+            if (node.isFolder()) {
+                taken.add(node.name);
+            }
+        }
+        String name = baseName;
+        for (int suffix = 2; taken.contains(name); suffix++) {
+            name = baseName + " (" + suffix + ")";
+        }
+        return name;
     }
 
     /** Legt einen Ordner am Ende von {@code parentId} an ({@code null}/unbekannt = Wurzel); {@code null} bei leerem Namen. */
@@ -345,6 +416,40 @@ public final class FavoritesStore {
             }
         }
         return nodes;
+    }
+
+    /** The outcome of {@link #addAllToNewFolder(String, List)}. */
+    public static final class BulkSave {
+        private final String folderId;
+        private final String folderName;
+        private final int added;
+        private final int alreadyPresent;
+
+        BulkSave(String folderId, String folderName, int added, int alreadyPresent) {
+            this.folderId = folderId;
+            this.folderName = folderName;
+            this.added = added;
+            this.alreadyPresent = alreadyPresent;
+        }
+
+        /** Return the id of the new folder, {@code null} if nothing was new. */
+        public String folderId() {
+            return folderId;
+        }
+
+        /** Return the name the new folder got, {@code null} if nothing was new. */
+        public String folderName() {
+            return folderName;
+        }
+
+        public int added() {
+            return added;
+        }
+
+        /** Return how many distinct links already were favorites and stayed where they were. */
+        public int alreadyPresent() {
+            return alreadyPresent;
+        }
     }
 
     /** Ein Knoten im Speicher. */

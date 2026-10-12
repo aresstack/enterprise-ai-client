@@ -32,6 +32,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.FavoritesStore;
+import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ChatSourceNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeReadingController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ReaderChatPages;
@@ -248,6 +249,8 @@ public final class ShellAssembly {
         // Rechtsklick auf einen Reiter: „Zum aktuellen Chat hinzufügen“ legt nur Titel und Bookmark in den Composer.
         workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));
         reading.attach();
+        // Chat sources: a click opens them in the reader, the context menus save them as favorites.
+        chatShell.transcript().setSourceActions(new ChatSourceNavigation(reading, () -> currentChatTitle(history)));
         if (agent != null && root.researchHost() != null) {
             // Research-Workflow: Phase als drittes Dropdown im Composer (nur der Nutzer wechselt sie), Reiter
             // Quellen/Gliederung/Dokument mit je eigener Play-Aktion, über dem Composer nur die gelben Suchvorschläge.
@@ -578,6 +581,21 @@ public final class ShellAssembly {
                 remember.accept(id);
             });
         }
+    }
+
+    /** Return the title of the chat on screen: the one the user chose, else the saved one, else {@code null}. */
+    static String currentChatTitle(ChatHistoryBinding history) {
+        String renamed = history.currentTitle();
+        if (renamed != null && !renamed.trim().isEmpty()) {
+            return renamed;
+        }
+        String id = history.currentChatId();
+        for (ChatRecord record : history.savedChats()) {
+            if (record.getId().equals(id)) {
+                return record.getTitle();
+            }
+        }
+        return null;
     }
 
     /**

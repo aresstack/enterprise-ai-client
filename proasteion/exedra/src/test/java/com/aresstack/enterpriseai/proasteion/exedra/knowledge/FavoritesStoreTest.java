@@ -117,4 +117,15 @@ public class FavoritesStoreTest {
         Files.write(file, "null".getBytes(StandardCharsets.UTF_8));
         assertTrue(store().tree().isEmpty());
     }
+
+    @Test
+    public void addNeverRemovesAnExistingFavorite() throws Exception {
+        FavoritesStore store = store();
+        String folder = store.createFolder("Doku", null);
+        String first = store.add(page("1"), folder);
+        assertNull(store.add(page("1"), null)); // already a favorite: stays in its folder
+        assertTrue(store.contains(page("1")));
+        assertEquals(first, store.tree().get(0).children().get(0).id());
+        assertEquals(1, store.all().size());
+    }
 }

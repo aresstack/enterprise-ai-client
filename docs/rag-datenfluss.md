@@ -175,6 +175,13 @@ sequenceDiagram
   Ränge) einklappbar an der Antwort. Warnungen, keine Treffer oder ein Ausfall der Suche werden eine eigene
   Hinweis-Blase. Stop während der Suche bricht den Turn ab, sobald er existiert; die Frage bleibt in der
   Historie. Suche und Indexierung laufen auf einem Arbeits-Executor, nie auf dem Event-Dispatch-Thread.
+  Ein Klick auf den Titel einer Quelle öffnet sie im Lesebereich (`knowledge.ChatSourceNavigation` →
+  `ReaderLink` aus Quelle, Ressource und Abschnitt → `KnowledgeReadingController.open`), nie im Browser; der
+  angezeigte Ort bleibt die HTTP-Adresse. Rechtsklick auf eine Quelle: Im Lesebereich öffnen, Als Favorit speichern,
+  Bookmark kopieren (`confluence://…` über `KnowledgeBookmarks`), Adresse kopieren. Rechtsklick auf „Quellen (n)“:
+  alle öffnen (angeheftet) oder alle in einen neuen Favoritenordner „Quellen – <Chat-Titel>“ speichern
+  (`FavoritesStore.add`/`addAllToNewFolder`, nie `toggle`; vorhandene Favoriten bleiben in ihrem Ordner). Quellen
+  ohne Resource-ID (ältere Chats) sind nur lesbar und kopierbar.
 
 ## Der Index führt
 

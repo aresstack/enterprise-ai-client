@@ -15,13 +15,14 @@ public final class ReaderLink {
     private final String snippet;
     private final String location;
     private final String startPoint;
+    private final String passageId;
 
     public ReaderLink(String sourceId, String resourceId, String title, String snippet, String location) {
-        this(sourceId, resourceId, title, snippet, location, "");
+        this(sourceId, resourceId, title, snippet, location, "", "");
     }
 
     private ReaderLink(String sourceId, String resourceId, String title, String snippet, String location,
-                       String startPoint) {
+                       String startPoint, String passageId) {
         if (sourceId == null || sourceId.trim().isEmpty()) {
             throw new IllegalArgumentException("sourceId must not be blank");
         }
@@ -32,6 +33,15 @@ public final class ReaderLink {
         this.snippet = snippet == null ? "" : snippet.trim();
         this.location = location == null || location.trim().isEmpty() ? this.resourceId : location.trim();
         this.startPoint = this.resourceId.isEmpty() && startPoint != null ? startPoint.trim() : "";
+        this.passageId = this.resourceId.isEmpty() || passageId == null ? "" : passageId.trim();
+    }
+
+    /**
+     * Carry the passage (chunk) this link points into, e.g. the chunk a chat answer cited. Keep it out of
+     * {@link #key()}: the reader still opens one tab per resource, the passage only says where to look.
+     */
+    public ReaderLink withPassage(String passage) {
+        return new ReaderLink(sourceId, resourceId, title, snippet, location, startPoint, passage);
     }
 
     /** Die Quelle selbst (Übersicht ihrer Ressourcen). */
@@ -44,7 +54,7 @@ public final class ReaderLink {
      * die Ressourcen unter dem Startpunkt {@code startPoint}.
      */
     public static ReaderLink partition(String sourceId, String startPoint, String title) {
-        return new ReaderLink(sourceId, "", title, "", startPoint, startPoint);
+        return new ReaderLink(sourceId, "", title, "", startPoint, startPoint, "");
     }
 
     public String sourceId() {
@@ -59,6 +69,11 @@ public final class ReaderLink {
     /** Startpunkt der Übersicht; leer = der eingestellte Umfang der Quelle. */
     public String startPoint() {
         return startPoint;
+    }
+
+    /** Return the passage (chunk id) inside the resource; empty means the whole resource. */
+    public String passageId() {
+        return passageId;
     }
 
     public boolean isSource() {

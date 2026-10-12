@@ -165,6 +165,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final QuoteOverlayButton quoteOverlay = new QuoteOverlayButton();
     /** Nimmt zitierte Passagen an (der Composer); ohne ihn erscheint kein Overlay. */
     private Consumer<ChatQuote> quoteHandler;
+    private SourceListPanel.Actions sourceActions;
     private long quotedEntryId;
     private QuoteSelection quotedSelection;
     /** Bildlaufstand beim Zeigen des Overlays (nur echtes Rollen blendet es aus, kein Layoutdurchlauf). */
@@ -1077,6 +1078,17 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         }
     }
 
+    /**
+     * Connect every source list (present and future) to the reader and favorites; {@code null} leaves the lists
+     * readable and copyable only.
+     */
+    public void setSourceActions(SourceListPanel.Actions actions) {
+        this.sourceActions = actions;
+        for (BubbleMessageRow row : sourceRows.values()) {
+            ((SourceListPanel) row.getBubble()).setActions(actions);
+        }
+    }
+
     /** Das Overlay „Zitieren“ (für Tests). */
     QuoteOverlayButton quoteOverlay() {
         return quoteOverlay;
@@ -1139,6 +1151,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private void addSourcesRow(TranscriptEntry entry) {
         JComponent answerRow = rows.get(entry.getId()).row;
         SourceListPanel panel = new SourceListPanel(entry.getSources(), comicPalette, bubblePalette);
+        panel.setActions(sourceActions);
         BubbleMessageRow row = new BubbleMessageRow(panel, BubbleSide.LEFT);
         row.setAlignmentX(LEFT_ALIGNMENT);
         int index = messageList.getComponentZOrder(answerRow) + 2; // hinter Blase und Abstand
