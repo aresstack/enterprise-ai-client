@@ -108,6 +108,9 @@ public class SettingsMapperTest {
         expected.setProperty("network.tls.useWindowsCaStores", "true");
         expected.setProperty("agent.enabled", "false");
         expected.setProperty("agent.requestTimeoutSeconds", "30");
+        expected.setProperty("chat.tools.maxRounds", "8");
+        expected.setProperty("context.maxSources", "6");
+        expected.setProperty("context.maxTokens", "1500");
         assertEquals(expected, added);
         AppConfig config = AppConfigLoader.fromProperties(merged);
         assertEquals("test-chat", config.chat().model());
