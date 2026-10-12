@@ -930,26 +930,17 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             chooser.addChoosableFileFilter(filter);
         }
         chooser.setFileFilter(filters.keySet().iterator().next());
+        // Ohne Endung: der gewählte Dateityp bestimmt sie erst beim Speichern.
         chooser.setSelectedFile(new File(ChatExportFileName.of(title, System.currentTimeMillis(),
-                ZoneId.systemDefault(), ChatExportFormat.JSON.extension())));
-        chooser.addPropertyChangeListener(JFileChooser.FILE_FILTER_CHANGED_PROPERTY, event -> {
-            ChatExportFormat chosen = filters.get(chooser.getFileFilter());
-            File selected = chooser.getSelectedFile();
-            if (chosen != null && selected != null && ChatExportFormat.ofFileName(selected.getName()) != null) {
-                chooser.setSelectedFile(new File(selected.getParentFile(),
-                        stripExtension(selected.getName()) + "." + chosen.extension()));
-            }
-        });
+                ZoneId.systemDefault())));
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
             return;
         }
-        File target = chooser.getSelectedFile();
-        ChatExportFormat format = ChatExportFormat.ofFileName(target.getName());
+        ChatExportFormat format = filters.get(chooser.getFileFilter());
         if (format == null) {
-            format = filters.containsKey(chooser.getFileFilter()) ? filters.get(chooser.getFileFilter())
-                    : ChatExportFormat.JSON;
-            target = new File(target.getParentFile(), target.getName() + "." + format.extension());
+            format = ChatExportFormat.JSON;
         }
+        File target = ChatExportFileName.withExtension(chooser.getSelectedFile(), format);
         if (target.exists() && JOptionPane.showConfirmDialog(this, target.getName() + " gibt es schon. Ersetzen?",
                 "Chat exportieren", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
             return;
@@ -958,11 +949,6 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         if (problem != null) {
             JOptionPane.showMessageDialog(this, problem, "Export fehlgeschlagen", JOptionPane.WARNING_MESSAGE);
         }
-    }
-
-    private static String stripExtension(String name) {
-        ChatExportFormat format = ChatExportFormat.ofFileName(name);
-        return format == null ? name : name.substring(0, name.length() - format.extension().length() - 1);
     }
 
     // ------------------------------------------------------------------ Drawer-Verhalten (arch)

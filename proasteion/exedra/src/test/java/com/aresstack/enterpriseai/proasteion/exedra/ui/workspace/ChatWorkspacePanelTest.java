@@ -15,6 +15,7 @@ import com.aresstack.enterpriseai.ui.comic.control.ResearchIconButton;
 import javax.swing.AbstractButton;
 import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
+import java.io.File;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Graphics2D;
@@ -513,9 +514,34 @@ public class ChatWorkspacePanelTest {
     public void exportFileNameFollowsTitleAndTime() {
         long millis = java.time.LocalDateTime.of(2026, 10, 12, 3, 43).atZone(java.time.ZoneId.of("UTC"))
                 .toInstant().toEpochMilli();
-        assertEquals("Was_ist_IAR_2026-10-12_0343.json",
-                ChatExportFileName.of("Was ist IAR?", millis, java.time.ZoneId.of("UTC"), "json"));
-        assertEquals("Chat_2026-10-12_0343.md", ChatExportFileName.of("  ", millis, java.time.ZoneId.of("UTC"), "md"));
+        // vorgeschlagen wird nur der Basisname, ohne Endung
+        assertEquals("Was_ist_IAR_2026-10-12_0343",
+                ChatExportFileName.of("Was ist IAR?", millis, java.time.ZoneId.of("UTC")));
+        assertEquals("Chat_2026-10-12_0343", ChatExportFileName.of("  ", millis, java.time.ZoneId.of("UTC")));
+    }
+
+    @Test
+    public void chosenFileTypeAloneDecidesTheExtension() {
+        File folder = new File("export");
+        File base = new File(folder, "Chat_2026-10-12_1551");
+        assertEquals(new File(folder, "Chat_2026-10-12_1551.docx"),
+                ChatExportFileName.withExtension(base, ChatExportFormat.DOCX));
+        assertEquals(new File(folder, "Chat_2026-10-12_1551.md"),
+                ChatExportFileName.withExtension(base, ChatExportFormat.MARKDOWN));
+        assertEquals(new File(folder, "Chat_2026-10-12_1551.json"),
+                ChatExportFileName.withExtension(base, ChatExportFormat.JSON));
+        // eine andere Export-Endung wird ersetzt, auch in anderer Schreibweise
+        assertEquals(new File(folder, "foo.docx"),
+                ChatExportFileName.withExtension(new File(folder, "foo.json"), ChatExportFormat.DOCX));
+        assertEquals(new File(folder, "foo.json"),
+                ChatExportFileName.withExtension(new File(folder, "foo.DOCX"), ChatExportFormat.JSON));
+        assertEquals(new File(folder, "foo.md"),
+                ChatExportFileName.withExtension(new File(folder, "foo.md"), ChatExportFormat.MARKDOWN));
+        // eine fremde Endung bleibt Teil des Namens, die gewählte kommt dazu
+        assertEquals(new File(folder, "notiz.txt.docx"),
+                ChatExportFileName.withExtension(new File(folder, "notiz.txt"), ChatExportFormat.DOCX));
+        assertEquals(new File(folder, "Bericht v1.2.md"),
+                ChatExportFileName.withExtension(new File(folder, "Bericht v1.2"), ChatExportFormat.MARKDOWN));
     }
 
     private ChatWorkspacePanel chatOnlyWorkspace() {
