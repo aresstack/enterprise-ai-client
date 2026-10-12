@@ -38,8 +38,11 @@ import javax.swing.JProgressBar;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.Timer;
+import javax.swing.text.View;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
@@ -118,7 +121,7 @@ public final class SetupWizardPanel extends JPanel {
     private final boolean[] done = new boolean[STEP_NAMES.length];
     private final String[] errors = new String[STEP_NAMES.length];
     private final ComicSectionPanel errorPlate;
-    private final JTextArea errorText = new JTextArea();
+    private final JTextArea errorText = new WrappedErrorText();
     private final ComposerButton networkButton;
     private final ComposerButton cancelButton;
     private final ComposerButton backButton;
@@ -2296,6 +2299,39 @@ public final class SetupWizardPanel extends JPanel {
             mascots.add(mascot);
             page.add(mascot, BorderLayout.CENTER);
             return page;
+        }
+    }
+
+    /**
+     * Fehlertext, der schon vor seiner ersten Anordnung in der Breite des Assistenten umbricht. Ein umbrechendes
+     * {@link JTextArea} ohne eigene Breite meldet sonst ein Wort je Zeile als Wunschhöhe; die Fehlerplatte nähme
+     * beim ersten Fehler eines Schritts die ganze Seite ein und verdrängte Felder und Merlin.
+     */
+    private final class WrappedErrorText extends JTextArea {
+        @Override
+        public Dimension getPreferredSize() {
+            int width = getWidth() > 0 ? getWidth() : expectedWidth();
+            if (width <= 0 || !getLineWrap()) {
+                return super.getPreferredSize();
+            }
+            // Measure the wrapped height for the width the text will get, not for its current zero width.
+            Insets own = getInsets();
+            View root = getUI().getRootView(this);
+            root.setSize(Math.max(1, width - own.left - own.right), Integer.MAX_VALUE);
+            int height = (int) Math.ceil(root.getPreferredSpan(View.Y_AXIS)) + own.top + own.bottom;
+            return new Dimension(width, height);
+        }
+
+        private int expectedWidth() {
+            Insets wizard = SetupWizardPanel.this.getInsets();
+            Insets plate = errorPlate.getInsets();
+            int width = SetupWizardPanel.this.getWidth() - wizard.left - wizard.right - plate.left - plate.right;
+            BorderLayout layout = (BorderLayout) errorPlate.getLayout();
+            Component east = layout.getLayoutComponent(BorderLayout.EAST);
+            if (east != null && east.isVisible()) {
+                width -= east.getPreferredSize().width + layout.getHgap();
+            }
+            return width;
         }
     }
 
