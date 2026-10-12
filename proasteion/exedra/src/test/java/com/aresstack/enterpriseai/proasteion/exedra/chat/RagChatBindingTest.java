@@ -242,6 +242,49 @@ public class RagChatBindingTest {
     }
 
     /**
+     * Diagnose (Chat-Export): die Werkzeugaufrufe einer Antwort kommen mit Name, Argumenten, Erfolg und Ergebnis in
+     * den gespeicherten Chat, die Quellen der Antwort ebenso; beides überlebt Öffnen und erneutes Speichern.
+     */
+    @Test
+    public void toolCallsAndSourcesOfAnAnswerAreStoredWithTheChat() throws Exception {
+        final SearchingChat toolChat = new SearchingChat();
+        KnowledgeSourceSelection selection = new KnowledgeSourceSelection();
+        selection.register(source.sourceId(), true);
+        final Fixture fixture = fixture(index, embeddings, selection);
+        final FileChatHistoryStore store = new FileChatHistoryStore(folder.newFolder("chats").toPath());
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                new ChatHistoryBinding(store, chat, fixture.binding, fixture.model, "Antworte knapp.", () -> 5L);
+                fixture.binding.enableTools(new ToolSupport(toolChat,
+                        new FileAttachmentStore(folder.getRoot().toPath()), (name, content) -> "",
+                        java.util.Arrays.asList(recordingTool("knowledge_search", new ArrayList<String>(),
+                                "id: wiki:sonar"), recordingTool(ChatBookmark.READ_TOOL, new ArrayList<String>(),
+                                "SEITE")), false));
+                fixture.binding.sendRequested("Suche Seiten zu SonarQube.", true);
+            }
+        });
+        awaitIdle(fixture.model);
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                // alle UI-Aufträge der Runde sind durch
+            }
+        });
+
+        com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord record = store.load(conversation.value());
+        com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord answer = record.getMessages().get(1);
+        assertTrue(answer.isAssistant());
+        assertEquals(1, answer.getToolCalls().size());
+        com.aresstack.enterpriseai.astu.acropolis.history.ToolCallRecord call = answer.getToolCalls().get(0);
+        assertEquals("knowledge_search", call.getName());
+        assertEquals("{\"query\":\"SonarQube\"}", call.getArguments());
+        assertTrue(call.isSucceeded());
+        assertEquals("id: wiki:sonar", call.getResult());
+        assertTrue(record.getMessages().get(0).getToolCalls().isEmpty());
+    }
+
+    /**
      * Reiter „Tools“: was der Katalog als aktiv mit Kanal „Chat“ anzeigt, ist genau das, was die Werkzeug-Schleife
      * anbietet. Abgeschaltete Wissens- und Anhang-Werkzeuge fehlen, ohne Neustart wieder eingeschaltet sind sie da.
      */

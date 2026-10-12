@@ -4,6 +4,8 @@ import com.aresstack.enterpriseai.astu.acropolis.history.AttachmentRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.BookmarkRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
+import com.aresstack.enterpriseai.astu.acropolis.history.SourceRecord;
+import com.aresstack.enterpriseai.astu.acropolis.history.ToolCallRecord;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -46,7 +48,10 @@ public class ChatExportTest {
                 T0, Collections.singletonList(new AttachmentRecord("att-1", "notiz.txt", 12L)))
                 .withBookmarks(Collections.singletonList(new BookmarkRecord("bookmark://wiki/IAR", "IAR"))));
         record.getMessages().add(new ChatMessageRecord(ChatMessageRecord.ROLE_ASSISTANT, "**IAR** ist ein Testbegriff.",
-                T0 + 1000L, null));
+                T0 + 1000L, null).withTrace(
+                Collections.singletonList(new SourceRecord(1, "IAR", "Überblick", "wiki:IAR", "Version 3", 0.8, 1, 2)),
+                Collections.singletonList(new ToolCallRecord("knowledge_search",
+                        "{\"query\":\"IAR\",\"token\":\"geheim-token\"}", true, "id: wiki:IAR", T0 + 900L))));
         record.getMessages().add(new ChatMessageRecord(ChatMessageRecord.ROLE_INFO, "Wissenssuche ausgefallen.",
                 T0 + 2000L, null));
         record.getMessages().add(new ChatMessageRecord(ChatMessageRecord.ROLE_ASSISTANT, "Teilant",
@@ -87,6 +92,16 @@ public class ChatExportTest {
             assertTrue(message.has("sources"));
             assertTrue(message.get("phase").isJsonNull());
         }
+        JsonObject traced = messages.get(1).getAsJsonObject();
+        JsonObject source = traced.getAsJsonArray("sources").get(0).getAsJsonObject();
+        assertEquals("wiki:IAR", source.get("location").getAsString());
+        assertEquals(1, source.get("number").getAsInt());
+        JsonObject call = traced.getAsJsonArray("toolCalls").get(0).getAsJsonObject();
+        assertEquals("knowledge_search", call.get("name").getAsString());
+        assertEquals("id: wiki:IAR", call.get("result").getAsString());
+        assertTrue(call.get("arguments").getAsString().contains("\"query\":\"IAR\""));
+        assertFalse(call.get("arguments").getAsString().contains("geheim-token"));
+        assertTrue(messages.get(0).getAsJsonObject().get("toolCalls").isJsonNull());
         JsonObject first = messages.get(0).getAsJsonObject();
         assertEquals("att-1", first.getAsJsonArray("attachments").get(0).getAsJsonObject().get("id").getAsString());
         assertEquals("bookmark://wiki/IAR",
@@ -103,6 +118,8 @@ public class ChatExportTest {
         assertTrue(md.startsWith("# Was ist IAR?"));
         assertTrue(md.contains("**IAR** ist ein Testbegriff."));
         assertTrue(md.contains("Anhang: notiz.txt"));
+        assertTrue(md.contains("Werkzeug: `knowledge_search`"));
+        assertTrue(md.contains("Quelle [1]: IAR <wiki:IAR>"));
 
         assertFalse(export.write("unbekannt", folder.getRoot().toPath().resolve("x.json"), false));
     }

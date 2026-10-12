@@ -409,7 +409,7 @@ public final class RagChatBinding implements ChatShellActions {
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
                             via = new ChatCompletionsToolLoop(support.chat(),
                                     new ToolRegistry(available, support::isEnabled), support.loopExecutor(),
-                                    activity(listener, request), ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
+                                    activity(listener, request, conversation), ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS);
                             if (options.isEnabled()) {
                                 showActivity(listener, RETRIEVING_ACTIVITY);
                             } else {
@@ -500,7 +500,8 @@ public final class RagChatBinding implements ChatShellActions {
      * Zeigt in der laufenden Antwort, welches Werkzeug gerade läuft, und zählt für die Anfrage, ob Wissenswerkzeuge
      * Kontext geliefert haben (läuft auf dem Thread der Werkzeug-Schleife).
      */
-    private ToolActivityListener activity(final TurnListener listener, final Request request) {
+    private ToolActivityListener activity(final TurnListener listener, final Request request,
+                                          final ChatConversationId conversation) {
         return new ToolActivityListener() {
             @Override
             public void onToolCall(String toolName) {
@@ -516,6 +517,18 @@ public final class RagChatBinding implements ChatShellActions {
                 if (KnowledgeAcquisition.deliversContext(toolName)) {
                     (succeeded ? request.toolReads : request.toolReadFails).incrementAndGet();
                 }
+            }
+
+            @Override
+            public void onToolExecuted(final String toolName, final String arguments, final String output,
+                                       final boolean succeeded) {
+                // Für die Diagnose (Chat-Export): der Aufruf kommt mit der Antwort in den gespeicherten Chat.
+                uiExecutor.execute(() -> {
+                    if (history != null) {
+                        history.toolCallTraced(conversation, request.answer, toolName, arguments, output,
+                                succeeded);
+                    }
+                });
             }
         };
     }

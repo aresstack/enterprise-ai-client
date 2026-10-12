@@ -102,8 +102,10 @@ public final class ChatExport {
         notPersisted.add("Laufende und fehlgeschlagene Antworten werden nicht gespeichert (failureMessage ist daher "
                 + "immer null).");
         notPersisted.add("Werkzeug- und Gedankenwolken (Activities) gehören zum Lauf und werden nicht gespeichert.");
-        notPersisted.add("Quellen einer Antwort werden nicht je Nachricht gespeichert (sources ist daher null); "
-                + "die Quellen eines Agent-Chats stehen unter agent.sources.");
+        notPersisted.add("Quellen (sources) und Werkzeugaufrufe (toolCalls) einer Antwort im normalen Chat werden "
+                + "seit 0.30.0 gespeichert; bei älteren Antworten, Nutzernachrichten und Hinweisen sind sie null. "
+                + "Ergebnisse von Werkzeugaufrufen sind auf ihren Anfang gekürzt (resultLength = volle Länge). "
+                + "Die Quellen eines Agent-Chats stehen unter agent.sources.");
         root.add("notPersisted", notPersisted);
 
         ChatExportRedaction redaction = new ChatExportRedaction();
@@ -151,6 +153,24 @@ public final class ChatExport {
                 JsonObject bookmark = page.getAsJsonObject();
                 out.append("- Seite: ").append(string(bookmark, "title")).append(" <")
                         .append(string(bookmark, "uri")).append(">\n");
+            }
+            JsonElement calls = message.get("toolCalls");
+            if (calls != null && calls.isJsonArray()) {
+                for (JsonElement callElement : calls.getAsJsonArray()) {
+                    JsonObject call = callElement.getAsJsonObject();
+                    out.append("- Werkzeug: `").append(string(call, "name")).append("` ")
+                            .append(string(call, "arguments")).append(call.get("succeeded").getAsBoolean()
+                                    ? "" : " (fehlgeschlagen)").append("\n");
+                }
+            }
+            JsonElement answerSources = message.get("sources");
+            if (answerSources != null && answerSources.isJsonArray()) {
+                for (JsonElement sourceElement : answerSources.getAsJsonArray()) {
+                    JsonObject source = sourceElement.getAsJsonObject();
+                    out.append("- Quelle [").append(string(source, "number")).append("]: ")
+                            .append(string(source, "title")).append(" <").append(string(source, "location"))
+                            .append(">\n");
+                }
             }
             out.append("\n");
         }
@@ -231,7 +251,13 @@ public final class ChatExport {
         if (!message.has("bookmarks")) {
             message.add("bookmarks", new JsonArray());
         }
-        message.add("sources", JsonNull.INSTANCE);
+        // Quellen und Werkzeugaufrufe speichert der Chat seit 0.30.0; ältere Chats haben sie nicht (null).
+        if (!message.has("sources")) {
+            message.add("sources", JsonNull.INSTANCE);
+        }
+        if (!message.has("toolCalls")) {
+            message.add("toolCalls", JsonNull.INSTANCE);
+        }
         message.add("failureMessage", JsonNull.INSTANCE);
         return message;
     }

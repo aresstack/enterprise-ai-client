@@ -96,6 +96,7 @@ public final class ToolRegistry {
         }
         if (activity != null) {
             activity.onToolResult(name, succeeded);
+            activity.onToolExecuted(name, arguments, output, succeeded);
         }
         return output;
     }

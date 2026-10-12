@@ -13,4 +13,11 @@ public interface ToolActivityListener {
      */
     default void onToolResult(String toolName, boolean succeeded) {
     }
+
+    /**
+     * Wie {@link #onToolResult}, mit Argumenten und Ergebnis des Aufrufs, für die Diagnose (gespeicherter
+     * Werkzeugverlauf einer Antwort). Kommt nach {@link #onToolResult}.
+     */
+    default void onToolExecuted(String toolName, String arguments, String output, boolean succeeded) {
+    }
 }

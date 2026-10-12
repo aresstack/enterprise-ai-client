@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatPage;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModelListener;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.Attachment;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatBookmark;
@@ -12,6 +13,8 @@ import com.aresstack.enterpriseai.astu.acropolis.history.BookmarkRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatHistoryStore;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
+import com.aresstack.enterpriseai.astu.acropolis.history.SourceRecord;
+import com.aresstack.enterpriseai.astu.acropolis.history.ToolCallRecord;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.resource.BookmarkUri;
@@ -53,6 +56,10 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     private final Supplier<String> systemPrompt;
     private final LongSupplier clock;
     private final Map<Long, List<AttachmentRecord>> storedAttachments = new HashMap<Long, List<AttachmentRecord>>();
+    /** Werkzeugaufrufe je Antwort (Zeilen-Kennung), für die Diagnose; gespeicherte kommen beim Öffnen zurück. */
+    private final Map<Long, List<ToolCallRecord>> toolCalls = new HashMap<Long, List<ToolCallRecord>>();
+    /** Quellen geöffneter Antworten (die wiederhergestellte Zeile zeigt sie nicht), damit Speichern sie behält. */
+    private final Map<Long, List<SourceRecord>> restoredSources = new HashMap<Long, List<SourceRecord>>();
     private ChatConversationId recordedConversation;
     private long createdAt;
     private String renamedTitle; // vom Nutzer gewählter Titel des aktuellen Chats, sonst null
@@ -143,6 +150,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         try {
             model.clear();
             storedAttachments.clear();
+            toolCalls.clear();
+            restoredSources.clear();
             for (ChatMessageRecord message : record.getMessages()) {
                 restore(message);
             }
@@ -196,6 +205,23 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         save();
     }
 
+    /**
+     * Ein Werkzeugaufruf einer laufenden Antwort ist fertig (UI-Thread): er kommt für die Diagnose mit der Antwort in
+     * den gespeicherten Chat (gespeichert wird mit der fertigen Antwort). Gilt nur für die aktuelle Unterhaltung.
+     */
+    void toolCallTraced(ChatConversationId conversation, TranscriptEntry answer, String toolName, String arguments,
+                        String output, boolean succeeded) {
+        if (answer == null || !conversation.equals(chat.conversationId())) {
+            return;
+        }
+        List<ToolCallRecord> calls = toolCalls.get(answer.getId());
+        if (calls == null) {
+            calls = new ArrayList<ToolCallRecord>();
+            toolCalls.put(answer.getId(), calls);
+        }
+        calls.add(new ToolCallRecord(toolName, arguments, succeeded, output, clock.getAsLong()));
+    }
+
     @Override
     public void entryAdded(TranscriptEntry entry) {
         if (!restoring && entry.getState() != TranscriptEntry.State.STREAMING) {
@@ -219,6 +245,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     public void entriesCleared() {
         if (!restoring) {
             storedAttachments.clear();
+            toolCalls.clear();
+            restoredSources.clear();
         }
     }
 
@@ -240,8 +268,14 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                 storedAttachments.put(entry.getId(), new ArrayList<AttachmentRecord>(message.getAttachments()));
             }
         } else if (message.isAssistant()) {
-            model.restoreEntry(TranscriptEntry.Author.ASSISTANT, message.getText(), message.getCreatedAt(),
-                    Collections.<String>emptyList());
+            TranscriptEntry entry = model.restoreEntry(TranscriptEntry.Author.ASSISTANT, message.getText(),
+                    message.getCreatedAt(), Collections.<String>emptyList());
+            if (!message.getToolCalls().isEmpty()) {
+                toolCalls.put(entry.getId(), new ArrayList<ToolCallRecord>(message.getToolCalls()));
+            }
+            if (!message.getSources().isEmpty()) {
+                restoredSources.put(entry.getId(), new ArrayList<SourceRecord>(message.getSources()));
+            }
         } else if (message.isInfo() && !message.getText().trim().isEmpty()) {
             model.restoreEntry(TranscriptEntry.Author.NOTICE, message.getText(), message.getCreatedAt(),
                     Collections.<String>emptyList());
@@ -298,7 +332,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                     return null;
                 }
                 ChatMessageRecord answer = new ChatMessageRecord(ChatMessageRecord.ROLE_ASSISTANT, entry.getText(),
-                        entry.getCreatedAtMillis(), null);
+                        entry.getCreatedAtMillis(), null).withTrace(sourcesOf(entry), toolCalls.get(entry.getId()));
                 return entry.getState() == TranscriptEntry.State.CANCELLED ? answer.markCancelled() : answer;
         }
     }
@@ -314,6 +348,21 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             names.add(new AttachmentRecord(null, name, 0L));
         }
         return names;
+    }
+
+    /** Die Quellen einer Antwort, wie angezeigt; bei einer geöffneten Antwort die gespeicherten. */
+    private List<SourceRecord> sourcesOf(TranscriptEntry entry) {
+        if (!entry.hasSources()) {
+            List<SourceRecord> restored = restoredSources.get(entry.getId());
+            return restored != null ? restored : Collections.<SourceRecord>emptyList();
+        }
+        List<SourceRecord> records = new ArrayList<SourceRecord>(entry.getSources().size());
+        for (SourceReference source : entry.getSources()) {
+            records.add(new SourceRecord(source.getNumber(), source.getTitle(), source.getHeading(),
+                    source.getLocation(), source.getRevision(), source.getScore(), source.getKeywordRank(),
+                    source.getSemanticRank()));
+        }
+        return records;
     }
 
     /** Die Seiten einer Nutzernachricht: nur Bookmark und Titel. */
