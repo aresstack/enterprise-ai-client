@@ -47,10 +47,35 @@ public final class NlpModels {
 
     private static final Logger LOG = Logger.getLogger(NlpModels.class.getName());
 
-    /** Die OpenNLP-Modelle der Anwendung unter {@code <Anwendungsverzeichnis>/models/nlp}. */
+    /**
+     * Die OpenNLP-Modelle der Anwendung unter {@code <Anwendungsverzeichnis>/models/nlp}; das Ressourcen-Archiv wird
+     * neben dem Jar und danach im Anwendungsverzeichnis gesucht.
+     */
     public static NlpModels inApplicationDirectory() {
-        return standard(com.aresstack.enterpriseai.proasteion.application.config.AppPaths.appDirectory()
-                .resolve("models").resolve("nlp"));
+        Path appDirectory = com.aresstack.enterpriseai.proasteion.application.config.AppPaths.appDirectory();
+        List<Path> archiveDirectories = new ArrayList<Path>();
+        Path jarDirectory = jarDirectory();
+        if (jarDirectory != null) {
+            archiveDirectories.add(jarDirectory);
+        }
+        archiveDirectories.add(appDirectory);
+        return standard(appDirectory.resolve("models").resolve("nlp"), archiveDirectories);
+    }
+
+    /** Das Verzeichnis des laufenden Jars oder {@code null} beim Start aus Klassenverzeichnissen. */
+    private static Path jarDirectory() {
+        try {
+            java.security.CodeSource source = NlpModels.class.getProtectionDomain().getCodeSource();
+            if (source != null && source.getLocation() != null) {
+                Path location = java.nio.file.Paths.get(source.getLocation().toURI());
+                if (Files.isRegularFile(location) && location.getFileName().toString().endsWith(".jar")) {
+                    return location.toAbsolutePath().getParent();
+                }
+            }
+        } catch (Exception unknown) {
+            LOG.log(Level.FINE, "Jar-Verzeichnis unbekannt", unknown);
+        }
+        return null;
     }
 
     /**
@@ -93,21 +118,58 @@ public final class NlpModels {
         public String name() {
             return name;
         }
+
+        /** {@code sentence}, {@code language} oder {@code pos}. */
+        public String capability() {
+            return capability;
+        }
+
+        public String language() {
+            return language;
+        }
+
+        public String file() {
+            return file;
+        }
+    }
+
+    /** Woher ein Modell beim Installieren käme. */
+    public enum Source {
+        /** Schon installiert. */
+        INSTALLED,
+        /** Aus dem Ressourcen-Archiv neben dem Jar. */
+        ARCHIVE,
+        /** Per Download. */
+        DOWNLOAD
     }
 
     private final Path root;
     private final List<Entry> entries;
+    private final NlpResourceArchive archive;
 
     NlpModels(Path root, List<Entry> entries) {
+        this(root, entries, new NlpResourceArchive(Collections.<Path>emptyList(), null, null));
+    }
+
+    NlpModels(Path root, List<Entry> entries, NlpResourceArchive archive) {
         if (root == null) {
             throw new IllegalArgumentException("root must not be null");
         }
         this.root = root;
         this.entries = Collections.unmodifiableList(new ArrayList<Entry>(entries));
+        this.archive = archive;
     }
 
-    /** Die Liste aus {@code nlp-models.properties}, abgelegt unter {@code root}. */
+    /** Die Liste aus {@code nlp-models.properties}, abgelegt unter {@code root}, ohne Ressourcen-Archiv. */
     public static NlpModels standard(Path root) {
+        return standard(root, Collections.<Path>emptyList());
+    }
+
+    /**
+     * Die Liste aus {@code nlp-models.properties}, abgelegt unter {@code root}; das Ressourcen-Archiv wird in
+     * {@code archiveDirectories} der Reihe nach gesucht.
+     */
+    public static NlpModels standard(Path root, List<Path> archiveDirectories) {
         Properties p = new Properties();
         try (InputStream in = NlpModels.class.getResourceAsStream(RESOURCE)) {
             if (in == null) {
@@ -131,14 +193,14 @@ public final class NlpModels {
                     p.getProperty(key + "sha256", "").trim().toLowerCase(java.util.Locale.ROOT),
                     Long.parseLong(p.getProperty(key + "size", "-1").trim())));
         }
-        return new NlpModels(root, entries);
+        return new NlpModels(root, entries, new NlpResourceArchive(archiveDirectories,
+                p.getProperty("archive.prefix"), p.getProperty("archive.manifest")));
     }
 
     public List<Entry> entries() {
         return entries;
     }
 
-    /** Installiert = Manifest und Datei liegen da. */
     /** Ob das Satzmodell der Sprache ({@code de}, {@code en}) installiert ist. */
     public boolean hasSentenceModel(String language) {
         for (Entry entry : entries) {
@@ -149,6 +211,7 @@ public final class NlpModels {
         return false;
     }
 
+    /** Installiert = Manifest und Datei liegen da. */
     public boolean isInstalled(Entry entry) {
         return Files.isRegularFile(directory(entry).resolve(MANIFEST))
                 && Files.isRegularFile(directory(entry).resolve(entry.file));
@@ -164,15 +227,38 @@ public final class NlpModels {
         return null;
     }
 
-    /**
-     * Lädt das Modell (Weiterleitungen werden je Ziel neu geroutet), prüft Größe und SHA-256 und schreibt erst dann
-     * Datei und zuletzt das Manifest. Blockiert.
-     */
-    public void install(Entry entry, NetworkServices network) throws IOException {
+    /** Woher das Modell beim Installieren käme: installiert, aus dem Ressourcen-Archiv oder per Download. */
+    public Source source(Entry entry) {
         if (isInstalled(entry)) {
-            return;
+            return Source.INSTALLED;
         }
-        byte[] bytes = download(entry.url, network);
+        return archive.offers(entry.id, entry.size, entry.sha256) ? Source.ARCHIVE : Source.DOWNLOAD;
+    }
+
+    /**
+     * Installiert das Modell aus dem Ressourcen-Archiv, wenn es dort mit genau Größe und SHA-256 liegt, sonst per
+     * Download (Weiterleitungen werden je Ziel neu geroutet); erst nach der Prüfung werden Datei und zuletzt das
+     * Manifest geschrieben. Blockiert.
+     *
+     * @return woher das Modell kam ({@link Source#INSTALLED}, wenn es schon da war)
+     */
+    public Source install(Entry entry, NetworkServices network) throws IOException {
+        if (isInstalled(entry)) {
+            return Source.INSTALLED;
+        }
+        byte[] bytes = null;
+        try {
+            bytes = archive.read(entry.id, entry.size, entry.sha256);
+        } catch (IOException | RuntimeException unreadable) {
+            LOG.log(Level.WARNING, "Ressourcen-Archiv nicht lesbar, lade " + entry.file, unreadable);
+        }
+        Source source = bytes == null ? Source.DOWNLOAD : Source.ARCHIVE;
+        if (bytes == null) {
+            if (network == null) {
+                throw new IOException(entry.file + ": nicht im Ressourcen-Archiv und kein Netzwerk angegeben");
+            }
+            bytes = download(entry.url, network);
+        }
         if (entry.size >= 0 && bytes.length != entry.size) {
             throw new IOException(entry.file + ": " + bytes.length + " Bytes statt " + entry.size);
         }
@@ -194,6 +280,7 @@ public final class NlpModels {
             manifest.store(writer, null);
         }
         atomicWrite(dir.resolve(MANIFEST), text.toByteArray());
+        return source;
     }
 
     /** Lädt beim Vorlesen, was gerade installiert ist (wie arch bei jedem Start der Engine). */

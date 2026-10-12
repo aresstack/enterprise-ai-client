@@ -26,6 +26,7 @@ final class NlpModelList {
     static final String INSTALL_LABEL = "Installieren";
     static final String INSTALLING = "Lade …";
     static final String NOT_INSTALLED = "Nicht installiert";
+    static final String IN_ARCHIVE = "Im Ressourcen-Archiv";
     static final String INSTALLED = "✓ installiert";
 
     private final SettingsDialogActions actions;
@@ -64,14 +65,17 @@ final class NlpModelList {
         JLabel name = new WrappingLabel(offer.name());
         name.putClientProperty("html.disable", Boolean.TRUE);
         name.setForeground(palette.getInk());
-        final JLabel state = new JLabel(offer.isInstalled() ? INSTALLED : NOT_INSTALLED);
+        final JLabel state = new JLabel(offer.isInstalled() ? INSTALLED
+                : offer.isInArchive() ? IN_ARCHIVE : NOT_INSTALLED);
         state.setForeground(offer.isInstalled() ? palette.getAgentPetrol() : FormRows.MUTED);
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.setOpaque(false);
         right.add(state);
         if (!offer.isInstalled()) {
             final ComicButton install = new ComicButton(INSTALL_LABEL, null, ComicButton.Accent.ACTION, palette);
-            install.setToolTipText("Lädt das Modell über die Netzwerkeinstellungen; Größe und SHA-256 werden geprüft");
+            install.setToolTipText(offer.isInArchive()
+                    ? "Entpackt das Modell aus dem Ressourcen-Archiv neben dem Jar; Größe und SHA-256 werden geprüft"
+                    : "Lädt das Modell über die Netzwerkeinstellungen; Größe und SHA-256 werden geprüft");
             install.getAccessibleContext().setAccessibleName(INSTALL_LABEL + ": " + offer.name());
             install.addActionListener(new ActionListener() {
                 @Override

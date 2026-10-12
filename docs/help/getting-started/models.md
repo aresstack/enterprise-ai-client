@@ -73,7 +73,7 @@ Merlin, der Zauberer des Assistenten, hat eine eigene Stimme, unabhängig von di
 
 ## Spracheingabe-Modell (Diktat)
 
-Der KI-Dienst bietet bisher kein Modell für Spracheingabe an. Deshalb gibt es dafür nur lokale Modelle, die im Client laufen. Der Assistent bietet im optionalen letzten Schritt „Lokale Spracheingabe“ an, eines herunterzuladen und zu wählen. Vorgeschlagen wird ein Gemma-Modell mit Audio-Eingang. Es ist groß (mehrere Gigabyte Download und Arbeitsspeicher) und auf einem normalen Prozessor deutlich langsamer als ein Echtzeit-Diktat.
+Der KI-Dienst bietet bisher kein Modell für Spracheingabe an. Deshalb gibt es dafür nur lokale Modelle, die im Client laufen. Der Assistent bietet im optionalen letzten Schritt „Lokale KI- und Sprachressourcen“ an, eines herunterzuladen und zu wählen. Vorgeschlagen wird ein Gemma-Modell mit Audio-Eingang. Es ist groß (mehrere Gigabyte Download und Arbeitsspeicher) und auf einem normalen Prozessor deutlich langsamer als ein Echtzeit-Diktat.
 
 Ablauf und Download sind im Kapitel [Der Einrichtungsassistent](help:getting-started.setup) beschrieben. Nachholen kannst du das unter Einstellungen → Modelle → „Lokale Modelle“: unter „Vorschläge“ installieren oder unter „Hugging Face durchsuchen“ suchen, danach oben in der Zeile „Spracheingabe (STT)“ wählen. Siehe [Diktieren](help:chat.dictation).
 

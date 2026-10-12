@@ -6,6 +6,11 @@
 #   Branches             snapshot-<branch>-<hash>, dessen Tag und Jar jeder Push ersetzt; zusätzlich Workflow-Artefakt.
 #   Branch gelöscht   -> Pre-Release und Tag des Branches werden entfernt.
 #
+# Neben dem Jar liegt das Ressourcen-Archiv enterprise-ai-client-resources-<version>.zip (OpenNLP-Modelle mit
+# Manifest, gradle/nlp-resources.gradle). Legt man es neben das Jar, installiert der Client daraus ohne Download.
+# Ist eine Modellquelle gerade nicht erreichbar, erscheint das Release ohne Archiv (Warnung im Lauf); der Client lädt
+# dann wie bisher selbst herunter.
+#
 # Snapshot-Tag: Branchname mit allen Zeichen außer [A-Za-z0-9._-] als '-' plus die ersten acht Hex-Zeichen von
 # SHA-256 des unveränderten Branchnamens, damit Branches wie feature/foo und feature-foo getrennte Tags bekommen.
 # Push-Job und Cleanup-Job teilen sich je Branch die Concurrency-Gruppe release-refs/heads/<branch>: ein Cleanup
@@ -89,6 +94,21 @@ jobs:
           -Prelease=${{ steps.version.outputs.release }}
           -PbuildCommit=${{ github.sha }}
 
+      - name: Ressourcen-Archiv bauen
+        id: resources
+        shell: bash
+        run: |
+          set -uo pipefail
+          zip="proasteion/application/build/distributions/enterprise-ai-client-resources-${{ steps.version.outputs.version }}.zip"
+          if ./gradlew :proasteion:application:nlpResourcesZip --no-daemon \
+               -Prelease=${{ steps.version.outputs.release }} && [ -f "$zip" ]; then
+            unzip -l "$zip"
+            echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Kein Ressourcen-Archiv::Die OpenNLP-Modelle ließen sich nicht laden oder prüfen; das Release erscheint ohne Ressourcen-Archiv."
+            echo "zip=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Manifest des Fat Jars anzeigen
         shell: bash
         run: |
@@ -102,6 +122,7 @@ jobs:
           name: enterprise-ai-client-${{ steps.version.outputs.version }}
           path: |
             ${{ steps.version.outputs.jar }}
+            ${{ steps.resources.outputs.zip }}
           if-no-files-found: error
 
       - name: Release auf main anlegen
@@ -110,6 +131,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
           JAR: ${{ steps.version.outputs.jar }}
+          ZIP: ${{ steps.resources.outputs.zip }}
         shell: bash
         run: |
           set -euo pipefail
@@ -130,11 +152,19 @@ jobs:
           {
             echo "Lauffähiges Jar der Swing-Anwendung (Java 8 oder neuer): \`java -jar $(basename "$JAR")\`"
             echo
+            if [ -n "$ZIP" ]; then
+              echo "Optional: \`$(basename "$ZIP")\` neben das Jar legen; der Einrichtungsassistent installiert die OpenNLP-Modelle dann ohne Download."
+              echo
+            fi
             echo "Commit: $GITHUB_SHA · Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo
           } > "$notes"
           # Läufe auf main laufen parallel; kam ein anderer Lauf mit derselben Version zuvor, endet dieser ohne Fehler.
-          if ! gh release create "$TAG" "$JAR" \
+          assets=("$JAR")
+          if [ -n "$ZIP" ]; then
+            assets+=("$ZIP")
+          fi
+          if ! gh release create "$TAG" "${assets[@]}" \
             --target "$GITHUB_SHA" \
             --title "enterprise-ai-client $VERSION" \
             --notes-file "$notes" \
@@ -157,6 +187,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
           JAR: ${{ steps.version.outputs.jar }}
+          ZIP: ${{ steps.resources.outputs.zip }}
           BRANCH: ${{ github.ref_name }}
         shell: bash
         run: |
@@ -183,9 +214,16 @@ jobs:
               [ -n "$asset" ] && gh release delete-asset "$TAG" "$asset" --yes || true
             done
             gh release upload "$TAG" "$JAR"
+            if [ -n "$ZIP" ]; then
+              gh release upload "$TAG" "$ZIP"
+            fi
             gh release edit "$TAG" --prerelease --title "$title" --notes-file "$notes"
           else
-            gh release create "$TAG" "$JAR" --prerelease --title "$title" --notes-file "$notes"
+            assets=("$JAR")
+            if [ -n "$ZIP" ]; then
+              assets+=("$ZIP")
+            fi
+            gh release create "$TAG" "${assets[@]}" --prerelease --title "$title" --notes-file "$notes"
           fi
           {
             echo "## Snapshot $TAG aktualisiert"

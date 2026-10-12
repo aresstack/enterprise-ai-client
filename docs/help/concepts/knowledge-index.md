@@ -39,7 +39,7 @@ Beim Programmstart wird nichts indexiert. Einzelheiten: [Indexierung](help:knowl
 
 ## Passagen
 
-Eine Passage ist ein zusammenhängender Abschnitt einer Seite, meist einige Absätze zu einem Thema. Die Zerlegung folgt zuerst der Struktur der Seite (Überschriften), dann den Satzgrenzen und erkennt Themenwechsel. Für die Satzgrenzen nutzt sie das Satzmodell der eingestellten Sprache (`knowledge.passages.language`, `de` oder `en`), das du unter Einstellungen → „Modelle“ im Abschnitt „Satz- und Spracherkennung (Vorlesen)“ installierst; ohne dieses Modell arbeitet sie regelbasiert.
+Eine Passage ist ein zusammenhängender Abschnitt einer Seite, meist einige Absätze zu einem Thema. Die Zerlegung folgt zuerst der Struktur der Seite (Überschriften), dann den Satzgrenzen und erkennt Themenwechsel. Für die Satzgrenzen nutzt sie das Satzmodell der eingestellten Sprache (`knowledge.passages.language`, `de` oder `en`), das du unter Einstellungen → „Modelle“ im Abschnitt „Text- und Sprachanalyse (OpenNLP)“ (oder im letzten Schritt des Einrichtungsassistenten) installierst; ohne dieses Modell arbeitet sie regelbasiert.
 
 Jede Passage hat eine eigene Kennung, die auch die Fassung der Seite enthält. Ändert sich die Seite, entstehen neue Passagen mit neuen Kennungen. Fragt jemand eine alte Passage an, sagt `knowledge_read`, dass sie zu einer älteren Fassung gehört, und liefert die aktuellen Passagen.
 

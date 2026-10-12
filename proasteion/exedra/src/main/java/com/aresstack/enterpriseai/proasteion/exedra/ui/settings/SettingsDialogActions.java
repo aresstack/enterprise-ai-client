@@ -192,16 +192,16 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * Die OpenNLP-Modelle des Vorlesens (Satz- und Spracherkennung wie askai arch) mit Installationsstand, genau
-     * einmal auf dem EDT.
+     * Die OpenNLP-Modelle (Satz-, Sprach- und Wortartenerkennung) mit Installationsstand und ob sie im
+     * Ressourcen-Archiv neben dem Jar liegen, genau einmal auf dem EDT.
      */
     default void nlpModels(Consumer<List<NlpModelOffer>> onResult) {
         onResult.accept(Collections.<NlpModelOffer>emptyList());
     }
 
     /**
-     * Installiert ein OpenNLP-Modell (Download über die Netzwerkeinstellungen des Entwurfs, Größe und SHA-256
-     * geprüft); Ergebnis genau einmal auf dem EDT.
+     * Installiert ein OpenNLP-Modell (zuerst aus dem Ressourcen-Archiv, sonst Download über die
+     * Netzwerkeinstellungen des Entwurfs; Größe und SHA-256 geprüft); Ergebnis genau einmal auf dem EDT.
      */
     default void installNlpModel(SettingsForm form, String id, BiConsumer<Boolean, String> onFinished) {
         onFinished.accept(Boolean.FALSE, "In dieser Umgebung nicht verfügbar.");

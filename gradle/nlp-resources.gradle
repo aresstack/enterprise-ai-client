@@ -1,0 +1,120 @@
+// Ressourcen-Archiv neben dem Fat Jar: enterprise-ai-client-resources-<version>.zip mit den OpenNLP-Modellen aus
+// speech/nlp-models.properties und dem Manifest, aus dem der Client (NlpModels/NlpResourceArchive) im
+// Einrichtungsassistenten und unter Einstellungen -> Modelle -> Lokale Modelle ohne Download installiert.
+// Eingebunden von proasteion/application/build.gradle (apply from). Nicht Teil von build: lädt die Modelle aus dem
+// Netz und läuft nur im Release-Workflow (./gradlew :proasteion:application:nlpResourcesZip).
+//
+// Jede Datei wird gegen Größe und SHA-256 des Katalogs geprüft; weicht eine ab, bricht die Task ab.
+
+import java.security.MessageDigest
+
+def catalogFile = file('src/main/resources/com/aresstack/enterpriseai/proasteion/application/speech/nlp-models.properties')
+def stagingDir = layout.buildDirectory.dir('nlp-resources/staging')
+def cacheDir = layout.buildDirectory.dir('nlp-resources/cache')
+def archiveVersion = project.version.toString()
+
+def readCatalog = { File source ->
+    def p = new Properties()
+    source.withReader('UTF-8') { p.load(it) }
+    p
+}
+
+def sha256Of = { File f ->
+    def digest = MessageDigest.getInstance('SHA-256')
+    f.withInputStream { ins ->
+        byte[] buffer = new byte[65536]
+        int read
+        while ((read = ins.read(buffer)) >= 0) {
+            digest.update(buffer, 0, read)
+        }
+    }
+    digest.digest().collect { String.format('%02x', it & 0xff) }.join()
+}
+
+// Folgt Weiterleitungen auch über Hostwechsel (SourceForge -> Spiegel), höchstens fünf.
+def download = { String url, File target ->
+    def current = new URL(url)
+    for (int hop = 0; hop <= 5; hop++) {
+        HttpURLConnection c = (HttpURLConnection) current.openConnection()
+        c.instanceFollowRedirects = false
+        c.connectTimeout = 15000
+        c.readTimeout = 60000
+        c.setRequestProperty('User-Agent', 'enterprise-ai-client-build')
+        int code = c.responseCode
+        if (code >= 300 && code < 400) {
+            def location = c.getHeaderField('Location')
+            c.disconnect()
+            if (location == null) {
+                throw new GradleException("HTTP $code ohne Ziel: $current")
+            }
+            current = new URL(current, location)
+            continue
+        }
+        if (code != 200) {
+            c.disconnect()
+            throw new GradleException("HTTP $code von $current")
+        }
+        target.parentFile.mkdirs()
+        def tmp = new File(target.parentFile, target.name + '.part')
+        c.inputStream.withStream { ins -> tmp.withOutputStream { it << ins } }
+        c.disconnect()
+        target.delete()
+        if (!tmp.renameTo(target)) {
+            throw new GradleException("Kann $target nicht schreiben")
+        }
+        return
+    }
+    throw new GradleException("Zu viele Weiterleitungen: $url")
+}
+
+def stageNlpResources = tasks.register('stageNlpResources') {
+    description = 'Lädt die OpenNLP-Modelle des Katalogs, prüft Größe und SHA-256 und schreibt das Manifest.'
+    inputs.file(catalogFile)
+    outputs.dir(stagingDir)
+    doLast {
+        def catalog = readCatalog(catalogFile)
+        def directory = catalog.getProperty('archive.directory', 'opennlp').trim()
+        def manifestName = catalog.getProperty('archive.manifest').trim()
+        def staging = stagingDir.get().asFile
+        project.delete(staging)
+        def cache = cacheDir.get().asFile
+        def manifest = new StringBuilder('# Ressourcen-Archiv des enterprise-ai-client ' + archiveVersion + '\n')
+        def ids = catalog.getProperty('models', '').split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+        manifest.append('models=').append(ids.join(',')).append('\n')
+        ids.each { id ->
+            def key = "model.${id}."
+            def fileName = catalog.getProperty(key + 'file').trim()
+            def sha = catalog.getProperty(key + 'sha256').trim().toLowerCase(Locale.ROOT)
+            def size = Long.parseLong(catalog.getProperty(key + 'size').trim())
+            def cached = new File(cache, fileName)
+            if (!cached.isFile() || cached.length() != size || sha256Of(cached) != sha) {
+                logger.lifecycle("Lade $fileName")
+                download(catalog.getProperty(key + 'url').trim(), cached)
+            }
+            if (cached.length() != size) {
+                throw new GradleException("$fileName: ${cached.length()} Bytes statt $size")
+            }
+            def actual = sha256Of(cached)
+            if (actual != sha) {
+                throw new GradleException("$fileName: SHA-256 $actual statt $sha")
+            }
+            def path = directory + '/' + fileName
+            project.copy { from cached; into new File(staging, directory) }
+            manifest.append("model.${id}.path=").append(path).append('\n')
+            manifest.append("model.${id}.sha256=").append(sha).append('\n')
+            manifest.append("model.${id}.size=").append(size).append('\n')
+        }
+        new File(staging, manifestName).setText(manifest.toString(), 'UTF-8')
+    }
+}
+
+tasks.register('nlpResourcesZip', Zip) {
+    description = 'Baut das Ressourcen-Archiv enterprise-ai-client-resources-<version>.zip neben dem Fat Jar.'
+    group = 'distribution'
+    dependsOn stageNlpResources
+    from stagingDir
+    archiveFileName = readCatalog(catalogFile).getProperty('archive.prefix').trim() + "-${archiveVersion}.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}

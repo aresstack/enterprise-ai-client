@@ -65,3 +65,6 @@ dependencies {
     testImplementation libs.java.websocket
     testImplementation libs.gson
 }
+
+// Ressourcen-Archiv (OpenNLP-Modelle + Manifest) für das Release, siehe gradle/nlp-resources.gradle.
+apply from: rootProject.file('gradle/nlp-resources.gradle')

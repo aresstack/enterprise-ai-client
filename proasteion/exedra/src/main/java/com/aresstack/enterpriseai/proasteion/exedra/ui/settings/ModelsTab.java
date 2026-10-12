@@ -160,8 +160,10 @@ final class ModelsTab {
         voiceContent.add(voices.panel(), BorderLayout.CENTER);
 
         FormRows nlpNote = new FormRows(palette);
-        nlpNote.note("Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache. Ohne "
-                + "diese Modelle wird an Satzzeichen geteilt.");
+        nlpNote.note("Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache; die "
+                + "Wortartenerkennung hilft beim Auswerten von Chat-Anfragen. Ohne diese Modelle wird an Satzzeichen "
+                + "geteilt. Liegt das Ressourcen-Archiv (enterprise-ai-client-resources*.zip) neben dem Jar, wird "
+                + "daraus installiert, sonst heruntergeladen.");
         JPanel nlpContent = new JPanel(new BorderLayout(0, 4));
         nlpContent.setOpaque(false);
         nlpContent.add(nlpNote.panel(), BorderLayout.NORTH);
@@ -180,7 +182,7 @@ final class ModelsTab {
                 FormRows.plate("Installiert", palette.getAccentOrange(), voiceContent, palette),
                 FormRows.plate("Vorschläge", palette.getAccentOrange(), suggestionContent, palette),
                 FormRows.plate("Hugging Face durchsuchen", palette.getAccentOrange(), searchContent, palette),
-                FormRows.plate("Satz- und Spracherkennung (Vorlesen)", palette.getAccentOrange(), nlpContent,
+                FormRows.plate("Text- und Sprachanalyse (OpenNLP)", palette.getAccentOrange(), nlpContent,
                         palette),
                 FormRows.plate("Modellverzeichnis", palette.getAgentPetrol(), local.panel(), palette));
         deck.setOpaque(false);

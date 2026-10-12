@@ -727,7 +727,9 @@ public final class FileSettingsActions implements SettingsDialogActions {
         List<NlpModelOffer> offers = new ArrayList<NlpModelOffer>();
         if (nlpModels != null) {
             for (NlpModels.Entry entry : nlpModels.entries()) {
-                offers.add(new NlpModelOffer(entry.id(), entry.name(), nlpModels.isInstalled(entry)));
+                NlpModels.Source source = nlpModels.source(entry);
+                offers.add(new NlpModelOffer(entry.id(), entry.name(), source == NlpModels.Source.INSTALLED,
+                        source == NlpModels.Source.ARCHIVE));
             }
         }
         onResult.accept(offers);
@@ -755,9 +757,10 @@ public final class FileSettingsActions implements SettingsDialogActions {
                     boolean ok;
                     String message;
                     try {
-                        nlpModels.install(entry, NetworkServices.from(network));
+                        NlpModels.Source source = nlpModels.install(entry, NetworkServices.from(network));
                         ok = true;
-                        message = "✓ installiert";
+                        message = source == NlpModels.Source.ARCHIVE ? "✓ aus dem Ressourcen-Archiv installiert"
+                                : "✓ installiert";
                     } catch (IOException | RuntimeException e) {
                         ok = false;
                         message = "Installation fehlgeschlagen: " + (e.getMessage() == null

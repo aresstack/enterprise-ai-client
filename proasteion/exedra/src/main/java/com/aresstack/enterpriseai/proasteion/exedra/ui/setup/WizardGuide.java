@@ -87,8 +87,9 @@ final class WizardGuide {
                     + "testen“.",
             "Nichts weiter: Ich speichere alles und prüfe es. Ist etwas rot, springe oben zu dem Schritt und "
                     + "korrigiere es; danach „Erneut prüfen“.",
-            "Wähle ein lokales Modell für die Spracheingabe und installiere es. Du kannst den Schritt auch "
-                    + "überspringen und ihn später in den Einstellungen nachholen."
+            "„Alles installieren“ holt das Modell für die Spracheingabe und die Textanalyse, aus dem Archiv "
+                    + "neben dem Programm oder aus dem Netz. Du kannst den Schritt auch überspringen und ihn später "
+                    + "in den Einstellungen nachholen."
     };
 
     private static final String[] WHY_NEEDED = {
@@ -100,11 +101,12 @@ final class WizardGuide {
             "Aus Confluence hole ich das Wissen deiner Organisation. Ohne Confluence antworte ich nur aus dem, was "
                     + "du mir sonst gibst.",
             "Damit du nicht erst im Alltag merkst, dass etwas fehlt: Ich prüfe jeden Baustein einmal echt.",
-            "Mit einem lokalen Modell verstehe ich gesprochene Sätze, ohne dass deine Stimme deinen Rechner verlässt."
+            "Mit einem lokalen Modell verstehe ich gesprochene Sätze, ohne dass deine Stimme deinen Rechner verlässt; "
+                    + "die Textanalyse teilt Sätze und erkennt Sprache und Wortarten."
     };
 
     private static final String[] TOPIC = {"KeePass verbinden", "KI-Dienst", "Modelle", "Confluence",
-            "Abschlussprüfung", "Lokale Spracheingabe"};
+            "Abschlussprüfung", "Lokale KI- und Sprachressourcen"};
 
     /** Die Vorstellung: beim Erststart ausführlich, bei einem späteren Aufruf als Wiedersehen. */
     String greeting(boolean returning) {

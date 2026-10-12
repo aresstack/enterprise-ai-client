@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckS
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.DownloadProgress;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceOffersCallback;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordEntry;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordStore;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
@@ -73,13 +74,16 @@ public final class SetupWizardPanel extends JPanel {
 
     public static final String TITLE = "Einrichtung";
     private static final String[] STEP_NAMES = {"KeePass", "KI-Dienst", "Modelle", "Confluence", "Abschluss",
-            "Spracheingabe"};
+            "Lokale KI"};
     static final int STEP_KEEPASS = 0;
     static final int STEP_SERVICE = 1;
     static final int STEP_MODELS = 2;
     static final int STEP_CONFLUENCE = 3;
     static final int STEP_FINISH = 4;
-    /** Optional nach der bestandenen Abschlussprüfung: ein lokales Modell für die Spracheingabe (STT). */
+    /**
+     * Optional nach der bestandenen Abschlussprüfung: lokale KI- und Sprachressourcen, also ein Modell für die
+     * Spracheingabe (STT) und die OpenNLP-Modelle der Text- und Sprachanalyse.
+     */
     static final int STEP_SPEECH = 5;
     /** Je Schritt der Zauberer mit dem passenden Gegenstand (Schlüssel, Kugel, Karten, Buch, Haken, Mikrofon). */
     private static final String[] STEP_MASCOTS = {"wizard/wizard-01-keepass.png", "wizard/wizard-02-ai-service.png",
@@ -105,6 +109,12 @@ public final class SetupWizardPanel extends JPanel {
     private static final String SKIP_STEP_HINT = "Ohne Prüfung zum nächsten Schritt; Eingaben bleiben erhalten";
     static final String CONFLUENCE_SKIPPED = "Betriebsbereit. Confluence ist übersprungen und lässt sich später "
             + "in der Seitenleiste unter Wissensquellen einrichten.";
+    static final String NLP_INSTALLED = "installiert";
+    static final String NLP_IN_ARCHIVE = "im Ressourcen-Archiv";
+    static final String NLP_DOWNLOAD = "Download";
+    static final String NLP_STOPPED = "Installation angehalten; bereits installierte Modelle bleiben.";
+    private static final String INSTALL_ALL_HINT = "Installiert alle fehlenden Ressourcen dieses Schritts: zuerst "
+            + "aus dem Ressourcen-Archiv neben dem Jar, sonst per Download";
     private static final String SKIP_SPEECH_HINT =
             "Ohne lokale Spracheingabe abschließen; später unter Einstellungen → Modelle → Lokale Modelle";
     /** Platzhalter für Modelle, solange der Schritt „Modelle“ noch nicht gewählt hat (Verbindungstest). */
@@ -243,6 +253,17 @@ public final class SetupWizardPanel extends JPanel {
     private boolean speechDownloading;
     /** Die Angebote ließen sich nicht ermitteln (nicht dasselbe wie „keine Angebote“). */
     private boolean speechLoadFailed;
+    /** Die OpenNLP-Modelle der Text- und Sprachanalyse, je Modell eine Zeile mit Stand. */
+    private final JPanel nlpLines = transparent(new GridBagLayout());
+    private List<NlpModelOffer> nlpOffers = Collections.emptyList();
+    private final Map<String, String> nlpProblems = new LinkedHashMap<String, String>();
+    private final ComposerButton installAll;
+    /** OpenNLP-Modelle werden gerade nacheinander installiert. */
+    private boolean nlpInstalling;
+    /** Das X hat „Alles installieren“ angehalten: nach dem laufenden Modell kommt keines mehr. */
+    private boolean nlpStopRequested;
+    /** Nach den OpenNLP-Modellen noch das gewählte Spracheingabe-Modell installieren. */
+    private boolean speechAfterNlp;
 
     public SetupWizardPanel(SettingsForm initial, SettingsDialogActions settings, SetupActions setup,
                             ComicPalette palette) {
@@ -278,6 +299,8 @@ public final class SetupWizardPanel extends JPanel {
         this.skipButton = new ComposerButton(null, "Überspringen", false, SKIP_STEP_HINT);
         this.speechInstall = ComposerButton.primary(null, "Installieren", ResearchUiPalette.ACCENT_BLUE, null);
         this.speechRetry = new ComposerButton(null, "Erneut versuchen", false);
+        this.installAll = ComposerButton.primary(null, "Alles installieren", ResearchUiPalette.ACCENT_BLUE,
+                INSTALL_ALL_HINT);
         buildUi();
         wire();
         load(form);
@@ -508,12 +531,14 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     private JPanel speechStep() {
-        Rows rows = new Rows("Lokale Spracheingabe");
-        rows.note("Optional. Ein lokales Modell ermöglicht Spracheingabe ohne Cloud-STT. Dieser Schritt kann "
-                + "übersprungen und später unter Einstellungen → Modelle → Lokale Modelle nachgeholt werden. "
-                + "Das Modell wird einmal heruntergeladen und läuft danach im Client.");
-        rows.field("Modell", speechModel);
+        Rows rows = new Rows("Lokale KI- und Sprachressourcen");
+        rows.note("Optional. Spracheingabe ohne Cloud-STT und Text- und Sprachanalyse mit OpenNLP laufen im Client. "
+                + "Liegt das Ressourcen-Archiv neben dem Jar, wird daraus installiert, sonst heruntergeladen. "
+                + "Später unter Einstellungen → Modelle → Lokale Modelle.");
+        rows.field("Spracheingabe", speechModel);
+        rows.stretched("Textanalyse", nlpLines);
         JPanel actions = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        actions.add(installAll);
         actions.add(speechInstall);
         actions.add(speechRetry);
         rows.field("", actions);
@@ -588,6 +613,7 @@ public final class SetupWizardPanel extends JPanel {
             }
         });
         speechInstall.addActionListener(e -> installSpeech());
+        installAll.addActionListener(e -> installAll());
         speechProgress.cancelButton().addActionListener(e -> stopSpeechDownload());
         speechRetry.addActionListener(e -> {
             if (speechLoadFailed) {
@@ -637,7 +663,7 @@ public final class SetupWizardPanel extends JPanel {
      * damit deren Ergebnis nicht in einem anderen Schritt landet.
      */
     void jumpTo(int index) {
-        if (busy || speechDownloading || index == step) {
+        if (busy || installing() || index == step) {
             return;
         }
         showStep(index);
@@ -831,6 +857,7 @@ public final class SetupWizardPanel extends JPanel {
             runFinalCheck();
         } else if (index == STEP_SPEECH && !speechLoaded) {
             loadSpeechModels(null);
+            loadNlpModels();
         }
         updateButtons();
     }
@@ -842,18 +869,18 @@ public final class SetupWizardPanel extends JPanel {
         done[STEP_SPEECH] = selectedSpeechOffer() != null && selectedSpeechOffer().isInstalled();
         trail.show(step, done);
         boolean speech = step == STEP_SPEECH;
-        backButton.setEnabled(step > 0 && !busy && !speechDownloading);
+        backButton.setEnabled(step > 0 && !busy && !installing());
         nextButton.setVisible(!speech);
         finishButton.setVisible(speech);
         nextButton.setEnabled(!speech && done[step] && !busy);
         // Der Schritt „Spracheingabe“ blockiert nie: Überspringen geht immer, auch während eines Downloads.
-        finishButton.setEnabled(speech && done[STEP_FINISH] && done[STEP_SPEECH] && !busy && !speechDownloading);
+        finishButton.setEnabled(speech && done[STEP_FINISH] && done[STEP_SPEECH] && !busy && !installing());
         cancelButton.setVisible(!speech);
         // „Überspringen“ in jedem Schritt: weiter ohne Prüfung; im letzten Schritt abschließen ohne Spracheingabe,
         // das geht erst nach bestandener Abschlussprüfung.
         skipButton.setEnabled(speech ? done[STEP_FINISH] : !busy);
         skipButton.setToolTipText(speech ? SKIP_SPEECH_HINT : SKIP_STEP_HINT);
-        trail.setNavigable(!busy && !speechDownloading && !handingOff);
+        trail.setNavigable(!busy && !installing() && !handingOff);
         if (handingOff) { // die Übergabe läuft bis zum Ende, dann schließt der Assistent selbst
             backButton.setEnabled(false);
             nextButton.setEnabled(false);
@@ -862,12 +889,14 @@ public final class SetupWizardPanel extends JPanel {
         }
         LocalVoiceOffer chosen = selectedSpeechOffer();
         speechInstall.setVisible(chosen != null && !chosen.isInstalled() && errors[STEP_SPEECH] == null);
-        speechInstall.setEnabled(!busy && !speechDownloading);
+        speechInstall.setEnabled(!busy && !installing());
         speechRetry.setVisible(speechLoadFailed || (chosen != null && !chosen.isInstalled()
                 && errors[STEP_SPEECH] != null && !speechDownloading));
-        speechRetry.setEnabled(!busy && !speechDownloading);
-        speechModel.setEnabled(!speechDownloading);
-        speechProgress.setVisible(speechDownloading);
+        speechRetry.setEnabled(!busy && !installing());
+        speechModel.setEnabled(!installing());
+        installAll.setVisible(!missingNlpOffers().isEmpty() || (chosen != null && !chosen.isInstalled()));
+        installAll.setEnabled(!busy && !installing());
+        speechProgress.setVisible(installing());
         String error = errors[step];
         errorPlate.setVisible(error != null && !error.isEmpty());
         errorText.setText(error == null ? "" : error);
@@ -1767,6 +1796,13 @@ public final class SetupWizardPanel extends JPanel {
      * installation was already complete.
      */
     void stopSpeechDownload() {
+        if (nlpInstalling) {
+            nlpStopRequested = true;
+            speechAfterNlp = false;
+            speechProgress.cancelling();
+            updateButtons();
+            return;
+        }
         InstallCancellation download = speechDownload;
         if (download == null || !download.cancel()) {
             return;
@@ -1784,10 +1820,170 @@ public final class SetupWizardPanel extends JPanel {
         closed = true;
         speechDownload = null;
         speechDownloading = false;
+        nlpStopRequested = true;
+        speechAfterNlp = false;
     }
 
     boolean isSpeechDownloading() {
         return speechDownloading;
+    }
+
+    /** A download of the speech model or an installation of OpenNLP models is running. */
+    private boolean installing() {
+        return speechDownloading || nlpInstalling;
+    }
+
+    // --- Schritt 6: Text- und Sprachanalyse (OpenNLP)
+
+    /** Die OpenNLP-Modelle mit Stand wie im Reiter „Lokale Modelle“; Ergebnis auf dem EDT. */
+    private void loadNlpModels() {
+        settings.nlpModels(offers -> {
+            if (closed) {
+                return;
+            }
+            nlpOffers = offers == null ? Collections.<NlpModelOffer>emptyList()
+                    : new ArrayList<NlpModelOffer>(offers);
+            showNlpOffers();
+        });
+    }
+
+    private void showNlpOffers() {
+        nlpLines.removeAll();
+        int row = 0;
+        for (NlpModelOffer offer : nlpOffers) {
+            GridBagConstraints c = new GridBagConstraints();
+            c.gridx = 0;
+            c.gridy = row;
+            c.anchor = GridBagConstraints.WEST;
+            c.weightx = 1;
+            c.insets = new Insets(0, 0, 2, 10);
+            JLabel name = new JLabel(shortNlpName(offer.name()));
+            name.putClientProperty("html.disable", Boolean.TRUE);
+            name.setForeground(palette.getInk());
+            name.setFont(ResearchUiTypography.regular(12.5f));
+            name.setToolTipText(offer.name());
+            nlpLines.add(name, c);
+            c = new GridBagConstraints();
+            c.gridx = 1;
+            c.gridy = row;
+            c.anchor = GridBagConstraints.EAST;
+            c.insets = new Insets(0, 0, 2, 0);
+            String problem = nlpProblems.get(offer.id());
+            JLabel state = new JLabel(offer.isInstalled() ? NLP_INSTALLED
+                    : problem != null ? "fehlgeschlagen" : offer.isInArchive() ? NLP_IN_ARCHIVE : NLP_DOWNLOAD);
+            state.setFont(ResearchUiTypography.regular(12f));
+            state.setForeground(offer.isInstalled() ? ResearchUiPalette.WAVE_GREEN
+                    : problem != null ? ResearchUiPalette.DANGER_RED : ResearchUiPalette.LIGHT_CONTROL_TEXT);
+            state.setToolTipText(problem);
+            state.setName("nlp-state-" + offer.id());
+            nlpLines.add(state, c);
+            row++;
+        }
+        nlpLines.revalidate();
+        nlpLines.repaint();
+        updateButtons();
+    }
+
+    /** Der Name ohne den Dateinamen in Klammern, damit die Zeile in die Breite des Assistenten passt. */
+    private static String shortNlpName(String name) {
+        int bracket = name.lastIndexOf(" (");
+        return bracket > 0 && name.endsWith(")") ? name.substring(0, bracket) : name;
+    }
+
+    private List<NlpModelOffer> missingNlpOffers() {
+        List<NlpModelOffer> missing = new ArrayList<NlpModelOffer>();
+        for (NlpModelOffer offer : nlpOffers) {
+            if (!offer.isInstalled()) {
+                missing.add(offer);
+            }
+        }
+        return missing;
+    }
+
+    /**
+     * „Alles installieren“: die fehlenden OpenNLP-Modelle nacheinander (aus dem Ressourcen-Archiv, sonst Download),
+     * danach das gewählte Spracheingabe-Modell. Ein Fehler hält nichts auf; das X hält nach dem laufenden Modell an.
+     */
+    private void installAll() {
+        if (busy || installing()) {
+            return;
+        }
+        clearError(STEP_SPEECH);
+        LocalVoiceOffer chosen = selectedSpeechOffer();
+        speechAfterNlp = chosen != null && !chosen.isInstalled();
+        List<NlpModelOffer> missing = missingNlpOffers();
+        if (missing.isEmpty()) {
+            continueWithSpeech();
+            return;
+        }
+        nlpProblems.clear();
+        nlpInstalling = true;
+        nlpStopRequested = false;
+        speechProgress.reset("Vorbereiten …");
+        installNlp(missing, 0);
+    }
+
+    private void installNlp(final List<NlpModelOffer> queue, final int index) {
+        if (closed) {
+            return;
+        }
+        if (index >= queue.size() || nlpStopRequested) {
+            boolean stopped = nlpStopRequested && index < queue.size();
+            nlpInstalling = false;
+            nlpStopRequested = false;
+            loadNlpModels();
+            if (stopped) {
+                speechStatus.setText(NLP_STOPPED);
+                updateButtons();
+                return;
+            }
+            reportNlpProblems();
+            continueWithSpeech();
+            return;
+        }
+        final NlpModelOffer offer = queue.get(index);
+        String text = "Modell " + (index + 1) + " von " + queue.size() + ": " + shortNlpName(offer.name())
+                + (offer.isInArchive() ? " aus dem Ressourcen-Archiv …" : " wird geladen …");
+        speechProgress.preparing(text);
+        speechStatus.setText(text);
+        updateButtons();
+        settings.installNlpModel(collect(), offer.id(), (ok, message) -> {
+            if (closed) {
+                return;
+            }
+            if (!Boolean.TRUE.equals(ok)) {
+                nlpProblems.put(offer.id(), message == null || message.isEmpty() ? "unbekannter Grund" : message);
+            }
+            installNlp(queue, index + 1);
+        });
+    }
+
+    private void reportNlpProblems() {
+        if (nlpProblems.isEmpty()) {
+            speechStatus.setText("Text- und Sprachanalyse ist installiert.");
+            return;
+        }
+        StringBuilder text = new StringBuilder("Nicht alle OpenNLP-Modelle ließen sich installieren:");
+        for (NlpModelOffer offer : nlpOffers) {
+            String problem = nlpProblems.get(offer.id());
+            if (problem != null) {
+                text.append(' ').append(shortNlpName(offer.name())).append(" (").append(problem).append(").");
+            }
+        }
+        text.append(" „Alles installieren“ versucht es erneut; Überspringen geht immer.");
+        speechStatus.setText("Installation teilweise fehlgeschlagen.");
+        fail(STEP_SPEECH, text.toString());
+    }
+
+    /** Nach den OpenNLP-Modellen das gewählte Spracheingabe-Modell, sofern „Alles installieren“ es mitnimmt. */
+    private void continueWithSpeech() {
+        boolean speech = speechAfterNlp;
+        speechAfterNlp = false;
+        if (speech) {
+            installSpeech();
+        } else {
+            updateButtons();
+        }
     }
 
     JButton speechCancelButton() {
@@ -2175,6 +2371,20 @@ public final class SetupWizardPanel extends JPanel {
 
     DownloadProgress speechProgress() {
         return speechProgress;
+    }
+
+    ComposerButton installAllButton() {
+        return installAll;
+    }
+
+    /** The state text of an OpenNLP model line or {@code null} when the step lists no such model. */
+    String nlpState(String id) {
+        for (Component part : nlpLines.getComponents()) {
+            if (("nlp-state-" + id).equals(part.getName())) {
+                return ((JLabel) part).getText();
+            }
+        }
+        return null;
     }
 
     String speechStatusText() {

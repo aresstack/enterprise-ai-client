@@ -65,6 +65,48 @@ final class WizardFakes {
         /** Wie oft ein Eintrag gespeichert wurde. */
         int saves;
         final Map<String, PasswordEntry> vault = new LinkedHashMap<String, PasswordEntry>();
+        /** The OpenNLP models of step 6, as the catalog lists them; installing marks one installed. */
+        final List<com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer> nlpOffers =
+                new ArrayList<com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer>(Arrays.asList(
+                        nlp("sentence-de", "Satzerkennung Deutsch (de-sent.bin)", true),
+                        nlp("sentence-en", "Satzerkennung Englisch (en-sent.bin)", true),
+                        nlp("langdetect", "Spracherkennung, alle Sprachen (langdetect-183.bin)", false),
+                        nlp("pos-de", "Wortartenerkennung Deutsch (de-pos-maxent.bin)", true)));
+        final List<String> nlpInstallRequests = new ArrayList<String>();
+        /** Ids whose installation fails. */
+        final java.util.Set<String> nlpFailures = new java.util.HashSet<String>();
+
+        private static com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer nlp(String id,
+                                                                                              String name,
+                                                                                              boolean inArchive) {
+            return new com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer(id, name, false,
+                    inArchive);
+        }
+
+        @Override
+        public void nlpModels(
+                java.util.function.Consumer<List<com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer>> onResult) {
+            onResult.accept(new ArrayList<com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer>(
+                    nlpOffers));
+        }
+
+        @Override
+        public void installNlpModel(SettingsForm form, String id,
+                                    java.util.function.BiConsumer<Boolean, String> onFinished) {
+            nlpInstallRequests.add(id);
+            if (nlpFailures.contains(id)) {
+                onFinished.accept(Boolean.FALSE, "HTTP 403");
+                return;
+            }
+            for (int i = 0; i < nlpOffers.size(); i++) {
+                com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer offer = nlpOffers.get(i);
+                if (offer.id().equals(id)) {
+                    nlpOffers.set(i, new com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer(id,
+                            offer.name(), true, offer.isInArchive()));
+                }
+            }
+            onFinished.accept(Boolean.TRUE, "installiert");
+        }
 
         Settings() {
             vault.put("Enterprise AI API", new PasswordEntry("Enterprise AI API", "", "https://ai.example.invalid/v1",

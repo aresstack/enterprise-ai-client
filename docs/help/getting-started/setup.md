@@ -1,7 +1,7 @@
 ---
 id: getting-started.setup
 title: Der Einrichtungsassistent
-keywords: Einrichtungsassistent, Einrichtung, Assistent, Setup, Setup-Wizard, Wizard, Erststart, erster Start, Ersteinrichtung, Merlin, Zauberer, Merlins Tochter, Übergabe, Schritte, Phasen, Schrittleiste, Überspringen, Weiter, Zurück, Fertig, Abbrechen, Abschlussprüfung, Spracheingabe, Download, Modell installieren, erneut starten, neu einrichten, onboarding, first run
+keywords: Einrichtungsassistent, Einrichtung, Assistent, Setup, Setup-Wizard, Wizard, Erststart, erster Start, Ersteinrichtung, Merlin, Zauberer, Merlins Tochter, Übergabe, Schritte, Phasen, Schrittleiste, Überspringen, Weiter, Zurück, Fertig, Abbrechen, Abschlussprüfung, Spracheingabe, OpenNLP, Textanalyse, Wortartenerkennung, Ressourcen-Archiv, Alles installieren, Download, Modell installieren, erneut starten, neu einrichten, onboarding, first run
 ---
 
 # Der Einrichtungsassistent
@@ -29,7 +29,7 @@ Oben im Assistenten steht die Schrittleiste mit sechs Phasen:
 3. „Modelle“: Chat-Modell, Embedding-Modell und Embedding-Dimension, siehe [Modelle auswählen](help:getting-started.models).
 4. „Confluence“: optional Confluence als Wissensquelle, siehe [Confluence im Assistenten](help:getting-started.confluence).
 5. „Abschluss“: die Abschlussprüfung, [siehe unten](help:getting-started.setup#die-abschlusspruefung).
-6. „Spracheingabe“: optional ein lokales Modell für die Spracheingabe, [siehe unten](help:getting-started.setup#lokale-spracheingabe-installieren).
+6. „Lokale KI“: optional ein lokales Modell für die Spracheingabe und die OpenNLP-Modelle der Text- und Sprachanalyse, [siehe unten](help:getting-started.setup#lokale-ki-und-sprachressourcen-installieren).
 
 Jeder Schritt zeigt eine Überschrift, einen kurzen Erklärtext, die Eingabefelder und darunter Statuszeilen. Geht etwas schief, erscheint unten eine rot markierte Fehlerplatte mit der Ursache. In den Schritten „KI-Dienst“ und „Confluence“ steht in dieser Fehlerplatte zusätzlich der Knopf „Netzwerkeinstellungen…“, mit dem du Proxy und Zertifikate anpassen kannst, ohne den Assistenten zu verlassen.
 
@@ -112,11 +112,17 @@ Ein rotes Kreuz trägt in Klammern einen gekürzten Grund; der vollständige Gru
 
 Ist etwas rot: Klicke in der Schrittleiste auf den betroffenen Schritt, korrigiere ihn, komm zurück und klicke „Erneut prüfen“. Erst wenn alles grün ist, geht es mit „Weiter“ zum letzten Schritt.
 
-## Lokale Spracheingabe installieren
+## Lokale KI- und Sprachressourcen installieren
 
-Der letzte Schritt „Lokale Spracheingabe“ ist optional. Hier kannst du ein Modell installieren, mit dem du dem Client Fragen diktieren kannst, ohne dass deine Stimme deinen Rechner verlässt. Das Modell wird einmal heruntergeladen und läuft danach im Client selbst.
+Der letzte Schritt „Lokale KI- und Sprachressourcen“ ist optional. Hier installierst du ein Modell, mit dem du dem Client Fragen diktieren kannst, ohne dass deine Stimme deinen Rechner verlässt, und unter „Textanalyse“ die Apache-OpenNLP-Modelle: Satzerkennung Deutsch und Englisch, Spracherkennung und Wortartenerkennung Deutsch. Alles läuft danach im Client selbst.
 
-1. Beim Betreten sucht der Assistent passende Modelle („Suche lokale Modelle für die Spracheingabe …“). In der Liste „Modell“ stehen zuerst bereits installierte Modelle (mit dem Zusatz „(installiert)“), dann Vorschläge zum Herunterladen.
+**Ressourcen-Archiv:** Zu jedem Release gehört neben dem Jar die Datei `enterprise-ai-client-resources-<version>.zip`. Liegt sie im selben Ordner wie das Jar (oder im Anwendungsverzeichnis), installiert der Assistent die OpenNLP-Modelle daraus, ohne etwas herunterzuladen; jede Datei wird dabei gegen Größe und SHA-256 geprüft. Je Modell steht rechts, woher es käme: „im Ressourcen-Archiv“, „Download“ oder „installiert“. Fehlt das Archiv oder stimmt eine Datei nicht, wird wie bisher heruntergeladen.
+
+„Alles installieren“ holt zuerst alle fehlenden OpenNLP-Modelle nacheinander und danach das gewählte Spracheingabe-Modell. Scheitert ein Modell, laufen die übrigen weiter, die Zeile zeigt „fehlgeschlagen“ (Grund im Tooltip), und „Alles installieren“ versucht es erneut. Das kleine Kreuz neben dem Fortschritt hält nach dem gerade laufenden OpenNLP-Modell an. Nichts davon ist Pflicht: „Überspringen“ geht immer.
+
+Das Spracheingabe-Modell lässt sich auch einzeln installieren:
+
+1. Beim Betreten sucht der Assistent passende Modelle („Suche lokale Modelle für die Spracheingabe …“). In der Liste „Spracheingabe“ stehen zuerst bereits installierte Modelle (mit dem Zusatz „(installiert)“), dann Vorschläge zum Herunterladen.
 2. Wähle ein Modell. Ist es noch nicht installiert, klicke „Installieren“. Ein Fortschrittsbalken und die Statuszeile zeigen den Download, etwa „Datei 2 von 5: … – 40 % von 1200,0 MB“.
 3. Nach der Installation ist das neue Modell automatisch gewählt. „Fertig“ setzt es als Modell für die Spracheingabe und schließt die Einrichtung ab.
 
@@ -129,7 +135,7 @@ Wichtig zu wissen:
 - Der Knopf „Abbrechen“ ist in diesem Schritt ausgeblendet. Nimm hier „Überspringen“, wenn du ohne Spracheingabe fertig werden willst. Das ✕ und Escape brechen den Assistenten dagegen ab, und beim Erststart öffnet er sich dann beim nächsten Start erneut.
 - „Überspringen“ geht in diesem Schritt erst, wenn die Abschlussprüfung bestanden ist. Die Grundeinrichtung ist zu diesem Zeitpunkt schon gespeichert.
 
-Die Spracheingabe lässt sich jederzeit später nachholen, unter Einstellungen → Modelle → „Lokale Modelle“. Dort kannst du auch lokale Stimmen für die Sprachausgabe herunterladen. Details: [Modelle einstellen](help:settings.models) und [Diktieren](help:chat.dictation).
+Spracheingabe und Textanalyse lassen sich jederzeit später nachholen, unter Einstellungen → Modelle → „Lokale Modelle“; dort gilt dasselbe Ressourcen-Archiv. Dort kannst du auch lokale Stimmen für die Sprachausgabe herunterladen. Details: [Modelle einstellen](help:settings.models) und [Diktieren](help:chat.dictation).
 
 ## Die Übergabe an Merlins Tochter
 

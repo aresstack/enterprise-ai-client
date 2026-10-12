@@ -1,7 +1,7 @@
 ---
 id: settings.models
 title: Einstellungen – Reiter „Modelle“
-keywords: Modelle, Modell, Chat-Modell, Embedding-Modell, Reranking, TTS, STT, Sprachausgabe, Spracheingabe, Bildverständnis, OCR, Bild-Embeddings, Cloud-Modelle, Lokale Modelle, Modelle aktualisieren, GET /models, Hugging Face, ONNX, installieren, Stimme installieren, Modellverzeichnis, local-models, OpenNLP, Satzerkennung, nicht im Katalog, chat.model, embedding.model, model.tts
+keywords: Modelle, Modell, Chat-Modell, Embedding-Modell, Reranking, TTS, STT, Sprachausgabe, Spracheingabe, Bildverständnis, OCR, Bild-Embeddings, Cloud-Modelle, Lokale Modelle, Modelle aktualisieren, GET /models, Hugging Face, ONNX, installieren, Stimme installieren, Modellverzeichnis, local-models, OpenNLP, Satzerkennung, Wortartenerkennung, Ressourcen-Archiv, enterprise-ai-client-resources, nicht im Katalog, chat.model, embedding.model, model.tts
 ---
 
 # Einstellungen – Reiter „Modelle“
@@ -89,9 +89,9 @@ Nach der Suche steht „n ladbare Modelle gefunden.“ oder „Keine im Client l
 
 „Installieren“ lädt die Dateien über die Netzwerkeinstellungen des Entwurfs (Proxy, TLS) ins Modellverzeichnis. Unter der Zeile erscheint je Datei ein Fortschrittsbalken bis 100 Prozent mit „Datei n von m“. Danach meldet die Zeile zum Beispiel „… installiert; wählbar oben unter „Sprachausgabe (TTS)““. Während ein Download läuft, sind alle anderen Knöpfe gesperrt. Installieren wählt nichts aus: wähle das Modell danach im Bereich „Lokale Modelle je Funktion“ und speichere.
 
-### Bereich „Satz- und Spracherkennung (Vorlesen)“
+### Bereich „Text- und Sprachanalyse (OpenNLP)“
 
-Hinweis: „Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache. Ohne diese Modelle wird an Satzzeichen geteilt.“ Je Modell eine Zeile mit Stand und „Installieren“ (während des Ladens „Lade …“). Größe und SHA-256 werden beim Laden geprüft.
+Hinweis: „Vorlesen teilt Antworten wie AskAI mit Apache OpenNLP in Sätze und erkennt die Sprache; die Wortartenerkennung hilft beim Auswerten von Chat-Anfragen. Ohne diese Modelle wird an Satzzeichen geteilt. …“ Modelle: Satzerkennung Deutsch und Englisch, Spracherkennung, Wortartenerkennung Deutsch (`de-pos-maxent.bin`). Je Modell eine Zeile mit Stand und „Installieren“ (während des Ladens „Lade …“). Liegt das Ressourcen-Archiv `enterprise-ai-client-resources-<version>.zip` neben dem Jar oder im Anwendungsverzeichnis, steht „Im Ressourcen-Archiv“, und „Installieren“ entpackt das Modell daraus statt es zu laden. Größe und SHA-256 werden in beiden Fällen geprüft.
 
 ### Bereich „Modellverzeichnis“
 
