@@ -85,7 +85,12 @@ public final class SettingsForm {
     private final String contextMaxSources;
     private final String retrievalMaxResults;
     private final String contextMaxTokens;
-    private final String contextMinSources;
+    private final String minIndependentSources;
+    private final String keywordCandidates;
+    private final String semanticCandidates;
+    private final String liveSearchInitialPages;
+    private final String liveSearchMaxPages;
+    private final String liveSearchHitsPerSource;
     private final String retrievalMaxFollowUps;
     private final boolean retrievalRerank;
     private final Map<String, String> modelSelections;
@@ -138,7 +143,12 @@ public final class SettingsForm {
         this.contextMaxSources = b.contextMaxSources;
         this.retrievalMaxResults = b.retrievalMaxResults;
         this.contextMaxTokens = b.contextMaxTokens;
-        this.contextMinSources = b.contextMinSources;
+        this.minIndependentSources = b.minIndependentSources;
+        this.keywordCandidates = b.keywordCandidates;
+        this.semanticCandidates = b.semanticCandidates;
+        this.liveSearchInitialPages = b.liveSearchInitialPages;
+        this.liveSearchMaxPages = b.liveSearchMaxPages;
+        this.liveSearchHitsPerSource = b.liveSearchHitsPerSource;
         this.retrievalMaxFollowUps = b.retrievalMaxFollowUps;
         this.retrievalRerank = b.retrievalRerank;
         this.modelSelections = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.modelSelections));
@@ -180,7 +190,12 @@ public final class SettingsForm {
                 .contextMaxSources(contextMaxSources)
                 .retrievalMaxResults(retrievalMaxResults)
                 .contextMaxTokens(contextMaxTokens)
-                .contextMinSources(contextMinSources)
+                .minIndependentSources(minIndependentSources)
+                .keywordCandidates(keywordCandidates)
+                .semanticCandidates(semanticCandidates)
+                .liveSearchInitialPages(liveSearchInitialPages)
+                .liveSearchMaxPages(liveSearchMaxPages)
+                .liveSearchHitsPerSource(liveSearchHitsPerSource)
                 .retrievalMaxFollowUps(retrievalMaxFollowUps)
                 .retrievalRerank(retrievalRerank)
                 .modelSelections(modelSelections)
@@ -401,9 +416,34 @@ public final class SettingsForm {
         return contextMaxTokens;
     }
 
-    /** Mindestzahl unabhängiger Quellen, bevor die Evidenz reicht ({@code context.minSources}, 0 = nur Prüfung). */
-    public String contextMinSources() {
-        return contextMinSources;
+    /** Mindestzahl verschiedener Ressourcen ({@code retrieval.minIndependentSources}, 0 = nur Evidenzprüfung). */
+    public String minIndependentSources() {
+        return minIndependentSources;
+    }
+
+    /** Volltext-Kandidaten je Suche ({@code retrieval.keywordCandidates}). */
+    public String keywordCandidates() {
+        return keywordCandidates;
+    }
+
+    /** Semantische Kandidaten je Suche ({@code retrieval.semanticCandidates}). */
+    public String semanticCandidates() {
+        return semanticCandidates;
+    }
+
+    /** Live-Suche: Seiten vor der ersten Evidenzbewertung ({@code retrieval.liveSearch.initialPages}). */
+    public String liveSearchInitialPages() {
+        return liveSearchInitialPages;
+    }
+
+    /** Live-Suche: höchstens blockierend abgewartete Seiten ({@code retrieval.liveSearch.maxPages}). */
+    public String liveSearchMaxPages() {
+        return liveSearchMaxPages;
+    }
+
+    /** Live-Suche: Treffer je Quelle ({@code retrieval.liveSearch.hitsPerSource}). */
+    public String liveSearchHitsPerSource() {
+        return liveSearchHitsPerSource;
     }
 
     /** Nachsuchen mit genauerer Anfrage im normalen Chat ({@code retrieval.maxFollowUps}, 0–5). */
@@ -490,7 +530,12 @@ public final class SettingsForm {
         private String contextMaxSources = "6";
         private String retrievalMaxResults = "10";
         private String contextMaxTokens = "1500";
-        private String contextMinSources = "1";
+        private String minIndependentSources = "1";
+        private String keywordCandidates = "20";
+        private String semanticCandidates = "20";
+        private String liveSearchInitialPages = "1";
+        private String liveSearchMaxPages = "4";
+        private String liveSearchHitsPerSource = "10";
         private String retrievalMaxFollowUps = "2";
         private boolean retrievalRerank = true;
         private final Map<String, String> modelSelections = new LinkedHashMap<String, String>();
@@ -730,8 +775,33 @@ public final class SettingsForm {
             return this;
         }
 
-        public Builder contextMinSources(String value) {
-            this.contextMinSources = text(value);
+        public Builder minIndependentSources(String value) {
+            this.minIndependentSources = text(value);
+            return this;
+        }
+
+        public Builder keywordCandidates(String value) {
+            this.keywordCandidates = text(value);
+            return this;
+        }
+
+        public Builder semanticCandidates(String value) {
+            this.semanticCandidates = text(value);
+            return this;
+        }
+
+        public Builder liveSearchInitialPages(String value) {
+            this.liveSearchInitialPages = text(value);
+            return this;
+        }
+
+        public Builder liveSearchMaxPages(String value) {
+            this.liveSearchMaxPages = text(value);
+            return this;
+        }
+
+        public Builder liveSearchHitsPerSource(String value) {
+            this.liveSearchHitsPerSource = text(value);
             return this;
         }
 

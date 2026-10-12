@@ -5,14 +5,15 @@ package com.aresstack.enterpriseai.astu.acropolis.rag;
  *
  * <ul>
  *   <li><b>Max. Quellen im Kontext</b>: harte Obergrenze, {@link ContextSettings#maxSources()} ({@code context.maxSources}).</li>
- *   <li><b>Mindestzahl unabhängiger Quellen</b> ({@link #minSources()}, {@code context.minSources}): so viele
- *       verschiedene Seiten müssen relevante Abschnitte beitragen, bevor die Sufficiency-Prüfung „reicht“ gelten
- *       lässt. 0 heißt: keine Mindestzahl, nur die Prüfung entscheidet. Standard 1.</li>
+ *   <li><b>Mindestzahl unabhängiger Quellen</b> ({@link #minSources()}, {@code retrieval.minIndependentSources}): so viele
+ *       verschiedene Ressourcen (resourceId, nicht Abschnitte derselben Seite) müssen die Antwort stützen, bevor
+ *       „reicht“ gilt. 0 heißt: keine Mindestzahl, nur die Prüfung entscheidet. Standard 1.</li>
  *   <li><b>Max. Suchaufwand</b> ({@link #maxFollowUps()}, {@code retrieval.maxFollowUps}): Nachsuchen mit genauerer
  *       Anfrage, wenn die Treffer nicht reichen. Standard {@link FollowUpResearch#DEFAULT_MAX_FOLLOW_UPS}.</li>
  * </ul>
  *
- * Dazu, ob die Treffer vor der Übernahme gegen die Nachricht bewertet werden ({@link #reranking()}). Unveränderlich.
+ * Dazu, ob die Treffer vor der Übernahme gegen die Nachricht bewertet werden ({@link #reranking()},
+ * {@code retrieval.rerank}). Unveränderlich.
  */
 public final class EvidencePolicy {
 

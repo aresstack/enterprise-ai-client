@@ -19,10 +19,16 @@ import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,13 +39,12 @@ import static com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.Know
 import static com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.KnowledgeIndexTestData.vector;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Adaptiver Modus des {@link RagChatUseCase}: Reranking gegen die Frage, Evidenz Quelle für Quelle, Ende, sobald sie
- * reicht; die Obergrenze gilt immer, die Mindestzahl unabhängiger Quellen 0, 1 und n.
+ * Adaptiver Modus des {@link RagChatUseCase}: ein Evidenz-Bewerter je Kandidatenrunde, Ende, sobald die Evidenz reicht;
+ * die Grenzen (Quellen, Mindestzahl, Nachrecherchen) gelten immer und ändern sich ohne Neustart.
  */
 public class AdaptiveEvidenceTest {
 
@@ -54,7 +59,6 @@ public class AdaptiveEvidenceTest {
     private ScriptedEmbeddingPort embeddings;
     private ScriptedModel model;
     private ChatService chat;
-    private RecordingListener listener;
 
     @Before
     public void setUp() {
@@ -65,30 +69,31 @@ public class AdaptiveEvidenceTest {
         add(entry(MILK, 0, "Milch kommt aus dem Stall.", vector(SPACE_3D, 1, 0.3f, 0)));
         embeddings = new ScriptedEmbeddingPort(SPACE_3D).on(QUESTION, 1f, 0f, 0f)
                 .on("Quark Hintergrund", 0f, 1f, 0f).on("Quark weitere Quellen", 0f, 0f, 1f);
+        for (int i = 1; i <= 9; i++) {
+            embeddings.on("Quark Suche " + i, 0f, 1f, 1f);
+        }
         model = new ScriptedModel();
         chat = new ChatService(model);
     }
 
     @Test
-    public void factQuestionEndsAfterOneSufficientSource() throws Exception {
-        model.score(QUARK, 3).score(DETAIL, 2);
-        model.sufficientWhen(context -> context.contains("Lieferscheine"));
+    public void factQuestionEndsWithOneEvaluationAndOneSource() throws Exception {
+        model.relevant(QUARK, DETAIL).sufficientWith(QUARK);
 
         RagChatTurn turn = send(EvidencePolicy.defaults(), ContextSettings.defaults(), RetrievalPreparation.none());
 
         assertEquals(1, turn.sources().size());
         assertEquals(QUARK, turn.sources().get(0).resource());
         assertEquals(Collections.singletonList(QUESTION), turn.queries());
-        assertEquals("eine Bewertung", 1, model.rankings);
-        assertEquals("eine Prüfung", 1, model.checks);
+        assertEquals("ein Bewerter-Aufruf, keine Prüfung je Quelle", 1, model.evaluations);
+        assertEquals("nur der Bewerter, keine weitere Nebenanfrage", 1, model.requests);
         assertFalse(model.lastAnswerSystem.contains("Käse"));
+        assertFalse(model.lastAnswerSystem.contains("Lücke"));
     }
 
     @Test
-    public void complexQuestionTakesMoreSourcesAndSearchesFurther() throws Exception {
-        model.score(QUARK, 3).score(DETAIL, 2).score(HISTORY, 2);
-        model.sufficientWhen(context -> context.contains("gegründet"));
-        model.nextQuery("Quark Hintergrund");
+    public void complexQuestionTakesSeveralSourcesAndSearchesFurther() throws Exception {
+        model.relevant(QUARK, DETAIL, HISTORY).sufficientWith(QUARK, DETAIL, HISTORY).nextQuery("Quark Hintergrund");
         RetrievalPreparation liveSearch = (query, sources) -> {
             if (query.equals("Quark Hintergrund")) {
                 add(entry(HISTORY, 0, "Das Quark-Verfahren wurde 1999 gegründet.", vector(SPACE_3D, 0, 1, 0)));
@@ -97,129 +102,144 @@ public class AdaptiveEvidenceTest {
 
         RagChatTurn turn = send(EvidencePolicy.defaults(), ContextSettings.defaults(), liveSearch);
 
-        assertEquals(java.util.Arrays.asList(QUESTION, "Quark Hintergrund"), turn.queries());
+        assertEquals(Arrays.asList(QUESTION, "Quark Hintergrund"), turn.queries());
         assertEquals(3, turn.sources().size());
-        assertEquals("neue Quelle hinten angehängt", HISTORY, turn.sources().get(2).resource());
-        assertEquals("nach jeder Quelle geprüft", 3, model.checks);
-        assertEquals("je Suche eine Bewertung der neuen Treffer", 2, model.rankings);
+        assertEquals("je Kandidatenrunde ein Aufruf", 2, model.evaluations);
+        assertTrue("die zweite Runde sieht die bisher relevanten mit", model.lastEvaluation.contains("wiki:QuarkAblauf"));
         assertTrue(model.lastAnswerSystem.contains("gegründet"));
         assertFalse("irrelevante Treffer fliegen raus", model.lastAnswerSystem.contains("Käse"));
     }
 
     @Test
-    public void maxSourcesIsNeverExceeded() throws Exception {
-        model.score(QUARK, 3).score(DETAIL, 2).score(CHEESE, 2).score(MILK, 2);
-        model.sufficientWhen(context -> false);
-        model.nextQuery("Quark Hintergrund");
-        final int[] full = {-1};
-        RetrievalProgress progress = new RetrievalProgress() {
-            @Override
-            public void evidenceFull(int sources) {
-                full[0] = sources;
-            }
-        };
+    public void maxSourcesTwoMeansAtMostTwo() throws Exception {
+        model.relevant(QUARK, DETAIL, CHEESE, MILK).sufficientWith(QUARK, DETAIL, CHEESE, MILK);
 
         RagChatTurn turn = send(EvidencePolicy.defaults(), ContextSettings.defaults().withMaxSources(2),
-                RetrievalPreparation.none(), progress);
+                RetrievalPreparation.none());
 
         assertEquals(2, turn.sources().size());
-        assertEquals(2, full[0]);
-        assertEquals("Obergrenze erreicht: keine Nachsuche", 1, turn.queries().size());
-        assertEquals(QUARK, turn.sources().get(0).resource());
+        assertTrue(model.lastEvaluation, model.lastEvaluation.contains("höchstens 2 Abschnitte"));
     }
 
     @Test
-    public void minimumOfOneChecksAfterTheFirstSource() throws Exception {
-        add(entry(QUARK, 1, "Quark-Verfahren gilt für alle Lieferscheine.", vector(SPACE_3D, 1, 0, 0)));
-        model.score(QUARK, 3).score(DETAIL, 2);
-        model.sufficientWhen(context -> true);
+    public void maxSourcesTenAllowsUpToTen() throws Exception {
+        List<KnowledgeResource> pages = new ArrayList<KnowledgeResource>();
+        for (int i = 0; i < 10; i++) {
+            KnowledgeResource page = resource("wiki:Quark" + i, "wiki");
+            pages.add(page);
+            add(entry(page, 0, "Quark-Verfahren Teil " + i, vector(SPACE_3D, 1, 0.05f * i, 0)));
+        }
+        List<KnowledgeResource> all = new ArrayList<KnowledgeResource>(pages);
+        all.addAll(Arrays.asList(QUARK, DETAIL, CHEESE, MILK));
+        model.relevant(all.toArray(new KnowledgeResource[0])).sufficientWith(HISTORY);
 
-        RagChatTurn turn = send(EvidencePolicy.defaults().withMinSources(1), ContextSettings.defaults(),
-                RetrievalPreparation.none());
+        RagChatTurn turn = send(EvidencePolicy.defaults().withMaxFollowUps(0), ContextSettings.defaults().withMaxSources(10)
+                .withMaxContextTokens(100000), RetrievalPreparation.none());
 
-        assertEquals(1, turn.sources().size());
-        assertEquals(1, model.checks);
+        assertEquals("mehr relevante Treffer als erlaubt: gedeckelt", 10, turn.sources().size());
     }
 
     @Test
-    public void minimumOfTwoNeedsTwoIndependentPagesBeforeTheFirstCheck() throws Exception {
-        add(entry(QUARK, 1, "Quark-Verfahren gilt für alle Lieferscheine.", vector(SPACE_3D, 1, 0, 0)));
-        model.score(QUARK, 3).score(DETAIL, 2);
-        model.sufficientWhen(context -> true);
-
-        RagChatTurn turn = send(EvidencePolicy.defaults().withMinSources(2), ContextSettings.defaults(),
-                RetrievalPreparation.none());
-
-        assertEquals("zwei Abschnitte derselben Seite zählen als eine Quelle", 3, turn.sources().size());
-        assertEquals(DETAIL, turn.sources().get(2).resource());
-        assertEquals("erst mit der zweiten Seite geprüft", 1, model.checks);
-    }
-
-    @Test
-    public void unmetMinimumAsksForASearchForFurtherSources() throws Exception {
-        model.score(QUARK, 3);
-        model.sufficientWhen(context -> true);
-        model.nextQuery("Quark weitere Quellen");
-
-        RagChatTurn turn = send(EvidencePolicy.defaults().withMinSources(2), ContextSettings.defaults(),
-                RetrievalPreparation.none());
-
-        assertEquals(1, turn.sources().size());
-        assertTrue(model.lastCheck, model.lastCheck.contains("Verlangt sind Belege aus 1 weiteren"));
-    }
-
-    @Test
-    public void minimumOfZeroLeavesTheDecisionToTheCheck() throws Exception {
-        model.sufficientWhen(context -> true);
+    public void minimumZeroLeavesTheDecisionToTheEvaluation() throws Exception {
+        model.sufficientWith();
 
         RagChatTurn turn = send(EvidencePolicy.defaults().withMinSources(0), ContextSettings.defaults(),
                 RetrievalPreparation.none());
 
-        assertTrue("nichts relevant: kein Kontext", turn.sources().isEmpty());
-        assertEquals(1, model.checks);
-        assertFalse(model.lastCheck.contains("Verlangt sind Belege"));
+        assertTrue("nichts relevant, aber ausreichend: kein Kontext", turn.sources().isEmpty());
+        assertEquals(1, model.evaluations);
+        assertFalse(model.lastEvaluation.contains("verschiedene Seiten"));
         assertEquals(1, turn.queries().size());
     }
 
     @Test
-    public void unreadableRankingKeepsAllCandidatesInSearchOrder() throws Exception {
-        model.rankingAnswer = "kaputt";
-        model.sufficientWhen(context -> true);
+    public void minimumTwoNeedsTwoDifferentResources() throws Exception {
+        add(entry(QUARK, 1, "Quark-Verfahren gilt für alle Lieferscheine.", vector(SPACE_3D, 1, 0, 0)));
+        model.relevant(QUARK, DETAIL).sufficientWith(QUARK);
 
-        RagChatTurn turn = send(EvidencePolicy.defaults(), ContextSettings.defaults(), RetrievalPreparation.none());
+        RagChatTurn turn = send(EvidencePolicy.defaults().withMinSources(2), ContextSettings.defaults(),
+                RetrievalPreparation.none());
 
-        assertEquals(1, turn.sources().size());
-        assertEquals(1, model.rankings);
+        Set<String> resources = new HashSet<String>();
+        for (RagSource source : turn.sources()) {
+            resources.add(source.resource().id().value());
+        }
+        assertEquals("zwei Abschnitte derselben Seite zählen als eine", 2, resources.size());
+        assertTrue(resources.contains(DETAIL.id().value()));
+        assertTrue(model.lastEvaluation.contains("mindestens 2 verschiedene Seiten"));
     }
 
     @Test
-    public void withoutRerankingNoRankingRequestIsMade() throws Exception {
-        model.sufficientWhen(context -> true);
+    public void unmetMinimumEndsWithTheBestEvidenceAndNamesTheGap() throws Exception {
+        model.relevant(QUARK).sufficientWith(QUARK).nextQuery("Quark weitere Quellen").missing("zweite Quelle");
 
+        RagChatTurn turn = send(EvidencePolicy.defaults().withMinSources(2), ContextSettings.defaults(),
+                RetrievalPreparation.none());
+
+        assertEquals(1, turn.sources().size());
+        assertEquals("die wiederholte Anfrage endet die Suche", Arrays.asList(QUESTION, "Quark weitere Quellen"),
+                turn.queries());
+        assertTrue(model.lastAnswerSystem, model.lastAnswerSystem.contains("es fehlt: zweite Quelle"));
+        assertTrue(model.lastAnswerSystem.contains("nenne die Lücke offen"));
+    }
+
+    @Test
+    public void maxFollowUpsZeroMeansNoFollowUpSearch() throws Exception {
+        model.relevant(QUARK).nextQuery("Quark Hintergrund");
+
+        RagChatTurn turn = send(EvidencePolicy.defaults().withMaxFollowUps(0), ContextSettings.defaults(),
+                RetrievalPreparation.none());
+
+        assertEquals(Collections.singletonList(QUESTION), turn.queries());
+        assertEquals(1, turn.sources().size());
+        assertTrue(model.lastAnswerSystem.contains("nenne die Lücke offen"));
+    }
+
+    @Test
+    public void maxFollowUpsFiveMeansAtMostFive() throws Exception {
+        model.relevant(QUARK).numberedQueries();
+
+        RagChatTurn turn = send(EvidencePolicy.defaults().withMaxFollowUps(5), ContextSettings.defaults(),
+                RetrievalPreparation.none());
+
+        assertEquals("die Nachricht und fünf Nachrecherchen", 6, turn.queries().size());
+    }
+
+    @Test
+    public void unreadableEvaluationKeepsTheCandidatesInSearchOrder() throws Exception {
+        model.evaluationAnswer = "kaputt";
+
+        RagChatTurn turn = send(EvidencePolicy.defaults(), ContextSettings.defaults(), RetrievalPreparation.none());
+
+        assertEquals(4, turn.sources().size());
+        assertEquals(QUARK, turn.sources().get(0).resource());
+        assertEquals(1, model.evaluations);
+    }
+
+    @Test
+    public void withoutRerankingTheFixedFlowRuns() throws Exception {
         RagChatTurn turn = send(EvidencePolicy.defaults().withReranking(false), ContextSettings.defaults(),
                 RetrievalPreparation.none());
 
-        assertEquals(0, model.rankings);
-        assertEquals(1, turn.sources().size());
+        assertEquals(0, model.evaluations);
+        assertEquals("Nachrecherche-Prüfung", 1, model.checks);
+        assertEquals(4, turn.sources().size());
     }
 
     @Test
     public void stagedLiveSearchWaitsForMorePagesOnlyWhenTheEvidenceIsNotEnough() throws Exception {
-        model.score(QUARK, 3).score(DETAIL, 2).score(HISTORY, 3);
-        model.sufficientWhen(context -> context.contains("gegründet"));
+        model.relevant(QUARK, DETAIL, HISTORY).sufficientWith(QUARK, HISTORY);
         StagedSearch staged = new StagedSearch();
 
         RagChatTurn turn = send(EvidencePolicy.defaults().withMaxFollowUps(0), ContextSettings.defaults(), staged);
 
         assertEquals(1, staged.awaited);
         assertEquals(Collections.singletonList(QUESTION), turn.queries());
-        assertEquals(3, turn.sources().size());
-        assertEquals("die nachgeladene Seite steht als beste Note vorn im neuen Bündel", HISTORY,
-                turn.sources().get(2).resource());
+        assertEquals(2, turn.sources().size());
+        assertEquals(2, model.evaluations);
 
         setUp();
-        model.score(QUARK, 3);
-        model.sufficientWhen(context -> context.contains("Lieferscheine"));
+        model.relevant(QUARK).sufficientWith(QUARK);
         StagedSearch fast = new StagedSearch();
         send(EvidencePolicy.defaults(), ContextSettings.defaults(), fast);
         assertEquals("Faktfrage wartet auf keine weitere Seite", 0, fast.awaited);
@@ -227,10 +247,9 @@ public class AdaptiveEvidenceTest {
 
     @Test
     public void followUpAnsweredByEarlierEvidenceNeedsNoSearch() throws Exception {
-        model.score(QUARK, 3);
-        model.sufficientWhen(context -> context.contains("Lieferscheine"));
-        RagChatUseCase rag = adaptive(EvidencePolicy.defaults(), ContextSettings.defaults(),
-                RetrievalPreparation.none());
+        model.relevant(QUARK).sufficientWith(QUARK);
+        RagChatUseCase rag = adaptive(() -> EvidencePolicy.defaults(), PromptContextAssembler.live(
+                ContextSettings::defaults), RetrievalPreparation.none());
         ChatConversationId id = chat.openConversation("System");
         send(rag, id, QUESTION);
         int searches = index.semanticSearches;
@@ -241,51 +260,70 @@ public class AdaptiveEvidenceTest {
         assertEquals("nicht neu gesucht", searches, index.semanticSearches);
         assertEquals(1, turn.sources().size());
         assertEquals(QUARK, turn.sources().get(0).resource());
-        assertEquals("nur die erste Nachricht wurde bewertet", 1, model.rankings);
+        assertEquals("nur die erste Nachricht wurde bewertet", 1, model.evaluations);
     }
 
     @Test
-    public void rankingParserReadsScoresAndIgnoresUnknownIds() {
-        Map<Integer, Integer> scores = RelevanceRanking.parse(
-                "{\"scores\": [{\"id\": 1, \"score\": 3}, {\"id\": \"2\", \"score\": 0}, {\"id\": 9, \"score\": 2}]}",
-                2);
-        assertNotNull(scores);
-        assertEquals(Integer.valueOf(3), scores.get(1));
-        assertEquals(Integer.valueOf(0), scores.get(2));
-        assertEquals(2, scores.size());
-        assertNull(RelevanceRanking.parse("keine Ahnung", 3));
+    public void changedLimitsApplyToTheNextTurnWithoutRestart() throws Exception {
+        model.relevant(QUARK, DETAIL, CHEESE, MILK).sufficientWith(QUARK, DETAIL, CHEESE, MILK);
+        AtomicReference<EvidencePolicy> policy = new AtomicReference<EvidencePolicy>(EvidencePolicy.defaults());
+        AtomicReference<ContextSettings> context = new AtomicReference<ContextSettings>(
+                ContextSettings.defaults().withMaxSources(3));
+        RagChatUseCase rag = adaptive(policy::get, PromptContextAssembler.live(context::get),
+                RetrievalPreparation.none());
+
+        assertEquals(3, send(rag, chat.openConversation("System"), QUESTION).sources().size());
+
+        context.set(ContextSettings.defaults().withMaxSources(2));
+        assertEquals(2, send(rag, chat.openConversation("System"), QUESTION).sources().size());
+
+        model.relevant(QUARK).sufficientWith(HISTORY).numberedQueries();
+        policy.set(EvidencePolicy.defaults().withMaxFollowUps(1));
+        assertEquals(2, send(rag, chat.openConversation("System"), QUESTION).queries().size());
+        policy.set(EvidencePolicy.defaults().withMaxFollowUps(0));
+        assertEquals(1, send(rag, chat.openConversation("System"), QUESTION).queries().size());
+    }
+
+    @Test
+    public void parserKeepsOnlyOfferedIds() {
+        EvidenceEvaluator.Evaluation evaluation = EvidenceEvaluator.parse("{\"ranked\": [{\"id\": \"c2\", "
+                + "\"relevant\": true}, {\"id\": \"c9\", \"relevant\": true}, {\"id\": \"c1\", \"relevant\": false}], "
+                + "\"minimumEvidence\": [\"c2\", \"c7\"], \"sufficient\": true, \"missing\": \"\", \"nextQuery\": \"\"}",
+                new HashSet<String>(Arrays.asList("c1", "c2", "c3")), Collections.<String>emptyList());
+        assertTrue(evaluation.isSufficient());
+        assertEquals(Collections.singletonList("c2"), evaluation.relevant());
+        assertEquals(Collections.singletonList("c2"), evaluation.minimumEvidence());
+        assertNull(evaluation.nextQuery());
+        assertFalse(EvidenceEvaluator.parse("keine Ahnung", Collections.<String>emptySet(),
+                Collections.<String>emptyList()).isKnown());
     }
 
     private RagChatTurn send(EvidencePolicy policy, ContextSettings context, RetrievalPreparation preparation)
             throws Exception {
-        return send(policy, context, preparation, RetrievalProgress.none());
+        return send(adaptive(() -> policy, new PromptContextAssembler(context), preparation),
+                chat.openConversation("System"), QUESTION);
     }
 
-    private RagChatTurn send(final EvidencePolicy policy, ContextSettings context, RetrievalPreparation preparation,
-                             RetrievalProgress progress) throws Exception {
-        return send(adaptive(policy, context, preparation), chat.openConversation("System"), QUESTION, progress);
-    }
-
-    private RagChatUseCase adaptive(final EvidencePolicy policy, ContextSettings context,
+    private RagChatUseCase adaptive(java.util.function.Supplier<EvidencePolicy> policy, PromptContextAssembler assembler,
                                     RetrievalPreparation preparation) {
-        return new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D, null),
-                new PromptContextAssembler(context), preparation,
-                FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS), () -> policy);
+        return new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D, null), assembler,
+                preparation, FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS), policy);
     }
 
     private RagChatTurn send(RagChatUseCase rag, ChatConversationId id, String text) throws Exception {
-        return send(rag, id, text, RetrievalProgress.none());
-    }
-
-    private RagChatTurn send(RagChatUseCase rag, ChatConversationId id, String text, RetrievalProgress progress)
-            throws Exception {
-        listener = new RecordingListener();
-        RagChatTurn turn = rag.send(id, text, RagOptions.enabled(), null, listener, null, null, progress);
+        RecordingListener listener = new RecordingListener();
+        RagChatTurn turn = rag.send(id, text, RagOptions.enabled(), null, listener, null, null,
+                RetrievalProgress.none());
         listener.await();
         return turn;
     }
 
-    /** Fügt beim ersten Nachladen die Historienseite in den Index ein, wie der Vorlader im Hintergrund. */
+    /** Legt einen Eintrag in den Index, auch während der Suche (wie der Vorlader). */
+    private void add(KnowledgeIndexEntry entry) {
+        index.index(Collections.singletonList(entry));
+    }
+
+    /** Legt beim ersten Nachladen die Historienseite in den Index, wie der Vorlader im Hintergrund. */
     private final class StagedSearch implements RetrievalPreparation {
 
         int awaited;
@@ -308,69 +346,111 @@ public class AdaptiveEvidenceTest {
     }
 
     /**
-     * Das Modell: Nebenanfragen nach ihrer Anweisung beantwortet (Bewertung, Prüfung), die Antwort gestreamt.
+     * Das Modell: Nebenanfragen nach ihrer Anweisung beantwortet (Evidenz-Bewertung, Nachrecherche-Prüfung, früherer
+     * Kontext), die Antwort gestreamt.
      */
     private static final class ScriptedModel implements ChatCompletionPort {
 
-        private static final Pattern NUMBERED = Pattern.compile("^\\[(\\d+)] Titel (\\S+)$", Pattern.MULTILINE);
+        private static final Pattern CANDIDATE = Pattern.compile("^\\[(c\\d+)] resource: (\\S+) ", Pattern.MULTILINE);
 
         private final FakeChatCompletionPort answers = new FakeChatCompletionPort();
-        private final Map<String, Integer> scores = new HashMap<String, Integer>();
-        private Function<String, Boolean> sufficient = context -> true;
-        private String query = "";
-        volatile int rankings;
+        private final Set<String> relevant = new HashSet<String>();
+        private List<String> sufficientWith;
+        private String nextQuery = "";
+        private String missing = "";
+        private boolean numbered;
+        volatile int requests;
+        volatile int evaluations;
         volatile int checks;
-        volatile String lastCheck = "";
+        volatile String lastEvaluation = "";
         volatile String lastAnswerSystem = "";
-        volatile String rankingAnswer;
+        volatile String evaluationAnswer;
         volatile String priorAnswer = "kein Urteil";
 
-        ScriptedModel score(KnowledgeResource resource, int score) {
-            scores.put(resource.id().value(), score);
+        ScriptedModel relevant(KnowledgeResource... resources) {
+            relevant.clear();
+            for (KnowledgeResource resource : resources) {
+                relevant.add(resource.id().value());
+            }
             return this;
         }
 
-        void sufficientWhen(Function<String, Boolean> rule) {
-            sufficient = rule;
+        /** Reicht, sobald alle genannten Seiten angeboten sind; die kleinste Menge sind genau sie. */
+        ScriptedModel sufficientWith(KnowledgeResource... resources) {
+            sufficientWith = new ArrayList<String>();
+            for (KnowledgeResource resource : resources) {
+                sufficientWith.add(resource.id().value());
+            }
+            return this;
         }
 
-        void nextQuery(String next) {
-            query = next;
+        ScriptedModel nextQuery(String query) {
+            nextQuery = query;
+            return this;
+        }
+
+        ScriptedModel missing(String text) {
+            missing = text;
+            return this;
+        }
+
+        /** Jede Bewertung schlägt eine neue Anfrage vor („Quark Suche n“). */
+        ScriptedModel numberedQueries() {
+            numbered = true;
+            return this;
         }
 
         @Override
         public synchronized ChatResponse complete(ChatRequest request) {
+            requests++;
             String instruction = request.messages().get(0).content();
             String user = request.messages().get(1).content();
             String answer;
             if (instruction.equals(FollowUpResearch.PRIOR_INSTRUCTION)) {
                 answer = priorAnswer;
-            } else if (instruction.equals(RelevanceRanking.INSTRUCTION)) {
-                rankings++;
-                answer = rankingAnswer != null ? rankingAnswer : ranking(user);
+            } else if (instruction.equals(EvidenceEvaluator.INSTRUCTION)) {
+                evaluations++;
+                lastEvaluation = user;
+                answer = evaluationAnswer != null ? evaluationAnswer : evaluation(user);
             } else {
                 checks++;
-                lastCheck = user;
-                String context = user.substring(user.indexOf("Gefundener Kontext:"));
-                answer = Boolean.TRUE.equals(sufficient.apply(context))
-                        ? "{\"sufficient\": true, \"query\": \"\"}"
-                        : "{\"sufficient\": false, \"query\": \"" + query + "\"}";
+                answer = "{\"sufficient\": true, \"query\": \"\"}";
             }
             return new ChatResponse(ChatMessage.assistant(answer), ChatFinishReason.STOP, ChatUsage.notReported(),
                     "fake");
         }
 
-        private String ranking(String user) {
-            StringBuilder json = new StringBuilder("{\"scores\": [");
-            Matcher numbered = NUMBERED.matcher(user);
-            boolean first = true;
-            while (numbered.find()) {
-                Integer score = scores.get(numbered.group(2));
-                json.append(first ? "" : ", ").append("{\"id\": ").append(numbered.group(1)).append(", \"score\": ")
-                        .append(score == null ? 0 : score).append('}');
-                first = false;
+        private String evaluation(String user) {
+            Map<String, String> offered = new LinkedHashMap<String, String>();
+            Matcher candidate = CANDIDATE.matcher(user);
+            while (candidate.find()) {
+                offered.put(candidate.group(1), candidate.group(2));
             }
-            return json.append("]}").toString();
+            StringBuilder ranked = new StringBuilder();
+            Set<String> offeredRelevant = new HashSet<String>();
+            for (Map.Entry<String, String> entry : offered.entrySet()) {
+                boolean isRelevant = relevant.contains(entry.getValue());
+                if (isRelevant) {
+                    offeredRelevant.add(entry.getValue());
+                }
+                ranked.append(ranked.length() == 0 ? "" : ", ").append("{\"id\": \"").append(entry.getKey())
+                        .append("\", \"relevant\": ").append(isRelevant).append('}');
+            }
+            boolean sufficient = sufficientWith != null && offeredRelevant.containsAll(sufficientWith);
+            StringBuilder minimum = new StringBuilder();
+            if (sufficient) {
+                Set<String> taken = new HashSet<String>();
+                for (Map.Entry<String, String> entry : offered.entrySet()) {
+                    if (sufficientWith.contains(entry.getValue()) && taken.add(entry.getValue())) {
+                        minimum.append(minimum.length() == 0 ? "" : ", ").append('"').append(entry.getKey())
+                                .append('"');
+                    }
+                }
+            }
+            String query = numbered ? "Quark Suche " + evaluations : nextQuery;
+            return "{\"ranked\": [" + ranked + "], \"minimumEvidence\": [" + minimum + "], \"sufficient\": "
+                    + sufficient + ", \"missing\": \"" + missing + "\", \"nextQuery\": \""
+                    + query + "\"}";
         }
 
         @Override
@@ -379,10 +459,5 @@ public class AdaptiveEvidenceTest {
             answers.enqueueAnswer("Antwort [1].");
             return answers.stream(request, listener);
         }
-    }
-
-    /** Legt einen Eintrag in den Index, auch während der Suche (wie der Vorlader). */
-    private void add(KnowledgeIndexEntry entry) {
-        index.index(Collections.singletonList(entry));
     }
 }

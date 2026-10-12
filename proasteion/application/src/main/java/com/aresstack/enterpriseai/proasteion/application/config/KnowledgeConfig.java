@@ -23,17 +23,19 @@ public final class KnowledgeConfig {
     private final KnowledgePrefetchService.Settings prefetch;
     private final String passageLanguage;
     private final EvidencePolicy evidence;
+    private final LiveSearchConfig liveSearch;
 
     KnowledgeConfig(Path indexDirectory, KnowledgeChunkingPolicy chunking,
                     int embeddingBatchSize, RetrievalSettings retrieval, ContextSettings context,
                     KnowledgePrefetchService.Settings prefetch, String passageLanguage) {
         this(indexDirectory, chunking, embeddingBatchSize, retrieval, context, prefetch, passageLanguage,
-                EvidencePolicy.defaults());
+                EvidencePolicy.defaults(), LiveSearchConfig.defaults());
     }
 
     KnowledgeConfig(Path indexDirectory, KnowledgeChunkingPolicy chunking,
                     int embeddingBatchSize, RetrievalSettings retrieval, ContextSettings context,
-                    KnowledgePrefetchService.Settings prefetch, String passageLanguage, EvidencePolicy evidence) {
+                    KnowledgePrefetchService.Settings prefetch, String passageLanguage, EvidencePolicy evidence,
+                    LiveSearchConfig liveSearch) {
         this.indexDirectory = indexDirectory;
         this.chunking = chunking;
         this.embeddingBatchSize = embeddingBatchSize;
@@ -43,10 +45,17 @@ public final class KnowledgeConfig {
         this.passageLanguage = passageLanguage == null || passageLanguage.trim().isEmpty() ? "de"
                 : passageLanguage.trim();
         this.evidence = evidence == null ? EvidencePolicy.defaults() : evidence;
+        this.liveSearch = liveSearch == null ? LiveSearchConfig.defaults() : liveSearch;
+    }
+
+    /** Live-Suche des Chats vor dem Retrieval ({@code retrieval.liveSearch.*}). */
+    public LiveSearchConfig liveSearch() {
+        return liveSearch;
     }
 
     /**
-     * Wann die Wissenssuche im normalen Chat genug hat: Mindestzahl unabhängiger Quellen ({@code context.minSources}),
+     * Wann die Wissenssuche im normalen Chat genug hat: Mindestzahl unabhängiger Quellen
+     * ({@code retrieval.minIndependentSources}),
      * Nachsuchen ({@code retrieval.maxFollowUps}) und Reranking ({@code retrieval.rerank}).
      */
     public EvidencePolicy evidence() {
@@ -89,6 +98,6 @@ public final class KnowledgeConfig {
     public String toString() {
         return "KnowledgeConfig[indexDirectory=" + indexDirectory
                 + ", chunking=" + chunking + ", embeddingBatchSize=" + embeddingBatchSize + ", retrieval=" + retrieval
-                + ", context=" + context + ", prefetch=" + prefetch + ", evidence=" + evidence + "]";
+                + ", context=" + context + ", prefetch=" + prefetch + ", evidence=" + evidence + ", liveSearch=" + liveSearch + "]";
     }
 }

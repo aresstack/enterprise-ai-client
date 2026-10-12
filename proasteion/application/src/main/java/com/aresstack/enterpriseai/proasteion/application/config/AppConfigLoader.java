@@ -75,12 +75,22 @@ public final class AppConfigLoader {
     public static final String CONTEXT_MAX_TOKENS_KEY = "context.maxTokens";
     /** Höchstzahl der fusionierten Suchtreffer vor dem Kontextaufbau ({@link RetrievalSettings#maxResults()}). */
     public static final String RETRIEVAL_MAX_RESULTS_KEY = "retrieval.maxResults";
-    /** Mindestzahl unabhängiger Quellen, bevor die Evidenz als ausreichend gilt (0 = nur Prüfung, Standard 1). */
-    public static final String CONTEXT_MIN_SOURCES_KEY = "context.minSources";
+    /** Mindestzahl verschiedener Ressourcen, bevor die Evidenz als ausreichend gilt (0 = nur Prüfung, Standard 1). */
+    public static final String RETRIEVAL_MIN_INDEPENDENT_SOURCES_KEY = "retrieval.minIndependentSources";
     /** Nachsuchen mit genauerer Anfrage, wenn die Treffer nicht reichen (0–5, Standard 2). */
     public static final String RETRIEVAL_MAX_FOLLOW_UPS_KEY = "retrieval.maxFollowUps";
     /** Treffer vor der Übernahme vom Chat-Modell gegen die Frage bewerten lassen (Standard true). */
     public static final String RETRIEVAL_RERANK_KEY = "retrieval.rerank";
+    /** Volltext-Kandidaten je Suche ({@link RetrievalSettings#keywordCandidates()}). */
+    public static final String RETRIEVAL_KEYWORD_CANDIDATES_KEY = "retrieval.keywordCandidates";
+    /** Semantische Kandidaten je Suche ({@link RetrievalSettings#semanticCandidates()}). */
+    public static final String RETRIEVAL_SEMANTIC_CANDIDATES_KEY = "retrieval.semanticCandidates";
+    /** Live-Suche: auf so viele indexierte Treffer wartet die erste Evidenzbewertung einer Suche. */
+    public static final String LIVE_SEARCH_INITIAL_PAGES_KEY = "retrieval.liveSearch.initialPages";
+    /** Live-Suche: auf höchstens so viele indexierte Treffer wartet eine Suche blockierend. */
+    public static final String LIVE_SEARCH_MAX_PAGES_KEY = "retrieval.liveSearch.maxPages";
+    /** Live-Suche: so viele Treffer je Quelle (gehen alle an den Vorlader). */
+    public static final String LIVE_SEARCH_HITS_PER_SOURCE_KEY = "retrieval.liveSearch.hitsPerSource";
     /** Sprache des Satzmodells (OpenNLP) für die Passagenbildung beim Indexieren: de oder en. */
     public static final String KNOWLEDGE_PASSAGE_LANGUAGE_KEY = "knowledge.passages.language";
 
@@ -352,9 +362,9 @@ public final class AppConfigLoader {
             retrieval = RetrievalSettings.builder()
                     .keywordEnabled(r.bool("retrieval.keywordEnabled", true))
                     .semanticEnabled(r.bool("retrieval.semanticEnabled", true))
-                    .keywordCandidates(r.integer("retrieval.keywordCandidates", RetrievalSettings.DEFAULT_CANDIDATES,
+                    .keywordCandidates(r.integer(RETRIEVAL_KEYWORD_CANDIDATES_KEY, RetrievalSettings.DEFAULT_CANDIDATES,
                             1, RetrievalSettings.MAX_CANDIDATES))
-                    .semanticCandidates(r.integer("retrieval.semanticCandidates", RetrievalSettings.DEFAULT_CANDIDATES,
+                    .semanticCandidates(r.integer(RETRIEVAL_SEMANTIC_CANDIDATES_KEY, RetrievalSettings.DEFAULT_CANDIDATES,
                             1, RetrievalSettings.MAX_CANDIDATES))
                     .keywordWeight(r.decimal("retrieval.keywordWeight", 1.0, 0.0, 1000.0))
                     .semanticWeight(r.decimal("retrieval.semanticWeight", 1.0, 0.0, 1000.0))
@@ -403,13 +413,24 @@ public final class AppConfigLoader {
             passageLanguage = "de";
         }
         EvidencePolicy evidence = EvidencePolicy.defaults()
-                .withMinSources(r.integer(CONTEXT_MIN_SOURCES_KEY, EvidencePolicy.DEFAULT_MIN_SOURCES, 0,
+                .withMinSources(r.integer(RETRIEVAL_MIN_INDEPENDENT_SOURCES_KEY, EvidencePolicy.DEFAULT_MIN_SOURCES, 0,
                         EvidencePolicy.MAX_MIN_SOURCES))
                 .withMaxFollowUps(r.integer(RETRIEVAL_MAX_FOLLOW_UPS_KEY, FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS, 0,
                         EvidencePolicy.MAX_FOLLOW_UPS))
                 .withReranking(r.bool(RETRIEVAL_RERANK_KEY, true));
+        int initialPages = r.integer(LIVE_SEARCH_INITIAL_PAGES_KEY, LiveSearchConfig.DEFAULT_INITIAL_PAGES, 0,
+                LiveSearchConfig.MAX_PAGES_LIMIT);
+        int maxPages = r.integer(LIVE_SEARCH_MAX_PAGES_KEY, LiveSearchConfig.DEFAULT_MAX_PAGES, 0,
+                LiveSearchConfig.MAX_PAGES_LIMIT);
+        if (initialPages > maxPages) {
+            r.problem(LIVE_SEARCH_INITIAL_PAGES_KEY, "darf nicht größer als " + LIVE_SEARCH_MAX_PAGES_KEY + " sein");
+            initialPages = maxPages;
+        }
+        LiveSearchConfig liveSearch = new LiveSearchConfig(initialPages, maxPages,
+                r.integer(LIVE_SEARCH_HITS_PER_SOURCE_KEY, LiveSearchConfig.DEFAULT_HITS_PER_SOURCE, 1,
+                        LiveSearchConfig.MAX_HITS_PER_SOURCE));
         return new KnowledgeConfig(indexDirectory, chunking, batch, retrieval, context, prefetch,
-                passageLanguage, evidence);
+                passageLanguage, evidence, liveSearch);
     }
 
     /**

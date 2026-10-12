@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.LiveSearchConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
 import com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy;
@@ -156,8 +157,18 @@ public final class SettingsMapper {
                 String.valueOf(RetrievalSettings.DEFAULT_MAX_RESULTS)));
         b.contextMaxTokens(text(p, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY,
                 String.valueOf(ContextSettings.DEFAULT_MAX_CONTEXT_TOKENS)));
-        b.contextMinSources(text(p, AppConfigLoader.CONTEXT_MIN_SOURCES_KEY,
+        b.minIndependentSources(text(p, AppConfigLoader.RETRIEVAL_MIN_INDEPENDENT_SOURCES_KEY,
                 String.valueOf(EvidencePolicy.DEFAULT_MIN_SOURCES)));
+        b.keywordCandidates(text(p, AppConfigLoader.RETRIEVAL_KEYWORD_CANDIDATES_KEY,
+                String.valueOf(RetrievalSettings.DEFAULT_CANDIDATES)));
+        b.semanticCandidates(text(p, AppConfigLoader.RETRIEVAL_SEMANTIC_CANDIDATES_KEY,
+                String.valueOf(RetrievalSettings.DEFAULT_CANDIDATES)));
+        b.liveSearchInitialPages(text(p, AppConfigLoader.LIVE_SEARCH_INITIAL_PAGES_KEY,
+                String.valueOf(LiveSearchConfig.DEFAULT_INITIAL_PAGES)));
+        b.liveSearchMaxPages(text(p, AppConfigLoader.LIVE_SEARCH_MAX_PAGES_KEY,
+                String.valueOf(LiveSearchConfig.DEFAULT_MAX_PAGES)));
+        b.liveSearchHitsPerSource(text(p, AppConfigLoader.LIVE_SEARCH_HITS_PER_SOURCE_KEY,
+                String.valueOf(LiveSearchConfig.DEFAULT_HITS_PER_SOURCE)));
         b.retrievalMaxFollowUps(text(p, AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY,
                 String.valueOf(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS)));
         b.retrievalRerank(bool(p, AppConfigLoader.RETRIEVAL_RERANK_KEY, true));
@@ -231,7 +242,12 @@ public final class SettingsMapper {
         put(set, AppConfigLoader.RETRIEVAL_MAX_RESULTS_KEY, form.retrievalMaxResults());
         put(set, AppConfigLoader.CONTEXT_MAX_TOKENS_KEY, form.contextMaxTokens());
         put(set, AppConfigLoader.CONTEXT_MAX_SOURCES_KEY, form.contextMaxSources());
-        put(set, AppConfigLoader.CONTEXT_MIN_SOURCES_KEY, form.contextMinSources());
+        put(set, AppConfigLoader.RETRIEVAL_MIN_INDEPENDENT_SOURCES_KEY, form.minIndependentSources());
+        put(set, AppConfigLoader.RETRIEVAL_KEYWORD_CANDIDATES_KEY, form.keywordCandidates());
+        put(set, AppConfigLoader.RETRIEVAL_SEMANTIC_CANDIDATES_KEY, form.semanticCandidates());
+        put(set, AppConfigLoader.LIVE_SEARCH_INITIAL_PAGES_KEY, form.liveSearchInitialPages());
+        put(set, AppConfigLoader.LIVE_SEARCH_MAX_PAGES_KEY, form.liveSearchMaxPages());
+        put(set, AppConfigLoader.LIVE_SEARCH_HITS_PER_SOURCE_KEY, form.liveSearchHitsPerSource());
         put(set, AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY, form.retrievalMaxFollowUps());
         put(set, AppConfigLoader.RETRIEVAL_RERANK_KEY, form.retrievalRerank() ? "" : "false");
         for (ModelCategory category : ModelCategory.values()) {
@@ -380,10 +396,20 @@ public final class SettingsMapper {
                 return "Max. Retrieval-Treffer";
             case AppConfigLoader.CONTEXT_MAX_TOKENS_KEY:
                 return "Kontextbudget (Tokens)";
-            case AppConfigLoader.CONTEXT_MIN_SOURCES_KEY:
+            case AppConfigLoader.RETRIEVAL_MIN_INDEPENDENT_SOURCES_KEY:
                 return "Mindestzahl unabhängiger Quellen";
             case AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY:
-                return "Max. Nachsuchen";
+                return "Max. Nachrecherchen";
+            case AppConfigLoader.RETRIEVAL_KEYWORD_CANDIDATES_KEY:
+                return "Volltext-Kandidaten";
+            case AppConfigLoader.RETRIEVAL_SEMANTIC_CANDIDATES_KEY:
+                return "Semantische Kandidaten";
+            case AppConfigLoader.LIVE_SEARCH_INITIAL_PAGES_KEY:
+                return "Live-Suche: erste Seiten";
+            case AppConfigLoader.LIVE_SEARCH_MAX_PAGES_KEY:
+                return "Live-Suche: max. abzuwartende Seiten";
+            case AppConfigLoader.LIVE_SEARCH_HITS_PER_SOURCE_KEY:
+                return "Live-Suche: Treffer je Quelle";
             default:
                 return key;
         }

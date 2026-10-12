@@ -77,7 +77,7 @@ final class ChatResearchCard {
         update();
     }
 
-    /** Das Modell bewertet {@code count} neue Treffer gegen die Frage. */
+    /** Das Modell bewertet {@code count} Treffer gegen die Frage. */
     void ranking(int count) {
         current = "Bewerte " + count + " Treffer …";
         update();
@@ -94,13 +94,6 @@ final class ChatResearchCard {
     void evidenceChecked(int contextSources, boolean sufficient) {
         lines.add(contextSources + (contextSources == 1 ? " Quelle: " : " Quellen: ")
                 + (sufficient ? "ausreichend" : "nicht ausreichend"));
-        current = "";
-        update();
-    }
-
-    /** Die Obergrenze der Quellen im Kontext ist erreicht. */
-    void evidenceFull(int contextSources) {
-        lines.add("Obergrenze erreicht: " + contextSources + (contextSources == 1 ? " Quelle" : " Quellen"));
         current = "";
         update();
     }

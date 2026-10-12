@@ -70,7 +70,6 @@ public final class RetrieveKnowledgeUseCase {
     private final EmbeddingPort embeddings;
     private final Supplier<EmbeddingModelIdentity> space;
     private final RetrievalSettings settings;
-    private final ReciprocalRankFusion fusion;
     private final KnowledgeRelationsPort relations;
     private final Supplier<RetrievalSettings> relationSettings;
     private final RetrievalObserver observer;
@@ -104,7 +103,6 @@ public final class RetrieveKnowledgeUseCase {
         this.embeddings = embeddings;
         this.space = () -> space;
         this.settings = effective;
-        this.fusion = new ReciprocalRankFusion(effective);
         this.relations = null;
         this.relationSettings = null;
         this.observer = RetrievalObserver.none();
@@ -127,7 +125,6 @@ public final class RetrieveKnowledgeUseCase {
         this.embeddings = embeddings;
         this.space = space;
         this.settings = effective;
-        this.fusion = new ReciprocalRankFusion(effective);
         this.relations = null;
         this.relationSettings = null;
         this.observer = RetrievalObserver.none();
@@ -139,7 +136,6 @@ public final class RetrieveKnowledgeUseCase {
         this.embeddings = base.embeddings;
         this.space = base.space;
         this.settings = base.settings;
-        this.fusion = base.fusion;
         this.relations = relations;
         this.relationSettings = relationSettings;
         this.observer = observer;
@@ -154,9 +150,10 @@ public final class RetrieveKnowledgeUseCase {
     }
 
     /**
-     * Kopie mit Nachbarschaftserweiterung über {@code relations}. Die {@code relation*}-Werte und
-     * {@link RetrievalSettings#maxResults()} werden je Suche aus {@code liveSettings} gelesen (Einstellungen gelten
-     * ohne Neustart); {@code null} nimmt die eigenen Settings.
+     * Kopie mit Nachbarschaftserweiterung über {@code relations}. Alle Werte (Suchpfade, Kandidatenzahlen, Schwelle,
+     * Fusion, {@code relation*}, {@link RetrievalSettings#maxResults()}) werden je Suche aus {@code liveSettings}
+     * gelesen (Einstellungen gelten ohne Neustart); {@code null} nimmt die eigenen Settings. Eine eingeschaltete
+     * semantische Suche ohne Embedding-Port bleibt aus.
      */
     public RetrieveKnowledgeUseCase withRelations(KnowledgeRelationsPort relations,
                                                   Supplier<RetrievalSettings> liveSettings) {
@@ -178,8 +175,13 @@ public final class RetrieveKnowledgeUseCase {
 
     /** Höchstzahl der Treffer je Suche, von jetzt: aus den Live-Einstellungen, sonst aus den eigenen. */
     public int maxResults() {
+        return current().maxResults();
+    }
+
+    /** Die Einstellungen von jetzt: aus den Live-Einstellungen, sonst die eigenen. */
+    private RetrievalSettings current() {
         RetrievalSettings live = relationSettings == null ? null : relationSettings.get();
-        return (live == null ? settings : live).maxResults();
+        return live == null ? settings : live;
     }
 
     /**
@@ -236,12 +238,14 @@ public final class RetrieveKnowledgeUseCase {
         int failedPaths = 0;
         int activePaths = 0;
 
+        // Suchpfade, Kandidatenzahlen, Schwelle und Fusion von jetzt (Einstellungen gelten ohne Neustart).
+        RetrievalSettings current = current();
         List<KnowledgeSearchHit> keywordHits = Collections.emptyList();
-        if (settings.keywordEnabled()) {
+        if (current.keywordEnabled()) {
             activePaths++;
             steps.pathStarted(RetrievalPath.KEYWORD);
             try {
-                keywordHits = index.keywordSearch(KnowledgeKeywordQuery.of(space(), query, settings.keywordCandidates())
+                keywordHits = index.keywordSearch(KnowledgeKeywordQuery.of(space(), query, current.keywordCandidates())
                         .restrictedTo(filter));
             } catch (KnowledgeIndexException e) {
                 warnings.add(new RetrievalWarning(RetrievalPath.KEYWORD, "Volltextsuche fehlgeschlagen: "
@@ -252,11 +256,11 @@ public final class RetrieveKnowledgeUseCase {
         }
 
         List<KnowledgeSearchHit> semanticHits = Collections.emptyList();
-        if (settings.semanticEnabled()) {
+        if (current.semanticEnabled() && embeddings != null) {
             activePaths++;
             steps.pathStarted(RetrievalPath.SEMANTIC);
             try {
-                semanticHits = semanticSearch(query, filter);
+                semanticHits = semanticSearch(query, filter, current);
             } catch (EmbeddingException e) {
                 warnings.add(new RetrievalWarning(RetrievalPath.SEMANTIC, "Embedding der Anfrage fehlgeschlagen ("
                         + e.kind() + "): " + e.getMessage()));
@@ -276,7 +280,7 @@ public final class RetrieveKnowledgeUseCase {
         if (failedPaths == activePaths) {
             throw new KnowledgeRetrievalException(warnings, lastFailure);
         }
-        List<RetrievedChunk> fused = expand(fusion.fuse(keywordHits, semanticHits), filter);
+        List<RetrievedChunk> fused = expand(new ReciprocalRankFusion(current).fuse(keywordHits, semanticHits), filter);
         int maxResults = maxResults();
         if (fused.size() > maxResults) {
             fused = fused.subList(0, maxResults);
@@ -358,7 +362,8 @@ public final class RetrieveKnowledgeUseCase {
         return kept.toString();
     }
 
-    private List<KnowledgeSearchHit> semanticSearch(String query, Collection<SourceAddress> filter) {
+    private List<KnowledgeSearchHit> semanticSearch(String query, Collection<SourceAddress> filter,
+                                                    RetrievalSettings settings) {
         EmbeddingVector vector = embeddings.embedQueries(Collections.singletonList(shortened(query))).get(0);
         if (!space().equals(vector.identity())) {
             // Der Port hat seine Welt gewechselt; niemals in einem fremden Namespace suchen.

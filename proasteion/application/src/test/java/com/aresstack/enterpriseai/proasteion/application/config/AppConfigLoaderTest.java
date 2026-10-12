@@ -62,6 +62,41 @@ public class AppConfigLoaderTest {
     }
 
     @Test
+    public void evidenceAndLiveSearchLimitsHaveDefaultsAndAreConfigurable() throws Exception {
+        Properties p = minimal();
+        KnowledgeConfig defaults = AppConfigLoader.fromProperties(p).knowledge();
+        assertEquals(1, defaults.evidence().minSources());
+        assertEquals(2, defaults.evidence().maxFollowUps());
+        assertTrue(defaults.evidence().reranking());
+        assertEquals(1, defaults.liveSearch().initialPages());
+        assertEquals(4, defaults.liveSearch().maxPages());
+        assertEquals(10, defaults.liveSearch().hitsPerSource());
+
+        p.setProperty("retrieval.minIndependentSources", "2");
+        p.setProperty("retrieval.maxFollowUps", "5");
+        p.setProperty("retrieval.rerank", "false");
+        p.setProperty("retrieval.liveSearch.initialPages", "1");
+        p.setProperty("retrieval.liveSearch.maxPages", "6");
+        p.setProperty("retrieval.liveSearch.hitsPerSource", "20");
+        p.setProperty("retrieval.keywordCandidates", "30");
+        p.setProperty("retrieval.semanticCandidates", "25");
+        KnowledgeConfig set = AppConfigLoader.fromProperties(p).knowledge();
+        assertEquals(2, set.evidence().minSources());
+        assertEquals(5, set.evidence().maxFollowUps());
+        assertFalse(set.evidence().reranking());
+        assertEquals(6, set.liveSearch().maxPages());
+        assertEquals(20, set.liveSearch().hitsPerSource());
+        assertEquals(30, set.retrieval().keywordCandidates());
+        assertEquals(25, set.retrieval().semanticCandidates());
+
+        p.setProperty("retrieval.minIndependentSources", "0");
+        p.setProperty("retrieval.maxFollowUps", "0");
+        KnowledgeConfig zero = AppConfigLoader.fromProperties(p).knowledge();
+        assertEquals(0, zero.evidence().minSources());
+        assertEquals(0, zero.evidence().maxFollowUps());
+    }
+
+    @Test
     public void missingOrBlankSystemPromptMeansTheDefault() throws Exception {
         Properties p = minimal();
         p.remove("chat.systemPrompt");

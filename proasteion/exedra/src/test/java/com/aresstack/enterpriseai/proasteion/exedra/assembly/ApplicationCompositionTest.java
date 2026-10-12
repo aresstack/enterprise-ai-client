@@ -165,11 +165,9 @@ public class ApplicationCompositionTest {
     public void ragQuestionCarriesSourcesAndContextAfterIndexing() throws Exception {
         final CompositionRoot root = compose(false);
         indexAll(root);
-        // Erst bewertet das Modell die Treffer gegen die Frage, dann prüft es nach der besten Quelle, ob sie reicht
-        // (beides Nebenanfragen), dann kommt die Antwort.
-        chatPort.enqueueAnswer("{\"scores\": [{\"id\": 1, \"score\": 3}, {\"id\": 2, \"score\": 3}, "
-                + "{\"id\": 3, \"score\": 3}, {\"id\": 4, \"score\": 3}, {\"id\": 5, \"score\": 3}]}");
-        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        // Ein Bewerter-Aufruf je Kandidatenrunde (Nebenanfrage): der beste Treffer reicht, dann kommt die Antwort.
+        chatPort.enqueueAnswer("{\"ranked\": [{\"id\": \"c1\", \"relevant\": true}], \"minimumEvidence\": [\"c1\"], "
+                + "\"sufficient\": true, \"missing\": \"\", \"nextQuery\": \"\"}");
         chatPort.enqueueAnswer("Am 31. März.");
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
         SwingUtilities.invokeAndWait(new Runnable() {
@@ -189,7 +187,7 @@ public class ApplicationCompositionTest {
         assertTrue(system, system.contains("Antworte kurz."));
         assertTrue("Kontextblock im System-Anteil: " + system, system.contains("Resturlaub"));
         assertTrue(system, system.contains("- Wann verfällt der Resturlaub?"));
-        assertEquals("Bewertung, Prüfung und Antwort", 3, chatPort.requests().size());
+        assertEquals("Bewertung und Antwort", 2, chatPort.requests().size());
         assertEquals("die Faktfrage endet nach der ersten ausreichenden Quelle", 1, answer.getSources().size());
     }
 

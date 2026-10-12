@@ -204,84 +204,6 @@ public final class FollowUpResearch {
         return new PriorVerdict(false, isRelated, query, true);
     }
 
-    /** Urteil der Sufficiency-Prüfung im adaptiven Modus. */
-    static final class Verdict {
-
-        private final boolean known;
-        private final boolean sufficient;
-        private final String query;
-
-        private Verdict(boolean known, boolean sufficient, String query) {
-            this.known = known;
-            this.sufficient = sufficient;
-            this.query = query;
-        }
-
-        static Verdict unknown() {
-            return new Verdict(false, false, null);
-        }
-
-        /** {@code false}, wenn kein lesbares Urteil zustande kam. */
-        boolean isKnown() {
-            return known;
-        }
-
-        boolean isSufficient() {
-            return known && sufficient;
-        }
-
-        /** Die vorgeschlagene genauere Suchanfrage; {@code null}, wenn keine oder eine schon gestellte. */
-        String query() {
-            return query;
-        }
-    }
-
-    /**
-     * Prüft wie {@link #nextQuery}, ob der Kontext die Nachricht beantwortet, unterscheidet aber „reicht“,
-     * „reicht nicht“ und „kein Urteil“ (adaptiver Modus des {@link RagChatUseCase}).
-     *
-     * @param missingSources so viele unabhängige Quellen fehlen noch zur verlangten Mindestzahl; dann verlangt die
-     *                       Prüfung eine Suchanfrage nach weiteren Belegen
-     */
-    Verdict check(ChatService chat, List<ChatMessage> history, String message, List<String> queries, String context,
-                  int missingSources, ChatOptions options) {
-        List<ChatMessage> request = request(history, message, queries, context);
-        if (missingSources > 0) {
-            ChatMessage user = request.get(request.size() - 1);
-            request.set(request.size() - 1, ChatMessage.user(user.content() + "\n\nVerlangt sind Belege aus "
-                    + missingSources + " weiteren unabhängigen Quelle(n). Setze sufficient = false und nenne eine "
-                    + "Suchanfrage, die weitere Quellen zur Nachricht findet."));
-        }
-        String verdict;
-        try {
-            verdict = chat.completeAside(request, options).content();
-        } catch (ChatCompletionException e) {
-            return Verdict.unknown();
-        } catch (RuntimeException e) {
-            return Verdict.unknown();
-        }
-        if (verdict == null) {
-            return Verdict.unknown();
-        }
-        Matcher sufficient = SUFFICIENT.matcher(verdict);
-        if (!sufficient.find()) {
-            return Verdict.unknown();
-        }
-        if (Boolean.parseBoolean(sufficient.group(1))) {
-            return new Verdict(true, true, null);
-        }
-        String query = parse(verdict);
-        if (query != null) {
-            for (String earlier : queries) {
-                if (normalize(earlier).equals(normalize(query))) {
-                    query = null;
-                    break;
-                }
-            }
-        }
-        return new Verdict(true, false, query);
-    }
-
     static List<ChatMessage> request(List<ChatMessage> history, String message, List<String> queries,
                                      String context) {
         return request(INSTRUCTION, "Gefundener Kontext", history, message, queries, context);
@@ -338,7 +260,7 @@ public final class FollowUpResearch {
         return value.isEmpty() ? null : value;
     }
 
-    private static String unescape(String json) {
+    static String unescape(String json) {
         StringBuilder out = new StringBuilder(json.length());
         for (int i = 0; i < json.length(); i++) {
             char c = json.charAt(i);
@@ -377,7 +299,7 @@ public final class FollowUpResearch {
         return trimmed.length() <= MAX_MESSAGE_CHARS ? trimmed : trimmed.substring(0, MAX_MESSAGE_CHARS) + " …";
     }
 
-    private static String normalize(String query) {
+    static String normalize(String query) {
         return query.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
     }
 }

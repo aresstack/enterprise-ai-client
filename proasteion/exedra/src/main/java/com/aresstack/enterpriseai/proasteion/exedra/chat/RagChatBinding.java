@@ -719,11 +719,6 @@ public final class RagChatBinding implements ChatShellActions {
             }
 
             @Override
-            public void evidenceFull(final int sources) {
-                card(card -> card.evidenceFull(sources));
-            }
-
-            @Override
             public void morePagesStarted() {
                 card(card -> card.step(ChatResearchCard.MORE_PAGES));
             }

@@ -13,8 +13,9 @@ import java.io.File;
 
 /**
  * Kategorie „Index“ des Einstellungen-Dialogs: Indexverzeichnis ({@code knowledge.indexDirectory}, mit „Wählen …“)
- * und die Wissenssuche des normalen Chats ({@code context.maxSources}, {@code retrieval.maxResults},
- * {@code context.maxTokens}; gelten nach dem Speichern ab der nächsten Frage). Eine Indexierung beim Start gibt es
+ * und die Wissenssuche des normalen Chats (Kandidaten, {@code retrieval.maxResults}, {@code context.maxSources},
+ * {@code context.maxTokens}, Mindestzahl, Nachrecherchen, Live-Suche, Reranking; gelten nach dem Speichern ab der
+ * nächsten Frage). Eine Indexierung beim Start gibt es
  * nicht mehr; die Suche füllt den Index mit ihren Treffern (wie MainframeMate).
  */
 final class IndexEditor {
@@ -23,39 +24,61 @@ final class IndexEditor {
             + "Anwendungsverzeichnis.";
     static final String DIRECTORY_LABEL = "Indexverzeichnis (optional)";
     static final String CHOOSE_LABEL = "Wählen …";
-    static final String SEARCH_NOTE = "Gilt für die normale Chat-Antwort: Die Suche liefert höchstens „Max. "
-            + "Retrieval-Treffer“. Das Modell bewertet sie gegen die Frage und übernimmt die passenden einzeln, die "
-            + "besten zuerst, bis die Evidenz reicht; höchstens „Max. Quellen im Antwortkontext“, solange das "
-            + "Kontextbudget reicht. Reicht es nicht, sucht der Chat bis zu „Max. Nachsuchen“ Mal genauer weiter. Das "
-            + "Recherche-Budget des Agenten (Reiter Netzwerk & Agent) ist davon getrennt. Gilt nach dem Speichern ab "
-            + "der nächsten Frage.";
+    static final String SEARCH_NOTE = "Gilt für die normale Chat-Antwort. Die Suche liefert höchstens „Max. "
+            + "Retrieval-Kandidaten“; das Modell bewertet sie in einem Aufruf gegen die Frage und nimmt die kleinste "
+            + "Menge, die reicht, höchstens „Max. Quellen“. Reicht nichts, lädt die Live-Suche weitere Seiten oder "
+            + "der Chat sucht genauer nach; danach antwortet er mit dem Vorhandenen und nennt die Lücke. Das "
+            + "Recherche-Budget des Agenten (Reiter Netzwerk & Agent, vollständig gelesene Seiten) ist davon getrennt. "
+            + "Alle Werte gelten nach dem Speichern ab der nächsten Frage.";
+    static final String KEYWORD_CANDIDATES_LABEL = "Volltext-Kandidaten";
+    static final String KEYWORD_CANDIDATES_HELP = "Treffer der Volltextsuche (BM25) je Suche vor der Zusammenführung "
+            + "(retrieval.keywordCandidates; Standard 20).";
+    static final String SEMANTIC_CANDIDATES_LABEL = "Semantische Kandidaten";
+    static final String SEMANTIC_CANDIDATES_HELP = "Treffer der semantischen Suche (Cosine) je Suche vor der "
+            + "Zusammenführung (retrieval.semanticCandidates; Standard 20).";
+    static final String MAX_RESULTS_LABEL = "Max. Retrieval-Kandidaten";
+    static final String MAX_RESULTS_HELP = "Suchergebnisse vor der Evidenzbewertung: so viele zusammengeführte "
+            + "Treffer (Volltext und semantisch) bewertet das Modell je Runde (retrieval.maxResults, 1–1000; "
+            + "Standard 10).";
     static final String MAX_SOURCES_LABEL = "Max. Quellen im Antwortkontext";
-    static final String MAX_SOURCES_HELP = "Höchstzahl der Suchauszüge, die der normalen Chat-Antwort als "
-            + "RAG-Kontext übergeben werden (context.maxSources, 1–1000; Standard 6).";
-    static final String MAX_RESULTS_LABEL = "Max. Retrieval-Treffer";
-    static final String MAX_RESULTS_HELP = "Höchstzahl der zusammengeführten Suchtreffer (Volltext und semantisch) "
-            + "vor dem Kontextaufbau (retrieval.maxResults, 1–1000; Standard 10).";
+    static final String MAX_SOURCES_HELP = "Harte Obergrenze: höchstens so viele Quellen gelangen in die Antwort "
+            + "(context.maxSources, 1–1000; Standard 6).";
     static final String MAX_TOKENS_LABEL = "Kontextbudget (Tokens)";
-    static final String MIN_SOURCES_LABEL = "Mindestzahl unabhängiger Quellen";
-    static final String MIN_SOURCES_HELP = "So viele verschiedene Seiten müssen relevante Abschnitte liefern, bevor "
-            + "die Prüfung „reicht“ gelten lässt; 0 = keine Mindestzahl, nur die Prüfung entscheidet "
-            + "(context.minSources, 0–20; Standard 1).";
-    static final String MAX_FOLLOW_UPS_LABEL = "Max. Nachsuchen";
-    static final String MAX_FOLLOW_UPS_HELP = "So oft sucht der Chat mit einer genaueren Anfrage weiter, wenn die "
-            + "Treffer die Frage nicht beantworten (retrieval.maxFollowUps, 0–5; Standard 2).";
-    static final String RERANK_LABEL = "Treffer gegen die Frage bewerten (Reranking)";
-    static final String RERANK_HELP = "Das Chat-Modell bewertet die Suchtreffer gegen die Frage; nur passende kommen "
-            + "in die Antwort, die besten zuerst, und die Suche endet, sobald sie reichen (retrieval.rerank).";
     static final String MAX_TOKENS_HELP = "Geschätzte Tokens für den ganzen Kontextblock; passt ein weiterer Auszug "
             + "nicht mehr hinein, endet der Block (context.maxTokens, 1–1000000; Standard 1500).";
+    static final String MIN_SOURCES_LABEL = "Mindestzahl unabhängiger Quellen";
+    static final String MIN_SOURCES_HELP = "So viele verschiedene Seiten (nicht Abschnitte derselben Seite) müssen "
+            + "die Antwort stützen; 0 = keine Mindestzahl, nur die Evidenzprüfung entscheidet "
+            + "(retrieval.minIndependentSources, 0–20; Standard 1).";
+    static final String MAX_FOLLOW_UPS_LABEL = "Max. Nachrecherchen";
+    static final String MAX_FOLLOW_UPS_HELP = "So oft sucht der Chat mit einer genaueren Anfrage weiter, wenn die "
+            + "Treffer nicht reichen; 0 = keine automatische Nachrecherche (retrieval.maxFollowUps, 0–5; Standard 2).";
+    static final String INITIAL_PAGES_LABEL = "Live-Suche: erste Seiten";
+    static final String INITIAL_PAGES_HELP = "Auf so viele geladene Live-Treffer wartet die erste Evidenzbewertung "
+            + "einer Suche (retrieval.liveSearch.initialPages, 0–100; Standard 1).";
+    static final String MAX_PAGES_LABEL = "Live-Suche: max. abzuwartende Seiten";
+    static final String MAX_PAGES_HELP = "Auf höchstens so viele Live-Treffer wartet eine Suche, wenn die Evidenz "
+            + "nicht reicht; das Vorladen im Hintergrund läuft unabhängig weiter (retrieval.liveSearch.maxPages, "
+            + "0–100; Standard 4).";
+    static final String HITS_PER_SOURCE_LABEL = "Live-Suche: Treffer je Quelle";
+    static final String HITS_PER_SOURCE_HELP = "So viele Treffer holt die Live-Suche je angehakter Quelle "
+            + "(retrieval.liveSearch.hitsPerSource, 1–100; Standard 10).";
+    static final String RERANK_LABEL = "Treffer gegen die Frage bewerten (Reranking)";
+    static final String RERANK_HELP = "Das Chat-Modell bewertet die Treffer gegen die Frage und wählt die kleinste "
+            + "ausreichende Menge (retrieval.rerank). Aus: feste Reihenfolge der Suche mit Nachrecherche.";
 
     private final JTextField indexDirectory;
     private final ComicButton chooseDirectory;
     private final JTextField contextMaxSources;
     private final JTextField retrievalMaxResults;
     private final JTextField contextMaxTokens;
-    private final JTextField contextMinSources;
+    private final JTextField minIndependentSources;
     private final JTextField retrievalMaxFollowUps;
+    private final JTextField keywordCandidates;
+    private final JTextField semanticCandidates;
+    private final JTextField liveSearchInitialPages;
+    private final JTextField liveSearchMaxPages;
+    private final JTextField liveSearchHitsPerSource;
     private final JCheckBox retrievalRerank;
     private final JPanel panel;
 
@@ -73,21 +96,28 @@ final class IndexEditor {
         chooseDirectory.addActionListener(event -> chooseDirectory());
         FormRows search = new FormRows(palette);
         search.note(SEARCH_NOTE);
-        contextMaxSources = search.textField(MAX_SOURCES_LABEL, MAX_SOURCES_HELP);
-        search.note(MAX_SOURCES_HELP);
-        retrievalMaxResults = search.textField(MAX_RESULTS_LABEL, MAX_RESULTS_HELP);
-        search.note(MAX_RESULTS_HELP);
-        contextMaxTokens = search.textField(MAX_TOKENS_LABEL, MAX_TOKENS_HELP);
-        search.note(MAX_TOKENS_HELP);
-        contextMinSources = search.textField(MIN_SOURCES_LABEL, MIN_SOURCES_HELP);
-        search.note(MIN_SOURCES_HELP);
-        retrievalMaxFollowUps = search.textField(MAX_FOLLOW_UPS_LABEL, MAX_FOLLOW_UPS_HELP);
-        search.note(MAX_FOLLOW_UPS_HELP);
+        keywordCandidates = field(search, KEYWORD_CANDIDATES_LABEL, KEYWORD_CANDIDATES_HELP);
+        semanticCandidates = field(search, SEMANTIC_CANDIDATES_LABEL, SEMANTIC_CANDIDATES_HELP);
+        retrievalMaxResults = field(search, MAX_RESULTS_LABEL, MAX_RESULTS_HELP);
+        contextMaxSources = field(search, MAX_SOURCES_LABEL, MAX_SOURCES_HELP);
+        contextMaxTokens = field(search, MAX_TOKENS_LABEL, MAX_TOKENS_HELP);
+        minIndependentSources = field(search, MIN_SOURCES_LABEL, MIN_SOURCES_HELP);
+        retrievalMaxFollowUps = field(search, MAX_FOLLOW_UPS_LABEL, MAX_FOLLOW_UPS_HELP);
+        liveSearchInitialPages = field(search, INITIAL_PAGES_LABEL, INITIAL_PAGES_HELP);
+        liveSearchMaxPages = field(search, MAX_PAGES_LABEL, MAX_PAGES_HELP);
+        liveSearchHitsPerSource = field(search, HITS_PER_SOURCE_LABEL, HITS_PER_SOURCE_HELP);
         retrievalRerank = search.checkBox(RERANK_LABEL, RERANK_HELP);
         search.note(RERANK_HELP);
         panel = FormRows.column(palette,
                 FormRows.plate("Index", palette.getNavigationBlue(), rows.panel(), palette),
                 FormRows.plate("Wissenssuche im Chat", palette.getAccentYellow(), search.panel(), palette));
+    }
+
+    /** Ein Feld mit seinem Hilfetext darunter. */
+    private static JTextField field(FormRows rows, String label, String help) {
+        JTextField field = rows.textField(label, help);
+        rows.note(help);
+        return field;
     }
 
     private void chooseDirectory() {
@@ -113,7 +143,12 @@ final class IndexEditor {
         contextMaxSources.setText(form.contextMaxSources());
         retrievalMaxResults.setText(form.retrievalMaxResults());
         contextMaxTokens.setText(form.contextMaxTokens());
-        contextMinSources.setText(form.contextMinSources());
+        minIndependentSources.setText(form.minIndependentSources());
+        keywordCandidates.setText(form.keywordCandidates());
+        semanticCandidates.setText(form.semanticCandidates());
+        liveSearchInitialPages.setText(form.liveSearchInitialPages());
+        liveSearchMaxPages.setText(form.liveSearchMaxPages());
+        liveSearchHitsPerSource.setText(form.liveSearchHitsPerSource());
         retrievalMaxFollowUps.setText(form.retrievalMaxFollowUps());
         retrievalRerank.setSelected(form.retrievalRerank());
     }
@@ -123,7 +158,12 @@ final class IndexEditor {
                 .contextMaxSources(contextMaxSources.getText())
                 .retrievalMaxResults(retrievalMaxResults.getText())
                 .contextMaxTokens(contextMaxTokens.getText())
-                .contextMinSources(contextMinSources.getText())
+                .minIndependentSources(minIndependentSources.getText())
+                .keywordCandidates(keywordCandidates.getText())
+                .semanticCandidates(semanticCandidates.getText())
+                .liveSearchInitialPages(liveSearchInitialPages.getText())
+                .liveSearchMaxPages(liveSearchMaxPages.getText())
+                .liveSearchHitsPerSource(liveSearchHitsPerSource.getText())
                 .retrievalMaxFollowUps(retrievalMaxFollowUps.getText())
                 .retrievalRerank(retrievalRerank.isSelected());
     }
@@ -150,8 +190,28 @@ final class IndexEditor {
         return contextMaxTokens;
     }
 
-    JTextField contextMinSources() {
-        return contextMinSources;
+    JTextField minIndependentSources() {
+        return minIndependentSources;
+    }
+
+    JTextField keywordCandidates() {
+        return keywordCandidates;
+    }
+
+    JTextField semanticCandidates() {
+        return semanticCandidates;
+    }
+
+    JTextField liveSearchInitialPages() {
+        return liveSearchInitialPages;
+    }
+
+    JTextField liveSearchMaxPages() {
+        return liveSearchMaxPages;
+    }
+
+    JTextField liveSearchHitsPerSource() {
+        return liveSearchHitsPerSource;
     }
 
     JTextField retrievalMaxFollowUps() {
