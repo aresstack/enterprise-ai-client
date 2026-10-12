@@ -190,7 +190,7 @@ public class ApplicationCompositionTest {
         assertTrue(system, system.contains("Antworte kurz."));
         assertTrue("Kontextblock im System-Anteil: " + system, system.contains("Resturlaub"));
         assertTrue(system, system.contains("- Wann verfällt der Resturlaub?"));
-        assertEquals("Bewertung und Antwort", 2, chatPort.requests().size());
+        assertEquals("Vorprüfung, Bewertung und Antwort", 3, chatPort.requests().size());
         assertEquals("die Faktfrage endet nach der ersten ausreichenden Quelle", 1, answer.getSources().size());
     }
 
