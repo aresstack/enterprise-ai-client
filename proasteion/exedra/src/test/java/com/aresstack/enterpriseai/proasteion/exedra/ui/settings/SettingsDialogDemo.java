@@ -92,8 +92,8 @@ public final class SettingsDialogDemo {
         }
 
         @Override
-        public void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {
-            onResult.accept(Arrays.asList(
+        public void localVoices(SettingsForm form, LocalVoiceOffersCallback callback) {
+            callback.offers(Arrays.asList(
                     new LocalVoiceOffer("stimme-1", "Stimme 1 (mittel)", "de_DE", true),
                     new LocalVoiceOffer("stimme-2", "Stimme 2 (hoch)", "de_DE", false),
                     new LocalVoiceOffer("stimme-3", "Stimme 3", "de_DE", false)));

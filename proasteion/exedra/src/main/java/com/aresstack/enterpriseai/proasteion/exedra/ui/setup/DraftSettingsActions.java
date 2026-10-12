@@ -1,11 +1,11 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.setup;
 
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
-import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceOffersCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceSearchCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NetworkLogListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer;
@@ -118,8 +118,8 @@ public final class DraftSettingsActions implements SettingsDialogActions {
     }
 
     @Override
-    public void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {
-        delegate.localVoices(form, onResult);
+    public void localVoices(SettingsForm form, LocalVoiceOffersCallback callback) {
+        delegate.localVoices(form, callback);
     }
 
     @Override

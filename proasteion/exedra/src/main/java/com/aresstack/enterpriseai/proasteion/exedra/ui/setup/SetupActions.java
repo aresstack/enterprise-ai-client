@@ -23,6 +23,9 @@ public interface SetupActions {
     /**
      * Schreibt Konfiguration (ohne API-Key) und die aktivierte Confluence-Quelle und prüft danach, ob der Stand
      * betriebsbereit ist; liefert jeden Punkt der Abschlussprüfung.
+     *
+     * @param confluence die Confluence-Angaben oder {@code null}, wenn Confluence übersprungen wurde (optional):
+     *                   dann wird weder eine Quelle angelegt noch Confluence geprüft
      */
     void finish(SettingsForm form, ConfluenceSetup confluence, Consumer<List<SetupCheck>> done);
 

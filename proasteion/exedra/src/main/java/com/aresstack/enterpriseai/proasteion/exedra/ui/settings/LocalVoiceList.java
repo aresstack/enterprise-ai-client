@@ -23,7 +23,6 @@ import java.awt.event.ActionListener;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -43,6 +42,7 @@ final class LocalVoiceList {
     static final String INSTALLED = "✓ installiert";
     static final String NONE = "Noch keine lokalen Modelle installiert.";
     static final String NO_SUGGESTIONS = "Alle Vorschläge sind installiert.";
+    static final String LOAD_FAILED = "Die lokalen Modelle ließen sich nicht ermitteln.";
     static final String SEARCH_LABEL = "Suchen";
     static final String NO_HITS = "Keine im Client ladbaren Modelle gefunden.";
     static final String ALL_CATEGORIES = "Alle Funktionen";
@@ -83,6 +83,8 @@ final class LocalVoiceList {
     /** {@code null}: noch nicht gesucht. */
     private List<LocalVoiceOffer> found;
     private String loadedRoot;
+    /** Warum die Angebote zuletzt nicht ermittelt werden konnten ({@code null}: sie wurden ermittelt). */
+    private String loadFailure;
     private boolean busy;
     /** Zeile, aus der gerade installiert/entfernt wird bzw. zuletzt wurde: {@code hit:<id>} oder {@code offer:<id>}. */
     private String rowKey;
@@ -257,11 +259,22 @@ final class LocalVoiceList {
 
     private void reload() {
         loadedRoot = root();
-        actions.localVoices(form.get(), new Consumer<List<LocalVoiceOffer>>() {
+        actions.localVoices(form.get(), new LocalVoiceOffersCallback() {
             @Override
-            public void accept(List<LocalVoiceOffer> result) {
+            public void offers(List<LocalVoiceOffer> result) {
+                loadFailure = null;
                 offers = result == null ? Collections.<LocalVoiceOffer>emptyList()
                         : new ArrayList<LocalVoiceOffer>(result);
+                fill();
+                listener.offers(offers);
+            }
+
+            @Override
+            public void failed(String message) {
+                // beim nächsten Anzeigen erneut versuchen, statt „nichts installiert“ stehen zu lassen
+                loadedRoot = null;
+                loadFailure = message == null || message.trim().isEmpty() ? LOAD_FAILED : LOAD_FAILED + " " + message;
+                offers = Collections.emptyList();
                 fill();
                 listener.offers(offers);
             }
@@ -279,10 +292,10 @@ final class LocalVoiceList {
             (offer.isInstalled() ? lines : suggested).add(line(offer, OFFER + offer.id()));
         }
         if (lines.getComponentCount() == 0) {
-            lines.add(muted(NONE));
+            lines.add(muted(loadFailure != null ? loadFailure : NONE));
         }
         if (suggested.getComponentCount() == 0) {
-            suggested.add(muted(NO_SUGGESTIONS));
+            suggested.add(muted(loadFailure != null ? loadFailure : NO_SUGGESTIONS));
         }
         hits.removeAll();
         if (found != null && found.isEmpty()) {

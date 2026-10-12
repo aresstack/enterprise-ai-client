@@ -120,10 +120,11 @@ public interface SettingsDialogActions {
 
     /**
      * „Installiert“ und „Vorschläge“ im Reiter „Lokale Modelle“: die angebotenen Stimmen mit Installationsstand im Modellverzeichnis des
-     * Entwurfs, genau einmal auf dem EDT.
+     * Entwurfs, genau einmal auf dem EDT. Ließen sich die Angebote nicht ermitteln, kommt
+     * {@link LocalVoiceOffersCallback#failed} statt einer leeren Liste.
      */
-    default void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {
-        onResult.accept(Collections.<LocalVoiceOffer>emptyList());
+    default void localVoices(SettingsForm form, LocalVoiceOffersCallback callback) {
+        callback.offers(Collections.<LocalVoiceOffer>emptyList());
     }
 
     /**

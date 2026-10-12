@@ -156,6 +156,21 @@ public class FileSetupActionsTest {
     }
 
     @Test
+    public void skippedConfluenceIsOptionalAndCreatesNoSource() throws Exception {
+        List<SetupCheck> checks = actions().verify(wizardForm(), null);
+
+        assertEquals(Arrays.asList(FileSetupActions.CHECK_KEEPASS, FileSetupActions.CHECK_SERVICE,
+                FileSetupActions.CHECK_API_KEY, FileSetupActions.CHECK_CHAT_MODEL,
+                FileSetupActions.CHECK_EMBEDDING_MODEL, FileSetupActions.CHECK_DIMENSION,
+                FileSetupActions.CHECK_LOADS), labels(checks));
+        for (SetupCheck check : checks) {
+            assertTrue(check.toString(), check.isOk());
+        }
+        assertTrue("keine Quelle angelegt", AppConfigLoader.load(configPath()).sources().isEmpty());
+        assertTrue("Confluence nicht angesprochen", confluenceCalls.isEmpty());
+    }
+
+    @Test
     public void certificateAliasIsStoredOnTheSource() throws Exception {
         actions().verify(wizardForm(), new ConfluenceSetup("Confluence", CONFLUENCE_URL, "jdoe", "my-cert"));
         AppConfig loaded = AppConfigLoader.load(configPath());

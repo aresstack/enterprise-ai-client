@@ -25,7 +25,11 @@ public class SetupWizardNavigationTest {
     private static final int STEPS = SetupWizardPanel.STEP_SPEECH + 1;
 
     private SetupWizardRun openRun() {
-        SetupWizardRun run = new SetupWizardRun(SettingsMapper.firstStartDefaults(), new WizardFakes.Settings(),
+        return openRun(new WizardFakes.Settings());
+    }
+
+    private SetupWizardRun openRun(WizardFakes.Settings settings) {
+        SetupWizardRun run = new SetupWizardRun(SettingsMapper.firstStartDefaults(), settings,
                 new WizardFakes.Setup(), ComicPalette.defaultPalette(), completed -> {
                 });
         run.overlay().setSize(new Dimension(SetupWizardWindow.WIDTH, SetupWizardWindow.HEIGHT));
@@ -52,7 +56,10 @@ public class SetupWizardNavigationTest {
     @Test
     public void clickingAStepJumpsThereWithoutCheckAndKeepsInput() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
-            SetupWizardPanel wizard = openRun().wizard();
+            // KeePass nicht erreichbar: dann ist wirklich nichts erledigt (gelesene Einträge erledigen „KeePass“).
+            WizardFakes.Settings unreachable = new WizardFakes.Settings();
+            unreachable.listFailure = "KeePass antwortet nicht";
+            SetupWizardPanel wizard = openRun(unreachable).wizard();
             wizard.keePassHostField().setText("keepass.example");
             assertFalse("nichts erledigt", wizard.isDone(SetupWizardPanel.STEP_KEEPASS));
             click(wizard.trail(), SetupWizardPanel.STEP_CONFLUENCE);

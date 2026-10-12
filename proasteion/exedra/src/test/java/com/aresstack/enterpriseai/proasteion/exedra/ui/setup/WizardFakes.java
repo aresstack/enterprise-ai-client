@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceOffersCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordEntry;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordStore;
@@ -38,7 +39,17 @@ final class WizardFakes {
         boolean holdInstalls;
         String installFailure;
         String installedAs;
-        private final Map<String, PasswordEntry> vault = new LinkedHashMap<String, PasswordEntry>();
+        /** Gesetzt: die Angebote lokaler Modelle lassen sich nicht ermitteln. */
+        String offersFailure;
+        /** Wie oft die Eintragsliste aus KeePass gelesen wurde. */
+        int listCalls;
+        /** Gesetzt: KeePass liefert keine Eintragsliste (nicht gekoppelt). */
+        String listFailure;
+        /** Je Verbindungstest: Titel|URL|Benutzer|Passwort, wie der Test sie bekam. */
+        final List<String> tested = new ArrayList<String>();
+        /** Wie oft ein Eintrag gespeichert wurde. */
+        int saves;
+        final Map<String, PasswordEntry> vault = new LinkedHashMap<String, PasswordEntry>();
 
         Settings() {
             vault.put("Enterprise AI API", new PasswordEntry("Enterprise AI API", "", "https://ai.example.invalid/v1",
@@ -67,6 +78,11 @@ final class WizardFakes {
             return new PasswordStore() {
                 @Override
                 public void list(PasswordCallback<List<PasswordEntry>> done) {
+                    listCalls++;
+                    if (listFailure != null) {
+                        done.done(null, listFailure);
+                        return;
+                    }
                     List<PasswordEntry> entries = new ArrayList<PasswordEntry>();
                     for (PasswordEntry entry : vault.values()) {
                         entries.add(new PasswordEntry(entry.title(), entry.userName(), entry.url(), entry.fields(),
@@ -84,6 +100,7 @@ final class WizardFakes {
 
                 @Override
                 public void save(PasswordEntry entry, PasswordCallback<Void> done) {
+                    saves++;
                     vault.put(entry.title(), new PasswordEntry(entry.title(), entry.userName(), entry.url(),
                             entry.fields(), entry.copyPassword()));
                     done.done(null, null);
@@ -97,6 +114,9 @@ final class WizardFakes {
 
                 @Override
                 public void testConnection(PasswordEntry entry, PasswordCallback<String> done) {
+                    char[] password = entry.copyPassword();
+                    tested.add(entry.title() + "|" + entry.url() + "|" + entry.userName() + "|"
+                            + (password == null ? "" : new String(password)));
                     done.done("Verbindung erfolgreich: 3 Spaces sichtbar.", null);
                 }
             };
@@ -114,8 +134,12 @@ final class WizardFakes {
         }
 
         @Override
-        public void localVoices(SettingsForm form, Consumer<List<LocalVoiceOffer>> onResult) {
-            onResult.accept(new ArrayList<LocalVoiceOffer>(offers));
+        public void localVoices(SettingsForm form, LocalVoiceOffersCallback callback) {
+            if (offersFailure != null) {
+                callback.failed(offersFailure);
+                return;
+            }
+            callback.offers(new ArrayList<LocalVoiceOffer>(offers));
         }
 
         @Override
@@ -149,6 +173,8 @@ final class WizardFakes {
     /** Abschlussprüfung grün, Embedding-Test liefert 768. */
     static final class Setup implements SetupActions {
         final List<SettingsForm> finished = new ArrayList<SettingsForm>();
+        /** Die Confluence-Angaben je Abschlussprüfung ({@code null}: übersprungen). */
+        final List<ConfluenceSetup> confluences = new ArrayList<ConfluenceSetup>();
 
         @Override
         public void embeddingDimension(SettingsForm form, BiConsumer<Integer, String> done) {
@@ -158,6 +184,12 @@ final class WizardFakes {
         @Override
         public void finish(SettingsForm form, ConfluenceSetup confluence, Consumer<List<SetupCheck>> done) {
             finished.add(form);
+            confluences.add(confluence);
+            if (form.chatModel().trim().isEmpty()) {
+                done.accept(Arrays.asList(SetupCheck.ok("KeePass", ""), SetupCheck.failed("Chat-Modell",
+                        "kein Chat-Modell gewählt")));
+                return;
+            }
             done.accept(Arrays.asList(SetupCheck.ok("KeePass", ""), SetupCheck.ok("KI-Dienst", ""),
                     SetupCheck.ok("Konfiguration lädt", "")));
         }

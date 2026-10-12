@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckL
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.DownloadText;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceOffersCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordEntry;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordStore;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
@@ -90,6 +91,8 @@ public final class SetupWizardPanel extends JPanel {
     static final String NEW_ENTRY_HINT = "(neuer Eintrag)";
     private static final String KEEPASS_PREFIX = "keepass:";
     private static final String SKIP_STEP_HINT = "Ohne Prüfung zum nächsten Schritt; Eingaben bleiben erhalten";
+    static final String CONFLUENCE_SKIPPED = "Betriebsbereit. Confluence ist übersprungen und lässt sich später "
+            + "in der Seitenleiste unter Wissensquellen einrichten.";
     private static final String SKIP_SPEECH_HINT =
             "Ohne lokale Spracheingabe abschließen; später unter Einstellungen → Modelle → Lokale Modelle";
     /** Platzhalter für Modelle, solange der Schritt „Modelle“ noch nicht gewählt hat (Verbindungstest). */
@@ -128,6 +131,13 @@ public final class SetupWizardPanel extends JPanel {
     private final JLabel keePassStatus = statusLabel();
     private final ComposerButton pairButton;
     private List<PasswordEntry> entries = Collections.emptyList();
+    /**
+     * Ob die Eintragsliste in dieser Sitzung gelesen wurde. Eine leere KeePass-Datenbank ist etwas anderes als
+     * „noch nie gelesen“: Erst nach dem Lesen heißt ein unbekannter Titel „neuer Eintrag“.
+     */
+    private boolean entriesLoaded;
+    /** Warum das Nachladen der Einträge zuletzt scheiterte ({@code null}: kein Fehler). */
+    private String entriesProblem;
 
     // Schritt 2: KI-Dienst
     private final JComboBox<String> serviceEntry = new JComboBox<String>();
@@ -154,6 +164,15 @@ public final class SetupWizardPanel extends JPanel {
 
     // Schritt 4: Confluence
     private final JComboBox<String> confluenceEntry = new JComboBox<String>();
+    private final JLabel confluenceEntryStatus = statusLabel();
+    /** Stand eines vollständigen Eintrags (ohne Secrets) und „Zugangsdaten ändern“. */
+    private final JPanel confluenceSummary = transparent(new GridBagLayout());
+    private final JLabel confluenceHasUrl = statusLabel();
+    private final JLabel confluenceHasUser = statusLabel();
+    private final JLabel confluenceHasSecret = statusLabel();
+    private final ComposerButton confluenceChange;
+    /** URL, Benutzer und Passwort bzw. Token: nur bei neuem oder unvollständigem Eintrag oder zum Ändern. */
+    private final JPanel confluenceManual = transparent(new GridBagLayout());
     private final JTextField confluenceUrl = new JTextField(28);
     private final JTextField confluenceUser = new JTextField(20);
     private final JPasswordField confluencePassword = new JPasswordField(20);
@@ -164,6 +183,8 @@ public final class SetupWizardPanel extends JPanel {
     private final ComposerButton confluenceTest;
     private final JLabel confluenceStatus = statusLabel();
     private PasswordEntry confluenceRead;
+    private boolean confluenceReading;
+    private boolean confluenceEditing;
     private String certificateAlias = "";
     private boolean confluenceOk;
     private ConfluenceSetup confluence;
@@ -183,6 +204,8 @@ public final class SetupWizardPanel extends JPanel {
     private List<LocalVoiceOffer> speechOffers = Collections.emptyList();
     private boolean speechLoaded;
     private boolean speechDownloading;
+    /** Die Angebote ließen sich nicht ermitteln (nicht dasselbe wie „keine Angebote“). */
+    private boolean speechLoadFailed;
 
     public SetupWizardPanel(SettingsForm initial, SettingsDialogActions settings, SetupActions setup,
                             ComicPalette palette) {
@@ -210,6 +233,8 @@ public final class SetupWizardPanel extends JPanel {
         this.modelsRefresh = new ComposerButton(null, "Modelle abfragen", false);
         this.dimensionMeasure = new ComposerButton(null, "Dimension ermitteln", false);
         this.certificateChoose = new ComposerButton(null, "Zertifikat wählen…", false);
+        this.confluenceChange = new ComposerButton(null, "Zugangsdaten ändern", false,
+                "URL, Benutzername oder Passwort bzw. Token im KeePass-Eintrag ändern");
         this.confluenceTest = ComposerButton.primary(null, "Verbindung testen", ResearchUiPalette.ACCENT_BLUE, null);
         this.finishRetry = new ComposerButton(null, "Erneut prüfen", false);
         this.skipButton = new ComposerButton(null, "Überspringen", false, SKIP_STEP_HINT);
@@ -345,10 +370,31 @@ public final class SetupWizardPanel extends JPanel {
                 + "einem persönlichen Zugriffstoken.");
         confluenceEntry.setEditable(true);
         rows.field("KeePass-Eintrag", confluenceEntry);
-        rows.field("Confluence-URL", confluenceUrl);
-        rows.field("Benutzername", confluenceUser);
-        rows.field("Passwort oder Token", confluencePassword);
-        rows.field("", confluencePasswordHint);
+        rows.field("", confluenceEntryStatus);
+        int line = 0;
+        for (JLabel state : new JLabel[] {confluenceHasUrl, confluenceHasUser, confluenceHasSecret}) {
+            GridBagConstraints c = new GridBagConstraints();
+            c.gridx = 0;
+            c.gridy = line++;
+            c.anchor = GridBagConstraints.WEST;
+            c.insets = new Insets(1, 0, 1, 0);
+            state.setForeground(palette.getInk());
+            confluenceSummary.add(state, c);
+        }
+        GridBagConstraints change = new GridBagConstraints();
+        change.gridx = 0;
+        change.gridy = line;
+        change.anchor = GridBagConstraints.WEST;
+        change.insets = new Insets(4, 0, 0, 0);
+        confluenceSummary.add(confluenceChange, change);
+        confluenceSummary.setVisible(false);
+        rows.field("", confluenceSummary);
+        manualRow(0, "Confluence-URL", confluenceUrl);
+        manualRow(1, "Benutzername", confluenceUser);
+        manualRow(2, "Passwort oder Token", confluencePassword);
+        manualRow(3, "", confluencePasswordHint);
+        confluenceManual.setVisible(false);
+        rows.wide(confluenceManual);
         JPanel certificate = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
         certificate.add(certificateLabel);
         certificate.add(certificateChoose);
@@ -361,6 +407,23 @@ public final class SetupWizardPanel extends JPanel {
         rows.field("", buttonRow(confluenceTest));
         rows.field("", confluenceStatus);
         return rows.panel();
+    }
+
+    /** Eine Zeile der manuellen Confluence-Felder (Beschriftung, Feld). */
+    private void manualRow(int row, String label, JComponent field) {
+        GridBagConstraints c = new GridBagConstraints();
+        c.anchor = GridBagConstraints.WEST;
+        c.insets = new Insets(3, 0, 3, 10);
+        c.gridx = 0;
+        c.gridy = row;
+        if (!label.isEmpty()) {
+            confluenceManual.add(fieldLabel(label), c);
+        }
+        c.gridx = 1;
+        c.insets = new Insets(3, 0, 3, 0);
+        c.fill = field instanceof JTextField ? GridBagConstraints.HORIZONTAL : GridBagConstraints.NONE;
+        c.weightx = 1;
+        confluenceManual.add(field, c);
     }
 
     private JPanel finishStep() {
@@ -434,6 +497,10 @@ public final class SetupWizardPanel extends JPanel {
         confluenceUser.getDocument().addDocumentListener(invalidate);
         confluencePassword.getDocument().addDocumentListener(invalidate);
         certificateChoose.addActionListener(e -> chooseCertificate());
+        confluenceChange.addActionListener(e -> {
+            confluenceEditing = true;
+            showConfluenceCredentials();
+        });
         withoutCertificate.addActionListener(e -> {
             if (withoutCertificate.isSelected()) {
                 certificateAlias = "";
@@ -451,7 +518,13 @@ public final class SetupWizardPanel extends JPanel {
             }
         });
         speechInstall.addActionListener(e -> installSpeech());
-        speechRetry.addActionListener(e -> installSpeech());
+        speechRetry.addActionListener(e -> {
+            if (speechLoadFailed) {
+                loadSpeechModels(null);
+            } else {
+                installSpeech();
+            }
+        });
     }
 
     public void setOnFinished(Runnable callback) {
@@ -515,11 +588,11 @@ public final class SetupWizardPanel extends JPanel {
         step = index;
         cards.show(deck, STEP_NAMES[index]);
         if (index == STEP_SERVICE && serviceRead == null && !done[STEP_SERVICE]) {
-            preselectServiceEntry();
+            withEntries(this::preselectServiceEntry);
         } else if (index == STEP_MODELS && !modelsLoaded) {
             refreshModels();
         } else if (index == STEP_CONFLUENCE && confluenceRead == null && !confluenceOk) {
-            preselectConfluenceEntry();
+            withEntries(this::preselectConfluenceEntry);
         } else if (index == STEP_FINISH) {
             runFinalCheck();
         } else if (index == STEP_SPEECH && !speechLoaded) {
@@ -550,8 +623,9 @@ public final class SetupWizardPanel extends JPanel {
         LocalVoiceOffer chosen = selectedSpeechOffer();
         speechInstall.setVisible(chosen != null && !chosen.isInstalled() && errors[STEP_SPEECH] == null);
         speechInstall.setEnabled(!busy && !speechDownloading);
-        speechRetry.setVisible(chosen != null && !chosen.isInstalled() && errors[STEP_SPEECH] != null
-                && !speechDownloading);
+        speechRetry.setVisible(speechLoadFailed || (chosen != null && !chosen.isInstalled()
+                && errors[STEP_SPEECH] != null && !speechDownloading));
+        speechRetry.setEnabled(!busy && !speechDownloading);
         speechModel.setEnabled(!speechDownloading);
         String error = errors[step];
         errorPlate.setVisible(error != null && !error.isEmpty());
@@ -587,12 +661,49 @@ public final class SetupWizardPanel extends JPanel {
                         + "KeePassRPC muss installiert sein, und der Pairing-Schlüssel muss bestätigt werden.");
                 return;
             }
-            entries = list == null ? Collections.<PasswordEntry>emptyList() : list;
-            done[STEP_KEEPASS] = true;
-            keePassStatus.setText("Gekoppelt; " + entries.size() + " Einträge lesbar.");
-            fillEntryChoices();
+            acceptEntries(list);
             updateButtons();
         });
+    }
+
+    /**
+     * Liest die KeePass-Einträge, wenn sie in dieser Sitzung noch nie gelesen wurden (KeePass ist oft längst
+     * gekoppelt, und die Schrittleiste springt an „Mit KeePass verbinden“ vorbei), und macht dann weiter. Scheitert
+     * das Lesen, merkt sich der Assistent den Grund; der Schritt sagt ihn, statt Einträge für neu zu halten.
+     */
+    private void withEntries(final Runnable then) {
+        if (entriesLoaded) {
+            then.run();
+            return;
+        }
+        form = collect();
+        keePassStatus.setText("Verbinde mit KeePass …");
+        setBusy(true);
+        store().list((list, error) -> {
+            setBusy(false);
+            if (error != null) {
+                entriesProblem = error;
+                keePassStatus.setText("Nicht verbunden.");
+            } else {
+                acceptEntries(list);
+            }
+            then.run();
+        });
+    }
+
+    private void acceptEntries(List<PasswordEntry> list) {
+        entries = list == null ? Collections.<PasswordEntry>emptyList() : list;
+        entriesLoaded = true;
+        entriesProblem = null;
+        done[STEP_KEEPASS] = true;
+        keePassStatus.setText("Gekoppelt; " + entries.size() + " Einträge lesbar.");
+        fillEntryChoices();
+    }
+
+    /** Hinweis, solange die Eintragsliste nicht gelesen ist. */
+    private String entriesMissingHint() {
+        return "Die KeePass-Einträge sind nicht lesbar" + (entriesProblem == null ? "" : " (" + entriesProblem + ")")
+                + "; bitte zuerst im Schritt „KeePass“ verbinden.";
     }
 
     private void fillEntryChoices() {
@@ -631,6 +742,12 @@ public final class SetupWizardPanel extends JPanel {
         serviceStatus.setText("");
         if (title.isEmpty()) {
             serviceEntryStatus.setText("Bitte einen KeePass-Eintrag wählen oder einen Titel eintragen.");
+            serviceMissing.setVisible(false);
+            updateButtons();
+            return;
+        }
+        if (!entriesLoaded) {
+            serviceEntryStatus.setText(entriesMissingHint());
             serviceMissing.setVisible(false);
             updateButtons();
             return;
@@ -858,31 +975,46 @@ public final class SetupWizardPanel extends JPanel {
         readConfluenceEntry();
     }
 
+    /**
+     * Liest den gewählten Eintrag. Ein vollständiger Eintrag (URL und Passwort bzw. Token) braucht keine Eingabe:
+     * Der Schritt zeigt nur, was vorhanden ist, und testet mit den Werten aus KeePass. Die Felder erscheinen bei
+     * einem neuen oder unvollständigen Eintrag und nach „Zugangsdaten ändern“.
+     */
     private void readConfluenceEntry() {
         final String title = text(confluenceEntry);
         confluenceRead = null;
         confluenceOk = false;
+        confluenceEditing = false;
+        confluenceReading = false;
         clearError(STEP_CONFLUENCE);
         confluenceStatus.setText("");
-        if (title.isEmpty() || !titleExists(title)) {
+        if (title.isEmpty() || !entriesLoaded || !titleExists(title)) {
             busy = true;
             try {
-                confluencePasswordHint.setText(title.isEmpty() ? "Bitte einen Titel für den KeePass-Eintrag eintragen."
-                        : "Neuer Eintrag: wird beim Testen in KeePass angelegt.");
+                confluenceEntryStatus.setText(title.isEmpty()
+                        ? "Bitte einen KeePass-Eintrag wählen oder einen Titel eintragen."
+                        : !entriesLoaded ? entriesMissingHint()
+                        : "Neuer Eintrag: URL und Passwort bzw. Token angeben; er wird beim Testen in KeePass "
+                        + "angelegt.");
+                confluencePasswordHint.setText(" ");
                 certificateAlias = "";
                 certificateLabel.setText("kein Zertifikat");
             } finally {
                 busy = false;
             }
-            updateButtons();
+            showConfluenceCredentials();
             return;
         }
-        confluencePasswordHint.setText("Lese den Eintrag …");
+        confluenceEntryStatus.setText("Lese den Eintrag …");
+        confluenceReading = true;
+        showConfluenceCredentials();
         setBusy(true);
         store().read(title, (entry, error) -> {
+            confluenceReading = false;
             setBusy(false);
             if (error != null || entry == null) {
-                confluencePasswordHint.setText("Nicht lesbar.");
+                confluenceEntryStatus.setText("Nicht lesbar.");
+                showConfluenceCredentials();
                 fail(STEP_CONFLUENCE, "Der Eintrag „" + title + "“ ist nicht lesbar: " + error);
                 return;
             }
@@ -899,11 +1031,46 @@ public final class SetupWizardPanel extends JPanel {
                 certificateAlias = alias == null ? "" : alias.trim();
                 certificateLabel.setText(certificateAlias.isEmpty() ? "kein Zertifikat" : certificateAlias);
                 withoutCertificate.setSelected(false);
+                confluenceEntryStatus.setText(complete(entry) ? "Vorhandener Eintrag; die Zugangsdaten stehen in KeePass."
+                        : "Im Eintrag fehlt noch etwas; bitte ergänzen, es wird beim Testen in KeePass gespeichert.");
             } finally {
                 busy = false;
             }
-            updateButtons();
+            showConfluenceCredentials();
+            // Alles da, Zertifikat aus dem Eintrag: gleich prüfen, wie beim KI-Dienst.
+            if (complete(entry) && !certificateAlias.isEmpty()) {
+                testConfluence();
+            }
         });
+    }
+
+    /** Vollständig heißt: URL und Passwort bzw. Token; ohne Benutzername meldet sich der Client mit Token an. */
+    private static boolean complete(PasswordEntry entry) {
+        return entry != null && !entry.url().trim().isEmpty() && entry.hasPassword();
+    }
+
+    /** Status eines vollständigen Eintrags oder die Felder, je nach Eintrag und „Zugangsdaten ändern“. */
+    private void showConfluenceCredentials() {
+        String title = text(confluenceEntry);
+        boolean complete = complete(confluenceRead);
+        boolean summary = complete && !confluenceEditing && !confluenceReading;
+        boolean manual = entriesLoaded && !title.isEmpty() && !confluenceReading && (!complete || confluenceEditing);
+        if (summary) {
+            state(confluenceHasUrl, true, "URL vorhanden: " + confluenceRead.url());
+            String user = confluenceRead.userName().trim();
+            state(confluenceHasUser, true, user.isEmpty()
+                    ? "Kein Benutzername: Anmeldung mit persönlichem Zugriffstoken" : "Benutzername vorhanden");
+            state(confluenceHasSecret, true, user.isEmpty() ? "Token vorhanden" : "Passwort bzw. Token vorhanden");
+        }
+        confluenceSummary.setVisible(summary);
+        confluenceManual.setVisible(manual);
+        updateButtons();
+    }
+
+    /** Eine Statuszeile mit Haken oder Kreuz (StrokeIcon), ohne Secret. */
+    private static void state(JLabel label, boolean ok, String text) {
+        label.setIcon(ok ? new CheckGlyph() : new CrossGlyph());
+        label.setText(text);
     }
 
     private void chooseCertificate() {
@@ -1002,10 +1169,8 @@ public final class SetupWizardPanel extends JPanel {
         done[STEP_FINISH] = false;
         clearError(STEP_FINISH);
         checkRows.removeAll();
-        if (confluence == null) {
-            fail(STEP_FINISH, "Confluence ist noch nicht eingerichtet.");
-            return;
-        }
+        // Confluence ist optional: übersprungen ({@code null}) prüft der Abschluss es nicht und legt keine Quelle an.
+        final boolean withoutConfluence = confluence == null;
         form = collect();
         finishStatus.setText("Speichere und prüfe …");
         setBusy(true);
@@ -1022,7 +1187,8 @@ public final class SetupWizardPanel extends JPanel {
                 }
             }
             done[STEP_FINISH] = allOk;
-            finishStatus.setText(allOk ? "Alles betriebsbereit." : "Noch nicht betriebsbereit.");
+            finishStatus.setText(allOk ? withoutConfluence ? CONFLUENCE_SKIPPED : "Alles betriebsbereit."
+                    : "Noch nicht betriebsbereit.");
             if (!allOk) {
                 fail(STEP_FINISH, failed.length() == 0 ? "Die Prüfung lieferte kein Ergebnis."
                         : failed.toString().trim());
@@ -1098,38 +1264,65 @@ public final class SetupWizardPanel extends JPanel {
         clearError(STEP_SPEECH);
         speechStatus.setText("Suche lokale Modelle für die Spracheingabe …");
         setBusy(true);
-        settings.localVoices(collect(), offers -> {
-            setBusy(false);
-            speechLoaded = true;
-            List<LocalVoiceOffer> installed = new ArrayList<LocalVoiceOffer>();
-            List<LocalVoiceOffer> offered = new ArrayList<LocalVoiceOffer>();
-            for (LocalVoiceOffer offer : offers == null ? Collections.<LocalVoiceOffer>emptyList() : offers) {
-                if (offer.category() == ModelCategory.STT) {
-                    (offer.isInstalled() ? installed : offered).add(offer);
+        settings.localVoices(collect(), new LocalVoiceOffersCallback() {
+            @Override
+            public void offers(List<LocalVoiceOffer> offers) {
+                setBusy(false);
+                speechLoaded = true;
+                speechLoadFailed = false;
+                showSpeechOffers(offers, prefer);
+            }
+
+            @Override
+            public void failed(String message) {
+                setBusy(false);
+                // beim nächsten Betreten erneut laden; „keine Modelle“ wäre hier falsch
+                speechLoaded = false;
+                speechLoadFailed = true;
+                speechOffers = Collections.emptyList();
+                busy = true;
+                try {
+                    speechModel.setModel(new DefaultComboBoxModel<String>());
+                } finally {
+                    busy = false;
                 }
+                speechStatus.setText("Die Modelle für die Spracheingabe sind nicht geladen.");
+                fail(STEP_SPEECH, "Die Angebote für die Spracheingabe ließen sich nicht ermitteln: "
+                        + (message == null || message.trim().isEmpty() ? "unbekannter Grund." : message.trim())
+                        + " „Erneut versuchen“ lädt sie neu; Überspringen geht immer.");
             }
-            List<LocalVoiceOffer> all = new ArrayList<LocalVoiceOffer>(installed);
-            all.addAll(offered);
-            speechOffers = all;
-            List<String> labels = new ArrayList<String>();
-            for (LocalVoiceOffer offer : all) {
-                labels.add(speechLabel(offer));
-            }
-            LocalVoiceOffer chosen = preferredSpeechOffer(installed, offered, prefer);
-            busy = true;
-            try {
-                speechModel.setModel(new DefaultComboBoxModel<String>(labels.toArray(new String[0])));
-                speechModel.setSelectedIndex(chosen == null ? -1 : all.indexOf(chosen));
-            } finally {
-                busy = false;
-            }
-            if (all.isEmpty()) {
-                speechStatus.setText("Kein lokales Modell für die Spracheingabe verfügbar; bitte überspringen.");
-                updateButtons();
-                return;
-            }
-            showSpeechChoice();
         });
+    }
+
+    private void showSpeechOffers(List<LocalVoiceOffer> offers, List<String> prefer) {
+        List<LocalVoiceOffer> installed = new ArrayList<LocalVoiceOffer>();
+        List<LocalVoiceOffer> offered = new ArrayList<LocalVoiceOffer>();
+        for (LocalVoiceOffer offer : offers == null ? Collections.<LocalVoiceOffer>emptyList() : offers) {
+            if (offer.category() == ModelCategory.STT) {
+                (offer.isInstalled() ? installed : offered).add(offer);
+            }
+        }
+        List<LocalVoiceOffer> all = new ArrayList<LocalVoiceOffer>(installed);
+        all.addAll(offered);
+        speechOffers = all;
+        List<String> labels = new ArrayList<String>();
+        for (LocalVoiceOffer offer : all) {
+            labels.add(speechLabel(offer));
+        }
+        LocalVoiceOffer chosen = preferredSpeechOffer(installed, offered, prefer);
+        busy = true;
+        try {
+            speechModel.setModel(new DefaultComboBoxModel<String>(labels.toArray(new String[0])));
+            speechModel.setSelectedIndex(chosen == null ? -1 : all.indexOf(chosen));
+        } finally {
+            busy = false;
+        }
+        if (all.isEmpty()) {
+            speechStatus.setText("Kein lokales Modell für die Spracheingabe angeboten; bitte überspringen.");
+            updateButtons();
+            return;
+        }
+        showSpeechChoice();
     }
 
     /** Neu installiert vor bereits gewählt vor erstem installierten vor erstem Vorschlag. */
@@ -1437,6 +1630,30 @@ public final class SetupWizardPanel extends JPanel {
     private static String shorten(String text) {
         String line = text.replace('\n', ' ').trim();
         return line.length() > 120 ? line.substring(0, 119) + "…" : line;
+    }
+
+    String finishStatusText() {
+        return finishStatus.getText();
+    }
+
+    String confluenceEntryStatusText() {
+        return confluenceEntryStatus.getText();
+    }
+
+    boolean confluenceFieldsShown() {
+        return confluenceManual.isVisible();
+    }
+
+    boolean confluenceSummaryShown() {
+        return confluenceSummary.isVisible();
+    }
+
+    String confluenceSummaryText() {
+        return confluenceHasUrl.getText() + "\n" + confluenceHasUser.getText() + "\n" + confluenceHasSecret.getText();
+    }
+
+    ComposerButton confluenceChangeButton() {
+        return confluenceChange;
     }
 
     private JLabel statusLabel() {

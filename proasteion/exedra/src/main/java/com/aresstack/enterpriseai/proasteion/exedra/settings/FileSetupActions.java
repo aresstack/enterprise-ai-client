@@ -134,8 +134,8 @@ public final class FileSetupActions implements SetupActions {
     @Override
     public void finish(final SettingsForm form, final ConfluenceSetup confluence,
                        final Consumer<List<SetupCheck>> done) {
-        if (form == null || confluence == null || done == null) {
-            throw new IllegalArgumentException("form, confluence and done must not be null");
+        if (form == null || done == null) {
+            throw new IllegalArgumentException("form and done must not be null");
         }
         submit(() -> {
             List<SetupCheck> checks;
@@ -154,7 +154,8 @@ public final class FileSetupActions implements SetupActions {
 
     /**
      * Schreibt Konfiguration und Confluence-Quelle und prüft danach die neun Punkte der Abschlussprüfung; blockiert
-     * (KeePass, Netz), nie auf dem EDT.
+     * (KeePass, Netz), nie auf dem EDT. Ohne Confluence ({@code null}: im Assistenten übersprungen, optional) entfallen
+     * Quelle und die beiden Confluence-Punkte.
      */
     List<SetupCheck> verify(SettingsForm form, ConfluenceSetup confluence) {
         String loadProblem = null;
@@ -165,10 +166,10 @@ public final class FileSetupActions implements SetupActions {
         } catch (IOException e) {
             loadProblem = "Konfigurationsdatei nicht schreibbar (" + e.getClass().getSimpleName() + ").";
         }
-        SourceDefinition source = ConfluenceEntryCheck.definition(SOURCE_TITLE, confluence.baseUrl(),
-                confluence.entryTitle(), confluence.certificateAlias());
+        SourceDefinition source = confluence == null ? null : ConfluenceEntryCheck.definition(SOURCE_TITLE,
+                confluence.baseUrl(), confluence.entryTitle(), confluence.certificateAlias());
         String sourceProblem = null;
-        if (loadProblem == null) {
+        if (loadProblem == null && source != null) {
             try {
                 sources.save(source, null);
             } catch (IOException | RuntimeException e) {
@@ -271,10 +272,12 @@ public final class FileSetupActions implements SetupActions {
         checks.add(effective != null && effective.embedding() != null && effective.embedding().dimension() > 0
                 ? SetupCheck.ok(CHECK_DIMENSION, Integer.toString(effective.embedding().dimension()))
                 : SetupCheck.failed(CHECK_DIMENSION, "unbekannt"));
-        // 7. Confluence-Zugang (Spaces abrufbar) mit den Zugangsdaten aus KeePass
-        checks.add(confluenceCheck(vault, network, confluence));
-        // 8. Quelle gespeichert und aktiviert
-        checks.add(sourceCheck(source, sourceProblem == null ? loadProblem : sourceProblem));
+        if (confluence != null) {
+            // 7. Confluence-Zugang (Spaces abrufbar) mit den Zugangsdaten aus KeePass
+            checks.add(confluenceCheck(vault, network, confluence));
+            // 8. Quelle gespeichert und aktiviert
+            checks.add(sourceCheck(source, sourceProblem == null ? loadProblem : sourceProblem));
+        }
         // 9. Konfiguration lädt vollständig
         checks.add(config != null ? SetupCheck.ok(CHECK_LOADS, "")
                 : SetupCheck.failed(CHECK_LOADS, loadProblem == null ? "unbekannter Fehler" : loadProblem));

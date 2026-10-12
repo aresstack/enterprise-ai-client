@@ -154,6 +154,26 @@ public class SetupWizardSpeechStepTest {
     }
 
     @Test
+    public void offersThatCannotBeLoadedAreNotShownAsNoModelsAndCanBeRetried() throws Exception {
+        settings.offersFailure = "Die Angebote ließen sich nicht ermitteln (IllegalStateException: kaputt).";
+        settings.offers.add(stt(SUGGESTION, "Gemma 4 E2B (Spracheingabe)", false));
+        final SetupWizardPanel wizard = start();
+        onEdt(() -> {
+            String error = wizard.errorOf(SetupWizardPanel.STEP_SPEECH);
+            assertTrue(String.valueOf(error), error != null && error.contains("kaputt"));
+            assertFalse(wizard.speechStatusText(), wizard.speechStatusText().contains("Kein lokales Modell"));
+            assertTrue("Erneut versuchen", wizard.speechRetryButton().isVisible());
+            assertTrue("Überspringen bleibt", wizard.skipButton().isEnabled());
+            settings.offersFailure = null;
+            wizard.speechRetryButton().doClick();
+            assertNull(wizard.errorOf(SetupWizardPanel.STEP_SPEECH));
+            assertEquals(1, wizard.speechModelChoice().getItemCount());
+            assertTrue("noch nicht installiert: Installieren", wizard.speechInstallButton().isVisible());
+            assertFalse(wizard.speechRetryButton().isVisible());
+        });
+    }
+
+    @Test
     public void cancelBeforeTheFinalCheckEndsUncompleted() throws Exception {
         onEdt(() -> {
             SetupWizardRun run = new SetupWizardRun(SettingsMapper.firstStartDefaults(), settings, setup,

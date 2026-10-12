@@ -21,6 +21,7 @@ import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceInstallProgress;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceOffersCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.LocalVoiceSearchCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NetworkLogListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordStore;
@@ -551,12 +552,12 @@ public final class FileSettingsActions implements SettingsDialogActions {
     }
 
     @Override
-    public void localVoices(SettingsForm form, final Consumer<List<LocalVoiceOffer>> onResult) {
-        if (form == null || onResult == null) {
-            throw new IllegalArgumentException("form and onResult must not be null");
+    public void localVoices(SettingsForm form, final LocalVoiceOffersCallback callback) {
+        if (form == null || callback == null) {
+            throw new IllegalArgumentException("form and callback must not be null");
         }
         if (voices == null) {
-            onResult.accept(Collections.<LocalVoiceOffer>emptyList());
+            callback.failed("Lokale Modelle sind in dieser Umgebung nicht verfügbar.");
             return;
         }
         final Path root = localModelRoot(form);
@@ -564,24 +565,37 @@ public final class FileSettingsActions implements SettingsDialogActions {
             worker.execute(new Runnable() {
                 @Override
                 public void run() {
-                    List<LocalVoiceOffer> result;
+                    List<LocalVoiceOffer> result = null;
+                    String failure = null;
                     try {
                         result = voices.offers(root);
                     } catch (RuntimeException e) {
-                        result = Collections.emptyList();
+                        failure = "Die Angebote ließen sich nicht ermitteln (" + failureText(e) + ").";
                     }
                     final List<LocalVoiceOffer> delivered = result;
+                    final String failed = failure;
                     ui.execute(new Runnable() {
                         @Override
                         public void run() {
-                            onResult.accept(delivered);
+                            if (failed != null) {
+                                callback.failed(failed);
+                            } else {
+                                callback.offers(delivered == null ? Collections.<LocalVoiceOffer>emptyList()
+                                        : delivered);
+                            }
                         }
                     });
                 }
             });
         } catch (RuntimeException rejected) {
-            onResult.accept(Collections.<LocalVoiceOffer>emptyList());
+            callback.failed("Die Abfrage der lokalen Modelle konnte nicht gestartet werden.");
         }
+    }
+
+    private static String failureText(RuntimeException e) {
+        String message = e.getMessage();
+        return message == null || message.trim().isEmpty() ? e.getClass().getSimpleName()
+                : e.getClass().getSimpleName() + ": " + message.trim();
     }
 
     /**
