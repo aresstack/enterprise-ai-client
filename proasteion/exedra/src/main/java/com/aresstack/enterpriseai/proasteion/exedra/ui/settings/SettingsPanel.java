@@ -11,7 +11,6 @@ import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
 import javax.swing.BorderFactory;
-import javax.swing.Box;
 import javax.swing.JFileChooser;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.ButtonGroup;
@@ -56,7 +55,7 @@ import java.util.function.Supplier;
  * │ …          │                             │  Karte im CardLayout
  * ├──────────────────────────────────────────┤
  * │ Probleme (rote Platte, nur bei Bedarf)    │
- * │ [Einstellungsordner öffnen] [Offline-Paket erstellen …]  [Abbrechen] [Speichern]│
+ * │ [Einstellungsordner öffnen] [Offline-Paket erstellen … | Fortschritt ×]  [Abbrechen] [Speichern]│
  * └──────────────────────────────────────────┘
  * </pre>
  *
@@ -150,6 +149,11 @@ public final class SettingsPanel extends JPanel {
             OFFLINE_PACKAGE_HINT);
     private final DownloadProgress offlineProgress = new DownloadProgress("Erstellen abbrechen");
     private final JLabel offlineStatus = new JLabel(" ");
+    /** Export area of the footer: {@link #OFFLINE_IDLE} shows the button, {@link #OFFLINE_RUNNING} the progress. */
+    private final CardLayout offlineCards = new CardLayout();
+    private final JPanel offlineArea = new JPanel(offlineCards);
+    private static final String OFFLINE_IDLE = "idle";
+    private static final String OFFLINE_RUNNING = "running";
     /** Der laufende Export oder {@code null}. */
     private InstallCancellation offlineExport;
     private Consumer<SettingsForm> onSaved;
@@ -289,21 +293,25 @@ public final class SettingsPanel extends JPanel {
         folder.setBorder(BorderFactory.createEmptyBorder(4, 12, 0, 0));
         openFolderButton.setVisible(actions.settingsFolder() != null);
         folder.add(openFolderButton);
-        offlinePackageButton.setVisible(actions.offlinePackageFileName() != null);
-        folder.add(Box.createHorizontalStrut(8));
-        folder.add(offlinePackageButton);
-        offlineProgress.setVisible(false);
         offlineStatus.setForeground(FormRows.MUTED);
         offlineStatus.putClientProperty("html.disable", Boolean.TRUE);
-        JPanel offline = new JPanel(new BorderLayout());
-        offline.setOpaque(false);
-        offline.setBorder(BorderFactory.createEmptyBorder(4, 8, 0, 0));
-        offline.add(offlineProgress, BorderLayout.NORTH);
-        offline.add(offlineStatus, BorderLayout.CENTER);
+        JPanel idle = new JPanel(new BorderLayout(8, 0));
+        idle.setOpaque(false);
+        idle.add(offlinePackageButton, BorderLayout.WEST);
+        idle.add(offlineStatus, BorderLayout.CENTER);
+        JPanel idleTop = new JPanel(new BorderLayout());
+        idleTop.setOpaque(false);
+        idleTop.add(idle, BorderLayout.NORTH);
+        offlineArea.setOpaque(false);
+        offlineArea.setBorder(BorderFactory.createEmptyBorder(4, 8, 0, 8));
+        offlineArea.add(idleTop, OFFLINE_IDLE);
+        offlineArea.add(offlineProgress, OFFLINE_RUNNING);
+        offlinePackageButton.setVisible(actions.offlinePackageFileName() != null);
+        offlineArea.setVisible(offlinePackageButton.isVisible());
         JPanel footer = new JPanel(new BorderLayout());
         footer.setOpaque(false);
         footer.add(folder, BorderLayout.WEST);
-        footer.add(offline, BorderLayout.CENTER);
+        footer.add(offlineArea, BorderLayout.CENTER);
         footer.add(buttons, BorderLayout.EAST);
         JPanel south = new JPanel(new BorderLayout(0, 6));
         south.setOpaque(false);
@@ -493,8 +501,9 @@ public final class SettingsPanel extends JPanel {
     }
 
     /**
-     * Erstellt das Offline-Paket nach {@code target} im Hintergrund: der dünne Balken zeigt die Datei, das X bricht
-     * ab (dann bleibt keine Datei zurück), am Ende steht das Ergebnis neben dem Knopf.
+     * Erstellt das Offline-Paket nach {@code target} im Hintergrund. Solange es läuft, ersetzt der Fortschritt in
+     * voller Breite den Knopf (auch nach dem Klick auf das X, bis der Export wirklich endet); danach steht das
+     * Ergebnis neben dem wieder sichtbaren Knopf.
      */
     void exportOfflinePackage(File target) {
         if (offlineExport != null) {
@@ -502,11 +511,10 @@ public final class SettingsPanel extends JPanel {
         }
         final InstallCancellation cancellation = new InstallCancellation();
         offlineExport = cancellation;
-        offlinePackageButton.setEnabled(false);
         offlineStatus.setText(" ");
         offlineStatus.setToolTipText(null);
         offlineProgress.reset("Vorbereiten …");
-        offlineProgress.setVisible(true);
+        offlineCards.show(offlineArea, OFFLINE_RUNNING);
         revalidate();
         actions.exportOfflinePackage(toForm(), target, cancellation, new LocalVoiceInstallProgress() {
             @Override
@@ -546,8 +554,7 @@ public final class SettingsPanel extends JPanel {
             return;
         }
         offlineExport = null;
-        offlineProgress.setVisible(false);
-        offlinePackageButton.setEnabled(true);
+        offlineCards.show(offlineArea, OFFLINE_IDLE);
         offlineStatus.setText(message == null ? " " : message);
         offlineStatus.setToolTipText(message);
         revalidate();
