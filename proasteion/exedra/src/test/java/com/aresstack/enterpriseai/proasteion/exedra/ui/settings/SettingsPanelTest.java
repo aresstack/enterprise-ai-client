@@ -125,6 +125,29 @@ public class SettingsPanelTest {
         }
     }
 
+    private static void layoutTree(java.awt.Component component) {
+        component.doLayout();
+        if (component instanceof java.awt.Container) {
+            for (java.awt.Component child : ((java.awt.Container) component).getComponents()) {
+                layoutTree(child);
+            }
+        }
+    }
+
+    private static int x(java.awt.Component component, java.awt.Component root) {
+        return SwingUtilities.convertPoint(component.getParent(), component.getLocation(), root).x;
+    }
+
+    /** Visible including every parent up to {@code root} (headless there is no window to show). */
+    private static boolean visibleIn(java.awt.Component component, java.awt.Component root) {
+        for (java.awt.Component c = component; c != null && c != root; c = c.getParent()) {
+            if (!c.isVisible()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static SettingsForm sample() {
         return SettingsForm.builder()
                 .chatBaseUrl("http://127.0.0.1:9/v1").chatModel("test-chat").chatApiKeyRef("keepass:Enterprise AI API")
@@ -197,7 +220,7 @@ public class SettingsPanelTest {
     }
 
     @Test
-    public void offlinePackageButtonSitsRightOfTheFolderButtonAndExportsWithProgressAndCancel() throws Exception {
+    public void offlinePackageProgressReplacesTheButtonInFullWidthUntilTheExportEnds() throws Exception {
         final ScriptedActions without = new ScriptedActions();
         final ScriptedActions actions = new ScriptedActions();
         actions.folder = new java.io.File(System.getProperty("java.io.tmpdir"));
@@ -214,23 +237,31 @@ public class SettingsPanelTest {
                 assertEquals("Offline-Paket erstellen …", button.getText());
                 assertEquals("Packt alle installierten lokalen KI- und Sprachmodelle in ein ZIP für eine "
                         + "Offline-Installation.", button.getToolTipText());
-                java.awt.Container bar = panel.openFolderButton().getParent();
-                assertSame("next to the folder button", bar, button.getParent());
-                List<java.awt.Component> order = Arrays.asList(bar.getComponents());
-                assertTrue(order.indexOf(button) > order.indexOf(panel.openFolderButton()));
+                panel.setSize(800, 680);
+                layoutTree(panel);
+                int folderRight = x(panel.openFolderButton(), panel) + panel.openFolderButton().getWidth();
+                assertTrue("right of the folder button", x(button, panel) > folderRight);
+                assertTrue("before export only the button", visibleIn(button, panel));
+                assertFalse(visibleIn(panel.offlineProgress(), panel));
 
                 java.io.File target = new java.io.File(actions.folder, actions.offlineName);
                 panel.exportOfflinePackage(target);
+                layoutTree(panel);
                 assertSame(target, actions.offlineTarget);
-                assertFalse("one export at a time", button.isEnabled());
-                assertTrue(panel.offlineProgress().isVisible());
+                assertFalse("the button is hidden while exporting", visibleIn(button, panel));
+                assertTrue(visibleIn(panel.offlineProgress(), panel));
+                assertTrue("the progress takes the free width",
+                        panel.offlineProgress().bar().getWidth() > 2 * button.getPreferredSize().width);
+                assertEquals("starts where the button was", x(button, panel), x(panel.offlineProgress(), panel));
                 actions.offlineProgress.file("model.onnx", 2, 5, 50, 100);
                 assertEquals(50, panel.offlineProgress().bar().getValue());
                 panel.offlineProgress().cancelButton().doClick();
                 assertTrue(actions.offlineCancellation.isCancelled());
+                assertTrue("still running until the worker ends", visibleIn(panel.offlineProgress(), panel));
+                assertFalse(visibleIn(button, panel));
                 actions.offlineProgress.cancelled("Erstellen abgebrochen. Es wurde kein Offline-Paket geschrieben.");
-                assertFalse(panel.offlineProgress().isVisible());
-                assertTrue(button.isEnabled());
+                assertFalse(visibleIn(panel.offlineProgress(), panel));
+                assertTrue(visibleIn(button, panel));
                 assertEquals("Erstellen abgebrochen. Es wurde kein Offline-Paket geschrieben.", panel.offlineStatus());
             }
         });
