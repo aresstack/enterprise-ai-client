@@ -35,11 +35,12 @@ public class SourceBoundaryTest {
     private static final String ROOT = ModuleRegistry.ROOT_PACKAGE;
     private static final List<String> SOURCE_ADAPTER_PACKAGES = Arrays.asList(
             ROOT + ".proasteion.emporion.holkas.mediawiki", ROOT + ".proasteion.emporion.holkas.confluence", ROOT + ".proasteion.emporion.holkas.ftp",
-            ROOT + ".proasteion.emporion.holkas.ndv");
+            ROOT + ".proasteion.emporion.holkas.ndv",
+            ROOT + ".proasteion.emporion.holkas.outlook");
     private static final List<String> LEAKING_TYPE_PREFIXES = Arrays.asList(
             "com.google.gson.", "org.jsoup.", "net.sourceforge.jwbf.", "okhttp3.", "org.apache.http.",
             "org.apache.hc.", "java.net.URLConnection", "java.net.HttpURLConnection", "java.net.CookieManager",
-            "javax.net.ssl.HttpsURLConnection", "com.fasterxml.jackson.", "org.apache.commons.net.");
+            "javax.net.ssl.HttpsURLConnection", "com.fasterxml.jackson.", "org.apache.commons.net.", "com.pff.");
 
     private static JavaClasses productionClasses;
 

@@ -17,6 +17,7 @@ dependencies {
     implementation project(':proasteion:emporion:holkas:source-localfiles')
     implementation project(':proasteion:emporion:holkas:source-ftp')
     implementation project(':proasteion:emporion:holkas:source-ndv')
+    implementation project(':proasteion:emporion:holkas:source-outlook')
     implementation project(':proasteion:emporion:holkas')
     implementation project(':proasteion:emporion:deigma:document-tika')
     implementation project(':acp-solon-client')

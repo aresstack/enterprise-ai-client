@@ -33,7 +33,7 @@ proasteion                            προάστειον Vorstadt: Ports und A
 │   └── mcp-solon-runtime
 ├── emporion                          ἐμπόριον   Hafen
 │   ├── holkas                        ὁλκάς      Frachtschiff: Connectoren holen Rohressourcen      ← resource-holkas
-│   │   └── source-mediawiki, source-confluence, source-localfiles, source-ftp, source-ndv
+│   │   └── source-mediawiki, source-confluence, source-localfiles, source-ftp, source-ndv, source-outlook
 │   └── deigma                        δεῖγμα     Prüfhalle: Erkennung, flache Extraktion            ← document-api
 │       └── document-tika
 └── platform
@@ -127,6 +127,7 @@ Moduls liegen nur dort (geprüft).
 | `source-localfiles` | ADAPTER | `proasteion.emporion.holkas.localfiles` | astu, source-api, deigma | Dateien (0.1.10) |
 | `source-ftp` | ADAPTER | `proasteion.emporion.holkas.ftp` | astu, source-api, adyton | FTP/MVS-Quelle (COBOL in PDS-Membern) und JES-Jobausgaben; Commons Net, Anmeldung über KeePass |
 | `source-ndv` | ADAPTER | `proasteion.emporion.holkas.ndv` | astu, source-api, adyton | Natural-Quellen über NDV (NATSPOD/PAL aus MainframeMate, Anmeldung über KeePass) |
+| `source-outlook` | ADAPTER | `proasteion.emporion.holkas.outlook` | astu, source-api | Outlook-Postfachdateien PST/OST (java-libpst, Auswahl aus MainframeMate) |
 | `chalcotheca` | PORT | `resource.api` | domain | Ressourcenschicht aus corenth: AcquisitionPort, Bronze (0.1.16) |
 | `holkas` | ADAPTER | `proasteion.emporion.holkas` | astu, chalcotheca, source-api | Holkas-Connectoren über den Quellen (0.1.16) |
 | `deigma` | PORT | `document.api` | domain | Dokumente (corenth deigma) |

@@ -82,6 +82,9 @@ final class ModuleRegistry {
                 // NDV (Natural Development Server): NATSPOD/PAL aus MainframeMate, Anmeldung über adyton.
                 .module("source-ndv", "proasteion.emporion.holkas.ndv", ModuleKind.ADAPTER, "Quellen",
                         "astu", "source-api", "adyton")
+                // Outlook-Postfachdateien (PST/OST): java-libpst adapterintern, Auswahl aus MainframeMate.
+                .module("source-outlook", "proasteion.emporion.holkas.outlook", ModuleKind.ADAPTER, "Quellen",
+                        "astu", "source-api")
 
                 // Ressourcenschicht aus corenth: AcquisitionPort und Bronze-Typen (Port), Holkas-Connectoren über
                 // den Quellen-Ports (äußerer Adapterring, keine UI-API).
@@ -172,7 +175,7 @@ final class ModuleRegistry {
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "deigma", "document-tika", "source-localfiles", "tamias",
                         "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
-                        "source-ndv", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
+                        "source-ndv", "source-outlook", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",
                         "research-api", "research-scope", "research-store", "research-agent-runtime",
                         "research-concept", "research-agent-acp")

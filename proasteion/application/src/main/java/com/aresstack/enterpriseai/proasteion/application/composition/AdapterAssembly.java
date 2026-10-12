@@ -47,6 +47,7 @@ import com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp.JesSourceProvid
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.NdvSourceProvider;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.outlook.OutlookSourceProvider;
 
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -342,6 +343,7 @@ public final class AdapterAssembly {
         providers.add(new FtpSourceProvider(secrets));
         providers.add(new NdvSourceProvider(secrets));
         providers.add(new JesSourceProvider(secrets));
+        providers.add(new OutlookSourceProvider());
         return providers;
     }
 

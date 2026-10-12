@@ -48,6 +48,9 @@ include 'proasteion:emporion:holkas:source-ftp'
 // Mainframe: Natural über NDV
 include 'proasteion:emporion:holkas:source-ndv'
 
+// Outlook-Postfachdateien (PST/OST) über java-libpst
+include 'proasteion:emporion:holkas:source-outlook'
+
 // Ressourcenschicht aus corenth: Port (AcquisitionPort, Bronze) und Holkas-Connectoren über den Quellen
 include 'proasteion:emporion:holkas'
 

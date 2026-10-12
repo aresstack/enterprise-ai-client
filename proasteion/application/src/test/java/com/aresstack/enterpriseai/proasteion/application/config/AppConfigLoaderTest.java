@@ -66,13 +66,14 @@ public class AppConfigLoaderTest {
         Properties p = new Properties();
         p.load(new StringReader(AppConfigLoader.exampleConfiguration().replace("\n#source.", "\nsource.")));
         AppConfig config = AppConfigLoader.fromProperties(p);
-        assertEquals(6, config.sources().size());
+        assertEquals(7, config.sources().size());
         assertEquals("mediawiki", config.sources().get(0).typeId());
         assertEquals("confluence", config.sources().get(1).typeId());
         assertEquals("files", config.sources().get(2).typeId());
         assertEquals("ftp", config.sources().get(3).typeId());
         assertEquals("ndv", config.sources().get(4).typeId());
         assertEquals("jes", config.sources().get(5).typeId());
+        assertEquals("outlook", config.sources().get(6).typeId());
         assertEquals("keine Warnungen erwartet: " + config.warnings(), 0, config.warnings().size());
     }
 
