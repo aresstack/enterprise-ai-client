@@ -21,6 +21,14 @@ import java.util.function.Consumer;
  */
 public interface SettingsDialogActions {
 
+    /**
+     * Der Einstellungsordner der Anwendung (Konfiguration, Protokolle, Index) für den Knopf „Einstellungsordner
+     * öffnen“; {@code null}: ohne Knopf.
+     */
+    default java.io.File settingsFolder() {
+        return null;
+    }
+
     /** Technische Details für die gleichnamige Kategorie (Protokolldatei und ihre letzten Zeilen); leer: keine. */
     default String technicalDetails() {
         return "";

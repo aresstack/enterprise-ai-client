@@ -53,6 +53,11 @@ public final class DraftSettingsActions implements SettingsDialogActions {
     }
 
     @Override
+    public java.io.File settingsFolder() {
+        return delegate.settingsFolder();
+    }
+
+    @Override
     public String technicalDetails() {
         return delegate.technicalDetails();
     }

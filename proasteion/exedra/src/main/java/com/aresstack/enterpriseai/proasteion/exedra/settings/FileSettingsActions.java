@@ -151,6 +151,13 @@ public final class FileSettingsActions implements SettingsDialogActions {
     /** Wie viel vom Ende der Protokolldatei „Technische Details“ zeigt. */
     static final int TECHNICAL_TAIL_BYTES = 64 * 1024;
 
+    /** Der Ordner der Konfigurationsdatei; dort liegen auch Protokolle und Index (unter Windows %APPDATA%). */
+    @Override
+    public java.io.File settingsFolder() {
+        Path parent = file.path().toAbsolutePath().getParent();
+        return parent == null ? null : parent.toFile();
+    }
+
     /** Konfigurationsdatei, Protokolldatei und deren letzte Zeilen (askai arch: „Technical Details“). */
     @Override
     public String technicalDetails() {

@@ -35,6 +35,12 @@ public class SettingsPanelTest {
                 ConnectionCheckStep.ok("Proxy-Route", "direkt (NONE)"),
                 ConnectionCheckStep.ok("GET /models", "HTTP 200: 1 Modell(e)"));
         boolean connectionSuccess = true;
+        java.io.File folder;
+
+        @Override
+        public java.io.File settingsFolder() {
+            return folder;
+        }
 
         @Override
         public List<String> validate(SettingsForm form) {
@@ -152,6 +158,22 @@ public class SettingsPanelTest {
 
                 panel.setForm(sample());
                 assertEquals("test-chat", panel.modelsTab().chatModel().getText());
+            }
+        });
+    }
+
+    @Test
+    public void openFolderButtonOnlyWithAKnownFolder() throws Exception {
+        final ScriptedActions without = new ScriptedActions();
+        final ScriptedActions with = new ScriptedActions();
+        with.folder = new java.io.File(System.getProperty("java.io.tmpdir"));
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                assertFalse(new SettingsPanel(sample(), Collections.<String>emptyList(), SettingsPanel.Mode.EDIT,
+                        without, palette).openFolderButton().isVisible());
+                assertTrue(new SettingsPanel(sample(), Collections.<String>emptyList(), SettingsPanel.Mode.EDIT,
+                        with, palette).openFolderButton().isVisible());
             }
         });
     }

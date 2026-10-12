@@ -12,14 +12,17 @@ import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
@@ -27,6 +30,7 @@ import java.awt.Rectangle;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,7 +51,7 @@ import java.util.function.Supplier;
  * │ …          │                             │  Karte im CardLayout
  * ├──────────────────────────────────────────┤
  * │ Probleme (rote Platte, nur bei Bedarf)    │
- * │                     [Abbrechen] [Speichern]│
+ * │ [Einstellungsordner öffnen]  [Abbrechen] [Speichern]│
  * └──────────────────────────────────────────┘
  * </pre>
  *
@@ -68,6 +72,7 @@ public final class SettingsPanel extends JPanel {
     public static final String TITLE = "Einstellungen";
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
+    public static final String OPEN_FOLDER_LABEL = "Einstellungsordner öffnen";
     public static final String QUIT_LABEL = "Beenden";
     private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle",
             "Sprachausgabe", "Index", "Tools", "Technische Details"};
@@ -122,6 +127,8 @@ public final class SettingsPanel extends JPanel {
     private final ComposerButton cancelButton;
     private final ComposerButton setupWizardButton = new ComposerButton(null, "Einrichtungsassistent", false,
             "Den Einrichtungsassistenten erneut öffnen (KeePass, KI-Dienst, Modelle, Confluence)");
+    private final ComposerButton openFolderButton = new ComposerButton(null, OPEN_FOLDER_LABEL, false,
+            "Den Ordner mit Konfiguration und Protokollen im Dateimanager öffnen");
     private Consumer<SettingsForm> onSaved;
     private Runnable onCancel;
     /** Der geladene Stand; liefert die Felder ohne Reiter (Quellen) unverändert in {@link #toForm()}. */
@@ -250,10 +257,19 @@ public final class SettingsPanel extends JPanel {
         buttons.add(setupWizardButton);
         buttons.add(cancelButton);
         buttons.add(saveButton);
+        JPanel folder = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        folder.setOpaque(false);
+        folder.setBorder(BorderFactory.createEmptyBorder(4, 12, 0, 0));
+        openFolderButton.setVisible(actions.settingsFolder() != null);
+        folder.add(openFolderButton);
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setOpaque(false);
+        footer.add(folder, BorderLayout.WEST);
+        footer.add(buttons, BorderLayout.EAST);
         JPanel south = new JPanel(new BorderLayout(0, 6));
         south.setOpaque(false);
         south.add(problemsWrap, BorderLayout.CENTER);
-        south.add(buttons, BorderLayout.SOUTH);
+        south.add(footer, BorderLayout.SOUTH);
 
         JPanel body = new JPanel(new BorderLayout(4, 0));
         body.setOpaque(false);
@@ -299,12 +315,49 @@ public final class SettingsPanel extends JPanel {
                 save();
             }
         });
+        openFolderButton.addActionListener(e -> openSettingsFolder());
         cancelButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 cancel();
             }
         });
+    }
+
+    /**
+     * Öffnet den Einstellungsordner im Dateimanager des Systems; kann das System keine Ordner öffnen, zeigt ein
+     * Hinweis den Pfad zum Kopieren.
+     */
+    private void openSettingsFolder() {
+        File folder = actions.settingsFolder();
+        if (folder == null) {
+            return;
+        }
+        String reason;
+        try {
+            if (!folder.isDirectory() && !folder.mkdirs()) {
+                throw new IOException("Ordner fehlt und lässt sich nicht anlegen");
+            }
+            if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                throw new IOException("Das System kann hier keine Ordner öffnen");
+            }
+            Desktop.getDesktop().open(folder);
+            return;
+        } catch (IOException | RuntimeException e) {
+            reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        }
+        JTextField path = new JTextField(folder.getAbsolutePath());
+        path.setEditable(false);
+        path.getAccessibleContext().setAccessibleName("Pfad des Einstellungsordners");
+        JPanel message = new JPanel(new BorderLayout(0, 6));
+        message.setOpaque(false);
+        message.add(new JLabel(reason + ". Der Einstellungsordner liegt hier:"), BorderLayout.NORTH);
+        message.add(path, BorderLayout.CENTER);
+        JOptionPane.showMessageDialog(this, message, OPEN_FOLDER_LABEL, JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    public ComposerButton openFolderButton() {
+        return openFolderButton;
     }
 
     /**
