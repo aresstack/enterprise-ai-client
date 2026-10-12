@@ -96,20 +96,22 @@ public final class MerlinCavePanel extends JPanel {
 
     /**
      * Paints light in image-relative coordinates, preserving alignment at every window size.
-     * Crystal positions are normalized and can be refined against the final artwork.
+     * The overlay is clipped to the scaled, centered image rectangle, so glints stay on their crystals.
      */
     private static final class CrystalScene extends JPanel {
         private static final long serialVersionUID = 1L;
         private static final int FRAME_DELAY_MS = 40;
         private static final long AWAKEN_DURATION_NS = 1100000000L;
 
-        // Selected image-relative glints; never scatter random stars across Merlin's face.
+        // Place glints on crystal tips of merlin-crystal-cave.jpg (fractions of image width/height);
+        // keep Merlin's face, the hologram text, the cave entrance and the floor dark.
         private static final double[][] CRYSTALS = {
-                {0.09, 0.24, 0.78}, {0.16, 0.52, 0.95}, {0.23, 0.17, 0.72},
-                {0.30, 0.72, 0.90}, {0.37, 0.31, 0.65}, {0.44, 0.11, 0.75},
-                {0.55, 0.15, 0.78}, {0.64, 0.31, 0.85}, {0.73, 0.13, 0.76},
-                {0.83, 0.35, 1.00}, {0.91, 0.19, 0.82}, {0.94, 0.71, 0.87},
-                {0.75, 0.81, 0.83}, {0.57, 0.89, 0.70}, {0.20, 0.86, 0.84}
+                {0.075, 0.167, 0.78}, {0.065, 0.715, 0.95}, {0.098, 0.560, 0.72},
+                {0.156, 0.632, 0.80}, {0.228, 0.680, 0.70}, {0.270, 0.540, 0.85},
+                {0.423, 0.036, 0.75}, {0.469, 0.477, 0.90}, {0.544, 0.215, 0.85},
+                {0.641, 0.131, 1.00}, {0.710, 0.215, 0.92}, {0.785, 0.298, 0.88},
+                {0.814, 0.513, 0.82}, {0.892, 0.500, 0.78}, {0.918, 0.274, 0.80},
+                {0.911, 0.787, 0.87}, {0.670, 0.820, 0.76}
         };
 
         private final BufferedImage image;
