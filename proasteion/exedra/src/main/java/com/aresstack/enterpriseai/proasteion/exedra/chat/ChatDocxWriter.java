@@ -79,8 +79,8 @@ import java.util.Map;
 
 /**
  * Schreibt den (bereits geschwärzten) Exportbaum von {@link ChatExport#export(String)} als Word-Dokument: ein
- * Gesprächsbericht statt Sprechblasen. Jede Nachricht bekommt einen Autorenkopf („Du · 13:31“, „Assistent · 13:32“,
- * „Hinweis · 13:33“) in dezenter Akzentfarbe, ihr Markdown wird strukturell zu Word (Überschriften als
+ * Gesprächsbericht statt Sprechblasen. Jede Nachricht bekommt einen Autorenkopf („Du · 13:31“, bei Antworten der
+ * Anzeigename aus dem Export wie „Merlins Tochter · 13:32“, „Hinweis · 13:33“) in dezenter Akzentfarbe, ihr Markdown wird strukturell zu Word (Überschriften als
  * Überschriftenformate, Listen als Word-Listen, Tabellen als Word-Tabellen, Links als Hyperlinks), darunter stehen
  * Anhänge, Seiten, Verweise, Zitate und Quellen. Werkzeugaufrufe bleiben dem JSON-Export vorbehalten. Am Ende fasst
  * „Ressourcen des Chats“ Dateien, Seiten und Quellen chatweit dedupliziert zusammen.
@@ -152,6 +152,8 @@ public final class ChatDocxWriter {
         /** Wohin Blöcke gerade geschrieben werden: der Dokumentkörper oder eine Tabellenzelle. */
         private XWPFTableCell cell;
         private boolean cellParagraphUsed;
+        /** Kopf der Antworten: Anzeigename aus dem Export (die Rolle bleibt ASSISTANT). */
+        private String assistantTitle = ChatExport.DEFAULT_ASSISTANT_TITLE;
 
         Builder(XWPFDocument document) {
             this.document = document;
@@ -163,6 +165,7 @@ public final class ChatDocxWriter {
         }
 
         void build(JsonObject export) {
+            assistantTitle = ChatExport.assistantTitle(export);
             JsonObject chat = object(export, "chat");
             String title = string(chat, "title");
             if (title.isEmpty()) {
@@ -215,7 +218,7 @@ public final class ChatDocxWriter {
 
         private void message(JsonObject message, OffsetDateTime at) {
             String author = string(message, "author");
-            String name = "USER".equals(author) ? "Du" : "ASSISTANT".equals(author) ? "Assistent"
+            String name = "USER".equals(author) ? "Du" : "ASSISTANT".equals(author) ? assistantTitle
                     : "NOTICE".equals(author) ? "Hinweis" : author;
             String color = "USER".equals(author) ? USER_COLOR : "ASSISTANT".equals(author) ? ASSISTANT_COLOR
                     : NOTICE_COLOR;

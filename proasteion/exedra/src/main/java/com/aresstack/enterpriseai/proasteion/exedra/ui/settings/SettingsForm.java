@@ -46,6 +46,8 @@ public final class SettingsForm {
     private final String chatModel;
     private final String chatApiKeyRef;
     private final String chatSystemPrompt;
+    private final String assistantDisplayName;
+    private final String defaultAssistantDisplayName;
     private final String embeddingBaseUrl;
     private final String embeddingModel;
     private final String embeddingDimension;
@@ -124,6 +126,8 @@ public final class SettingsForm {
         this.chatModel = b.chatModel;
         this.chatApiKeyRef = b.chatApiKeyRef;
         this.chatSystemPrompt = b.chatSystemPrompt;
+        this.assistantDisplayName = b.assistantDisplayName;
+        this.defaultAssistantDisplayName = b.defaultAssistantDisplayName;
         this.embeddingBaseUrl = b.embeddingBaseUrl;
         this.embeddingModel = b.embeddingModel;
         this.embeddingDimension = b.embeddingDimension;
@@ -207,6 +211,8 @@ public final class SettingsForm {
                 .windowTitle(windowTitle)
                 .chatBaseUrl(chatBaseUrl).chatModel(chatModel).chatApiKeyRef(chatApiKeyRef)
                 .chatSystemPrompt(chatSystemPrompt)
+                .assistantDisplayName(assistantDisplayName)
+                .defaultAssistantDisplayName(defaultAssistantDisplayName)
                 .embeddingBaseUrl(embeddingBaseUrl).embeddingModel(embeddingModel)
                 .embeddingDimension(embeddingDimension).embeddingApiKeyRef(embeddingApiKeyRef)
                 .indexDirectory(indexDirectory)
@@ -287,6 +293,19 @@ public final class SettingsForm {
 
     public String chatSystemPrompt() {
         return chatSystemPrompt;
+    }
+
+    /**
+     * Name über den Antworten im Verlauf und in Exporten ({@code chat.assistant.displayName}); nur Beschriftung,
+     * unabhängig von der Stimme. Leer heißt Standard.
+     */
+    public String assistantDisplayName() {
+        return assistantDisplayName;
+    }
+
+    /** Der Standardname, den der Knopf „Standard“ einsetzt (aus der Konfiguration, nicht im Formular erfunden). */
+    public String defaultAssistantDisplayName() {
+        return defaultAssistantDisplayName;
     }
 
     /** Leer: wie Chat. */
@@ -651,6 +670,8 @@ public final class SettingsForm {
         private String chatModel = "";
         private String chatApiKeyRef = "";
         private String chatSystemPrompt = "";
+        private String assistantDisplayName = "";
+        private String defaultAssistantDisplayName = "";
         private String embeddingBaseUrl = "";
         private String embeddingModel = "";
         private String embeddingDimension = "";
@@ -750,6 +771,16 @@ public final class SettingsForm {
 
         public Builder chatSystemPrompt(String value) {
             this.chatSystemPrompt = text(value);
+            return this;
+        }
+
+        public Builder assistantDisplayName(String value) {
+            this.assistantDisplayName = text(value);
+            return this;
+        }
+
+        public Builder defaultAssistantDisplayName(String value) {
+            this.defaultAssistantDisplayName = text(value);
             return this;
         }
 

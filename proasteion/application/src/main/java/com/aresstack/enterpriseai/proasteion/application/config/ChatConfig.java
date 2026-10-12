@@ -38,6 +38,16 @@ public final class ChatConfig {
             + "Erfinde niemals Werkzeugaufrufe, Werkzeugergebnisse, Quellen oder eigene Fähigkeiten. Behaupte keinen Modellnamen, Wissensstichtag oder verfügbare Werkzeuge, wenn dir diese Information nicht tatsächlich im aktuellen Laufzeitkontext bereitgestellt wurde.\n\n"
             + "Fragen nach deinen eigenen Fähigkeiten, Werkzeugen oder dem Client sind keine fachlichen Fragen an die Wissensbasis. Beantworte sie anhand der tatsächlich im aktuellen Laufzeitkontext verfügbaren Fähigkeiten und Werkzeuge.";
 
+    /** Schlüssel des Anzeigenamens, mit dem Antworten im Verlauf und in Exporten überschrieben sind. */
+    public static final String ASSISTANT_DISPLAY_NAME_KEY = "chat.assistant.displayName";
+
+    /**
+     * Anzeigename ohne Eintrag: „Merlins Tochter“ passt zur weiblichen Standardstimme (Qwen3-TTS), während Merlin
+     * die Figur des Einrichtungsassistenten bleibt. Nur Beschriftung; das Modell erfährt den Namen nicht, und ein
+     * Wechsel der Stimme ändert ihn nie.
+     */
+    public static final String DEFAULT_ASSISTANT_DISPLAY_NAME = "Merlins Tochter";
+
     private final URI baseUrl;
     private final String model;
     private final SecretRef apiKeyRef;
@@ -49,10 +59,11 @@ public final class ChatConfig {
     private final boolean toolsEnabled;
     private final int maxToolRounds;
     private final RetryPolicy retry;
+    private final String assistantDisplayName;
 
     ChatConfig(URI baseUrl, String model, SecretRef apiKeyRef, String systemPrompt, int connectTimeoutMillis,
                int readTimeoutMillis, DeveloperRolePolicy developerRolePolicy, ChatOptions defaultOptions,
-               boolean toolsEnabled, int maxToolRounds, RetryPolicy retry) {
+               boolean toolsEnabled, int maxToolRounds, RetryPolicy retry, String assistantDisplayName) {
         this.baseUrl = baseUrl;
         this.model = model;
         this.apiKeyRef = apiKeyRef;
@@ -64,6 +75,8 @@ public final class ChatConfig {
         this.toolsEnabled = toolsEnabled;
         this.maxToolRounds = maxToolRounds;
         this.retry = retry == null ? RetryPolicy.none() : retry;
+        this.assistantDisplayName = assistantDisplayName == null || assistantDisplayName.trim().isEmpty()
+                ? DEFAULT_ASSISTANT_DISPLAY_NAME : assistantDisplayName.trim();
     }
 
     /** Basis der API, z. B. {@code https://ki.intern.example/v1}; der Adapter hängt {@code chat/completions} an. */
@@ -124,6 +137,20 @@ public final class ChatConfig {
      */
     public RetryPolicy retry() {
         return retry;
+    }
+
+    /**
+     * {@code chat.assistant.displayName}: wie Antworten im Verlauf, im Zitat- und im Word-/Markdown-Export
+     * überschrieben sind; ohne Eintrag {@link #DEFAULT_ASSISTANT_DISPLAY_NAME}. Die Rolle bleibt {@code ASSISTANT}.
+     */
+    public String assistantDisplayName() {
+        return assistantDisplayName;
+    }
+
+    /** Der Anzeigename einer Konfiguration, auch wenn deren Chat-Abschnitt fehlt (dann der Standard). */
+    public static String assistantDisplayNameOf(AppConfig config) {
+        return config == null || config.chat() == null ? DEFAULT_ASSISTANT_DISPLAY_NAME
+                : config.chat().assistantDisplayName();
     }
 
     @Override

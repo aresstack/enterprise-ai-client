@@ -95,7 +95,9 @@ public final class SettingsMapper {
      * Vorlage und in der Doku, damit der Eintrag in KeePass und die Konfiguration ohne Abtippen zusammenpassen.
      */
     public static SettingsForm firstStartDefaults() {
-        return SettingsForm.builder().chatApiKeyRef("keepass:Enterprise AI API").build();
+        return SettingsForm.builder().chatApiKeyRef("keepass:Enterprise AI API")
+                .assistantDisplayName(ChatConfig.DEFAULT_ASSISTANT_DISPLAY_NAME)
+                .defaultAssistantDisplayName(ChatConfig.DEFAULT_ASSISTANT_DISPLAY_NAME).build();
     }
 
     /** Liest die vom Dialog verwalteten Schlüssel; fehlende Schlüssel erscheinen leer bzw. mit Standardwert. */
@@ -109,6 +111,8 @@ public final class SettingsMapper {
         b.chatModel(text(p, KEY_CHAT_MODEL, ""));
         b.chatApiKeyRef(text(p, KEY_CHAT_API_KEY_REF, ""));
         b.chatSystemPrompt(text(p, KEY_CHAT_SYSTEM_PROMPT, ChatConfig.DEFAULT_SYSTEM_PROMPT));
+        b.assistantDisplayName(text(p, ChatConfig.ASSISTANT_DISPLAY_NAME_KEY, ChatConfig.DEFAULT_ASSISTANT_DISPLAY_NAME));
+        b.defaultAssistantDisplayName(ChatConfig.DEFAULT_ASSISTANT_DISPLAY_NAME);
         b.embeddingBaseUrl(text(p, KEY_EMBEDDING_BASE_URL, ""));
         b.embeddingModel(text(p, KEY_EMBEDDING_MODEL, ""));
         b.embeddingDimension(text(p, KEY_EMBEDDING_DIMENSION, ""));
@@ -219,6 +223,10 @@ public final class SettingsMapper {
         put(set, KEY_CHAT_MODEL, form.chatModel());
         put(set, KEY_CHAT_API_KEY_REF, form.chatApiKeyRef());
         put(set, KEY_CHAT_SYSTEM_PROMPT, form.chatSystemPrompt());
+        // Der Standardname steht nicht in der Datei; nur ein eigener Name wird gespeichert.
+        put(set, ChatConfig.ASSISTANT_DISPLAY_NAME_KEY,
+                ChatConfig.DEFAULT_ASSISTANT_DISPLAY_NAME.equals(form.assistantDisplayName().trim()) ? ""
+                        : form.assistantDisplayName());
         put(set, KEY_EMBEDDING_BASE_URL, form.embeddingBaseUrl());
         put(set, KEY_EMBEDDING_MODEL, form.embeddingModel());
         put(set, KEY_EMBEDDING_DIMENSION, form.embeddingDimension());

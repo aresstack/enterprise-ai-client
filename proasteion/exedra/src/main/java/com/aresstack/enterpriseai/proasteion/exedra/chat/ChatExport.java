@@ -30,6 +30,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * Exportiert einen gespeicherten Chat als Datei („Chat exportieren …“ im Chat-Menü), zum Nachvollziehen von
@@ -49,6 +50,15 @@ public final class ChatExport {
     public static final String FORMAT = "enterprise-ai-client-chat-export";
     public static final int VERSION = 1;
 
+    /**
+     * Feld der Exportwurzel mit dem Anzeigenamen des Assistenten zum Exportzeitpunkt ({@code chat.assistant.displayName});
+     * die Nachrichten behalten ihre Rolle {@code ASSISTANT}, Markdown und Word schreiben den Namen in den Kopf.
+     */
+    public static final String ASSISTANT_NAME_FIELD = "assistantName";
+
+    /** Kopf einer Antwort ohne Anzeigenamen (ältere Exporte, Aufrufer ohne Einstellungen). */
+    static final String DEFAULT_ASSISTANT_TITLE = "Assistent";
+
     /** Größte Projektdatei, die mit ihrem Inhalt exportiert wird; größere erscheinen nur mit ihrer Größe. */
     static final long MAX_PROJECT_FILE_BYTES = 4L * 1024 * 1024;
 
@@ -62,6 +72,7 @@ public final class ChatExport {
     private final Function<String, File> projectDirectories;
     private final LongSupplier clock;
     private final String applicationVersion;
+    private final Supplier<String> assistantName;
     private final Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().serializeNulls().create();
 
     /**
@@ -72,6 +83,15 @@ public final class ChatExport {
      */
     public ChatExport(ChatHistoryStore store, Function<String, File> projectDirectories, LongSupplier clock,
                       String applicationVersion) {
+        this(store, projectDirectories, clock, applicationVersion, null);
+    }
+
+    /**
+     * @param assistantName der Anzeigename des Assistenten, je Export frisch gelesen (Einstellungen ohne Neustart),
+     *                      oder {@code null} für {@value #DEFAULT_ASSISTANT_TITLE}
+     */
+    public ChatExport(ChatHistoryStore store, Function<String, File> projectDirectories, LongSupplier clock,
+                      String applicationVersion, Supplier<String> assistantName) {
         if (store == null || clock == null) {
             throw new IllegalArgumentException("store and clock must not be null");
         }
@@ -79,6 +99,7 @@ public final class ChatExport {
         this.projectDirectories = projectDirectories;
         this.clock = clock;
         this.applicationVersion = applicationVersion;
+        this.assistantName = assistantName;
     }
 
     /** Der Export eines gespeicherten Chats als (geschwärzter) JSON-Baum, oder {@code null}, wenn es ihn nicht gibt. */
@@ -97,6 +118,7 @@ public final class ChatExport {
         root.addProperty("version", VERSION);
         root.addProperty("exportedAt", iso(clock.getAsLong()));
         root.addProperty("application", applicationVersion);
+        root.addProperty(ASSISTANT_NAME_FIELD, currentAssistantName());
         root.add("chat", chat(record, journal));
         root.add("agent", agent != null ? agent : JsonNull.INSTANCE);
         JsonArray notPersisted = new JsonArray();
@@ -123,6 +145,7 @@ public final class ChatExport {
     /** Derselbe Export als Markdown (menschenlesbar; maßgeblich bleibt JSON). */
     public String toMarkdown(JsonObject export) {
         JsonObject chat = export.getAsJsonObject("chat");
+        String assistant = assistantTitle(export);
         StringBuilder out = new StringBuilder();
         out.append("# ").append(string(chat, "title")).append("\n\n");
         out.append("- Chat-ID: `").append(string(chat, "id")).append("`\n");
@@ -138,7 +161,7 @@ public final class ChatExport {
         out.append("\n");
         for (JsonElement element : chat.getAsJsonArray("messages")) {
             JsonObject message = element.getAsJsonObject();
-            out.append("## ").append(message.get("index").getAsInt()).append(". ").append(roleTitle(message))
+            out.append("## ").append(message.get("index").getAsInt()).append(". ").append(roleTitle(message, assistant))
                     .append(" · ").append(string(message, "timestamp"));
             if (!string(message, "phase").isEmpty()) {
                 out.append(" · Phase ").append(string(message, "phase"));
@@ -401,9 +424,20 @@ public final class ChatExport {
         return phases != null && phases.isJsonObject() ? phases.getAsJsonObject() : null;
     }
 
-    private static String roleTitle(JsonObject message) {
+    private String currentAssistantName() {
+        String name = assistantName == null ? null : assistantName.get();
+        return name == null || name.trim().isEmpty() ? DEFAULT_ASSISTANT_TITLE : name.trim();
+    }
+
+    /** Der Kopf von Antworten in einem Export: sein {@value #ASSISTANT_NAME_FIELD}, sonst „Assistent“. */
+    static String assistantTitle(JsonObject export) {
+        String name = export == null ? "" : string(export, ASSISTANT_NAME_FIELD).trim();
+        return name.isEmpty() ? DEFAULT_ASSISTANT_TITLE : name;
+    }
+
+    private static String roleTitle(JsonObject message, String assistant) {
         String author = string(message, "author");
-        return "USER".equals(author) ? "Nutzer" : "ASSISTANT".equals(author) ? "Assistent"
+        return "USER".equals(author) ? "Nutzer" : "ASSISTANT".equals(author) ? assistant
                 : "NOTICE".equals(author) ? "Hinweis" : author;
     }
 

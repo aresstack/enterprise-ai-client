@@ -29,6 +29,7 @@ import java.util.function.Supplier;
  * Sicht auf dieselbe Auswahl wie unter „Modelle“. Die Stimme gehört zum Modell ({@code speech.voices}): gültige
  * Sprecher hängen vom Modell ab, beim Modellwechsel erscheint dessen gespeicherte oder Standardstimme. Ohne feste
  * Stimme wählen Modelle mit mehreren Sprechern je Absatz selbst; deshalb spricht der Client immer mit einer.
+ * Ganz oben steht der Name des Assistenten ({@link AssistantNameSection}); er hängt nie an Modell oder Stimme.
  */
 final class SpeechTab {
 
@@ -55,6 +56,7 @@ final class SpeechTab {
     private final JCheckBox readAloudAutoStart;
     private final JComboBox<String> chunking;
     private final JComboBox<String> workers;
+    private final AssistantNameSection assistantName;
     private final JPanel panel;
 
     SpeechTab(ModelsTab models, SettingsDialogActions actions, Supplier<SettingsForm> form, ComicPalette palette) {
@@ -135,7 +137,8 @@ final class SpeechTab {
                 "1", "2", "3", "4", "5", "6", "7", "8");
         speech.note("Absätze sind der beste Kompromiss aus Klang und Wartezeit: Sätze klingen früher, aber "
                 + "abgehackter, die ganze Antwort klingt am natürlichsten, beginnt aber erst nach der ganzen Synthese.");
-        panel = FormRows.column(palette,
+        assistantName = new AssistantNameSection(palette);
+        panel = FormRows.column(palette, assistantName.panel(),
                 FormRows.plate("Modell und Stimme", palette.getNavigationBlue(), voiceRows.panel(), palette),
                 FormRows.plate("Sprachausgabe", palette.getAgentPetrol(), speech.panel(), palette));
         showVoice();
@@ -145,7 +148,12 @@ final class SpeechTab {
         return panel;
     }
 
+    AssistantNameSection assistantName() {
+        return assistantName;
+    }
+
     void load(SettingsForm form) {
+        assistantName.load(form);
         loaded = form;
         voices.clear();
         for (Map.Entry<String, String> entry : form.speechVoices().entrySet()) {
@@ -161,6 +169,7 @@ final class SpeechTab {
     }
 
     void store(SettingsForm.Builder b) {
+        assistantName.store(b);
         b.speechVoices(voices);
         b.readAloudAutoStart(readAloudAutoStart.isSelected());
         b.readAloudChunking(chunkingValue(chunking.getSelectedIndex()));

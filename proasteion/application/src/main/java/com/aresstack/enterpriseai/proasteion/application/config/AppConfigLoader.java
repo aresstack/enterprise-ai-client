@@ -294,8 +294,10 @@ public final class AppConfigLoader {
         // Kein 0 = unbegrenzt: ein Modell, das immer weiter Werkzeuge verlangt, hinge sonst endlos.
         int maxToolRounds = r.integer(CHAT_TOOLS_MAX_ROUNDS_KEY, ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS,
                 ChatCompletionsToolLoop.MIN_MAX_ROUNDS, ChatCompletionsToolLoop.MAX_MAX_ROUNDS);
+        String assistantName = r.text(ChatConfig.ASSISTANT_DISPLAY_NAME_KEY,
+                ChatConfig.DEFAULT_ASSISTANT_DISPLAY_NAME);
         return new ChatConfig(baseUrl, model, apiKeyRef, systemPrompt, connect, read, policy, defaults, tools,
-                maxToolRounds, retry);
+                maxToolRounds, retry, assistantName);
     }
 
     /**

@@ -27,6 +27,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.RagChatBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ToolSupport;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.FavoritesStore;
@@ -141,7 +142,8 @@ public final class ShellAssembly {
         // „Chat exportieren …“: aus der Chat-Datei und dem Research-Projekt des Chats, nur lesend.
         final ChatExport chatExport = new ChatExport(chatStore,
                 root.researchHost() == null ? null : root.researchHost()::existingProjectDirectoryOf, root.clock(),
-                ChatExport.class.getPackage().getImplementationVersion());
+                ChatExport.class.getPackage().getImplementationVersion(),
+                () -> ChatConfig.assistantDisplayNameOf(root.config()));
         final AgentModeAssembly.AgentView agent;
         final AgentService agentService;
         final ShellModeModel modes = new ShellModeModel(root.hasAgent());
@@ -182,6 +184,11 @@ public final class ShellAssembly {
             chatShell = new ChatShellPanel(chatModel, chatActions, knowledgeStatus, palette, bubbles);
         }
         chatShell.composer().setModelName(root.config().chat().model());
+        // Anzeigename über den Antworten: aus den Einstellungen, nach jedem Speichern sofort (ohne Neustart).
+        chatShell.transcript().setAssistantName(ChatConfig.assistantDisplayNameOf(root.config()));
+        final ChatShellPanel named = chatShell;
+        root.settings().addListener((previous, current) -> root.uiExecutor().execute(
+                () -> named.transcript().setAssistantName(ChatConfig.assistantDisplayNameOf(current))));
         ChatWorkspacePanel workspace = new ChatWorkspacePanel(modes, chatShell, null, palette);
         workspace.setWindowTitle(root.config().windowTitle());
         // Beobachter auf dem Settings-Service: was schon angezeigt wird, übernimmt gespeicherte Werte sofort.

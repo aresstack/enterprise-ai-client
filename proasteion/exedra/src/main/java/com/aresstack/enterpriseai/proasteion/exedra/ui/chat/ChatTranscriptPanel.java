@@ -105,6 +105,7 @@ import java.util.function.Consumer;
 public final class ChatTranscriptPanel extends JPanel implements ChatShellModelListener, DiagramOverlayHost {
 
     static final String USER_HEADER = "Du";
+    /** Kopf einer Antwort, solange kein Anzeigename gesetzt ist ({@link #setAssistantName}). */
     static final String ASSISTANT_HEADER = "Assistent";
     static final String CANCELLED_SUFFIX = " · abgebrochen";
     static final String FAILED_HEADER = "Fehler";
@@ -154,6 +155,8 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private final JLabel emptyState = new JLabel(EMPTY_STATE_TEXT, SwingConstants.CENTER);
     private final ComicScrollPane scrollPane;
     private final Map<Long, RowState> rows = new HashMap<Long, RowState>();
+    /** Kopf jeder Antwort (Einstellung {@code chat.assistant.displayName}); nur Beschriftung, Rolle bleibt. */
+    private String assistantName = ASSISTANT_HEADER;
     private final Map<Long, BubbleMessageRow> sourceRows = new HashMap<Long, BubbleMessageRow>();
     private final Map<Long, TranscriptEntry> pending = new LinkedHashMap<Long, TranscriptEntry>();
     private final ReadAloudOrb readAloudOrb = new ReadAloudOrb();
@@ -528,6 +531,35 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     }
 
     /**
+     * Der Name über jeder Antwort (UI-Thread), etwa „Merlins Tochter“; leer heißt {@link #ASSISTANT_HEADER}. Nur die
+     * Beschriftung ändert sich, nie die Rolle der Einträge.
+     */
+    public void setAssistantName(String name) {
+        String shown = name == null || name.trim().isEmpty() ? ASSISTANT_HEADER : name.trim();
+        if (shown.equals(assistantName)) {
+            return;
+        }
+        assistantName = shown;
+        // Bestehende Antworten sofort umbenennen (ohne Neustart); Text, Quellen und Zustand bleiben.
+        for (RowState state : rows.values()) {
+            if (state.bubble == null || state.entry == null) {
+                continue;
+            }
+            String header = header(state.entry, assistantName);
+            if (!header.equals(state.header)) {
+                state.bubble.setHeader(header);
+                state.header = header;
+            }
+        }
+        refresh(false);
+    }
+
+    /** Der aktuelle Kopf jeder Antwort. */
+    public String assistantName() {
+        return assistantName;
+    }
+
+    /**
      * Schließt die Sprachausgabe an und zeigt den Play/Pause-Orb; mit automatischem Vorlesen ist er sofort aktiv.
      * Einmal je Verlauf (UI-Thread).
      */
@@ -667,6 +699,12 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         return state == null ? null : state.bubble;
     }
 
+    /** Der Kopf, den die Zeile eines Eintrags gerade zeigt, oder {@code null} ohne Zeile. */
+    String headerFor(long entryId) {
+        RowState state = rows.get(entryId);
+        return state == null ? null : state.header;
+    }
+
     /** Bringt die Blase eines Eintrags auf seinen aktuellen Stand; Streaming-Text wird nur angehängt. */
     private void apply(TranscriptEntry entry) {
         RowState state = rows.get(entry.getId());
@@ -696,7 +734,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             }
             state.showsEntryText = showsEntryText;
             state.shownLength = text.length();
-            String header = header(entry);
+            String header = header(entry, assistantName);
             if (!header.equals(state.header)) {
                 state.bubble.setHeader(header);
                 state.header = header;
@@ -773,6 +811,10 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     }
 
     static String header(TranscriptEntry entry) {
+        return header(entry, ASSISTANT_HEADER);
+    }
+
+    static String header(TranscriptEntry entry, String assistantName) {
         if (entry.getAuthor() == TranscriptEntry.Author.USER) {
             return USER_HEADER;
         }
@@ -781,11 +823,11 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         }
         switch (entry.getState()) {
             case CANCELLED:
-                return ASSISTANT_HEADER + CANCELLED_SUFFIX;
+                return assistantName + CANCELLED_SUFFIX;
             case FAILED:
                 return FAILED_HEADER;
             default:
-                return ASSISTANT_HEADER;
+                return assistantName;
         }
     }
 
@@ -883,7 +925,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         boolean notice = entry.getAuthor() == TranscriptEntry.Author.NOTICE;
         boolean failed = entry.getState() == TranscriptEntry.State.FAILED;
         BubbleSide side = user ? BubbleSide.RIGHT : BubbleSide.LEFT;
-        String header = header(entry);
+        String header = header(entry, assistantName);
         String text = displayText(entry);
         if (notice) {
             JLabel line = infoLine(text);
