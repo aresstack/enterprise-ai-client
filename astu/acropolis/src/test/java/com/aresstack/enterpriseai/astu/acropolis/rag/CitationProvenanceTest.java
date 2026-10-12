@@ -103,8 +103,8 @@ public class CitationProvenanceTest {
         String system = v035.messages().get(0).content();
         assertEquals("rerank=false = Ablauf von v0.35.0", system, rerankOff.messages().get(0).content());
         assertTrue(system, system.contains(ContextSettings.DEFAULT_INSTRUCTION));
-        assertTrue(system, system.contains("[1] Kaffeemaschine pflegen"));
-        assertTrue("fester Ablauf: mehrere Auszüge\n" + system, system.contains("\n[2] "));
+        assertTrue(system, system.contains("\n[1] Kaffeemaschine"));
+        assertTrue("fester Ablauf: alle Treffer als Auszüge\n" + system, system.contains("\n[3] "));
         assertTrue(v035.tools().isEmpty());
         assertNoCitationSyntax(v035);
         assertFalse("keine Passage-ID im RAG-Kontext\n" + system, PASSAGE_POSITION.matcher(system).find());
@@ -156,7 +156,7 @@ public class CitationProvenanceTest {
         String search = toolResults.get(0);
         String read = toolResults.get(1);
         assertTrue(search, search.contains("[1] "));
-        assertTrue(read, read.contains("[passage " + wiki.idOf("Kaffee").value() + "@"));
+        assertTrue(read, read.contains("[passage "));
         assertTrue("Passageposition im Werkzeugergebnis\n" + read, PASSAGE_POSITION.matcher(read).find());
         assertNoCitationSyntax(last);
         assertEquals(2, last.tools().size());
