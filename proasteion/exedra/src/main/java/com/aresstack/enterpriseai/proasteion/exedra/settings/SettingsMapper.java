@@ -5,6 +5,8 @@ import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.LiveSearchConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
 import com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy;
 import com.aresstack.enterpriseai.astu.acropolis.rag.FollowUpResearch;
@@ -172,6 +174,12 @@ public final class SettingsMapper {
         b.retrievalMaxFollowUps(text(p, AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY,
                 String.valueOf(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS)));
         b.retrievalRerank(bool(p, AppConfigLoader.RETRIEVAL_RERANK_KEY, true));
+        b.rawWorkers(text(p, AppConfigLoader.KNOWLEDGE_RAW_WORKERS_KEY, String.valueOf(KnowledgePrefetchService.Settings.DEFAULT_RAW_WORKERS)));
+        b.enrichmentWorkers(text(p, AppConfigLoader.KNOWLEDGE_ENRICHMENT_WORKERS_KEY, String.valueOf(KnowledgePrefetchService.Settings.DEFAULT_ENRICHMENT_WORKERS)));
+        b.embeddingConcurrency(text(p, AppConfigLoader.EMBEDDING_MAX_CONCURRENCY_KEY, String.valueOf(KnowledgePrefetchService.Settings.DEFAULT_EMBEDDING_CONCURRENCY)));
+        b.embeddingBatchSize(text(p, AppConfigLoader.KNOWLEDGE_EMBEDDING_BATCH_SIZE_KEY, String.valueOf(IndexKnowledgeUseCase.DEFAULT_EMBEDDING_BATCH_SIZE)));
+        b.rawWindows(text(p, AppConfigLoader.RETRIEVAL_RAW_WINDOWS_KEY, String.valueOf(RetrievalSettings.DEFAULT_RAW_WINDOWS)));
+        b.rawWindowChars(text(p, AppConfigLoader.RETRIEVAL_RAW_WINDOW_CHARS_KEY, String.valueOf(RetrievalSettings.DEFAULT_RAW_WINDOW_CHARS)));
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 b.modelSelection(category.key(), text(p, ModelsConfig.keyOf(category), ""));
@@ -250,6 +258,12 @@ public final class SettingsMapper {
         put(set, AppConfigLoader.LIVE_SEARCH_HITS_PER_SOURCE_KEY, form.liveSearchHitsPerSource());
         put(set, AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY, form.retrievalMaxFollowUps());
         put(set, AppConfigLoader.RETRIEVAL_RERANK_KEY, form.retrievalRerank() ? "" : "false");
+        put(set, AppConfigLoader.KNOWLEDGE_RAW_WORKERS_KEY, form.rawWorkers());
+        put(set, AppConfigLoader.KNOWLEDGE_ENRICHMENT_WORKERS_KEY, form.enrichmentWorkers());
+        put(set, AppConfigLoader.EMBEDDING_MAX_CONCURRENCY_KEY, form.embeddingConcurrency());
+        put(set, AppConfigLoader.KNOWLEDGE_EMBEDDING_BATCH_SIZE_KEY, form.embeddingBatchSize());
+        put(set, AppConfigLoader.RETRIEVAL_RAW_WINDOWS_KEY, form.rawWindows());
+        put(set, AppConfigLoader.RETRIEVAL_RAW_WINDOW_CHARS_KEY, form.rawWindowChars());
         for (ModelCategory category : ModelCategory.values()) {
             if (category != ModelCategory.CHAT && category != ModelCategory.EMBEDDING) {
                 put(set, ModelsConfig.keyOf(category), form.modelSelection(category.key()));
@@ -410,6 +424,18 @@ public final class SettingsMapper {
                 return "Live-Suche: max. abzuwartende Seiten";
             case AppConfigLoader.LIVE_SEARCH_HITS_PER_SOURCE_KEY:
                 return "Live-Suche: Treffer je Quelle";
+            case AppConfigLoader.KNOWLEDGE_RAW_WORKERS_KEY:
+                return "Rohindex-Worker";
+            case AppConfigLoader.KNOWLEDGE_ENRICHMENT_WORKERS_KEY:
+                return "Aufbereitungs-Worker";
+            case AppConfigLoader.EMBEDDING_MAX_CONCURRENCY_KEY:
+                return "Embedding-Parallelität";
+            case AppConfigLoader.KNOWLEDGE_EMBEDDING_BATCH_SIZE_KEY:
+                return "Embedding-Batchgröße";
+            case AppConfigLoader.RETRIEVAL_RAW_WINDOWS_KEY:
+                return "Textfenster je Seite";
+            case AppConfigLoader.RETRIEVAL_RAW_WINDOW_CHARS_KEY:
+                return "Zeichen je Textfenster";
             default:
                 return key;
         }

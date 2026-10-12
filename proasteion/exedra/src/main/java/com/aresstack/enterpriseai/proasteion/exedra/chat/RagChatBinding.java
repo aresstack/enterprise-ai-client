@@ -688,6 +688,16 @@ public final class RagChatBinding implements ChatShellActions {
             }
 
             @Override
+            public void liveHitsFound(final int hits) {
+                card(card -> card.liveHitsFound(hits));
+            }
+
+            @Override
+            public void pagesAvailable(final int available, final int awaited) {
+                card(card -> card.pagesAvailable(available, awaited));
+            }
+
+            @Override
             public void pathStarted(final RetrievalPath path) {
                 card(card -> card.step(path == RetrievalPath.KEYWORD ? ChatResearchCard.KEYWORD_SEARCH
                         : ChatResearchCard.SEMANTIC_SEARCH));

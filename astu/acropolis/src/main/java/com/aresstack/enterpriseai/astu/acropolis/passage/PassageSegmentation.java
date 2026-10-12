@@ -66,6 +66,8 @@ public final class PassageSegmentation {
 
     private final EmbeddingPort embeddings;
     private final SentenceSegmenter sentences;
+    /** Passagen je Embedding-Aufruf, je Dokument gelesen ({@code knowledge.embeddingBatchSize}). */
+    private final java.util.function.IntSupplier batchSize;
     private final KnowledgeTokenCounter tokens = KnowledgeTokenCounter.wordsAndSymbols();
 
     public PassageSegmentation(EmbeddingPort embeddings) {
@@ -73,11 +75,18 @@ public final class PassageSegmentation {
     }
 
     public PassageSegmentation(EmbeddingPort embeddings, SentenceSegmenter sentences) {
-        if (embeddings == null || sentences == null) {
-            throw new IllegalArgumentException("embeddings and sentences must not be null");
+        this(embeddings, sentences, () -> EMBEDDING_BATCH);
+    }
+
+    /** @param batchSize Passagen je Embedding-Aufruf; je Dokument gelesen (Einstellungen ohne Neustart), mind. 1 */
+    public PassageSegmentation(EmbeddingPort embeddings, SentenceSegmenter sentences,
+                               java.util.function.IntSupplier batchSize) {
+        if (embeddings == null || sentences == null || batchSize == null) {
+            throw new IllegalArgumentException("embeddings, sentences and batchSize must not be null");
         }
         this.embeddings = embeddings;
         this.sentences = sentences;
+        this.batchSize = batchSize;
     }
 
     /**
@@ -130,8 +139,9 @@ public final class PassageSegmentation {
         }
         // Jede fertige Passage bekommt ihr EIGENES Embedding (in Batches statt einzeln, gleiche Vektoren).
         java.util.Set<String> ids = new java.util.HashSet<String>();
-        for (int from = 0; from < pendingTexts.size(); from += EMBEDDING_BATCH) {
-            List<String> slice = pendingTexts.subList(from, Math.min(pendingTexts.size(), from + EMBEDDING_BATCH));
+        int batch = Math.max(1, batchSize.getAsInt());
+        for (int from = 0; from < pendingTexts.size(); from += batch) {
+            List<String> slice = pendingTexts.subList(from, Math.min(pendingTexts.size(), from + batch));
             List<EmbeddingVector> vectors = embeddings.embed(slice).vectors();
             for (int i = 0; i < slice.size(); i++) {
                 EmbeddingVector vector = vectors.get(i);

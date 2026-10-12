@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.config;
 
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
@@ -67,6 +68,18 @@ public final class AppConfigLoader {
     public static final String KNOWLEDGE_PREFETCH_CONCURRENCY_KEY = "knowledge.prefetch.concurrency";
     /** Vorladen: Größe des Speicher-Caches in MB (MainframeMate confluencePrefetchCacheMaxMb). */
     public static final String KNOWLEDGE_PREFETCH_CACHE_MB_KEY = "knowledge.prefetch.cacheMaxMb";
+    /** Rohindex: Threads, die geladene Seiten sofort lexikalisch durchsuchbar machen (1–8, Standard 2). */
+    public static final String KNOWLEDGE_RAW_WORKERS_KEY = "knowledge.raw.workers";
+    /** Aufbereitung: Dokumente, die gleichzeitig in Passagen zerlegt und eingebettet werden (1–16, Standard 4). */
+    public static final String KNOWLEDGE_ENRICHMENT_WORKERS_KEY = "knowledge.enrichment.workers";
+    /** Aufbereitung: gleichzeitige Aufrufe des Embedding-Endpunkts (1–32, Standard 4); unabhängig vom Chat-Modell. */
+    public static final String EMBEDDING_MAX_CONCURRENCY_KEY = "embedding.maxConcurrency";
+    /** Texte je Aufruf des Embedding-Endpunkts beim Aufbereiten (1–1000, Standard 16). */
+    public static final String KNOWLEDGE_EMBEDDING_BATCH_SIZE_KEY = "knowledge.embeddingBatchSize";
+    /** Textfenster je geladener, noch nicht aufbereiteter Seite für die Evidenzbewertung (1–10, Standard 2). */
+    public static final String RETRIEVAL_RAW_WINDOWS_KEY = "retrieval.raw.windowsPerDocument";
+    /** Ungefähre Länge eines Textfensters in Zeichen (100–10000, Standard 700). */
+    public static final String RETRIEVAL_RAW_WINDOW_CHARS_KEY = "retrieval.raw.windowChars";
     /** Werkzeugrunden je Antwort im normalen Chat (1–32, Standard 8), danach eine Abschlussrunde ohne Werkzeuge. */
     public static final String CHAT_TOOLS_MAX_ROUNDS_KEY = "chat.tools.maxRounds";
     /** Höchstzahl der Suchauszüge im RAG-Kontext einer normalen Chat-Antwort ({@link ContextSettings#maxSources()}). */
@@ -355,7 +368,8 @@ public final class AppConfigLoader {
             r.problem("knowledge.chunk.*", "Chunking-Einstellung ungültig");
             chunking = KnowledgeChunkingPolicy.defaults();
         }
-        int batch = r.integer("knowledge.embeddingBatchSize", 16, 1, 1000);
+        int batch = r.integer(KNOWLEDGE_EMBEDDING_BATCH_SIZE_KEY, IndexKnowledgeUseCase.DEFAULT_EMBEDDING_BATCH_SIZE,
+                1, 1000);
 
         RetrievalSettings retrieval;
         try {
@@ -381,6 +395,10 @@ public final class AppConfigLoader {
                             RetrievalSettings.DEFAULT_RELATION_MIN_SIMILARITY, -1.0, 1.0))
                     .relationWeight(r.decimal("retrieval.relations.weight", RetrievalSettings.DEFAULT_RELATION_WEIGHT,
                             0.0, 1000.0))
+                    .rawWindows(r.integer(RETRIEVAL_RAW_WINDOWS_KEY, RetrievalSettings.DEFAULT_RAW_WINDOWS, 1,
+                            RetrievalSettings.MAX_RAW_WINDOWS))
+                    .rawWindowChars(r.integer(RETRIEVAL_RAW_WINDOW_CHARS_KEY, RetrievalSettings.DEFAULT_RAW_WINDOW_CHARS,
+                            RetrievalSettings.MIN_RAW_WINDOW_CHARS, RetrievalSettings.MAX_RAW_WINDOW_CHARS))
                     .build();
         } catch (IllegalArgumentException e) {
             r.problem("retrieval.*", "Retrieval-Einstellung ungültig (siehe Beispielkonfiguration)");
@@ -406,7 +424,14 @@ public final class AppConfigLoader {
                 r.integer(KNOWLEDGE_PREFETCH_CONCURRENCY_KEY, KnowledgePrefetchService.Settings.DEFAULT_CONCURRENCY, 1,
                         KnowledgePrefetchService.Settings.MAX_CONCURRENCY),
                 r.integer(KNOWLEDGE_PREFETCH_CACHE_MB_KEY, KnowledgePrefetchService.Settings.DEFAULT_CACHE_MAX_MB, 1,
-                        KnowledgePrefetchService.Settings.CACHE_MAX_MB_LIMIT));
+                        KnowledgePrefetchService.Settings.CACHE_MAX_MB_LIMIT),
+                r.integer(KNOWLEDGE_RAW_WORKERS_KEY, KnowledgePrefetchService.Settings.DEFAULT_RAW_WORKERS, 1,
+                        KnowledgePrefetchService.Settings.MAX_RAW_WORKERS),
+                r.integer(KNOWLEDGE_ENRICHMENT_WORKERS_KEY, KnowledgePrefetchService.Settings.DEFAULT_ENRICHMENT_WORKERS,
+                        1, KnowledgePrefetchService.Settings.MAX_ENRICHMENT_WORKERS),
+                r.integer(EMBEDDING_MAX_CONCURRENCY_KEY,
+                        KnowledgePrefetchService.Settings.DEFAULT_EMBEDDING_CONCURRENCY, 1,
+                        KnowledgePrefetchService.Settings.MAX_EMBEDDING_CONCURRENCY));
         String passageLanguage = r.text(KNOWLEDGE_PASSAGE_LANGUAGE_KEY, "de");
         if (!"de".equals(passageLanguage) && !"en".equals(passageLanguage)) {
             r.problem(KNOWLEDGE_PASSAGE_LANGUAGE_KEY, "Sprache der Passagen muss de oder en sein");

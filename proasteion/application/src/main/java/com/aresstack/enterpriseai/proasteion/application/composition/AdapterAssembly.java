@@ -252,6 +252,11 @@ public final class AdapterAssembly {
         ports.index(index);
         ports.reconfiguring(index);
         ports.closing("knowledge-index", index);
+        // Rohindex der geladenen Seiten neben dem Passagenindex: sofort durchsuchbar, ohne Passagen und Embeddings.
+        final LiveRawKnowledgeIndex rawIndex = new LiveRawKnowledgeIndex(config.knowledge().indexDirectory());
+        ports.rawIndex(rawIndex);
+        ports.reconfiguring(rawIndex);
+        ports.closing("raw-knowledge-index", rawIndex);
         return ports.build();
     }
 

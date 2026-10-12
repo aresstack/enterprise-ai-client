@@ -118,6 +118,12 @@ public class SettingsMapperTest {
         expected.setProperty("retrieval.liveSearch.initialPages", "1");
         expected.setProperty("retrieval.liveSearch.maxPages", "4");
         expected.setProperty("retrieval.liveSearch.hitsPerSource", "10");
+        expected.setProperty("retrieval.raw.windowsPerDocument", "2");
+        expected.setProperty("retrieval.raw.windowChars", "700");
+        expected.setProperty("knowledge.raw.workers", "2");
+        expected.setProperty("knowledge.enrichment.workers", "4");
+        expected.setProperty("embedding.maxConcurrency", "4");
+        expected.setProperty("knowledge.embeddingBatchSize", "16");
         assertEquals(expected, added);
         AppConfig config = AppConfigLoader.fromProperties(merged);
         assertEquals("test-chat", config.chat().model());

@@ -473,7 +473,7 @@ public final class RagChatUseCase {
             progress.liveSearchStarted(query);
             RetrievalPreparation.Stage stage = RetrievalPreparation.Stage.done();
             try {
-                stage = preparation.begin(query, rag.sources());
+                stage = preparation.begin(query, rag.sources(), progress);
             } catch (RuntimeException e) {
                 // Die Live-Suche ist eine Ergänzung; ohne sie antwortet der Turn aus dem vorhandenen Index.
             }

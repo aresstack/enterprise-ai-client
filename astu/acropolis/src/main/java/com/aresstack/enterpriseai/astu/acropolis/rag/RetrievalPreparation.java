@@ -10,8 +10,9 @@ import java.util.Collection;
  * Retrieval sie schon findet. Fehler bleiben im Schritt; das Retrieval läuft in jedem Fall.
  *
  * <p>Gestuft ({@link #begin}): Der adaptive Modus des {@link RagChatUseCase} wartet zuerst nur auf wenige geladene
- * Treffer und erst dann auf weitere ({@link Stage#awaitMore()}), wenn die Evidenz nicht reicht. So endet eine
- * Faktfrage, sobald die erste passende Seite im Index ist.
+ * Treffer und erst dann auf weitere ({@link Stage#awaitMore()}), wenn die Evidenz nicht reicht. „Geladen“ heißt
+ * lexikalisch durchsuchbar (Rohindex), nicht aufbereitet: So endet eine Faktfrage, sobald die erste passende Seite
+ * heruntergeladen ist, auch wenn ihre Passagen und Embeddings noch fehlen.
  */
 public interface RetrievalPreparation {
 
@@ -25,6 +26,15 @@ public interface RetrievalPreparation {
     default Stage begin(String query, Collection<SourceAddress> sources) {
         prepare(query, sources);
         return Stage.done();
+    }
+
+    /**
+     * Wie {@link #begin(String, Collection)}; meldet Trefferzahl und geladene Seiten an {@code progress}
+     * ({@link RetrievalProgress#liveHitsFound}, {@link RetrievalProgress#pagesAvailable}), auch beim späteren
+     * {@link Stage#awaitMore()}.
+     */
+    default Stage begin(String query, Collection<SourceAddress> sources, RetrievalProgress progress) {
+        return begin(query, sources);
     }
 
     /** Eine begonnene Vorbereitung, deren übrige Treffer noch in den Index kommen können. */

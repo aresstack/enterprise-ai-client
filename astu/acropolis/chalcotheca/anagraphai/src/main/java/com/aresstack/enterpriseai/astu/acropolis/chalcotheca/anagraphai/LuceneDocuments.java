@@ -80,6 +80,12 @@ public final class LuceneDocuments {
         doc.add(new StoredField(TEXT, chunk.text()));
         doc.add(new StoredField(HEADINGS, encode(chunk.headingPath())));
         doc.add(new StoredField(TOKENS, chunk.tokenCount()));
+        storeResource(doc, resource);
+        return doc;
+    }
+
+    /** Die gespeicherten Felder einer Ressource (ohne ID- und Quellenfeld, die der Aufrufer indexiert). */
+    static void storeResource(Document doc, KnowledgeResource resource) {
         doc.add(new StoredField(TITLE, resource.title()));
         doc.add(new StoredField(CONTENT_TYPE, resource.contentType()));
         if (resource.revision().modifiedAt().isPresent()) {
@@ -99,35 +105,40 @@ public final class LuceneDocuments {
             metadata.add(item.getValue());
         }
         doc.add(new StoredField(METADATA, encode(metadata)));
-        return doc;
     }
 
     static Stored fromDocument(Document doc) {
         try {
-            KnowledgeResourceId resourceId = KnowledgeResourceId.of(doc.get(RESOURCE_ID));
-            SourceAddress sourceId = SourceAddress.of(doc.get(SOURCE_ID));
-            String parentId = doc.get(PARENT_ID);
-            String location = doc.get(LOCATION);
-            List<String> metadataItems = decode(doc.get(METADATA));
-            Map<String, String> metadata = new LinkedHashMap<String, String>();
-            for (int i = 0; i + 1 < metadataItems.size(); i += 2) {
-                metadata.put(metadataItems.get(i), metadataItems.get(i + 1));
-            }
-            KnowledgeResource resource = KnowledgeResource.builder(resourceId, sourceId)
-                    .title(doc.get(TITLE))
-                    .contentType(doc.get(CONTENT_TYPE))
-                    .revision(revisionOf(doc))
-                    .parentId(parentId == null ? null : KnowledgeResourceId.of(parentId))
-                    .scope(doc.get(SCOPE))
-                    .location(location == null ? null : URI.create(location))
-                    .metadata(KnowledgeMetadata.of(metadata))
-                    .build();
+            KnowledgeResource resource = readResource(doc);
+            SourceAddress sourceId = resource.sourceId();
             KnowledgeChunk chunk = new KnowledgeChunk(KnowledgeChunkId.parse(doc.get(CHUNK_ID)), sourceId,
                     decode(doc.get(HEADINGS)), doc.get(TEXT), doc.getField(TOKENS).numericValue().intValue());
             return new Stored(resource, chunk);
         } catch (RuntimeException ex) {
             throw new KnowledgeIndexException("Gespeicherter Indexeintrag ist beschädigt: " + doc.get(CHUNK_ID), ex);
         }
+    }
+
+    /** Die Ressource aus den Feldern von {@link #storeResource} samt ID- und Quellenfeld. */
+    static KnowledgeResource readResource(Document doc) {
+        KnowledgeResourceId resourceId = KnowledgeResourceId.of(doc.get(RESOURCE_ID));
+        SourceAddress sourceId = SourceAddress.of(doc.get(SOURCE_ID));
+        String parentId = doc.get(PARENT_ID);
+        String location = doc.get(LOCATION);
+        List<String> metadataItems = decode(doc.get(METADATA));
+        Map<String, String> metadata = new LinkedHashMap<String, String>();
+        for (int i = 0; i + 1 < metadataItems.size(); i += 2) {
+            metadata.put(metadataItems.get(i), metadataItems.get(i + 1));
+        }
+        return KnowledgeResource.builder(resourceId, sourceId)
+                .title(doc.get(TITLE))
+                .contentType(doc.get(CONTENT_TYPE))
+                .revision(revisionOf(doc))
+                .parentId(parentId == null ? null : KnowledgeResourceId.of(parentId))
+                .scope(doc.get(SCOPE))
+                .location(location == null ? null : URI.create(location))
+                .metadata(KnowledgeMetadata.of(metadata))
+                .build();
     }
 
     /** Gespeicherte Felder, aus denen {@link #revisionOf(Document)} liest (für Teil-Laden eines Dokuments). */

@@ -25,6 +25,17 @@ public interface RetrievalProgress {
     default void liveSearchStarted(String query) {
     }
 
+    /** Die Live-Suche hat in den Quellen {@code hits} Treffer gefunden; sie werden jetzt geladen. */
+    default void liveHitsFound(int hits) {
+    }
+
+    /**
+     * {@code available} der {@code awaited} Treffer, auf die die Suche wartet, sind geladen und lokal durchsuchbar
+     * (Rohindex, ohne Passagen und Embeddings). Kommt mit {@code available = 0}, wenn das Warten beginnt.
+     */
+    default void pagesAvailable(int available, int awaited) {
+    }
+
     /** Ein Suchpfad im Index beginnt (Volltext oder semantisch). */
     default void pathStarted(RetrievalPath path) {
     }

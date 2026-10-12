@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPreparation;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalProgress;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.application.config.LiveSearchConfig;
 import org.junit.Test;
@@ -10,6 +11,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntConsumer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -23,9 +25,8 @@ public class StagedLiveSearchTest {
 
     private final StagedLiveSearch.Searcher searcher = new StagedLiveSearch.Searcher() {
         @Override
-        public StagedLiveSearch.Found search(Collection<SourceAddress> sources, String query, int hitsPerSource,
-                                             int waitFor) {
-            calls.add("search hits=" + hitsPerSource + " wait=" + waitFor);
+        public StagedLiveSearch.Found search(Collection<SourceAddress> sources, String query, int hitsPerSource) {
+            calls.add("search hits=" + hitsPerSource);
             final int found = hits;
             return new StagedLiveSearch.Found() {
                 @Override
@@ -34,8 +35,11 @@ public class StagedLiveSearchTest {
                 }
 
                 @Override
-                public void awaitIndexed(int count) {
+                public void awaitAvailable(int count, IntConsumer listener) {
                     calls.add("await " + count);
+                    for (int available = 1; available <= count; available++) {
+                        listener.accept(available);
+                    }
                 }
             };
         }
@@ -47,7 +51,7 @@ public class StagedLiveSearchTest {
 
         live.begin("Frage", Collections.<SourceAddress>emptySet());
 
-        assertEquals(Collections.singletonList("search hits=10 wait=1"), calls);
+        assertEquals(java.util.Arrays.asList("search hits=10", "await 1"), calls);
     }
 
     @Test
@@ -58,7 +62,7 @@ public class StagedLiveSearchTest {
 
         assertTrue(stage.awaitMore());
         assertFalse("höchstens maxPages, nicht mehr", stage.awaitMore());
-        assertEquals(java.util.Arrays.asList("search hits=10 wait=1", "await 6"), calls);
+        assertEquals(java.util.Arrays.asList("search hits=10", "await 1", "await 6"), calls);
     }
 
     @Test
@@ -67,7 +71,7 @@ public class StagedLiveSearchTest {
         StagedLiveSearch live = new StagedLiveSearch(() -> new LiveSearchConfig(1, 4, 10), searcher);
 
         assertFalse(live.begin("Frage", Collections.<SourceAddress>emptySet()).awaitMore());
-        assertEquals(1, calls.size());
+        assertEquals(java.util.Arrays.asList("search hits=10", "await 1"), calls);
     }
 
     @Test
@@ -79,8 +83,8 @@ public class StagedLiveSearchTest {
         current.set(new LiveSearchConfig(2, 6, 20));
         live.begin("Frage", Collections.<SourceAddress>emptySet()).awaitMore();
 
-        assertEquals(java.util.Arrays.asList("search hits=10 wait=1", "await 4", "search hits=20 wait=2", "await 6"),
-                calls);
+        assertEquals(java.util.Arrays.asList("search hits=10", "await 1", "await 4", "search hits=20", "await 2",
+                "await 6"), calls);
     }
 
     @Test
@@ -89,6 +93,27 @@ public class StagedLiveSearchTest {
 
         live.prepare("Frage", Collections.<SourceAddress>emptySet());
 
-        assertEquals(Collections.singletonList("search hits=10 wait=4"), calls);
+        assertEquals(java.util.Arrays.asList("search hits=10", "await 4"), calls);
+    }
+
+    /** Die Recherchekarte erfährt die Trefferzahl und wie viele der abgewarteten Seiten lokal verfügbar sind. */
+    @Test
+    public void progressReportsHitsAndAvailablePages() {
+        final List<String> reported = new ArrayList<String>();
+        StagedLiveSearch live = new StagedLiveSearch(() -> new LiveSearchConfig(2, 4, 10), searcher);
+
+        live.begin("Frage", Collections.<SourceAddress>emptySet(), new RetrievalProgress() {
+            @Override
+            public void liveHitsFound(int found) {
+                reported.add("hits " + found);
+            }
+
+            @Override
+            public void pagesAvailable(int available, int awaited) {
+                reported.add(available + "/" + awaited);
+            }
+        });
+
+        assertEquals(java.util.Arrays.asList("hits 10", "0/2", "1/2", "2/2"), reported);
     }
 }

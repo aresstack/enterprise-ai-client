@@ -51,6 +51,23 @@ Dokumente der Quellen; `rebuild` baut ihn aus Einträgen neu auf.
 Auslöser: ⟳ („Jetzt indexieren“) an einer Quelle im Drawer (beim Start wird nichts indexiert); ein Agent kann
 `refresh_knowledge_source` aufrufen ([MCP](mcp.md)). Berichte landen im Log, nicht im Chat.
 
+## Zwei Ebenen im Chat: Rohindex vorn, Aufbereitung im Hintergrund
+
+Die Live-Suche des Chats wartet nie auf Passagen oder Embeddings. Der `KnowledgePrefetchService` trennt:
+
+- **Ebene A (synchron, Chat):** Quellen-Suche → Seiten parallel laden (`knowledge.prefetch.concurrency`, Chat-Treffer
+  vor Hintergrundarbeit) → Rohdokument sofort in den Rohindex (`RawKnowledgeIndexPort`, Lucene unter
+  `<Indexverzeichnis>/raw`; `knowledge.raw.workers`) → `RetrieveKnowledgeUseCase` liefert je Seite die besten
+  BM25-Textfenster (`retrieval.raw.windowsPerDocument`, `retrieval.raw.windowChars`) im Volltextpfad → ein
+  Evidenz-Bewerter-Aufruf je Runde → Antwort. `StagedLiveSearch` wartet nur, bis die Seiten im Rohindex sind.
+- **Ebene B (asynchron):** Passagen, Embeddings, Navigation. Verschiedene Seiten parallel
+  (`knowledge.enrichment.workers`), dieselbe Seite nie doppelt; eine neuere wartende Fassung ersetzt die ältere.
+  Embedding-Aufrufe der Aufbereitung begrenzt `embedding.maxConcurrency` (je Embedding-Modell, getrennt vom Chat),
+  die Batchgröße `knowledge.embeddingBatchSize`. Hintergrund-Threads laufen mit niedrigerer Priorität.
+
+Ist eine Seite in derselben Fassung (Inhalts-Hash) schon aufbereitet, liefert sie Passagen statt Textfenster. Alle
+Werte stehen im Einstellungsdialog (Reiter Index) und gelten ohne Neustart.
+
 ## Namespaces
 
 Jeder Index-Eintrag gehört über die `EmbeddingModelIdentity` seines Vektors zu genau einem Namespace
@@ -187,6 +204,11 @@ knowledge.indexDirectory=<Anwendungsverzeichnis>/index
 knowledge.chunk.maxTokens=350
 knowledge.chunk.overlapSentences=1
 knowledge.embeddingBatchSize=16
+knowledge.raw.workers=2
+knowledge.enrichment.workers=4
+embedding.maxConcurrency=4
+retrieval.raw.windowsPerDocument=2
+retrieval.raw.windowChars=700
 retrieval.keywordEnabled=true
 retrieval.semanticEnabled=true
 retrieval.keywordCandidates=20

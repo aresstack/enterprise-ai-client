@@ -28,6 +28,13 @@ public final class RetrievalSettings {
     public static final int DEFAULT_RELATION_NEIGHBORS = 3;
     public static final double DEFAULT_RELATION_MIN_SIMILARITY = 0.80;
     public static final double DEFAULT_RELATION_WEIGHT = 0.5;
+    /** Textfenster je Rohdokument für die Evidenzbewertung ({@code retrieval.raw.windowsPerDocument}). */
+    public static final int DEFAULT_RAW_WINDOWS = 2;
+    public static final int MAX_RAW_WINDOWS = 10;
+    /** Ungefähre Länge eines Textfensters in Zeichen ({@code retrieval.raw.windowChars}). */
+    public static final int DEFAULT_RAW_WINDOW_CHARS = 700;
+    public static final int MIN_RAW_WINDOW_CHARS = 100;
+    public static final int MAX_RAW_WINDOW_CHARS = 10000;
 
     private final boolean keywordEnabled;
     private final boolean semanticEnabled;
@@ -43,6 +50,8 @@ public final class RetrievalSettings {
     private final int relationNeighbors;
     private final double relationMinSimilarity;
     private final double relationWeight;
+    private final int rawWindows;
+    private final int rawWindowChars;
 
     private RetrievalSettings(Builder b) {
         this.keywordEnabled = b.keywordEnabled;
@@ -59,6 +68,8 @@ public final class RetrievalSettings {
         this.relationNeighbors = b.relationNeighbors;
         this.relationMinSimilarity = b.relationMinSimilarity;
         this.relationWeight = b.relationWeight;
+        this.rawWindows = b.rawWindows;
+        this.rawWindowChars = b.rawWindowChars;
     }
 
     /** Beide Pfade, je 20 Kandidaten, Gewichte 1, k = 60, 10 Ergebnisse, kein Cosine-Schwellwert. */
@@ -86,6 +97,8 @@ public final class RetrievalSettings {
         b.relationNeighbors = relationNeighbors;
         b.relationMinSimilarity = relationMinSimilarity;
         b.relationWeight = relationWeight;
+        b.rawWindows = rawWindows;
+        b.rawWindowChars = rawWindowChars;
         return b;
     }
 
@@ -151,6 +164,19 @@ public final class RetrievalSettings {
         return relationWeight;
     }
 
+    /**
+     * Textfenster je Dokument aus dem Rohindex: so viele passende Stellen eines geladenen, noch nicht semantisch
+     * aufbereiteten Dokuments bewertet das Modell (statt der ganzen Seite).
+     */
+    public int rawWindows() {
+        return rawWindows;
+    }
+
+    /** Ungefähre Länge eines Textfensters aus dem Rohindex in Zeichen. */
+    public int rawWindowChars() {
+        return rawWindowChars;
+    }
+
     @Override
     public String toString() {
         return "RetrievalSettings{keyword=" + (keywordEnabled ? keywordCandidates + "x" + keywordWeight : "off")
@@ -175,8 +201,29 @@ public final class RetrievalSettings {
         private int relationNeighbors = DEFAULT_RELATION_NEIGHBORS;
         private double relationMinSimilarity = DEFAULT_RELATION_MIN_SIMILARITY;
         private double relationWeight = DEFAULT_RELATION_WEIGHT;
+        private int rawWindows = DEFAULT_RAW_WINDOWS;
+        private int rawWindowChars = DEFAULT_RAW_WINDOW_CHARS;
 
         private Builder() {
+        }
+
+        /** Textfenster je Rohdokument, 1 bis {@value #MAX_RAW_WINDOWS}. */
+        public Builder rawWindows(int count) {
+            if (count < 1 || count > MAX_RAW_WINDOWS) {
+                throw new IllegalArgumentException("rawWindows muss in [1, " + MAX_RAW_WINDOWS + "] liegen: " + count);
+            }
+            this.rawWindows = count;
+            return this;
+        }
+
+        /** Länge eines Textfensters in Zeichen, {@value #MIN_RAW_WINDOW_CHARS} bis {@value #MAX_RAW_WINDOW_CHARS}. */
+        public Builder rawWindowChars(int chars) {
+            if (chars < MIN_RAW_WINDOW_CHARS || chars > MAX_RAW_WINDOW_CHARS) {
+                throw new IllegalArgumentException("rawWindowChars muss in [" + MIN_RAW_WINDOW_CHARS + ", "
+                        + MAX_RAW_WINDOW_CHARS + "] liegen: " + chars);
+            }
+            this.rawWindowChars = chars;
+            return this;
         }
 
         public Builder relationsEnabled(boolean enabled) {

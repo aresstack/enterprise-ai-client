@@ -37,10 +37,13 @@ public final class IndexSentenceSegmenter implements SentenceSegmenter {
         synchronized (this) {
             if (!acquired) {
                 acquired = true;
-                analysis.acquire(this); // bleibt geladen; der Index-Thread ruft ohnehin nacheinander
+                analysis.acquire(this); // bleibt geladen
             }
         }
-        List<String> sentences = analysis.sentences(paragraph, language);
+        List<String> sentences;
+        synchronized (this) { // OpenNLP ist nicht threadsicher; die Aufbereitung läuft mit mehreren Workern
+            sentences = analysis.sentences(paragraph, language);
+        }
         return sentences == null || sentences.isEmpty() ? fallback.sentences(paragraph) : sentences;
     }
 

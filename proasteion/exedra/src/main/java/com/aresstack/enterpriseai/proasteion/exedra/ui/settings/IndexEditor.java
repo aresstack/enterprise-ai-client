@@ -63,6 +63,31 @@ final class IndexEditor {
     static final String HITS_PER_SOURCE_LABEL = "Live-Suche: Treffer je Quelle";
     static final String HITS_PER_SOURCE_HELP = "So viele Treffer holt die Live-Suche je angehakter Quelle "
             + "(retrieval.liveSearch.hitsPerSource, 1–100; Standard 10).";
+    static final String RAW_WINDOWS_LABEL = "Textfenster je geladener Seite";
+    static final String RAW_WINDOWS_HELP = "Geladene Seiten sind sofort im Volltext durchsuchbar, noch bevor Passagen "
+            + "und Embeddings fertig sind. Die Bewertung sieht je Seite so viele passende Textfenster statt der ganzen "
+            + "Seite (retrieval.raw.windowsPerDocument, 1–10; Standard 2).";
+    static final String RAW_WINDOW_CHARS_LABEL = "Zeichen je Textfenster";
+    static final String RAW_WINDOW_CHARS_HELP = "Länge eines Textfensters aus einer geladenen Seite "
+            + "(retrieval.raw.windowChars, 100–10000; Standard 700).";
+    static final String PREPARATION_NOTE = "Geladene Seiten landen sofort im Rohindex und sind für den Chat nutzbar. "
+            + "Passagen, Embeddings und Navigation entstehen danach im Hintergrund, parallel und ohne den Chat "
+            + "aufzuhalten. Wie viele Seiten gleichzeitig geladen werden, steht unter System › Vorabladen. "
+            + "Alle Werte gelten nach dem Speichern ohne Neustart.";
+    static final String RAW_WORKERS_LABEL = "Rohindex-Worker";
+    static final String RAW_WORKERS_HELP = "So viele geladene Seiten werden gleichzeitig in den Rohindex geschrieben "
+            + "(knowledge.raw.workers, 1–8; Standard 2).";
+    static final String ENRICHMENT_WORKERS_LABEL = "Aufbereitungs-Worker";
+    static final String ENRICHMENT_WORKERS_HELP = "So viele Seiten werden gleichzeitig in Passagen zerlegt und "
+            + "eingebettet; dieselbe Seite nie doppelt, die neueste Fassung gewinnt (knowledge.enrichment.workers, "
+            + "1–16; Standard 4).";
+    static final String EMBEDDING_CONCURRENCY_LABEL = "Embedding-Parallelität";
+    static final String EMBEDDING_CONCURRENCY_HELP = "Höchstens so viele Embedding-Aufrufe der Aufbereitung laufen "
+            + "gleichzeitig; das Limit gilt je Embedding-Modell, getrennt vom Chat-Modell "
+            + "(embedding.maxConcurrency, 1–32; Standard 4).";
+    static final String EMBEDDING_BATCH_LABEL = "Embedding-Batchgröße";
+    static final String EMBEDDING_BATCH_HELP = "So viele Texte gehen in einen Embedding-Aufruf "
+            + "(knowledge.embeddingBatchSize, 1–1000; Standard 16).";
     static final String RERANK_LABEL = "Treffer gegen die Frage bewerten (Reranking)";
     static final String RERANK_HELP = "Das Chat-Modell bewertet die Treffer gegen die Frage und wählt die kleinste "
             + "ausreichende Menge (retrieval.rerank). Aus: feste Reihenfolge der Suche mit Nachrecherche.";
@@ -79,6 +104,12 @@ final class IndexEditor {
     private final JTextField liveSearchInitialPages;
     private final JTextField liveSearchMaxPages;
     private final JTextField liveSearchHitsPerSource;
+    private final JTextField rawWindows;
+    private final JTextField rawWindowChars;
+    private final JTextField rawWorkers;
+    private final JTextField enrichmentWorkers;
+    private final JTextField embeddingConcurrency;
+    private final JTextField embeddingBatchSize;
     private final JCheckBox retrievalRerank;
     private final JPanel panel;
 
@@ -106,11 +137,20 @@ final class IndexEditor {
         liveSearchInitialPages = field(search, INITIAL_PAGES_LABEL, INITIAL_PAGES_HELP);
         liveSearchMaxPages = field(search, MAX_PAGES_LABEL, MAX_PAGES_HELP);
         liveSearchHitsPerSource = field(search, HITS_PER_SOURCE_LABEL, HITS_PER_SOURCE_HELP);
+        rawWindows = field(search, RAW_WINDOWS_LABEL, RAW_WINDOWS_HELP);
+        rawWindowChars = field(search, RAW_WINDOW_CHARS_LABEL, RAW_WINDOW_CHARS_HELP);
         retrievalRerank = search.checkBox(RERANK_LABEL, RERANK_HELP);
         search.note(RERANK_HELP);
+        FormRows preparation = new FormRows(palette);
+        preparation.note(PREPARATION_NOTE);
+        rawWorkers = field(preparation, RAW_WORKERS_LABEL, RAW_WORKERS_HELP);
+        enrichmentWorkers = field(preparation, ENRICHMENT_WORKERS_LABEL, ENRICHMENT_WORKERS_HELP);
+        embeddingConcurrency = field(preparation, EMBEDDING_CONCURRENCY_LABEL, EMBEDDING_CONCURRENCY_HELP);
+        embeddingBatchSize = field(preparation, EMBEDDING_BATCH_LABEL, EMBEDDING_BATCH_HELP);
         panel = FormRows.column(palette,
                 FormRows.plate("Index", palette.getNavigationBlue(), rows.panel(), palette),
-                FormRows.plate("Wissenssuche im Chat", palette.getAccentYellow(), search.panel(), palette));
+                FormRows.plate("Wissenssuche im Chat", palette.getAccentYellow(), search.panel(), palette),
+                FormRows.plate("Laden und Aufbereitung", palette.getNavigationBlue(), preparation.panel(), palette));
     }
 
     /** Ein Feld mit seinem Hilfetext darunter. */
@@ -150,6 +190,12 @@ final class IndexEditor {
         liveSearchMaxPages.setText(form.liveSearchMaxPages());
         liveSearchHitsPerSource.setText(form.liveSearchHitsPerSource());
         retrievalMaxFollowUps.setText(form.retrievalMaxFollowUps());
+        rawWindows.setText(form.rawWindows());
+        rawWindowChars.setText(form.rawWindowChars());
+        rawWorkers.setText(form.rawWorkers());
+        enrichmentWorkers.setText(form.enrichmentWorkers());
+        embeddingConcurrency.setText(form.embeddingConcurrency());
+        embeddingBatchSize.setText(form.embeddingBatchSize());
         retrievalRerank.setSelected(form.retrievalRerank());
     }
 
@@ -165,6 +211,12 @@ final class IndexEditor {
                 .liveSearchMaxPages(liveSearchMaxPages.getText())
                 .liveSearchHitsPerSource(liveSearchHitsPerSource.getText())
                 .retrievalMaxFollowUps(retrievalMaxFollowUps.getText())
+                .rawWindows(rawWindows.getText())
+                .rawWindowChars(rawWindowChars.getText())
+                .rawWorkers(rawWorkers.getText())
+                .enrichmentWorkers(enrichmentWorkers.getText())
+                .embeddingConcurrency(embeddingConcurrency.getText())
+                .embeddingBatchSize(embeddingBatchSize.getText())
                 .retrievalRerank(retrievalRerank.isSelected());
     }
 
@@ -216,6 +268,30 @@ final class IndexEditor {
 
     JTextField retrievalMaxFollowUps() {
         return retrievalMaxFollowUps;
+    }
+
+    JTextField rawWindows() {
+        return rawWindows;
+    }
+
+    JTextField rawWindowChars() {
+        return rawWindowChars;
+    }
+
+    JTextField rawWorkers() {
+        return rawWorkers;
+    }
+
+    JTextField enrichmentWorkers() {
+        return enrichmentWorkers;
+    }
+
+    JTextField embeddingConcurrency() {
+        return embeddingConcurrency;
+    }
+
+    JTextField embeddingBatchSize() {
+        return embeddingBatchSize;
     }
 
     JCheckBox retrievalRerank() {

@@ -24,8 +24,10 @@ import java.util.Set;
  * im Hintergrund vorlädt und jede geladene Seite – falls neu oder geändert (Revision, dann Inhalts-Hash) – zerlegt,
  * einbettet und indexiert. Der Index wächst so mit der Nutzung; einen Vollindex beim Start gibt es nicht.
  *
- * <p>Die Suche wartet nicht auf das Vorladen ({@link #search}); wer den Index danach braucht (Chat-RAG), wartet
- * gezielt auf die ersten Treffer ({@link #searchAndIndex}). Ein Recherche-Budget kennt der Use Case nicht: wie viele
+ * <p>Die Suche wartet nicht auf das Vorladen ({@link #search}). Die Chat-Recherche wartet danach nur, bis die ersten
+ * Treffer im Rohindex durchsuchbar sind ({@code search(…, awaited)} und
+ * {@link KnowledgePrefetchService.Series#awaitAvailable}), nie auf Passagen und Embeddings; wer die fertige
+ * Aufbereitung braucht (Agent-Werkzeug {@code knowledge_search}), wartet darauf ({@link #searchAndIndex}). Ein Recherche-Budget kennt der Use Case nicht: wie viele
  * Seiten vorgeladen werden, bestimmen die Prefetch-Einstellungen.
  *
  * <p>Durchsucht werden nur Quellen mit eigener Suche ({@link SearchableKnowledgeSource}); alle anderen liegen nur
@@ -80,6 +82,16 @@ public final class SearchDrivenIndexingUseCase {
      * @param hitLimit höchstens so viele Treffer je Quelle (Suche ist billig, Laden nicht)
      */
     public Result search(String channel, Collection<KnowledgeSourcePort> sources, String query, int hitLimit) {
+        return search(channel, sources, query, hitLimit, false);
+    }
+
+    /**
+     * Wie {@link #search(String, Collection, String, int)}; {@code awaited}: der Aufrufer wartet gleich auf die ersten
+     * Treffer (Chat-Recherche über {@link KnowledgePrefetchService.Series#awaitAvailable}), ihre Abrufe laufen vor dem
+     * übrigen Vorladen.
+     */
+    public Result search(String channel, Collection<KnowledgeSourcePort> sources, String query, int hitLimit,
+                         boolean awaited) {
         if (query == null || query.trim().isEmpty()) {
             throw new IllegalArgumentException("query must not be blank");
         }
@@ -125,14 +137,15 @@ public final class SearchDrivenIndexingUseCase {
                 found.add(new FoundResource(source.sourceId(), hit.resourceId(), hit.title(), hit.snippet(),
                         hit.resourceId().value(), FoundResource.Origin.SOURCE, hit.revision(),
                         hit.urlText()));
-                candidates.add(new KnowledgePrefetchService.Candidate(source, hit.resourceId(), hit.revision()));
+                candidates.add(new KnowledgePrefetchService.Candidate(source, hit.resourceId(), hit.revision(),
+                        hit.snippet()));
             }
             if (!any) {
                 break;
             }
         }
         KnowledgePrefetchService.Series series = prefetch.prefetch(channel == null ? DEFAULT_CHANNEL : channel,
-                candidates, 0);
+                candidates, 0, awaited);
         return new Result(found, series, failures);
     }
 

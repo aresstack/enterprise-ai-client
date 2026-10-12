@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeDocument;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeIndexPort;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
@@ -19,45 +21,54 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 /**
- * Lädt Suchtreffer vorab in einen Speicher-Cache und bereitet sie danach für den Index auf (Kopie von MainframeMate
- * {@code ConfluencePrefetchService}, quellenneutral über {@link KnowledgeSourcePort}):
+ * Lädt Suchtreffer vorab, macht sie sofort lexikalisch durchsuchbar und bereitet sie im Hintergrund semantisch auf
+ * (Kopie von MainframeMate {@code ConfluencePrefetchService}, quellenneutral über {@link KnowledgeSourcePort}). Zwei
+ * Ebenen mit getrennten Pools:
  * <ul>
- *   <li><b>Prefetch-Pool</b>: begrenzter Pool ({@link Settings#concurrency()}, Standard 4) lädt ab der Cursorposition
- *       höchstens {@link Settings#maxItems()} Treffer voraus, nur in den Rohcache. Ein neuer {@link #prefetch}
- *       desselben Kanals bricht die laufende Serie ab (neue Suche, Auswahl oder Scrollen weiter unten).</li>
+ *   <li><b>Ebene A (schnell, für den Chat)</b>: Der <b>Lade-Pool</b> ({@link Settings#concurrency()}) lädt ab der
+ *       Cursorposition höchstens {@link Settings#maxItems()} Treffer; Serien, auf die jemand wartet (Chat-Recherche),
+ *       laufen vor dem übrigen Vorladen. Jede geladene Seite schreibt der <b>Rohindex-Pool</b>
+ *       ({@link Settings#rawWorkers()}) sofort in den {@link RawKnowledgeIndexPort}: Titel, URL, Revision, Volltext,
+ *       Inhalts-Hash, Snippet. Danach ist sie über BM25 und Textfenster findbar ({@link Series#awaitAvailable}),
+ *       ohne Passagen und ohne Embeddings.</li>
+ *   <li><b>Ebene B (Hintergrund)</b>: Die <b>Aufbereitungs-Worker</b> ({@link Settings#enrichmentWorkers()}) zerlegen,
+ *       betten ein und ersetzen die Passagen je Ressource ({@link IndexKnowledgeUseCase#indexDocumentIfChanged}),
+ *       mehrere Dokumente gleichzeitig, mit niedrigerer Thread-Priorität. Dieselbe Ressource bearbeitet nie mehr als
+ *       ein Worker; kommt eine neuere Fassung, ersetzt sie eine noch wartende ältere, und eine laufende wird vor ihr
+ *       fertig: die neueste Fassung schreibt zuletzt. Wie viele Embedding-Aufrufe dabei gleichzeitig laufen, begrenzt
+ *       der Embedding-Port der Indexierung ({@link ConcurrencyLimitedEmbeddingPort}). Nur ein Auftrag, auf dessen
+ *       fertige Aufbereitung jemand wartet ({@link #indexNow}, {@link Series#awaitIndexed}), kommt vor die übrigen.</li>
  *   <li><b>Priority-Thread</b>: eigener Thread nur für die Auswahl des Benutzers ({@link #openSelected}, MainframeMate
- *       {@code loadPriority}); wartet nie hinter der Prefetch-Warteschlange und nie hinter einem Agenten.</li>
- *   <li><b>Agent</b>: {@code knowledge_read} liest über {@link #read}/{@link #refresh} auf seinem eigenen Thread, wie
- *       in MainframeMate, wo der Priority-Thread nur der Oberfläche gehört.</li>
- *   <li><b>Index-Thread</b>: ein serieller Verarbeitungs-Thread (MainframeMate {@code autoIndexExecutor}, askai
- *       {@code KnowledgeProcessingRunner}) für Zerlegen, Embeddings und Index, getrennt vom UI- und Abrufpfad. Jede
- *       geladene Seite wird sofort eingereiht und weckt ihn; nach jeder Aufbereitung pausiert er
- *       {@value #INDEX_PAUSE_MILLIS} ms (MainframeMate), damit Suchen nicht verhungern. Reihenfolge FIFO; nur ein
- *       Auftrag, auf dessen fertige Aufbereitung ein Aufrufer jetzt tatsächlich wartet ({@link #indexNow},
- *       {@link Series#awaitIndexed}), kommt vor die noch nicht begonnenen übrigen. Die Herkunft (Klick, Suche,
- *       Vorladen) allein bevorzugt nichts.</li>
+ *       {@code loadPriority}); wartet nie hinter dem Vorladen.</li>
+ *   <li><b>Agent</b>: {@code knowledge_read} liest über {@link #read}/{@link #refresh} auf seinem eigenen Thread.</li>
  * </ul>
- * Aufbereitet wird für Vorladen und Lesen über denselben Weg: ist die Revision laut Suche bekannt und so indexiert,
- * passiert nichts; sonst entscheidet der Inhalts-Hash ({@link IndexKnowledgeUseCase#indexDocumentIfChanged}), ob
- * zerlegt und eingebettet wird oder nur die Revision nachgezogen. Ein Cache-Eintrag gilt nur, solange die Suche keine
- * andere Revision gemeldet hat ({@link #seenRevision}).
+ * Ist die Revision laut Suche bekannt und so im Rohindex und aufbereitet, passiert nichts; sonst entscheidet der
+ * Inhalts-Hash, ob neu zerlegt wird. Ein Cache-Eintrag gilt nur, solange die Suche keine andere Revision gemeldet hat
+ * ({@link #seenRevision}). Ohne Rohindex gilt eine Seite erst mit ihrer Aufbereitung als verfügbar (wie früher).
  *
- * <p>Kanäle trennen die Serien der Aufrufer wie die Instanzen je Reiter in MainframeMate (Drawer, Chat, Agent); Pool,
- * Cache, Priority- und Index-Thread sind gemeinsam. Threadsicher.
+ * <p>Kanäle trennen die Serien der Aufrufer wie die Instanzen je Reiter in MainframeMate (Drawer, Chat, Agent); Pools,
+ * Cache und Worker sind gemeinsam. Alle Größen werden je Aufruf aus den Einstellungen gelesen (ohne Neustart).
+ * Threadsicher.
  */
 public final class KnowledgePrefetchService {
 
     /** Wie lange ein Lesen auf Anforderung höchstens wartet (MainframeMate {@code loadPriority}). */
     static final long PRIORITY_TIMEOUT_SECONDS = 30;
-    /** Pause nach jeder Aufbereitung, damit Suchen nicht verhungern (MainframeMate {@code Thread.sleep(100)}). */
-    static final long INDEX_PAUSE_MILLIS = 100;
-    /** Wie lange der Index-Thread bei leerer Warteschlange höchstens schläft (askai {@code idlePollMillis}). */
+    /** Thread-Priorität der Aufbereitung: unter der des Chats und des Ladens. */
+    private static final int BACKGROUND_PRIORITY = Thread.NORM_PRIORITY - 1;
+    /** Wie lange ein Aufbereitungs-Worker bei leerer Warteschlange höchstens schläft (askai {@code idlePollMillis}). */
     private static final long IDLE_POLL_MILLIS = 1000;
     private static final int SEEN_LIMIT = 10000;
 
@@ -67,16 +78,26 @@ public final class KnowledgePrefetchService {
     }
 
     private final IndexKnowledgeUseCase indexing;
+    /** Rohindex der Ebene A oder {@code null} (dann gilt eine Seite erst aufbereitet als verfügbar). */
+    private final RawKnowledgeIndexPort raw;
     private final KnowledgeDocumentReader reader;
     private final Supplier<Settings> settings;
     private final ExecutorService priorityThread;
-    private final Thread indexThread;
+    /** Lade-Pool; Serien, auf die jemand wartet, zuerst. */
+    private final ThreadPoolExecutor prefetchPool;
+    /** Schreibt geladene Seiten in den Rohindex. */
+    private final ThreadPoolExecutor rawPool;
+    private final AtomicLong sequence = new AtomicLong();
     /** Wartende Aufbereitungen in Ankunftsreihenfolge; geschützt durch sich selbst. */
     private final java.util.LinkedList<IndexJob> indexQueue = new java.util.LinkedList<IndexJob>();
-    /** Der Auftrag, den der Index-Thread gerade aufbereitet, oder {@code null}. Unter {@code indexQueue}. */
-    private IndexJob inProgress;
-    /** Wie viele Aufträge der Index-Thread begonnen hat (Tests). Unter {@code indexQueue}. */
+    /** Aufträge, die Worker gerade aufbereiten, je Ressource. Unter {@code indexQueue}. */
+    private final Map<KnowledgeResourceId, IndexJob> inProgress = new HashMap<KnowledgeResourceId, IndexJob>();
+    /** Laufende Aufbereitungs-Worker. Unter {@code indexQueue}. */
+    private int workers;
+    /** Wie viele Aufträge die Worker begonnen haben (Tests). Unter {@code indexQueue}. */
     private int indexRuns;
+    /** Wie viele Aufträge höchstens gleichzeitig liefen (Tests). Unter {@code indexQueue}. */
+    private int maxParallelRuns;
     private final Map<KnowledgeResourceId, KnowledgeDocument> cache =
             new LinkedHashMap<KnowledgeResourceId, KnowledgeDocument>();
     private final Map<String, Series> running = new HashMap<String, Series>();
@@ -91,26 +112,48 @@ public final class KnowledgePrefetchService {
                 }
             };
     private long cachedBytes;
-    private ExecutorService prefetchPool;
-    private int poolSize;
     private volatile boolean shutdown;
 
     /**
+     * Ohne Rohindex: eine Seite gilt erst als verfügbar, wenn sie aufbereitet ist.
+     *
      * @param indexing indexiert jede geladene Seite, falls neu oder geändert
      * @param reader   liest einen Treffer aus seiner Quelle (produktiv der vermittelte Zugriff)
      * @param settings Fenster, Worker und Cache-Größe; je Aufruf gelesen (Einstellungen ohne Neustart)
      */
     public KnowledgePrefetchService(IndexKnowledgeUseCase indexing, KnowledgeDocumentReader reader,
                                     Supplier<Settings> settings) {
+        this(indexing, null, reader, settings);
+    }
+
+    /**
+     * @param raw Rohindex der Ebene A: jede geladene Seite ist dort sofort durchsuchbar; {@code null} = keiner
+     */
+    public KnowledgePrefetchService(IndexKnowledgeUseCase indexing, RawKnowledgeIndexPort raw,
+                                    KnowledgeDocumentReader reader, Supplier<Settings> settings) {
         if (indexing == null || reader == null || settings == null) {
             throw new IllegalArgumentException("indexing, reader und settings sind Pflicht");
         }
         this.indexing = indexing;
+        this.raw = raw;
         this.reader = reader;
         this.settings = settings;
-        this.priorityThread = Executors.newSingleThreadExecutor(threads("enterprise-ai-prefetch-priority"));
-        this.indexThread = threads("enterprise-ai-prefetch-index").newThread(this::indexLoop);
-        this.indexThread.start();
+        Settings current = currentSettings();
+        this.priorityThread = Executors.newSingleThreadExecutor(threads("enterprise-ai-prefetch-priority",
+                Thread.NORM_PRIORITY));
+        this.prefetchPool = new ThreadPoolExecutor(current.concurrency(), current.concurrency(), IDLE_POLL_MILLIS,
+                TimeUnit.MILLISECONDS, new PriorityBlockingQueue<Runnable>(),
+                threads("enterprise-ai-prefetch", Thread.NORM_PRIORITY)) {
+            @Override
+            protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
+                return new RankedTask<T>(runnable, value, runnable instanceof Ranked ? ((Ranked) runnable).rank
+                        : Long.MAX_VALUE);
+            }
+        };
+        this.rawPool = new ThreadPoolExecutor(current.rawWorkers(), current.rawWorkers(), IDLE_POLL_MILLIS,
+                TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(),
+                threads("enterprise-ai-raw-index", Thread.NORM_PRIORITY));
+        ensureWorkers();
     }
 
     // ------------------------------------------------------------------ Prefetch (Hintergrund, aus Suchtreffern)
@@ -122,9 +165,18 @@ public final class KnowledgePrefetchService {
      * @param channel   wessen Serie (z. B. "drawer", "chat", "agent")
      * @param ranked    alle Treffer in Rangfolge
      * @param fromIndex Startposition, typischerweise die Cursor- oder Scrollposition
-     * @return die neue Serie; ihre Einträge werden fertig, sobald die Seite indexiert (oder unverändert) ist
+     * @return die neue Serie; ihre Einträge werden verfügbar, sobald die Seite im Rohindex liegt, und fertig, sobald
+     *         sie aufbereitet (oder unverändert) ist
      */
     public Series prefetch(String channel, List<Candidate> ranked, int fromIndex) {
+        return prefetch(channel, ranked, fromIndex, false);
+    }
+
+    /**
+     * Wie {@link #prefetch(String, List, int)}; {@code awaited}: jemand wartet gleich auf die Serie (Chat-Recherche),
+     * ihre Abrufe laufen vor allem übrigen Vorladen.
+     */
+    public Series prefetch(String channel, List<Candidate> ranked, int fromIndex, boolean awaited) {
         if (channel == null || ranked == null) {
             throw new IllegalArgumentException("channel und ranked sind Pflicht");
         }
@@ -145,20 +197,22 @@ public final class KnowledgePrefetchService {
                     }
                 }
             }
+            resize(current);
             int start = Math.max(0, fromIndex);
             int end = Math.min(ranked.size(), start + current.maxItems());
-            ExecutorService pool = pool(current.concurrency());
             for (int i = start; i < end; i++) {
                 final Candidate candidate = ranked.get(i);
                 if (candidate == null) {
                     continue;
                 }
                 final Pending pending = new Pending();
-                Future<?> task = pool.submit(new Runnable() {
+                // Rang: erwartete Serien vor dem übrigen Vorladen, sonst in Ankunftsreihenfolge.
+                long rank = (awaited ? 0L : Long.MAX_VALUE / 2) + sequence.incrementAndGet();
+                Future<?> task = prefetchPool.submit(new Ranked(rank) {
                     @Override
                     public void run() {
                         if (Thread.currentThread().isInterrupted()) {
-                            pending.indexed.cancel(false);
+                            pending.cancel();
                             return;
                         }
                         prefetchOne(candidate, pending);
@@ -175,10 +229,16 @@ public final class KnowledgePrefetchService {
     private void prefetchOne(Candidate candidate, Pending pending) {
         CompletableFuture<ResourceIndexingOutcome> indexed = pending.indexed;
         try {
-            if (indexing.isCurrent(candidate.id(), candidate.revision())) {
-                // Revision bekannt und so indexiert: weder laden noch aufbereiten.
+            boolean prepared = indexing.isCurrent(candidate.id(), candidate.revision());
+            boolean rawCurrent = raw == null || isRawCurrent(candidate.id(), candidate.revision());
+            if (prepared && rawCurrent) {
+                // Revision bekannt, im Rohindex und aufbereitet: weder laden noch aufbereiten.
+                pending.available.complete(Boolean.TRUE);
                 indexed.complete(ResourceIndexingOutcome.done(candidate.id(), "", IndexingStatus.UNCHANGED, 0));
                 return;
+            }
+            if (rawCurrent && raw != null) {
+                pending.available.complete(Boolean.TRUE); // lexikalisch schon da; aufbereitet wird im Hintergrund
             }
             // Die Kopie gilt nur für genau die gemeldete Revision; ohne Revision weiß nur die Quelle, ob sich etwas
             // geändert hat (der Hash spart dann das Aufbereiten).
@@ -187,10 +247,66 @@ public final class KnowledgePrefetchService {
             if (document == null) {
                 document = remember(loadCurrent(candidate.source(), candidate.id(), candidate.revision()));
             }
-            // Rohcache zuerst; zerlegt und eingebettet wird auf dem Index-Thread, unabhängig vom Abrufpfad.
-            enqueueIndex(document, indexed, pending.urgent);
+            // Ebene A: sofort in den Rohindex (eigener Pool); Ebene B: Aufbereitung im Hintergrund, unabhängig davon.
+            if (raw != null && !rawCurrent) {
+                storeRaw(document, candidate.snippet(), pending.available);
+            }
+            if (prepared) {
+                indexed.complete(ResourceIndexingOutcome.done(candidate.id(), "", IndexingStatus.UNCHANGED, 0));
+            } else {
+                enqueueIndex(document, indexed, pending.urgent);
+            }
         } catch (KnowledgeSourceException | RuntimeException e) {
-            indexed.completeExceptionally(e); // nur ein Vorladen; Lesen auf Anforderung versucht es erneut
+            pending.fail(e); // nur ein Vorladen; Lesen auf Anforderung versucht es erneut
+        }
+    }
+
+    /** Ob der Rohindex die Ressource in der gemeldeten (bekannten) Revision hat. */
+    private boolean isRawCurrent(KnowledgeResourceId id, KnowledgeRevision revision) {
+        if (revision == null || !revision.isKnown()) {
+            return false;
+        }
+        try {
+            java.util.Optional<KnowledgeRevision> stored = raw.revisionOf(id);
+            return stored.isPresent() && stored.get().equals(revision);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Schreibt eine geladene Seite auf dem Rohindex-Pool in den Rohindex; {@code available} meldet, wann sie
+     * durchsuchbar ist (auch bei einem Fehler endet es, dann mit ihm).
+     */
+    private void storeRaw(final KnowledgeDocument document, final String snippet,
+                          final CompletableFuture<Boolean> available) {
+        if (raw == null || document == null) {
+            if (available != null) {
+                available.complete(Boolean.FALSE);
+            }
+            return;
+        }
+        try {
+            resize(currentSettings());
+            rawPool.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        raw.put(RawKnowledgeDocument.of(document, snippet));
+                        if (available != null) {
+                            available.complete(Boolean.TRUE);
+                        }
+                    } catch (RuntimeException e) {
+                        if (available != null) {
+                            available.completeExceptionally(e);
+                        }
+                    }
+                }
+            });
+        } catch (RuntimeException rejected) { // beendet
+            if (available != null) {
+                available.cancel(false);
+            }
         }
     }
 
@@ -256,6 +372,7 @@ public final class KnowledgePrefetchService {
         try {
             task = priorityThread.submit(() -> {
                 KnowledgeDocument document = remember(loadCurrent(source, id, seenRevision(id)));
+                storeRaw(document, "", null);
                 enqueueIndex(document, null, new java.util.concurrent.atomic.AtomicBoolean());
                 return document;
             });
@@ -302,7 +419,9 @@ public final class KnowledgePrefetchService {
         if (cached != null) {
             return cached;
         }
-        return remember(load.load());
+        KnowledgeDocument loaded = remember(load.load());
+        storeRaw(loaded, "", null); // auch was der Agent liest, ist danach lexikalisch durchsuchbar
+        return loaded;
     }
 
     /** Der Index-Pfad, über den jedes Laden indexiert. */
@@ -426,7 +545,7 @@ public final class KnowledgePrefetchService {
         return 2L * document.text().length();
     }
 
-    // ------------------------------------------------------------------ Aufbereitung (eigener Thread)
+    // ------------------------------------------------------------------ Aufbereitung (Worker im Hintergrund)
 
     private void enqueueIndex(KnowledgeDocument document, CompletableFuture<ResourceIndexingOutcome> indexed,
                               java.util.concurrent.atomic.AtomicBoolean urgent) {
@@ -448,10 +567,21 @@ public final class KnowledgePrefetchService {
             if (same != null) {
                 same.join(indexed, urgent);
             } else {
-                indexQueue.add(new IndexJob(document, indexed, urgent));
+                IndexJob job = new IndexJob(document, indexed, urgent);
+                // Eine noch wartende ältere Fassung derselben Ressource wird ersetzt: die neueste gewinnt, und wer
+                // auf die alte wartete, bekommt das Ergebnis der neuen.
+                for (Iterator<IndexJob> it = indexQueue.iterator(); it.hasNext(); ) {
+                    IndexJob older = it.next();
+                    if (older.document.id().equals(document.id())) {
+                        it.remove();
+                        job.adopt(older);
+                    }
+                }
+                indexQueue.add(job);
             }
             indexQueue.notifyAll();
         }
+        ensureWorkers();
     }
 
     /** Begonnene Aufbereitungen; eine Fassung, die mehrere Aufrufer wollen, zählt einmal. */
@@ -461,10 +591,18 @@ public final class KnowledgePrefetchService {
         }
     }
 
+    /** Wie viele Aufbereitungen höchstens gleichzeitig liefen (Tests). */
+    int maxParallelRunsForTest() {
+        synchronized (indexQueue) {
+            return maxParallelRuns;
+        }
+    }
+
     /** Der Auftrag für genau diese Fassung (gleiche ID, gleicher Inhalt) in Arbeit oder Warteschlange. Unter Lock. */
     private IndexJob sameCapture(KnowledgeDocument document) {
-        if (inProgress != null && inProgress.covers(document)) {
-            return inProgress;
+        IndexJob running = inProgress.get(document.id());
+        if (running != null && running.covers(document)) {
+            return running;
         }
         for (IndexJob job : indexQueue) {
             if (job.covers(document)) {
@@ -480,58 +618,80 @@ public final class KnowledgePrefetchService {
         }
     }
 
+    /** Startet Worker, bis so viele laufen wie eingestellt; überzählige beenden sich nach ihrem Auftrag. */
+    private void ensureWorkers() {
+        int wanted = currentSettings().enrichmentWorkers();
+        synchronized (indexQueue) {
+            while (!shutdown && workers < wanted) {
+                workers++;
+                threads("enterprise-ai-enrichment", BACKGROUND_PRIORITY).newThread(this::indexLoop).start();
+            }
+            indexQueue.notifyAll();
+        }
+    }
+
     /**
-     * Der serielle Verarbeitungs-Thread (MainframeMate {@code autoIndexExecutor}, askai
-     * {@code KnowledgeProcessingRunner}): arbeitet die Warteschlange sofort ab und schläft nur, wenn sie leer ist.
+     * Ein Aufbereitungs-Worker (MainframeMate {@code autoIndexExecutor}, askai {@code KnowledgeProcessingRunner}, hier
+     * mehrfach): nimmt den nächsten Auftrag, dessen Ressource kein anderer Worker gerade bearbeitet, und schläft nur,
+     * wenn nichts zu tun ist.
      */
     private void indexLoop() {
-        while (!shutdown) {
+        while (true) {
             IndexJob job;
             synchronized (indexQueue) {
-                inProgress = null;
+                if (shutdown || workers > currentSettings().enrichmentWorkers()) {
+                    workers--;
+                    return;
+                }
                 job = nextJob();
                 if (job == null) {
                     try {
                         indexQueue.wait(IDLE_POLL_MILLIS);
                     } catch (InterruptedException e) {
+                        workers--;
                         return;
                     }
                     continue;
                 }
-                inProgress = job;
+                inProgress.put(job.document.id(), job);
                 indexRuns++;
+                maxParallelRuns = Math.max(maxParallelRuns, inProgress.size());
             }
+            ResourceIndexingOutcome outcome = null;
+            RuntimeException failure = null;
             try {
-                ResourceIndexingOutcome outcome = indexing.indexDocumentIfChanged(job.document);
-                synchronized (indexQueue) {
-                    inProgress = null; // ab hier angehängte Aufrufer bekämen das Ergebnis nicht mehr
-                }
-                job.complete(outcome, null);
+                outcome = indexing.indexDocumentIfChanged(job.document);
             } catch (RuntimeException e) {
-                synchronized (indexQueue) {
-                    inProgress = null;
-                }
-                // Lesen gelingt auch ohne Index; die nächste Suche versucht es erneut
-                job.complete(null, e);
+                failure = e; // Lesen gelingt auch ohne Aufbereitung; die nächste Suche versucht es erneut
             }
-            try {
-                Thread.sleep(INDEX_PAUSE_MILLIS);
-            } catch (InterruptedException e) {
-                return;
+            synchronized (indexQueue) {
+                inProgress.remove(job.document.id()); // ab hier angehängte Aufrufer bekämen das Ergebnis nicht mehr
+                indexQueue.notifyAll(); // eine wartende neuere Fassung derselben Ressource ist jetzt dran
             }
+            job.complete(outcome, failure);
         }
     }
 
-    /** FIFO; zuerst nur, worauf ein Aufrufer gerade wartet. Unter {@code indexQueue}. */
+    /**
+     * FIFO; zuerst, worauf ein Aufrufer gerade wartet. Übersprungen wird, wessen Ressource ein anderer Worker gerade
+     * bearbeitet (so ersetzt nie eine ältere Fassung eine neuere). Unter {@code indexQueue}.
+     */
     private IndexJob nextJob() {
         for (Iterator<IndexJob> it = indexQueue.iterator(); it.hasNext(); ) {
             IndexJob job = it.next();
-            if (job.isUrgent()) {
+            if (job.isUrgent() && !inProgress.containsKey(job.document.id())) {
                 it.remove();
                 return job;
             }
         }
-        return indexQueue.isEmpty() ? null : indexQueue.removeFirst();
+        for (Iterator<IndexJob> it = indexQueue.iterator(); it.hasNext(); ) {
+            IndexJob job = it.next();
+            if (!inProgress.containsKey(job.document.id())) {
+                it.remove();
+                return job;
+            }
+        }
+        return null;
     }
 
     /** Ein Auftrag je Fassung; weitere Aufrufer derselben Fassung hängen sich an (Ergebnis und Vorrang). */
@@ -558,6 +718,12 @@ public final class KnowledgePrefetchService {
             }
         }
 
+        /** Übernimmt Wartende und Vorrang eines ersetzten Auftrags derselben Ressource. */
+        void adopt(IndexJob older) {
+            waiting.addAll(older.waiting);
+            urgency.addAll(older.urgency);
+        }
+
         boolean covers(KnowledgeDocument other) {
             return document.id().equals(other.id()) && document.contentHash().equals(other.contentHash());
         }
@@ -573,7 +739,7 @@ public final class KnowledgePrefetchService {
         }
 
         void complete(ResourceIndexingOutcome outcome, RuntimeException failure) {
-            // Nach dem Ende hängt sich niemand mehr an (inProgress ist schon leer).
+            // Nach dem Ende hängt sich niemand mehr an (die Ressource ist nicht mehr in Arbeit).
             for (CompletableFuture<ResourceIndexingOutcome> target : waiting) {
                 if (failure != null) {
                     target.completeExceptionally(failure);
@@ -590,10 +756,61 @@ public final class KnowledgePrefetchService {
         }
     }
 
-    /** Ein vorgeladener Treffer: wird dringend, sobald jemand auf ihn wartet. */
-    static final class Pending {
+    /**
+     * Ein vorgeladener Treffer: verfügbar, sobald er lexikalisch durchsuchbar ist (Rohindex), fertig, sobald er
+     * aufbereitet ist; wird dringend, sobald jemand auf die Aufbereitung wartet.
+     */
+    final class Pending {
         final CompletableFuture<ResourceIndexingOutcome> indexed = new CompletableFuture<ResourceIndexingOutcome>();
+        final CompletableFuture<Boolean> available = new CompletableFuture<Boolean>();
         final java.util.concurrent.atomic.AtomicBoolean urgent = new java.util.concurrent.atomic.AtomicBoolean();
+
+        Pending() {
+            if (raw == null) {
+                // Ohne Rohindex ist eine Seite erst mit ihrer Aufbereitung durchsuchbar.
+                indexed.whenComplete((outcome, failure) -> {
+                    if (failure != null) {
+                        available.completeExceptionally(failure);
+                    } else {
+                        available.complete(Boolean.TRUE);
+                    }
+                });
+            }
+        }
+
+        void fail(Throwable failure) {
+            available.completeExceptionally(failure);
+            indexed.completeExceptionally(failure);
+        }
+
+        void cancel() {
+            available.cancel(false);
+            indexed.cancel(false);
+        }
+    }
+
+    /** Ein Abruf mit Rang im Lade-Pool (kleiner = früher). */
+    private abstract static class Ranked implements Runnable {
+        final long rank;
+
+        Ranked(long rank) {
+            this.rank = rank;
+        }
+    }
+
+    /** Die Zukunft eines Abrufs, nach Rang geordnet (für die {@link PriorityBlockingQueue} des Lade-Pools). */
+    private static final class RankedTask<T> extends FutureTask<T> implements Comparable<RankedTask<?>> {
+        private final long rank;
+
+        RankedTask(Runnable runnable, T value, long rank) {
+            super(runnable, value);
+            this.rank = rank;
+        }
+
+        @Override
+        public int compareTo(RankedTask<?> other) {
+            return Long.compare(rank, other.rank);
+        }
     }
 
     // ------------------------------------------------------------------ Lebenszyklus
@@ -606,10 +823,9 @@ public final class KnowledgePrefetchService {
                 series.cancel();
             }
             running.clear();
-            if (prefetchPool != null) {
-                prefetchPool.shutdownNow();
-            }
         }
+        prefetchPool.shutdownNow();
+        rawPool.shutdownNow();
         priorityThread.shutdownNow();
         synchronized (indexQueue) {
             for (IndexJob job : indexQueue) {
@@ -618,7 +834,6 @@ public final class KnowledgePrefetchService {
             indexQueue.clear();
             indexQueue.notifyAll();
         }
-        indexThread.interrupt();
         synchronized (cache) {
             cache.clear();
             cachedBytes = 0;
@@ -630,42 +845,65 @@ public final class KnowledgePrefetchService {
         return current == null ? Settings.defaults() : current;
     }
 
-    /** Der Pool mit der eingestellten Größe; bei geänderter Workerzahl ein neuer (laufende Abrufe enden noch). */
-    private ExecutorService pool(int size) {
-        if (prefetchPool == null || poolSize != size) {
-            if (prefetchPool != null) {
-                prefetchPool.shutdown();
-            }
-            prefetchPool = Executors.newFixedThreadPool(size, threads("enterprise-ai-prefetch"));
-            poolSize = size;
-        }
-        return prefetchPool;
+    /** Übernimmt geänderte Worker-Zahlen in die Pools (ohne Neustart; laufende Abrufe enden noch). */
+    private void resize(Settings current) {
+        resize(prefetchPool, current.concurrency());
+        resize(rawPool, current.rawWorkers());
+        ensureWorkers();
     }
 
-    private static ThreadFactory threads(final String name) {
+    private static void resize(ThreadPoolExecutor pool, int size) {
+        synchronized (pool) {
+            if (pool.getCorePoolSize() == size) {
+                return;
+            }
+            if (size > pool.getMaximumPoolSize()) {
+                pool.setMaximumPoolSize(size);
+                pool.setCorePoolSize(size);
+            } else {
+                pool.setCorePoolSize(size);
+                pool.setMaximumPoolSize(size);
+            }
+        }
+    }
+
+    private static ThreadFactory threads(final String name, final int priority) {
         return runnable -> {
             Thread thread = new Thread(runnable, name);
             thread.setDaemon(true);
+            thread.setPriority(priority);
             return thread;
         };
     }
 
     // ------------------------------------------------------------------ Typen
 
-    /** Ein Treffer zum Vorladen: Quelle, Ressource und die Revision laut Suche (unbekannt erlaubt). */
+    /** Ein Treffer zum Vorladen: Quelle, Ressource, die Revision laut Suche (unbekannt erlaubt) und ihr Snippet. */
     public static final class Candidate {
 
         private final KnowledgeSourcePort source;
         private final KnowledgeResourceId id;
         private final KnowledgeRevision revision;
+        private final String snippet;
 
         public Candidate(KnowledgeSourcePort source, KnowledgeResourceId id, KnowledgeRevision revision) {
+            this(source, id, revision, "");
+        }
+
+        public Candidate(KnowledgeSourcePort source, KnowledgeResourceId id, KnowledgeRevision revision,
+                         String snippet) {
             if (source == null || id == null) {
                 throw new IllegalArgumentException("source und id sind Pflicht");
             }
             this.source = source;
             this.id = id;
             this.revision = revision == null ? KnowledgeRevision.unknown() : revision;
+            this.snippet = snippet == null ? "" : snippet;
+        }
+
+        /** Snippet der Quellensuche (für den Rohindex); leer, wenn keines. */
+        public String snippet() {
+            return snippet;
         }
 
         public KnowledgeSourcePort source() {
@@ -698,8 +936,44 @@ public final class KnowledgePrefetchService {
                 task.cancel(true);
             }
             for (Pending entry : pending) {
-                entry.indexed.cancel(false);
+                entry.cancel();
             }
+        }
+
+        /**
+         * Wartet höchstens {@code timeoutMillis}, bis die ersten {@code count} Treffer verfügbar sind, also
+         * lexikalisch durchsuchbar im Rohindex (oder gescheitert, abgebrochen). Auf Passagen und Embeddings wartet das
+         * nicht; die laufen im Hintergrund weiter. Ohne Rohindex heißt verfügbar: aufbereitet.
+         *
+         * @param listener erfährt jeden verfügbar gewordenen Treffer (Anzahl bisher); darf {@code null} sein
+         * @return wie viele der ersten {@code count} verfügbar wurden
+         */
+        public int awaitAvailable(int count, long timeoutMillis, java.util.function.IntConsumer listener) {
+            List<Pending> first = new ArrayList<Pending>();
+            synchronized (this) {
+                first.addAll(pending.subList(0, Math.min(Math.max(0, count), pending.size())));
+            }
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMillis));
+            int available = 0;
+            for (Pending entry : first) {
+                long left = deadline - System.nanoTime();
+                try {
+                    if (Boolean.TRUE.equals(entry.available.get(Math.max(0, left), TimeUnit.NANOSECONDS))) {
+                        available++;
+                        if (listener != null) {
+                            listener.accept(available);
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (ExecutionException | CancellationException e) {
+                    // gescheitert oder abgebrochen: zählt als erledigt, nicht als verfügbar
+                } catch (TimeoutException e) {
+                    break;
+                }
+            }
+            return available;
         }
 
         /** Wie viele Treffer die Serie vorlädt. */
@@ -754,7 +1028,10 @@ public final class KnowledgePrefetchService {
         }
     }
 
-    /** Fenster, Worker und Cache wie MainframeMate ({@code confluencePrefetchMaxItems/Concurrency/CacheMaxMb}). */
+    /**
+     * Fenster, Worker und Cache wie MainframeMate ({@code confluencePrefetchMaxItems/Concurrency/CacheMaxMb}), dazu
+     * die getrennten Pools der zwei Ebenen: Rohindex-Worker, Aufbereitungs-Worker und parallele Embedding-Aufrufe.
+     */
     public static final class Settings {
 
         public static final int DEFAULT_MAX_ITEMS = 100;
@@ -763,21 +1040,46 @@ public final class KnowledgePrefetchService {
         public static final int MAX_CONCURRENCY = 8;
         public static final int DEFAULT_CACHE_MAX_MB = 50;
         public static final int CACHE_MAX_MB_LIMIT = 500;
+        /** Schreiber in den Rohindex ({@code knowledge.raw.workers}). */
+        public static final int DEFAULT_RAW_WORKERS = 2;
+        public static final int MAX_RAW_WORKERS = 8;
+        /** Dokumente, die gleichzeitig zerlegt und eingebettet werden ({@code knowledge.enrichment.workers}). */
+        public static final int DEFAULT_ENRICHMENT_WORKERS = 4;
+        public static final int MAX_ENRICHMENT_WORKERS = 16;
+        /** Gleichzeitige Aufrufe des Embedding-Endpunkts bei der Aufbereitung ({@code embedding.maxConcurrency}). */
+        public static final int DEFAULT_EMBEDDING_CONCURRENCY = 4;
+        public static final int MAX_EMBEDDING_CONCURRENCY = 32;
 
         private final int maxItems;
         private final int concurrency;
         private final int cacheMaxMb;
+        private final int rawWorkers;
+        private final int enrichmentWorkers;
+        private final int embeddingConcurrency;
 
-        private Settings(int maxItems, int concurrency, int cacheMaxMb) {
+        private Settings(int maxItems, int concurrency, int cacheMaxMb, int rawWorkers, int enrichmentWorkers,
+                         int embeddingConcurrency) {
             this.maxItems = maxItems;
             this.concurrency = concurrency;
             this.cacheMaxMb = cacheMaxMb;
+            this.rawWorkers = rawWorkers;
+            this.enrichmentWorkers = enrichmentWorkers;
+            this.embeddingConcurrency = embeddingConcurrency;
         }
 
-        /** Werte werden in ihre Grenzen gelegt (1–1000 Seiten, 1–8 Worker, 1–500 MB). */
+        /** Werte werden in ihre Grenzen gelegt (1–1000 Seiten, 1–8 Worker, 1–500 MB); Pools wie voreingestellt. */
         public static Settings of(int maxItems, int concurrency, int cacheMaxMb) {
+            return of(maxItems, concurrency, cacheMaxMb, DEFAULT_RAW_WORKERS, DEFAULT_ENRICHMENT_WORKERS,
+                    DEFAULT_EMBEDDING_CONCURRENCY);
+        }
+
+        /** Wie {@link #of(int, int, int)} samt Rohindex-, Aufbereitungs- und Embedding-Parallelität. */
+        public static Settings of(int maxItems, int concurrency, int cacheMaxMb, int rawWorkers,
+                                  int enrichmentWorkers, int embeddingConcurrency) {
             return new Settings(clamp(maxItems, 1, MAX_ITEMS_LIMIT), clamp(concurrency, 1, MAX_CONCURRENCY),
-                    clamp(cacheMaxMb, 1, CACHE_MAX_MB_LIMIT));
+                    clamp(cacheMaxMb, 1, CACHE_MAX_MB_LIMIT), clamp(rawWorkers, 1, MAX_RAW_WORKERS),
+                    clamp(enrichmentWorkers, 1, MAX_ENRICHMENT_WORKERS),
+                    clamp(embeddingConcurrency, 1, MAX_EMBEDDING_CONCURRENCY));
         }
 
         public static Settings defaults() {
@@ -793,7 +1095,7 @@ public final class KnowledgePrefetchService {
             return maxItems;
         }
 
-        /** Parallele Abrufe im Hintergrund. */
+        /** Parallele Abrufe aus den Quellen (Lade-Pool). */
         public int concurrency() {
             return concurrency;
         }
@@ -803,10 +1105,26 @@ public final class KnowledgePrefetchService {
             return cacheMaxMb;
         }
 
+        /** Threads, die geladene Seiten in den Rohindex schreiben. */
+        public int rawWorkers() {
+            return rawWorkers;
+        }
+
+        /** Dokumente, die gleichzeitig semantisch aufbereitet werden (Passagen, Embeddings, Index). */
+        public int enrichmentWorkers() {
+            return enrichmentWorkers;
+        }
+
+        /** Gleichzeitige Aufrufe des Embedding-Endpunkts bei der Aufbereitung. */
+        public int embeddingConcurrency() {
+            return embeddingConcurrency;
+        }
+
         @Override
         public String toString() {
             return "Settings{maxItems=" + maxItems + ", concurrency=" + concurrency + ", cacheMaxMb=" + cacheMaxMb
-                    + "}";
+                    + ", rawWorkers=" + rawWorkers + ", enrichmentWorkers=" + enrichmentWorkers
+                    + ", embeddingConcurrency=" + embeddingConcurrency + "}";
         }
     }
 }

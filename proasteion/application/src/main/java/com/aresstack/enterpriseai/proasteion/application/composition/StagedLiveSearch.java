@@ -1,33 +1,40 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPreparation;
+import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalProgress;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.application.config.LiveSearchConfig;
 
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
 /**
- * Live-Suche vor dem Retrieval des Chats, gestuft: Eine Suche wartet zuerst nur auf
- * {@link LiveSearchConfig#initialPages()} indexierte Treffer und erst dann, wenn die Evidenz nicht reicht
- * ({@link Stage#awaitMore()}), auf höchstens {@link LiveSearchConfig#maxPages()}. Die übrigen lädt der Vorlader im
- * Hintergrund weiter, ohne dass der Turn wartet. Die Grenzen werden je Suche gelesen (ohne Neustart).
+ * Live-Suche vor dem Retrieval des Chats, gestuft: Eine Suche wartet zuerst nur, bis
+ * {@link LiveSearchConfig#initialPages()} Treffer geladen und lokal durchsuchbar sind (Rohindex), und erst dann, wenn
+ * die Evidenz nicht reicht ({@link Stage#awaitMore()}), auf höchstens {@link LiveSearchConfig#maxPages()}. Auf
+ * Passagen und Embeddings wartet sie nie; die bereitet der Vorlader im Hintergrund auf, ebenso die übrigen Treffer.
+ * Die Grenzen werden je Suche gelesen (ohne Neustart).
  */
 final class StagedLiveSearch implements RetrievalPreparation {
 
-    /** Durchsucht die Quellen und wartet, bis die ersten {@code waitFor} Treffer indexiert sind. */
+    /** Durchsucht die Quellen und lädt die Treffer (Chat-Serie, vor dem übrigen Vorladen). */
     interface Searcher {
-        Found search(Collection<SourceAddress> sources, String query, int hitsPerSource, int waitFor);
+        Found search(Collection<SourceAddress> sources, String query, int hitsPerSource);
     }
 
-    /** Ergebnis einer Live-Suche, deren übrige Treffer noch indexiert werden. */
+    /** Ergebnis einer Live-Suche, deren Treffer noch geladen werden. */
     interface Found {
 
         int hits();
 
-        /** Wartet, bis die ersten {@code count} Treffer indexiert sind. */
-        void awaitIndexed(int count);
+        /**
+         * Wartet, bis die ersten {@code count} Treffer lokal durchsuchbar sind.
+         *
+         * @param listener erfährt jede verfügbar gewordene Seite (Anzahl bisher)
+         */
+        void awaitAvailable(int count, IntConsumer listener);
     }
 
     private final Supplier<LiveSearchConfig> limits;
@@ -44,13 +51,21 @@ final class StagedLiveSearch implements RetrievalPreparation {
     @Override
     public void prepare(String query, Collection<SourceAddress> sources) {
         LiveSearchConfig current = limits.get();
-        searcher.search(sources, query, current.hitsPerSource(), current.maxPages());
+        Found found = searcher.search(sources, query, current.hitsPerSource());
+        await(found, Math.min(found.hits(), current.maxPages()), RetrievalProgress.none());
     }
 
     @Override
     public Stage begin(String query, Collection<SourceAddress> sources) {
+        return begin(query, sources, RetrievalProgress.none());
+    }
+
+    @Override
+    public Stage begin(String query, Collection<SourceAddress> sources, final RetrievalProgress progress) {
         final LiveSearchConfig current = limits.get();
-        final Found found = searcher.search(sources, query, current.hitsPerSource(), current.initialPages());
+        final Found found = searcher.search(sources, query, current.hitsPerSource());
+        progress.liveHitsFound(found.hits());
+        await(found, Math.min(found.hits(), current.initialPages()), progress);
         if (found.hits() <= current.initialPages() || current.maxPages() <= current.initialPages()) {
             return Stage.done();
         }
@@ -59,8 +74,16 @@ final class StagedLiveSearch implements RetrievalPreparation {
             if (waited.getAndSet(true)) {
                 return false;
             }
-            found.awaitIndexed(current.maxPages());
+            await(found, Math.min(found.hits(), current.maxPages()), progress);
             return true;
         };
+    }
+
+    private static void await(Found found, final int count, final RetrievalProgress progress) {
+        if (count <= 0) {
+            return;
+        }
+        progress.pagesAvailable(0, count);
+        found.awaitAvailable(count, available -> progress.pagesAvailable(available, count));
     }
 }

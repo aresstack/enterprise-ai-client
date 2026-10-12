@@ -19,6 +19,14 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeRelationQu
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeRelationsPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSearchHit;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSemanticQuery;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSearchMode;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.IndexedResourceState;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeDocument;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeHit;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeIndexPort;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeQuery;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawTextWindows;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunk;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -56,6 +64,13 @@ import java.util.function.Supplier;
  * bekommt die ganze Anfrage. Kürzungen und ausgefallene Suchpfade meldet der {@link RetrievalObserver}
  * ({@link #withObserver}), damit sie im technischen Log stehen.
  *
+ * <p>Rohindex ({@link #withRawDocuments}): Geladene Seiten, die noch nicht (oder in anderer Fassung) semantisch
+ * aufbereitet sind, findet der Volltextpfad zusätzlich im {@link RawKnowledgeIndexPort}, je Seite mit ihren
+ * passendsten Textfenstern ({@link RetrievalSettings#rawWindows()}). Die Fenster stehen abwechselnd mit den
+ * Volltexttreffern der Passagen in der Volltextliste; ist eine Seite in dieser Fassung schon aufbereitet, zählen nur
+ * ihre Passagen. So ist eine neu gefundene Seite durchsuchbar, sobald sie geladen ist, ohne auf Passagenbildung und
+ * Embeddings zu warten.
+ *
  * <p>Blockiert für die Dauer von Embedding-Aufruf und Indexsuche; Aufrufer aus der Oberfläche rufen ihn nicht auf
  * dem Event-Thread auf. Zustandslos und threadsicher, soweit die Ports es sind.
  */
@@ -73,6 +88,8 @@ public final class RetrieveKnowledgeUseCase {
     private final KnowledgeRelationsPort relations;
     private final Supplier<RetrievalSettings> relationSettings;
     private final RetrievalObserver observer;
+    /** Rohindex der geladenen Seiten oder {@code null}. */
+    private final RawKnowledgeIndexPort raw;
 
     /**
      * @param index      der Wissensindex
@@ -106,6 +123,7 @@ public final class RetrieveKnowledgeUseCase {
         this.relations = null;
         this.relationSettings = null;
         this.observer = RetrievalObserver.none();
+        this.raw = null;
     }
 
     /**
@@ -128,10 +146,17 @@ public final class RetrieveKnowledgeUseCase {
         this.relations = null;
         this.relationSettings = null;
         this.observer = RetrievalObserver.none();
+        this.raw = null;
     }
 
     private RetrieveKnowledgeUseCase(RetrieveKnowledgeUseCase base, KnowledgeRelationsPort relations,
                                      Supplier<RetrievalSettings> relationSettings, RetrievalObserver observer) {
+        this(base, relations, relationSettings, observer, base.raw);
+    }
+
+    private RetrieveKnowledgeUseCase(RetrieveKnowledgeUseCase base, KnowledgeRelationsPort relations,
+                                     Supplier<RetrievalSettings> relationSettings, RetrievalObserver observer,
+                                     RawKnowledgeIndexPort raw) {
         this.index = base.index;
         this.embeddings = base.embeddings;
         this.space = base.space;
@@ -139,6 +164,18 @@ public final class RetrieveKnowledgeUseCase {
         this.relations = relations;
         this.relationSettings = relationSettings;
         this.observer = observer;
+        this.raw = raw;
+    }
+
+    /**
+     * Kopie, deren Volltextpfad zusätzlich im Rohindex sucht: geladene Seiten, deren aktuelle Fassung noch nicht
+     * semantisch aufbereitet ist, kommen mit ihren passendsten Textfenstern in die Treffer.
+     */
+    public RetrieveKnowledgeUseCase withRawDocuments(RawKnowledgeIndexPort raw) {
+        if (raw == null) {
+            throw new IllegalArgumentException("raw must not be null");
+        }
+        return new RetrieveKnowledgeUseCase(this, relations, relationSettings, observer, raw);
     }
 
     /** Kopie, die Kürzungen und ausgefallene Suchpfade an {@code observer} meldet. */
@@ -196,6 +233,13 @@ public final class RetrieveKnowledgeUseCase {
         }
         try {
             for (int i = 0; i < chunkIds.size(); i++) {
+                if (raw != null && RawTextWindows.isRawWindow(chunkIds.get(i))) {
+                    RetrievedChunk window = restoreWindow(chunkIds.get(i), 1.0 / (i + 1));
+                    if (window != null) {
+                        restored.add(window);
+                    }
+                    continue;
+                }
                 Optional<KnowledgeIndexEntry> entry = index.entry(space(), chunkIds.get(i));
                 if (entry.isPresent()) {
                     // Score fällt mit der Position: die Reihenfolge des früheren Kontextblocks bleibt.
@@ -207,6 +251,21 @@ public final class RetrieveKnowledgeUseCase {
             return new ArrayList<RetrievedChunk>();
         }
         return restored;
+    }
+
+    /** Ein Textfenster aus dem Rohindex, solange die Seite dort liegt; sonst {@code null}. */
+    private RetrievedChunk restoreWindow(KnowledgeChunkId chunkId, double score) {
+        Optional<RawKnowledgeDocument> document = raw.get(chunkId.resourceId());
+        if (!document.isPresent()) {
+            return null;
+        }
+        Optional<RawTextWindows.Window> window = RawTextWindows.restore(document.get().text(),
+                RawTextWindows.startOf(chunkId), current().rawWindowChars());
+        if (!window.isPresent()) {
+            return null;
+        }
+        return RetrievedChunk.restored(document.get().resource(), windowChunk(document.get().resource(),
+                chunkId, window.get().text()), score);
     }
 
     /** Sucht in allen Quellen. */
@@ -244,6 +303,7 @@ public final class RetrieveKnowledgeUseCase {
         if (current.keywordEnabled()) {
             activePaths++;
             steps.pathStarted(RetrievalPath.KEYWORD);
+            boolean passagesFailed = false;
             try {
                 keywordHits = index.keywordSearch(KnowledgeKeywordQuery.of(space(), query, current.keywordCandidates())
                         .restrictedTo(filter));
@@ -251,6 +311,20 @@ public final class RetrieveKnowledgeUseCase {
                 warnings.add(new RetrievalWarning(RetrievalPath.KEYWORD, "Volltextsuche fehlgeschlagen: "
                         + e.getMessage()));
                 lastFailure = e;
+                passagesFailed = true;
+            }
+            boolean rawFailed = raw == null;
+            if (raw != null) {
+                try {
+                    keywordHits = interleave(rawWindows(query, filter, current), keywordHits);
+                } catch (KnowledgeIndexException e) {
+                    warnings.add(new RetrievalWarning(RetrievalPath.KEYWORD, "Suche in den geladenen Seiten "
+                            + "fehlgeschlagen: " + e.getMessage()));
+                    lastFailure = e;
+                    rawFailed = true;
+                }
+            }
+            if (passagesFailed && rawFailed) {
                 failedPaths++;
             }
         }
@@ -331,6 +405,59 @@ public final class RetrieveKnowledgeUseCase {
         List<RetrievedChunk> expanded = new ArrayList<RetrievedChunk>(result.values());
         Collections.sort(expanded, RetrievedChunk.byFusedScore());
         return expanded;
+    }
+
+    /**
+     * Textfenster der geladenen Seiten zur Anfrage (BM25 im Rohindex), als Volltexttreffer. Seiten, deren aktuelle
+     * Fassung schon aufbereitet ist, fehlen hier: für sie sprechen ihre Passagen.
+     */
+    private List<KnowledgeSearchHit> rawWindows(String query, Collection<SourceAddress> filter,
+                                                RetrievalSettings current) {
+        List<RawKnowledgeHit> documents = raw.search(RawKnowledgeQuery.of(query, current.keywordCandidates(),
+                current.rawWindows(), current.rawWindowChars()).restrictedTo(filter));
+        List<KnowledgeSearchHit> hits = new ArrayList<KnowledgeSearchHit>();
+        for (RawKnowledgeHit document : documents) {
+            if (isPrepared(document)) {
+                continue;
+            }
+            for (RawTextWindows.Window window : document.windows()) {
+                KnowledgeChunkId id = RawTextWindows.chunkId(document.resource().id(), window);
+                hits.add(new KnowledgeSearchHit(document.resource(), windowChunk(document.resource(), id,
+                        window.text()), document.score(), KnowledgeSearchMode.KEYWORD));
+            }
+        }
+        return hits;
+    }
+
+    /** Ob die Seite in genau dieser Fassung (Inhalts-Hash) schon als Passagen im Index liegt. */
+    private boolean isPrepared(RawKnowledgeHit document) {
+        try {
+            Optional<IndexedResourceState> state = index.stateOf(space(), document.resource().id());
+            return state.isPresent() && document.contentHash().equals(state.get().contentHash());
+        } catch (KnowledgeIndexException e) {
+            return false;
+        }
+    }
+
+    private static KnowledgeChunk windowChunk(com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource resource,
+                                              KnowledgeChunkId id, String text) {
+        return new KnowledgeChunk(id, resource.sourceId(), Collections.<String>emptyList(), text,
+                QUERY_TOKENS.count(text));
+    }
+
+    /** Abwechselnd aus beiden Listen, je in ihrer Reihenfolge (Ränge beider Volltextpfade gleich gewichtet). */
+    private static List<KnowledgeSearchHit> interleave(List<KnowledgeSearchHit> first,
+                                                       List<KnowledgeSearchHit> second) {
+        List<KnowledgeSearchHit> merged = new ArrayList<KnowledgeSearchHit>(first.size() + second.size());
+        for (int i = 0; i < Math.max(first.size(), second.size()); i++) {
+            if (i < first.size()) {
+                merged.add(first.get(i));
+            }
+            if (i < second.size()) {
+                merged.add(second.get(i));
+            }
+        }
+        return merged;
     }
 
     /** Die Anfrage, höchstens {@link #MAX_QUERY_TOKENS} Token lang, an einer Wortgrenze gekürzt. */

@@ -8,7 +8,9 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.InMemoryRawKnowledgeIndex;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeIndexPort;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
 
@@ -38,6 +40,7 @@ public final class ApplicationPorts implements Closeable {
     private final EmbeddingPort embeddings;
     private final Supplier<EmbeddingModelIdentity> embeddingSpace;
     private final KnowledgeIndexPort index;
+    private final RawKnowledgeIndexPort rawIndex;
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
@@ -63,6 +66,7 @@ public final class ApplicationPorts implements Closeable {
         this.embeddings = builder.embeddings;
         this.embeddingSpace = builder.embeddingSpace;
         this.index = builder.index;
+        this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
@@ -115,6 +119,14 @@ public final class ApplicationPorts implements Closeable {
 
     public KnowledgeIndexPort index() {
         return index;
+    }
+
+    /**
+     * Rohindex der geladenen Seiten (sofort lexikalisch durchsuchbar, ohne Passagen und Embeddings); ohne eigenen
+     * einer im Speicher.
+     */
+    public RawKnowledgeIndexPort rawIndex() {
+        return rawIndex;
     }
 
     /**
@@ -218,6 +230,7 @@ public final class ApplicationPorts implements Closeable {
         private EmbeddingPort embeddings;
         private Supplier<EmbeddingModelIdentity> embeddingSpace;
         private KnowledgeIndexPort index;
+        private RawKnowledgeIndexPort rawIndex;
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
@@ -270,6 +283,11 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder index(KnowledgeIndexPort value) {
             this.index = value;
+            return this;
+        }
+
+        public Builder rawIndex(RawKnowledgeIndexPort value) {
+            this.rawIndex = value;
             return this;
         }
 

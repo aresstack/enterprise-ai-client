@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ConcurrencyLimitedEmbeddingPort;
+
 import com.aresstack.enterpriseai.astu.acropolis.navigation.BuildDocumentNavigationUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.navigation.ChatSectionLabeler;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
@@ -159,13 +162,19 @@ public final class CompositionRoot {
         // Zerlegung oder Embedding-Modell, wird neu verarbeitet, sonst nicht.
         final NlpModels nlpModels = NlpModels.inApplicationDirectory();
         final String passageLanguage = knowledge.passageLanguage();
-        this.indexing = new IndexKnowledgeUseCase(ports.index(), ports.embeddings(), ports.embeddingSpaceSource(),
+        // Die Aufbereitung läuft mit mehreren Workern im Hintergrund; wie viele Embedding-Aufrufe dabei gleichzeitig
+        // laufen, begrenzt embedding.maxConcurrency (je Aufruf gelesen). Das Anfrage-Embedding des Chats geht am
+        // Limit vorbei direkt an den Port und wartet nie hinter der Hintergrundarbeit.
+        final EmbeddingPort enrichmentEmbeddings = new ConcurrencyLimitedEmbeddingPort(ports.embeddings(),
+                () -> settings.current().knowledge().prefetch().embeddingConcurrency());
+        this.indexing = new IndexKnowledgeUseCase(ports.index(), enrichmentEmbeddings, ports.embeddingSpaceSource(),
                 new KnowledgeChunker(knowledge.chunking()), knowledge.embeddingBatchSize())
                 .withPassages(new SemanticPassageSplitter(new com.aresstack.enterpriseai.astu.acropolis.passage.PassageSegmentation(
-                        ports.embeddings(), new IndexSentenceSegmenter(
+                        enrichmentEmbeddings, new IndexSentenceSegmenter(
                                 nlpModels,
                                 NlpModels.textAnalysis(),
-                                knowledge.passageLanguage()))));
+                                knowledge.passageLanguage()),
+                        () -> settings.current().knowledge().embeddingBatchSize())));
         // Lesen lädt aus der Quelle, die die ID kennt (knowledge_read); das Gelesene kommt danach in den Index.
         // Gelesen wird nach corenth vermittelt: Tamias (Regel) → Chalcotheca (Archiv) → AcquisitionPort → Holkas-
         // Connector der Quelle; der Use Case fragt den Quellen-Port nicht mehr direkt.
@@ -180,25 +189,27 @@ public final class CompositionRoot {
         this.documents = new LoadKnowledgeDocumentUseCase(ports.sources())
                 .withReader(resourceDocuments).withCatalog(() -> liveSources);
         this.refresh = new RefreshKnowledgeSourceUseCase(indexing, ports.sources());
-        // Suche füllt den Index (MainframeMate): Quellen live durchsuchen, die Treffer lädt der Vorlader (Pool,
-        // Priority-Thread, eigener Index-Thread wie ConfluencePrefetchService) und indexiert nur neue oder geänderte
-        // (Revision, dann Inhalts-Hash). Kein Vollindex beim Start. Fenster, Worker und Cache gelten ohne Neustart.
-        this.prefetch = new KnowledgePrefetchService(indexing, resourceDocuments,
+        // Suche füllt den Index (MainframeMate) in zwei Ebenen: Quellen live durchsuchen, die Treffer lädt der
+        // Vorlader (Lade-Pool, Priority-Thread) und schreibt sie sofort in den Rohindex (Ebene A, durchsuchbar ohne
+        // Passagen und Embeddings); die Aufbereitungs-Worker zerlegen und betten nur neue oder geänderte ein
+        // (Revision, dann Inhalts-Hash; Ebene B im Hintergrund). Kein Vollindex beim Start. Alle Pools gelten ohne
+        // Neustart.
+        this.prefetch = new KnowledgePrefetchService(indexing, ports.rawIndex(), resourceDocuments,
                 () -> settings.current().knowledge().prefetch());
         this.searchIndexing = new SearchDrivenIndexingUseCase(prefetch);
         // Adaptiv (ein Evidenz-Bewerter je Kandidatenrunde, gestufte Live-Suche). Alle Grenzen (Quellen, Mindestzahl,
         // Nachsuchen, Live-Suche, Kandidaten) gelten ohne Neustart ab dem nächsten Turn; FollowUpResearch prüft hier
         // nur den Wissenskontext früherer Nachrichten, die Zahl der Nachsuchen kommt aus retrieval.maxFollowUps.
         StagedLiveSearch liveSearch = new StagedLiveSearch(() -> settings.current().knowledge().liveSearch(),
-                (sources, query, hitsPerSource, waitFor) -> {
+                (sources, query, hitsPerSource) -> {
                     List<KnowledgeSourcePort> chosen = new ArrayList<KnowledgeSourcePort>();
                     for (KnowledgeSourceRegistration registration : liveSources.registrations()) {
                         if (sources.isEmpty() || sources.contains(registration.sourceId())) {
                             chosen.add(registration.port());
                         }
                     }
-                    final SearchDrivenIndexingUseCase.Result result = searchIndexing.searchAndIndex(
-                            CHAT_PREFETCH_CHANNEL, chosen, query, hitsPerSource, waitFor);
+                    final SearchDrivenIndexingUseCase.Result result = searchIndexing.search(
+                            CHAT_PREFETCH_CHANNEL, chosen, query, hitsPerSource, true);
                     if (!result.failures().isEmpty()) {
                         LOG.info("Live-Suche für den Chat: " + result.failures());
                     }
@@ -209,12 +220,16 @@ public final class CompositionRoot {
                         }
 
                         @Override
-                        public void awaitIndexed(int count) {
-                            result.series().awaitIndexed(count, SearchDrivenIndexingUseCase.INDEX_WAIT_MILLIS);
+                        public void awaitAvailable(int count, java.util.function.IntConsumer listener) {
+                            result.series().awaitAvailable(count, SearchDrivenIndexingUseCase.INDEX_WAIT_MILLIS,
+                                    listener);
                         }
                     };
                 });
-        this.ragChat = new RagChatUseCase(chatService, retrieval, contextAssembler, liveSearch,
+        // Der Chat sucht zusätzlich im Rohindex: eine gerade geladene Seite ist mit ihren passendsten Textfenstern
+        // Kandidat für die Evidenzbewertung, bevor Passagen und Embeddings fertig sind.
+        this.ragChat = new RagChatUseCase(chatService, retrieval.withRawDocuments(ports.rawIndex()), contextAssembler,
+                liveSearch,
                 FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS),
                 settings.get(c -> c.knowledge().evidence()));
         this.sourceSelection = new KnowledgeSourceSelection();

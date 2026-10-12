@@ -93,6 +93,12 @@ public final class SettingsForm {
     private final String liveSearchHitsPerSource;
     private final String retrievalMaxFollowUps;
     private final boolean retrievalRerank;
+    private final String rawWorkers;
+    private final String enrichmentWorkers;
+    private final String embeddingConcurrency;
+    private final String embeddingBatchSize;
+    private final String rawWindows;
+    private final String rawWindowChars;
     private final Map<String, String> modelSelections;
     private final String localModelRoot;
 
@@ -151,6 +157,12 @@ public final class SettingsForm {
         this.liveSearchHitsPerSource = b.liveSearchHitsPerSource;
         this.retrievalMaxFollowUps = b.retrievalMaxFollowUps;
         this.retrievalRerank = b.retrievalRerank;
+        this.rawWorkers = b.rawWorkers;
+        this.enrichmentWorkers = b.enrichmentWorkers;
+        this.embeddingConcurrency = b.embeddingConcurrency;
+        this.embeddingBatchSize = b.embeddingBatchSize;
+        this.rawWindows = b.rawWindows;
+        this.rawWindowChars = b.rawWindowChars;
         this.modelSelections = Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.modelSelections));
         this.localModelRoot = b.localModelRoot;
     }
@@ -198,6 +210,12 @@ public final class SettingsForm {
                 .liveSearchHitsPerSource(liveSearchHitsPerSource)
                 .retrievalMaxFollowUps(retrievalMaxFollowUps)
                 .retrievalRerank(retrievalRerank)
+                .rawWorkers(rawWorkers)
+                .enrichmentWorkers(enrichmentWorkers)
+                .embeddingConcurrency(embeddingConcurrency)
+                .embeddingBatchSize(embeddingBatchSize)
+                .rawWindows(rawWindows)
+                .rawWindowChars(rawWindowChars)
                 .modelSelections(modelSelections)
                 .localModelRoot(localModelRoot);
     }
@@ -456,6 +474,36 @@ public final class SettingsForm {
         return retrievalRerank;
     }
 
+    /** Rohindex: Schreiber ({@code knowledge.raw.workers}). */
+    public String rawWorkers() {
+        return rawWorkers;
+    }
+
+    /** Aufbereitung: Dokumente gleichzeitig ({@code knowledge.enrichment.workers}). */
+    public String enrichmentWorkers() {
+        return enrichmentWorkers;
+    }
+
+    /** Aufbereitung: gleichzeitige Embedding-Aufrufe ({@code embedding.maxConcurrency}). */
+    public String embeddingConcurrency() {
+        return embeddingConcurrency;
+    }
+
+    /** Texte je Embedding-Aufruf ({@code knowledge.embeddingBatchSize}). */
+    public String embeddingBatchSize() {
+        return embeddingBatchSize;
+    }
+
+    /** Textfenster je geladener Seite ({@code retrieval.raw.windowsPerDocument}). */
+    public String rawWindows() {
+        return rawWindows;
+    }
+
+    /** Zeichen je Textfenster ({@code retrieval.raw.windowChars}). */
+    public String rawWindowChars() {
+        return rawWindowChars;
+    }
+
     /**
      * Modellauswahl der Kategorien ohne eigenes Feld (Schlüssel = Kategorieschlüssel wie {@code rerank},
      * {@code tts}; Wert {@code [<katalog>:]<modell>}). Chat und Embeddings stehen in {@link #chatModel()} und
@@ -538,6 +586,12 @@ public final class SettingsForm {
         private String liveSearchHitsPerSource = "10";
         private String retrievalMaxFollowUps = "2";
         private boolean retrievalRerank = true;
+        private String rawWorkers = "2";
+        private String enrichmentWorkers = "4";
+        private String embeddingConcurrency = "4";
+        private String embeddingBatchSize = "16";
+        private String rawWindows = "2";
+        private String rawWindowChars = "700";
         private final Map<String, String> modelSelections = new LinkedHashMap<String, String>();
         private String localModelRoot = "";
 
@@ -812,6 +866,36 @@ public final class SettingsForm {
 
         public Builder retrievalRerank(boolean value) {
             this.retrievalRerank = value;
+            return this;
+        }
+
+        public Builder rawWorkers(String value) {
+            this.rawWorkers = text(value);
+            return this;
+        }
+
+        public Builder enrichmentWorkers(String value) {
+            this.enrichmentWorkers = text(value);
+            return this;
+        }
+
+        public Builder embeddingConcurrency(String value) {
+            this.embeddingConcurrency = text(value);
+            return this;
+        }
+
+        public Builder embeddingBatchSize(String value) {
+            this.embeddingBatchSize = text(value);
+            return this;
+        }
+
+        public Builder rawWindows(String value) {
+            this.rawWindows = text(value);
+            return this;
+        }
+
+        public Builder rawWindowChars(String value) {
+            this.rawWindowChars = text(value);
             return this;
         }
 

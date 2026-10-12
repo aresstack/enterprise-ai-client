@@ -1,8 +1,12 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.InMemoryRawKnowledgeIndex;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexEntry;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawTextWindows;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RagTestData.ScriptedEmbeddingPort;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.chat.ChatFinishReason;
@@ -10,12 +14,20 @@ import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.chat.ChatRequest;
 import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 import com.aresstack.enterpriseai.astu.chat.ChatUsage;
+import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
 import com.aresstack.enterpriseai.chat.api.ChatTask;
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
+import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
+import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
+import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -28,6 +40,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -296,6 +310,80 @@ public class AdaptiveEvidenceTest {
         assertNull(evaluation.nextQuery());
         assertFalse(EvidenceEvaluator.parse("keine Ahnung", Collections.<String>emptySet(),
                 Collections.<String>emptyList()).isKnown());
+    }
+
+    /**
+     * Abnahme der zweistufigen Pipeline: bei leerem semantischen Index beantwortet der Chat „Was ist IAR?“ aus der
+     * gerade geladenen Seite (Rohindex, Textfenster), während Passagen und Embeddings noch hängen; die zweite
+     * gleiche Frage nutzt danach den semantischen Index.
+     */
+    @Test
+    public void simpleQuestionIsAnsweredBeforeTheSemanticPreparationAndTheNextTurnUsesIt() throws Exception {
+        String question = "Was ist IAR?";
+        DeterministicEmbeddingPort vectors = DeterministicEmbeddingPort.withDimension(16);
+        InMemoryKnowledgeIndex semantic = new InMemoryKnowledgeIndex();
+        InMemoryRawKnowledgeIndex raw = new InMemoryRawKnowledgeIndex();
+        final InMemoryKnowledgeSource wiki = new InMemoryKnowledgeSource("wiki")
+                .add("IAR", "IAR", "IAR ist ein Beispielsystem für Testzwecke. Es prüft Belege.")
+                .add("Kaffee", "Kaffee", "Kaffee gibt es im zweiten Stock.");
+        final CountDownLatch release = new CountDownLatch(1);
+        EmbeddingPort blocked = new EmbeddingPort() {
+            @Override
+            public EmbeddingModelIdentity modelIdentity() {
+                return vectors.modelIdentity();
+            }
+
+            @Override
+            public EmbeddingBatch embed(List<String> texts) {
+                try {
+                    release.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return vectors.embed(texts);
+            }
+        };
+        IndexKnowledgeUseCase enrichment = new IndexKnowledgeUseCase(semantic, blocked, vectors.modelIdentity(),
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+        final KnowledgePrefetchService prefetch = new KnowledgePrefetchService(enrichment, raw,
+                (owner, source, id) -> source.load(id), () -> KnowledgePrefetchService.Settings.of(5, 2, 10));
+        try {
+            KnowledgeResourceId iar = wiki.idOf("IAR");
+            final List<KnowledgePrefetchService.Candidate> found = Collections.singletonList(
+                    new KnowledgePrefetchService.Candidate(wiki, iar, wiki.load(iar).resource().revision()));
+            RetrievalPreparation live = (query, sources) ->
+                    prefetch.prefetch("chat", found, 0, true).awaitAvailable(1, 10_000L, count -> { });
+            KnowledgeResource page = wiki.load(iar).resource();
+            model.relevant(page).sufficientWith(page);
+            RagChatUseCase rag = new RagChatUseCase(chat,
+                    new RetrieveKnowledgeUseCase(semantic, vectors, vectors.modelIdentity(), null).withRawDocuments(raw),
+                    new PromptContextAssembler(ContextSettings.defaults()), live,
+                    FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS), EvidencePolicy::defaults);
+
+            RagChatTurn first = send(rag, chat.openConversation("System"), question);
+
+            assertEquals(1, first.sources().size());
+            assertEquals(iar, first.sources().get(0).resource().id());
+            assertTrue("Antwort aus dem Textfenster", model.lastAnswerSystem.contains("Beispielsystem"));
+            assertTrue(RawTextWindows.isRawWindow(first.sources().get(0).chunk().id()));
+            assertTrue("Embeddings noch nicht fertig",
+                    semantic.resourceIds(vectors.modelIdentity(), wiki.sourceId()).isEmpty());
+
+            release.countDown();
+            long deadline = System.currentTimeMillis() + 10_000L;
+            while (!semantic.resourceIds(vectors.modelIdentity(), wiki.sourceId()).contains(iar)) {
+                assertTrue("Aufbereitung fertig", System.currentTimeMillis() < deadline);
+                Thread.sleep(20);
+            }
+            RagChatTurn second = send(rag, chat.openConversation("System"), question);
+
+            assertEquals(iar, second.sources().get(0).resource().id());
+            assertFalse("zweiter Turn aus dem semantischen Index",
+                    RawTextWindows.isRawWindow(second.sources().get(0).chunk().id()));
+        } finally {
+            release.countDown();
+            prefetch.shutdown();
+        }
     }
 
     private RagChatTurn send(EvidencePolicy policy, ContextSettings context, RetrievalPreparation preparation)

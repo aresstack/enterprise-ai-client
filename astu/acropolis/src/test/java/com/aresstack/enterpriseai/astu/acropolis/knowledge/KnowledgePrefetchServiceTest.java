@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.InMemoryRawKnowledgeIndex;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
@@ -173,7 +174,7 @@ public class KnowledgePrefetchServiceTest {
         IndexKnowledgeUseCase slow = new IndexKnowledgeUseCase(new InMemoryKnowledgeIndex(), gated,
                 embeddings.modelIdentity(), new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
         prefetch = new KnowledgePrefetchService(slow, reader,
-                () -> KnowledgePrefetchService.Settings.of(5, 1, 10));
+                () -> KnowledgePrefetchService.Settings.of(5, 1, 10, 1, 1, 1));
         prefetch.indexNow(wiki.load(wiki.idOf("A")), 1L);
         waitUntil(() -> order.contains("Drucker")); // der Index-Thread steckt in A
         // B und C: der Aufrufer gibt nach 1 ms auf, beide warten danach in normaler Reihenfolge
@@ -199,6 +200,63 @@ public class KnowledgePrefetchServiceTest {
         first.get(10, TimeUnit.SECONDS);
         second.get(10, TimeUnit.SECONDS);
         assertEquals("eine Fassung, ein Auftrag", 1, prefetch.indexRunsForTest());
+    }
+
+    /** Embeddings, die erst nach {@link #release} antworten: die Aufbereitung hängt, solange der Test will. */
+    private IndexKnowledgeUseCase blockedEnrichment() {
+        com.aresstack.enterpriseai.embedding.api.EmbeddingPort gated =
+                new com.aresstack.enterpriseai.embedding.api.EmbeddingPort() {
+                    @Override
+                    public com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity modelIdentity() {
+                        return embeddings.modelIdentity();
+                    }
+
+                    @Override
+                    public com.aresstack.enterpriseai.embedding.api.EmbeddingBatch embed(List<String> texts) {
+                        try {
+                            release.await(10, TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        return embeddings.embed(texts);
+                    }
+                };
+        return new IndexKnowledgeUseCase(index, gated, embeddings.modelIdentity(),
+                new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+    }
+
+    @Test
+    public void loadedPagesAreSearchableRawBeforeTheirPassagesAndEmbeddingsExist() throws Exception {
+        InMemoryRawKnowledgeIndex raw = new InMemoryRawKnowledgeIndex();
+        prefetch = new KnowledgePrefetchService(blockedEnrichment(), raw, reader,
+                () -> KnowledgePrefetchService.Settings.of(5, 2, 10));
+        KnowledgePrefetchService.Series series = prefetch.prefetch("chat", candidates("A", "B"), 0, true);
+
+        long start = System.nanoTime();
+        int available = series.awaitAvailable(2, 10_000L, count -> { });
+
+        assertEquals(2, available);
+        assertTrue("wartet nicht auf die Embeddings",
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) < 5_000L);
+        assertEquals(2, raw.size());
+        assertTrue("noch keine Passagen im semantischen Index",
+                index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).isEmpty());
+        release.countDown();
+        waitUntil(() -> index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).size() == 2);
+    }
+
+    @Test
+    public void enrichmentOfDifferentPagesRunsInParallelUpToTheSetting() throws Exception {
+        prefetch = new KnowledgePrefetchService(blockedEnrichment(), reader,
+                () -> KnowledgePrefetchService.Settings.of(5, 1, 10, 1, 3, 3));
+        for (String key : new String[] {"A", "B", "C", "D"}) {
+            prefetch.indexNow(wiki.load(wiki.idOf(key)), 1L);
+        }
+
+        waitUntil(() -> prefetch.maxParallelRunsForTest() == 3);
+        release.countDown();
+        waitUntil(() -> index.resourceIds(embeddings.modelIdentity(), wiki.sourceId()).size() == 4);
+        assertEquals("nie mehr als eingestellt", 3, prefetch.maxParallelRunsForTest());
     }
 
     private static void waitUntil(java.util.function.BooleanSupplier condition) throws InterruptedException {

@@ -16,6 +16,9 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSearchHit;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSearchMode;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeSemanticQuery;
 
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeIndexPort;
+import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.anagraphai.LuceneRawKnowledgeIndex;
+
 import java.io.Closeable;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -58,6 +61,14 @@ public final class LuceneKnowledgeIndex implements KnowledgeIndexPort, Closeable
     private final LuceneTextIndex text;
     private final FileVectorIndex vectors;
     private boolean closed;
+
+    /**
+     * Öffnet den Rohindex der geladenen Seiten unter {@code <indexDirectory>/raw} (Lucene, BM25-Textfenster, ohne
+     * Embeddings). Der Rückgabewert ist {@link Closeable}; wer ihn öffnet, schließt ihn.
+     */
+    public static RawKnowledgeIndexPort openRaw(Path indexDirectory) {
+        return new LuceneRawKnowledgeIndex(indexDirectory);
+    }
 
     public LuceneKnowledgeIndex(Path indexDirectory) {
         if (indexDirectory == null) {
