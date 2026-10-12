@@ -41,11 +41,15 @@ public final class TurnDiagnosticsLog implements TurnAnalysisObserver, ToolActiv
 
     @Override
     public void planned(String userText, AnswerPlan turn, String block) {
+        if (!turn.isKnown() && !turn.failure().isEmpty()) {
+            // Always visible: the answer then runs without a plan. The reason holds no user text.
+            LOG.warning("Antwortplanung ohne Ergebnis, die Antwort entscheidet selbst: " + turn.failure());
+        }
         if (!enabled.getAsBoolean()) {
             return;
         }
         LOG.info("Antwortplan: " + turn + "\nAntwort des Modells: " + turn.raw() + "\nAn die Antwort:\n"
-                + (block == null ? "(kein Plan, es gilt die Analyse)" : block));
+                + (block == null ? "(kein Plan: " + turn.failure() + "; es gilt die Analyse)" : block));
     }
 
     @Override

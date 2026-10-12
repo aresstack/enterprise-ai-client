@@ -95,7 +95,14 @@ public final class FakeChatCompletionsServer implements AutoCloseable {
     private final CountDownLatch release = new CountDownLatch(1);
     private volatile List<String> scriptedDeltas = Arrays.asList("Antwort");
     private volatile boolean hangAfterDeltas;
+    /** How the system prompt of the answer planning request begins. */
+    static final String PLANNER_PROMPT_START = "Du planst die Antwort";
+    /** The default plan: search the internal knowledge with the message as it is. */
+    public static final String SEARCH_PLAN = "{\"intent\": \"QUESTION\", \"informationNeed\": \"INTERNAL_KNOWLEDGE\", "
+            + "\"confidence\": 0.9, \"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\"}";
+
     private volatile String asideAnswer;
+    private volatile String planAnswer = SEARCH_PLAN;
     private volatile int failStatus;
     private volatile String failBody = "";
     private final CountDownLatch firstDeltaSent = new CountDownLatch(1);
@@ -134,6 +141,15 @@ public final class FakeChatCompletionsServer implements AutoCloseable {
      */
     public FakeChatCompletionsServer answerAsidesWith(String content) {
         asideAnswer = content;
+        return this;
+    }
+
+    /**
+     * Answer the answer planning request with this plan; by default the plan searches the internal knowledge with the
+     * message itself, as a real model plans a factual question. {@link #answerAsidesWith} takes precedence.
+     */
+    public FakeChatCompletionsServer answerPlansWith(String content) {
+        planAnswer = content;
         return this;
     }
 
@@ -205,8 +221,13 @@ public final class FakeChatCompletionsServer implements AutoCloseable {
             return;
         }
         String aside = asideAnswer;
-        if (aside != null && body.has("stream") && !body.get("stream").getAsBoolean()) {
+        boolean nonStreaming = body.has("stream") && !body.get("stream").getAsBoolean();
+        if (aside != null && nonStreaming) {
             serveCompletion(exchange, aside);
+            return;
+        }
+        if (nonStreaming && new Recorded(null, null, body).systemContent().startsWith(PLANNER_PROMPT_START)) {
+            serveCompletion(exchange, planAnswer);
             return;
         }
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream");

@@ -4,8 +4,10 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
 import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.LinguisticFrame;
 import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.TransientTurnContextFactory;
+import com.aresstack.enterpriseai.astu.chat.ChatFinishReason;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
 import com.aresstack.enterpriseai.astu.chat.ChatRole;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 
@@ -17,8 +19,9 @@ import java.util.regex.Pattern;
 
 /**
  * Plan the answer in an aside request to the chat model (no tools, no streaming, not in the history): history, source,
- * the local analysis and the current message in, a JSON plan out. If the request fails or the plan is unreadable, the
- * turn continues without a plan ({@link AnswerPlan#isKnown()} {@code false}).
+ * the local analysis and the current message in, a JSON plan out. An unreadable answer gets one repair request asking
+ * for the JSON object alone. If the request fails or the plan stays unreadable, the turn continues without a plan
+ * ({@link AnswerPlan#isKnown()} {@code false}, {@link AnswerPlan#failure()} says why).
  */
 public final class ModelAnswerPlanningService implements AnswerPlanningService {
 
@@ -30,19 +33,27 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
     static final String INSTRUCTION = "Du planst die Antwort eines Assistenten, bevor er antwortet. Du beantwortest "
             + "die Nachricht nicht selbst und rufst keine Werkzeuge auf. Deine Aufgabe: Was wollte der Nutzer mit "
             + "seiner aktuellen Nachricht höchstwahrscheinlich sagen und erreichen, was braucht die Antwort dafür, und "
-            + "was ist der nächste Schritt? Berücksichtige den Verlauf (Bezüge wie es, das, dort), die Herkunft (ein "
-            + "Diktat kann Erkennungsfehler enthalten) und den Block <client-turn-analysis> als Hinweis zur Form der "
-            + "Nachricht, nicht als Wahrheit.\n"
+            + "was ist der nächste Schritt? Lies die Nachricht im Gespräch, nicht isoliert: Berücksichtige den "
+            + "Verlauf, vor allem die letzte Antwort des Assistenten, die Herkunft und den Block "
+            + "<client-turn-analysis> als Hinweis zur Form der Nachricht, nicht als Wahrheit.\n"
+            + "Bezieht sich die Nachricht auf etwas, das der Assistent gerade gesagt hat (die, das, eben, wie du "
+            + "gesagt hast, die genannten), sind die Bezugsobjekte die dort genannten Begriffe; löse den Bezug damit "
+            + "auf. Ein Diktat kann Erkennungsfehler enthalten: Ist ein Satz grammatisch auffällig oder passt ein Wort "
+            + "weder zur Nachricht noch zum Verlauf, rekonstruiere die wahrscheinlich gemeinte Nachricht aus dem "
+            + "Zusammenhang und behandle das auffällige Wort als vermutlichen Erkennungsfehler, nicht als neuen "
+            + "Begriff.\n"
             + "Antworte ausschließlich mit einem JSON-Objekt dieser Form:\n"
             + "{\"interpretedText\": \"\", \"intent\": \"QUESTION\", \"target\": \"\", \"targetKind\": \"NONE\", "
             + "\"informationNeed\": \"UNKNOWN\", \"organizationSpecificMeaningPossible\": false, "
-            + "\"asrErrorLikely\": false, \"corrections\": [{\"original\": \"\", \"interpretedAs\": \"\", "
+            + "\"asrErrorLikely\": false, \"referencesPreviousAnswer\": false, \"corrections\": [{\"original\": \"\", \"interpretedAs\": \"\", "
             + "\"reason\": \"\"}], \"ambiguity\": \"LOW\", \"confidence\": 0.0, \"nextAction\": \"ANSWER_DIRECTLY\", "
             + "\"knowledgeQuery\": \"\", \"clarificationQuestion\": \"\"}\n"
             + "- interpretedText: die wahrscheinlich gemeinte Nachricht. Korrigiere nur plausible Tipp- oder "
             + "Erkennungsfehler und löse Bezüge aus dem Verlauf auf; sonst übernimm sie unverändert. Erfinde nichts "
             + "hinzu.\n"
             + "- corrections: nur tatsächlich geänderte Stellen, sonst [].\n"
+            + "- referencesPreviousAnswer: true, wenn die Nachricht sich auf Begriffe oder Aussagen der letzten "
+            + "Antwort des Assistenten bezieht.\n"
             + "- intent: GREETING, SMALL_TALK, QUESTION, REQUEST_DEFINITION, REQUEST_EXPLANATION, REQUEST_SEARCH, "
             + "TASK, ASSERTION, FEEDBACK oder UNKNOWN.\n"
             + "- target und targetKind: worum es geht; targetKind ist ACRONYM, IDENTIFIER, TERM, "
@@ -69,8 +80,12 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
             + "kleinen Unsicherheit. clarificationQuestion ist dann eine kurze, konkrete Rückfrage an den Nutzer in "
             + "seiner Sprache, sonst \"\".\n"
             + "- knowledgeQuery: bei SEARCH_INTERNAL_KNOWLEDGE eine Suchanfrage in wenigen Stichworten: den Begriff "
-            + "unverändert, Bezüge aufgelöst, Erkennungsfehler korrigiert, ohne Füllwörter. Sonst \"\". Nie ein Wort, "
-            + "das du für einen Erkennungsfehler hältst.";
+            + "unverändert, Bezüge aufgelöst (bei einem Bezug auf die letzte Antwort die dort genannten Begriffe), "
+            + "Erkennungsfehler korrigiert, ohne Füllwörter. Sonst \"\". Nie ein Wort, das du für einen "
+            + "Erkennungsfehler hältst.";
+
+    static final String REPAIR = "Deine Antwort war kein lesbares JSON-Objekt. Antworte jetzt ausschließlich mit dem "
+            + "JSON-Objekt in der beschriebenen Form, ohne weiteren Text.";
 
     private static final Pattern NUMBER = Pattern.compile("-?\\d+(?:\\.\\d+)?");
     private static final Pattern OBJECT = Pattern.compile("\\{[^{}]*\\}");
@@ -91,16 +106,38 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
     @Override
     public AnswerPlan plan(ConversationContext conversationContext, UserMessage userMessage,
                            LinguisticFrame linguisticFrame) {
-        String verdict;
+        List<ChatMessage> request = request(conversationContext, userMessage,
+                linguisticFrame == null ? null : analysis.create(linguisticFrame));
+        ChatResponse response;
         try {
-            verdict = chat.completeAside(request(conversationContext, userMessage,
-                    linguisticFrame == null ? null : analysis.create(linguisticFrame)), options).content();
+            response = chat.completeAside(request, options);
         } catch (ChatCompletionException e) {
-            return AnswerPlan.unknown(userMessage.text(), userMessage.origin());
+            return AnswerPlan.failed(userMessage.text(), userMessage.origin(), "request failed: " + e.kind());
         } catch (RuntimeException e) {
-            return AnswerPlan.unknown(userMessage.text(), userMessage.origin());
+            return AnswerPlan.failed(userMessage.text(), userMessage.origin(),
+                    "request failed: " + e.getClass().getSimpleName());
         }
-        return parse(userMessage, verdict);
+        AnswerPlan plan = parse(userMessage, response.content(), response.finishReason());
+        if (plan.isKnown()) {
+            return plan;
+        }
+        // The model answered, but not with a readable plan: ask once more for the JSON object alone.
+        List<ChatMessage> repair = new ArrayList<ChatMessage>(request);
+        repair.add(ChatMessage.assistant(response.content() == null ? "" : response.content()));
+        repair.add(ChatMessage.user(REPAIR));
+        ChatResponse repaired;
+        try {
+            repaired = chat.completeAside(repair, options);
+        } catch (ChatCompletionException e) {
+            return AnswerPlan.failed(userMessage.text(), userMessage.origin(),
+                    plan.failure() + "; repair request failed: " + e.kind());
+        } catch (RuntimeException e) {
+            return AnswerPlan.failed(userMessage.text(), userMessage.origin(),
+                    plan.failure() + "; repair request failed: " + e.getClass().getSimpleName());
+        }
+        AnswerPlan second = parse(userMessage, repaired.content(), repaired.finishReason());
+        return second.isKnown() ? second : AnswerPlan.failed(userMessage.text(), userMessage.origin(),
+                plan.failure() + "; after repair: " + second.failure());
     }
 
     static List<ChatMessage> request(ConversationContext context, UserMessage message, String analysisBlock) {
@@ -114,6 +151,12 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
         if (shown.size() > HISTORY_MESSAGES) {
             shown = shown.subList(shown.size() - HISTORY_MESSAGES, shown.size());
         }
+        // The latest answer of the assistant is the most likely referent of the message: it goes in whole.
+        ChatMessage latest = null;
+        if (!shown.isEmpty() && shown.get(shown.size() - 1).role() == ChatRole.ASSISTANT) {
+            latest = shown.get(shown.size() - 1);
+            shown = shown.subList(0, shown.size() - 1);
+        }
         if (!shown.isEmpty()) {
             text.append("Verlauf:\n");
             for (ChatMessage entry : shown) {
@@ -121,6 +164,10 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
                         .append(shorten(entry.content())).append('\n');
             }
             text.append('\n');
+        }
+        if (latest != null) {
+            text.append("Letzte Antwort des Assistenten (vollständig):\n").append(latest.content().trim())
+                    .append("\n\n");
         }
         text.append("Herkunft der aktuellen Nachricht: ")
                 .append(message.origin() == MessageOrigin.SPEECH_TRANSCRIPT ? "SPEECH (Diktat)" : "TEXT (getippt)")
@@ -136,19 +183,27 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
     }
 
     static AnswerPlan parse(UserMessage message, String verdict) {
-        if (verdict == null) {
-            return AnswerPlan.unknown(message.text(), message.origin());
+        return parse(message, verdict, ChatFinishReason.STOP);
+    }
+
+    /** Read the plan; an unreadable answer yields an unknown plan whose failure describes its shape, not its text. */
+    static AnswerPlan parse(UserMessage message, String verdict, ChatFinishReason finish) {
+        if (verdict == null || verdict.trim().isEmpty()) {
+            return AnswerPlan.failed(message.text(), message.origin(), "empty answer (finish " + finish + ")");
         }
         int start = verdict.indexOf('{');
         int end = verdict.lastIndexOf('}');
         if (start < 0 || end <= start) {
-            return AnswerPlan.unknown(message.text(), message.origin());
+            return AnswerPlan.failed(message.text(), message.origin(), "no JSON object in " + verdict.length()
+                    + " characters (finish " + finish + ")");
         }
         String json = verdict.substring(start, end + 1);
-        String intent = string(json, "intent");
+        String intent = first(string(json, "intent"), string(json, "interpretedIntent"));
         String need = string(json, "informationNeed");
-        if (intent == null && need == null && string(json, "nextAction") == null) {
-            return AnswerPlan.unknown(message.text(), message.origin());
+        String next = string(json, "nextAction");
+        if (intent == null && need == null && next == null) {
+            return AnswerPlan.failed(message.text(), message.origin(), "JSON without intent, informationNeed or "
+                    + "nextAction in " + verdict.length() + " characters (finish " + finish + ")");
         }
         AnswerPlan.Builder turn = AnswerPlan.builder(message.text(), message.origin())
                 .known(true)
@@ -160,11 +215,12 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
                 .informationNeed("NONE".equalsIgnoreCase(need) ? InformationNeed.NO_INFORMATION_NEEDED
                         : constant(InformationNeed.class, need, InformationNeed.UNKNOWN))
                 .organizationSpecificMeaningPossible(bool(json, "organizationSpecificMeaningPossible"))
-                .likelySpeechRecognitionError(bool(json, "asrErrorLikely"))
+                .likelySpeechRecognitionError(bool(json, "asrErrorLikely") || bool(json, "possibleAsrCorrection"))
+                .referencesPreviousAnswer(bool(json, "referencesPreviousAnswer"))
                 .ambiguity(constant(Ambiguity.class, string(json, "ambiguity"), Ambiguity.UNKNOWN))
                 .confidence(number(json, "confidence"))
                 .knowledgeQuery(oneLine(string(json, "knowledgeQuery")))
-                .nextAction(constant(NextAction.class, string(json, "nextAction"), NextAction.UNKNOWN))
+                .nextAction(constant(NextAction.class, next, NextAction.UNKNOWN))
                 .clarificationQuestion(oneLine(string(json, "clarificationQuestion")));
         Matcher corrections = Pattern.compile("\"corrections\"\\s*:\\s*\\[(.*?)\\]", Pattern.DOTALL).matcher(json);
         if (corrections.find()) {
@@ -179,6 +235,10 @@ public final class ModelAnswerPlanningService implements AnswerPlanningService {
             }
         }
         return turn.build();
+    }
+
+    private static String first(String value, String fallback) {
+        return value != null ? value : fallback;
     }
 
     private static String string(String json, String name) {

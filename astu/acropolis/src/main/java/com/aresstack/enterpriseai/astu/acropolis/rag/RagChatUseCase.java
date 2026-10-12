@@ -314,7 +314,8 @@ public final class RagChatUseCase {
         ConversationKnowledgeContext prior = followUps.isEnabled() ? contexts.get(id) : null;
         List<String> priorQueries = Collections.emptyList();
         int reused = 0;
-        if (reading.planned() && !needsKnowledge(reading.answerPlan, policy)) {
+        // The plan is the only decision before the answer: without a usable plan the answer decides with its tools.
+        if (reading.planRan() && !needsKnowledge(reading.answerPlan, policy)) {
             return withoutSearch(id, userText, options, listener, extraContext, via, progress);
         }
         if (prior != null && !prior.isEmpty()) {
@@ -578,7 +579,8 @@ public final class RagChatUseCase {
         List<RetrievedChunk> carried = Collections.emptyList();
         int reused = 0;
         ConversationKnowledgeContext prior = contexts.get(id);
-        if (reading.planned() && !needsKnowledge(reading.answerPlan, planning)) {
+        // The plan is the only decision before the answer: without a usable plan the answer decides with its tools.
+        if (reading.planRan() && !needsKnowledge(reading.answerPlan, planning)) {
             return withoutSearch(id, userText, options, listener, extraContext, via, progress);
         }
         if (prior != null && !prior.isEmpty()) {
@@ -885,6 +887,11 @@ public final class RagChatUseCase {
 
         boolean planned() {
             return answerPlan != null && answerPlan.isKnown();
+        }
+
+        /** Whether the planning step ran for this turn, whether or not it produced a plan. */
+        boolean planRan() {
+            return answerPlan != null;
         }
 
         /** Whether the plan asks the user back instead of answering. */

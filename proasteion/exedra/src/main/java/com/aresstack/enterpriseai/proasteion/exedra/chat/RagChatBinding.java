@@ -890,16 +890,6 @@ public final class RagChatBinding implements ChatShellActions {
             }
 
             @Override
-            public void searchSkipped() {
-                listener.onUi(() -> {
-                    ChatResearchCard card = request.card;
-                    if (card != null && card.isOpen() && !request.cancelRequested) {
-                        card.skipped();
-                    }
-                });
-            }
-
-            @Override
             public void reusingSources(final int sources) {
                 card(card -> card.step(String.format(Locale.ROOT, REUSING_SOURCES_ACTIVITY, sources)));
             }

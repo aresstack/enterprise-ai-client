@@ -265,7 +265,7 @@ public final class CompositionRoot {
         this.ragChat = new RagChatUseCase(chatService, retrieval.withRawDocuments(ports.rawIndex()), contextAssembler,
                 liveSearch,
                 FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS),
-                settings.get(c -> c.knowledge().evidence()), RetrievalTriage.byModel(),
+                settings.get(c -> c.knowledge().evidence()), RetrievalTriage.off(),
                 new ModelLinguisticAnalyzer(NlpModels.textAnalysis(), passageLanguage), turnDiagnostics,
                 () -> settings.current().chat().answerPlanning());
         this.sourceSelection = new KnowledgeSourceSelection();

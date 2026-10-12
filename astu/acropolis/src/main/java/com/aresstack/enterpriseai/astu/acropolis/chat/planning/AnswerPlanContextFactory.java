@@ -30,6 +30,9 @@ public final class AnswerPlanContextFactory {
         for (InterpretationHint hint : turn.hints()) {
             block.append("correction: ").append(hint).append('\n');
         }
+        if (turn.referencesPreviousAnswer()) {
+            block.append("refers-to-previous-answer: yes\n");
+        }
         block.append("intent: ").append(turn.intent()).append('\n');
         if (!turn.target().isEmpty()) {
             block.append("target: ").append(oneLine(turn.target())).append(" (").append(turn.targetKind())

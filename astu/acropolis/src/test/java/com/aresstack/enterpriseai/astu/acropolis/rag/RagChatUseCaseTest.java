@@ -22,6 +22,8 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.SentenceType;
 import com.aresstack.enterpriseai.astu.acropolis.chat.linguistics.TurnAnalysisObserver;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlan;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
+import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
+import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import org.junit.Test;
 
@@ -1008,21 +1010,127 @@ public class RagChatUseCaseTest {
         assertEquals(Arrays.asList("planning", "SEARCH_INTERNAL_KNOWLEDGE", "search QZX"), steps);
     }
 
-    /** An unreadable reading changes nothing: the triage decides as before, and the answer gets no understanding. */
+    /**
+     * Regression: a garbled dictation that refers to the previous answer. The planner sees the whole previous answer
+     * with its abbreviations, the dictation flag and the analysis; its plan searches the terms named there, never the
+     * misrecognised word, and the answer learns that the message refers to the previous answer.
+     */
     @Test
-    public void anUnreadableReadingFallsBackToTheTriage() throws Exception {
+    public void aGarbledDictationAboutThePreviousAnswerSearchesTheTermsNamedThere() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        StringBuilder previous = new StringBuilder("QZX verbindet NIZZA mit mehreren "
+                + "Komponenten.");
+        while (previous.length() < 2500) {
+            previous.append(" Die Daten laufen über mehrere Stufen der Verarbeitung.");
+        }
+        previous.append(" Am Ende gehen sie an die Komponenten KLV und BRX.");
+        chatPort.enqueueAnswer("{\"intent\": \"REQUEST_DEFINITION\", \"confidence\": 0.9, "
+                + "\"nextAction\": \"ANSWER_DIRECTLY\"}");
+        chatPort.enqueueAnswer(previous.toString());
+        RagChatUseCase planning = withPlanning(null, null);
+        awaitDone(planning.send(id, "Was ist QZX?", RagOptions.disabled(), null, listener(), null, null,
+                RetrievalProgress.none(), MessageOrigin.TYPED));
+
+        chatPort.enqueueAnswer("{\"interpretedText\": \"Was sind das für Abkürzungen, die du eben genannt hast?\", "
+                + "\"intent\": \"REQUEST_DEFINITION\", \"targetKind\": \"CONVERSATION_REFERENCE\", "
+                + "\"informationNeed\": \"INTERNAL_KNOWLEDGE\", \"asrErrorLikely\": true, "
+                + "\"referencesPreviousAnswer\": true, \"corrections\": [{\"original\": \"Meta\", "
+                + "\"interpretedAs\": \"eben\", \"reason\": \"passt nicht zum Satz\"}], \"confidence\": 0.85, "
+                + "\"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\", \"knowledgeQuery\": \"NIZZA KLV BRX\"}");
+        chatPort.enqueueAnswer("NIZZA ist ...");
+        String dictation = "Als sind das jetzt wieder für Abkürzung, wie du Meta genannt hast.";
+        RagChatTurn turn = planning.send(id, dictation, RagOptions.enabled(), null, listener(), null, null,
+                RetrievalProgress.none(), MessageOrigin.SPEECH_TRANSCRIPT);
+        awaitDone(turn);
+
+        List<ChatMessage> plan = chatPort.requests().get(2).messages();
+        assertTrue(plan.get(0).content(), plan.get(0).content().contains("vor allem die letzte Antwort"));
+        String seen = plan.get(1).content();
+        assertTrue(seen, seen.contains("Letzte Antwort des Assistenten (vollständig):"));
+        assertTrue("the whole previous answer, with the terms at its end", seen.contains("Komponenten KLV und BRX."));
+        assertTrue(seen, seen.contains("NIZZA"));
+        assertTrue(seen, seen.contains("SPEECH (Diktat)"));
+        assertTrue(seen, seen.contains("Aktuelle Nachricht: " + dictation));
+        assertEquals(Collections.singletonList("NIZZA KLV BRX"), turn.queries());
+        for (String query : turn.queries()) {
+            assertFalse("never the misrecognised word: " + query, query.contains("Meta"));
+        }
+        String answer = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(answer, answer.contains("refers-to-previous-answer: yes"));
+        assertTrue(answer, answer.contains("likely-asr-error: yes"));
+        assertTrue(answer, answer.contains("correction: \"Meta\" -> \"eben\""));
+        assertTrue(answer, answer.contains("original-user-message: " + dictation));
+    }
+
+    /**
+     * The plan is the only decision before the answer: an unreadable plan gets one repair request, then the answer
+     * decides alone with the original and the analysis; no triage, no search, and the reason reaches the observer.
+     */
+    @Test
+    public void anUnreadablePlanLeavesTheDecisionToTheAnswerWithoutTriage() throws Exception {
+        final List<AnswerPlan> plans = new ArrayList<AnswerPlan>();
         ChatConversationId id = chat.openConversation();
         chatPort.enqueueAnswer("Das kann ich nicht sagen.");
-        chatPort.enqueueAnswer("{\"search\": false}");
+        chatPort.enqueueAnswer("Immer noch nicht.");
+        chatPort.enqueueAnswer("Hallo!");
+
+        RagChatTurn turn = withPlanning(null, new TurnAnalysisObserver() {
+            @Override
+            public void analyzed(String userText, MessageOrigin origin, LinguisticFrame frame, String block) {
+            }
+
+            @Override
+            public void planned(String userText, AnswerPlan plan, String block) {
+                plans.add(plan);
+            }
+        }).send(id, "Hallo", RagOptions.enabled(), null, listener(), null, null, RetrievalProgress.none(),
+                MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertEquals("plan, repair, answer", 3, chatPort.requests().size());
+        List<ChatMessage> repair = chatPort.requests().get(1).messages();
+        assertTrue(repair.get(repair.size() - 1).content().startsWith("Deine Antwort war kein lesbares JSON"));
+        for (int i = 0; i < 2; i++) {
+            assertFalse("no triage request", chatPort.requests().get(i).messages().get(0).content()
+                    .startsWith("Du entscheidest für einen Wissens-Chat"));
+        }
+        assertFalse(turn.retrievalRequested());
+        assertFalse(chatPort.lastRequest().messages().get(0).content().contains("<client-answer-plan>"));
+        assertEquals(1, plans.size());
+        assertFalse(plans.get(0).isKnown());
+        assertTrue(plans.get(0).failure(), plans.get(0).failure().contains("no JSON object"));
+        assertFalse("the reason holds no user text", plans.get(0).failure().contains("Hallo"));
+    }
+
+    /** A failed planning request is not repeated and not replaced by the triage: the answer decides alone. */
+    @Test
+    public void aFailedPlanningRequestLeavesTheDecisionToTheAnswer() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueError(new ChatCompletionException(ChatErrorKind.TRANSPORT, "connection reset"));
         chatPort.enqueueAnswer("Hallo!");
 
         RagChatTurn turn = withPlanning(null, null).send(id, "Hallo", RagOptions.enabled(), null, listener(),
                 null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
         awaitDone(turn);
 
-        assertEquals(3, chatPort.requests().size());
+        assertEquals("failed plan, answer", 2, chatPort.requests().size());
         assertFalse(turn.retrievalRequested());
-        assertFalse(chatPort.lastRequest().messages().get(0).content().contains("<client-answer-plan>"));
+    }
+
+    /** A plan that only arrives after the repair request counts like any plan. */
+    @Test
+    public void aRepairedPlanIsUsed() throws Exception {
+        ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("Ich würde suchen.");
+        chatPort.enqueueAnswer("{\"intent\": \"QUESTION\", \"confidence\": 0.9, "
+                + "\"nextAction\": \"SEARCH_INTERNAL_KNOWLEDGE\", \"knowledgeQuery\": \"" + QUESTION + "\"}");
+        chatPort.enqueueAnswer("Mit apt.");
+
+        RagChatTurn turn = withPlanning(null, null).send(id, "wie installier ich jawa unter linux",
+                RagOptions.enabled(), null, listener(), null, null, RetrievalProgress.none(), MessageOrigin.TYPED);
+        awaitDone(turn);
+
+        assertEquals(Collections.singletonList(QUESTION), turn.queries());
     }
 
     private RagChatUseCase withPlanning(LinguisticAnalyzer analyzer, TurnAnalysisObserver observer) {

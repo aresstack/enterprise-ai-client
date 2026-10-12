@@ -23,6 +23,7 @@ public final class AnswerPlan {
     private final InformationNeed informationNeed;
     private final boolean organizationSpecificMeaningPossible;
     private final boolean likelySpeechRecognitionError;
+    private final boolean referencesPreviousAnswer;
     private final Ambiguity ambiguity;
     private final double confidence;
     private final String knowledgeQuery;
@@ -30,6 +31,7 @@ public final class AnswerPlan {
     private final String clarificationQuestion;
     private final List<InterpretationHint> hints;
     private final String raw;
+    private final String failure;
 
     private AnswerPlan(Builder b) {
         this.known = b.known;
@@ -43,6 +45,7 @@ public final class AnswerPlan {
         this.informationNeed = b.informationNeed == null ? InformationNeed.UNKNOWN : b.informationNeed;
         this.organizationSpecificMeaningPossible = b.organizationSpecificMeaningPossible;
         this.likelySpeechRecognitionError = b.likelySpeechRecognitionError;
+        this.referencesPreviousAnswer = b.referencesPreviousAnswer;
         this.ambiguity = b.ambiguity == null ? Ambiguity.UNKNOWN : b.ambiguity;
         this.confidence = Math.max(0, Math.min(1, b.confidence));
         this.knowledgeQuery = b.knowledgeQuery == null ? "" : b.knowledgeQuery.trim();
@@ -50,15 +53,25 @@ public final class AnswerPlan {
         this.clarificationQuestion = b.clarificationQuestion == null ? "" : b.clarificationQuestion.trim();
         this.hints = Collections.unmodifiableList(new ArrayList<InterpretationHint>(b.hints));
         this.raw = b.raw == null ? "" : b.raw;
+        this.failure = b.failure == null ? "" : b.failure;
     }
 
     public static Builder builder(String originalText, MessageOrigin source) {
         return new Builder(originalText, source);
     }
 
-    /** No reading obtained (step off, request failed, verdict unreadable). */
+    /** No plan obtained (step off, request failed, verdict unreadable). */
     public static AnswerPlan unknown(String originalText, MessageOrigin source) {
         return new Builder(originalText, source).build();
+    }
+
+    /**
+     * No plan obtained, with the reason for the diagnostic log.
+     *
+     * @param failure why there is no plan, without the user's text (e.g. the error kind or the shape of the answer)
+     */
+    public static AnswerPlan failed(String originalText, MessageOrigin source, String failure) {
+        return new Builder(originalText, source).failure(failure).build();
     }
 
     public boolean isKnown() {
@@ -107,6 +120,11 @@ public final class AnswerPlan {
         return likelySpeechRecognitionError;
     }
 
+    /** Whether the message refers to terms or statements of the latest answer of the assistant. */
+    public boolean referencesPreviousAnswer() {
+        return referencesPreviousAnswer;
+    }
+
     public Ambiguity ambiguity() {
         return ambiguity;
     }
@@ -149,11 +167,16 @@ public final class AnswerPlan {
         return raw;
     }
 
+    /** Why no plan was obtained, {@code ""} for a plan or when the step did not run; never contains the user's text. */
+    public String failure() {
+        return failure;
+    }
+
     @Override
     public String toString() {
         return "AnswerPlan[known=" + known + ", interpreted=" + interpretedText + ", intent=" + intent
                 + ", target=" + target + " (" + targetKind + "), need=" + informationNeed + ", orgSpecific="
-                + organizationSpecificMeaningPossible + ", asr=" + likelySpeechRecognitionError + ", ambiguity="
+                + organizationSpecificMeaningPossible + ", asr=" + likelySpeechRecognitionError + ", previousAnswer=" + referencesPreviousAnswer + ", ambiguity="
                 + ambiguity + ", confidence=" + confidence + ", query=" + knowledgeQuery + ", next=" + nextAction + ", clarification=" + clarificationQuestion
                 + ", hints=" + hints + "]";
     }
@@ -170,6 +193,7 @@ public final class AnswerPlan {
         private InformationNeed informationNeed;
         private boolean organizationSpecificMeaningPossible;
         private boolean likelySpeechRecognitionError;
+        private boolean referencesPreviousAnswer;
         private Ambiguity ambiguity;
         private double confidence;
         private String knowledgeQuery;
@@ -177,6 +201,7 @@ public final class AnswerPlan {
         private String clarificationQuestion;
         private final List<InterpretationHint> hints = new ArrayList<InterpretationHint>();
         private String raw;
+        private String failure;
 
         private Builder(String originalText, MessageOrigin source) {
             this.originalText = originalText;
@@ -219,6 +244,11 @@ public final class AnswerPlan {
             return this;
         }
 
+        public Builder referencesPreviousAnswer(boolean value) {
+            referencesPreviousAnswer = value;
+            return this;
+        }
+
         public Builder ambiguity(Ambiguity value) {
             ambiguity = value;
             return this;
@@ -253,6 +283,11 @@ public final class AnswerPlan {
 
         public Builder raw(String value) {
             raw = value;
+            return this;
+        }
+
+        public Builder failure(String value) {
+            failure = value;
             return this;
         }
 

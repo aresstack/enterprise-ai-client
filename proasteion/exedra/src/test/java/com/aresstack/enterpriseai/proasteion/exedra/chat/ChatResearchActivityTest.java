@@ -334,6 +334,17 @@ public class ChatResearchActivityTest {
         List<String> states = shell.recorder.textsOf(shell.recorder.addedActivities.get(2));
         assertTrue(states.toString(), containsFragment(states, "Suche 1 / 1: „Kündigungsfrist“"));
         assertEquals("plan and answer, twice", 4, port.requests().size());
+
+        // Without a readable plan the answer decides alone: no triage request, no research card.
+        port.enqueueAnswer("Das kann ich nicht sagen.");
+        port.enqueueAnswer("Immer noch nicht.");
+        port.enqueueAnswer("Drei Monate.");
+        send(shell, "Und die Probezeit?");
+        awaitIdle(shell.model);
+
+        assertEquals(shell.recorder.addedActivities.toString(), 4, shell.recorder.addedActivities.size());
+        assertEquals(RagChatBinding.PLANNING_ACTIVITY, shell.recorder.addedActivities.get(3).getActivityTitle());
+        assertEquals("plan, repair, answer: no triage", 7, port.requests().size());
     }
 
     @Test
