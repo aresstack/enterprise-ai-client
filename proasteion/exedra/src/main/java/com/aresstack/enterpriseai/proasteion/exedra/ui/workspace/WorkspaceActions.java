@@ -57,10 +57,10 @@ public interface WorkspaceActions {
      * Ein gespeicherter Chat soll in eine Datei exportiert werden („Chat exportieren …“): aus dem gespeicherten
      * Zustand, ohne den Chat zu verändern.
      *
-     * @param markdown {@code true} = Markdown, sonst JSON
+     * @param format JSON, Markdown oder Word
      * @return {@code null} bei Erfolg, sonst ein Satz für den Nutzer
      */
-    default String exportChatRequested(String chatId, File target, boolean markdown) {
+    default String exportChatRequested(String chatId, File target, ChatExportFormat format) {
         return "Export ist nicht verfügbar.";
     }
 

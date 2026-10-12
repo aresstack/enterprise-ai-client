@@ -45,6 +45,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.filechooser.FileFilter;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.AWTEvent;
 import java.awt.BorderLayout;
@@ -71,8 +72,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
 
@@ -910,49 +913,56 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     }
 
     /**
-     * „Chat exportieren …“: normaler Speichern-Dialog mit JSON (maßgeblich) und Markdown; der Export kommt aus dem
-     * gespeicherten Chat, auch wenn er gerade nicht offen ist, und verändert ihn nicht.
+     * „Chat exportieren …“: normaler Speichern-Dialog mit JSON (maßgeblich), Markdown und Word; der Export kommt aus
+     * dem gespeicherten Chat, auch wenn er gerade nicht offen ist, und verändert ihn nicht.
      */
     private void exportChat(String chatId, String title) {
         if (actions == null) {
             return;
         }
-        FileNameExtensionFilter json = new FileNameExtensionFilter("JSON (*.json)", "json");
-        FileNameExtensionFilter markdown = new FileNameExtensionFilter("Markdown (*.md)", "md");
+        Map<FileFilter, ChatExportFormat> filters = new LinkedHashMap<FileFilter, ChatExportFormat>();
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Chat exportieren");
         chooser.setAcceptAllFileFilterUsed(false);
-        chooser.addChoosableFileFilter(json);
-        chooser.addChoosableFileFilter(markdown);
-        chooser.setFileFilter(json);
+        for (ChatExportFormat format : ChatExportFormat.values()) {
+            FileNameExtensionFilter filter = new FileNameExtensionFilter(format.label(), format.extension());
+            filters.put(filter, format);
+            chooser.addChoosableFileFilter(filter);
+        }
+        chooser.setFileFilter(filters.keySet().iterator().next());
         chooser.setSelectedFile(new File(ChatExportFileName.of(title, System.currentTimeMillis(),
-                ZoneId.systemDefault(), "json")));
+                ZoneId.systemDefault(), ChatExportFormat.JSON.extension())));
+        chooser.addPropertyChangeListener(JFileChooser.FILE_FILTER_CHANGED_PROPERTY, event -> {
+            ChatExportFormat chosen = filters.get(chooser.getFileFilter());
+            File selected = chooser.getSelectedFile();
+            if (chosen != null && selected != null && ChatExportFormat.ofFileName(selected.getName()) != null) {
+                chooser.setSelectedFile(new File(selected.getParentFile(),
+                        stripExtension(selected.getName()) + "." + chosen.extension()));
+            }
+        });
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
             return;
         }
         File target = chooser.getSelectedFile();
-        String name = target.getName().toLowerCase(Locale.ROOT);
-        boolean asMarkdown = name.endsWith(".md") || !name.endsWith(".json") && chooser.getFileFilter() == markdown;
-        String extension = asMarkdown ? ".md" : ".json";
-        if (!name.endsWith(extension)) {
-            target = new File(target.getParentFile(), stripExtension(target.getName()) + extension);
+        ChatExportFormat format = ChatExportFormat.ofFileName(target.getName());
+        if (format == null) {
+            format = filters.containsKey(chooser.getFileFilter()) ? filters.get(chooser.getFileFilter())
+                    : ChatExportFormat.JSON;
+            target = new File(target.getParentFile(), target.getName() + "." + format.extension());
         }
         if (target.exists() && JOptionPane.showConfirmDialog(this, target.getName() + " gibt es schon. Ersetzen?",
                 "Chat exportieren", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
             return;
         }
-        String problem = actions.exportChatRequested(chatId, target, asMarkdown);
+        String problem = actions.exportChatRequested(chatId, target, format);
         if (problem != null) {
             JOptionPane.showMessageDialog(this, problem, "Export fehlgeschlagen", JOptionPane.WARNING_MESSAGE);
         }
     }
 
     private static String stripExtension(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".json")) {
-            return name.substring(0, name.length() - 5);
-        }
-        return lower.endsWith(".md") ? name.substring(0, name.length() - 3) : name;
+        ChatExportFormat format = ChatExportFormat.ofFileName(name);
+        return format == null ? name : name.substring(0, name.length() - format.extension().length() - 1);
     }
 
     // ------------------------------------------------------------------ Drawer-Verhalten (arch)

@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.SourceRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ToolCallRecord;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatExportFormat;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -62,7 +63,7 @@ public class ChatExportTest {
 
         ChatExport export = new ChatExport(store, null, () -> T0 + 9000L, "9.9.9");
         Path target = folder.getRoot().toPath().resolve("export.json");
-        assertTrue(export.write("chat-1", target, false));
+        assertTrue(export.write("chat-1", target, ChatExportFormat.JSON));
 
         JsonObject json = parseUtf8(target);
         assertEquals(ChatExport.FORMAT, json.get("format").getAsString());
@@ -113,7 +114,7 @@ public class ChatExportTest {
         assertFalse(Files.exists(folder.getRoot().toPath().resolve("export.json.tmp")));
 
         Path markdown = folder.getRoot().toPath().resolve("export.md");
-        assertTrue(export.write("chat-1", markdown, true));
+        assertTrue(export.write("chat-1", markdown, ChatExportFormat.MARKDOWN));
         String md = new String(Files.readAllBytes(markdown), StandardCharsets.UTF_8);
         assertTrue(md.startsWith("# Was ist IAR?"));
         assertTrue(md.contains("**IAR** ist ein Testbegriff."));
@@ -121,7 +122,7 @@ public class ChatExportTest {
         assertTrue(md.contains("Werkzeug: `knowledge_search`"));
         assertTrue(md.contains("Quelle [1]: IAR <wiki:IAR>"));
 
-        assertFalse(export.write("unbekannt", folder.getRoot().toPath().resolve("x.json"), false));
+        assertFalse(export.write("unbekannt", folder.getRoot().toPath().resolve("x.json"), ChatExportFormat.JSON));
     }
 
     @Test
@@ -157,7 +158,7 @@ public class ChatExportTest {
         ChatExport export = new ChatExport(store, chatId -> "chat-2".equals(chatId) ? project : null,
                 () -> T0 + 9000L, null);
         Path target = folder.getRoot().toPath().resolve("agent.json");
-        assertTrue(export.write("chat-2", target, false));
+        assertTrue(export.write("chat-2", target, ChatExportFormat.JSON));
         String text = new String(Files.readAllBytes(target), StandardCharsets.UTF_8);
         JsonObject json = parseUtf8(target);
 

@@ -22,6 +22,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.chat.FileAttachmentStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.KnowledgeIndexingBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.KnowledgeStatusModel;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatExport;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.RagChatBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ToolSupport;
@@ -367,9 +368,9 @@ public final class ShellAssembly {
             }
 
             @Override
-            public String exportChatRequested(String chatId, File target, boolean markdown) {
+            public String exportChatRequested(String chatId, File target, ChatExportFormat format) {
                 try {
-                    return chatExport.write(chatId, target.toPath(), markdown) ? null
+                    return chatExport.write(chatId, target.toPath(), format) ? null
                             : "Der Chat ist nicht (mehr) gespeichert.";
                 } catch (IOException | RuntimeException failed) {
                     return "Der Chat konnte nicht exportiert werden: " + failed.getMessage();

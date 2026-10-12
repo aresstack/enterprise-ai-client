@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatHistoryStore;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatExportFormat;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -41,7 +42,7 @@ import java.util.function.LongSupplier;
  *
  * <p>Der Export liest nur: Chat-Datei, Anhänge und Projekt bleiben unverändert, auch für den offenen Chat. Vor dem
  * Schreiben schwärzt {@link ChatExportRedaction} Zugangsdaten. JSON ist maßgeblich; Markdown ist dieselbe Sicht,
- * menschenlesbar.
+ * menschenlesbar, und Word ({@link ChatDocxWriter}) ein formatierter Gesprächsbericht aus demselben geschwärzten Baum.
  */
 public final class ChatExport {
 
@@ -198,12 +199,26 @@ public final class ChatExport {
      *
      * @return {@code false}, wenn es den Chat nicht (mehr) gibt
      */
-    public boolean write(String chatId, Path target, boolean markdown) throws IOException {
-        JsonObject export = export(chatId);
+    public boolean write(String chatId, Path target, ChatExportFormat format) throws IOException {
+        if (format == null) {
+            throw new IllegalArgumentException("format must not be null");
+        }
+        JsonObject export = export(chatId); // immer der geschwärzte Baum, auch für Word
         if (export == null) {
             return false;
         }
-        byte[] bytes = (markdown ? toMarkdown(export) : toJson(export)).getBytes(StandardCharsets.UTF_8);
+        byte[] bytes;
+        switch (format) {
+            case MARKDOWN:
+                bytes = toMarkdown(export).getBytes(StandardCharsets.UTF_8);
+                break;
+            case DOCX:
+                bytes = new ChatDocxWriter(ZoneId.systemDefault()).write(export);
+                break;
+            default:
+                bytes = toJson(export).getBytes(StandardCharsets.UTF_8);
+                break;
+        }
         Path directory = target.toAbsolutePath().getParent();
         if (directory != null) {
             Files.createDirectories(directory);

@@ -22,6 +22,8 @@ mermaidJava = "0.2.0-beta.2"
 tika = "2.9.1"
 # Dieselbe PDFBox-Linie wie Tika 2.9.1 (tika-parent: pdfbox.version 2.0.29), damit das Fat Jar nur eine Fassung trägt.
 pdfbox = "2.0.29"
+# Dieselbe POI-Linie wie Tika 2.9.1 (tika-parent: poi.version 5.2.3), damit das Fat Jar nur eine Fassung trägt.
+poi = "5.2.3"
 jgraphx = "4.2.2"
 commonsNet = "3.9.0"
 huggingface4j = "0.1.1"
@@ -72,6 +74,8 @@ flexmark-ext-gfm-strikethrough = { module = "com.vladsch.flexmark:flexmark-ext-g
 mermaid-java = { module = "com.aresstack:mermaid-java", version.ref = "mermaidJava" }
 # exedra (ui.reader): PDF-Anhänge im Anhang-Overlay als Seitenbilder (Apache PDFBox 2.0.x, Java 6+). Nur in exedra.
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+# exedra (chat.ChatDocxWriter): „Chat exportieren …“ als Word-Dokument (XWPF). Nur in exedra.
+poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
 # source-confluence: draw.io-Diagramme (mxGraphModel) ohne Browser als SVG (JGraphX, BSD, Java-7-Bytecode).
 jgraphx = { module = "com.github.vlsi.mxgraph:jgraphx", version.ref = "jgraphx" }
 

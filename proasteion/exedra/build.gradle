@@ -36,6 +36,8 @@ dependencies {
     implementation libs.mermaid.java
     // Anhang-Overlay im Lesebereich: PDF-Seiten als Bilder (Apache PDFBox), mit Seitennavigation und Zoom.
     implementation libs.pdfbox
+    // „Chat exportieren …“ als Word-Dokument (chat.ChatDocxWriter): Apache POI XWPF, dieselbe Fassung wie über Tika.
+    implementation libs.poi.ooxml
     // Chat-Historie (app.chat.FileChatHistoryStore, aus askai-java8 arch): ein JSON-Dokument je Chat.
     implementation libs.gson
 
