@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
+import com.aresstack.enterpriseai.source.api.OneTimeCodePrompt;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -65,10 +66,26 @@ final class ConfluenceRestClient {
     private final ConfluenceHttpTransport transport;
     private final java.util.concurrent.atomic.AtomicInteger diagnosticFiles =
             new java.util.concurrent.atomic.AtomicInteger();
+    /** So oft hintereinander darf ein Abruf nach einer Bestätigung erneut auf die Einmalcode-Seite stoßen. */
+    static final int MAX_CHALLENGE_ROUNDS = 3;
+    /** So lange fragt die Quelle nach einem Abbruch nicht erneut (andere Bilder derselben Seite). */
+    static final long DECLINE_PAUSE_MILLIS = 60_000L;
+
+    private final OneTimeCodePrompt prompt;
+    private final ConfluenceWebSession web = new ConfluenceWebSession();
+    private final java.util.concurrent.locks.ReentrantLock challengeLock =
+            new java.util.concurrent.locks.ReentrantLock();
+    private volatile long declinedUntil;
 
     ConfluenceRestClient(ConfluenceConfig config, ConfluenceHttpTransport transport) {
+        this(config, transport, OneTimeCodePrompt.refusing());
+    }
+
+    /** @param prompt fragt den Einmalcode ab, wenn ein Zwei-Faktor-Plugin Dateiabrufe sperrt */
+    ConfluenceRestClient(ConfluenceConfig config, ConfluenceHttpTransport transport, OneTimeCodePrompt prompt) {
         this.config = config;
         this.transport = transport;
+        this.prompt = prompt == null ? OneTimeCodePrompt.refusing() : prompt;
     }
 
     /** Der Space mit Startseiten-ID oder {@code null}, wenn es ihn nicht gibt. */
@@ -222,17 +239,18 @@ final class ConfluenceRestClient {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
                     "Anhang " + attachment.id + " ohne gültigen Download-Pfad");
         }
-        return withSessionCookie(session, ANY_ACCEPT, "Anhang", new Attempt() {
+        return withWebSession(session, ANY_ACCEPT, "Anhang", new Attempt() {
             @Override
             public byte[] run(Map<String, String> headers) throws KnowledgeSourceException {
                 ConfluenceHttpResponse response = fetch(headers, attachment.downloadPath, "Anhang", maxBytes);
                 String received = baseMediaType(response.contentType());
                 if (received.contains("html") && !baseMediaType(attachment.mediaType).contains("html")) {
-                    String page = diagnoseHtml("Anhang", fileUri(attachment.downloadPath, response), response,
-                            headers);
-                    throw fileFailure("Anhang", attachment.downloadPath, response, new KnowledgeSourceException(
-                            Kind.INVALID_RESPONSE, "Anhang: erwartet " + attachment.mediaType + ", erhalten "
-                            + received + " (vermutlich eine Anmeldeseite)" + page));
+                    URI at = fileUri(attachment.downloadPath, response);
+                    HtmlResponseDiagnosis page = diagnoseHtml("Anhang", at, response, headers);
+                    throw htmlFailure(at, response, page, fileFailure("Anhang", attachment.downloadPath, response,
+                            new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Anhang: erwartet "
+                                    + attachment.mediaType + ", erhalten " + received
+                                    + " (vermutlich eine Anmeldeseite)" + pageSuffix(page))));
                 }
                 return response.body();
             }
@@ -247,7 +265,7 @@ final class ConfluenceRestClient {
     byte[] conversion(Session session, Attachment attachment, String kind, final int maxBytes)
             throws KnowledgeSourceException {
         final String path = conversionPath(attachment.id, attachment.version, kind);
-        return withSessionCookie(session, ANY_ACCEPT, "Vorschau", new Attempt() {
+        return withWebSession(session, ANY_ACCEPT, "Vorschau", new Attempt() {
             @Override
             public byte[] run(Map<String, String> headers) throws KnowledgeSourceException {
                 ConfluenceHttpResponse response = fetch(headers, path, "Vorschau", maxBytes);
@@ -256,11 +274,12 @@ final class ConfluenceRestClient {
                 }
                 byte[] body = response.body();
                 if (!isPdf(body) && notAnImage(response.contentType(), body) != null) {
-                    String page = baseMediaType(response.contentType()).contains("html")
-                            ? diagnoseHtml("Vorschau", fileUri(path, response), response, headers) : "";
-                    throw fileFailure("Vorschau", path, response, new KnowledgeSourceException(
-                            Kind.INVALID_RESPONSE, "Vorschau: erwartet PDF oder Bild, erhalten "
-                            + notAnImage(response.contentType(), body) + page));
+                    URI at = fileUri(path, response);
+                    HtmlResponseDiagnosis page = baseMediaType(response.contentType()).contains("html")
+                            ? diagnoseHtml("Vorschau", at, response, headers) : null;
+                    throw htmlFailure(at, response, page, fileFailure("Vorschau", path, response,
+                            new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Vorschau: erwartet PDF oder Bild, "
+                                    + "erhalten " + notAnImage(response.contentType(), body) + pageSuffix(page))));
                 }
                 return body;
             }
@@ -292,6 +311,9 @@ final class ConfluenceRestClient {
             } catch (IOException e) {
                 throw fileFailure(what, uri.getRawPath(), null, new KnowledgeSourceException(Kind.UNAVAILABLE,
                         what + ": Confluence nicht erreichbar (" + cause(e) + ")", e));
+            }
+            if (hop == 0) {
+                web.absorb(response.cookies());
             }
             URI next = hop < 5 ? foreignRedirect(uri, response) : null;
             if (next == null) {
@@ -439,12 +461,193 @@ final class ConfluenceRestClient {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Bild: ungültiger Pfad");
         }
         final URI image = uri;
-        return withSessionCookie(session, IMAGE_ACCEPT, "Bild", new Attempt() {
+        return withWebSession(session, IMAGE_ACCEPT, "Bild", new Attempt() {
             @Override
             public byte[] run(Map<String, String> headers) throws KnowledgeSourceException {
                 return fetchImage(image, headers);
             }
         });
+    }
+
+    /**
+     * Der zentrale Weg aller Dateiabrufe des Lesebereichs (Bild, Anhang, Vorschau; Anzeigen, Speichern und Öffnen
+     * benutzen dessen Bytes): mit der Web-Sitzung der Quelle ({@link ConfluenceWebSession}).
+     *
+     * <ol>
+     *   <li>Nach einer Bestätigung zuerst nur mit den Cookies, wie der Browser. Reichen sie nicht (Anmeldeseite,
+     *       401/403), weiter wie ohne Bestätigung.</li>
+     *   <li>Mit Authorization und den Cookies der Sitzung (gegebenenfalls Sitzungs-Cookie-Neuversuch wie bisher).</li>
+     *   <li>Kommt die Einmalcode-Seite eines Zwei-Faktor-Plugins ({@link TwoFactorRequired}), fragt
+     *       {@link #solveChallenge} den Code ab, sendet das Formular in derselben Sitzung und der Abruf beginnt neu.
+     *       Wer gleichzeitig auf die Seite stößt, wartet und lädt nach der Bestätigung ohne eigene Abfrage.</li>
+     * </ol>
+     */
+    private byte[] withWebSession(Session session, String accept, String what, Attempt attempt)
+            throws KnowledgeSourceException {
+        TwoFactorRequired last = null;
+        for (int round = 0; round <= MAX_CHALLENGE_ROUNDS; round++) {
+            int generation = web.generation();
+            try {
+                if (web.verified()) {
+                    String cookies = web.cookieHeader();
+                    Map<String, String> headers = new LinkedHashMap<String, String>();
+                    headers.put("Accept", accept);
+                    if (cookies != null) {
+                        headers.put("Cookie", cookies);
+                    }
+                    try {
+                        return attempt.run(Collections.unmodifiableMap(headers));
+                    } catch (KnowledgeSourceException e) {
+                        if (e instanceof TwoFactorRequired || !needsSession(e)) {
+                            throw e;
+                        }
+                        LOG.info("[Confluence] " + what + ": Sitzungs-Cookies allein reichen nicht ("
+                                + e.kind() + "), weiter mit Anmeldung und Cookies");
+                        web.cookiesAloneInsufficient();
+                    }
+                }
+                return withSessionCookie(session, accept, what, attempt);
+            } catch (TwoFactorRequired required) {
+                last = required;
+                if (round == MAX_CHALLENGE_ROUNDS) {
+                    break;
+                }
+                solveChallenge(session, required, generation, what);
+            }
+        }
+        throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Confluence verlangt nach der Bestätigung "
+                + "weiterhin einen Einmalcode", last);
+    }
+
+    /** Die Header mit den Cookies der Web-Sitzung. */
+    private Map<String, String> withWebCookies(Map<String, String> headers) {
+        String cookies = web.cookieHeader();
+        if (cookies == null) {
+            return headers;
+        }
+        Map<String, String> copy = new LinkedHashMap<String, String>(headers);
+        copy.put("Cookie", cookies);
+        return Collections.unmodifiableMap(copy);
+    }
+
+    /**
+     * Fragt den Einmalcode ab und sendet das Formular der Seite über denselben Transport (Proxy, TLS,
+     * Client-Zertifikat, User-Agent) mit Authorization und den Cookies der Sitzung; gesetzte Cookies übernimmt die
+     * Sitzung. Kehrt zurück, wenn der Code angenommen wurde oder ein anderer Abruf das inzwischen erledigt hat; wirft
+     * bei Abbruch. Code und Cookie-Werte stehen in keiner Logzeile.
+     */
+    private void solveChallenge(Session session, TwoFactorRequired required, int generation, String what)
+            throws KnowledgeSourceException {
+        challengeLock.lock();
+        try {
+            if (web.generation() != generation) {
+                return; // ein anderer Abruf hat den Code inzwischen bestätigt
+            }
+            if (System.currentTimeMillis() < declinedUntil) {
+                throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Confluence verlangt einen "
+                        + "Einmalcode (OTP); die Abfrage wurde eben abgebrochen (" + required.getMessage() + ")", required);
+            }
+            OneTimeCodeForm form = OneTimeCodeForm.parse(required.page(), required.html(), config.baseUrl());
+            if (form == null) {
+                throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Confluence verlangt einen "
+                        + "Einmalcode, die Seite hat aber kein bekanntes Formular dafür", required);
+            }
+            LOG.info("[Confluence] Einmalcode-Abfrage: formular=" + form.formId() + " ziel="
+                    + withoutQuery(form.action().toString()) + " felder=" + form.fieldNames() + " neuSenden="
+                    + form.resendAvailable() + " sitzungsCookies=" + web.cookieNames());
+            String error = form.error();
+            while (true) {
+                OneTimeCodePrompt.Answer answer = prompt.ask(new OneTimeCodePrompt.Challenge(
+                        config.baseUrl().getHost(), form.title(), form.message(), error, form.resendAvailable()));
+                try {
+                    if (answer == null || answer.action() == OneTimeCodePrompt.Answer.Action.CANCEL) {
+                        declinedUntil = System.currentTimeMillis() + DECLINE_PAUSE_MILLIS;
+                        LOG.info("[Confluence] Einmalcode-Abfrage abgebrochen");
+                        throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Confluence verlangt einen "
+                                + "Einmalcode (OTP); Abfrage abgebrochen (" + required.getMessage() + ")", required);
+                    }
+                    boolean resend = answer.action() == OneTimeCodePrompt.Answer.Action.RESEND
+                            && form.resendAvailable();
+                    byte[] body;
+                    if (resend) {
+                        body = form.resendBody();
+                    } else {
+                        char[] code = answer.code();
+                        try {
+                            body = form.submitBody(code);
+                        } finally {
+                            java.util.Arrays.fill(code, '\0');
+                        }
+                    }
+                    ConfluenceHttpResponse response;
+                    try {
+                        response = transport.postForm(form.action(),
+                                withWebCookies(session.headers("text/html,application/xhtml+xml,*/*;q=0.8")), body,
+                                config.maxResponseBytes());
+                    } catch (IOException e) {
+                        throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Einmalcode nicht gesendet ("
+                                + cause(e) + ")", e);
+                    } finally {
+                        java.util.Arrays.fill(body, (byte) 0);
+                    }
+                    web.absorb(response.cookies());
+                    URI at = response.uri() != null ? response.uri() : form.action();
+                    OneTimeCodeForm again = baseMediaType(response.contentType()).contains("html")
+                            ? OneTimeCodeForm.parse(at, response.body(), config.baseUrl()) : null;
+                    if (resend) {
+                        LOG.info("[Confluence] Einmalcode: neuer Code angefordert, status=" + response.status());
+                        if (again != null) {
+                            form = again;
+                        }
+                        error = again == null ? "" : again.error();
+                        continue;
+                    }
+                    if (again != null) {
+                        LOG.info("[Confluence] Einmalcode nicht angenommen: status=" + response.status());
+                        form = again;
+                        error = again.error().isEmpty() ? "Der Code wurde nicht angenommen." : again.error();
+                        continue;
+                    }
+                    if (!response.isSuccess()) {
+                        throw new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Einmalcode gesendet, "
+                                + "Confluence antwortet mit HTTP " + response.status(), required);
+                    }
+                    web.markVerified();
+                    LOG.info("[Confluence] Einmalcode bestätigt: status=" + response.status() + " sitzungsCookies="
+                            + web.cookieNames());
+                    return;
+                } finally {
+                    if (answer != null) {
+                        answer.clear();
+                    }
+                }
+            }
+        } finally {
+            challengeLock.unlock();
+        }
+    }
+
+    /** Die Einmalcode-Seite eines Zwei-Faktor-Plugins statt der Datei; trägt die unveränderte Seite für das Formular. */
+    static final class TwoFactorRequired extends KnowledgeSourceException {
+
+        private static final long serialVersionUID = 1L;
+
+        private final transient URI page;
+        private final transient byte[] html;
+
+        TwoFactorRequired(KnowledgeSourceException error, URI page, byte[] html) {
+            super(error.kind(), error.getMessage(), error.getCause());
+            this.page = page;
+            this.html = html;
+        }
+
+        URI page() {
+            return page;
+        }
+
+        byte[] html() {
+            return html;
+        }
     }
 
     /** Ein Abruf mit den gegebenen Kopfzeilen; für {@link #withSessionCookie}. */
@@ -459,9 +662,11 @@ final class ConfluenceRestClient {
     private byte[] withSessionCookie(Session session, String accept, String what, Attempt attempt)
             throws KnowledgeSourceException {
         try {
-            return attempt.run(session.headers(accept));
+            return attempt.run(withWebCookies(session.headers(accept)));
         } catch (KnowledgeSourceException first) {
-            if (!needsSession(first)) {
+            if (first instanceof TwoFactorRequired || !needsSession(first)) {
+                // Eine Einmalcode-Seite löst kein Cookie aus /rest/api/user/current: Die Identität ist bekannt, es
+                // fehlt die zweite Stufe (echter Test 0.20.2).
                 throw first;
             }
             // Weder MainframeMate noch dieser Client hielten eine Sitzung: Jeder Bildabruf kam nur mit dem
@@ -579,15 +784,15 @@ final class ConfluenceRestClient {
      * {@link #MAX_DIAGNOSTIC_FILES}) die Seite als {@code confluence-failed-download-<Zeit>.html} im
      * Diagnoseverzeichnis, ohne Werte von Eingabefeldern. Gibt einen kurzen Zusatz für die Fehlermeldung zurück.
      */
-    private String diagnoseHtml(String what, URI requested, ConfluenceHttpResponse response,
-                                Map<String, String> sent) {
+    private HtmlResponseDiagnosis diagnoseHtml(String what, URI requested, ConfluenceHttpResponse response,
+                                               Map<String, String> sent) {
         URI uri = response.uri() != null ? response.uri() : requested;
         HtmlResponseDiagnosis page;
         try {
             page = HtmlResponseDiagnosis.of(uri, response.body(), response.redirects());
         } catch (RuntimeException e) {
             LOG.warning("[Confluence] " + what + ": HTML-Antwort nicht auswertbar (" + cause(e) + ")");
-            return "";
+            return null;
         }
         String file = writeDiagnosticFile(what, uri, response, sent);
         LOG.warning("[Confluence] " + what + ": HTML statt Datei untersucht: status=" + response.status()
@@ -598,7 +803,22 @@ final class ConfluenceRestClient {
                 + " gesetzteCookies=" + response.cookieNames()
                 + " " + page.summary()
                 + (file == null ? "" : " diagnosedatei=" + file));
-        return " [Seite: " + page.kind() + (page.title().isEmpty() ? "" : " „" + page.title() + "“") + "]";
+        return page;
+    }
+
+    /** Zusatz für die Fehlermeldung: Art und Titel der Seite. */
+    private static String pageSuffix(HtmlResponseDiagnosis page) {
+        return page == null ? "" : " [Seite: " + page.kind()
+                + (page.title().isEmpty() ? "" : " „" + page.title() + "“") + "]";
+    }
+
+    /** Bei einer Einmalcode-Seite trägt der Fehler die Seite für die Abfrage ({@link TwoFactorRequired}). */
+    private static KnowledgeSourceException htmlFailure(URI at, ConfluenceHttpResponse response,
+                                                        HtmlResponseDiagnosis page, KnowledgeSourceException error) {
+        if (page != null && page.kind() == HtmlResponseDiagnosis.Kind.TWO_FACTOR) {
+            return new TwoFactorRequired(error, at, response.body());
+        }
+        return error;
     }
 
     /** Die Adresse, von der eine Datei-Antwort kam: laut Transport, sonst Basis-URL und Pfad. */
@@ -682,6 +902,9 @@ final class ConfluenceRestClient {
                 throw imageFailure(uri, null, new KnowledgeSourceException(Kind.UNAVAILABLE,
                         "Bild: Confluence nicht erreichbar (" + cause(e) + ")", e));
             }
+            if (hop == 0) {
+                web.absorb(response.cookies());
+            }
             URI next = hop < 5 ? foreignRedirect(uri, response) : null;
             if (next == null) {
                 break;
@@ -700,10 +923,12 @@ final class ConfluenceRestClient {
         byte[] body = response.body();
         String received = notAnImage(response.contentType(), body);
         if (received != null) {
-            String page = received.contains("html") ? diagnoseHtml("Bild", uri, response, headers) : "";
-            throw imageFailure(uri, response, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
-                    "Bild: erwartet Bild, erhalten " + received + " (HTTP " + response.status() + ", "
-                            + body.length + " Bytes)" + page));
+            HtmlResponseDiagnosis page = received.contains("html") ? diagnoseHtml("Bild", uri, response, headers)
+                    : null;
+            throw htmlFailure(response.uri() != null ? response.uri() : uri, response, page,
+                    imageFailure(uri, response, new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                            "Bild: erwartet Bild, erhalten " + received + " (HTTP " + response.status() + ", "
+                                    + body.length + " Bytes)" + pageSuffix(page))));
         }
         return body;
     }

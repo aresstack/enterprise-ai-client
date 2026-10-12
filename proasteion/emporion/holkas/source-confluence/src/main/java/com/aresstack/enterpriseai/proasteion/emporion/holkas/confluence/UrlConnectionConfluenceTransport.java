@@ -71,21 +71,79 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
 
     private ConfluenceHttpResponse get(URI uri, Map<String, String> headers, int maxBytes, SSLSocketFactory tls)
             throws IOException {
+        return exchange("GET", uri, headers, null, maxBytes, tls);
+    }
+
+    @Override
+    public ConfluenceHttpResponse postForm(URI uri, Map<String, String> headers, byte[] form, int maxBytes)
+            throws IOException {
+        return exchange("POST", uri, headers, form == null ? new byte[0] : form, maxBytes, sslSocketFactory);
+    }
+
+    /**
+     * Ein Request mit Weiterleitungen auf demselben Host wie ein Browser: Cookies, die ein Schritt setzt, gehen bei
+     * den folgenden mit (zusätzlich zum {@code Cookie}-Header des Aufrufers, gleiche Namen ersetzt); nach 301/302/303
+     * geht es mit GET weiter, nach 307/308 mit derselben Methode.
+     */
+    private ConfluenceHttpResponse exchange(String method, URI uri, Map<String, String> headers, byte[] body,
+                                            int maxBytes, SSLSocketFactory tls) throws IOException {
         URI current = uri;
+        String currentMethod = method;
+        byte[] currentBody = body;
         Map<String, String> cookies = new java.util.LinkedHashMap<String, String>();
         java.util.List<String> redirects = new java.util.ArrayList<String>();
         for (int hop = 0; ; hop++) {
             String[] location = new String[1];
-            ConfluenceHttpResponse response = getOnce(current, headers, maxBytes, location, tls);
+            ConfluenceHttpResponse response = once(currentMethod, current,
+                    hop == 0 ? headers : withCookies(headers, cookies), currentBody, maxBytes, location, tls);
             merge(cookies, response.cookies());
             URI next = hop < 5 ? sameHostRedirect(current, response.status(), location[0]) : null;
             if (next == null) {
                 return new ConfluenceHttpResponse(response.status(), response.contentType(), response.body(),
                         response.location(), pairs(cookies), current, redirects);
             }
+            if (response.status() != 307 && response.status() != 308) {
+                currentMethod = "GET";
+                currentBody = null;
+            }
             redirects.add(next.toString());
             current = next;
         }
+    }
+
+    /** Die Header mit den unterwegs gesetzten Cookies im {@code Cookie}-Header (gleiche Namen ersetzt). */
+    static Map<String, String> withCookies(Map<String, String> headers, Map<String, String> collected) {
+        if (collected.isEmpty()) {
+            return headers;
+        }
+        Map<String, String> jar = new java.util.LinkedHashMap<String, String>();
+        String given = null;
+        for (Map.Entry<String, String> header : headers.entrySet()) {
+            if ("Cookie".equalsIgnoreCase(header.getKey())) {
+                given = header.getValue();
+            }
+        }
+        if (given != null) {
+            for (String pair : given.split(";")) {
+                int eq = pair.indexOf('=');
+                if (eq > 0) {
+                    jar.put(pair.substring(0, eq).trim(), pair.substring(eq + 1).trim());
+                }
+            }
+        }
+        jar.putAll(collected);
+        Map<String, String> out = new java.util.LinkedHashMap<String, String>();
+        for (Map.Entry<String, String> header : headers.entrySet()) {
+            if (!"Cookie".equalsIgnoreCase(header.getKey())) {
+                out.put(header.getKey(), header.getValue());
+            }
+        }
+        StringBuilder cookie = new StringBuilder();
+        for (Map.Entry<String, String> entry : jar.entrySet()) {
+            cookie.append(cookie.length() == 0 ? "" : "; ").append(entry.getKey()).append('=').append(entry.getValue());
+        }
+        out.put("Cookie", cookie.toString());
+        return out;
     }
 
     /** Spätere Cookies gleichen Namens ersetzen frühere; ein Löschcookie (leerer Wert) entfernt den Namen. */
@@ -137,15 +195,15 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
         return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 
-    private ConfluenceHttpResponse getOnce(URI uri, Map<String, String> headers, int maxBytes, String[] location,
-                                           SSLSocketFactory tls) throws IOException {
+    private ConfluenceHttpResponse once(String method, URI uri, Map<String, String> headers, byte[] body,
+                                        int maxBytes, String[] location, SSLSocketFactory tls) throws IOException {
         String scheme = uri.getScheme();
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
             throw new IOException("nur http/https unterstützt: " + scheme);
         }
         HttpURLConnection connection = open(uri, tls);
         try {
-            connection.setRequestMethod("GET");
+            connection.setRequestMethod(method);
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(connectTimeoutMillis);
             connection.setReadTimeout(readTimeoutMillis);
@@ -153,11 +211,19 @@ public final class UrlConnectionConfluenceTransport implements ConfluenceHttpTra
             for (Map.Entry<String, String> header : headers.entrySet()) {
                 connection.setRequestProperty(header.getKey(), header.getValue());
             }
+            if (body != null) {
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+                connection.setFixedLengthStreamingMode(body.length);
+                try (java.io.OutputStream out = connection.getOutputStream()) {
+                    out.write(body);
+                }
+            }
             int status = connection.getResponseCode();
             location[0] = connection.getHeaderField("Location");
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            byte[] body = stream == null ? new byte[0] : readLimited(stream, maxBytes);
-            return new ConfluenceHttpResponse(status, connection.getContentType(), body, location[0],
+            byte[] received = stream == null ? new byte[0] : readLimited(stream, maxBytes);
+            return new ConfluenceHttpResponse(status, connection.getContentType(), received, location[0],
                     setCookies(connection.getHeaderFields()));
         } finally {
             connection.disconnect();

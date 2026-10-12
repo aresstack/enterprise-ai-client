@@ -51,8 +51,10 @@ source.1.allowInsecureHttp=false
 - **Load**: `content/{id}?expand=body.view,version,space,ancestors,metadata.labels`; HTML → Text mit
   Code-Makros als Codeblöcke, nummerierten Listen, Tabellen mit `|`, ohne Bilder und Makro-Bedienelemente.
   Revision aus `version` (Nummer und Zeitpunkt, ISO-8601 oder Data-Center-Kompaktoffset).
-- **Transport** (`UrlConnectionConfluenceTransport`): folgt keinen Weiterleitungen (der Authorization-Header
-  geht nie an ein anderes Ziel), nur `http`/`https`, Antwortgröße begrenzt (20 MB, Anhänge 5 MB). Proxy,
+- **Transport** (`UrlConnectionConfluenceTransport`): folgt bis zu fünf Weiterleitungen nur auf denselben Host (der
+  Authorization-Header geht nie an ein anderes Ziel) und schickt dabei gesetzte Cookies mit; nach 301/302/303 als GET
+  ohne Körper, nach 307/308 mit derselben Methode. Formulare sendet `postForm` (`application/x-www-form-urlencoded`)
+  über dieselbe Verbindungskonfiguration. Nur `http`/`https`, Antwortgröße begrenzt (20 MB, Anhänge 5 MB). Proxy,
   Timeouts und Client-Zertifikat kommen aus der Composition Root.
 - **Fehlerabbildung**: 401/403/3xx → `ACCESS_DENIED`, 404 → `NOT_FOUND`, 429/5xx/IO → `UNAVAILABLE`, HTML statt
   JSON, fehlendes `results`, Folgelink außerhalb `/rest/api/` oder Schleife → `INVALID_RESPONSE`. Meldungen
@@ -79,6 +81,21 @@ source.1.allowInsecureHttp=false
   und dem Benutzer laut `ajs-remote-user`. Bis zu fünf Antworten je Quelle und Programmlauf landen als
   `confluence-failed-download-<yyyyMMdd-HHmmss-SSS>.html` im Protokollverzeichnis (`<Anwendungsverzeichnis>/logs`),
   mit `***` statt der Werte von Eingabefeldern und Token-Metafeldern; Header und Cookie-Werte stehen nie darin.
+- **Einmalcode (Zwei-Faktor-Plugin, OTP per E-Mail)**: Ist die HTML-Antwort eine Einmalcode-Seite (`TWO_FACTOR`),
+  liest der Client das POST-Formular aus der unveränderten Seite (`OneTimeCodeForm`: Codefeld, versteckte Felder mit
+  ihren echten Werten, Absende-Knopf; Ziel nur auf der eingestellten Confluence) und fragt den Code im Comic-Dialog
+  „Anmeldung erforderlich“ ab (`OneTimeCodePrompt`, Swing: `OneTimeCodeDialog`). Das Formular geht über denselben
+  Transport (Proxy, TLS, Client-Zertifikat, User-Agent) mit Authorization und den Cookies der Web-Sitzung zurück;
+  gesetzte Cookies übernimmt die Sitzung (`ConfluenceWebSession`, je Quelle, nur im Speicher), Weiterleitungen werden
+  verfolgt, danach lädt der ursprüngliche Abruf neu. Weitere Dateien laden mit derselben Sitzung ohne neue Abfrage:
+  zuerst nur mit Cookies wie der Browser, reicht das nicht, mit Authorization und Cookies; kommt die Einmalcode-Seite
+  wieder (Sitzung abgelaufen), fragt der Dialog erneut. „Neuen Code senden“ setzt das versteckte Resend-Feld der Seite
+  auf `true`. Ein falscher Code zeigt den Dialog mit der Meldung der Seite erneut. Gleichzeitige Abrufe warten auf eine
+  einzige Abfrage. Abbrechen lässt den Abruf mit `ACCESS_DENIED` scheitern; danach fragt der Client 60 Sekunden lang
+  nicht erneut (kippbar). Code, Formularwerte und Cookie-Werte stehen in keiner Logzeile und werden nicht gespeichert;
+  ein Programmneustart beginnt ohne Sitzung. Logzeilen: `[Confluence] Einmalcode-Abfrage: formular=… ziel=… felder=…`,
+  `[Confluence] Einmalcode bestätigt: status=… sitzungsCookies=[Namen]`. Gilt für Bilder, Anhänge und Vorschauen der
+  Lese-Ansicht, nicht für die Indexierung (dort keine Abfrage).
 - **draw.io** (`drawio`, `drawio-sketch`, `inc-drawio`, erkannt an jedem `data-diagramdata`, bevor versteckte
   Elemente entfernt werden): `previewName`, `owningPageId` (Rückfall `ceoId`) und `revision` kommen aus den
   Makrodaten, nie aus der angezeigten Seite. An der Makrostelle steht ein Bild mit der Vorschau

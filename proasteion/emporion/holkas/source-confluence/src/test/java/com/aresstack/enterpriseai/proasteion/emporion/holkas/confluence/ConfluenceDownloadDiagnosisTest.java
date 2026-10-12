@@ -86,6 +86,7 @@ public class ConfluenceDownloadDiagnosisTest {
     };
     private final Logger logger = Logger.getLogger(ConfluenceRestClient.class.getName());
     private String currentUser = "{\"type\":\"known\",\"username\":\"beispiel\"}";
+    private String downloadPage = TWO_FACTOR_PAGE;
 
     @Before
     public void listen() {
@@ -155,19 +156,16 @@ public class ConfluenceDownloadDiagnosisTest {
         }
         assertNotNull(lines.toString(), examined);
         assertTrue(examined, examined.contains("art=TWO_FACTOR"));
-        assertTrue(examined, examined.contains("gesendet={authorization=Basic, cookies=[JSESSIONID, extra], accept=*/*}"));
+        assertTrue(examined, examined.contains("gesendet={authorization=Basic, cookies=[], accept=*/*}"));
         assertTrue(examined, examined.contains("gesetzteCookies=[DOWNLOADSESSION]"));
         assertTrue(examined, examined.contains("adresse=" + BASE + "/download/attachments/7/Handbuch.pdf "));
-        boolean userLine = false;
         for (String line : lines) {
-            userLine |= line.contains("benutzerTyp=known benutzer=beispiel")
-                    && line.contains("cookieNamen=[JSESSIONID, extra]");
+            assertFalse("eine Einmalcode-Seite löst kein Cookie aus user/current", line.contains("benutzerTyp="));
         }
-        assertTrue(lines.toString(), userLine);
 
         File[] files = directory.listFiles();
         assertNotNull(files);
-        assertEquals("je Versuch eine Datei (ohne und mit Cookie)", 2, files.length);
+        assertEquals("ohne Abfrage (keine Oberfläche) ein Versuch, eine Datei", 1, files.length);
         for (File file : files) {
             assertTrue(file.getName(), file.getName().matches("confluence-failed-download-\\d{8}-\\d{6}-\\d{3}\\.html"));
             String html = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
@@ -180,6 +178,7 @@ public class ConfluenceDownloadDiagnosisTest {
     @Test
     public void anAnonymousRestUserIsNoSessionAndIsNotRetried() throws Exception {
         currentUser = "{\"type\":\"anonymous\"}";
+        downloadPage = LOGIN_PAGE;
         ConfluenceKnowledgeSource source = source(null);
         PageView.Attachment pdf = source.pageView(page()).attachments().get(0);
         sent.clear();
@@ -212,7 +211,7 @@ public class ConfluenceDownloadDiagnosisTest {
                         null, Arrays.asList("JSESSIONID=wert-1", "extra=wert-2"));
             }
             return new ConfluenceHttpResponse(200, "text/html;charset=UTF-8",
-                    TWO_FACTOR_PAGE.getBytes(StandardCharsets.UTF_8), null,
+                    downloadPage.getBytes(StandardCharsets.UTF_8), null,
                     Arrays.asList("DOWNLOADSESSION=wert-1"), uri, new ArrayList<String>());
         };
         ConfluenceConfig.Builder config = ConfluenceConfig.builder(URI.create(BASE))

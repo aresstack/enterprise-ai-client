@@ -168,7 +168,56 @@ public class UrlConnectionConfluenceTransportTest {
         // Reihenfolge mehrerer Set-Cookie-Header gibt HttpURLConnection nicht verlässlich wieder
         assertEquals(new java.util.TreeSet<String>(java.util.Arrays.asList("A=3", "C=4")),
                 new java.util.TreeSet<String>(response.cookies()));
-        assertEquals("der Transport setzt selbst keine Cookies", null, seenCookie.get());
+        // wie ein Browser: was ein Schritt setzt, geht beim nächsten mit (die Einmalcode-Sitzung des
+        // Zwei-Faktor-Plugins entsteht vor der Weiterleitung auf seine Seite)
+        assertEquals(new java.util.TreeSet<String>(java.util.Arrays.asList("A=1", "B=2")),
+                new java.util.TreeSet<String>(java.util.Arrays.asList(seenCookie.get().split("; "))));
+    }
+
+    @Test
+    public void aFormIsPostedAndAfterA303TheRedirectIsAGetWithTheNewCookie() throws IOException {
+        final AtomicReference<String> posted = new AtomicReference<String>();
+        final AtomicReference<String> postCookie = new AtomicReference<String>();
+        final AtomicReference<String> contentType = new AtomicReference<String>();
+        final AtomicReference<String> afterMethod = new AtomicReference<String>();
+        server.createContext("/form", exchange -> {
+            contentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            postCookie.set(exchange.getRequestHeaders().getFirst("Cookie"));
+            posted.set(new String(readAll(exchange.getRequestBody()), java.nio.charset.StandardCharsets.UTF_8));
+            exchange.getResponseHeaders().add("Set-Cookie", "S=neu; Path=/");
+            exchange.getResponseHeaders().add("Location", "/after");
+            respond(exchange, 303, "text/html", "");
+        });
+        server.createContext("/after", exchange -> {
+            afterMethod.set(exchange.getRequestMethod());
+            seenCookie.set(exchange.getRequestHeaders().getFirst("Cookie"));
+            respond(exchange, 200, "text/html", "<html>ok</html>");
+        });
+        Map<String, String> headers = new LinkedHashMap<String, String>(headers());
+        headers.put("Cookie", "S=alt; T=1");
+
+        ConfluenceHttpResponse response = transport.postForm(base.resolve("/form"), headers,
+                "a=1&code=42".getBytes(java.nio.charset.StandardCharsets.UTF_8), 1024);
+
+        assertEquals(200, response.status());
+        assertEquals("a=1&code=42", posted.get());
+        assertTrue(contentType.get(), contentType.get().startsWith("application/x-www-form-urlencoded"));
+        assertEquals("S=alt; T=1", postCookie.get());
+        assertEquals("GET", afterMethod.get());
+        assertEquals("S=neu; T=1".length(), seenCookie.get().length());
+        assertTrue(seenCookie.get(), seenCookie.get().contains("S=neu") && seenCookie.get().contains("T=1"));
+        assertEquals(java.util.Collections.singletonList("S=neu"), response.cookies());
+        assertEquals(base.resolve("/after"), response.uri());
+    }
+
+    private static byte[] readAll(java.io.InputStream in) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[1024];
+        int read;
+        while ((read = in.read(buffer)) != -1) {
+            out.write(buffer, 0, read);
+        }
+        return out.toByteArray();
     }
 
     @Test

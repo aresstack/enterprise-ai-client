@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
+import com.aresstack.enterpriseai.source.api.OneTimeCodePrompt;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.ImageSource;
@@ -100,6 +101,13 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
 
     ConfluenceKnowledgeSource(SourceAddress sourceId, ConfluenceConfig config,
                               ConfluenceHttpTransport transport, SecretProvider secrets, VaultEntryOptions options) {
+        this(sourceId, config, transport, secrets, options, OneTimeCodePrompt.refusing());
+    }
+
+    /** @param oneTimeCodes fragt den Einmalcode ab, wenn ein Zwei-Faktor-Plugin Dateien der Lese-Ansicht sperrt */
+    ConfluenceKnowledgeSource(SourceAddress sourceId, ConfluenceConfig config,
+                              ConfluenceHttpTransport transport, SecretProvider secrets, VaultEntryOptions options,
+                              OneTimeCodePrompt oneTimeCodes) {
         if (sourceId == null || config == null || transport == null) {
             throw new IllegalArgumentException("sourceId, config und transport sind Pflicht");
         }
@@ -109,7 +117,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         this.sourceId = sourceId;
         this.locator = locatorOf(config);
         this.config = config;
-        this.client = new ConfluenceRestClient(config, transport);
+        this.client = new ConfluenceRestClient(config, transport, oneTimeCodes);
         this.secrets = secrets;
         this.options = options;
     }

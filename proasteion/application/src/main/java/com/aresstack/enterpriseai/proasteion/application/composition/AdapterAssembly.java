@@ -40,6 +40,7 @@ import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePas
 import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcSecretProvider;
+import com.aresstack.enterpriseai.source.api.OneTimeCodePrompt;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.ConfluenceSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp.FtpSourceProvider;
@@ -200,6 +201,15 @@ public final class AdapterAssembly {
      */
     public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets,
                                               SourcePartitionSelection partitions) {
+        return createWith(config, network, secrets, partitions, OneTimeCodePrompt.refusing());
+    }
+
+    /**
+     * Wie {@link #createWith(AppConfig, LiveNetwork, SecretProvider, SourcePartitionSelection)}; {@code oneTimeCodes}
+     * fragt den Einmalcode ab, wenn ein Zwei-Faktor-Plugin Dateien einer Quelle sperrt (Dialog der Oberfläche).
+     */
+    public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets,
+                                              SourcePartitionSelection partitions, OneTimeCodePrompt oneTimeCodes) {
         if (config == null || network == null || secrets == null) {
             throw new IllegalArgumentException("config, network and secrets must not be null");
         }
@@ -213,7 +223,7 @@ public final class AdapterAssembly {
         ports.closing("local-models", models);
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
-        for (KnowledgeSourceProvider provider : sourceProviders(secrets, network)) {
+        for (KnowledgeSourceProvider provider : sourceProviders(secrets, network, oneTimeCodes)) {
             KnowledgeSourceProvider wrapped = new LoggingSourceProvider(new VaultSourceProvider(provider, secrets));
             ports.sourceProvider(partitions == null ? wrapped
                     : new PartitionSelectingSourceProvider(wrapped, partitions));
@@ -328,6 +338,11 @@ public final class AdapterAssembly {
      * FTP ...) kommt hier als weiterer Provider hinzu; Kern, Use Cases und Oberfläche bleiben unverändert.
      */
     static List<KnowledgeSourceProvider> sourceProviders(final SecretProvider secrets, final LiveNetwork network) {
+        return sourceProviders(secrets, network, OneTimeCodePrompt.refusing());
+    }
+
+    static List<KnowledgeSourceProvider> sourceProviders(final SecretProvider secrets, final LiveNetwork network,
+                                                         OneTimeCodePrompt oneTimeCodes) {
         List<KnowledgeSourceProvider> providers = new ArrayList<KnowledgeSourceProvider>();
         // Route und TLS als Funktionen des aktuellen Stands: Proxy-Änderungen gelten ab der nächsten Verbindung.
         providers.add(new MediaWikiSourceProvider(ref -> new SecretBackedMediaWikiCredentialsProvider(secrets, ref),
@@ -337,7 +352,7 @@ public final class AdapterAssembly {
                 (alias, keyStoreFile, passwordRef) -> ClientCertificateFactory.deferred(
                         new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network.current()),
                 // HTML-Antworten statt Dateien landen zur Untersuchung neben dem Protokoll.
-                AppPaths.defaultLogDirectory()));
+                AppPaths.defaultLogDirectory(), oneTimeCodes));
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry()));
         providers.add(new FtpSourceProvider(secrets));

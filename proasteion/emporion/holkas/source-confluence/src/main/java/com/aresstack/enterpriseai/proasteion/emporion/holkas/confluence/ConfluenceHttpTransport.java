@@ -30,6 +30,17 @@ public interface ConfluenceHttpTransport {
      * Implementierungen mit mTLS müssen diese Methode überschreiben; der Standard ist nur für Transporte ohne
      * Zertifikat (Tests).
      */
+    /**
+     * Sendet ein Formular ({@code application/x-www-form-urlencoded}) wie ein Browser: Weiterleitungen auf demselben
+     * Host werden verfolgt (301/302/303 als GET, 307/308 erneut als POST), Cookies, die unterwegs gesetzt werden,
+     * gehen bei den folgenden Schritten mit. Der Körper enthält Formularwerte (etwa einen Einmalcode) und wird nie
+     * geloggt. Standard: nicht unterstützt (Test-Transporte ohne Formulare).
+     */
+    default ConfluenceHttpResponse postForm(URI uri, Map<String, String> headers, byte[] form, int maxBytes)
+            throws IOException {
+        throw new IOException("Formular senden wird von diesem Transport nicht unterstützt");
+    }
+
     default ConfluenceHttpResponse getAnonymous(URI uri, Map<String, String> headers, int maxBytes)
             throws IOException {
         return get(uri, headers, maxBytes);
