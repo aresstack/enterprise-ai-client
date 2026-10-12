@@ -30,6 +30,9 @@ public final class ChatSourceNavigation implements SourceListPanel.Actions {
     /** The reader and favorites as far as the chat sources need them ({@link KnowledgeReadingController}). */
     public interface Reading {
 
+        /** Switch to the knowledge area (tab "Wissensquellen" marked, reader shown) before opening chat sources. */
+        void showKnowledgeArea();
+
         void open(ReaderLink link, boolean pin);
 
         boolean canFavorite();
@@ -100,14 +103,21 @@ public final class ChatSourceNavigation implements SourceListPanel.Actions {
     @Override
     public void open(SourceReference source) {
         ReaderLink link = linkOf(source);
-        if (link != null) {
-            reading.open(link, false);
+        if (link == null) {
+            return;
         }
+        reading.showKnowledgeArea();
+        reading.open(link, false);
     }
 
     @Override
     public void openAll(List<SourceReference> sources) {
-        for (ReaderLink link : distinctLinks(sources)) {
+        List<ReaderLink> links = distinctLinks(sources);
+        if (links.isEmpty()) {
+            return;
+        }
+        reading.showKnowledgeArea();
+        for (ReaderLink link : links) {
             reading.open(link, true); // pinned, so each source keeps its own tab
         }
     }

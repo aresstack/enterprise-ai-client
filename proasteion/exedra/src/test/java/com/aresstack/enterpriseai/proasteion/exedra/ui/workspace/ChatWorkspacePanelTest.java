@@ -564,4 +564,26 @@ public class ChatWorkspacePanelTest {
     private static void onEdt(Runnable runnable) throws Exception {
         SwingUtilities.invokeAndWait(runnable);
     }
+
+    @Test
+    public void chatSourceMarksTheKnowledgeTabWhileAFavoriteKeepsItsOwn() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                assertEquals(ChatWorkspacePanel.CHATS_TAB, workspace.sidebar().activeTab());
+
+                workspace.showKnowledgeArea(); // a source clicked in a chat answer
+                assertEquals(ChatWorkspacePanel.KNOWLEDGE_TAB, workspace.sidebar().activeTab());
+                assertTrue(workspace.isReaderShowing());
+                assertFalse(workspace.isDrawerOpen()); // the drawer stays as it was
+
+                workspace.showChatArea();
+                workspace.showSidebarTab(ChatWorkspacePanel.FAVORITES_TAB);
+                workspace.showReader(); // a favorite opened from its tree
+                assertEquals(ChatWorkspacePanel.FAVORITES_TAB, workspace.sidebar().activeTab());
+                assertTrue(workspace.isReaderShowing());
+            }
+        });
+    }
 }

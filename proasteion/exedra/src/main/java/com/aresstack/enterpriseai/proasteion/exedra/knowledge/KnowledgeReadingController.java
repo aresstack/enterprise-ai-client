@@ -649,6 +649,12 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         }
     }
 
+    /** Mark "Wissensquellen" and show the reader; favorites keep their own tab because they call {@link #open}. */
+    @Override
+    public void showKnowledgeArea() {
+        workspace.showKnowledgeArea();
+    }
+
     /**
      * Save the link as a favorite in the folder the favorites page currently targets; keep it where it is if it
      * already is one (never toggle it off).

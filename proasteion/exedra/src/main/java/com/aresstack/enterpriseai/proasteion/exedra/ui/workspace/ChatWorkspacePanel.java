@@ -330,6 +330,15 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         cards.show(deck, READER_CARD);
     }
 
+    /**
+     * Show the reader as the knowledge area: mark the tab "Wissensquellen" in drawer and ribbon, then show the reader
+     * (like a click on the flask). Leave the drawer as it is.
+     */
+    public void showKnowledgeArea() {
+        showSidebarTab(KNOWLEDGE_TAB);
+        showReader();
+    }
+
     /** Zurück vom Lesebereich zur Chat- bzw. Agent-Ansicht. */
     public void showChatArea() {
         readerShowing = false;

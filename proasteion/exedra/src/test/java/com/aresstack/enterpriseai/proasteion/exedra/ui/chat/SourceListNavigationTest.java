@@ -46,6 +46,7 @@ public class SourceListNavigationTest {
     private static final class RecordingReading implements ChatSourceNavigation.Reading {
         final List<ReaderLink> opened = new ArrayList<ReaderLink>();
         final List<Boolean> pinned = new ArrayList<Boolean>();
+        final List<String> steps = new ArrayList<String>();
         final FavoritesStore store;
         final String targetFolder;
 
@@ -55,7 +56,13 @@ public class SourceListNavigationTest {
         }
 
         @Override
+        public void showKnowledgeArea() {
+            steps.add("area");
+        }
+
+        @Override
         public void open(ReaderLink link, boolean pin) {
+            steps.add("open");
             opened.add(link);
             pinned.add(pin);
         }
@@ -148,6 +155,7 @@ public class SourceListNavigationTest {
         assertEquals(1, reading.opened.size());
         assertEquals("confluence:cf.example/confluence/page/4711", reading.opened.get(0).resourceId());
         assertFalse(reading.pinned.get(0)); // preview, like a click on a hit
+        assertEquals(Arrays.asList("area", "open"), reading.steps); // knowledge tab first, then the page
     }
 
     @Test
@@ -168,6 +176,7 @@ public class SourceListNavigationTest {
             assertFalse(enabled(panel.headerMenu(), SourceListPanel.MENU_FAVORITE_ALL));
         });
         assertTrue(reading.opened.isEmpty());
+        assertTrue(reading.steps.isEmpty()); // no tab switch without anything to open
     }
 
     @Test
@@ -222,6 +231,7 @@ public class SourceListNavigationTest {
         });
         assertEquals(2, reading.opened.size());
         assertEquals(Arrays.asList(true, true), reading.pinned);
+        assertEquals(Arrays.asList("area", "open", "open"), reading.steps); // switch once, before opening
     }
 
     @Test
