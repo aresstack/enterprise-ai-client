@@ -44,7 +44,7 @@ public final class ChatConfig {
     public static final String ASSISTANT_DISPLAY_NAME_KEY = "chat.assistant.displayName";
 
     /**
-     * Anzeigename ohne Eintrag: „Merlins Tochter“ passt zur weiblichen Standardstimme (Qwen3-TTS), während Merlin
+     * Anzeigename ohne Eintrag: „Merlins Tochter“ passt zur weiblichen Standardstimme (Orpheus „Jana“), während Merlin
      * die Figur des Einrichtungsassistenten bleibt. Nur Beschriftung; das Modell erfährt den Namen nicht, und ein
      * Wechsel der Stimme ändert ihn nie.
      */

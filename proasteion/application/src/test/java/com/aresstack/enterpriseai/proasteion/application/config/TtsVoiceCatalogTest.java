@@ -19,13 +19,13 @@ public class TtsVoiceCatalogTest {
 
     @Test
     public void familiesComeFromTheBundledFile() {
-        assertEquals("Thomas", catalog.defaultVoice("orpheus-tts-3b-de"));
+        assertEquals("Jana", catalog.defaultVoice("orpheus-tts-3b-de"));
         assertEquals("Vivian", catalog.defaultVoice("Qwen3-TTS-12Hz-1.7B-CustomVoice"));
         assertEquals("Thomas", catalog.voice("orpheus-tts-3b-de", TtsVoiceCatalog.Gender.MALE));
         assertEquals("Jana", catalog.voice("orpheus-tts-3b-de", TtsVoiceCatalog.Gender.FEMALE));
         assertEquals("Ryan", catalog.voice("qwen3-tts", TtsVoiceCatalog.Gender.MALE));
         assertEquals(TtsVoiceCatalog.Gender.FEMALE, catalog.genderOf("qwen3-tts", "Vivian"));
-        assertEquals("Thomas", catalog.voices("orpheus-tts-3b-de").get(0));
+        assertEquals("Jana", catalog.voices("orpheus-tts-3b-de").get(0));
         assertTrue(catalog.voices("unbekanntes-modell").isEmpty());
         assertNull(catalog.defaultVoice("unbekanntes-modell"));
     }
@@ -51,10 +51,10 @@ public class TtsVoiceCatalogTest {
     @Test
     public void orpheusSpeakersKeepTheExactSpellingOfTheService() {
         // The service rejects "thomas": speakers are opaque identifiers and must never be case-normalized.
-        assertEquals(java.util.Arrays.asList("Thomas", "Max", "Jana"), catalog.voices("orpheus-tts-3b-de"));
+        assertEquals(java.util.Arrays.asList("Jana", "Thomas", "Max"), catalog.voices("orpheus-tts-3b-de"));
         assertEquals("Thomas", catalog.voice("kipitz:orpheus-tts-3b-de", TtsVoiceCatalog.Gender.MALE));
         assertEquals("Jana", catalog.voice("ORPHEUS-TTS-3B-DE", TtsVoiceCatalog.Gender.FEMALE));
-        assertEquals("Thomas", catalog.defaultVoice("orpheus-tts-3b-de"));
+        assertEquals("Jana", catalog.defaultVoice("orpheus-tts-3b-de"));
         assertEquals(TtsVoiceCatalog.Gender.MALE, catalog.genderOf("orpheus-tts-3b-de", "Max"));
         assertEquals("Thomas", ModelsConfig.resolveTtsVoice(orpheus, "Thomas", null, catalog));
         assertEquals("Thomas", ModelsConfig.parseSpeechVoices(
@@ -63,6 +63,14 @@ public class TtsVoiceCatalogTest {
         for (String voice : catalog.voices("orpheus-tts-3b-de")) {
             assertTrue(voice, Character.isUpperCase(voice.charAt(0)));
         }
+    }
+
+    @Test
+    public void merlinsDaughterSpeaksWithOrpheusJanaByDefault() {
+        assertEquals("orpheus-tts-3b-de", PreferredModels.bundled().model("tts"));
+        assertEquals("Jana", ModelsConfig.resolveTtsVoice(orpheus, null, null, catalog));
+        // Merlin keeps his own male speaker on the same model.
+        assertEquals("Thomas", ModelsConfig.defaultMerlinSpeaker());
     }
 
     @Test

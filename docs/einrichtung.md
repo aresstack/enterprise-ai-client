@@ -287,7 +287,7 @@ Sprachausgabe stehen deshalb Modell und Stimme zusammen: die Liste zeigt die bek
 geht auch, „Stimme testen“ spricht einen kurzen Satz mit dem Entwurf. Die Stimme gilt je Modell (Schlüssel
 `speech.voices`, z. B. `kipitz:orpheus-tts-3b-de=Thomas;kipitz:qwen3-tts=Vivian`); wer das Modell wechselt, bekommt
 dessen eigene Stimme. Ist für ein Modell keine gespeichert, gilt der frühere Schlüssel `speech.voice`, wenn er zum
-Modell passt, sonst die Standardstimme aus `tts-voices.properties` (Orpheus: `Thomas`, Qwen3-TTS: `Vivian`; die Namen
+Modell passt, sonst die Standardstimme aus `tts-voices.properties` (Orpheus: `Jana`, Qwen3-TTS: `Vivian`; die Namen
 sind gegen die Enterprise-API ungeprüft). Lokale Stimmen haben genau einen Sprecher.
 
 Ein Vorlesevorgang spricht immer mit dem einen TTS-Modell und der einen Stimme, die beim Start der Antwort galten; jedes Stück geht
