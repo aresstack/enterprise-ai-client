@@ -95,6 +95,7 @@ public final class FakeChatCompletionsServer implements AutoCloseable {
     private final CountDownLatch release = new CountDownLatch(1);
     private volatile List<String> scriptedDeltas = Arrays.asList("Antwort");
     private volatile boolean hangAfterDeltas;
+    private volatile String asideAnswer;
     private volatile int failStatus;
     private volatile String failBody = "";
     private final CountDownLatch firstDeltaSent = new CountDownLatch(1);
@@ -124,6 +125,15 @@ public final class FakeChatCompletionsServer implements AutoCloseable {
         scriptedDeltas = Arrays.asList(deltas);
         hangAfterDeltas = false;
         failStatus = 0;
+        return this;
+    }
+
+    /**
+     * Answer requests without streaming (aside requests such as the retrieval triage) with this content as a plain
+     * JSON completion; {@code null} keeps the default (every request is answered as a stream).
+     */
+    public FakeChatCompletionsServer answerAsidesWith(String content) {
+        asideAnswer = content;
         return this;
     }
 
@@ -194,6 +204,11 @@ public final class FakeChatCompletionsServer implements AutoCloseable {
             }
             return;
         }
+        String aside = asideAnswer;
+        if (aside != null && body.has("stream") && !body.get("stream").getAsBoolean()) {
+            serveCompletion(exchange, aside);
+            return;
+        }
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
         exchange.sendResponseHeaders(200, 0);
         OutputStream out = exchange.getResponseBody();
@@ -231,6 +246,33 @@ public final class FakeChatCompletionsServer implements AutoCloseable {
             } catch (IOException ignored) {
                 // Client bereits weg
             }
+            exchange.close();
+        }
+    }
+
+    private static void serveCompletion(HttpExchange exchange, String content) throws IOException {
+        JsonObject message = new JsonObject();
+        message.addProperty("role", "assistant");
+        message.addProperty("content", content);
+        JsonObject choice = new JsonObject();
+        choice.addProperty("index", 0);
+        choice.add("message", message);
+        choice.addProperty("finish_reason", "stop");
+        JsonArray choices = new JsonArray();
+        choices.add(choice);
+        JsonObject completion = new JsonObject();
+        completion.addProperty("id", "chatcmpl-fake");
+        completion.addProperty("object", "chat.completion");
+        completion.addProperty("model", "openai/gpt-oss-120b");
+        completion.add("choices", choices);
+        byte[] bytes = completion.toString().getBytes(UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, bytes.length);
+        OutputStream out = exchange.getResponseBody();
+        try {
+            out.write(bytes);
+        } finally {
+            out.close();
             exchange.close();
         }
     }

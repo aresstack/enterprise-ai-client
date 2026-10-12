@@ -176,6 +176,7 @@ public class ChatModeEndToEndTest {
         int embeddingsBefore = embeddingsServer.requestCount();
         int confluenceBefore = confluence.requestHeaders().size();
         chatServer.answerWith("Hallo! ", "Wie kann ich helfen?");
+        chatServer.answerAsidesWith("{\"search\": false, \"query\": \"\"}"); // the model's triage: no search
 
         send("Hi");
 
@@ -202,6 +203,7 @@ public class ChatModeEndToEndTest {
     @Test
     public void scenario1_smallTalkOnAnEmptyKnowledgeBaseShowsNoRagWarning() throws Exception {
         chatServer.answerWith("Hallo!");
+        chatServer.answerAsidesWith("{\"search\": false, \"query\": \"\"}"); // the model's triage: no search
 
         send("Hi");
 
