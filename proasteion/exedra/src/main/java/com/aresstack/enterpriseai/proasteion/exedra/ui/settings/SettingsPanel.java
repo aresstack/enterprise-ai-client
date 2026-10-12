@@ -148,7 +148,8 @@ public final class SettingsPanel extends JPanel {
     private final ComposerButton offlinePackageButton = new ComposerButton(null, OFFLINE_PACKAGE_LABEL, false,
             OFFLINE_PACKAGE_HINT);
     private final DownloadProgress offlineProgress = new DownloadProgress("Erstellen abbrechen");
-    private final JLabel offlineStatus = new JLabel(" ");
+    /** Ergebnis des letzten Exports (Erfolg, Fehler oder Abbruch); nur Tooltip bzw. Fehlerdialog, nie Fußzeilentext. */
+    private String offlineResult = "";
     /** Export area of the footer: {@link #OFFLINE_IDLE} shows the button, {@link #OFFLINE_RUNNING} the progress. */
     private final CardLayout offlineCards = new CardLayout();
     private final JPanel offlineArea = new JPanel(offlineCards);
@@ -293,12 +294,9 @@ public final class SettingsPanel extends JPanel {
         folder.setBorder(BorderFactory.createEmptyBorder(4, 12, 0, 0));
         openFolderButton.setVisible(actions.settingsFolder() != null);
         folder.add(openFolderButton);
-        offlineStatus.setForeground(FormRows.MUTED);
-        offlineStatus.putClientProperty("html.disable", Boolean.TRUE);
-        JPanel idle = new JPanel(new BorderLayout(8, 0));
+        JPanel idle = new JPanel(new BorderLayout());
         idle.setOpaque(false);
         idle.add(offlinePackageButton, BorderLayout.WEST);
-        idle.add(offlineStatus, BorderLayout.CENTER);
         JPanel idleTop = new JPanel(new BorderLayout());
         idleTop.setOpaque(false);
         idleTop.add(idle, BorderLayout.NORTH);
@@ -503,7 +501,7 @@ public final class SettingsPanel extends JPanel {
     /**
      * Erstellt das Offline-Paket nach {@code target} im Hintergrund. Solange es läuft, ersetzt der Fortschritt in
      * voller Breite den Knopf (auch nach dem Klick auf das X, bis der Export wirklich endet); danach steht das
-     * Ergebnis neben dem wieder sichtbaren Knopf.
+     * Ergebnis im Tooltip des wieder sichtbaren Knopfs, ein Fehler zusätzlich als Meldung.
      */
     void exportOfflinePackage(File target) {
         if (offlineExport != null) {
@@ -511,8 +509,6 @@ public final class SettingsPanel extends JPanel {
         }
         final InstallCancellation cancellation = new InstallCancellation();
         offlineExport = cancellation;
-        offlineStatus.setText(" ");
-        offlineStatus.setToolTipText(null);
         offlineProgress.reset("Vorbereiten …");
         offlineCards.show(offlineArea, OFFLINE_RUNNING);
         revalidate();
@@ -533,7 +529,9 @@ public final class SettingsPanel extends JPanel {
 
             @Override
             public void finished(boolean written, String message) {
-                endOfflinePackage(cancellation, message);
+                if (endOfflinePackage(cancellation, message) && !written) {
+                    showOfflinePackageFailure(message);
+                }
             }
 
             @Override
@@ -549,16 +547,28 @@ public final class SettingsPanel extends JPanel {
         }
     }
 
-    private void endOfflinePackage(InstallCancellation cancellation, String message) {
+    /** Zurück auf IDLE, genau einmal je Export; das Ergebnis steht danach im Tooltip des Knopfs. */
+    private boolean endOfflinePackage(InstallCancellation cancellation, String message) {
         if (offlineExport != cancellation) {
-            return;
+            return false;
         }
         offlineExport = null;
+        offlineResult = message == null ? "" : message.trim();
+        offlinePackageButton.setToolTipText(offlineResult.isEmpty() ? OFFLINE_PACKAGE_HINT
+                : OFFLINE_PACKAGE_HINT + " Zuletzt: " + offlineResult);
         offlineCards.show(offlineArea, OFFLINE_IDLE);
-        offlineStatus.setText(message == null ? " " : message);
-        offlineStatus.setToolTipText(message);
         revalidate();
         repaint();
+        return true;
+    }
+
+    /** Ein Fehler kommt als Meldung, nicht als Text in der schmalen Fußzeile. */
+    private void showOfflinePackageFailure(String message) {
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+        JOptionPane.showMessageDialog(this, message == null ? "Offline-Paket nicht geschrieben." : message,
+                OFFLINE_PACKAGE_LABEL, JOptionPane.ERROR_MESSAGE);
     }
 
     public ComposerButton offlinePackageButton() {
@@ -569,8 +579,8 @@ public final class SettingsPanel extends JPanel {
         return offlineProgress;
     }
 
-    String offlineStatus() {
-        return offlineStatus.getText().trim();
+    String offlineResult() {
+        return offlineResult;
     }
 
     /**
