@@ -1331,10 +1331,10 @@ public class RagChatBindingTest {
         binding.sendRequested("Frage B", true); // B beginnt die Suche
         ui.runAll();                             // attach(A): Quellen an A, Zustand von B unberührt
         entries = model.getEntries();
-        assertEquals("Frage, Antwort, Frage B, Recherchekarte B, Antwort B", 5, entries.size());
+        // The research card of B appears with its first search step, which has not run yet.
+        assertEquals("Frage, Antwort, Frage B, Antwort B", 4, entries.size());
         assertTrue("späte Quellen landen an der fertigen Antwort", entries.get(1).hasSources());
-        assertEquals(TranscriptEntry.Author.ACTIVITY, entries.get(3).getAuthor());
-        assertEquals(TranscriptEntry.State.STREAMING, entries.get(4).getState());
+        assertEquals(TranscriptEntry.State.STREAMING, entries.get(3).getState());
 
         binding.stopRequested(); // während der Suche von B, bevor sie lief: ihre Suchschritte entfallen
         work.runAll();           // Turn B (hängt)
