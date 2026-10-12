@@ -60,4 +60,13 @@ public interface SetupActions {
     default void voices(SettingsForm form, Consumer<SetupVoices> done) {
         done.accept(SetupVoices.silent(null));
     }
+
+    /**
+     * Merlins eigene Stimme ({@code setup.merlin.ttsModel}/{@code ttsVoice}) aus dem Entwurf, sobald der KI-Dienst
+     * erreichbar ist; braucht kein Chat- oder Embedding-Modell. {@code done} kommt auf dem EDT mit
+     * {@link SetupVoices#merlin()} oder ohne Stimme (dann nur Sprechblasen).
+     */
+    default void merlinVoice(SettingsForm form, Consumer<SetupVoices> done) {
+        done.accept(SetupVoices.silent(null));
+    }
 }

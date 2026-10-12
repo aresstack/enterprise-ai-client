@@ -282,4 +282,25 @@ public class SetupWizardMerlinTest {
             assertTrue(run.isCompleted());
         });
     }
+
+    @Test
+    public void firstStartBindsMerlinsVoiceOnceTheServiceAnswersAndSpeaksTheGreeting() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            SetupWizardRun run = openRun();
+            SetupWizardPanel wizard = run.wizard();
+            Voice merlin = new Voice();
+            merlin.available = true;
+            setup.merlinVoice = new SetupVoices(merlin, null, null, null);
+            wizard.pairButton().doClick();
+            assertTrue("vor dem KI-Dienst noch keine Stimme", merlin.spoken.isEmpty());
+            wizard.nextButton().doClick();
+            assertEquals(1, setup.merlinVoiceRequested);
+            assertEquals(WizardGuide.FIRST_GREETING + "\n\n" + WizardGuide.SERVICE_OK, merlin.spoken.get(0));
+            wizard.nextButton().doClick();
+            assertEquals("spricht danach weiter", new WizardGuide().enteredStep(SetupWizardPanel.STEP_MODELS),
+                    merlin.spoken.get(merlin.spoken.size() - 1));
+            wizard.cancel();
+            assertTrue("Schließen stoppt", merlin.stops > 0);
+        });
+    }
 }

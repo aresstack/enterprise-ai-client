@@ -42,4 +42,9 @@ public interface ConnectionChecker {
     default SetupVoices voices(AppConfig config) {
         return SetupVoices.silent(null);
     }
+
+    /** Nur Merlins Stimme (Einrichtungsassistent nach dem KI-Dienst-Test); ohne Sprachausgabe: keine. */
+    default SetupVoices merlinVoice(AppConfig config) {
+        return SetupVoices.silent(null);
+    }
 }

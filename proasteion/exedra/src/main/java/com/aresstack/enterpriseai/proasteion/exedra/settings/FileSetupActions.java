@@ -178,6 +178,45 @@ public final class FileSetupActions implements SetupActions {
     }
 
     @Override
+    public void merlinVoice(SettingsForm form, final Consumer<SetupVoices> done) {
+        if (form == null || done == null) {
+            throw new IllegalArgumentException("form and done must not be null");
+        }
+        // Merlins Stimme braucht nur Dienst, Key und Netz; fehlende Modelle füllen Platzhalter (wie bei der Frage).
+        SettingsForm.Builder probe = form.toBuilder();
+        if (form.chatModel().isEmpty()) {
+            probe.chatModel("-");
+        }
+        if (form.embeddingModel().isEmpty()) {
+            probe.embeddingModel("-");
+        }
+        if (form.embeddingDimension().isEmpty()) {
+            probe.embeddingDimension("1");
+        }
+        final AppConfig config;
+        final Properties merged;
+        try {
+            merged = SettingsMapper.merge(current(), probe.build());
+            config = AppConfigLoader.fromProperties(merged);
+        } catch (IOException | RuntimeException e) {
+            LOG.log(Level.INFO, "Merlins Stimme nicht gebunden: " + e.getClass().getSimpleName());
+            done.accept(SetupVoices.silent(null));
+            return;
+        }
+        submit(() -> {
+            SetupVoices voice;
+            try {
+                voice = connection.merlinVoice(located(config, merged));
+            } catch (RuntimeException e) {
+                LOG.log(Level.INFO, "Merlins Stimme nicht gebunden: " + e.getClass().getSimpleName());
+                voice = SetupVoices.silent(null);
+            }
+            final SetupVoices bound = voice;
+            ui.execute(() -> done.accept(bound));
+        }, () -> done.accept(SetupVoices.silent(null)));
+    }
+
+    @Override
     public void voices(SettingsForm form, final Consumer<SetupVoices> done) {
         if (form == null || done == null) {
             throw new IllegalArgumentException("form and done must not be null");

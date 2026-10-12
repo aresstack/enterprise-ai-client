@@ -136,6 +136,8 @@ public final class SetupWizardPanel extends JPanel {
     /** Merlin spricht erst, wenn der KI-Dienst verbunden ist (oder bei einem späteren Aufruf von Anfang an). */
     private boolean merlinAwake;
     private boolean serviceAnnounced;
+    private boolean merlinVoiceBinding;
+    private SetupVoices ownMerlinVoice;
     private boolean handoff;
     private boolean handingOff;
     private SetupVoices handoffVoices;
@@ -616,6 +618,10 @@ public final class SetupWizardPanel extends JPanel {
     /** Beendet eine laufende Sprachausgabe Merlins (Assistent geschlossen). */
     void stopVoice() {
         narrator.stop();
+        if (ownMerlinVoice != null) {
+            ownMerlinVoice.close();
+            ownMerlinVoice = null;
+        }
         if (handoffVoices != null) {
             handoffVoices.close();
             handoffVoices = null;
@@ -1075,8 +1081,8 @@ public final class SetupWizardPanel extends JPanel {
      * einzige Modell vorwählen (ohne den Schritt zu sperren); danach wacht Merlin auf und stellt sich vor.
      */
     private void prepareModelsAndWakeMerlin() {
+        bindMerlinVoice(this::serviceAnswered); // erst die Stimme, dann spricht er hörbar
         if (modelsLoaded || modelsPreparing) {
-            serviceAnswered();
             return;
         }
         modelsPreparing = true;
@@ -1084,7 +1090,30 @@ public final class SetupWizardPanel extends JPanel {
         bootstrap.prepare(collect(), models -> {
             modelsPreparing = false;
             applyModels(models);
-            serviceAnswered();
+        });
+    }
+
+    /**
+     * Merlins eigene Stimme aus dem Entwurf, sobald der KI-Dienst antwortet (beim Erststart gibt es vorher keine):
+     * nur Basis-URL, API-Key aus KeePass, Netz und {@code setup.merlin.*}. Hat er schon eine verfügbare Stimme (Aufruf
+     * aus der Anwendung oder früher gebunden), bleibt sie; ohne Stimme spricht er weiter nur in Sprechblasen.
+     */
+    private void bindMerlinVoice(final Runnable then) {
+        if (narrator.canSpeak() || merlinVoiceBinding) {
+            then.run();
+            return;
+        }
+        merlinVoiceBinding = true;
+        setup.merlinVoice(collect(), voices -> {
+            merlinVoiceBinding = false;
+            if (ownMerlinVoice != null) {
+                ownMerlinVoice.close();
+            }
+            ownMerlinVoice = voices;
+            if (voices != null && voices.merlin() != null) {
+                narrator.setVoice(voices.merlin());
+            }
+            then.run();
         });
     }
 

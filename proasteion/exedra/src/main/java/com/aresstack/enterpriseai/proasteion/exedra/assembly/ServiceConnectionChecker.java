@@ -124,7 +124,37 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
             return SetupVoices.silent(name);
         }
         NetworkServices network = NetworkServices.from(config.network());
-        Supplier<String> token = new Supplier<String>() {
+        Supplier<String> token = onceToken(config);
+        ModelsConfig models = config.models();
+        TextAnalysisService analysis = SpeechOutput.textAnalysis();
+        final ReadAloudBinding merlin = SpeechOutput.merlinVoice(models,
+                catalogs.speech(config, models, network, token), analysis);
+        final ReadAloudBinding assistant = SpeechOutput.readAloud(models,
+                catalogs.speech(config, models, network, token), analysis);
+        return new SetupVoices(merlin, assistant, name, () -> {
+            merlin.close();
+            assistant.close();
+        });
+    }
+
+    @Override
+    public SetupVoices merlinVoice(final AppConfig config) {
+        if (config == null || config.chat() == null) {
+            throw new IllegalArgumentException("config with chat section required");
+        }
+        if (catalogs == null) {
+            return SetupVoices.silent(null);
+        }
+        ModelsConfig models = config.models();
+        final ReadAloudBinding merlin = SpeechOutput.merlinVoice(models,
+                catalogs.speech(config, models, NetworkServices.from(config.network()), onceToken(config)),
+                SpeechOutput.textAnalysis());
+        return new SetupVoices(merlin, null, null, merlin::close);
+    }
+
+    /** Der API-Key des Chats, erst beim ersten Sprechen geholt und dann gemerkt. */
+    private Supplier<String> onceToken(final AppConfig config) {
+        return new Supplier<String>() {
             private boolean loaded;
             private String key;
 
@@ -141,16 +171,6 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
                 return key;
             }
         };
-        ModelsConfig models = config.models();
-        TextAnalysisService analysis = SpeechOutput.textAnalysis();
-        final ReadAloudBinding merlin = SpeechOutput.merlinVoice(models,
-                catalogs.speech(config, models, network, token), analysis);
-        final ReadAloudBinding assistant = SpeechOutput.readAloud(models,
-                catalogs.speech(config, models, network, token), analysis);
-        return new SetupVoices(merlin, assistant, name, () -> {
-            merlin.close();
-            assistant.close();
-        });
     }
 
     private static String assistantName(AppConfig config) {

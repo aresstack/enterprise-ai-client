@@ -188,6 +188,16 @@ final class WizardFakes {
             done.accept(answer, answer == null ? askFailure : null);
         }
 
+        /** Merlins Stimme nach dem KI-Dienst-Test; {@code null} = nur Sprechblasen. */
+        SetupVoices merlinVoice;
+        int merlinVoiceRequested;
+
+        @Override
+        public void merlinVoice(SettingsForm form, Consumer<SetupVoices> done) {
+            merlinVoiceRequested++;
+            done.accept(merlinVoice == null ? SetupVoices.silent(null) : merlinVoice);
+        }
+
         /** Stimmen der Übergabe; {@code null} = nur Sprechblasen. */
         SetupVoices voices;
         int voicesRequested;
