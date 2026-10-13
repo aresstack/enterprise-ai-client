@@ -44,7 +44,8 @@ public final class KnowledgeSourcesPanel extends JPanel {
 
     public static final String ADD_LABEL = "+ Quelle";
     static final String SEARCH_PLACEHOLDER = "Quellen durchsuchen…";
-    static final String SEARCH_TOOLTIP = "Alle angehakten Quellen gleichzeitig durchsuchen (Enter)";
+    static final String SEARCH_TOOLTIP = "Suchtext oder direkte Adresse eingeben. Erkennt eine Quelle ihr Adressmuster, "
+            + "werden nur passende angehakte Quellen durchsucht (Enter)";
     static final String EMPTY_TEXT = "Noch keine Wissensquelle. „+ Quelle“ legt eine an.";
     static final String HINT_TEXT = "<html>Der Chat durchsucht nur angehakte Quellen.</html>";
 
