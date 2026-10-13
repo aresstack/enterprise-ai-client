@@ -3,12 +3,14 @@ package com.aresstack.enterpriseai.proasteion.exedra.speech;
 import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
+import com.aresstack.enterpriseai.astu.acropolis.speech.AudioPlayback;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechSynthesisRegistry;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechChunking;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelReference;
 import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownSpeech;
 
 /**
  * Entscheidet, ob und womit vorgelesen wird: das Modell kommt aus der Katalog-Kategorie TTS ({@code model.tts}),
@@ -55,14 +57,32 @@ public final class SpeechOutput {
         if (!speech.supports(selected.catalogId())) {
             return ReadAloudBinding.unavailable(NO_PORT);
         }
-        // Feste Stimme je Modell: ohne sie wählen Modelle mit mehreren Sprechern je Absatz selbst.
-        String voice = models.ttsVoice(selected, TtsVoiceCatalog.bundled());
-        ReadAloudService service = new ReadAloudService(speech.require(selected.catalogId()), selected.modelId(),
-                voice, new JavaSoundAudioPlayback(), models.readAloudChunking(), models.synthesisWorkers(),
-                models.synthesisAttempts(), analysis);
+        ReadAloudService service = assistantSpeech(models, speech, analysis, new JavaSoundAudioPlayback());
+        String voice = service.voice();
         return ReadAloudBinding.available(service, "Stimme: " + selected.modelId()
                 + (voice == null ? "" : " / " + voice) + " (" + selected.catalogId() + ")",
                 models.readAloudAutoStart(), "catalog=" + selected.catalogId());
+    }
+
+    /**
+     * Der eine Sprechweg des Assistenten (Vorlesen im Chat und im Lesebereich, „Stimme testen“): Modell aus
+     * {@code model.tts}, Stimme allein über {@link ModelsConfig#ttsVoice}, Text so aufbereitet, wie die Anzeige das
+     * Markdown deutet ({@link MarkdownSpeech}), gleiche Einheit, Worker und Versuche. Merlin hat bewusst seinen eigenen
+     * Weg ({@link #merlinVoice}).
+     *
+     * @return {@code null} ohne TTS-Modell oder ohne Quelle für dessen Katalog
+     */
+    public static ReadAloudService assistantSpeech(ModelsConfig models, SpeechSynthesisRegistry speech,
+                                                   TextAnalysisService analysis, AudioPlayback playback) {
+        ModelReference selected = models.selections().get(ModelCategory.TTS);
+        if (selected == null || speech == null || !speech.supports(selected.catalogId())) {
+            return null;
+        }
+        // Feste Stimme je Modell: ohne sie wählen Modelle mit mehreren Sprechern je Absatz selbst.
+        String voice = models.ttsVoice(selected, TtsVoiceCatalog.bundled());
+        return new ReadAloudService(speech.require(selected.catalogId()), selected.modelId(), voice, playback,
+                models.readAloudChunking(), models.synthesisWorkers(), models.synthesisAttempts(), analysis,
+                MarkdownSpeech::spokenText);
     }
 
     /**
@@ -83,7 +103,7 @@ public final class SpeechOutput {
         TtsVoiceCatalog catalog = TtsVoiceCatalog.bundled();
         String speaker = models.merlinSpeaker().isEmpty() && !ModelsConfig.LOCAL_CATALOG_ID.equals(voice.catalogId())
                 ? catalog.voice(voice.modelId(), TtsVoiceCatalog.Gender.MALE)
-                : ModelsConfig.resolveTtsVoice(voice, models.merlinSpeaker(), null, catalog);
+                : ModelsConfig.resolveTtsVoice(voice, models.merlinSpeaker(), catalog);
         ReadAloudService service = new ReadAloudService(speech.require(voice.catalogId()), voice.modelId(),
                 speaker, new JavaSoundAudioPlayback(), SpeechChunking.SENTENCES, models.synthesisWorkers(),
                 models.synthesisAttempts(), null);

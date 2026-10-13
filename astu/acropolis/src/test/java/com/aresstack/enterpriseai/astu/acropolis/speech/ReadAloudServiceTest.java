@@ -210,6 +210,25 @@ public class ReadAloudServiceTest {
         }
     }
 
+    @Test
+    public void theGivenPreparationDecidesWhatIsSpokenAndNoInvisibleCharacterReachesThePort() {
+        RecordingPort port = new RecordingPort(0);
+        RecordingPlayback playback = new RecordingPlayback();
+        ReadAloudService service = new ReadAloudService(port, ORPHEUS, "Jana", playback, SpeechChunking.PARAGRAPHS,
+                2, ReadAloudService.DEFAULT_SYNTHESIS_ATTEMPTS, null, new SpeechTextPreparation() {
+                    @Override
+                    public String spokenText(String markdown) {
+                        return "Wie angezeigt\u200B: Zeile\u00A0eins.\n\nZweiter\u00AD Absatz \u2192 Ende.";
+                    }
+                });
+
+        assertTrue(service.speak("| roh | Markdown |", null));
+
+        assertEquals(java.util.Arrays.asList(ORPHEUS + ":Wie angezeigt: Zeile eins.",
+                ORPHEUS + ":Zweiter Absatz Ende."), playback.played);
+        assertEquals(Collections.singleton("Jana"), new HashSet<String>(port.voices));
+    }
+
     /** Zeichnet Modell und Worker jedes Aufrufs auf; das „Audio“ nennt Modell und Text. */
     static final class RecordingPort implements SpeechSynthesisPort {
 
@@ -231,11 +250,6 @@ public class ReadAloudServiceTest {
         public SynthesizedSpeech synthesize(String modelId, String voice, String text)
                 throws SpeechSynthesisException {
             voices.add(String.valueOf(voice));
-            return synthesize(modelId, text);
-        }
-
-        @Override
-        public SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException {
             models.add(modelId);
             workers.add(Thread.currentThread().getName());
             try {
@@ -269,7 +283,8 @@ public class ReadAloudServiceTest {
         }
 
         @Override
-        public SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException {
+        public SynthesizedSpeech synthesize(String modelId, String voice, String text)
+                throws SpeechSynthesisException {
             if (text.equals(failing) && failuresOf(text) < failures) {
                 failed.add(text);
                 throw new SpeechSynthesisException("Dienst nicht erreichbar");
@@ -294,7 +309,7 @@ public class ReadAloudServiceTest {
         }
 
         @Override
-        public SynthesizedSpeech synthesize(String modelId, String text) {
+        public SynthesizedSpeech synthesize(String modelId, String voice, String text) {
             calls.add(modelId);
             if (calls.size() > 1) {
                 try {

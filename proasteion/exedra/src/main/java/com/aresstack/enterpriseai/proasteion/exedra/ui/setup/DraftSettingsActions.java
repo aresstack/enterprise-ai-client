@@ -207,7 +207,7 @@ public final class DraftSettingsActions implements SettingsDialogActions {
     }
 
     @Override
-    public void testVoice(SettingsForm form, String modelSelection, String voice, Consumer<String> onResult) {
-        delegate.testVoice(form, modelSelection, voice, onResult);
+    public void testVoice(SettingsForm form, Consumer<String> onResult) {
+        delegate.testVoice(form, onResult);
     }
 }

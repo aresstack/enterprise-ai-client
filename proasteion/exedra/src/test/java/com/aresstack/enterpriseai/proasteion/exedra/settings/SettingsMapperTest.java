@@ -5,6 +5,8 @@ import com.aresstack.enterpriseai.proasteion.application.config.AppConfigExcepti
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ProxyAuthMode;
+import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
+import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.winproxy.ProxyMode;
 import org.junit.Test;
@@ -78,6 +80,33 @@ public class SettingsMapperTest {
         Properties merged = SettingsMapper.merge(current, form.toBuilder().merlinVoice("local:merlin-voice").build());
         assertEquals("local:merlin-voice", merged.getProperty(ModelsConfig.MERLIN_VOICE_KEY));
         assertEquals("local:merlin-voice", SettingsMapper.fromProperties(merged).merlinVoice());
+    }
+
+    @Test
+    public void legacySpeechVoiceIsCarriedOverAsTheVoiceOfTheTtsModelAndThenDropped() {
+        Properties current = valid();
+        current.setProperty("model.tts", "orpheus-tts-3b-de");
+        current.setProperty(ModelsConfig.SPEECH_VOICE_KEY, "Thomas");
+        SettingsForm form = SettingsMapper.fromProperties(current);
+        assertEquals("Thomas", form.speechVoices().get("kipitz:orpheus-tts-3b-de"));
+        Properties merged = SettingsMapper.merge(current, form);
+        assertEquals("kipitz:orpheus-tts-3b-de=Thomas", merged.getProperty(ModelsConfig.SPEECH_VOICES_KEY));
+        assertNull("eine Quelle: die alte globale Stimme verschwindet erst, wenn sie übernommen ist",
+                merged.getProperty(ModelsConfig.SPEECH_VOICE_KEY));
+    }
+
+    @Test
+    public void unfittingLegacySpeechVoiceStaysUnusedInTheFile() {
+        Properties current = valid();
+        current.setProperty("model.tts", "orpheus-tts-3b-de");
+        current.setProperty(ModelsConfig.SPEECH_VOICE_KEY, "Vivian");
+        SettingsForm form = SettingsMapper.fromProperties(current);
+        assertTrue(form.speechVoices().isEmpty());
+        Properties merged = SettingsMapper.merge(current, form);
+        assertEquals("Vivian", merged.getProperty(ModelsConfig.SPEECH_VOICE_KEY));
+        ModelsConfig models = AppConfigLoader.fromProperties(merged).models();
+        assertEquals("die Stimme kommt nur aus dem Modell, nie aus der alten globalen", "Jana",
+                models.ttsVoice(models.selections().get(ModelCategory.TTS), TtsVoiceCatalog.bundled()));
     }
 
     @Test

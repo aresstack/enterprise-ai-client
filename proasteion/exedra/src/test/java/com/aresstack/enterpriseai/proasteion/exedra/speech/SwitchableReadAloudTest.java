@@ -124,7 +124,7 @@ public class SwitchableReadAloudTest {
         }
 
         @Override
-        public SynthesizedSpeech synthesize(String modelId, String text) {
+        public SynthesizedSpeech synthesize(String modelId, String voice, String text) {
             models.add(modelId);
             if (release != null && !text.startsWith("Erster")) {
                 try {

@@ -42,8 +42,9 @@ public final class LocalVoiceSpeechAdapter implements SpeechSynthesisPort {
         return catalogId;
     }
 
+    /** Eine lokale Stimme ist genau ein Sprecher: {@code speaker} wird übergangen. */
     @Override
-    public SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException {
+    public SynthesizedSpeech synthesize(String modelId, String speaker, String text) throws SpeechSynthesisException {
         LocalVoice voice = voices.find(modelId);
         if (voice == null) {
             throw new SpeechSynthesisException("Lokale Stimme „" + modelId + "“ ist nicht installiert oder nicht "

@@ -207,6 +207,7 @@ public final class ReadAloudService {
     private final int workers;
     private final int attempts;
     private final TextAnalysisService analysis;
+    private final SpeechTextPreparation preparation;
     private final Object lock = new Object();
     private long generation;
 
@@ -250,6 +251,16 @@ public final class ReadAloudService {
      */
     public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, String voice, AudioPlayback playback,
                             SpeechChunking chunking, int workers, int attempts, TextAnalysisService analysis) {
+        this(synthesis, modelId, voice, playback, chunking, workers, attempts, analysis, null);
+    }
+
+    /**
+     * @param preparation wie das Markdown zum gesprochenen Text wird (dieselbe Deutung wie die Anzeige);
+     *                    {@code null} = {@link SpeechText#plainText}
+     */
+    public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, String voice, AudioPlayback playback,
+                            SpeechChunking chunking, int workers, int attempts, TextAnalysisService analysis,
+                            SpeechTextPreparation preparation) {
         if (synthesis == null || modelId == null || modelId.trim().isEmpty() || playback == null) {
             throw new IllegalArgumentException("synthesis, modelId and playback must be set");
         }
@@ -261,6 +272,7 @@ public final class ReadAloudService {
         this.workers = Math.max(1, Math.min(MAX_SYNTHESIS_WORKERS, workers));
         this.attempts = Math.max(1, Math.min(MAX_SYNTHESIS_ATTEMPTS, attempts));
         this.analysis = analysis;
+        this.preparation = preparation;
     }
 
     public String modelId() {
@@ -282,7 +294,8 @@ public final class ReadAloudService {
         synchronized (lock) {
             myGeneration = ++generation;
         }
-        List<String> chunks = chunks(SpeechText.plainText(markdown));
+        List<String> chunks = chunks(SpeechText.speakableCharacters(preparation == null
+                ? SpeechText.plainText(markdown) : preparation.spokenText(markdown)));
         if (chunks.isEmpty()) {
             return false;
         }

@@ -65,7 +65,7 @@ Später änderst du es so:
 
 - Einstellungen → Modelle → „Cloud-Modelle“: in der Zeile „Sprachausgabe (TTS)“ ein Modell des KI-Dienstes wählen, oder
 - Einstellungen → Modelle → „Lokale Modelle“: eine lokale Stimme installieren und wählen. Lokale Stimmen laufen im Client selbst.
-- Einstellungen → Sprachausgabe zeigt dasselbe Modell zusammen mit der Stimme. Bei Modellen mit mehreren Sprechern wählst du dort eine feste Stimme, damit nicht jeder Absatz anders klingt; „Stimme testen“ spricht einen kurzen Satz.
+- Einstellungen → Sprachausgabe zeigt das hier gewählte Modell nur an und stellt seine Stimme ein. Bei Modellen mit mehreren Sprechern wählst du dort eine feste Stimme, damit nicht jeder Absatz anders klingt; „Stimme testen“ spricht einen kurzen Satz.
 
 Je Funktion gibt es genau eine Auswahl: Eine Wahl unter „Lokale Modelle“ ersetzt die unter „Cloud-Modelle“ und umgekehrt.
 

@@ -252,8 +252,8 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * Die Stimme, mit der das Modell im Entwurf spräche: die für das Modell gespeicherte, sonst die passende frühere
-     * globale ({@code speech.voice}), sonst die Standardstimme; leer, wenn keine gilt.
+     * Die Stimme, mit der das Modell im Entwurf spräche: die für das Modell gespeicherte, sonst die Standardstimme;
+     * leer, wenn keine gilt.
      */
     default String ttsVoice(SettingsForm form, String modelSelection) {
         return "";
@@ -265,10 +265,11 @@ public interface SettingsDialogActions {
     }
 
     /**
-     * „Stimme testen“: spricht einen kurzen Satz mit Modell und Stimme des Entwurfs (Netz und Token wie die
-     * Modellabfrage). Ergebnis genau einmal auf dem EDT: {@code null} = gesprochen, sonst der Grund ohne Secrets.
+     * „Stimme testen“: spricht einen kurzen Satz mit TTS-Modell ({@code model.tts}) und Stimme
+     * ({@code speech.voices}) des Entwurfs über denselben Weg wie das Vorlesen (Netz und Token wie die Modellabfrage).
+     * Ergebnis genau einmal auf dem EDT: {@code null} = gesprochen, sonst der Grund ohne Secrets.
      */
-    default void testVoice(SettingsForm form, String modelSelection, String voice, Consumer<String> onResult) {
+    default void testVoice(SettingsForm form, Consumer<String> onResult) {
         onResult.accept("In dieser Umgebung nicht verfügbar.");
     }
 }

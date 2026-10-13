@@ -24,9 +24,9 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Kategorie „Sprachausgabe“: oben Modell und Stimme (Sprecher) der Sprachausgabe, darunter das Verhalten beim
- * Vorlesen (askai arch {@code readAloudAutoStart}, {@code chunking}, {@code synthesisWorkers}). Das Modell ist eine
- * Sicht auf dieselbe Auswahl wie unter „Modelle“. Die Stimme gehört zum Modell ({@code speech.voices}): gültige
+ * Kategorie „Sprachausgabe“: oben die Stimme (Sprecher) des TTS-Modells, darunter das Verhalten beim Vorlesen (askai
+ * arch {@code readAloudAutoStart}, {@code chunking}, {@code synthesisWorkers}). Das Modell selbst wird nur unter
+ * „Modelle“ gewählt; hier steht es nur zur Information. Die Stimme gehört zum Modell ({@code speech.voices}): gültige
  * Sprecher hängen vom Modell ab, beim Modellwechsel erscheint dessen gespeicherte oder Standardstimme. Ohne feste
  * Stimme wählen Modelle mit mehreren Sprechern je Absatz selbst; deshalb spricht der Client immer mit einer.
  * Ganz oben steht der Name des Assistenten ({@link AssistantNameSection}); er hängt nie an Modell oder Stimme.
@@ -44,7 +44,7 @@ final class SpeechTab {
     private final SettingsDialogActions actions;
     private final Supplier<SettingsForm> form;
     private final ModelSelection tts;
-    private final CategoryModelRow ttsRow;
+    private final JLabel model = new WrappingLabel(" ");
     private final JComboBox<String> voice = FormRows.<String>fittingComboBox();
     private final JTextField voiceField;
     private final ComicButton test;
@@ -70,9 +70,10 @@ final class SpeechTab {
         FormRows voiceRows = new FormRows(palette);
         voiceRows.note("Modelle mit mehreren Sprechern wählen ohne feste Stimme bei jedem Absatz selbst, dann wechselt "
                 + "die Stimme mitten in der Antwort. Die Stimme gilt je Modell: beim Wechsel des Modells erscheint "
-                + "dessen eigene Stimme.");
-        ttsRow = new CategoryModelRow(voiceRows, ModelCategory.TTS, false, false, tts, actions, palette);
-        models.mirror(ttsRow, false);
+                + "dessen eigene Stimme. Das Modell wählst du unter „Modelle“.");
+        model.putClientProperty("html.disable", Boolean.TRUE);
+        model.getAccessibleContext().setAccessibleName("TTS-Modell");
+        voiceRows.component("Modell", model, "Das unter „Modelle“ gewählte TTS-Modell (model.tts)");
         voice.setEditable(true);
         voice.setForeground(palette.getInk());
         voice.setBackground(Color.WHITE);
@@ -104,7 +105,8 @@ final class SpeechTab {
             }
         });
         test = new ComicButton(TEST_LABEL, null, ComicButton.Accent.ACTION, palette);
-        test.setToolTipText("Spricht einen kurzen Satz mit Modell und Stimme dieses Entwurfs");
+        test.setToolTipText("Spricht einen kurzen Satz mit Modell und Stimme dieses Entwurfs, auf demselben Weg wie "
+                + "das Vorlesen");
         test.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -153,7 +155,7 @@ final class SpeechTab {
                 "Fester Sprecher dieses Modells, damit Merlin immer gleich klingt (setup.merlin.ttsVoice)");
         assistantName = new AssistantNameSection(palette);
         panel = FormRows.column(palette, assistantName.panel(),
-                FormRows.plate("Modell und Stimme", palette.getNavigationBlue(), voiceRows.panel(), palette),
+                FormRows.plate("Stimme", palette.getNavigationBlue(), voiceRows.panel(), palette),
                 FormRows.plate("Sprachausgabe", palette.getAgentPetrol(), speech.panel(), palette),
                 FormRows.plate("Merlin", palette.getAgentPetrol(), merlin.panel(), palette));
         showVoice();
@@ -197,11 +199,13 @@ final class SpeechTab {
         b.merlinSpeaker(merlinSpeaker.getText());
     }
 
-    /** Die Stimme des gewählten Modells: gespeichert, sonst wie zur Laufzeit (frühere globale oder Standard). */
+    /** Die Stimme des gewählten Modells: gespeichert, sonst wie zur Laufzeit (Standard des Modells). */
     private void showVoice() {
         String selection = tts.get();
         ModelReference model = actions.parseModel(selection);
         boolean speaks = model != null && !actions.isLocal(model);
+        this.model.setText(model == null ? "Keines gewählt (unter „Modelle“ wählen)"
+                : model.modelId() + (speaks ? "" : " (lokale Stimme)"));
         filling = true;
         try {
             voice.removeAllItems();
@@ -246,7 +250,7 @@ final class SpeechTab {
         test.setText(TESTING_LABEL);
         testStatus.setText(" ");
         try {
-            actions.testVoice(form.get(), tts.get(), currentVoice(), new Consumer<String>() {
+            actions.testVoice(form.get(), new Consumer<String>() {
                 @Override
                 public void accept(String failure) {
                     test.setEnabled(true);
@@ -273,6 +277,11 @@ final class SpeechTab {
     private String key(String selection) {
         ModelReference model = actions.parseModel(selection);
         return model == null ? null : model.key();
+    }
+
+    /** Die Anzeige des gewählten Modells (für Tests). */
+    JLabel model() {
+        return model;
     }
 
     /** Das Feld „Stimme“ (für Tests). */

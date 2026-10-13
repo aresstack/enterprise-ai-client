@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.speech;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -43,7 +44,44 @@ public final class SpeechText {
     private static final Pattern HTML_VISUAL = Pattern.compile(
             "(?is)<(svg|figure|figcaption|canvas|object|picture)\\b.*?</\\1\\s*>|<(img|embed|source)\\b[^>]*>");
 
+    /**
+     * Unsichtbare Zeichen, die keine Anzeige zeigt: Format-Zeichen (weiche Trennung, Null-Breiten-Zeichen, Wortverbinder,
+     * Byte-Order-Mark, Richtungsmarken) und Variantenselektoren hinter Emojis.
+     */
+    private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cf}\\x{FE00}-\\x{FE0F}]");
+    /** Zeilen- und Absatztrenner aus Unicode. */
+    private static final Pattern LINE_SEPARATOR = Pattern.compile("[\\x{2028}\\x{2029}]");
+    /** Steuerzeichen außer dem Zeilenumbruch. */
+    private static final Pattern CONTROL = Pattern.compile("[\\p{Cc}&&[^\\n]]");
+    /** Geschützte, schmale und andere typografische Leerzeichen. */
+    private static final Pattern SPACE = Pattern.compile("\\p{Zs}");
+    /**
+     * Bildzeichen ohne Wortlaut: Pfeile, Rahmenlinien und Blockgrafik, Symbole und Dingbats, Emojis. Eine generative
+     * Stimme erfindet für sie Laute oder Zahlen.
+     */
+    private static final Pattern PICTOGRAPH = Pattern.compile(
+            "[\\x{2190}-\\x{21FF}\\x{2500}-\\x{259F}\\x{2600}-\\x{27BF}\\x{2B00}-\\x{2BFF}\\x{1F000}-\\x{1FAFF}]");
+
     private SpeechText() {
+    }
+
+    /**
+     * Lässt nur Zeichen stehen, die eine Stimme sinnvoll sprechen kann, und behält die Absätze: Unicode wird
+     * zusammengesetzt (NFC), unsichtbare Zeichen fallen weg, Sonderleerzeichen und Steuerzeichen werden zu Leerzeichen,
+     * Bildzeichen (Pfeile, Rahmen, Emojis) zu Leerraum. Läuft vor jeder Synthese, auch bei Merlin.
+     */
+    public static String speakableCharacters(String text) {
+        if (text == null) {
+            return "";
+        }
+        String result = Normalizer.normalize(text.replace("\r\n", "\n").replace('\r', '\n'), Normalizer.Form.NFC);
+        result = INVISIBLE.matcher(result).replaceAll("");
+        result = LINE_SEPARATOR.matcher(result).replaceAll("\n");
+        result = CONTROL.matcher(result).replaceAll(" ");
+        result = SPACE.matcher(result).replaceAll(" ");
+        result = PICTOGRAPH.matcher(result).replaceAll(" ");
+        result = result.replaceAll("[ \\t]+", " ").replaceAll(" ?\n ?", "\n").replaceAll(" ([.,!?;:…])", "$1");
+        return result.replaceAll("\\n{3,}", "\n\n").trim();
     }
 
     /**

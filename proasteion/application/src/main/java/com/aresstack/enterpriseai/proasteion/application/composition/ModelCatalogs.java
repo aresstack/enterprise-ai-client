@@ -127,12 +127,12 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
      * immer. Welcher Port spricht, entscheidet der Katalog des gewählten TTS-Modells ({@code model.tts}).
      *
      * @param connection Verbindung der Enterprise-API (die des laufenden Graphen, passend zu Netz und Token)
-     * @param models     Stimme und Modellverzeichnis, auch frisch gespeichert
+     * @param models     Modellverzeichnis der lokalen Stimmen, auch frisch gespeichert (die Stimme kommt je Anfrage)
      */
     public SpeechSynthesisRegistry speech(AppConfig connection, ModelsConfig models, NetworkServices network,
                                           Supplier<String> token) {
         List<SpeechSynthesisPort> ports = new ArrayList<SpeechSynthesisPort>();
-        ports.add(new KipitzSpeechAdapter(kipitz(connection, network, token), models.speechVoice()));
+        ports.add(new KipitzSpeechAdapter(kipitz(connection, network, token)));
         // Lokale Stimmen sprechen im Prozess (ONNX Runtime als Pilot), ohne externes Programm.
         ports.add(new LocalVoiceSpeechAdapter(ModelsConfig.LOCAL_CATALOG_ID, models.localModelRoot(),
                 localSpeechRuntime));

@@ -45,18 +45,16 @@ public final class KipitzSpeechAdapter implements SpeechSynthesisPort {
     private static final Logger LOG = Logger.getLogger(KipitzSpeechAdapter.class.getName());
 
     private final KipitzModelCatalogConfig config;
-    private final String voice;
 
     /**
-     * @param voice Stimme ({@code voice}, bei OpenAI-kompatiblen Diensten meist Pflicht) aus der Konfiguration;
-     *              {@code null} oder leer = ohne
+     * Der Adapter hat keine eigene Stimme: welche Stimme spricht, steht allein in jeder Anfrage (eine Quelle, kein
+     * versteckter Rückfall auf eine globale Einstellung).
      */
-    public KipitzSpeechAdapter(KipitzModelCatalogConfig config, String voice) {
+    public KipitzSpeechAdapter(KipitzModelCatalogConfig config) {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
         this.config = config;
-        this.voice = voice == null || voice.trim().isEmpty() ? null : voice.trim();
     }
 
     @Override
@@ -64,16 +62,11 @@ public final class KipitzSpeechAdapter implements SpeechSynthesisPort {
         return KipitzModelCatalogAdapter.CATALOG_ID;
     }
 
-    @Override
-    public SynthesizedSpeech synthesize(String modelId, String text) throws SpeechSynthesisException {
-        return synthesize(modelId, null, text);
-    }
-
-    /** {@code voice} vor der Stimme aus der Konfiguration; ohne beide fehlt {@code voice} im Request. */
+    /** Sendet {@code voice} unverändert (nur Leerraum am Rand fällt); ohne Stimme fehlt {@code voice} im Request. */
     @Override
     public SynthesizedSpeech synthesize(String modelId, String requestedVoice, String text)
             throws SpeechSynthesisException {
-        String voice = requestedVoice == null || requestedVoice.trim().isEmpty() ? this.voice : requestedVoice.trim();
+        String voice = requestedVoice == null || requestedVoice.trim().isEmpty() ? null : requestedVoice.trim();
         if (modelId == null || modelId.trim().isEmpty() || text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("modelId and text must not be empty");
         }

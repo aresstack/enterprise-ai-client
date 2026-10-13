@@ -126,7 +126,7 @@ public class KipitzSpeechAdapterTest {
                     public String get() {
                         return TOKEN;
                     }
-                }).build(), "Thomas");
+                }).build());
         ExecutorService workers = Executors.newFixedThreadPool(3);
         List<Future<?>> futures = new ArrayList<Future<?>>();
         for (final String paragraph : Arrays.asList("Absatz eins.", "Absatz zwei.", "Absatz drei.",
@@ -134,7 +134,7 @@ public class KipitzSpeechAdapterTest {
             futures.add(workers.submit(new Callable<Object>() {
                 @Override
                 public Object call() throws Exception {
-                    return adapter.synthesize("orpheus-tts-3b-de", paragraph);
+                    return adapter.synthesize("orpheus-tts-3b-de", "Thomas", paragraph);
                 }
             }));
         }
@@ -168,20 +168,19 @@ public class KipitzSpeechAdapterTest {
     }
 
     @Test
-    public void requestedVoiceWinsOverTheConfiguredOne() throws Exception {
+    public void onlyTheRequestedVoiceIsSentNeverAHiddenFallback() throws Exception {
         URI base = URI.create("http://" + InetAddress.getLoopbackAddress().getHostAddress() + ":"
                 + server.getAddress().getPort() + "/v1");
-        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(base).build(), null);
+        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(base).build());
         adapter.synthesize("qwen3-tts", "Vivian", "Ein Absatz.");
-        adapter.synthesize("qwen3-tts", "Ein Absatz.");
+        adapter.synthesize("qwen3-tts", null, "Ein Absatz.");
         assertEquals("Vivian", bodies.get(0).get("voice").getAsString());
         assertFalse(bodies.get(1).has("voice"));
     }
 
     @Test
     public void merlinRequestSendsTheSpeakerExactlyAsConfigured() throws Exception {
-        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(strictBase()).build(),
-                null);
+        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(strictBase()).build());
         adapter.synthesize("orpheus-tts-3b-de", "Thomas", "Willkommen.");
         assertEquals(1, bodies.size());
         assertEquals("orpheus-tts-3b-de", bodies.get(0).get("model").getAsString());
@@ -190,8 +189,7 @@ public class KipitzSpeechAdapterTest {
 
     @Test
     public void wrongSpeakerCaseReportsTheValidationTextOnly() throws Exception {
-        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(strictBase()).build(),
-                null);
+        KipitzSpeechAdapter adapter = new KipitzSpeechAdapter(KipitzModelCatalogConfig.builder(strictBase()).build());
         try {
             adapter.synthesize("orpheus-tts-3b-de", "thomas", "Vertraulicher Absatz.");
             fail("lowercase speaker must be rejected by the service");

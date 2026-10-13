@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.KnowledgeConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.LiveSearchConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
@@ -160,7 +161,11 @@ public final class SettingsMapper {
                 BubbleColorsConfig.DEFAULT_ASSISTANT_BACKGROUND));
         b.bubbleAssistantForeground(bubbleColor(p, BubbleColorsConfig.ASSISTANT_FOREGROUND_KEY,
                 BubbleColorsConfig.DEFAULT_ASSISTANT_FOREGROUND));
-        b.speechVoices(ModelsConfig.parseSpeechVoices(text(p, ModelsConfig.SPEECH_VOICES_KEY, "")));
+        // Eine frühere globale speech.voice erscheint als Stimme des gewählten TTS-Modells (eine Quelle).
+        b.speechVoices(ModelsConfig.adoptLegacyVoice(
+                ModelsConfig.parseSpeechVoices(text(p, ModelsConfig.SPEECH_VOICES_KEY, "")),
+                ModelsConfig.parse(text(p, ModelsConfig.keyOf(ModelCategory.TTS), "")),
+                text(p, ModelsConfig.SPEECH_VOICE_KEY, ""), TtsVoiceCatalog.bundled()));
         b.merlinVoice(text(p, ModelsConfig.MERLIN_VOICE_KEY, ModelsConfig.defaultMerlinVoice()));
         b.merlinSpeaker(text(p, ModelsConfig.MERLIN_SPEAKER_KEY, ModelsConfig.defaultMerlinSpeaker()));
         b.prefetchMaxItems(text(p, AppConfigLoader.KNOWLEDGE_PREFETCH_MAX_ITEMS_KEY, "100"));
@@ -387,6 +392,12 @@ public final class SettingsMapper {
         remove.add(KEY_LEGACY_PAC_DISCOVERY);
         remove.add(KEY_LEGACY_TLS_WINDOWS_STORE);
         remove.add(KEY_LEGACY_TOOLS_MAX_PAGES);
+        // Die frühere globale Stimme fällt erst weg, wenn sie als Stimme eines Modells in speech.voices steht.
+        String legacyVoice = current == null ? null : current.getProperty(ModelsConfig.SPEECH_VOICE_KEY);
+        if (legacyVoice != null && (legacyVoice.trim().isEmpty()
+                || form.speechVoices().containsValue(legacyVoice.trim()))) {
+            remove.add(ModelsConfig.SPEECH_VOICE_KEY);
+        }
         remove.removeAll(nonEmptyKeys(changes));
         return remove;
     }

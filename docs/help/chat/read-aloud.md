@@ -36,9 +36,9 @@ Für Fortgeschrittene: Schlüssel `speech.readAloud.autoStart` (Standard aus).
 
 ## Stimme wählen und testen
 
-Die Stimme stellst du unter Einstellungen → „Sprachausgabe“ im Bereich „Modell und Stimme“ ein:
+Das Modell wählst du unter Einstellungen → „Modelle“, die Stimme unter Einstellungen → „Sprachausgabe“ im Bereich „Stimme“:
 
-1. Wähle das **TTS-Modell**. Das ist dieselbe Auswahl wie im Reiter „Modelle“ in der Kategorie „Sprachausgabe (TTS)“; eine Änderung an einer Stelle zeigt sich auch an der anderen. Es gibt zwei Arten:
+1. Wähle unter „Modelle“ in der Kategorie „Sprachausgabe (TTS)“ das **TTS-Modell**. Nur dort wird es gewählt; „Sprachausgabe“ zeigt es nur an. Es gibt zwei Arten:
    - Modelle des KI-Dienstes (aus dem Modellkatalog des Servers),
    - **lokale Stimmen**, die im Client selbst laufen. Sie installierst du unter „Modelle“ → „Lokale Modelle“.
 2. Wähle im Feld **„Stimme“** den Sprecher. Die Liste zeigt die Sprecher, die für dieses Modell bekannt sind; du kannst den Namen auch eintippen, so wie der Dienst ihn nennt. Lokale Stimmen haben genau einen Sprecher, das Feld ist dann gesperrt („Lokale Stimme: genau ein Sprecher.“). Zu manchen Sprechern zeigt der Dialog einen Hinweis wie „Stimme … : weiblich“.

@@ -742,8 +742,6 @@ public final class SettingsPanel extends JPanel {
         cards.show(deck, name);
         if (TAB_LABELS[MODELS_TAB].equals(name)) {
             modelsTab.shown();
-        } else if (TAB_LABELS[SPEECH_TAB].equals(name)) {
-            modelsTab.mirrorShown();
         } else if (TAB_LABELS[TOOLS_TAB].equals(name)) {
             toolsTab.reload();
         } else if (TAB_LABELS[TECHNICAL_TAB].equals(name)) {
