@@ -33,14 +33,16 @@ public class ReaderToolbarTest {
             ReaderToolbar toolbar = reader.toolbar();
             assertFalse(toolbar.isSearchOpen());
             assertTrue(toolbar.isBrandingVisible());
-            // Lupe ganz links, daneben das Info-Symbol (Seiteninformationen), Vorlesen (ohne Sprachausgabe aus), dann
-            // die Büroklammer (ohne Anhänge aus)
-            assertEquals(4, toolbar.tools().getComponentCount());
+            // Lupe ganz links, daneben das Info-Symbol (Seiteninformationen), Vorlesen und Sprechgeschwindigkeit
+            // (ohne Sprachausgabe aus), dann die Büroklammer (ohne Anhänge aus)
+            assertEquals(5, toolbar.tools().getComponentCount());
             assertTrue(toolbar.tools().getComponent(0) == toolbar.findButton());
             assertTrue(toolbar.tools().getComponent(1) == reader.infoButton());
             assertTrue(toolbar.tools().getComponent(2) == reader.readAloudButton());
             assertFalse(reader.readAloudButton().isVisible());
-            assertTrue(toolbar.tools().getComponent(3) == reader.attachmentsButton());
+            assertTrue(toolbar.tools().getComponent(3) == reader.readAloudRate());
+            assertFalse(reader.readAloudRate().isVisible());
+            assertTrue(toolbar.tools().getComponent(4) == reader.attachmentsButton());
             assertFalse(reader.attachmentsButton().isVisible());
             assertTrue(toolbar.findButton().isEnabled());
             assertFalse(toolbar.findButton().isEmphasized());
