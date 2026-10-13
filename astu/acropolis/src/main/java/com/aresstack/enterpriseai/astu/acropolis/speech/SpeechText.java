@@ -35,7 +35,33 @@ public final class SpeechText {
     private static final Pattern SPEAKABLE = Pattern.compile("[\\p{L}\\p{N}]");
     private static final Pattern SENTENCE_END = Pattern.compile("(?<=[.!?…:;])\\s+");
 
+    /** Ein Bild, auch als Link verpackt ({@code [![alt](bild)](ziel)}): fällt mitsamt Alternativtext weg. */
+    private static final Pattern LINKED_IMAGE = Pattern.compile("\\[\\s*!\\[[^\\]]*\\]\\([^)]*\\)\\s*\\]\\([^)]*\\)");
+    /** Bild-Referenzen ({@code ![alt][ref]}) sind ebenfalls nur Darstellung. */
+    private static final Pattern REFERENCE_IMAGE = Pattern.compile("!\\[[^\\]]*\\]\\[[^\\]]*\\]");
+    /** Eingebettetes HTML für Grafiken: Bild, SVG, Bildunterschrift, Canvas, Objekt. */
+    private static final Pattern HTML_VISUAL = Pattern.compile(
+            "(?is)<(svg|figure|figcaption|canvas|object|picture)\\b.*?</\\1\\s*>|<(img|embed|source)\\b[^>]*>");
+
     private SpeechText() {
+    }
+
+    /**
+     * Entfernt alles rein Visuelle aus einem Seitentext, bevor er vorgelesen wird (Lesebereich): Bilder samt
+     * Alternativtext und Bildunterschrift, eingebettete Grafiken, Diagramm- und Codeblöcke (Mermaid, Draw.io usw.).
+     * Überschriften, Absätze, Listen und Tabellen bleiben stehen; {@link #plainText} bereitet das Ergebnis wie im Chat
+     * weiter auf.
+     */
+    public static String withoutVisuals(String markdown) {
+        if (markdown == null) {
+            return "";
+        }
+        String text = FENCE.matcher(markdown.replace("\r\n", "\n").replace('\r', '\n')).replaceAll("\n\n");
+        text = HTML_VISUAL.matcher(text).replaceAll("");
+        text = LINKED_IMAGE.matcher(text).replaceAll("");
+        text = IMAGE.matcher(text).replaceAll("");
+        text = REFERENCE_IMAGE.matcher(text).replaceAll("");
+        return text.replaceAll("\\n{3,}", "\n\n").trim();
     }
 
     /** Markdown → vorlesbarer Text (Absätze bleiben durch Leerzeilen getrennt). */

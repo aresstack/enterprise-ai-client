@@ -278,7 +278,11 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                         reader.showAttachments(link.key(), attachments, attachmentLoader);
                     });
                     // Danach wie bisher aufbereiten (Index); der Banner zieht auf der Lese-Ansicht nach.
-                    KnowledgeDocument viewed = indexAfterViewing(registration.port(), id, link);
+                    final KnowledgeDocument viewed = indexAfterViewing(registration.port(), id, link);
+                    if (viewed != null) {
+                        // Vorgelesen wird die Textfassung der Seite, nicht die HTML-Darstellung mit ihren Bildern.
+                        uiExecutor.execute(() -> reader.setSpeechText(link.key(), viewed.text()));
+                    }
                     if (viewed != null && navigation != null) {
                         navigate(link, viewed, false);
                     }

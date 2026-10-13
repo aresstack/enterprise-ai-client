@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Markdown headings and list items keep the blank lines between them, so PARAGRAPHS chunking sees each section. */
@@ -42,5 +43,37 @@ public class SpeechTextTest {
         assertTrue(chunks.get(1), chunks.get(1).startsWith("Punkt eins"));
         assertTrue(chunks.get(2), chunks.get(2).contains("1 2"));
         assertEquals("Nachher.", chunks.get(3));
+    }
+
+    @Test
+    public void pageTextForReadAloudDropsImagesDiagramsAndTheirDescriptions() {
+        String page = "# Betrieb\n\n"
+                + "Einleitender Absatz.\n\n"
+                + "![Architekturskizze mit Pfeilen](bilder/skizze.png)\n\n"
+                + "[![Vorschaubild](thumb.png)](gross.png)\n\n"
+                + "<figure><img src=\"a.png\" alt=\"Bildtext\"/><figcaption>Abbildung 1: Ablauf</figcaption></figure>\n\n"
+                + "<svg width=\"10\"><text>Knoten A</text></svg>\n\n"
+                + "```mermaid\ngraph TD; A-->B;\n```\n\n"
+                + "- Punkt eins\n- Punkt zwei\n\n"
+                + "| Spalte | Wert |\n|---|---|\n| Dienst | aktiv |\n\n"
+                + "Schluss mit [Link](seite.html).";
+
+        String spoken = SpeechText.plainText(SpeechText.withoutVisuals(page));
+
+        assertTrue(spoken, spoken.startsWith("Betrieb"));
+        assertTrue(spoken, spoken.contains("Einleitender Absatz."));
+        assertTrue(spoken, spoken.contains("Punkt eins"));
+        assertTrue(spoken, spoken.contains("Dienst aktiv"));
+        assertTrue(spoken, spoken.contains("Schluss mit Link."));
+        for (String visual : new String[] {"Architekturskizze", "Vorschaubild", "Bildtext", "Abbildung",
+                "Knoten A", "graph", "png", "svg", "<"}) {
+            assertFalse(visual + " in: " + spoken, spoken.contains(visual));
+        }
+    }
+
+    @Test
+    public void pageTextWithoutVisualsKeepsNullSafe() {
+        assertEquals("", SpeechText.withoutVisuals(null));
+        assertEquals("Nur Text.", SpeechText.withoutVisuals("Nur Text."));
     }
 }

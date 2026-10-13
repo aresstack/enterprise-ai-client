@@ -234,7 +234,7 @@ public final class ReadAloudBinding implements ReadAloudControl {
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
-                JOptionPane.showMessageDialog(null, "Die Antwort konnte nicht vorgelesen werden.\n" + message
+                JOptionPane.showMessageDialog(null, "Der Text konnte nicht vorgelesen werden.\n" + message
                         + "\n\n" + description, "Vorlesen", JOptionPane.WARNING_MESSAGE);
             }
         });

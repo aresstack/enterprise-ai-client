@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 
+import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechText;
 import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DiagramOverlayHost;
@@ -27,6 +29,7 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.Icon;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
@@ -81,7 +84,8 @@ import java.util.Map;
  * Reiters zeigt den ungekürzten Titel.</p>
  *
  * <p>Unten liegt eine einzige Zeile ({@link ReaderToolbar}): links die Lupe und daneben das Info-Symbol
- * ({@link ReaderPageInfo}: vollständige Adresse, kopieren, im Browser öffnen), rechts das Branding an derselben Stelle
+ * ({@link ReaderPageInfo}: vollständige Adresse, kopieren, im Browser öffnen) und der Play-Knopf zum Vorlesen
+ * ({@link #setReadAloud}), rechts das Branding an derselben Stelle
  * wie unter dem Chat. Lupe oder Strg+F klappt die Suche in derselben Zeile auf; gesucht wird wie in MainframeMates
  * {@code ConfluenceReaderTab} nur im aktiven Reiter (alle Fundstellen gelb, die aktuelle orange), Begriff und
  * Auf/Zu merkt sich jeder Reiter.</p>
@@ -130,6 +134,11 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     static final String FAVORITE_ADD = "Als Favorit merken";
     static final String FAVORITE_REMOVE = "Aus den Favoriten entfernen";
     static final String CLOSE_TOOLTIP = "Schließen";
+    static final String READ_ALOUD_PLAY_TOOLTIP = "Seite vorlesen";
+    static final String READ_ALOUD_STOP_TOOLTIP = "Vorlesen beenden";
+    static final String READ_ALOUD_NO_TEXT_TOOLTIP = "Für diesen Reiter gibt es (noch) keinen vorlesbaren Text";
+    static final String READ_ALOUD_UNAVAILABLE_TEXT = "Die Seite kann nicht vorgelesen werden: Es ist keine "
+            + "Sprachausgabe eingerichtet (TTS-Modell und Stimme in den Einstellungen wählen).";
     private static final int TAB_BUTTON_SIZE = 22;
     private static final String EMPTY_CARD = "empty";
     /** MainframeMate {@code TabbedPaneManager}: Maustasten Zurück und Vor. */
@@ -173,6 +182,15 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     /** Zeichen-Thread des Anhang-Overlays für PDF-Seiten; {@code null}: der gemeinsame. */
     private java.util.concurrent.Executor attachmentRenderer;
     private java.util.function.Consumer<String> clipboard = ReaderPageInfo.SYSTEM_CLIPBOARD;
+    /** Play/Stopp der Sprachausgabe; ausgeblendet, bis {@link #setReadAloud} sie anschließt. */
+    private final ComposerButton readAloudButton;
+    private ReadAloudControl readAloud;
+    /** Der Reiter, dessen Text gerade vorgelesen wird; {@code null}: keiner. */
+    private Tab speakingTab;
+    /** Kennung des laufenden Vorlesens; das Ende eines abgelösten Laufs setzt den Knopf nicht zurück. */
+    private Object speakingRun;
+    private java.util.function.Consumer<String> readAloudNotice = text -> JOptionPane.showMessageDialog(this, text,
+            "Vorlesen", JOptionPane.WARNING_MESSAGE);
     private final JLayeredPane layers = new JLayeredPane();
     private ComicOverlayPanel overlay;
     private final CardLayout cards = new CardLayout();
@@ -219,6 +237,10 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
                 info.show(infoButton, 0, -info.getPreferredSize().height);
             }
         });
+        // Neben der Info: die Seite vorlesen, mit derselben Sprachausgabe wie der Chat.
+        readAloudButton = toolbar.addTool(ComposerIcons.play(), READ_ALOUD_PLAY_TOOLTIP);
+        toolbar.showTool(readAloudButton, false);
+        readAloudButton.addActionListener(event -> toggleReadAloud());
         // Rechts neben Lupe und Info: Anhänge der Seite (unabhängig davon, ob die Quelle sie indexiert).
         attachmentsButton = toolbar.addTool(attachmentIcon(0), ReaderAttachmentList.tooltip(0));
         toolbar.showTool(attachmentsButton, false);
@@ -482,6 +504,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         document.setNavigation(navigation);
         tab.document = document;
         replace(tab, searchable(tab, document, page));
+        tab.speechText = markdown; // der angezeigte Text ist der Seitentext
+        styleReadAloud();
     }
 
     /**
@@ -549,6 +573,113 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
                 : Collections.unmodifiableList(new ArrayList<ReaderAttachment>(attachments));
         tab.attachmentLoader = loader;
         refresh();
+    }
+
+    // ------------------------------------------------------------------ Vorlesen
+
+    /**
+     * Schließt die Sprachausgabe an (dieselbe wie im Chat: Modell, Stimme, Stückelung, Fehlermeldung) und zeigt den
+     * Play-Knopf unten neben der Info. Play liest den Text des aktiven Reiters ohne Bilder, Grafiken und Diagramme
+     * vor, ein zweiter Klick beendet es; Reiterwechsel, Schließen und neuer Inhalt beenden es ebenfalls. Es gibt
+     * immer nur eine Ausgabe: der Chat und der Lesebereich lösen sich gegenseitig ab.
+     */
+    public void setReadAloud(ReadAloudControl control) {
+        if (control == null || readAloud != null) {
+            return;
+        }
+        readAloud = control;
+        control.addListener(() -> {
+            if (!readAloud.isAvailable()) {
+                stopReadAloud();
+            }
+            styleReadAloud();
+        });
+        toolbar.showTool(readAloudButton, true);
+        styleReadAloud();
+    }
+
+    /**
+     * Der Seitentext des Reiters zum Vorlesen, wenn die Anzeige ihn nicht selbst ist (Lese-Ansicht als HTML): die
+     * kanonische Textfassung der Seite ({@code KnowledgeDocument.text()}), nie die Darstellung.
+     */
+    public void setSpeechText(String key, String text) {
+        Tab tab = tabs.get(key);
+        if (tab == null) {
+            return;
+        }
+        tab.speechText = text;
+        styleReadAloud();
+    }
+
+    /** Ob gerade eine Seite vorgelesen wird. */
+    public boolean isReadingAloud() {
+        return speakingTab != null;
+    }
+
+    ComposerButton readAloudButton() {
+        return readAloudButton;
+    }
+
+    void setReadAloudNotice(java.util.function.Consumer<String> notice) {
+        this.readAloudNotice = notice;
+    }
+
+    private void toggleReadAloud() {
+        if (readAloud == null) {
+            return;
+        }
+        if (speakingTab != null) {
+            stopReadAloud();
+            return;
+        }
+        if (!readAloud.isAvailable()) {
+            readAloudNotice.accept(READ_ALOUD_UNAVAILABLE_TEXT + "\n\n" + readAloud.description());
+            return;
+        }
+        Tab active = tabs.get(activeKey);
+        String text = active == null ? "" : SpeechText.withoutVisuals(active.speechText);
+        if (text.isEmpty()) {
+            return;
+        }
+        final Object run = new Object();
+        speakingTab = active;
+        speakingRun = run;
+        styleReadAloud();
+        readAloud.speak(text, () -> {
+            if (speakingRun == run) {
+                speakingTab = null;
+                speakingRun = null;
+                styleReadAloud();
+            }
+        });
+    }
+
+    /** Beendet das Vorlesen der Seite; idempotent. */
+    private void stopReadAloud() {
+        if (speakingTab == null) {
+            return;
+        }
+        speakingTab = null;
+        speakingRun = null;
+        if (readAloud != null) {
+            readAloud.stop();
+        }
+        styleReadAloud();
+    }
+
+    private void styleReadAloud() {
+        if (readAloud == null) {
+            return;
+        }
+        boolean speaking = speakingTab != null;
+        Tab active = tabs.get(activeKey);
+        boolean hasText = active != null && !SpeechText.withoutVisuals(active.speechText).isEmpty();
+        readAloudButton.setIcon(speaking ? ComposerIcons.stop() : ComposerIcons.play());
+        readAloudButton.setEmphasized(speaking);
+        readAloudButton.setEnabled(speaking || hasText);
+        String tooltip = speaking ? READ_ALOUD_STOP_TOOLTIP : !hasText ? READ_ALOUD_NO_TEXT_TOOLTIP
+                : READ_ALOUD_PLAY_TOOLTIP;
+        readAloudButton.setToolTipText(tooltip + " (" + readAloud.description() + ")");
     }
 
     /** Die Anhänge des Reiters (leer ohne). */
@@ -1307,6 +1438,11 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
 
     private void replace(Tab tab, JComponent content, ReaderImageStore images) {
         tab.images = images;
+        // neuer Inhalt: der alte Text verstummt, den neuen setzt showDocument oder der Controller (setSpeechText)
+        tab.speechText = null;
+        if (tab == speakingTab) {
+            stopReadAloud();
+        }
         // neuer Inhalt: die Anhänge setzt der Controller danach neu (showAttachments)
         tab.attachments = Collections.<ReaderAttachment>emptyList();
         tab.attachmentLoader = null;
@@ -1356,6 +1492,10 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         attachmentsButton.setIcon(attachmentIcon(attached));
         attachmentsButton.setToolTipText(ReaderAttachmentList.tooltip(attached));
         toolbar.showTool(attachmentsButton, attached > 0);
+        if (speakingTab != null && speakingTab != active) {
+            stopReadAloud(); // Reiterwechsel oder Schließen: die alte Seite liest nicht weiter
+        }
+        styleReadAloud();
         strip.revalidate();
         strip.repaint();
         deck.revalidate();
@@ -1410,6 +1550,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         boolean replaced;
         /** Die Bilder der Seite, nur bei {@link #showHtml}. */
         ReaderImageStore images;
+        /** Der vorlesbare Seitentext (Markdown wie {@code KnowledgeDocument.text()}); {@code null}: keiner. */
+        String speechText;
         /** Die Dateianhänge der Seite (alle Typen), nur bei Quellen mit Lese-Ansicht. */
         List<ReaderAttachment> attachments = Collections.<ReaderAttachment>emptyList();
         ReaderAttachmentLoader attachmentLoader;

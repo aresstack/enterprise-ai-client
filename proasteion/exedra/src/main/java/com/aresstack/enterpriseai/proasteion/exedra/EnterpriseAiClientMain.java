@@ -213,6 +213,7 @@ public final class EnterpriseAiClientMain {
                     }
                 }, root.workExecutor());
                 view.workspace().chatShell().transcript().setReadAloud(readAloud);
+                view.workspace().reader().setReadAloud(readAloud);
                 view.workspace().chatShell().composer().setDictation(dictation);
                 attachSourceEditing(view, frame, file, palette);
                 view.knowledgeSources().setPartitionSelection(partitions);
