@@ -380,6 +380,9 @@ final class ConfluenceRestClient {
         }
         try {
             return previewImage(session, preview);
+        } catch (TwoFactorRequired required) {
+            // Keep the challenge type: only a TwoFactorRequired becomes the one-time code prompt (issue #104).
+            throw drawio == null ? required : required.withDetail("; draw.io-Zeichnung: " + drawio);
         } catch (KnowledgeSourceException e) {
             if (drawio == null) {
                 throw e;
@@ -606,9 +609,18 @@ final class ConfluenceRestClient {
         private final transient byte[] html;
 
         TwoFactorRequired(KnowledgeSourceException error, URI page, byte[] html) {
-            super(error.kind(), error.getMessage(), error.getCause());
+            this(error.kind(), error.getMessage(), error.getCause(), page, html);
+        }
+
+        private TwoFactorRequired(Kind kind, String message, Throwable cause, URI page, byte[] html) {
+            super(kind, message, cause);
             this.page = page;
             this.html = html;
+        }
+
+        /** The same challenge (page and form) with additional diagnosis appended to the message. */
+        TwoFactorRequired withDetail(String detail) {
+            return new TwoFactorRequired(kind(), getMessage() + detail, this, page, html);
         }
 
         URI page() {
@@ -652,6 +664,9 @@ final class ConfluenceRestClient {
             headers.put("Cookie", cookie);
             try {
                 return attempt.run(Collections.unmodifiableMap(headers));
+            } catch (TwoFactorRequired required) {
+                // Keep the challenge type through the retry, the cookie session reached the second factor.
+                throw required.withDetail(" (auch mit Sitzungs-Cookie aus der REST-Anmeldung)");
             } catch (KnowledgeSourceException second) {
                 throw new KnowledgeSourceException(second.kind(), second.getMessage()
                         + " (auch mit Sitzungs-Cookie aus der REST-Anmeldung)", second);

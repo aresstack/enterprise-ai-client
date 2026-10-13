@@ -98,6 +98,7 @@ public class ConfluenceOneTimeCodeTest {
     private final List<Map<String, String>> postHeaders = new ArrayList<Map<String, String>>();
     private boolean verified;
     private int sessions;
+    private String drawioShape = "rect";
 
     @Before
     public void listen() {
@@ -239,6 +240,54 @@ public class ConfluenceOneTimeCodeTest {
         assertEquals(page(), file.resource().parentId().get());
     }
 
+    /**
+     * Issue #104: The drawing is not drawable (unsupported shape), the PNG preview is behind the one-time code. The
+     * challenge must arrive as such, not as a plain image error; after the code the preview loads.
+     */
+    @Test
+    public void anUndrawableDiagramAsksForTheCodeOfItsPreviewAndThenShowsThePreview() throws Exception {
+        drawioShape = "ext";
+        ConfluenceKnowledgeSource source = source();
+
+        OneTimeCodeChallenge challenge = challengeOf(() -> source.loadViewImage(DIAGRAM));
+        assertEquals(DownloadAccess.ONE_TIME_CODE_REQUIRED, source.downloadAccess());
+        assertEquals("Einmalcode bestätigen", challenge.title());
+
+        assertNull(challenge.submit("482913".toCharArray()));
+        assertArrayEquals(PNG, source.loadViewImage(DIAGRAM));
+        assertArrayEquals("Original nach dem Code ohne neue Abfrage", PNG,
+                source.loadViewImage(DIAGRAM + "&view=original"));
+        assertEquals(1, posts.size());
+    }
+
+    /** Drawable diagram: shown as SVG without asking; only the original view asks for the code. */
+    @Test
+    public void aDrawableDiagramNeedsNoCodeButItsOriginalDoes() throws Exception {
+        ConfluenceKnowledgeSource source = source();
+
+        String svg = new String(source.loadViewImage(DIAGRAM), StandardCharsets.UTF_8);
+        assertTrue(svg, svg.contains("<svg"));
+        assertTrue("keine Datei angefragt", fileRequests.isEmpty());
+        assertEquals(DownloadAccess.OPEN, source.downloadAccess());
+
+        OneTimeCodeChallenge challenge = challengeOf(() -> source.loadViewImage(DIAGRAM + "&view=original"));
+        assertNull(challenge.submit("482913".toCharArray()));
+        assertArrayEquals(PNG, source.loadViewImage(DIAGRAM + "&view=original"));
+    }
+
+    private static final String DIAGRAM = BASE + "/download/attachments/7/Bild%20A.png?version=3&api=v2"
+            + "#drawio=Bild%20A&page=7&revision=3";
+
+    private static String drawio(String shape) {
+        com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+        json.addProperty("name", "Bild A");
+        json.addProperty("xml", "<mxfile><diagram id=\"d\"><mxGraphModel><root><mxCell id=\"0\"/>"
+                + "<mxCell id=\"1\" parent=\"0\"/><mxCell id=\"a\" value=\"Kasten\" style=\"shape=" + shape
+                + ";\" vertex=\"1\" parent=\"1\"><mxGeometry width=\"80\" height=\"40\" as=\"geometry\"/>"
+                + "</mxCell></root></mxGraphModel></diagram></mxfile>");
+        return json.toString();
+    }
+
     private interface Load {
         byte[] run() throws KnowledgeSourceException;
     }
@@ -280,6 +329,9 @@ public class ConfluenceOneTimeCodeTest {
                 }
                 if (path.equals("/rest/api/content/att101")) {
                     return json(ATTACHMENT);
+                }
+                if (path.startsWith("/rest/drawio/")) {
+                    return json(drawio(drawioShape));
                 }
                 if (path.startsWith("/rest/")) {
                     return json("{\"type\":\"known\",\"username\":\"beispiel\"}");
