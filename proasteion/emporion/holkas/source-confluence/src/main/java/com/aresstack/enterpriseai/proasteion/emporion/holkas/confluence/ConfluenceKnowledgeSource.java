@@ -117,7 +117,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         this.sourceId = sourceId;
         this.locator = locatorOf(config);
         this.config = config;
-        this.addressPattern = ConfluenceLinks.addressPattern(config.baseUrl().toString());
+        this.addressPattern = ConfluenceLinks.addressPattern();
         this.client = new ConfluenceRestClient(config, transport);
         this.secrets = secrets;
         this.options = options;
