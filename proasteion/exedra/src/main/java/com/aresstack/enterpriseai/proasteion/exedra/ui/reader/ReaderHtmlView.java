@@ -22,7 +22,6 @@ import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.InlineView;
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -64,10 +63,16 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
 
     private static final int PLACEHOLDER_W = 160;
     private static final int PLACEHOLDER_H = 100;
+    /** Room an image leaves for the body margin, list indents and table cell padding around it. */
+    static final int IMAGE_MARGIN = 48;
+    /** Below this width an image is not shrunk any further. */
+    private static final int IMAGE_MIN_WIDTH = 40;
 
     private final ReaderImageStore store;
     private final Consumer<ReaderImage> imageClicked;
     private final Map<InlineImageView, Boolean> imageViews = new WeakHashMap<InlineImageView, Boolean>();
+    /** The width the view is laid out for (or measured at); images shrink to it. 0 = not known yet. */
+    private int layoutWidth;
 
     /**
      * @param bodyHtml     der HTML-Körper der Seite (ohne {@code <html>}/{@code <body>})
@@ -145,6 +150,17 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
         List<Dimension> result = new ArrayList<Dimension>();
         for (InlineImageView view : new ArrayList<InlineImageView>(imageViews.keySet())) {
             if (view.image == null) {
+                result.add(view.size());
+            }
+        }
+        return result;
+    }
+
+    /** Bevorzugte Größe der bekannten Bilder bei der aktuellen Breite (für Tests). */
+    List<Dimension> knownImageSizes() {
+        List<Dimension> result = new ArrayList<Dimension>();
+        for (InlineImageView view : new ArrayList<InlineImageView>(imageViews.keySet())) {
+            if (view.image != null) {
                 result.add(view.size());
             }
         }
@@ -299,12 +315,49 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
         AbstractDocument doc = (AbstractDocument) getDocument();
         doc.readLock();
         try {
+            followWidth(width);
             View root = getUI().getRootView(this);
             root.setSize(Math.max(1, width - insets.left - insets.right), Integer.MAX_VALUE);
             return (int) Math.ceil(root.getPreferredSpan(View.Y_AXIS)) + insets.top + insets.bottom;
         } finally {
             doc.readUnlock();
         }
+    }
+
+    /**
+     * Lay the images out for {@code width}: they scale with the width the view actually gets, not with the width it had
+     * before, so a narrower reader (sidebar shown, window smaller) never keeps a diagram at its old size.
+     */
+    @Override
+    public void setBounds(int x, int y, int width, int height) {
+        if (width != layoutWidth) {
+            AbstractDocument doc = (AbstractDocument) getDocument();
+            doc.readLock();
+            try {
+                followWidth(width);
+            } finally {
+                doc.readUnlock();
+            }
+        }
+        super.setBounds(x, y, width, height);
+    }
+
+    /** Remember the layout width; on a change the images report new sizes (caller holds the read lock). */
+    private void followWidth(int width) {
+        if (width <= 0 || width == layoutWidth) {
+            return;
+        }
+        layoutWidth = width;
+        for (InlineImageView view : new ArrayList<InlineImageView>(imageViews.keySet())) {
+            view.preferenceChanged(null, true, true);
+        }
+    }
+
+    /** The widest an image may be at the current layout width; 0 = no limit known yet. */
+    int imageWidthLimit() {
+        int width = layoutWidth > 0 ? layoutWidth : getWidth();
+        int limit = width - IMAGE_MARGIN;
+        return limit > IMAGE_MIN_WIDTH ? limit : width > 0 ? IMAGE_MIN_WIDTH : 0;
     }
 
     // ------------------------------------------------------------------ Darstellung der Bilder
@@ -328,6 +381,10 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
                         }
                     };
                 }
+                if (name == HTML.Tag.IMPLIED && isPreformatted(element)) {
+                    // Swing's LineView never wraps a code line; a paragraph view wraps it at the reader width.
+                    return new javax.swing.text.html.ParagraphView(element);
+                }
                 View view = super.create(element);
                 return view instanceof InlineView ? new BreakableInlineView(element) : view;
             }
@@ -337,6 +394,11 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
         public ViewFactory getViewFactory() {
             return factory;
         }
+    }
+
+    private static boolean isPreformatted(Element element) {
+        Object whiteSpace = element.getAttributes().getAttribute(CSS.Attribute.WHITE_SPACE);
+        return whiteSpace != null && "pre".equals(whiteSpace.toString());
     }
 
     /** Schmaler als das gibt ein langes Wort (Adresse, Pfad) in einer Tabellenspalte nicht nach. */
@@ -359,11 +421,13 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
             return axis == View.X_AXIS && wraps() ? Math.min(span, LONG_WORD_MIN_SPAN) : span;
         }
 
-        /** {@code <pre>} und {@code white-space: nowrap} brechen nie um; dort bleibt die Mindestbreite echt. */
+        /**
+         * Only {@code white-space: nowrap} keeps its real minimum width. Code in {@code <pre>} wraps as well (issue
+         * 90): a long code line must not make the whole reader scroll sideways.
+         */
         private boolean wraps() {
             Object whiteSpace = getAttributes().getAttribute(CSS.Attribute.WHITE_SPACE);
-            String value = whiteSpace == null ? "" : whiteSpace.toString();
-            return !"pre".equals(value) && !"nowrap".equals(value);
+            return whiteSpace == null || !"nowrap".equals(whiteSpace.toString());
         }
     }
 
@@ -418,9 +482,8 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
                 w = attrWidth > 0 ? attrWidth : PLACEHOLDER_W;
                 h = attrHeight > 0 ? attrHeight : PLACEHOLDER_H;
             }
-            Container container = getContainer();
-            int max = container == null ? 0 : container.getWidth() - 48;
-            if (max > 40 && w > max) {
+            int max = imageWidthLimit();
+            if (max > 0 && w > max) {
                 h = Math.max(1, h * max / w);
                 w = max;
             }
@@ -431,6 +494,12 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
         public float getPreferredSpan(int axis) {
             Dimension size = size();
             return axis == View.X_AXIS ? size.width : size.height;
+        }
+
+        /** An image shrinks with the reader, so it never makes the page wider than the reader (issue 90). */
+        @Override
+        public float getMinimumSpan(int axis) {
+            return axis == View.X_AXIS && image != null ? 0f : getPreferredSpan(axis);
         }
 
         @Override
