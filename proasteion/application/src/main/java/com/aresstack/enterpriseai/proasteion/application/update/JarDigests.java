@@ -18,7 +18,9 @@ import java.util.zip.ZipFile;
  *
  * <p>The content digest covers every entry name and its bytes, sorted by name. It does not depend on compression
  * level, timestamps or entry order, so the patcher can prove that the jar it wrote holds exactly the entries of the
- * released target jar even when its zlib compresses differently from the build machine's.
+ * released target jar even when its zlib compresses differently from the build machine's. It is the one identity
+ * patches are chained by (#105): a jar the updater wrote has the same content digest as the released one, while
+ * its file digest may differ.
  */
 public final class JarDigests {
 

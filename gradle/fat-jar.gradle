@@ -289,8 +289,9 @@ tasks.named('check') { dependsOn verifyFatJar, smokeStartFatJar }
 
 // Update-Paket zwischen zwei ausgelieferten Fat Jars (Issue #92, "Update einspielen …" in Merlins Kristallhöhle):
 //   ./gradlew :proasteion:exedra:fatJarPatch -PpatchBase=<alte.jar> [-PpatchTarget=<neue.jar>] [-PpatchChanges=<txt>]
-// Ohne patchTarget gilt das eben gebaute Fat Jar als Ziel. Das ZIP enthält nur neue und geänderte Einträge, die
-// Liste der entfernten, beide SHA-256-Werte und die Änderungen; Format und Prüfungen in
+// Ohne patchTarget gilt das eben gebaute Fat Jar als Ziel; die Basis ist immer der direkte Vorgänger (#105, keine
+// Sprung-Pakete). Das ZIP enthält nur neue und geänderte Einträge, die Liste der entfernten, Versionen und
+// Inhaltsprüfsummen beider Jars und die Änderungen; Format und Prüfungen in
 // proasteion:application update.JarPatch. Der Erzeuger spielt den Patch probeweise ein und bricht ab, wenn er die
 // Zielversion nicht reproduziert. Ablage: build/distributions/enterprise-ai-client-patch-<basis>-to-<ziel>.zip.
 def patchBase = providers.gradleProperty('patchBase')

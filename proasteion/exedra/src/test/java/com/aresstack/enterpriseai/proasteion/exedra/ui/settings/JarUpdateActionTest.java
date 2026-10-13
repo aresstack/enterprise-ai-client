@@ -2,6 +2,8 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
 import com.aresstack.enterpriseai.proasteion.application.update.JarPatchBuilder;
 import com.aresstack.enterpriseai.proasteion.application.update.JarPatcher;
+import com.aresstack.enterpriseai.proasteion.application.update.PatchChainExecutor;
+import com.aresstack.enterpriseai.proasteion.application.update.PatchChainPlanner;
 import com.aresstack.enterpriseai.proasteion.application.update.RunningJar;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Rule;
@@ -29,7 +31,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-/** Issue #92: "Update einspielen …" in Merlins Kristallhöhle. */
+/** Issues #92/#105: "Update einspielen …" in Merlins Kristallhöhle, eine Kette aus mehreren Paketen. */
 public class JarUpdateActionTest {
 
     @Rule
@@ -44,60 +46,71 @@ public class JarUpdateActionTest {
     @Test
     public void startFromClassDirectoriesExplainsWhyThereIsNothingToPatch() throws Exception {
         RunningJar classes = RunningJar.at(folder.newFolder("classes"));
-        FakeDialogs dialogs = new FakeDialogs(null, true);
-        run(new JarUpdateAction(null, () -> classes, new JarPatcher(), Runnable::run, dialogs, busy -> {
-        }));
+        FakeDialogs dialogs = new FakeDialogs(java.util.Collections.<File>emptyList(), true);
+        run(action(() -> classes, dialogs, busy -> {
+        }, new ArrayList<String>()));
         assertEquals(Arrays.asList("info:" + classes.reason()), dialogs.shown);
         assertFalse("keine Dateiauswahl ohne Fat Jar", dialogs.chooserOpened);
     }
 
     @Test
-    public void confirmedUpdateShowsVersionAndChangesAndThenTheNewFile() throws Exception {
+    public void confirmedChainShowsStepsAndChangesAndThenTheNewFile() throws Exception {
         File install = folder.newFolder("install");
         File base = jar(new File(install, "enterprise-ai-client-0.56.0.jar"), "0.56.0", "old");
-        File patch = patch(base, "- Lesebereich responsiv");
-        FakeDialogs dialogs = new FakeDialogs(patch, true);
+        File first = patch(base, jar(folder.newFile("r57.jar"), "0.57.0", "mid"), "- Lesebereich responsiv");
+        File second = patch(jar(folder.newFile("b57.jar"), "0.57.0", "mid"),
+                jar(folder.newFile("r58.jar"), "0.58.0", "new"), "- Tempo-Stufen");
+        FakeDialogs dialogs = new FakeDialogs(Arrays.asList(second, first), true);
         List<Boolean> busy = new ArrayList<Boolean>();
-        run(new JarUpdateAction(null, () -> RunningJar.at(base), new JarPatcher(), Runnable::run, dialogs,
-                busy::add));
+        List<String> status = new ArrayList<String>();
+        run(action(() -> RunningJar.at(base), dialogs, busy::add, status));
 
-        File created = new File(install, "enterprise-ai-client-0.57.0.jar");
+        File created = new File(install, "enterprise-ai-client-0.58.0.jar");
         assertTrue(created.isFile());
-        assertEquals(2, dialogs.shown.size());
+        assertEquals(dialogs.shown.toString(), 2, dialogs.shown.size());
         String summary = dialogs.shown.get(0);
-        assertTrue(summary, summary.startsWith("confirm:Update 0.56.0 → 0.57.0"));
+        assertTrue(summary, summary.startsWith("confirm:Von: 0.56.0\nNach: 0.58.0\nSchritte: 2"));
+        assertTrue(summary, summary.contains("0.56.0 → 0.57.0"));
         assertTrue(summary, summary.contains("- Lesebereich responsiv"));
+        assertTrue(summary, summary.contains("- Tempo-Stufen"));
         assertTrue(summary, summary.contains(created.getAbsolutePath()));
         String done = dialogs.shown.get(1);
-        assertTrue(done, done.startsWith("info:Version 0.57.0 liegt jetzt unter"));
-        assertTrue(done, done.contains(created.getAbsolutePath()));
+        assertTrue(done, done.startsWith("info:Version 0.58.0 liegt jetzt unter"));
+        assertTrue(done, done.contains("Neue Version selbst starten"));
+        assertTrue(status.toString(), status.contains("Schritt 2 von 2: 0.57.0 → 0.58.0"));
         assertEquals(Boolean.FALSE, busy.get(busy.size() - 1));
+        assertEquals(2, install.list().length);
     }
 
     @Test
     public void cancellingOrAPatchForAnotherVersionCreatesNothing() throws Exception {
         File install = folder.newFolder("install");
         File base = jar(new File(install, "enterprise-ai-client-0.56.0.jar"), "0.56.0", "old");
-        File patch = patch(base, "");
-        FakeDialogs cancel = new FakeDialogs(patch, false);
-        run(new JarUpdateAction(null, () -> RunningJar.at(base), new JarPatcher(), Runnable::run, cancel, busy -> {
-        }));
+        File patch = patch(base, jar(folder.newFile("released.jar"), "0.57.0", "new"), "");
+        FakeDialogs cancel = new FakeDialogs(Arrays.asList(patch), false);
+        run(action(() -> RunningJar.at(base), cancel, busy -> {
+        }, new ArrayList<String>()));
         assertEquals(1, install.list().length);
 
         File other = jar(new File(folder.newFolder("other"), "enterprise-ai-client-0.55.0.jar"), "0.55.0", "x");
-        FakeDialogs wrong = new FakeDialogs(patch, true);
-        run(new JarUpdateAction(null, () -> RunningJar.at(other), new JarPatcher(), Runnable::run, wrong, busy -> {
-        }));
+        FakeDialogs wrong = new FakeDialogs(Arrays.asList(patch), true);
+        run(action(() -> RunningJar.at(other), wrong, busy -> {
+        }, new ArrayList<String>()));
         assertEquals(1, wrong.shown.size());
         assertTrue(wrong.shown.get(0), wrong.shown.get(0).startsWith("error:Update nicht eingespielt"));
         assertTrue(wrong.shown.get(0), wrong.shown.get(0).contains("0.56.0"));
     }
 
-    private File patch(File base, String changes) throws Exception {
-        File target = jar(folder.newFile("released.jar"), "0.57.0", "new");
-        File patch = folder.newFile("patch.zip");
+    private File patch(File base, File target, String changes) throws Exception {
+        File patch = folder.newFile();
         new JarPatchBuilder().build(base, target, changes, patch);
         return patch;
+    }
+
+    private static JarUpdateAction action(java.util.function.Supplier<RunningJar> running, FakeDialogs dialogs,
+                                          java.util.function.Consumer<Boolean> busy, List<String> status) {
+        return new JarUpdateAction(null, running, new PatchChainPlanner(), new PatchChainExecutor(new JarPatcher()),
+                Runnable::run, dialogs, busy, status::add);
     }
 
     private static File jar(File file, String version, String content) throws IOException {
@@ -140,19 +153,19 @@ public class JarUpdateActionTest {
 
     private static final class FakeDialogs implements JarUpdateAction.Dialogs {
         final List<String> shown = new ArrayList<String>();
-        private final File patch;
+        private final List<File> patches;
         private final boolean answer;
         boolean chooserOpened;
 
-        FakeDialogs(File patch, boolean answer) {
-            this.patch = patch;
+        FakeDialogs(List<File> patches, boolean answer) {
+            this.patches = patches;
             this.answer = answer;
         }
 
         @Override
-        public File choosePatch(Component parent) {
+        public List<File> choosePatches(Component parent) {
             chooserOpened = true;
-            return patch;
+            return patches;
         }
 
         @Override

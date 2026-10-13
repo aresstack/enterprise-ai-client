@@ -183,8 +183,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "created=true" >> "$GITHUB_OUTPUT"
 
-      # Update-Paket von der letzten veröffentlichten Version zu diesem Jar (Issue #92, "Update einspielen …" in
-      # Merlins Kristallhöhle). Auf main hängt es am neuen Release, auf Branches prüft der Lauf nur, dass es entsteht.
+      # Genau ein inkrementelles Update-Paket vom direkten Vorgänger-Release zu diesem Jar (#92, #105: keine
+      # Sprung-Pakete; der Updater in Merlins Kristallhöhle verkettet mehrere Pakete selbst über Version und
+      # Inhaltsprüfsumme). Auf main hängt es am neuen Release, auf Branches prüft der Lauf nur, dass es entsteht.
       # Scheitert es (keine Vorversion, Netz), bleibt das Release ohne Update-Paket: nur eine Warnung.
       - name: Update-Paket zur Vorversion erzeugen
         env:

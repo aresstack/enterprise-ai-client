@@ -405,24 +405,39 @@ mit `GITHUB_TOKEN` (`contents: write`) und ohne Organisations-Secrets; Tags und 
 keine weiteren Läufe aus. Auf Branches bricht ein neuer Push einen noch laufenden Snapshot-Lauf ab, auf `main`
 laufen die Läufe nacheinander. Snapshots sind zum Ausprobieren gedacht, nicht für den produktiven Einsatz.
 
-### Update-Paket (Patch zwischen zwei Versionen)
+### Update-Paket (inkrementell, verkettbar)
 
-Neben dem Jar hängt am Release `enterprise-ai-client-patch-<vorversion>-to-<version>.zip`: nur die gegenüber der
-letzten veröffentlichten Version neuen und geänderten Jar-Einträge (`files/`), die Liste der entfernten
-(`removed.txt`), die Änderungen (`changes.txt`, Commit-Titel seit der Vorversion) und `patch.properties` mit Basis-
-und Zielversion, SHA-256 des Basis-Jars, SHA-256 des Ziel-Jars und einer Inhaltsprüfsumme des Ziel-Jars. Lokal:
+Neben dem Jar hängt am Release genau ein Update-Paket `enterprise-ai-client-patch-<vorversion>-to-<version>.zip`,
+immer nur vom direkten Vorgänger-Release aus; Sprung-Pakete über mehrere Versionen gibt es nicht. Inhalt: die
+gegenüber dem Vorgänger neuen und geänderten Jar-Einträge (`files/`), die Liste der entfernten (`removed.txt`), die
+Änderungen (`changes.txt`, Commit-Titel seit der Vorversion) und `patch.properties` im Format 2 mit Basis- und
+Zielversion und den Inhaltsprüfsummen beider Jars (`baseContentSha256`, `targetContentSha256`: Namen und Bytes
+aller Einträge, unabhängig von Kompression, Zeitstempeln und Reihenfolge). Die Datei-Prüfsummen der Release-Jars
+stehen nur zur Information darin. Der Erzeuger spielt das Paket probeweise ein und bricht ab, wenn es die
+Zielversion nicht reproduziert. Lokal:
 
 ```bash
-./gradlew :proasteion:exedra:fatJarPatch -PpatchBase=<alte.jar> [-PpatchTarget=<neue.jar>] [-PpatchChanges=<datei>]
+./gradlew :proasteion:exedra:fatJarPatch -PpatchBase=<vorversion.jar> [-PpatchTarget=<neue.jar>] [-PpatchChanges=<datei>]
 ```
 
-Eingespielt wird es in den Einstellungen unter „Merlins Kristallhöhle“ mit „Update einspielen …“: Die Anwendung
-bestimmt das Jar, aus dem sie läuft (über die Code-Quelle, nicht über einen festen Namen), prüft Basisversion und
-SHA-256, zeigt Zielversion und Änderungen und schreibt nach Bestätigung `enterprise-ai-client-<version>.jar` neben
-das laufende Jar. Das laufende Jar wird nie verändert; die neue Datei startet man beim nächsten Mal selbst. Nach dem
-Schreiben vergleicht der Client die Inhaltsprüfsumme (Namen und Bytes aller Einträge, unabhängig von Kompression und
-Reihenfolge) mit dem Patch; passt sie nicht, wird die Datei verworfen. Eine vorhandene Zieldatei ersetzt er nur
-nach Rückfrage. Beim Start aus IDE oder Klassenverzeichnis erklärt der Knopf, dass es kein Fat Jar als Basis gibt.
+Eingespielt wird in den Einstellungen unter „Merlins Kristallhöhle“ mit „Update einspielen …“. Die Dateiauswahl
+nimmt ein oder mehrere Pakete; Dateinamen und Auswahlreihenfolge spielen keine Rolle. Die Anwendung bestimmt das
+Jar, aus dem sie läuft (über die Code-Quelle, nicht über einen festen Namen), und sucht von dessen Version und
+Inhaltsprüfsumme aus die lückenlose Kette: jeder Schritt muss mit Version und Inhaltsprüfsumme genau dort beginnen,
+wo der vorige endet. Ältere oder doppelte Pakete bleiben liegen; fehlt der Anfang oder gibt es zwei verschiedene
+Pakete ab derselben Version, lehnt sie ab und sagt, welches Update fehlt bzw. welche Pakete kollidieren. Fehlt ein
+Zwischenstück weiter oben, zeigt die Vorschau, bis wohin die Kette reicht und welches Update fehlt. Die Vorschau
+nennt Ausgangs- und Zielversion, die Schritte, die gesammelten Änderungen und die neue Datei.
+
+Nach Bestätigung baut der Client die Schritte nacheinander in einem versteckten Arbeitsordner neben dem Jar,
+prüft nach jedem Schritt Inhaltsprüfsumme, Manifest-Version und entfernte Einträge und legt erst am Ende
+`enterprise-ai-client-<zielversion>.jar` per Umbenennen ab. Der Knopf zeigt dabei „Schritt X von Y: A → B“; ein
+Klick bricht nach dem laufenden Schritt ab. Bei Fehler oder Abbruch bleibt keine neue oder halbe Datei zurück, der
+Arbeitsordner wird gelöscht. Das laufende Jar wird nie verändert; die neue Datei startet man beim nächsten Mal
+selbst. Eine vorhandene Zieldatei ersetzt der Client nur nach Rückfrage. Beim Start aus IDE oder
+Klassenverzeichnis erklärt der Knopf, dass es kein Fat Jar als Basis gibt. Prüfsummen sichern, dass Inhalt und
+Kette stimmen; sie sagen nichts darüber, wer ein Paket erstellt hat, deshalb nur Pakete aus der bekannten
+Release-Quelle wählen. Pakete im alten Format 1 werden nicht mehr gelesen.
 
 ## IDE
 

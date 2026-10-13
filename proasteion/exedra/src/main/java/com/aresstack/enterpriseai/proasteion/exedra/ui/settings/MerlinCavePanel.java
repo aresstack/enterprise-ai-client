@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
 import com.aresstack.enterpriseai.proasteion.application.update.JarPatcher;
+import com.aresstack.enterpriseai.proasteion.application.update.PatchChainExecutor;
+import com.aresstack.enterpriseai.proasteion.application.update.PatchChainPlanner;
 import com.aresstack.enterpriseai.proasteion.application.update.RunningJar;
 import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
@@ -48,6 +50,10 @@ import java.util.List;
  */
 public final class MerlinCavePanel extends JPanel {
 
+    private static final String IDLE_TOOLTIP = "Erzeugt aus einem oder mehreren lokalen Update-Paketen die neue "
+            + "Jar-Datei neben der laufenden; die laufende Version bleibt unverändert.";
+    private static final String CANCEL_TOOLTIP = "Klicken bricht nach dem laufenden Schritt ab.";
+
     private static final long serialVersionUID = 1L;
     private static final String IMAGE_RESOURCE = "/merlin-crystal-cave.jpg";
 
@@ -77,21 +83,32 @@ public final class MerlinCavePanel extends JPanel {
         add(footer, BorderLayout.SOUTH);
     }
 
-    /** "Update einspielen …": builds the next versioned fat jar from a local patch (issue #92). */
+    /**
+     * "Update einspielen …": builds the next versioned fat jar from one or more local patches (#92, #105). While the
+     * chain is written, the button shows the step and a click cancels at the next step boundary.
+     */
     private JPanel updateRow() {
         ComicButton button = new ComicButton(JarUpdateAction.BUTTON_TEXT);
-        button.setToolTipText("Erzeugt aus einem lokalen Update-Paket die neue Jar-Datei neben der laufenden;"
-                + " die laufende Version bleibt unverändert.");
+        button.setToolTipText(IDLE_TOOLTIP);
+        JarUpdateAction[] holder = new JarUpdateAction[1];
         JarUpdateAction action = new JarUpdateAction(this, () -> RunningJar.of(MerlinCavePanel.class),
-                new JarPatcher(), command -> {
+                new PatchChainPlanner(), new PatchChainExecutor(new JarPatcher()), command -> {
                     Thread worker = new Thread(command, "jar-update");
                     worker.setDaemon(true);
                     worker.start();
                 }, new JarUpdateAction.SwingDialogs(), busy -> {
-                    button.setEnabled(!busy);
+                    button.setEnabled(!busy || holder[0].isWriting());
+                    button.setToolTipText(busy && holder[0].isWriting() ? CANCEL_TOOLTIP : IDLE_TOOLTIP);
                     setCursor(busy ? Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR) : null);
-                });
-        button.addActionListener(event -> action.run());
+                }, text -> button.setText(text.isEmpty() ? JarUpdateAction.BUTTON_TEXT : text));
+        holder[0] = action;
+        button.addActionListener(event -> {
+            if (action.isWriting()) {
+                action.cancel();
+            } else {
+                action.run();
+            }
+        });
         JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
         row.setOpaque(false);
         row.add(button);

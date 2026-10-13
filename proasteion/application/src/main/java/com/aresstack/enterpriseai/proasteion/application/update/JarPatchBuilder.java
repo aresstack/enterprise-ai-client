@@ -14,7 +14,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
@@ -22,7 +21,8 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Creates a {@link JarPatch} from two released fat jars: every entry that is new or whose bytes differ goes into
+ * Creates the one {@link JarPatch} from a release to its direct successor (#105; the build passes the previous
+ * release's jar, never older ones, so there are no jump patches): every entry that is new or whose bytes differ goes into
  * {@code files/}, every entry missing from the target into {@code removed.txt}. The result is deterministic for the
  * same two jars. Before returning, the builder applies its patch to the base jar and checks the content digest
  * against the target jar, so a patch that would not reproduce the target is never written.
@@ -92,10 +92,10 @@ public final class JarPatchBuilder {
     private static void selfCheck(File baseJar, JarPatch patch, File out) throws IOException, JarPatchException {
         File probe = File.createTempFile("jar-patch-probe-", ".jar", out.getAbsoluteFile().getParentFile());
         try {
-            JarPatcher.write(baseJar, patch, probe);
-            if (!JarDigests.contentSha256(probe).equals(patch.targetContentSha256())) {
-                throw new JarPatchException("Der erzeugte Patch reproduziert die Zielversion nicht.");
-            }
+            new JarPatcher().apply(baseJar, patch, probe);
+        } catch (JarPatchException ex) {
+            throw new JarPatchException("Der erzeugte Patch reproduziert die Zielversion nicht: " + ex.getMessage(),
+                    ex);
         } finally {
             if (!probe.delete()) {
                 probe.deleteOnExit();
@@ -109,6 +109,7 @@ public final class JarPatchBuilder {
         property(text, JarPatch.KEY_FORMAT, JarPatch.FORMAT);
         property(text, JarPatch.KEY_BASE_VERSION, baseVersion);
         property(text, JarPatch.KEY_TARGET_VERSION, targetVersion);
+        property(text, JarPatch.KEY_BASE_CONTENT_SHA, JarDigests.contentSha256(baseJar));
         property(text, JarPatch.KEY_BASE_SHA, JarDigests.fileSha256(baseJar));
         property(text, JarPatch.KEY_TARGET_SHA, JarDigests.fileSha256(targetJar));
         property(text, JarPatch.KEY_TARGET_CONTENT_SHA, JarDigests.contentSha256(targetJar));
@@ -121,11 +122,11 @@ public final class JarPatchBuilder {
     }
 
     private static String version(File jar) throws IOException, JarPatchException {
-        String version = attribute(jar, Attributes.Name.IMPLEMENTATION_VERSION.toString());
-        if (version == null || version.trim().isEmpty()) {
+        String version = JarIdentity.manifestVersion(jar);
+        if (version.isEmpty()) {
             throw new JarPatchException("Implementation-Version fehlt im Manifest von " + jar.getName());
         }
-        return version.trim();
+        return version;
     }
 
     private static String attribute(File jar, String name) throws IOException {
