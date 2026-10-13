@@ -45,6 +45,12 @@ public final class ModelsConfig {
     public static final String READ_ALOUD_ATTEMPTS_KEY = "speech.readAloud.synthesisAttempts";
 
     /**
+     * Workaround für instabile Sprecheridentität bei langen generativen TTS-Anfragen: Stücke werden nach ungefähr
+     * 500 Zeichen an Satzgrenzen beendet. Standardmäßig aktiv; für andere Modelle bei Bedarf abschaltbar.
+     */
+    public static final String READ_ALOUD_VOICE_STABILITY_FIX_KEY = "speech.readAloud.voiceStabilityFix";
+
+    /**
      * Früher die eine Stimme für jedes TTS-Modell ({@code voice} bei {@code /audio/speech}). Sie wird nie mehr direkt
      * gesprochen: beim Laden übernimmt {@link #adoptLegacyVoice} sie als Stimme des gewählten TTS-Modells in
      * {@link #SPEECH_VOICES_KEY}, wenn dort für das Modell noch keine steht und sie zum Modell passt; der
@@ -78,6 +84,7 @@ public final class ModelsConfig {
     private final SpeechChunking readAloudChunking;
     private final int synthesisWorkers;
     private final int synthesisAttempts;
+    private final boolean readAloudVoiceStabilityFix;
     private final Map<String, String> speechVoices;
     private final Path localModelRoot;
     private final ModelReference merlinVoice;
@@ -106,6 +113,14 @@ public final class ModelsConfig {
     ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
                  int synthesisWorkers, int synthesisAttempts, String speechVoice, Map<String, String> speechVoices,
                  Path localModelRoot, ModelReference merlinVoice, String merlinSpeaker) {
+        this(selections, readAloudAutoStart, readAloudChunking, synthesisWorkers, synthesisAttempts, true,
+                speechVoice, speechVoices, localModelRoot, merlinVoice, merlinSpeaker);
+    }
+
+    ModelsConfig(ModelSelections selections, boolean readAloudAutoStart, SpeechChunking readAloudChunking,
+                 int synthesisWorkers, int synthesisAttempts, boolean readAloudVoiceStabilityFix, String speechVoice,
+                 Map<String, String> speechVoices, Path localModelRoot, ModelReference merlinVoice,
+                 String merlinSpeaker) {
         if (localModelRoot == null) {
             throw new IllegalArgumentException("localModelRoot must not be null");
         }
@@ -117,6 +132,7 @@ public final class ModelsConfig {
         this.readAloudChunking = readAloudChunking == null ? SpeechChunking.PARAGRAPHS : readAloudChunking;
         this.synthesisWorkers = synthesisWorkers;
         this.synthesisAttempts = synthesisAttempts;
+        this.readAloudVoiceStabilityFix = readAloudVoiceStabilityFix;
         this.merlinVoice = merlinVoice;
         this.merlinSpeaker = merlinSpeaker == null ? "" : merlinSpeaker.trim();
     }
@@ -215,6 +231,11 @@ public final class ModelsConfig {
     /** Versuche je Vorlese-Stück ({@link #READ_ALOUD_ATTEMPTS_KEY}). */
     public int synthesisAttempts() {
         return synthesisAttempts;
+    }
+
+    /** Ob der Workaround für stimmstabile, ungefähr 500 Zeichen lange TTS-Stücke aktiv ist. */
+    public boolean readAloudVoiceStabilityFix() {
+        return readAloudVoiceStabilityFix;
     }
 
     /**
