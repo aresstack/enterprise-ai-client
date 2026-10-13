@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowShape;
@@ -74,6 +75,7 @@ final class PasswordEntryDialog extends JDialog {
     private PasswordEntryDialog(Window owner, PasswordStore store, PasswordEntry existing, String presetCategory,
                                 ComicPalette palette) {
         super(owner, existing == null ? "Neuen Eintrag anlegen" : "Eintrag bearbeiten", ModalityType.APPLICATION_MODAL);
+        ApplicationIcons.apply(this);
         this.store = store;
         this.existing = existing;
         this.palette = palette;

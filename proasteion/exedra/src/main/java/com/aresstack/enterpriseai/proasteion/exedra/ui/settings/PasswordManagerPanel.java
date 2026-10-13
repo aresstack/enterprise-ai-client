@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowShape;
@@ -287,6 +288,7 @@ final class PasswordManagerPanel {
                 : SwingUtilities.getWindowAncestor(parent));
         final boolean[] confirmed = {false};
         final JDialog dialog = new JDialog(owner, title, JDialog.ModalityType.APPLICATION_MODAL);
+        ApplicationIcons.apply(dialog);
         dialog.setUndecorated(true);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         JPanel content = new JPanel(new BorderLayout(0, 10));

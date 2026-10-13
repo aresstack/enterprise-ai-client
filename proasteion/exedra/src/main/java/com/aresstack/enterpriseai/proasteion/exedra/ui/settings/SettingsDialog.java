@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowCloseButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
@@ -44,6 +45,7 @@ public final class SettingsDialog extends JDialog {
     private SettingsDialog(Window owner, SettingsForm initial, List<String> problems, SettingsPanel.Mode mode,
                            SettingsDialogActions actions, ToolOverview tools, ComicPalette palette) {
         super(owner, SettingsPanel.TITLE, ModalityType.APPLICATION_MODAL);
+        ApplicationIcons.apply(this);
         setUndecorated(true);
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         this.panel = new SettingsPanel(initial, problems, mode, actions, tools, palette);

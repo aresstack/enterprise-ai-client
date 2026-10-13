@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.markdown;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -64,6 +65,7 @@ public final class MermaidViewerDialog extends JDialog {
     private MermaidViewerDialog(Window owner, final String diagramCode, final MermaidImageRenderer imageRenderer,
                                 BufferedImage initial) {
         super(owner instanceof Frame ? (Frame) owner : null, "Mermaid-Diagramm", true);
+        ApplicationIcons.apply(this);
         if (owner != null) {
             setIconImages(owner.getIconImages()); // ohne Besitzer-Fenster bliebe die Java-Tasse
         }

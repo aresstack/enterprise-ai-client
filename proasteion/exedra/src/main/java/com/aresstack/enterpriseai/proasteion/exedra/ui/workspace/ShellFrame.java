@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowHoldCloseButton;
@@ -53,6 +54,7 @@ public final class ShellFrame {
         ComicTheme.installMenuDefaults(palette);
         final JFrame frame = new JFrame(title == null ? "" : title);
         frame.setUndecorated(true);
+        ApplicationIcons.apply(frame);
         frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         JPanel content = content(frame.getTitle(), workspace, palette, new Runnable() {
             @Override
