@@ -1068,6 +1068,151 @@ final class ConfluenceRestClient {
         return text.length() > 300 ? text.substring(0, 300) + "…" : text;
     }
 
+    // --- Navigation (issue #97) ---------------------------------------------------------------------------
+
+    /** Expansion for tree entries: title and whether child pages exist (Confluence {@code childTypes}). */
+    private static final String TREE_EXPAND = "childTypes.page";
+
+    /**
+     * Load a page with its space and its full ancestor chain (ids and titles, top down) like MainframeMate's
+     * {@code getContentWithAncestorsJson}.
+     *
+     * @throws KnowledgeSourceException {@code NOT_FOUND} if the content does not exist or is no page
+     */
+    Lineage lineage(Session session, String contentId) throws KnowledgeSourceException {
+        JsonObject json = getJson(session, "/rest/api/content/" + contentId + "?expand=space,ancestors,"
+                + TREE_EXPAND, "Seitenhierarchie");
+        if (!"page".equals(string(json, "type"))) {
+            throw new KnowledgeSourceException(Kind.NOT_FOUND, "Inhalt " + contentId + " ist keine Seite");
+        }
+        TreePage page = toTreePage(json);
+        JsonObject space = object(json, "space");
+        String spaceKey = space == null ? null : string(space, "key");
+        if (spaceKey == null || spaceKey.trim().isEmpty()) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Seitenhierarchie: Seite ohne Space");
+        }
+        List<TreePage> ancestors = new ArrayList<TreePage>();
+        JsonArray chain = array(json, "ancestors");
+        for (JsonElement ancestor : chain == null ? new JsonArray() : chain) {
+            if (ancestor.isJsonObject() && ConfluenceIds.isContentId(string(ancestor.getAsJsonObject(), "id"))) {
+                ancestors.add(new TreePage(string(ancestor.getAsJsonObject(), "id"),
+                        nullToEmpty(string(ancestor.getAsJsonObject(), "title")), Boolean.TRUE));
+            }
+        }
+        return new Lineage(spaceKey.trim(), nullToEmpty(string(space, "name")), ancestors, page);
+    }
+
+    /** The first request of the top-level pages of a space ({@code depth=root}). */
+    String rootPagesPath(String spaceKey) {
+        return "/rest/api/space/" + pathSegment(spaceKey) + "/content/page?depth=root&expand=" + TREE_EXPAND
+                + "&start=0&limit=" + config.pageSize();
+    }
+
+    /** The first request of the direct child pages of a page. */
+    String childPagesPath(String contentId) {
+        return "/rest/api/content/" + contentId + "/child/page?expand=" + TREE_EXPAND + "&start=0&limit="
+                + config.pageSize();
+    }
+
+    /**
+     * Load exactly one batch of a page list ({@link #rootPagesPath}, {@link #childPagesPath} or the {@code next} link of
+     * an earlier batch); {@link TreeBatch#next} is the next link or {@code null}.
+     */
+    TreeBatch treeBatch(Session session, String path) throws KnowledgeSourceException {
+        if (path == null || !path.startsWith("/rest/api/") || path.contains("//")) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Seitenbaum: ungültiger Folgelink");
+        }
+        JsonObject json = getJson(session, path, "Seitenbaum");
+        List<TreePage> pages = new ArrayList<TreePage>();
+        for (JsonObject result : results(json, "Seitenbaum")) {
+            String type = string(result, "type");
+            if ((type == null || "page".equals(type)) && ConfluenceIds.isContentId(string(result, "id"))) {
+                pages.add(toTreePage(result));
+            }
+        }
+        String next = nextLink(json, "Seitenbaum");
+        if (next != null && next.equals(path)) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Seitenbaum: Folgelink wiederholt sich");
+        }
+        return new TreeBatch(pages, next);
+    }
+
+    /**
+     * The titles of those pages among {@code ids} that exist and are visible, via CQL {@code id in (...)} in batches
+     * of the page size; pages missing from the result are deleted or restricted.
+     */
+    Map<String, String> visiblePageTitles(Session session, List<String> ids) throws KnowledgeSourceException {
+        Map<String, String> titles = new LinkedHashMap<String, String>();
+        for (int from = 0; from < ids.size(); from += config.pageSize()) {
+            List<String> chunk = ids.subList(from, Math.min(ids.size(), from + config.pageSize()));
+            StringBuilder cql = new StringBuilder("type=page AND id in (");
+            for (int i = 0; i < chunk.size(); i++) {
+                cql.append(i == 0 ? "" : ",").append(chunk.get(i));
+            }
+            cql.append(')');
+            for (Page page : paged(session, "/rest/api/content/search?cql=" + query(cql.toString()),
+                    "Verweisziele", chunk.size(), new Item<Page>() {
+                        @Override
+                        public Page map(JsonObject json) throws KnowledgeSourceException {
+                            JsonObject content = object(json, "content");
+                            return toPage(content == null ? json : content);
+                        }
+                    })) {
+                titles.put(page.id, page.title);
+            }
+        }
+        return titles;
+    }
+
+    private static TreePage toTreePage(JsonObject json) {
+        JsonObject childTypes = object(json, "childTypes");
+        JsonObject page = object(childTypes, "page");
+        Boolean hasChildren = null;
+        if (page != null && page.get("value") != null && page.get("value").isJsonPrimitive()) {
+            hasChildren = page.get("value").getAsBoolean();
+        }
+        return new TreePage(string(json, "id"), nullToEmpty(string(json, "title")), hasChildren);
+    }
+
+    /** A page in the tree: id, title and whether it has child pages ({@code null}: unknown). */
+    static final class TreePage {
+        final String id;
+        final String title;
+        final Boolean hasChildren;
+
+        TreePage(String id, String title, Boolean hasChildren) {
+            this.id = id;
+            this.title = title;
+            this.hasChildren = hasChildren;
+        }
+    }
+
+    /** One batch of a page list and the link of the next batch ({@code null}: last batch). */
+    static final class TreeBatch {
+        final List<TreePage> pages;
+        final String next;
+
+        TreeBatch(List<TreePage> pages, String next) {
+            this.pages = Collections.unmodifiableList(pages);
+            this.next = next;
+        }
+    }
+
+    /** A page with its space and ancestors (top down). */
+    static final class Lineage {
+        final String spaceKey;
+        final String spaceName;
+        final List<TreePage> ancestors;
+        final TreePage page;
+
+        Lineage(String spaceKey, String spaceName, List<TreePage> ancestors, TreePage page) {
+            this.spaceKey = spaceKey;
+            this.spaceName = spaceName;
+            this.ancestors = Collections.unmodifiableList(ancestors);
+            this.page = page;
+        }
+    }
+
     // --- HTTP ---------------------------------------------------------------------------------------------
 
     /** Wandelt ein Listenelement um; {@code null} heißt: zählt nicht und wird übersprungen. */

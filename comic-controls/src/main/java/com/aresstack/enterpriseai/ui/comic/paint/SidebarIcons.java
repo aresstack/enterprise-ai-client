@@ -6,6 +6,8 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.geom.Arc2D;
+import java.awt.geom.Area;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
@@ -14,8 +16,8 @@ import java.awt.geom.RoundRectangle2D;
 /**
  * Die Symbole der Drawer-Reiter (statt der Beschriftungen): die Schriftrolle für „Chats“, der Chemiekolben aus
  * askai-java8 (arch, {@code ResearchPhaseToolbarContribution.FlaskIcon}) in Blau für „Wissensquellen“ und der gelbe
- * Stern (MainframeMates ★ im Reiterkopf) für „Favoriten“. Kolben und Stern behalten ihre Farbe in jedem Zustand;
- * die Rolle hat weißes Papier und zeichnet ihre Linien in der Vordergrundfarbe des Knopfs (Tinte in Ruhe, weiß auf
+ * Stern (MainframeMates ★ im Reiterkopf) für „Favoriten“, dazu der rote Kompass für „Navigation“. Kolben, Stern und
+ * Kompass behalten ihre Farbe in jedem Zustand; die Rolle hat weißes Papier und zeichnet ihre Linien in der Vordergrundfarbe des Knopfs (Tinte in Ruhe, weiß auf
  * der dunklen Platte des aktiven Reiters).
  */
 public final class SidebarIcons {
@@ -106,6 +108,55 @@ public final class SidebarIcons {
                     g2.setColor(ResearchUiPalette.LIGHT_TEXT_MUTED);
                     g2.draw(star);
                 }
+            }
+        };
+    }
+
+    /**
+     * The red compass of the tab "Navigation" (issue #97): a ring and a needle as a slim diamond from bottom left to top
+     * right with a small hole in its middle, in the size of the star; red in every state like flask and star.
+     */
+    public static StrokeIcon compass() {
+        return new StrokeIcon(16, 16) {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.setColor(ResearchUiPalette.COMPASS_RED);
+                g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.draw(new Ellipse2D.Float(1.3f, 1.3f, 13.4f, 13.4f));
+                Path2D.Float needle = new Path2D.Float();
+                needle.moveTo(11.6f, 4.4f);
+                needle.lineTo(9.2f, 9.2f);
+                needle.lineTo(4.4f, 11.6f);
+                needle.lineTo(6.8f, 6.8f);
+                needle.closePath();
+                Area body = new Area(needle);
+                body.subtract(new Area(new Ellipse2D.Float(7.15f, 7.15f, 1.7f, 1.7f)));
+                g2.fill(body);
+            }
+        };
+    }
+
+    /** A page of a source in the navigation tree (issue #97): a sheet with a folded corner, paper light, lines in ink. */
+    public static StrokeIcon page() {
+        return new StrokeIcon(16, 16) {
+            @Override
+            protected void paint(Graphics2D g2) {
+                Path2D.Float sheet = new Path2D.Float();
+                sheet.moveTo(3.5f, 1.5f);
+                sheet.lineTo(9.5f, 1.5f);
+                sheet.lineTo(12.5f, 4.5f);
+                sheet.lineTo(12.5f, 14.5f);
+                sheet.lineTo(3.5f, 14.5f);
+                sheet.closePath();
+                g2.setColor(ResearchUiPalette.SCROLL_PAPER);
+                g2.fill(sheet);
+                g2.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+                g2.draw(sheet);
+                g2.draw(new Line2D.Float(9.5f, 1.5f, 9.5f, 4.5f));
+                g2.draw(new Line2D.Float(9.5f, 4.5f, 12.5f, 4.5f));
+                g2.draw(new Line2D.Float(5.5f, 8f, 10.5f, 8f));
+                g2.draw(new Line2D.Float(5.5f, 10.5f, 10.5f, 10.5f));
             }
         };
     }

@@ -11,6 +11,11 @@ import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
+import com.aresstack.enterpriseai.source.api.CrossReferences;
+import com.aresstack.enterpriseai.source.api.NavigationChildren;
+import com.aresstack.enterpriseai.source.api.NavigationNode;
+import com.aresstack.enterpriseai.source.api.PageNavigationSource;
+import com.aresstack.enterpriseai.source.api.PagePosition;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -83,7 +88,7 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider,
         return "PartitionSelectingSourceProvider[" + delegate + "]";
     }
 
-    private final class Selecting implements SearchableKnowledgeSource, PageViewSource, AddressableKnowledgeSource {
+    private final class Selecting implements SearchableKnowledgeSource, PageViewSource, AddressableKnowledgeSource, PageNavigationSource {
 
         private final KnowledgeSourcePort port;
 
@@ -155,6 +160,21 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider,
         @Override
         public KnowledgeResourceId resolveAddress(String address) throws KnowledgeSourceException {
             return SourceCapabilities.resolveAddress(port, address);
+        }
+
+        @Override
+        public PagePosition position(KnowledgeResourceId page) throws KnowledgeSourceException {
+            return SourceCapabilities.position(port, page);
+        }
+
+        @Override
+        public NavigationChildren children(NavigationNode parent, String cursor) throws KnowledgeSourceException {
+            return SourceCapabilities.children(port, parent, cursor);
+        }
+
+        @Override
+        public CrossReferences crossReferences(KnowledgeResourceId page) throws KnowledgeSourceException {
+            return SourceCapabilities.crossReferences(port, page);
         }
 
         @Override

@@ -179,6 +179,11 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         }
     };
     private final List<TabMenuContributor> menuContributors = new ArrayList<TabMenuContributor>();
+    /** Who follows the active tab (the compass, issue #97); told once per change of the active page. */
+    private final List<java.util.function.Consumer<ReaderLink>> activeLinkListeners =
+            new ArrayList<java.util.function.Consumer<ReaderLink>>();
+    /** The key last told to {@link #activeLinkListeners}; {@code ""}: none told yet. */
+    private String notifiedActiveKey = "";
     private int groupCounter;
     private String dragKey;
     private Point dragStart;
@@ -1269,6 +1274,34 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         return menu;
     }
 
+    /**
+     * Follow the active page: {@code listener} hears the link of the active tab whenever another tab becomes active
+     * (opened from search, favorites, a link, the history or a tab click), {@code null} when the last tab closed.
+     */
+    public void addActiveLinkListener(java.util.function.Consumer<ReaderLink> listener) {
+        if (listener != null) {
+            activeLinkListeners.add(listener);
+        }
+    }
+
+    /** The link of the active tab, {@code null} without tabs. */
+    public ReaderLink activeLink() {
+        Tab active = activeKey == null ? null : tabs.get(activeKey);
+        return active == null ? null : active.link;
+    }
+
+    private void notifyActiveLink() {
+        ReaderLink active = activeLink();
+        String key = active == null ? null : active.key();
+        if (key == null ? notifiedActiveKey == null : key.equals(notifiedActiveKey)) {
+            return;
+        }
+        notifiedActiveKey = key;
+        for (java.util.function.Consumer<ReaderLink> listener : activeLinkListeners) {
+            listener.accept(active);
+        }
+    }
+
     public void select(String key) {
         if (tabs.containsKey(key)) {
             activeKey = key;
@@ -1646,6 +1679,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         strip.repaint();
         deck.revalidate();
         deck.repaint();
+        notifyActiveLink();
     }
 
     private JLabel message(String text) {

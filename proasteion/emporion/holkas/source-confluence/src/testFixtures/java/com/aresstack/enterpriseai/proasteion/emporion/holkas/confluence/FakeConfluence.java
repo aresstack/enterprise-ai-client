@@ -25,6 +25,8 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
     /** Basis-URL, die der Fake bedient; {@link FakeConfluenceServer} bildet echte HTTP-Anfragen darauf ab. */
     public static final URI BASE = URI.create("https://confluence.example.org/wiki");
 
+    private static final String ID_CQL = "type=page AND id in (";
+
     final Map<String, FakePage> pages = new LinkedHashMap<String, FakePage>();
     final Map<String, String> spaceHomepages = new LinkedHashMap<String, String>();
     /** Spaces mit Namen für {@code /rest/api/space}; ohne Eintrag in {@link #spaceHomepages} ohne Startseite. */
@@ -40,6 +42,8 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
      */
     final Map<String, String> wrappedSearchResults = new LinkedHashMap<String, String>();
     String lastCql;
+    /** Pages the user may not see: 403 on reading, missing from lists and searches. */
+    final Set<String> restricted = new LinkedHashSet<String>();
     /** Erzwingt eine feste Antwort für alle Requests (Fehlerfälle). */
     ConfluenceHttpResponse forcedResponse;
     IOException forcedFailure;
@@ -73,6 +77,11 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
     /** Ein Space mit Namen (Startseite optional über {@link #homepage}). */
     public void space(String spaceKey, String name) {
         spaceNames.put(spaceKey, name);
+    }
+
+    /** Hide a page from the user (permission restriction). */
+    public void restrict(String pageId) {
+        restricted.add(pageId);
     }
 
     /** Ergebnis-IDs der nächsten CQL-Suche; Anhang-IDs erscheinen als Nicht-Seiten-Treffer. */
@@ -131,6 +140,23 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
             }
             return json(spaceJson(key));
         }
+        if (path.startsWith("/rest/api/space/") && parts.length == 7 && "content".equals(parts[5])
+                && "page".equals(parts[6])) {
+            String key = decode(parts[4]);
+            List<FakePage> roots = new ArrayList<FakePage>();
+            for (FakePage page : pages.values()) {
+                if (page.spaceKey.equals(key) && page.parentId == null && !restricted.contains(page.id)) {
+                    roots.add(page);
+                }
+            }
+            int start = Integer.parseInt(query.getOrDefault("start", "0"));
+            int limit = Integer.parseInt(query.getOrDefault("limit", "25"));
+            JsonArray results = new JsonArray();
+            for (int i = start; i < roots.size() && results.size() < limit; i++) {
+                results.add(pageJson(roots.get(i), query.get("expand")));
+            }
+            return json(page(results, nextLink(uri, start + results.size(), roots.size())));
+        }
         if (path.equals("/rest/api/space")) {
             Set<String> keys = new LinkedHashSet<String>(spaceNames.keySet());
             keys.addAll(spaceHomepages.keySet());
@@ -161,16 +187,28 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         }
         if (path.equals("/rest/api/content/search")) {
             lastCql = query.get("cql");
+            List<String> found = searchResults;
+            if (lastCql != null && lastCql.startsWith(ID_CQL) && lastCql.endsWith(")")) {
+                found = new ArrayList<String>();
+                for (String id : lastCql.substring(ID_CQL.length(), lastCql.length() - 1).split(",")) {
+                    if (pages.containsKey(id.trim()) && !restricted.contains(id.trim())) {
+                        found.add(id.trim());
+                    }
+                }
+            }
             int start = Integer.parseInt(query.getOrDefault("start", "0"));
             int limit = Integer.parseInt(query.get("limit"));
             JsonArray results = new JsonArray();
-            for (int i = start; i < searchResults.size() && results.size() < limit; i++) {
-                results.add(searchEntry(searchResults.get(i), query.get("expand")));
+            for (int i = start; i < found.size() && results.size() < limit; i++) {
+                results.add(searchEntry(found.get(i), query.get("expand")));
             }
-            return json(page(results, nextLink(uri, start + results.size(), searchResults.size())));
+            return json(page(results, nextLink(uri, start + results.size(), found.size())));
         }
         if (path.startsWith("/rest/api/content/") && parts.length == 5) {
             String id = parts[4];
+            if (restricted.contains(id)) {
+                return forbidden();
+            }
             if (pages.containsKey(id)) {
                 return json(pageJson(pages.get(id), query.get("expand")));
             }
@@ -184,7 +222,11 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
             if (parent == null) {
                 return notFound();
             }
-            List<String> ids = "page".equals(parts[6]) ? parent.children : parent.attachments;
+            if (restricted.contains(parent.id)) {
+                return forbidden();
+            }
+            List<String> ids = new ArrayList<String>("page".equals(parts[6]) ? parent.children : parent.attachments);
+            ids.removeAll(restricted);
             int start = Integer.parseInt(query.get("start"));
             int limit = Integer.parseInt(query.get("limit"));
             JsonArray results = new JsonArray();
@@ -268,19 +310,35 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         json.addProperty("title", page.title);
         JsonObject space = new JsonObject();
         space.addProperty("key", page.spaceKey);
-        space.addProperty("name", page.spaceKey + " Space");
+        space.addProperty("name", spaceNames.containsKey(page.spaceKey) ? spaceNames.get(page.spaceKey)
+                : page.spaceKey + " Space");
         json.add("space", space);
         JsonObject version = new JsonObject();
         version.addProperty("number", page.version);
         version.addProperty("when", page.when);
         json.add("version", version);
+        // Like Confluence: the whole chain from the top down, with titles.
         JsonArray ancestors = new JsonArray();
-        if (page.parentId != null) {
+        for (String ancestorId = page.parentId; ancestorId != null; ancestorId = pages.get(ancestorId).parentId) {
             JsonObject ancestor = new JsonObject();
-            ancestor.addProperty("id", page.parentId);
-            ancestors.add(ancestor);
+            ancestor.addProperty("id", ancestorId);
+            ancestor.addProperty("type", "page");
+            ancestor.addProperty("title", pages.get(ancestorId).title);
+            JsonArray before = new JsonArray();
+            before.add(ancestor);
+            before.addAll(ancestors);
+            ancestors = before;
         }
         json.add("ancestors", ancestors);
+        if (expand != null && expand.contains("childTypes.page")) {
+            List<String> visible = new ArrayList<String>(page.children);
+            visible.removeAll(restricted);
+            JsonObject childPage = new JsonObject();
+            childPage.addProperty("value", !visible.isEmpty());
+            JsonObject childTypes = new JsonObject();
+            childTypes.add("page", childPage);
+            json.add("childTypes", childTypes);
+        }
         if (withView || withExport) {
             JsonObject body = new JsonObject();
             if (withView) {
@@ -348,6 +406,11 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
     private static ConfluenceHttpResponse json(JsonObject json) {
         return new ConfluenceHttpResponse(200, "application/json;charset=UTF-8",
                 json.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static ConfluenceHttpResponse forbidden() {
+        return new ConfluenceHttpResponse(403, "application/json",
+                "{\"statusCode\":403,\"message\":\"Not permitted\"}".getBytes(StandardCharsets.UTF_8));
     }
 
     private static ConfluenceHttpResponse notFound() {

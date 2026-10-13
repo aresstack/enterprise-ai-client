@@ -7,6 +7,11 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
+import com.aresstack.enterpriseai.source.api.CrossReferences;
+import com.aresstack.enterpriseai.source.api.NavigationChildren;
+import com.aresstack.enterpriseai.source.api.NavigationNode;
+import com.aresstack.enterpriseai.source.api.PageNavigationSource;
+import com.aresstack.enterpriseai.source.api.PagePosition;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -31,7 +36,7 @@ import java.util.logging.Logger;
  * lesbar“ ohne den eigentlichen Grund. Secrets gehören laut Vorgabe in keine Ausnahmemeldung, deshalb darf die
  * Meldung der Quelle unverändert ins Protokoll.
  */
-public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, PageViewSource, AddressableKnowledgeSource {
+public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, PageViewSource, AddressableKnowledgeSource, PageNavigationSource {
 
     private static final Logger LOG = Logger.getLogger(LoggingKnowledgeSource.class.getName());
 
@@ -147,6 +152,41 @@ public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, 
             throw logged("resolveAddress", e);
         } catch (RuntimeException e) {
             throw unexpected("resolveAddress", e);
+        }
+    }
+
+    @Override
+    public PagePosition position(KnowledgeResourceId page) throws KnowledgeSourceException {
+        try {
+            return SourceCapabilities.position(delegate, page);
+        } catch (KnowledgeSourceException e) {
+            throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e : logged("position " + value(page), e);
+        } catch (RuntimeException e) {
+            throw unexpected("position " + value(page), e);
+        }
+    }
+
+    @Override
+    public NavigationChildren children(NavigationNode parent, String cursor) throws KnowledgeSourceException {
+        String what = "children " + (parent == null ? "null" : parent.key());
+        try {
+            return SourceCapabilities.children(delegate, parent, cursor);
+        } catch (KnowledgeSourceException e) {
+            throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e : logged(what, e);
+        } catch (RuntimeException e) {
+            throw unexpected(what, e);
+        }
+    }
+
+    @Override
+    public CrossReferences crossReferences(KnowledgeResourceId page) throws KnowledgeSourceException {
+        try {
+            return SourceCapabilities.crossReferences(delegate, page);
+        } catch (KnowledgeSourceException e) {
+            throw e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED ? e
+                    : logged("crossReferences " + value(page), e);
+        } catch (RuntimeException e) {
+            throw unexpected("crossReferences " + value(page), e);
         }
     }
 

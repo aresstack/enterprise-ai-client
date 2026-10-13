@@ -46,6 +46,8 @@ public final class ResearchUiPalette {
     /** The favorite star (MainframeMate's bookmarked ★ in the tab header) and its darker rim on bright surfaces. */
     public static final Color FAVORITE_YELLOW = new Color(0xFFC800);
     public static final Color FAVORITE_YELLOW_EDGE = new Color(0xC99A00);
+    /** The red compass of the navigation tab (issue #97, Angelo's design: red ring and needle). */
+    public static final Color COMPASS_RED = new Color(0xF03A3A);
     /**
      * The yellow suggestion tag above the composer (the research agent's search suggestions and the follow-up
      * questions of a quote): the same yellow as the tool-call thought bubbles, with its dark text.

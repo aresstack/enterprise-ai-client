@@ -35,9 +35,11 @@ import com.aresstack.enterpriseai.proasteion.exedra.knowledge.FavoritesStore;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ChatResourceNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ChatSourceNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeReadingController;
+import com.aresstack.enterpriseai.proasteion.exedra.knowledge.PageNavigationController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ReaderChatPages;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeSourceUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.PageNavigationUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentReader;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
@@ -254,6 +256,9 @@ public final class ShellAssembly {
         // Rechtsklick auf einen Reiter: „Zum aktuellen Chat hinzufügen“ legt nur Titel und Bookmark in den Composer.
         workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));
         reading.attach();
+        // Compass (issue #97): page tree and cross references of the page open in the reader.
+        new PageNavigationController(workspace, sources::registration, new PageNavigationUseCase(), reading::open,
+                root.uiExecutor(), root.workExecutor()).attach();
         // Chat sources: a click opens them in the reader, the context menus save them as favorites.
         chatShell.transcript().setSourceActions(new ChatSourceNavigation(reading, () -> currentChatTitle(history)));
         // Composer resources: the book icon and the context menu open pages and sources in the same reader.

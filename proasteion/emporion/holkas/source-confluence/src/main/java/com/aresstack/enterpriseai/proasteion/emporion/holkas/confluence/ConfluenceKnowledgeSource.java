@@ -11,7 +11,12 @@ import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.CrossReferences;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
+import com.aresstack.enterpriseai.source.api.NavigationChildren;
+import com.aresstack.enterpriseai.source.api.NavigationNode;
+import com.aresstack.enterpriseai.source.api.PageNavigationSource;
+import com.aresstack.enterpriseai.source.api.PagePosition;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
@@ -70,6 +75,10 @@ import java.util.regex.Pattern;
  *   <li>Suche: CQL {@code type=page AND text ~ "..."} über {@code /rest/api/content/search} (wie MainframeMate),
  *       optional auf konfigurierte Spaces beschränkt; dieser Endpunkt liefert keine Textausschnitte, Treffer
  *       haben deshalb einen leeren Snippet.</li>
+ *   <li>Navigation ({@link PageNavigationSource}, Issue #97): Wurzel ist der Space der Seite ({@code space:KEY}),
+ *       darunter die Seiten ohne Eltern ({@code depth=root}), je Ebene die Kindseiten, blätternd in Stapeln der
+ *       Seitengröße; Querverweise sind die Seitenlinks des gerenderten Inhalts, geprüft über CQL {@code id in (...)}.
+ *       Eingehende Verweise liefert Confluence nicht zuverlässig, sie gelten als nicht unterstützt.</li>
  * </ul>
  *
  * <p>Anmeldedaten löst der Adapter je Port-Aufruf genau einmal über den {@link SecretProvider} auf (nicht je
@@ -77,7 +86,7 @@ import java.util.regex.Pattern;
  * Ohne {@link ConfluenceConfig#credentialRef()} fragt er keine an (z. B. reine mTLS-Anmeldung).
  */
 public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource, PageViewSource,
-        AddressableKnowledgeSource {
+        AddressableKnowledgeSource, PageNavigationSource {
 
     static final String PAGE_CONTENT_TYPE = "text/html";
 
@@ -86,6 +95,9 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     static final int MAX_READER_ATTACHMENTS = 500;
     /** Größte Datei, die der Lesebereich lädt (100 MB). */
     static final int READER_MAX_BYTES = 100 * 1024 * 1024;
+
+    /** Key and start point prefix of a space ({@link ConfluenceIds#startPoint}). */
+    static final String SPACE_PREFIX = "space:";
 
     private final SourceAddress sourceId;
     /** Kanonische Basis-URL ohne Schema, Teil jeder Ressourcen-ID. */
@@ -444,6 +456,125 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
                 return links;
             }
         });
+    }
+
+    // --- Navigation (issue #97) -----------------------------------------------------------------------------
+
+    @Override
+    public PagePosition position(KnowledgeResourceId page) throws KnowledgeSourceException {
+        final ConfluenceIds.Parsed parsed = parse(page);
+        if (parsed.attachment) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Anhänge stehen nicht im Seitenbaum: " + page.value());
+        }
+        ConfluenceRestClient.Lineage lineage = withSession(new Operation<ConfluenceRestClient.Lineage>() {
+            @Override
+            public ConfluenceRestClient.Lineage run(Session session) throws KnowledgeSourceException {
+                return client.lineage(session, parsed.contentId);
+            }
+        });
+        String rootKey = SPACE_PREFIX + lineage.spaceKey;
+        NavigationNode root = NavigationNode.root(rootKey, lineage.spaceName.isEmpty() ? lineage.spaceKey
+                : lineage.spaceName, rootKey, NavigationNode.Children.UNKNOWN);
+        List<NavigationNode> ancestors = new ArrayList<NavigationNode>();
+        for (ConfluenceRestClient.TreePage ancestor : lineage.ancestors) {
+            ancestors.add(treeNode(ancestor));
+        }
+        return new PagePosition(root, ancestors, treeNode(lineage.page));
+    }
+
+    @Override
+    public NavigationChildren children(NavigationNode parent, String cursor) throws KnowledgeSourceException {
+        if (parent == null) {
+            throw new IllegalArgumentException("parent must not be null");
+        }
+        final String first;
+        final String expectedPrefix;
+        if (parent.isRoot()) {
+            String spaceKey = parent.key().startsWith(SPACE_PREFIX) ? parent.key().substring(SPACE_PREFIX.length())
+                    : "";
+            if (!ConfluenceIds.isSpaceKey(spaceKey)) {
+                throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Kein Space dieser Quelle: " + parent.key());
+            }
+            first = client.rootPagesPath(spaceKey);
+        } else {
+            ConfluenceIds.Parsed parsed = parse(parent.resource());
+            if (parsed.attachment) {
+                return new NavigationChildren(null, null);
+            }
+            first = client.childPagesPath(parsed.contentId);
+        }
+        expectedPrefix = first.substring(0, first.indexOf('?') + 1);
+        final String path = cursor == null || cursor.isEmpty() ? first : cursor;
+        if (!path.startsWith(expectedPrefix)) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Folgelink gehört nicht zu " + parent.key());
+        }
+        ConfluenceRestClient.TreeBatch batch = withSession(new Operation<ConfluenceRestClient.TreeBatch>() {
+            @Override
+            public ConfluenceRestClient.TreeBatch run(Session session) throws KnowledgeSourceException {
+                return client.treeBatch(session, path);
+            }
+        });
+        List<NavigationNode> nodes = new ArrayList<NavigationNode>();
+        for (ConfluenceRestClient.TreePage child : batch.pages) {
+            nodes.add(treeNode(child));
+        }
+        return new NavigationChildren(nodes, batch.next);
+    }
+
+    /** Outgoing page links of the rendered body; Confluence has no reliable list of incoming links. */
+    @Override
+    public CrossReferences crossReferences(KnowledgeResourceId page) throws KnowledgeSourceException {
+        final ConfluenceIds.Parsed parsed = parse(page);
+        if (parsed.attachment) {
+            return CrossReferences.outgoingOnly(null);
+        }
+        return withSession(new Operation<CrossReferences>() {
+            @Override
+            public CrossReferences run(Session session) throws KnowledgeSourceException {
+                Page loaded = client.page(session, parsed.contentId, true);
+                List<String> ids = new ArrayList<String>();
+                for (ConfluenceLinks.Target target : ConfluencePageLinks.of(loaded.html, config.baseUrl().toString(),
+                        loaded.id)) {
+                    String id = targetId(session, target);
+                    if (ConfluenceIds.isContentId(id) && !id.equals(loaded.id) && !ids.contains(id)) {
+                        ids.add(id);
+                    }
+                }
+                Map<String, String> visible = client.visiblePageTitles(session, ids);
+                List<SourceLink> outgoing = new ArrayList<SourceLink>();
+                for (String id : ids) {
+                    if (visible.containsKey(id)) {
+                        outgoing.add(new SourceLink(ConfluenceIds.page(locator, id), visible.get(id)));
+                    }
+                }
+                return CrossReferences.outgoingOnly(outgoing);
+            }
+        });
+    }
+
+    /** The content id behind a link target; {@code null} if Confluence does not know it. */
+    private String targetId(Session session, ConfluenceLinks.Target target) throws KnowledgeSourceException {
+        if (target.pageId != null) {
+            return target.pageId;
+        }
+        try {
+            if (target.title != null) {
+                return client.pageIdByTitle(session, target.spaceKey, target.title);
+            }
+            ConfluenceRestClient.Space space = client.space(session, target.spaceKey);
+            return space == null ? null : space.homepageId;
+        } catch (KnowledgeSourceException e) {
+            if (e.kind() == Kind.NOT_FOUND || e.kind() == Kind.ACCESS_DENIED) {
+                return null; // a dead or restricted link is no cross reference
+            }
+            throw e;
+        }
+    }
+
+    private NavigationNode treeNode(ConfluenceRestClient.TreePage page) {
+        NavigationNode.Children children = page.hasChildren == null ? NavigationNode.Children.UNKNOWN
+                : page.hasChildren ? NavigationNode.Children.YES : NavigationNode.Children.NO;
+        return NavigationNode.page(ConfluenceIds.page(locator, page.id), page.title, children);
     }
 
     @Override

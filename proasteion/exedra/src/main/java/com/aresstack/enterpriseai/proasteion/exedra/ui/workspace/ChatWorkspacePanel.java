@@ -106,6 +106,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     public static final String CHATS_TAB = "Chats";
     public static final String KNOWLEDGE_TAB = "Wissensquellen";
     public static final String FAVORITES_TAB = "Favoriten";
+    /** The compass (issue #97): page tree and cross references of the page open in the reader. */
+    public static final String NAVIGATION_TAB = "Navigation";
     /** Die Karte des Lesebereichs neben Chat und Agent im Deck. */
     static final String READER_CARD = "READER";
     private final List<ChatSidebarTab> agentTabs = new ArrayList<ChatSidebarTab>();
@@ -155,6 +157,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private final KnowledgeSourcesPanel knowledgePane;
     private final KnowledgeReaderPanel reader;
     private final FavoritesPanel favoritesPane;
+    private final PageNavigationPanel navigationPane;
     private final List<ChatHistoryRow> chatRows = new ArrayList<ChatHistoryRow>();
 
     private final Timer sidebarCloseTimer;
@@ -192,6 +195,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         this.knowledgePane = new KnowledgeSourcesPanel(palette);
         this.reader = new KnowledgeReaderPanel(palette);
         this.favoritesPane = new FavoritesPanel(palette);
+        this.navigationPane = new PageNavigationPanel(palette);
         this.sidebar = new ChatSidebarPanel(CHATS_TAB, buildChatsTab(), palette);
         sidebar.setDefaultTabIcon(SidebarIcons.scroll());
         sidebar.setDefaultTabFooterLeadingComponent(newChatButton);
@@ -318,6 +322,11 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     /** Die Drawer-Seite „Favoriten“. */
     public FavoritesPanel favorites() {
         return favoritesPane;
+    }
+
+    /** The drawer page "Navigation" (compass). */
+    public PageNavigationPanel navigation() {
+        return navigationPane;
     }
 
     /** Der Lesebereich (Karte statt des Chats). */
@@ -497,10 +506,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             }
             sidebar.showTab(title);
             refreshRibbonTabs();
-            // Chats zeigt den Chat, Quellen und Favoriten machen den Chatbereich zum Lesebereich.
+            // Chats zeigt den Chat, Quellen, Favoriten und Navigation machen den Chatbereich zum Lesebereich.
             if (CHATS_TAB.equals(title)) {
                 showChatArea();
-            } else if (KNOWLEDGE_TAB.equals(title) || FAVORITES_TAB.equals(title)) {
+            } else if (KNOWLEDGE_TAB.equals(title) || FAVORITES_TAB.equals(title) || NAVIGATION_TAB.equals(title)) {
                 showReader();
             }
         });
@@ -560,6 +569,22 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                 @Override
                 public javax.swing.Icon getIcon() {
                     return SidebarIcons.star(true);
+                }
+            });
+            tabs.add(new ChatSidebarTab() {
+                @Override
+                public String getTitle() {
+                    return NAVIGATION_TAB;
+                }
+
+                @Override
+                public JComponent getComponent() {
+                    return navigationPane;
+                }
+
+                @Override
+                public javax.swing.Icon getIcon() {
+                    return SidebarIcons.compass();
                 }
             });
             // askai AgentArtifactTabs: die Artefakt-Ansichten des Agenten nur, solange der Agent-Modus aktiv ist.
