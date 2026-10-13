@@ -27,8 +27,6 @@ import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
-import com.aresstack.enterpriseai.model.api.RerankException;
-import com.aresstack.enterpriseai.model.api.RerankPort;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.Before;
 import org.junit.Test;
@@ -392,7 +390,7 @@ public class AdaptiveEvidenceTest {
     public void crossEncoderNarrowsTheCandidatesBeforeTheEvaluator() throws Exception {
         model.relevant(QUARK, DETAIL).sufficientWith(QUARK);
         final List<String> rankedQueries = new ArrayList<String>();
-        RerankPort scores = (modelId, query, documents) -> {
+        CrossEncoderRanking.Scorer scores = (modelId, query, documents) -> {
             rankedQueries.add(modelId + "|" + query);
             double[] result = new double[documents.size()];
             for (int i = 0; i < documents.size(); i++) {
@@ -424,8 +422,8 @@ public class AdaptiveEvidenceTest {
     @Test
     public void failingOrMissingCrossEncoderKeepsTheFormerPath() throws Exception {
         model.relevant(QUARK, DETAIL).sufficientWith(QUARK);
-        RerankPort failing = (modelId, query, documents) -> {
-            throw new RerankException("not reachable");
+        CrossEncoderRanking.Scorer failing = (modelId, query, documents) -> {
+            throw new java.io.IOException("not reachable");
         };
         RagChatUseCase rag = adaptive(EvidencePolicy::defaults, new PromptContextAssembler(ContextSettings.defaults()),
                 RetrievalPreparation.none()).rankCandidatesWith(new CrossEncoderRanking(failing, () -> "bge-reranker",
@@ -437,7 +435,7 @@ public class AdaptiveEvidenceTest {
         assertEquals(QUARK, turn.sources().get(0).resource());
 
         final int[] calls = {0};
-        RerankPort counting = (modelId, query, documents) -> {
+        CrossEncoderRanking.Scorer counting = (modelId, query, documents) -> {
             calls[0]++;
             return new double[documents.size()];
         };

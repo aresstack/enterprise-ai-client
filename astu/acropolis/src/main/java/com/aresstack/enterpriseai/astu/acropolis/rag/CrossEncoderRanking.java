@@ -1,8 +1,5 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
-import com.aresstack.enterpriseai.model.api.RerankException;
-import com.aresstack.enterpriseai.model.api.RerankPort;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -23,20 +20,28 @@ import java.util.function.Supplier;
  */
 public final class CrossEncoderRanking {
 
-    private final RerankPort port;
+    /**
+     * Scores documents against a query with a cross-encoder model: one score per document, in document order, higher
+     * is better. The composition root adapts the reranker port to it; any exception means "no ranking this time".
+     */
+    public interface Scorer {
+        double[] score(String modelId, String query, List<String> documents) throws Exception;
+    }
+
+    private final Scorer scorer;
     private final Supplier<String> modelId;
     private final IntSupplier topK;
 
     /**
-     * @param port    the reranker; {@code null} = never rank
+     * @param scorer    the reranker; {@code null} = never rank
      * @param modelId the selected RERANK model per call (settings without restart); {@code null} or empty = none
      * @param topK    how many candidates go on to the evaluator, per call
      */
-    public CrossEncoderRanking(RerankPort port, Supplier<String> modelId, IntSupplier topK) {
+    public CrossEncoderRanking(Scorer scorer, Supplier<String> modelId, IntSupplier topK) {
         if (topK == null) {
             throw new IllegalArgumentException("topK must not be null");
         }
-        this.port = port;
+        this.scorer = scorer;
         this.modelId = modelId;
         this.topK = topK;
     }
@@ -48,7 +53,7 @@ public final class CrossEncoderRanking {
 
     /** Whether a model is selected, so the next call will ask the reranker. */
     public boolean isActive() {
-        return port != null && model() != null;
+        return scorer != null && model() != null;
     }
 
     /** The outcome of one ranking call. */
@@ -78,7 +83,7 @@ public final class CrossEncoderRanking {
      */
     public Result rank(String question, Map<String, RetrievedChunk> offered) {
         String model = model();
-        if (port == null || model == null || offered == null || offered.isEmpty() || question == null
+        if (scorer == null || model == null || offered == null || offered.isEmpty() || question == null
                 || question.trim().isEmpty()) {
             return unchanged(offered);
         }
@@ -89,10 +94,8 @@ public final class CrossEncoderRanking {
         }
         final double[] scores;
         try {
-            scores = port.rerank(model, question, documents);
-        } catch (RerankException e) {
-            return unchanged(offered);
-        } catch (RuntimeException e) {
+            scores = scorer.score(model, question, documents);
+        } catch (Exception e) {
             return unchanged(offered);
         }
         if (scores == null || scores.length != ids.size()) {

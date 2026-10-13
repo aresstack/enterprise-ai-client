@@ -271,7 +271,7 @@ public final class CompositionRoot {
         // Cross-encoder (model.rerank) between fusion and the evidence check; without a selected model, or when it
         // fails, the candidates reach the evaluator unchanged. Model and top-K apply without restart.
         this.ragChat.rankCandidatesWith(new com.aresstack.enterpriseai.astu.acropolis.rag.CrossEncoderRanking(
-                ports.reranker(), () -> {
+                ports.reranker() == null ? null : ports.reranker()::rerank, () -> {
                     com.aresstack.enterpriseai.astu.modelcatalog.ModelReference selected = config().models()
                             .selections().get(com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.RERANK);
                     return selected == null ? null : selected.modelId();
