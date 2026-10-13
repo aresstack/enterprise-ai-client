@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
@@ -39,7 +40,7 @@ import java.util.regex.Pattern;
  * nicht; gelesen wird KeePass erst beim ersten Zugriff der Quelle, nicht beim Start. Gilt für alle Quelltypen,
  * ohne dass Kern oder Oberfläche den Typ kennen.
  */
-final class VaultSourceProvider implements KnowledgeSourceProvider {
+final class VaultSourceProvider implements KnowledgeSourceProvider, AddressableKnowledgeSourceProvider {
 
     private final KnowledgeSourceProvider delegate;
     private final SecretProvider secrets;
@@ -55,6 +56,12 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
     @Override
     public KnowledgeSourceType type() {
         return delegate.type();
+    }
+
+    @Override
+    public Pattern addressPattern() {
+        return delegate instanceof AddressableKnowledgeSourceProvider
+                ? ((AddressableKnowledgeSourceProvider) delegate).addressPattern() : null;
     }
 
     @Override
@@ -245,16 +252,12 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
         }
 
         /**
-         * Prüft nur eine bereits geöffnete Quelle. Allein das Tippen in die Suchleiste darf keine KeePass-Abfrage
-         * auslösen; vor dem ersten echten Quellenzugriff ist das Pattern deshalb unbekannt.
+         * Das Pattern gehört zum Quelltyp und ist deshalb auch vor dem verzögerten Öffnen bekannt. So löst das
+         * Erkennen einer Adresse keine KeePass-Abfrage aus.
          */
         @Override
         public Pattern addressPattern() {
-            KnowledgeSourcePort port;
-            synchronized (this) {
-                port = opened;
-            }
-            return port == null ? null : SourceCapabilities.addressPattern(port);
+            return VaultSourceProvider.this.addressPattern();
         }
 
         @Override
