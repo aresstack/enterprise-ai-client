@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SourceScope;
@@ -20,6 +21,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 /**
  * Quelltyp „Confluence“ ({@code source.<n>.type=confluence}, Ressourcenschema {@code confluence}): Felder,
@@ -34,7 +36,7 @@ import java.util.logging.Logger;
  * {@code maxResponseBytes}, {@code allowInsecureHttp}, {@code connectTimeoutMillis}, {@code readTimeoutMillis} und
  * {@code clientCertificate.keyStoreFile}/{@code .keyStorePasswordRef}.
  */
-public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
+public final class ConfluenceSourceProvider implements KnowledgeSourceProvider, AddressableKnowledgeSourceProvider {
 
     public static final String TYPE_ID = "confluence";
 
@@ -123,6 +125,11 @@ public final class ConfluenceSourceProvider implements KnowledgeSourceProvider {
     @Override
     public KnowledgeSourceType type() {
         return TYPE;
+    }
+
+    @Override
+    public Pattern addressPattern() {
+        return ConfluenceLinks.addressPattern();
     }
 
     @Override
