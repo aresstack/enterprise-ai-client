@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
@@ -32,7 +33,7 @@ import java.util.regex.Pattern;
  * Suche an die Quelle weiter, gelesen aus dem Anwendungszustand. So wirkt ein Häkchen beim nächsten Lauf, ohne die Quelle neu
  * anzubinden, und Kern wie Oberfläche kennen den Quelltyp nicht.
  */
-final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider {
+final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider, AddressableKnowledgeSourceProvider {
 
     private final KnowledgeSourceProvider delegate;
     private final SourcePartitionSelection selection;
@@ -48,6 +49,12 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
     @Override
     public KnowledgeSourceType type() {
         return delegate.type();
+    }
+
+    @Override
+    public Pattern addressPattern() {
+        return delegate instanceof AddressableKnowledgeSourceProvider
+                ? ((AddressableKnowledgeSourceProvider) delegate).addressPattern() : null;
     }
 
     @Override
