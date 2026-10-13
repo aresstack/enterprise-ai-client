@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowCloseButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
@@ -49,6 +50,7 @@ public final class SourceDialog extends JDialog {
     private SourceDialog(Window owner, SourceDefinition initial, String originalId, List<KnowledgeSourceType> types,
                          SourceActions actions, ComicPalette palette) {
         super(owner, originalId == null ? "Quelle hinzufügen" : "Quelle bearbeiten", ModalityType.APPLICATION_MODAL);
+        ApplicationIcons.apply(this);
         setUndecorated(true);
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         this.panel = new SourcePanel(initial, originalId, types, actions, palette);
@@ -109,6 +111,7 @@ public final class SourceDialog extends JDialog {
         ComicTheme.installMenuDefaults(colors);
         final boolean[] confirmed = {false};
         final JDialog dialog = new JDialog(owner, "Quelle entfernen", ModalityType.APPLICATION_MODAL);
+        ApplicationIcons.apply(dialog);
         dialog.setUndecorated(true);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         JPanel content = new JPanel(new BorderLayout(0, 10));

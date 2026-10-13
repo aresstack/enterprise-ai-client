@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.security;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSectionPanel;
@@ -60,6 +61,7 @@ public final class CredentialDialog extends JDialog {
 
     private CredentialDialog(Frame owner, String label, ComicPalette palette) {
         super(owner, "Zugangsdaten", true);
+        ApplicationIcons.apply(this);
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         JPanel content = new JPanel(new BorderLayout(0, 10));
         content.setBackground(palette.getSurface());

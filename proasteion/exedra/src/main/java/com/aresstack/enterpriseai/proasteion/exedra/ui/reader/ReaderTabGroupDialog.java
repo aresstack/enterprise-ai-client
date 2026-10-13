@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowShape;
@@ -82,6 +83,7 @@ final class ReaderTabGroupDialog {
         Window owner = parent == null ? null : (parent instanceof Window ? (Window) parent
                 : SwingUtilities.getWindowAncestor(parent));
         final JDialog dialog = new JDialog(owner, title, JDialog.ModalityType.APPLICATION_MODAL);
+        ApplicationIcons.apply(dialog);
         dialog.setUndecorated(true);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         final Result[] result = {null};

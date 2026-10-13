@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.setup;
 
+import com.aresstack.enterpriseai.proasteion.exedra.ui.icon.ApplicationIcons;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
 import com.aresstack.enterpriseai.ui.comic.control.ComicWindowDragger;
@@ -28,6 +29,7 @@ public final class SetupWizardWindow extends JDialog {
     private SetupWizardWindow(Window owner, SettingsForm initial, SettingsDialogActions settings, SetupActions setup,
                               ComicPalette palette) {
         super(owner, SetupWizardPanel.TITLE, ModalityType.APPLICATION_MODAL);
+        ApplicationIcons.apply(this);
         setUndecorated(true);
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         run = new SetupWizardRun(initial, settings, setup, palette, completed -> dispose());
