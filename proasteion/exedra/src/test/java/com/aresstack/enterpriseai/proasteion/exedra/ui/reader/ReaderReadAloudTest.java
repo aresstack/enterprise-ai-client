@@ -139,6 +139,78 @@ public class ReaderReadAloudTest {
         });
     }
 
+    @Test
+    public void doubleClickOnReadableTextRestartsFromThereAndElsewhereChangesNothing() throws Exception {
+        final Fixture fixture = new Fixture(true);
+        SwingUtilities.invokeAndWait(() -> {
+            fixture.open("wiki:page/1", PAGE);
+            fixture.reader.setSize(900, 700);
+            layout(fixture.reader);
+            layout(fixture.reader);
+            javax.swing.text.JTextComponent text = textContaining(fixture.reader, "Erster Absatz.");
+
+            assertFalse("ohne laufendes Vorlesen passiert nichts",
+                    fixture.reader.readAloudFrom(text, pointOf(text, "Absatz")));
+            assertTrue(fixture.control.spoken.isEmpty());
+
+            fixture.reader.readAloudButton().doClick();
+            assertTrue(fixture.reader.readAloudFrom(text, pointOf(text, "Absatz")));
+            assertEquals(2, fixture.control.spoken.size());
+            String restarted = fixture.control.spoken.get(1);
+            assertTrue(restarted, restarted.startsWith("Absatz."));
+            assertTrue(restarted, restarted.contains("Punkt eins"));
+            assertTrue(fixture.reader.isReadingAloud());
+
+            // Das Ende des abgelösten Laufs setzt den Knopf nicht zurück.
+            fixture.control.pending.remove(0).run();
+            assertTrue(fixture.reader.isReadingAloud());
+
+            int stops = fixture.control.stops;
+            assertFalse("Leerraum unter dem Text", fixture.reader.readAloudFrom(text,
+                    new java.awt.Point(text.getWidth() - 2, text.getHeight() - 2)));
+            assertFalse("außerhalb der Seite", fixture.reader.readAloudFrom(fixture.reader.readAloudButton(),
+                    new java.awt.Point(1, 1)));
+            assertEquals(2, fixture.control.spoken.size());
+            assertEquals(stops, fixture.control.stops);
+            assertTrue(fixture.reader.isReadingAloud());
+        });
+    }
+
+    private static void layout(java.awt.Component component) {
+        if (component instanceof java.awt.Container) {
+            ((java.awt.Container) component).doLayout();
+            for (java.awt.Component child : ((java.awt.Container) component).getComponents()) {
+                layout(child);
+            }
+        }
+    }
+
+    private static javax.swing.text.JTextComponent textContaining(java.awt.Component component, String needle) {
+        if (component instanceof javax.swing.text.JTextComponent
+                && ((javax.swing.text.JTextComponent) component).getText().contains(needle)) {
+            return (javax.swing.text.JTextComponent) component;
+        }
+        if (component instanceof java.awt.Container) {
+            for (java.awt.Component child : ((java.awt.Container) component).getComponents()) {
+                javax.swing.text.JTextComponent found = textContaining(child, needle);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static java.awt.Point pointOf(javax.swing.text.JTextComponent text, String word) {
+        try {
+            String content = text.getDocument().getText(0, text.getDocument().getLength());
+            java.awt.Rectangle at = text.modelToView(content.indexOf(word) + 1);
+            return new java.awt.Point(at.x, at.y + at.height / 2);
+        } catch (javax.swing.text.BadLocationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
     private static final class Fixture {
         final KnowledgeReaderPanel reader = new KnowledgeReaderPanel(ComicPalette.defaultPalette(), url -> {
         }, (code, width) -> null);

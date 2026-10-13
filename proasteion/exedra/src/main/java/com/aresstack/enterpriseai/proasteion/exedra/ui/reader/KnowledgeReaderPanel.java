@@ -209,6 +209,11 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         if (event instanceof MouseEvent && event.getID() == MouseEvent.MOUSE_RELEASED) {
             MouseEvent mouse = (MouseEvent) event;
             mouseButton(mouse.getButton(), mouse.getComponent());
+        } else if (event instanceof MouseEvent && event.getID() == MouseEvent.MOUSE_CLICKED) {
+            MouseEvent mouse = (MouseEvent) event;
+            if (mouse.getButton() == MouseEvent.BUTTON1 && mouse.getClickCount() == 2) {
+                readAloudFrom(mouse.getComponent(), mouse.getPoint());
+            }
         }
     };
 
@@ -580,7 +585,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     /**
      * Schließt die Sprachausgabe an (dieselbe wie im Chat: Modell, Stimme, Stückelung, Fehlermeldung) und zeigt den
      * Play-Knopf unten neben der Info. Play liest den Text des aktiven Reiters ohne Bilder, Grafiken und Diagramme
-     * vor, ein zweiter Klick beendet es; Reiterwechsel, Schließen und neuer Inhalt beenden es ebenfalls. Es gibt
+     * vor, ein zweiter Klick beendet es, ein Doppelklick auf eine Textstelle liest ab dort neu; Reiterwechsel, Schließen und neuer Inhalt beenden es ebenfalls. Es gibt
      * immer nur eine Ausgabe: der Chat und der Lesebereich lösen sich gegenseitig ab.
      */
     public void setReadAloud(ReadAloudControl control) {
@@ -641,8 +646,58 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         if (text.isEmpty()) {
             return;
         }
+        speak(active, text);
+    }
+
+    /**
+     * Doppelklick während des Vorlesens: trifft er eine vorlesbare Textstelle der vorgelesenen Seite, beginnt das
+     * Vorlesen sofort ab dem angeklickten Wort neu; daneben (Bild, Leerraum, anderer Bereich) ändert sich nichts.
+     *
+     * @return ob neu begonnen wurde
+     */
+    boolean readAloudFrom(java.awt.Component component, Point point) {
+        Tab active = tabs.get(activeKey);
+        if (readAloud == null || speakingTab == null || speakingTab != active || component == null
+                || active.content == null || !SwingUtilities.isDescendingFrom(component, active.content)) {
+            return false;
+        }
+        String paragraph = null;
+        int offset = -1;
+        if (component instanceof javax.swing.text.JTextComponent) {
+            javax.swing.text.JTextComponent text = (javax.swing.text.JTextComponent) component;
+            int position = text.viewToModel(point);
+            if (position < 0) {
+                return false;
+            }
+            javax.swing.text.Element element = javax.swing.text.Utilities.getParagraphElement(text, position);
+            try {
+                paragraph = text.getDocument().getText(element.getStartOffset(),
+                        element.getEndOffset() - element.getStartOffset());
+            } catch (javax.swing.text.BadLocationException e) {
+                return false;
+            }
+            offset = position - element.getStartOffset();
+        } else if (component instanceof javax.swing.JTable) {
+            javax.swing.JTable table = (javax.swing.JTable) component;
+            int row = table.rowAtPoint(point);
+            int column = table.columnAtPoint(point);
+            Object value = row < 0 || column < 0 ? null : table.getValueAt(row, column);
+            paragraph = value == null ? null : value.toString();
+            offset = 0;
+        }
+        String spoken = SpeechText.plainText(SpeechText.withoutVisuals(active.speechText));
+        int start = ReadAloudStart.find(spoken, paragraph, offset);
+        if (start < 0) {
+            return false;
+        }
+        speak(active, spoken.substring(start));
+        return true;
+    }
+
+    /** Liest {@code text} für den Reiter vor; ein laufendes Vorlesen endet vorher (dieselbe Sprachausgabe). */
+    private void speak(Tab tab, String text) {
         final Object run = new Object();
-        speakingTab = active;
+        speakingTab = tab;
         speakingRun = run;
         styleReadAloud();
         readAloud.speak(text, () -> {
