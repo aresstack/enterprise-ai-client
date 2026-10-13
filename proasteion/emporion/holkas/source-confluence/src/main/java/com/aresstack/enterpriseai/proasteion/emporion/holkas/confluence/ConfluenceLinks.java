@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 
 import java.io.UnsupportedEncodingException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -34,6 +36,46 @@ final class ConfluenceLinks {
     private static final int TINY_LENGTH = 11;
 
     private ConfluenceLinks() {
+    }
+
+    /**
+     * Vollständiges Adressmuster dieser konkreten Confluence-Instanz. Es dient nur zum Routing einer direkten
+     * Benutzereingabe; {@link #parse} prüft die Adresse danach weiterhin fachlich und autoritativ.
+     *
+     * <p>Schema, Host, effektiver Port und Context-Path folgen derselben Basis wie die Link-Auflösung. Für HTTP/HTTPS
+     * ist der jeweilige Standardport optional, ein abweichender expliziter Port dagegen fest.
+     */
+    static Pattern addressPattern(String base) {
+        if (base == null || base.trim().isEmpty()) {
+            return null;
+        }
+        final URI root;
+        try {
+            root = new URI(base.trim());
+        } catch (URISyntaxException e) {
+            return null;
+        }
+        if (root.getScheme() == null || root.getHost() == null) {
+            return null;
+        }
+        String scheme = root.getScheme();
+        String host = root.getHost();
+        String hostText = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
+        String port;
+        int configuredPort = root.getPort();
+        int defaultPort = "https".equalsIgnoreCase(scheme) ? 443
+                : "http".equalsIgnoreCase(scheme) ? 80 : -1;
+        if (configuredPort < 0 || configuredPort == defaultPort) {
+            port = defaultPort < 0 ? "" : "(?::" + defaultPort + ")?";
+        } else {
+            port = ":" + configuredPort;
+        }
+        String context = root.getRawPath() == null ? "" : root.getRawPath();
+        while (context.endsWith("/") && !context.isEmpty()) {
+            context = context.substring(0, context.length() - 1);
+        }
+        return Pattern.compile("^" + Pattern.quote(scheme) + "://" + Pattern.quote(hostText) + port
+                + Pattern.quote(context) + "/.*$", Pattern.CASE_INSENSITIVE);
     }
 
     /**
