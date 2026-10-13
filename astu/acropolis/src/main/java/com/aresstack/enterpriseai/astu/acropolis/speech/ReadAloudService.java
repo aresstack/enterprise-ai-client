@@ -208,6 +208,7 @@ public final class ReadAloudService {
     private final int attempts;
     private final TextAnalysisService analysis;
     private final SpeechTextPreparation preparation;
+    private final boolean voiceStabilityFix;
     private final Object lock = new Object();
     private long generation;
     private boolean paused;
@@ -263,6 +264,16 @@ public final class ReadAloudService {
     public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, String voice, AudioPlayback playback,
                             SpeechChunking chunking, int workers, int attempts, TextAnalysisService analysis,
                             SpeechTextPreparation preparation) {
+        this(synthesis, modelId, voice, playback, chunking, workers, attempts, analysis, preparation, false);
+    }
+
+    /**
+     * @param voiceStabilityFix {@code true}: lange Absatz-/Antwort-Stücke nach etwa 500 Zeichen an Satzgrenzen
+     *                          beenden, um beobachtete Voice-Drifts generativer TTS-Modelle zu umgehen
+     */
+    public ReadAloudService(SpeechSynthesisPort synthesis, String modelId, String voice, AudioPlayback playback,
+                            SpeechChunking chunking, int workers, int attempts, TextAnalysisService analysis,
+                            SpeechTextPreparation preparation, boolean voiceStabilityFix) {
         if (synthesis == null || modelId == null || modelId.trim().isEmpty() || playback == null) {
             throw new IllegalArgumentException("synthesis, modelId and playback must be set");
         }
@@ -275,6 +286,7 @@ public final class ReadAloudService {
         this.attempts = Math.max(1, Math.min(MAX_SYNTHESIS_ATTEMPTS, attempts));
         this.analysis = analysis;
         this.preparation = preparation;
+        this.voiceStabilityFix = voiceStabilityFix;
     }
 
     public String modelId() {
@@ -369,7 +381,7 @@ public final class ReadAloudService {
      */
     private List<String> chunks(String plainText) {
         if (analysis == null) {
-            return SpeechText.chunks(plainText, chunking);
+            return SpeechText.chunks(plainText, chunking, voiceStabilityFix);
         }
         Object token = new Object();
         analysis.acquire(token);
@@ -378,7 +390,7 @@ public final class ReadAloudService {
             for (TextAnalysisService.Segment segment : analysis.segment(plainText, FALLBACK_LANGUAGE, true,
                     chunking)) {
                 for (String chunk : segment.chunks()) {
-                    chunks.addAll(SpeechText.bounded(chunk));
+                    chunks.addAll(SpeechText.bounded(chunk, voiceStabilityFix));
                 }
             }
             return chunks;
