@@ -46,7 +46,8 @@ final class KnowledgeResolveUrlTool implements McpToolHandler {
                         + "several candidates decide by the user's context, or read them. No candidate: the address "
                         + "is not an internal document. Example: " + EXAMPLE + ".",
                 this,
-                McpToolParameter.string(PARAM_URL, true, "The complete address as given, with http:// or https://. "
+                McpToolParameter.string(PARAM_URL, true, "The complete address as given, including its http or "
+                        + "https scheme. "
                         + "Example: " + EXAMPLE),
                 McpToolParameter.string(PARAM_SOURCE, false, "Optional: only ask this source (the \"source:\" "
                         + "value of a knowledge_search hit or of an earlier candidate)."));
