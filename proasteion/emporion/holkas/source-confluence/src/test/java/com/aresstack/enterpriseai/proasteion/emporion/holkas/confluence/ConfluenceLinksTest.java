@@ -30,15 +30,18 @@ public class ConfluenceLinksTest {
     }
 
     @Test
-    public void addressPatternBelongsToThisConfiguredConfluenceBase() {
-        java.util.regex.Pattern pattern = ConfluenceLinks.addressPattern(BASE);
+    public void addressPatternRecognizesWebAddressesAndLeavesOwnershipToTheResolver() {
+        java.util.regex.Pattern pattern = ConfluenceLinks.addressPattern();
 
         assertTrue(pattern.matcher(BASE + "/pages/viewpage.action?pageId=123").matches());
-        assertTrue(pattern.matcher("https://CONFLUENCE.example.org:443/wiki/spaces/DEV/pages/123").matches());
-        assertFalse(pattern.matcher("http://confluence.example.org/wiki/pages/viewpage.action?pageId=123").matches());
-        assertFalse(pattern.matcher("https://example.org/wiki/pages/viewpage.action?pageId=123").matches());
-        assertFalse(pattern.matcher("https://confluence.example.org/other/pages/viewpage.action?pageId=123").matches());
+        assertTrue(pattern.matcher("http://confluence.example.org/wiki/pages/viewpage.action?pageId=123").matches());
+        assertTrue("anderer Host ist syntaktisch weiter eine Webadresse",
+                pattern.matcher("https://example.org/other/page").matches());
+        assertFalse(pattern.matcher("mailto:someone@example.org").matches());
         assertFalse(pattern.matcher("Text " + BASE + "/pages/viewpage.action?pageId=123").matches());
+
+        assertNull("erst die gehintete Quelle prüft, ob die Webadresse wirklich ihr gehört",
+                ConfluenceLinks.parse("https://example.org/other/page", BASE));
     }
 
     @Test
