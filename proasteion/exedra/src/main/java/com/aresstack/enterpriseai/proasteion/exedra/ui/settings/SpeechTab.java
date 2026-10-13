@@ -57,6 +57,7 @@ final class SpeechTab {
     private final JComboBox<String> chunking;
     private final JComboBox<String> workers;
     private final JComboBox<String> attempts;
+    private final JCheckBox voiceStabilityFix;
     private final AssistantNameSection assistantName;
     private final JTextField merlinVoice;
     private final JTextField merlinSpeaker;
@@ -144,8 +145,14 @@ final class SpeechTab {
                 "Wie oft ein Abschnitt angefragt wird, bevor das Vorlesen mit einer Meldung abbricht; ein fehlender "
                         + "Abschnitt wird nie übersprungen (speech.readAloud.synthesisAttempts)",
                 "1", "2", "3", "4", "5");
-        speech.note("Absätze sind der beste Kompromiss aus Klang und Wartezeit: Sätze klingen früher, aber "
-                + "abgehackter, die ganze Antwort klingt am natürlichsten, beginnt aber erst nach der ganzen Synthese.");
+        voiceStabilityFix = speech.checkBox("Fix: Stimme bei langen Abschnitten stabilisieren",
+                "Standardmäßig aktiv: beendet TTS-Stücke nach ungefähr 500 Zeichen an der nächsten Satzgrenze. "
+                        + "Das umgeht beobachtete Stimmwechsel generativer TTS-Modelle bei langen Anfragen. "
+                        + "Für andere oder später korrigierte Modelle kann der Fix ausgeschaltet werden "
+                        + "(speech.readAloud.voiceStabilityFix)");
+        speech.note("Absätze sind der beste Kompromiss aus Klang und Wartezeit. Der Stimmstabilitäts-Fix hält "
+                + "lange Absätze und Antworten unabhängig von dieser Auswahl in ungefähr 500-Zeichen-Stücken; "
+                + "Sätze bleiben dabei die bevorzugten Trennstellen.");
         FormRows merlin = new FormRows(palette);
         merlin.note("Merlin, der Begleiter des Einrichtungsassistenten, hat eine eigene Stimme, unabhängig vom "
                 + "TTS-Modell des Chats. Ist sie nicht verfügbar, zeigt er seine Sätze nur als Sprechblase.");
@@ -184,6 +191,7 @@ final class SpeechTab {
         chunking.setSelectedIndex(chunkingIndex(form.readAloudChunking()));
         workers.setSelectedItem(workersItem(form.synthesisWorkers()));
         attempts.setSelectedItem(attemptsItem(form.synthesisAttempts()));
+        voiceStabilityFix.setSelected(form.readAloudVoiceStabilityFix());
         merlinVoice.setText(form.merlinVoice());
         merlinSpeaker.setText(form.merlinSpeaker());
     }
@@ -195,6 +203,7 @@ final class SpeechTab {
         b.readAloudChunking(chunkingValue(chunking.getSelectedIndex()));
         b.synthesisWorkers((String) workers.getSelectedItem());
         b.synthesisAttempts((String) attempts.getSelectedItem());
+        b.readAloudVoiceStabilityFix(voiceStabilityFix.isSelected());
         b.merlinVoice(merlinVoice.getText());
         b.merlinSpeaker(merlinSpeaker.getText());
     }
