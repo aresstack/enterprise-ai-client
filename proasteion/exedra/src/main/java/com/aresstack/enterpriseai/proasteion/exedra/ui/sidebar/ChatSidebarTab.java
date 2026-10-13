@@ -20,4 +20,12 @@ public interface ChatSidebarTab {
     default Icon getIcon() {
         return null;
     }
+
+    /**
+     * Der Beitrag dieser Seite links im gemeinsamen Fuß (z. B. „+ Quelle“), nur sichtbar, solange die Seite
+     * aktiv ist; {@code null} = der linke Platz bleibt leer. Jedes Mal dieselbe Instanz liefern.
+     */
+    default JComponent getFooterLeadingComponent() {
+        return null;
+    }
 }

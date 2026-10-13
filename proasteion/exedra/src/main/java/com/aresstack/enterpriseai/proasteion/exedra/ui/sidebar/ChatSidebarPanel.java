@@ -10,6 +10,7 @@ import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Dimension;
+import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,7 +31,8 @@ import java.util.function.Supplier;
  *
  * <p>Der Fuß liegt außerhalb der Karten und bleibt beim Wechsel der Reiter stehen: rechts genau eine
  * Komponente der Arbeitsfläche (das Zahnrad der globalen Einstellungen), in Höhe und Abständen wie der
- * Chats-Fuß aus askai-java8 (arch).</p>
+ * Chats-Fuß aus askai-java8 (arch). Links liegt der optionale Beitrag der aktiven Seite
+ * ({@link ChatSidebarTab#getFooterLeadingComponent()}); beim Wechsel wird nur dieser Platz getauscht.</p>
  */
 public final class ChatSidebarPanel extends JPanel {
 
@@ -39,6 +41,9 @@ public final class ChatSidebarPanel extends JPanel {
     private final JPanel headerLeft = new JPanel(new BorderLayout());
     private final JPanel footer = new JPanel(new BorderLayout(8, 0));
     private final JPanel footerTrailing = new JPanel(new GridBagLayout());
+    private final JPanel footerLeading = new JPanel(new GridBagLayout());
+    private final Map<String, JComponent> footerLeadingByTitle = new LinkedHashMap<String, JComponent>();
+    private JComponent defaultTabFooterLeading;
     private JComponent header;
     private final String defaultTabTitle;
     private final JComponent defaultTabComponent;
@@ -107,6 +112,32 @@ public final class ChatSidebarPanel extends JPanel {
         if (header != null) {
             header.setVisible(defaultTabTitle.equals(title));
         }
+        showFooterLeading(footerLeadingByTitle.get(title));
+    }
+
+    /** Der Beitrag der Standardseite links im Fuß (z. B. „+ Neuer Chat“); {@code null} = leer. */
+    public void setDefaultTabFooterLeadingComponent(JComponent component) {
+        this.defaultTabFooterLeading = component;
+        rebuildTabs();
+    }
+
+    /** Die Komponente, die gerade links im Fuß steht ({@code null} = leer). */
+    public JComponent footerLeadingComponent() {
+        return footerLeading.getComponentCount() == 0 ? null : (JComponent) footerLeading.getComponent(0);
+    }
+
+    private void showFooterLeading(JComponent component) {
+        if (footerLeadingComponent() == component) {
+            return;
+        }
+        footerLeading.removeAll();
+        if (component != null) {
+            GridBagConstraints constraints = new GridBagConstraints();
+            constraints.anchor = GridBagConstraints.WEST;
+            footerLeading.add(component, constraints);
+        }
+        footerLeading.revalidate();
+        footerLeading.repaint();
     }
 
     /** Ob die Kopfzeile (Chat-Suche) gerade sichtbar ist. */
@@ -139,6 +170,10 @@ public final class ChatSidebarPanel extends JPanel {
         panes.removeAll();
         titles.clear();
         icons.clear();
+        footerLeadingByTitle.clear();
+        if (defaultTabFooterLeading != null) {
+            footerLeadingByTitle.put(defaultTabTitle, defaultTabFooterLeading);
+        }
         if (defaultTabIcon != null) {
             icons.put(defaultTabTitle, defaultTabIcon);
         }
@@ -152,6 +187,9 @@ public final class ChatSidebarPanel extends JPanel {
                     byTitle.put(tab.getTitle(), tab.getComponent());
                     if (tab.getIcon() != null) {
                         icons.put(tab.getTitle(), tab.getIcon());
+                    }
+                    if (tab.getFooterLeadingComponent() != null) {
+                        footerLeadingByTitle.put(tab.getTitle(), tab.getFooterLeadingComponent());
                     }
                 }
             }
@@ -175,6 +213,8 @@ public final class ChatSidebarPanel extends JPanel {
                 ResearchUiMetrics.FOOTER_PADDING_V, ResearchUiMetrics.FOOTER_PADDING_H));
         footer.setPreferredSize(new Dimension(10, ResearchUiMetrics.FOOTER_HEIGHT));
         footerTrailing.setOpaque(false);
+        footerLeading.setOpaque(false);
+        footer.add(footerLeading, BorderLayout.WEST);
         footer.add(footerTrailing, BorderLayout.EAST);
         return footer;
     }

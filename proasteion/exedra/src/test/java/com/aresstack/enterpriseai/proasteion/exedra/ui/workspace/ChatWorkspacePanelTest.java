@@ -389,6 +389,15 @@ public class ChatWorkspacePanelTest {
                 workspace.ribbon().finishAnimation();
                 workspace.sidebar().showTab(ChatWorkspacePanel.KNOWLEDGE_TAB);
                 assertEquals(ChatWorkspacePanel.KNOWLEDGE_TAB, workspace.sidebar().activeTab());
+                assertSame("„+ Quelle“ steht links im Fuß", pane.addButton(),
+                        workspace.sidebar().footerLeadingComponent());
+                assertFalse("nicht mehr über der Liste", SwingUtilities.isDescendingFrom(pane.addButton(), pane));
+                assertEquals(workspace.newChatButton().getPreferredSize(), pane.addButton().getPreferredSize());
+                workspace.sidebar().showTab(ChatWorkspacePanel.FAVORITES_TAB);
+                assertNull("Favoriten tragen nichts bei", workspace.sidebar().footerLeadingComponent());
+                workspace.sidebar().showTab(ChatWorkspacePanel.CHATS_TAB);
+                assertSame(workspace.newChatButton(), workspace.sidebar().footerLeadingComponent());
+                workspace.sidebar().showTab(ChatWorkspacePanel.KNOWLEDGE_TAB);
                 workspace.setSize(900, 620);
                 workspace.doLayout();
                 paint(workspace);

@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.sidebar.ChatHistoryRow;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.sidebar.ChatSidebarPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.sidebar.ChatSidebarTab;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.sidebar.SidebarTabRibbon;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.sidebar.SidebarFooterPill;
 import com.aresstack.enterpriseai.ui.comic.control.ComicOverlayPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSearchBar;
@@ -186,14 +187,14 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         this.burger = ComposerButton.sidebarToggle("Chats und Wissensquellen");
         this.modePill = buildModePill();
         this.chatFilter = new ComicSearchBar("Chats durchsuchen…", "Chats nach Titel filtern", palette);
-        this.newChatButton = new ResearchPillButton(NEW_CHAT_LABEL, ResearchUiMetrics.NEW_CHAT_HEIGHT,
-                ResearchUiMetrics.RADIUS_CONTROL, ResearchUiMetrics.NEW_CHAT_PADDING_H);
+        this.newChatButton = SidebarFooterPill.create(NEW_CHAT_LABEL, "Neuen Chat beginnen");
         this.settingsButton = new ResearchIconButton(ComposerIcons.gear(), SETTINGS_TOOLTIP);
         this.knowledgePane = new KnowledgeSourcesPanel(palette);
         this.reader = new KnowledgeReaderPanel(palette);
         this.favoritesPane = new FavoritesPanel(palette);
         this.sidebar = new ChatSidebarPanel(CHATS_TAB, buildChatsTab(), palette);
         sidebar.setDefaultTabIcon(SidebarIcons.scroll());
+        sidebar.setDefaultTabFooterLeadingComponent(newChatButton);
         // Das Zahnrad öffnet globale Einstellungen: einmal im Fuß des Drawers, auf allen Reitern sichtbar.
         settingsButton.addActionListener(event -> {
             if (actions != null) {
@@ -539,6 +540,11 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                 public javax.swing.Icon getIcon() {
                     return SidebarIcons.flask();
                 }
+
+                @Override
+                public JComponent getFooterLeadingComponent() {
+                    return knowledgePane.addButton();
+                }
             });
             tabs.add(new ChatSidebarTab() {
                 @Override
@@ -597,8 +603,6 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         scroll.getViewport().setBackground(palette.getSurface());
         scroll.getVerticalScrollBar().setUnitIncrement(16);
 
-        newChatButton.setFont(ResearchUiTypography.semiBold(13f));
-        newChatButton.setToolTipText("Neuen Chat beginnen");
         newChatButton.addActionListener(event -> {
             if (actions != null) {
                 actions.newChatRequested(modes.getMode());
@@ -610,14 +614,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                 collapseMenuAndSidebar();
             }
         });
-        JPanel north = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        north.setOpaque(false);
-        north.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
-        north.add(newChatButton);
-
         JPanel tab = new JPanel(new BorderLayout());
         tab.setOpaque(false);
-        tab.add(north, BorderLayout.NORTH);
         tab.add(scroll, BorderLayout.CENTER);
         return tab;
     }

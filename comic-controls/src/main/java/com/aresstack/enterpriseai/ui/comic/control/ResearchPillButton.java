@@ -29,6 +29,7 @@ public class ResearchPillButton extends JButton {
     private Color normalBorder;
     private Color hoverBorder;
     private Color pressedBorder;
+    private String widthReference;
 
     public ResearchPillButton(String text, int fixedHeight, int radius, int paddingH) {
         super(text);
@@ -66,6 +67,16 @@ public class ResearchPillButton extends JButton {
         repaint();
     }
 
+    /**
+     * Size the button to at least the width this reference text needs, so pills with different labels
+     * line up with the same width ({@code null} = only as wide as the own text, the default).
+     */
+    public void setWidthReference(String reference) {
+        this.widthReference = reference;
+        revalidate();
+        repaint();
+    }
+
     @Override
     protected void paintComponent(Graphics graphics) {
         Graphics2D g2 = ResearchUiPainter.prepare(graphics);
@@ -91,7 +102,11 @@ public class ResearchPillButton extends JButton {
     @Override
     public Dimension getPreferredSize() {
         FontMetrics metrics = getFontMetrics(getFont());
-        int width = metrics.stringWidth(getText()) + 2 * paddingH;
+        int textWidth = metrics.stringWidth(getText());
+        if (widthReference != null) {
+            textWidth = Math.max(textWidth, metrics.stringWidth(widthReference));
+        }
+        int width = textWidth + 2 * paddingH;
         return new Dimension(width, fixedHeight);
     }
 

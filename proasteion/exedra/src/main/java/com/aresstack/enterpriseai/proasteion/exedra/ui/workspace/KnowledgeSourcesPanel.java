@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.sidebar.SidebarFooterPill;
 import com.aresstack.enterpriseai.ui.comic.control.ResearchPillButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
@@ -22,7 +23,6 @@ import javax.swing.JScrollPane;
 import javax.swing.Scrollable;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,10 +67,6 @@ public final class KnowledgeSourcesPanel extends JPanel {
         this.palette = palette;
         setOpaque(false);
         addButton = pill(ADD_LABEL, "Eine Wissensquelle hinzufügen (Wiki, Confluence, Dateien ...)");
-        JPanel addRows = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        addRows.setOpaque(false);
-        addRows.setBorder(BorderFactory.createEmptyBorder(8, 2, 4, 8));
-        addRows.add(addButton);
 
         searchBar = new ComicSearchBar(SEARCH_PLACEHOLDER, SEARCH_TOOLTIP, palette);
         searchBar.addSearchAction(event -> {
@@ -110,10 +106,6 @@ public final class KnowledgeSourcesPanel extends JPanel {
         searchRow.setOpaque(false);
         searchRow.setBorder(BorderFactory.createEmptyBorder(ResearchUiMetrics.SLIM_BAR_TOP_GAP, 8, 4, 4));
         searchRow.add(searchBar, BorderLayout.CENTER);
-        JPanel north = new JPanel(new BorderLayout());
-        north.setOpaque(false);
-        north.add(searchRow, BorderLayout.NORTH);
-        north.add(addRows, BorderLayout.CENTER);
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setOpaque(false);
@@ -128,7 +120,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
 
         JLabel hint = mutedText(HINT_TEXT, 6, 6);
 
-        add(north, BorderLayout.NORTH);
+        add(searchRow, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
         add(hint, BorderLayout.SOUTH);
         refresh();
@@ -153,10 +145,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
     }
 
     private ResearchPillButton pill(String label, String tooltip) {
-        ResearchPillButton pill = new ResearchPillButton(label, ResearchUiMetrics.NEW_CHAT_HEIGHT - 4,
-                ResearchUiMetrics.RADIUS_CONTROL, ResearchUiMetrics.NEW_CHAT_PADDING_H - 2);
-        pill.setFont(ResearchUiTypography.semiBold(12.5f));
-        pill.setToolTipText(tooltip);
+        ResearchPillButton pill = SidebarFooterPill.create(label, tooltip);
         pill.addActionListener(event -> {
             if (actions != null) {
                 actions.addRequested();
