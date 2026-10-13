@@ -72,6 +72,34 @@ public class SpeechTextTest {
     }
 
     @Test
+    public void voiceStabilityFixEndsLongUnitsAtSentenceBoundariesAroundFiveHundredCharacters() {
+        String sentence = "Dieser Satz beschreibt einen technischen Abschnitt mit genügend Wörtern für einen "
+                + "realistischen Vorlesetest und endet bewusst an einer klaren Satzgrenze.";
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < 7; i++) {
+            if (text.length() > 0) {
+                text.append(' ');
+            }
+            text.append(sentence);
+        }
+
+        List<String> legacy = SpeechText.chunks(text.toString(), SpeechChunking.ANSWER);
+        List<String> stable = SpeechText.chunks(text.toString(), SpeechChunking.ANSWER, true);
+
+        assertEquals("legacy stays one unit below 1200 characters", 1, legacy.size());
+        assertTrue(stable.toString(), stable.size() > 1);
+        for (int i = 0; i < stable.size(); i++) {
+            String chunk = stable.get(i);
+            assertTrue(chunk, chunk.endsWith("."));
+            assertTrue(chunk, chunk.length() < SpeechText.VOICE_STABILITY_TARGET_CHARS
+                    + SpeechText.MAX_CHUNK_CHARS + 2);
+            if (i < stable.size() - 1) {
+                assertTrue(chunk, chunk.length() >= SpeechText.VOICE_STABILITY_TARGET_CHARS);
+            }
+        }
+    }
+
+    @Test
     public void pageTextWithoutVisualsKeepsNullSafe() {
         assertEquals("", SpeechText.withoutVisuals(null));
         assertEquals("Nur Text.", SpeechText.withoutVisuals("Nur Text."));
