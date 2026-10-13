@@ -46,7 +46,9 @@ Manche TTS-Modelle haben mehrere Sprecher. Ist keine feste Stimme eingestellt, w
 
 Die Stimme gilt je Modell. Wechselst du das TTS-Modell, erscheint dessen eigene Stimme. Lokale Stimmen haben genau einen Sprecher („Lokale Stimme: genau ein Sprecher.“) und wechseln nie.
 
-Wechselt die Stimme trotz fester Einstellung, hilft für die Fehlersuche: „Worker“ auf 1 stellen, damit nur eine Synthese gleichzeitig läuft, und im Protokoll die Zeilen „TTS request:“, „TTS HTTP request:“ und „TTS audio:“ vergleichen. Sie zeigen, welche Stimme bei jedem Stück angefragt wurde.
+Wechselt die Stimme trotz fester Einstellung zwischen zwei Stücken, klingt also ein Stück wie ein anderer, tieferer Sprecher: Generative Stimmen wie Orpheus tun das bei sehr langen Anfragen (ab etwa 1000 Zeichen) gelegentlich, obwohl dieselbe Stimme angefragt wurde. Dagegen hilft „Fix: Stimme bei langen Abschnitten stabilisieren“ unter „Sprachausgabe“ (Standard an), der Stücke nach ungefähr 500 Zeichen an der nächsten Satzgrenze beendet.
+
+Für die weitere Fehlersuche: „Worker“ auf 1 stellen, damit nur eine Synthese gleichzeitig läuft, und im Protokoll die Zeilen „TTS request:“, „TTS HTTP request:“ und „TTS audio:“ vergleichen. Sie zeigen, welche Stimme bei jedem Stück angefragt wurde.
 
 Merlin, der Begleiter des Einrichtungsassistenten, hat eine eigene Stimme, unabhängig vom Chat (Bereich „Merlin“: „Stimme von Merlin“, „Sprecher von Merlin“). Klingt Merlin anders als das Vorlesen, ist das gewollt. Kann Merlin nicht sprechen, steht im Protokoll „Merlin spricht nicht: …“, und er zeigt seine Sätze nur als Sprechblase.
 

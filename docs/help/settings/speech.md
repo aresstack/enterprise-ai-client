@@ -1,7 +1,7 @@
 ---
 id: settings.speech
 title: Einstellungen – Reiter „Sprachausgabe“
-keywords: Sprachausgabe, Vorlesen, TTS, Text-to-Speech, Stimme, Sprecher, Voice, Stimme testen, Stimme wechseln, Name des Assistenten, Anzeigename, Merlins Tochter, Merlin, Merlins Stimme, automatisch vorlesen, Absätze, Sätze, Worker, Synthese, lokale Stimme, Piper, Orpheus, Qwen3-TTS, chat.assistant.displayName, speech.voices, setup.merlin.ttsModel
+keywords: Sprachausgabe, Vorlesen, TTS, Text-to-Speech, Stimme, Sprecher, Voice, Stimme testen, Stimme wechseln, Name des Assistenten, Anzeigename, Merlins Tochter, Merlin, Merlins Stimme, automatisch vorlesen, Absätze, Sätze, Worker, Synthese, lokale Stimme, Piper, Orpheus, Qwen3-TTS, chat.assistant.displayName, speech.voices, Stimmwechsel, Stimme stabilisieren, speech.readAloud.voiceStabilityFix, setup.merlin.ttsModel
 ---
 
 # Einstellungen – Reiter „Sprachausgabe“
@@ -52,10 +52,11 @@ Hinweis im Dialog: „Ohne TTS-Modell bleibt der Play/Pause-Orb über dem Verlau
 | „Einheit der Synthese“ | „Absätze“ | Wie die Antwort zum Vorlesen geteilt wird: „Absätze“, „Sätze“ oder „Ganze Antwort“. |
 | „Worker“ | 2 | Parallele Synthesen, die die Stücke im Hintergrund vorbereiten (1 bis 8). |
 | „Versuche je Abschnitt“ | 2 | Wie oft ein Abschnitt beim Dienst angefragt wird (1 bis 5). Scheitert er auch beim letzten Versuch, hört das Vorlesen dort mit einer Meldung auf, welcher Abschnitt fehlt; ein Abschnitt wird nie stillschweigend übersprungen (`speech.readAloud.synthesisAttempts`). |
+| „Fix: Stimme bei langen Abschnitten stabilisieren“ | an | Beendet ein Stück nach ungefähr 500 Zeichen an der nächsten Satzgrenze, auch bei „Absätze“ und „Ganze Antwort“. Generative Stimmen wie Orpheus klingen bei sehr langen Anfragen manchmal wie ein anderer Sprecher; kurze Stücke vermeiden das. Ausgeschaltet gilt die frühere Grenze von 1200 Zeichen (`speech.readAloud.voiceStabilityFix`). |
 
-Unter den Feldern erklärt der Dialog: „Absätze sind der beste Kompromiss aus Klang und Wartezeit: Sätze klingen früher, aber abgehackter, die ganze Antwort klingt am natürlichsten, beginnt aber erst nach der ganzen Synthese.“ Alle Stücke rechnen im Hintergrund, gespielt wird in Lesereihenfolge; das erste klingt, sobald es fertig ist.
+Unter den Feldern erklärt der Dialog: „Absätze sind der beste Kompromiss aus Klang und Wartezeit. Der Stimmstabilitäts-Fix hält lange Absätze und Antworten unabhängig von dieser Auswahl in ungefähr 500-Zeichen-Stücken; Sätze bleiben dabei die bevorzugten Trennstellen.“ Alle Stücke rechnen im Hintergrund, gespielt wird in Lesereihenfolge; das erste klingt, sobald es fertig ist.
 
-Die Standardwerte (aus, Absätze, 2 Worker, 2 Versuche) schreibt der Dialog nicht in die Datei.
+Die Standardwerte (aus, Absätze, 2 Worker, 2 Versuche, Fix an) schreibt der Dialog nicht in die Datei.
 
 ## Lokale Stimmen
 
