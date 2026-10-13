@@ -362,7 +362,9 @@ public final class AppConfigLoader {
      * {@code model.<kategorie>}) und das Modellverzeichnis der lokalen Stimmen ({@code models.local.modelRoot}).
      * {@code speech.readAloud.autoStart} liest neue Antworten automatisch vor (wie askai arch, Standard aus),
      * {@code speech.readAloud.chunking} und {@code speech.readAloud.synthesisWorkers} wie {@code tts.chunking} und
-     * {@code tts.synthesisWorkers} in arch (Standard Absätze, 2); {@code speech.voices} die Stimme je TTS-Modell ({@code speech.voice} die frühere globale).
+     * {@code tts.synthesisWorkers} in arch (Standard Absätze, 2); {@code speech.readAloud.voiceStabilityFix} begrenzt
+     * lange generative TTS-Stücke standardmäßig auf ungefähr 500 Zeichen an Satzgrenzen; {@code speech.voices} die
+     * Stimme je TTS-Modell ({@code speech.voice} die frühere globale).
      * {@code setup.merlin.ttsModel}/{@code setup.merlin.ttsVoice} sind Merlins eigene Stimme im Einrichtungsassistenten.
      */
     private static ModelsConfig models(ConfigReader r, List<String> warnings) {
@@ -378,6 +380,7 @@ public final class AppConfigLoader {
                         ReadAloudService.MAX_SYNTHESIS_WORKERS),
                 r.integer(ModelsConfig.READ_ALOUD_ATTEMPTS_KEY, ReadAloudService.DEFAULT_SYNTHESIS_ATTEMPTS, 1,
                         ReadAloudService.MAX_SYNTHESIS_ATTEMPTS),
+                r.bool(ModelsConfig.READ_ALOUD_VOICE_STABILITY_FIX_KEY, true),
                 r.text(ModelsConfig.SPEECH_VOICE_KEY, null),
                 ModelsConfig.parseSpeechVoices(r.text(ModelsConfig.SPEECH_VOICES_KEY, null)), modelRoot,
                 ModelsConfig.parse(r.text(ModelsConfig.MERLIN_VOICE_KEY, ModelsConfig.defaultMerlinVoice())),
