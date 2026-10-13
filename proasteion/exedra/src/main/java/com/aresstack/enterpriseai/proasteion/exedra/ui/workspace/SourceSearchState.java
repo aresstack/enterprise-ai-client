@@ -15,28 +15,43 @@ public final class SourceSearchState {
     private final String query;
     private final boolean running;
     private final int sourceCount;
+    private final List<ReaderLink> directHits;
+    private final List<ReaderLink> searchHits;
     private final List<ReaderLink> hits;
     private final List<String> problems;
 
-    private SourceSearchState(String query, boolean running, int sourceCount, List<ReaderLink> hits,
-                              List<String> problems) {
+    private SourceSearchState(String query, boolean running, int sourceCount, List<ReaderLink> directHits,
+                              List<ReaderLink> searchHits, List<String> problems) {
         this.query = query == null ? "" : query.trim();
         this.running = running;
         this.sourceCount = Math.max(0, sourceCount);
-        this.hits = Collections.unmodifiableList(new ArrayList<ReaderLink>(hits));
-        this.problems = Collections.unmodifiableList(new ArrayList<String>(problems));
+        this.directHits = immutable(directHits);
+        this.searchHits = immutable(searchHits);
+        List<ReaderLink> all = new ArrayList<ReaderLink>(this.directHits.size() + this.searchHits.size());
+        all.addAll(this.directHits);
+        all.addAll(this.searchHits);
+        this.hits = Collections.unmodifiableList(all);
+        this.problems = Collections.unmodifiableList(new ArrayList<String>(
+                problems == null ? Collections.<String>emptyList() : problems));
     }
 
     public static SourceSearchState running(String query, int sourceCount) {
         return new SourceSearchState(query, true, sourceCount, Collections.<ReaderLink>emptyList(),
-                Collections.<String>emptyList());
+                Collections.<ReaderLink>emptyList(), Collections.<String>emptyList());
     }
 
     /** @param problems z. B. „confluence: nicht erreichbar“ */
     public static SourceSearchState done(String query, int sourceCount, List<ReaderLink> hits, List<String> problems) {
-        return new SourceSearchState(query, false, sourceCount,
-                hits == null ? Collections.<ReaderLink>emptyList() : hits,
-                problems == null ? Collections.<String>emptyList() : problems);
+        return done(query, sourceCount, Collections.<ReaderLink>emptyList(), hits, problems);
+    }
+
+    /**
+     * Ergebnis mit direkten Adresstreffern vor den normalen Suchtreffern. Direkttreffer stammen ausschließlich aus
+     * Quellen, deren eigenes Address-Pattern auf die vollständige Eingabe gepasst hat.
+     */
+    public static SourceSearchState done(String query, int sourceCount, List<ReaderLink> directHits,
+                                         List<ReaderLink> searchHits, List<String> problems) {
+        return new SourceSearchState(query, false, sourceCount, directHits, searchHits, problems);
     }
 
     public String query() {
@@ -51,12 +66,26 @@ public final class SourceSearchState {
         return sourceCount;
     }
 
+    /** Alle Treffer in Anzeigereihenfolge: Direkttreffer zuerst, danach normale Suchtreffer. */
     public List<ReaderLink> hits() {
         return hits;
     }
 
+    public List<ReaderLink> directHits() {
+        return directHits;
+    }
+
+    public List<ReaderLink> searchHits() {
+        return searchHits;
+    }
+
     public List<String> problems() {
         return problems;
+    }
+
+    private static List<ReaderLink> immutable(List<ReaderLink> links) {
+        return Collections.unmodifiableList(new ArrayList<ReaderLink>(
+                links == null ? Collections.<ReaderLink>emptyList() : links));
     }
 
     /** Die Zeile über der Trefferliste. */
