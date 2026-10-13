@@ -41,7 +41,7 @@ final class ReadAloudRateControl extends JPanel {
     static final String TOOLTIP = "Sprechgeschwindigkeit";
     static final String PRESET_TOOLTIP = "Sprechgeschwindigkeit auswählen";
     /** The rates of the menu; {@link SpeechRate#NORMAL} is the reset. */
-    static final double[] PRESETS = {SpeechRate.MIN, 0.75, SpeechRate.NORMAL, 1.25, 1.5, SpeechRate.MAX};
+    private static final double[] PRESETS = {SpeechRate.MIN, 0.75, SpeechRate.NORMAL, 1.25, 1.5, SpeechRate.MAX};
     private static final String NORMAL_SUFFIX = " – Normal";
     private static final int FOCUS_LINE = 1;
     private static final int PERCENT = 100;
