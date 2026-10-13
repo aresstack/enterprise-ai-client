@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
@@ -10,6 +11,7 @@ import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.SourceFile;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Reicht die optionale Fähigkeit {@link PageViewSource} (Lese-Ansicht) durch die Hüllen der Composition Root
@@ -62,6 +64,17 @@ final class SourceCapabilities {
     static KnowledgeResourceId resolveLink(KnowledgeSourcePort port, String address)
             throws KnowledgeSourceException {
         return port instanceof PageViewSource ? ((PageViewSource) port).resolveLink(address) : null;
+    }
+
+    static Pattern addressPattern(KnowledgeSourcePort port) {
+        return port instanceof AddressableKnowledgeSource
+                ? ((AddressableKnowledgeSource) port).addressPattern() : null;
+    }
+
+    static KnowledgeResourceId resolveAddress(KnowledgeSourcePort port, String address)
+            throws KnowledgeSourceException {
+        return port instanceof AddressableKnowledgeSource
+                ? ((AddressableKnowledgeSource) port).resolveAddress(address) : null;
     }
 
     static boolean isAttachment(KnowledgeSourcePort port, KnowledgeResourceId id) {
