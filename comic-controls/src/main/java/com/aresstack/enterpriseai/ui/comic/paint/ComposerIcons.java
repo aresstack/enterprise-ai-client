@@ -309,4 +309,16 @@ public final class ComposerIcons {
             }
         };
     }
+
+    /** An open book (show in the reader). Own addition. */
+    public static StrokeIcon openBook() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawPolyline(new int[] {7, 4, 1, 1, 4, 7}, new int[] {4, 2, 3, 12, 11, 13}, 6);
+                g2.drawPolyline(new int[] {7, 10, 13, 13, 10, 7}, new int[] {4, 2, 3, 12, 11, 13}, 6);
+                g2.drawLine(7, 4, 7, 13);
+            }
+        };
+    }
 }

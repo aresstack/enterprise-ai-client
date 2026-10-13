@@ -6,6 +6,7 @@ import org.junit.Test;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import java.awt.Component;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -74,6 +75,89 @@ public class ComposerResourcesTest {
             assertTrue(composer.references().isEmpty());
             assertEquals("die Ressource bleibt im Chat", 3, composer.resources().size());
         });
+    }
+
+    @Test
+    public void leftClickAddsRightClickAndReaderIconOnlyOpen() throws Exception {
+        Edt.run(() -> {
+            ResourceActions actions = new ResourceActions(Arrays.asList(FILE, PAGE, SOURCE));
+            ChatComposerPanel composer = composer(actions);
+            RecordingReader reader = new RecordingReader();
+            composer.setResourceReader(reader);
+            composer.refreshResources();
+            JPopupMenu menu = openMenu(composer);
+            ResourceMenuItem source = (ResourceMenuItem) item(menu, "ZAUF Schnittstellenvertrag");
+            source.setSize(source.getPreferredSize());
+
+            // Right click: context menu with "Im Lesebereich öffnen", nothing added.
+            click(source, MouseEvent.BUTTON3, 5);
+            assertTrue("Rechtsklick hängt nichts an", composer.references().isEmpty());
+            JPopupMenu context = composer.lastResourceContextMenu();
+            assertNotNull("Kontextmenü angefordert", context);
+            JMenuItem open = (JMenuItem) context.getComponent(0);
+            assertEquals("Im Lesebereich öffnen", open.getText());
+            assertTrue(open.isEnabled());
+            open.doClick();
+            assertEquals(Arrays.asList(SOURCE), reader.read);
+            assertTrue(composer.references().isEmpty());
+
+            // Reader icon: opens directly, nothing added.
+            java.awt.Rectangle icon = source.readerIconBounds();
+            assertFalse("Symbol rechts", icon.isEmpty());
+            assertEquals(ResourceMenuItem.OPEN_IN_READER, source.getToolTipText(new MouseEvent(source,
+                    MouseEvent.MOUSE_MOVED, 0L, 0, icon.x + 1, icon.y + 1, 0, false)));
+            click(source, MouseEvent.BUTTON1, icon.x + 1);
+            assertEquals(Arrays.asList(SOURCE, SOURCE), reader.read);
+            assertTrue("Symbol hängt nichts an", composer.references().isEmpty());
+
+            // Left click on the entry keeps adding the reference.
+            source.doClick();
+            assertEquals(Arrays.asList(SOURCE), composer.references());
+            assertEquals("Linksklick öffnet nichts", 2, reader.read.size());
+        });
+    }
+
+    @Test
+    public void unreadableResourcesOfferNoReaderAction() throws Exception {
+        Edt.run(() -> {
+            ChatComposerPanel composer = composer(new ResourceActions(Arrays.asList(FILE, SOURCE)));
+            RecordingReader reader = new RecordingReader();
+            composer.setResourceReader(reader);
+            composer.refreshResources();
+            JPopupMenu menu = openMenu(composer);
+            ResourceMenuItem file = (ResourceMenuItem) item(menu, "IAR-Konzept.pdf");
+            assertFalse("kein Symbol für Dateien", file.readable());
+            assertFalse(composer.resourceContextMenu(FILE).getComponent(0).isEnabled());
+
+            ChatComposerPanel withoutReader = composer(new ResourceActions(Arrays.asList(SOURCE)));
+            withoutReader.refreshResources();
+            assertFalse("ohne Lesebereich kein Symbol",
+                    ((ResourceMenuItem) item(openMenu(withoutReader), "ZAUF Schnittstellenvertrag")).readable());
+        });
+    }
+
+    private static void click(java.awt.Component target, int button, int x) {
+        int mask = button == MouseEvent.BUTTON3 ? java.awt.event.InputEvent.BUTTON3_DOWN_MASK
+                : java.awt.event.InputEvent.BUTTON1_DOWN_MASK;
+        int y = target.getHeight() / 2;
+        target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_PRESSED, 0L, mask, x, y, 1, false, button));
+        target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_RELEASED, 0L, mask, x, y, 1, false, button));
+        target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_CLICKED, 0L, mask, x, y, 1, false, button));
+    }
+
+    /** Reads only pages and sources, as the real navigation does. */
+    private static final class RecordingReader implements ChatResourceReader {
+        final List<ChatResource> read = new ArrayList<ChatResource>();
+
+        @Override
+        public boolean canRead(ChatResource resource) {
+            return resource.kind() != ChatResource.Kind.FILE;
+        }
+
+        @Override
+        public void read(ChatResource resource) {
+            read.add(resource);
+        }
     }
 
     @Test

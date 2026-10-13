@@ -32,6 +32,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.FavoritesStore;
+import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ChatResourceNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ChatSourceNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeReadingController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesController;
@@ -253,6 +254,9 @@ public final class ShellAssembly {
         reading.attach();
         // Chat sources: a click opens them in the reader, the context menus save them as favorites.
         chatShell.transcript().setSourceActions(new ChatSourceNavigation(reading, () -> currentChatTitle(history)));
+        // Composer resources: the book icon and the context menu open pages and sources in the same reader.
+        chatShell.composer().setResourceReader(new ChatResourceNavigation(reading,
+                resourceId -> researchSourceId(root, sources, resourceId)));
         if (agent != null && root.researchHost() != null) {
             // Research-Workflow: Phase als drittes Dropdown im Composer (nur der Nutzer wechselt sie), Reiter
             // Quellen/Gliederung/Dokument mit je eigener Play-Aktion, über dem Composer nur die gelben Suchvorschläge.

@@ -101,7 +101,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
 
     static final String RESOURCES_PREFIX = "Ressourcen ";
     static final String RESOURCES_TOOLTIP = "Alle Dateien, Seiten und Quellen dieses Chats; ein Klick nimmt eine "
-            + "Ressource als Bezug in die nächste Nachricht.";
+            + "Ressource als Bezug in die nächste Nachricht, das Buch rechts öffnet sie im Lesebereich.";
     static final String RESOURCES_FILES = "Dateien";
     static final String RESOURCES_PAGES = "Seiten";
     static final String RESOURCES_SOURCES = "Verwendete Quellen";
@@ -135,6 +135,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final ComposerButton reasoningButton;
     /** Die Ressourcen des Chats (rechts neben „Denken“): Übersicht, Klick = Verweis-Chip. */
     private final ComposerButton resourcesButton;
+    private ChatResourceReader resourceReader;
+    private JPopupMenu lastResourceContextMenu;
     /** Zuletzt gezählte Ressourcen (gezählt wird nur bei fertigen Zeilen, nicht je Tastendruck). */
     private int resourceCount;
     /** Die Agentenphase (nur im Agent-Modus sichtbar); wählt allein der Nutzer. */
@@ -1065,12 +1067,57 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                 menu.add(heading);
                 header = true;
             }
-            JMenuItem item = new JMenuItem(resource.title(), ChatAttachmentStrip.iconOf(kind));
+            final boolean readable = canRead(resource);
+            final ResourceMenuItem item = new ResourceMenuItem(resource,
+                    readable ? () -> resourceReader.read(resource) : null,
+                    event -> showResourceContextMenu(resource, event));
             item.setToolTipText(ChatAttachmentStrip.referenceTooltip(resource));
             item.setEnabled(!chosen.contains(resource));
             item.addActionListener(event -> addReference(resource));
             menu.add(item);
         }
+    }
+
+    private boolean canRead(ChatResource resource) {
+        return resourceReader != null && resourceReader.canRead(resource);
+    }
+
+    /**
+     * Der Weg der Ressourcenübersicht in den Lesebereich (Symbol rechts und Kontextmenü „Im Lesebereich öffnen“);
+     * {@code null}: keine Reader-Aktion.
+     */
+    public void setResourceReader(ChatResourceReader reader) {
+        this.resourceReader = reader;
+    }
+
+    /**
+     * Das Kontextmenü eines Eintrags: „Im Lesebereich öffnen“, ohne Leseweg deaktiviert. Hängt nichts an; die
+     * Übersicht schließt, das Kontextmenü erscheint an derselben Stelle.
+     */
+    JPopupMenu resourceContextMenu(final ChatResource resource) {
+        JPopupMenu context = new JPopupMenu();
+        JMenuItem open = new JMenuItem(ResourceMenuItem.OPEN_IN_READER, ComposerIcons.openBook());
+        open.setEnabled(canRead(resource));
+        open.addActionListener(event -> resourceReader.read(resource));
+        context.add(open);
+        return context;
+    }
+
+    private void showResourceContextMenu(ChatResource resource, java.awt.event.MouseEvent event) {
+        JPopupMenu context = resourceContextMenu(resource);
+        lastResourceContextMenu = context;
+        java.awt.Component source = event.getComponent();
+        if (source == null || !source.isShowing() || !resourcesButton.isShowing()) {
+            return;
+        }
+        java.awt.Point at = SwingUtilities.convertPoint(source, event.getPoint(), resourcesButton);
+        javax.swing.MenuSelectionManager.defaultManager().clearSelectedPath();
+        context.show(resourcesButton, at.x, at.y);
+    }
+
+    /** Das zuletzt per Rechtsklick angeforderte Kontextmenü (für Tests ohne Bildschirm). */
+    JPopupMenu lastResourceContextMenu() {
+        return lastResourceContextMenu;
     }
 
     private void wireBehaviour() {
