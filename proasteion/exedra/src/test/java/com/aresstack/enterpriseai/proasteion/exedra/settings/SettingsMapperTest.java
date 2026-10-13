@@ -83,6 +83,23 @@ public class SettingsMapperTest {
     }
 
     @Test
+    public void voiceStabilityFixDefaultsOnAndOnlyOffIsPersisted() {
+        Properties current = valid();
+        SettingsForm defaults = SettingsMapper.fromProperties(current);
+
+        assertTrue(defaults.readAloudVoiceStabilityFix());
+        assertNull(SettingsMapper.merge(current, defaults)
+                .getProperty(ModelsConfig.READ_ALOUD_VOICE_STABILITY_FIX_KEY));
+
+        SettingsForm disabled = defaults.toBuilder().readAloudVoiceStabilityFix(false).build();
+        Properties merged = SettingsMapper.merge(current, disabled);
+
+        assertEquals("false", merged.getProperty(ModelsConfig.READ_ALOUD_VOICE_STABILITY_FIX_KEY));
+        assertFalse(SettingsMapper.fromProperties(merged).readAloudVoiceStabilityFix());
+        assertFalse(AppConfigLoader.fromProperties(merged).models().readAloudVoiceStabilityFix());
+    }
+
+    @Test
     public void rerankTopKIsShownWithItsDefaultAndOnlyADeviationIsWritten() throws Exception {
         Properties current = valid();
         SettingsForm form = SettingsMapper.fromProperties(current);
