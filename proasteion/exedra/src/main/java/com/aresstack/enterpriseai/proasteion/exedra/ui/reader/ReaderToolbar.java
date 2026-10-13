@@ -27,7 +27,7 @@ import java.awt.event.KeyEvent;
 
 /**
  * Die eine Zeile unter dem Lesebereich: links die Werkzeuge (heute die Lupe), in der Mitte Zurück und Vor, rechts
- * „© 2026 AresStack“ an derselben Stelle wie unter dem Chat. Klick auf die Lupe (oder Strg+F) klappt die Suche in derselben Zeile auf:
+ * „© 2026 AresStack“ an derselben Stelle wie unter dem Chat, davor die rechten Werkzeuge (die Büroklammer, #99). Klick auf die Lupe (oder Strg+F) klappt die Suche in derselben Zeile auf:
  * Feld, „aktueller Treffer / Gesamtzahl“, vorheriger, nächster, Schließen; Branding und Zurück/Vor sind solange
  * ausgeblendet.
  * Enter springt zum nächsten Treffer (bei neuem Text: neue Suche), Shift+Enter zum vorigen, Esc klappt zu.
@@ -53,6 +53,8 @@ final class ReaderToolbar extends JPanel {
 
     private final ComposerButton findButton;
     private final JPanel tools = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+    /** Tools directly left of the branding; they never move it (#99). */
+    private final JPanel trailing = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, 0));
     private final JPanel search = new JPanel(new BorderLayout(4, 0));
     private final JTextField field = new PlaceholderField(FIND_PLACEHOLDER);
     private final JLabel counter = new JLabel();
@@ -85,6 +87,7 @@ final class ReaderToolbar extends JPanel {
         });
         tools.setOpaque(false);
         tools.add(findButton);
+        trailing.setOpaque(false);
 
         field.setFont(ResearchUiTypography.regular(12f));
         field.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
@@ -146,6 +149,7 @@ final class ReaderToolbar extends JPanel {
         add(tools);
         add(navigation);
         add(search);
+        add(trailing);
         add(branding);
         expand(false);
         findButton.setEnabled(false);
@@ -236,6 +240,18 @@ final class ReaderToolbar extends JPanel {
         return tool;
     }
 
+    /**
+     * Legt ein Werkzeug rechts in die Zeile, unmittelbar links vor das Branding (gleiche Größe wie links); es tritt
+     * wie die linken Werkzeuge zurück, solange die Suche offen ist, und verschiebt das Branding nie.
+     */
+    ComposerButton addTrailingTool(javax.swing.Icon icon, String tooltip) {
+        ComposerButton tool = small(icon, tooltip);
+        trailing.add(tool);
+        tool.setVisible(state == null || !state.open);
+        revalidate();
+        return tool;
+    }
+
     /** Height of the toolbar buttons, for controls that sit beside them. */
     static int buttonSize() {
         return BUTTON_SIZE;
@@ -303,6 +319,18 @@ final class ReaderToolbar extends JPanel {
         return tools;
     }
 
+    JPanel trailingTools() {
+        return trailing;
+    }
+
+    JComponent brandingArea() {
+        return branding;
+    }
+
+    JComponent navigationArea() {
+        return navigation;
+    }
+
     // ------------------------------------------------------------------ intern
 
     private void step(boolean forward) {
@@ -336,9 +364,13 @@ final class ReaderToolbar extends JPanel {
         search.setVisible(searchOpen);
         branding.setVisible(!searchOpen);
         navigation.setVisible(!searchOpen);
+        trailing.setVisible(!searchOpen);
         findButton.setEmphasized(searchOpen);
         // weitere Werkzeuge treten zurück, solange die Suche die Zeile braucht
-        for (java.awt.Component tool : tools.getComponents()) {
+        java.util.List<java.awt.Component> all = new java.util.ArrayList<java.awt.Component>(
+                java.util.Arrays.asList(tools.getComponents()));
+        all.addAll(java.util.Arrays.asList(trailing.getComponents()));
+        for (java.awt.Component tool : all) {
             if (tool != findButton) {
                 tool.setVisible(!searchOpen && !(tool instanceof javax.swing.JComponent
                         && Boolean.TRUE.equals(((javax.swing.JComponent) tool).getClientProperty(HIDDEN_TOOL))));
@@ -374,7 +406,9 @@ final class ReaderToolbar extends JPanel {
 
     /**
      * Werkzeuge links, Zurück/Vor in der Mitte der ganzen Zeile, Branding rechts (je in voller Zeilenhöhe, das
-     * Branding unten bündig); die offene Suche füllt alles rechts der Werkzeuge.
+     * Branding unten bündig), die rechten Werkzeuge unmittelbar links davor; das Branding steht immer an
+     * {@code right - Breite}, gleich ob rechte Werkzeuge sichtbar sind. Die offene Suche füllt alles rechts der
+     * Werkzeuge.
      */
     private final class RowLayout implements java.awt.LayoutManager {
         private static final int GAP = 4;
@@ -402,6 +436,15 @@ final class ReaderToolbar extends JPanel {
             return new Dimension(width + insets.left + insets.right, height + insets.top + insets.bottom);
         }
 
+        private boolean anyVisible(java.awt.Container group) {
+            for (java.awt.Component child : group.getComponents()) {
+                if (child.isVisible()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         @Override
         public Dimension minimumLayoutSize(java.awt.Container parent) {
             return preferredLayoutSize(parent);
@@ -420,8 +463,13 @@ final class ReaderToolbar extends JPanel {
             branding.setBounds(right - brandingWidth, top, brandingWidth, height);
             int start = left + toolsWidth + GAP;
             search.setBounds(start, top, Math.max(0, right - start), height);
-            int navigationWidth = navigation.getPreferredSize().width;
             int end = (branding.isVisible() ? right - brandingWidth : right) - GAP;
+            int trailingWidth = trailing.isVisible() && anyVisible(trailing) ? trailing.getPreferredSize().width : 0;
+            trailing.setBounds(end - trailingWidth, top, trailingWidth, height);
+            if (trailingWidth > 0) {
+                end -= trailingWidth + GAP;
+            }
+            int navigationWidth = navigation.getPreferredSize().width;
             int x = (parent.getWidth() - navigationWidth) / 2;
             x = Math.max(start, Math.min(x, end - navigationWidth));
             navigation.setBounds(x, top, navigationWidth, height);

@@ -268,8 +268,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
                 readAloud.setRate(rate);
             }
         });
-        // Rechts neben Lupe und Info: Anhänge der Seite (unabhängig davon, ob die Quelle sie indexiert).
-        attachmentsButton = toolbar.addTool(attachmentIcon(0), ReaderAttachmentList.tooltip(0));
+        // Rechts unmittelbar vor dem Branding: Anhänge der Seite (unabhängig davon, ob die Quelle sie indexiert).
+        attachmentsButton = toolbar.addTrailingTool(attachmentIcon(0), ReaderAttachmentList.tooltip(0));
         toolbar.showTool(attachmentsButton, false);
         attachmentsButton.addActionListener(event -> {
             JPopupMenu list = attachmentMenu();
@@ -858,7 +858,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     }
 
     private void showAboveButton(JPopupMenu list) {
-        list.show(attachmentsButton, 0, -list.getPreferredSize().height);
+        // The button sits at the right edge (#99): the list opens upwards, right-aligned with it.
+        Dimension size = list.getPreferredSize();
+        list.show(attachmentsButton, attachmentsButton.getWidth() - size.width, -size.height);
     }
 
     /** Womit „Öffnen“ im Anhang-Overlay die Datei öffnet (Tests). */

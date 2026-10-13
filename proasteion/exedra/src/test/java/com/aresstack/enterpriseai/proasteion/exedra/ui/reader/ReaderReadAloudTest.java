@@ -11,6 +11,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -105,6 +106,54 @@ public class ReaderReadAloudTest {
             assertFalse("neuer Inhalt verwirft die Pause", fixture.reader.isReadAloudPaused());
             assertFalse(fixture.reader.isReadingAloud());
             assertEquals(2, fixture.control.stops);
+        });
+    }
+
+    @Test
+    public void aClickOnTheRateOpensPresetsThatMoveTheSliderOnce() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            ReadAloudRateControl rate = new ReadAloudRateControl(ReaderToolbar.buttonSize());
+            List<Double> reported = new ArrayList<Double>();
+            rate.onChange(reported::add);
+            List<javax.swing.JPopupMenu> shown = new ArrayList<javax.swing.JPopupMenu>();
+            rate.setMenuShower(shown::add);
+            assertEquals(ReadAloudRateControl.PRESET_TOOLTIP, rate.valueLabel().getToolTipText());
+            int width = rate.valueLabel().getPreferredSize().width;
+
+            rate.setRate(0.7);
+            assertTrue("setRate meldet nichts", reported.isEmpty());
+            rate.valueLabel().dispatchEvent(new java.awt.event.MouseEvent(rate.valueLabel(),
+                    java.awt.event.MouseEvent.MOUSE_CLICKED, 0L, 0, 1, 1, 1, false));
+            assertEquals(1, shown.size());
+            javax.swing.JPopupMenu menu = shown.get(0);
+            List<String> labels = new ArrayList<String>();
+            for (java.awt.Component item : menu.getComponents()) {
+                javax.swing.JRadioButtonMenuItem radio = (javax.swing.JRadioButtonMenuItem) item;
+                labels.add(radio.getText());
+                assertFalse("0,7× ist kein Preset: nichts markiert", radio.isSelected());
+            }
+            assertEquals(java.util.Arrays.asList("0,5\u00d7", "0,75\u00d7", "1,0\u00d7 \u2013 Normal", "1,25\u00d7",
+                    "1,5\u00d7", "2,0\u00d7"), labels);
+
+            ((javax.swing.JRadioButtonMenuItem) menu.getComponent(2)).doClick();
+            assertEquals("genau eine Meldung", java.util.Collections.singletonList(1.0), reported);
+            assertEquals(100, rate.slider().getValue());
+            assertEquals("1,0\u00d7", rate.valueText());
+            assertEquals("Breite bleibt stabil", width, rate.valueLabel().getPreferredSize().width);
+
+            rate.openPresets();
+            assertTrue("Normal ist jetzt markiert",
+                    ((javax.swing.JRadioButtonMenuItem) shown.get(1).getComponent(2)).isSelected());
+            ((javax.swing.JRadioButtonMenuItem) shown.get(1).getComponent(5)).doClick();
+            assertEquals(java.util.Arrays.asList(1.0, 2.0), reported);
+            assertEquals("2,0\u00d7", rate.valueText());
+
+            // Enter und Leertaste öffnen das Menü ebenfalls.
+            assertNotNull(rate.valueLabel().getInputMap(javax.swing.JComponent.WHEN_FOCUSED)
+                    .get(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0)));
+            assertNotNull(rate.valueLabel().getInputMap(javax.swing.JComponent.WHEN_FOCUSED)
+                    .get(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_SPACE, 0)));
+            assertTrue(rate.valueLabel().isFocusable());
         });
     }
 

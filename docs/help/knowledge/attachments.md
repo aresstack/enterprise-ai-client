@@ -21,7 +21,7 @@ Der Rest dieses Kapitels betrifft Confluence.
 ## Anhänge im Lesebereich ansehen
 
 1. Öffne eine Confluence-Seite im Lesebereich ([Der Lesebereich](help:knowledge.reader)).
-2. Hat die Seite Anhänge, erscheint unten in der Werkzeugleiste eine Büroklammer mit der Anzahl, Tooltip „n Anhänge“.
+2. Hat die Seite Anhänge, erscheint unten rechts in der Werkzeugleiste, direkt vor „© 2026 AresStack“, eine Büroklammer mit der Anzahl, Tooltip „n Anhänge“.
 3. Klicke die Büroklammer. Eine Liste zeigt je Anhang Symbol, Dateinamen und „Typ · Größe“. Sind es mehr als acht, kannst du in der Liste scrollen.
 4. Klicke einen Anhang. Er öffnet sich als Ansicht über dem Lesebereich; während des Ladens steht „Lade Anhang …“.
 5. Esc schließt die Ansicht.

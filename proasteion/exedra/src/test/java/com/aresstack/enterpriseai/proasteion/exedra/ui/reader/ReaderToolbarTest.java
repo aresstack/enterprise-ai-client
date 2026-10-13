@@ -34,15 +34,16 @@ public class ReaderToolbarTest {
             assertFalse(toolbar.isSearchOpen());
             assertTrue(toolbar.isBrandingVisible());
             // Lupe ganz links, daneben das Info-Symbol (Seiteninformationen), Vorlesen und Sprechgeschwindigkeit
-            // (ohne Sprachausgabe aus), dann die Büroklammer (ohne Anhänge aus)
-            assertEquals(5, toolbar.tools().getComponentCount());
+            // (ohne Sprachausgabe aus); die Büroklammer steht rechts vor dem Branding (#99, ohne Anhänge aus)
+            assertEquals(4, toolbar.tools().getComponentCount());
             assertTrue(toolbar.tools().getComponent(0) == toolbar.findButton());
             assertTrue(toolbar.tools().getComponent(1) == reader.infoButton());
             assertTrue(toolbar.tools().getComponent(2) == reader.readAloudButton());
             assertFalse(reader.readAloudButton().isVisible());
             assertTrue(toolbar.tools().getComponent(3) == reader.readAloudRate());
             assertFalse(reader.readAloudRate().isVisible());
-            assertTrue(toolbar.tools().getComponent(4) == reader.attachmentsButton());
+            assertEquals(1, toolbar.trailingTools().getComponentCount());
+            assertTrue(toolbar.trailingTools().getComponent(0) == reader.attachmentsButton());
             assertFalse(reader.attachmentsButton().isVisible());
             assertTrue(toolbar.findButton().isEnabled());
             assertFalse(toolbar.findButton().isEmphasized());
@@ -55,6 +56,45 @@ public class ReaderToolbarTest {
             Rectangle bounds = SwingUtilities.convertRectangle(footer.getParent(), footer.getBounds(), toolbar);
             assertEquals(600 - CopyrightFooter.SIDE_MARGIN, bounds.x + bounds.width);
             assertEquals(40 - CopyrightFooter.BOTTOM_MARGIN, bounds.y + bounds.height);
+        });
+    }
+
+    @Test
+    public void thePaperclipSitsRightBeforeTheBrandingWithoutMovingItOrTheNavigation() throws Exception {
+        onEdt(() -> {
+            KnowledgeReaderPanel reader = readerWith("wiki:a", TEXT);
+            ReaderToolbar toolbar = reader.toolbar();
+            toolbar.setSize(600, 40);
+            layout(toolbar);
+            Rectangle branding = toolbar.brandingArea().getBounds();
+            Rectangle navigation = toolbar.navigationArea().getBounds();
+
+            toolbar.showTool(reader.attachmentsButton(), true);
+            layout(toolbar);
+            assertEquals("Branding bleibt pixelgenau", branding, toolbar.brandingArea().getBounds());
+            assertEquals("Zurück/Vor bleiben mittig", navigation, toolbar.navigationArea().getBounds());
+            Rectangle clip = SwingUtilities.convertRectangle(reader.attachmentsButton().getParent(),
+                    reader.attachmentsButton().getBounds(), toolbar);
+            assertTrue("rechts von Zurück/Vor: " + clip, clip.x >= navigation.x + navigation.width);
+            assertTrue("unmittelbar vor dem Branding: " + clip + " / " + branding,
+                    clip.x + clip.width <= branding.x && branding.x - (clip.x + clip.width) <= 8);
+            assertEquals(ReaderToolbar.buttonSize(), clip.height);
+
+            // Suche offen: die Büroklammer tritt zurück und kommt nach dem Schließen wieder, weil Anhänge da sind.
+            toolbar.findButton().doClick();
+            assertFalse(reader.attachmentsButton().isShowing() && reader.attachmentsButton().isVisible()
+                    && toolbar.trailingTools().isVisible());
+            toolbar.findButton().doClick();
+            layout(toolbar);
+            assertTrue(reader.attachmentsButton().isVisible());
+            assertTrue(toolbar.trailingTools().isVisible());
+            assertEquals(branding, toolbar.brandingArea().getBounds());
+
+            // Ohne Anhänge bleibt sie auch nach der Suche aus.
+            toolbar.showTool(reader.attachmentsButton(), false);
+            toolbar.findButton().doClick();
+            toolbar.findButton().doClick();
+            assertFalse(reader.attachmentsButton().isVisible());
         });
     }
 

@@ -41,6 +41,8 @@ Wechselst du den Reiter, schließt du die Seite, bekommt sie neuen Inhalt oder l
 
 Der Regler stellt die Sprechgeschwindigkeit von 0,5× bis 2,0× ein, in Schritten von 5 %; der Wert steht daneben (etwa „1,25×“). Die Geschwindigkeit ändert nur das Tempo, nicht die Tonhöhe. Sie wirkt sofort, auch mitten im Satz und während einer Pause, und gilt für jedes TTS-Modell, weil der Client sie bei der Wiedergabe umsetzt. Sie gilt für die gemeinsame Sprachausgabe, also auch für das Vorlesen im Chat, und bleibt beim Wechsel des TTS-Modells erhalten. Nach einem Neustart beginnt sie wieder bei 1,0×.
 
+Ein Klick auf den Wert neben dem Regler (oder Enter bzw. Leertaste, wenn er den Fokus hat) öffnet nach oben ein Menü mit festen Stufen: 0,5×, 0,75×, „1,0× – Normal“, 1,25×, 1,5× und 2,0×. „1,0× – Normal“ setzt das Tempo mit einem Klick zurück. Die Auswahl verschiebt den Regler und wirkt genauso wie das Ziehen; passt der aktuelle Wert genau zu einer Stufe, ist sie markiert.
+
 ## Automatisch vorlesen ab Programmstart
 
 Unter Einstellungen → „Sprachausgabe“ → Bereich „Sprachausgabe“ gibt es das Häkchen **„Neue Antworten automatisch vorlesen“**. Ist es gesetzt, ist der Orb schon beim Start aktiv, und jede neue Antwort wird ohne Klick vorgelesen. Mit einem Klick auf den Orb schaltest du das für die laufende Sitzung trotzdem ab.
