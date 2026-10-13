@@ -52,6 +52,16 @@ Listet die Anhänge einer Seite, ohne sie zu laden (seit 0.49.0).
 - Die Antwort nennt je Anhang Name, Typ, Größe, Version und Kennung. Mit der Kennung liest `knowledge_read` den Anhang.
 - Anhänge kennen heute nur Confluence-Quellen. Mehr dazu: [Anhänge von Wissensquellen](help:knowledge.attachments).
 
+### knowledge_resolve_url
+
+Ordnet eine Webadresse, die du nennst (etwa einen Link auf eine Confluence-Seite), den angebundenen Quellen zu, ohne zu suchen (seit 0.62.0).
+
+- Parameter: `url` (Pflicht, vollständig mit `http://` oder `https://`), `source` (optional, nur diese Quelle fragen).
+- Gefragt werden nur Quellen, deren Adressmuster passt; jede prüft selbst, ob die Adresse zu ihr gehört (bei Confluence Schema, Host, Port und Kontextpfad der eingestellten Adresse).
+- Die Antwort nennt alle Kandidaten mit Quelle, Kennung, Bookmark und gegebenenfalls Abschnitt; das Werkzeug wählt nie selbst. Gelesen wird danach mit `knowledge_read`.
+- Ohne Kandidat gehört die Adresse zu keiner Quelle. Eine Adresse ohne `http://`/`https://` wird nicht ergänzt.
+- Der Recherche-Agent nutzt es, wenn er eine genannte Adresse öffnen soll, die er nicht aus einer Suche kennt.
+
 Ein Werkzeug zum Neuindexieren ganzer Quellen gibt es für das Modell nicht. Vollständig indexieren ist eine Funktion der Oberfläche („Jetzt indexieren“ an der Quelle), siehe [Indexierung](help:knowledge.indexing).
 
 ### Grenzen der Antworten

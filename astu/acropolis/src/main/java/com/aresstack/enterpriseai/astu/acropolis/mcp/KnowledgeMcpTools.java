@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.astu.acropolis.mcp;
 
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ListKnowledgeAttachmentsUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
@@ -22,7 +23,9 @@ import java.util.function.Predicate;
  *       Treffer); es wird bei Bedarf indexiert
  *       (Parameter {@code id}); auch Dateianhänge (PDF, Office, Bilder), notfalls nach Einmalcode,</li>
  *   <li>{@value #KNOWLEDGE_ATTACHMENTS}: die Dateianhänge einer Seite auflisten, ohne sie zu laden (Parameter
- *       {@code id}).</li>
+ *       {@code id}),</li>
+ *   <li>{@value #KNOWLEDGE_RESOLVE_URL}: eine genannte Adresse als Ressource der Quellen auflösen, alle Kandidaten
+ *       ohne Auswahl (Parameter {@code url}, optional {@code source}).</li>
  * </ul>
  * Kein Werkzeug zum Neuindexieren ganzer Quellen: Vollindexierung ist eine Funktion der Oberfläche, kein Werkzeug
  * für das Modell. Die verfügbaren Quellen sind die des Katalogs von {@code documents}.
@@ -32,11 +35,13 @@ public final class KnowledgeMcpTools {
     public static final String KNOWLEDGE_SEARCH = KnowledgeSearchTool.NAME;
     public static final String KNOWLEDGE_READ = KnowledgeReadTool.NAME;
     public static final String KNOWLEDGE_ATTACHMENTS = KnowledgeAttachmentsTool.NAME;
+    public static final String KNOWLEDGE_RESOLVE_URL = KnowledgeResolveUrlTool.NAME;
 
     private final KnowledgeToolSettings settings;
     private final KnowledgeSearchTool search;
     private final KnowledgeReadTool read;
     private final KnowledgeAttachmentsTool attachments;
+    private final KnowledgeResolveUrlTool resolveUrl;
     private volatile boolean shutdown;
 
     /**
@@ -65,15 +70,21 @@ public final class KnowledgeMcpTools {
         this.read = new KnowledgeReadTool(documents, live, this.settings);
         this.attachments = new KnowledgeAttachmentsTool(new ListKnowledgeAttachmentsUseCase(documents::catalog),
                 this.settings);
+        this.resolveUrl = new KnowledgeResolveUrlTool(new ResolveKnowledgeAddressUseCase(documents::catalog));
     }
 
     public KnowledgeToolSettings settings() {
         return settings;
     }
 
-    /** Alle Werkzeuge in fester Reihenfolge: Suche, Lesen, Anhänge. */
+    /** Alle Werkzeuge in fester Reihenfolge: Suche, Lesen, Anhänge, Adresse auflösen. */
     public List<McpToolContribution> contributions() {
-        return Collections.unmodifiableList(Arrays.asList(knowledgeSearch(), knowledgeRead(), knowledgeAttachments()));
+        return Collections.unmodifiableList(Arrays.asList(knowledgeSearch(), knowledgeRead(), knowledgeAttachments(),
+                knowledgeResolveUrl()));
+    }
+
+    public McpToolContribution knowledgeResolveUrl() {
+        return resolveUrl.contribution();
     }
 
     public McpToolContribution knowledgeAttachments() {

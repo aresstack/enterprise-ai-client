@@ -78,25 +78,6 @@ public final class BrowseKnowledgeSourceUseCase {
         }
     }
 
-    /**
-     * Die Seite der Quelle hinter einem Link ihrer Lese-Ansicht ({@link PageViewSource#resolveLink}); {@code null}, wenn
-     * die Quelle keine Lese-Ansicht hat oder der Link nicht zu ihr gehört.
-     */
-    public KnowledgeResourceId resolveLink(KnowledgeSourcePort source, String address)
-            throws KnowledgeSourceException {
-        if (!(source instanceof PageViewSource) || address == null || address.trim().isEmpty()) {
-            return null;
-        }
-        try {
-            return ((PageViewSource) source).resolveLink(address.trim());
-        } catch (KnowledgeSourceException e) {
-            if (e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED) {
-                return null; // gehüllte Quelle ohne Lese-Ansicht
-            }
-            throw e;
-        }
-    }
-
     /** Die Bytes eines Bildes aus {@link PageView#images()} über die Quelle (mit deren Anmeldung). */
     public byte[] viewImage(KnowledgeSourcePort source, String src) throws KnowledgeSourceException {
         if (!(source instanceof PageViewSource)) {

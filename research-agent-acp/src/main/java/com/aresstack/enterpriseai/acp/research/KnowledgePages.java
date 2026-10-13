@@ -24,6 +24,8 @@ final class KnowledgePages implements ToolInvoker {
 
     static final String SEARCH_TOOL = "knowledge_search";
     static final String READ_TOOL = "knowledge_read";
+    static final String RESOLVE_TOOL = "knowledge_resolve_url";
+    private static final java.util.regex.Pattern WEB_ADDRESS = java.util.regex.Pattern.compile("(?i)^https?://\\S+$");
     private static final String SCHEME = "knowledge:";
 
     /**
@@ -243,11 +245,45 @@ final class KnowledgePages implements ToolInvoker {
         if (url == null || url.trim().isEmpty()) {
             throw new ToolFailure("Missing argument: url");
         }
-        String id = idFor(url);
+        String id = idsByUrl.containsKey(url.trim()) || !WEB_ADDRESS.matcher(url.trim()).matches() ? idFor(url)
+                : resolve(url.trim());
         String text = read(id);
         String title = titlesById.get(captureId(id));
         return "URL: " + url.trim() + " title=\"" + (title == null ? "" : title.replace('"', '\'')) + "\""
                 + " capture_id=" + captureId(id) + "\n" + (text == null ? "" : text);
+    }
+
+    /**
+     * Eine vom Benutzer genannte Webadresse ohne vorherige Suche: {@code knowledge_resolve_url} des Hosts bildet sie
+     * auf die Ressource einer angebundenen Quelle ab. Genau ein Kandidat wird gelesen (und gemerkt); keiner oder
+     * mehrere sind ein Fehler dieses Aufrufs, der die Kandidaten nennt, damit das Modell mit {@code knowledge:<id>}
+     * gezielt öffnet — der Resolver wählt nie selbst.
+     */
+    private String resolve(String url) throws ToolFailure, EndpointUnavailable {
+        Map<String, Object> args = new LinkedHashMap<String, Object>();
+        args.put("url", url);
+        List<String> ids = new ArrayList<String>();
+        for (String line : host.call(RESOLVE_TOOL, args).split("\\r?\\n")) {
+            if (line.startsWith("id: ")) {
+                ids.add(line.substring(4).trim());
+            }
+        }
+        if (ids.isEmpty()) {
+            throw new ToolFailure("Keine angebundene Wissensquelle kennt " + url
+                    + " (externe Seite; Quellen kommen über " + SEARCH_TOOL + ")");
+        }
+        if (ids.size() > 1) {
+            StringBuilder named = new StringBuilder();
+            for (String candidate : ids) {
+                named.append(named.length() == 0 ? "" : ", ").append(SCHEME).append(candidate);
+            }
+            throw new ToolFailure("Mehrere Quellen kennen " + url + ": " + named
+                    + " — eine davon mit web_open öffnen");
+        }
+        String id = ids.get(0);
+        idsByUrl.put(url, id);
+        urlsById.put(captureId(id), url);
+        return id;
     }
 
     /**

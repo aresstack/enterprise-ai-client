@@ -39,6 +39,8 @@ Alle anderen Quelltypen (lokale Dateien, FTP, JES, NDV, Outlook, SharePoint, Bet
 
 Im Reiter „Wissensquellen“ durchsucht die Suchleiste alle angehakten Quellen gleichzeitig (Enter startet, Esc leert das Feld). Je Quelle zeigt sie bis zu zehn Treffer: Live-Treffer und Treffer aus dem Index derselben Quelle zusammen. Oben steht eine Zusammenfassung wie „Suche in n Quellen …“, „n Treffer in m Quellen“, „Keine Treffer“ oder „Keine Quelle angehakt“. Konnte eine Quelle nicht gefragt werden, steht bei ihr in Rot zum Beispiel „nicht erreichbar“, „Zugriff verweigert“, „unerwartete Antwort“ oder „Suche fehlgeschlagen (Protokoll)“.
 
+Gibst du statt eines Suchtexts eine vollständige Adresse ein (etwa `https://…/pages/viewpage.action?pageId=…`), prüft jede angehakte Quelle mit Adressmuster, ob sie ihr gehört. Passt das Muster mindestens einer Quelle, werden nur diese Quellen durchsucht. Erkennt eine Quelle die Adresse als eigene Seite, steht diese ganz oben unter „DIREKTTREFFER · ADRESSE ERKANNT“, darunter folgen die normalen Treffer derselben Quellen. Passt kein Muster, sucht die Leiste wie gewohnt in allen angehakten Quellen. Confluence-Quellen erkennen jede `http(s)`-Adresse als Kandidaten und prüfen dann Schema, Host, Port und Kontextpfad gegen ihre eingestellte Adresse.
+
 ## Vorladen (Prefetch)
 
 Damit ein Klick auf einen Treffer schnell wirkt, lädt der Client Seiten im Voraus in einen Zwischenspeicher:

@@ -94,15 +94,15 @@ public class ConfluenceLinksTest {
                 ConfluenceConfig.builder(FakeConfluence.BASE).credentialRef(RecordingSecretProvider.REF).build(),
                 confluence, new RecordingSecretProvider());
 
-        assertEquals(id("123"), source.resolveLink(BASE + "/pages/viewpage.action?pageId=123"));
+        assertEquals(id("123"), source.resolveAddress(BASE + "/pages/viewpage.action?pageId=123"));
         assertTrue("eine ID braucht keine Anfrage", confluence.requests.isEmpty());
-        assertEquals(id("101"), source.resolveLink(BASE + "/display/DEV/Kapitel+1"));
-        assertEquals(id("100"), source.resolveLink(BASE + "/display/DEV/"));
-        assertNull("unbekannter Titel: Browser", source.resolveLink(BASE + "/display/DEV/Gibt+es+nicht"));
-        assertNull("unbekannter Space: Browser", source.resolveLink(BASE + "/display/NOPE"));
+        assertEquals(id("101"), source.resolveAddress(BASE + "/display/DEV/Kapitel+1"));
+        assertEquals(id("100"), source.resolveAddress(BASE + "/display/DEV/"));
+        assertNull("unbekannter Titel: Browser", source.resolveAddress(BASE + "/display/DEV/Gibt+es+nicht"));
+        assertNull("unbekannter Space: Browser", source.resolveAddress(BASE + "/display/NOPE"));
         List<URI> asked = new ArrayList<URI>(confluence.requests);
         confluence.requests.clear();
-        assertNull(source.resolveLink("https://example.org/wiki/display/DEV/Kapitel+1"));
+        assertNull(source.resolveAddress("https://example.org/wiki/display/DEV/Kapitel+1"));
         assertTrue("fremde Adressen fragen nie nach: " + asked, confluence.requests.isEmpty());
     }
 

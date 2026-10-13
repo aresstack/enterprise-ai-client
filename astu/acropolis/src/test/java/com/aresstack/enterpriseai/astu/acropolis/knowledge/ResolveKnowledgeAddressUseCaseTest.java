@@ -71,7 +71,7 @@ public class ResolveKnowledgeAddressUseCaseTest {
     private static ResolveKnowledgeAddressUseCase resolver(FakeAddressSource... sources) {
         KnowledgeSourceRegistration[] registrations = new KnowledgeSourceRegistration[sources.length];
         for (int i = 0; i < sources.length; i++) {
-            registrations[i] = new KnowledgeSourceRegistration(sources[i], SourceScope.of());
+            registrations[i] = new KnowledgeSourceRegistration(sources[i], SourceScope.of("1"));
         }
         final KnowledgeSourceCatalog catalog = KnowledgeSourceCatalog.of(registrations);
         return new ResolveKnowledgeAddressUseCase(() -> catalog);

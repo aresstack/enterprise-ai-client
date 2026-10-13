@@ -4,7 +4,9 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKno
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
@@ -24,6 +26,7 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
@@ -194,6 +197,7 @@ public class ReaderPageLinksTest {
         KnowledgeReadingController controller = new KnowledgeReadingController(workspace,
                 () -> Collections.singletonList(registration), id -> SOURCE.value().equals(id) ? registration : null,
                 new SearchKnowledgeSourcesUseCase(index, embeddings::modelIdentity, Runnable::run),
+                new ResolveKnowledgeAddressUseCase(() -> KnowledgeSourceCatalog.of(registration)),
                 new BrowseKnowledgeSourceUseCase((owner, port, id) -> port.load(id)), prefetch, null, null,
                 Runnable::run, Runnable::run);
         controller.attach();
@@ -218,7 +222,8 @@ public class ReaderPageLinksTest {
      * A source with a reading view that knows its own page addresses {@code <BASE>pages/viewpage.action?pageId=<n>};
      * {@code <BASE>kaputt} fails like a source that cannot ask.
      */
-    private static final class LinkingSource implements KnowledgeSourcePort, PageViewSource {
+    private static final class LinkingSource implements KnowledgeSourcePort, PageViewSource,
+            AddressableKnowledgeSource {
         final List<String> viewed = new ArrayList<String>();
 
         @Override
@@ -253,7 +258,12 @@ public class ReaderPageLinksTest {
         }
 
         @Override
-        public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
+        public java.util.regex.Pattern addressPattern() {
+            return java.util.regex.Pattern.compile("https?://\\S+");
+        }
+
+        @Override
+        public KnowledgeResourceId resolveAddress(String address) throws KnowledgeSourceException {
             if (address.equals(BASE + "kaputt")) {
                 throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNAVAILABLE, "nicht erreichbar");
             }

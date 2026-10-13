@@ -291,24 +291,19 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         });
     }
 
-    /**
-     * Links unter der eingestellten Basis-URL auf eine Seite ({@link ConfluenceLinks}); Space und Titel fragt die Quelle
-     * nach. Was nicht auflösbar ist (fremde Adresse, keine Seitenform, Seite unbekannt), ist {@code null}: der
-     * Lesebereich öffnet es im Browser.
-     */
+    /** Jede HTTP(S)-Adresse; ob sie zu dieser Confluence gehört, entscheidet erst {@link #resolveAddress}. */
     @Override
     public Pattern addressPattern() {
         return addressPattern;
     }
 
-    /** Direkte Suchleisten-Adresse und Reader-Link benutzen dieselbe Confluence-spezifische Auflösung. */
+    /**
+     * Adressen unter der eingestellten Basis-URL auf eine Seite ({@link ConfluenceLinks}), für Suchleiste, Werkzeug
+     * und Links im Lesebereich; Space und Titel fragt die Quelle nach. Was nicht auflösbar ist (fremde Adresse, keine
+     * Seitenform, Seite unbekannt), ist {@code null}.
+     */
     @Override
     public KnowledgeResourceId resolveAddress(String address) throws KnowledgeSourceException {
-        return resolveLink(address);
-    }
-
-    @Override
-    public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
         final ConfluenceLinks.Target target = ConfluenceLinks.parse(address, config.baseUrl().toString());
         if (target == null) {
             return null;

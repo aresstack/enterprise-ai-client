@@ -27,6 +27,7 @@ import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
@@ -184,12 +185,20 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 ? CompletableFuture.completedFuture(AddressHits.empty())
                 : CompletableFuture.supplyAsync(() -> resolveAddresses(text, addressed), workExecutor);
 
-        searchFuture.thenCombine(directFuture, SearchResult::new)
-                .whenComplete((result, failure) -> uiExecutor.execute(() -> {
+        // A failed search must not hide the direct hits, and the other way round.
+        CompletableFuture<List<SourceSearchOutcome>> outcomes = searchFuture.handle((found, failure) -> {
+            if (failure != null) {
+                LOG.log(Level.WARNING, "Quellensuche fehlgeschlagen", failure);
+                return null;
+            }
+            return found;
+        });
+        outcomes.thenCombine(directFuture.exceptionally(failure -> AddressHits.empty()), SearchResult::new)
+                .thenAccept(result -> uiExecutor.execute(() -> {
                     if (generation != searchGeneration) {
                         return; // inzwischen neu gesucht oder geleert
                     }
-                    publishSearchResult(text, count, result, failure);
+                    publishSearchResult(text, count, result);
                 }));
     }
 
@@ -229,7 +238,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                 }
                 ResolvedKnowledgeLink link = resolved.get();
                 links.add(new ReaderLink(link.sourceId().value(), link.resourceId().value(),
-                        "Direktadresse", "", link.address()));
+                        link.address(), "", link.address()));
                 candidates.add(new KnowledgePrefetchService.Candidate(registration.port(), link.resourceId(),
                         KnowledgeRevision.unknown()));
             } catch (KnowledgeSourceException e) {
@@ -243,11 +252,10 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         return new AddressHits(links, candidates);
     }
 
-    private void publishSearchResult(String text, int count, SearchResult result, Throwable failure) {
-        List<ReaderLink> direct = result == null ? new ArrayList<ReaderLink>() : result.direct.links;
-        List<KnowledgePrefetchService.Candidate> candidates = result == null
-                ? new ArrayList<KnowledgePrefetchService.Candidate>()
-                : new ArrayList<KnowledgePrefetchService.Candidate>(result.direct.candidates);
+    private void publishSearchResult(String text, int count, SearchResult result) {
+        List<ReaderLink> direct = result.direct.links;
+        List<KnowledgePrefetchService.Candidate> candidates =
+                new ArrayList<KnowledgePrefetchService.Candidate>(result.direct.candidates);
         List<ReaderLink> hits = new ArrayList<ReaderLink>();
         List<String> problems = new ArrayList<String>();
         Set<String> directKeys = new HashSet<String>();
@@ -255,8 +263,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
             directKeys.add(link.key());
         }
 
-        if (failure != null || result == null) {
-            LOG.log(Level.WARNING, "Quellensuche fehlgeschlagen", failure);
+        if (result.outcomes == null) {
             problems.add("Suche fehlgeschlagen (Protokoll)");
         } else {
             for (SourceSearchOutcome outcome : result.outcomes) {
@@ -308,6 +315,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         final List<SourceSearchOutcome> outcomes;
         final AddressHits direct;
 
+        /** @param outcomes {@code null}: die Suche ist fehlgeschlagen */
         SearchResult(List<SourceSearchOutcome> outcomes, AddressHits direct) {
             this.outcomes = outcomes;
             this.direct = direct == null ? AddressHits.empty() : direct;
@@ -754,38 +762,39 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     }
 
     /**
-     * Issue #94: ein Link der Lese-Ansicht, den die Quelle der Seite als eigene Seite auflöst, öffnet im Lesebereich
-     * (als Vorschau, über {@link #open}); ein Fragment rollt danach dorthin. Alles andere, auch ein Fehler beim Auflösen,
+     * Issue #94: ein Link der Lese-Ansicht, den die Quelle der Seite über den zentralen Adress-Resolver (mit ihrer
+     * Kennung als Source-Hint, keine andere Quelle wird gefragt) als eigene Seite auflöst, öffnet im Lesebereich (als
+     * Vorschau, über {@link #open}); ein Fragment rollt danach dorthin. Alles andere, auch ein Fehler beim Auflösen,
      * geht an {@code openExternally} (Browser). Aufgelöst wird im Hintergrund, die Quelle darf dafür nachfragen.
      */
     @Override
     public void pageLinkActivated(final ReaderLink page, final String address, final String text,
                                   final Runnable openExternally) {
-        final KnowledgeSourceRegistration registration = lookup.apply(page.sourceId());
-        if (registration == null) {
+        if (addresses == null) {
             openExternally.run();
             return;
         }
         try {
             workExecutor.execute(() -> {
-                KnowledgeResourceId target = null;
+                ResolvedKnowledgeLink target = null;
                 try {
-                    target = browse.resolveLink(registration.port(), address);
+                    target = addresses.resolve(address, SourceAddress.of(page.sourceId())).orElse(null);
                 } catch (KnowledgeSourceException e) {
                     LOG.log(Level.INFO, "Link aus " + page.key() + " nicht aufgelöst (" + e.kind()
                             + "), öffne im Browser", e);
                 } catch (RuntimeException e) {
                     LOG.log(Level.WARNING, "Link aus " + page.key() + " nicht aufgelöst, öffne im Browser", e);
                 }
-                final KnowledgeResourceId resolved = target;
+                final ResolvedKnowledgeLink resolved = target;
                 uiExecutor.execute(() -> {
                     if (resolved == null) {
                         openExternally.run();
                         return;
                     }
-                    ReaderLink link = new ReaderLink(page.sourceId(), resolved.value(), text, "", address);
+                    ReaderLink link = new ReaderLink(resolved.sourceId().value(), resolved.resourceId().value(),
+                            text, "", address);
                     open(link, false);
-                    workspace.reader().scrollToAnchor(link.key(), fragmentOf(address));
+                    workspace.reader().scrollToAnchor(link.key(), fragmentOf(resolved.address()));
                 });
             });
         } catch (RuntimeException rejected) {

@@ -246,11 +246,6 @@ final class VaultSourceProvider implements KnowledgeSourceProvider, AddressableK
         }
 
 
-        @Override
-        public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
-            return SourceCapabilities.resolveLink(port(), address);
-        }
-
         /**
          * Das Pattern gehört zum Quelltyp und ist deshalb auch vor dem verzögerten Öffnen bekannt. So löst das
          * Erkennen einer Adresse keine KeePass-Abfrage aus.

@@ -148,11 +148,6 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider,
 
 
         @Override
-        public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
-            return SourceCapabilities.resolveLink(port, address);
-        }
-
-        @Override
         public Pattern addressPattern() {
             return SourceCapabilities.addressPattern(port);
         }

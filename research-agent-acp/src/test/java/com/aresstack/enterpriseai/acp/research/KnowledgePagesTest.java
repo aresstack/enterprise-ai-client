@@ -150,6 +150,49 @@ public class KnowledgePagesTest {
         }
     }
 
+    /** #94: eine vom Benutzer genannte interne Adresse wird ohne Suche über knowledge_resolve_url gelesen. */
+    @Test
+    public void aNamedAddressWithoutSearchIsResolvedByTheHostAndThenRead() throws Exception {
+        final List<String> calls = new ArrayList<String>();
+        final String[] candidates = {"candidates: 1\n\n[1]\nsource: wiki\nid: wiki:page/7\nbookmark: wiki://page/7"};
+        ToolInvoker host = new ToolInvoker() {
+            @Override
+            public String call(String tool, Map<String, Object> args) {
+                calls.add(tool + " " + args);
+                if (KnowledgePages.RESOLVE_TOOL.equals(tool)) {
+                    return candidates[0];
+                }
+                return "Seitentext";
+            }
+        };
+        KnowledgePages pages = new KnowledgePages(host, () -> true);
+        Map<String, Object> open = new java.util.LinkedHashMap<String, Object>();
+        open.put("url", "https://wiki.example.org/pages/viewpage.action?pageId=7");
+
+        String page = pages.call("web_open", open);
+
+        assertTrue(page, page.contains("capture_id=wiki:page/7"));
+        assertEquals(KnowledgePages.RESOLVE_TOOL + " {url=https://wiki.example.org/pages/viewpage.action?pageId=7}",
+                calls.get(0));
+        assertEquals(KnowledgePages.READ_TOOL + " {id=wiki:page/7}", calls.get(1));
+
+        candidates[0] = "candidates: 2\n\n[1]\nid: wiki:page/7\n\n[2]\nid: mirror:page/7";
+        open.put("url", "https://mirror.example.org/x");
+        try {
+            pages.call("web_open", open);
+            throw new AssertionError("several candidates are never picked");
+        } catch (ToolInvoker.ToolFailure ambiguous) {
+            assertTrue(ambiguous.getMessage(), ambiguous.getMessage().contains("knowledge:mirror:page/7"));
+        }
+        candidates[0] = "candidates: 0";
+        try {
+            pages.call("web_open", open);
+            throw new AssertionError("an external page is not read");
+        } catch (ToolInvoker.ToolFailure external) {
+            assertTrue(external.getMessage(), external.getMessage().contains("Keine angebundene Wissensquelle"));
+        }
+    }
+
     /** Der Seitentext für Auszüge: ohne Kopfzeilen und Passagen-Marken von knowledge_read, Überschriften bleiben. */
     @Test
     public void pageTextDropsTheReadHeaderAndPassageMarks() {

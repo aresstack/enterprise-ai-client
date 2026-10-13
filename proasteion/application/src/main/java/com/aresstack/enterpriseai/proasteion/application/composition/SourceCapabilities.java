@@ -61,11 +61,6 @@ final class SourceCapabilities {
         return ((PageViewSource) port).attachmentsOf(page);
     }
 
-    static KnowledgeResourceId resolveLink(KnowledgeSourcePort port, String address)
-            throws KnowledgeSourceException {
-        return port instanceof PageViewSource ? ((PageViewSource) port).resolveLink(address) : null;
-    }
-
     static Pattern addressPattern(KnowledgeSourcePort port) {
         return port instanceof AddressableKnowledgeSource
                 ? ((AddressableKnowledgeSource) port).addressPattern() : null;

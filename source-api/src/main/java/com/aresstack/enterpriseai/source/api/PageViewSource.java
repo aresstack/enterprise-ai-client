@@ -17,18 +17,6 @@ public interface PageViewSource {
     PageView pageView(KnowledgeResourceId page) throws KnowledgeSourceException;
 
     /**
-     * Die Seite dieser Quelle, auf die ein Link einer Lese-Ansicht zeigt, damit der Lesebereich sie selbst öffnet statt
-     * des Browsers. {@code address} ist absolut (relative Links hat der Aufrufer gegen {@link PageView#baseUri()}
-     * aufgelöst) und darf Query und Fragment tragen. Die Quelle entscheidet allein, was zu ihr gehört; sie darf dafür
-     * selbst nachfragen (etwa eine Seite über ihren Titel finden).
-     *
-     * @return die Seite oder {@code null}: kein Link auf eine Seite dieser Quelle (der Aufrufer öffnet ihn im Browser)
-     */
-    default KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
-        return null;
-    }
-
-    /**
      * Die Bytes eines Bildes der Ansicht über die Anmeldung der Quelle (wie MainframeMates {@code ByteDownloader});
      * nur Adressen der Quelle selbst, alles andere {@code UNSUPPORTED}.
      *

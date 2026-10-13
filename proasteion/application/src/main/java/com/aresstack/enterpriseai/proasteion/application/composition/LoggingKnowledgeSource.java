@@ -135,15 +135,6 @@ public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, 
 
 
     @Override
-    public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
-        try {
-            return SourceCapabilities.resolveLink(delegate, address);
-        } catch (KnowledgeSourceException e) {
-            throw logged("resolveLink", e);
-        }
-    }
-
-    @Override
     public Pattern addressPattern() {
         return SourceCapabilities.addressPattern(delegate);
     }

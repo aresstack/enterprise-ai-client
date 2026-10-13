@@ -5,7 +5,10 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.resource.BookmarkUri;
 import com.aresstack.enterpriseai.astu.resource.KnowledgeBookmarks;
 
-/** Eine direkt aufgelöste Benutzeradresse: konkrete Quelle, stabile Ressourcen-ID und ihre kanonische Bookmark-Adresse. */
+/**
+ * Eine direkt aufgelöste Adresse: konkrete Quelle, stabile Ressourcen-ID, ihre kanonische Bookmark-Adresse und das
+ * Fragment der Adresse (Abschnitt der Seite, z. B. für den Lesebereich).
+ */
 public final class ResolvedKnowledgeLink {
 
     private final SourceAddress sourceId;
@@ -38,8 +41,15 @@ public final class ResolvedKnowledgeLink {
         return address;
     }
 
+    /** Das Fragment der Adresse (hinter {@code #}, roh, ohne {@code #}); leer ohne. */
+    public String fragment() {
+        int hash = address.indexOf('#');
+        return hash < 0 ? "" : address.substring(hash + 1);
+    }
+
     @Override
     public String toString() {
-        return "ResolvedKnowledgeLink{" + sourceId + " -> " + resourceId + "}";
+        return "ResolvedKnowledgeLink{" + sourceId + " -> " + resourceId
+                + (fragment().isEmpty() ? "" : " #" + fragment()) + "}";
     }
 }
