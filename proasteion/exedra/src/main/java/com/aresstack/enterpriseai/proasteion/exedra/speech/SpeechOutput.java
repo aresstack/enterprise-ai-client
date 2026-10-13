@@ -82,7 +82,7 @@ public final class SpeechOutput {
         String voice = models.ttsVoice(selected, TtsVoiceCatalog.bundled());
         return new ReadAloudService(speech.require(selected.catalogId()), selected.modelId(), voice, playback,
                 models.readAloudChunking(), models.synthesisWorkers(), models.synthesisAttempts(), analysis,
-                MarkdownSpeech::spokenText);
+                MarkdownSpeech::spokenText, models.readAloudVoiceStabilityFix());
     }
 
     /**
