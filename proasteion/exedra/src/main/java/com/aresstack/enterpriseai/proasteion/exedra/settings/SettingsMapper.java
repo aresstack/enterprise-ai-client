@@ -153,6 +153,7 @@ public final class SettingsMapper {
         b.readAloudChunking(text(p, ModelsConfig.READ_ALOUD_CHUNKING_KEY, "PARAGRAPHS").toUpperCase(Locale.ROOT));
         b.synthesisWorkers(text(p, ModelsConfig.READ_ALOUD_WORKERS_KEY, "2"));
         b.synthesisAttempts(text(p, ModelsConfig.READ_ALOUD_ATTEMPTS_KEY, "2"));
+        b.readAloudVoiceStabilityFix(bool(p, ModelsConfig.READ_ALOUD_VOICE_STABILITY_FIX_KEY, true));
         b.bubbleUserBackground(bubbleColor(p, BubbleColorsConfig.USER_BACKGROUND_KEY,
                 BubbleColorsConfig.DEFAULT_USER_BACKGROUND));
         b.bubbleUserForeground(bubbleColor(p, BubbleColorsConfig.USER_FOREGROUND_KEY,
@@ -282,6 +283,9 @@ public final class SettingsMapper {
                 "2".equals(form.synthesisWorkers()) ? "" : form.synthesisWorkers());
         put(set, ModelsConfig.READ_ALOUD_ATTEMPTS_KEY,
                 "2".equals(form.synthesisAttempts()) ? "" : form.synthesisAttempts());
+        // Der Fix ist standardmäßig an; nur das bewusste Abschalten muss in der Datei stehen.
+        put(set, ModelsConfig.READ_ALOUD_VOICE_STABILITY_FIX_KEY,
+                form.readAloudVoiceStabilityFix() ? "" : "false");
         // Blasenfarben: die Standardfarben stehen nicht in der Datei („Standard wiederherstellen“ entfernt die Schlüssel).
         put(set, BubbleColorsConfig.USER_BACKGROUND_KEY,
                 bubbleColorValue(form.bubbleUserBackground(), BubbleColorsConfig.DEFAULT_USER_BACKGROUND));
