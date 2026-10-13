@@ -10,13 +10,9 @@ import com.vladsch.flexmark.ast.ListItem;
 import com.vladsch.flexmark.ast.OrderedList;
 import com.vladsch.flexmark.ast.Paragraph;
 import com.vladsch.flexmark.ast.ThematicBreak;
-import com.vladsch.flexmark.ext.autolink.AutolinkExtension;
-import com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension;
 import com.vladsch.flexmark.ext.tables.TableBlock;
-import com.vladsch.flexmark.ext.tables.TablesExtension;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.util.ast.Node;
-import com.vladsch.flexmark.util.data.MutableDataSet;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -26,7 +22,6 @@ import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Font;
-import java.util.Arrays;
 import java.util.Locale;
 
 /** Bildet Flexmark-Blockknoten auf native Swing-Komponenten ab (aus askai-java8 {@code FlexmarkSwingRenderer}). */
@@ -45,12 +40,7 @@ final class FlexmarkSwingRenderer {
         this.inlineRenderer = new InlineMarkdownRenderer(theme, linkOpener);
         this.linkOpener = linkOpener;
         this.mermaidImageRenderer = mermaidImageRenderer;
-        MutableDataSet options = new MutableDataSet();
-        options.set(Parser.EXTENSIONS, Arrays.asList(
-                TablesExtension.create(),
-                StrikethroughExtension.create(),
-                AutolinkExtension.create()));
-        this.parser = Parser.builder(options).build();
+        this.parser = MarkdownParsing.parser();
     }
 
     JPanel render(String markdown, boolean renderMermaid) {

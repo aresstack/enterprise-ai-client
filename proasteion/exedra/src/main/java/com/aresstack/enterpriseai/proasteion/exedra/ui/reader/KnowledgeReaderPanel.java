@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidIm
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DiagramOverlayHost;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownMessageView;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownSpeech;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MarkdownTheme;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.MermaidImageRenderer;
 import com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight;
@@ -685,7 +686,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             paragraph = value == null ? null : value.toString();
             offset = 0;
         }
-        String spoken = SpeechText.plainText(SpeechText.withoutVisuals(active.speechText));
+        String spoken = MarkdownSpeech.spokenText(SpeechText.withoutVisuals(active.speechText));
         int start = ReadAloudStart.find(spoken, paragraph, offset);
         if (start < 0) {
             return false;

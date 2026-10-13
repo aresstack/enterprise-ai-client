@@ -89,7 +89,7 @@ public class ReadAloudBindingTest {
         }
 
         @Override
-        public SynthesizedSpeech synthesize(String modelId, String text) {
+        public SynthesizedSpeech synthesize(String modelId, String voice, String text) {
             if (text.startsWith("Alter")) {
                 oldRequested.countDown();
                 awaitIgnoringInterrupts();

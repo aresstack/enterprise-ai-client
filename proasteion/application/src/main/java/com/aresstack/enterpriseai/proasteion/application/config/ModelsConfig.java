@@ -45,9 +45,10 @@ public final class ModelsConfig {
     public static final String READ_ALOUD_ATTEMPTS_KEY = "speech.readAloud.synthesisAttempts";
 
     /**
-     * Früher die eine Stimme für jedes TTS-Modell ({@code voice} bei {@code /audio/speech}). Gültige Stimmen hängen vom
-     * Modell ab: gilt nur noch, wenn für das Modell keine Stimme in {@link #SPEECH_VOICES_KEY} steht und die Stimme zu
-     * ihm passt; der Einstellungsdialog übernimmt sie beim Speichern für das gewählte Modell.
+     * Früher die eine Stimme für jedes TTS-Modell ({@code voice} bei {@code /audio/speech}). Sie wird nie mehr direkt
+     * gesprochen: beim Laden übernimmt {@link #adoptLegacyVoice} sie als Stimme des gewählten TTS-Modells in
+     * {@link #SPEECH_VOICES_KEY}, wenn dort für das Modell noch keine steht und sie zum Modell passt; der
+     * Einstellungsdialog schreibt sie dann dorthin und entfernt diesen Schlüssel.
      */
     public static final String SPEECH_VOICE_KEY = "speech.voice";
 
@@ -77,7 +78,6 @@ public final class ModelsConfig {
     private final SpeechChunking readAloudChunking;
     private final int synthesisWorkers;
     private final int synthesisAttempts;
-    private final String speechVoice;
     private final Map<String, String> speechVoices;
     private final Path localModelRoot;
     private final ModelReference merlinVoice;
@@ -110,10 +110,9 @@ public final class ModelsConfig {
             throw new IllegalArgumentException("localModelRoot must not be null");
         }
         this.localModelRoot = localModelRoot;
-        this.speechVoice = speechVoice == null || speechVoice.trim().isEmpty() ? null : speechVoice.trim();
-        this.speechVoices = Collections.unmodifiableMap(new LinkedHashMap<String, String>(
-                speechVoices == null ? Collections.<String, String>emptyMap() : speechVoices));
         this.selections = selections == null ? ModelSelections.none() : selections;
+        this.speechVoices = Collections.unmodifiableMap(adoptLegacyVoice(speechVoices,
+                this.selections.get(ModelCategory.TTS), speechVoice, TtsVoiceCatalog.bundled()));
         this.readAloudAutoStart = readAloudAutoStart;
         this.readAloudChunking = readAloudChunking == null ? SpeechChunking.PARAGRAPHS : readAloudChunking;
         this.synthesisWorkers = synthesisWorkers;
@@ -218,12 +217,10 @@ public final class ModelsConfig {
         return synthesisAttempts;
     }
 
-    /** Die frühere globale Stimme ({@code speech.voice}) oder {@code null}. */
-    public String speechVoice() {
-        return speechVoice;
-    }
-
-    /** Die gespeicherten Stimmen je Modell ({@code <katalog>:<modell>} → Stimme). */
+    /**
+     * Die gespeicherten Stimmen je Modell ({@code <katalog>:<modell>} → Stimme), eine frühere globale
+     * {@code speech.voice} schon als Stimme des gewählten TTS-Modells übernommen ({@link #adoptLegacyVoice}).
+     */
     public Map<String, String> speechVoices() {
         return speechVoices;
     }
@@ -234,33 +231,51 @@ public final class ModelsConfig {
     }
 
     /**
-     * Die Stimme, mit der dieses TTS-Modell spricht: die für das Modell gespeicherte, sonst die frühere globale
-     * {@code speech.voice}, wenn sie zum Modell passt (oder der Katalog das Modell nicht kennt), sonst die
-     * Standardstimme des Modells; {@code null} nur, wenn nichts davon greift. Lokale Stimmen haben genau einen
-     * Sprecher: dort {@code null}.
+     * Die eine Stimme, mit der dieses TTS-Modell spricht, für jede Sprachausgabe des Assistenten (Vorlesen im Chat und
+     * im Lesebereich, „Stimme testen“): die für das Modell gespeicherte, sonst die Standardstimme des Modells;
+     * {@code null} nur, wenn das Modell keiner bekannten Familie angehört. Lokale Stimmen haben genau einen Sprecher:
+     * dort {@code null}. Es gibt keine zweite Quelle (der Adapter hat keine eigene Stimme).
      */
     public String ttsVoice(ModelReference model, TtsVoiceCatalog catalog) {
-        return resolveTtsVoice(model, speechVoice(model), speechVoice, catalog);
+        return resolveTtsVoice(model, speechVoice(model), catalog);
     }
 
-    /**
-     * Wie {@link #ttsVoice}, mit gespeicherter Stimme des Modells und früherer globaler Stimme als Werte (für den
-     * Einstellungsdialog, der einen Entwurf zeigt).
-     */
-    public static String resolveTtsVoice(ModelReference model, String stored, String speechVoice,
-                                         TtsVoiceCatalog catalog) {
+    /** Wie {@link #ttsVoice}, mit der gespeicherten Stimme als Wert (für den Entwurf im Einstellungsdialog). */
+    public static String resolveTtsVoice(ModelReference model, String stored, TtsVoiceCatalog catalog) {
         if (model == null || LOCAL_CATALOG_ID.equals(model.catalogId())) {
             return null;
         }
         if (stored != null && !stored.trim().isEmpty()) {
             return stored.trim();
         }
-        String legacy = speechVoice == null || speechVoice.trim().isEmpty() ? null : speechVoice.trim();
-        boolean known = catalog != null && catalog.knows(model.modelId());
-        if (legacy != null && (!known || catalog.voices(model.modelId()).contains(legacy))) {
-            return legacy;
+        return catalog != null && catalog.knows(model.modelId()) ? catalog.defaultVoice(model.modelId()) : null;
+    }
+
+    /**
+     * Übernimmt die frühere globale {@code speech.voice} als Stimme des gewählten TTS-Modells, statt sie still zu
+     * verwerfen oder als zweite Quelle weiterleben zu lassen: nur, wenn für das Modell noch keine Stimme gespeichert
+     * ist und die Stimme zu ihm passt (oder der Katalog das Modell nicht kennt) — genau dann sprach sie bisher. Eine
+     * unpassende alte Stimme bleibt unbenutzt in der Datei stehen. Der Name bleibt unverändert (Groß-/Kleinschreibung).
+     *
+     * @return eine neue, veränderbare Abbildung
+     */
+    public static Map<String, String> adoptLegacyVoice(Map<String, String> voices, ModelReference tts, String legacy,
+                                                       TtsVoiceCatalog catalog) {
+        Map<String, String> adopted = new LinkedHashMap<String, String>(
+                voices == null ? Collections.<String, String>emptyMap() : voices);
+        String voice = legacy == null || legacy.trim().isEmpty() ? null : legacy.trim();
+        if (voice == null || tts == null || LOCAL_CATALOG_ID.equals(tts.catalogId())) {
+            return adopted;
         }
-        return known ? catalog.defaultVoice(model.modelId()) : null;
+        String stored = adopted.get(tts.key());
+        if (stored != null && !stored.trim().isEmpty()) {
+            return adopted;
+        }
+        boolean known = catalog != null && catalog.knows(tts.modelId());
+        if (!known || catalog.voices(tts.modelId()).contains(voice)) {
+            adopted.put(tts.key(), voice);
+        }
+        return adopted;
     }
 
     /** Liest {@code <katalog>:<modell>=<stimme>;…}; Modelle ohne Katalog gelten als Enterprise-API. */

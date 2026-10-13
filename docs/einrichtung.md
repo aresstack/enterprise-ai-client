@@ -285,12 +285,20 @@ beim letzten, endet das Vorlesen dort mit der Meldung, welches Stück fehlt, sta
 
 **Stimme je Modell.** TTS-Modelle mit mehreren Sprechern (Orpheus, Qwen3-TTS) wählen ohne feste Stimme bei jeder
 Anfrage selbst; beim absatzweisen Vorlesen klang dann jeder Absatz womöglich anders. Unter Einstellungen →
-Sprachausgabe stehen deshalb Modell und Stimme zusammen: die Liste zeigt die bekannten Sprecher des Modells, eintippen
-geht auch, „Stimme testen“ spricht einen kurzen Satz mit dem Entwurf. Die Stimme gilt je Modell (Schlüssel
-`speech.voices`, z. B. `kipitz:orpheus-tts-3b-de=Thomas;kipitz:qwen3-tts=Vivian`); wer das Modell wechselt, bekommt
-dessen eigene Stimme. Ist für ein Modell keine gespeichert, gilt der frühere Schlüssel `speech.voice`, wenn er zum
-Modell passt, sonst die Standardstimme aus `tts-voices.properties` (Orpheus: `Jana`, Qwen3-TTS: `Vivian`; die Namen
-sind gegen die Enterprise-API ungeprüft). Lokale Stimmen haben genau einen Sprecher.
+Sprachausgabe steht deshalb die Stimme des Modells (das Modell selbst wird nur unter „Modelle“ gewählt): die Liste
+zeigt die bekannten Sprecher des Modells, eintippen geht auch, „Stimme testen“ spricht einen kurzen Satz mit dem
+Entwurf auf demselben Weg wie das Vorlesen. Die Stimme gilt je Modell (Schlüssel `speech.voices`, z. B.
+`kipitz:orpheus-tts-3b-de=Thomas;kipitz:qwen3-tts=Vivian`); wer das Modell wechselt, bekommt dessen eigene Stimme. Ist
+für ein Modell keine gespeichert, gilt die Standardstimme aus `tts-voices.properties` (Orpheus: `Jana`, Qwen3-TTS:
+`Vivian`; die Namen sind gegen die Enterprise-API ungeprüft). Lokale Stimmen haben genau einen Sprecher. Es gibt genau
+eine Stimmquelle: der TTS-Adapter hat keine eigene Stimme mehr. Der frühere Schlüssel `speech.voice` wird beim Laden
+als Stimme des gewählten Modells übernommen, wenn er zu ihm passt (beim nächsten Speichern steht er in
+`speech.voices` und fällt selbst weg); passt er nicht, bleibt er unbenutzt stehen.
+
+Vorgelesen wird, was die Anzeige zeigt: derselbe Markdown-Parser wie die Darstellung, Code- und Diagrammblöcke,
+HTML-Kommentare und Tags, Linkziele und nackte URLs fallen weg, Entities werden zu Zeichen, unsichtbare Zeichen
+(Null-Breite, weiche Trennung) sowie Pfeile, Rahmenlinien und Emojis entfallen. Eine Tabellenzeile wird als Satz
+„Spalte: Wert, Spalte: Wert.“ gesprochen, Überschriften und Listenpunkte enden als Satz.
 
 Ein Vorlesevorgang spricht immer mit dem einen TTS-Modell und der einen Stimme, die beim Start der Antwort galten; jedes Stück geht
 mit dieser Kennung an den Dienst, auch bei mehreren Workern. Wird in den Einstellungen ein anderes Modell gespeichert,

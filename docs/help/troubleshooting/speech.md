@@ -31,7 +31,7 @@ Scheitert das Vorlesen einer Antwort, erscheint der Dialog „Vorlesen“ mit �
 
 ### Schnelltest
 
-1. Einstellungen → „Sprachausgabe“ → Bereich „Modell und Stimme“ → „Stimme testen“. Während des Tests steht „Spreche …“, danach „Gesprochen.“.
+1. Einstellungen → „Sprachausgabe“ → Bereich „Stimme“ → „Stimme testen“. Während des Tests steht „Spreche …“, danach „Gesprochen.“.
 2. Klappt der Test, aber nicht das Vorlesen im Chat, prüfe, ob du die Einstellungen gespeichert hast; der Test nutzt den ungespeicherten Entwurf.
 3. Erscheint „Test konnte nicht gestartet werden: …“, steht die Ursache dahinter.
 
@@ -41,7 +41,7 @@ Hinweis: Die Sprachausgabe über die Enterprise-API (Endpunkt für Sprachsynthes
 
 Manche TTS-Modelle haben mehrere Sprecher. Ist keine feste Stimme eingestellt, wählt das Modell bei jedem Absatz selbst, und die Stimme wechselt mitten in der Antwort. Die Oberfläche sagt dazu: „Modelle mit mehreren Sprechern wählen ohne feste Stimme bei jedem Absatz selbst, dann wechselt die Stimme mitten in der Antwort.“
 
-1. Einstellungen → „Sprachausgabe“ → „Modell und Stimme“ → Feld „Stimme“: einen Sprecher aus der Liste wählen oder eintippen.
+1. Einstellungen → „Sprachausgabe“ → „Stimme“ → Feld „Stimme“: einen Sprecher aus der Liste wählen oder eintippen.
 2. Speichern und mit „Stimme testen“ prüfen.
 
 Die Stimme gilt je Modell. Wechselst du das TTS-Modell, erscheint dessen eigene Stimme. Lokale Stimmen haben genau einen Sprecher („Lokale Stimme: genau ein Sprecher.“) und wechseln nie.

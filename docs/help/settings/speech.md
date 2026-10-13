@@ -6,9 +6,9 @@ keywords: Sprachausgabe, Vorlesen, TTS, Text-to-Speech, Stimme, Sprecher, Voice,
 
 # Einstellungen – Reiter „Sprachausgabe“
 
-Im Reiter „Sprachausgabe“ legst du fest, wie der Client Antworten vorliest und mit welchem Namen der Chat-Assistent im Verlauf erscheint. Oben steht der Name des Assistenten, darunter das TTS-Modell mit seiner Stimme und dem Knopf „Stimme testen“, dann das Verhalten beim Vorlesen und zuletzt die eigene Stimme von Merlin, dem Begleiter des Einrichtungsassistenten. Wie das Vorlesen im Chat bedient wird (der Play/Pause-Knopf über dem Verlauf), beschreibt [Antworten vorlesen](help:chat.read-aloud).
+Im Reiter „Sprachausgabe“ legst du fest, wie der Client Antworten vorliest und mit welchem Namen der Chat-Assistent im Verlauf erscheint. Oben steht der Name des Assistenten, darunter die Stimme des TTS-Modells mit dem Knopf „Stimme testen“, dann das Verhalten beim Vorlesen und zuletzt die eigene Stimme von Merlin, dem Begleiter des Einrichtungsassistenten. Wie das Vorlesen im Chat bedient wird (der Play/Pause-Knopf über dem Verlauf), beschreibt [Antworten vorlesen](help:chat.read-aloud).
 
-Der Reiter hat vier Bereiche: „Assistent“, „Modell und Stimme“, „Sprachausgabe“ und „Merlin“.
+Der Reiter hat vier Bereiche: „Assistent“, „Stimme“, „Sprachausgabe“ und „Merlin“.
 
 ## Bereich „Assistent“: der Name des Assistenten
 
@@ -19,28 +19,28 @@ Der Reiter hat vier Bereiche: „Assistent“, „Modell und Stimme“, „Sprac
 - **Wirkung:** Der Name ist nur eine Beschriftung. Das Modell erfährt ihn nicht, und ein Wechsel der Stimme ändert ihn nie. Der Hinweis im Dialog sagt dazu: „Der Name gehört dir: ein Wechsel der Stimme unter „Modelle“ ändert ihn nicht. Merlin im Einrichtungsassistenten bleibt, wer er ist.“
 - **In der Datei:** Nur ein eigener Name wird unter `chat.assistant.displayName` gespeichert. Steht im Feld der Standardname oder ist es leer, entfernt der Dialog den Schlüssel.
 
-## Bereich „Modell und Stimme“
+## Bereich „Stimme“
 
-Hinweis im Dialog: „Modelle mit mehreren Sprechern wählen ohne feste Stimme bei jedem Absatz selbst, dann wechselt die Stimme mitten in der Antwort. Die Stimme gilt je Modell: beim Wechsel des Modells erscheint dessen eigene Stimme.“
+Hinweis im Dialog: „Modelle mit mehreren Sprechern wählen ohne feste Stimme bei jedem Absatz selbst, dann wechselt die Stimme mitten in der Antwort. Die Stimme gilt je Modell: beim Wechsel des Modells erscheint dessen eigene Stimme. Das Modell wählst du unter „Modelle“.“
 
-### Sprachausgabe (TTS)
+### Modell
 
-Die Auswahlliste „Sprachausgabe (TTS)“ ist dieselbe Auswahl wie im Reiter [Modelle](help:settings.models) unter „Cloud-Modelle“: sie zeigt die TTS-Modelle der Enterprise-API. Standard ist „– keine Auswahl –“. Hast du unter „Modelle“ → „Lokale Modelle“ eine lokale Stimme gewählt, steht hier „– lokales Modell gewählt (Reiter „Lokale Modelle“) –“. Beim ersten Anzeigen des Reiters fragt der Dialog die Modellquellen im Hintergrund ab, damit die Liste gefüllt ist.
+Das TTS-Modell wählst du nur im Reiter [Modelle](help:settings.models) in der Kategorie „Sprachausgabe (TTS)“ (Cloud-Modell oder lokale Stimme). Hier steht es nur zur Information, zum Beispiel „orpheus-tts-3b-de“, bei einer lokalen Stimme mit dem Zusatz „(lokale Stimme)“. Ist keines gewählt, steht dort „Keines gewählt (unter „Modelle“ wählen)“.
 
 ### Stimme
 
 - **Beschriftung:** „Stimme“, eine Liste, in die du auch tippen kannst.
 - **Bedeutung:** Der Sprecher des gewählten TTS-Modells, so wie der Dienst ihn nennt (Tooltip: „… aus der Liste wählen oder eintippen. Lokale Stimmen haben genau einen Sprecher.“).
 - **Liste:** Die Liste zeigt die bekannten Sprecher des Modells, die Standardstimme zuerst. Neben dem Knopf „Stimme testen“ steht, ob eine bekannte Stimme männlich oder weiblich ist, etwa „Stimme Thomas: männlich“.
-- **Standard:** die für dieses Modell gespeicherte Stimme; ist keine gespeichert, eine früher global eingestellte Stimme, wenn sie zum Modell passt; sonst die Standardstimme der Modellfamilie. Mitgeliefert sind zwei Familien: Orpheus (Standard „Jana“, außerdem „Thomas“ und „Max“) und Qwen3-TTS (Standard „Vivian“, außerdem unter anderem „Serena“, „Ryan“ und „Aiden“). Hinweis: Sprechernamen sind exakt so einzugeben, wie der Dienst sie erwartet, auch Groß- und Kleinschreibung („thomas“ statt „Thomas“ lehnt der Dienst ab). Die Qwen3-TTS-Namen stammen aus der Modellkarte und sind gegen die Enterprise-API nicht geprüft; kennt dein Dienst andere Namen, tipp sie ein.
+- **Standard:** die für dieses Modell gespeicherte Stimme, sonst die Standardstimme der Modellfamilie. Eine früher global eingestellte Stimme (`speech.voice`) wird einmalig als gespeicherte Stimme des gewählten Modells übernommen, wenn sie zu ihm passt; beim nächsten Speichern steht sie in `speech.voices`, und der alte Schlüssel fällt weg. Mitgeliefert sind zwei Familien: Orpheus (Standard „Jana“, außerdem „Thomas“ und „Max“) und Qwen3-TTS (Standard „Vivian“, außerdem unter anderem „Serena“, „Ryan“ und „Aiden“). Hinweis: Sprechernamen sind exakt so einzugeben, wie der Dienst sie erwartet, auch Groß- und Kleinschreibung („thomas“ statt „Thomas“ lehnt der Dienst ab). Die Qwen3-TTS-Namen stammen aus der Modellkarte und sind gegen die Enterprise-API nicht geprüft; kennt dein Dienst andere Namen, tipp sie ein.
 - **Gesperrt:** wenn kein TTS-Modell gewählt ist oder eine lokale Stimme gewählt ist. Unter dem Feld steht dann „Kein TTS-Modell gewählt.“ bzw. „Lokale Stimme: genau ein Sprecher.“
 - **Je Modell:** Jede Eingabe gilt als ausdrückliche Wahl für genau das gewählte Modell. Wechselst du das Modell, erscheint dessen eigene Stimme; wechselst du zurück, ist deine frühere Wahl wieder da. Gespeichert wird das in `speech.voices`.
 
-Warum eine feste Stimme? Modelle mit mehreren Sprechern wählen ohne Vorgabe bei jeder Anfrage selbst. Da der Client Antworten stückweise vorliest, klänge sonst jeder Absatz womöglich anders. Deshalb schickt der Client immer eine Stimme mit.
+Warum eine feste Stimme? Modelle mit mehreren Sprechern wählen ohne Vorgabe bei jeder Anfrage selbst. Da der Client Antworten stückweise vorliest, klänge sonst jeder Absatz womöglich anders. Deshalb schickt der Client immer eine Stimme mit, und zwar überall dieselbe: Vorlesen im Chat, Vorlesen im Lesebereich und „Stimme testen“ lösen sie auf demselben Weg auf. Nur Merlin hat seine eigene Stimme.
 
 ### Stimme testen
 
-Der Knopf „Stimme testen“ (Tooltip: „Spricht einen kurzen Satz mit Modell und Stimme dieses Entwurfs“) spricht den Satz „Hallo! So klinge ich, wenn ich dir Antworten vorlese.“ mit dem gewählten Modell und der eingetragenen Stimme. Während des Tests heißt der Knopf „Spreche …“. Danach steht daneben „Gesprochen.“ oder der Grund, warum es nicht ging, zum Beispiel „Kein TTS-Modell gewählt.“ oder „Entwurf unvollständig: …“. Der Test nutzt den ungespeicherten Entwurf; du musst also nicht erst speichern.
+Der Knopf „Stimme testen“ (Tooltip: „Spricht einen kurzen Satz mit Modell und Stimme dieses Entwurfs, auf demselben Weg wie das Vorlesen“) spricht den Satz „Hallo! So klinge ich, wenn ich dir Antworten vorlese.“ mit dem unter „Modelle“ gewählten Modell und der eingetragenen Stimme, genau so, wie die Antworten vorgelesen werden. Während des Tests heißt der Knopf „Spreche …“. Danach steht daneben „Gesprochen.“ oder der Grund, warum es nicht ging, zum Beispiel „Kein TTS-Modell gewählt.“ oder „Entwurf unvollständig: …“. Der Test nutzt den ungespeicherten Entwurf; du musst also nicht erst speichern.
 
 ## Bereich „Sprachausgabe“: Verhalten beim Vorlesen
 
@@ -92,7 +92,7 @@ Ein TTS-Modell der Enterprise-API spricht über den Endpunkt `audio/speech` der 
 
 ### Wo stelle ich die Stimme ein?
 
-Hier im Reiter „Sprachausgabe“, Bereich „Modell und Stimme“: erst das TTS-Modell wählen, dann die Stimme, dann „Stimme testen“ und speichern. Eine lokale Stimme wählst du dagegen unter „Modelle“ → „Lokale Modelle“.
+Das TTS-Modell wählst du unter „Modelle“, die Stimme hier im Reiter „Sprachausgabe“, Bereich „Stimme“; dann „Stimme testen“ und speichern. Eine lokale Stimme wählst du unter „Modelle“ → „Lokale Modelle“.
 
 ### Die Stimme wechselt mitten in der Antwort
 

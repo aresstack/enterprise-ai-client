@@ -35,17 +35,33 @@ public class TtsVoiceCatalogTest {
         Map<String, String> stored = ModelsConfig.parseSpeechVoices("orpheus-tts-3b-de=Max");
         assertEquals("kipitz:orpheus-tts-3b-de", stored.keySet().iterator().next());
 
-        assertEquals("Max", ModelsConfig.resolveTtsVoice(orpheus, stored.get(orpheus.key()), null, catalog));
+        assertEquals("Max", ModelsConfig.resolveTtsVoice(orpheus, stored.get(orpheus.key()), catalog));
         // ohne gespeicherte Stimme: Standard des Modells, nie leer und nie die Stimme eines anderen Modells
-        assertEquals("Vivian", ModelsConfig.resolveTtsVoice(qwen, stored.get(qwen.key()), null, catalog));
-        assertEquals("Vivian", ModelsConfig.resolveTtsVoice(qwen, null, "Thomas", catalog));
-        // frühere globale Stimme gilt, wenn sie zum Modell passt oder das Modell unbekannt ist
-        assertEquals("Jana", ModelsConfig.resolveTtsVoice(orpheus, null, "Jana", catalog));
-        assertEquals("alloy", ModelsConfig.resolveTtsVoice(ModelsConfig.parse("tts-1"), null, "alloy", catalog));
-        assertNull(ModelsConfig.resolveTtsVoice(ModelsConfig.parse("tts-1"), null, null, catalog));
+        assertEquals("Vivian", ModelsConfig.resolveTtsVoice(qwen, stored.get(qwen.key()), catalog));
+        assertNull(ModelsConfig.resolveTtsVoice(ModelsConfig.parse("tts-1"), null, catalog));
         // lokale Stimmen: genau ein Sprecher
-        assertNull(ModelsConfig.resolveTtsVoice(ModelsConfig.parse("local:de_DE-thorsten-medium"), "x", "y",
-                catalog));
+        assertNull(ModelsConfig.resolveTtsVoice(ModelsConfig.parse("local:de_DE-thorsten-medium"), "x", catalog));
+    }
+
+    @Test
+    public void legacySpeechVoiceBecomesTheStoredVoiceOfTheSelectedModelOnly() {
+        // passt zum Modell: wird dessen gespeicherte Stimme, unverändert geschrieben
+        Map<String, String> adopted = ModelsConfig.adoptLegacyVoice(null, orpheus, "Thomas", catalog);
+        assertEquals("Thomas", adopted.get(orpheus.key()));
+        assertEquals(1, adopted.size());
+        // unbekanntes Modell: wie bisher übernommen (der Dienst entscheidet über den Namen)
+        ModelReference unknown = ModelsConfig.parse("tts-1");
+        assertEquals("alloy", ModelsConfig.adoptLegacyVoice(null, unknown, "alloy", catalog).get(unknown.key()));
+        // passt nicht: keine zweite Quelle, das Modell spricht mit seiner Standardstimme
+        assertTrue(ModelsConfig.adoptLegacyVoice(null, qwen, "Thomas", catalog).isEmpty());
+        // eine gespeicherte Stimme gewinnt immer
+        assertEquals("Max", ModelsConfig.adoptLegacyVoice(ModelsConfig.parseSpeechVoices("orpheus-tts-3b-de=Max"),
+                orpheus, "Thomas", catalog).get(orpheus.key()));
+        // lokale Stimmen haben genau einen Sprecher
+        assertTrue(ModelsConfig.adoptLegacyVoice(null, ModelsConfig.parse("local:de_DE-thorsten-medium"), "Thomas",
+                catalog).isEmpty());
+        // Groß-/Kleinschreibung bleibt: „thomas“ ist keine Orpheus-Stimme und wird nicht still zu „Thomas“
+        assertTrue(ModelsConfig.adoptLegacyVoice(null, orpheus, "thomas", catalog).isEmpty());
     }
 
     @Test
@@ -56,7 +72,7 @@ public class TtsVoiceCatalogTest {
         assertEquals("Jana", catalog.voice("ORPHEUS-TTS-3B-DE", TtsVoiceCatalog.Gender.FEMALE));
         assertEquals("Jana", catalog.defaultVoice("orpheus-tts-3b-de"));
         assertEquals(TtsVoiceCatalog.Gender.MALE, catalog.genderOf("orpheus-tts-3b-de", "Max"));
-        assertEquals("Thomas", ModelsConfig.resolveTtsVoice(orpheus, "Thomas", null, catalog));
+        assertEquals("Thomas", ModelsConfig.resolveTtsVoice(orpheus, "Thomas", catalog));
         assertEquals("Thomas", ModelsConfig.parseSpeechVoices(
                 ModelsConfig.formatSpeechVoices(java.util.Collections.singletonMap("orpheus-tts-3b-de", "Thomas")))
                 .get(orpheus.key()));
@@ -69,9 +85,9 @@ public class TtsVoiceCatalogTest {
     public void merlinsDaughterSpeaksWithQwenVivianByDefault() {
         assertEquals("Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", PreferredModels.bundled().model("tts"));
         assertEquals("Vivian", ModelsConfig.resolveTtsVoice(ModelsConfig.parse("kipitz:"
-                + PreferredModels.bundled().model("tts")), null, null, catalog));
+                + PreferredModels.bundled().model("tts")), null, catalog));
         // A user who picks Orpheus for the assistant still hears a female speaker.
-        assertEquals("Jana", ModelsConfig.resolveTtsVoice(orpheus, null, null, catalog));
+        assertEquals("Jana", ModelsConfig.resolveTtsVoice(orpheus, null, catalog));
         // Merlin keeps his own male Orpheus speaker.
         assertEquals("Thomas", ModelsConfig.defaultMerlinSpeaker());
     }

@@ -19,7 +19,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-/** „Sprachausgabe“: Stimme je TTS-Modell, Modellwechsel zeigt die Stimme des neuen Modells, „Stimme testen“. */
+/**
+ * „Sprachausgabe“: nur die Stimme je TTS-Modell (das Modell kommt aus „Modelle“), Modellwechsel zeigt die Stimme des
+ * neuen Modells, „Stimme testen“ spricht mit der Stimme, die der Entwurf auflöst.
+ */
 public class SpeechTabTest {
 
     private static final class VoiceActions implements SettingsDialogActions {
@@ -65,8 +68,9 @@ public class SpeechTabTest {
         }
 
         @Override
-        public void testVoice(SettingsForm form, String modelSelection, String voice, Consumer<String> onResult) {
-            tested.add(modelSelection + "/" + voice);
+        public void testVoice(SettingsForm form, Consumer<String> onResult) {
+            String model = form.modelSelection(ModelCategory.TTS.key());
+            tested.add(model + "/" + ttsVoice(form, model));
             onResult.accept(null);
         }
     }
@@ -88,6 +92,8 @@ public class SpeechTabTest {
                 assertTrue(tab.voice().isEnabled());
                 assertTrue("Standardstimme wird nicht als Wahl gespeichert",
                         panel.toForm().speechVoices().isEmpty());
+                assertEquals("Das Modell steht nur zur Information da, gewählt wird es unter „Modelle“",
+                        "orpheus-tts-3b-de", tab.model().getText());
 
                 panel.modelsTab().selection(ModelCategory.TTS).set("qwen3-tts");
                 assertEquals("Vivian", field.getText());
@@ -110,6 +116,7 @@ public class SpeechTabTest {
                 panel.modelsTab().selection(ModelCategory.TTS).set("");
                 assertFalse(tab.voice().isEnabled());
                 assertFalse(tab.testButton().isEnabled());
+                assertTrue(tab.model().getText().contains("„Modelle“"));
             }
         });
     }

@@ -16,7 +16,8 @@ import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.PreferredModels;
 import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
-import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechSynthesisRegistry;
+import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
+import com.aresstack.enterpriseai.proasteion.exedra.speech.SpeechOutput;
 import com.aresstack.enterpriseai.proasteion.exedra.speech.JavaSoundAudioPlayback;
 import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.VaultLocations;
@@ -1086,13 +1087,8 @@ public final class FileSettingsActions implements SettingsDialogActions {
         if (model == null || form == null) {
             return "";
         }
-        String legacy = null;
-        try {
-            legacy = current().getProperty(ModelsConfig.SPEECH_VOICE_KEY);
-        } catch (IOException | RuntimeException unreadable) {
-            // ohne Datei gilt nur der Entwurf
-        }
-        String voice = ModelsConfig.resolveTtsVoice(model, storedVoice(form, model), legacy, ttsVoiceCatalog);
+        // Eine frühere speech.voice steht schon im Entwurf (SettingsMapper übernimmt sie als Stimme des Modells).
+        String voice = ModelsConfig.resolveTtsVoice(model, storedVoice(form, model), ttsVoiceCatalog);
         return voice == null ? "" : voice;
     }
 
@@ -1116,14 +1112,17 @@ public final class FileSettingsActions implements SettingsDialogActions {
         return null;
     }
 
+    /**
+     * Spricht den Probesatz über denselben Weg wie das Vorlesen ({@link SpeechOutput#assistantSpeech}): Modell und
+     * Stimme löst der Entwurf genau so auf wie die laufende Anwendung, nie eine Stimme aus dem Eingabefeld vorbei an
+     * {@code speech.voices}.
+     */
     @Override
-    public void testVoice(SettingsForm form, String modelSelection, final String voice,
-                          final Consumer<String> onResult) {
+    public void testVoice(SettingsForm form, final Consumer<String> onResult) {
         if (form == null || onResult == null) {
             throw new IllegalArgumentException("form and onResult must not be null");
         }
-        final ModelReference model = ModelsConfig.parse(modelSelection);
-        if (model == null) {
+        if (ModelsConfig.parse(form.modelSelection(ModelCategory.TTS.key())) == null) {
             onResult.accept("Kein TTS-Modell gewählt.");
             return;
         }
@@ -1159,19 +1158,21 @@ public final class FileSettingsActions implements SettingsDialogActions {
                 public void run() {
                     String failure = null;
                     try {
-                        SpeechSynthesisRegistry speech = models.speechPreview(located(config, merged));
-                        if (speech == null || !speech.supports(model.catalogId())) {
+                        ReadAloudService speech = SpeechOutput.assistantSpeech(config.models(),
+                                models.speechPreview(located(config, merged)), null, new JavaSoundAudioPlayback());
+                        if (speech == null) {
                             failure = "Die Quelle dieses Modells kann hier nicht sprechen.";
                         } else {
-                            byte[] wav = speech.require(model.catalogId())
-                                    .synthesize(model.modelId(), voice, VOICE_SAMPLE).wav();
-                            JavaSoundAudioPlayback playback = new JavaSoundAudioPlayback();
-                            playback.begin();
-                            try {
-                                playback.play(wav);
-                            } finally {
-                                playback.finish();
-                            }
+                            final String[] failed = new String[1];
+                            boolean spoken = speech.speak(VOICE_SAMPLE, new ReadAloudService.Listener() {
+                                @Override
+                                public void failed(String message) {
+                                    if (failed[0] == null) {
+                                        failed[0] = message;
+                                    }
+                                }
+                            });
+                            failure = failed[0] != null ? failed[0] : spoken ? null : "Nichts gesprochen.";
                         }
                     } catch (Exception e) {
                         failure = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
