@@ -39,6 +39,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesCo
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ReaderChatPages;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeSourceUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentReader;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellModeModel;
@@ -244,6 +245,7 @@ public final class ShellAssembly {
                 sources::registration,
                 new SearchKnowledgeSourcesUseCase(root.ports().index(), root.ports().embeddingSpaceSource(),
                         root.workExecutor()).withIndexedHits(),
+                new ResolveKnowledgeAddressUseCase(root::liveSources),
                 new BrowseKnowledgeSourceUseCase(KnowledgeDocumentReader.direct()), root.prefetch(),
                 new FavoritesStore(chatsDirectory.resolveSibling(FAVORITES_FILE)), root.documentNavigation(),
                 root.uiExecutor(), root.workExecutor());
