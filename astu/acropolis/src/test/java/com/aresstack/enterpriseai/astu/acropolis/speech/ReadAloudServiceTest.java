@@ -230,6 +230,43 @@ public class ReadAloudServiceTest {
         assertEquals(Collections.singleton("Jana"), new HashSet<String>(port.voices));
     }
 
+    @Test
+    public void voiceStabilityFixKeepsLongAnswerRequestsAroundFiveHundredCharacters() {
+        String sentence = "Dieser Satz beschreibt einen längeren technischen Abschnitt und endet an einer "
+                + "eindeutigen Satzgrenze für die Sprachausgabe.";
+        StringBuilder answer = new StringBuilder();
+        for (int i = 0; i < 12; i++) {
+            if (answer.length() > 0) {
+                answer.append(' ');
+            }
+            answer.append(sentence);
+        }
+        RecordingPort port = new RecordingPort(0);
+        RecordingPlayback playback = new RecordingPlayback();
+        ReadAloudService service = new ReadAloudService(port, ORPHEUS, "Jana", playback, SpeechChunking.ANSWER,
+                1, ReadAloudService.DEFAULT_SYNTHESIS_ATTEMPTS, null, null, true);
+        final List<ReadAloudService.ChunkTrace> requested =
+                new CopyOnWriteArrayList<ReadAloudService.ChunkTrace>();
+
+        assertTrue(service.speak(answer.toString(), new ReadAloudService.Listener() {
+            @Override
+            public void failed(String message) {
+                throw new AssertionError(message);
+            }
+
+            @Override
+            public void chunkRequested(ReadAloudService.ChunkTrace trace) {
+                requested.add(trace);
+            }
+        }));
+
+        assertTrue(requested.toString(), requested.size() > 1);
+        for (ReadAloudService.ChunkTrace trace : requested) {
+            assertTrue(trace.toString(), trace.characters() < SpeechText.VOICE_STABILITY_TARGET_CHARS
+                    + SpeechText.MAX_CHUNK_CHARS + 2);
+        }
+    }
+
     /** Zeichnet Modell und Worker jedes Aufrufs auf; das „Audio“ nennt Modell und Text. */
     static final class RecordingPort implements SpeechSynthesisPort {
 
