@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.astu.source.SourceSettingField;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
@@ -29,6 +30,7 @@ import com.aresstack.enterpriseai.source.api.SourceScope;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Adresse aus KeePass: Ist bei einer Quelle ein KeePass-Eintrag gewählt und ein Feld, das der Adapter als
@@ -160,7 +162,7 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
     }
 
     /** Öffnet die eigentliche Quelle beim ersten Zugriff, nachdem KeePass die Adresse geliefert hat. */
-    private final class Deferred implements SearchableKnowledgeSource, PageViewSource {
+    private final class Deferred implements SearchableKnowledgeSource, PageViewSource, AddressableKnowledgeSource {
 
         private final SourceAddress sourceId;
         private final SourceSettings settings;
@@ -240,6 +242,24 @@ final class VaultSourceProvider implements KnowledgeSourceProvider {
         @Override
         public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
             return SourceCapabilities.resolveLink(port(), address);
+        }
+
+        /**
+         * Prüft nur eine bereits geöffnete Quelle. Allein das Tippen in die Suchleiste darf keine KeePass-Abfrage
+         * auslösen; vor dem ersten echten Quellenzugriff ist das Pattern deshalb unbekannt.
+         */
+        @Override
+        public Pattern addressPattern() {
+            KnowledgeSourcePort port;
+            synchronized (this) {
+                port = opened;
+            }
+            return port == null ? null : SourceCapabilities.addressPattern(port);
+        }
+
+        @Override
+        public KnowledgeResourceId resolveAddress(String address) throws KnowledgeSourceException {
+            return SourceCapabilities.resolveAddress(port(), address);
         }
 
         @Override
