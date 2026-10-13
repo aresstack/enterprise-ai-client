@@ -93,6 +93,9 @@ public final class AppConfigLoader {
     public static final String KEEPASS_TIMEOUT_KEY = "security.keepass.timeoutMillis";
     public static final String KEEPASS_RETRY_COUNT_KEY = "security.keepass.retryCount";
     public static final String KEEPASS_RETRY_DELAY_KEY = "security.keepass.retryDelayMillis";
+    /** Wiederprüfungen des Einrichtungsassistenten, solange KeePass oder der KI-Dienst kurz nicht erreichbar ist. */
+    public static final String KEEPASS_SETUP_RECHECK_COUNT_KEY = "security.keepass.setupRecheckCount";
+    public static final String KEEPASS_SETUP_RECHECK_DELAY_KEY = "security.keepass.setupRecheckDelayMillis";
     /** Wiederholungen der Quellenzugriffe (Live-Suche, Seitenabruf, Wissenssuche des Agenten). */
     public static final String SOURCES_RETRY_COUNT_KEY = "knowledge.sources.retryCount";
     public static final String SOURCES_RETRY_DELAY_KEY = "knowledge.sources.retryDelayMillis";
@@ -652,7 +655,9 @@ public final class AppConfigLoader {
             rpc = KeePassRpcConfig.defaults();
         }
         return new KeePassConfig(enabled, rpc, keyFile, retry(r, KEEPASS_RETRY_COUNT_KEY,
-                KeePassConfig.DEFAULT_RETRY_COUNT, KEEPASS_RETRY_DELAY_KEY, KeePassConfig.DEFAULT_RETRY_DELAY_MILLIS));
+                KeePassConfig.DEFAULT_RETRY_COUNT, KEEPASS_RETRY_DELAY_KEY, KeePassConfig.DEFAULT_RETRY_DELAY_MILLIS),
+                retry(r, KEEPASS_SETUP_RECHECK_COUNT_KEY, KeePassConfig.DEFAULT_SETUP_RECHECK_COUNT,
+                        KEEPASS_SETUP_RECHECK_DELAY_KEY, KeePassConfig.DEFAULT_SETUP_RECHECK_DELAY_MILLIS));
     }
 
     /**

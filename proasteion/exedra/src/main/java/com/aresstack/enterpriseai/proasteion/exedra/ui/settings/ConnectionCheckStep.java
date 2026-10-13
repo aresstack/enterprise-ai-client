@@ -15,18 +15,37 @@ public final class ConnectionCheckStep {
     private final String title;
     private final Status status;
     private final String detail;
+    private final boolean temporary;
 
-    private ConnectionCheckStep(String title, Status status, String detail) {
+    private ConnectionCheckStep(String title, Status status, String detail, boolean temporary) {
         if (title == null || title.trim().isEmpty() || status == null) {
             throw new IllegalArgumentException("title and status must not be empty");
         }
         this.title = title.trim();
         this.status = status;
         this.detail = detail == null ? "" : detail.trim();
+        this.temporary = temporary;
+    }
+
+    private ConnectionCheckStep(String title, Status status, String detail) {
+        this(title, status, detail, false);
     }
 
     public static ConnectionCheckStep of(String title, Status status, String detail) {
         return new ConnectionCheckStep(title, status, detail);
+    }
+
+    /** Derselbe Schritt mit anderem Detail; die Einstufung „vorübergehend“ bleibt. */
+    public ConnectionCheckStep withDetail(String newDetail) {
+        return new ConnectionCheckStep(title, status, newDetail, temporary);
+    }
+
+    /**
+     * Derselbe Schritt, als vorübergehende Störung eingestuft (KeePass kurz nicht erreichbar, Verbindungsabbruch,
+     * Zeitüberschreitung, HTTP 5xx): ein späterer Versuch kann gelingen, ohne dass jemand etwas ändert.
+     */
+    public ConnectionCheckStep asTemporary() {
+        return new ConnectionCheckStep(title, status, detail, true);
     }
 
     public static ConnectionCheckStep ok(String title, String detail) {
@@ -59,6 +78,11 @@ public final class ConnectionCheckStep {
 
     public boolean isFailure() {
         return status == Status.FAILED;
+    }
+
+    /** Ob die Störung vorübergehend ist ({@link #asTemporary()}); ohne Bedeutung für {@link Status#OK}. */
+    public boolean isTemporary() {
+        return temporary;
     }
 
     @Override

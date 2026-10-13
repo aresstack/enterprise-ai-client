@@ -18,17 +18,27 @@ public final class KeePassConfig {
     public static final int DEFAULT_RETRY_COUNT = 2;
     /** {@code security.keepass.retryDelayMillis}: Pause vor der ersten Wiederholung (300 ms, dann 750 ms). */
     public static final int DEFAULT_RETRY_DELAY_MILLIS = 300;
+    /**
+     * {@code security.keepass.setupRecheckCount}: wie oft der Einrichtungsassistent einen vorübergehend gescheiterten
+     * Verbindungstest (KeePass oder KI-Dienst kurz nicht erreichbar) im Hintergrund von selbst wiederholt.
+     */
+    public static final int DEFAULT_SETUP_RECHECK_COUNT = 4;
+    /** {@code security.keepass.setupRecheckDelayMillis}: Pause vor der ersten Wiederprüfung (2 s, 5 s, 12,5 s, 30 s). */
+    public static final int DEFAULT_SETUP_RECHECK_DELAY_MILLIS = 2000;
 
     private final boolean enabled;
     private final KeePassRpcConfig rpc;
     private final Path pairingKeyFile;
     private final RetryPolicy retry;
+    private final RetryPolicy setupRecheck;
 
-    KeePassConfig(boolean enabled, KeePassRpcConfig rpc, Path pairingKeyFile, RetryPolicy retry) {
+    KeePassConfig(boolean enabled, KeePassRpcConfig rpc, Path pairingKeyFile, RetryPolicy retry,
+                  RetryPolicy setupRecheck) {
         this.enabled = enabled;
         this.rpc = rpc;
         this.pairingKeyFile = pairingKeyFile;
         this.retry = retry == null ? RetryPolicy.none() : retry;
+        this.setupRecheck = setupRecheck == null ? RetryPolicy.none() : setupRecheck;
     }
 
     public boolean enabled() {
@@ -56,6 +66,15 @@ public final class KeePassConfig {
      */
     public RetryPolicy retry() {
         return retry;
+    }
+
+    /**
+     * {@code security.keepass.setupRecheckCount}/{@code security.keepass.setupRecheckDelayMillis}: Wiederprüfungen des
+     * Einrichtungsassistenten nach einem vorübergehenden Ausfall, mit dem Backoff von {@link RetryPolicy}. Fehlende
+     * Einträge, abgelehnte Keys und abgebrochenes Pairing prüft der Assistent nie von selbst neu.
+     */
+    public RetryPolicy setupRecheck() {
+        return setupRecheck;
     }
 
     @Override

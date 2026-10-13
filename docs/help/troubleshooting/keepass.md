@@ -109,7 +109,7 @@ Im ungünstigsten Fall wartet ein Zugriff bis zu (Wiederholungen + 1) × Timeout
 
 ## Für Fortgeschrittene
 
-Die Schlüssel in der Konfigurationsdatei: `security.keepass.enabled`, `security.keepass.host`, `security.keepass.port`, `security.keepass.timeoutMillis`, `security.keepass.retryCount`, `security.keepass.retryDelayMillis`, `security.keepass.pairingKeyStore` (`file` oder `memory`) und `security.keepass.pairingKeyFile`. Die Referenz auf einen Eintrag ist sein Titel, optional mit Präfix `keepass:`, etwa `chat.apiKeyRef=keepass:Enterprise AI API`.
+Die Schlüssel in der Konfigurationsdatei: `security.keepass.enabled`, `security.keepass.host`, `security.keepass.port`, `security.keepass.timeoutMillis`, `security.keepass.retryCount`, `security.keepass.retryDelayMillis`, `security.keepass.setupRecheckCount`, `security.keepass.setupRecheckDelayMillis` (Wiederprüfung im Einrichtungsassistenten nach einem kurzen Ausfall), `security.keepass.pairingKeyStore` (`file` oder `memory`) und `security.keepass.pairingKeyFile`. Die Referenz auf einen Eintrag ist sein Titel, optional mit Präfix `keepass:`, etwa `chat.apiKeyRef=keepass:Enterprise AI API`.
 
 ## Grenzen
 

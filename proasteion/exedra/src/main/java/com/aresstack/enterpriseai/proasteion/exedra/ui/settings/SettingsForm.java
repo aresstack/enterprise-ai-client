@@ -97,6 +97,8 @@ public final class SettingsForm {
     private final String keePassTimeoutMillis;
     private final String keePassRetryCount;
     private final String keePassRetryDelayMillis;
+    private final String keePassSetupRecheckCount;
+    private final String keePassSetupRecheckDelayMillis;
     private final String sourceRetryCount;
     private final String sourceRetryDelayMillis;
     private final String agentCommand;
@@ -186,6 +188,8 @@ public final class SettingsForm {
         this.keePassTimeoutMillis = b.keePassTimeoutMillis;
         this.keePassRetryCount = b.keePassRetryCount;
         this.keePassRetryDelayMillis = b.keePassRetryDelayMillis;
+        this.keePassSetupRecheckCount = b.keePassSetupRecheckCount;
+        this.keePassSetupRecheckDelayMillis = b.keePassSetupRecheckDelayMillis;
         this.sourceRetryCount = b.sourceRetryCount;
         this.sourceRetryDelayMillis = b.sourceRetryDelayMillis;
         this.agentCommand = b.agentCommand;
@@ -266,6 +270,8 @@ public final class SettingsForm {
                 .keePassTimeoutMillis(keePassTimeoutMillis)
                 .keePassRetryCount(keePassRetryCount)
                 .keePassRetryDelayMillis(keePassRetryDelayMillis)
+                .keePassSetupRecheckCount(keePassSetupRecheckCount)
+                .keePassSetupRecheckDelayMillis(keePassSetupRecheckDelayMillis)
                 .sourceRetryCount(sourceRetryCount)
                 .sourceRetryDelayMillis(sourceRetryDelayMillis)
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
@@ -566,6 +572,19 @@ public final class SettingsForm {
         return keePassRetryDelayMillis;
     }
 
+    /**
+     * Einrichtungsassistent: Wiederprüfungen nach einem vorübergehenden Ausfall
+     * ({@code security.keepass.setupRecheckCount}). Leer = Standard.
+     */
+    public String keePassSetupRecheckCount() {
+        return keePassSetupRecheckCount;
+    }
+
+    /** Einrichtungsassistent: Pause vor der ersten Wiederprüfung in ms ({@code security.keepass.setupRecheckDelayMillis}). */
+    public String keePassSetupRecheckDelayMillis() {
+        return keePassSetupRecheckDelayMillis;
+    }
+
     /** Wissensquellen: Wiederholungen von Suche und Seitenabruf ({@code knowledge.sources.retryCount}). Leer = Standard. */
     public String sourceRetryCount() {
         return sourceRetryCount;
@@ -794,6 +813,8 @@ public final class SettingsForm {
         private String keePassTimeoutMillis = "";
         private String keePassRetryCount = "";
         private String keePassRetryDelayMillis = "";
+        private String keePassSetupRecheckCount = "";
+        private String keePassSetupRecheckDelayMillis = "";
         private String sourceRetryCount = "";
         private String sourceRetryDelayMillis = "";
         private String agentCommand = "";
@@ -1113,6 +1134,16 @@ public final class SettingsForm {
 
         public Builder keePassRetryDelayMillis(String value) {
             this.keePassRetryDelayMillis = text(value);
+            return this;
+        }
+
+        public Builder keePassSetupRecheckCount(String value) {
+            this.keePassSetupRecheckCount = text(value);
+            return this;
+        }
+
+        public Builder keePassSetupRecheckDelayMillis(String value) {
+            this.keePassSetupRecheckDelayMillis = text(value);
             return this;
         }
 

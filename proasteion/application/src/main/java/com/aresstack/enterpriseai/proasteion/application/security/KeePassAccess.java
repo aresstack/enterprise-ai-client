@@ -52,8 +52,19 @@ public final class KeePassAccess {
 
         private static final long serialVersionUID = 1L;
 
-        Failure(String message) {
+        private final boolean temporary;
+
+        Failure(String message, boolean temporary) {
             super(message);
+            this.temporary = temporary;
+        }
+
+        /**
+         * Ob KeePass nur vorübergehend nicht erreichbar war (Timeout, abgebrochene Verbindung): dann lohnt eine spätere
+         * Wiederholung. Fehlender Eintrag, abgelehnter Zugriff und abgebrochenes Pairing sind nie vorübergehend.
+         */
+        public boolean temporary() {
+            return temporary;
         }
     }
 
@@ -135,7 +146,7 @@ public final class KeePassAccess {
         try {
             return provider(ref).locationOf(ref);
         } catch (SecretUnavailableException e) {
-            throw new Failure(describe(e.reason(), ref, address));
+            throw failure(e.reason(), ref, address);
         }
     }
 
@@ -144,9 +155,9 @@ public final class KeePassAccess {
         try {
             return SecretProbe.token(provider(ref), ref);
         } catch (SecretAccessException e) {
-            throw new Failure(describe(e.reason(), e.ref(), address));
+            throw failure(e.reason(), e.ref(), address);
         } catch (SecretUnavailableException e) {
-            throw new Failure(describe(e.reason(), ref, address));
+            throw failure(e.reason(), ref, address);
         }
     }
 
@@ -158,7 +169,7 @@ public final class KeePassAccess {
                 titles.add(entry.title());
             }
         } catch (SecretUnavailableException e) {
-            throw new Failure(describe(e.reason(), null, address));
+            throw failure(e.reason(), null, address);
         }
         Collections.sort(titles, String.CASE_INSENSITIVE_ORDER);
         return titles;
@@ -253,7 +264,11 @@ public final class KeePassAccess {
 
     private static Failure vaultFailure(String action, SecretUnavailableException e) {
         LOG.info("KeePass " + action + " fehlgeschlagen: " + e.getMessage());
-        return new Failure(describeVault(e));
+        return new Failure(describeVault(e), e.reason() == SecretUnavailableException.Reason.NOT_AVAILABLE);
+    }
+
+    private static Failure failure(SecretUnavailableException.Reason reason, SecretRef ref, String address) {
+        return new Failure(describe(reason, ref, address), reason == SecretUnavailableException.Reason.NOT_AVAILABLE);
     }
 
     /** Der Titel, wie KeePass ihn kennt: die Referenz ohne das optionale Präfix {@code keepass:}. */

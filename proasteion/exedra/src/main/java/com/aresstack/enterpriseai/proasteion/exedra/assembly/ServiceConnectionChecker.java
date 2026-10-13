@@ -191,7 +191,8 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
                     new DialogCredentialPrompt()).token(ref);
         } catch (KeePassAccess.Failure e) {
             // Nur der Grund wandert in die Anzeige; die Ausnahme selbst bleibt hier.
-            throw new IOException(e.getMessage());
+            throw e.temporary() ? new ConnectionProbe.TokenTemporarilyUnavailable(e.getMessage())
+                    : new IOException(e.getMessage());
         }
     }
 }

@@ -185,8 +185,31 @@ final class WizardFakes {
             };
         }
 
+        /** Je Verbindungstest der Reihe nach: die Schritte eines Fehlschlags; leer bzw. erschöpft: grün. */
+        final java.util.Deque<List<ConnectionCheckStep>> connectionFailures =
+                new java.util.ArrayDeque<List<ConnectionCheckStep>>();
+        /** Gesetzt: Verbindungstests antworten erst über {@link #heldConnections}. */
+        boolean holdConnections;
+        final List<ConnectionCheckListener> heldConnections = new ArrayList<ConnectionCheckListener>();
+        /** Wie oft der Verbindungstest des KI-Dienstes lief. */
+        int connectionChecks;
+
         @Override
         public void checkConnection(SettingsForm form, ConnectionCheckListener listener) {
+            connectionChecks++;
+            if (holdConnections) {
+                heldConnections.add(listener);
+                return;
+            }
+            List<ConnectionCheckStep> failure = connectionFailures.poll();
+            if (failure != null) {
+                for (ConnectionCheckStep step : failure) {
+                    listener.onStep(step);
+                }
+                listener.onFinished(false);
+                return;
+            }
+            listener.onStep(ConnectionCheckStep.ok("API-Key", "gelesen"));
             listener.onStep(ConnectionCheckStep.ok("GET /models", "HTTP 200"));
             listener.onFinished(true);
         }

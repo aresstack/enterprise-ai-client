@@ -368,4 +368,53 @@ public class ConnectionProbeTest {
         assertEquals("(leer)", ConnectionProbe.excerpt("  \n "));
         assertEquals("Bearer *** x", ConnectionProbe.excerpt("Bearer abc\n x"));
     }
+
+    @Test
+    public void keePassBrieflyUnreachableIsMarkedTemporary() {
+        List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), true, true)),
+                new ConnectionProbe.TokenLookup() {
+                    @Override
+                    public String token() throws IOException {
+                        throw new ConnectionProbe.TokenTemporarilyUnavailable("KeePass ist nicht erreichbar.");
+                    }
+                }), true);
+        assertStatus(Status.WARNING, steps.get(0));
+        assertTrue("vorübergehend", steps.get(0).isTemporary());
+    }
+
+    @Test
+    public void aMissingEntryIsNotTemporary() {
+        List<ConnectionCheckStep> steps = run(new ConnectionProbe(config(properties(baseUrl(), true, true)),
+                failing("Kein KeePass-Eintrag mit dem Titel.")), true);
+        assertFalse(steps.get(0).isTemporary());
+    }
+
+    @Test
+    public void serverErrorsAreTemporaryAndRejectedKeysAreNot() {
+        responseCode = 503;
+        responseBody = "{\"error\":\"busy\"}";
+        List<ConnectionCheckStep> busy = run(new ConnectionProbe(config(properties(baseUrl(), true, true)),
+                token(TOKEN)), false);
+        assertTrue(last(busy).toString(), last(busy).isTemporary());
+        responseCode = 401;
+        List<ConnectionCheckStep> rejected = run(new ConnectionProbe(config(properties(baseUrl(), true, true)),
+                token(TOKEN)), false);
+        assertFalse(last(rejected).toString(), last(rejected).isTemporary());
+    }
+
+    @Test
+    public void aRefusedConnectionIsTemporaryAndAnUnknownHostIsNot() throws Exception {
+        int closedPort;
+        try (java.net.ServerSocket socket = new java.net.ServerSocket(0, 1,
+                java.net.InetAddress.getByName("127.0.0.1"))) {
+            closedPort = socket.getLocalPort();
+        }
+        List<ConnectionCheckStep> refused = run(new ConnectionProbe(
+                config(properties("https://127.0.0.1:" + closedPort + "/v1", false, true)), token(null)), false);
+        assertStatus(Status.FAILED, last(refused));
+        assertTrue(last(refused).toString(), last(refused).isTemporary());
+        List<ConnectionCheckStep> unknown = run(new ConnectionProbe(
+                config(properties("https://host.invalid/v1", false, true)), token(null)), false);
+        assertFalse(last(unknown).toString(), last(unknown).isTemporary());
+    }
 }

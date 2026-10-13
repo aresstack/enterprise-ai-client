@@ -180,6 +180,8 @@ public final class SettingsMapper {
         b.keePassTimeoutMillis(text(p, AppConfigLoader.KEEPASS_TIMEOUT_KEY, String.valueOf(KeePassConfig.DEFAULT_TIMEOUT_MILLIS)));
         b.keePassRetryCount(text(p, AppConfigLoader.KEEPASS_RETRY_COUNT_KEY, String.valueOf(KeePassConfig.DEFAULT_RETRY_COUNT)));
         b.keePassRetryDelayMillis(text(p, AppConfigLoader.KEEPASS_RETRY_DELAY_KEY, String.valueOf(KeePassConfig.DEFAULT_RETRY_DELAY_MILLIS)));
+        b.keePassSetupRecheckCount(text(p, AppConfigLoader.KEEPASS_SETUP_RECHECK_COUNT_KEY, String.valueOf(KeePassConfig.DEFAULT_SETUP_RECHECK_COUNT)));
+        b.keePassSetupRecheckDelayMillis(text(p, AppConfigLoader.KEEPASS_SETUP_RECHECK_DELAY_KEY, String.valueOf(KeePassConfig.DEFAULT_SETUP_RECHECK_DELAY_MILLIS)));
         b.sourceRetryCount(text(p, AppConfigLoader.SOURCES_RETRY_COUNT_KEY, String.valueOf(KnowledgeConfig.DEFAULT_SOURCE_RETRY_COUNT)));
         b.sourceRetryDelayMillis(text(p, AppConfigLoader.SOURCES_RETRY_DELAY_KEY, String.valueOf(KnowledgeConfig.DEFAULT_SOURCE_RETRY_DELAY_MILLIS)));
         b.agentCommand(text(p, KEY_AGENT_COMMAND, ""));
@@ -319,6 +321,10 @@ public final class SettingsMapper {
                 KeePassConfig.DEFAULT_RETRY_COUNT);
         putUnlessDefault(set, AppConfigLoader.KEEPASS_RETRY_DELAY_KEY, form.keePassRetryDelayMillis(),
                 KeePassConfig.DEFAULT_RETRY_DELAY_MILLIS);
+        putUnlessDefault(set, AppConfigLoader.KEEPASS_SETUP_RECHECK_COUNT_KEY, form.keePassSetupRecheckCount(),
+                KeePassConfig.DEFAULT_SETUP_RECHECK_COUNT);
+        putUnlessDefault(set, AppConfigLoader.KEEPASS_SETUP_RECHECK_DELAY_KEY, form.keePassSetupRecheckDelayMillis(),
+                KeePassConfig.DEFAULT_SETUP_RECHECK_DELAY_MILLIS);
         putUnlessDefault(set, AppConfigLoader.SOURCES_RETRY_COUNT_KEY, form.sourceRetryCount(),
                 KnowledgeConfig.DEFAULT_SOURCE_RETRY_COUNT);
         putUnlessDefault(set, AppConfigLoader.SOURCES_RETRY_DELAY_KEY, form.sourceRetryDelayMillis(),

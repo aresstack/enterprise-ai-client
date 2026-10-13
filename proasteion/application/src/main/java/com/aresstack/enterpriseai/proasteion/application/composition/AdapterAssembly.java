@@ -18,6 +18,7 @@ import com.aresstack.enterpriseai.proasteion.application.net.LiveNetwork;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
+import com.aresstack.enterpriseai.proasteion.application.security.RetryingSecretProvider;
 import com.aresstack.enterpriseai.proasteion.application.security.ClientCertificateFactory;
 import com.aresstack.enterpriseai.proasteion.application.security.FilePairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedBearerTokenSource;
@@ -128,14 +129,17 @@ public final class AdapterAssembly {
     /**
      * Der Tresorzugang der Einstellungen-Proben für eine KeePass-Einstellung (Entwurf des Dialogs): derselbe
      * Security-Port wie {@link #secrets(KeePassConfig, PairingPrompt, AskedSecretProvider.CredentialPrompt)}, für die
-     * Schale ohne adyton-Typen; ausgeschaltetes KeePass lehnt jeden Zugriff ab.
+     * Schale ohne adyton-Typen; ausgeschaltetes KeePass lehnt jeden Zugriff ab. Lesende Zugriffe wiederholt er wie der
+     * Port des Chats ({@code security.keepass.retry*}), damit ein kurzer KeePass-Aussetzer Verbindungstest und
+     * Einrichtungsassistent nicht anders trifft als den Chat.
      */
-    public static KeePassAccess keePassAccess(KeePassConfig keePass, PairingPrompt pairing,
+    public static KeePassAccess keePassAccess(final KeePassConfig keePass, PairingPrompt pairing,
                                               AskedSecretProvider.CredentialPrompt prompt) {
         if (keePass == null || !keePass.enabled()) {
             return KeePassAccess.unavailable();
         }
-        return new KeePassAccess(secrets(keePass, pairing, prompt), keePass.address());
+        return new KeePassAccess(new RetryingSecretProvider(secrets(keePass, pairing, prompt), keePass::retry),
+                keePass.address());
     }
 
     /** Die Eingabe der Oberfläche als Pairing-Callback des KeePassRPC-Adapters. */

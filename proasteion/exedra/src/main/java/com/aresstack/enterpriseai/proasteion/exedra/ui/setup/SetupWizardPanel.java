@@ -5,6 +5,8 @@ import com.aresstack.enterpriseai.astu.localruntime.LocalVoiceOffer;
 import com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.CatalogStatus;
 import com.aresstack.enterpriseai.astu.acropolis.modelcatalog.ModelCatalogSnapshot;
+import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
+import com.aresstack.enterpriseai.proasteion.application.retry.RetryPolicy;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckListener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.ConnectionCheckStep;
@@ -189,6 +191,19 @@ public final class SetupWizardPanel extends JPanel {
     private final JLabel serviceStatus = statusLabel();
     private PasswordEntry serviceRead;
     private boolean serviceEntryComplete;
+    /**
+     * Zählt Verbindungstests des KI-Dienstes; ein Ergebnis gilt nur, wenn seit seinem Start kein neuerer Test, kein
+     * anderer Eintrag und kein Schließen dazwischenkam. So überschreibt eine verspätete Antwort nie einen neueren Stand.
+     */
+    private int serviceCheckGeneration;
+    /** Ein Verbindungstest des KI-Dienstes läuft gerade (von Hand oder als Wiederprüfung). */
+    private boolean serviceChecking;
+    /** Die geplante Wiederprüfung nach einem vorübergehenden Ausfall, {@code null}: keine. */
+    private Timer serviceRecheck;
+    /** Wiederprüfungen seit dem letzten Test von Hand bzw. dem Betreten des Schritts. */
+    private int serviceRechecks;
+    /** Der letzte Fehlschlag betraf Proxy, TLS oder HTTP (dann hilft „Netzwerkeinstellungen…“), nicht nur KeePass. */
+    private boolean serviceNetworkProblem;
 
     // Schritt 3: Modelle
     private final JComboBox<String> chatModel = new JComboBox<String>();
@@ -852,6 +867,9 @@ public final class SetupWizardPanel extends JPanel {
         }
         if (index == STEP_SERVICE && serviceRead == null && !done[STEP_SERVICE]) {
             withEntries(this::preselectServiceEntry);
+        } else if (index == STEP_SERVICE && !done[STEP_SERVICE] && serviceEntryComplete && !serviceChecking
+                && !busy) {
+            testService(); // der letzte Test ist nicht bestanden: neu prüfen statt den alten Fehler stehen zu lassen
         } else if (index == STEP_MODELS && !modelsLoaded && !modelsPreparing) {
             refreshModels();
         } else if (index == STEP_CONFLUENCE && confluenceRead == null && !confluenceOk) {
@@ -903,8 +921,8 @@ public final class SetupWizardPanel extends JPanel {
         String error = errors[step];
         errorPlate.setVisible(error != null && !error.isEmpty());
         errorText.setText(error == null ? "" : error);
-        networkButton.setVisible((step == STEP_SERVICE || step == STEP_CONFLUENCE) && error != null
-                && !error.isEmpty());
+        networkButton.setVisible((step == STEP_SERVICE && serviceNetworkProblem || step == STEP_CONFLUENCE)
+                && error != null && !error.isEmpty());
         revalidate();
         repaint();
     }
@@ -1008,12 +1026,23 @@ public final class SetupWizardPanel extends JPanel {
         if (chosen == null) {
             chosen = configured.isEmpty() ? DEFAULT_SERVICE_ENTRY : configured;
         }
-        setText(serviceEntry, chosen);
+        boolean wasBusy = busy;
+        busy = true; // the selection listener must not start a second read and test of the same entry
+        try {
+            setText(serviceEntry, chosen);
+        } finally {
+            busy = wasBusy;
+        }
         readServiceEntry();
     }
 
     private void readServiceEntry() {
         final String title = text(serviceEntry);
+        stopServiceRecheck();
+        serviceCheckGeneration++;
+        serviceChecking = false;
+        serviceRechecks = 0;
+        serviceNetworkProblem = false;
         serviceEntryComplete = false;
         done[STEP_SERVICE] = false;
         serviceRead = null;
@@ -1095,16 +1124,36 @@ public final class SetupWizardPanel extends JPanel {
         });
     }
 
+    /** „Verbindung testen“ und jeder neue Anlauf von Hand: zählt die Wiederprüfungen von vorn. */
     private void testService() {
+        stopServiceRecheck();
+        serviceRechecks = 0;
+        runServiceCheck(false);
+    }
+
+    /**
+     * Prüft KeePass-Eintrag und KI-Dienst über den Verbindungstest. Von Hand blockiert der Test den Assistenten wie
+     * bisher; eine Wiederprüfung läuft still im Hintergrund, der Assistent bleibt bedienbar. Ein Ergebnis zählt nur,
+     * wenn es zum neuesten Test gehört.
+     */
+    private void runServiceCheck(final boolean automatic) {
         if (!serviceEntryComplete) {
             fail(STEP_SERVICE, "Im KeePass-Eintrag fehlen noch API-Key oder Basis-URL.");
             return;
         }
         form = collect();
+        final int generation = ++serviceCheckGeneration;
+        serviceChecking = true;
         clearError(STEP_SERVICE);
+        serviceNetworkProblem = false;
         done[STEP_SERVICE] = false;
-        serviceStatus.setText("Teste die Verbindung zum KI-Dienst …");
-        setBusy(true);
+        serviceStatus.setText(automatic ? "Prüfe erneut (" + serviceRechecks + ". Wiederprüfung) …"
+                : "Teste die Verbindung zum KI-Dienst …");
+        if (automatic) {
+            updateButtons();
+        } else {
+            setBusy(true);
+        }
         final List<ConnectionCheckStep> failures = new ArrayList<ConnectionCheckStep>();
         settings.checkConnection(probeForm(form), new ConnectionCheckListener() {
             @Override
@@ -1118,25 +1167,119 @@ public final class SetupWizardPanel extends JPanel {
 
             @Override
             public void onFinished(boolean success) {
-                setBusy(false);
-                if (success && failures.isEmpty()) {
-                    done[STEP_SERVICE] = true;
-                    serviceStatus.setText("Der KI-Dienst ist erreichbar; der API-Key wurde gelesen.");
-                    updateButtons();
-                    prepareModelsAndWakeMerlin();
-                    return;
+                if (!automatic) {
+                    setBusy(false);
                 }
-                serviceStatus.setText("Verbindung fehlgeschlagen.");
-                StringBuilder message = new StringBuilder();
-                for (ConnectionCheckStep failure : failures) {
-                    message.append(failure.title()).append(": ").append(failure.detail()).append('\n');
+                if (closed || generation != serviceCheckGeneration) {
+                    return; // ein neuerer Test, ein anderer Eintrag oder das Schließen kam dazwischen
                 }
-                if (message.length() == 0) {
-                    message.append("Der Verbindungstest ist fehlgeschlagen.");
-                }
-                fail(STEP_SERVICE, message.toString().trim());
+                serviceChecking = false;
+                serviceFinished(success && failures.isEmpty(), failures, automatic);
             }
         });
+    }
+
+    private void serviceFinished(boolean success, List<ConnectionCheckStep> failures, boolean automatic) {
+        if (success) {
+            stopServiceRecheck();
+            serviceRechecks = 0;
+            serviceNetworkProblem = false;
+            clearError(STEP_SERVICE);
+            done[STEP_SERVICE] = true;
+            serviceStatus.setText("Der KI-Dienst ist erreichbar; der API-Key wurde gelesen.");
+            updateButtons();
+            prepareModelsAndWakeMerlin();
+            return;
+        }
+        boolean temporary = !failures.isEmpty();
+        StringBuilder message = new StringBuilder();
+        for (ConnectionCheckStep failure : failures) {
+            message.append(failure.title()).append(": ").append(failure.detail()).append('\n');
+            temporary &= failure.isTemporary();
+            serviceNetworkProblem |= !PROBE_KEY.equals(failure.title());
+        }
+        if (message.length() == 0) {
+            message.append("Der Verbindungstest ist fehlgeschlagen.");
+        }
+        RetryPolicy policy = recheckPolicy();
+        if (temporary && serviceRechecks < policy.retries()) {
+            long delay = policy.delayBeforeRetry(serviceRechecks + 1);
+            serviceStatus.setText("Vorübergehend nicht erreichbar; prüfe in " + seconds(delay) + " erneut …");
+            message.append("\nVorübergehende Störung: Der Assistent prüft in ").append(seconds(delay))
+                    .append(" von selbst erneut.");
+            scheduleServiceRecheck(delay);
+        } else {
+            serviceStatus.setText(temporary ? "Weiterhin nicht erreichbar; „Verbindung testen“ prüft erneut."
+                    : "Verbindung fehlgeschlagen.");
+        }
+        if (automatic) { // Merlin meldet denselben Ausfall nicht bei jeder Wiederprüfung neu
+            errors[STEP_SERVICE] = message.toString().trim();
+            updateButtons();
+        } else {
+            fail(STEP_SERVICE, message.toString().trim());
+        }
+    }
+
+    /** Die Regel der Wiederprüfungen ({@code security.keepass.setupRecheck*}); Unlesbares gilt als Standard. */
+    private RetryPolicy recheckPolicy() {
+        int count = number(form.keePassSetupRecheckCount(), KeePassConfig.DEFAULT_SETUP_RECHECK_COUNT, 0,
+                RetryPolicy.MAX_RETRIES);
+        int delay = number(form.keePassSetupRecheckDelayMillis(), KeePassConfig.DEFAULT_SETUP_RECHECK_DELAY_MILLIS,
+                0, RetryPolicy.MAX_INITIAL_DELAY_MILLIS);
+        return RetryPolicy.of(count, delay);
+    }
+
+    private static int number(String text, int fallback, int min, int max) {
+        try {
+            int value = Integer.parseInt(text == null ? "" : text.trim());
+            return value < min || value > max ? fallback : value;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static String seconds(long millis) {
+        long rounded = Math.max(1L, (millis + 500L) / 1000L);
+        return rounded + " s";
+    }
+
+    private void scheduleServiceRecheck(long delayMillis) {
+        stopServiceRecheck();
+        final int generation = serviceCheckGeneration;
+        Timer timer = new Timer((int) Math.min(Integer.MAX_VALUE, delayMillis), e -> {
+            serviceRecheck = null;
+            if (closed || generation != serviceCheckGeneration || done[STEP_SERVICE] || busy) {
+                return;
+            }
+            serviceRechecks++;
+            runServiceCheck(true);
+        });
+        timer.setRepeats(false);
+        serviceRecheck = timer;
+        timer.start();
+    }
+
+    private void stopServiceRecheck() {
+        if (serviceRecheck != null) {
+            serviceRecheck.stop();
+            serviceRecheck = null;
+        }
+    }
+
+    /** Für Tests: eine Wiederprüfung ist geplant. */
+    boolean isServiceRecheckPending() {
+        return serviceRecheck != null;
+    }
+
+    /** Für Tests: die geplante Wiederprüfung sofort auslösen. */
+    void fireServiceRecheck() {
+        Timer timer = serviceRecheck;
+        if (timer != null) {
+            timer.stop();
+            for (java.awt.event.ActionListener listener : timer.getActionListeners()) {
+                listener.actionPerformed(new java.awt.event.ActionEvent(timer, 0, null));
+            }
+        }
     }
 
     // --- Schritt 3: Modelle
@@ -1827,6 +1970,8 @@ public final class SetupWizardPanel extends JPanel {
             download.cancel();
         }
         closed = true;
+        stopServiceRecheck();
+        serviceCheckGeneration++;
         speechDownload = null;
         speechDownloading = false;
         nlpStopRequested = true;
@@ -2385,6 +2530,10 @@ public final class SetupWizardPanel extends JPanel {
         return pairButton;
     }
 
+    String serviceStatusText() {
+        return serviceStatus.getText();
+    }
+
     JComboBox<String> serviceEntryChoice() {
         return serviceEntry;
     }
@@ -2504,6 +2653,10 @@ public final class SetupWizardPanel extends JPanel {
 
     String speechStatusText() {
         return speechStatus.getText();
+    }
+
+    ComposerButton serviceTestButton() {
+        return serviceTest;
     }
 
     ComposerButton networkButton() {

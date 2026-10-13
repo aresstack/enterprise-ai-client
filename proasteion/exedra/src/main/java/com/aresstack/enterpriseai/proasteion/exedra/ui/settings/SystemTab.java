@@ -65,6 +65,8 @@ final class SystemTab {
     private final JTextField chatRetryDelay;
     private final JTextField keePassTimeout;
     private final JTextField keePassRetryCount;
+    private final JTextField keePassSetupRecheckCount;
+    private final JTextField keePassSetupRecheckDelay;
     private final JTextField keePassRetryDelay;
     private final JTextField sourceRetryCount;
     private final JTextField sourceRetryDelay;
@@ -178,6 +180,11 @@ final class SystemTab {
                 "security.keepass.retryCount, 0–10; nur wenn KeePass nicht antwortet, nie bei fehlendem Eintrag");
         keePassRetryDelay = timing.textField("KeePassRPC: Pause vor Wiederholung (ms)",
                 "security.keepass.retryDelayMillis, 0–30000");
+        keePassSetupRecheckCount = timing.textField("Einrichtung: Wiederprüfungen",
+                "security.keepass.setupRecheckCount, 0–10; der Einrichtungsassistent prüft KeePass und KI-Dienst "
+                        + "nach einem kurzen Ausfall im Hintergrund erneut");
+        keePassSetupRecheckDelay = timing.textField("Einrichtung: Pause vor Wiederprüfung (ms)",
+                "security.keepass.setupRecheckDelayMillis, 0–30000");
         sourceRetryCount = timing.textField("Wissensquellen: Wiederholungen",
                 "knowledge.sources.retryCount, 0–10; Suche und Seitenabruf, auch die Wissenssuche des Agenten");
         sourceRetryDelay = timing.textField("Wissensquellen: Pause vor Wiederholung (ms)",
@@ -444,6 +451,8 @@ final class SystemTab {
         keePassTimeout.setText(form.keePassTimeoutMillis());
         keePassRetryCount.setText(form.keePassRetryCount());
         keePassRetryDelay.setText(form.keePassRetryDelayMillis());
+        keePassSetupRecheckCount.setText(form.keePassSetupRecheckCount());
+        keePassSetupRecheckDelay.setText(form.keePassSetupRecheckDelayMillis());
         sourceRetryCount.setText(form.sourceRetryCount());
         sourceRetryDelay.setText(form.sourceRetryDelayMillis());
         updateProxyAuthEnabled();
@@ -498,6 +507,8 @@ final class SystemTab {
                 .keePassTimeoutMillis(keePassTimeout.getText())
                 .keePassRetryCount(keePassRetryCount.getText())
                 .keePassRetryDelayMillis(keePassRetryDelay.getText())
+                .keePassSetupRecheckCount(keePassSetupRecheckCount.getText())
+                .keePassSetupRecheckDelayMillis(keePassSetupRecheckDelay.getText())
                 .sourceRetryCount(sourceRetryCount.getText())
                 .sourceRetryDelayMillis(sourceRetryDelay.getText());
     }

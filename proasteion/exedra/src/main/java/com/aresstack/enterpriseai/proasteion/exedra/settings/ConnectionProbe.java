@@ -16,6 +16,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
@@ -52,6 +54,16 @@ public final class ConnectionProbe {
          *                     API-Key weiter
          */
         String token() throws IOException;
+    }
+
+    /** KeePass war beim Lesen des API-Keys nur vorübergehend nicht erreichbar; ein späterer Versuch kann gelingen. */
+    public static final class TokenTemporarilyUnavailable extends IOException {
+
+        private static final long serialVersionUID = 1L;
+
+        public TokenTemporarilyUnavailable(String message) {
+            super(message);
+        }
     }
 
     static final String MODELS_PATH = "/models";
@@ -138,7 +150,8 @@ public final class ConnectionProbe {
         } catch (ReportedException e) {
             return false;
         } catch (IOException | RuntimeException e) {
-            out.report(ConnectionCheckStep.failed(STEP_HTTP, describe(e)));
+            ConnectionCheckStep step = ConnectionCheckStep.failed(STEP_HTTP, describe(e));
+            out.report(isTemporary(e) ? step.asTemporary() : step);
             return false;
         }
         ConnectionCheckStep step = evaluate(models.code, models.body, token, models.location);
@@ -192,7 +205,8 @@ public final class ConnectionProbe {
                 connection.connect();
             } catch (IOException | RuntimeException e) {
                 if (reportTls) {
-                    out.report(ConnectionCheckStep.failed(STEP_TLS, describe(e)));
+                    ConnectionCheckStep step = ConnectionCheckStep.failed(STEP_TLS, describe(e));
+                    out.report(isTemporary(e) ? step.asTemporary() : step);
                 }
                 throw new ReportedException(e);
             }
@@ -289,7 +303,9 @@ public final class ConnectionProbe {
                     + "“ gelesen (wird nicht angezeigt)."));
             return found.trim();
         } catch (IOException e) {
-            out.report(ConnectionCheckStep.warning(STEP_KEY, message(e) + " Der Aufruf geht ohne API-Key weiter."));
+            ConnectionCheckStep step = ConnectionCheckStep.warning(STEP_KEY, message(e)
+                    + " Der Aufruf geht ohne API-Key weiter.");
+            out.report(e instanceof TokenTemporarilyUnavailable ? step.asTemporary() : step);
             return null;
         } catch (RuntimeException e) {
             out.report(ConnectionCheckStep.warning(STEP_KEY, describe(e) + " Der Aufruf geht ohne API-Key weiter."));
@@ -341,7 +357,7 @@ public final class ConnectionProbe {
         }
         if (code >= 500) {
             return ConnectionCheckStep.failed(STEP_HTTP, prefix + "Serverfehler von Dienst oder Proxy. Antwort: "
-                    + excerpt(body));
+                    + excerpt(body)).asTemporary();
         }
         return ConnectionCheckStep.warning(STEP_HTTP, prefix + "Unerwartete Antwort: " + excerpt(body));
     }
@@ -621,6 +637,19 @@ public final class ConnectionProbe {
         return id.toLowerCase(Locale.ROOT).startsWith("keepass:") ? id.substring("keepass:".length()).trim() : id;
     }
 
+    /**
+     * Ob ein Transportfehler vorübergehend ist: Verbindung abgelehnt oder abgebrochen, Zeitüberschreitung, Ziel kurz
+     * nicht routbar. Unbekannter Host, TLS-Fehler und Konfigurationsfehler sind es nicht.
+     */
+    static boolean isTemporary(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+            if (cause instanceof SocketTimeoutException || cause instanceof SocketException) {
+                return true; // ConnectException und NoRouteToHostException sind SocketExceptions
+            }
+        }
+        return false;
+    }
+
     /** Ursache und Hinweis wie in der Fehlerblase des Chats, ohne Secrets. */
     static String describe(Throwable error) {
         String detail = ConnectionDiagnosis.detail(error);
@@ -650,8 +679,7 @@ public final class ConnectionProbe {
 
         void report(ConnectionCheckStep step) {
             String detail = redact(step.detail(), secret);
-            ConnectionCheckStep safe = detail.equals(step.detail()) ? step
-                    : ConnectionCheckStep.of(step.title(), step.status(), detail);
+            ConnectionCheckStep safe = detail.equals(step.detail()) ? step : step.withDetail(detail);
             LOG.info("Verbindungstest, " + safe.title() + ": " + safe.status() + " - " + safe.detail());
             onStep.accept(safe);
         }
