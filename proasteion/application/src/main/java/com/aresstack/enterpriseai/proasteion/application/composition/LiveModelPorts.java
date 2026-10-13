@@ -19,7 +19,11 @@ import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
+import com.aresstack.enterpriseai.model.api.RerankException;
+import com.aresstack.enterpriseai.model.api.RerankPort;
 import com.aresstack.enterpriseai.model.kipitz.KipitzModelCatalogAdapter;
+import com.aresstack.enterpriseai.model.kipitz.KipitzRerankAdapter;
+import com.aresstack.enterpriseai.proasteion.application.security.SecretBackedTokenSource;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.text.local.LocalChatAdapter;
 import com.aresstack.enterpriseai.text.local.LocalEmbeddingAdapter;
@@ -89,6 +93,22 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
         }
     };
 
+    private final RerankPort reranker = new RerankPort() {
+        @Override
+        public double[] rerank(String modelId, String query, List<String> documents) throws RerankException {
+            RerankPort port = current.reranker;
+            if (port == null) {
+                throw new RerankException("Kein Re-Ranker für das gewählte Modell");
+            }
+            return port.rerank(modelId, query, documents);
+        }
+
+        @Override
+        public String toString() {
+            return "LiveRerank[" + current.reranker + "]";
+        }
+    };
+
     LiveModelPorts(AppConfig config, NetworkServices network, SecretProvider secrets) {
         if (config == null || network == null || secrets == null) {
             throw new IllegalArgumentException("config, network and secrets must not be null");
@@ -104,6 +124,11 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
     /** Liefert je Aufruf die Welt des aktuellen Embedding-Modells; der Index-Namensraum folgt ihr. */
     EmbeddingPort embeddings() {
         return embeddings;
+    }
+
+    /** The cross-encoder of the current RERANK selection; fails (no ranking) without a usable selection. */
+    RerankPort reranker() {
+        return reranker;
     }
 
     @Override
@@ -157,7 +182,17 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
                 : unavailableEmbeddings(EmbeddingModelIdentity.of(embeddingModel.modelId(),
                 config.embedding().dimension()).withAttribute("encoding", "float")
                 .withAttribute("catalog", embeddingCatalog), localEmbeddingProblem);
-        return new Adapters(chatModels.chat(), embeddingPort);
+        return new Adapters(chatModels.chat(), embeddingPort, rerankAdapter(config, network));
+    }
+
+    /** The Enterprise-API serves RERANK models of its own catalog; other catalogs have no reranker yet. */
+    private RerankPort rerankAdapter(final AppConfig config, NetworkServices network) {
+        ModelReference rerankModel = config.models().selections().get(ModelCategory.RERANK);
+        if (rerankModel == null || !KipitzModelCatalogAdapter.CATALOG_ID.equals(rerankModel.catalogId())) {
+            return null;
+        }
+        return new KipitzRerankAdapter(ModelCatalogs.kipitz(config, network, () -> config.chat().apiKeyRef() == null
+                ? null : new SecretBackedTokenSource(secrets, config.chat().apiKeyRef()).token()));
     }
 
     private static EmbeddingPort unavailableEmbeddings(final EmbeddingModelIdentity identity, final String problem) {
@@ -179,10 +214,12 @@ final class LiveModelPorts implements ApplicationPorts.Reconfigurable, Closeable
     private static final class Adapters {
         final ChatCompletionPort chat;
         final EmbeddingPort embeddings;
+        final RerankPort reranker;
 
-        Adapters(ChatCompletionPort chat, EmbeddingPort embeddings) {
+        Adapters(ChatCompletionPort chat, EmbeddingPort embeddings, RerankPort reranker) {
             this.chat = chat;
             this.embeddings = embeddings;
+            this.reranker = reranker;
         }
     }
 }

@@ -81,6 +81,19 @@ public class SettingsMapperTest {
     }
 
     @Test
+    public void rerankTopKIsShownWithItsDefaultAndOnlyADeviationIsWritten() throws Exception {
+        Properties current = valid();
+        SettingsForm form = SettingsMapper.fromProperties(current);
+        assertEquals("10", form.retrievalRerankTopK());
+        assertNull("default stays out of the file",
+                SettingsMapper.merge(current, form).getProperty(AppConfigLoader.RETRIEVAL_RERANK_TOP_K_KEY));
+        Properties merged = SettingsMapper.merge(current, form.toBuilder().retrievalRerankTopK("6").build());
+        assertEquals("6", merged.getProperty(AppConfigLoader.RETRIEVAL_RERANK_TOP_K_KEY));
+        assertEquals("6", SettingsMapper.fromProperties(merged).retrievalRerankTopK());
+        assertEquals(6, AppConfigLoader.fromProperties(merged).knowledge().evidence().rerankTopK());
+    }
+
+    @Test
     public void readsTheManagedKeysIntoTheForm() {
         SettingsForm form = SettingsMapper.fromProperties(valid());
         assertEquals("Test-Client", form.windowTitle());

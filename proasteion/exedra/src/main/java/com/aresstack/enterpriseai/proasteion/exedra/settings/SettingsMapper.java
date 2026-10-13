@@ -210,6 +210,8 @@ public final class SettingsMapper {
         b.retrievalMaxFollowUps(text(p, AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY,
                 String.valueOf(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS)));
         b.retrievalRerank(bool(p, AppConfigLoader.RETRIEVAL_RERANK_KEY, true));
+        b.retrievalRerankTopK(text(p, AppConfigLoader.RETRIEVAL_RERANK_TOP_K_KEY,
+                String.valueOf(EvidencePolicy.DEFAULT_RERANK_TOP_K)));
         b.rawWorkers(text(p, AppConfigLoader.KNOWLEDGE_RAW_WORKERS_KEY, String.valueOf(KnowledgePrefetchService.Settings.DEFAULT_RAW_WORKERS)));
         b.enrichmentWorkers(text(p, AppConfigLoader.KNOWLEDGE_ENRICHMENT_WORKERS_KEY, String.valueOf(KnowledgePrefetchService.Settings.DEFAULT_ENRICHMENT_WORKERS)));
         b.embeddingConcurrency(text(p, AppConfigLoader.EMBEDDING_MAX_CONCURRENCY_KEY, String.valueOf(KnowledgePrefetchService.Settings.DEFAULT_EMBEDDING_CONCURRENCY)));
@@ -340,6 +342,8 @@ public final class SettingsMapper {
         put(set, AppConfigLoader.LIVE_SEARCH_HITS_PER_SOURCE_KEY, form.liveSearchHitsPerSource());
         put(set, AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY, form.retrievalMaxFollowUps());
         put(set, AppConfigLoader.RETRIEVAL_RERANK_KEY, form.retrievalRerank() ? "" : "false");
+        putUnlessDefault(set, AppConfigLoader.RETRIEVAL_RERANK_TOP_K_KEY, form.retrievalRerankTopK(),
+                EvidencePolicy.DEFAULT_RERANK_TOP_K);
         put(set, AppConfigLoader.KNOWLEDGE_RAW_WORKERS_KEY, form.rawWorkers());
         put(set, AppConfigLoader.KNOWLEDGE_ENRICHMENT_WORKERS_KEY, form.enrichmentWorkers());
         put(set, AppConfigLoader.EMBEDDING_MAX_CONCURRENCY_KEY, form.embeddingConcurrency());
@@ -518,6 +522,8 @@ public final class SettingsMapper {
                 return "Mindestzahl unabhängiger Quellen";
             case AppConfigLoader.RETRIEVAL_MAX_FOLLOW_UPS_KEY:
                 return "Max. Nachrecherchen";
+            case AppConfigLoader.RETRIEVAL_RERANK_TOP_K_KEY:
+                return "Kandidaten nach dem Re-Ranker";
             case AppConfigLoader.RETRIEVAL_KEYWORD_CANDIDATES_KEY:
                 return "Volltext-Kandidaten";
             case AppConfigLoader.RETRIEVAL_SEMANTIC_CANDIDATES_KEY:

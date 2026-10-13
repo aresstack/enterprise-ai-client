@@ -218,6 +218,7 @@ public final class AdapterAssembly {
         LiveModelPorts models = new LiveModelPorts(config, network.current(), secrets);
         ports.chat(models.chat());
         ports.liveEmbeddings(models.embeddings());
+        ports.reranker(models.reranker());
         ports.reconfiguring(models);
         ports.closing("local-models", models);
 

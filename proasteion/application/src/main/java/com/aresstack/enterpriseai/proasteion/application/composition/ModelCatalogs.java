@@ -110,7 +110,7 @@ public final class ModelCatalogs implements ModelCatalogLoader, Closeable {
         }
     }
 
-    private static KipitzModelCatalogConfig kipitz(AppConfig config, NetworkServices network,
+    static KipitzModelCatalogConfig kipitz(AppConfig config, NetworkServices network,
                                                    Supplier<String> token) {
         return KipitzModelCatalogConfig.builder(config.chat().baseUrl())
                 .bearerToken(token)

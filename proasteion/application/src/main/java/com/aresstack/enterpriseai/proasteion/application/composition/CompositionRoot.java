@@ -268,6 +268,14 @@ public final class CompositionRoot {
                 settings.get(c -> c.knowledge().evidence()), RetrievalTriage.off(),
                 new ModelLinguisticAnalyzer(NlpModels.textAnalysis(), passageLanguage), turnDiagnostics,
                 () -> settings.current().chat().answerPlanning());
+        // Cross-encoder (model.rerank) between fusion and the evidence check; without a selected model, or when it
+        // fails, the candidates reach the evaluator unchanged. Model and top-K apply without restart.
+        this.ragChat.rankCandidatesWith(new com.aresstack.enterpriseai.astu.acropolis.rag.CrossEncoderRanking(
+                ports.reranker(), () -> {
+                    com.aresstack.enterpriseai.astu.modelcatalog.ModelReference selected = config().models()
+                            .selections().get(com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.RERANK);
+                    return selected == null ? null : selected.modelId();
+                }, () -> settings.current().knowledge().evidence().rerankTopK()));
         this.sourceSelection = new KnowledgeSourceSelection();
         for (KnowledgeSourceRegistration registration : ports.sources().registrations()) {
             boolean enabled = true; // eine angebundene Quelle ohne Eintrag in der Konfiguration bleibt angehakt

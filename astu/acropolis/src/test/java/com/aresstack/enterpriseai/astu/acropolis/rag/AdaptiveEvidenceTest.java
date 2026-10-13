@@ -27,6 +27,8 @@ import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
+import com.aresstack.enterpriseai.model.api.RerankException;
+import com.aresstack.enterpriseai.model.api.RerankPort;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.Before;
 import org.junit.Test;
@@ -384,6 +386,67 @@ public class AdaptiveEvidenceTest {
             release.countDown();
             prefetch.shutdown();
         }
+    }
+
+    @Test
+    public void crossEncoderNarrowsTheCandidatesBeforeTheEvaluator() throws Exception {
+        model.relevant(QUARK, DETAIL).sufficientWith(QUARK);
+        final List<String> rankedQueries = new ArrayList<String>();
+        RerankPort scores = (modelId, query, documents) -> {
+            rankedQueries.add(modelId + "|" + query);
+            double[] result = new double[documents.size()];
+            for (int i = 0; i < documents.size(); i++) {
+                String text = documents.get(i);
+                result[i] = text.contains("Ablauf") ? 5 : text.contains("Quark") ? 4 : text.contains("Käse") ? -3 : -5;
+            }
+            return result;
+        };
+        RagChatUseCase rag = adaptive(() -> EvidencePolicy.defaults().withRerankTopK(2),
+                new PromptContextAssembler(ContextSettings.defaults()), RetrievalPreparation.none())
+                .rankCandidatesWith(new CrossEncoderRanking(scores, () -> "bge-reranker",
+                        () -> EvidencePolicy.defaults().withRerankTopK(2).rerankTopK()));
+
+        RagChatTurn turn = send(rag, chat.openConversation("System"), QUESTION);
+
+        assertEquals("the selected model ranks against the user's question",
+                Collections.singletonList("bge-reranker|" + QUESTION), rankedQueries);
+        assertTrue(model.lastEvaluation, model.lastEvaluation.contains("wiki:QuarkAblauf"));
+        assertTrue(model.lastEvaluation, model.lastEvaluation.contains("wiki:Quark "));
+        assertFalse("below top-K never reaches the evaluator", model.lastEvaluation.contains("wiki:Kaese"));
+        assertFalse(model.lastEvaluation.contains("wiki:Milch"));
+        assertTrue("best first", model.lastEvaluation.indexOf("wiki:QuarkAblauf")
+                < model.lastEvaluation.indexOf("wiki:Quark "));
+        assertEquals("the evaluator still decides the evidence", 1, model.evaluations);
+        assertEquals(1, turn.sources().size());
+        assertEquals(QUARK, turn.sources().get(0).resource());
+    }
+
+    @Test
+    public void failingOrMissingCrossEncoderKeepsTheFormerPath() throws Exception {
+        model.relevant(QUARK, DETAIL).sufficientWith(QUARK);
+        RerankPort failing = (modelId, query, documents) -> {
+            throw new RerankException("not reachable");
+        };
+        RagChatUseCase rag = adaptive(EvidencePolicy::defaults, new PromptContextAssembler(ContextSettings.defaults()),
+                RetrievalPreparation.none()).rankCandidatesWith(new CrossEncoderRanking(failing, () -> "bge-reranker",
+                () -> 1));
+
+        RagChatTurn turn = send(rag, chat.openConversation("System"), QUESTION);
+
+        assertTrue("all candidates as before: " + model.lastEvaluation, model.lastEvaluation.contains("wiki:Milch"));
+        assertEquals(QUARK, turn.sources().get(0).resource());
+
+        final int[] calls = {0};
+        RerankPort counting = (modelId, query, documents) -> {
+            calls[0]++;
+            return new double[documents.size()];
+        };
+        RagChatUseCase withoutModel = adaptive(EvidencePolicy::defaults,
+                new PromptContextAssembler(ContextSettings.defaults()), RetrievalPreparation.none())
+                .rankCandidatesWith(new CrossEncoderRanking(counting, () -> null, () -> 1));
+        send(withoutModel, chat.openConversation("System"), QUESTION);
+        assertEquals("no RERANK model selected: the reranker is never asked", 0, calls[0]);
+        assertTrue(model.lastEvaluation.contains("wiki:Milch"));
     }
 
     private RagChatTurn send(EvidencePolicy policy, ContextSettings context, RetrievalPreparation preparation)

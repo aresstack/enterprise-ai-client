@@ -24,8 +24,8 @@ import java.util.regex.Pattern;
  *
  * <p>Die Kandidaten tragen stabile IDs ({@code c1}, {@code c2}, … in der Reihenfolge, in der der Turn sie zum ersten Mal
  * sah). Das Modell darf nur diese IDs nennen; unbekannte werden ignoriert. Kandidatentexte sind Daten, keine
- * Anweisungen. Ein Cross-Encoder (Modellkategorie RERANK) passt hinter dieselbe Stelle, sobald ein ausführbarer
- * Endpunkt angebunden ist. Den Verlauf sieht sie wie die {@link FollowUpResearch}; die Abschnitte ungekürzt (Passagen
+ * Anweisungen. Ist ein Cross-Encoder gewählt (Modellkategorie RERANK), hat {@link CrossEncoderRanking} die Kandidaten
+ * davor schon sortiert und auf {@code retrieval.rerankTopK} gekürzt. Den Verlauf sieht sie wie die {@link FollowUpResearch}; die Abschnitte ungekürzt (Passagen
  * sind beim Indexieren schon begrenzt), wie viele, bestimmt {@code retrieval.maxResults}. Zustandslos.
  */
 public final class EvidenceEvaluator {

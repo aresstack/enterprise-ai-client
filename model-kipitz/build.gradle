@@ -1,4 +1,4 @@
-description = 'Adapter: Modellkatalog der Enterprise-API (KIPITZ) über GET <baseUrl>/models, Sprachausgabe über POST <baseUrl>/audio/speech.'
+description = 'Adapter: Modellkatalog der Enterprise-API (KIPITZ) über GET <baseUrl>/models, Sprachausgabe über POST <baseUrl>/audio/speech, Reranking über POST <baseUrl>/rerank.'
 
 dependencies {
     api project(':model-api')

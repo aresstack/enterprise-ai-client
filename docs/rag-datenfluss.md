@@ -166,8 +166,10 @@ sequenceDiagram
   resourceIds, Standard 1, 0 = nur die Evidenzprüfung), `retrieval.maxFollowUps` (Standard 2, 0 = keine),
   `retrieval.liveSearch.initialPages`/`maxPages`/`hitsPerSource` (1/4/10), dazu `retrieval.keywordCandidates`,
   `retrieval.semanticCandidates` und `retrieval.maxResults` (bewertete Kandidaten je Runde). Der Fortschritt steht in
-  der Recherchekarte („14 Kandidaten, 3 relevant“, „1 Quelle: nicht ausreichend“). Ein Cross-Encoder (Modellkategorie
-  RERANK) ist nicht angebunden; er hätte seinen Platz im `EvidenceEvaluator`. `retrieval.minSemanticScore` bleibt
+  der Recherchekarte („14 Kandidaten, 3 relevant“, „1 Quelle: nicht ausreichend“). Ist ein Cross-Encoder gewählt
+  (Modellkategorie RERANK, `model.rerank`, seit 0.58.0), sortiert er die Kandidaten jeder Runde vor dem
+  `EvidenceEvaluator` gegen die Frage und gibt nur die besten `retrieval.rerankTopK` (Standard 10) weiter
+  (`CrossEncoderRanking`, `POST <baseUrl>/rerank`); ohne Modell oder bei Ausfall gehen sie unverändert weiter. `retrieval.minSemanticScore` bleibt
   -1: Cosine-Werte sind je Embedding-Modell verschieden skaliert. `retrieval.rerank=false` ist der feste Ablauf mit
   Nachrecherche.
 - **Shell** (`proasteion.exedra.chat.RagChatBinding`, AP22): Während der Suche zeigt die leere Antwortblase "Wissen wird

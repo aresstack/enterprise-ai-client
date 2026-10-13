@@ -91,6 +91,10 @@ final class IndexEditor {
     static final String RERANK_LABEL = "Treffer gegen die Frage bewerten (Reranking)";
     static final String RERANK_HELP = "Das Chat-Modell bewertet die Treffer gegen die Frage und wählt die kleinste "
             + "ausreichende Menge (retrieval.rerank). Aus: feste Reihenfolge der Suche mit Nachrecherche.";
+    static final String RERANK_TOP_K_LABEL = "Kandidaten nach dem Re-Ranker";
+    static final String RERANK_TOP_K_HELP = "Ist unter Modelle ein Reranking-Modell gewählt, sortiert es die Treffer "
+            + "vor dieser Bewertung und gibt nur so viele weiter; ohne Modell oder bei Ausfall gehen alle Treffer "
+            + "unverändert weiter (retrieval.rerankTopK, 1–40; Standard 10).";
 
     private final JTextField indexDirectory;
     private final ComicButton chooseDirectory;
@@ -111,6 +115,7 @@ final class IndexEditor {
     private final JTextField embeddingConcurrency;
     private final JTextField embeddingBatchSize;
     private final JCheckBox retrievalRerank;
+    private final JTextField retrievalRerankTopK;
     private final JPanel panel;
 
     IndexEditor(ComicPalette palette) {
@@ -141,6 +146,7 @@ final class IndexEditor {
         rawWindowChars = field(search, RAW_WINDOW_CHARS_LABEL, RAW_WINDOW_CHARS_HELP);
         retrievalRerank = search.checkBox(RERANK_LABEL, RERANK_HELP);
         search.note(RERANK_HELP);
+        retrievalRerankTopK = field(search, RERANK_TOP_K_LABEL, RERANK_TOP_K_HELP);
         FormRows preparation = new FormRows(palette);
         preparation.note(PREPARATION_NOTE);
         rawWorkers = field(preparation, RAW_WORKERS_LABEL, RAW_WORKERS_HELP);
@@ -197,6 +203,7 @@ final class IndexEditor {
         embeddingConcurrency.setText(form.embeddingConcurrency());
         embeddingBatchSize.setText(form.embeddingBatchSize());
         retrievalRerank.setSelected(form.retrievalRerank());
+        retrievalRerankTopK.setText(form.retrievalRerankTopK());
     }
 
     void store(SettingsForm.Builder b) {
@@ -217,7 +224,8 @@ final class IndexEditor {
                 .enrichmentWorkers(enrichmentWorkers.getText())
                 .embeddingConcurrency(embeddingConcurrency.getText())
                 .embeddingBatchSize(embeddingBatchSize.getText())
-                .retrievalRerank(retrievalRerank.isSelected());
+                .retrievalRerank(retrievalRerank.isSelected())
+                .retrievalRerankTopK(retrievalRerankTopK.getText());
     }
 
     // Für Tests.
@@ -296,5 +304,9 @@ final class IndexEditor {
 
     JCheckBox retrievalRerank() {
         return retrievalRerank;
+    }
+
+    JTextField retrievalRerankTopK() {
+        return retrievalRerankTopK;
     }
 }

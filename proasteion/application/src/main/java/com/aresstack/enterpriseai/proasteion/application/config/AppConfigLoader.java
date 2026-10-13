@@ -108,6 +108,8 @@ public final class AppConfigLoader {
     public static final String RETRIEVAL_MAX_FOLLOW_UPS_KEY = "retrieval.maxFollowUps";
     /** Treffer vor der Übernahme vom Chat-Modell gegen die Frage bewerten lassen (Standard true). */
     public static final String RETRIEVAL_RERANK_KEY = "retrieval.rerank";
+    /** Candidates a selected cross-encoder ({@code model.rerank}) passes on to the evidence check, 1–40. */
+    public static final String RETRIEVAL_RERANK_TOP_K_KEY = "retrieval.rerankTopK";
     /** Volltext-Kandidaten je Suche ({@link RetrievalSettings#keywordCandidates()}). */
     public static final String RETRIEVAL_KEYWORD_CANDIDATES_KEY = "retrieval.keywordCandidates";
     /** Semantische Kandidaten je Suche ({@link RetrievalSettings#semanticCandidates()}). */
@@ -502,7 +504,9 @@ public final class AppConfigLoader {
                         EvidencePolicy.MAX_MIN_SOURCES))
                 .withMaxFollowUps(r.integer(RETRIEVAL_MAX_FOLLOW_UPS_KEY, FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS, 0,
                         EvidencePolicy.MAX_FOLLOW_UPS))
-                .withReranking(r.bool(RETRIEVAL_RERANK_KEY, true));
+                .withReranking(r.bool(RETRIEVAL_RERANK_KEY, true))
+                .withRerankTopK(r.integer(RETRIEVAL_RERANK_TOP_K_KEY, EvidencePolicy.DEFAULT_RERANK_TOP_K, 1,
+                        EvidencePolicy.MAX_RERANK_TOP_K));
         int initialPages = r.integer(LIVE_SEARCH_INITIAL_PAGES_KEY, LiveSearchConfig.DEFAULT_INITIAL_PAGES, 0,
                 LiveSearchConfig.MAX_PAGES_LIMIT);
         int maxPages = r.integer(LIVE_SEARCH_MAX_PAGES_KEY, LiveSearchConfig.DEFAULT_MAX_PAGES, 0,

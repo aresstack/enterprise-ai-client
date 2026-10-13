@@ -118,6 +118,7 @@ public final class SettingsForm {
     private final String liveSearchHitsPerSource;
     private final String retrievalMaxFollowUps;
     private final boolean retrievalRerank;
+    private final String retrievalRerankTopK;
     private final String rawWorkers;
     private final String enrichmentWorkers;
     private final String embeddingConcurrency;
@@ -205,6 +206,7 @@ public final class SettingsForm {
         this.liveSearchHitsPerSource = b.liveSearchHitsPerSource;
         this.retrievalMaxFollowUps = b.retrievalMaxFollowUps;
         this.retrievalRerank = b.retrievalRerank;
+        this.retrievalRerankTopK = b.retrievalRerankTopK;
         this.rawWorkers = b.rawWorkers;
         this.enrichmentWorkers = b.enrichmentWorkers;
         this.embeddingConcurrency = b.embeddingConcurrency;
@@ -280,6 +282,7 @@ public final class SettingsForm {
                 .liveSearchHitsPerSource(liveSearchHitsPerSource)
                 .retrievalMaxFollowUps(retrievalMaxFollowUps)
                 .retrievalRerank(retrievalRerank)
+                .retrievalRerankTopK(retrievalRerankTopK)
                 .rawWorkers(rawWorkers)
                 .enrichmentWorkers(enrichmentWorkers)
                 .embeddingConcurrency(embeddingConcurrency)
@@ -662,6 +665,11 @@ public final class SettingsForm {
         return retrievalRerank;
     }
 
+    /** Kandidaten, die ein gewählter Re-Ranker an die Bewertung weitergibt ({@code retrieval.rerankTopK}, 1–40). */
+    public String retrievalRerankTopK() {
+        return retrievalRerankTopK;
+    }
+
     /** Rohindex: Schreiber ({@code knowledge.raw.workers}). */
     public String rawWorkers() {
         return rawWorkers;
@@ -799,6 +807,8 @@ public final class SettingsForm {
         private String liveSearchHitsPerSource = "10";
         private String retrievalMaxFollowUps = "2";
         private boolean retrievalRerank = true;
+        private String retrievalRerankTopK = String.valueOf(
+                com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy.DEFAULT_RERANK_TOP_K);
         private String rawWorkers = "2";
         private String enrichmentWorkers = "4";
         private String embeddingConcurrency = "4";
@@ -1199,6 +1209,11 @@ public final class SettingsForm {
 
         public Builder retrievalMaxFollowUps(String value) {
             this.retrievalMaxFollowUps = text(value);
+            return this;
+        }
+
+        public Builder retrievalRerankTopK(String value) {
+            this.retrievalRerankTopK = text(value);
             return this;
         }
 

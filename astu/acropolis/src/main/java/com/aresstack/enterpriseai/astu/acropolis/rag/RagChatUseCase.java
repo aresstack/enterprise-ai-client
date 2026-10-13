@@ -81,6 +81,8 @@ public final class RagChatUseCase {
     /** Adaptiver Modus (Reranking, progressive Evidenz); {@code null} = feste Treffermenge wie bisher. */
     private final Supplier<EvidencePolicy> evidence;
     private final EvidenceEvaluator evaluator = new EvidenceEvaluator();
+    /** The cross-encoder before the evaluator (model category RERANK); off until a reranker is attached. */
+    private volatile CrossEncoderRanking crossEncoder = CrossEncoderRanking.off();
     /** Ob vor der ersten Suche geprüft wird, ob und womit gesucht wird. */
     private final RetrievalTriage triage;
     private final LinguisticAnalyzer analyzer;
@@ -182,6 +184,17 @@ public final class RagChatUseCase {
         this.analyzer = analyzer;
         this.analysisObserver = observer == null ? TurnAnalysisObserver.none() : observer;
         this.planning = planning;
+    }
+
+    /**
+     * Attach the cross-encoder that narrows each candidate round before the {@link EvidenceEvaluator} (adaptive mode
+     * only). Without a selected RERANK model, or when it fails, the candidates pass unchanged.
+     *
+     * @param ranking {@code null} = {@link CrossEncoderRanking#off()}
+     */
+    public RagChatUseCase rankCandidatesWith(CrossEncoderRanking ranking) {
+        this.crossEncoder = ranking == null ? CrossEncoderRanking.off() : ranking;
+        return this;
     }
 
     /**
@@ -676,7 +689,10 @@ public final class RagChatUseCase {
                 List<String> fresh = evidence.admit(round == 0 && queries.size() == 1
                         ? newestFirst(result.hits(), carried) : result.hits());
                 if (round == 0 || !fresh.isEmpty()) {
-                    Map<String, RetrievedChunk> offered = evidence.offer(fresh);
+                    // Cross-encoder first (if a RERANK model is selected): only the best candidates reach the
+                    // evaluator, which still decides relevance, sufficiency, minimum evidence and the next search.
+                    Map<String, RetrievedChunk> offered = crossEncoder.rank(userText, evidence.offer(fresh))
+                            .candidates();
                     progress.rankingStarted(offered.size());
                     EvidenceEvaluator.Evaluation evaluation = evaluator.evaluate(chat, history, userText,
                             all(evidence.priorQueries, queries), offered, evidence.minSources(),

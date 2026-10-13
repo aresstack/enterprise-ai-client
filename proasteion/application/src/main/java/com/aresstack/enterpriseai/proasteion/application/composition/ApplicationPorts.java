@@ -38,6 +38,7 @@ public final class ApplicationPorts implements Closeable {
 
     private final ChatCompletionPort chat;
     private final EmbeddingPort embeddings;
+    private final com.aresstack.enterpriseai.model.api.RerankPort reranker;
     private final Supplier<EmbeddingModelIdentity> embeddingSpace;
     private final KnowledgeIndexPort index;
     private final RawKnowledgeIndexPort rawIndex;
@@ -64,6 +65,7 @@ public final class ApplicationPorts implements Closeable {
         }
         this.chat = builder.chat;
         this.embeddings = builder.embeddings;
+        this.reranker = builder.reranker;
         this.embeddingSpace = builder.embeddingSpace;
         this.index = builder.index;
         this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
@@ -88,6 +90,11 @@ public final class ApplicationPorts implements Closeable {
 
     public EmbeddingPort embeddings() {
         return embeddings;
+    }
+
+    /** The cross-encoder of the selected RERANK model ({@code model.rerank}); {@code null} = none. */
+    public com.aresstack.enterpriseai.model.api.RerankPort reranker() {
+        return reranker;
     }
 
     /** Die Embedding-Welt (Index-Namensraum) des aktuellen Stands. */
@@ -228,6 +235,7 @@ public final class ApplicationPorts implements Closeable {
     public static final class Builder {
         private ChatCompletionPort chat;
         private EmbeddingPort embeddings;
+        private com.aresstack.enterpriseai.model.api.RerankPort reranker;
         private Supplier<EmbeddingModelIdentity> embeddingSpace;
         private KnowledgeIndexPort index;
         private RawKnowledgeIndexPort rawIndex;
@@ -246,6 +254,11 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder chat(ChatCompletionPort value) {
             this.chat = value;
+            return this;
+        }
+
+        public Builder reranker(com.aresstack.enterpriseai.model.api.RerankPort value) {
+            this.reranker = value;
             return this;
         }
 
