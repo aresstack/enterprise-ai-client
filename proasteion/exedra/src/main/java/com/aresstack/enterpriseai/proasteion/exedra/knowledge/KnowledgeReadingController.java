@@ -17,6 +17,8 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeSource
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.FoundResource;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolvedKnowledgeLink;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SourceSearchOutcome;
 import com.aresstack.enterpriseai.astu.acropolis.navigation.BuildDocumentNavigationUseCase;
@@ -24,6 +26,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
@@ -33,9 +36,13 @@ import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -79,6 +86,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     private final Supplier<List<KnowledgeSourceRegistration>> enabledSources;
     private final Function<String, KnowledgeSourceRegistration> lookup;
     private final SearchKnowledgeSourcesUseCase search;
+    private final ResolveKnowledgeAddressUseCase addresses;
     private final BrowseKnowledgeSourceUseCase browse;
     private final KnowledgePrefetchService prefetch;
     private final FavoritesStore favorites;
@@ -105,14 +113,30 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                                       KnowledgePrefetchService prefetch, FavoritesStore favorites,
                                       BuildDocumentNavigationUseCase navigation,
                                       Executor uiExecutor, Executor workExecutor) {
+        this(workspace, enabledSources, lookup, search, null, browse, prefetch, favorites, navigation,
+                uiExecutor, workExecutor);
+    }
+
+    /**
+     * Wie der bisherige Konstruktor, zusätzlich mit der optionalen direkten Adressauflösung für die Suchleiste.
+     * Fehlt sie, bleibt das Suchverhalten unverändert.
+     */
+    public KnowledgeReadingController(ChatWorkspacePanel workspace,
+                                      Supplier<List<KnowledgeSourceRegistration>> enabledSources,
+                                      Function<String, KnowledgeSourceRegistration> lookup,
+                                      SearchKnowledgeSourcesUseCase search, ResolveKnowledgeAddressUseCase addresses,
+                                      BrowseKnowledgeSourceUseCase browse, KnowledgePrefetchService prefetch,
+                                      FavoritesStore favorites, BuildDocumentNavigationUseCase navigation,
+                                      Executor uiExecutor, Executor workExecutor) {
         if (workspace == null || enabledSources == null || lookup == null || search == null || browse == null
                 || prefetch == null || uiExecutor == null || workExecutor == null) {
-            throw new IllegalArgumentException("only favorites may be null");
+            throw new IllegalArgumentException("only favorites and addresses may be null");
         }
         this.workspace = workspace;
         this.enabledSources = enabledSources;
         this.lookup = lookup;
         this.search = search;
+        this.addresses = addresses;
         this.browse = browse;
         this.prefetch = prefetch;
         this.favorites = favorites;
@@ -136,58 +160,158 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
 
     // ------------------------------------------------------------------ Suche
 
-    /** Durchsucht alle angehakten Quellen gleichzeitig; ein neuer Aufruf verwirft das Ergebnis des alten. */
+    /**
+     * Durchsucht die angehakten Quellen. Passt die vollständige Eingabe auf das Address-Pattern mindestens einer
+     * Quelle, werden ausschließlich diese Quellen berücksichtigt; jede davon wird zusätzlich separat mit ihrem
+     * expliziten Source-Hint aufgelöst. Ohne Pattern-Treffer bleibt die bisherige globale Suche unverändert.
+     */
     public void searchRequested(final String text) {
         final int generation = ++searchGeneration;
-        List<KnowledgeSourceRegistration> registrations = enabledSources.get();
-        final List<KnowledgeSourcePort> ports = new ArrayList<KnowledgeSourcePort>();
-        for (KnowledgeSourceRegistration registration : registrations) {
-            ports.add(registration.port());
-        }
+        List<KnowledgeSourceRegistration> enabled = enabledSources.get();
+        final List<KnowledgeSourceRegistration> addressed = addressedSources(enabled, text);
+        final List<KnowledgeSourceRegistration> searched = addressed.isEmpty() ? enabled : addressed;
+        final List<KnowledgeSourcePort> ports = portsOf(searched);
         final int count = ports.size();
         if (count == 0) {
             workspace.knowledgeSources().setSearchState(SourceSearchState.done(text, 0, null, null));
             return;
         }
+
         workspace.knowledgeSources().setSearchState(SourceSearchState.running(text, count));
-        search.search(ports, text, SearchKnowledgeSourcesUseCase.DEFAULT_LIMIT_PER_SOURCE)
-                .whenComplete((outcomes, failure) -> uiExecutor.execute(() -> {
+        CompletableFuture<List<SourceSearchOutcome>> searchFuture =
+                search.search(ports, text, SearchKnowledgeSourcesUseCase.DEFAULT_LIMIT_PER_SOURCE);
+        CompletableFuture<AddressHits> directFuture = addressed.isEmpty()
+                ? CompletableFuture.completedFuture(AddressHits.empty())
+                : CompletableFuture.supplyAsync(() -> resolveAddresses(text, addressed), workExecutor);
+
+        searchFuture.thenCombine(directFuture, SearchResult::new)
+                .whenComplete((result, failure) -> uiExecutor.execute(() -> {
                     if (generation != searchGeneration) {
                         return; // inzwischen neu gesucht oder geleert
                     }
-                    List<ReaderLink> hits = new ArrayList<ReaderLink>();
-                    List<KnowledgePrefetchService.Candidate> candidates =
-                            new ArrayList<KnowledgePrefetchService.Candidate>();
-                    List<String> problems = new ArrayList<String>();
-                    if (failure != null) {
-                        LOG.log(Level.WARNING, "Quellensuche fehlgeschlagen", failure);
-                        problems.add("Suche fehlgeschlagen (Protokoll)");
-                    } else {
-                        for (SourceSearchOutcome outcome : outcomes) {
-                            if (outcome.failed()) {
-                                problems.add(outcome.sourceId().value() + ": " + outcome.problem());
-                            }
-                            KnowledgeSourceRegistration owner = lookup.apply(outcome.sourceId().value());
-                            for (FoundResource found : outcome.hits()) {
-                                ReaderLink link = new ReaderLink(found.sourceId().value(), found.resourceId().value(),
-                                        found.title(), found.snippet(), found.location());
-                                hits.add(link);
-                                if (owner != null) {
-                                    candidates.add(new KnowledgePrefetchService.Candidate(owner.port(),
-                                            found.resourceId(), found.revision()));
-                                }
-                            }
-                        }
-                    }
-                    workspace.knowledgeSources().setSearchState(SourceSearchState.done(text, count, hits, problems));
-                    // Wie MainframeMate nach der Suche: alle Treffer ab Position 0 im Hintergrund vorladen.
-                    hitCandidates = candidates;
-                    hitKeys = new ArrayList<String>();
-                    for (KnowledgePrefetchService.Candidate candidate : candidates) {
-                        hitKeys.add(candidate.id().value());
-                    }
-                    prefetchFrom(0, true);
+                    publishSearchResult(text, count, result, failure);
                 }));
+    }
+
+    private List<KnowledgeSourceRegistration> addressedSources(List<KnowledgeSourceRegistration> enabled, String text) {
+        List<KnowledgeSourceRegistration> matched = new ArrayList<KnowledgeSourceRegistration>();
+        if (addresses == null) {
+            return matched;
+        }
+        for (KnowledgeSourceRegistration registration : enabled) {
+            if (addresses.matches(text, registration.sourceId())) {
+                matched.add(registration);
+            }
+        }
+        return matched;
+    }
+
+    private static List<KnowledgeSourcePort> portsOf(List<KnowledgeSourceRegistration> registrations) {
+        List<KnowledgeSourcePort> ports = new ArrayList<KnowledgeSourcePort>();
+        for (KnowledgeSourceRegistration registration : registrations) {
+            ports.add(registration.port());
+        }
+        return ports;
+    }
+
+    /**
+     * Löst jede durch ihr eigenes Pattern ausgewählte Quelle einzeln auf. Der Source-Hint ist absichtlich immer gesetzt:
+     * identische Patterns mehrerer Quellen erzeugen mehrere unabhängige Auflösungsversuche statt First-Match-Verhalten.
+     */
+    private AddressHits resolveAddresses(String text, List<KnowledgeSourceRegistration> registrations) {
+        List<ReaderLink> links = new ArrayList<ReaderLink>();
+        List<KnowledgePrefetchService.Candidate> candidates = new ArrayList<KnowledgePrefetchService.Candidate>();
+        for (KnowledgeSourceRegistration registration : registrations) {
+            try {
+                Optional<ResolvedKnowledgeLink> resolved = addresses.resolve(text, registration.sourceId());
+                if (!resolved.isPresent()) {
+                    continue;
+                }
+                ResolvedKnowledgeLink link = resolved.get();
+                links.add(new ReaderLink(link.sourceId().value(), link.resourceId().value(),
+                        "Direktadresse", "", link.address()));
+                candidates.add(new KnowledgePrefetchService.Candidate(registration.port(), link.resourceId(),
+                        KnowledgeRevision.unknown()));
+            } catch (KnowledgeSourceException e) {
+                LOG.log(Level.INFO, "Direktadresse für " + registration.sourceId().value()
+                        + " nicht aufgelöst (" + e.kind() + ")", e);
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "Direktadresse für " + registration.sourceId().value()
+                        + " nicht aufgelöst", e);
+            }
+        }
+        return new AddressHits(links, candidates);
+    }
+
+    private void publishSearchResult(String text, int count, SearchResult result, Throwable failure) {
+        List<ReaderLink> direct = result == null ? new ArrayList<ReaderLink>() : result.direct.links;
+        List<KnowledgePrefetchService.Candidate> candidates = result == null
+                ? new ArrayList<KnowledgePrefetchService.Candidate>()
+                : new ArrayList<KnowledgePrefetchService.Candidate>(result.direct.candidates);
+        List<ReaderLink> hits = new ArrayList<ReaderLink>();
+        List<String> problems = new ArrayList<String>();
+        Set<String> directKeys = new HashSet<String>();
+        for (ReaderLink link : direct) {
+            directKeys.add(link.key());
+        }
+
+        if (failure != null || result == null) {
+            LOG.log(Level.WARNING, "Quellensuche fehlgeschlagen", failure);
+            problems.add("Suche fehlgeschlagen (Protokoll)");
+        } else {
+            for (SourceSearchOutcome outcome : result.outcomes) {
+                if (outcome.failed()) {
+                    problems.add(outcome.sourceId().value() + ": " + outcome.problem());
+                }
+                KnowledgeSourceRegistration owner = lookup.apply(outcome.sourceId().value());
+                for (FoundResource found : outcome.hits()) {
+                    ReaderLink link = new ReaderLink(found.sourceId().value(), found.resourceId().value(),
+                            found.title(), found.snippet(), found.location());
+                    if (directKeys.contains(link.key())) {
+                        continue; // derselbe direkte Treffer steht bereits hervorgehoben vorne
+                    }
+                    hits.add(link);
+                    if (owner != null) {
+                        candidates.add(new KnowledgePrefetchService.Candidate(owner.port(),
+                                found.resourceId(), found.revision()));
+                    }
+                }
+            }
+        }
+
+        workspace.knowledgeSources().setSearchState(SourceSearchState.done(text, count, direct, hits, problems));
+        // Wie MainframeMate nach der Suche: Direkttreffer zuerst, danach die übrigen Treffer vorladen.
+        hitCandidates = candidates;
+        hitKeys = new ArrayList<String>();
+        for (KnowledgePrefetchService.Candidate candidate : candidates) {
+            hitKeys.add(candidate.id().value());
+        }
+        prefetchFrom(0, true);
+    }
+
+    private static final class AddressHits {
+        final List<ReaderLink> links;
+        final List<KnowledgePrefetchService.Candidate> candidates;
+
+        AddressHits(List<ReaderLink> links, List<KnowledgePrefetchService.Candidate> candidates) {
+            this.links = links;
+            this.candidates = candidates;
+        }
+
+        static AddressHits empty() {
+            return new AddressHits(new ArrayList<ReaderLink>(),
+                    new ArrayList<KnowledgePrefetchService.Candidate>());
+        }
+    }
+
+    private static final class SearchResult {
+        final List<SourceSearchOutcome> outcomes;
+        final AddressHits direct;
+
+        SearchResult(List<SourceSearchOutcome> outcomes, AddressHits direct) {
+            this.outcomes = outcomes;
+            this.direct = direct == null ? AddressHits.empty() : direct;
+        }
     }
 
     public void searchCleared() {
