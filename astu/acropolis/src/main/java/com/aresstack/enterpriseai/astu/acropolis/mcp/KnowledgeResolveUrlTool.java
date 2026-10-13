@@ -27,7 +27,9 @@ final class KnowledgeResolveUrlTool implements McpToolHandler {
     static final String PARAM_URL = "url";
     static final String PARAM_SOURCE = "source";
 
-    private static final String EXAMPLE = "url=\"https://wiki.example.org/pages/viewpage.action?pageId=47110815\"";
+    /** Without host: base addresses are configuration, never literals (HardcodedConfigurationRules). */
+    private static final String EXAMPLE = "url=\"<the complete link as given, e.g. "
+            + ".../pages/viewpage.action?pageId=47110815>\"";
     private static final int FIELD_CHARS = 300;
 
     private final ResolveKnowledgeAddressUseCase addresses;
