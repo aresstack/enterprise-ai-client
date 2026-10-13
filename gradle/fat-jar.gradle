@@ -286,3 +286,43 @@ def smokeStartFatJar = tasks.register('smokeStartFatJar', Exec) {
 
 tasks.named('assemble') { dependsOn fatJar }
 tasks.named('check') { dependsOn verifyFatJar, smokeStartFatJar }
+
+// Update-Paket zwischen zwei ausgelieferten Fat Jars (Issue #92, "Update einspielen …" in Merlins Kristallhöhle):
+//   ./gradlew :proasteion:exedra:fatJarPatch -PpatchBase=<alte.jar> [-PpatchTarget=<neue.jar>] [-PpatchChanges=<txt>]
+// Ohne patchTarget gilt das eben gebaute Fat Jar als Ziel. Das ZIP enthält nur neue und geänderte Einträge, die
+// Liste der entfernten, beide SHA-256-Werte und die Änderungen; Format und Prüfungen in
+// proasteion:application update.JarPatch. Der Erzeuger spielt den Patch probeweise ein und bricht ab, wenn er die
+// Zielversion nicht reproduziert. Ablage: build/distributions/enterprise-ai-client-patch-<basis>-to-<ziel>.zip.
+def patchBase = providers.gradleProperty('patchBase')
+def patchTarget = providers.gradleProperty('patchTarget')
+def patchChanges = providers.gradleProperty('patchChanges')
+def patchDir = layout.buildDirectory.dir('distributions')
+// Relative Pfade gelten ab dem Wurzelverzeichnis des Repositorys.
+def patchRoot = rootProject.projectDir
+def patchFile = { String path -> File given = new File(path); given.isAbsolute() ? given : new File(patchRoot, path) }
+def manifestVersion = { File jar ->
+    new java.util.jar.JarFile(jar).withCloseable { it.manifest?.mainAttributes?.getValue('Implementation-Version') }
+}
+tasks.register('fatJarPatch', JavaExec) {
+    group = 'build'
+    description = 'Erzeugt ein Update-Paket von -PpatchBase zum Fat Jar dieses Builds (oder -PpatchTarget).'
+    if (!patchTarget.isPresent()) {
+        dependsOn fatJar
+    }
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.aresstack.enterpriseai.proasteion.exedra.update.JarPatchMain'
+    doFirst {
+        if (!patchBase.isPresent()) {
+            throw new GradleException('fatJarPatch braucht -PpatchBase=<Jar der Vorversion>')
+        }
+        File base = patchFile(patchBase.get())
+        File target = patchTarget.isPresent() ? patchFile(patchTarget.get()) : fatJar.get().archiveFile.get().asFile
+        File out = patchDir.get().file("${fatJarBaseName}-patch-${manifestVersion(base)}-to-${manifestVersion(target)}.zip").asFile
+        out.parentFile.mkdirs()
+        List<String> arguments = [base.absolutePath, target.absolutePath, out.absolutePath]
+        if (patchChanges.isPresent()) {
+            arguments << patchFile(patchChanges.get()).absolutePath
+        }
+        args = arguments
+    }
+}

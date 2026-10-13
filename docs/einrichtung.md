@@ -405,6 +405,25 @@ mit `GITHUB_TOKEN` (`contents: write`) und ohne Organisations-Secrets; Tags und 
 keine weiteren Läufe aus. Auf Branches bricht ein neuer Push einen noch laufenden Snapshot-Lauf ab, auf `main`
 laufen die Läufe nacheinander. Snapshots sind zum Ausprobieren gedacht, nicht für den produktiven Einsatz.
 
+### Update-Paket (Patch zwischen zwei Versionen)
+
+Neben dem Jar hängt am Release `enterprise-ai-client-patch-<vorversion>-to-<version>.zip`: nur die gegenüber der
+letzten veröffentlichten Version neuen und geänderten Jar-Einträge (`files/`), die Liste der entfernten
+(`removed.txt`), die Änderungen (`changes.txt`, Commit-Titel seit der Vorversion) und `patch.properties` mit Basis-
+und Zielversion, SHA-256 des Basis-Jars, SHA-256 des Ziel-Jars und einer Inhaltsprüfsumme des Ziel-Jars. Lokal:
+
+```bash
+./gradlew :proasteion:exedra:fatJarPatch -PpatchBase=<alte.jar> [-PpatchTarget=<neue.jar>] [-PpatchChanges=<datei>]
+```
+
+Eingespielt wird es in den Einstellungen unter „Merlins Kristallhöhle“ mit „Update einspielen …“: Die Anwendung
+bestimmt das Jar, aus dem sie läuft (über die Code-Quelle, nicht über einen festen Namen), prüft Basisversion und
+SHA-256, zeigt Zielversion und Änderungen und schreibt nach Bestätigung `enterprise-ai-client-<version>.jar` neben
+das laufende Jar. Das laufende Jar wird nie verändert; die neue Datei startet man beim nächsten Mal selbst. Nach dem
+Schreiben vergleicht der Client die Inhaltsprüfsumme (Namen und Bytes aller Einträge, unabhängig von Kompression und
+Reihenfolge) mit dem Patch; passt sie nicht, wird die Datei verworfen. Eine vorhandene Zieldatei ersetzt er nur
+nach Rückfrage. Beim Start aus IDE oder Klassenverzeichnis erklärt der Knopf, dass es kein Fat Jar als Basis gibt.
+
 ## IDE
 
 Das Projekt ist ein normales Gradle-Multiprojekt und lässt sich in IntelliJ IDEA oder Eclipse über

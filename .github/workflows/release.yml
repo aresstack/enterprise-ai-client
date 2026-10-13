@@ -126,6 +126,7 @@ jobs:
           if-no-files-found: error
 
       - name: Release auf main anlegen
+        id: release
         if: steps.version.outputs.release == 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
@@ -180,6 +181,42 @@ jobs:
             echo
             echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      # Update-Paket von der letzten veröffentlichten Version zu diesem Jar (Issue #92, "Update einspielen …" in
+      # Merlins Kristallhöhle). Auf main hängt es am neuen Release, auf Branches prüft der Lauf nur, dass es entsteht.
+      # Scheitert es (keine Vorversion, Netz), bleibt das Release ohne Update-Paket: nur eine Warnung.
+      - name: Update-Paket zur Vorversion erzeugen
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          JAR: ${{ steps.version.outputs.jar }}
+          CREATED: ${{ steps.release.outputs.created }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          warn() { echo "::warning title=Kein Update-Paket::$1"; exit 0; }
+          previous="$(gh release list --exclude-pre-releases --exclude-drafts --limit 20 --json tagName \
+            --jq '.[].tagName' | grep -vx "$TAG" | head -n 1)"
+          [ -n "$previous" ] || warn "Keine Vorversion gefunden."
+          dir="$(mktemp -d)"
+          gh release download "$previous" --pattern 'enterprise-ai-client-[0-9]*.jar' --dir "$dir" \
+            || warn "Jar von $previous nicht ladbar."
+          base="$(ls "$dir"/enterprise-ai-client-*.jar | head -n 1)"
+          [ -f "$base" ] || warn "Release $previous hat kein Jar."
+          changes="$dir/changes.txt"
+          gh api "repos/$GH_REPO/compare/$previous...$GITHUB_SHA" --jq '.commits[].commit.message | split("\n")[0]' \
+            | grep -v '^Version [0-9]' | sed 's/^/- /' > "$changes" || true
+          ./gradlew :proasteion:exedra:fatJarPatch --no-daemon -Prelease=${{ steps.version.outputs.release }} \
+            -PpatchBase="$base" -PpatchTarget="$JAR" -PpatchChanges="$changes" \
+            || warn "fatJarPatch von $previous nach $VERSION fehlgeschlagen."
+          patch="$(ls proasteion/exedra/build/distributions/enterprise-ai-client-patch-*-to-"$VERSION".zip | head -n 1)"
+          [ -f "$patch" ] || warn "Update-Paket fehlt nach fatJarPatch."
+          ls -l "$patch"
+          unzip -p "$patch" patch.properties
+          if [ "$CREATED" = "true" ]; then
+            gh release upload "$TAG" "$patch" || warn "Update-Paket nicht hochgeladen."
+          fi
 
       - name: Rollierenden Snapshot des Branches aktualisieren
         if: steps.version.outputs.release != 'true'

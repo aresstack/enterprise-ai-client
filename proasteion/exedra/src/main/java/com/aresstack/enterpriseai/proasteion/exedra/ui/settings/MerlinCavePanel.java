@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.proasteion.application.update.JarPatcher;
+import com.aresstack.enterpriseai.proasteion.application.update.RunningJar;
+import com.aresstack.enterpriseai.ui.comic.control.ComicButton;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 
 import javax.imageio.ImageIO;
@@ -16,6 +19,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
@@ -66,7 +70,32 @@ public final class MerlinCavePanel extends JPanel {
                 SwingConstants.CENTER);
         status.setForeground(palette.getInk());
         status.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0));
-        add(status, BorderLayout.SOUTH);
+        JPanel footer = new JPanel(new BorderLayout(0, 8));
+        footer.setOpaque(false);
+        footer.add(status, BorderLayout.NORTH);
+        footer.add(updateRow(), BorderLayout.SOUTH);
+        add(footer, BorderLayout.SOUTH);
+    }
+
+    /** "Update einspielen …": builds the next versioned fat jar from a local patch (issue #92). */
+    private JPanel updateRow() {
+        ComicButton button = new ComicButton(JarUpdateAction.BUTTON_TEXT);
+        button.setToolTipText("Erzeugt aus einem lokalen Update-Paket die neue Jar-Datei neben der laufenden;"
+                + " die laufende Version bleibt unverändert.");
+        JarUpdateAction action = new JarUpdateAction(this, () -> RunningJar.of(MerlinCavePanel.class),
+                new JarPatcher(), command -> {
+                    Thread worker = new Thread(command, "jar-update");
+                    worker.setDaemon(true);
+                    worker.start();
+                }, new JarUpdateAction.SwingDialogs(), busy -> {
+                    button.setEnabled(!busy);
+                    setCursor(busy ? Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR) : null);
+                });
+        button.addActionListener(event -> action.run());
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        row.setOpaque(false);
+        row.add(button);
+        return row;
     }
 
     private BufferedImage loadCaveImage() {
