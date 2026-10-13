@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
@@ -19,6 +20,7 @@ import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -29,7 +31,7 @@ import java.util.logging.Logger;
  * lesbar“ ohne den eigentlichen Grund. Secrets gehören laut Vorgabe in keine Ausnahmemeldung, deshalb darf die
  * Meldung der Quelle unverändert ins Protokoll.
  */
-public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, PageViewSource {
+public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, PageViewSource, AddressableKnowledgeSource {
 
     private static final Logger LOG = Logger.getLogger(LoggingKnowledgeSource.class.getName());
 
@@ -138,6 +140,22 @@ public final class LoggingKnowledgeSource implements SearchableKnowledgeSource, 
             return SourceCapabilities.resolveLink(delegate, address);
         } catch (KnowledgeSourceException e) {
             throw logged("resolveLink", e);
+        }
+    }
+
+    @Override
+    public Pattern addressPattern() {
+        return SourceCapabilities.addressPattern(delegate);
+    }
+
+    @Override
+    public KnowledgeResourceId resolveAddress(String address) throws KnowledgeSourceException {
+        try {
+            return SourceCapabilities.resolveAddress(delegate, address);
+        } catch (KnowledgeSourceException e) {
+            throw logged("resolveAddress", e);
+        } catch (RuntimeException e) {
+            throw unexpected("resolveAddress", e);
         }
     }
 
