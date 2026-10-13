@@ -3,17 +3,19 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Hüllt den Quellen-Port eines Adapters, damit jede geöffnete Quelle ihre Fehler mit Ursachenkette protokolliert
  * ({@link LoggingKnowledgeSource}); beim Start wie nach „+ Quelle“.
  */
-final class LoggingSourceProvider implements KnowledgeSourceProvider {
+final class LoggingSourceProvider implements KnowledgeSourceProvider, AddressableKnowledgeSourceProvider {
 
     private final KnowledgeSourceProvider delegate;
 
@@ -27,6 +29,12 @@ final class LoggingSourceProvider implements KnowledgeSourceProvider {
     @Override
     public KnowledgeSourceType type() {
         return delegate.type();
+    }
+
+    @Override
+    public Pattern addressPattern() {
+        return delegate instanceof AddressableKnowledgeSourceProvider
+                ? ((AddressableKnowledgeSourceProvider) delegate).addressPattern() : null;
     }
 
     @Override
