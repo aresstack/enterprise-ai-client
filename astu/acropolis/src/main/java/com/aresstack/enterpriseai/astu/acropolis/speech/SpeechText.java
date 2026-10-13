@@ -22,6 +22,13 @@ public final class SpeechText {
      */
     static final int MAX_UNIT_CHARS = 1200;
 
+    /**
+     * Zielgröße des optionalen Stimmstabilitäts-Fixes: Nach Erreichen dieser Größe endet das Stück an der nächsten
+     * Satzgrenze. Da einzelne Sätze vorher auf {@link #MAX_CHUNK_CHARS} begrenzt werden, bleibt ein Stück deutlich
+     * unter dem Bereich um 1000 Zeichen, in dem generative TTS-Modelle beobachtbar instabil werden können.
+     */
+    static final int VOICE_STABILITY_TARGET_CHARS = 500;
+
     private static final Pattern FENCE = Pattern.compile("(?s)```.*?(```|$)|~~~.*?(~~~|$)");
     private static final Pattern IMAGE = Pattern.compile("!\\[([^\\]]*)\\]\\([^)]*\\)");
     private static final Pattern LINK = Pattern.compile("\\[([^\\]]+)\\]\\([^)]*\\)");
@@ -126,6 +133,14 @@ public final class SpeechText {
 
     /** Stücke in der gewählten Einheit, in Lesereihenfolge; leere fallen weg. */
     public static List<String> chunks(String plainText, SpeechChunking chunking) {
+        return chunks(plainText, chunking, false);
+    }
+
+    /**
+     * Stücke in der gewählten Einheit. Mit Stimmstabilitäts-Fix werden Absatz-/Antwort-Stücke nach Erreichen von
+     * ungefähr {@link #VOICE_STABILITY_TARGET_CHARS} Zeichen an der nächsten Satzgrenze beendet.
+     */
+    static List<String> chunks(String plainText, SpeechChunking chunking, boolean voiceStabilityFix) {
         List<String> chunks = new ArrayList<String>();
         if (plainText == null) {
             return chunks;
@@ -145,12 +160,12 @@ public final class SpeechText {
             } else {
                 unit.addAll(sentences);
                 if (chunking != SpeechChunking.ANSWER) {
-                    addUnits(chunks, unit);
+                    addUnits(chunks, unit, voiceStabilityFix);
                     unit.clear();
                 }
             }
         }
-        addUnits(chunks, unit);
+        addUnits(chunks, unit, voiceStabilityFix);
         return chunks;
     }
 
@@ -159,11 +174,29 @@ public final class SpeechText {
      * damit eine Äußerung im Token-Rahmen der Stimme bleibt); ohne sprechbares Zeichen leer.
      */
     static List<String> bounded(String chunk) {
-        return chunks(chunk, SpeechChunking.ANSWER);
+        return bounded(chunk, false);
+    }
+
+    /** Wie {@link #bounded(String)}, optional mit dem Stimmstabilitäts-Fix. */
+    static List<String> bounded(String chunk, boolean voiceStabilityFix) {
+        return chunks(chunk, SpeechChunking.ANSWER, voiceStabilityFix);
     }
 
     /** Fasst Sätze zu Stücken bis {@link #MAX_UNIT_CHARS} zusammen. */
     static void addUnits(List<String> chunks, List<String> sentences) {
+        addUnits(chunks, sentences, false);
+    }
+
+    /**
+     * Fasst Sätze zusammen. Ohne Fix gilt die harte bisherige Obergrenze; mit Fix wird nach Erreichen der Zielgröße
+     * an der gerade erreichten Satzgrenze abgeschlossen. So entstehen typischerweise Stücke um 500 Zeichen statt
+     * knapp 1000 oder mehr.
+     */
+    static void addUnits(List<String> chunks, List<String> sentences, boolean voiceStabilityFix) {
+        if (voiceStabilityFix) {
+            addStableUnits(chunks, sentences);
+            return;
+        }
         StringBuilder unit = new StringBuilder();
         for (String sentence : sentences) {
             if (unit.length() > 0 && unit.length() + 1 + sentence.length() > MAX_UNIT_CHARS) {
@@ -174,6 +207,23 @@ public final class SpeechText {
                 unit.append(' ');
             }
             unit.append(sentence);
+        }
+        if (unit.length() > 0) {
+            chunks.add(unit.toString());
+        }
+    }
+
+    private static void addStableUnits(List<String> chunks, List<String> sentences) {
+        StringBuilder unit = new StringBuilder();
+        for (String sentence : sentences) {
+            if (unit.length() > 0) {
+                unit.append(' ');
+            }
+            unit.append(sentence);
+            if (unit.length() >= VOICE_STABILITY_TARGET_CHARS) {
+                chunks.add(unit.toString());
+                unit.setLength(0);
+            }
         }
         if (unit.length() > 0) {
             chunks.add(unit.toString());
