@@ -137,6 +137,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     static final String CLOSE_TOOLTIP = "Schließen";
     static final String READ_ALOUD_PLAY_TOOLTIP = "Seite vorlesen";
     static final String READ_ALOUD_STOP_TOOLTIP = "Vorlesen beenden";
+    static final String READ_ALOUD_PAUSE_TOOLTIP = "Vorlesen pausieren";
+    static final String READ_ALOUD_RESUME_TOOLTIP = "Vorlesen fortsetzen";
     static final String READ_ALOUD_NO_TEXT_TOOLTIP = "Für diesen Reiter gibt es (noch) keinen vorlesbaren Text";
     static final String READ_ALOUD_UNAVAILABLE_TEXT = "Die Seite kann nicht vorgelesen werden: Es ist keine "
             + "Sprachausgabe eingerichtet (TTS-Modell und Stimme in den Einstellungen wählen).";
@@ -186,8 +188,12 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     /** Play/Stopp der Sprachausgabe; ausgeblendet, bis {@link #setReadAloud} sie anschließt. */
     private final ComposerButton readAloudButton;
     private ReadAloudControl readAloud;
+    /** Speaking-rate slider beside the button; hidden like the button until {@link #setReadAloud}. */
+    private final ReadAloudRateControl readAloudRate;
     /** Der Reiter, dessen Text gerade vorgelesen wird; {@code null}: keiner. */
     private Tab speakingTab;
+    /** Whether the reading of {@link #speakingTab} is paused (position kept, Play continues there). */
+    private boolean readAloudPaused;
     /** Kennung des laufenden Vorlesens; das Ende eines abgelösten Laufs setzt den Knopf nicht zurück. */
     private Object speakingRun;
     private java.util.function.Consumer<String> readAloudNotice = text -> JOptionPane.showMessageDialog(this, text,
@@ -247,6 +253,13 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         readAloudButton = toolbar.addTool(ComposerIcons.play(), READ_ALOUD_PLAY_TOOLTIP);
         toolbar.showTool(readAloudButton, false);
         readAloudButton.addActionListener(event -> toggleReadAloud());
+        readAloudRate = toolbar.addTool(new ReadAloudRateControl(ReaderToolbar.buttonSize()));
+        toolbar.showTool(readAloudRate, false);
+        readAloudRate.onChange(rate -> {
+            if (readAloud != null) {
+                readAloud.setRate(rate);
+            }
+        });
         // Rechts neben Lupe und Info: Anhänge der Seite (unabhängig davon, ob die Quelle sie indexiert).
         attachmentsButton = toolbar.addTool(attachmentIcon(0), ReaderAttachmentList.tooltip(0));
         toolbar.showTool(attachmentsButton, false);
@@ -586,7 +599,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     /**
      * Schließt die Sprachausgabe an (dieselbe wie im Chat: Modell, Stimme, Stückelung, Fehlermeldung) und zeigt den
      * Play-Knopf unten neben der Info. Play liest den Text des aktiven Reiters ohne Bilder, Grafiken und Diagramme
-     * vor, ein zweiter Klick beendet es, ein Doppelklick auf eine Textstelle liest ab dort neu; Reiterwechsel, Schließen und neuer Inhalt beenden es ebenfalls. Es gibt
+     * vor, ein zweiter Klick pausiert es an der aktuellen Stelle und ein weiterer setzt es dort fort (daneben der
+     * Regler für die Sprechgeschwindigkeit), ein Doppelklick auf eine Textstelle liest ab dort neu; Reiterwechsel, Schließen und neuer Inhalt beenden es ebenfalls. Es gibt
      * immer nur eine Ausgabe: der Chat und der Lesebereich lösen sich gegenseitig ab.
      */
     public void setReadAloud(ReadAloudControl control) {
@@ -601,6 +615,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             styleReadAloud();
         });
         toolbar.showTool(readAloudButton, true);
+        toolbar.showTool(readAloudRate, true);
+        readAloudRate.setRate(control.rate());
         styleReadAloud();
     }
 
@@ -626,6 +642,15 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         return readAloudButton;
     }
 
+    ReadAloudRateControl readAloudRate() {
+        return readAloudRate;
+    }
+
+    /** Whether the reading is paused at a kept position. */
+    boolean isReadAloudPaused() {
+        return readAloudPaused;
+    }
+
     void setReadAloudNotice(java.util.function.Consumer<String> notice) {
         this.readAloudNotice = notice;
     }
@@ -635,7 +660,17 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             return;
         }
         if (speakingTab != null) {
-            stopReadAloud();
+            if (!readAloud.canPause()) {
+                stopReadAloud();
+            } else if (readAloudPaused) {
+                readAloudPaused = false;
+                readAloud.resume();
+                styleReadAloud();
+            } else {
+                readAloudPaused = true;
+                readAloud.pause();
+                styleReadAloud();
+            }
             return;
         }
         if (!readAloud.isAvailable()) {
@@ -700,11 +735,13 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         final Object run = new Object();
         speakingTab = tab;
         speakingRun = run;
+        readAloudPaused = false;
         styleReadAloud();
         readAloud.speak(text, () -> {
             if (speakingRun == run) {
                 speakingTab = null;
                 speakingRun = null;
+                readAloudPaused = false;
                 styleReadAloud();
             }
         });
@@ -717,6 +754,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         }
         speakingTab = null;
         speakingRun = null;
+        readAloudPaused = false;
         if (readAloud != null) {
             readAloud.stop();
         }
@@ -730,11 +768,15 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         boolean speaking = speakingTab != null;
         Tab active = tabs.get(activeKey);
         boolean hasText = active != null && !SpeechText.withoutVisuals(active.speechText).isEmpty();
-        readAloudButton.setIcon(speaking ? ComposerIcons.stop() : ComposerIcons.play());
+        boolean pausable = readAloud.canPause();
+        boolean playing = speaking && !readAloudPaused;
+        readAloudButton.setIcon(!playing ? ComposerIcons.play() : pausable ? ComposerIcons.pause()
+                : ComposerIcons.stop());
         readAloudButton.setEmphasized(speaking);
         readAloudButton.setEnabled(speaking || hasText);
-        String tooltip = speaking ? READ_ALOUD_STOP_TOOLTIP : !hasText ? READ_ALOUD_NO_TEXT_TOOLTIP
-                : READ_ALOUD_PLAY_TOOLTIP;
+        String tooltip = readAloudPaused && speaking ? READ_ALOUD_RESUME_TOOLTIP
+                : playing ? (pausable ? READ_ALOUD_PAUSE_TOOLTIP : READ_ALOUD_STOP_TOOLTIP)
+                : !hasText ? READ_ALOUD_NO_TEXT_TOOLTIP : READ_ALOUD_PLAY_TOOLTIP;
         readAloudButton.setToolTipText(tooltip + " (" + readAloud.description() + ")");
     }
 

@@ -23,4 +23,22 @@ public interface AudioPlayback {
 
     /** Bricht die laufende Wiedergabe sofort ab; ohne Wiedergabe wirkungslos. */
     void stop();
+
+    /**
+     * Holds the output at the current position without discarding buffer or sequence: a running {@link #play} blocks
+     * until {@link #resume()}. {@link #stop()} and {@link #begin()} end the pause.
+     */
+    default void pause() {
+    }
+
+    /** Continues output held by {@link #pause()} at the same position; no effect otherwise. */
+    default void resume() {
+    }
+
+    /**
+     * Speaking rate of the output ({@link SpeechRate}, 1 = unchanged, pitch preserved); applies from the next output
+     * block, so also in the middle of a chunk.
+     */
+    default void setRate(double rate) {
+    }
 }

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.speech;
 
+import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechRate;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 
 import java.util.List;
@@ -14,6 +15,8 @@ public final class SwitchableReadAloud implements ReadAloudControl {
 
     private final List<Listener> listeners = new CopyOnWriteArrayList<Listener>();
     private ReadAloudBinding current;
+    /** The chosen rate survives a model change: the new binding speaks at the same speed. */
+    private double rate = SpeechRate.NORMAL;
 
     public SwitchableReadAloud(ReadAloudBinding initial) {
         if (initial == null) {
@@ -30,6 +33,7 @@ public final class SwitchableReadAloud implements ReadAloudControl {
         ReadAloudBinding previous = current;
         current = next;
         previous.close();
+        next.setRate(rate);
         fireChanged();
     }
 
@@ -60,6 +64,37 @@ public final class SwitchableReadAloud implements ReadAloudControl {
     @Override
     public void stop() {
         current.stop();
+    }
+
+    @Override
+    public boolean canPause() {
+        return current.canPause();
+    }
+
+    @Override
+    public void pause() {
+        current.pause();
+    }
+
+    @Override
+    public void resume() {
+        current.resume();
+    }
+
+    @Override
+    public boolean isPaused() {
+        return current.isPaused();
+    }
+
+    @Override
+    public void setRate(double rate) {
+        this.rate = SpeechRate.clamp(rate);
+        current.setRate(this.rate);
+    }
+
+    @Override
+    public double rate() {
+        return rate;
     }
 
     @Override

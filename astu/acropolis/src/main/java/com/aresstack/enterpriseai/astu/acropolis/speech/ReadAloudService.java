@@ -210,6 +210,8 @@ public final class ReadAloudService {
     private final SpeechTextPreparation preparation;
     private final Object lock = new Object();
     private long generation;
+    private boolean paused;
+    private double rate = SpeechRate.NORMAL;
 
     /**
      * @param synthesis die Sprachausgabe des Katalogs, aus dem {@code modelId} stammt
@@ -293,6 +295,7 @@ public final class ReadAloudService {
         final long myGeneration;
         synchronized (lock) {
             myGeneration = ++generation;
+            paused = false;
         }
         List<String> chunks = chunks(SpeechText.speakableCharacters(preparation == null
                 ? SpeechText.plainText(markdown) : preparation.spokenText(markdown)));
@@ -300,6 +303,10 @@ public final class ReadAloudService {
             return false;
         }
         playback.begin();
+        playback.setRate(rate());
+        if (isPaused()) {
+            playback.pause(); // paused while the text was being split
+        }
         final AtomicInteger workerNumber = new AtomicInteger();
         ExecutorService pool = Executors.newFixedThreadPool(workers, new ThreadFactory() {
             @Override
@@ -415,8 +422,53 @@ public final class ReadAloudService {
     public void stop() {
         synchronized (lock) {
             generation++;
+            paused = false;
         }
         playback.stop();
+    }
+
+    /**
+     * Holds the running read-aloud at the current position: playback stops mid-chunk, synthesis of the following
+     * chunks goes on, and {@link #resume()} continues exactly there. {@link #stop()} or a new {@link #speak} discards
+     * the paused position.
+     */
+    public void pause() {
+        synchronized (lock) {
+            paused = true;
+        }
+        playback.pause();
+    }
+
+    /** Continues a paused read-aloud where it stopped; no effect when not paused. */
+    public void resume() {
+        synchronized (lock) {
+            if (!paused) {
+                return;
+            }
+            paused = false;
+        }
+        playback.resume();
+    }
+
+    public boolean isPaused() {
+        synchronized (lock) {
+            return paused;
+        }
+    }
+
+    /** Speaking rate ({@link SpeechRate}); applies to the running read-aloud from the next output block. */
+    public void setRate(double rate) {
+        double clamped = SpeechRate.clamp(rate);
+        synchronized (lock) {
+            this.rate = clamped;
+        }
+        playback.setRate(clamped);
+    }
+
+    public double rate() {
+        synchronized (lock) {
+            return rate;
+        }
     }
 
     private boolean isCurrent(long myGeneration) {

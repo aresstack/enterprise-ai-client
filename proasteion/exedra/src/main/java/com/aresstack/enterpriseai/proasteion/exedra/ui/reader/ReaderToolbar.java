@@ -228,6 +228,19 @@ final class ReaderToolbar extends JPanel {
         return tool;
     }
 
+    /** Puts another control (e.g. the speaking-rate slider) to the right of the tools, at button height. */
+    <T extends JComponent> T addTool(T tool) {
+        tools.add(tool);
+        tool.setVisible(state == null || !state.open);
+        revalidate();
+        return tool;
+    }
+
+    /** Height of the toolbar buttons, for controls that sit beside them. */
+    static int buttonSize() {
+        return BUTTON_SIZE;
+    }
+
     /** Client-Property eines Werkzeugs, das gerade nichts zu tun hat (z. B. die Büroklammer ohne Anhänge). */
     private static final String HIDDEN_TOOL = "reader.toolbar.hiddenTool";
 
@@ -235,7 +248,7 @@ final class ReaderToolbar extends JPanel {
      * Blendet ein Werkzeug aus {@link #addTool} ein oder aus; ein ausgeblendetes kommt auch nach dem Schließen der
      * Suche nicht wieder.
      */
-    void showTool(ComposerButton tool, boolean shown) {
+    void showTool(JComponent tool, boolean shown) {
         tool.putClientProperty(HIDDEN_TOOL, shown ? null : Boolean.TRUE);
         tool.setVisible(shown && (state == null || !state.open));
         revalidate();

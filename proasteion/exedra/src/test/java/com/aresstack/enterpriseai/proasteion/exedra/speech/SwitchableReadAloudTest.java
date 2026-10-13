@@ -59,6 +59,28 @@ public class SwitchableReadAloudTest {
     }
 
     @Test
+    public void theChosenRateAndPauseReachTheServiceAndTheRateSurvivesAModelChange() {
+        Speaker orpheus = new Speaker("orpheus-tts-3b-de", null);
+        Speaker qwen = new Speaker("qwen3-tts", null);
+        ReadAloudBinding first = orpheus.binding();
+        SwitchableReadAloud readAloud = new SwitchableReadAloud(first);
+        assertTrue(readAloud.canPause());
+        readAloud.setRate(1.25);
+        assertEquals(1.25, first.rate(), 0.0);
+        readAloud.pause();
+        assertTrue(readAloud.isPaused());
+        readAloud.resume();
+        assertTrue(!readAloud.isPaused());
+
+        ReadAloudBinding second = qwen.binding();
+        readAloud.replace(second);
+        assertEquals("die neue Stimme spricht gleich schnell", 1.25, second.rate(), 0.0);
+        assertEquals(1.25, readAloud.rate(), 0.0);
+        assertTrue(!ReadAloudBinding.unavailable("kein Modell").canPause());
+        readAloud.close();
+    }
+
+    @Test
     public void diagnosticLinesNameChunkModelVoiceAndWorkerButNoText() {
         ReadAloudService.ChunkTrace[] seen = new ReadAloudService.ChunkTrace[1];
         Speaker speaker = new Speaker("orpheus-tts-3b-de", null);

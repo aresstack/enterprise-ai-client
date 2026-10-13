@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.speech;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ReadAloudService;
+import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechRate;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -227,6 +228,42 @@ public final class ReadAloudBinding implements ReadAloudControl {
             service.stop();
             cancelActive();
         }
+    }
+
+    @Override
+    public boolean canPause() {
+        return service != null;
+    }
+
+    @Override
+    public void pause() {
+        if (service != null) {
+            service.pause();
+        }
+    }
+
+    @Override
+    public void resume() {
+        if (service != null) {
+            service.resume();
+        }
+    }
+
+    @Override
+    public boolean isPaused() {
+        return service != null && service.isPaused();
+    }
+
+    @Override
+    public void setRate(double rate) {
+        if (service != null) {
+            service.setRate(rate);
+        }
+    }
+
+    @Override
+    public double rate() {
+        return service == null ? SpeechRate.NORMAL : service.rate();
     }
 
     /** Ein Fehler beim Vorlesen verpufft nicht still: kurze Meldung mit dem Grund (EDT). */

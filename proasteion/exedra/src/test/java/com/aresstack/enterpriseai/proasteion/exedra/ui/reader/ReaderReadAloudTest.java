@@ -52,6 +52,84 @@ public class ReaderReadAloudTest {
     }
 
     @Test
+    public void withAPausableOutputTheButtonPausesAndPlayContinuesWithoutStartingOver() throws Exception {
+        final Fixture fixture = new Fixture(true, true);
+        SwingUtilities.invokeAndWait(() -> {
+            fixture.open("wiki:page/1", PAGE);
+            fixture.reader.readAloudButton().doClick();
+            assertEquals(KnowledgeReaderPanel.READ_ALOUD_PAUSE_TOOLTIP + " (Stimme)",
+                    fixture.reader.readAloudButton().getToolTipText());
+
+            for (int round = 1; round <= 2; round++) {
+                fixture.reader.readAloudButton().doClick();
+                assertEquals(round, fixture.control.pauses);
+                assertTrue(fixture.reader.isReadAloudPaused());
+                assertTrue("die Seite bleibt die vorgelesene", fixture.reader.isReadingAloud());
+                assertEquals(KnowledgeReaderPanel.READ_ALOUD_RESUME_TOOLTIP + " (Stimme)",
+                        fixture.reader.readAloudButton().getToolTipText());
+
+                fixture.reader.readAloudButton().doClick();
+                assertEquals(round, fixture.control.resumes);
+                assertFalse(fixture.reader.isReadAloudPaused());
+            }
+            assertEquals("Fortsetzen startet keinen neuen Lauf vom Seitenanfang", 1, fixture.control.spoken.size());
+            assertEquals("Pause ist kein Stopp", 0, fixture.control.stops);
+
+            fixture.control.finishAll();
+            assertFalse(fixture.reader.isReadingAloud());
+            assertEquals(KnowledgeReaderPanel.READ_ALOUD_PLAY_TOOLTIP + " (Stimme)",
+                    fixture.reader.readAloudButton().getToolTipText());
+        });
+    }
+
+    @Test
+    public void tabSwitchCloseOrNewContentDiscardAPausedPosition() throws Exception {
+        final Fixture fixture = new Fixture(true, true);
+        SwingUtilities.invokeAndWait(() -> {
+            fixture.open("wiki:page/1", PAGE);
+            fixture.reader.readAloudButton().doClick();
+            fixture.reader.readAloudButton().doClick();
+            assertTrue(fixture.reader.isReadAloudPaused());
+            fixture.open("wiki:page/2", "Andere Seite.");
+            assertFalse(fixture.reader.isReadingAloud());
+            assertFalse(fixture.reader.isReadAloudPaused());
+            assertEquals(1, fixture.control.stops);
+
+            fixture.reader.readAloudButton().doClick();
+            assertEquals("Play nach dem Verwerfen beginnt die neue Seite", "Andere Seite.",
+                    fixture.control.spoken.get(1));
+            fixture.reader.readAloudButton().doClick();
+            assertTrue(fixture.reader.isReadAloudPaused());
+            fixture.reader.showMarkdown(new ReaderLink("wiki", "wiki:page/2", "wiki:page/2", "", "wiki:page/2").key(),
+                    "Neue Fassung.");
+            assertFalse("neuer Inhalt verwirft die Pause", fixture.reader.isReadAloudPaused());
+            assertFalse(fixture.reader.isReadingAloud());
+            assertEquals(2, fixture.control.stops);
+        });
+    }
+
+    @Test
+    public void rateSliderSitsBesideTheButtonAndSetsTheSpeakingRate() throws Exception {
+        final Fixture fixture = new Fixture(true, true);
+        SwingUtilities.invokeAndWait(() -> {
+            fixture.open("wiki:page/1", PAGE);
+            ReadAloudRateControl rate = fixture.reader.readAloudRate();
+            assertTrue(rate.isVisible());
+            assertEquals("1,0\u00d7", rate.valueText());
+            assertEquals(java.util.Collections.<Double>emptyList(), fixture.control.rates);
+
+            rate.slider().setValue(125);
+            assertEquals(Double.valueOf(1.25), fixture.control.rates.get(0));
+            assertEquals("1,25\u00d7", rate.valueText());
+            fixture.reader.readAloudButton().doClick();
+            fixture.reader.readAloudButton().doClick();
+            rate.slider().setValue(80);
+            assertEquals("auch während der Pause", Double.valueOf(0.8), fixture.control.rates.get(1));
+            assertEquals("0,8\u00d7", rate.valueText());
+        });
+    }
+
+    @Test
     public void switchingTabsStopsTheOldPage() throws Exception {
         final Fixture fixture = new Fixture(true);
         SwingUtilities.invokeAndWait(() -> {
@@ -217,7 +295,11 @@ public class ReaderReadAloudTest {
         final FakeControl control;
 
         Fixture(boolean available) {
-            control = new FakeControl(available);
+            this(available, false);
+        }
+
+        Fixture(boolean available, boolean pausable) {
+            control = new FakeControl(available, pausable);
             reader.setReadAloud(control);
         }
 
@@ -233,12 +315,44 @@ public class ReaderReadAloudTest {
     /** Die Sprachausgabe als Attrappe: merkt sich den Text; das Ende meldet {@link #finishAll} wie die echte. */
     private static final class FakeControl implements ReadAloudControl {
         final boolean available;
+        final boolean pausable;
         final List<String> spoken = new ArrayList<String>();
         final List<Runnable> pending = new ArrayList<Runnable>();
+        final List<Double> rates = new ArrayList<Double>();
         int stops;
+        int pauses;
+        int resumes;
+        double rate = 1.0;
 
-        FakeControl(boolean available) {
+        FakeControl(boolean available, boolean pausable) {
             this.available = available;
+            this.pausable = pausable;
+        }
+
+        @Override
+        public boolean canPause() {
+            return pausable;
+        }
+
+        @Override
+        public void pause() {
+            pauses++;
+        }
+
+        @Override
+        public void resume() {
+            resumes++;
+        }
+
+        @Override
+        public void setRate(double rate) {
+            this.rate = rate;
+            rates.add(rate);
+        }
+
+        @Override
+        public double rate() {
+            return rate;
         }
 
         @Override

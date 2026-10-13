@@ -53,6 +53,17 @@ public final class ComposerIcons {
         };
     }
 
+    /** The "pause" sign: two filled bars. */
+    public static StrokeIcon pause() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.fillRoundRect(4, 3, 3, 10, 1, 1);
+                g2.fillRoundRect(9, 3, 3, 10, 1, 1);
+            }
+        };
+    }
+
     /** The filled "stop" square. */
     public static StrokeIcon stop() {
         return new StrokeIcon() {

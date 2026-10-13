@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
 
+import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechRate;
+
 /**
  * Bedienabsicht „Vorlesen“ für den Verlauf (wie {@link ChatShellActions} nur Absichten, keine Ports): der zentrale
  * Play/Pause-Orb aus askai-java8 {@code arch}. Ist keine Sprachausgabe verfügbar, bleibt der Orb deaktiviert und
@@ -37,6 +39,31 @@ public interface ReadAloudControl {
 
     /** Beendet die laufende Ausgabe; idempotent. */
     void stop();
+
+    /** Whether the running output can be held and continued ({@link #pause()}, {@link #resume()}). */
+    default boolean canPause() {
+        return false;
+    }
+
+    /** Holds the running output at the current position; {@link #stop()} or a new speak discards it. */
+    default void pause() {
+    }
+
+    /** Continues a paused output where it stopped. */
+    default void resume() {
+    }
+
+    default boolean isPaused() {
+        return false;
+    }
+
+    /** Speaking rate of the output ({@link SpeechRate}); applies to a running output from the next block. */
+    default void setRate(double rate) {
+    }
+
+    default double rate() {
+        return SpeechRate.NORMAL;
+    }
 
     void addListener(Listener listener);
 }

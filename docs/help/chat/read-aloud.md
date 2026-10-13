@@ -28,6 +28,19 @@ Was nicht vorgelesen wird:
 
 Beginnst du einen neuen Chat oder öffnest du einen anderen, verstummt eine laufende Ausgabe sofort. Kommt eine neue Antwort, während noch eine ältere gesprochen wird, endet die ältere und die neue beginnt.
 
+## Seiten im Lesebereich vorlesen
+
+Unten im Lesebereich liegt ein eigener Play-Knopf, daneben der Regler für die Sprechgeschwindigkeit.
+
+1. Play liest die Seite des aktiven Reiters vor, ohne Bilder und Diagramme.
+2. Ein Klick während der Ausgabe pausiert sie an der aktuellen Stelle (Tooltip „Vorlesen pausieren“).
+3. Play setzt sie genau dort fort (Tooltip „Vorlesen fortsetzen“), nicht wieder am Seitenanfang. Das geht beliebig oft hintereinander.
+4. Ein Doppelklick auf eine Textstelle liest ab dort neu, auch während der Pause.
+
+Wechselst du den Reiter, schließt du die Seite, bekommt sie neuen Inhalt oder liest der Chat etwas vor, endet das Vorlesen der Seite, und die gemerkte Stelle verfällt.
+
+Der Regler stellt die Sprechgeschwindigkeit von 0,5× bis 2,0× ein, in Schritten von 5 %; der Wert steht daneben (etwa „1,25×“). Die Geschwindigkeit ändert nur das Tempo, nicht die Tonhöhe. Sie wirkt sofort, auch mitten im Satz und während einer Pause, und gilt für jedes TTS-Modell, weil der Client sie bei der Wiedergabe umsetzt. Sie gilt für die gemeinsame Sprachausgabe, also auch für das Vorlesen im Chat, und bleibt beim Wechsel des TTS-Modells erhalten. Nach einem Neustart beginnt sie wieder bei 1,0×.
+
 ## Automatisch vorlesen ab Programmstart
 
 Unter Einstellungen → „Sprachausgabe“ → Bereich „Sprachausgabe“ gibt es das Häkchen **„Neue Antworten automatisch vorlesen“**. Ist es gesetzt, ist der Orb schon beim Start aktiv, und jede neue Antwort wird ohne Klick vorgelesen. Mit einem Klick auf den Orb schaltest du das für die laufende Sitzung trotzdem ab.
