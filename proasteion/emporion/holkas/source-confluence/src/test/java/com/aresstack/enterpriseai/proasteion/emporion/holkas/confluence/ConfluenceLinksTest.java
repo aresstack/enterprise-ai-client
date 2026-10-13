@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -26,6 +27,18 @@ public class ConfluenceLinksTest {
         assertEquals("1", page(BASE + "/x/AQ"));
         // Host case and the default port do not make an address foreign.
         assertEquals("123", page("https://CONFLUENCE.example.org:443/wiki/pages/viewpage.action?pageId=123"));
+    }
+
+    @Test
+    public void addressPatternBelongsToThisConfiguredConfluenceBase() {
+        java.util.regex.Pattern pattern = ConfluenceLinks.addressPattern(BASE);
+
+        assertTrue(pattern.matcher(BASE + "/pages/viewpage.action?pageId=123").matches());
+        assertTrue(pattern.matcher("https://CONFLUENCE.example.org:443/wiki/spaces/DEV/pages/123").matches());
+        assertFalse(pattern.matcher("http://confluence.example.org/wiki/pages/viewpage.action?pageId=123").matches());
+        assertFalse(pattern.matcher("https://example.org/wiki/pages/viewpage.action?pageId=123").matches());
+        assertFalse(pattern.matcher("https://confluence.example.org/other/pages/viewpage.action?pageId=123").matches());
+        assertFalse(pattern.matcher("Text " + BASE + "/pages/viewpage.action?pageId=123").matches());
     }
 
     @Test
