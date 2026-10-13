@@ -281,7 +281,7 @@ public final class KnowledgeSourcesPanel extends JPanel {
         }
     }
 
-    /** Die Trefferliste: je Quelle eine Überschrift, darunter ihre Treffer; Quellen ohne Antwort stehen rot darunter. */
+    /** Die Trefferliste: Direkttreffer zuerst hervorgehoben, danach die normale Suche in denselben Quellen. */
     private void showHits(SourceSearchState state) {
         JLabel summary = sectionHeader(state.summary().toUpperCase(Locale.GERMANY));
         summary.setAlignmentX(LEFT_ALIGNMENT);
@@ -289,8 +289,40 @@ public final class KnowledgeSourcesPanel extends JPanel {
         hitRows.clear();
         hitStars.clear();
         lastFirstVisible = null;
+
+        if (!state.directHits().isEmpty()) {
+            JLabel direct = sectionHeader("DIREKTTREFFER · ADRESSE ERKANNT");
+            direct.setForeground(ResearchUiPalette.ACCENT_BLUE);
+            direct.setBorder(BorderFactory.createEmptyBorder(8, 10, 1, 8));
+            direct.setAlignmentX(LEFT_ALIGNMENT);
+            list.add(direct);
+            addHitRows(state.directHits());
+        }
+        if (!state.searchHits().isEmpty()) {
+            if (!state.directHits().isEmpty()) {
+                JLabel found = sectionHeader("SUCHERGEBNISSE");
+                found.setAlignmentX(LEFT_ALIGNMENT);
+                list.add(found);
+            }
+            addHitRows(state.searchHits());
+        }
+        for (String problem : state.problems()) {
+            JLabel line = new JLabel(problem);
+            line.setFont(ResearchUiTypography.regular(11f));
+            line.setForeground(ResearchUiPalette.DANGER_RED);
+            line.setBorder(BorderFactory.createEmptyBorder(6, 10, 2, 8));
+            line.setAlignmentX(LEFT_ALIGNMENT);
+            list.add(line);
+        }
+        list.add(Box.createVerticalGlue());
+        list.revalidate();
+        list.repaint();
+    }
+
+    /** Fügt Treffer nach Quelle gruppiert hinzu; Direkttreffer und normale Suche rufen dies getrennt auf. */
+    private void addHitRows(List<ReaderLink> hits) {
         String currentSource = null;
-        for (ReaderLink hit : state.hits()) {
+        for (ReaderLink hit : hits) {
             if (!hit.sourceId().equals(currentSource)) {
                 currentSource = hit.sourceId();
                 JLabel source = new JLabel(currentSource);
@@ -313,17 +345,6 @@ public final class KnowledgeSourcesPanel extends JPanel {
             hitRows.add(row);
             list.add(row);
         }
-        for (String problem : state.problems()) {
-            JLabel line = new JLabel(problem);
-            line.setFont(ResearchUiTypography.regular(11f));
-            line.setForeground(ResearchUiPalette.DANGER_RED);
-            line.setBorder(BorderFactory.createEmptyBorder(6, 10, 2, 8));
-            line.setAlignmentX(LEFT_ALIGNMENT);
-            list.add(line);
-        }
-        list.add(Box.createVerticalGlue());
-        list.revalidate();
-        list.repaint();
     }
 
     /** Die Liste folgt der Breite des Drawers, damit lange Texte gekürzt werden und ⟳/✎ sichtbar bleiben. */
