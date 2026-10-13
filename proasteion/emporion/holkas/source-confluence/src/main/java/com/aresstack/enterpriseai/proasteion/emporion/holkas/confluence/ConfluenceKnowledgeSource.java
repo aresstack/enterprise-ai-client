@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.OneTimeCodeChallenge;
@@ -45,6 +46,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 /**
  * Confluence Data Center als {@link SearchableKnowledgeSource}.
@@ -74,7 +76,8 @@ import java.util.logging.Logger;
  * HTTP-Request, weil z. B. KeePassRPC dafür eine Verbindung aufbaut) und vergisst sie mit dem Ende des Aufrufs.
  * Ohne {@link ConfluenceConfig#credentialRef()} fragt er keine an (z. B. reine mTLS-Anmeldung).
  */
-public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource, PageViewSource {
+public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource, PageViewSource,
+        AddressableKnowledgeSource {
 
     static final String PAGE_CONTENT_TYPE = "text/html";
 
@@ -88,6 +91,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
     /** Kanonische Basis-URL ohne Schema, Teil jeder Ressourcen-ID. */
     private final String locator;
     private final ConfluenceConfig config;
+    private final Pattern addressPattern;
     private final ConfluenceRestClient client;
     private final SecretProvider secrets;
     private final VaultEntryOptions options;
@@ -113,6 +117,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         this.sourceId = sourceId;
         this.locator = locatorOf(config);
         this.config = config;
+        this.addressPattern = ConfluenceLinks.addressPattern(config.baseUrl().toString());
         this.client = new ConfluenceRestClient(config, transport);
         this.secrets = secrets;
         this.options = options;
@@ -291,6 +296,17 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
      * nach. Was nicht auflösbar ist (fremde Adresse, keine Seitenform, Seite unbekannt), ist {@code null}: der
      * Lesebereich öffnet es im Browser.
      */
+    @Override
+    public Pattern addressPattern() {
+        return addressPattern;
+    }
+
+    /** Direkte Suchleisten-Adresse und Reader-Link benutzen dieselbe Confluence-spezifische Auflösung. */
+    @Override
+    public KnowledgeResourceId resolveAddress(String address) throws KnowledgeSourceException {
+        return resolveLink(address);
+    }
+
     @Override
     public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
         final ConfluenceLinks.Target target = ConfluenceLinks.parse(address, config.baseUrl().toString());
