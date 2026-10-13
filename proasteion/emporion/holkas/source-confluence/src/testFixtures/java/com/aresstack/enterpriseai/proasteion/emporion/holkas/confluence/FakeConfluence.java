@@ -146,7 +146,8 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         if (path.equals("/rest/api/content") && query.containsKey("spaceKey")) {
             List<FakePage> inSpace = new ArrayList<FakePage>();
             for (FakePage page : pages.values()) {
-                if (page.spaceKey.equals(query.get("spaceKey"))) {
+                if (page.spaceKey.equals(query.get("spaceKey"))
+                        && (!query.containsKey("title") || page.title.equals(query.get("title")))) {
                     inSpace.add(page);
                 }
             }

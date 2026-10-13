@@ -145,6 +145,7 @@ final class ConfluencePageView {
                     img.attr("data-linked-resource-content-type").trim(),
                     img.attr("data-linked-resource-container-id").trim()));
         }
+        pageLinks(doc, baseUri, serverBase);
         Set<String> ids = new LinkedHashSet<String>();
         for (Element heading : doc.select("h1, h2, h3, h4, h5, h6")) {
             if (!heading.id().isEmpty()) {
@@ -393,39 +394,80 @@ final class ConfluencePageView {
     }
 
     /**
+     * Links der Seite: unter der Server-Basis auf die eingestellte Basis umgeschrieben (wie Bilder), damit der
+     * Lesebereich sie als eigene erkennt; ein Link, an dem Confluence die Content-ID der Zielseite nennt
+     * ({@code data-linked-resource-type="page"}), zeigt danach auf {@code pages/viewpage.action?pageId=<id>} (Fragment
+     * bleibt). So braucht ein Titel-Link ({@code /display/SPACE/Titel}) beim Klick keine Nachfrage.
+     */
+    private static void pageLinks(Document doc, String baseUri, String serverBase) {
+        for (Element link : doc.select("a[href]")) {
+            String raw = link.attr("href").trim();
+            if (raw.isEmpty() || raw.startsWith("#")) {
+                continue;
+            }
+            String href = link.absUrl("href");
+            if (href.isEmpty()) {
+                continue;
+            }
+            href = onBase(onBase(href, serverBase, baseUri, true), baseUri, baseUri, false);
+            String rest = underBase(href, baseUri, false);
+            String linkedId = link.attr("data-linked-resource-id").trim();
+            if (rest != null && "page".equalsIgnoreCase(link.attr("data-linked-resource-type").trim())
+                    && ConfluenceIds.isContentId(linkedId)) {
+                int hash = rest.indexOf('#');
+                String target = baseUri.endsWith("/") ? baseUri : baseUri + "/";
+                href = target + ConfluenceLinks.VIEW_PAGE + linkedId + (hash < 0 ? "" : rest.substring(hash));
+            }
+            link.attr("href", href);
+        }
+    }
+
+    /**
      * {@code src} unter {@code from} (Host ohne Groß-/Kleinschreibung, Port mit Standardport gleichgesetzt, Pfad
      * unter dem Kontextpfad von {@code from}) als Adresse unter {@code to}; sonst {@code src} unverändert. {@code to} bestimmt das Schema der Anfrage. {@code anyScheme}: auch ein anderes Schema
      * gilt als dieselbe Basis (nur für die von Confluence selbst gemeldete Server-Basis); sonst muss es gleich sein.
      */
     static String onBase(String src, String from, String to, boolean anyScheme) {
-        if (src == null || from == null || from.trim().isEmpty()) {
-            return src;
-        }
-        URI image;
-        URI base;
-        try {
-            image = new URI(src);
-            base = new URI(from.trim());
-        } catch (URISyntaxException e) {
-            return src;
-        }
-        if (!anyScheme && (image.getScheme() == null || !image.getScheme().equalsIgnoreCase(base.getScheme()))) {
-            return src;
-        }
-        if (image.getHost() == null || base.getHost() == null || !image.getHost().equalsIgnoreCase(base.getHost())
-                || port(image) != port(base) && !(isDefaultPort(image) && isDefaultPort(base))) {
-            return src;
-        }
-        String context = base.getRawPath() == null ? "" : base.getRawPath();
-        context = context.endsWith("/") ? context.substring(0, context.length() - 1) : context;
-        String path = image.getRawPath() == null ? "" : image.getRawPath();
-        if (!path.startsWith(context + "/")) {
+        String rest = underBase(src, from, anyScheme);
+        if (rest == null) {
             return src;
         }
         String target = to.endsWith("/") ? to.substring(0, to.length() - 1) : to;
-        return target + path.substring(context.length())
-                + (image.getRawQuery() == null ? "" : "?" + image.getRawQuery())
-                + (image.getRawFragment() == null ? "" : "#" + image.getRawFragment());
+        return target + rest;
+    }
+
+    /**
+     * Der Teil von {@code src} hinter dem Kontextpfad von {@code base} (beginnt mit {@code /}, roh mit Query und
+     * Fragment), wenn {@code src} unter {@code base} liegt (Regeln wie {@link #onBase}); sonst {@code null}.
+     */
+    static String underBase(String src, String base, boolean anyScheme) {
+        if (src == null || base == null || base.trim().isEmpty()) {
+            return null;
+        }
+        URI address;
+        URI root;
+        try {
+            address = new URI(src.trim());
+            root = new URI(base.trim());
+        } catch (URISyntaxException e) {
+            return null;
+        }
+        if (!anyScheme && (address.getScheme() == null || !address.getScheme().equalsIgnoreCase(root.getScheme()))) {
+            return null;
+        }
+        if (address.getHost() == null || root.getHost() == null || !address.getHost().equalsIgnoreCase(root.getHost())
+                || port(address) != port(root) && !(isDefaultPort(address) && isDefaultPort(root))) {
+            return null;
+        }
+        String context = root.getRawPath() == null ? "" : root.getRawPath();
+        context = context.endsWith("/") ? context.substring(0, context.length() - 1) : context;
+        String path = address.getRawPath() == null ? "" : address.getRawPath();
+        if (!path.startsWith(context + "/")) {
+            return null;
+        }
+        return path.substring(context.length())
+                + (address.getRawQuery() == null ? "" : "?" + address.getRawQuery())
+                + (address.getRawFragment() == null ? "" : "#" + address.getRawFragment());
     }
 
     private static int port(URI uri) {

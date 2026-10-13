@@ -109,6 +109,14 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         /** Der letzte Reiter ist zu. */
         default void allClosed() {
         }
+
+        /**
+         * Ein Link in der Lese-Ansicht von {@code page} wurde angeklickt (kein Anker derselben Seite). Gehört er zur
+         * Quelle, öffnet der Lesebereich die Zielseite; sonst (oder im Zweifel) {@code openExternally}, der Browser.
+         */
+        default void pageLinkActivated(ReaderLink page, String address, String text, Runnable openExternally) {
+            openExternally.run();
+        }
     }
 
     /** Ergänzt das Kontextmenü eines Reiters (z. B. „Zum aktuellen Chat hinzufügen“); Aufruf auf dem EDT. */
@@ -565,7 +573,9 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
             return;
         }
         final ReaderImageStore store = new ReaderImageStore(images, loader);
-        ReaderHtmlView view = new ReaderHtmlView(bodyHtml, baseUri, store, linkOpener,
+        final ReaderLink shown = tab.link;
+        ReaderHtmlView view = new ReaderHtmlView(bodyHtml, baseUri, store,
+                (address, text) -> pageLinkActivated(shown, address, text),
                 image -> openSlideshow(key, store.images().indexOf(image)));
         // Wie showDocument: Seite mit Innenabstand, Höhe je Breite, Navigationsbanner darüber ({@link
         // #updateNavigation} setzt ihn, sobald das Dokument aufbereitet ist).
@@ -576,7 +586,42 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         page.add(view, BorderLayout.NORTH);
         NavigableDocumentPage document = new NavigableDocumentPage(scroll(page), page, view, PAGE_PADDING_TOP);
         tab.document = document;
+        String anchor = tab.pendingAnchor;
         replace(tab, searchable(tab, document, page), store);
+        if (anchor != null) {
+            scrollLater(view, anchor);
+        }
+    }
+
+    private void pageLinkActivated(ReaderLink page, final String address, String text) {
+        Runnable external = () -> linkOpener.open(address);
+        if (listener == null) {
+            external.run();
+        } else {
+            listener.pageLinkActivated(page, address, text, external);
+        }
+    }
+
+    /**
+     * Rollt die Lese-Ansicht des Reiters {@code key} zum Anker {@code anchor} (Fragment eines Links); lädt die Seite
+     * noch, geschieht das, sobald sie steht. Ohne Lese-Ansicht oder Anker: nichts.
+     */
+    public void scrollToAnchor(String key, String anchor) {
+        Tab tab = tabs.get(key);
+        if (tab == null || anchor == null || anchor.trim().isEmpty()) {
+            return;
+        }
+        ReaderHtmlView html = htmlView(key);
+        if (html == null) {
+            tab.pendingAnchor = anchor.trim();
+        } else {
+            scrollLater(html, anchor.trim());
+        }
+    }
+
+    /** Erst nach dem Layout der neuen Seite rollen, sonst hat der Anker noch keine Position. */
+    private static void scrollLater(final ReaderHtmlView view, final String anchor) {
+        SwingUtilities.invokeLater(() -> view.scrollToId(anchor));
     }
 
     /**
@@ -1554,6 +1599,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         if (tab.document != null && !SwingUtilities.isDescendingFrom(tab.document, content)) {
             tab.document = null; // etwas anderes als das Dokument (Liste, Meldung)
         }
+        tab.pendingAnchor = null; // gilt nur der Lese-Ansicht, die gerade lud
         deck.add(content, tab.card);
         refresh();
     }
@@ -1648,6 +1694,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         boolean replaced;
         /** Die Bilder der Seite, nur bei {@link #showHtml}. */
         ReaderImageStore images;
+        /** Anker, zu dem gerollt wird, sobald die Lese-Ansicht steht ({@link #scrollToAnchor}). */
+        String pendingAnchor;
         /** Der vorlesbare Seitentext (Markdown wie {@code KnowledgeDocument.text()}); {@code null}: keiner. */
         String speechText;
         /** Die Dateianhänge der Seite (alle Typen), nur bei Quellen mit Lese-Ansicht. */

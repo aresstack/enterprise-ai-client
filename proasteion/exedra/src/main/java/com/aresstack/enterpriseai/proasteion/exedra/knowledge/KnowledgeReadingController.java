@@ -629,6 +629,60 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         open(link, pin);
     }
 
+    /**
+     * Issue #94: ein Link der Lese-Ansicht, den die Quelle der Seite als eigene Seite auflöst, öffnet im Lesebereich
+     * (als Vorschau, über {@link #open}); ein Fragment rollt danach dorthin. Alles andere, auch ein Fehler beim Auflösen,
+     * geht an {@code openExternally} (Browser). Aufgelöst wird im Hintergrund, die Quelle darf dafür nachfragen.
+     */
+    @Override
+    public void pageLinkActivated(final ReaderLink page, final String address, final String text,
+                                  final Runnable openExternally) {
+        final KnowledgeSourceRegistration registration = lookup.apply(page.sourceId());
+        if (registration == null) {
+            openExternally.run();
+            return;
+        }
+        try {
+            workExecutor.execute(() -> {
+                KnowledgeResourceId target = null;
+                try {
+                    target = browse.resolveLink(registration.port(), address);
+                } catch (KnowledgeSourceException e) {
+                    LOG.log(Level.INFO, "Link aus " + page.key() + " nicht aufgelöst (" + e.kind()
+                            + "), öffne im Browser", e);
+                } catch (RuntimeException e) {
+                    LOG.log(Level.WARNING, "Link aus " + page.key() + " nicht aufgelöst, öffne im Browser", e);
+                }
+                final KnowledgeResourceId resolved = target;
+                uiExecutor.execute(() -> {
+                    if (resolved == null) {
+                        openExternally.run();
+                        return;
+                    }
+                    ReaderLink link = new ReaderLink(page.sourceId(), resolved.value(), text, "", address);
+                    open(link, false);
+                    workspace.reader().scrollToAnchor(link.key(), fragmentOf(address));
+                });
+            });
+        } catch (RuntimeException rejected) {
+            openExternally.run();
+        }
+    }
+
+    /** Das dekodierte Fragment einer Adresse; leer ohne. */
+    public static String fragmentOf(String address) {
+        int hash = address.indexOf('#');
+        if (hash < 0 || hash == address.length() - 1) {
+            return "";
+        }
+        String fragment = address.substring(hash + 1);
+        try {
+            return java.net.URLDecoder.decode(fragment.replace("+", "%2B"), "UTF-8");
+        } catch (IllegalArgumentException | java.io.UnsupportedEncodingException e) {
+            return fragment;
+        }
+    }
+
     // ------------------------------------------------------------------ Favoriten
 
     @Override

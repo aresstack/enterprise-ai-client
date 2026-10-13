@@ -1,6 +1,5 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 
-import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
 import com.aresstack.enterpriseai.ui.comic.bubble.WidthAwareHeight;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiPalette;
 
@@ -77,12 +76,14 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
     /**
      * @param bodyHtml     der HTML-Körper der Seite (ohne {@code <html>}/{@code <body>})
      * @param baseUri      Basis für relative Adressen (Links, Bilder); darf leer sein
+     * @param links        jeder aktivierte Link außer einem Anker dieser Seite (die Ansicht entscheidet nicht, wo er
+     *                     sich öffnet)
      * @param imageClicked Klick auf ein bekanntes Bild (öffnet die Diashow)
      */
-    public ReaderHtmlView(String bodyHtml, String baseUri, ReaderImageStore store, final DesktopLinkOpener linkOpener,
+    public ReaderHtmlView(String bodyHtml, String baseUri, ReaderImageStore store, final LinkHandler links,
                           Consumer<ReaderImage> imageClicked) {
-        if (store == null || linkOpener == null || imageClicked == null) {
-            throw new IllegalArgumentException("store, linkOpener and imageClicked must not be null");
+        if (store == null || links == null || imageClicked == null) {
+            throw new IllegalArgumentException("store, links and imageClicked must not be null");
         }
         this.store = store;
         this.imageClicked = imageClicked;
@@ -107,8 +108,10 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
             String description = event.getDescription();
             if (description != null && description.startsWith("#") && description.length() > 1) {
                 scrollToId(description.substring(1));
-            } else if (event.getURL() != null) {
-                linkOpener.open(event.getURL().toString());
+            } else if (event.getURL() != null || description != null && !description.trim().isEmpty()) {
+                // Relative Adressen sind gegen die Basis aufgelöst; ohne Basis bleibt die Adresse, wie sie dasteht.
+                links.activated(event.getURL() != null ? event.getURL().toString() : description.trim(),
+                        linkText(event.getSourceElement()));
             }
         });
         MouseAdapter mouse = new MouseAdapter() {
@@ -214,6 +217,28 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
             }
         }
         return -1;
+    }
+
+    /** Der sichtbare Text des Links (Titel für einen neuen Reiter); leer, wenn er sich nicht lesen lässt. */
+    private String linkText(Element element) {
+        if (element == null) {
+            return "";
+        }
+        try {
+            return getDocument().getText(element.getStartOffset(), element.getEndOffset() - element.getStartOffset())
+                    .replaceAll("\\s+", " ").trim();
+        } catch (BadLocationException e) {
+            return "";
+        }
+    }
+
+    /** Ein aktivierter Link, der kein Anker der eigenen Seite ist; Aufruf auf dem EDT. */
+    public interface LinkHandler {
+        /**
+         * @param address die absolute Adresse (relative gegen die Basis der Seite aufgelöst), mit Query und Fragment
+         * @param text    der sichtbare Linktext, leer ohne
+         */
+        void activated(String address, String text);
     }
 
     /** Rollt zum Element mit dieser {@code id} (z. B. einer Überschrift); ohne Treffer nichts. */

@@ -139,6 +139,11 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
 
 
         @Override
+        public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
+            return SourceCapabilities.resolveLink(port, address);
+        }
+
+        @Override
         public byte[] loadViewImage(String src) throws KnowledgeSourceException {
             return SourceCapabilities.loadViewImage(port, src);
         }

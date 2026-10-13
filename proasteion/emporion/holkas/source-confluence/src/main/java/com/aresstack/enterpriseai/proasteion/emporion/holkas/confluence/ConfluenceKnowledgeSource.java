@@ -286,6 +286,33 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         });
     }
 
+    /**
+     * Links unter der eingestellten Basis-URL auf eine Seite ({@link ConfluenceLinks}); Space und Titel fragt die Quelle
+     * nach. Was nicht auflösbar ist (fremde Adresse, keine Seitenform, Seite unbekannt), ist {@code null}: der
+     * Lesebereich öffnet es im Browser.
+     */
+    @Override
+    public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
+        final ConfluenceLinks.Target target = ConfluenceLinks.parse(address, config.baseUrl().toString());
+        if (target == null) {
+            return null;
+        }
+        if (target.pageId != null) {
+            return ConfluenceIds.page(locator, target.pageId);
+        }
+        String pageId = withSession(new Operation<String>() {
+            @Override
+            public String run(Session session) throws KnowledgeSourceException {
+                if (target.title != null) {
+                    return client.pageIdByTitle(session, target.spaceKey, target.title);
+                }
+                ConfluenceRestClient.Space space = client.space(session, target.spaceKey);
+                return space == null ? null : space.homepageId;
+            }
+        });
+        return ConfluenceIds.isContentId(pageId) ? ConfluenceIds.page(locator, pageId) : null;
+    }
+
     @Override
     public boolean isAttachment(KnowledgeResourceId id) {
         ConfluenceIds.Parsed parsed = id == null ? null : ConfluenceIds.parse(locator, id);

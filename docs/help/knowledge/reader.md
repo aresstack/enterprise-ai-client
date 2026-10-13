@@ -1,7 +1,7 @@
 ---
 id: knowledge.reader
 title: Der Lesebereich
-keywords: Lesebereich, Reader, Dokumentansicht, Vorschau, anheften, Stecknadel, Reiter, Tab, Gruppe, Tabgruppe, Farbe, Stern, Favorit, Im Dokument suchen, Strg+F, Suchleiste, Treffer, Seiteninformationen, Adresse kopieren, Im Standardbrowser öffnen, Zurück, Vor, Navigation, Kapitel, Wolken, Unterabschnitte, Bilder, Diashow, Zoom, Bild speichern, Beschreibung, draw.io, Gerendert, Original, Zum aktuellen Chat hinzufügen, reader, document view, preview, pin, tabs
+keywords: Lesebereich, Reader, Dokumentansicht, Vorschau, anheften, Stecknadel, Reiter, Tab, Gruppe, Tabgruppe, Farbe, Stern, Favorit, Im Dokument suchen, Strg+F, Suchleiste, Treffer, Seiteninformationen, Adresse kopieren, Im Standardbrowser öffnen, Zurück, Vor, Navigation, Kapitel, Wolken, Unterabschnitte, Bilder, Diashow, Zoom, Bild speichern, Beschreibung, draw.io, Gerendert, Original, Zum aktuellen Chat hinzufügen, Link, interner Link, Confluence-Link, reader, document view, preview, pin, tabs
 ---
 
 # Der Lesebereich
@@ -67,6 +67,16 @@ Das Info-Symbol („Seiteninformationen“) zeigt Titel und Adresse des Dokument
 ### Zurück und Vor
 
 „Zurück (Maustaste Zurück)“ und „Vor (Maustaste Vor)“ wechseln wie im Browser zwischen den zuletzt angezeigten Reitern; sie sind grau, wenn es keinen Schritt gibt. Die Seitentasten einer Maus funktionieren ebenso.
+
+## Links in einer Seite
+
+Ein Klick auf einen Link in einer Confluence-Seite entscheidet so:
+
+- Ein Link auf eine andere Seite derselben Confluence (gleiches Schema, gleicher Host, gleicher Port und unter dem eingestellten Kontextpfad, etwa `/confluence`) öffnet die Seite **im Lesebereich**, als Vorschau wie ein Treffer. Mit Zurück kommst du zur vorigen Seite. Zeigt der Link auf einen Abschnitt (`…#Abschnitt`), rollt die Seite nach dem Laden dorthin.
+- Ein Link auf einen Abschnitt derselben Seite (`#Abschnitt`) rollt nur.
+- Alles andere öffnet wie bisher der Browser bzw. das Mailprogramm: fremde Websites, `mailto:`, dieselbe Domain mit anderem Kontextpfad, Anhänge, Blogbeiträge und Seiten, die Confluence nicht findet.
+
+Erkannt werden Seitenadressen mit Seiten-ID (`pages/viewpage.action?pageId=…`, `spaces/…/pages/…`), Kurzlinks (`/x/…`) und Adressen mit Space und Titel (`display/SPACE/Titel`); bei diesen fragt der Client Confluence nach der Seite, bevor sie sich öffnet.
 
 ## Kapitelnavigation
 

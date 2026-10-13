@@ -109,6 +109,19 @@ final class ConfluenceRestClient {
         });
     }
 
+    /** Die Content-ID der Seite mit genau diesem Titel im Space oder {@code null}, wenn es sie nicht gibt. */
+    String pageIdByTitle(Session session, String spaceKey, String title) throws KnowledgeSourceException {
+        JsonObject json = getJson(session, "/rest/api/content?type=page&spaceKey=" + query(spaceKey) + "&title="
+                + query(title) + "&limit=1", "Seite nach Titel");
+        for (JsonObject page : results(json, "Seite nach Titel")) {
+            String id = string(page, "id");
+            if (ConfluenceIds.isContentId(id)) {
+                return id;
+            }
+        }
+        return null;
+    }
+
     /** Alle Seiten eines Space ohne Inhalt, höchstens {@code max}, in Confluence-Reihenfolge. */
     List<Page> spacePages(Session session, String spaceKey, int max) throws KnowledgeSourceException {
         return paged(session, "/rest/api/content?type=page&spaceKey=" + query(spaceKey) + "&expand=" + LIST_EXPAND
