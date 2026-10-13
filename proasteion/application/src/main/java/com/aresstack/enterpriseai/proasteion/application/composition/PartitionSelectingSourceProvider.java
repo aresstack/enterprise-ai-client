@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
+import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
@@ -24,6 +25,7 @@ import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Gibt die unter Wissensquellen abgehakten Bereiche (Confluence-Spaces) bei jedem {@code discover} und jeder
@@ -74,7 +76,7 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
         return "PartitionSelectingSourceProvider[" + delegate + "]";
     }
 
-    private final class Selecting implements SearchableKnowledgeSource, PageViewSource {
+    private final class Selecting implements SearchableKnowledgeSource, PageViewSource, AddressableKnowledgeSource {
 
         private final KnowledgeSourcePort port;
 
@@ -141,6 +143,16 @@ final class PartitionSelectingSourceProvider implements KnowledgeSourceProvider 
         @Override
         public KnowledgeResourceId resolveLink(String address) throws KnowledgeSourceException {
             return SourceCapabilities.resolveLink(port, address);
+        }
+
+        @Override
+        public Pattern addressPattern() {
+            return SourceCapabilities.addressPattern(port);
+        }
+
+        @Override
+        public KnowledgeResourceId resolveAddress(String address) throws KnowledgeSourceException {
+            return SourceCapabilities.resolveAddress(port, address);
         }
 
         @Override
