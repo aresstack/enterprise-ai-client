@@ -79,6 +79,7 @@ public final class SettingsForm {
     private final String readAloudChunking;
     private final String synthesisWorkers;
     private final String synthesisAttempts;
+    private final boolean readAloudVoiceStabilityFix;
     private final String bubbleUserBackground;
     private final String bubbleUserForeground;
     private final String bubbleAssistantBackground;
@@ -167,6 +168,7 @@ public final class SettingsForm {
         this.readAloudChunking = b.readAloudChunking;
         this.synthesisWorkers = b.synthesisWorkers;
         this.synthesisAttempts = b.synthesisAttempts;
+        this.readAloudVoiceStabilityFix = b.readAloudVoiceStabilityFix;
         this.bubbleUserBackground = b.bubbleUserBackground;
         this.bubbleUserForeground = b.bubbleUserForeground;
         this.bubbleAssistantBackground = b.bubbleAssistantBackground;
@@ -246,6 +248,7 @@ public final class SettingsForm {
                 .readAloudChunking(readAloudChunking)
                 .synthesisWorkers(synthesisWorkers)
                 .synthesisAttempts(synthesisAttempts)
+                .readAloudVoiceStabilityFix(readAloudVoiceStabilityFix)
                 .bubbleUserBackground(bubbleUserBackground)
                 .bubbleUserForeground(bubbleUserForeground)
                 .bubbleAssistantBackground(bubbleAssistantBackground)
@@ -471,6 +474,11 @@ public final class SettingsForm {
     /** Versuche je Vorlese-Stück ({@code speech.readAloud.synthesisAttempts}). */
     public String synthesisAttempts() {
         return synthesisAttempts;
+    }
+
+    /** Ob der Workaround für ungefähr 500 Zeichen lange, stimmstabile TTS-Stücke aktiv ist. */
+    public boolean readAloudVoiceStabilityFix() {
+        return readAloudVoiceStabilityFix;
     }
 
     /** Hintergrund der eigenen Blasen als {@code #RRGGBB} ({@code chat.bubble.user.background}). */
@@ -766,6 +774,7 @@ public final class SettingsForm {
         private String readAloudChunking = "PARAGRAPHS";
         private String synthesisWorkers = "2";
         private String synthesisAttempts = "2";
+        private boolean readAloudVoiceStabilityFix = true;
         private String bubbleUserBackground = BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_USER_BACKGROUND);
         private String bubbleUserForeground = BubbleColorsConfig.hex(BubbleColorsConfig.DEFAULT_USER_FOREGROUND);
         private String bubbleAssistantBackground =
@@ -1029,6 +1038,11 @@ public final class SettingsForm {
 
         public Builder synthesisAttempts(String value) {
             this.synthesisAttempts = value;
+            return this;
+        }
+
+        public Builder readAloudVoiceStabilityFix(boolean value) {
+            this.readAloudVoiceStabilityFix = value;
             return this;
         }
 
