@@ -24,7 +24,7 @@ public final class NavigationSectionLayout {
     /** The pages that link to the page. */
     public static final String INCOMING = "incoming";
     /** All sections in their default order. */
-    public static final List<String> SECTIONS = Collections.unmodifiableList(
+    private static final List<String> SECTIONS = Collections.unmodifiableList(
             java.util.Arrays.asList(TREE, OUTGOING, INCOMING));
 
     /** Default shares, taken from the former split of tree and references (0.62). */
