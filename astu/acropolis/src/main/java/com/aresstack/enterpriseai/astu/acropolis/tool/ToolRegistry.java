@@ -84,10 +84,14 @@ public final class ToolRegistry {
         }
         String output;
         boolean succeeded;
+        List<ToolContextResource> context = Collections.emptyList();
         try {
-            String result = tool.execute(arguments);
-            output = result == null ? "" : result;
+            ToolOutput result = tool.executeWithContext(arguments);
+            output = result == null ? "" : result.text();
             succeeded = !output.startsWith(ERROR_PREFIX);
+            if (succeeded && result != null) {
+                context = result.context();
+            }
         } catch (RuntimeException e) {
             String message = e.getMessage();
             output = ERROR_PREFIX + " "
@@ -95,6 +99,9 @@ public final class ToolRegistry {
             succeeded = false;
         }
         if (activity != null) {
+            if (!context.isEmpty()) {
+                activity.onToolContext(name, context);
+            }
             activity.onToolResult(name, succeeded);
             activity.onToolExecuted(name, arguments, output, succeeded);
         }

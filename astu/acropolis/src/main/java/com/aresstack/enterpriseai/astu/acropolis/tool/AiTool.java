@@ -18,4 +18,12 @@ public interface AiTool {
      * @throws RuntimeException bei ungültigen Argumenten oder Fehlern; die Schleife meldet die Meldung dem Modell
      */
     String execute(String arguments);
+
+    /**
+     * Like {@link #execute(String)}, plus the knowledge resources whose content the result hands to the model
+     * (provenance of the answer). Default: the text of {@link #execute(String)} without resources.
+     */
+    default ToolOutput executeWithContext(String arguments) {
+        return ToolOutput.text(execute(arguments));
+    }
 }

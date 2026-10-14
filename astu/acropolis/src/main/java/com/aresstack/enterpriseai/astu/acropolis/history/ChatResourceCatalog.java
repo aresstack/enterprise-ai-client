@@ -10,7 +10,7 @@ import java.util.Map;
  * Die Ressourcen einer Unterhaltung als fachliche Projektion eines {@link ChatRecord} (nicht zusätzlich gespeichert):
  * alle Dateien, alle hinzugefügten Seiten und alle von RAG tatsächlich verwendeten Quellen, je Gruppe in der
  * Reihenfolge ihres ersten Auftretens und je stabiler Kennung nur einmal (Datei: Attachment-ID, Seite: Bookmark,
- * Quelle: Resource-ID). Was keine stabile Kennung hat (eine noch nicht abgelegte Datei, eine Quelle aus einem
+ * Quelle: Wissensquelle und Resource-ID). Was keine stabile Kennung hat (eine noch nicht abgelegte Datei, eine Quelle aus einem
  * älteren Chat), fehlt: eine Kennung aus Titel oder Ort wird nicht erfunden.
  */
 public final class ChatResourceCatalog {
@@ -47,8 +47,10 @@ public final class ChatResourceCatalog {
                 }
                 for (SourceRecord source : message.getSources()) {
                     String id = source.getResourceId();
-                    if (!id.isEmpty() && !used.containsKey(id)) {
-                        used.put(id, source);
+                    // Key by source and resource: the same resource id in two sources names two resources.
+                    String key = source.getSourceId() + '\u0000' + id;
+                    if (!id.isEmpty() && !used.containsKey(key)) {
+                        used.put(key, source);
                     }
                 }
             }
@@ -67,7 +69,7 @@ public final class ChatResourceCatalog {
         return pages;
     }
 
-    /** Die verwendeten Quellen (je Resource-ID einmal, mit den Angaben ihres ersten Auftretens). */
+    /** Die verwendeten Quellen (je Wissensquelle und Resource-ID einmal, mit den Angaben ihres ersten Auftretens). */
     public List<SourceRecord> sources() {
         return sources;
     }

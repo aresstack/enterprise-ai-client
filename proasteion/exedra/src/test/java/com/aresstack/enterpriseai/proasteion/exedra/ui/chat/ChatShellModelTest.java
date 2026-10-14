@@ -183,6 +183,39 @@ public class ChatShellModelTest {
         assertFalse(entry.toString().contains("geheim"));
     }
 
+    /** Issue #118: sources read by a tool join the RAG sources of the answer, deduplicated, also after completion. */
+    @Test
+    public void mergeSourcesAddsReadResourcesBehindRagSourcesOnce() {
+        model.addUserMessage("Frage");
+        TranscriptEntry answer = model.beginAssistantMessage();
+        model.mergeSources(answer, java.util.Arrays.asList(
+                new SourceReference(1, "A", "Kap. 1", "https://wiki.example.test/A", "", 0.03, 1, 0, "wiki", "wiki:A",
+                        "wiki:A#0"),
+                new SourceReference(2, "A", "Kap. 2", "https://wiki.example.test/A", "", 0.02, 2, 0, "wiki", "wiki:A",
+                        "wiki:A#1")));
+        model.appendAssistantDelta("Antwort");
+        model.completeAssistantMessage();
+        events.clear();
+
+        boolean changed = model.mergeSources(answer, java.util.Arrays.asList(
+                new SourceReference(1, "A", "", "https://wiki.example.test/A", "", 0, 0, 0, "wiki", "wiki:A", ""),
+                new SourceReference(1, "B", "", "https://wiki.example.test/B", "", 0, 0, 0, "wiki", "wiki:B", ""),
+                new SourceReference(2, "B anders", "", "wiki:B", "", 0, 0, 0, "other", "wiki:B", "")));
+
+        assertTrue(changed);
+        assertEquals(java.util.Collections.singletonList("updated:COMPLETE:Antwort"), events);
+        assertEquals(4, answer.getSources().size());
+        assertEquals("B", answer.getSources().get(2).getTitle());
+        assertEquals(3, answer.getSources().get(2).getNumber());
+        assertEquals("other", answer.getSources().get(3).getSourceId());
+        assertEquals(4, answer.getSources().get(3).getNumber());
+
+        events.clear();
+        assertFalse("a resource read twice stays once", model.mergeSources(answer, java.util.Collections.singletonList(
+                new SourceReference(1, "B", "", "https://wiki.example.test/B", "", 0, 0, 0, "wiki", "wiki:B", ""))));
+        assertTrue(events.isEmpty());
+    }
+
     @Test
     public void sourcesAttachToAnAnswerOnceInAnyState() {
         model.addUserMessage("Frage");

@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.tool;
 
+import java.util.List;
+
 /** Meldet, welches Werkzeug die Schleife gerade ausführt (für eine kurze Statuszeile). Kehrt schnell zurück. */
 public interface ToolActivityListener {
 
@@ -20,6 +22,13 @@ public interface ToolActivityListener {
      * tatsächlich etwas geliefert hat (z. B. Wissenskontext über {@code knowledge_read}).
      */
     default void onToolResult(String toolName, boolean succeeded) {
+    }
+
+    /**
+     * {@code toolName} succeeded and handed the content of {@code resources} to the model; comes before
+     * {@link #onToolResult} and only when there is at least one resource. Record these as provenance of the answer.
+     */
+    default void onToolContext(String toolName, List<ToolContextResource> resources) {
     }
 
     /**
