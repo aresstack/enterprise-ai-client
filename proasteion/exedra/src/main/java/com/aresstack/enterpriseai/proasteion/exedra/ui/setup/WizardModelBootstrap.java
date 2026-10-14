@@ -26,14 +26,16 @@ final class WizardModelBootstrap {
         private final List<String> embeddings;
         private final List<String> speech;
         private final List<String> vision;
+        private final List<String> rerank;
 
         Models(ModelCatalogSnapshot snapshot, List<String> chats, List<String> embeddings, List<String> speech,
-               List<String> vision) {
+               List<String> vision, List<String> rerank) {
             this.snapshot = snapshot;
             this.chats = Collections.unmodifiableList(new ArrayList<String>(chats));
             this.embeddings = Collections.unmodifiableList(new ArrayList<String>(embeddings));
             this.speech = Collections.unmodifiableList(new ArrayList<String>(speech));
             this.vision = Collections.unmodifiableList(new ArrayList<String>(vision));
+            this.rerank = Collections.unmodifiableList(new ArrayList<String>(rerank));
         }
 
         ModelCatalogSnapshot snapshot() {
@@ -57,6 +59,11 @@ final class WizardModelBootstrap {
         List<String> vision() {
             return vision;
         }
+
+        /** The remote re-ranker (RERANK) models for {@code model.rerank}, only as the catalog classifies them. */
+        List<String> rerank() {
+            return rerank;
+        }
     }
 
     private final SettingsDialogActions settings;
@@ -72,7 +79,8 @@ final class WizardModelBootstrap {
     void prepare(SettingsForm form, final Consumer<Models> done) {
         settings.refreshModels(form, snapshot -> done.accept(new Models(snapshot,
                 remoteModels(snapshot, ModelCategory.CHAT), remoteModels(snapshot, ModelCategory.EMBEDDING),
-                remoteModels(snapshot, ModelCategory.TTS), remoteModels(snapshot, ModelCategory.VISION))));
+                remoteModels(snapshot, ModelCategory.TTS), remoteModels(snapshot, ModelCategory.VISION),
+                remoteModels(snapshot, ModelCategory.RERANK))));
     }
 
     private List<String> remoteModels(ModelCatalogSnapshot snapshot, ModelCategory category) {

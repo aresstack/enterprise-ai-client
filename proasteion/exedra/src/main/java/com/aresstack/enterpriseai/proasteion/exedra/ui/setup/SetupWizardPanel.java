@@ -211,6 +211,8 @@ public final class SetupWizardPanel extends JPanel {
     /** The chat's speech output ({@code model.tts}); never Merlin's own voice ({@code setup.merlin.*}). */
     private final JComboBox<String> speechOutputModel = new JComboBox<String>();
     private final JComboBox<String> visionModel = new JComboBox<String>();
+    /** Optional re-ranker ({@code model.rerank}); its use in the RAG pipeline is separate (#87). */
+    private final JComboBox<String> rerankModel = new JComboBox<String>();
     private final JTextField embeddingDimension = new JTextField(8);
     private final JLabel modelsStatus = statusLabel();
     private final ComposerButton modelsRefresh;
@@ -426,12 +428,13 @@ public final class SetupWizardPanel extends JPanel {
 
     private JPanel modelsStep() {
         Rows rows = new Rows("Modelle");
-        rows.note("Die passenden Modelle wurden vom KI-Dienst vorausgewählt. Chat und Embeddings sind erforderlich; "
-                + "Sprachausgabe und Bildverständnis sind optional.");
+        rows.note("Die passenden Modelle wurden vom KI-Dienst vorausgewählt. Chat, Embeddings und Dimension sind "
+                + "erforderlich; Sprachausgabe, Bildverständnis und Re-Ranker sind optional (Re-Ranker empfohlen).");
         chatModel.setEditable(true);
         embeddingModel.setEditable(true);
         speechOutputModel.setEditable(true);
         visionModel.setEditable(true);
+        rerankModel.setEditable(true);
         embeddingDimension.setColumns(7);
         embeddingDimension.setToolTipText("Wird automatisch aus dem Embedding-Modell ermittelt; bei Bedarf editieren.");
         rows.wide(modelGrid());
@@ -453,6 +456,7 @@ public final class SetupWizardPanel extends JPanel {
         dimension.add(javax.swing.Box.createHorizontalStrut(4));
         dimension.add(dimensionMeasure);
         addModelCell(grid, 0, 2, "Dimension", dimension);
+        addModelCell(grid, 1, 2, "Re-Ranker", rerankModel);
         return grid;
     }
 
@@ -1356,6 +1360,7 @@ public final class SetupWizardPanel extends JPanel {
         List<String> embeddings = models.embeddings();
         List<String> speech = models.speech();
         List<String> vision = models.vision();
+        List<String> rerank = models.rerank();
         boolean wasBusy = busy;
         busy = true;
         try {
@@ -1370,6 +1375,9 @@ public final class SetupWizardPanel extends JPanel {
             setChoices(visionModel, vision, ModelPreselection.choose(vision, text(visionModel),
                     settings.preferredModel(ModelCategory.VISION),
                     settings.preferredModelMatch(ModelCategory.VISION)));
+            setChoices(rerankModel, rerank, ModelPreselection.choose(rerank, text(rerankModel),
+                    settings.preferredModel(ModelCategory.RERANK),
+                    settings.preferredModelMatch(ModelCategory.RERANK)));
         } finally {
             busy = wasBusy;
         }
@@ -1381,7 +1389,7 @@ public final class SetupWizardPanel extends JPanel {
             }
         } else {
             modelsStatus.setText(chats.size() + " Chat · " + embeddings.size() + " Embedding · " + speech.size()
-                    + " Sprache · " + vision.size() + " Bild");
+                    + " Sprache · " + vision.size() + " Bild · " + rerank.size() + " Re-Ranker");
         }
         measureDimension();
         updateButtons();
@@ -2295,6 +2303,7 @@ public final class SetupWizardPanel extends JPanel {
             setText(embeddingModel, initial.embeddingModel());
             setText(speechOutputModel, initial.modelSelection(ModelCategory.TTS.key()));
             setText(visionModel, initial.modelSelection(ModelCategory.VISION.key()));
+            setText(rerankModel, initial.modelSelection(ModelCategory.RERANK.key()));
             embeddingDimension.setText(initial.embeddingDimension());
         } finally {
             busy = false;
@@ -2324,6 +2333,8 @@ public final class SetupWizardPanel extends JPanel {
         if (!vision.isEmpty()) {
             b.modelSelection(ModelCategory.VISION.key(), vision);
         }
+        // Empty removes model.rerank instead of silently keeping an earlier re-ranker.
+        b.modelSelection(ModelCategory.RERANK.key(), text(rerankModel));
         return b.build();
     }
 
@@ -2558,12 +2569,20 @@ public final class SetupWizardPanel extends JPanel {
         return speechOutputModel;
     }
 
+    JComboBox<String> rerankModelChoice() {
+        return rerankModel;
+    }
+
     JComboBox<String> visionModelChoice() {
         return visionModel;
     }
 
     JComboBox<String> embeddingModelChoice() {
         return embeddingModel;
+    }
+
+    String modelsStatusText() {
+        return modelsStatus.getText();
     }
 
     JTextField embeddingDimensionField() {
