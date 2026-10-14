@@ -117,6 +117,14 @@ Mit dem Umschalter „Bild“ / „Beschreibung“ lässt du dir ein Bild beschr
 
 Bei draw.io-Diagrammen gibt es „Gerendert“ und „Original“. „Gerendert“ (Standard) zeichnet das Diagramm aus seinen Daten, ohne eine Datei herunterzuladen. „Original“ zeigt das gespeicherte Vorschaubild; ist dafür eine Anmeldung nötig, steht „Original (Anmeldung nötig)“, scheitert das Laden „Original (nicht ladbar)“. Gespeichert wird als SVG oder PNG. Zur zusätzlichen Anmeldung siehe [Einmalcode (OTP)](help:knowledge.otp).
 
+### Akronyme
+
+Bei Seiten mit Lese-Ansicht (Confluence) prüft der Client den Text im Hintergrund auf Akronyme und markiert sie blassrosa, sobald die Prüfung fertig ist. Die Seite erscheint vorher schon wie gewohnt; Suche, Links, Bilder und Textauswahl funktionieren unverändert, gelbe Suchtreffer bleiben unter der Markierung sichtbar. Wörter in Links, Code und Zeilen in Großbuchstaben werden nicht markiert.
+
+Nennt die Seite selbst eine Langform, etwa „Langform (KURZ)“ oder „KURZ (Langform)“, zeigt ein Tooltip über der Markierung „Langform in diesem Dokument: …“. Nennt sie mehrere verschiedene, stehen alle da. Ohne Langform in der Seite gibt es keinen Tooltip: der Client erfindet keine Bedeutung und übernimmt keine aus anderen Seiten.
+
+Der Marker-Knopf in der Leiste unten blendet die Markierungen für alle Reiter aus und wieder ein. Die Funde landen zusätzlich als Facts im Metadaten-Katalog der Seite. Einstellungen dazu stehen unter Einstellungen → „Index“ → „Akronyme im Lesebereich“.
+
 ## Typische Probleme
 
 Statt des Dokuments steht eine Meldung:

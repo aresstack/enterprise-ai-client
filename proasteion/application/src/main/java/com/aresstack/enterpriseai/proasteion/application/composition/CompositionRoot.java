@@ -27,6 +27,9 @@ import com.aresstack.enterpriseai.proasteion.application.speech.NlpModels;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtractor;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.tika.DocumentExtraction;
 import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
+import com.aresstack.enterpriseai.proasteion.application.knowledge.FactCatalogTextFindings;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymExtractor;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.DocumentAcronymsUseCase;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AcpException;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentLauncher;
@@ -154,6 +157,7 @@ public final class CompositionRoot {
     private final SearchDrivenIndexingUseCase searchIndexing;
     private final KnowledgePrefetchService prefetch;
     private final BuildDocumentNavigationUseCase documentNavigation;
+    private final DocumentAcronymsUseCase documentAcronyms;
     private final ShutdownSequence shutdown;
     private java.util.concurrent.ExecutorService imagePool;
 
@@ -310,6 +314,12 @@ public final class CompositionRoot {
                         com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.CHAT)),
                 workExecutor, new FileDocumentNavigationStore(AppPaths.configFile().toAbsolutePath().getParent()
                         .resolve(NAVIGATION_DIRECTORY)));
+        // Acronyms in the reader (#107): sentence boundaries as for indexing (OpenNLP sentence model of the language if
+        // installed, else the rule-based splitter), findings as facts in the metadata catalog (#106); switch and
+        // thresholds apply without restart.
+        this.documentAcronyms = new DocumentAcronymsUseCase(new AcronymExtractor(new IndexSentenceSegmenter(nlpModels,
+                NlpModels.textAnalysis(), passageLanguage)), () -> settings.current().textMining().acronyms(),
+                new FactCatalogTextFindings(ports.facts()), () -> settings.current().textMining().acronymsEnabled());
         // Anhänge (Chat und Agent): Text über den Dokument-Port, Markdown/Klartext direkt, sonst Apache Tika.
         this.attachmentText = new DocumentAttachmentTextExtractor(DocumentExtraction.detector(),
                 DocumentExtraction.registry());
@@ -625,6 +635,11 @@ public final class CompositionRoot {
     /** Baut die Dokumentnavigation des Lesebereichs (Wolkenbanner). */
     public BuildDocumentNavigationUseCase documentNavigation() {
         return documentNavigation;
+    }
+
+    /** Acronyms, identifiers and stated long forms of an opened page (#107); blocks, call off the UI thread. */
+    public DocumentAcronymsUseCase documentAcronyms() {
+        return documentAcronyms;
     }
 
     public SearchDrivenIndexingUseCase searchIndexing() {

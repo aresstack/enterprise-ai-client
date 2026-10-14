@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
+import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
+import com.aresstack.enterpriseai.proasteion.application.config.TextMiningConfig;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
@@ -193,6 +195,14 @@ public final class SettingsMapper {
                 String.valueOf(ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS)));
         b.turnAnalysisLog(bool(p, ChatConfig.TURN_ANALYSIS_LOG_KEY, false));
         b.answerPlanningEnabled(bool(p, ChatConfig.ANSWER_PLANNING_ENABLED_KEY, true));
+        b.acronymsEnabled(bool(p, TextMiningConfig.ACRONYMS_ENABLED_KEY, true));
+        b.acronymsHighlight(bool(p, TextMiningConfig.READER_HIGHLIGHT_KEY, true));
+        b.acronymMaxLetters(text(p, TextMiningConfig.MAX_LETTERS_KEY,
+                String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS)));
+        b.acronymShoutingPercent(text(p, TextMiningConfig.SHOUTING_PERCENT_KEY,
+                String.valueOf(AcronymSettings.DEFAULT_SHOUTING_PERCENT)));
+        b.acronymShoutingMinWords(text(p, TextMiningConfig.SHOUTING_MIN_WORDS_KEY,
+                String.valueOf(AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS)));
         b.answerPlanningUseAtPercent(text(p, ChatConfig.ANSWER_PLANNING_USE_AT_KEY,
                 String.valueOf(AnswerPlanningPolicy.DEFAULT_USE_AT_PERCENT)));
         b.answerPlanningAskBelowPercent(text(p, ChatConfig.ANSWER_PLANNING_ASK_BELOW_KEY,
@@ -342,6 +352,15 @@ public final class SettingsMapper {
         // Off is the default and stays out of the file.
         put(set, ChatConfig.TURN_ANALYSIS_LOG_KEY, form.turnAnalysisLog() ? "true" : "");
         put(set, ChatConfig.ANSWER_PLANNING_ENABLED_KEY, form.answerPlanningEnabled() ? "" : "false");
+        // Acronyms in the reader (#107): defaults stay out of the file.
+        put(set, TextMiningConfig.ACRONYMS_ENABLED_KEY, form.acronymsEnabled() ? "" : "false");
+        put(set, TextMiningConfig.READER_HIGHLIGHT_KEY, form.acronymsHighlight() ? "" : "false");
+        putUnlessDefault(set, TextMiningConfig.MAX_LETTERS_KEY, form.acronymMaxLetters(),
+                AcronymSettings.DEFAULT_MAX_LETTERS);
+        putUnlessDefault(set, TextMiningConfig.SHOUTING_PERCENT_KEY, form.acronymShoutingPercent(),
+                AcronymSettings.DEFAULT_SHOUTING_PERCENT);
+        putUnlessDefault(set, TextMiningConfig.SHOUTING_MIN_WORDS_KEY, form.acronymShoutingMinWords(),
+                AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS);
         putUnlessDefault(set, ChatConfig.ANSWER_PLANNING_USE_AT_KEY, form.answerPlanningUseAtPercent(),
                 AnswerPlanningPolicy.DEFAULT_USE_AT_PERCENT);
         putUnlessDefault(set, ChatConfig.ANSWER_PLANNING_ASK_BELOW_KEY, form.answerPlanningAskBelowPercent(),
@@ -515,6 +534,12 @@ public final class SettingsMapper {
                 return "Planen der Antwort: verwenden ab (%)";
             case ChatConfig.ANSWER_PLANNING_ASK_BELOW_KEY:
                 return "Planen der Antwort: nachfragen unter (%)";
+            case TextMiningConfig.MAX_LETTERS_KEY:
+                return "Akronyme: max. Buchstaben";
+            case TextMiningConfig.SHOUTING_PERCENT_KEY:
+                return "Akronyme: Großschrift ab (%)";
+            case TextMiningConfig.SHOUTING_MIN_WORDS_KEY:
+                return "Akronyme: Großschrift ab Wörtern";
             case AppConfigLoader.CHAT_CONNECT_TIMEOUT_KEY:
                 return "Chat: Verbindungs-Timeout (ms)";
             case AppConfigLoader.CHAT_READ_TIMEOUT_KEY:

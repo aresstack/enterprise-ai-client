@@ -72,6 +72,30 @@ normalisierte Suchprojektion (z. B. `FACT_SEARCH_TERM`); sie ist ein späterer A
   nichts kaskadiert. Das Entfernen einer Quelle aus dem Wissensindex (`IndexKnowledgeUseCase.removeSource`) lässt den
   Katalog bewusst unberührt, damit manuelle Arbeit nicht nebenbei verschwindet.
 
+## Erste Schreiber: Akronyme im Lesebereich (#107)
+
+Jede im Lesebereich als Original-HTML geöffnete Seite wird nach der Anzeige im Hintergrund analysiert
+(`DocumentAcronymsUseCase` in `astu.acropolis.textmining`, Extractor `text-acronyms`). Der Kern kennt den Katalog nicht:
+er schreibt über den Port `TextFindingSink`, den `FactCatalogTextFindings` (Kompositionspunkt) auf `FactStorePort`
+abbildet. Typen werden zur Laufzeit registriert:
+
+| Typ | Rolle | Payload (Schema 1) |
+|---|---|---|
+| `ACRONYM_CANDIDATE` | `MENTIONS` | `shortForm`, `normalized`, `surfaceForms`, `kind`, `status` (`CANDIDATE`/`EVIDENCED`), `occurrences`, `positions` (höchstens 50), `longForms`, `conflictingLongForms` |
+| `ACRONYM_DEFINITION` | `DEFINES` | `shortForm`, `normalized`, `longForm`, `normalizedLongForm`, `pattern` (`LONG_FORM_FIRST`/`SHORT_FORM_FIRST`), `status`, `statements`, `conflictingLongForms` |
+| `TECHNICAL_IDENTIFIER_CANDIDATE` | `MENTIONS` | `identifier`, `normalized`, `status`, `occurrences`, `positions` |
+
+- Langformen stammen nur aus der Seite selbst (Klammerpaare im selben Satz, Buchstabenausrichtung nach Schwartz und
+  Hearst); verschiedene Langformen bleiben getrennte Facts, gleiche Kurzformen verschiedener Seiten werden nicht
+  verknüpft.
+- `positions` und der Anker (`characters`, `quote` = Satz bzw. Wort) beziehen sich auf `KnowledgeDocument.text()` der
+  analysierten Fassung; der Bookmark bleibt die `KnowledgeResourceId`.
+- Erneutes Lesen derselben Fassung schreibt nichts (`provenance`: Version, Revision, Content-Hash gleich). Neue Fassung,
+  andere Schwellen oder anderes Satzverfahren tauschen die automatischen Facts des Extractors per
+  `replaceAutomaticFacts` aus; manuelle und geprüfte Facts bleiben.
+- Satzgrenzen kommen aus dem OpenNLP-Satzmodell der Sprache, wenn es installiert ist, sonst aus dem regelbasierten
+  Splitter; es wird nichts heruntergeladen.
+
 ## Nebenläufigkeit
 
 H2 2.x (MVStore) liest auf einem Snapshot und sperrt beim Schreiben Zeilen. Leser warten nie auf Schreiber. Ein

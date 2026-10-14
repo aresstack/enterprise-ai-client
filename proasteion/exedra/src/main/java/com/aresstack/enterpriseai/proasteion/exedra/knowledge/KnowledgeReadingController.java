@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.knowledge;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.KnowledgeReaderPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderAcronym;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderAttachment;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderAttachmentLoader;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderImage;
@@ -22,6 +23,9 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolvedKnowledgeLink
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SourceSearchOutcome;
 import com.aresstack.enterpriseai.astu.acropolis.navigation.BuildDocumentNavigationUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymFinding;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.DocumentAcronymsUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
@@ -44,7 +48,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -100,6 +106,11 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     private List<String> hitKeys = new ArrayList<String>();
     private int prefetchedFrom = -1;
     private volatile SourceImageAnalysisUseCase imageDescriptions;
+    private volatile DocumentAcronymsUseCase acronyms;
+    private volatile BooleanSupplier acronymsEnabled = () -> false;
+    private volatile Supplier<AcronymSettings> acronymSettings = AcronymSettings::defaults;
+    /** The current load per tab key; a late analysis of an earlier load is dropped. */
+    private final Map<String, Object> loads = new ConcurrentHashMap<String, Object>();
 
     /**
      * @param enabledSources die angebundenen, angehakten Quellen (frisch je Suche gelesen)
@@ -149,6 +160,17 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     /** Der Weg für Bildbeschreibungen auf Abruf; ohne ihn meldet die Diashow, dass es keine gibt. */
     public void describeImagesWith(SourceImageAnalysisUseCase descriptions) {
         this.imageDescriptions = descriptions;
+    }
+
+    /**
+     * Analyse every page shown as original HTML for acronyms (issue #107) after it is displayed, keep the findings and
+     * mark them in the reader. {@code enabled} and {@code settings} are read for every page.
+     */
+    public void markAcronymsWith(DocumentAcronymsUseCase useCase, BooleanSupplier enabled,
+                                 Supplier<AcronymSettings> settings) {
+        this.acronyms = useCase;
+        this.acronymsEnabled = enabled == null ? () -> false : enabled;
+        this.acronymSettings = settings == null ? AcronymSettings::defaults : settings;
     }
 
     /** Hängt sich an Lesebereich und Favoriten-Seite; auf dem UI-Thread. */
@@ -374,6 +396,8 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
 
     private void load(final ReaderLink link, KnowledgeSourceRegistration registration) {
         final KnowledgeReaderPanel reader = workspace.reader();
+        final Object load = new Object();
+        loads.put(link.key(), load);
         try {
             if (link.isSource()) {
                 final List<ReaderLink> entries = new ArrayList<ReaderLink>();
@@ -418,6 +442,9 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                     if (viewed != null && navigation != null) {
                         navigate(link, viewed, false);
                     }
+                    if (viewed != null) {
+                        markAcronyms(link, viewed, load);
+                    }
                     return;
                 }
                 // Priority-Thread: Cache oder sofort, nie hinter dem Vorladen; die Seite wird sofort aufbereitet.
@@ -435,6 +462,43 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         } catch (RuntimeException e) {
             LOG.log(Level.WARNING, "Lesen von " + link.key() + " fehlgeschlagen", e);
             uiExecutor.execute(() -> reader.showProblem(link.key(), "Nicht lesbar (Protokoll)."));
+        }
+    }
+
+    /**
+     * Analyse the displayed page in the background and mark its acronyms, unless the tab has loaded something else
+     * meanwhile. A failure only costs the marks; the page stays as shown.
+     */
+    private void markAcronyms(final ReaderLink link, final KnowledgeDocument document, final Object load) {
+        final DocumentAcronymsUseCase useCase = acronyms;
+        if (useCase == null || !acronymsEnabled.getAsBoolean()) {
+            return;
+        }
+        try {
+            workExecutor.execute(() -> {
+                try {
+                    DocumentAcronymsUseCase.Outcome outcome = useCase.analyze(document);
+                    if (outcome.storage() == DocumentAcronymsUseCase.Storage.FAILED) {
+                        LOG.log(Level.FINE, "Akronym-Facts von " + link.key() + " nicht gespeichert ("
+                                + outcome.problem() + ")");
+                    }
+                    final List<ReaderAcronym> marks = new ArrayList<ReaderAcronym>();
+                    for (AcronymFinding finding : outcome.analysis().acronyms()) {
+                        marks.add(new ReaderAcronym(finding.surfaceSet(), finding.longForms()));
+                    }
+                    final AcronymSettings settings = acronymSettings.get();
+                    uiExecutor.execute(() -> {
+                        if (loads.get(link.key()) == load) {
+                            workspace.reader().showAcronyms(link.key(), marks, settings);
+                        }
+                    });
+                } catch (RuntimeException e) {
+                    LOG.log(Level.FINE, "Akronym-Analyse von " + link.key() + " fehlgeschlagen ("
+                            + e.getClass().getSimpleName() + ")");
+                }
+            });
+        } catch (RuntimeException rejected) {
+            LOG.log(Level.FINE, "Akronym-Analyse von " + link.key() + " nicht eingeplant");
         }
     }
 

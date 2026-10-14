@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.config;
 
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
@@ -180,6 +181,16 @@ public final class AppConfigLoader {
         BubbleColorsConfig bubbleColors = bubbleColors(reader, warnings);
         FactStoreConfig facts = new FactStoreConfig(reader.path(FACTS_DIRECTORY_KEY, AppPaths.defaultFactDirectory()),
                 reader.integer(FACTS_LOCK_TIMEOUT_KEY, FactStoreConfig.DEFAULT_LOCK_TIMEOUT_MILLIS, 0, MAX_TIMEOUT));
+        TextMiningConfig textMining = new TextMiningConfig(reader.bool(TextMiningConfig.ACRONYMS_ENABLED_KEY, true),
+                reader.bool(TextMiningConfig.READER_HIGHLIGHT_KEY, true),
+                new AcronymSettings(
+                        reader.integer(TextMiningConfig.MAX_LETTERS_KEY, AcronymSettings.DEFAULT_MAX_LETTERS, 2,
+                                TextMiningConfig.MAX_LETTERS_LIMIT),
+                        reader.integer(TextMiningConfig.SHOUTING_PERCENT_KEY, AcronymSettings.DEFAULT_SHOUTING_PERCENT,
+                                1, 100),
+                        reader.integer(TextMiningConfig.SHOUTING_MIN_WORDS_KEY,
+                                AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS, 1,
+                                TextMiningConfig.SHOUTING_MIN_WORDS_LIMIT)));
 
         for (String unread : reader.unreadKeys()) {
             warnings.add("Unbekannter Konfigurationsschlüssel wird ignoriert: " + unread);
@@ -207,7 +218,7 @@ public final class AppConfigLoader {
             throw new AppConfigException(reader.problems());
         }
         return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models,
-                disabledTools, bubbleColors, facts, warnings);
+                disabledTools, bubbleColors, facts, textMining, warnings);
     }
 
     /**

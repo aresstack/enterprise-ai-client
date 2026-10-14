@@ -75,6 +75,15 @@ Anders als viele andere Felder schreibt der Dialog die Werte der Wissenssuche un
 - Ein größeres Kontextbudget und mehr Quellen machen Antworten nicht automatisch besser: das Modell bekommt mehr Text, die Antwort dauert länger, und das Kontextfenster des Modells setzt eine Grenze.
 - Einen Index beim Programmstart aufzubauen gibt es nicht; der Index füllt sich über die Suche oder über das Indexieren einer Quelle.
 
+## Akronyme im Lesebereich
+
+- **Seiten auf Akronyme prüfen**: Aus heißt keine Prüfung, keine Markierung, keine Facts.
+- **Akronyme beim Öffnen markieren**: ob die blassrosa Markierung beim Öffnen einer Seite sichtbar ist; der Marker-Knopf im Lesebereich schaltet trotzdem um.
+- **Max. Buchstaben eines Akronyms** (Standard 10): längere großgeschriebene Wörter zählen nicht.
+- **Großschrift-Zeile ab (%)** (Standard 60) und **ab Wörtern** (Standard 3): Zeilen, die überwiegend in Großbuchstaben stehen, liefern keine Akronyme.
+
+Alle Werte gelten ab der nächsten geöffneten Seite.
+
 ## Typische Probleme
 
 ### Die Antwort nutzt zu wenige Quellen

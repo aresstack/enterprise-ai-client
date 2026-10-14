@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechText;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
@@ -144,6 +145,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     static final String FAVORITE_REMOVE = "Aus den Favoriten entfernen";
     static final String CLOSE_TOOLTIP = "Schließen";
     static final String READ_ALOUD_PLAY_TOOLTIP = "Seite vorlesen";
+    static final String ACRONYMS_HIDE_TOOLTIP = "Akronym-Markierungen ausblenden";
+    static final String ACRONYMS_SHOW_TOOLTIP = "Akronyme markieren";
     static final String READ_ALOUD_STOP_TOOLTIP = "Vorlesen beenden";
     static final String READ_ALOUD_PAUSE_TOOLTIP = "Vorlesen pausieren";
     static final String READ_ALOUD_RESUME_TOOLTIP = "Vorlesen fortsetzen";
@@ -191,6 +194,10 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private int dropX = -1;
     private Color dropTint;
     private final ComposerButton infoButton;
+    /** Shows or hides the acronym marks (issue #107); only visible while the active tab has marks. */
+    private final ComposerButton acronymsButton;
+    /** Whether acronym marks are painted; the switch applies to every tab. */
+    private boolean acronymsShown = true;
     /** Büroklammer mit der Zahl der Anhänge des aktiven Reiters; ohne Anhänge ausgeblendet. */
     private final ComposerButton attachmentsButton;
     private java.util.function.Consumer<JPopupMenu> attachmentMenuShower = this::showAboveButton;
@@ -273,6 +280,10 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
                 readAloud.setRate(rate);
             }
         });
+        // Acronym marks of the page (issue #107): pale pink, switched on and off for all tabs.
+        acronymsButton = toolbar.addTool(ComposerIcons.marker(), ACRONYMS_HIDE_TOOLTIP);
+        toolbar.showTool(acronymsButton, false);
+        acronymsButton.addActionListener(event -> setAcronymMarksShown(!acronymsShown));
         // Rechts unmittelbar vor dem Branding: Anhänge der Seite (unabhängig davon, ob die Quelle sie indexiert).
         attachmentsButton = toolbar.addTrailingTool(attachmentIcon(0), ReaderAttachmentList.tooltip(0));
         toolbar.showTool(attachmentsButton, false);
@@ -596,6 +607,72 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         if (anchor != null) {
             scrollLater(view, anchor);
         }
+    }
+
+    // ------------------------------------------------------------------ Akronyme (#107)
+
+    /**
+     * Mark the acronyms of the page in tab {@code key} (pale pink, tooltip with a long form the page states). Only a
+     * page shown as original HTML gets marks; a tab showing anything else, or none, ignores the call. The caller makes
+     * sure the analysis belongs to the version shown.
+     */
+    public void showAcronyms(String key, List<ReaderAcronym> acronyms, AcronymSettings settings) {
+        Tab tab = tabs.get(key);
+        ReaderHtmlView view = htmlView(key);
+        if (tab == null || view == null || acronyms == null) {
+            return;
+        }
+        if (tab.acronyms != null) {
+            tab.acronyms.hide();
+        }
+        tab.acronyms = ReaderAcronymMarks.map(view, acronyms, settings);
+        if (acronymsShown) {
+            tab.acronyms.show();
+        }
+        styleAcronyms();
+    }
+
+    /** Show or hide the acronym marks of every tab (the toolbar switch; initially {@code reader.acronyms.highlight}). */
+    public void setAcronymMarksShown(boolean shown) {
+        acronymsShown = shown;
+        for (Tab tab : tabs.values()) {
+            if (tab.acronyms != null) {
+                if (shown) {
+                    tab.acronyms.show();
+                } else {
+                    tab.acronyms.hide();
+                }
+            }
+        }
+        styleAcronyms();
+    }
+
+    public boolean areAcronymMarksShown() {
+        return acronymsShown;
+    }
+
+    private void styleAcronyms() {
+        Tab active = tabs.get(activeKey);
+        toolbar.showTool(acronymsButton, active != null && active.acronyms != null && active.acronyms.count() > 0);
+        acronymsButton.setEmphasized(acronymsShown);
+        acronymsButton.setToolTipText(acronymsShown ? ACRONYMS_HIDE_TOOLTIP : ACRONYMS_SHOW_TOOLTIP);
+    }
+
+    ComposerButton acronymsButton() {
+        return acronymsButton;
+    }
+
+    /** The marked words of tab {@code key} in document order, or an empty list (tests). */
+    List<String> acronymMarks(String key) {
+        Tab tab = tabs.get(key);
+        return tab == null || tab.acronyms == null || !tab.acronyms.isShown() ? Collections.<String>emptyList()
+                : tab.acronyms.markedWords();
+    }
+
+    /** The tooltip at a document offset of the page in tab {@code key} (tests). */
+    String acronymTooltip(String key, int offset) {
+        Tab tab = tabs.get(key);
+        return tab == null || tab.acronyms == null ? null : tab.acronyms.tooltipAt(offset);
     }
 
     private void pageLinkActivated(ReaderLink page, final String address, String text) {
@@ -1624,6 +1701,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         // neuer Inhalt: die Anhänge setzt der Controller danach neu (showAttachments)
         tab.attachments = Collections.<ReaderAttachment>emptyList();
         tab.attachmentLoader = null;
+        // new content: drop the acronym marks of the old view
+        tab.acronyms = null;
         for (java.awt.Component component : deck.getComponents()) {
             if (tab.card.equals(component.getName())) {
                 deck.remove(component);
@@ -1671,6 +1750,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         attachmentsButton.setIcon(attachmentIcon(attached));
         attachmentsButton.setToolTipText(ReaderAttachmentList.tooltip(attached));
         toolbar.showTool(attachmentsButton, attached > 0);
+        styleAcronyms();
         if (speakingTab != null && speakingTab != active) {
             stopReadAloud(); // Reiterwechsel oder Schließen: die alte Seite liest nicht weiter
         }
@@ -1737,6 +1817,8 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         /** Die Dateianhänge der Seite (alle Typen), nur bei Quellen mit Lese-Ansicht. */
         List<ReaderAttachment> attachments = Collections.<ReaderAttachment>emptyList();
         ReaderAttachmentLoader attachmentLoader;
+        /** Acronym marks of the original HTML (issue #107); {@code null}: none. */
+        ReaderAcronymMarks acronyms;
 
         Tab(ReaderLink link, boolean pinned, String card) {
             this.link = link;

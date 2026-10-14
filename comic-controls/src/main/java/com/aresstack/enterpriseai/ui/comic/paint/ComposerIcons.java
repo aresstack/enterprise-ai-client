@@ -332,4 +332,16 @@ public final class ComposerIcons {
             }
         };
     }
+
+    /** A slanted text marker over a line (show or hide the acronym marks in the reader). Own addition. */
+    public static StrokeIcon marker() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawPolygon(new int[] {9, 13, 7, 3}, new int[] {1, 5, 11, 7}, 4);
+                g2.drawPolyline(new int[] {3, 2, 5, 7}, new int[] {7, 10, 10, 11}, 4);
+                g2.drawLine(1, 14, 14, 14);
+            }
+        };
+    }
 }

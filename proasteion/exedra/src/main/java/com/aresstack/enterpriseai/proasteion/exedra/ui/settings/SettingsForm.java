@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.proasteion.application.config.BubbleColorsConfig;
 
 import java.util.Collections;
@@ -122,6 +123,11 @@ public final class SettingsForm {
     private final String retrievalMaxFollowUps;
     private final boolean retrievalRerank;
     private final String retrievalRerankTopK;
+    private final boolean acronymsEnabled;
+    private final boolean acronymsHighlight;
+    private final String acronymMaxLetters;
+    private final String acronymShoutingPercent;
+    private final String acronymShoutingMinWords;
     private final String rawWorkers;
     private final String enrichmentWorkers;
     private final String embeddingConcurrency;
@@ -213,6 +219,11 @@ public final class SettingsForm {
         this.retrievalMaxFollowUps = b.retrievalMaxFollowUps;
         this.retrievalRerank = b.retrievalRerank;
         this.retrievalRerankTopK = b.retrievalRerankTopK;
+        this.acronymsEnabled = b.acronymsEnabled;
+        this.acronymsHighlight = b.acronymsHighlight;
+        this.acronymMaxLetters = b.acronymMaxLetters;
+        this.acronymShoutingPercent = b.acronymShoutingPercent;
+        this.acronymShoutingMinWords = b.acronymShoutingMinWords;
         this.rawWorkers = b.rawWorkers;
         this.enrichmentWorkers = b.enrichmentWorkers;
         this.embeddingConcurrency = b.embeddingConcurrency;
@@ -292,6 +303,11 @@ public final class SettingsForm {
                 .retrievalMaxFollowUps(retrievalMaxFollowUps)
                 .retrievalRerank(retrievalRerank)
                 .retrievalRerankTopK(retrievalRerankTopK)
+                .acronymsEnabled(acronymsEnabled)
+                .acronymsHighlight(acronymsHighlight)
+                .acronymMaxLetters(acronymMaxLetters)
+                .acronymShoutingPercent(acronymShoutingPercent)
+                .acronymShoutingMinWords(acronymShoutingMinWords)
                 .rawWorkers(rawWorkers)
                 .enrichmentWorkers(enrichmentWorkers)
                 .embeddingConcurrency(embeddingConcurrency)
@@ -697,6 +713,31 @@ public final class SettingsForm {
         return retrievalRerankTopK;
     }
 
+    /** Analyse opened pages for acronyms and keep the findings ({@code textMining.acronyms.enabled}). */
+    public boolean acronymsEnabled() {
+        return acronymsEnabled;
+    }
+
+    /** Mark acronyms when a page opens ({@code reader.acronyms.highlight}). */
+    public boolean acronymsHighlight() {
+        return acronymsHighlight;
+    }
+
+    /** Longest acronym in letters ({@code textMining.acronyms.maxLetters}, 2–20). */
+    public String acronymMaxLetters() {
+        return acronymMaxLetters;
+    }
+
+    /** Share of capital words that makes a line shouting ({@code textMining.acronyms.shoutingPercent}, 1–100). */
+    public String acronymShoutingPercent() {
+        return acronymShoutingPercent;
+    }
+
+    /** Fewest words of a shouting line ({@code textMining.acronyms.shoutingMinWords}, 1–50). */
+    public String acronymShoutingMinWords() {
+        return acronymShoutingMinWords;
+    }
+
     /** Rohindex: Schreiber ({@code knowledge.raw.workers}). */
     public String rawWorkers() {
         return rawWorkers;
@@ -839,6 +880,11 @@ public final class SettingsForm {
         private boolean retrievalRerank = true;
         private String retrievalRerankTopK = String.valueOf(
                 com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy.DEFAULT_RERANK_TOP_K);
+        private boolean acronymsEnabled = true;
+        private boolean acronymsHighlight = true;
+        private String acronymMaxLetters = String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS);
+        private String acronymShoutingPercent = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_PERCENT);
+        private String acronymShoutingMinWords = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS);
         private String rawWorkers = "2";
         private String enrichmentWorkers = "4";
         private String embeddingConcurrency = "4";
@@ -1254,6 +1300,31 @@ public final class SettingsForm {
 
         public Builder retrievalMaxFollowUps(String value) {
             this.retrievalMaxFollowUps = text(value);
+            return this;
+        }
+
+        public Builder acronymsEnabled(boolean value) {
+            this.acronymsEnabled = value;
+            return this;
+        }
+
+        public Builder acronymsHighlight(boolean value) {
+            this.acronymsHighlight = value;
+            return this;
+        }
+
+        public Builder acronymMaxLetters(String value) {
+            this.acronymMaxLetters = text(value);
+            return this;
+        }
+
+        public Builder acronymShoutingPercent(String value) {
+            this.acronymShoutingPercent = text(value);
+            return this;
+        }
+
+        public Builder acronymShoutingMinWords(String value) {
+            this.acronymShoutingMinWords = text(value);
             return this;
         }
 

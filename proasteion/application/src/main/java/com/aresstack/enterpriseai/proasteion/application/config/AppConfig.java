@@ -26,6 +26,7 @@ public final class AppConfig {
     private final Set<String> disabledTools;
     private final BubbleColorsConfig bubbleColors;
     private final FactStoreConfig facts;
+    private final TextMiningConfig textMining;
     private final List<String> warnings;
 
     AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
@@ -40,6 +41,14 @@ public final class AppConfig {
               List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
               ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
               List<String> warnings) {
+        this(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models, disabledTools,
+                bubbleColors, facts, TextMiningConfig.defaults(), warnings);
+    }
+
+    AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
+              List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
+              ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
+              TextMiningConfig textMining, List<String> warnings) {
         this.windowTitle = windowTitle;
         this.chat = chat;
         this.embedding = embedding;
@@ -52,6 +61,7 @@ public final class AppConfig {
         this.disabledTools = Collections.unmodifiableSet(new LinkedHashSet<String>(disabledTools));
         this.bubbleColors = bubbleColors == null ? BubbleColorsConfig.defaults() : bubbleColors;
         this.facts = facts == null ? FactStoreConfig.defaults() : facts;
+        this.textMining = textMining == null ? TextMiningConfig.defaults() : textMining;
         this.warnings = Collections.unmodifiableList(new ArrayList<String>(warnings));
     }
 
@@ -114,6 +124,11 @@ public final class AppConfig {
         return facts;
     }
 
+    /** Text mining in the reader ({@code textMining.*}, {@code reader.acronyms.*}). */
+    public TextMiningConfig textMining() {
+        return textMining;
+    }
+
     public List<String> warnings() {
         return warnings;
     }
@@ -121,6 +136,6 @@ public final class AppConfig {
     @Override
     public String toString() {
         return "AppConfig[" + chat + ", " + embedding + ", " + knowledge + ", sources=" + sources + ", " + keePass
-                + ", " + network + ", " + agent + ", " + models + ", " + facts + "]";
+                + ", " + network + ", " + agent + ", " + models + ", " + facts + ", " + textMining + "]";
     }
 }

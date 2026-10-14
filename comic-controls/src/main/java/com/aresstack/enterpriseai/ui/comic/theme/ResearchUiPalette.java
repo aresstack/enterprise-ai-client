@@ -49,6 +49,11 @@ public final class ResearchUiPalette {
     /** The red compass of the navigation tab (issue #97, Angelo's design: red ring and needle). */
     public static final Color COMPASS_RED = new Color(0xF03A3A);
     /**
+     * The pale pink behind acronyms in the reader (issue #107): translucent, so the yellow and amber find marks and
+     * the selection stay visible underneath and the text stays easy to read.
+     */
+    public static final Color ACRONYM_MARK = new Color(0xF4, 0x8F, 0xB1, 72);
+    /**
      * The yellow suggestion tag above the composer (the research agent's search suggestions and the follow-up
      * questions of a quote): the same yellow as the tool-call thought bubbles, with its dark text.
      */

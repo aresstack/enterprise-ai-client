@@ -72,6 +72,8 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
     private final Map<InlineImageView, Boolean> imageViews = new WeakHashMap<InlineImageView, Boolean>();
     /** The width the view is laid out for (or measured at); images shrink to it. 0 = not known yet. */
     private int layoutWidth;
+    /** Tooltips of text marks by document offset (acronym marks), or {@code null}. */
+    private java.util.function.IntFunction<String> textTips;
 
     /**
      * @param bodyHtml     der HTML-Körper der Seite (ohne {@code <html>}/{@code <body>})
@@ -233,6 +235,30 @@ public final class ReaderHtmlView extends JEditorPane implements WidthAwareHeigh
     }
 
     /** Ein aktivierter Link, der kein Anker der eigenen Seite ist; Aufruf auf dem EDT. */
+    /**
+     * Show a tooltip over marked text: {@code tips} gives the tooltip for a document offset or {@code null};
+     * {@code null} removes the tooltips.
+     */
+    void setTextTips(java.util.function.IntFunction<String> tips) {
+        textTips = tips;
+        if (tips != null) {
+            javax.swing.ToolTipManager.sharedInstance().registerComponent(this);
+        } else {
+            javax.swing.ToolTipManager.sharedInstance().unregisterComponent(this);
+        }
+    }
+
+    @Override
+    @SuppressWarnings("deprecation") // viewToModel(Point): the Java 8 form
+    public String getToolTipText(MouseEvent event) {
+        java.util.function.IntFunction<String> tips = textTips;
+        if (tips == null || event == null) {
+            return null;
+        }
+        int offset = viewToModel(event.getPoint());
+        return offset < 0 ? null : tips.apply(offset);
+    }
+
     public interface LinkHandler {
         /**
          * @param address die absolute Adresse (relative gegen die Basis der Seite aufgelöst), mit Query und Fragment

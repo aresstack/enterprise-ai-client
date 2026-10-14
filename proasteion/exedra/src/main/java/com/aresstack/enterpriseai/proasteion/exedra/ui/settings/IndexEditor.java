@@ -96,6 +96,27 @@ final class IndexEditor {
             + "vor dieser Bewertung und gibt nur so viele weiter; ohne Modell oder bei Ausfall gehen alle Treffer "
             + "unverändert weiter (retrieval.rerankTopK, 1–40; Standard 10).";
 
+    static final String ACRONYMS_NOTE = "Eine im Lesebereich geöffnete Seite wird im Hintergrund auf Akronyme, "
+            + "technische Kennungen und im Text genannte Langformen (z. B. „Langform (KURZ)“) geprüft. Langformen "
+            + "stammen nur aus der Seite selbst, nie aus Modellwissen. Die Funde landen als Facts im "
+            + "Metadaten-Katalog. Alle Werte gelten nach dem Speichern ab der nächsten geöffneten Seite.";
+    static final String ACRONYMS_ENABLED_LABEL = "Seiten auf Akronyme prüfen";
+    static final String ACRONYMS_ENABLED_HELP = "Aus: keine Analyse, keine Markierung, keine Facts "
+            + "(textMining.acronyms.enabled).";
+    static final String ACRONYMS_HIGHLIGHT_LABEL = "Akronyme beim Öffnen markieren";
+    static final String ACRONYMS_HIGHLIGHT_HELP = "Blassrosa Markierung im Lesebereich; der Marker-Knopf unten schaltet "
+            + "sie für alle Reiter um (reader.acronyms.highlight).";
+    static final String ACRONYM_MAX_LETTERS_LABEL = "Max. Buchstaben eines Akronyms";
+    static final String ACRONYM_MAX_LETTERS_HELP = "Längere großgeschriebene Wörter gelten nicht als Akronym "
+            + "(textMining.acronyms.maxLetters, 2–20; Standard 10).";
+    static final String ACRONYM_SHOUTING_PERCENT_LABEL = "Großschrift-Zeile ab (%)";
+    static final String ACRONYM_SHOUTING_PERCENT_HELP = "Sind so viele Wörter einer Zeile großgeschrieben (etwa eine "
+            + "Überschrift in Großbuchstaben), zählen ihre Wörter nicht als Akronyme "
+            + "(textMining.acronyms.shoutingPercent, 1–100; Standard 60).";
+    static final String ACRONYM_SHOUTING_WORDS_LABEL = "Großschrift-Zeile ab Wörtern";
+    static final String ACRONYM_SHOUTING_WORDS_HELP = "Kürzere Zeilen gelten nie als Großschrift "
+            + "(textMining.acronyms.shoutingMinWords, 1–50; Standard 3).";
+
     private final JTextField indexDirectory;
     private final ComicButton chooseDirectory;
     private final JTextField contextMaxSources;
@@ -116,6 +137,11 @@ final class IndexEditor {
     private final JTextField embeddingBatchSize;
     private final JCheckBox retrievalRerank;
     private final JTextField retrievalRerankTopK;
+    private final JCheckBox acronymsEnabled;
+    private final JCheckBox acronymsHighlight;
+    private final JTextField acronymMaxLetters;
+    private final JTextField acronymShoutingPercent;
+    private final JTextField acronymShoutingMinWords;
     private final JPanel panel;
 
     IndexEditor(ComicPalette palette) {
@@ -153,10 +179,20 @@ final class IndexEditor {
         enrichmentWorkers = field(preparation, ENRICHMENT_WORKERS_LABEL, ENRICHMENT_WORKERS_HELP);
         embeddingConcurrency = field(preparation, EMBEDDING_CONCURRENCY_LABEL, EMBEDDING_CONCURRENCY_HELP);
         embeddingBatchSize = field(preparation, EMBEDDING_BATCH_LABEL, EMBEDDING_BATCH_HELP);
+        FormRows acronyms = new FormRows(palette);
+        acronyms.note(ACRONYMS_NOTE);
+        acronymsEnabled = acronyms.checkBox(ACRONYMS_ENABLED_LABEL, ACRONYMS_ENABLED_HELP);
+        acronyms.note(ACRONYMS_ENABLED_HELP);
+        acronymsHighlight = acronyms.checkBox(ACRONYMS_HIGHLIGHT_LABEL, ACRONYMS_HIGHLIGHT_HELP);
+        acronyms.note(ACRONYMS_HIGHLIGHT_HELP);
+        acronymMaxLetters = field(acronyms, ACRONYM_MAX_LETTERS_LABEL, ACRONYM_MAX_LETTERS_HELP);
+        acronymShoutingPercent = field(acronyms, ACRONYM_SHOUTING_PERCENT_LABEL, ACRONYM_SHOUTING_PERCENT_HELP);
+        acronymShoutingMinWords = field(acronyms, ACRONYM_SHOUTING_WORDS_LABEL, ACRONYM_SHOUTING_WORDS_HELP);
         panel = FormRows.column(palette,
                 FormRows.plate("Index", palette.getNavigationBlue(), rows.panel(), palette),
                 FormRows.plate("Wissenssuche im Chat", palette.getAccentYellow(), search.panel(), palette),
-                FormRows.plate("Laden und Aufbereitung", palette.getNavigationBlue(), preparation.panel(), palette));
+                FormRows.plate("Laden und Aufbereitung", palette.getNavigationBlue(), preparation.panel(), palette),
+                FormRows.plate("Akronyme im Lesebereich", palette.getAccentYellow(), acronyms.panel(), palette));
     }
 
     /** Ein Feld mit seinem Hilfetext darunter. */
@@ -204,6 +240,11 @@ final class IndexEditor {
         embeddingBatchSize.setText(form.embeddingBatchSize());
         retrievalRerank.setSelected(form.retrievalRerank());
         retrievalRerankTopK.setText(form.retrievalRerankTopK());
+        acronymsEnabled.setSelected(form.acronymsEnabled());
+        acronymsHighlight.setSelected(form.acronymsHighlight());
+        acronymMaxLetters.setText(form.acronymMaxLetters());
+        acronymShoutingPercent.setText(form.acronymShoutingPercent());
+        acronymShoutingMinWords.setText(form.acronymShoutingMinWords());
     }
 
     void store(SettingsForm.Builder b) {
@@ -225,7 +266,12 @@ final class IndexEditor {
                 .embeddingConcurrency(embeddingConcurrency.getText())
                 .embeddingBatchSize(embeddingBatchSize.getText())
                 .retrievalRerank(retrievalRerank.isSelected())
-                .retrievalRerankTopK(retrievalRerankTopK.getText());
+                .retrievalRerankTopK(retrievalRerankTopK.getText())
+                .acronymsEnabled(acronymsEnabled.isSelected())
+                .acronymsHighlight(acronymsHighlight.isSelected())
+                .acronymMaxLetters(acronymMaxLetters.getText())
+                .acronymShoutingPercent(acronymShoutingPercent.getText())
+                .acronymShoutingMinWords(acronymShoutingMinWords.getText());
     }
 
     // Für Tests.

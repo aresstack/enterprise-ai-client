@@ -223,6 +223,10 @@ public final class ShellAssembly {
             titled.setWindowTitle(current.windowTitle());
             // Blasenfarben (Reiter „Darstellung“): bei neuen Farben baut der Verlauf Nutzer- und Antwortblasen neu auf.
             shell.transcript().setBubblePalette(BubblePalettes.from(current.bubbleColors()));
+            if (previous == null
+                    || previous.textMining().readerHighlight() != current.textMining().readerHighlight()) {
+                titled.reader().setAcronymMarksShown(current.textMining().readerHighlight());
+            }
         }));
         if (agent != null && root.researchHost() != null) {
             // askai: die Artefakt-Ansicht „Konzept“ (Konzeptbaum mit Inseln) als Drawer-Reiter im Agent-Modus
@@ -252,6 +256,12 @@ public final class ShellAssembly {
                 new FavoritesStore(chatsDirectory.resolveSibling(FAVORITES_FILE)), root.documentNavigation(),
                 root.uiExecutor(), root.workExecutor());
         reading.describeImagesWith(root.readerImageDescriptions(chatsDirectory.resolveSibling(IMAGE_DESCRIPTIONS)));
+        // Acronyms in the reader (#107): analysed after display, kept as facts, marked pale pink; switch and
+        // thresholds are read for every page.
+        reading.markAcronymsWith(root.documentAcronyms(),
+                () -> root.settings().current().textMining().acronymsEnabled(),
+                () -> root.settings().current().textMining().acronyms());
+        workspace.reader().setAcronymMarksShown(root.settings().current().textMining().readerHighlight());
         sources.setReading(reading);
         // Rechtsklick auf einen Reiter: „Zum aktuellen Chat hinzufügen“ legt nur Titel und Bookmark in den Composer.
         workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));

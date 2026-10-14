@@ -34,14 +34,17 @@ public class ReaderToolbarTest {
             assertFalse(toolbar.isSearchOpen());
             assertTrue(toolbar.isBrandingVisible());
             // Lupe ganz links, daneben das Info-Symbol (Seiteninformationen), Vorlesen und Sprechgeschwindigkeit
-            // (ohne Sprachausgabe aus); die Büroklammer steht rechts vor dem Branding (#99, ohne Anhänge aus)
-            assertEquals(4, toolbar.tools().getComponentCount());
+            // (ohne Sprachausgabe aus), der Akronym-Marker (#107, ohne Markierungen aus); die Büroklammer steht rechts
+            // vor dem Branding (#99, ohne Anhänge aus)
+            assertEquals(5, toolbar.tools().getComponentCount());
             assertTrue(toolbar.tools().getComponent(0) == toolbar.findButton());
             assertTrue(toolbar.tools().getComponent(1) == reader.infoButton());
             assertTrue(toolbar.tools().getComponent(2) == reader.readAloudButton());
             assertFalse(reader.readAloudButton().isVisible());
             assertTrue(toolbar.tools().getComponent(3) == reader.readAloudRate());
             assertFalse(reader.readAloudRate().isVisible());
+            assertTrue(toolbar.tools().getComponent(4) == reader.acronymsButton());
+            assertFalse(reader.acronymsButton().isVisible());
             assertEquals(1, toolbar.trailingTools().getComponentCount());
             assertTrue(toolbar.trailingTools().getComponent(0) == reader.attachmentsButton());
             assertFalse(reader.attachmentsButton().isVisible());
