@@ -1,11 +1,14 @@
 package com.aresstack.enterpriseai.proasteion.application.config;
 
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;
 
 /**
  * Text mining in the reader (issue #107): whether opened pages are analysed for acronyms and the findings kept in the
  * metadata catalog ({@value #ACRONYMS_ENABLED_KEY}), whether the reader marks them from the start
- * ({@value #READER_HIGHLIGHT_KEY}), and the thresholds of the extractor. All apply without restart.
+ * ({@value #READER_HIGHLIGHT_KEY}), and the thresholds of the extractor. The sentence analysis of issue #108
+ * ({@code textMining.statements.*}) is off by default: it sends page text to the configured chat model. All apply
+ * without restart.
  */
 public final class TextMiningConfig {
 
@@ -17,15 +20,30 @@ public final class TextMiningConfig {
     /** Upper bounds of the thresholds in the configuration. */
     public static final int MAX_LETTERS_LIMIT = 20;
     public static final int SHOUTING_MIN_WORDS_LIMIT = 50;
+    public static final String STATEMENTS_ENABLED_KEY = "textMining.statements.enabled";
+    public static final String STATEMENTS_VERIFY_KEY = "textMining.statements.verify";
+    public static final String STATEMENTS_MAX_PARAGRAPHS_KEY = "textMining.statements.maxParagraphs";
+    public static final String STATEMENTS_MAX_PARAGRAPH_CHARS_KEY = "textMining.statements.maxParagraphChars";
+    /** Bounds of the sentence analysis limits in the configuration. */
+    public static final int MAX_PARAGRAPHS_LIMIT = 500;
+    public static final int MIN_PARAGRAPH_CHARS = 200;
+    public static final int MAX_PARAGRAPH_CHARS_LIMIT = 20000;
 
     private final boolean acronymsEnabled;
     private final boolean readerHighlight;
     private final AcronymSettings acronyms;
+    private final StatementSettings statements;
 
     public TextMiningConfig(boolean acronymsEnabled, boolean readerHighlight, AcronymSettings acronyms) {
+        this(acronymsEnabled, readerHighlight, acronyms, StatementSettings.defaults());
+    }
+
+    public TextMiningConfig(boolean acronymsEnabled, boolean readerHighlight, AcronymSettings acronyms,
+                            StatementSettings statements) {
         this.acronymsEnabled = acronymsEnabled;
         this.readerHighlight = readerHighlight;
         this.acronyms = acronyms == null ? AcronymSettings.defaults() : acronyms;
+        this.statements = statements == null ? StatementSettings.defaults() : statements;
     }
 
     public static TextMiningConfig defaults() {
@@ -46,9 +64,14 @@ public final class TextMiningConfig {
         return acronyms;
     }
 
+    /** Sentence analysis of opened pages (#108). */
+    public StatementSettings statements() {
+        return statements;
+    }
+
     @Override
     public String toString() {
         return "TextMiningConfig[acronyms=" + acronymsEnabled + ", highlight=" + readerHighlight + ", " + acronyms
-                + "]";
+                + ", " + statements + "]";
     }
 }

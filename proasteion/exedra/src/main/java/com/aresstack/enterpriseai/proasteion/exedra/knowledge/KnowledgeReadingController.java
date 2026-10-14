@@ -26,6 +26,7 @@ import com.aresstack.enterpriseai.astu.acropolis.navigation.BuildDocumentNavigat
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymFinding;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.DocumentAcronymsUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.DocumentStatementsUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
@@ -109,6 +110,8 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     private volatile DocumentAcronymsUseCase acronyms;
     private volatile BooleanSupplier acronymsEnabled = () -> false;
     private volatile Supplier<AcronymSettings> acronymSettings = AcronymSettings::defaults;
+    private volatile DocumentStatementsUseCase statements;
+    private volatile Executor statementExecutor;
     /** The current load per tab key; a late analysis of an earlier load is dropped. */
     private final Map<String, Object> loads = new ConcurrentHashMap<String, Object>();
 
@@ -171,6 +174,15 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
         this.acronyms = useCase;
         this.acronymsEnabled = enabled == null ? () -> false : enabled;
         this.acronymSettings = settings == null ? AcronymSettings::defaults : settings;
+    }
+
+    /**
+     * Break every page opened in the reader into statements (issue #108) after it is displayed, on {@code executor}
+     * (one page at a time). The use case reads its switch per page; the reader shows nothing of it yet.
+     */
+    public void analyzeStatementsWith(DocumentStatementsUseCase useCase, Executor executor) {
+        this.statements = useCase;
+        this.statementExecutor = executor;
     }
 
     /** Hängt sich an Lesebereich und Favoriten-Seite; auf dem UI-Thread. */
@@ -444,6 +456,7 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
                     }
                     if (viewed != null) {
                         markAcronyms(link, viewed, load);
+                        analyzeStatements(link, viewed);
                     }
                     return;
                 }
@@ -499,6 +512,34 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
             });
         } catch (RuntimeException rejected) {
             LOG.log(Level.FINE, "Akronym-Analyse von " + link.key() + " nicht eingeplant");
+        }
+    }
+
+    /** Queue the sentence analysis of the displayed page; a failure only costs its facts. */
+    private void analyzeStatements(final ReaderLink link, final KnowledgeDocument document) {
+        final DocumentStatementsUseCase useCase = statements;
+        final Executor executor = statementExecutor;
+        if (useCase == null || executor == null || !useCase.isActive()) {
+            return;
+        }
+        try {
+            executor.execute(() -> {
+                try {
+                    DocumentStatementsUseCase.Outcome outcome = useCase.analyze(document);
+                    if (outcome.storage() == DocumentStatementsUseCase.Storage.FAILED
+                            || outcome.storage() == DocumentStatementsUseCase.Storage.INCOMPLETE) {
+                        LOG.log(Level.FINE, "Aussagen von " + link.key() + " nicht gespeichert (" + outcome.storage()
+                                + ", " + outcome.problem() + ")");
+                    } else if (outcome.statements() != null) {
+                        LOG.log(Level.FINE, "Aussagen von " + link.key() + ": " + outcome.statements());
+                    }
+                } catch (RuntimeException e) {
+                    LOG.log(Level.FINE, "Satzanalyse von " + link.key() + " fehlgeschlagen ("
+                            + e.getClass().getSimpleName() + ")");
+                }
+            });
+        } catch (RuntimeException rejected) {
+            LOG.log(Level.FINE, "Satzanalyse von " + link.key() + " nicht eingeplant");
         }
     }
 

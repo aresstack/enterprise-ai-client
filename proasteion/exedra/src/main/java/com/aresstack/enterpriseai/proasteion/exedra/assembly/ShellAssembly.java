@@ -262,6 +262,8 @@ public final class ShellAssembly {
                 () -> root.settings().current().textMining().acronymsEnabled(),
                 () -> root.settings().current().textMining().acronyms());
         workspace.reader().setAcronymMarksShown(root.settings().current().textMining().readerHighlight());
+        // Sentence analysis (#108): statements of opened pages as facts, one page at a time, off by default.
+        reading.analyzeStatementsWith(root.documentStatements(), root.statementAnalysis());
         sources.setReading(reading);
         // Rechtsklick auf einen Reiter: „Zum aktuellen Chat hinzufügen“ legt nur Titel und Bookmark in den Composer.
         workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));

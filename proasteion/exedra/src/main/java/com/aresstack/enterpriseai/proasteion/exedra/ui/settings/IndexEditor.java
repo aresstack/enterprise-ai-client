@@ -113,6 +113,22 @@ final class IndexEditor {
     static final String ACRONYM_SHOUTING_PERCENT_HELP = "Sind so viele Wörter einer Zeile großgeschrieben (etwa eine "
             + "Überschrift in Großbuchstaben), zählen ihre Wörter nicht als Akronyme "
             + "(textMining.acronyms.shoutingPercent, 1–100; Standard 60).";
+    static final String STATEMENTS_NOTE = "Pilot: Eine im Lesebereich geöffnete Seite wird im Hintergrund Satz für "
+            + "Satz zerlegt: wer handelt, worauf sich die Handlung richtet, welche Eigenschaft genannt ist. Jede Angabe "
+            + "muss wörtlich im Satz stehen, sonst wird sie verworfen. Die Aussagen landen als Facts im Metadatenkatalog. "
+            + "Dafür geht der Seitentext an das eingestellte Chat-Modell, deshalb ist die Analyse anfangs aus.";
+    static final String STATEMENTS_ENABLED_LABEL = "Seiten in Aussagen zerlegen";
+    static final String STATEMENTS_ENABLED_HELP = "Aus: kein Seitentext an das Chat-Modell, keine Aussagen-Facts "
+            + "(textMining.statements.enabled).";
+    static final String STATEMENTS_VERIFY_LABEL = "Jede Aussage mit Ja/Nein gegenprüfen";
+    static final String STATEMENTS_VERIFY_HELP = "Eine zweite kurze Frage je Aussage; verneinte Aussagen werden "
+            + "verworfen, unsichere markiert (textMining.statements.verify).";
+    static final String STATEMENTS_PARAGRAPHS_LABEL = "Absätze je Seite";
+    static final String STATEMENTS_PARAGRAPHS_HELP = "Eine Modellanfrage je Absatz; spätere Absätze bleiben "
+            + "unanalysiert (textMining.statements.maxParagraphs, 1–500; Standard 40).";
+    static final String STATEMENTS_CHARS_LABEL = "Zeichen je Anfrage";
+    static final String STATEMENTS_CHARS_HELP = "Längere Absätze werden an Satzgrenzen geteilt "
+            + "(textMining.statements.maxParagraphChars, 200–20000; Standard 1500).";
     static final String ACRONYM_SHOUTING_WORDS_LABEL = "Großschrift-Zeile ab Wörtern";
     static final String ACRONYM_SHOUTING_WORDS_HELP = "Kürzere Zeilen gelten nie als Großschrift "
             + "(textMining.acronyms.shoutingMinWords, 1–50; Standard 3).";
@@ -142,6 +158,10 @@ final class IndexEditor {
     private final JTextField acronymMaxLetters;
     private final JTextField acronymShoutingPercent;
     private final JTextField acronymShoutingMinWords;
+    private final JCheckBox statementsEnabled;
+    private final JCheckBox statementsVerify;
+    private final JTextField statementsMaxParagraphs;
+    private final JTextField statementsMaxParagraphChars;
     private final JPanel panel;
 
     IndexEditor(ComicPalette palette) {
@@ -188,11 +208,20 @@ final class IndexEditor {
         acronymMaxLetters = field(acronyms, ACRONYM_MAX_LETTERS_LABEL, ACRONYM_MAX_LETTERS_HELP);
         acronymShoutingPercent = field(acronyms, ACRONYM_SHOUTING_PERCENT_LABEL, ACRONYM_SHOUTING_PERCENT_HELP);
         acronymShoutingMinWords = field(acronyms, ACRONYM_SHOUTING_WORDS_LABEL, ACRONYM_SHOUTING_WORDS_HELP);
+        FormRows statements = new FormRows(palette);
+        statements.note(STATEMENTS_NOTE);
+        statementsEnabled = statements.checkBox(STATEMENTS_ENABLED_LABEL, STATEMENTS_ENABLED_HELP);
+        statements.note(STATEMENTS_ENABLED_HELP);
+        statementsVerify = statements.checkBox(STATEMENTS_VERIFY_LABEL, STATEMENTS_VERIFY_HELP);
+        statements.note(STATEMENTS_VERIFY_HELP);
+        statementsMaxParagraphs = field(statements, STATEMENTS_PARAGRAPHS_LABEL, STATEMENTS_PARAGRAPHS_HELP);
+        statementsMaxParagraphChars = field(statements, STATEMENTS_CHARS_LABEL, STATEMENTS_CHARS_HELP);
         panel = FormRows.column(palette,
                 FormRows.plate("Index", palette.getNavigationBlue(), rows.panel(), palette),
                 FormRows.plate("Wissenssuche im Chat", palette.getAccentYellow(), search.panel(), palette),
                 FormRows.plate("Laden und Aufbereitung", palette.getNavigationBlue(), preparation.panel(), palette),
-                FormRows.plate("Akronyme im Lesebereich", palette.getAccentYellow(), acronyms.panel(), palette));
+                FormRows.plate("Akronyme im Lesebereich", palette.getAccentYellow(), acronyms.panel(), palette),
+                FormRows.plate("Satzanalyse (Pilot)", palette.getNavigationBlue(), statements.panel(), palette));
     }
 
     /** Ein Feld mit seinem Hilfetext darunter. */
@@ -245,6 +274,10 @@ final class IndexEditor {
         acronymMaxLetters.setText(form.acronymMaxLetters());
         acronymShoutingPercent.setText(form.acronymShoutingPercent());
         acronymShoutingMinWords.setText(form.acronymShoutingMinWords());
+        statementsEnabled.setSelected(form.statementsEnabled());
+        statementsVerify.setSelected(form.statementsVerify());
+        statementsMaxParagraphs.setText(form.statementsMaxParagraphs());
+        statementsMaxParagraphChars.setText(form.statementsMaxParagraphChars());
     }
 
     void store(SettingsForm.Builder b) {
@@ -271,7 +304,11 @@ final class IndexEditor {
                 .acronymsHighlight(acronymsHighlight.isSelected())
                 .acronymMaxLetters(acronymMaxLetters.getText())
                 .acronymShoutingPercent(acronymShoutingPercent.getText())
-                .acronymShoutingMinWords(acronymShoutingMinWords.getText());
+                .acronymShoutingMinWords(acronymShoutingMinWords.getText())
+                .statementsEnabled(statementsEnabled.isSelected())
+                .statementsVerify(statementsVerify.isSelected())
+                .statementsMaxParagraphs(statementsMaxParagraphs.getText())
+                .statementsMaxParagraphChars(statementsMaxParagraphChars.getText());
     }
 
     // Für Tests.

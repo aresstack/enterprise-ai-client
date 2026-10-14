@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.application.config;
 
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
@@ -190,7 +191,15 @@ public final class AppConfigLoader {
                                 1, 100),
                         reader.integer(TextMiningConfig.SHOUTING_MIN_WORDS_KEY,
                                 AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS, 1,
-                                TextMiningConfig.SHOUTING_MIN_WORDS_LIMIT)));
+                                TextMiningConfig.SHOUTING_MIN_WORDS_LIMIT)),
+                new StatementSettings(
+                        reader.bool(TextMiningConfig.STATEMENTS_ENABLED_KEY, StatementSettings.DEFAULT_ENABLED),
+                        reader.bool(TextMiningConfig.STATEMENTS_VERIFY_KEY, StatementSettings.DEFAULT_VERIFY),
+                        reader.integer(TextMiningConfig.STATEMENTS_MAX_PARAGRAPHS_KEY,
+                                StatementSettings.DEFAULT_MAX_PARAGRAPHS, 1, TextMiningConfig.MAX_PARAGRAPHS_LIMIT),
+                        reader.integer(TextMiningConfig.STATEMENTS_MAX_PARAGRAPH_CHARS_KEY,
+                                StatementSettings.DEFAULT_MAX_PARAGRAPH_CHARS, TextMiningConfig.MIN_PARAGRAPH_CHARS,
+                                TextMiningConfig.MAX_PARAGRAPH_CHARS_LIMIT)));
 
         for (String unread : reader.unreadKeys()) {
             warnings.add("Unbekannter Konfigurationsschlüssel wird ignoriert: " + unread);

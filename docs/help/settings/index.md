@@ -84,6 +84,14 @@ Anders als viele andere Felder schreibt der Dialog die Werte der Wissenssuche un
 
 Alle Werte gelten ab der nächsten geöffneten Seite.
 
+## Satzanalyse (Pilot)
+
+- **Seiten in Aussagen zerlegen** (Standard aus): Eine geöffnete Seite wird im Hintergrund Satz für Satz zerlegt: wer handelt, worauf sich die Handlung richtet, welche Eigenschaft genannt ist. Dafür geht der Seitentext an das eingestellte Chat-Modell. Jede Angabe muss wörtlich im Satz stehen, sonst wird sie verworfen. Die Aussagen landen als Facts im Metadatenkatalog.
+- **Jede Aussage mit Ja/Nein gegenprüfen** (Standard an): eine zweite kurze Frage je Aussage; verneinte Aussagen fallen weg, unsichere werden als unsicher markiert.
+- **Absätze je Seite** (Standard 40) und **Zeichen je Anfrage** (Standard 1500): begrenzen die Modellanfragen je Seite.
+
+Eine unveränderte Seite wird nicht erneut analysiert.
+
 ## Typische Probleme
 
 ### Die Antwort nutzt zu wenige Quellen

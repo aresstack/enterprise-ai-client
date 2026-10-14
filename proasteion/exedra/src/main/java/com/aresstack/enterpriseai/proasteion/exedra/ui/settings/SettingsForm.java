@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;
 import com.aresstack.enterpriseai.proasteion.application.config.BubbleColorsConfig;
 
 import java.util.Collections;
@@ -128,6 +129,10 @@ public final class SettingsForm {
     private final String acronymMaxLetters;
     private final String acronymShoutingPercent;
     private final String acronymShoutingMinWords;
+    private final boolean statementsEnabled;
+    private final boolean statementsVerify;
+    private final String statementsMaxParagraphs;
+    private final String statementsMaxParagraphChars;
     private final String rawWorkers;
     private final String enrichmentWorkers;
     private final String embeddingConcurrency;
@@ -224,6 +229,10 @@ public final class SettingsForm {
         this.acronymMaxLetters = b.acronymMaxLetters;
         this.acronymShoutingPercent = b.acronymShoutingPercent;
         this.acronymShoutingMinWords = b.acronymShoutingMinWords;
+        this.statementsEnabled = b.statementsEnabled;
+        this.statementsVerify = b.statementsVerify;
+        this.statementsMaxParagraphs = b.statementsMaxParagraphs;
+        this.statementsMaxParagraphChars = b.statementsMaxParagraphChars;
         this.rawWorkers = b.rawWorkers;
         this.enrichmentWorkers = b.enrichmentWorkers;
         this.embeddingConcurrency = b.embeddingConcurrency;
@@ -308,6 +317,10 @@ public final class SettingsForm {
                 .acronymMaxLetters(acronymMaxLetters)
                 .acronymShoutingPercent(acronymShoutingPercent)
                 .acronymShoutingMinWords(acronymShoutingMinWords)
+                .statementsEnabled(statementsEnabled)
+                .statementsVerify(statementsVerify)
+                .statementsMaxParagraphs(statementsMaxParagraphs)
+                .statementsMaxParagraphChars(statementsMaxParagraphChars)
                 .rawWorkers(rawWorkers)
                 .enrichmentWorkers(enrichmentWorkers)
                 .embeddingConcurrency(embeddingConcurrency)
@@ -738,6 +751,26 @@ public final class SettingsForm {
         return acronymShoutingMinWords;
     }
 
+    /** Analyse opened pages sentence by sentence with the chat model ({@code textMining.statements.enabled}). */
+    public boolean statementsEnabled() {
+        return statementsEnabled;
+    }
+
+    /** Check every extracted claim with a yes/no question ({@code textMining.statements.verify}). */
+    public boolean statementsVerify() {
+        return statementsVerify;
+    }
+
+    /** Paragraphs analysed per page ({@code textMining.statements.maxParagraphs}, 1–500). */
+    public String statementsMaxParagraphs() {
+        return statementsMaxParagraphs;
+    }
+
+    /** Longest paragraph per request in characters ({@code textMining.statements.maxParagraphChars}, 200–20000). */
+    public String statementsMaxParagraphChars() {
+        return statementsMaxParagraphChars;
+    }
+
     /** Rohindex: Schreiber ({@code knowledge.raw.workers}). */
     public String rawWorkers() {
         return rawWorkers;
@@ -885,6 +918,10 @@ public final class SettingsForm {
         private String acronymMaxLetters = String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS);
         private String acronymShoutingPercent = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_PERCENT);
         private String acronymShoutingMinWords = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS);
+        private boolean statementsEnabled = StatementSettings.DEFAULT_ENABLED;
+        private boolean statementsVerify = StatementSettings.DEFAULT_VERIFY;
+        private String statementsMaxParagraphs = String.valueOf(StatementSettings.DEFAULT_MAX_PARAGRAPHS);
+        private String statementsMaxParagraphChars = String.valueOf(StatementSettings.DEFAULT_MAX_PARAGRAPH_CHARS);
         private String rawWorkers = "2";
         private String enrichmentWorkers = "4";
         private String embeddingConcurrency = "4";
@@ -1325,6 +1362,26 @@ public final class SettingsForm {
 
         public Builder acronymShoutingMinWords(String value) {
             this.acronymShoutingMinWords = text(value);
+            return this;
+        }
+
+        public Builder statementsEnabled(boolean value) {
+            this.statementsEnabled = value;
+            return this;
+        }
+
+        public Builder statementsVerify(boolean value) {
+            this.statementsVerify = value;
+            return this;
+        }
+
+        public Builder statementsMaxParagraphs(String value) {
+            this.statementsMaxParagraphs = text(value);
+            return this;
+        }
+
+        public Builder statementsMaxParagraphChars(String value) {
+            this.statementsMaxParagraphChars = text(value);
             return this;
         }
 

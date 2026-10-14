@@ -208,6 +208,16 @@ public final class NlpModels {
         return false;
     }
 
+    /** Whether a model of {@code capability} ({@link #TOKENIZE}, {@link #POS} …) is installed for {@code language}. */
+    public boolean hasModel(String capability, String language) {
+        for (Entry entry : entries) {
+            if (entry.capability.equals(capability) && entry.language.equals(language) && isInstalled(entry)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Installiert = Manifest und Datei liegen da und das Manifest nennt den SHA-256 des Katalogs (ein neues Modell
      * im Katalog gilt so als nicht installiert).

@@ -28,8 +28,14 @@ import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtrac
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.tika.DocumentExtraction;
 import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.FactCatalogTextFindings;
+import com.aresstack.enterpriseai.proasteion.application.knowledge.FactCatalogStatements;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymExtractor;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.DocumentAcronymsUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.ChatStatementExtractor;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.ChatStatementVerifier;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.DocumentStatementsUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.PosPredicateCheck;
+import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementAnalyzer;
 import com.aresstack.enterpriseai.acp.api.AcpConnection;
 import com.aresstack.enterpriseai.acp.api.AcpException;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentLauncher;
@@ -158,6 +164,9 @@ public final class CompositionRoot {
     private final KnowledgePrefetchService prefetch;
     private final BuildDocumentNavigationUseCase documentNavigation;
     private final DocumentAcronymsUseCase documentAcronyms;
+    private final DocumentStatementsUseCase documentStatements;
+    /** One analysis at a time: model requests stay sequential and a page opened twice is analysed once. */
+    private final ExecutorService statementAnalysis;
     private final ShutdownSequence shutdown;
     private java.util.concurrent.ExecutorService imagePool;
 
@@ -320,6 +329,21 @@ public final class CompositionRoot {
         this.documentAcronyms = new DocumentAcronymsUseCase(new AcronymExtractor(new IndexSentenceSegmenter(nlpModels,
                 NlpModels.textAnalysis(), passageLanguage)), () -> settings.current().textMining().acronyms(),
                 new FactCatalogTextFindings(ports.facts()), () -> settings.current().textMining().acronymsEnabled());
+        // Sentence analysis (#108): the selected chat model proposes statements per paragraph with word ranges, the
+        // validator keeps only what is in the sentence, an optional yes/no question checks each claim; the local
+        // part-of-speech model (if installed) confirms predicates. Off by default; everything applies without restart.
+        final java.util.function.Supplier<String> chatModel = modelKey(
+                com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.CHAT);
+        this.documentStatements = new DocumentStatementsUseCase(new StatementAnalyzer(
+                new IndexSentenceSegmenter(nlpModels, NlpModels.textAnalysis(), passageLanguage),
+                new ChatStatementExtractor(ports.chat(), chatModel),
+                new PosPredicateCheck(NlpModels.textAnalysis(), passageLanguage,
+                        () -> nlpModels.hasModel(NlpModels.TOKENIZE, passageLanguage)
+                                && nlpModels.hasModel(NlpModels.POS, passageLanguage)),
+                new ChatStatementVerifier(ports.chat(), chatModel,
+                        () -> settings.current().textMining().statements().verify())),
+                new FactCatalogStatements(ports.facts()), () -> settings.current().textMining().statements());
+        this.statementAnalysis = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-statements"));
         // Anhänge (Chat und Agent): Text über den Dokument-Port, Markdown/Klartext direkt, sonst Apache Tika.
         this.attachmentText = new DocumentAttachmentTextExtractor(DocumentExtraction.detector(),
                 DocumentExtraction.registry());
@@ -642,6 +666,16 @@ public final class CompositionRoot {
         return documentAcronyms;
     }
 
+    /** Statements of an opened page (#108); blocks on model calls, run on {@link #statementAnalysis()}. */
+    public DocumentStatementsUseCase documentStatements() {
+        return documentStatements;
+    }
+
+    /** The single background thread of the sentence analysis. */
+    public Executor statementAnalysis() {
+        return statementAnalysis;
+    }
+
     public SearchDrivenIndexingUseCase searchIndexing() {
         return searchIndexing;
     }
@@ -933,6 +967,7 @@ public final class CompositionRoot {
             @Override
             public void run() {
                 workExecutor.shutdownNow();
+                statementAnalysis.shutdownNow();
                 if (agentStarts != null) {
                     agentStarts.shutdownNow();
                 }
