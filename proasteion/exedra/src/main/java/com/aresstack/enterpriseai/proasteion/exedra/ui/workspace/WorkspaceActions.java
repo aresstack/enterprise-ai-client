@@ -13,8 +13,12 @@ import java.util.List;
  */
 public interface WorkspaceActions {
 
-    /** „+ Neuer Chat“ im Drawer, für die gerade sichtbare Ansicht. */
-    void newChatRequested(ShellMode mode);
+    /**
+     * „+ Neuer Chat“ im Drawer, für die gerade sichtbare Ansicht.
+     *
+     * @return {@code false}, wenn sich gerade kein neuer Chat beginnen lässt (der bisherige bleibt offen)
+     */
+    boolean newChatRequested(ShellMode mode);
 
     /** Das Zahnrad im Drawer. */
     void settingsRequested();

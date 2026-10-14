@@ -73,9 +73,12 @@ public class ChatWorkspacePanelTest {
         final List<ShellMode> newChats = new ArrayList<ShellMode>();
         int settings;
 
+        boolean acceptNewChat = true;
+
         @Override
-        public void newChatRequested(ShellMode mode) {
+        public boolean newChatRequested(ShellMode mode) {
             newChats.add(mode);
+            return acceptNewChat;
         }
 
         @Override
@@ -499,7 +502,8 @@ public class ChatWorkspacePanelTest {
                 ChatWorkspacePanel workspace = chatOnlyWorkspace();
                 workspace.setActions(new WorkspaceActions() {
                     @Override
-                    public void newChatRequested(ShellMode mode) {
+                    public boolean newChatRequested(ShellMode mode) {
+                        return true;
                     }
 
                     @Override
@@ -675,6 +679,42 @@ public class ChatWorkspacePanelTest {
                 assertTrue(modes.select(ShellMode.AGENT));
                 assertTarget(workspace, ChatWorkspacePanel.CHATS_TAB, false);
                 assertSame(agentShell, workspace.visibleShell());
+            }
+        });
+    }
+
+    @Test
+    public void aNewChatWithTheDocumentStartsOneChatAndOnlyThenTakesThePage() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                RecordingActions actions = new RecordingActions();
+                workspace.setActions(actions);
+                ReaderChatPages pages = new ReaderChatPages(workspace.chatShell().composer(), workspace);
+                ReaderLink link = new ReaderLink("confluence:https://cf.intern/confluence",
+                        "confluence:cf.intern/confluence/page/4242001", "Betriebshandbuch", "", "");
+
+                javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+                pages.contribute(menu, link);
+                assertEquals(2, menu.getComponentCount());
+                assertEquals("Zum aktuellen Chat hinzufügen", ((javax.swing.JMenuItem) menu.getComponent(0)).getText());
+                assertEquals("Neuen Chat mit Dokument starten",
+                        ((javax.swing.JMenuItem) menu.getComponent(1)).getText());
+
+                actions.acceptNewChat = false; // e.g. the agent is busy
+                workspace.selectWorkspaceTab(ChatWorkspacePanel.NAVIGATION_TAB);
+                assertFalse(pages.startNewChatWith(link));
+                assertTrue("nothing lands in the old chat", workspace.chatShell().composer().pages().isEmpty());
+                assertTarget(workspace, ChatWorkspacePanel.NAVIGATION_TAB, true);
+
+                actions.acceptNewChat = true;
+                assertTrue(pages.startNewChatWith(link));
+                assertEquals(2, actions.newChats.size());
+                assertEquals(1, workspace.chatShell().composer().pages().size());
+                assertEquals("Betriebshandbuch", workspace.chatShell().composer().pages().get(0).title());
+                assertTrue("nothing is sent", workspace.chatShell().model().getEntries().isEmpty());
+                assertTarget(workspace, ChatWorkspacePanel.CHATS_TAB, false);
             }
         });
     }

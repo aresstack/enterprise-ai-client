@@ -355,6 +355,21 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     }
 
     /**
+     * Start a new chat through the same path as "+ Neuer Chat" and show it (#113). Leave everything as it is when no
+     * new chat can be started, so nothing meant for the new chat lands in the old one.
+     *
+     * @return {@code true} if the new chat is the current one now
+     */
+    public boolean startNewChat() {
+        if (actions == null || !actions.newChatRequested(modes.getMode())) {
+            return false;
+        }
+        showChatArea();
+        refreshChatList();
+        return true;
+    }
+
+    /**
      * Show the reader. Keep the active tab if it is a reader tab (a favorite opened from its tree stays on
      * "Favoriten"); otherwise mark "Wissensquellen" so that card and tab never disagree.
      */

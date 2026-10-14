@@ -15,11 +15,13 @@ import javax.swing.JPopupMenu;
  * „Zum aktuellen Chat hinzufügen“ im Lesebereich: aus der kanonischen Resource-ID des Tabs wird über
  * {@link KnowledgeBookmarks} das Bookmark ({@code confluence://cf.intern/confluence/page/123}); nur Titel und
  * Bookmark kommen als Seiten-Chip in den Composer, nie der Seitentext. Danach zeigt die Schale den Chat. Der Eintrag
- * steht im Kontextmenü jedes Reiters, der eine Ressource zeigt. Nur auf dem UI-Thread verwenden.
+ * steht im Kontextmenü jedes Reiters, der eine Ressource zeigt, zusammen mit „Neuen Chat mit Dokument starten“. Nur
+ * auf dem UI-Thread verwenden.
  */
 public final class ReaderChatPages implements KnowledgeReaderPanel.TabMenuContributor {
 
     static final String MENU_ADD_TO_CHAT = "Zum aktuellen Chat hinzufügen";
+    static final String MENU_NEW_CHAT = "Neuen Chat mit Dokument starten";
 
     private final ChatComposerPanel composer;
     private final ChatWorkspacePanel workspace;
@@ -40,6 +42,9 @@ public final class ReaderChatPages implements KnowledgeReaderPanel.TabMenuContri
         JMenuItem item = new JMenuItem(MENU_ADD_TO_CHAT);
         item.addActionListener(event -> add(link));
         menu.add(item);
+        JMenuItem fresh = new JMenuItem(MENU_NEW_CHAT);
+        fresh.addActionListener(event -> startNewChatWith(link));
+        menu.add(fresh);
     }
 
     /** Ob der Tab eine Ressource zeigt, die ein Bookmark hat (Quellen- und Bereichsübersichten haben keins). */
@@ -69,5 +74,18 @@ public final class ReaderChatPages implements KnowledgeReaderPanel.TabMenuContri
         composer.addPage(page);
         workspace.showChatArea();
         return true;
+    }
+
+    /**
+     * „Neuen Chat mit Dokument starten“ (#113): start a new chat through the usual path, then put the page of the tab
+     * into its composer exactly like {@link #add}; send nothing. Touch nothing when no new chat can be started.
+     *
+     * @return {@code false} without a bookmark or without a new chat
+     */
+    public boolean startNewChatWith(ReaderLink link) {
+        if (pageOf(link) == null || !workspace.startNewChat()) {
+            return false;
+        }
+        return add(link);
     }
 }

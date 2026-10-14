@@ -370,9 +370,9 @@ public final class ShellAssembly {
         root.shutdown().then("chat-history-deletes", lifecycle::purgeDeleted);
         workspace.setActions(new WorkspaceActions() {
             @Override
-            public void newChatRequested(ShellMode mode) {
+            public boolean newChatRequested(ShellMode mode) {
                 // „Neuer Chat“ gilt unabhängig vom Modus: derselbe Chat, frisch (askai arch).
-                lifecycle.newChat();
+                return lifecycle.newChat();
             }
 
             @Override
