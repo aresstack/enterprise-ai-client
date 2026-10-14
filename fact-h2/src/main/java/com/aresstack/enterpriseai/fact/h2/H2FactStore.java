@@ -3,8 +3,11 @@ package com.aresstack.enterpriseai.fact.h2;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.fact.api.ArgumentCondition;
+import com.aresstack.enterpriseai.fact.api.ArgumentProjection;
 import com.aresstack.enterpriseai.fact.api.ExtractionRun;
 import com.aresstack.enterpriseai.fact.api.FactAnchor;
+import com.aresstack.enterpriseai.fact.api.FactArgument;
 import com.aresstack.enterpriseai.fact.api.FactId;
 import com.aresstack.enterpriseai.fact.api.FactOrigin;
 import com.aresstack.enterpriseai.fact.api.FactPayload;
@@ -36,8 +39,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -113,20 +119,24 @@ public final class H2FactStore implements FactStorePort, Closeable {
             @Override
             public Void run(Connection connection) throws SQLException {
                 Instant now = clock.instant();
+                boolean projectionChanged;
                 try (PreparedStatement select = connection.prepareStatement(
-                        "SELECT DESCRIPTION, SCHEMA_VERSION, JSON_SCHEMA FROM FACT_TYPE WHERE TYPE_ID = ? FOR UPDATE")) {
+                        "SELECT DESCRIPTION, SCHEMA_VERSION, JSON_SCHEMA, ARGUMENT_PROJECTION FROM FACT_TYPE"
+                                + " WHERE TYPE_ID = ? FOR UPDATE")) {
                     select.setString(1, type.id().value());
                     try (ResultSet rows = select.executeQuery()) {
                         if (!rows.next()) {
                             try (PreparedStatement insert = connection.prepareStatement(
                                     "INSERT INTO FACT_TYPE (TYPE_ID, DESCRIPTION, SCHEMA_VERSION, JSON_SCHEMA,"
-                                            + " REGISTERED_AT, UPDATED_AT) VALUES (?, ?, ?, ?, ?, ?)")) {
+                                            + " ARGUMENT_PROJECTION, REGISTERED_AT, UPDATED_AT)"
+                                            + " VALUES (?, ?, ?, ?, ?, ?, ?)")) {
                                 insert.setString(1, type.id().value());
                                 insert.setString(2, type.description());
                                 insert.setInt(3, type.schemaVersion());
                                 insert.setString(4, type.jsonSchema());
-                                setInstant(insert, 5, now);
+                                insert.setString(5, type.argumentProjection().toJson());
                                 setInstant(insert, 6, now);
+                                setInstant(insert, 7, now);
                                 insert.executeUpdate();
                             }
                             return null;
@@ -134,14 +144,17 @@ public final class H2FactStore implements FactStorePort, Closeable {
                         String description = rows.getString(1);
                         int version = rows.getInt(2);
                         String schema = rows.getString(3);
+                        projectionChanged = !type.argumentProjection().toJson().equals(rows.getString(4));
                         if (type.schemaVersion() < version) {
                             throw new FactStoreException(Reason.INCOMPATIBLE_SCHEMA, "Fact type " + type.id()
                                     + " is registered in schema version " + version + "; version "
                                     + type.schemaVersion() + " would downgrade it");
                         }
-                        if (type.schemaVersion() == version && !type.jsonSchema().equals(schema)) {
+                        if (type.schemaVersion() == version
+                                && (!type.jsonSchema().equals(schema) || projectionChanged)) {
                             throw new FactStoreException(Reason.INCOMPATIBLE_SCHEMA, "Fact type " + type.id()
-                                    + " has another schema in version " + version + "; raise the schema version");
+                                    + " has another schema or argument projection in version " + version
+                                    + "; raise the schema version");
                         }
                         if (type.schemaVersion() == version && type.description().equals(description)) {
                             return null;
@@ -149,13 +162,21 @@ public final class H2FactStore implements FactStorePort, Closeable {
                     }
                 }
                 try (PreparedStatement update = connection.prepareStatement("UPDATE FACT_TYPE SET DESCRIPTION = ?,"
-                        + " SCHEMA_VERSION = ?, JSON_SCHEMA = ?, UPDATED_AT = ? WHERE TYPE_ID = ?")) {
+                        + " SCHEMA_VERSION = ?, JSON_SCHEMA = ?, ARGUMENT_PROJECTION = ?, UPDATED_AT = ?"
+                        + " WHERE TYPE_ID = ?")) {
                     update.setString(1, type.description());
                     update.setInt(2, type.schemaVersion());
                     update.setString(3, type.jsonSchema());
-                    setInstant(update, 4, now);
-                    update.setString(5, type.id().value());
+                    update.setString(4, type.argumentProjection().toJson());
+                    setInstant(update, 5, now);
+                    update.setString(6, type.id().value());
                     update.executeUpdate();
+                }
+                if (projectionChanged) {
+                    // The arguments follow the new rules at once; payloads stay as they are.
+                    update(connection, "DELETE FROM FACT_ARGUMENT WHERE FACT_ID IN"
+                            + " (SELECT FACT_ID FROM METADATA_FACT WHERE TYPE_ID = ?)", type.id().value());
+                    deriveArguments(connection, " WHERE TYPE_ID = ?", type.id().value());
                 }
                 return null;
             }
@@ -249,6 +270,8 @@ public final class H2FactStore implements FactStorePort, Closeable {
             @Override
             public MetadataFact run(Connection connection) throws SQLException {
                 writeFact(connection, fact, false);
+                writeArguments(connection, fact.id(), fact.resourceId(), fact.typeId(), fact.payload(),
+                        new HashMap<FactTypeId, ArgumentProjection>());
                 return loadFact(connection, fact.id());
             }
         });
@@ -400,24 +423,132 @@ public final class H2FactStore implements FactStorePort, Closeable {
             @Override
             public Integer run(Connection connection) throws SQLException {
                 requireResource(connection, resource);
-                int removed;
-                try (PreparedStatement delete = connection.prepareStatement("DELETE FROM METADATA_FACT"
-                        + " WHERE RESOURCE_ID = ? AND ORIGIN = ? AND REVIEW = ? AND EXTRACTOR_ID = ?")) {
-                    delete.setString(1, resource.value());
-                    delete.setString(2, FactOrigin.AUTOMATIC.name());
-                    delete.setString(3, FactReview.UNREVIEWED.name());
-                    delete.setString(4, extractorId);
-                    removed = delete.executeUpdate();
+                Set<UUID> replaced = new LinkedHashSet<UUID>();
+                try (PreparedStatement select = connection.prepareStatement("SELECT FACT_ID FROM METADATA_FACT"
+                        + " WHERE RESOURCE_ID = ? AND ORIGIN = ? AND REVIEW = ? AND EXTRACTOR_ID = ? FOR UPDATE")) {
+                    select.setString(1, resource.value());
+                    select.setString(2, FactOrigin.AUTOMATIC.name());
+                    select.setString(3, FactReview.UNREVIEWED.name());
+                    select.setString(4, extractorId.trim());
+                    try (ResultSet rows = select.executeQuery()) {
+                        while (rows.next()) {
+                            replaced.add(rows.getObject(1, UUID.class));
+                        }
+                    }
                 }
+                // An old fact that a remaining fact still refers to stays, with everything it refers to itself.
+                replaced.removeAll(stillReferenced(connection, resource, replaced));
+                deleteFacts(connection, replaced);
                 for (MetadataFact fact : replacement) {
                     writeFact(connection, fact, true);
+                }
+                // All new facts exist now, so they may refer to each other regardless of their order.
+                Map<FactTypeId, ArgumentProjection> projections = new HashMap<FactTypeId, ArgumentProjection>();
+                for (MetadataFact fact : replacement) {
+                    writeArguments(connection, fact.id(), fact.resourceId(), fact.typeId(), fact.payload(),
+                            projections);
                 }
                 if (run != null) {
                     writeRun(connection, run);
                 }
-                return removed;
+                return replaced.size();
             }
         });
+    }
+
+    // ------------------------------------------------------------ arguments
+
+    @Override
+    public List<FactArgument> argumentsOf(final FactId id) {
+        if (id == null) {
+            throw new IllegalArgumentException("fact id must not be null");
+        }
+        return read("read arguments of " + id, new SqlWork<List<FactArgument>>() {
+            @Override
+            public List<FactArgument> run(Connection connection) throws SQLException {
+                List<FactArgument> arguments = new ArrayList<FactArgument>();
+                try (PreparedStatement select = connection.prepareStatement("SELECT ARGUMENT_ROLE, ARGUMENT_ORDINAL,"
+                        + " VALUE_FACT_ID, NORMALIZED_VALUE FROM FACT_ARGUMENT WHERE FACT_ID = ?"
+                        + " ORDER BY ARGUMENT_ROLE, ARGUMENT_ORDINAL")) {
+                    select.setObject(1, id.value());
+                    try (ResultSet rows = select.executeQuery()) {
+                        while (rows.next()) {
+                            UUID reference = rows.getObject(3, UUID.class);
+                            arguments.add(FactArgument.of(rows.getString(1), rows.getInt(2),
+                                    reference == null ? null : FactId.of(reference), rows.getString(4)));
+                        }
+                    }
+                }
+                return Collections.unmodifiableList(arguments);
+            }
+        });
+    }
+
+    @Override
+    public List<MetadataFact> factsWithArguments(final FactTypeId type, final List<ArgumentCondition> conditions) {
+        if (conditions == null || conditions.isEmpty()) {
+            throw new IllegalArgumentException("at least one argument condition is needed");
+        }
+        final List<ArgumentCondition> all = new ArrayList<ArgumentCondition>(conditions);
+        return read("search facts by arguments " + all, new SqlWork<List<MetadataFact>>() {
+            @Override
+            public List<MetadataFact> run(Connection connection) throws SQLException {
+                StringBuilder where = new StringBuilder(" WHERE ");
+                List<String> parameters = new ArrayList<String>();
+                for (int i = 0; i < all.size(); i++) {
+                    ArgumentCondition condition = all.get(i);
+                    if (condition == null) {
+                        throw new IllegalArgumentException("argument condition must not be null");
+                    }
+                    where.append(i == 0 ? "" : " AND ").append(argumentCondition(condition));
+                    parameters.add(condition.role());
+                    parameters.add(condition.reference() == null ? condition.normalizedValue()
+                            : condition.reference().toString());
+                }
+                if (type != null) {
+                    where.append(" AND TYPE_ID = ?");
+                    parameters.add(type.value());
+                }
+                where.append(" ORDER BY RESOURCE_ID, CREATED_AT, FACT_ID");
+                return queryFacts(connection, where.toString(), parameters.toArray(new String[0]));
+            }
+        });
+    }
+
+    @Override
+    public List<MetadataFact> factsReferencing(final FactId referenced) {
+        if (referenced == null) {
+            throw new IllegalArgumentException("fact id must not be null");
+        }
+        return read("read facts referencing " + referenced, new SqlWork<List<MetadataFact>>() {
+            @Override
+            public List<MetadataFact> run(Connection connection) throws SQLException {
+                return queryFacts(connection, " WHERE FACT_ID IN (SELECT A.FACT_ID FROM FACT_ARGUMENT A"
+                        + " WHERE A.VALUE_FACT_ID = ?) ORDER BY CREATED_AT, FACT_ID", referenced.toString());
+            }
+        });
+    }
+
+    @Override
+    public int rebuildArguments() {
+        return transaction("rebuild fact arguments", new SqlWork<Integer>() {
+            @Override
+            public Integer run(Connection connection) throws SQLException {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("DELETE FROM FACT_ARGUMENT");
+                }
+                return deriveArguments(connection, "");
+            }
+        });
+    }
+
+    /** Index-backed condition on the facts' own id (the subquery runs on one of the argument indexes). */
+    static String argumentCondition(ArgumentCondition condition) {
+        return condition.reference() == null
+                ? "FACT_ID IN (SELECT A.FACT_ID FROM FACT_ARGUMENT A WHERE A.ARGUMENT_ROLE = ?"
+                + " AND A.NORMALIZED_VALUE = ?)"
+                : "FACT_ID IN (SELECT A.FACT_ID FROM FACT_ARGUMENT A WHERE A.ARGUMENT_ROLE = ?"
+                + " AND A.VALUE_FACT_ID = ?)";
     }
 
     @Override
@@ -428,6 +559,9 @@ public final class H2FactStore implements FactStorePort, Closeable {
         return transaction("remove resource " + resource, new SqlWork<Integer>() {
             @Override
             public Integer run(Connection connection) throws SQLException {
+                // Arguments refer within the resource only; dropping them first frees every fact of it.
+                update(connection, "DELETE FROM FACT_ARGUMENT WHERE FACT_ID IN"
+                        + " (SELECT FACT_ID FROM METADATA_FACT WHERE RESOURCE_ID = ?)", resource.value());
                 int removed = update(connection, "DELETE FROM METADATA_FACT WHERE RESOURCE_ID = ?", resource.value());
                 update(connection, "DELETE FROM EXTRACTION_RUN WHERE RESOURCE_ID = ?", resource.value());
                 update(connection, "DELETE FROM RESOURCE_REF WHERE RESOURCE_ID = ?", resource.value());
@@ -444,6 +578,9 @@ public final class H2FactStore implements FactStorePort, Closeable {
         return transaction("remove source " + source, new SqlWork<Integer>() {
             @Override
             public Integer run(Connection connection) throws SQLException {
+                update(connection, "DELETE FROM FACT_ARGUMENT WHERE FACT_ID IN (SELECT FACT_ID FROM METADATA_FACT"
+                        + " WHERE RESOURCE_ID IN (SELECT RESOURCE_ID FROM RESOURCE_REF WHERE SOURCE_ADDRESS = ?))",
+                        source.value());
                 int removed = update(connection, "DELETE FROM METADATA_FACT WHERE RESOURCE_ID IN"
                         + " (SELECT RESOURCE_ID FROM RESOURCE_REF WHERE SOURCE_ADDRESS = ?)", source.value());
                 update(connection, "DELETE FROM EXTRACTION_RUN WHERE RESOURCE_ID IN"
@@ -608,6 +745,181 @@ public final class H2FactStore implements FactStorePort, Closeable {
                 instant(rows, "COMPLETED_AT"));
     }
 
+    /**
+     * Replace the arguments of one fact by those its type projects from the payload, after checking every reference:
+     * an existing other fact on the same resource, of the type the rule requires.
+     *
+     * @return number of arguments written
+     */
+    private static int writeArguments(Connection connection, FactId id, KnowledgeResourceId resource,
+                                      FactTypeId type, FactPayload payload,
+                                      Map<FactTypeId, ArgumentProjection> projections) throws SQLException {
+        try (PreparedStatement delete = connection.prepareStatement("DELETE FROM FACT_ARGUMENT WHERE FACT_ID = ?")) {
+            delete.setObject(1, id.value());
+            delete.executeUpdate();
+        }
+        ArgumentProjection projection = projections.get(type);
+        if (projection == null) {
+            projection = projectionOf(connection, type);
+            projections.put(type, projection);
+        }
+        List<ArgumentProjection.Projected> arguments;
+        try {
+            arguments = projection.projectWithTypes(payload);
+        } catch (IllegalArgumentException e) {
+            throw new FactStoreException(Reason.INVALID_PAYLOAD, "Arguments of fact " + id + " cannot be derived: "
+                    + e.getMessage(), e);
+        }
+        if (arguments.isEmpty()) {
+            return 0;
+        }
+        try (PreparedStatement insert = connection.prepareStatement("INSERT INTO FACT_ARGUMENT (FACT_ID,"
+                + " ARGUMENT_ROLE, ARGUMENT_ORDINAL, VALUE_FACT_ID, NORMALIZED_VALUE) VALUES (?, ?, ?, ?, ?)")) {
+            for (ArgumentProjection.Projected projected : arguments) {
+                FactArgument argument = projected.argument();
+                if (argument.valueFactId() != null) {
+                    checkReference(connection, id, resource, argument, projected.referenceType());
+                }
+                insert.setObject(1, id.value());
+                insert.setString(2, argument.role());
+                insert.setInt(3, argument.ordinal());
+                if (argument.valueFactId() == null) {
+                    insert.setNull(4, Types.OTHER);
+                } else {
+                    insert.setObject(4, argument.valueFactId().value());
+                }
+                insert.setString(5, argument.normalizedValue());
+                insert.addBatch();
+            }
+            insert.executeBatch();
+        }
+        return arguments.size();
+    }
+
+    private static void checkReference(Connection connection, FactId owner, KnowledgeResourceId resource,
+                                       FactArgument argument, FactTypeId requiredType) throws SQLException {
+        if (argument.valueFactId().equals(owner)) {
+            throw new FactStoreException(Reason.INVALID_REFERENCE, "Fact " + owner + " refers to itself in "
+                    + argument.role());
+        }
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT RESOURCE_ID, TYPE_ID FROM METADATA_FACT WHERE FACT_ID = ?")) {
+            select.setObject(1, argument.valueFactId().value());
+            try (ResultSet rows = select.executeQuery()) {
+                if (!rows.next()) {
+                    throw new FactStoreException(Reason.INVALID_REFERENCE, "Fact " + owner + " refers in "
+                            + argument.role() + " to the unknown fact " + argument.valueFactId());
+                }
+                if (!resource.value().equals(rows.getString(1))) {
+                    throw new FactStoreException(Reason.INVALID_REFERENCE, "Fact " + owner + " refers in "
+                            + argument.role() + " to a fact of another resource");
+                }
+                if (requiredType != null && !requiredType.value().equals(rows.getString(2))) {
+                    throw new FactStoreException(Reason.INVALID_REFERENCE, "Fact " + owner + " refers in "
+                            + argument.role() + " to a " + rows.getString(2) + " fact, expected " + requiredType);
+                }
+            }
+        }
+    }
+
+    private static ArgumentProjection projectionOf(Connection connection, FactTypeId type) throws SQLException {
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT ARGUMENT_PROJECTION FROM FACT_TYPE WHERE TYPE_ID = ?")) {
+            select.setString(1, type.value());
+            try (ResultSet rows = select.executeQuery()) {
+                return rows.next() ? ArgumentProjection.parse(rows.getString(1)) : ArgumentProjection.none();
+            }
+        }
+    }
+
+    /**
+     * Derive the arguments of the stored facts selected by {@code where} (their old arguments must be gone already).
+     *
+     * @return number of arguments written
+     */
+    private static int deriveArguments(Connection connection, String where, String... parameters)
+            throws SQLException {
+        Map<FactTypeId, ArgumentProjection> projections = new HashMap<FactTypeId, ArgumentProjection>();
+        int written = 0;
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT FACT_ID, RESOURCE_ID, TYPE_ID, PAYLOAD FROM METADATA_FACT" + where)) {
+            for (int i = 0; i < parameters.length; i++) {
+                select.setString(i + 1, parameters[i]);
+            }
+            try (ResultSet rows = select.executeQuery()) {
+                while (rows.next()) {
+                    written += writeArguments(connection, FactId.of(rows.getObject(1, UUID.class)),
+                            KnowledgeResourceId.of(rows.getString(2)), FactTypeId.of(rows.getString(3)),
+                            FactPayload.json(rows.getString(4)), projections);
+                }
+            }
+        }
+        return written;
+    }
+
+    /**
+     * The facts of {@code candidates} that a fact outside them still refers to, directly or through other candidates
+     * (references stay within one resource).
+     */
+    private static Set<UUID> stillReferenced(Connection connection, KnowledgeResourceId resource, Set<UUID> candidates)
+            throws SQLException {
+        Set<UUID> kept = new HashSet<UUID>();
+        if (candidates.isEmpty()) {
+            return kept;
+        }
+        Map<UUID, List<UUID>> references = new HashMap<UUID, List<UUID>>();
+        try (PreparedStatement select = connection.prepareStatement("SELECT A.FACT_ID, A.VALUE_FACT_ID"
+                + " FROM FACT_ARGUMENT A JOIN METADATA_FACT F ON F.FACT_ID = A.FACT_ID"
+                + " WHERE F.RESOURCE_ID = ? AND A.VALUE_FACT_ID IS NOT NULL")) {
+            select.setString(1, resource.value());
+            try (ResultSet rows = select.executeQuery()) {
+                while (rows.next()) {
+                    UUID owner = rows.getObject(1, UUID.class);
+                    List<UUID> targets = references.get(owner);
+                    if (targets == null) {
+                        targets = new ArrayList<UUID>();
+                        references.put(owner, targets);
+                    }
+                    targets.add(rows.getObject(2, UUID.class));
+                }
+            }
+        }
+        List<UUID> pending = new ArrayList<UUID>();
+        for (Map.Entry<UUID, List<UUID>> entry : references.entrySet()) {
+            if (!candidates.contains(entry.getKey())) {
+                pending.addAll(entry.getValue());
+            }
+        }
+        while (!pending.isEmpty()) {
+            UUID target = pending.remove(pending.size() - 1);
+            if (candidates.contains(target) && kept.add(target) && references.containsKey(target)) {
+                pending.addAll(references.get(target));
+            }
+        }
+        return kept;
+    }
+
+    /** Remove the given facts of one batch: their arguments first, so references among them do not block. */
+    private static void deleteFacts(Connection connection, Set<UUID> ids) throws SQLException {
+        if (ids.isEmpty()) {
+            return;
+        }
+        try (PreparedStatement arguments = connection.prepareStatement("DELETE FROM FACT_ARGUMENT WHERE FACT_ID = ?")) {
+            for (UUID id : ids) {
+                arguments.setObject(1, id);
+                arguments.addBatch();
+            }
+            arguments.executeBatch();
+        }
+        try (PreparedStatement facts = connection.prepareStatement("DELETE FROM METADATA_FACT WHERE FACT_ID = ?")) {
+            for (UUID id : ids) {
+                facts.setObject(1, id);
+                facts.addBatch();
+            }
+            facts.executeBatch();
+        }
+    }
+
     private static boolean isInvalidValue(SQLException e) {
         int code = e.getErrorCode();
         return code == ErrorCode.DATA_CONVERSION_ERROR_1 || code == ErrorCode.INVALID_VALUE_2
@@ -663,14 +975,15 @@ public final class H2FactStore implements FactStorePort, Closeable {
             throws SQLException {
         List<FactType> types = new ArrayList<FactType>();
         try (PreparedStatement select = connection.prepareStatement(
-                "SELECT TYPE_ID, DESCRIPTION, SCHEMA_VERSION, JSON_SCHEMA FROM FACT_TYPE" + where)) {
+                "SELECT TYPE_ID, DESCRIPTION, SCHEMA_VERSION, JSON_SCHEMA, ARGUMENT_PROJECTION FROM FACT_TYPE"
+                        + where)) {
             for (int i = 0; i < parameters.length; i++) {
                 select.setString(i + 1, parameters[i]);
             }
             try (ResultSet rows = select.executeQuery()) {
                 while (rows.next()) {
                     types.add(FactType.of(FactTypeId.of(rows.getString(1)), rows.getString(2), rows.getInt(3),
-                            rows.getString(4)));
+                            rows.getString(4), ArgumentProjection.parse(rows.getString(5))));
                 }
             }
         }
@@ -834,8 +1147,11 @@ public final class H2FactStore implements FactStorePort, Closeable {
         } else if (code == ErrorCode.DUPLICATE_KEY_1 || code == ErrorCode.CONCURRENT_UPDATE_1) {
             reason = Reason.CONFLICT;
         } else if (code == ErrorCode.REFERENTIAL_INTEGRITY_VIOLATED_PARENT_MISSING_1) {
-            reason = String.valueOf(e.getMessage()).contains("FK_FACT_TYPE") ? Reason.UNKNOWN_TYPE
-                    : Reason.UNKNOWN_RESOURCE;
+            String message = String.valueOf(e.getMessage());
+            reason = message.contains("FK_FACT_TYPE") ? Reason.UNKNOWN_TYPE
+                    : message.contains("FK_ARGUMENT_VALUE") ? Reason.INVALID_REFERENCE : Reason.UNKNOWN_RESOURCE;
+        } else if (code == ErrorCode.REFERENTIAL_INTEGRITY_VIOLATED_CHILD_EXISTS_1) {
+            reason = Reason.CONFLICT; // still referenced by an argument of another fact
         } else {
             reason = Reason.STORAGE;
         }

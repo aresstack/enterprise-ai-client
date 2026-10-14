@@ -15,6 +15,8 @@ final class FactSchema {
 
     static final String RESOURCE_TYPE_INDEX = "IDX_FACT_RESOURCE_TYPE";
     static final String TYPE_RESOURCE_INDEX = "IDX_FACT_TYPE_RESOURCE";
+    static final String ARGUMENT_VALUE_INDEX = "IDX_ARGUMENT_ROLE_VALUE";
+    static final String ARGUMENT_REFERENCE_INDEX = "IDX_ARGUMENT_REFERENCE";
 
     /** Migration {@code i} brings the schema from version {@code i} to {@code i + 1}. */
     private static final String[][] MIGRATIONS = {{
@@ -72,7 +74,28 @@ final class FactSchema {
                     + " COMPLETED_AT TIMESTAMP(9) WITH TIME ZONE NOT NULL,"
                     + " PRIMARY KEY (RESOURCE_ID, EXTRACTOR_ID))",
             "ALTER TABLE EXTRACTION_RUN ADD CONSTRAINT IF NOT EXISTS FK_RUN_RESOURCE FOREIGN KEY (RESOURCE_ID)"
-                    + " REFERENCES RESOURCE_REF(RESOURCE_ID) ON DELETE RESTRICT"}};
+                    + " REFERENCES RESOURCE_REF(RESOURCE_ID) ON DELETE RESTRICT"}, {
+            // Searchable arguments (#108): derived from the payload by the type's argument projection, never edited
+            // on their own. Indexes before the foreign keys, so H2 uses them for the constraints as well.
+            "ALTER TABLE FACT_TYPE ADD COLUMN IF NOT EXISTS ARGUMENT_PROJECTION CHARACTER LARGE OBJECT"
+                    + " DEFAULT '' NOT NULL",
+            "CREATE TABLE IF NOT EXISTS FACT_ARGUMENT ("
+                    + " FACT_ID UUID NOT NULL,"
+                    + " ARGUMENT_ROLE VARCHAR(64) NOT NULL,"
+                    + " ARGUMENT_ORDINAL INT NOT NULL CHECK (ARGUMENT_ORDINAL >= 0),"
+                    + " VALUE_FACT_ID UUID,"
+                    + " NORMALIZED_VALUE VARCHAR(512),"
+                    + " PRIMARY KEY (FACT_ID, ARGUMENT_ROLE, ARGUMENT_ORDINAL),"
+                    + " CHECK (VALUE_FACT_ID IS NOT NULL OR NORMALIZED_VALUE IS NOT NULL))",
+            // "Who triggers payments?": role and value first, the fact id completes the index.
+            "CREATE INDEX IF NOT EXISTS " + ARGUMENT_VALUE_INDEX
+                    + " ON FACT_ARGUMENT(ARGUMENT_ROLE, NORMALIZED_VALUE, FACT_ID)",
+            // "Which statements concern exactly this mention?"
+            "CREATE INDEX IF NOT EXISTS " + ARGUMENT_REFERENCE_INDEX + " ON FACT_ARGUMENT(VALUE_FACT_ID, FACT_ID)",
+            "ALTER TABLE FACT_ARGUMENT ADD CONSTRAINT IF NOT EXISTS FK_ARGUMENT_FACT FOREIGN KEY (FACT_ID)"
+                    + " REFERENCES METADATA_FACT(FACT_ID) ON DELETE CASCADE",
+            "ALTER TABLE FACT_ARGUMENT ADD CONSTRAINT IF NOT EXISTS FK_ARGUMENT_VALUE FOREIGN KEY (VALUE_FACT_ID)"
+                    + " REFERENCES METADATA_FACT(FACT_ID) ON DELETE RESTRICT"}};
 
     static final int CURRENT_VERSION = MIGRATIONS.length;
 

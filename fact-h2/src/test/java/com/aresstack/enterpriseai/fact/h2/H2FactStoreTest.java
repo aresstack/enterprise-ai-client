@@ -95,7 +95,8 @@ public class H2FactStoreTest {
 
         assertEquals(Arrays.asList("ACRONYM", "BUSINESS_RULE", "DATA_STRUCTURE", "DEFINITION"), typeNames());
         assertEquals("{\"type\":\"object\"}", store.type(FactTypeId.of("DATA_STRUCTURE")).get().jsonSchema());
-        assertEquals(4, tableCount());
+        // RESOURCE_REF, FACT_TYPE, METADATA_FACT, EXTRACTION_RUN (#107) and FACT_ARGUMENT (#108); types add no table.
+        assertEquals(5, tableCount());
     }
 
     @Test

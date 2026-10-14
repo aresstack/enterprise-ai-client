@@ -15,7 +15,15 @@ public class FactStoreException extends RuntimeException {
         INVALID_PAYLOAD,
         /** A type registration or a fact's schema version does not fit the registered type. */
         INCOMPATIBLE_SCHEMA,
-        /** The fact id exists with another resource, or a concurrent write got there first. */
+        /**
+         * An argument refers to a fact that does not exist, lies on another resource or has the wrong type (issue
+         * #108).
+         */
+        INVALID_REFERENCE,
+        /**
+         * The fact id exists with another resource, a concurrent write got there first, or the fact is still referenced
+         * by an argument of another fact.
+         */
         CONFLICT,
         /** Another transaction held the lock longer than the configured lock timeout. */
         LOCK_TIMEOUT,

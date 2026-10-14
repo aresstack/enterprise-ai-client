@@ -2,7 +2,9 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.fact.api.ArgumentCondition;
 import com.aresstack.enterpriseai.fact.api.ExtractionRun;
+import com.aresstack.enterpriseai.fact.api.FactArgument;
 import com.aresstack.enterpriseai.fact.api.FactId;
 import com.aresstack.enterpriseai.fact.api.FactStoreException;
 import com.aresstack.enterpriseai.fact.api.FactStorePort;
@@ -89,6 +91,26 @@ final class UnavailableFactStore implements FactStorePort {
 
     @Override
     public Optional<ExtractionRun> extractionRun(KnowledgeResourceId resource, String extractorId) {
+        throw unavailable();
+    }
+
+    @Override
+    public List<FactArgument> argumentsOf(FactId id) {
+        throw unavailable();
+    }
+
+    @Override
+    public List<MetadataFact> factsWithArguments(FactTypeId type, List<ArgumentCondition> conditions) {
+        throw unavailable();
+    }
+
+    @Override
+    public List<MetadataFact> factsReferencing(FactId referenced) {
+        throw unavailable();
+    }
+
+    @Override
+    public int rebuildArguments() {
         throw unavailable();
     }
 

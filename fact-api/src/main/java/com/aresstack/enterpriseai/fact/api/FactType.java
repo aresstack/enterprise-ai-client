@@ -2,11 +2,13 @@ package com.aresstack.enterpriseai.fact.api;
 
 /**
  * Entry of the runtime type catalog: identity, description and the current schema version of its payloads, plus an
- * optional declarative JSON schema. The store keeps the schema text but does not enforce it.
+ * optional declarative JSON schema and the optional {@link ArgumentProjection} that makes payload members searchable
+ * (issue #108). The store keeps the schema text but does not enforce it.
  *
- * <p>Registering a type again with the same version and schema is a no-op (the description may change); a higher
- * version replaces the definition; a lower version or another schema under the same version is rejected with
- * {@link FactStoreException.Reason#INCOMPATIBLE_SCHEMA}. Facts written under older versions stay readable.
+ * <p>Registering a type again with the same version, schema and projection is a no-op (the description may change);
+ * a higher version replaces the definition (and re-derives the arguments of its facts); a lower version, or another
+ * schema or projection under the same version, is rejected with {@link FactStoreException.Reason#INCOMPATIBLE_SCHEMA}.
+ * Facts written under older versions stay readable.
  */
 public final class FactType {
 
@@ -17,8 +19,10 @@ public final class FactType {
     private final String description;
     private final int schemaVersion;
     private final String jsonSchema;
+    private final ArgumentProjection argumentProjection;
 
-    private FactType(FactTypeId id, String description, int schemaVersion, String jsonSchema) {
+    private FactType(FactTypeId id, String description, int schemaVersion, String jsonSchema,
+                     ArgumentProjection argumentProjection) {
         if (id == null) {
             throw new IllegalArgumentException("fact type id must not be null");
         }
@@ -33,18 +37,28 @@ public final class FactType {
         this.description = text;
         this.schemaVersion = schemaVersion;
         this.jsonSchema = jsonSchema == null || jsonSchema.trim().isEmpty() ? "" : jsonSchema.trim();
+        this.argumentProjection = argumentProjection == null ? ArgumentProjection.none() : argumentProjection;
     }
 
     /** A type in schema version 1 without declarative schema. */
     public static FactType of(FactTypeId id, String description) {
-        return new FactType(id, description, 1, null);
+        return new FactType(id, description, 1, null, null);
     }
 
     /**
      * @param jsonSchema declarative JSON schema of the payloads, or {@code null}/empty for none
      */
     public static FactType of(FactTypeId id, String description, int schemaVersion, String jsonSchema) {
-        return new FactType(id, description, schemaVersion, jsonSchema);
+        return new FactType(id, description, schemaVersion, jsonSchema, null);
+    }
+
+    /**
+     * @param jsonSchema         declarative JSON schema of the payloads, or {@code null}/empty for none
+     * @param argumentProjection searchable arguments of the payloads, or {@code null} for none
+     */
+    public static FactType of(FactTypeId id, String description, int schemaVersion, String jsonSchema,
+                              ArgumentProjection argumentProjection) {
+        return new FactType(id, description, schemaVersion, jsonSchema, argumentProjection);
     }
 
     public FactTypeId id() {
@@ -64,6 +78,11 @@ public final class FactType {
         return jsonSchema;
     }
 
+    /** The searchable arguments of the payloads; {@link ArgumentProjection#none()} if there are none. */
+    public ArgumentProjection argumentProjection() {
+        return argumentProjection;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -74,7 +93,7 @@ public final class FactType {
         }
         FactType that = (FactType) other;
         return id.equals(that.id) && description.equals(that.description) && schemaVersion == that.schemaVersion
-                && jsonSchema.equals(that.jsonSchema);
+                && jsonSchema.equals(that.jsonSchema) && argumentProjection.equals(that.argumentProjection);
     }
 
     @Override

@@ -26,8 +26,12 @@ import java.util.Set;
  *   <li>Failures are reported as {@link FactStoreException}; a failed operation changes nothing.</li>
  * </ul>
  *
- * <p>Payload fields are not indexed: queries go by resource, type and fact id only. Searching inside payloads (e.g.
- * all resources with acronym X) needs a separate, normalized search projection.
+ * <p>Payload fields are not indexed as such. A type may declare an {@link ArgumentProjection} (issue #108): the store
+ * derives the {@link FactArgument}s of each fact from its payload on every write, in the same transaction, and
+ * searches them by role and normalized value or by referenced fact ({@link #factsWithArguments},
+ * {@link #factsReferencing}) without reading payloads. An argument may only refer to an existing fact of the same
+ * resource (and of the type its rule requires); a fact still referenced by another fact's argument cannot be removed
+ * alone.
  */
 public interface FactStorePort {
 
@@ -75,14 +79,38 @@ public interface FactStorePort {
 
     /**
      * Replace the unreviewed automatic facts of one extractor on one resource by {@code facts} in one transaction
-     * (empty = remove them). Manual facts, reviewed facts and facts of other extractors stay. If any new fact is
-     * rejected, nothing changes.
+     * (empty = remove them). Manual facts, reviewed facts and facts of other extractors stay, and so does an old fact
+     * that one of them still refers to by an argument (no dangling reference). The new facts may refer to each other
+     * in any order. If any new fact is rejected, nothing changes.
      *
      * @return number of facts removed
      * @throws IllegalArgumentException if a fact belongs to another resource, is not automatic or names another
      *                                  extractor
      */
     int replaceAutomaticFacts(KnowledgeResourceId resource, String extractorId, List<MetadataFact> facts);
+
+    /** The arguments derived from the payload of fact {@code id}, ordered by role and ordinal; empty if none. */
+    List<FactArgument> argumentsOf(FactId id);
+
+    /**
+     * Facts with arguments meeting all {@code conditions} (e.g. {@code PREDICATE = auslösen} and
+     * {@code AFFECTED_OBJECT = zahlung}), ordered by resource and creation.
+     *
+     * @param type only facts of this type, or {@code null} for any type
+     * @throws IllegalArgumentException if there is no condition
+     */
+    List<MetadataFact> factsWithArguments(FactTypeId type, List<ArgumentCondition> conditions);
+
+    /** Facts with an argument referring to fact {@code referenced}, ordered by creation. */
+    List<MetadataFact> factsReferencing(FactId referenced);
+
+    /**
+     * Derive the arguments of all stored facts again from their payloads and the current type projections, without
+     * extracting or reading any source again.
+     *
+     * @return number of arguments written
+     */
+    int rebuildArguments();
 
     /**
      * Like {@link #replaceAutomaticFacts(KnowledgeResourceId, String, List)} for the resource and extractor of

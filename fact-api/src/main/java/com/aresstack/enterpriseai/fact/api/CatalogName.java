@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.fact.api;
 
 import java.util.regex.Pattern;
 
-/** Validate the upper-case names of fact types and fact roles ({@code ACRONYM}, {@code DEFINES}). */
+/** Validate the upper-case names of fact types, fact roles and argument roles ({@code ACRONYM}, {@code ACTOR}). */
 final class CatalogName {
 
     /** Longest name; matches the column width in every store. */
@@ -11,6 +11,10 @@ final class CatalogName {
     private static final Pattern FORMAT = Pattern.compile("[A-Z][A-Z0-9_]*");
 
     private CatalogName() {
+    }
+
+    static boolean isValid(String value) {
+        return value != null && value.length() <= MAX_LENGTH && FORMAT.matcher(value).matches();
     }
 
     static String check(String kind, String value) {
