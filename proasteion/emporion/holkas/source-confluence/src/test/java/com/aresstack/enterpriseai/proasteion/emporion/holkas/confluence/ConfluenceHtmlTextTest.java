@@ -23,10 +23,21 @@ public class ConfluenceHtmlTextTest {
     }
 
     @Test
-    public void tablesBecomePipeSeparatedRows() {
-        assertEquals("Name | Wert\nA | 1",
+    public void tablesBecomeMarkdownTables() {
+        assertEquals("| Name | Wert |\n| --- | --- |\n| A | 1 |",
                 ConfluenceHtmlText.toText("<table><tbody><tr><th>Name</th><th>Wert</th></tr>"
                         + "<tr><td>A</td><td>1</td></tr></tbody></table>"));
+    }
+
+    @Test
+    public void tableKeepsEmptyCellsSpansAndEscapedPipesInTheirColumns() {
+        String html = "<table><tbody><tr><th>Name</th><th>Wert</th><th>Hinweis</th></tr>"
+                + "<tr><td>A</td><td></td><td>x|y</td></tr>"
+                + "<tr><td colspan=\"2\">B</td><td rowspan=\"2\">lang</td></tr>"
+                + "<tr><td>C</td><td>3</td></tr></tbody></table>";
+
+        assertEquals("| Name | Wert | Hinweis |\n| --- | --- | --- |\n| A | | x\\|y |\n| B | B | lang |\n| C | 3 | lang |",
+                ConfluenceHtmlText.toText(html));
     }
 
     @Test
