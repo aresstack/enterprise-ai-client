@@ -14,10 +14,9 @@ import com.aresstack.enterpriseai.astu.json.Json;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceRef;
 import com.aresstack.enterpriseai.fact.api.ArgumentProjection;
 import com.aresstack.enterpriseai.fact.api.ArgumentRule;
+import com.aresstack.enterpriseai.fact.api.ExtractionRun;
 import com.aresstack.enterpriseai.fact.api.FactAnchor;
-import com.aresstack.enterpriseai.fact.api.FactFreshness;
 import com.aresstack.enterpriseai.fact.api.FactId;
-import com.aresstack.enterpriseai.fact.api.FactOrigin;
 import com.aresstack.enterpriseai.fact.api.FactPayload;
 import com.aresstack.enterpriseai.fact.api.FactProvenance;
 import com.aresstack.enterpriseai.fact.api.FactStoreException;
@@ -32,6 +31,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Keeps the statements of issue #108 as facts in the metadata catalog of issue #106: one {@code MENTION} fact per
@@ -91,25 +91,12 @@ public final class FactCatalogStatements implements StatementSink {
                         SCHEMA_VERSION, null, RELATION_ARGUMENTS));
     }
 
+    /** Ask the recorded run, not the facts: a document without statements has none, and reviewed ones outlive it. */
     @Override
     public boolean isCurrent(KnowledgeResourceRef resource, String extractorId, String extractorVersion) {
         try {
-            if (!facts.isResourceRegistered(resource.resourceId())) {
-                return false;
-            }
-            boolean any = false;
-            for (MetadataFact fact : facts.factsOf(resource.resourceId(), MENTION)) {
-                FactProvenance provenance = fact.provenance();
-                if (provenance.origin() != FactOrigin.AUTOMATIC || !provenance.extractorId().equals(extractorId)) {
-                    continue;
-                }
-                any = true;
-                if (!provenance.extractorVersion().equals(extractorVersion)
-                        || fact.freshness(resource.revision(), resource.contentHash()) != FactFreshness.CURRENT) {
-                    return false;
-                }
-            }
-            return any;
+            Optional<ExtractionRun> run = facts.extractionRun(resource.resourceId(), extractorId);
+            return run.isPresent() && run.get().covers(extractorVersion, resource.revision(), resource.contentHash());
         } catch (FactStoreException failed) {
             throw problem(failed);
         }
@@ -141,7 +128,7 @@ public final class FactCatalogStatements implements StatementSink {
             for (Relation relation : statements.relations()) {
                 batch.add(relation(resource, relation, mentionIds, eventKeys, provenance));
             }
-            facts.replaceAutomaticFacts(resource.resourceId(), extractorId, batch);
+            facts.replaceAutomaticFacts(ExtractionRun.of(resource.resourceId(), provenance), batch);
         } catch (FactStoreException failed) {
             registered = false; // a failed registration is tried again next time
             throw problem(failed);
