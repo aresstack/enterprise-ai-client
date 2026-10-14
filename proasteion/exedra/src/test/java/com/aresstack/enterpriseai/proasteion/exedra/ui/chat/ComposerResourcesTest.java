@@ -117,6 +117,51 @@ public class ComposerResourcesTest {
         });
     }
 
+    /**
+     * Issue #119: the action menu offers "URL kopieren" only for a real browser address of a used source, copies it
+     * exactly, never a bookmark or an id, and opens right next to its item inside the still open overview.
+     */
+    @Test
+    public void actionMenuCopiesOnlyRealBrowserUrlsAndOpensBesideTheItem() throws Exception {
+        Edt.run(() -> {
+            ChatResource web = new ChatResource(ChatResource.Kind.SOURCE, "wiki:ZAUF", "ZAUF Vertrag",
+                    "https://wiki.example.test/display/ZAUF/Vertrag");
+            ChatResource idOnly = new ChatResource(ChatResource.Kind.SOURCE, "wiki:NIZZA", "NIZZA", "wiki:NIZZA");
+            ChatComposerPanel composer = composer(new ResourceActions(Arrays.asList(FILE, PAGE, web, idOnly)));
+            final List<String> copied = new ArrayList<String>();
+            composer.setClipboard(copied::add);
+            composer.refreshResources();
+
+            JMenuItem copy = copyItem(composer.resourceContextMenu(web));
+            assertTrue(copy.isEnabled());
+            copy.doClick();
+            assertEquals(Arrays.asList("https://wiki.example.test/display/ZAUF/Vertrag"), copied);
+            assertTrue("Kopieren hängt nichts an", composer.references().isEmpty());
+
+            assertFalse("Bookmark ist keine Browser-URL", copyItem(composer.resourceContextMenu(PAGE)).isEnabled());
+            assertFalse("Resource-ID ist keine Browser-URL",
+                    copyItem(composer.resourceContextMenu(idOnly)).isEnabled());
+            assertFalse(copyItem(composer.resourceContextMenu(FILE)).isEnabled());
+            assertFalse(copyItem(composer.resourceContextMenu(SOURCE)).isEnabled());
+
+            JPopupMenu menu = openMenu(composer);
+            assertTrue(menu instanceof ChatComposerPanel.ResourcesPopupMenu);
+            ResourceMenuItem item = (ResourceMenuItem) item(menu, "ZAUF Vertrag");
+            item.setSize(item.getPreferredSize());
+            assertEquals(new java.awt.Point(item.getWidth(), 0), ChatComposerPanel.actionMenuLocation(item));
+            click(item, MouseEvent.BUTTON3, 5);
+            assertEquals(ChatComposerPanel.COPY_URL,
+                    ((JMenuItem) composer.lastResourceContextMenu().getComponent(1)).getText());
+            assertTrue("Rechtsklick hängt nichts an", composer.references().isEmpty());
+        });
+    }
+
+    private static JMenuItem copyItem(JPopupMenu context) {
+        JMenuItem copy = (JMenuItem) context.getComponent(1);
+        assertEquals(ChatComposerPanel.COPY_URL, copy.getText());
+        return copy;
+    }
+
     @Test
     public void unreadableResourcesOfferNoReaderAction() throws Exception {
         Edt.run(() -> {
