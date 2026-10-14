@@ -64,7 +64,9 @@ public class SetupWizardSpeechStepTest {
             assertEquals("nur Spracheingabe, installierte zuerst", 2, wizard.speechModelChoice().getItemCount());
             assertEquals("Gemma 4 E2B (installiert)", wizard.speechModelChoice().getItemAt(0));
             assertEquals(0, wizard.speechModelChoice().getSelectedIndex());
-            assertFalse("nichts zu installieren", wizard.speechInstallButton().isVisible());
+            assertTrue("installiert: Häkchen gesetzt", wizard.speechCheckBox().isSelected());
+            assertFalse("installiert: nicht noch einmal wählbar", wizard.speechCheckBox().isEnabled());
+            assertFalse("nichts angehakt", wizard.speechInstallButton().isEnabled());
             assertTrue(wizard.skipButton().isVisible());
             assertFalse("Abbrechen weicht dem Überspringen", wizard.cancelButton().isVisible());
             SetupWizardDriver.finish(wizard);
@@ -112,13 +114,14 @@ public class SetupWizardSpeechStepTest {
             SetupWizardDriver.install(wizard);
             String error = wizard.errorOf(SetupWizardPanel.STEP_SPEECH);
             assertTrue(error, error.contains("HTTP 503 vom Hub"));
-            assertTrue("Erneut versuchen", wizard.speechRetryButton().isVisible());
-            assertFalse(wizard.speechInstallButton().isVisible());
+            assertTrue("bleibt angehakt", wizard.speechCheckBox().isSelected());
+            assertTrue("erneut über Ausgewählte installieren", wizard.speechInstallButton().isEnabled());
+            assertFalse("Neu laden nur für die Angebotsliste", wizard.speechRetryButton().isVisible());
             assertTrue("Überspringen", wizard.skipButton().isEnabled());
             assertFalse(wizard.finishButton().isEnabled());
 
             settings.installFailure = null;
-            wizard.speechRetryButton().doClick();
+            wizard.speechInstallButton().doClick();
             assertEquals(2, settings.installRequests.size());
             assertNull(wizard.errorOf(SetupWizardPanel.STEP_SPEECH));
             assertTrue("nach Erfolg wählbar", wizard.finishButton().isEnabled());
@@ -147,7 +150,8 @@ public class SetupWizardSpeechStepTest {
         final SetupWizardPanel wizard = start();
         onEdt(() -> {
             assertEquals(0, wizard.speechModelChoice().getItemCount());
-            assertFalse(wizard.speechInstallButton().isVisible());
+            assertFalse("ohne Modell kein Häkchen", wizard.speechCheckBox().isVisible());
+            assertFalse("nichts angehakt", wizard.speechInstallButton().isEnabled());
             assertFalse(wizard.finishButton().isEnabled());
             SetupWizardDriver.skip(wizard);
         });
@@ -169,7 +173,8 @@ public class SetupWizardSpeechStepTest {
             wizard.speechRetryButton().doClick();
             assertNull(wizard.errorOf(SetupWizardPanel.STEP_SPEECH));
             assertEquals(1, wizard.speechModelChoice().getItemCount());
-            assertTrue("noch nicht installiert: Installieren", wizard.speechInstallButton().isVisible());
+            assertTrue("noch nicht installiert: anhakbar", wizard.speechCheckBox().isEnabled());
+            assertTrue(wizard.speechInstallButton().isVisible());
             assertFalse(wizard.speechRetryButton().isVisible());
         });
     }

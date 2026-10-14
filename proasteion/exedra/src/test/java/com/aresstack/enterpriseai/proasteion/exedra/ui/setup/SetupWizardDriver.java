@@ -53,7 +53,11 @@ public final class SetupWizardDriver {
         return wizard.speechModelChoice();
     }
 
+    /** Tick the chosen speech input model and press „Ausgewählte installieren“. */
     public static void install(SetupWizardPanel wizard) {
+        if (!wizard.speechCheckBox().isSelected()) {
+            wizard.speechCheckBox().doClick();
+        }
         wizard.speechInstallButton().doClick();
     }
 

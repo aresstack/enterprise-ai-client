@@ -18,6 +18,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordEntry;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.PasswordStore;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsDialogActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SettingsForm;
+import com.aresstack.enterpriseai.ui.comic.control.ComicComboBoxUI;
 import com.aresstack.enterpriseai.ui.comic.control.ComicSectionPanel;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.paint.ComposerIcons;
@@ -116,10 +117,14 @@ public final class SetupWizardPanel extends JPanel {
     static final String NLP_IN_ARCHIVE = "im Offline-Paket";
     static final String NLP_DOWNLOAD = "Download";
     static final String NLP_FAILED = "fehlgeschlagen";
-    static final String NLP_RETRY = "Erneut";
+    /** „Ausgewählte installieren“: nur die angehakten, noch fehlenden Ressourcen. */
+    static final String INSTALL_SELECTED = "Ausgewählte installieren";
+    private static final String INSTALL_SELECTED_HINT = "Installiert nur die angehakten, noch fehlenden Ressourcen: "
+            + "aus dem Offline-Paket neben dem Jar, sonst per Download";
     static final String NLP_STOPPED = "Installation angehalten; bereits installierte Modelle bleiben.";
     private static final String INSTALL_ALL_HINT = "Installiert alle fehlenden Ressourcen dieses Schritts: zuerst "
-            + "aus dem Offline-Paket neben dem Jar, sonst per Download";
+            + "aus dem Offline-Paket neben dem Jar, sonst per Download. Von der Spracheingabe nur das gewählte Modell, "
+            + "unabhängig von den Häkchen";
     private static final String SKIP_SPEECH_HINT =
             "Ohne lokale Spracheingabe abschließen; später unter Einstellungen → Modelle → Lokale Modelle";
     /** Platzhalter für Modelle, solange der Schritt „Modelle“ noch nicht gewählt hat (Verbindungstest). */
@@ -260,7 +265,14 @@ public final class SetupWizardPanel extends JPanel {
     // Schritt 6: Spracheingabe (optional)
     private final JComboBox<String> speechModel = new JComboBox<String>();
     private final ComposerButton speechInstall;
+    /** Lädt die Angebote der Spracheingabe neu, wenn sie sich nicht ermitteln ließen (keine Installation). */
     private final ComposerButton speechRetry;
+    /** Häkchen rechts neben der Spracheingabe: gilt immer nur für das gerade gewählte Modell. */
+    private final JCheckBox speechCheck = comicCheck("speech-check");
+    /** Das Modell, für das das Häkchen der Spracheingabe gesetzt wurde; {@code null}: keines. */
+    private String speechCheckedId;
+    /** Angehakte OpenNLP-Modelle (Kennungen). */
+    private final java.util.Set<String> nlpChecked = new java.util.LinkedHashSet<String>();
     /** Thin bar with the stop cross and the file line; shown only while a download runs. */
     private final DownloadProgress speechProgress = new DownloadProgress(SPEECH_CANCEL_HINT);
     /** The running download, {@code null} when none runs; stopping it cancels the real transfer. */
@@ -317,8 +329,10 @@ public final class SetupWizardPanel extends JPanel {
         this.confluenceTest = ComposerButton.primary(null, "Verbindung testen", ResearchUiPalette.ACCENT_BLUE, null);
         this.finishRetry = new ComposerButton(null, "Erneut prüfen", false);
         this.skipButton = new ComposerButton(null, "Überspringen", false, SKIP_STEP_HINT);
-        this.speechInstall = ComposerButton.primary(null, "Installieren", ResearchUiPalette.ACCENT_BLUE, null);
-        this.speechRetry = new ComposerButton(null, "Erneut versuchen", false);
+        this.speechInstall = ComposerButton.primary(null, INSTALL_SELECTED, ResearchUiPalette.ACCENT_BLUE,
+                INSTALL_SELECTED_HINT);
+        this.speechRetry = new ComposerButton(null, "Angebote neu laden", false,
+                "Die Modelle für die Spracheingabe erneut ermitteln");
         this.installAll = ComposerButton.primary(null, "Alles installieren", ResearchUiPalette.ACCENT_BLUE,
                 INSTALL_ALL_HINT);
         buildUi();
@@ -557,11 +571,24 @@ public final class SetupWizardPanel extends JPanel {
         rows.note("Optional. Spracheingabe ohne Cloud-STT und Text- und Sprachanalyse mit OpenNLP laufen im Client. "
                 + "Liegt ein Offline-Paket neben dem Jar, wird daraus installiert, sonst heruntergeladen. "
                 + "Später unter Einstellungen → Modelle → Lokale Modelle.");
-        rows.field("Spracheingabe", speechModel);
+        ComicComboBoxUI.install(speechModel);
+        speechCheck.setToolTipText("Das gewählte Modell der Spracheingabe zum Installieren vormerken");
+        JPanel speechRow = transparent(new GridBagLayout());
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridx = 0;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1;
+        c.insets = new Insets(0, 0, 0, 10);
+        speechRow.add(speechModel, c);
+        c = new GridBagConstraints();
+        c.gridx = 1;
+        c.anchor = GridBagConstraints.EAST;
+        speechRow.add(speechCheck, c);
+        rows.stretched("Spracheingabe", speechRow);
         rows.stretched("Textanalyse", nlpLines);
         JPanel actions = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        actions.add(installAll);
         actions.add(speechInstall);
+        actions.add(installAll);
         actions.add(speechRetry);
         rows.field("", actions);
         speechProgress.setVisible(false);
@@ -634,16 +661,15 @@ public final class SetupWizardPanel extends JPanel {
                 showSpeechChoice();
             }
         });
-        speechInstall.addActionListener(e -> installSpeech());
+        speechCheck.addActionListener(e -> {
+            LocalVoiceOffer chosen = selectedSpeechOffer();
+            speechCheckedId = speechCheck.isSelected() && chosen != null && !chosen.isInstalled() ? chosen.id() : null;
+            updateButtons();
+        });
+        speechInstall.addActionListener(e -> installSelected());
         installAll.addActionListener(e -> installAll());
         speechProgress.cancelButton().addActionListener(e -> stopSpeechDownload());
-        speechRetry.addActionListener(e -> {
-            if (speechLoadFailed) {
-                loadSpeechModels(null);
-            } else {
-                installSpeech();
-            }
-        });
+        speechRetry.addActionListener(e -> loadSpeechModels(null));
     }
 
     public void setOnFinished(Runnable callback) {
@@ -913,13 +939,24 @@ public final class SetupWizardPanel extends JPanel {
             skipButton.setEnabled(false);
         }
         LocalVoiceOffer chosen = selectedSpeechOffer();
-        speechInstall.setVisible(chosen != null && !chosen.isInstalled() && errors[STEP_SPEECH] == null);
-        speechInstall.setEnabled(!busy && !installing());
-        speechRetry.setVisible(speechLoadFailed || (chosen != null && !chosen.isInstalled()
-                && errors[STEP_SPEECH] != null && !speechDownloading));
+        boolean installable = !missingNlpOffers().isEmpty() || (chosen != null && !chosen.isInstalled());
+        // Selection and installation state are separate: an installed model shows a ticked, locked box.
+        speechCheck.setVisible(chosen != null);
+        speechCheck.setSelected(chosen != null && (chosen.isInstalled() || chosen.id().equals(speechCheckedId)));
+        speechCheck.setEnabled(chosen != null && !chosen.isInstalled() && !busy && !installing());
+        for (Component part : nlpLines.getComponents()) {
+            if (part instanceof JCheckBox && part.getName() != null && part.getName().startsWith("nlp-check-")) {
+                NlpModelOffer offer = nlpOffer(part.getName().substring("nlp-check-".length()));
+                part.setEnabled(offer != null && !offer.isInstalled() && !busy && !installing());
+            }
+        }
+        speechInstall.setVisible(installable);
+        speechInstall.setEnabled(!busy && !installing()
+                && (!selectedMissingNlp().isEmpty() || speechSelectedForInstall()));
+        speechRetry.setVisible(speechLoadFailed);
         speechRetry.setEnabled(!busy && !installing());
         speechModel.setEnabled(!installing());
-        installAll.setVisible(!missingNlpOffers().isEmpty() || (chosen != null && !chosen.isInstalled()));
+        installAll.setVisible(installable);
         installAll.setEnabled(!busy && !installing());
         speechProgress.setVisible(installing());
         String error = errors[step];
@@ -1870,10 +1907,11 @@ public final class SetupWizardPanel extends JPanel {
         } else if (chosen.isInstalled()) {
             speechStatus.setText("Installiert; „Fertig“ setzt es als Modell für die Spracheingabe.");
         } else if (chosen.isInOfflinePackage()) {
-            speechStatus.setText("Im Offline-Paket; „Installieren“ entpackt es ohne Download.");
+            speechStatus.setText("Im Offline-Paket; anhaken und „" + INSTALL_SELECTED + "“ entpackt es ohne "
+                    + "Download.");
         } else {
-            speechStatus.setText("Noch nicht installiert; „Installieren“ lädt es herunter. Bitte kurz warten oder "
-                    + "überspringen.");
+            speechStatus.setText("Noch nicht installiert; anhaken und „" + INSTALL_SELECTED + "“ lädt es herunter. "
+                    + "Bitte kurz warten oder überspringen.");
         }
         updateButtons();
     }
@@ -1930,7 +1968,8 @@ public final class SetupWizardPanel extends JPanel {
                     speechStatus.setText("Installation fehlgeschlagen.");
                     fail(STEP_SPEECH, "Das Modell ließ sich nicht installieren: "
                             + (message == null || message.isEmpty() ? "unbekannter Grund." : message)
-                            + " Erneut versuchen oder überspringen.");
+                            + " Es bleibt angehakt: „" + INSTALL_SELECTED + "“ versucht es erneut; Überspringen geht "
+                            + "immer.");
                     return;
                 }
                 speechStatus.setText(chosen.displayName() + " ist installiert.");
@@ -2037,25 +2076,34 @@ public final class SetupWizardPanel extends JPanel {
             state.setForeground(offer.isInstalled() ? ResearchUiPalette.WAVE_GREEN
                     : problem != null ? ResearchUiPalette.DANGER_RED : ResearchUiPalette.LIGHT_CONTROL_TEXT);
             state.setName("nlp-state-" + offer.id());
+            nlpLines.add(state, c);
+            // The box column sits flush right, exactly below the box of the speech input.
+            c = new GridBagConstraints();
+            c.gridx = 2;
+            c.gridy = row;
+            c.anchor = GridBagConstraints.EAST;
+            c.insets = new Insets(0, 10, 2, 0);
+            final JCheckBox check = comicCheck("nlp-check-" + offer.id());
+            check.setSelected(offer.isInstalled() || nlpChecked.contains(offer.id()));
+            check.setToolTipText(offer.isInstalled() ? "Bereits installiert" : "Zum Installieren vormerken");
+            check.addActionListener(e -> {
+                if (check.isSelected()) {
+                    nlpChecked.add(offer.id());
+                } else {
+                    nlpChecked.remove(offer.id());
+                }
+                updateButtons();
+            });
+            nlpLines.add(check, c);
+            row++;
             if (problem == null || offer.isInstalled()) {
-                nlpLines.add(state, c);
-                row++;
                 continue;
             }
-            JPanel failed = transparent(new FlowLayout(FlowLayout.RIGHT, 6, 0));
-            failed.add(state);
-            ComposerButton retry = new ComposerButton(null, NLP_RETRY, false, "Dieses Modell erneut installieren");
-            retry.setName("nlp-retry-" + offer.id());
-            retry.setEnabled(!busy && !installing());
-            retry.addActionListener(e -> retryNlp(offer));
-            failed.add(retry);
-            nlpLines.add(failed, c);
-            row++;
             // The reason stays in its own line until the next attempt; the error plate belongs to the speech model.
             c = new GridBagConstraints();
             c.gridx = 0;
             c.gridy = row;
-            c.gridwidth = 2;
+            c.gridwidth = 3;
             c.anchor = GridBagConstraints.WEST;
             c.fill = GridBagConstraints.HORIZONTAL;
             c.weightx = 1;
@@ -2078,7 +2126,7 @@ public final class SetupWizardPanel extends JPanel {
             GridBagConstraints c = new GridBagConstraints();
             c.gridx = 0;
             c.gridy = row;
-            c.gridwidth = 2;
+            c.gridwidth = 3;
             c.anchor = GridBagConstraints.WEST;
             c.fill = GridBagConstraints.HORIZONTAL;
             c.insets = new Insets(2, 0, 0, 0);
@@ -2107,15 +2155,11 @@ public final class SetupWizardPanel extends JPanel {
         return textOf("nlp-reason-" + id);
     }
 
-    /** The retry button of a failed OpenNLP line, or {@code null}. */
-    ComposerButton nlpRetryButton(String id) {
+    /** The check box of an OpenNLP line, or {@code null}. */
+    JCheckBox nlpCheckBox(String id) {
         for (Component part : nlpLines.getComponents()) {
-            if (part instanceof Container) {
-                for (Component inner : ((Container) part).getComponents()) {
-                    if (("nlp-retry-" + id).equals(inner.getName())) {
-                        return (ComposerButton) inner;
-                    }
-                }
+            if (("nlp-check-" + id).equals(part.getName())) {
+                return (JCheckBox) part;
             }
         }
         return null;
@@ -2130,17 +2174,71 @@ public final class SetupWizardPanel extends JPanel {
         return null;
     }
 
-    /** „Erneut“ in einer fehlgeschlagenen Zeile: nur dieses Modell, ohne das Spracheingabe-Modell. */
-    private void retryNlp(NlpModelOffer offer) {
+    /** A comic check box (the {@link ResearchCheckIcon} of „Ohne Zertifikat fortfahren“) without text. */
+    private JCheckBox comicCheck(String name) {
+        JCheckBox box = new JCheckBox();
+        box.setName(name);
+        box.setOpaque(false);
+        box.setIcon(new ResearchCheckIcon());
+        box.setSelectedIcon(new ResearchCheckIcon());
+        box.setDisabledIcon(new ResearchCheckIcon());
+        box.setDisabledSelectedIcon(new ResearchCheckIcon());
+        box.setRolloverEnabled(true);
+        box.setFocusPainted(false);
+        box.setBorder(BorderFactory.createEmptyBorder());
+        box.setMargin(new Insets(0, 0, 0, 0));
+        return box;
+    }
+
+    private NlpModelOffer nlpOffer(String id) {
+        for (NlpModelOffer offer : nlpOffers) {
+            if (offer.id().equals(id)) {
+                return offer;
+            }
+        }
+        return null;
+    }
+
+    /** Die angehakten, noch fehlenden OpenNLP-Modelle in der Reihenfolge der Liste. */
+    private List<NlpModelOffer> selectedMissingNlp() {
+        List<NlpModelOffer> selected = new ArrayList<NlpModelOffer>();
+        for (NlpModelOffer offer : missingNlpOffers()) {
+            if (nlpChecked.contains(offer.id())) {
+                selected.add(offer);
+            }
+        }
+        return selected;
+    }
+
+    /** Das Häkchen der Spracheingabe gilt dem gerade gewählten, noch fehlenden Modell. */
+    private boolean speechSelectedForInstall() {
+        LocalVoiceOffer chosen = selectedSpeechOffer();
+        return chosen != null && !chosen.isInstalled() && chosen.id().equals(speechCheckedId);
+    }
+
+    /**
+     * „Ausgewählte installieren“: genau die angehakten, noch fehlenden OpenNLP-Modelle nacheinander, danach das
+     * angehakte Modell der Spracheingabe; über denselben Weg wie „Alles installieren“.
+     */
+    private void installSelected() {
         if (busy || installing()) {
             return;
         }
-        nlpProblems.remove(offer.id());
-        speechAfterNlp = false;
+        clearError(STEP_SPEECH);
+        speechAfterNlp = speechSelectedForInstall();
+        List<NlpModelOffer> queue = selectedMissingNlp();
+        if (queue.isEmpty()) {
+            continueWithSpeech();
+            return;
+        }
+        for (NlpModelOffer offer : queue) {
+            nlpProblems.remove(offer.id());
+        }
         nlpInstalling = true;
         nlpStopRequested = false;
         speechProgress.reset("Vorbereiten …");
-        installNlp(Collections.singletonList(offer), 0);
+        showNlpOffers();
+        installNlp(queue, 0);
     }
 
     /** Der Name ohne den Dateinamen in Klammern, damit die Zeile in die Breite des Assistenten passt. */
@@ -2212,6 +2310,7 @@ public final class SetupWizardPanel extends JPanel {
             }
             if (!Boolean.TRUE.equals(ok)) {
                 nlpProblems.put(offer.id(), message == null || message.isEmpty() ? "unbekannter Grund" : message);
+                nlpChecked.add(offer.id()); // stays ticked: „Ausgewählte installieren“ tries it again
             }
             installNlp(queue, index + 1);
         });
@@ -2639,6 +2738,10 @@ public final class SetupWizardPanel extends JPanel {
 
     ComposerButton speechInstallButton() {
         return speechInstall;
+    }
+
+    JCheckBox speechCheckBox() {
+        return speechCheck;
     }
 
     ComposerButton speechRetryButton() {

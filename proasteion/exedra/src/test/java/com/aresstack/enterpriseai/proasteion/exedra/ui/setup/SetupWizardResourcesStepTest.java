@@ -101,19 +101,22 @@ public class SetupWizardResourcesStepTest {
     }
 
     @Test
-    public void retryInALineInstallsOnlyThatModel() throws Exception {
+    public void aFailedModelStaysTickedAndInstallSelectedRetriesOnlyIt() throws Exception {
         settings.nlpFailures.add("tokenize-de");
         final SetupWizardPanel wizard = start();
         SwingUtilities.invokeAndWait(() -> {
             wizard.installAllButton().doClick();
-            assertNotNull("Erneut in der Zeile", wizard.nlpRetryButton("tokenize-de"));
+            assertTrue("fehlgeschlagen bleibt angehakt", wizard.nlpCheckBox("tokenize-de").isSelected());
+            assertTrue(wizard.nlpCheckBox("tokenize-de").isEnabled());
+            assertTrue(wizard.speechInstallButton().isEnabled());
             settings.nlpFailures.clear();
             settings.nlpInstallRequests.clear();
-            wizard.nlpRetryButton("tokenize-de").doClick();
+            wizard.speechInstallButton().doClick();
             assertEquals(Arrays.asList("tokenize-de"), settings.nlpInstallRequests);
             assertEquals(SetupWizardPanel.NLP_INSTALLED, wizard.nlpState("tokenize-de"));
             assertNull("Grund verschwindet", wizard.nlpReason("tokenize-de"));
-            assertNull(wizard.nlpRetryButton("tokenize-de"));
+            assertFalse("installiert: gesperrt", wizard.nlpCheckBox("tokenize-de").isEnabled());
+            assertTrue("installiert: angehakt", wizard.nlpCheckBox("tokenize-de").isSelected());
         });
     }
 }
