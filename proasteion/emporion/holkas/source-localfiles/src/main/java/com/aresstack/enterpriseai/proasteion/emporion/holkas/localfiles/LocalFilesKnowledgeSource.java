@@ -281,7 +281,7 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
         if (file == null) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, resourceId + " gehört nicht zur Quelle " + sourceId);
         }
-        if (!Files.isRegularFile(file)) {
+        if (!Files.isRegularFile(file) || !patterns.acceptsFile(relative(file))) {
             throw new KnowledgeSourceException(Kind.NOT_FOUND, resourceId + " nicht gefunden");
         }
         if (!policy().isAllowed(file)) {

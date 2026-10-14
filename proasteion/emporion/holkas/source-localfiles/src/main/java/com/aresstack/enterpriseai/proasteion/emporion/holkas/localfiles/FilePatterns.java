@@ -97,7 +97,11 @@ final class FilePatterns {
         String trimmed = glob.startsWith("/") ? glob.substring(1) : glob;
         for (int i = 0; i < trimmed.length(); i++) {
             char c = trimmed.charAt(i);
-            if (c == '*' && i + 1 < trimmed.length() && trimmed.charAt(i + 1) == '*') {
+            if (c == '*' && i + 2 < trimmed.length() && trimmed.charAt(i + 1) == '*' && trimmed.charAt(i + 2) == '/') {
+                // "**/" also spans zero folders: **/*.pdf matches a.pdf, docs/**/x.md matches docs/x.md.
+                regex.append("(?:.*/)?");
+                i += 2;
+            } else if (c == '*' && i + 1 < trimmed.length() && trimmed.charAt(i + 1) == '*') {
                 regex.append(".*");
                 i++;
             } else if (c == '*') {
