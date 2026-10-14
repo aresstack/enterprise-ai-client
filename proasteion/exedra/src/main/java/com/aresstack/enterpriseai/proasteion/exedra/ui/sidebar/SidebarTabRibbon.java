@@ -47,6 +47,7 @@ public final class SidebarTabRibbon extends JPanel {
     private boolean expanding;
     private int scrollOffset;
     private Listener listener;
+    private String activeTitle;
 
     public SidebarTabRibbon() {
         super(null);
@@ -78,6 +79,7 @@ public final class SidebarTabRibbon extends JPanel {
 
     /** Wie oben; Einträge mit Symbol zeigen nur das Symbol, ihr Titel wird zum Tooltip. */
     public void setTabs(List<String> titles, Map<String, Icon> icons, String activeTitle) {
+        this.activeTitle = activeTitle;
         content.removeAll();
         for (final String title : titles) {
             Icon icon = icons == null ? null : icons.get(title);
@@ -92,6 +94,11 @@ public final class SidebarTabRibbon extends JPanel {
         }
         revalidate();
         repaint();
+    }
+
+    /** Return the highlighted entry, or {@code null} before the first {@link #setTabs}. */
+    public String activeTitle() {
+        return activeTitle;
     }
 
     /** Nach rechts entfalten (animiert). */

@@ -334,23 +334,59 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         return reader;
     }
 
-    /** Macht den Chatbereich zum Lesebereich (wie der Lese-Tab in MainframeMate). */
+    /**
+     * Navigate to a workspace tab exactly like a click on it in the ribbon: mark it in drawer and ribbon and show the
+     * card that belongs to it ("Chats" the chat or agent view, the reader tabs the reader). Other tabs (agent
+     * artifacts) keep the current card. Leave the drawer open, closed or pinned as it is.
+     */
+    public void selectWorkspaceTab(String title) {
+        sidebar.showTab(title);
+        refreshRibbonTabs();
+        if (CHATS_TAB.equals(title)) {
+            showConversationCard();
+        } else if (isReaderTab(title)) {
+            showReaderCard();
+        }
+    }
+
+    /** Whether the tab turns the chat area into the reader (sources, favorites, navigation). */
+    public static boolean isReaderTab(String title) {
+        return KNOWLEDGE_TAB.equals(title) || FAVORITES_TAB.equals(title) || NAVIGATION_TAB.equals(title);
+    }
+
+    /**
+     * Show the reader. Keep the active tab if it is a reader tab (a favorite opened from its tree stays on
+     * "Favoriten"); otherwise mark "Wissensquellen" so that card and tab never disagree.
+     */
     public void showReader() {
+        selectWorkspaceTab(isReaderTab(sidebar.activeTab()) ? sidebar.activeTab() : KNOWLEDGE_TAB);
+    }
+
+    /** Show the reader as the knowledge area and mark "Wissensquellen" (like a click on the flask). */
+    public void showKnowledgeArea() {
+        selectWorkspaceTab(KNOWLEDGE_TAB);
+    }
+
+    /**
+     * Back from the reader to the chat or agent view. Leave a reader tab for "Chats" so that card and tab never
+     * disagree; keep any other tab (agent artifacts belong to the conversation).
+     */
+    public void showChatArea() {
+        if (isReaderTab(sidebar.activeTab())) {
+            selectWorkspaceTab(CHATS_TAB);
+        } else {
+            showConversationCard();
+        }
+    }
+
+    /** Switch only the central card to the reader; navigate through {@link #selectWorkspaceTab}. */
+    private void showReaderCard() {
         readerShowing = true;
         cards.show(deck, READER_CARD);
     }
 
-    /**
-     * Show the reader as the knowledge area: mark the tab "Wissensquellen" in drawer and ribbon, then show the reader
-     * (like a click on the flask). Leave the drawer as it is.
-     */
-    public void showKnowledgeArea() {
-        showSidebarTab(KNOWLEDGE_TAB);
-        showReader();
-    }
-
-    /** Zurück vom Lesebereich zur Chat- bzw. Agent-Ansicht. */
-    public void showChatArea() {
+    /** Switch only the central card to the chat or agent view; navigate through {@link #selectWorkspaceTab}. */
+    private void showConversationCard() {
         readerShowing = false;
         ShellMode mode = modes.getMode();
         cards.show(deck, mode == ShellMode.AGENT && agentShell != null ? mode.name() : ShellMode.CHAT.name());
@@ -504,14 +540,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             if (!sidebar.isVisible()) {
                 showSidebar();
             }
-            sidebar.showTab(title);
-            refreshRibbonTabs();
-            // Chats zeigt den Chat, Quellen, Favoriten und Navigation machen den Chatbereich zum Lesebereich.
-            if (CHATS_TAB.equals(title)) {
-                showChatArea();
-            } else if (KNOWLEDGE_TAB.equals(title) || FAVORITES_TAB.equals(title) || NAVIGATION_TAB.equals(title)) {
-                showReader();
-            }
+            selectWorkspaceTab(title);
         });
 
         topBar.setOpaque(false);
@@ -984,12 +1013,6 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     }
 
     // ------------------------------------------------------------------ Drawer-Verhalten (arch)
-
-    /** Zeigt einen Drawer-Reiter samt Markierung in der Reiterleiste (wie ein Klick auf den Reiter). */
-    public void showSidebarTab(String title) {
-        sidebar.showTab(title);
-        refreshRibbonTabs();
-    }
 
     private void refreshRibbonTabs() {
         ribbon.setTabs(sidebar.tabTitles(), sidebar.tabIcons(), sidebar.activeTab());

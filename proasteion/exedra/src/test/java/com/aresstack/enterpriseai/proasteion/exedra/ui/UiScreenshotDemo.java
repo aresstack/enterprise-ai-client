@@ -116,9 +116,9 @@ public final class UiScreenshotDemo {
         scene.workspace.openDrawer();
         scene.workspace.ribbon().finishAnimation();
         write(scene.window, new File(dir, "E-sidebar-offen.png"));
-        scene.workspace.showSidebarTab(ChatWorkspacePanel.KNOWLEDGE_TAB);
+        scene.workspace.selectWorkspaceTab(ChatWorkspacePanel.KNOWLEDGE_TAB);
         write(scene.window, new File(dir, "E2-sidebar-wissensquellen.png"));
-        scene.workspace.showSidebarTab(scene.workspace.sidebar().tabTitles().get(0));
+        scene.workspace.selectWorkspaceTab(scene.workspace.sidebar().tabTitles().get(0));
         scene.workspace.closeDrawer();
         scene.workspace.ribbon().finishAnimation();
 

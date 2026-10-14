@@ -1,10 +1,12 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
+import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ReaderChatPages;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.sidebar.ChatHistoryRow;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
@@ -589,10 +591,90 @@ public class ChatWorkspacePanelTest {
                 assertFalse(workspace.isDrawerOpen()); // the drawer stays as it was
 
                 workspace.showChatArea();
-                workspace.showSidebarTab(ChatWorkspacePanel.FAVORITES_TAB);
+                workspace.selectWorkspaceTab(ChatWorkspacePanel.FAVORITES_TAB);
                 workspace.showReader(); // a favorite opened from its tree
                 assertEquals(ChatWorkspacePanel.FAVORITES_TAB, workspace.sidebar().activeTab());
                 assertTrue(workspace.isReaderShowing());
+            }
+        });
+    }
+
+    /** Assert that drawer, ribbon and central card describe the same workspace target. */
+    private static void assertTarget(ChatWorkspacePanel workspace, String tab, boolean reader) {
+        assertEquals(tab, workspace.sidebar().activeTab());
+        assertEquals(tab, workspace.ribbon().activeTitle());
+        assertEquals(reader, workspace.isReaderShowing());
+    }
+
+    @Test
+    public void addingAReaderPageToTheChatLeavesEveryReaderTabForChats() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                for (String readerTab : Arrays.asList(ChatWorkspacePanel.NAVIGATION_TAB,
+                        ChatWorkspacePanel.FAVORITES_TAB, ChatWorkspacePanel.KNOWLEDGE_TAB)) {
+                    ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                    workspace.selectWorkspaceTab(readerTab);
+                    workspace.showReader(); // the page opened from that tab
+                    assertTarget(workspace, readerTab, true);
+
+                    ReaderChatPages pages = new ReaderChatPages(workspace.chatShell().composer(), workspace);
+                    assertTrue(pages.add(new ReaderLink("confluence:https://cf.intern/confluence",
+                            "confluence:cf.intern/confluence/page/4242001", "Betriebshandbuch", "", "")));
+
+                    assertTarget(workspace, ChatWorkspacePanel.CHATS_TAB, false);
+                    assertEquals(1, workspace.chatShell().composer().pages().size());
+                    assertFalse(workspace.isDrawerOpen()); // the drawer stays as it was
+                }
+            }
+        });
+    }
+
+    @Test
+    public void everyTabSelectionShowsTheCardThatBelongsToIt() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                for (String tab : workspace.sidebar().tabTitles()) {
+                    workspace.selectWorkspaceTab(tab);
+                    assertEquals(tab, workspace.sidebar().activeTab());
+                    assertEquals(tab, workspace.ribbon().activeTitle());
+                    if (ChatWorkspacePanel.CHATS_TAB.equals(tab)) {
+                        assertFalse(workspace.isReaderShowing());
+                    } else if (ChatWorkspacePanel.isReaderTab(tab)) {
+                        assertTrue(workspace.isReaderShowing());
+                    }
+                }
+                // a reader opened while "Chats" is marked marks the knowledge area
+                workspace.selectWorkspaceTab(ChatWorkspacePanel.CHATS_TAB);
+                workspace.showReader();
+                assertTarget(workspace, ChatWorkspacePanel.KNOWLEDGE_TAB, true);
+                workspace.selectWorkspaceTab(ChatWorkspacePanel.NAVIGATION_TAB);
+                workspace.showReader();
+                assertTarget(workspace, ChatWorkspacePanel.NAVIGATION_TAB, true);
+            }
+        });
+    }
+
+    @Test
+    public void switchingTheModeFromTheReaderMarksChats() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatShellModel chatModel = new ChatShellModel(() -> 0L);
+                ChatShellModel agentModel = new ChatShellModel(() -> 0L);
+                ChatShellPanel chatShell = new ChatShellPanel(chatModel, new EchoActions(chatModel, "a"), comic, bubbles);
+                ChatShellPanel agentShell = new ChatShellPanel(agentModel, new EchoActions(agentModel, "b"), comic,
+                        bubbles);
+                ShellModeModel modes = new ShellModeModel(true);
+                ChatWorkspacePanel workspace = new ChatWorkspacePanel(modes, chatShell, agentShell, comic);
+                workspace.selectWorkspaceTab(ChatWorkspacePanel.FAVORITES_TAB);
+                assertTarget(workspace, ChatWorkspacePanel.FAVORITES_TAB, true);
+
+                assertTrue(modes.select(ShellMode.AGENT));
+                assertTarget(workspace, ChatWorkspacePanel.CHATS_TAB, false);
+                assertSame(agentShell, workspace.visibleShell());
             }
         });
     }

@@ -253,7 +253,7 @@ public class AgentPhaseUiRunTest {
         // F: Reiter wechseln ändert die Phase nicht
         onEdt(() -> {
             view.workspace().openDrawer();
-            view.workspace().showSidebarTab(ResearchWorkflowAssembly.SOURCES_TAB);
+            view.workspace().selectWorkspaceTab(ResearchWorkflowAssembly.SOURCES_TAB);
             return null;
         });
         snapshot("reiter-quellen-im-konzept");
@@ -264,7 +264,7 @@ public class AgentPhaseUiRunTest {
         for (String tab : new String[]{ResearchWorkflowAssembly.DOCUMENT_TAB, ResearchWorkflowAssembly.OUTLINE_TAB,
                 ResearchWorkflowAssembly.SOURCES_TAB}) {
             onEdt(() -> {
-                view.workspace().showSidebarTab(tab);
+                view.workspace().selectWorkspaceTab(tab);
                 return null;
             });
             assertEquals("Reiter " + tab + " ändert die Phase nicht", "draft", host.phaseId());
@@ -289,7 +289,7 @@ public class AgentPhaseUiRunTest {
         // D: Phase Gliederung, Play „Gliederung erstellen“
         choosePhase(composer, ResearchWorkflow.PHASE_OUTLINE);
         onEdt(() -> {
-            view.workspace().showSidebarTab(ResearchWorkflowAssembly.OUTLINE_TAB);
+            view.workspace().selectWorkspaceTab(ResearchWorkflowAssembly.OUTLINE_TAB);
             return null;
         });
         before = entries().size();
@@ -302,7 +302,7 @@ public class AgentPhaseUiRunTest {
         // E: Phase Dokument, Play „Dokument schreiben“
         choosePhase(composer, ResearchWorkflow.PHASE_DOCUMENT);
         onEdt(() -> {
-            view.workspace().showSidebarTab(ResearchWorkflowAssembly.DOCUMENT_TAB);
+            view.workspace().selectWorkspaceTab(ResearchWorkflowAssembly.DOCUMENT_TAB);
             return null;
         });
         before = entries().size();
