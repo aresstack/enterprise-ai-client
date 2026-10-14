@@ -1100,7 +1100,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
      * Übersicht bleibt dabei offen (Issue #119).
      */
     JPopupMenu resourceContextMenu(final ChatResource resource) {
-        JPopupMenu context = new JPopupMenu();
+        JPopupMenu context = new ResourcesPopupMenu();
         JMenuItem open = new JMenuItem(ResourceMenuItem.OPEN_IN_READER, ComposerIcons.openBook());
         open.setEnabled(canRead(resource));
         open.addActionListener(event -> resourceReader.read(resource));
@@ -1146,13 +1146,15 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             return;
         }
         final ResourceMenuItem item = (ResourceMenuItem) source;
-        ResourcesPopupMenu overview = (ResourcesPopupMenu) source.getParent();
+        final ResourcesPopupMenu overview = (ResourcesPopupMenu) source.getParent();
+        final ResourcesPopupMenu actions = (ResourcesPopupMenu) context;
         java.awt.Point at = actionMenuLocation(item);
         // Keep the overview open while the action menu becomes visible, then select the whole hierarchy so that
-        // mouse, keyboard and Escape treat the action menu as a submenu of the item.
+        // mouse, keyboard and Escape treat the action menu as a submenu of the item. Replacing the path briefly
+        // deselects the action menu, which would hide it again, so it stays open for that step.
         overview.keepOpenWhile(() -> context.show(item, at.x, at.y));
-        javax.swing.MenuSelectionManager.defaultManager().setSelectedPath(
-                new javax.swing.MenuElement[]{overview, item, context});
+        actions.keepOpenWhile(() -> javax.swing.MenuSelectionManager.defaultManager().setSelectedPath(
+                new javax.swing.MenuElement[]{overview, item, context}));
     }
 
     /** Where the action menu of an item opens, relative to the item: right next to it, at its top edge. */
@@ -1161,8 +1163,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     }
 
     /**
-     * The overview popup: it stays open while it hosts the action menu of one of its items. Showing a popup makes
-     * it the only selected menu for a moment, which would otherwise close the overview.
+     * The overview popup and the action menu of its items: each stays open while the other becomes part of the menu
+     * path. Showing a popup makes it the only selected menu for a moment, and replacing that path deselects it,
+     * either of which would otherwise close it.
      */
     static final class ResourcesPopupMenu extends JPopupMenu {
 

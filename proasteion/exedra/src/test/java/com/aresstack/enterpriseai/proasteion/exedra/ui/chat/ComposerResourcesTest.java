@@ -152,6 +152,8 @@ public class ComposerResourcesTest {
             click(item, MouseEvent.BUTTON3, 5);
             assertEquals(ChatComposerPanel.COPY_URL,
                     ((JMenuItem) composer.lastResourceContextMenu().getComponent(1)).getText());
+            assertTrue("the action menu survives the menu path that makes it a submenu",
+                    composer.lastResourceContextMenu() instanceof ChatComposerPanel.ResourcesPopupMenu);
             assertTrue("Rechtsklick hängt nichts an", composer.references().isEmpty());
         });
     }
