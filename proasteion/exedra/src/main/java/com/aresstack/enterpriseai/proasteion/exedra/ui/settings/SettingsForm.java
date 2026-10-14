@@ -128,6 +128,8 @@ public final class SettingsForm {
     private final String retrievalRerankTopK;
     private final boolean acronymsEnabled;
     private final boolean acronymsHighlight;
+    private final boolean fileAccessAllowAll;
+    private final java.util.List<String> fileAccessRoots;
     private final String acronymMaxLetters;
     private final String acronymShoutingPercent;
     private final String acronymShoutingMinWords;
@@ -229,6 +231,9 @@ public final class SettingsForm {
         this.retrievalRerankTopK = b.retrievalRerankTopK;
         this.acronymsEnabled = b.acronymsEnabled;
         this.acronymsHighlight = b.acronymsHighlight;
+        this.fileAccessAllowAll = b.fileAccessAllowAll;
+        this.fileAccessRoots = java.util.Collections.unmodifiableList(
+                new java.util.ArrayList<String>(b.fileAccessRoots));
         this.acronymMaxLetters = b.acronymMaxLetters;
         this.acronymShoutingPercent = b.acronymShoutingPercent;
         this.acronymShoutingMinWords = b.acronymShoutingMinWords;
@@ -318,6 +323,8 @@ public final class SettingsForm {
                 .retrievalRerankTopK(retrievalRerankTopK)
                 .acronymsEnabled(acronymsEnabled)
                 .acronymsHighlight(acronymsHighlight)
+                .fileAccessAllowAll(fileAccessAllowAll)
+                .fileAccessRoots(fileAccessRoots)
                 .acronymMaxLetters(acronymMaxLetters)
                 .acronymShoutingPercent(acronymShoutingPercent)
                 .acronymShoutingMinWords(acronymShoutingMinWords)
@@ -745,6 +752,16 @@ public final class SettingsForm {
         return acronymsHighlight;
     }
 
+    /** Read every file the user account can read ({@code files.access.allowAll}, off by default). */
+    public boolean fileAccessAllowAll() {
+        return fileAccessAllowAll;
+    }
+
+    /** Granted folders for local files and network drives ({@code files.access.roots}). */
+    public java.util.List<String> fileAccessRoots() {
+        return fileAccessRoots;
+    }
+
     /** Longest acronym in letters ({@code textMining.acronyms.maxLetters}, 2–20). */
     public String acronymMaxLetters() {
         return acronymMaxLetters;
@@ -925,6 +942,8 @@ public final class SettingsForm {
                 com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy.DEFAULT_RERANK_TOP_K);
         private boolean acronymsEnabled = true;
         private boolean acronymsHighlight = true;
+        private boolean fileAccessAllowAll;
+        private java.util.List<String> fileAccessRoots = java.util.Collections.emptyList();
         private String acronymMaxLetters = String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS);
         private String acronymShoutingPercent = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_PERCENT);
         private String acronymShoutingMinWords = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS);
@@ -1362,6 +1381,16 @@ public final class SettingsForm {
 
         public Builder acronymsHighlight(boolean value) {
             this.acronymsHighlight = value;
+            return this;
+        }
+
+        public Builder fileAccessAllowAll(boolean value) {
+            this.fileAccessAllowAll = value;
+            return this;
+        }
+
+        public Builder fileAccessRoots(java.util.List<String> value) {
+            this.fileAccessRoots = value == null ? java.util.Collections.<String>emptyList() : value;
             return this;
         }
 

@@ -205,6 +205,9 @@ public final class AppConfigLoader {
                                 StatementSettings.DEFAULT_MAX_PARAGRAPH_CHARS, TextMiningConfig.MIN_PARAGRAPH_CHARS,
                                 TextMiningConfig.MAX_PARAGRAPH_CHARS_LIMIT)));
 
+        FileAccessConfig fileAccess = new FileAccessConfig(reader.bool(FileAccessConfig.ALLOW_ALL_KEY, false),
+                FileAccessConfig.splitRoots(reader.text(FileAccessConfig.ROOTS_KEY, null)));
+
         for (String unread : reader.unreadKeys()) {
             warnings.add("Unbekannter Konfigurationsschlüssel wird ignoriert: " + unread);
         }
@@ -231,7 +234,7 @@ public final class AppConfigLoader {
             throw new AppConfigException(reader.problems());
         }
         return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models,
-                disabledTools, bubbleColors, facts, textMining, warnings);
+                disabledTools, bubbleColors, facts, textMining, fileAccess, warnings);
     }
 
     /**

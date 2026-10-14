@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;
+import com.aresstack.enterpriseai.proasteion.application.config.FileAccessConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.TextMiningConfig;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
@@ -201,6 +202,8 @@ public final class SettingsMapper {
         b.answerPlanningEnabled(bool(p, ChatConfig.ANSWER_PLANNING_ENABLED_KEY, true));
         b.acronymsEnabled(bool(p, TextMiningConfig.ACRONYMS_ENABLED_KEY, true));
         b.acronymsHighlight(bool(p, TextMiningConfig.READER_HIGHLIGHT_KEY, true));
+        b.fileAccessAllowAll(bool(p, FileAccessConfig.ALLOW_ALL_KEY, false));
+        b.fileAccessRoots(FileAccessConfig.splitRoots(text(p, FileAccessConfig.ROOTS_KEY, "")));
         b.acronymMaxLetters(text(p, TextMiningConfig.MAX_LETTERS_KEY,
                 String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS)));
         b.acronymShoutingPercent(text(p, TextMiningConfig.SHOUTING_PERCENT_KEY,
@@ -368,6 +371,9 @@ public final class SettingsMapper {
         // Acronyms in the reader (#107): defaults stay out of the file.
         put(set, TextMiningConfig.ACRONYMS_ENABLED_KEY, form.acronymsEnabled() ? "" : "false");
         put(set, TextMiningConfig.READER_HIGHLIGHT_KEY, form.acronymsHighlight() ? "" : "false");
+        // Folder grants (#120): no access is the default and stays out of the file.
+        put(set, FileAccessConfig.ALLOW_ALL_KEY, form.fileAccessAllowAll() ? "true" : "");
+        put(set, FileAccessConfig.ROOTS_KEY, FileAccessConfig.joinRoots(form.fileAccessRoots()));
         putUnlessDefault(set, TextMiningConfig.MAX_LETTERS_KEY, form.acronymMaxLetters(),
                 AcronymSettings.DEFAULT_MAX_LETTERS);
         putUnlessDefault(set, TextMiningConfig.SHOUTING_PERCENT_KEY, form.acronymShoutingPercent(),

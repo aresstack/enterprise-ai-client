@@ -27,6 +27,7 @@ public final class AppConfig {
     private final BubbleColorsConfig bubbleColors;
     private final FactStoreConfig facts;
     private final TextMiningConfig textMining;
+    private final FileAccessConfig fileAccess;
     private final List<String> warnings;
 
     AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
@@ -49,6 +50,14 @@ public final class AppConfig {
               List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
               ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
               TextMiningConfig textMining, List<String> warnings) {
+        this(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models, disabledTools,
+                bubbleColors, facts, textMining, FileAccessConfig.defaults(), warnings);
+    }
+
+    AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
+              List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
+              ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
+              TextMiningConfig textMining, FileAccessConfig fileAccess, List<String> warnings) {
         this.windowTitle = windowTitle;
         this.chat = chat;
         this.embedding = embedding;
@@ -62,6 +71,7 @@ public final class AppConfig {
         this.bubbleColors = bubbleColors == null ? BubbleColorsConfig.defaults() : bubbleColors;
         this.facts = facts == null ? FactStoreConfig.defaults() : facts;
         this.textMining = textMining == null ? TextMiningConfig.defaults() : textMining;
+        this.fileAccess = fileAccess == null ? FileAccessConfig.defaults() : fileAccess;
         this.warnings = Collections.unmodifiableList(new ArrayList<String>(warnings));
     }
 
@@ -129,6 +139,11 @@ public final class AppConfig {
         return textMining;
     }
 
+    /** Granted folders for local files and network drives ({@code files.access.*}). */
+    public FileAccessConfig fileAccess() {
+        return fileAccess;
+    }
+
     public List<String> warnings() {
         return warnings;
     }
@@ -136,6 +151,6 @@ public final class AppConfig {
     @Override
     public String toString() {
         return "AppConfig[" + chat + ", " + embedding + ", " + knowledge + ", sources=" + sources + ", " + keePass
-                + ", " + network + ", " + agent + ", " + models + ", " + facts + ", " + textMining + "]";
+                + ", " + network + ", " + agent + ", " + models + ", " + facts + ", " + textMining + ", " + fileAccess + "]";
     }
 }

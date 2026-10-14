@@ -10,14 +10,18 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.SourceSettingsReader;
+import com.aresstack.enterpriseai.source.api.files.LocalFileAccessPolicy;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Quelltyp „Lokale Dateien“ ({@code source.<n>.type=files}, Ressourcenschema {@code file}): ein Verzeichnis,
  * rekursiv. Schlüssel wie bisher: {@code directory}, {@code startPoints} (Standard {@code .}), {@code maxDepth}
- * (Standard 20), {@code maxResources} (Standard 5000), {@code maxFileMegabytes} (Standard 50).
+ * (Standard 20), {@code maxResources} (Standard 5000), {@code maxFileMegabytes} (Standard 50), {@code include} und
+ * {@code exclude} (Glob-Muster, #120). Das Verzeichnis einer Quelle gilt als freigegeben; Links hinaus führen nur in
+ * weitere freigegebene Ordner der {@link LocalFileAccessPolicy}.
  */
 public final class LocalFilesSourceProvider implements KnowledgeSourceProvider {
 
@@ -38,17 +42,29 @@ public final class LocalFilesSourceProvider implements KnowledgeSourceProvider {
                     "Höchstzahl Dateien (optional)", "Obergrenze je Lauf; leer = 5000").advanced())
             .field(SourceSettingField.of("maxFileMegabytes", SourceSettingField.Kind.NUMBER,
                     "Größte Datei in MB (optional)", "Größere Dateien werden übersprungen; leer = 50").advanced())
+            .field(SourceSettingField.text("include", "Nur diese Dateien (optional)",
+                    "Glob-Muster, kommagetrennt, z. B. *.pdf, *.docx, *.md; leer = alle Dokumenttypen").advanced())
+            .field(SourceSettingField.text("exclude", "Ausschließen (optional)",
+                    "Glob-Muster, kommagetrennt, z. B. .git/**, node_modules/**, build/**, *.tmp").advanced())
             .build();
 
     private final ContentDetector detector;
     private final ExtractionRegistry extraction;
+    private final Supplier<LocalFileAccessPolicy> access;
 
     public LocalFilesSourceProvider(ContentDetector detector, ExtractionRegistry extraction) {
+        this(detector, extraction, LocalFileAccessPolicy::none);
+    }
+
+    /** @param access the user's folder grants, read on every file access (changes apply without restart) */
+    public LocalFilesSourceProvider(ContentDetector detector, ExtractionRegistry extraction,
+                                    Supplier<LocalFileAccessPolicy> access) {
         if (detector == null || extraction == null) {
             throw new IllegalArgumentException("detector and extraction must not be null");
         }
         this.detector = detector;
         this.extraction = extraction;
+        this.access = access == null ? LocalFileAccessPolicy::none : access;
     }
 
     /** Der Typ ohne Laufzeitumgebung (Beschreibung, Felder). */
@@ -83,7 +99,8 @@ public final class LocalFilesSourceProvider implements KnowledgeSourceProvider {
         if (reader.hasProblems() || directory == null) {
             throw new IllegalArgumentException("Dateiquelle " + sourceId + " ist fehlerhaft: " + reader.problems());
         }
-        return new LocalFilesKnowledgeSource(sourceId, directory, detector, extraction, maxFileBytes);
+        return new LocalFilesKnowledgeSource(sourceId, directory, detector, extraction, maxFileBytes, access,
+                FilePatterns.split(reader.text("include", null)), FilePatterns.split(reader.text("exclude", null)));
     }
 
     /** Das Verzeichnis absolut mit {@code /} ({@code file:/C:/Daten/Doku/sub/a.txt}). */

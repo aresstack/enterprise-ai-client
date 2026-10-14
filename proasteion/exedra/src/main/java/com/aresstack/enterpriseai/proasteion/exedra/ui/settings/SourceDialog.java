@@ -107,10 +107,25 @@ public final class SourceDialog extends JDialog {
      * @return {@code true}, wenn der Benutzer „Entfernen“ wählt
      */
     public static boolean confirmRemove(Window owner, String sourceId, String typeName, ComicPalette palette) {
+        return confirm(owner, "Quelle entfernen", "Quelle „" + sourceId + "“ entfernen?",
+                (typeName == null ? "" : typeName + ": ")
+                        + "Die Quelle verschwindet aus der Liste und aus der Konfiguration, ihr Index wird gelöscht. "
+                        + "Die Zeilen in der Datei werden nur auskommentiert.",
+                "Entfernen", palette);
+    }
+
+    /**
+     * A small question before a risky step, in the same undecorated comic style (EDT only): heading, text, a red
+     * confirm button and „Abbrechen“; Escape cancels.
+     *
+     * @return {@code true} if the user chose the confirm button
+     */
+    public static boolean confirm(Window owner, String title, String question, String text, String confirmLabel,
+                                  ComicPalette palette) {
         ComicPalette colors = palette == null ? ComicPalette.defaultPalette() : palette;
         ComicTheme.installMenuDefaults(colors);
         final boolean[] confirmed = {false};
-        final JDialog dialog = new JDialog(owner, "Quelle entfernen", ModalityType.APPLICATION_MODAL);
+        final JDialog dialog = new JDialog(owner, title, ModalityType.APPLICATION_MODAL);
         ApplicationIcons.apply(dialog);
         dialog.setUndecorated(true);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
@@ -118,16 +133,14 @@ public final class SourceDialog extends JDialog {
         content.setBackground(colors.getSurface());
         content.setBorder(BorderFactory.createCompoundBorder(ComicBorder.windowBorder(colors, WINDOW_PADDING),
                 BorderFactory.createEmptyBorder(12, 16, 12, 16)));
-        JLabel heading = new JLabel("Quelle „" + sourceId + "“ entfernen?");
+        JLabel heading = new JLabel(question);
         heading.setFont(ResearchUiTypography.semiBold(15f));
         heading.setForeground(colors.getInk());
-        JLabel text = new JLabel(FormRows.html((typeName == null ? "" : typeName + ": ")
-                + "Die Quelle verschwindet aus der Liste und aus der Konfiguration, ihr Index wird gelöscht. "
-                + "Die Zeilen in der Datei werden nur auskommentiert."));
-        text.setForeground(colors.getInk());
-        ComposerButton remove = ComposerButton.primary(null, "Entfernen", ResearchUiPalette.DANGER_RED, null);
+        JLabel body = new JLabel(FormRows.html(text));
+        body.setForeground(colors.getInk());
+        ComposerButton accept = ComposerButton.primary(null, confirmLabel, ResearchUiPalette.DANGER_RED, null);
         ComposerButton cancel = new ComposerButton(null, SourcePanel.CANCEL_LABEL, false);
-        remove.addActionListener(event -> {
+        accept.addActionListener(event -> {
             confirmed[0] = true;
             dialog.dispose();
         });
@@ -135,9 +148,9 @@ public final class SourceDialog extends JDialog {
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         buttons.setOpaque(false);
         buttons.add(cancel);
-        buttons.add(remove);
+        buttons.add(accept);
         content.add(heading, BorderLayout.NORTH);
-        content.add(text, BorderLayout.CENTER);
+        content.add(body, BorderLayout.CENTER);
         content.add(buttons, BorderLayout.SOUTH);
         content.registerKeyboardAction(event -> dialog.dispose(), KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
