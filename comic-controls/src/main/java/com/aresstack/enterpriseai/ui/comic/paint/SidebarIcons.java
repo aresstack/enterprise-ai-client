@@ -184,5 +184,65 @@ public final class SidebarIcons {
         };
     }
 
+    /**
+     * The page tree of the navigation footer (#114): a parent node with a stem and two child nodes, in the foreground
+     * of the button like the scroll.
+     */
+    public static StrokeIcon pageTree() {
+        return new StrokeIcon(16, 16) {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.draw(new RoundRectangle2D.Float(1.5f, 1.5f, 6f, 4f, 1.6f, 1.6f));
+                g2.draw(new RoundRectangle2D.Float(8.5f, 6.5f, 6f, 3.5f, 1.6f, 1.6f));
+                g2.draw(new RoundRectangle2D.Float(8.5f, 11.5f, 6f, 3.5f, 1.6f, 1.6f));
+                Path2D.Float stem = new Path2D.Float();
+                stem.moveTo(4.5f, 5.5f);
+                stem.lineTo(4.5f, 13.25f);
+                stem.lineTo(8.5f, 13.25f);
+                stem.moveTo(4.5f, 8.25f);
+                stem.lineTo(8.5f, 8.25f);
+                g2.draw(stem);
+            }
+        };
+    }
+
+    /** Outgoing references (#114): two chain links with an arrow leaving to the top right. */
+    public static StrokeIcon linksOutgoing() {
+        return chainWithArrow(true);
+    }
+
+    /** Incoming references (#114): the same chain links with an arrow arriving from the top right. */
+    public static StrokeIcon linksIncoming() {
+        return chainWithArrow(false);
+    }
+
+    private static StrokeIcon chainWithArrow(final boolean outgoing) {
+        return new StrokeIcon(16, 16) {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                java.awt.geom.AffineTransform plain = g2.getTransform();
+                g2.rotate(Math.toRadians(-45), 6f, 10f);
+                g2.draw(new RoundRectangle2D.Float(1.2f, 8.2f, 6.2f, 3.6f, 3.6f, 3.6f));
+                g2.draw(new RoundRectangle2D.Float(4.6f, 8.2f, 6.2f, 3.6f, 3.6f, 3.6f));
+                g2.setTransform(plain);
+                Path2D.Float arrow = new Path2D.Float();
+                arrow.moveTo(9.5f, 6.5f);
+                arrow.lineTo(14.5f, 1.5f);
+                if (outgoing) {
+                    arrow.moveTo(10.5f, 1.5f);
+                    arrow.lineTo(14.5f, 1.5f);
+                    arrow.lineTo(14.5f, 5.5f);
+                } else {
+                    arrow.moveTo(9.5f, 2.5f);
+                    arrow.lineTo(9.5f, 6.5f);
+                    arrow.lineTo(13.5f, 6.5f);
+                }
+                g2.draw(arrow);
+            }
+        };
+    }
+
     private static final Color FOLDER_PAPER = new Color(0xFFF1C2);
 }

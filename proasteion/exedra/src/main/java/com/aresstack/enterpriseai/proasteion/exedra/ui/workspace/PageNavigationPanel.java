@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
+import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
 import com.aresstack.enterpriseai.ui.comic.paint.SidebarIcons;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics;
@@ -15,14 +16,12 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JSplitPane;
+import javax.swing.TransferHandler;
 import javax.swing.JTextArea;
 import javax.swing.JTree;
 import javax.swing.SwingUtilities;
 import javax.swing.event.TreeExpansionEvent;
 import javax.swing.event.TreeWillExpandListener;
-import javax.swing.plaf.basic.BasicSplitPaneDivider;
-import javax.swing.plaf.basic.BasicSplitPaneUI;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeCellRenderer;
@@ -32,6 +31,9 @@ import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.FlowLayout;
+import java.awt.Point;
+import java.awt.datatransfer.Transferable;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.event.HierarchyEvent;
@@ -41,13 +43,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * The drawer page "Navigation" (tab with the red compass, issue #97): on top the page tree of the source of the open page
- * (Confluence: its space as the only root), below the cross references of the page. The tree looks like the favorites
+ * The drawer page "Navigation" (tab with the red compass, issue #97): the page tree of the source of the open page
+ * (Confluence: its space as the only root), the outgoing and the incoming references of the page as three sections
+ * the user shows, hides and orders with the buttons in the drawer footer and sizes with the dividers between them
+ * (#114, {@link NavigationSectionLayout}); the arrangement goes to the {@link #setSectionLayoutListener listener}, never
+ * into a file of its own. The tree looks like the favorites
  * tree ({@link FavoritesPanel}) but only reads: no drag and drop, no renaming, no context menu. A click on a title shows
  * the page in the reader (double click pins it), a click on the expander only opens or closes the branch; a branch
  * loads its children when it is first opened, batch by batch ({@link Actions#childrenRequested}).
@@ -120,7 +126,13 @@ public final class PageNavigationPanel extends JPanel {
     }
 
     static final String TREE_HEADER = "SEITENBAUM";
-    static final String REFERENCES_HEADER = "QUERVERWEISE";
+    static final String OUTGOING_HEADER = "AUSGEHENDE VERWEISE";
+    static final String INCOMING_HEADER = "EINGEHENDE VERWEISE";
+    static final String NO_SECTION = "Alle Bereiche sind ausgeblendet. Die Knöpfe unten blenden Seitenbaum und Verweise "
+            + "wieder ein.";
+    static final String TREE_TOGGLE = "Seitenbaum ein- oder ausblenden (ziehen zum Anordnen)";
+    static final String OUTGOING_TOGGLE = "Ausgehende Verweise ein- oder ausblenden (ziehen zum Anordnen)";
+    static final String INCOMING_TOGGLE = "Eingehende Verweise ein- oder ausblenden (ziehen zum Anordnen)";
     public static final String NOTHING_OPEN = "Keine Seite geöffnet. Öffne eine Seite im Lesebereich, dann zeigt der Kompass "
             + "ihren Platz in der Quelle und ihre Verweise.";
     public static final String LOADING = "Lädt …";
@@ -129,9 +141,8 @@ public final class PageNavigationPanel extends JPanel {
     static final String INCOMING = "Wird verlinkt von";
     static final String NO_OUTGOING = "Keine Verweise auf andere Seiten.";
     static final String INCOMING_UNSUPPORTED = "Eingehende Verweise kann diese Quelle nicht zuverlässig ermitteln.";
-    /** Share of the height the tree gets at first; the user drags the divider from there. */
-    private static final double TREE_SHARE = 0.62;
-    private static final int DIVIDER_SIZE = 7;
+    /** How far a footer button moves before it is dragged instead of clicked. */
+    private static final int DRAG_THRESHOLD_PX = 5;
     private static final String CARD_TREE = "tree";
     private static final String CARD_MESSAGE = "message";
     private static final Color SELECTION_WASH = ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.86f);
@@ -140,16 +151,15 @@ public final class PageNavigationPanel extends JPanel {
     private final DefaultMutableTreeNode treeRoot = new DefaultMutableTreeNode(null);
     private final DefaultTreeModel treeModel = new DefaultTreeModel(treeRoot);
     private final JTree tree = new JTree(treeModel);
-    private final DefaultMutableTreeNode referenceRoot = new DefaultMutableTreeNode(null);
-    private final DefaultTreeModel referenceModel = new DefaultTreeModel(referenceRoot);
-    private final JTree references = new JTree(referenceModel);
+    private final ReferenceSection outgoing = new ReferenceSection();
+    private final ReferenceSection incoming = new ReferenceSection();
     private final CardLayout treeCards = new CardLayout();
     private final JPanel treeArea = new JPanel(treeCards);
     private final JTextArea treeMessage = messageArea();
-    private final CardLayout referenceCards = new CardLayout();
-    private final JPanel referenceArea = new JPanel(referenceCards);
-    private final JTextArea referenceMessage = messageArea();
-    private final JSplitPane split;
+    private final NavigationSectionStack stack;
+    private final JPanel toggles = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+    private final Map<String, ComposerButton> toggleButtons = new LinkedHashMap<String, ComposerButton>();
+    private SectionLayoutListener sectionLayoutListener;
     private final Map<String, DefaultMutableTreeNode> nodes = new HashMap<String, DefaultMutableTreeNode>();
     /** Branches whose children are complete. */
     private final Set<String> loaded = new HashSet<String>();
@@ -159,7 +169,11 @@ public final class PageNavigationPanel extends JPanel {
     private String currentKey;
     private Actions actions;
     private boolean revealing;
-    private boolean dividerPlaced;
+
+    /** Gets every arrangement of the sections the user chose (toggle, drop, divider). */
+    public interface SectionLayoutListener {
+        void sectionLayoutChanged(NavigationSectionLayout layout);
+    }
 
     public PageNavigationPanel(ComicPalette palette) {
         super(new BorderLayout());
@@ -182,39 +196,25 @@ public final class PageNavigationPanel extends JPanel {
             public void treeWillCollapse(TreeExpansionEvent event) {
             }
         });
-        configure(references);
-        references.setRootVisible(false);
-        references.setShowsRootHandles(false);
+        configure(outgoing.tree);
+        configure(incoming.tree);
 
         treeArea.setOpaque(false);
         treeArea.add(scroll(tree), CARD_TREE);
         treeArea.add(treeMessage, CARD_MESSAGE);
-        referenceArea.setOpaque(false);
-        referenceArea.add(scroll(references), CARD_TREE);
-        referenceArea.add(referenceMessage, CARD_MESSAGE);
+        outgoing.area.add(scroll(outgoing.tree), CARD_TREE);
+        incoming.area.add(scroll(incoming.tree), CARD_TREE);
 
-        JPanel top = section(TREE_HEADER, treeArea);
-        JPanel bottom = section(REFERENCES_HEADER, referenceArea);
-        split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, top, bottom);
-        split.setResizeWeight(TREE_SHARE);
-        split.setContinuousLayout(true);
-        split.setOpaque(false);
-        split.setBorder(BorderFactory.createEmptyBorder());
-        split.setDividerSize(DIVIDER_SIZE);
-        split.setUI(new BasicSplitPaneUI() {
-            @Override
-            public BasicSplitPaneDivider createDefaultDivider() {
-                return new BasicSplitPaneDivider(this) {
-                    @Override
-                    public void paint(Graphics graphics) {
-                        graphics.setColor(ResearchUiPalette.LIGHT_CONTROL_BORDER);
-                        int y = getHeight() / 2;
-                        graphics.drawLine(8, y, getWidth() - 8, y);
-                    }
-                };
-            }
-        });
-        add(split, BorderLayout.CENTER);
+        Map<String, JComponent> sections = new LinkedHashMap<String, JComponent>();
+        sections.put(NavigationSectionLayout.TREE, section(TREE_HEADER, treeArea));
+        sections.put(NavigationSectionLayout.OUTGOING, section(OUTGOING_HEADER, outgoing.area));
+        sections.put(NavigationSectionLayout.INCOMING, section(INCOMING_HEADER, incoming.area));
+        JTextArea noSection = messageArea();
+        noSection.setText(NO_SECTION);
+        stack = new NavigationSectionStack(sections, noSection);
+        stack.setListener(this::applyRequestedLayout);
+        add(stack, BorderLayout.CENTER);
+        buildToggles();
         addHierarchyListener(event -> {
             if ((event.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0 && isShowing() && actions != null) {
                 actions.shown();
@@ -227,12 +227,107 @@ public final class PageNavigationPanel extends JPanel {
         this.actions = actions;
     }
 
-    @Override
-    public void doLayout() {
-        super.doLayout();
-        if (!dividerPlaced && getHeight() > 0) {
-            dividerPlaced = true;
-            split.setDividerLocation(TREE_SHARE);
+    // ------------------------------------------------------------------ Bereiche (#114)
+
+    /** The current arrangement of the sections. */
+    public NavigationSectionLayout sectionLayout() {
+        return stack.sectionLayout();
+    }
+
+    /** Show {@code layout} (e.g. the stored one) without telling the listener. */
+    public void setSectionLayout(NavigationSectionLayout layout) {
+        stack.setSectionLayout(layout);
+        refreshToggles();
+    }
+
+    public void setSectionLayoutListener(SectionLayoutListener listener) {
+        this.sectionLayoutListener = listener;
+    }
+
+    /** The footer of the tab: one toggle per section, also the handle to drag it into place. */
+    public JComponent sectionToggles() {
+        return toggles;
+    }
+
+    /** The toggle of section {@code id} (for tests). */
+    ComposerButton sectionToggle(String id) {
+        return toggleButtons.get(id);
+    }
+
+    /** The stack of the sections (for tests). */
+    NavigationSectionStack sectionStack() {
+        return stack;
+    }
+
+    /** Hide a visible section or show a hidden one, like a click on its footer button. */
+    public void toggleSection(String id) {
+        applyRequestedLayout(stack.sectionLayout().toggle(id));
+    }
+
+    private void applyRequestedLayout(NavigationSectionLayout layout) {
+        stack.setSectionLayout(layout);
+        refreshToggles();
+        if (sectionLayoutListener != null) {
+            sectionLayoutListener.sectionLayoutChanged(layout);
+        }
+    }
+
+    private void buildToggles() {
+        toggles.setOpaque(false);
+        addToggle(NavigationSectionLayout.TREE, SidebarIcons.pageTree(), TREE_TOGGLE);
+        addToggle(NavigationSectionLayout.OUTGOING, SidebarIcons.linksOutgoing(), OUTGOING_TOGGLE);
+        addToggle(NavigationSectionLayout.INCOMING, SidebarIcons.linksIncoming(), INCOMING_TOGGLE);
+        refreshToggles();
+    }
+
+    private void addToggle(final String id, Icon icon, String tooltip) {
+        final ComposerButton button = ComposerButton.ribbonIconEntry(icon, tooltip, true);
+        button.addActionListener(event -> toggleSection(id));
+        // The button is also the handle: dragging it into the sections puts this section there.
+        button.setTransferHandler(new TransferHandler() {
+            @Override
+            public int getSourceActions(JComponent component) {
+                return MOVE;
+            }
+
+            @Override
+            protected Transferable createTransferable(JComponent component) {
+                return NavigationSectionStack.transferable(id);
+            }
+
+            @Override
+            protected void exportDone(JComponent source, Transferable data, int action) {
+                stack.clearDropMark();
+            }
+        });
+        MouseAdapter drag = new MouseAdapter() {
+            private Point pressed;
+
+            @Override
+            public void mousePressed(MouseEvent event) {
+                pressed = event.getPoint();
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent event) {
+                if (pressed != null && pressed.distance(event.getPoint()) > DRAG_THRESHOLD_PX) {
+                    pressed = null;
+                    button.getModel().setArmed(false);
+                    button.getModel().setPressed(false);
+                    button.getTransferHandler().exportAsDrag(button, event, TransferHandler.MOVE);
+                }
+            }
+        };
+        button.addMouseListener(drag);
+        button.addMouseMotionListener(drag);
+        toggleButtons.put(id, button);
+        toggles.add(button);
+    }
+
+    private void refreshToggles() {
+        NavigationSectionLayout layout = stack.sectionLayout();
+        for (Map.Entry<String, ComposerButton> entry : toggleButtons.entrySet()) {
+            entry.getValue().setEmphasized(layout.isVisible(entry.getKey()));
         }
     }
 
@@ -413,32 +508,64 @@ public final class PageNavigationPanel extends JPanel {
         showReferencesMessage(LOADING);
     }
 
-    /** Show a hint instead of the references (empty: nothing). */
+    /** Show a hint instead of the references in both reference sections (empty: nothing). */
     public void showReferencesMessage(String text) {
-        referenceRoot.removeAllChildren();
-        referenceModel.reload();
-        referenceMessage.setText(text == null ? "" : text);
-        referenceCards.show(referenceArea, CARD_MESSAGE);
+        outgoing.showMessage(text);
+        incoming.showMessage(text);
     }
 
     /**
-     * Show the references grouped by direction; {@code incoming == null} means the source cannot determine them
-     * reliably, which the group says instead of pretending there are none.
+     * Show the references split by direction into their sections; {@code incomingPages == null} means the source
+     * cannot determine them reliably, which the section says instead of pretending there are none.
      */
-    public void showReferences(List<Item> outgoing, List<Item> incoming) {
-        referenceRoot.removeAllChildren();
-        referenceRoot.add(group(OUTGOING, outgoing, NO_OUTGOING));
-        referenceRoot.add(incoming == null ? group(INCOMING, Collections.<Item>emptyList(), INCOMING_UNSUPPORTED)
-                : group(INCOMING, incoming, ""));
-        referenceModel.reload();
-        for (int row = 0; row < references.getRowCount(); row++) {
-            references.expandRow(row);
-        }
-        referenceCards.show(referenceArea, CARD_TREE);
+    public void showReferences(List<Item> outgoingPages, List<Item> incomingPages) {
+        outgoing.show(group(OUTGOING, outgoingPages, NO_OUTGOING));
+        incoming.show(incomingPages == null ? group(INCOMING, Collections.<Item>emptyList(), INCOMING_UNSUPPORTED)
+                : group(INCOMING, incomingPages, ""));
     }
 
-    public JTree references() {
-        return references;
+    /** The tree of the outgoing references. */
+    public JTree outgoingReferences() {
+        return outgoing.tree;
+    }
+
+    /** The tree of the incoming references. */
+    public JTree incomingReferences() {
+        return incoming.tree;
+    }
+
+    /** One reference section: a tree with one group, or a hint instead. */
+    private final class ReferenceSection {
+        final DefaultMutableTreeNode root = new DefaultMutableTreeNode(null);
+        final DefaultTreeModel model = new DefaultTreeModel(root);
+        final JTree tree = new JTree(model);
+        final CardLayout cards = new CardLayout();
+        final JPanel area = new JPanel(cards);
+        final JTextArea message = messageArea();
+
+        ReferenceSection() {
+            tree.setRootVisible(false);
+            tree.setShowsRootHandles(false);
+            area.setOpaque(false);
+            area.add(message, CARD_MESSAGE);
+        }
+
+        void showMessage(String text) {
+            root.removeAllChildren();
+            model.reload();
+            message.setText(text == null ? "" : text);
+            cards.show(area, CARD_MESSAGE);
+        }
+
+        void show(DefaultMutableTreeNode group) {
+            root.removeAllChildren();
+            root.add(group);
+            model.reload();
+            for (int row = 0; row < tree.getRowCount(); row++) {
+                tree.expandRow(row);
+            }
+            cards.show(area, CARD_TREE);
+        }
     }
 
     private static DefaultMutableTreeNode group(String title, List<Item> items, String emptyText) {
@@ -597,12 +724,17 @@ public final class PageNavigationPanel extends JPanel {
      */
     public List<String> referenceRows() {
         List<String> rows = new ArrayList<String>();
-        if (referenceRoot.getChildCount() == 0) {
-            rows.add(referenceMessage.getText());
+        if (outgoing.root.getChildCount() == 0) {
+            rows.add(outgoing.message.getText());
             return rows;
         }
-        for (int g = 0; g < referenceRoot.getChildCount(); g++) {
-            DefaultMutableTreeNode group = (DefaultMutableTreeNode) referenceRoot.getChildAt(g);
+        List<DefaultMutableTreeNode> groups = new ArrayList<DefaultMutableTreeNode>();
+        for (ReferenceSection section : java.util.Arrays.asList(outgoing, incoming)) {
+            for (int g = 0; g < section.root.getChildCount(); g++) {
+                groups.add((DefaultMutableTreeNode) section.root.getChildAt(g));
+            }
+        }
+        for (DefaultMutableTreeNode group : groups) {
             Group heading = (Group) group.getUserObject();
             rows.add(heading.title + (heading.count > 0 ? " (" + heading.count + ")" : ""));
             for (int i = 0; i < group.getChildCount(); i++) {

@@ -124,6 +124,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private static final int SIDEBAR_WIDTH_SAVE_DELAY_MS = 300;
     static final String STATE_BURGER_PINNED = "chat.burgerPinned";
     static final String STATE_SIDEBAR_WIDTH = "chat.sidebar.width";
+    /** The arrangement of the navigation sections (#114): one global preference, never per page or tab. */
+    static final String STATE_NAVIGATION_ORDER = "reader.navigation.sections.order";
+    static final String STATE_NAVIGATION_VISIBLE = "reader.navigation.sections.visible";
+    static final String STATE_NAVIGATION_SIZES = "reader.navigation.sections.sizes";
     private static final int LIST_REFRESH_DELAY_MS = 150;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.GERMANY);
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd.MM.", Locale.GERMANY);
@@ -168,6 +172,9 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     /** Fasst die Ereignisse eines Ziehens am Teiler zu EINEM Schreibvorgang zusammen. */
     private final Timer sidebarWidthSaveTimer;
     private int pendingSidebarWidth = -1;
+    /** Collects the layout changes of a divider drag into ONE write. */
+    private final Timer navigationLayoutSaveTimer;
+    private NavigationSectionLayout pendingNavigationLayout;
     private ApplicationStateService applicationState;
 
     /**
@@ -213,6 +220,12 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         listRefreshTimer.setRepeats(false);
         this.sidebarWidthSaveTimer = new Timer(SIDEBAR_WIDTH_SAVE_DELAY_MS, event -> saveSidebarWidthNow());
         sidebarWidthSaveTimer.setRepeats(false);
+        this.navigationLayoutSaveTimer = new Timer(SIDEBAR_WIDTH_SAVE_DELAY_MS, event -> saveNavigationLayoutNow());
+        navigationLayoutSaveTimer.setRepeats(false);
+        navigationPane.setSectionLayoutListener(layout -> {
+            pendingNavigationLayout = layout;
+            navigationLayoutSaveTimer.restart();
+        });
         sidebarSplit.setLeftWidthListener(width -> {
             pendingSidebarWidth = width;
             sidebarWidthSaveTimer.restart();
@@ -254,6 +267,23 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         }
         if (applicationState.getBoolean(STATE_BURGER_PINNED, false)) {
             openDrawer();
+        }
+        navigationPane.setSectionLayout(NavigationSectionLayout.parse(
+                applicationState.get(STATE_NAVIGATION_ORDER, null),
+                applicationState.get(STATE_NAVIGATION_VISIBLE, null),
+                applicationState.get(STATE_NAVIGATION_SIZES, null)));
+    }
+
+    /** Write the last arrangement of the navigation sections (no effect while no state is bound). */
+    void saveNavigationLayoutNow() {
+        navigationLayoutSaveTimer.stop();
+        if (applicationState != null && pendingNavigationLayout != null) {
+            Map<String, String> entries = new LinkedHashMap<String, String>();
+            entries.put(STATE_NAVIGATION_ORDER, pendingNavigationLayout.encodeOrder());
+            entries.put(STATE_NAVIGATION_VISIBLE, pendingNavigationLayout.encodeVisible());
+            entries.put(STATE_NAVIGATION_SIZES, pendingNavigationLayout.encodeSizes());
+            applicationState.putAllAndSave(entries);
+            pendingNavigationLayout = null;
         }
     }
 
@@ -629,6 +659,11 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                 @Override
                 public javax.swing.Icon getIcon() {
                     return SidebarIcons.compass();
+                }
+
+                @Override
+                public JComponent getFooterLeadingComponent() {
+                    return navigationPane.sectionToggles();
                 }
             });
             // askai AgentArtifactTabs: die Artefakt-Ansichten des Agenten nur, solange der Agent-Modus aktiv ist.
