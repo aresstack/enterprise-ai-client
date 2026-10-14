@@ -147,6 +147,12 @@ public class LocalFilesAccessTest {
                 Collections.singletonList("/build/**"));
         assertEquals(Arrays.asList("doku/a.md", "modul/node_modules/x.md"),
                 paths(markdown.discover(DEEP)));
+        try {
+            all.load(KnowledgeResourceId.of("file", LocalFilesKnowledgeSource.locatorOf(root) + "/doku/c.tmp"));
+            fail("an excluded file must not be loaded by its ID");
+        } catch (KnowledgeSourceException expected) {
+            assertEquals(KnowledgeSourceException.Kind.NOT_FOUND, expected.kind());
+        }
     }
 
     @Test
@@ -175,5 +181,13 @@ public class LocalFilesAccessTest {
         assertTrue(patterns.entersFolder("sub/target"));
         assertTrue(patterns.acceptsFile("sub/target/a.md"));
         assertEquals(Arrays.asList("*.pdf", "*.md", "build/**"), FilePatterns.split("*.pdf, *.md;\nbuild/**"));
+
+        FilePatterns deep = new FilePatterns(Arrays.asList("**/*.pdf", "docs/**/readme.md"),
+                Collections.<String>emptyList());
+        assertTrue(deep.acceptsFile("report.pdf"));
+        assertTrue(deep.acceptsFile("a/b/report.pdf"));
+        assertTrue(deep.acceptsFile("docs/readme.md"));
+        assertTrue(deep.acceptsFile("docs/x/y/readme.md"));
+        assertTrue(!deep.acceptsFile("docs/other.md"));
     }
 }
