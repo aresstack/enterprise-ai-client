@@ -128,4 +128,52 @@ public class FavoritesStoreTest {
         assertEquals(first, store.tree().get(0).children().get(0).id());
         assertEquals(1, store.all().size());
     }
+
+    @Test
+    public void severalFavoritesMoveTogetherIntoAFolderInTreeOrder() throws Exception {
+        FavoritesStore store = store();
+        String folder = store.createFolder("Projekt X", null);
+        store.toggle(page("a"), null);
+        String b = store.toggle(page("b"), null);
+        store.toggle(page("c"), null);
+        String d = store.toggle(page("d"), null);
+        assertTrue(store.moveAll(java.util.Arrays.asList(d, b), folder, -1)); // order of the request does not count
+        assertEquals("[Seite b, Seite d]", names(store.tree().get(0).children()).toString());
+        assertEquals("[Projekt X, Seite a, Seite c]", names(store.tree()).toString());
+        assertEquals("persisted", "[Seite b, Seite d]", names(store().tree().get(0).children()).toString());
+    }
+
+    @Test
+    public void aBlockLandsBetweenRowsAlsoInsideTheSameFolder() throws Exception {
+        FavoritesStore store = store();
+        String a = store.toggle(page("a"), null);
+        String b = store.toggle(page("b"), null);
+        store.toggle(page("c"), null);
+        store.toggle(page("d"), null);
+        store.toggle(page("e"), null);
+        assertTrue(store.moveAll(java.util.Arrays.asList(a, b), null, 4)); // mark between d and e
+        assertEquals("[Seite c, Seite d, Seite a, Seite b, Seite e]", names(store.tree()).toString());
+        assertTrue(store.moveAll(java.util.Arrays.asList(a, b), null, 0));
+        assertEquals("[Seite a, Seite b, Seite c, Seite d, Seite e]", names(store.tree()).toString());
+        assertTrue("free area: end of the top level", store.moveAll(java.util.Arrays.asList(a, b), null, -1));
+        assertEquals("[Seite c, Seite d, Seite e, Seite a, Seite b]", names(store.tree()).toString());
+    }
+
+    @Test
+    public void aMixedSelectionMovesASubtreeOnceAndNeverIntoItself() throws Exception {
+        FavoritesStore store = store();
+        String outer = store.createFolder("Außen", null);
+        String inside = store.toggle(page("i"), outer);
+        String loose = store.toggle(page("l"), null);
+        String target = store.createFolder("Ziel", null);
+        assertTrue(store.moveAll(java.util.Arrays.asList(inside, outer, loose), target, -1));
+        FavoriteEntry moved = store.tree().get(0);
+        assertEquals("[Außen, Seite l]", names(moved.children()).toString());
+        assertEquals(1, moved.children().get(0).children().size());
+        assertEquals(2, store.all().size());
+
+        assertFalse(store.moveAll(java.util.Arrays.asList(loose, target), outer, -1));
+        assertFalse("unknown ids reject the whole move", store.moveAll(java.util.Arrays.asList(loose, "nope"), null, 0));
+        assertEquals(2, store.all().size());
+    }
 }

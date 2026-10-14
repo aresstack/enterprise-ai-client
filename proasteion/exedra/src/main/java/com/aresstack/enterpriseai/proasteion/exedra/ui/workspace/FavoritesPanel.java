@@ -66,7 +66,9 @@ import java.util.Set;
  * also daneben. Ordner anlegen, umbenennen und entfernen über das Kontextmenü (Rechtsklick; auf freier Fläche: neuer
  * Ordner oben), Entf entfernt die Auswahl; ein Ordner mit Inhalt nur nach Rückfrage. Ordner und Favoriten lassen sich
  * per Drag and Drop in einen Ordner, zwischen Zeilen oder auf die freie Fläche (oberste Ebene, ans Ende) ziehen; ein
- * Ordner nie in sich selbst. Die Suchleiste filtert nach Titel, Adresse und Ordnername; solange gefiltert wird, ist
+ * Ordner nie in sich selbst. Strg+Klick nimmt einzelne Einträge zur Auswahl hinzu oder heraus, Umschalt+Klick wählt
+ * einen Bereich; wer einen ausgewählten Eintrag zieht, verschiebt die ganze Auswahl als Block in Baumreihenfolge,
+ * wer einen anderen zieht, nur diesen (#112). Die Suchleiste filtert nach Titel, Adresse und Ordnername; solange gefiltert wird, ist
  * Ziehen aus (die Positionen entsprächen nicht dem Baum). Ein Klick auf die freie Fläche hebt die Auswahl auf.
  */
 public final class FavoritesPanel extends JPanel {
@@ -84,10 +86,10 @@ public final class FavoritesPanel extends JPanel {
         void folderRenameRequested(String id, String name);
 
         /**
-         * {@code id} nach {@code targetFolderId} ({@code null} = oberste Ebene) an Position {@code index} der Liste vor
-         * dem Herausnehmen ({@code -1} = ans Ende); {@code false} = abgelehnt.
+         * {@code ids} als Block in Baumreihenfolge nach {@code targetFolderId} ({@code null} = oberste Ebene) an
+         * Position {@code index} der Liste vor dem Herausnehmen ({@code -1} = ans Ende); {@code false} = abgelehnt.
          */
-        boolean moveRequested(String id, String targetFolderId, int index);
+        boolean moveRequested(List<String> ids, String targetFolderId, int index);
     }
 
     static final String EMPTY_TEXT = "Noch keine Favoriten. Der Stern im Lesebereich oder an einem Treffer merkt eine "
@@ -104,7 +106,7 @@ public final class FavoritesPanel extends JPanel {
     private static final int REMOVE_WIDTH = 22;
     static final String FOLDER_NAME_PROMPT = "Name des neuen Ordners:";
 
-    private static final DataFlavor ENTRY_FLAVOR = new DataFlavor(FavoriteEntry.class, "Favorit");
+    private static final DataFlavor ENTRY_FLAVOR = new DataFlavor(List.class, "Favoriten");
     private static final Color SELECTION_WASH = ResearchUiPainter.mix(ResearchUiPalette.ACCENT_BLUE, Color.WHITE, 0.86f);
 
     private final ComicPalette palette;
@@ -119,9 +121,11 @@ public final class FavoritesPanel extends JPanel {
     private Actions actions;
     private boolean rebuilding;
     private String selectedId;
+    /** All selected ids in row order, restored after a rebuild. */
+    private List<String> selectedIds = Collections.emptyList();
     /** Ordner des selektierten Knotens ({@code null} = oberste Ebene), falls der Knoten verschwindet. */
     private String selectedParentId;
-    private FavoriteEntry dragged;
+    private List<FavoriteEntry> dragged;
 
     public FavoritesPanel(ComicPalette palette) {
         super(new BorderLayout());
@@ -187,7 +191,7 @@ public final class FavoritesPanel extends JPanel {
         tree.setOpaque(true);
         tree.setBackground(palette.getSurface());
         tree.setBorder(BorderFactory.createEmptyBorder(2, 4, 4, 4));
-        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.DISCONTIGUOUS_TREE_SELECTION);
         tree.setCellRenderer(new EntryRenderer());
         tree.setToggleClickCount(2);
         setDragEnabled(true);
@@ -196,6 +200,7 @@ public final class FavoritesPanel extends JPanel {
         tree.addTreeSelectionListener(event -> {
             if (!rebuilding) {
                 remember(selectedEntryPath());
+                selectedIds = selectedIdsInRowOrder();
             }
         });
         tree.addTreeExpansionListener(new TreeExpansionListener() {
@@ -222,7 +227,7 @@ public final class FavoritesPanel extends JPanel {
                 if (row < 0) {
                     tree.clearSelection(); // freie Fläche: Ziel ist wieder die oberste Ebene
                     remember(null);
-                } else if (SwingUtilities.isRightMouseButton(event)) {
+                } else if (SwingUtilities.isRightMouseButton(event) && !tree.isRowSelected(row)) {
                     tree.setSelectionRow(row);
                 }
                 if (event.isPopupTrigger()) {
@@ -249,7 +254,7 @@ public final class FavoritesPanel extends JPanel {
                     }
                     return;
                 }
-                if (entry != null && !entry.isFolder() && actions != null) {
+                if (entry != null && !entry.isFolder() && actions != null && !isSelectionGesture(event)) {
                     actions.favoriteOpened(entry.link(), event.getClickCount() >= 2);
                 }
             }
@@ -408,9 +413,70 @@ public final class FavoritesPanel extends JPanel {
                 selectedId = null;
                 selectedParentId = null;
             }
-        } else {
-            tree.setSelectionPath(path);
+            selectedIds = Collections.emptyList();
+            return;
         }
+        List<TreePath> paths = new ArrayList<TreePath>();
+        for (String id : selectedIds) {
+            TreePath other = treePath(id);
+            if (other != null && !other.equals(path)) {
+                paths.add(other);
+            }
+        }
+        paths.add(path); // the lead (target of the next star) stays last
+        tree.setSelectionPaths(paths.toArray(new TreePath[0]));
+        tree.setLeadSelectionPath(path);
+    }
+
+    /** Ctrl or Shift change only the selection; they never open a favorite. */
+    private static boolean isSelectionGesture(MouseEvent event) {
+        return event.isControlDown() || event.isShiftDown() || event.isMetaDown();
+    }
+
+    /** The selected entries in row order (top to bottom), without the invisible root. */
+    List<FavoriteEntry> selectedEntries() {
+        List<FavoriteEntry> selected = new ArrayList<FavoriteEntry>();
+        int[] rows = tree.getSelectionRows();
+        if (rows == null) {
+            return selected;
+        }
+        int[] sorted = rows.clone();
+        java.util.Arrays.sort(sorted);
+        for (int row : sorted) {
+            TreePath path = tree.getPathForRow(row);
+            FavoriteEntry entry = path == null ? null : entryOf(path.getLastPathComponent());
+            if (entry != null) {
+                selected.add(entry);
+            }
+        }
+        return selected;
+    }
+
+    private List<String> selectedIdsInRowOrder() {
+        List<String> ids = new ArrayList<String>();
+        for (FavoriteEntry entry : selectedEntries()) {
+            ids.add(entry.id());
+        }
+        return ids;
+    }
+
+    /** Select {@code ids} together (e.g. after moving them as a block) and show the first one. */
+    public void selectAll(List<String> ids) {
+        List<TreePath> paths = new ArrayList<TreePath>();
+        for (String id : ids) {
+            TreePath path = treePath(id);
+            if (path != null) {
+                paths.add(path);
+            }
+        }
+        if (paths.isEmpty()) {
+            return;
+        }
+        tree.setSelectionPaths(paths.toArray(new TreePath[0]));
+        tree.setLeadSelectionPath(paths.get(paths.size() - 1));
+        tree.scrollPathToVisible(paths.get(0));
+        remember(pathTo(entries, ids.get(ids.size() - 1)));
+        selectedIds = selectedIdsInRowOrder();
     }
 
     private void remember(List<FavoriteEntry> path) {
@@ -463,7 +529,10 @@ public final class FavoritesPanel extends JPanel {
     }
 
     private FavoriteEntry selectedEntry() {
-        TreePath path = tree.getSelectionPath();
+        TreePath path = tree.getLeadSelectionPath();
+        if (path == null || !tree.isPathSelected(path)) {
+            path = tree.getSelectionPath();
+        }
         return path == null ? null : entryOf(path.getLastPathComponent());
     }
 
@@ -575,9 +644,9 @@ public final class FavoritesPanel extends JPanel {
     /**
      * Übersetzt die Ablagestelle im Baum: auf einen Ordner = hinein, ans Ende; zwischen Zeilen = an diese Stelle; auf
      * einen Favoriten = hinter ihn in seinen Ordner (MainframeMate verlor den Eintrag hier); auf die freie Fläche =
-     * oberste Ebene. {@code null}, wenn ein Ordner in sich selbst oder seinen Unterbaum fiele.
+     * oberste Ebene. {@code null}, wenn ein gezogener Ordner in sich selbst oder seinen Unterbaum fiele.
      */
-    static DropTarget dropTarget(FavoriteEntry moved, FavoriteEntry onEntry, FavoriteEntry parentOfEntry,
+    static DropTarget dropTarget(List<FavoriteEntry> moved, FavoriteEntry onEntry, FavoriteEntry parentOfEntry,
                                  int indexOfEntry, int childIndex) {
         DropTarget target;
         if (onEntry == null) {
@@ -587,8 +656,12 @@ public final class FavoritesPanel extends JPanel {
         } else {
             target = new DropTarget(parentOfEntry == null ? null : parentOfEntry.id(), indexOfEntry + 1);
         }
-        if (target.folderId != null && moved.containsId(target.folderId)) {
-            return null;
+        if (target.folderId != null) {
+            for (FavoriteEntry entry : moved) {
+                if (entry.containsId(target.folderId)) {
+                    return null;
+                }
+            }
         }
         return target;
     }
@@ -624,11 +697,11 @@ public final class FavoritesPanel extends JPanel {
 
         @Override
         protected Transferable createTransferable(JComponent component) {
-            final FavoriteEntry entry = selectedEntry();
-            if (entry == null || isFiltering()) {
+            final List<FavoriteEntry> selection = selectedEntries();
+            if (selection.isEmpty() || isFiltering()) {
                 return null;
             }
-            dragged = entry;
+            dragged = selection;
             return new Transferable() {
                 @Override
                 public DataFlavor[] getTransferDataFlavors() {
@@ -645,7 +718,7 @@ public final class FavoritesPanel extends JPanel {
                     if (!isDataFlavorSupported(flavor)) {
                         throw new UnsupportedFlavorException(flavor);
                     }
-                    return entry;
+                    return selection;
                 }
             };
         }
@@ -661,13 +734,16 @@ public final class FavoritesPanel extends JPanel {
             if (target == null || actions == null) {
                 return false;
             }
-            String id = dragged.id();
+            List<String> ids = new ArrayList<String>();
+            for (FavoriteEntry entry : dragged) {
+                ids.add(entry.id());
+            }
             if (target.folderId != null) {
                 collapsed.remove(target.folderId); // hineingezogen = sichtbar
             }
-            boolean moved = actions.moveRequested(id, target.folderId, target.index);
+            boolean moved = actions.moveRequested(ids, target.folderId, target.index);
             if (moved) {
-                select(id);
+                selectAll(ids);
             }
             return moved;
         }

@@ -1017,8 +1017,8 @@ public final class KnowledgeReadingController implements KnowledgeReaderPanel.Li
     }
 
     @Override
-    public boolean moveRequested(String id, String targetFolderId, int index) {
-        if (favorites == null || !favorites.move(id, targetFolderId, index)) {
+    public boolean moveRequested(List<String> ids, String targetFolderId, int index) {
+        if (favorites == null || !favorites.moveAll(ids, targetFolderId, index)) {
             return false;
         }
         publishFavorites();

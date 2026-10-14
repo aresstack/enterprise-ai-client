@@ -207,34 +207,69 @@ public final class FavoritesStore {
      * ein unbekannter Knoten, ein Ziel, das kein Ordner ist, und ein Ordner in sich selbst oder seinen Unterbaum.
      */
     public synchronized boolean move(String id, String targetFolderId, int index) {
-        Node moved = find(root, id);
-        if (moved == null) {
+        return moveAll(Collections.singletonList(id), targetFolderId, index);
+    }
+
+    /**
+     * Move several nodes as one block (#112): validate all of them, keep their order in the tree, take them out of
+     * their folders and insert them together at {@code index} of {@code targetFolderId} ({@code null} = root),
+     * counted in the list BEFORE taking them out like the drop mark (outside = at the end). Move a node whose folder
+     * is moved as well only with that folder. Reject the whole move for an unknown node, a target that is no folder
+     * and a folder into itself or its subtree; save only after a successful move.
+     */
+    public synchronized boolean moveAll(List<String> ids, String targetFolderId, int index) {
+        if (ids == null || ids.isEmpty()) {
             return false;
         }
+        Set<Node> requested = new LinkedHashSet<Node>();
+        for (String id : ids) {
+            Node node = find(root, id);
+            if (node == null) {
+                return false;
+            }
+            requested.add(node);
+        }
+        List<Node> moved = new ArrayList<Node>();
+        collectTopmost(root, requested, false, moved);
         List<Node> target;
         if (targetFolderId == null) {
             target = root;
         } else {
             Node folder = find(root, targetFolderId);
-            if (folder == null || !folder.isFolder() || find(Collections.singletonList(moved), targetFolderId) != null) {
+            if (folder == null || !folder.isFolder() || find(moved, targetFolderId) != null) {
                 return false;
             }
             target = folder.children;
         }
-        int oldIndex = target.indexOf(moved);
-        if (oldIndex >= 0 && (index == oldIndex || index == oldIndex + 1)) {
-            return true; // an derselben Stelle abgelegt
-        }
-        removeNode(root, id);
-        if (oldIndex >= 0 && index > oldIndex) {
-            index--; // in derselben Liste nach unten: die Liste ist durch das Herausnehmen kürzer geworden
-        }
         if (index < 0 || index > target.size()) {
             index = target.size();
         }
-        target.add(index, moved);
+        int insertAt = index;
+        for (int i = 0; i < index; i++) {
+            if (moved.contains(target.get(i))) {
+                insertAt--; // the list gets shorter above the drop mark
+            }
+        }
+        for (Node node : moved) {
+            removeNode(root, node.id);
+        }
+        target.addAll(insertAt, moved);
         save();
         return true;
+    }
+
+    /** The requested nodes in tree order, without those below a requested folder (they move with it). */
+    private static void collectTopmost(List<Node> nodes, Set<Node> requested, boolean underRequested,
+                                       List<Node> out) {
+        for (Node node : nodes) {
+            boolean selected = requested.contains(node);
+            if (selected && !underRequested) {
+                out.add(node);
+            }
+            if (node.isFolder()) {
+                collectTopmost(node.children, requested, underRequested || selected, out);
+            }
+        }
     }
 
     // ------------------------------------------------------------------ Baum
