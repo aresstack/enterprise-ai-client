@@ -53,8 +53,9 @@ public class KnowledgeMcpToolsTest {
 
     @Test
     public void threeSmallToolsWithExamples() {
-        assertEquals(4, tools.contributions().size());
+        assertEquals(5, tools.contributions().size());
         assertEquals("knowledge_search", tools.knowledgeSearch().getName());
+        assertEquals("knowledge_tree", tools.knowledgeTree().getName());
         assertEquals("knowledge_read", tools.knowledgeRead().getName());
         assertEquals("knowledge_attachments", tools.knowledgeAttachments().getName());
         assertEquals("knowledge_resolve_url", tools.knowledgeResolveUrl().getName());

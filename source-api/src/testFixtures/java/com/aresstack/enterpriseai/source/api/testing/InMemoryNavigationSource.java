@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.source.api.NavigationNode;
 import com.aresstack.enterpriseai.source.api.PageNavigationSource;
 import com.aresstack.enterpriseai.source.api.PagePosition;
 import com.aresstack.enterpriseai.source.api.SourceLink;
+import com.aresstack.enterpriseai.source.api.SourcePartition;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 
 import java.util.ArrayList;
@@ -37,6 +38,7 @@ public final class InMemoryNavigationSource implements KnowledgeSourcePort, Page
     private final Map<String, Kind> failures = new LinkedHashMap<String, Kind>();
     private final List<String> calls = new ArrayList<String>();
     private boolean incoming;
+    private boolean listsPartitions;
 
     public InMemoryNavigationSource(String sourceId, int batchSize) {
         this.sourceId = SourceAddress.of(sourceId);
@@ -79,6 +81,12 @@ public final class InMemoryNavigationSource implements KnowledgeSourcePort, Page
         return this;
     }
 
+    /** List the spaces as partitions ({@link #partitions()}) with start point {@code space:<key>}. */
+    public synchronized InMemoryNavigationSource withPartitions() {
+        listsPartitions = true;
+        return this;
+    }
+
     /** Let every call for page {@code key} fail with {@code kind}. */
     public synchronized InMemoryNavigationSource failWith(String key, Kind kind) {
         failures.put(idOf(key).value(), kind);
@@ -113,6 +121,22 @@ public final class InMemoryNavigationSource implements KnowledgeSourcePort, Page
     @Override
     public List<SourceLink> discoverLinks(KnowledgeResourceId resourceId) {
         return Collections.emptyList();
+    }
+
+    @Override
+    public synchronized List<SourcePartition> partitions() {
+        List<SourcePartition> partitions = new ArrayList<SourcePartition>();
+        if (!listsPartitions) {
+            return partitions;
+        }
+        calls.add("partitions");
+        for (NavigationNode node : nodes.values()) {
+            if (node.isRoot()) {
+                partitions.add(new SourcePartition(node.key().substring("space:".length()), node.title(), null,
+                        node.startPoint()));
+            }
+        }
+        return partitions;
     }
 
     @Override

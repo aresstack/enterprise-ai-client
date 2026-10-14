@@ -1,7 +1,9 @@
 package com.aresstack.enterpriseai.astu.acropolis.mcp;
 
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeHierarchyUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ListKnowledgeAttachmentsUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.PageNavigationUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
@@ -11,6 +13,7 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 
 /**
@@ -19,6 +22,8 @@ import java.util.function.Predicate;
  * <ul>
  *   <li>{@value #KNOWLEDGE_SEARCH}: Quellen live durchsuchen (die Treffer lädt der Vorlader im Hintergrund
  *       und indexiert sie), dazu hybride Suche im Index (Parameter {@code query}, optional {@code limit}),</li>
+ *   <li>{@value #KNOWLEDGE_TREE}: die Seitenhierarchie um einen Bereich oder eine Seite (Eltern bis zum Bereich,
+ *       direkte Kinder mit Cursor), ohne Ziel die navigierbaren Bereiche; nie Seitentext (Issue #116),</li>
  *   <li>{@value #KNOWLEDGE_READ}: ein Dokument aus einem Treffer lesen (Cache, sonst sofort, auch nicht indexierte
  *       Treffer); es wird bei Bedarf indexiert
  *       (Parameter {@code id}); auch Dateianhänge (PDF, Office, Bilder), notfalls nach Einmalcode,</li>
@@ -33,12 +38,14 @@ import java.util.function.Predicate;
 public final class KnowledgeMcpTools {
 
     public static final String KNOWLEDGE_SEARCH = KnowledgeSearchTool.NAME;
+    public static final String KNOWLEDGE_TREE = KnowledgeTreeTool.NAME;
     public static final String KNOWLEDGE_READ = KnowledgeReadTool.NAME;
     public static final String KNOWLEDGE_ATTACHMENTS = KnowledgeAttachmentsTool.NAME;
     public static final String KNOWLEDGE_RESOLVE_URL = KnowledgeResolveUrlTool.NAME;
 
     private final KnowledgeToolSettings settings;
     private final KnowledgeSearchTool search;
+    private final KnowledgeTreeTool tree;
     private final KnowledgeReadTool read;
     private final KnowledgeAttachmentsTool attachments;
     private final KnowledgeResolveUrlTool resolveUrl;
@@ -59,6 +66,16 @@ public final class KnowledgeMcpTools {
     public KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
                              SearchDrivenIndexingUseCase live, Predicate<SourceAddress> enabled,
                              KnowledgeToolSettings settings) {
+        this(retrieval, documents, live, enabled, settings, null);
+    }
+
+    /**
+     * Wie oben; {@code treeChildLimit} liefert je Aufruf die direkten Kinder eines {@code knowledge_tree} ohne
+     * {@code limit} (Einstellung ohne Neustart), {@code null} für {@link KnowledgeToolSettings#treeChildLimit()}.
+     */
+    public KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
+                             SearchDrivenIndexingUseCase live, Predicate<SourceAddress> enabled,
+                             KnowledgeToolSettings settings, IntSupplier treeChildLimit) {
         if (enabled == null) {
             throw new IllegalArgumentException("enabled ist Pflicht");
         }
@@ -72,16 +89,24 @@ public final class KnowledgeMcpTools {
         this.attachments = new KnowledgeAttachmentsTool(new ListKnowledgeAttachmentsUseCase(documents::catalog),
                 this.settings);
         this.resolveUrl = new KnowledgeResolveUrlTool(addresses);
+        final KnowledgeToolSettings fixed = this.settings;
+        this.tree = new KnowledgeTreeTool(new BrowseKnowledgeHierarchyUseCase(documents::catalog,
+                new PageNavigationUseCase()), this.settings,
+                treeChildLimit == null ? fixed::treeChildLimit : treeChildLimit);
     }
 
     public KnowledgeToolSettings settings() {
         return settings;
     }
 
-    /** Alle Werkzeuge in fester Reihenfolge: Suche, Lesen, Anhänge, Adresse auflösen. */
+    /** Alle Werkzeuge in fester Reihenfolge: Suche, Seitenbaum, Lesen, Anhänge, Adresse auflösen. */
     public List<McpToolContribution> contributions() {
-        return Collections.unmodifiableList(Arrays.asList(knowledgeSearch(), knowledgeRead(), knowledgeAttachments(),
-                knowledgeResolveUrl()));
+        return Collections.unmodifiableList(Arrays.asList(knowledgeSearch(), knowledgeTree(), knowledgeRead(),
+                knowledgeAttachments(), knowledgeResolveUrl()));
+    }
+
+    public McpToolContribution knowledgeTree() {
+        return tree.contribution();
     }
 
     public McpToolContribution knowledgeResolveUrl() {

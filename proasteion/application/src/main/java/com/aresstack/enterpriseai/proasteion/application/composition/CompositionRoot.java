@@ -299,11 +299,12 @@ public final class CompositionRoot {
             }
             sourceSelection.register(registration.sourceId(), enabled);
         }
-        // Wissenswerkzeuge (knowledge_search, knowledge_read, knowledge_attachments); durchsucht werden nur die
-        // angehakten Quellen.
+        // Wissenswerkzeuge (knowledge_search, knowledge_tree, knowledge_read, knowledge_attachments); durchsucht
+        // werden nur die angehakten Quellen. Die Kinderzahl von knowledge_tree gilt ohne Neustart.
         final KnowledgeSourceSelection selection = sourceSelection;
         this.knowledgeTools = new KnowledgeMcpTools(retrieval, documents, searchIndexing,
-                selection::isSearchable, config.agent().toolSettings());
+                selection::isSearchable, config.agent().toolSettings(),
+                () -> settings.current().agent().toolSettings().treeChildLimit());
         // Die zentrale Werkzeug-Registry: Chat, Agenten und der Einstellungen-Reiter „Tools“ lesen nur hier. Der
         // Wissens-Werkzeugsatz (knowledge_search, knowledge_read) steht als ein Satz für Chat und Agent darin.
         final KnowledgeMcpTools offered = knowledgeTools;

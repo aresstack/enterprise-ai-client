@@ -77,7 +77,7 @@ public class KnowledgeChatToolsTest {
     /** Akzeptanztest 1/5: knowledge_search wird angeboten; Beschreibung und Schema wie beim Agenten. */
     @Test
     public void chatGetsTheSameKnowledgeToolsAsTheAgent() {
-        assertEquals(4, chatTools.size());
+        assertEquals(5, chatTools.size());
         for (int i = 0; i < chatTools.size(); i++) {
             McpToolContribution agentTool = knowledge.contributions().get(i);
             AiTool chatTool = chatTools.get(i);
@@ -90,9 +90,10 @@ public class KnowledgeChatToolsTest {
             }
         }
         assertEquals(KnowledgeMcpTools.KNOWLEDGE_SEARCH, chatTools.get(0).name());
-        assertEquals(KnowledgeMcpTools.KNOWLEDGE_READ, chatTools.get(1).name());
-        assertEquals(KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, chatTools.get(2).name());
-        assertEquals(KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, chatTools.get(3).name());
+        assertEquals(KnowledgeMcpTools.KNOWLEDGE_TREE, chatTools.get(1).name());
+        assertEquals(KnowledgeMcpTools.KNOWLEDGE_READ, chatTools.get(2).name());
+        assertEquals(KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, chatTools.get(3).name());
+        assertEquals(KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, chatTools.get(4).name());
     }
 
     /** Akzeptanztests 1, 2 und 5: Suche über die Werkzeug-Schleife, dieselbe Treffer-ID danach mit knowledge_read. */

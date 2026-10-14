@@ -37,6 +37,10 @@ final class ToolsTab {
     static final String MAX_ROUNDS_HELP = "Werkzeugrunden je Antwort im normalen Chat (chat.tools.maxRounds, 1–32; "
             + "Standard 8). Verlangt das Modell danach noch ein Werkzeug, antwortet es in einer letzten Runde ohne "
             + "Werkzeuge aus den bisherigen Ergebnissen.";
+    static final String TREE_LIMIT_LABEL = "Seitenbaum: Kinder je Abruf";
+    static final String TREE_LIMIT_HELP = "So viele direkte Unterseiten liefert das Werkzeug knowledge_tree, wenn das "
+            + "Modell keine Anzahl nennt (agent.tools.treeChildLimit, 0–10000; Standard 20; 0 = alle). Weitere holt "
+            + "das Modell seitenweise nach. Gilt nach dem Speichern sofort.";
     static final String TURN_ANALYSIS_LABEL = "Werkzeugwahl protokollieren (Diagnose)";
     static final String TURN_ANALYSIS_HELP = "Schreibt je Chat-Nachricht Nutzertext, Herkunft (Text oder Diktat), die "
             + "linguistische Analyse, den Antwortplan, den an das Modell gesandten Hinweis und die "
@@ -61,6 +65,7 @@ final class ToolsTab {
     private final ComicPalette palette;
     private final JPanel lines = new JPanel();
     private final JTextField maxRounds;
+    private final JTextField treeLimit;
     private final JCheckBox turnAnalysisLog;
     private final JCheckBox planning;
     private final JTextField useAt;
@@ -85,6 +90,9 @@ final class ToolsTab {
         loop.note(MAX_ROUNDS_HELP);
         turnAnalysisLog = loop.checkBox(TURN_ANALYSIS_LABEL, TURN_ANALYSIS_HELP);
         loop.note(TURN_ANALYSIS_HELP);
+        FormRows tree = new FormRows(palette);
+        treeLimit = tree.textField(TREE_LIMIT_LABEL, TREE_LIMIT_HELP);
+        tree.note(TREE_LIMIT_HELP);
         FormRows reading = new FormRows(palette);
         planning = reading.checkBox(PLANNING_LABEL, PLANNING_HELP);
         reading.note(PLANNING_HELP);
@@ -95,6 +103,7 @@ final class ToolsTab {
         panel = FormRows.column(palette,
                 FormRows.plate("Werkzeugrunden im Chat", palette.getAccentOrange(), loop.panel(), palette),
                 FormRows.plate("Planen der Antwort", palette.getAccentOrange(), reading.panel(), palette),
+                FormRows.plate("Seitenbaum für das Modell", palette.getAccentOrange(), tree.panel(), palette),
                 FormRows.plate("Tools", palette.getAgentPetrol(), rows.panel(), palette));
     }
 
@@ -176,6 +185,7 @@ final class ToolsTab {
 
     void load(SettingsForm form) {
         maxRounds.setText(form.chatToolsMaxRounds());
+        treeLimit.setText(form.toolsTreeChildLimit());
         turnAnalysisLog.setSelected(form.turnAnalysisLog());
         planning.setSelected(form.answerPlanningEnabled());
         useAt.setText(form.answerPlanningUseAtPercent());
@@ -201,6 +211,7 @@ final class ToolsTab {
         }
         b.disabledTools(text.toString());
         b.chatToolsMaxRounds(maxRounds.getText());
+        b.toolsTreeChildLimit(treeLimit.getText());
         b.turnAnalysisLog(turnAnalysisLog.isSelected());
         b.answerPlanningEnabled(planning.isSelected());
         b.answerPlanningUseAtPercent(useAt.getText());
@@ -220,5 +231,9 @@ final class ToolsTab {
 
     JTextField maxRounds() {
         return maxRounds;
+    }
+
+    JTextField treeLimit() {
+        return treeLimit;
     }
 }

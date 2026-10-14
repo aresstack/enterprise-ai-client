@@ -1,14 +1,14 @@
 ---
 id: settings.tools
 title: Einstellungen – Reiter „Tools“
-keywords: Tools, Werkzeuge, Tool, Werkzeug abschalten, Werkzeug deaktivieren, aktiv, Häkchen, Registry, Werkzeugrunden, Tool-Calling, Function Calling, Pflichtwerkzeug, Chat, Agent, Recherche-Agent, Herkunft, Verfügbarkeit, tools.disabled, chat.tools.maxRounds, knowledge_search, Diagnose, Werkzeugwahl protokollieren, chat.diagnostics.turnAnalysis, Planen der Antwort, Antwortplan, chat.answerPlanning.enabled, Nachfragen
+keywords: Tools, Werkzeuge, Tool, Werkzeug abschalten, Werkzeug deaktivieren, aktiv, Häkchen, Registry, Werkzeugrunden, Tool-Calling, Function Calling, Pflichtwerkzeug, Chat, Agent, Recherche-Agent, Herkunft, Verfügbarkeit, tools.disabled, chat.tools.maxRounds, knowledge_search, knowledge_tree, Seitenbaum, agent.tools.treeChildLimit, Diagnose, Werkzeugwahl protokollieren, chat.diagnostics.turnAnalysis, Planen der Antwort, Antwortplan, chat.answerPlanning.enabled, Nachfragen
 ---
 
 # Einstellungen – Reiter „Tools“
 
 Der Chat und die Agenten können Werkzeuge (Tools) aufrufen, etwa um in Wissensquellen zu suchen, Seiten oder Dateianhänge zu lesen oder Schritte einer Recherche auszuführen. Der Reiter „Tools“ zeigt alle Werkzeuge, die im Programm registriert sind, und lässt dich jedes einzeln mit dem Häkchen „aktiv“ an- und abschalten. Außerdem legst du hier fest, wie viele Werkzeugrunden eine Chat-Antwort höchstens drehen darf. Was die Werkzeuge im Einzelnen tun, erklärt [Werkzeuge des Agenten](help:agent.tools).
 
-Der Reiter hat zwei Bereiche: oben „Werkzeugrunden im Chat“, darunter „Tools“.
+Der Reiter hat vier Bereiche: „Werkzeugrunden im Chat“, „Planen der Antwort“, „Seitenbaum für das Modell“ und „Tools“.
 
 ## Bereich „Werkzeugrunden im Chat“
 
@@ -31,6 +31,15 @@ Das Häkchen „Antwort vor jeder Nachricht planen“ (`chat.answerPlanning.enab
 - „Nachfragen unter (%)“ (`chat.answerPlanning.askBelowPercent`, Standard 60): darunter fragt die Antwort nach, und es wird nicht gesucht.
 
 Die Werte gelten ab der nächsten Nachricht, ohne Neustart. Standardwerte schreibt der Dialog nicht in die Datei.
+
+## Bereich „Seitenbaum für das Modell“
+
+- **Beschriftung:** „Seitenbaum: Kinder je Abruf“.
+- **Standard:** 20.
+- **Erlaubt:** 0 bis 10000; 0 heißt alle direkten Unterseiten.
+- **Bedeutung:** So viele direkte Unterseiten liefert das Werkzeug `knowledge_tree` ([Werkzeuge](help:agent.tools)), wenn das Modell keine Anzahl nennt. Weitere holt es mit dem Cursor der Antwort nach.
+
+Der Wert wird in `agent.tools.treeChildLimit` gespeichert, der Standard steht nicht in der Datei. Er gilt nach dem Speichern sofort.
 
 ## Bereich „Tools“: die Werkzeugliste
 

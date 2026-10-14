@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.LiveSearchConfig
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.TtsVoiceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
+import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.ContextSettings;
 import com.aresstack.enterpriseai.astu.acropolis.rag.EvidencePolicy;
@@ -194,6 +195,8 @@ public final class SettingsMapper {
                 String.valueOf(AgentConfig.DEFAULT_RESEARCH_MAX_PAGES))));
         b.chatToolsMaxRounds(text(p, AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY,
                 String.valueOf(ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS)));
+        b.toolsTreeChildLimit(text(p, AppConfigLoader.TOOLS_TREE_CHILD_LIMIT_KEY,
+                String.valueOf(KnowledgeToolSettings.DEFAULT_TREE_CHILD_LIMIT)));
         b.turnAnalysisLog(bool(p, ChatConfig.TURN_ANALYSIS_LOG_KEY, false));
         b.answerPlanningEnabled(bool(p, ChatConfig.ANSWER_PLANNING_ENABLED_KEY, true));
         b.acronymsEnabled(bool(p, TextMiningConfig.ACRONYMS_ENABLED_KEY, true));
@@ -356,6 +359,9 @@ public final class SettingsMapper {
         // Werkzeugrunden und RAG-Limits des normalen Chats: der Wert bleibt in der Datei, wie er gespeichert wurde
         // (die Vorlage nennt retrieval.maxResults und context.* ausdrücklich); leer heißt Standard.
         put(set, AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY, form.chatToolsMaxRounds());
+        // The default of knowledge_tree stays out of the file.
+        putUnlessDefault(set, AppConfigLoader.TOOLS_TREE_CHILD_LIMIT_KEY, form.toolsTreeChildLimit(),
+                KnowledgeToolSettings.DEFAULT_TREE_CHILD_LIMIT);
         // Off is the default and stays out of the file.
         put(set, ChatConfig.TURN_ANALYSIS_LOG_KEY, form.turnAnalysisLog() ? "true" : "");
         put(set, ChatConfig.ANSWER_PLANNING_ENABLED_KEY, form.answerPlanningEnabled() ? "" : "false");
@@ -544,6 +550,8 @@ public final class SettingsMapper {
                 return "Recherche-Budget (Seiten)";
             case AppConfigLoader.CHAT_TOOLS_MAX_ROUNDS_KEY:
                 return "Max. Werkzeugrunden";
+            case AppConfigLoader.TOOLS_TREE_CHILD_LIMIT_KEY:
+                return "Seitenbaum: Kinder je Abruf";
             case ChatConfig.ANSWER_PLANNING_USE_AT_KEY:
                 return "Planen der Antwort: verwenden ab (%)";
             case ChatConfig.ANSWER_PLANNING_ASK_BELOW_KEY:

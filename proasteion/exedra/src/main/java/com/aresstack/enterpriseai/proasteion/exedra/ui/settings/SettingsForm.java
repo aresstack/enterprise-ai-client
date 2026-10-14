@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;
 import com.aresstack.enterpriseai.proasteion.application.config.BubbleColorsConfig;
@@ -108,6 +109,7 @@ public final class SettingsForm {
     private final String agentRequestTimeoutSeconds;
     private final String researchMaxPages;
     private final String chatToolsMaxRounds;
+    private final String toolsTreeChildLimit;
     private final boolean turnAnalysisLog;
     private final boolean answerPlanningEnabled;
     private final String answerPlanningUseAtPercent;
@@ -208,6 +210,7 @@ public final class SettingsForm {
         this.agentRequestTimeoutSeconds = b.agentRequestTimeoutSeconds;
         this.researchMaxPages = b.researchMaxPages;
         this.chatToolsMaxRounds = b.chatToolsMaxRounds;
+        this.toolsTreeChildLimit = b.toolsTreeChildLimit;
         this.turnAnalysisLog = b.turnAnalysisLog;
         this.answerPlanningEnabled = b.answerPlanningEnabled;
         this.answerPlanningUseAtPercent = b.answerPlanningUseAtPercent;
@@ -297,6 +300,7 @@ public final class SettingsForm {
                 .agentRequestTimeoutSeconds(agentRequestTimeoutSeconds)
                 .researchMaxPages(researchMaxPages)
                 .chatToolsMaxRounds(chatToolsMaxRounds).turnAnalysisLog(turnAnalysisLog)
+                .toolsTreeChildLimit(toolsTreeChildLimit)
                 .answerPlanningEnabled(answerPlanningEnabled)
                 .answerPlanningUseAtPercent(answerPlanningUseAtPercent)
                 .answerPlanningAskBelowPercent(answerPlanningAskBelowPercent)
@@ -646,6 +650,11 @@ public final class SettingsForm {
         return chatToolsMaxRounds;
     }
 
+    /** Direct children per {@code knowledge_tree} call without limit ({@code agent.tools.treeChildLimit}, 0 = all). */
+    public String toolsTreeChildLimit() {
+        return toolsTreeChildLimit;
+    }
+
     /** Whether each chat turn logs its linguistic analysis and tool calls. */
     public boolean turnAnalysisLog() {
         return turnAnalysisLog;
@@ -896,6 +905,7 @@ public final class SettingsForm {
         private String agentRequestTimeoutSeconds = "30";
         private String researchMaxPages = "4";
         private String chatToolsMaxRounds = "8";
+        private String toolsTreeChildLimit = String.valueOf(KnowledgeToolSettings.DEFAULT_TREE_CHILD_LIMIT);
         private boolean turnAnalysisLog;
         private boolean answerPlanningEnabled = true;
         private String answerPlanningUseAtPercent = "85";
@@ -1287,6 +1297,11 @@ public final class SettingsForm {
 
         public Builder chatToolsMaxRounds(String value) {
             this.chatToolsMaxRounds = text(value);
+            return this;
+        }
+
+        public Builder toolsTreeChildLimit(String value) {
+            this.toolsTreeChildLimit = text(value);
             return this;
         }
 

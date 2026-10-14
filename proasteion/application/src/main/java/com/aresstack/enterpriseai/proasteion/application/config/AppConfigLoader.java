@@ -86,6 +86,10 @@ public final class AppConfigLoader {
     public static final String RETRIEVAL_RAW_WINDOW_CHARS_KEY = "retrieval.raw.windowChars";
     /** Werkzeugrunden je Antwort im normalen Chat (1–32, Standard 8), danach eine Abschlussrunde ohne Werkzeuge. */
     public static final String CHAT_TOOLS_MAX_ROUNDS_KEY = "chat.tools.maxRounds";
+    /** Direkte Kinder je {@code knowledge_tree}-Aufruf ohne {@code limit}, 0 = alle (Issue #116). */
+    public static final String TOOLS_TREE_CHILD_LIMIT_KEY = "agent.tools.treeChildLimit";
+    /** Obergrenze von {@link #TOOLS_TREE_CHILD_LIMIT_KEY}. */
+    public static final int TOOLS_TREE_CHILD_LIMIT_MAX = 10000;
     /** Fristen und Wiederholungen der Modellanfrage (Einstellungen → Netzwerk & Agent → Zeitlimits und Wiederholungen). */
     public static final String CHAT_CONNECT_TIMEOUT_KEY = "chat.connectTimeoutMillis";
     public static final String CHAT_READ_TIMEOUT_KEY = "chat.readTimeoutMillis";
@@ -833,7 +837,9 @@ public final class AppConfigLoader {
                 .withSnippetChars(r.integer("agent.tools.snippetChars", defaults.snippetChars(), 80, 100000))
                 .withDefaultMaxResults(r.integer("agent.tools.defaultMaxResults", defaults.defaultMaxResults(), 1, 1000))
                 .withMaxFailuresListed(r.integer("agent.tools.maxFailuresListed", defaults.maxFailuresListed(), 0, 10000))
-                .withMaxPages(r.integer("agent.tools.maxPages", defaults.maxPages(), 0, 10000));
+                .withMaxPages(r.integer("agent.tools.maxPages", defaults.maxPages(), 0, 10000))
+                .withTreeChildLimit(r.integer(TOOLS_TREE_CHILD_LIMIT_KEY, defaults.treeChildLimit(), 0,
+                        TOOLS_TREE_CHILD_LIMIT_MAX));
         // Recherche-Budget (arch: besuchte Seiten pro Lauf); bisherige Dateien mit agent.tools.maxPages behalten
         // ihren Wert, bis agent.research.maxPages gesetzt ist.
         int fallbackPages = r.has("agent.tools.maxPages")

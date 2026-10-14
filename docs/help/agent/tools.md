@@ -1,7 +1,7 @@
 ---
 id: agent.tools
 title: Werkzeuge von Chat und Agent
-keywords: Werkzeuge, Tools, Tool-Calling, Funktionsaufrufe, function calling, knowledge_search, knowledge_read, read_attachment, search_attachment, app_help_search, app_help_read, Hilfe-Werkzeuge, Reiter Tools, Werkzeug abschalten, tools.disabled, Pflichtwerkzeug, Werkzeugrunden, chat.tools.maxRounds, MCP, Model Context Protocol, Endpoint, 127.0.0.1, Welche Tools hast du, Recherche-Werkzeuge, research_status, main_model_complete
+keywords: Werkzeuge, Tools, Tool-Calling, Funktionsaufrufe, function calling, knowledge_search, knowledge_tree, Seitenbaum, Unterseiten, Elternseiten, knowledge_read, read_attachment, search_attachment, app_help_search, app_help_read, Hilfe-Werkzeuge, Reiter Tools, Werkzeug abschalten, tools.disabled, Pflichtwerkzeug, Werkzeugrunden, chat.tools.maxRounds, MCP, Model Context Protocol, Endpoint, 127.0.0.1, Welche Tools hast du, Recherche-Werkzeuge, research_status, main_model_complete
 ---
 
 # Werkzeuge von Chat und Agent
@@ -32,6 +32,17 @@ Durchsucht die Wissensquellen (zum Beispiel ein Confluence unter `confluence.exa
 - Durchsucht werden **nur die angehakten Quellen** im Drawer-Reiter „Wissensquellen“. Ist keine angehakt, antwortet das Werkzeug, dass keine Quelle aktiv ist, und fordert dazu auf, eine anzuhaken.
 - Es fragt die Quellen live ab und sucht gleichzeitig im Index (Volltext und semantisch). Live-Treffer, die noch nicht gelesen wurden, sind als solche gekennzeichnet. Die Treffer werden im Hintergrund vorgeladen und indexiert, ohne dass die Suche darauf wartet.
 - Jeder Treffer nennt Titel, Kennung (`id:`), Adresse, Quelle und einen Textausschnitt. Ist eine Quelle nicht erreichbar oder der Index nicht durchsuchbar, steht ein Hinweis in der Antwort, die übrigen Treffer kommen trotzdem.
+
+### knowledge_tree
+
+Zeigt dem Modell die Seitenhierarchie um einen Bereich (bei Confluence ein Space) oder eine Seite, ohne Seitentext (seit 0.79.0). Es nutzt dieselbe Navigation wie der Kompass im Drawer.
+
+- Ohne Parameter listet es die Quellen mit Seitenbaum und ihre Bereiche mit Schlüssel und Titel; mit `source` nur die Bereiche dieser Quelle. Durchlaufen wird dabei nichts.
+- Einstieg: `space` (exakter Schlüssel aus dieser Liste), `id` oder `bookmark` einer Seite. `id` und `bookmark` schließen sich aus. Bei einer Seite ermittelt das Werkzeug den Bereich selbst; nennt der Aufruf zusätzlich einen anderen Bereich, ist das ein Fehler statt eines stillen Wechsels.
+- `direction` (optional, Standard `both`): `parents` liefert den vollständigen Pfad bis zum Bereich, `children` nur die direkten Unterseiten, `both` beides plus die Seite selbst. Am Bereichsstamm gibt es keine Elternseiten.
+- `limit` begrenzt nur die direkten Unterseiten, Standard 20 (einstellbar, siehe [Reiter „Tools“](help:settings.tools)); `limit=0` heißt alle. Folgen weitere, nennt die Antwort `nextCursor`; derselbe Aufruf mit `cursor` setzt genau beim nächsten Kind fort. Wird die Antwort zu groß, steht zusätzlich `truncated: true` darin.
+- Jede Seite kommt mit Titel, Kennung, Bookmark und dem Hinweis, ob sie Unterseiten hat. Die Kennung geht unverändert an `knowledge_read`, das Bookmark wieder an `knowledge_tree`.
+- Unbekannte Quellen oder Bereiche werden nicht erraten: die Antwort nennt die gültigen Werte.
 
 ### knowledge_read
 

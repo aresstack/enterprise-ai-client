@@ -212,7 +212,7 @@ public class ApplicationCompositionTest {
         for (McpToolContribution tool : root.agentTools()) {
             names.add(tool.getName());
         }
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names);
         assertEquals(3, root.knowledgeTools().settings().defaultMaxResults());
         final AtomicReference<ShellAssembly.ShellView> view = new AtomicReference<ShellAssembly.ShellView>();
@@ -265,7 +265,7 @@ public class ApplicationCompositionTest {
         for (AiTool tool : root.knowledgeChatTools()) {
             chat.add(tool.name());
         }
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), chat);
     }
 
@@ -280,9 +280,9 @@ public class ApplicationCompositionTest {
                 System::currentTimeMillis, ZoneId.of("Europe/Berlin"));
 
         // Abgeschaltet: weder Chat noch Agent bekommen es, die Registry zeigt es weiter (als aus).
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names(root.agentTools()));
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), chatNames(root.knowledgeChatTools()));
         assertFalse(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
         assertTrue(root.toolCatalog().isEnabled(SearchAttachmentTool.NAME));
@@ -298,19 +298,19 @@ public class ApplicationCompositionTest {
         // knowledge_read zusätzlich aus, knowledge_search wieder an: gilt nach dem Neuladen, ohne neue Komposition.
         file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_READ);
         settings.reload();
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names(root.agentTools()));
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 chatNames(root.knowledgeChatTools()));
         assertTrue(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
 
         file.get().remove("tools.disabled");
         settings.reload();
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 names(root.agentTools()));
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 chatNames(root.knowledgeChatTools()));
     }

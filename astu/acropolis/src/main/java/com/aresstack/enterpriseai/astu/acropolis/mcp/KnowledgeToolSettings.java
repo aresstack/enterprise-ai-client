@@ -20,30 +20,29 @@ public final class KnowledgeToolSettings {
      * Agentenprozess. Die Werkzeuge selbst verbrauchen nichts davon, das Vorladen hat eigene Einstellungen.
      */
     public static final int DEFAULT_MAX_PAGES = 4;
+    /** Direkte Kinder je {@code knowledge_tree}-Aufruf ohne {@code limit} ({@code agent.tools.treeChildLimit}). */
+    public static final int DEFAULT_TREE_CHILD_LIMIT = 20;
 
     private final int maxResponseChars;
     private final int snippetChars;
     private final int defaultMaxResults;
     private final int maxFailuresListed;
     private final int maxPages;
+    private final int treeChildLimit;
 
     private KnowledgeToolSettings(int maxResponseChars, int snippetChars, int defaultMaxResults,
-                                  int maxFailuresListed) {
-        this(maxResponseChars, snippetChars, defaultMaxResults, maxFailuresListed, DEFAULT_MAX_PAGES);
-    }
-
-    private KnowledgeToolSettings(int maxResponseChars, int snippetChars, int defaultMaxResults,
-                                  int maxFailuresListed, int maxPages) {
+                                  int maxFailuresListed, int maxPages, int treeChildLimit) {
         this.maxResponseChars = maxResponseChars;
         this.snippetChars = snippetChars;
         this.defaultMaxResults = defaultMaxResults;
         this.maxFailuresListed = maxFailuresListed;
         this.maxPages = maxPages;
+        this.treeChildLimit = treeChildLimit;
     }
 
     public static KnowledgeToolSettings defaults() {
         return new KnowledgeToolSettings(DEFAULT_MAX_RESPONSE_CHARS, DEFAULT_SNIPPET_CHARS, DEFAULT_MAX_RESULTS,
-                DEFAULT_MAX_FAILURES_LISTED);
+                DEFAULT_MAX_FAILURES_LISTED, DEFAULT_MAX_PAGES, DEFAULT_TREE_CHILD_LIMIT);
     }
 
     /** Höchstgröße einer Tool-Antwort in Zeichen, mindestens {@value #MIN_RESPONSE_CHARS}. */
@@ -51,7 +50,8 @@ public final class KnowledgeToolSettings {
         if (chars < MIN_RESPONSE_CHARS) {
             throw new IllegalArgumentException("maxResponseChars muss >= " + MIN_RESPONSE_CHARS + " sein: " + chars);
         }
-        return new KnowledgeToolSettings(chars, snippetChars, defaultMaxResults, maxFailuresListed, maxPages);
+        return new KnowledgeToolSettings(chars, snippetChars, defaultMaxResults, maxFailuresListed,
+                maxPages, treeChildLimit);
     }
 
     /** Länge des Textausschnitts je Suchtreffer in Zeichen, mindestens {@value #MIN_SNIPPET_CHARS}. */
@@ -59,7 +59,8 @@ public final class KnowledgeToolSettings {
         if (chars < MIN_SNIPPET_CHARS) {
             throw new IllegalArgumentException("snippetChars muss >= " + MIN_SNIPPET_CHARS + " sein: " + chars);
         }
-        return new KnowledgeToolSettings(maxResponseChars, chars, defaultMaxResults, maxFailuresListed, maxPages);
+        return new KnowledgeToolSettings(maxResponseChars, chars, defaultMaxResults, maxFailuresListed,
+                maxPages, treeChildLimit);
     }
 
     /** Treffer, wenn der Aufruf {@code max_results} nicht nennt, {@code >= 1}. */
@@ -67,7 +68,8 @@ public final class KnowledgeToolSettings {
         if (count < 1) {
             throw new IllegalArgumentException("defaultMaxResults muss >= 1 sein: " + count);
         }
-        return new KnowledgeToolSettings(maxResponseChars, snippetChars, count, maxFailuresListed, maxPages);
+        return new KnowledgeToolSettings(maxResponseChars, snippetChars, count, maxFailuresListed,
+                maxPages, treeChildLimit);
     }
 
     /** Wie viele gescheiterte Ressourcen ein Aktualisierungsbericht einzeln nennt, {@code >= 0}. */
@@ -75,7 +77,8 @@ public final class KnowledgeToolSettings {
         if (count < 0) {
             throw new IllegalArgumentException("maxFailuresListed muss >= 0 sein: " + count);
         }
-        return new KnowledgeToolSettings(maxResponseChars, snippetChars, defaultMaxResults, count, maxPages);
+        return new KnowledgeToolSettings(maxResponseChars, snippetChars, defaultMaxResults, count,
+                maxPages, treeChildLimit);
     }
 
     /** Seitenbudget eines Recherche-Laufs (an den Agentenprozess übergeben), {@code 0} = unbegrenzt. */
@@ -83,7 +86,21 @@ public final class KnowledgeToolSettings {
         if (pages < 0) {
             throw new IllegalArgumentException("maxPages muss >= 0 sein (0 = unbegrenzt): " + pages);
         }
-        return new KnowledgeToolSettings(maxResponseChars, snippetChars, defaultMaxResults, maxFailuresListed, pages);
+        return new KnowledgeToolSettings(maxResponseChars, snippetChars, defaultMaxResults, maxFailuresListed, pages,
+                treeChildLimit);
+    }
+
+    /** Direkte Kinder je {@code knowledge_tree}-Aufruf ohne {@code limit}, {@code 0} = alle. */
+    public KnowledgeToolSettings withTreeChildLimit(int children) {
+        if (children < 0) {
+            throw new IllegalArgumentException("treeChildLimit muss >= 0 sein (0 = alle): " + children);
+        }
+        return new KnowledgeToolSettings(maxResponseChars, snippetChars, defaultMaxResults, maxFailuresListed, maxPages,
+                children);
+    }
+
+    public int treeChildLimit() {
+        return treeChildLimit;
     }
 
     public int maxPages() {
@@ -109,6 +126,7 @@ public final class KnowledgeToolSettings {
     @Override
     public String toString() {
         return "KnowledgeToolSettings{maxResponseChars=" + maxResponseChars + ", snippetChars=" + snippetChars
-                + ", defaultMaxResults=" + defaultMaxResults + ", maxFailuresListed=" + maxFailuresListed + ", maxPages=" + maxPages + "}";
+                + ", defaultMaxResults=" + defaultMaxResults + ", maxFailuresListed=" + maxFailuresListed
+                + ", maxPages=" + maxPages + ", treeChildLimit=" + treeChildLimit + "}";
     }
 }
