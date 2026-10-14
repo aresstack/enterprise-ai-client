@@ -43,8 +43,10 @@ import java.util.List;
  *       zentriert erst ein tatsächlicher Kapitelwechsel wieder.</li>
  *   <li>Ein Klick auf ein Kapitel meldet es dem {@link Listener} (FA-10).</li>
  *   <li>Der Pfeil links klappt den Himmel nach unten auf (FA-11): darunter die Gliederung NUR des aktiven Kapitels,
- *       Originalunterüberschriften und erkannte Themenabschnitte, je anklickbar (FA-12). Höchstens
- *       {@link ResearchUiMetrics#SKY_EXPANDED_MAX_PERCENT} % der Höhe, darüber rollt nur die Gliederung (FA-13).</li>
+ *       Originalunterüberschriften und erkannte Themenabschnitte, je anklickbar (FA-12). Jede Ebene des aktiven Pfads
+ *       ist eine eigene waagrechte Wolkenreihe mit eigenem Bildlauf (#110): unter dem Kapitel seine direkten Kinder,
+ *       darunter die Kinder des aktiven Kindes usw.; das Mausrad rollt nur die Reihe unter dem Zeiger. Höchstens
+ *       {@link ResearchUiMetrics#SKY_EXPANDED_MAX_PERCENT} % der Höhe, darüber rollen die Reihen senkrecht (FA-13).</li>
  *   <li>Lange Bezeichnungen werden mit „…“ gekürzt, der Tooltip zeigt sie ganz; die Breite einer Wolke richtet sich
  *       nach der verfügbaren Breite, so passen in schmalen Fenstern weniger Nachbarn (FA-14).</li>
  *   <li>Automatisch erkannte Abschnitte stehen kursiv in einer gestrichelten Wolke; Originalüberschriften gerade in
@@ -62,8 +64,7 @@ public final class DocumentNavigationSky extends JPanel {
     static final int WHEEL_STEP = 48;
     private static final float FONT_SIZE = 12.5f;
     private static final int CHEVRON_SIZE = 22;
-    private static final int ROW_HEIGHT = ResearchUiMetrics.CLOUD_CHIP_HEIGHT + 4;
-    private static final int INDENT = 18;
+    private static final int ROW_HEIGHT = ResearchUiMetrics.CLOUD_GAP_V + ResearchUiMetrics.CLOUD_CHIP_HEIGHT;
 
     /** Was der Banner meldet; auf dem EDT. */
     public interface Listener {
@@ -71,10 +72,10 @@ public final class DocumentNavigationSky extends JPanel {
         void sectionSelected(NavigationSection section);
     }
 
-    private final ChapterStrip strip = new ChapterStrip();
+    private final SectionStrip strip;
     private final ExpandChevron chevron = new ExpandChevron();
-    private final OutlinePanel outline = new OutlinePanel();
-    private final JScrollPane outlineScroll;
+    private final HierarchyRows rows = new HierarchyRows();
+    private final JScrollPane rowsScroll;
     private Listener listener;
     private DocumentNavigation navigation;
     private List<NavigationSection> chapters = Collections.emptyList();
@@ -82,24 +83,24 @@ public final class DocumentNavigationSky extends JPanel {
     private String activeSectionId;
     private boolean expanded;
     private int contentBottom;
+    private boolean revealDeepestRow;
 
     public DocumentNavigationSky() {
         super(null);
         setOpaque(false);
         setName("reader.navigationSky");
-        outlineScroll = new JScrollPane(outline, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+        strip = new SectionStrip(0, null, chapters);
+        rowsScroll = new JScrollPane(rows, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        outlineScroll.setBorder(BorderFactory.createEmptyBorder());
-        outlineScroll.setOpaque(false);
-        outlineScroll.getViewport().setOpaque(false);
-        outlineScroll.getVerticalScrollBar().setUnitIncrement(16);
-        com.aresstack.enterpriseai.ui.comic.control.ComicScrollBarUI.install(outlineScroll.getVerticalScrollBar());
-        // Die Gliederung rollt zuerst selbst; hat sie nichts zu rollen, geht das Rad an den Himmel (nie ans Dokument).
-        SkyClouds.installWheelPriority(outlineScroll, outlineScroll);
-        outlineScroll.setVisible(false);
+        rowsScroll.setBorder(BorderFactory.createEmptyBorder());
+        rowsScroll.setOpaque(false);
+        rowsScroll.getViewport().setOpaque(false);
+        com.aresstack.enterpriseai.ui.comic.control.ComicScrollBarUI.install(rowsScroll.getVerticalScrollBar());
+        // Each row consumes the wheel for itself; only the free scroll bar moves the rows vertically, never the document.
+        rowsScroll.setVisible(false);
         add(strip);
         add(chevron);
-        add(outlineScroll);
+        add(rowsScroll);
         // Rad über dem Himmel (Luft oder Wolkenreihe): waagrecht durch die Kapitel, das Dokument bleibt stehen.
         addMouseWheelListener(strip::wheel);
         // Wie arch: ein Klick in die Luft des aufgeklappten Himmels klappt ihn wieder ein.
@@ -130,8 +131,9 @@ public final class DocumentNavigationSky extends JPanel {
             activeChapterId = chapters.isEmpty() ? null : chapters.get(0).id();
             strip.manual = false;
         }
+        strip.sections = chapters;
         strip.rebuild();
-        outline.rebuild();
+        rows.sync(false);
         setVisible(!chapters.isEmpty());
         if (chapters.isEmpty()) {
             publishTopInset(0);
@@ -146,7 +148,8 @@ public final class DocumentNavigationSky extends JPanel {
 
     /**
      * Das Kapitel, in dem das Dokument gerade steht, und darin der tiefste sichtbare Abschnitt (oder {@code null}).
-     * Ein Kapitelwechsel zentriert die Reihe neu, auch nach manuellem Verschieben; derselbe Wert ändert nichts.
+     * Ein Kapitelwechsel zentriert die Reihe neu, auch nach manuellem Verschieben; derselbe Wert ändert nichts. Die
+     * Unterreihen folgen dem aktiven Pfad; eine Reihe mit unverändertem Elternknoten behält ihren Bildlauf.
      */
     public void setActive(String chapterId, String sectionId) {
         boolean chapterChanged = chapterId != null && !chapterId.equals(activeChapterId);
@@ -155,13 +158,12 @@ public final class DocumentNavigationSky extends JPanel {
             activeChapterId = chapterId;
             strip.manual = false;
             strip.centerOnActive(true);
-            outline.rebuild();
-            revalidate();
         }
         if (chapterChanged || sectionChanged) {
             activeSectionId = sectionId;
+            rows.sync(true);
             strip.repaint();
-            outline.repaint();
+            revalidate();
         }
     }
 
@@ -176,7 +178,7 @@ public final class DocumentNavigationSky extends JPanel {
     public void setExpanded(boolean value) {
         if (expanded != value) {
             expanded = value;
-            outline.rebuild();
+            rows.sync(false);
             revalidate();
             repaint();
         }
@@ -212,8 +214,46 @@ public final class DocumentNavigationSky extends JPanel {
         return strip;
     }
 
-    List<NavigationSection> outlineSectionsForTest() {
-        return outline.shown;
+    /** The sections of each sub row, top to bottom. */
+    List<List<NavigationSection>> rowSectionsForTest() {
+        List<List<NavigationSection>> result = new ArrayList<List<NavigationSection>>();
+        for (SectionStrip row : rows.rows) {
+            result.add(row.sections);
+        }
+        return result;
+    }
+
+    /** Row at {@code depth}: 0 the chapters, 1 the first sub row. */
+    JComponent rowForTest(int depth) {
+        return rowAt(depth);
+    }
+
+    int rowOffsetForTest(int depth) {
+        return (int) Math.round(rowAt(depth).offset);
+    }
+
+    boolean rowManualForTest(int depth) {
+        return rowAt(depth).manual;
+    }
+
+    /** Bounds of a cloud in the coordinates of its row, as painted now. */
+    Rectangle chipBoundsForTest(int depth, int index) {
+        SectionStrip row = rowAt(depth);
+        row.layoutChips();
+        Rectangle chip = row.chips.get(index);
+        return new Rectangle((int) Math.round(row.shift()) + chip.x, chip.y, chip.width, chip.height);
+    }
+
+    double anchorForTest(int depth) {
+        return rowAt(depth).anchorX();
+    }
+
+    String activeIdForTest(int depth) {
+        return rowAt(depth).activeId();
+    }
+
+    void clickRowForTest(int depth, int index) {
+        rowAt(depth).select(index);
     }
 
     void clickChapterForTest(int index) {
@@ -224,8 +264,8 @@ public final class DocumentNavigationSky extends JPanel {
         return strip.chipText(index);
     }
 
-    JScrollPane outlineScrollForTest() {
-        return outlineScroll;
+    JScrollPane rowsScrollForTest() {
+        return rowsScroll;
     }
 
     // ------------------------------------------------------------------ Treffer, Malen, Layout
@@ -267,17 +307,22 @@ public final class DocumentNavigationSky extends JPanel {
                 ResearchUiMetrics.CLOUD_CHIP_HEIGHT);
         strip.layoutChips();
         int bottom = top + ResearchUiMetrics.CLOUD_CHIP_HEIGHT + 8;
-        boolean showOutline = expanded && expandable;
-        outlineScroll.setVisible(showOutline);
-        if (showOutline) {
-            int outlineTop = bottom;
-            int natural = outline.shown.size() * ROW_HEIGHT;
+        boolean showRows = expanded && expandable && rows.rowCount() > 0;
+        rowsScroll.setVisible(showRows);
+        if (showRows) {
+            // Each row carries its gap to the row above, so the rows start right below the chapters.
+            int rowsTop = top + ResearchUiMetrics.CLOUD_CHIP_HEIGHT;
+            int natural = rows.rowCount() * ROW_HEIGHT;
             int cap = Math.max(ROW_HEIGHT * 2,
-                    getHeight() * ResearchUiMetrics.SKY_EXPANDED_MAX_PERCENT / 100 - outlineTop);
+                    getHeight() * ResearchUiMetrics.SKY_EXPANDED_MAX_PERCENT / 100 - rowsTop);
             int height = Math.min(natural, cap);
-            outlineScroll.setBounds(stripLeft, outlineTop, Math.max(0, getWidth() - stripLeft - padH), height);
-            outlineScroll.revalidate();
-            bottom = outlineTop + height + 8;
+            rowsScroll.setBounds(stripLeft, rowsTop, Math.max(0, getWidth() - stripLeft - padH), height);
+            rowsScroll.validate();
+            if (revealDeepestRow) {
+                revealDeepestRow = false;
+                rowsScroll.getViewport().setViewPosition(new java.awt.Point(0, Math.max(0, natural - height)));
+            }
+            bottom = rowsTop + height + 8;
         }
         contentBottom = bottom;
         publishTopInset(contentBottom);
@@ -294,6 +339,44 @@ public final class DocumentNavigationSky extends JPanel {
             }
         }
         return null;
+    }
+
+    /** Chapter, then each section down to the active one; just the chapter while no subsection is active. */
+    private List<NavigationSection> activePath() {
+        List<NavigationSection> path = new ArrayList<NavigationSection>();
+        NavigationSection chapter = activeChapter();
+        if (chapter == null) {
+            return path;
+        }
+        path.add(chapter);
+        if (activeSectionId != null && !activeSectionId.equals(chapter.id())) {
+            pathTo(chapter.children(), activeSectionId, path);
+        }
+        return path;
+    }
+
+    private static boolean pathTo(List<NavigationSection> sections, String id, List<NavigationSection> path) {
+        for (NavigationSection section : sections) {
+            path.add(section);
+            if (section.id().equals(id) || pathTo(section.children(), id, path)) {
+                return true;
+            }
+            path.remove(path.size() - 1);
+        }
+        return false;
+    }
+
+    /** Row at {@code depth} (0 the chapters), or {@code null}. */
+    private SectionStrip rowAt(int depth) {
+        if (depth == 0) {
+            return strip;
+        }
+        return depth - 1 < rows.rows.size() ? rows.rows.get(depth - 1) : null;
+    }
+
+    /** The row above {@code depth}, whose active cloud is the parent of that row. */
+    private SectionStrip parentStrip(int depth) {
+        return depth <= 0 ? null : rowAt(depth - 1);
     }
 
     private List<NavigationSection> activeChildren() {
@@ -351,28 +434,40 @@ public final class DocumentNavigationSky extends JPanel {
         g2.drawString(text, ResearchUiMetrics.CLOUD_CHIP_PADDING_H, SkyClouds.cloudTextY(metrics, height));
     }
 
-    // ------------------------------------------------------------------ Kapitelreihe
+    // ------------------------------------------------------------------ Wolkenreihen
 
-    /** Die Hauptkapitel als eine waagrechte Wolkenreihe, verschiebbar, mit Rand für die Zentrierung. */
-    private final class ChapterStrip extends JComponent {
+    /**
+     * One horizontal row of clouds with its own scroll state: the chapters (depth 0) or the direct children of one
+     * node on the active path (depth 1 and deeper). The wheel over the row moves only this row and never the document.
+     */
+    private final class SectionStrip extends JComponent {
 
+        private final int depth;
         private final List<Rectangle> chips = new ArrayList<Rectangle>();
         private final List<String> texts = new ArrayList<String>();
+        private List<NavigationSection> sections;
+        private String parentId;
+        private String shownActiveId;
         private double offset;
         private double target;
         private boolean manual;
+        private boolean pendingCenter;
         private int hovered = -1;
         private int laidOutWidth = -1;
         private final Timer animation = new Timer(15, event -> step());
 
-        ChapterStrip() {
+        SectionStrip(int depth, String parentId, List<NavigationSection> sections) {
+            this.depth = depth;
+            this.parentId = parentId;
+            this.sections = sections;
             setOpaque(false);
+            setName(depth == 0 ? "reader.navigationChapters" : "reader.navigationRow" + depth);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             ToolTipSupport.register(this);
             MouseAdapter mouse = new MouseAdapter() {
                 @Override
                 public void mouseMoved(MouseEvent event) {
-                    int index = indexAt(event.getX());
+                    int index = indexAt(event.getX(), event.getY());
                     if (index != hovered) {
                         hovered = index;
                         repaint();
@@ -387,7 +482,7 @@ public final class DocumentNavigationSky extends JPanel {
 
                 @Override
                 public void mousePressed(MouseEvent event) {
-                    int index = indexAt(event.getX());
+                    int index = indexAt(event.getX(), event.getY());
                     if (index >= 0) {
                         select(index);
                     }
@@ -398,6 +493,20 @@ public final class DocumentNavigationSky extends JPanel {
             addMouseWheelListener(this::wheel);
         }
 
+        /** Free space above the clouds of a sub row; the link to the parent cloud is drawn there. */
+        int top() {
+            return depth == 0 ? 0 : ResearchUiMetrics.CLOUD_GAP_V;
+        }
+
+        String activeId() {
+            if (depth == 0) {
+                return activeChapterId;
+            }
+            List<NavigationSection> path = activePath();
+            return depth < path.size() ? path.get(depth).id() : null;
+        }
+
+        /** Lay out anew for the chapters of a new navigation; keep a manual position. */
         void rebuild() {
             laidOutWidth = -1;
             layoutChips();
@@ -405,10 +514,43 @@ public final class DocumentNavigationSky extends JPanel {
             repaint();
         }
 
+        /** Replace the shown sections; a new parent starts a fresh scroll state, the same parent keeps it. */
+        void show(String parent, List<NavigationSection> value, boolean animate) {
+            boolean newParent = parent == null ? parentId != null : !parent.equals(parentId);
+            parentId = parent;
+            sections = value;
+            laidOutWidth = -1;
+            if (newParent) {
+                manual = false;
+                shownActiveId = activeId();
+                animation.stop();
+                layoutChips();
+                centerOnActive(false);
+            } else {
+                layoutChips();
+                followActive(animate);
+            }
+            repaint();
+        }
+
+        /** Recenter when the active entry changed, unless the user moved the row and the entry is still in view. */
+        void followActive(boolean animate) {
+            String active = activeId();
+            boolean changed = active == null ? shownActiveId != null : !active.equals(shownActiveId);
+            shownActiveId = active;
+            if (!changed) {
+                return;
+            }
+            if (manual && !activeVisible()) {
+                manual = false;
+            }
+            centerOnActive(animate);
+        }
+
         /** Breiten aus der verfügbaren Breite: in schmalen Fenstern schmalere Wolken, weniger Nachbarn (FA-14). */
         void layoutChips() {
             int width = getWidth();
-            if (width == laidOutWidth && chips.size() == chapters.size()) {
+            if (width == laidOutWidth && chips.size() == sections.size()) {
                 return;
             }
             boolean resized = laidOutWidth >= 0 && laidOutWidth != width;
@@ -421,23 +563,36 @@ public final class DocumentNavigationSky extends JPanel {
             int maxChip = Math.max(80, Math.min(240, (int) (width * 0.42)));
             int height = ResearchUiMetrics.CLOUD_CHIP_HEIGHT;
             int x = 0;
-            for (NavigationSection chapter : chapters) {
-                FontMetrics metrics = getFontMetrics(fontFor(chapter));
+            for (NavigationSection section : sections) {
+                FontMetrics metrics = getFontMetrics(fontFor(section));
                 int pad = ResearchUiMetrics.CLOUD_CHIP_PADDING_H;
-                String text = elide(chapter.label(), metrics, maxChip - 2 * pad);
+                String text = elide(section.label(), metrics, maxChip - 2 * pad);
                 int chipWidth = Math.min(maxChip, metrics.stringWidth(text) + 2 * pad);
-                chips.add(new Rectangle(x, 0, chipWidth, height));
+                chips.add(new Rectangle(x, top(), chipWidth, height));
                 texts.add(text);
                 x += chipWidth + ResearchUiMetrics.CLOUD_GAP_H;
             }
-            if (resized && !manual) {
+            if (pendingCenter || (resized && !manual)) {
                 centerOnActive(false);
             }
         }
 
-        /** Rand links: so viel, dass das erste Kapitel mittig stehen kann. */
+        /** Rand links: so viel, dass der erste Eintrag mittig stehen kann. */
         private int lead() {
             return chips.isEmpty() ? 0 : getWidth() / 2 - chips.get(0).width / 2;
+        }
+
+        private int totalWidth() {
+            if (chips.isEmpty()) {
+                return 0;
+            }
+            Rectangle last = chips.get(chips.size() - 1);
+            return last.x + last.width;
+        }
+
+        private double minOffset() {
+            // A sub row may also sit wholly inside the row, flush right, for example below a parent at the right edge.
+            return depth == 0 || chips.isEmpty() ? 0 : Math.min(0, lead() - (getWidth() - totalWidth()));
         }
 
         private double maxOffset() {
@@ -445,34 +600,104 @@ public final class DocumentNavigationSky extends JPanel {
                 return 0;
             }
             Rectangle last = chips.get(chips.size() - 1);
-            // Rand rechts entsprechend: das letzte Kapitel kann ebenfalls mittig stehen.
-            return Math.max(0, last.x + last.width / 2.0 + lead() - getWidth() / 2.0);
-        }
-
-        double targetOffsetOf(String chapterId) {
-            for (int i = 0; i < chapters.size() && i < chips.size(); i++) {
-                if (chapters.get(i).id().equals(chapterId)) {
-                    Rectangle chip = chips.get(i);
-                    // Versatz so, dass die Mitte der Wolke in der Mitte der Reihe steht.
-                    return clamp(lead() + chip.x + chip.width / 2.0 - getWidth() / 2.0);
-                }
-            }
-            return offset;
+            // Rand rechts entsprechend: der letzte Eintrag kann ebenfalls mittig stehen.
+            double centerLast = last.x + last.width / 2.0 + lead() - getWidth() / 2.0;
+            return depth == 0 ? Math.max(0, centerLast) : Math.max(lead(), centerLast);
         }
 
         private double clamp(double value) {
-            return Math.max(0, Math.min(maxOffset(), value));
+            return Math.max(minOffset(), Math.min(maxOffset(), value));
+        }
+
+        /** X of the content origin inside this row for the current offset. */
+        private double shift() {
+            return lead() - offset;
+        }
+
+        /** Center of the active cloud in row coordinates, or {@code -1}. */
+        double activeCenterX() {
+            layoutChips();
+            int index = indexOf(activeId());
+            if (index < 0) {
+                return -1;
+            }
+            Rectangle chip = chips.get(index);
+            return shift() + chip.x + chip.width / 2.0;
+        }
+
+        private int indexOf(String id) {
+            for (int i = 0; i < sections.size() && i < chips.size(); i++) {
+                if (sections.get(i).id().equals(id)) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private boolean activeVisible() {
+            int index = indexOf(activeId());
+            if (index < 0) {
+                return true;
+            }
+            Rectangle chip = chips.get(index);
+            double x = shift() + chip.x;
+            return x >= 0 && x + chip.width <= getWidth();
+        }
+
+        double targetOffsetOf(String id) {
+            int index = indexOf(id);
+            if (depth == 0) {
+                if (index < 0) {
+                    return offset;
+                }
+                Rectangle chip = chips.get(index);
+                // Versatz so, dass die Mitte der Wolke in der Mitte der Reihe steht.
+                return clamp(lead() + chip.x + chip.width / 2.0 - getWidth() / 2.0);
+            }
+            return clamp(lead() - targetShift(index));
+        }
+
+        /**
+         * Where a sub row starts: a row that fits stands as a group below the parent cloud; a wider row puts its
+         * active entry in the middle, or without one the group again below the parent.
+         */
+        private double targetShift(int activeIndex) {
+            int width = getWidth();
+            int total = totalWidth();
+            double anchor = anchorX();
+            if (anchor < 0) {
+                anchor = width / 2.0;
+            }
+            if (total <= width) {
+                return Math.max(0, Math.min(width - total, anchor - total / 2.0));
+            }
+            if (activeIndex >= 0) {
+                Rectangle chip = chips.get(activeIndex);
+                return width / 2.0 - (chip.x + chip.width / 2.0);
+            }
+            return anchor - total / 2.0;
+        }
+
+        /** Center of the parent cloud in the row above, in row coordinates, or {@code -1}. */
+        double anchorX() {
+            SectionStrip parent = parentStrip(depth);
+            return parent == null ? -1 : parent.activeCenterX();
         }
 
         void centerOnActive(boolean animate) {
-            if (manual || activeChapterId == null) {
+            if (manual || (depth == 0 && activeChapterId == null)) {
                 return;
             }
-            target = targetOffsetOf(activeChapterId);
+            if (getWidth() <= 0 || chips.isEmpty()) {
+                pendingCenter = true;
+                return;
+            }
+            pendingCenter = false;
+            target = depth == 0 ? targetOffsetOf(activeChapterId) : targetOffsetOf(activeId());
             if (!animate || !isShowing()) {
                 offset = target;
                 animation.stop();
-                repaint();
+                repaintSky();
             } else if (!animation.isRunning()) {
                 animation.start();
             }
@@ -486,7 +711,7 @@ public final class DocumentNavigationSky extends JPanel {
             } else {
                 offset += delta * 0.25;
             }
-            repaint();
+            repaintSky();
         }
 
         void wheel(MouseWheelEvent event) {
@@ -494,29 +719,49 @@ public final class DocumentNavigationSky extends JPanel {
             if (rotation == 0) {
                 rotation = event.getWheelRotation();
             }
+            layoutChips();
             animation.stop();
+            pendingCenter = false;
             manual = true;
             offset = clamp(offset + rotation * WHEEL_STEP);
             target = offset;
             event.consume(); // nie zugleich das Dokument rollen
+            repaintSky();
+        }
+
+        /** Repaint this row and the link of the row below, which follows the active cloud of this one. */
+        private void repaintSky() {
             repaint();
+            SectionStrip child = rowAt(depth + 1);
+            if (child != null) {
+                child.repaint();
+            }
         }
 
         void select(int index) {
-            if (index < 0 || index >= chapters.size()) {
+            if (index < 0 || index >= sections.size()) {
                 return;
             }
-            NavigationSection chapter = chapters.get(index);
-            setActive(chapter.id(), null);
-            fireSelected(chapter);
+            NavigationSection section = sections.get(index);
+            if (depth == 0) {
+                setActive(section.id(), null);
+            } else {
+                setActive(activeChapterId, section.id());
+            }
+            // Settle the rows now: the jump must land below the banner as tall as it is after this click.
+            DocumentNavigationSky.this.doLayout();
+            fireSelected(section);
         }
 
         String chipText(int index) {
             return index >= 0 && index < texts.size() ? texts.get(index) : null;
         }
 
-        private int indexAt(int x) {
-            double contentX = x + offset - lead();
+        private int indexAt(int x, int y) {
+            if (y < top()) {
+                return -1;
+            }
+            double contentX = x - shift();
             for (int i = 0; i < chips.size(); i++) {
                 Rectangle chip = chips.get(i);
                 if (contentX >= chip.x && contentX < chip.x + chip.width) {
@@ -528,8 +773,8 @@ public final class DocumentNavigationSky extends JPanel {
 
         @Override
         public String getToolTipText(MouseEvent event) {
-            int index = indexAt(event.getX());
-            return index < 0 || index >= chapters.size() ? null : tooltipFor(chapters.get(index));
+            int index = indexAt(event.getX(), event.getY());
+            return index < 0 || index >= sections.size() ? null : tooltipFor(sections.get(index));
         }
 
         @Override
@@ -537,18 +782,20 @@ public final class DocumentNavigationSky extends JPanel {
             layoutChips();
             Graphics2D g2 = ResearchUiPainter.prepare(graphics);
             try {
-                int shift = (int) Math.round(lead() - offset);
-                for (int i = 0; i < chips.size() && i < chapters.size(); i++) {
+                paintLink(g2);
+                int shift = (int) Math.round(shift());
+                String active = activeId();
+                for (int i = 0; i < chips.size() && i < sections.size(); i++) {
                     Rectangle chip = chips.get(i);
                     int x = chip.x + shift;
                     if (x + chip.width < 0 || x > getWidth()) {
                         continue;
                     }
-                    Graphics2D cloud = (Graphics2D) g2.create(x, 0, chip.width, chip.height);
+                    Graphics2D cloud = (Graphics2D) g2.create(x, chip.y, chip.width, chip.height);
                     try {
-                        NavigationSection chapter = chapters.get(i);
-                        paintCloud(cloud, chapter, texts.get(i), chip.width, chip.height, i == hovered,
-                                chapter.id().equals(activeChapterId));
+                        NavigationSection section = sections.get(i);
+                        paintCloud(cloud, section, texts.get(i), chip.width, chip.height, i == hovered,
+                                section.id().equals(active));
                     } finally {
                         cloud.dispose();
                     }
@@ -556,6 +803,117 @@ public final class DocumentNavigationSky extends JPanel {
             } finally {
                 g2.dispose();
             }
+        }
+
+        /** A short, quiet stroke from the parent cloud down to this row; no tree connector. */
+        private void paintLink(Graphics2D g2) {
+            if (depth == 0) {
+                return;
+            }
+            double anchor = anchorX();
+            if (anchor < 0 || anchor > getWidth()) {
+                return;
+            }
+            int x = (int) Math.round(anchor);
+            g2.setColor(ResearchUiPalette.CLOUD_BORDER);
+            g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.drawLine(x, 1, x, top() - 1);
+        }
+    }
+
+    /** The sub rows of the expanded sky: one row per node on the active path that has children. */
+    private final class HierarchyRows extends JPanel implements Scrollable {
+
+        private final List<SectionStrip> rows = new ArrayList<SectionStrip>();
+
+        HierarchyRows() {
+            super(null);
+            setOpaque(false);
+            setName("reader.navigationRows");
+        }
+
+        /** Match the rows to the active path; rows whose parent stays keep their scroll position. */
+        void sync(boolean animate) {
+            List<NavigationSection> parents = new ArrayList<NavigationSection>();
+            if (expanded) {
+                List<NavigationSection> path = activePath();
+                for (NavigationSection node : path) {
+                    if (node.children().isEmpty()) {
+                        break;
+                    }
+                    parents.add(node);
+                }
+            }
+            boolean changed = rows.size() != parents.size();
+            for (int i = 0; i < parents.size(); i++) {
+                NavigationSection parent = parents.get(i);
+                if (i < rows.size()) {
+                    SectionStrip row = rows.get(i);
+                    boolean same = parent.id().equals(row.parentId);
+                    row.show(parent.id(), parent.children(), animate);
+                    changed |= !same;
+                } else {
+                    SectionStrip row = new SectionStrip(i + 1, parent.id(), parent.children());
+                    row.shownActiveId = row.activeId();
+                    row.pendingCenter = true;
+                    rows.add(row);
+                    add(row);
+                }
+            }
+            while (rows.size() > parents.size()) {
+                SectionStrip row = rows.remove(rows.size() - 1);
+                row.animation.stop();
+                remove(row);
+            }
+            if (changed) {
+                revealDeepestRow = true;
+                revalidate();
+            }
+            repaint();
+        }
+
+        int rowCount() {
+            return rows.size();
+        }
+
+        @Override
+        public void doLayout() {
+            int y = 0;
+            for (SectionStrip row : rows) {
+                row.setBounds(0, y, getWidth(), ROW_HEIGHT);
+                row.layoutChips();
+                y += ROW_HEIGHT;
+            }
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            return new Dimension(Math.max(1, getWidth()), rows.size() * ROW_HEIGHT);
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return ROW_HEIGHT / 2;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return visibleRect.height;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
         }
     }
 
@@ -609,136 +967,6 @@ public final class DocumentNavigationSky extends JPanel {
                 } else {
                     ResearchUiPainter.paintChevronDown(g2, getWidth() / 2, getHeight() / 2, 5, color);
                 }
-            } finally {
-                g2.dispose();
-            }
-        }
-    }
-
-    /** Die Gliederung des aktiven Kapitels: je Abschnitt eine Wolke, eingerückt nach Tiefe. */
-    private final class OutlinePanel extends JPanel implements Scrollable {
-
-        private List<NavigationSection> shown = new ArrayList<NavigationSection>();
-
-        OutlinePanel() {
-            super(null);
-            setOpaque(false);
-        }
-
-        void rebuild() {
-            removeAll();
-            shown = new ArrayList<NavigationSection>();
-            if (expanded) {
-                collect(activeChildren(), shown);
-            }
-            for (NavigationSection section : shown) {
-                add(new SectionCloud(section));
-            }
-            revalidate();
-            repaint();
-        }
-
-        private void collect(List<NavigationSection> sections, List<NavigationSection> into) {
-            for (NavigationSection section : sections) {
-                into.add(section);
-                collect(section.children(), into);
-            }
-        }
-
-        @Override
-        public void doLayout() {
-            int y = 0;
-            NavigationSection chapter = activeChapter();
-            int baseLevel = chapter == null ? 1 : chapter.level();
-            for (java.awt.Component child : getComponents()) {
-                SectionCloud cloud = (SectionCloud) child;
-                int indent = Math.max(0, cloud.section.level() - baseLevel - 1) * INDENT;
-                int available = Math.max(40, getWidth() - indent - 4);
-                int width = Math.min(available, cloud.getPreferredSize().width);
-                cloud.setBounds(indent, y + 2, width, ResearchUiMetrics.CLOUD_CHIP_HEIGHT);
-                y += ROW_HEIGHT;
-            }
-        }
-
-        @Override
-        public Dimension getPreferredSize() {
-            return new Dimension(Math.max(1, getWidth()), shown.size() * ROW_HEIGHT);
-        }
-
-        @Override
-        public Dimension getPreferredScrollableViewportSize() {
-            return getPreferredSize();
-        }
-
-        @Override
-        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
-            return 16;
-        }
-
-        @Override
-        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
-            return visibleRect.height;
-        }
-
-        @Override
-        public boolean getScrollableTracksViewportWidth() {
-            return true;
-        }
-
-        @Override
-        public boolean getScrollableTracksViewportHeight() {
-            return false;
-        }
-    }
-
-    /** Ein Unterabschnitt in der Gliederung; Klick springt hin. */
-    private final class SectionCloud extends JComponent {
-
-        private final NavigationSection section;
-        private boolean hovered;
-
-        SectionCloud(NavigationSection section) {
-            this.section = section;
-            setToolTipText(tooltipFor(section));
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent event) {
-                    hovered = true;
-                    repaint();
-                }
-
-                @Override
-                public void mouseExited(MouseEvent event) {
-                    hovered = false;
-                    repaint();
-                }
-
-                @Override
-                public void mousePressed(MouseEvent event) {
-                    activeSectionId = SectionCloud.this.section.id();
-                    DocumentNavigationSky.this.repaint();
-                    fireSelected(SectionCloud.this.section);
-                }
-            });
-        }
-
-        @Override
-        public Dimension getPreferredSize() {
-            FontMetrics metrics = getFontMetrics(fontFor(section));
-            return new Dimension(metrics.stringWidth(section.label()) + 2 * ResearchUiMetrics.CLOUD_CHIP_PADDING_H,
-                    ResearchUiMetrics.CLOUD_CHIP_HEIGHT);
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g2 = ResearchUiPainter.prepare(graphics);
-            try {
-                FontMetrics metrics = g2.getFontMetrics(fontFor(section));
-                String text = elide(section.label(), metrics,
-                        getWidth() - 2 * ResearchUiMetrics.CLOUD_CHIP_PADDING_H);
-                paintCloud(g2, section, text, getWidth(), getHeight(), hovered,
-                        section.id().equals(activeSectionId));
             } finally {
                 g2.dispose();
             }

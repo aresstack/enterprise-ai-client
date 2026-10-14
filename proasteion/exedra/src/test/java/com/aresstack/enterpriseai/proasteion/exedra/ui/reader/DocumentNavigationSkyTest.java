@@ -252,10 +252,11 @@ public class DocumentNavigationSkyTest {
             DocumentNavigationSky sky = reader.navigationSky(key());
             sky.clickChapterForTest(1);
             sky.setExpanded(true);
-            assertEquals(1, sky.outlineSectionsForTest().size());
-            assertEquals("Installation Details", sky.outlineSectionsForTest().get(0).label());
+            assertEquals(1, sky.rowSectionsForTest().size());
+            assertEquals(1, sky.rowSectionsForTest().get(0).size());
+            assertEquals("Installation Details", sky.rowSectionsForTest().get(0).get(0).label());
             sky.setExpanded(false);
-            assertTrue(sky.outlineSectionsForTest().isEmpty());
+            assertTrue(sky.rowSectionsForTest().isEmpty());
         });
     }
 
@@ -277,6 +278,9 @@ public class DocumentNavigationSkyTest {
         md.append("## Installation\n\n").append(LONG).append("\n\n");
         for (int i = 1; i <= 12; i++) {
             md.append("### Schritt ").append(i).append("\n\n").append(LONG).append(LONG).append("\n\n");
+            for (int k = 1; k <= 3; k++) {
+                md.append("#### Teil ").append(i).append('.').append(k).append("\n\n").append(LONG).append("\n\n");
+            }
         }
         md.append("## Betrieb\n\n").append(LONG).append("\n");
         return md.toString();
@@ -308,7 +312,7 @@ public class DocumentNavigationSkyTest {
     }
 
     @Test
-    public void expandedOutlineIsCappedScrollsInsideAndClickJumpsToTheSubsection() throws Exception {
+    public void expandedLevelsAreRowsThatScrollSidewaysAndClickJumpsToTheSubsection() throws Exception {
         String markdown = manySteps();
         KnowledgeReaderPanel reader = reader(markdown, navigation(markdown), 700, 420);
         SwingUtilities.invokeAndWait(() -> {
@@ -320,32 +324,52 @@ public class DocumentNavigationSkyTest {
             relayout(reader);
             int documentY = document.getViewPosition().y;
 
-            // FA-13: begrenzte Höhe, innen rollen
-            javax.swing.JScrollPane outline = sky.outlineScrollForTest();
-            assertEquals(12, sky.outlineSectionsForTest().size());
-            int natural = outline.getViewport().getView().getPreferredSize().height;
-            assertTrue("Gliederung begrenzt: " + outline.getHeight() + " < " + natural, outline.getHeight() < natural);
-            int row = natural / 12;
-            int cap = Math.max(2 * row, sky.getHeight() * com.aresstack.enterpriseai.ui.comic.theme.ResearchUiMetrics
-                    .SKY_EXPANDED_MAX_PERCENT / 100 - outline.getY());
-            assertTrue("Höhe höchstens " + cap + ": " + outline.getHeight(), outline.getHeight() <= cap);
-            MouseWheelEvent wheel = new MouseWheelEvent(outline, MouseWheelEvent.MOUSE_WHEEL, 0L, 0, 20, 20, 0,
+            // #110: the twelve steps are one horizontal row, not a list below each other
+            assertEquals(1, sky.rowSectionsForTest().size());
+            assertEquals(12, sky.rowSectionsForTest().get(0).size());
+
+            // the wheel over the row moves only the row, never the document
+            javax.swing.JComponent row = sky.rowForTest(1);
+            int before = sky.rowOffsetForTest(1);
+            int chapters = sky.stripOffsetForTest();
+            MouseWheelEvent wheel = new MouseWheelEvent(row, MouseWheelEvent.MOUSE_WHEEL, 0L, 0, 20, 20, 0,
                     false, MouseWheelEvent.WHEEL_UNIT_SCROLL, 3, 2);
-            outline.dispatchEvent(wheel);
-            assertTrue("innen gerollt", outline.getVerticalScrollBar().getValue() > 0);
+            row.dispatchEvent(wheel);
+            assertTrue("wheel consumed", wheel.isConsumed());
+            assertTrue("row scrolled sideways", sky.rowOffsetForTest(1) > before);
+            assertEquals("chapters stay", chapters, sky.stripOffsetForTest());
             assertEquals("Dokument steht", documentY, document.getViewPosition().y);
 
-            // FA-12: Klick auf einen Unterabschnitt springt dorthin, der Abschnitt wird aktiv
-            NavigationSection step8 = sky.outlineSectionsForTest().get(7);
+            // FA-12: Klick auf einen Unterabschnitt springt dorthin, der Abschnitt wird aktiv, seine Teile erscheinen
+            NavigationSection step8 = sky.rowSectionsForTest().get(0).get(7);
             assertEquals("Schritt 8", step8.label());
-            Component cloud = ((Container) outline.getViewport().getView()).getComponent(7);
-            cloud.dispatchEvent(new java.awt.event.MouseEvent(cloud, java.awt.event.MouseEvent.MOUSE_PRESSED, 0L,
-                    0, 5, 5, 1, false));
+            sky.clickRowForTest(1, 7);
+            relayout(reader);
             assertEquals(step8.id(), sky.activeSectionId());
             assertEquals(sky.navigation().chapters().get(1).id(), sky.activeChapterId());
+            assertEquals(2, sky.rowSectionsForTest().size());
+            assertEquals("Teil 8.1", sky.rowSectionsForTest().get(1).get(0).label());
             int below = page.positionOf(step8) - document.getViewPosition().y;
             assertTrue("Unterabschnitt direkt unter dem Banner: " + below + " vs " + sky.coveredHeight(),
                     below >= sky.coveredHeight() && below <= sky.coveredHeight() + 3 * NavigableDocumentPage.TARGET_GAP);
+
+            // the second level scrolls on its own as well and leaves the first and the document alone
+            int first = sky.rowOffsetForTest(1);
+            int y = document.getViewPosition().y;
+            javax.swing.JComponent parts = sky.rowForTest(2);
+            MouseWheelEvent partsWheel = new MouseWheelEvent(parts, MouseWheelEvent.MOUSE_WHEEL, 0L, 0, 20, 20, 0,
+                    false, MouseWheelEvent.WHEEL_UNIT_SCROLL, 3, 1);
+            parts.dispatchEvent(partsWheel);
+            assertTrue(partsWheel.isConsumed());
+            assertEquals(first, sky.rowOffsetForTest(1));
+            assertEquals("Dokument steht", y, document.getViewPosition().y);
+
+            // scrolling the document on into step 9 rebuilds the path below the first row
+            NavigationSection step9 = sky.rowSectionsForTest().get(0).get(8);
+            document.setViewPosition(new java.awt.Point(0, page.positionOf(step9) - sky.coveredHeight()));
+            relayout(reader);
+            assertEquals(step9.id(), sky.activeIdForTest(1));
+            assertEquals("Teil 9.1", sky.rowSectionsForTest().get(1).get(0).label());
         });
     }
 
