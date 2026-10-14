@@ -6,13 +6,20 @@ package com.aresstack.enterpriseai.fact.api;
  */
 public final class FactRole {
 
-    public static final FactRole DEFINES = new FactRole("DEFINES");
-    public static final FactRole MENTIONS = new FactRole("MENTIONS");
-
     private final String value;
 
     private FactRole(String value) {
         this.value = value;
+    }
+
+    /** The resource defines what the fact states. */
+    public static FactRole defines() {
+        return new FactRole("DEFINES");
+    }
+
+    /** The resource only mentions what the fact states. */
+    public static FactRole mentions() {
+        return new FactRole("MENTIONS");
     }
 
     /** @throws IllegalArgumentException unless {@code [A-Z][A-Z0-9_]*} with at most 64 characters */

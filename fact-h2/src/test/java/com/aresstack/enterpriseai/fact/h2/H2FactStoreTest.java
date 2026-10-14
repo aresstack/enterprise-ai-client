@@ -152,7 +152,7 @@ public class H2FactStoreTest {
                                 .withSourceRevision(KnowledgeRevision.of(
                                         Instant.parse("2026-10-01T07:30:00.987654321Z"), "1234"))
                                 .withContentHash("sha256:abc"))
-                .role(FactRole.DEFINES).anchor(anchor).build();
+                .role(FactRole.defines()).anchor(anchor).build();
 
         MetadataFact saved = store.save(draft);
 

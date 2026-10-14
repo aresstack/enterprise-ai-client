@@ -4,9 +4,6 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * Versioned schema of the fact store. Each migration runs once and is recorded in {@code FACT_STORE_SCHEMA};
@@ -20,7 +17,7 @@ final class FactSchema {
     static final String TYPE_RESOURCE_INDEX = "IDX_FACT_TYPE_RESOURCE";
 
     /** Migration {@code i} brings the schema from version {@code i} to {@code i + 1}. */
-    static final List<List<String>> MIGRATIONS = Collections.singletonList(Arrays.asList(
+    private static final String[][] MIGRATIONS = {{
             "CREATE TABLE IF NOT EXISTS RESOURCE_REF ("
                     + " RESOURCE_ID VARCHAR(2048) PRIMARY KEY,"
                     + " SOURCE_ADDRESS VARCHAR(2048),"
@@ -63,9 +60,9 @@ final class FactSchema {
             "ALTER TABLE METADATA_FACT ADD CONSTRAINT IF NOT EXISTS FK_FACT_RESOURCE FOREIGN KEY (RESOURCE_ID)"
                     + " REFERENCES RESOURCE_REF(RESOURCE_ID) ON DELETE RESTRICT",
             "ALTER TABLE METADATA_FACT ADD CONSTRAINT IF NOT EXISTS FK_FACT_TYPE FOREIGN KEY (TYPE_ID)"
-                    + " REFERENCES FACT_TYPE(TYPE_ID) ON DELETE RESTRICT"));
+                    + " REFERENCES FACT_TYPE(TYPE_ID) ON DELETE RESTRICT"}};
 
-    static final int CURRENT_VERSION = MIGRATIONS.size();
+    static final int CURRENT_VERSION = MIGRATIONS.length;
 
     private FactSchema() {
     }
@@ -84,7 +81,7 @@ final class FactSchema {
             }
             for (int next = version; next < CURRENT_VERSION; next++) {
                 try {
-                    for (String sql : MIGRATIONS.get(next)) {
+                    for (String sql : MIGRATIONS[next]) {
                         statement.execute(sql);
                     }
                     statement.execute("INSERT INTO FACT_STORE_SCHEMA VALUES (" + (next + 1) + ", CURRENT_TIMESTAMP)");
