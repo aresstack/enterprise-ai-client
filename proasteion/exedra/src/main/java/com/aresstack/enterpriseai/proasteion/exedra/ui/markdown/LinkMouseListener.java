@@ -33,7 +33,8 @@ final class LinkMouseListener extends MouseAdapter {
 
     @Override
     public void mouseClicked(MouseEvent event) {
-        if (event.getButton() != MouseEvent.BUTTON1) {
+        // A click that ends a drag selection selects text; it never opens the link under it (issue #117).
+        if (event.getButton() != MouseEvent.BUTTON1 || pane.getSelectionStart() != pane.getSelectionEnd()) {
             return;
         }
         String link = findLink(event);

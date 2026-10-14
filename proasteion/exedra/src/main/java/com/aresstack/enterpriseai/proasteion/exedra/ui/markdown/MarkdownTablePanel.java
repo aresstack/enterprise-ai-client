@@ -6,12 +6,12 @@ import com.vladsch.flexmark.ext.tables.TableRow;
 import com.vladsch.flexmark.ext.tables.TableSeparator;
 import com.vladsch.flexmark.util.ast.Node;
 
+import javax.swing.AbstractCellEditor;
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTable;
-import javax.swing.ListSelectionModel;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.TableColumnModelEvent;
@@ -20,7 +20,9 @@ import javax.swing.plaf.basic.BasicTableHeaderUI;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
+import javax.swing.table.TableCellEditor;
 import javax.swing.table.TableCellRenderer;
+import javax.swing.text.JTextComponent;
 import javax.swing.text.View;
 import java.awt.Color;
 import java.awt.Component;
@@ -33,6 +35,8 @@ import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EventObject;
 import java.util.List;
 
 /**
@@ -43,8 +47,12 @@ import java.util.List;
  * Inline-HTML, das Modelle in Zellen schreiben ({@code <ul><li>}, {@code <br>}), erscheinen formatiert statt als
  * Quelltext. Breite Zellen brechen ab {@value #MAX_COLUMN_WIDTH} px um, die Zeile wächst mit; Links in Zellen sind
  * klickbar.
+ *
+ * <p>Text in cells is selectable like a paragraph: a mouse press puts the cell's own non-editable text pane into the
+ * table (via the cell editor mechanism, which forwards the drag to it) instead of selecting the row, so the quote flow
+ * of {@link MarkdownMessageView} sees an ordinary text selection.
  */
-final class MarkdownTablePanel extends CappedScrollPane {
+final class MarkdownTablePanel extends CappedScrollPane implements SelectableTextHost {
 
     static final int MAX_COLUMN_WIDTH = 420;
     private static final int CELL_PADDING = 18;
@@ -59,9 +67,9 @@ final class MarkdownTablePanel extends CappedScrollPane {
         this.linkOpener = linkOpener;
         final JTable table = (JTable) getViewport().getView();
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
-        table.setRowSelectionAllowed(true);
+        // Select text, not rows: a row highlight would replace the character selection the quote flow needs.
+        table.setRowSelectionAllowed(false);
         table.setColumnSelectionAllowed(false);
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setFont(theme.getBodyFont());
         // Blasenschrift ist auf dunklen Blasen hell: Zellen bekommen daher den Hintergrund der Codeblöcke statt Weiß.
         table.setForeground(theme.getForeground());
@@ -77,6 +85,7 @@ final class MarkdownTablePanel extends CappedScrollPane {
         JTableHeader header = table.getTableHeader();
         installHeader(header, theme);
         table.setDefaultRenderer(Object.class, new RichCellRenderer());
+        table.setDefaultEditor(Object.class, new RichCellSelector());
         fitColumns(table);
         updateRowHeights(table);
         table.getColumnModel().addColumnModelListener(new RowHeightUpdater(table));
@@ -131,7 +140,13 @@ final class MarkdownTablePanel extends CappedScrollPane {
         return new DefaultTableModel(data, columns) {
             @Override
             public boolean isCellEditable(int row, int column) {
-                return false;
+                // "Editing" only places the read-only text pane into the table so its text can be selected.
+                return getValueAt(row, column) instanceof RichCell;
+            }
+
+            @Override
+            public void setValueAt(Object value, int row, int column) {
+                // Keep the table read-only: ending a selection never writes a value back.
             }
         };
     }
@@ -242,6 +257,24 @@ final class MarkdownTablePanel extends CappedScrollPane {
         table.addMouseMotionListener(links);
     }
 
+    @Override
+    public List<JTextComponent> selectableTexts() {
+        return selectableTexts((JTable) getViewport().getView());
+    }
+
+    private static List<JTextComponent> selectableTexts(JTable table) {
+        List<JTextComponent> texts = new ArrayList<JTextComponent>();
+        for (int row = 0; row < table.getRowCount(); row++) {
+            for (int column = 0; column < table.getColumnCount(); column++) {
+                Object value = table.getValueAt(row, column);
+                if (value instanceof RichCell) {
+                    texts.add(((RichCell) value).pane);
+                }
+            }
+        }
+        return Collections.unmodifiableList(texts);
+    }
+
     /** Liefert den Link unter einem Tabellenpunkt oder {@code null}. */
     static String linkAt(JTable table, Point point) {
         int row = table.rowAtPoint(point);
@@ -340,7 +373,41 @@ final class MarkdownTablePanel extends CappedScrollPane {
             }
             WrappingTextPane pane = ((RichCell) value).pane;
             pane.setOpaque(true);
-            pane.setBackground(isSelected ? table.getSelectionBackground() : table.getBackground());
+            pane.setBackground(table.getBackground());
+            return pane;
+        }
+    }
+
+    /**
+     * Put the cell's own read-only text pane into the table on a mouse press so the table forwards the drag to it
+     * and the text gets a real character selection. Keystrokes never start this, and the row is never selected.
+     */
+    private static final class RichCellSelector extends AbstractCellEditor implements TableCellEditor {
+
+        private RichCell current;
+
+        @Override
+        public boolean isCellEditable(EventObject event) {
+            return event == null || event instanceof MouseEvent;
+        }
+
+        @Override
+        public boolean shouldSelectCell(EventObject event) {
+            return false;
+        }
+
+        @Override
+        public Object getCellEditorValue() {
+            return current;
+        }
+
+        @Override
+        public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row,
+                                                     int column) {
+            current = (RichCell) value;
+            WrappingTextPane pane = current.pane;
+            pane.setOpaque(true);
+            pane.setBackground(table.getBackground());
             return pane;
         }
     }

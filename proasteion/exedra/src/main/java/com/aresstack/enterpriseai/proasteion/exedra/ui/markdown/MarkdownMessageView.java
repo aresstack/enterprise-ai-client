@@ -224,6 +224,12 @@ public final class MarkdownMessageView extends JPanel implements WidthAwareHeigh
             component.addMouseListener(selectionWatcher);
             ((JTextComponent) component).addCaretListener(selectionWatcher);
         }
+        if (component instanceof SelectableTextHost) {
+            // Watch texts that enter the component tree only while being selected (table cells).
+            for (JTextComponent text : ((SelectableTextHost) component).selectableTexts()) {
+                watchSelections(text);
+            }
+        }
         if (component instanceof java.awt.Container) {
             for (Component child : ((java.awt.Container) component).getComponents()) {
                 watchSelections(child);
