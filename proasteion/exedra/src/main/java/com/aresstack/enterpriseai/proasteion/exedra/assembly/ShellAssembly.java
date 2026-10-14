@@ -35,10 +35,13 @@ import com.aresstack.enterpriseai.proasteion.exedra.knowledge.FavoritesStore;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ChatResourceNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ChatSourceNavigation;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeReadingController;
+import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeExportController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.PageNavigationController;
+import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ReaderPageExport;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.KnowledgeSourcesController;
 import com.aresstack.enterpriseai.proasteion.exedra.knowledge.ReaderChatPages;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.BrowseKnowledgeSourceUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeExportUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.PageNavigationUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentReader;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
@@ -269,8 +272,13 @@ public final class ShellAssembly {
         workspace.reader().addTabMenuContributor(new ReaderChatPages(chatShell.composer(), workspace));
         reading.attach();
         // Compass (issue #97): page tree and cross references of the page open in the reader.
-        new PageNavigationController(workspace, sources::registration, new PageNavigationUseCase(), reading::open,
-                root.uiExecutor(), root.workExecutor()).attach();
+        PageNavigationUseCase navigation = new PageNavigationUseCase();
+        // Export (#115): a page with its subtree from the page tree, a single page from the reader toolbar.
+        KnowledgeExportController exporter = new KnowledgeExportController(new KnowledgeExportUseCase(navigation),
+                root.uiExecutor(), root.workExecutor());
+        new PageNavigationController(workspace, sources::registration, navigation, reading::open,
+                root.uiExecutor(), root.workExecutor(), exporter).attach();
+        workspace.reader().setPageExporter(new ReaderPageExport(sources::registration, exporter, workspace.reader()));
         // Chat sources: a click opens them in the reader, the context menus save them as favorites.
         chatShell.transcript().setSourceActions(new ChatSourceNavigation(reading, () -> currentChatTitle(history)));
         // Composer resources: the book icon and the context menu open pages and sources in the same reader.

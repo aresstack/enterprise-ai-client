@@ -257,6 +257,21 @@ public final class ComposerIcons {
         };
     }
 
+    /** Export (save the page as a file): an arrow pointing up out of an open tray. Own addition. */
+    public static StrokeIcon export() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawLine(7, 9, 7, 2);
+                g2.drawLine(4, 5, 7, 2);
+                g2.drawLine(10, 5, 7, 2);
+                g2.drawLine(2, 10, 2, 13);
+                g2.drawLine(2, 13, 12, 13);
+                g2.drawLine(12, 13, 12, 10);
+            }
+        };
+    }
+
     /** A picture (images of a page): frame, a mountain and a sun. Own addition. */
     public static StrokeIcon picture() {
         return new StrokeIcon() {

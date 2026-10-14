@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 import com.aresstack.enterpriseai.astu.acropolis.speech.SpeechText;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.navigation.DocumentNavigation;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ReadAloudControl;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
@@ -120,12 +121,22 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         }
     }
 
+    /** Exports the page of the active tab (#115); calls on the EDT. */
+    public interface PageExporter {
+        /** Whether {@code link} is a page whose content can be loaded for an export. */
+        boolean canExport(ReaderLink link);
+
+        /** Export only this page, never its children. */
+        void export(ReaderLink link, ExportFormat format);
+    }
+
     /** Ergänzt das Kontextmenü eines Reiters (z. B. „Zum aktuellen Chat hinzufügen“); Aufruf auf dem EDT. */
     public interface TabMenuContributor {
         void contribute(JPopupMenu menu, ReaderLink link);
     }
 
     static final String MENU_PIN = "Anheften";
+    static final String EXPORT_TOOLTIP = "Seite exportieren";
     static final String MENU_CLOSE = "Schließen";
     static final String MENU_NEW_GROUP = "Neue Gruppe\u2026";
     static final String MENU_ADD_TO_GROUP = "Zu Gruppe hinzufügen";
@@ -198,6 +209,10 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
     private final ComposerButton acronymsButton;
     /** Whether acronym marks are painted; the switch applies to every tab. */
     private boolean acronymsShown = true;
+    /** Export of the active page (#115), left of the paper clip; hidden without an exportable page. */
+    private final ComposerButton exportButton;
+    private PageExporter pageExporter;
+    private java.util.function.Consumer<JPopupMenu> exportMenuShower = this::showAboveExportButton;
     /** Büroklammer mit der Zahl der Anhänge des aktiven Reiters; ohne Anhänge ausgeblendet. */
     private final ComposerButton attachmentsButton;
     private java.util.function.Consumer<JPopupMenu> attachmentMenuShower = this::showAboveButton;
@@ -284,6 +299,15 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         acronymsButton = toolbar.addTool(ComposerIcons.marker(), ACRONYMS_HIDE_TOOLTIP);
         toolbar.showTool(acronymsButton, false);
         acronymsButton.addActionListener(event -> setAcronymMarksShown(!acronymsShown));
+        // Left of the paper clip: export the page of the active tab as PDF, Word or Markdown (#115).
+        exportButton = toolbar.addTrailingTool(ComposerIcons.export(), EXPORT_TOOLTIP);
+        toolbar.showTool(exportButton, false);
+        exportButton.addActionListener(event -> {
+            JPopupMenu menu = exportMenu();
+            if (menu != null) {
+                exportMenuShower.accept(menu);
+            }
+        });
         // Rechts unmittelbar vor dem Branding: Anhänge der Seite (unabhängig davon, ob die Quelle sie indexiert).
         attachmentsButton = toolbar.addTrailingTool(attachmentIcon(0), ReaderAttachmentList.tooltip(0));
         toolbar.showTool(attachmentsButton, false);
@@ -932,6 +956,46 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         ReaderAttachment attachment = tab.attachments.get(index);
         showTranscriptOverlay(new ImageSlideshowPanel(attachment, tab.attachmentLoader, fileOpener,
                 attachmentRenderer), attachment.fileName());
+    }
+
+    /** Connect the export of the active page (#115); {@code null} hides the button. */
+    public void setPageExporter(PageExporter exporter) {
+        this.pageExporter = exporter;
+        styleExport();
+    }
+
+    private void styleExport() {
+        ReaderLink active = activeLink();
+        toolbar.showTool(exportButton, pageExporter != null && active != null && pageExporter.canExport(active));
+    }
+
+    /** The formats for the active page; {@code null} without an exportable page. */
+    JPopupMenu exportMenu() {
+        final ReaderLink active = activeLink();
+        if (pageExporter == null || active == null || !pageExporter.canExport(active)) {
+            return null;
+        }
+        JPopupMenu menu = new JPopupMenu();
+        for (final ExportFormat format : ExportFormat.values()) {
+            JMenuItem entry = new JMenuItem(format.menuLabel());
+            entry.addActionListener(event -> pageExporter.export(active, format));
+            menu.add(entry);
+        }
+        return menu;
+    }
+
+    /** How the export menu appears after a click on the button (tests: without a screen). */
+    void setExportMenuShower(java.util.function.Consumer<JPopupMenu> shower) {
+        this.exportMenuShower = shower == null ? this::showAboveExportButton : shower;
+    }
+
+    private void showAboveExportButton(JPopupMenu menu) {
+        Dimension size = menu.getPreferredSize();
+        menu.show(exportButton, exportButton.getWidth() - size.width, -size.height);
+    }
+
+    ComposerButton exportButton() {
+        return exportButton;
     }
 
     /** Wie die Anhangsliste nach dem Klick auf die Büroklammer erscheint (Tests: ohne Bildschirm abfangen). */
@@ -1750,6 +1814,7 @@ public final class KnowledgeReaderPanel extends JPanel implements DiagramOverlay
         attachmentsButton.setIcon(attachmentIcon(attached));
         attachmentsButton.setToolTipText(ReaderAttachmentList.tooltip(attached));
         toolbar.showTool(attachmentsButton, attached > 0);
+        styleExport();
         styleAcronyms();
         if (speakingTab != null && speakingTab != active) {
             stopReadAloud(); // Reiterwechsel oder Schließen: die alte Seite liest nicht weiter

@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.knowledge;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.PageNavigationUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatWorkspacePanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.PageNavigationPanel;
@@ -53,6 +54,8 @@ public final class PageNavigationController implements PageNavigationPanel.Actio
     private final BiConsumer<ReaderLink, Boolean> opener;
     private final Executor uiExecutor;
     private final Executor workExecutor;
+    /** Exports a page with its subtree (#115); {@code null} without export. */
+    private final KnowledgeExportController exporter;
     /** The page the compass follows (UI thread). */
     private ReaderLink current;
     private boolean stale = true;
@@ -67,6 +70,13 @@ public final class PageNavigationController implements PageNavigationPanel.Actio
                                     Function<String, KnowledgeSourceRegistration> lookup,
                                     PageNavigationUseCase navigation, BiConsumer<ReaderLink, Boolean> opener,
                                     Executor uiExecutor, Executor workExecutor) {
+        this(workspace, lookup, navigation, opener, uiExecutor, workExecutor, null);
+    }
+
+    public PageNavigationController(ChatWorkspacePanel workspace,
+                                    Function<String, KnowledgeSourceRegistration> lookup,
+                                    PageNavigationUseCase navigation, BiConsumer<ReaderLink, Boolean> opener,
+                                    Executor uiExecutor, Executor workExecutor, KnowledgeExportController exporter) {
         if (workspace == null || lookup == null || navigation == null || opener == null || uiExecutor == null
                 || workExecutor == null) {
             throw new IllegalArgumentException("all arguments are required");
@@ -77,6 +87,7 @@ public final class PageNavigationController implements PageNavigationPanel.Actio
         this.opener = opener;
         this.uiExecutor = uiExecutor;
         this.workExecutor = workExecutor;
+        this.exporter = exporter;
     }
 
     /** Follow the reader and serve the compass page; on the UI thread. */
@@ -105,6 +116,17 @@ public final class PageNavigationController implements PageNavigationPanel.Actio
     @Override
     public void pageOpened(ReaderLink page, boolean pin) {
         opener.accept(page, pin);
+    }
+
+    /** Export the page of the tree with its whole subtree from the source, not what the tree shows (#115). */
+    @Override
+    public void exportRequested(String key, ExportFormat format) {
+        NavigationNode node = nodes.get(key);
+        KnowledgeSourceRegistration registration = rootSource;
+        if (exporter == null || node == null || registration == null) {
+            return;
+        }
+        exporter.exportSubtree(workspace.navigation(), registration.port(), node, format);
     }
 
     /** Show where {@link #current} sits and what it links to. */

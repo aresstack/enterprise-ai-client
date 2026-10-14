@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
@@ -14,7 +15,10 @@ import javax.swing.BorderFactory;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.TransferHandler;
 import javax.swing.JTextArea;
@@ -72,6 +76,10 @@ public final class PageNavigationPanel extends JPanel {
 
         /** The page became visible (tab chosen, drawer opened). */
         void shown();
+
+        /** Export the page {@code key} of the tree with all pages below it (#115). */
+        default void exportRequested(String key, ExportFormat format) {
+        }
     }
 
     /** A row of the tree or of the references: key, title, what a click opens and whether it can have children. */
@@ -119,6 +127,11 @@ public final class PageNavigationPanel extends JPanel {
             return expandable;
         }
 
+        /** Whether this is a root (Confluence: a space) rather than a page. */
+        public boolean isRoot() {
+            return root;
+        }
+
         @Override
         public String toString() {
             return title;
@@ -137,6 +150,7 @@ public final class PageNavigationPanel extends JPanel {
             + "ihren Platz in der Quelle und ihre Verweise.";
     public static final String LOADING = "Lädt …";
     static final String LOADING_MORE = "Weitere Seiten werden geladen …";
+    static final String MENU_EXPORT = "Exportieren";
     static final String OUTGOING = "Verweist auf";
     static final String INCOMING = "Wird verlinkt von";
     static final String NO_OUTGOING = "Keine Verweise auf andere Seiten.";
@@ -181,6 +195,17 @@ public final class PageNavigationPanel extends JPanel {
         setOpaque(false);
 
         configure(tree);
+        tree.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent event) {
+                menuGesture(event);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent event) {
+                menuGesture(event); // Windows reports the context menu on release
+            }
+        });
         tree.setRootVisible(false);
         tree.setShowsRootHandles(true);
         tree.addTreeWillExpandListener(new TreeWillExpandListener() {
@@ -588,6 +613,46 @@ public final class PageNavigationPanel extends JPanel {
             this.title = title;
             this.count = count;
         }
+    }
+
+    // ------------------------------------------------------------------ Kontextmenü (#115)
+
+    /** A right click selects the row of the page tree and opens its menu; it never opens the page. */
+    private void menuGesture(MouseEvent event) {
+        TreePath path = tree.getPathForLocation(event.getX(), event.getY());
+        if (path == null) {
+            return;
+        }
+        if (SwingUtilities.isRightMouseButton(event)) {
+            tree.setSelectionPath(path);
+        }
+        Item item = itemOf(path.getLastPathComponent());
+        if (event.isPopupTrigger() && item != null) {
+            JPopupMenu menu = treeMenu(item);
+            if (menu != null) {
+                menu.show(tree, event.getX(), event.getY());
+            }
+        }
+    }
+
+    /** The context menu of a row of the page tree; {@code null} for the root, which is no page. */
+    JPopupMenu treeMenu(final Item item) {
+        if (item.isRoot()) {
+            return null;
+        }
+        JMenu export = new JMenu(MENU_EXPORT);
+        for (final ExportFormat format : ExportFormat.values()) {
+            JMenuItem entry = new JMenuItem(format.menuLabel());
+            entry.addActionListener(event -> {
+                if (actions != null) {
+                    actions.exportRequested(item.key(), format);
+                }
+            });
+            export.add(entry);
+        }
+        JPopupMenu menu = new JPopupMenu();
+        menu.add(export);
+        return menu;
     }
 
     // ------------------------------------------------------------------ Aufbau
