@@ -121,6 +121,13 @@ final class NavigableDocumentPage extends JLayeredPane {
 
     /** Rollt so, dass der Abschnitt direkt unter dem Banner steht. */
     void scrollTo(NavigationSection section) {
+        if (!page.isValid()) {
+            // Lay out first when the banner just changed its height: the top padding moves every heading. Lay out the
+            // viewport and the page directly as well, validate() skips a tree that is not displayable yet.
+            scroll.validate();
+            scroll.getViewport().doLayout();
+            page.doLayout();
+        }
         Integer y = positionOf(section);
         if (y == null) {
             return;
