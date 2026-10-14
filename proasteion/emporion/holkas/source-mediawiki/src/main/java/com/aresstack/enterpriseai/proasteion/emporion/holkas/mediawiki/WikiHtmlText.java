@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeStructuralBlock;
+import com.aresstack.enterpriseai.source.api.text.MarkdownTable;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -100,21 +101,8 @@ final class WikiHtmlText {
                 }
             } else if ("table".equals(tag)) {
                 flush();
-                for (Element row : el.select("tr")) {
-                    StringBuilder line = new StringBuilder();
-                    for (Element cell : row.select("> th, > td")) {
-                        String text = cell.text().trim();
-                        if (text.isEmpty()) {
-                            continue;
-                        }
-                        if (line.length() > 0) {
-                            line.append(" | ");
-                        }
-                        line.append(text);
-                    }
-                    if (line.length() > 0) {
-                        add(KnowledgeStructuralBlock.Kind.TABLE_ROW, line.toString());
-                    }
+                for (List<String> row : table(el).grid()) {
+                    add(KnowledgeStructuralBlock.Kind.TABLE_ROW, MarkdownTable.rowText(row));
                 }
             } else if ("pre".equals(tag)) {
                 flush();
@@ -200,21 +188,9 @@ final class WikiHtmlText {
             out.newline();
         } else if ("table".equals(tag)) {
             out.block();
-            for (Element row : el.select("tr")) {
-                StringBuilder line = new StringBuilder();
-                for (Element cell : row.select("> th, > td")) {
-                    String text = cell.text().trim();
-                    if (text.isEmpty()) {
-                        continue;
-                    }
-                    if (line.length() > 0) {
-                        line.append(" | ");
-                    }
-                    line.append(text);
-                }
-                if (line.length() > 0) {
-                    out.line(line.toString());
-                }
+            String markdown = table(el).toMarkdown();
+            if (!markdown.isEmpty()) {
+                out.raw(markdown);
             }
             out.block();
         } else if ("pre".equals(tag)) {
@@ -302,6 +278,26 @@ final class WikiHtmlText {
                 end--;
             }
             return s.substring(0, end);
+        }
+    }
+
+    /** Lay out the table's own rows (not those of nested tables) with spans and empty cells kept in place. */
+    static MarkdownTable table(Element table) {
+        MarkdownTable markdown = new MarkdownTable();
+        for (Element row : table.select("> tr, > thead > tr, > tbody > tr, > tfoot > tr")) {
+            markdown.row();
+            for (Element cell : row.select("> th, > td")) {
+                markdown.cell(cell.text(), span(cell, "colspan"), span(cell, "rowspan"));
+            }
+        }
+        return markdown;
+    }
+
+    private static int span(Element cell, String attribute) {
+        try {
+            return Integer.parseInt(cell.attr(attribute).trim());
+        } catch (NumberFormatException missing) {
+            return 1;
         }
     }
 }

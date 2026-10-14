@@ -471,27 +471,30 @@ public final class PdfExportWriter implements ExportWriter {
                     cellLines.add(lines);
                     height = Math.max(height, lines.size());
                 }
-                float rowHeight = Math.min(maxRow, height * lineHeight + 2 * CELL_PADDING);
-                ensure(rowHeight);
-                float top = y;
-                if (header.get(r)) {
-                    fill(HEADER_FILL, frame.x, top - rowHeight, frame.width, rowHeight);
-                }
-                for (int c = 0; c < columns; c++) {
-                    float cellX = frame.x + c * columnWidth;
-                    if (c < cellLines.size()) {
-                        float lineY = top - CELL_PADDING;
-                        for (List<Run> line : cellLines.get(c)) {
-                            if (lineY - lineHeight < top - rowHeight) {
-                                break; // a row taller than a page keeps what fits
-                            }
-                            drawLine(line, cellX + CELL_PADDING, lineY - SMALL_SIZE);
-                            lineY -= lineHeight;
-                        }
+                // Continue a row taller than a page on the next page instead of cutting its lines.
+                int linesPerPage = Math.max(1, (int) ((maxRow - 2 * CELL_PADDING) / lineHeight));
+                for (int start = 0; start < height; start += linesPerPage) {
+                    int count = Math.min(linesPerPage, height - start);
+                    float rowHeight = count * lineHeight + 2 * CELL_PADDING;
+                    ensure(rowHeight);
+                    float top = y;
+                    if (header.get(r)) {
+                        fill(HEADER_FILL, frame.x, top - rowHeight, frame.width, rowHeight);
                     }
-                    strokeRect(RULE, cellX, top - rowHeight, columnWidth, rowHeight);
+                    for (int c = 0; c < columns; c++) {
+                        float cellX = frame.x + c * columnWidth;
+                        if (c < cellLines.size()) {
+                            List<List<Run>> lines = cellLines.get(c);
+                            float lineY = top - CELL_PADDING;
+                            for (int l = start; l < Math.min(lines.size(), start + count); l++) {
+                                drawLine(lines.get(l), cellX + CELL_PADDING, lineY - SMALL_SIZE);
+                                lineY -= lineHeight;
+                            }
+                        }
+                        strokeRect(RULE, cellX, top - rowHeight, columnWidth, rowHeight);
+                    }
+                    y = top - rowHeight;
                 }
-                y = top - rowHeight;
             }
             y -= BODY_SIZE * 0.6f;
         }

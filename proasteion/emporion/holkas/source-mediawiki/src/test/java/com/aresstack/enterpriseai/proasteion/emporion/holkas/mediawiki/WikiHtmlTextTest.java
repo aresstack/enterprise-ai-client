@@ -31,7 +31,7 @@ public class WikiHtmlTextTest {
                 + "Erster Absatz.\n\n"
                 + "- Eins\n- Zwei\n\n"
                 + "### Tabelle\n\n"
-                + "Name | Wert\na | 1\n\n"
+                + "| Name | Wert |\n| --- | --- |\n| a | 1 |\n\n"
                 + "code  bleibt\n  eingerückt", text);
     }
 
