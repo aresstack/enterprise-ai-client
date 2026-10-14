@@ -68,6 +68,10 @@ final class ModuleRegistry {
                 .module("pinakes", "astu.acropolis.chalcotheca.pinakes", ModuleKind.ADAPTER, "D", "astu", "chalcotheca",
                         "anagraphai")
 
+                // Metadaten-Katalog (#106): Facts an der stabilen KnowledgeResourceId; H2 nur im Adapter fact-h2.
+                .module("fact-api", "fact.api", ModuleKind.PORT, "Fakten", "astu")
+                .module("fact-h2", "fact.h2", ModuleKind.ADAPTER, "Fakten", "astu", "fact-api")
+
                 .module("source-api", "source.api", ModuleKind.PORT, "E", "astu")
                 .module("source-mediawiki", "proasteion.emporion.holkas.mediawiki", ModuleKind.ADAPTER, "E", "astu", "source-api",
                         "network")
@@ -187,7 +191,7 @@ final class ModuleRegistry {
                         "source-ndv", "source-outlook", "source-sharepoint", "source-betaview", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",
                         "research-api", "research-scope", "research-store", "research-agent-runtime",
-                        "research-concept", "research-agent-acp", "help")
+                        "research-concept", "research-agent-acp", "help", "fact-api", "fact-h2")
                 // Die Swing-Schale über dem Kompositionspunkt (corenth ADR-0001): kennt application, Kern, Ports und
                 // comic-controls, aber keinen Adapter; nicht holkas, deigma, tamias, anagraphai oder pinakes.
                 .module("exedra", "proasteion.exedra", ModuleKind.UI_SHELL, "B (AP4, AP22, AP23)",

@@ -12,6 +12,9 @@ dependencies {
     implementation project(':embedding-openai')
     implementation project(':astu:acropolis:chalcotheca:anagraphai')
     implementation project(':astu:acropolis:chalcotheca:pinakes')
+    // Global metadata catalog (#106): port and embedded H2 adapter.
+    implementation project(':fact-api')
+    implementation project(':fact-h2')
     implementation project(':proasteion:emporion:holkas:source-mediawiki')
     implementation project(':proasteion:emporion:holkas:source-confluence')
     implementation project(':proasteion:emporion:holkas:source-localfiles')

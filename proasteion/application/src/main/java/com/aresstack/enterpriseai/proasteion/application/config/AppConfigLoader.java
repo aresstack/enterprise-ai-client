@@ -132,6 +132,10 @@ public final class AppConfigLoader {
     public static final String SOURCE_ADDRESS_FIELD = "address";
     private static final Pattern SOURCE_SLOT = Pattern.compile("source\\.([1-9][0-9]{0,5})\\..+");
     private static final int MAX_TIMEOUT = 3600000;
+    /** Directory of the global metadata catalog (#106); default {@code <app directory>/facts}. */
+    public static final String FACTS_DIRECTORY_KEY = "facts.directory";
+    /** How long a catalog writer waits for a locked row, in milliseconds. */
+    public static final String FACTS_LOCK_TIMEOUT_KEY = "facts.lockTimeoutMillis";
 
     private AppConfigLoader() {
     }
@@ -174,6 +178,8 @@ public final class AppConfigLoader {
         ModelsConfig models = models(reader, warnings);
         Set<String> disabledTools = new LinkedHashSet<String>(reader.list("tools.disabled"));
         BubbleColorsConfig bubbleColors = bubbleColors(reader, warnings);
+        FactStoreConfig facts = new FactStoreConfig(reader.path(FACTS_DIRECTORY_KEY, AppPaths.defaultFactDirectory()),
+                reader.integer(FACTS_LOCK_TIMEOUT_KEY, FactStoreConfig.DEFAULT_LOCK_TIMEOUT_MILLIS, 0, MAX_TIMEOUT));
 
         for (String unread : reader.unreadKeys()) {
             warnings.add("Unbekannter Konfigurationsschlüssel wird ignoriert: " + unread);
@@ -201,7 +207,7 @@ public final class AppConfigLoader {
             throw new AppConfigException(reader.problems());
         }
         return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models,
-                disabledTools, bubbleColors, warnings);
+                disabledTools, bubbleColors, facts, warnings);
     }
 
     /**

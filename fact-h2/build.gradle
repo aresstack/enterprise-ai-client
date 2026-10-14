@@ -1,0 +1,8 @@
+description = 'Fact store adapter (#106): one embedded H2 database (in-process, file in the app data directory) behind ' +
+        'FactStorePort. Only module with H2/JDBC.'
+
+dependencies {
+    api project(':fact-api')
+    implementation libs.h2
+
+}

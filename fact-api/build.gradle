@@ -1,0 +1,6 @@
+description = 'Port for the global metadata catalog (#106): fact types, facts bound to a stable KnowledgeResourceId, ' +
+        'provenance and optional anchor. No storage types.'
+
+dependencies {
+    api project(':astu')
+}

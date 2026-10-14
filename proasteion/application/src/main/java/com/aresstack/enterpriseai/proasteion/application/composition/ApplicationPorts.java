@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.InMemoryRawKnowledg
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.RawKnowledgeIndexPort;
 import com.aresstack.enterpriseai.adyton.SecretProvider;
+import com.aresstack.enterpriseai.fact.api.FactStorePort;
 import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
 
 import java.io.Closeable;
@@ -42,6 +43,7 @@ public final class ApplicationPorts implements Closeable {
     private final Supplier<EmbeddingModelIdentity> embeddingSpace;
     private final KnowledgeIndexPort index;
     private final RawKnowledgeIndexPort rawIndex;
+    private final FactStorePort facts;
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
@@ -69,6 +71,7 @@ public final class ApplicationPorts implements Closeable {
         this.embeddingSpace = builder.embeddingSpace;
         this.index = builder.index;
         this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
+        this.facts = builder.facts == null ? new UnavailableFactStore() : builder.facts;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
@@ -126,6 +129,14 @@ public final class ApplicationPorts implements Closeable {
 
     public KnowledgeIndexPort index() {
         return index;
+    }
+
+    /**
+     * The global metadata catalog (#106): facts bound to the stable resource ids, independent of the index. Calls
+     * block on storage; never call it on the Swing event thread.
+     */
+    public FactStorePort facts() {
+        return facts;
     }
 
     /**
@@ -239,6 +250,7 @@ public final class ApplicationPorts implements Closeable {
         private Supplier<EmbeddingModelIdentity> embeddingSpace;
         private KnowledgeIndexPort index;
         private RawKnowledgeIndexPort rawIndex;
+        private FactStorePort facts;
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
@@ -296,6 +308,11 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder index(KnowledgeIndexPort value) {
             this.index = value;
+            return this;
+        }
+
+        public Builder facts(FactStorePort value) {
+            this.facts = value;
             return this;
         }
 

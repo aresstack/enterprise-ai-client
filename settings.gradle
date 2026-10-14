@@ -38,6 +38,10 @@ include 'astu:acropolis:chalcotheca:tamias'
 include 'astu:acropolis:chalcotheca:anagraphai'
 include 'astu:acropolis:chalcotheca:pinakes'
 
+// Metadaten-Katalog (#106): bookmarkgebundene Facts; Port und eingebettetes H2 hinter dem Port
+include 'fact-api'
+include 'fact-h2'
+
 // Strang E – Knowledge Sources (Strang F: source-confluence)
 include 'source-api'
 include 'proasteion:emporion:holkas:source-mediawiki'

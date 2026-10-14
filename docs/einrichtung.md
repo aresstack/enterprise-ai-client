@@ -55,6 +55,7 @@ Beim Start wird nichts indexiert (siehe [Quelle indexieren](#quelle-indexieren-u
 | Anwendungsverzeichnis | `~/.enterprise-ai-client/` (Linux, macOS), `%APPDATA%\.enterprise-ai-client\` (Windows); überschreibbar mit `-Denterpriseai.home=<Verzeichnis>` |
 | Konfigurationsdatei | `<Anwendungsverzeichnis>/enterprise-ai-client.properties`; überschreibbar mit `-Denterpriseai.config=<Datei>` |
 | Lucene-Index und Vektoren | `<Anwendungsverzeichnis>/index/` (Schlüssel `knowledge.indexDirectory`) |
+| Metadaten-Katalog (Facts) | `<Anwendungsverzeichnis>/facts/facts.mv.db` (Schlüssel `facts.directory`, siehe [Metadaten-Katalog](metadaten-katalog.md)) |
 | KeePassRPC-Pairing-Schlüssel | `<Anwendungsverzeichnis>/keepassrpc-pairing.key` (Schlüssel `security.keepass.pairingKeyFile`) |
 | Protokolldateien | `<Anwendungsverzeichnis>/logs/enterprise-ai-client.<n>.log` (rollierend, drei Dateien à 2 MB, `java.util.logging` ab INFO; enthält Start, Konfiguration ohne Secrets, Vertrauensquellen, Proxy-Regel samt Route zum KI-Dienst, jeden fehlgeschlagenen Chat-Aufruf und jeden fehlgeschlagenen Zugriff auf eine Wissensquelle mit Stacktrace sowie je nicht indexierbarer Seite den Grund) |
 

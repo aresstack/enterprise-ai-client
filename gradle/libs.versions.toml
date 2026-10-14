@@ -29,6 +29,8 @@ commonsNet = "3.9.0"
 huggingface4j = "0.1.1"
 onnxruntime = "1.30.0"
 opennlp = "1.9.4"
+# 2.2.224 is the last H2 line built for Java 8 (2.3.x requires Java 11); fact-h2 only.
+h2 = "2.2.224"
 
 [libraries]
 # Test
@@ -92,3 +94,6 @@ onnxruntime = { module = "com.microsoft.onnxruntime:onnxruntime", version.ref = 
 
 # speech-opennlp: Satz- und Spracherkennung beim Vorlesen (wie askai-java8 arch; 1.9.x ist die letzte Java-8-Linie)
 opennlp-tools = { module = "org.apache.opennlp:opennlp-tools", version.ref = "opennlp" }
+
+# fact-h2: global metadata catalog (#106), embedded H2 in-process; only in fact-h2 as implementation.
+h2 = { module = "com.h2database:h2", version.ref = "h2" }

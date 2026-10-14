@@ -25,11 +25,20 @@ public final class AppConfig {
     private final ModelsConfig models;
     private final Set<String> disabledTools;
     private final BubbleColorsConfig bubbleColors;
+    private final FactStoreConfig facts;
     private final List<String> warnings;
 
     AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
               List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
               ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors,
+              List<String> warnings) {
+        this(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models, disabledTools,
+                bubbleColors, FactStoreConfig.defaults(), warnings);
+    }
+
+    AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
+              List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
+              ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
               List<String> warnings) {
         this.windowTitle = windowTitle;
         this.chat = chat;
@@ -42,6 +51,7 @@ public final class AppConfig {
         this.models = models;
         this.disabledTools = Collections.unmodifiableSet(new LinkedHashSet<String>(disabledTools));
         this.bubbleColors = bubbleColors == null ? BubbleColorsConfig.defaults() : bubbleColors;
+        this.facts = facts == null ? FactStoreConfig.defaults() : facts;
         this.warnings = Collections.unmodifiableList(new ArrayList<String>(warnings));
     }
 
@@ -99,6 +109,11 @@ public final class AppConfig {
         return bubbleColors;
     }
 
+    /** The global metadata catalog ({@code facts.*}). */
+    public FactStoreConfig facts() {
+        return facts;
+    }
+
     public List<String> warnings() {
         return warnings;
     }
@@ -106,6 +121,6 @@ public final class AppConfig {
     @Override
     public String toString() {
         return "AppConfig[" + chat + ", " + embedding + ", " + knowledge + ", sources=" + sources + ", " + keePass
-                + ", " + network + ", " + agent + ", " + models + "]";
+                + ", " + network + ", " + agent + ", " + models + ", " + facts + "]";
     }
 }

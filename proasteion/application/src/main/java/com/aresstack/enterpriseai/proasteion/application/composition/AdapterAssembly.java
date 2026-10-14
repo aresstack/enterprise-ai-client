@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.fact.h2.H2FactStore;
 import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 import com.aresstack.enterpriseai.astu.chat.ChatRequest;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
@@ -265,6 +266,10 @@ public final class AdapterAssembly {
         ports.rawIndex(rawIndex);
         ports.reconfiguring(rawIndex);
         ports.closing("raw-knowledge-index", rawIndex);
+        // Global metadata catalog (#106): one H2 database for all sources, opened on first use, closed with the index.
+        final H2FactStore facts = new H2FactStore(config.facts().directory(), config.facts().lockTimeoutMillis());
+        ports.facts(facts);
+        ports.closing("fact-store", facts);
         return ports.build();
     }
 

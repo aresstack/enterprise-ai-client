@@ -123,6 +123,8 @@ Moduls liegen nur dort (geprüft).
 | `tamias` | PORT | `astu.acropolis.chalcotheca.tamias` | astu | Wächter am Archivschalter: ResourceAccessPolicy, ClientResourceAccessPolicy (0.1.16) |
 | `anagraphai` | ADAPTER | `astu.acropolis.chalcotheca.anagraphai` | astu, chalcotheca | D (AP9): lexikalisches Register (Lucene) |
 | `pinakes` | ADAPTER | `astu.acropolis.chalcotheca.pinakes` | astu, chalcotheca, anagraphai | D (AP9): Vektorindex und Index-Adapter (RRF) |
+| `fact-api` | PORT | `fact.api` | astu | Metadaten-Katalog (#106): FactStorePort, Facts an der stabilen KnowledgeResourceId |
+| `fact-h2` | ADAPTER | `fact.h2` | astu, fact-api | Metadaten-Katalog (#106): eingebettetes H2 (einziges Modul mit H2/JDBC) |
 | `source-api` | PORT | `source.api` | astu | E (AP11) |
 | `source-mediawiki` | ADAPTER | `proasteion.emporion.holkas.mediawiki` | astu, source-api, network | E (AP12) |
 | `source-confluence` | ADAPTER | `proasteion.emporion.holkas.confluence` | astu, source-api, adyton, network | F (AP15) |
