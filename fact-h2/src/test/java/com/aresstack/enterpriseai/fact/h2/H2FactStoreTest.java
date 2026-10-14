@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.fact.h2;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.fact.api.ExtractionRun;
 import com.aresstack.enterpriseai.fact.api.FactAnchor;
 import com.aresstack.enterpriseai.fact.api.FactFreshness;
 import com.aresstack.enterpriseai.fact.api.FactId;
@@ -94,7 +95,7 @@ public class H2FactStoreTest {
 
         assertEquals(Arrays.asList("ACRONYM", "BUSINESS_RULE", "DATA_STRUCTURE", "DEFINITION"), typeNames());
         assertEquals("{\"type\":\"object\"}", store.type(FactTypeId.of("DATA_STRUCTURE")).get().jsonSchema());
-        assertEquals(3, tableCount());
+        assertEquals(4, tableCount());
     }
 
     @Test
@@ -334,6 +335,48 @@ public class H2FactStoreTest {
         assertEquals(Arrays.asList(old, manual), sortedByPayload(store.factsOf(GLOSSARY)));
     }
 
+    @Test
+    public void aRunIsRecordedWithItsFactsAlsoWhenItFoundNothing() {
+        KnowledgeRevision first = KnowledgeRevision.version("1");
+        ExtractionRun empty = ExtractionRun.of(GLOSSARY,
+                FactProvenance.automatic("acronyms", "1").withSourceRevision(first).withContentHash("h1"));
+        assertFalse(store.extractionRun(GLOSSARY, "acronyms").isPresent());
+
+        store.replaceAutomaticFacts(empty, Collections.<MetadataFact>emptyList());
+
+        ExtractionRun stored = store.extractionRun(GLOSSARY, "acronyms").get();
+        assertEquals(empty, stored);
+        assertNotNull(stored.completedAt());
+        assertTrue(stored.covers("1", first, "h1"));
+        assertFalse(stored.covers("2", first, "h1"));
+        assertFalse(stored.covers("1", first, "h2"));
+        assertFalse(store.extractionRun(GLOSSARY, "rules").isPresent());
+        assertFalse(store.extractionRun(RULES, "acronyms").isPresent());
+
+        MetadataFact fresh = automatic(GLOSSARY, "acronyms", "1", "{\"acronym\":\"AAA\"}");
+        ExtractionRun second = ExtractionRun.of(GLOSSARY,
+                FactProvenance.automatic("acronyms", "1").withSourceRevision(first).withContentHash("h2"));
+        store.replaceAutomaticFacts(second, Collections.singletonList(fresh));
+        assertEquals(second, store.extractionRun(GLOSSARY, "acronyms").get());
+        assertEquals(Collections.singletonList(fresh), store.factsOf(GLOSSARY));
+    }
+
+    @Test
+    public void aRejectedRunKeepsTheRecordedOne() {
+        ExtractionRun first = ExtractionRun.of(GLOSSARY,
+                FactProvenance.automatic("acronyms", "1").withContentHash("h1"));
+        store.replaceAutomaticFacts(first, Collections.<MetadataFact>emptyList());
+        expect(Reason.INVALID_PAYLOAD, new Runnable() {
+            @Override
+            public void run() {
+                store.replaceAutomaticFacts(ExtractionRun.of(GLOSSARY,
+                        FactProvenance.automatic("acronyms", "2").withContentHash("h2")),
+                        Collections.singletonList(automatic(GLOSSARY, "acronyms", "2", "{broken}")));
+            }
+        });
+        assertEquals(first, store.extractionRun(GLOSSARY, "acronyms").get());
+    }
+
     // ------------------------------------------------------------ lifecycle
 
     @Test
@@ -345,11 +388,18 @@ public class H2FactStoreTest {
         store.save(fact(RULES, ACRONYM, "{\"acronym\":\"BBB\"}"));
         MetadataFact program = store.save(fact(PROGRAM, BUSINESS_RULE, "{\"rule\":\"p\"}"));
 
+        store.replaceAutomaticFacts(ExtractionRun.of(GLOSSARY, FactProvenance.automatic("acronyms", "1")),
+                Collections.<MetadataFact>emptyList());
+        store.replaceAutomaticFacts(ExtractionRun.of(RULES, FactProvenance.automatic("acronyms", "1")),
+                Collections.<MetadataFact>emptyList());
+
         assertEquals(2, store.removeSource(WIKI));
+        assertFalse(store.extractionRun(GLOSSARY, "acronyms").isPresent());
         assertFalse(store.isResourceRegistered(GLOSSARY));
         assertEquals(1, store.factsOfType(ACRONYM).size());
         assertEquals(1, store.removeResource(RULES));
         assertFalse(store.isResourceRegistered(RULES));
+        assertFalse(store.extractionRun(RULES, "acronyms").isPresent());
         assertEquals(Arrays.asList(program), store.factsOfType(BUSINESS_RULE));
         assertEquals(0, store.removeResource(RULES));
     }

@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.fact.api.FactId;
 import com.aresstack.enterpriseai.fact.api.FactOrigin;
 import com.aresstack.enterpriseai.fact.api.FactPayload;
 import com.aresstack.enterpriseai.fact.api.FactProvenance;
+import com.aresstack.enterpriseai.fact.api.FactReview;
 import com.aresstack.enterpriseai.fact.api.FactType;
 import com.aresstack.enterpriseai.fact.api.FactTypeId;
 import com.aresstack.enterpriseai.fact.api.MetadataFact;
@@ -99,6 +100,30 @@ public class FactCatalogTextFindingsTest {
         DocumentAcronymsUseCase.Outcome again = useCase.analyze(page("wiki:1", "1", PAGE_TEXT));
         assertEquals(DocumentAcronymsUseCase.Storage.UNCHANGED, again.storage());
         assertEquals(stored, facts.factsOf(KnowledgeResourceId.of("wiki:1")).size());
+    }
+
+    @Test
+    public void aPageWithoutAcronymsIsStoredOnceAsAnalysed() {
+        String plain = "Hier steht nur gewöhnlicher Text ohne Kürzel.";
+        assertEquals(DocumentAcronymsUseCase.Storage.STORED, useCase.analyze(page("wiki:3", "1", plain)).storage());
+        assertTrue(facts.factsOf(KnowledgeResourceId.of("wiki:3")).isEmpty());
+        assertTrue(facts.extractionRun(KnowledgeResourceId.of("wiki:3"), AcronymExtractor.ID).isPresent());
+        assertEquals(DocumentAcronymsUseCase.Storage.UNCHANGED, useCase.analyze(page("wiki:3", "1", plain)).storage());
+    }
+
+    @Test
+    public void reviewedFindingsOfAnOlderRevisionDoNotForceAnotherRun() {
+        useCase.analyze(page("wiki:1", "1", PAGE_TEXT));
+        MetadataFact candidate = facts.factsOf(KnowledgeResourceId.of("wiki:1"),
+                FactTypeId.of(AcronymFindings.ACRONYM_CANDIDATE)).get(0);
+        facts.save(candidate.toBuilder().review(FactReview.CONFIRMED).build());
+
+        String changed = PAGE_TEXT + " Neu ist ZAUF.";
+        assertEquals(DocumentAcronymsUseCase.Storage.STORED, useCase.analyze(page("wiki:1", "2", changed)).storage());
+        assertEquals(FactReview.CONFIRMED, facts.fact(candidate.id()).get().review());
+        assertEquals("1", facts.fact(candidate.id()).get().provenance().sourceRevision().version());
+        assertEquals(DocumentAcronymsUseCase.Storage.UNCHANGED, useCase.analyze(page("wiki:1", "2", changed))
+                .storage());
     }
 
     @Test

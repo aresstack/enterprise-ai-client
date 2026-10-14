@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.fact.h2;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.fact.api.ExtractionRun;
 import com.aresstack.enterpriseai.fact.api.FactAnchor;
 import com.aresstack.enterpriseai.fact.api.FactId;
 import com.aresstack.enterpriseai.fact.api.FactOrigin;
@@ -349,16 +350,48 @@ public final class H2FactStore implements FactStorePort, Closeable {
     }
 
     @Override
-    public int replaceAutomaticFacts(final KnowledgeResourceId resource, final String extractorId,
-                                     final List<MetadataFact> facts) {
+    public int replaceAutomaticFacts(KnowledgeResourceId resource, String extractorId, List<MetadataFact> facts) {
         if (resource == null || extractorId == null || facts == null) {
             throw new IllegalArgumentException("resource, extractor id and facts must not be null");
         }
+        return replace(resource, extractorId.trim(), facts, null);
+    }
+
+    @Override
+    public int replaceAutomaticFacts(ExtractionRun run, List<MetadataFact> facts) {
+        if (run == null || facts == null) {
+            throw new IllegalArgumentException("run and facts must not be null");
+        }
+        return replace(run.resourceId(), run.extractorId(), facts, run);
+    }
+
+    @Override
+    public Optional<ExtractionRun> extractionRun(final KnowledgeResourceId resource, final String extractorId) {
+        if (resource == null || extractorId == null) {
+            throw new IllegalArgumentException("resource and extractor id must not be null");
+        }
+        return Optional.ofNullable(read("read run of " + extractorId + " on " + resource, new SqlWork<ExtractionRun>() {
+            @Override
+            public ExtractionRun run(Connection connection) throws SQLException {
+                try (PreparedStatement select = connection.prepareStatement("SELECT * FROM EXTRACTION_RUN"
+                        + " WHERE RESOURCE_ID = ? AND EXTRACTOR_ID = ?")) {
+                    select.setString(1, resource.value());
+                    select.setString(2, extractorId.trim());
+                    try (ResultSet rows = select.executeQuery()) {
+                        return rows.next() ? extractionRun(rows) : null;
+                    }
+                }
+            }
+        }));
+    }
+
+    private int replace(final KnowledgeResourceId resource, final String extractorId, List<MetadataFact> facts,
+                        final ExtractionRun run) {
         final List<MetadataFact> replacement = new ArrayList<MetadataFact>(facts);
         for (MetadataFact fact : replacement) {
             if (fact == null || !fact.resourceId().equals(resource)
                     || fact.provenance().origin() != FactOrigin.AUTOMATIC
-                    || !fact.provenance().extractorId().equals(extractorId.trim())) {
+                    || !fact.provenance().extractorId().equals(extractorId)) {
                 throw new IllegalArgumentException("replacement fact " + fact + " is no automatic fact of "
                         + extractorId + " on " + resource);
             }
@@ -373,11 +406,14 @@ public final class H2FactStore implements FactStorePort, Closeable {
                     delete.setString(1, resource.value());
                     delete.setString(2, FactOrigin.AUTOMATIC.name());
                     delete.setString(3, FactReview.UNREVIEWED.name());
-                    delete.setString(4, extractorId.trim());
+                    delete.setString(4, extractorId);
                     removed = delete.executeUpdate();
                 }
                 for (MetadataFact fact : replacement) {
                     writeFact(connection, fact, true);
+                }
+                if (run != null) {
+                    writeRun(connection, run);
                 }
                 return removed;
             }
@@ -393,6 +429,7 @@ public final class H2FactStore implements FactStorePort, Closeable {
             @Override
             public Integer run(Connection connection) throws SQLException {
                 int removed = update(connection, "DELETE FROM METADATA_FACT WHERE RESOURCE_ID = ?", resource.value());
+                update(connection, "DELETE FROM EXTRACTION_RUN WHERE RESOURCE_ID = ?", resource.value());
                 update(connection, "DELETE FROM RESOURCE_REF WHERE RESOURCE_ID = ?", resource.value());
                 return removed;
             }
@@ -408,6 +445,8 @@ public final class H2FactStore implements FactStorePort, Closeable {
             @Override
             public Integer run(Connection connection) throws SQLException {
                 int removed = update(connection, "DELETE FROM METADATA_FACT WHERE RESOURCE_ID IN"
+                        + " (SELECT RESOURCE_ID FROM RESOURCE_REF WHERE SOURCE_ADDRESS = ?)", source.value());
+                update(connection, "DELETE FROM EXTRACTION_RUN WHERE RESOURCE_ID IN"
                         + " (SELECT RESOURCE_ID FROM RESOURCE_REF WHERE SOURCE_ADDRESS = ?)", source.value());
                 update(connection, "DELETE FROM RESOURCE_REF WHERE SOURCE_ADDRESS = ?", source.value());
                 return removed;
@@ -541,6 +580,32 @@ public final class H2FactStore implements FactStorePort, Closeable {
             }
             throw e;
         }
+    }
+
+    private void writeRun(Connection connection, ExtractionRun run) throws SQLException {
+        FactProvenance provenance = run.provenance();
+        try (PreparedStatement merge = connection.prepareStatement("MERGE INTO EXTRACTION_RUN (RESOURCE_ID,"
+                + " EXTRACTOR_ID, EXTRACTOR_VERSION, SOURCE_VERSION, SOURCE_MODIFIED_AT, CONTENT_HASH, COMPLETED_AT)"
+                + " KEY (RESOURCE_ID, EXTRACTOR_ID) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+            int i = 0;
+            merge.setString(++i, run.resourceId().value());
+            merge.setString(++i, provenance.extractorId());
+            merge.setString(++i, provenance.extractorVersion());
+            merge.setString(++i, provenance.sourceRevision().version());
+            setInstant(merge, ++i, provenance.sourceRevision().modifiedAt().orElse(null));
+            merge.setString(++i, provenance.contentHash());
+            setInstant(merge, ++i, clock.instant());
+            merge.executeUpdate();
+        }
+    }
+
+    private static ExtractionRun extractionRun(ResultSet rows) throws SQLException {
+        KnowledgeRevision revision = KnowledgeRevision.of(instant(rows, "SOURCE_MODIFIED_AT"),
+                rows.getString("SOURCE_VERSION"));
+        return ExtractionRun.of(KnowledgeResourceId.of(rows.getString("RESOURCE_ID")),
+                FactProvenance.of(FactOrigin.AUTOMATIC, rows.getString("EXTRACTOR_ID"),
+                        rows.getString("EXTRACTOR_VERSION"), revision, rows.getString("CONTENT_HASH")),
+                instant(rows, "COMPLETED_AT"));
     }
 
     private static boolean isInvalidValue(SQLException e) {

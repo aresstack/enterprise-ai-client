@@ -4,9 +4,8 @@ import com.aresstack.enterpriseai.astu.acropolis.textmining.TextFinding;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.TextFindingSink;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.TextFindingType;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceRef;
+import com.aresstack.enterpriseai.fact.api.ExtractionRun;
 import com.aresstack.enterpriseai.fact.api.FactAnchor;
-import com.aresstack.enterpriseai.fact.api.FactFreshness;
-import com.aresstack.enterpriseai.fact.api.FactOrigin;
 import com.aresstack.enterpriseai.fact.api.FactPayload;
 import com.aresstack.enterpriseai.fact.api.FactProvenance;
 import com.aresstack.enterpriseai.fact.api.FactRole;
@@ -21,14 +20,15 @@ import com.google.gson.GsonBuilder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Keeps text findings (issue #107) as facts in the global metadata catalog of issue #106: one fact per finding at the
  * stable resource id, the finding type registered at runtime, payload as JSON, provenance with extractor version,
- * revision and content hash, the place as anchor. Store failures leave as {@link IllegalStateException} naming only
- * the reason, never document text.
+ * revision and content hash, the place as anchor. Each run is recorded with its facts, also when it found nothing.
+ * Store failures leave as {@link IllegalStateException} naming only the reason, never document text.
  */
 public final class FactCatalogTextFindings implements TextFindingSink {
 
@@ -44,25 +44,15 @@ public final class FactCatalogTextFindings implements TextFindingSink {
         this.facts = facts;
     }
 
+    /**
+     * Ask the recorded run, not the facts: reviewed findings outlive their run on purpose, and a document without
+     * findings has none.
+     */
     @Override
     public boolean isCurrent(KnowledgeResourceRef resource, String extractorId, String extractorVersion) {
         try {
-            if (!facts.isResourceRegistered(resource.resourceId())) {
-                return false;
-            }
-            boolean any = false;
-            for (MetadataFact fact : facts.factsOf(resource.resourceId())) {
-                FactProvenance provenance = fact.provenance();
-                if (provenance.origin() != FactOrigin.AUTOMATIC || !provenance.extractorId().equals(extractorId)) {
-                    continue;
-                }
-                any = true;
-                if (!provenance.extractorVersion().equals(extractorVersion)
-                        || fact.freshness(resource.revision(), resource.contentHash()) != FactFreshness.CURRENT) {
-                    return false;
-                }
-            }
-            return any;
+            Optional<ExtractionRun> run = facts.extractionRun(resource.resourceId(), extractorId);
+            return run.isPresent() && run.get().covers(extractorVersion, resource.revision(), resource.contentHash());
         } catch (FactStoreException failed) {
             throw problem(failed);
         }
@@ -85,7 +75,7 @@ public final class FactCatalogTextFindings implements TextFindingSink {
             for (TextFinding finding : findings) {
                 stored.add(fact(resource, finding, schemaVersion(types, finding.type()), provenance));
             }
-            facts.replaceAutomaticFacts(resource.resourceId(), extractorId, stored);
+            facts.replaceAutomaticFacts(ExtractionRun.of(resource.resourceId(), provenance), stored);
         } catch (FactStoreException failed) {
             registered.clear(); // a failed registration is tried again next time
             throw problem(failed);

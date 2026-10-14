@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.fact.api.ExtractionRun;
 import com.aresstack.enterpriseai.fact.api.FactId;
 import com.aresstack.enterpriseai.fact.api.FactStoreException;
 import com.aresstack.enterpriseai.fact.api.FactStorePort;
@@ -78,6 +79,16 @@ final class UnavailableFactStore implements FactStorePort {
 
     @Override
     public int replaceAutomaticFacts(KnowledgeResourceId resource, String extractorId, List<MetadataFact> facts) {
+        throw unavailable();
+    }
+
+    @Override
+    public int replaceAutomaticFacts(ExtractionRun run, List<MetadataFact> facts) {
+        throw unavailable();
+    }
+
+    @Override
+    public Optional<ExtractionRun> extractionRun(KnowledgeResourceId resource, String extractorId) {
         throw unavailable();
     }
 

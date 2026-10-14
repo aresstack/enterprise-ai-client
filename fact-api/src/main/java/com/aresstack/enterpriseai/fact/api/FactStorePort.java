@@ -85,15 +85,27 @@ public interface FactStorePort {
     int replaceAutomaticFacts(KnowledgeResourceId resource, String extractorId, List<MetadataFact> facts);
 
     /**
-     * Remove a resource that no longer exists, with all its facts (manual ones included). Explicit only; nothing calls
-     * it on the caller's behalf.
+     * Like {@link #replaceAutomaticFacts(KnowledgeResourceId, String, List)} for the resource and extractor of
+     * {@code run}, and record {@code run} as the last completed run of that extractor in the same transaction (also
+     * when {@code facts} is empty). If anything is rejected, neither facts nor run change.
+     *
+     * @return number of facts removed
+     */
+    int replaceAutomaticFacts(ExtractionRun run, List<MetadataFact> facts);
+
+    /** The last run recorded by {@link #replaceAutomaticFacts(ExtractionRun, List)}, or empty. */
+    Optional<ExtractionRun> extractionRun(KnowledgeResourceId resource, String extractorId);
+
+    /**
+     * Remove a resource that no longer exists, with all its facts (manual ones included) and recorded runs. Explicit
+     * only; nothing calls it on the caller's behalf.
      *
      * @return number of facts removed
      */
     int removeResource(KnowledgeResourceId resource);
 
     /**
-     * Remove every resource registered with {@code source}, with all their facts. Explicit only.
+     * Remove every resource registered with {@code source}, with all their facts and recorded runs. Explicit only.
      *
      * @return number of facts removed
      */

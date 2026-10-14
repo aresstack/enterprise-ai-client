@@ -23,6 +23,7 @@ kein Use Case und keine Oberfläche den Katalog; ein späterer Fact-Sheet-Bereic
 | `RESOURCE_REF` | `RESOURCE_ID` = `KnowledgeResourceId.value()` | optional `SOURCE_ADDRESS`; nur Referenz für die Integrität, kein zweites Bookmark-System |
 | `FACT_TYPE` | `TYPE_ID` (z. B. `ACRONYM`, `BUSINESS_RULE`) | Beschreibung, aktuelle `SCHEMA_VERSION`, optionales JSON-Schema (gespeichert, nicht durchgesetzt) |
 | `METADATA_FACT` | `FACT_ID` (UUID) | FK `RESOURCE_ID`, FK `TYPE_ID`, `SCHEMA_VERSION`, `PAYLOAD` (JSON), optional `FACT_ROLE`, Herkunft, Prüfstatus, optionaler Anker, Zeitstempel |
+| `EXTRACTION_RUN` | (`RESOURCE_ID`, `EXTRACTOR_ID`) | letzter abgeschlossener Lauf eines Extractors: `EXTRACTOR_VERSION`, analysierte Revision, `CONTENT_HASH`, `COMPLETED_AT` (seit Schema 2) |
 | `FACT_STORE_SCHEMA` | `VERSION` | angewandte Migrationen |
 
 Indizes: `IDX_FACT_RESOURCE_TYPE (RESOURCE_ID, TYPE_ID)` für das Fact Sheet einer Ressource und
@@ -67,6 +68,10 @@ normalisierte Suchprojektion (z. B. `FACT_SEARCH_TERM`); sie ist ein späterer A
 - `replaceAutomaticFacts(resource, extractorId, facts)` ersetzt atomar die ungeprüften automatischen Facts eines
   Extractors an einer Ressource. Manuelle Facts, geprüfte Facts (`CONFIRMED`, `REJECTED`) und Facts anderer
   Extractoren bleiben. Scheitert ein neuer Fact, ändert sich nichts.
+- `replaceAutomaticFacts(run, facts)` tut dasselbe und vermerkt in derselben Transaktion `run` als letzten Lauf des
+  Extractors an der Ressource, auch ohne Facts. `extractionRun(resource, extractorId)` liest ihn. Ob eine Analyse
+  aktuell ist, entscheidet dieser Lauf, nicht die vorhandenen Facts: geprüfte Facts überleben ihren Lauf absichtlich,
+  und eine Seite ohne Funde hat gar keine.
 - Löschen geschieht nur ausdrücklich: `removeFact`, `removeResource` (Ressource mit allen Facts, auch manuellen) und
   `removeSource` (alle mit dieser `SourceAddress` registrierten Ressourcen). Die Fremdschlüssel sind `RESTRICT`,
   nichts kaskadiert. Das Entfernen einer Quelle aus dem Wissensindex (`IndexKnowledgeUseCase.removeSource`) lässt den
@@ -90,7 +95,8 @@ abbildet. Typen werden zur Laufzeit registriert:
   verknüpft.
 - `positions` und der Anker (`characters`, `quote` = Satz bzw. Wort) beziehen sich auf `KnowledgeDocument.text()` der
   analysierten Fassung; der Bookmark bleibt die `KnowledgeResourceId`.
-- Erneutes Lesen derselben Fassung schreibt nichts (`provenance`: Version, Revision, Content-Hash gleich). Neue Fassung,
+- Erneutes Lesen derselben Fassung schreibt nichts (`EXTRACTION_RUN`: Version, Revision, Content-Hash gleich), auch bei
+  Seiten ohne Akronyme und bei geprüften Facts älterer Fassungen. Neue Fassung,
   andere Schwellen oder anderes Satzverfahren tauschen die automatischen Facts des Extractors per
   `replaceAutomaticFacts` aus; manuelle und geprüfte Facts bleiben.
 - Satzgrenzen kommen aus dem OpenNLP-Satzmodell der Sprache, wenn es installiert ist, sonst aus dem regelbasierten
