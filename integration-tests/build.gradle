@@ -115,6 +115,7 @@ def liveStages = [
     '5': ['com.aresstack.enterpriseai.integration.live.LiveMediaWikiIT'],
     '6': ['com.aresstack.enterpriseai.integration.live.LiveKeePassIT'],
     '7': ['com.aresstack.enterpriseai.integration.live.LiveConfluenceKeePassIT'],
+    '8': ['com.aresstack.enterpriseai.integration.live.LiveStatementEvaluationIT'],
 ]
 
 /** "1", "1,3" oder "1-4" (auch gemischt) zu einer sortierten Liste von Stufennummern; unbekannte Stufen sind ein Fehler. */
@@ -136,16 +137,16 @@ def parseLiveStages = { String spec ->
         } else if (token ==~ /^\d+$/) {
             selected.add(token)
         } else {
-            throw new GradleException("live.stage: '" + token + "' ist keine Stufe (erlaubt: 1-7, Liste oder Bereich)")
+            throw new GradleException("live.stage: '" + token + "' ist keine Stufe (erlaubt: 1-8, Liste oder Bereich)")
         }
     }
     selected.each { String stage ->
         if (!liveStages.containsKey(stage)) {
-            throw new GradleException("live.stage: Stufe " + stage + " gibt es nicht (erlaubt: 1-7)")
+            throw new GradleException("live.stage: Stufe " + stage + " gibt es nicht (erlaubt: 1-8)")
         }
     }
     if (selected.isEmpty()) {
-        throw new GradleException("live.stage: keine Stufe angegeben (erlaubt: 1-7)")
+        throw new GradleException("live.stage: keine Stufe angegeben (erlaubt: 1-8)")
     }
     return selected
 }

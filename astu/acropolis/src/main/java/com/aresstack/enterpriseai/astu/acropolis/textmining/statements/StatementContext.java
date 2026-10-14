@@ -7,7 +7,6 @@ package com.aresstack.enterpriseai.astu.acropolis.textmining.statements;
  */
 public final class StatementContext {
 
-    private static final StatementContext NONE = new StatementContext(null, null, null);
 
     private final GroundedText negation;
     private final GroundedText modality;
@@ -20,7 +19,7 @@ public final class StatementContext {
     }
 
     public static StatementContext none() {
-        return NONE;
+        return new StatementContext(null, null, null);
     }
 
     /** The negating words, or {@code null}. */

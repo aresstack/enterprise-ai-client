@@ -3,7 +3,7 @@
 Alle 26 Arbeitspakete sind gegen lokale Fakes getestet; gegen die echte Enterprise-API, ein echtes MediaWiki,
 KeePass oder Confluence ist bis zur Live-Verifikation nichts gelaufen (UNVERIFIED, siehe
 [Einschränkungen](einschraenkungen.md)). Diese Seite ist die Anleitung für den Lauf gegen die echten Dienste in
-sieben Stufen, in der Reihenfolge des Auftraggebers, eine Stufe nach der anderen. Jede Stufe ist ein eigener
+acht Stufen, in der Reihenfolge des Auftraggebers, eine Stufe nach der anderen. Jede Stufe ist ein eigener
 Aufruf von `./gradlew :integration-tests:liveTest` (lokal oder, für die Stufen 1 bis 5, über den manuell
 gestarteten GitHub-Actions-Workflow „Live-Verifikation“, siehe unten); was zurückgemeldet wird, steht je
 Stufe unter „Rückmeldung“. Nach jedem echten Ergebnis wird die UNVERIFIED-Markierung nur für genau die geprüfte Fähigkeit
@@ -19,6 +19,7 @@ entfernt und [Tests](tests.md) sowie [Einschränkungen](einschraenkungen.md) wer
 | 5 | MediaWiki: Startseite finden, laden, indexieren, Wiki-Suche | `LiveMediaWikiIT` | `live.wiki.apiUrl`, `live.wiki.startPoint` | `ENTERPRISE_AI_LIVE_WIKI_PASSWORD` (nur mit `live.wiki.user`) |
 | 6 | KeePassRPC: Pairing über den Dialog der Anwendung, Eintrag lesen | `LiveKeePassIT` | `live.keepass.entry` | – (Einmal-Passwort im Dialog) |
 | 7 | Confluence über KeePass: Startpunkt laden, CQL-Suche | `LiveConfluenceKeePassIT` | `live.confluence.baseUrl`, `live.confluence.startPoint`, `live.confluence.credentialRef` | – (Pairing aus Stufe 6) |
+| 8 | Satzanalyse #108 auf 50 erfundenen Sätzen | `LiveStatementEvaluationIT` | `live.chat.baseUrl`, `live.chat.model` (optional `live.statements.verify`) | `ENTERPRISE_AI_LIVE_API_KEY` |
 
 Die Stufen 1 bis 4 brauchen nur die Enterprise-API und den API-Key; 5 ein erreichbares Wiki; 6 ein laufendes,
 entsperrtes KeePass mit KeePassRPC-Plugin auf demselben Rechner; 7 zusätzlich ein Confluence Data Center.
@@ -224,6 +225,22 @@ nach dem Titel der ersten gefundenen Seite).
 Rückmeldung: die `[live] Stufe 7:`-Zeilen (Autorisierungsart, Pairing-Rückfragen, Ressourcen, Zeichen,
 Revision, Treffer der Suche).
 
+## Stufe 8 – Satzanalyse (#108)
+
+Voraussetzung wie Stufe 1. Der Test zerlegt die 50 erfundenen Sätze aus
+`astu/acropolis/src/main/resources/…/textmining/statements/evaluation-de.json` mit dem echten Chat-Modell und
+vergleicht mit der Annotation. Er wird nie rot; er misst den Stand.
+
+```bash
+./gradlew :integration-tests:liveTest -Dlive.stage=8 \
+  -Dlive.chat.baseUrl=https://…/v1 -Dlive.chat.model=… [-Dlive.statements.verify=false]
+```
+
+Rückmeldung: die `[live] Stufe 8:`-Zeilen mit Präzision und Recall für Erwähnungen, Handlungen, Rollen,
+Relationen, Reihenfolgen und Einschränkungen (Verneinung, Modalität, Bedingung), die Zahl falscher Rollen, die
+verbotenen Aussagen (etwa „der Beleg löst die Zahlung aus“) und die Kennungen der Sätze mit Rollenfehlern. Echte
+Dokumente gehören nie in das Repository; dafür dient dasselbe JSON-Format außerhalb.
+
 ## Ergebnisprotokoll
 
 | Stufe | Stand | Datum | Befund |
@@ -235,6 +252,7 @@ Revision, Treffer der Suche).
 | 5 MediaWiki | offen | – | – |
 | 6 KeePassRPC | offen | – | – |
 | 7 Confluence über KeePass | offen | – | – |
+| 8 Satzanalyse | offen | – | – |
 
 Befunde werden hier nur als Verhalten festgehalten (Status, Form, Dimension), nie mit Hostnamen, Tokens oder
 Inhalten. Entscheidungen, die aus einem Befund folgen (Array-Modus als Standard, Dimension festschreiben),

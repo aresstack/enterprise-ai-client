@@ -8,9 +8,9 @@ als Restarbeit offen bleibt. Stand: `main` nach AP26 und Vorbereitung der Live-V
 Kein Arbeitspaket hat gegen die echte Enterprise-API, ein echtes MediaWiki, ein echtes Confluence oder ein
 echtes KeePass getestet. Alle Tests des normalen Builds laufen gegen lokale Fakes (siehe
 [Testanleitung](tests.md)). Der Lauf gegen echte Dienste ist als [Live-Verifikation](live-verifikation.md) in
-sieben Stufen vorbereitet (`./gradlew :integration-tests:liveTest -Dlive.stage=N`, sechs Testklassen mit elf
+acht Stufen vorbereitet (`./gradlew :integration-tests:liveTest -Dlive.stage=N`, sieben Testklassen mit zwölf
 Testfällen): 1 Chat, 2 Embeddings mit einem Text, 3 Embeddings mit Array-Eingabe, 4 tatsächliche
-Embedding-Dimension, 5 MediaWiki, 6 KeePassRPC, 7 Confluence über KeePass. Der Auftraggeber führt die Stufen
+Embedding-Dimension, 5 MediaWiki, 6 KeePassRPC, 7 Confluence über KeePass, 8 Satzanalyse. Der Auftraggeber führt die Stufen
 nacheinander aus; das Ergebnisprotokoll dort hält fest, welche Stufe gelaufen ist. Bis dahin gilt jede Zeile
 der folgenden Tabelle unverändert; nach jedem echten Ergebnis wird nur die tatsächlich verifizierte
 Fähigkeit aus der Spalte UNVERIFIED gestrichen.

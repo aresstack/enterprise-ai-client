@@ -23,7 +23,6 @@ public final class ArgumentProjection {
     /** Version of the stored rule format. */
     static final int FORMAT_VERSION = 1;
 
-    private static final ArgumentProjection NONE = new ArgumentProjection(Collections.<ArgumentRule>emptyList());
 
     private final List<ArgumentRule> rules;
 
@@ -33,7 +32,7 @@ public final class ArgumentProjection {
 
     /** No searchable arguments. */
     public static ArgumentProjection none() {
-        return NONE;
+        return new ArgumentProjection(Collections.<ArgumentRule>emptyList());
     }
 
     public static ArgumentProjection of(ArgumentRule... rules) {
@@ -42,7 +41,7 @@ public final class ArgumentProjection {
 
     public static ArgumentProjection of(List<ArgumentRule> rules) {
         if (rules == null || rules.isEmpty()) {
-            return NONE;
+            return none();
         }
         for (ArgumentRule rule : rules) {
             if (rule == null) {
@@ -59,7 +58,7 @@ public final class ArgumentProjection {
      */
     public static ArgumentProjection parse(String json) {
         if (json == null || json.trim().isEmpty()) {
-            return NONE;
+            return none();
         }
         Map<String, Object> root = Json.parseObject(json);
         Integer version = Json.integer(root, "version");

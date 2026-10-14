@@ -24,6 +24,7 @@ kein Use Case und keine Oberfläche den Katalog; ein späterer Fact-Sheet-Bereic
 | `FACT_TYPE` | `TYPE_ID` (z. B. `ACRONYM`, `BUSINESS_RULE`) | Beschreibung, aktuelle `SCHEMA_VERSION`, optionales JSON-Schema (gespeichert, nicht durchgesetzt) |
 | `METADATA_FACT` | `FACT_ID` (UUID) | FK `RESOURCE_ID`, FK `TYPE_ID`, `SCHEMA_VERSION`, `PAYLOAD` (JSON), optional `FACT_ROLE`, Herkunft, Prüfstatus, optionaler Anker, Zeitstempel |
 | `EXTRACTION_RUN` | (`RESOURCE_ID`, `EXTRACTOR_ID`) | letzter abgeschlossener Lauf eines Extractors: `EXTRACTOR_VERSION`, analysierte Revision, `CONTENT_HASH`, `COMPLETED_AT` (seit Schema 2) |
+| `FACT_ARGUMENT` | (`FACT_ID`, `ARGUMENT_ROLE`, `ARGUMENT_ORDINAL`) | suchbare Argumente eines Facts: Rolle, Verweis `VALUE_FACT_ID` auf einen anderen Fact oder normalisierter Wert `NORMALIZED_VALUE`; aus dem Payload abgeleitet (seit Schema 3, #108) |
 | `FACT_STORE_SCHEMA` | `VERSION` | angewandte Migrationen |
 
 Indizes: `IDX_FACT_RESOURCE_TYPE (RESOURCE_ID, TYPE_ID)` für das Fact Sheet einer Ressource und
@@ -56,8 +57,17 @@ angefasst, sondern mit `STORAGE` abgelehnt.
 | `fact(id)`, `save`, `removeFact` | Primärschlüssel |
 | `registerType`, `type`, `types` | `FACT_TYPE` |
 
-Felder im JSON-Payload sind nicht indiziert. Fragen wie "alle Ressourcen mit Akronym X" brauchen eine eigene,
-normalisierte Suchprojektion (z. B. `FACT_SEARCH_TERM`); sie ist ein späterer Ausbau.
+| `factsWithArguments(type, conditions)` | `IDX_ARGUMENT_ROLE_VALUE (ARGUMENT_ROLE, NORMALIZED_VALUE, FACT_ID)` je Wert-Bedingung, `IDX_ARGUMENT_REFERENCE (VALUE_FACT_ID, FACT_ID)` (oder der Index des Fremdschlüssels) je Verweis-Bedingung |
+| `argumentsOf(id)` | Primärschlüssel von `FACT_ARGUMENT` |
+| `factsReferencing(id)` | `IDX_ARGUMENT_REFERENCE` |
+
+Der Payload selbst ist nicht indiziert. Suchbar wird ein Feld nur über die **Argument-Projektion** seines Typs
+(`ArgumentProjection`, gespeichert in `FACT_TYPE.ARGUMENT_PROJECTION`, versioniert mit der Typ-Version): deklarative
+Regeln, welcher Pfad im Payload welche Rolle füllt, ob dort ein Verweis (Fact-Id) oder ein Wert steht und welchen Typ
+ein Verweis haben muss. Der Store leitet die Argumente bei jedem Schreiben in derselben Transaktion ab und prüft jeden
+Verweis (existiert, gleiche Ressource, verlangter Typ, nicht der Fact selbst, sonst `INVALID_REFERENCE`). Eine neue
+Projektion unter höherer Typ-Version leitet die Argumente der vorhandenen Facts neu ab; `rebuildArguments()` tut das
+für alle. Argumente werden nie für sich bearbeitet.
 
 ## Schreiben, Ersetzen, Löschen
 
@@ -72,6 +82,8 @@ normalisierte Suchprojektion (z. B. `FACT_SEARCH_TERM`); sie ist ein späterer A
   Extractors an der Ressource, auch ohne Facts. `extractionRun(resource, extractorId)` liest ihn. Ob eine Analyse
   aktuell ist, entscheidet dieser Lauf, nicht die vorhandenen Facts: geprüfte Facts überleben ihren Lauf absichtlich,
   und eine Seite ohne Funde hat gar keine.
+- Ersetzen behält alte Facts, auf die ein bleibender Fact (etwa ein geprüftes Ereignis) noch verweist, samt allem,
+  worauf sie selbst verweisen. Ein Fact, auf den noch verwiesen wird, lässt sich nicht einzeln löschen (`CONFLICT`).
 - Löschen geschieht nur ausdrücklich: `removeFact`, `removeResource` (Ressource mit allen Facts, auch manuellen) und
   `removeSource` (alle mit dieser `SourceAddress` registrierten Ressourcen). Die Fremdschlüssel sind `RESTRICT`,
   nichts kaskadiert. Das Entfernen einer Quelle aus dem Wissensindex (`IndexKnowledgeUseCase.removeSource`) lässt den
@@ -101,6 +113,37 @@ abbildet. Typen werden zur Laufzeit registriert:
   `replaceAutomaticFacts` aus; manuelle und geprüfte Facts bleiben.
 - Satzgrenzen kommen aus dem OpenNLP-Satzmodell der Sprache, wenn es installiert ist, sonst aus dem regelbasierten
   Splitter; es wird nichts heruntergeladen.
+
+## Satzanalyse: Erwähnungen, Handlungen, Relationen (#108)
+
+Pilot, standardmäßig aus (Einstellungen > Index > „Satzanalyse (Pilot)“, `textMining.statements.*`). Eine im
+Lesebereich geöffnete Seite wird nach dem Anzeigen auf einem eigenen Hintergrund-Thread Absatz für Absatz an das
+eingestellte Chat-Modell gegeben (Sätze mit nummerierten Wörtern, Antwort als JSON mit Wortbereichen).
+`StatementValidator` behält nur, was wörtlich im Satz steht: Wortlaut und Wortbereich müssen passen (eindeutig
+reparierbar, sonst verworfen), Teilnehmer, Eigenschaften und Reihenfolgen stehen im selben Satz wie das Prädikat
+(Regel des Prototyps), Verneinung, Modalverb und Bedingung müssen ebenfalls im Satz stehen. Pronomen bleiben
+unaufgelöst (`UNRESOLVED_REFERENCE`). Optional prüft eine zweite kurze Frage jede Aussage mit Ja/Nein: Nein verwirft
+sie, Ja ergibt `MODEL_VALIDATED`, Unsicher `UNCERTAIN`. Ist ein lokales Wortarten-Modell installiert, muss das
+Prädikat ein Verb sein.
+
+| Typ | Payload (Auszug) | Argumente |
+|---|---|---|
+| `MENTION` | `surfaceForm`, `lemmaCandidate {value, status: PROPOSED_UNVERIFIED}`, `normalized {value, method}`, `pronoun`, `status`, Satzspanne | `TERM` (Wert), `STATUS` |
+| `EVENT` | `predicate {surfaceForm, parts, lemmaCandidate, normalized, verbal}`, `participants [{role, mention, …}]`, `context`, `qualifiers`, `status`, `evidence` (Satz, höchstens 300 Zeichen) | `PREDICATE`, je Teilnehmer seine Rolle (`ACTOR`, `AFFECTED_OBJECT`, `RECIPIENT`, `INSTRUMENT`, `LOCATION`) als Verweis auf die `MENTION`, `STATUS`, `QUALIFIER` (`NEGATED`, `MODAL`, `CONDITIONAL`) |
+| `RELATION` | `kind` (`ATTRIBUTE`, `STATE`, `BEFORE`), `subject`/`object` (Verweis auf `MENTION` bzw. `EVENT`), `value`, `context`, `status` | `PROPERTY`, `SUBJECT`, `OBJECT`, `VALUE`, `STATUS`, `QUALIFIER` |
+
+Eine `MENTION` ist ein Vorkommen in einer Dokumentfassung, keine Begriffsidentität: gleiche Begriffe an zwei Stellen
+sind zwei Erwähnungen. Ein fester Mehrwortbegriff ist eine Erwähnung. Die Grundform ist ein Vorschlag des Modells
+(ungeprüft, es gibt kein deutsches Lemma-Modell); der Suchwert (`TermNormalizer`, Version 1) nennt sein Verfahren.
+Rollenfragen beantwortet `FactStatementQueries` über die Argumente: „Wer löst Zahlungen aus?“ sucht Ereignisse mit
+`PREDICATE = auslösen` und `AFFECTED_OBJECT = zahlung` und liest genau dort den `ACTOR`. Ein Begriff, der im selben
+Satz eine andere Rolle hat (der geprüfte Beleg), wird so nie zum Akteur eines anderen Ereignisses.
+
+Ob eine Seite neu analysiert wird, entscheidet der vermerkte Lauf (`EXTRACTION_RUN`, Extractor
+`sentence-statements`); die Version enthält Modell, Prompt, Prüfung, Satz- und Wortarten-Modell, Regeln und Grenzen.
+Scheitert ein Absatz, wird nichts gespeichert. Die Auswertung auf 50 erfundenen Sätzen (`StatementEvaluation`,
+`evaluation-de.json`) misst Präzision und Recall je Ebene, falsche Rollen und verbotene Aussagen; mit dem echten
+Modell läuft sie als Stufe 8 der [Live-Verifikation](live-verifikation.md).
 
 ## Nebenläufigkeit
 

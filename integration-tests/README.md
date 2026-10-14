@@ -52,7 +52,7 @@ AP22 `RagShellIntegrationTest` (A + RAG ohne Composition Root), AP23 `Applicatio
 ## Live-Lauf gegen echte Dienste (standardmäßig aus, UNVERIFIED)
 
 Der Task `liveTest` (Source-Set `src/liveTest/java`) ist nicht Teil von `check`; `check` kompiliert ihn nur.
-Er ist in sieben Stufen gegliedert (Reihenfolge des Auftraggebers), die `-Dlive.stage` auswählt: eine Stufe
+Er ist in acht Stufen gegliedert (Reihenfolge des Auftraggebers), die `-Dlive.stage` auswählt: eine Stufe
 (`-Dlive.stage=3`), eine Liste (`-Dlive.stage=2,3`) oder ein Bereich (`-Dlive.stage=1-4`); ohne Angabe laufen
 alle. Jeder Test wird übersprungen (nicht rot), wenn seine Parameter fehlen. Adressen und Namen kommen als
 `-Dlive.*`, Secrets ausschließlich aus Umgebungsvariablen; nichts davon wird ausgegeben. Jede Ausgabe beginnt
@@ -71,6 +71,7 @@ GitHub-Actions-Workflow „Live-Verifikation“ (`workflow_dispatch`, Secrets un
 | 5 | `LiveMediaWikiIT` (discover, load, Indexierung, Wiki-Suche) | `-Dlive.wiki.apiUrl=https://…/w -Dlive.wiki.startPoint=Titel` (optional `-Dlive.wiki.siteKey=… -Dlive.wiki.user=… -Dlive.wiki.maxDepth=0 -Dlive.wiki.maxResources=20`) | `ENTERPRISE_AI_LIVE_WIKI_PASSWORD` (nur mit Benutzer) |
 | 6 | `LiveKeePassIT` (Pairing über den Dialog der Anwendung, Eintrag lesen, zweite Auflösung ohne Pairing) | `-Dlive.keepass.entry=Titel` (optional `-Dlive.keepass.port=12546 -Dlive.keepass.host=127.0.0.1 -Dlive.keepass.origin=… -Dlive.keepass.clientId=… -Dlive.keepass.pairingKeyFile=…`) | Einmal-Passwort im Dialog (KeePass zeigt es erst beim Verbinden, vorab übergeben geht nicht) |
 | 7 | `LiveConfluenceKeePassIT` (discover und load am Startpunkt mit Zugangsdaten aus KeePass, CQL-Suche) | `-Dlive.confluence.baseUrl=https://…/wiki -Dlive.confluence.startPoint=space:KEY -Dlive.confluence.credentialRef=KeePass-Titel` (optional `-Dlive.confluence.allowInsecureHttp=true -Dlive.confluence.searchSpaceKey=KEY -Dlive.confluence.query=… -Dlive.confluence.maxDepth=0 -Dlive.confluence.maxResources=20`) | wie 6 |
+| 8 | `LiveStatementEvaluationIT` (Satzanalyse #108 auf 50 erfundenen Sätzen: Präzision und Recall je Ebene, falsche Rollen, verbotene Aussagen) | wie 1 (optional `-Dlive.statements.verify=false`) | `ENTERPRISE_AI_LIVE_API_KEY` |
 
 Beispiel (Stufen 1 bis 4):
 
