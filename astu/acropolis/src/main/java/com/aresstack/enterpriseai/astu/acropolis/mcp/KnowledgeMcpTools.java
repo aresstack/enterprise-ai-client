@@ -67,10 +67,11 @@ public final class KnowledgeMcpTools {
         }
         this.settings = settings == null ? KnowledgeToolSettings.defaults() : settings;
         this.search = new KnowledgeSearchTool(retrieval, live, documents::catalog, enabled, this.settings);
-        this.read = new KnowledgeReadTool(documents, live, this.settings);
+        ResolveKnowledgeAddressUseCase addresses = new ResolveKnowledgeAddressUseCase(documents::catalog);
+        this.read = new KnowledgeReadTool(documents, live, addresses, this.settings);
         this.attachments = new KnowledgeAttachmentsTool(new ListKnowledgeAttachmentsUseCase(documents::catalog),
                 this.settings);
-        this.resolveUrl = new KnowledgeResolveUrlTool(new ResolveKnowledgeAddressUseCase(documents::catalog));
+        this.resolveUrl = new KnowledgeResolveUrlTool(addresses);
     }
 
     public KnowledgeToolSettings settings() {

@@ -107,6 +107,26 @@ public class ConfluenceLinksTest {
     }
 
     @Test
+    public void aBookmarkLikeValueOfThisSourceIsReadAsItsWebAddress() throws Exception {
+        FakeConfluence confluence = new FakeConfluence();
+        ConfluenceKnowledgeSource source = new ConfluenceKnowledgeSource(SourceAddress.of("confluence-dc"),
+                ConfluenceConfig.builder(FakeConfluence.BASE).credentialRef(RecordingSecretProvider.REF).build(),
+                confluence, new RecordingSecretProvider());
+        String bookmark = "confluence://confluence.example.org/wiki/spaces/DEV/pages/456/Some+Title";
+
+        assertTrue(ConfluenceLinks.addressPattern().matcher(bookmark).matches());
+        assertEquals(id("456"), source.resolveAddress(bookmark));
+        assertNull("another Confluence keeps its bookmarks",
+                source.resolveAddress("confluence://other.example.org/wiki/spaces/DEV/pages/456"));
+        assertNull("prefix of a longer locator only",
+                source.resolveAddress("confluence://confluence.example.org/wikipedia/spaces/DEV/pages/456"));
+        assertEquals(BASE + "/spaces/DEV/pages/1", ConfluenceLinks.webAddressOf(
+                "confluence://confluence.example.org/wiki/spaces/DEV/pages/1", "confluence.example.org/wiki", BASE));
+        assertEquals("https://x.example.org/a", ConfluenceLinks.webAddressOf("https://x.example.org/a",
+                "confluence.example.org/wiki", BASE));
+    }
+
+    @Test
     public void theViewPointsPageLinksAtTheirContentIdAndServerBaseLinksAtTheConfiguredBase() {
         String server = "http://wiki.invalid:8090/wiki";
         ConfluencePageView view = ConfluencePageView.of("<p>"

@@ -37,12 +37,38 @@ final class ConfluenceLinks {
     }
 
     /**
-     * Adressmuster des Confluence-Quelltyps: eine vollständige HTTP(S)-Webadresse. Welcher konkreten Confluence die
-     * Adresse gehört, entscheidet erst {@link #parse(String, String)} mit deren Basis-URL. Dadurch dürfen mehrere
-     * Confluence-Quellen dasselbe Pattern matchen und werden anschließend jeweils mit Source-Hint aufgelöst.
+     * Adressmuster des Confluence-Quelltyps: eine vollständige HTTP(S)-Webadresse oder ein Bookmark-artiger Wert mit
+     * dem Schema der Quelle ({@code confluence://<locator>/spaces/KEY/pages/123/...}, #109). Welcher konkreten
+     * Confluence die Adresse gehört, entscheidet erst {@link #parse(String, String)} mit deren Basis-URL. Dadurch
+     * dürfen mehrere Confluence-Quellen dasselbe Pattern matchen und werden anschließend jeweils mit Source-Hint
+     * aufgelöst.
      */
     static Pattern addressPattern() {
-        return Pattern.compile("^https?://[^\\s]+$", Pattern.CASE_INSENSITIVE);
+        return Pattern.compile("^(?:https?|" + ConfluenceIds.SCHEME + ")://[^\\s]+$", Pattern.CASE_INSENSITIVE);
+    }
+
+    /**
+     * Turn a bookmark-like value of this source ({@code confluence://<locator>/<path>}) into the web address under
+     * {@code base} ({@code <base>/<path>}), so that {@link #parse} reads the usual page forms behind it. Return any
+     * other value unchanged; a bookmark of another Confluence stays foreign.
+     *
+     * @param locator the canonical locator of the source (base URL without scheme)
+     */
+    static String webAddressOf(String address, String locator, String base) {
+        if (address == null || locator == null || base == null) {
+            return address;
+        }
+        String trimmed = address.trim();
+        String prefix = ConfluenceIds.SCHEME + "://" + locator;
+        if (!trimmed.regionMatches(true, 0, prefix, 0, prefix.length())) {
+            return address;
+        }
+        String rest = trimmed.substring(prefix.length());
+        if (!rest.isEmpty() && rest.charAt(0) != '/' && rest.charAt(0) != '?' && rest.charAt(0) != '#') {
+            return address; // only a prefix of a longer locator
+        }
+        String root = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        return root + rest;
     }
 
     /**

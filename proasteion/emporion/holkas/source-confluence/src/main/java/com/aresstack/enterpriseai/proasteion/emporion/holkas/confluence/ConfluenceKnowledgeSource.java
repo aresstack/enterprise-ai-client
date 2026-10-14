@@ -303,7 +303,10 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         });
     }
 
-    /** Jede HTTP(S)-Adresse; ob sie zu dieser Confluence gehört, entscheidet erst {@link #resolveAddress}. */
+    /**
+     * Jede HTTP(S)-Adresse und jeder Bookmark-artige Wert mit dem Confluence-Schema; ob sie zu dieser Confluence
+     * gehört, entscheidet erst {@link #resolveAddress}.
+     */
     @Override
     public Pattern addressPattern() {
         return addressPattern;
@@ -316,7 +319,9 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
      */
     @Override
     public KnowledgeResourceId resolveAddress(String address) throws KnowledgeSourceException {
-        final ConfluenceLinks.Target target = ConfluenceLinks.parse(address, config.baseUrl().toString());
+        String base = config.baseUrl().toString();
+        final ConfluenceLinks.Target target = ConfluenceLinks.parse(
+                ConfluenceLinks.webAddressOf(address, locator, base), base);
         if (target == null) {
             return null;
         }

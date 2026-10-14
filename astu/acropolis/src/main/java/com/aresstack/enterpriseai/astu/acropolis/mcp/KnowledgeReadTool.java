@@ -3,14 +3,17 @@ package com.aresstack.enterpriseai.astu.acropolis.mcp;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeBookmarkIds;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentNotIndexedException;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeResourceUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeResourceUseCase.Passage;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeResourceUseCase.ResolvedResource;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolvedKnowledgeLink;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgePassageId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceRef;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
@@ -19,6 +22,8 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 
 /**
  * {@code knowledge_read(id)}: Resource-Resolver (corenth: Bookmark statt Textkopie). Die ID eines Suchtreffers
@@ -28,7 +33,8 @@ import java.util.List;
  * dem Index beantwortet: Referenz (id, url, Revision, Inhalts-Hash) und die aufbereiteten Passagen mit ihren IDs. Die
  * Quelle wird nur bei unbekanntem oder geändertem Stand gefragt, auf dem Thread des Agenten (an der Vorlade-Warteschlange
  * vorbei), danach wird indexiert und wieder aus dem Index geliefert. Bei einer Passage-ID kommen diese Passage und
- * ihre Nachbarn.
+ * ihre Nachbarn. Scheitert das Lesen eines nichtkanonischen Bookmarks oder einer Webadresse an der Adresse (nicht
+ * gefunden, unbekannt), löst der Adress-Resolver sie einmal auf und das Werkzeug liest die kanonische ID (#109).
  */
 final class KnowledgeReadTool implements McpToolHandler {
 
@@ -44,12 +50,14 @@ final class KnowledgeReadTool implements McpToolHandler {
 
     private final LoadKnowledgeDocumentUseCase documents;
     private final SearchDrivenIndexingUseCase live;
+    private final ResolveKnowledgeAddressUseCase addresses;
     private final KnowledgeToolSettings settings;
 
     KnowledgeReadTool(LoadKnowledgeDocumentUseCase documents, SearchDrivenIndexingUseCase live,
-                      KnowledgeToolSettings settings) {
+                      ResolveKnowledgeAddressUseCase addresses, KnowledgeToolSettings settings) {
         this.documents = documents;
         this.live = live;
+        this.addresses = addresses;
         this.settings = settings;
     }
 
@@ -83,27 +91,128 @@ final class KnowledgeReadTool implements McpToolHandler {
                 id = KnowledgeResourceId.of(trimmed);
             }
         } catch (IllegalArgumentException invalid) {
-            return McpToolResult.error("Invalid id '" + ToolText.oneLine(rawId, 120)
+            McpToolResult recovered = recover(trimmed, null);
+            return recovered != null ? recovered : McpToolResult.error("Invalid id '" + ToolText.oneLine(rawId, 120)
                     + "': copy the id of a knowledge_search hit or a page bookmark — example: " + EXAMPLE);
         }
+        Attempt first = read(id, passage);
+        if (!first.addressProblem || passage != null) {
+            return first.result;
+        }
+        McpToolResult recovered = recover(trimmed, id);
+        return recovered != null ? recovered : first.result;
+    }
+
+    /**
+     * #109: repair a plausible but non-canonical address after a failed read through the address resolver, never
+     * through own path rules. A web address asks every matching source and reads only a single candidate; a
+     * bookmark-like value asks only the configured source whose address is its longest prefix. Read the resolved
+     * resource exactly once.
+     *
+     * @param failed the id the first read used, {@code null} if the input was no valid id
+     * @return the outcome, or {@code null} if the input is no address the resolver could know
+     */
+    private McpToolResult recover(String input, KnowledgeResourceId failed) {
+        if (!KnowledgeBookmarkIds.isBookmark(input)) {
+            return null;
+        }
+        if (isWebAddress(input)) {
+            List<ResolvedKnowledgeLink> candidates = addresses.resolve(input);
+            if (candidates.size() == 1) {
+                return readResolved(input, candidates.get(0).resourceId(), failed);
+            }
+            if (candidates.size() > 1) {
+                return McpToolResult.error(ambiguous(input, candidates));
+            }
+            return McpToolResult.error("No connected knowledge source owns the address '"
+                    + ToolText.oneLine(input, FIELD_CHARS) + "'. Treat it as an external web page or search "
+                    + "instead — example: knowledge_search query=\"<topic>\"");
+        }
+        Optional<SourceAddress> source = addresses.sourceOf(input);
+        if (!source.isPresent()) {
+            return null;
+        }
+        Optional<ResolvedKnowledgeLink> resolved;
+        try {
+            resolved = addresses.resolve(input, source.get());
+        } catch (KnowledgeSourceException e) {
+            if (e.kind() == KnowledgeSourceException.Kind.ACCESS_DENIED
+                    || e.kind() == KnowledgeSourceException.Kind.UNAVAILABLE) {
+                return McpToolResult.error(describe(e.kind(),
+                        failed == null ? ToolText.oneLine(input, FIELD_CHARS) : failed.value()));
+            }
+            resolved = Optional.empty();
+        }
+        if (resolved.isPresent()) {
+            return readResolved(input, resolved.get().resourceId(), failed);
+        }
+        return McpToolResult.error("The resource could not be read under '" + ToolText.oneLine(input, FIELD_CHARS)
+                + "'. The input looks like a non-canonical knowledge address of the source '"
+                + source.get().value() + "' but matches no resource of it. Use an id from knowledge_search or "
+                + "knowledge_resolve_url — example: " + EXAMPLE);
+    }
+
+    private McpToolResult readResolved(String input, KnowledgeResourceId resolved, KnowledgeResourceId failed) {
+        if (resolved.equals(failed)) {
+            return null; // the resolver names the id that just failed: keep that error, never loop
+        }
+        Attempt second = read(resolved, null);
+        if (second.result.isError()) {
+            return second.result;
+        }
+        return McpToolResult.ok("note: '" + ToolText.oneLine(input, FIELD_CHARS) + "' is no canonical id; resolved "
+                + "to " + resolved.value() + "\n" + second.result.getText());
+    }
+
+    private static String ambiguous(String input, List<ResolvedKnowledgeLink> candidates) {
+        StringBuilder text = new StringBuilder("The address '").append(ToolText.oneLine(input, FIELD_CHARS))
+                .append("' belongs to ").append(candidates.size())
+                .append(" sources; none was picked. Read one of these ids with knowledge_read:");
+        for (ResolvedKnowledgeLink candidate : candidates) {
+            text.append("\nsource: ").append(candidate.sourceId().value())
+                    .append(" id: ").append(candidate.resourceId().value());
+        }
+        return text.toString();
+    }
+
+    private static boolean isWebAddress(String input) {
+        String lower = input.toLowerCase(Locale.ROOT);
+        return lower.startsWith("http://") || lower.startsWith("https://");
+    }
+
+    /** One read of a resource id; {@code addressProblem} says whether the failure may be a wrong address. */
+    private Attempt read(KnowledgeResourceId id, KnowledgePassageId passage) {
         ResolvedResource resolved;
         try {
             resolved = new ResolveKnowledgeResourceUseCase(live.prefetch().indexing(), live.prefetch(), documents)
                     .resolve(id);
         } catch (KnowledgeDocumentNotIndexedException e) {
-            return McpToolResult.error("Document '" + id.value() + "' is not available. Search first, then read a "
-                    + "hit — example: knowledge_search query=\"Urlaubsantrag\", then knowledge_read " + EXAMPLE);
+            return new Attempt(McpToolResult.error("Document '" + id.value() + "' is not available. Search first, "
+                    + "then read a hit — example: knowledge_search query=\"Urlaubsantrag\", then knowledge_read "
+                    + EXAMPLE), true);
         } catch (KnowledgeSourceException e) {
-            return McpToolResult.error(describe(e.kind(), id));
+            boolean address = e.kind() == KnowledgeSourceException.Kind.NOT_FOUND
+                    || e.kind() == KnowledgeSourceException.Kind.UNSUPPORTED;
+            return new Attempt(McpToolResult.error(describe(e.kind(), id.value())), address);
         } catch (RuntimeException e) {
-            return McpToolResult.error("Reading '" + id.value() + "' failed. Try again or read another hit — "
-                    + "example: " + EXAMPLE);
+            return new Attempt(McpToolResult.error("Reading '" + id.value() + "' failed. Try again or read another "
+                    + "hit — example: " + EXAMPLE), false);
         }
-        return McpToolResult.ok(render(resolved, passage));
+        return new Attempt(McpToolResult.ok(render(resolved, passage)), false);
     }
 
-    private static String describe(KnowledgeSourceException.Kind kind, KnowledgeResourceId id) {
-        String document = "'" + id.value() + "'";
+    private static final class Attempt {
+        final McpToolResult result;
+        final boolean addressProblem;
+
+        Attempt(McpToolResult result, boolean addressProblem) {
+            this.result = result;
+            this.addressProblem = addressProblem;
+        }
+    }
+
+    private static String describe(KnowledgeSourceException.Kind kind, String id) {
+        String document = "'" + id + "'";
         switch (kind) {
             case NOT_FOUND:
                 return "Document " + document + " was not found (deleted or moved). Search again — example: "

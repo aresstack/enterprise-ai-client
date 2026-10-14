@@ -87,6 +87,36 @@ public final class ResolveKnowledgeAddressUseCase {
         return Collections.unmodifiableList(resolved);
     }
 
+    /**
+     * The configured source whose address is the longest prefix of {@code value} ending at a path boundary: for
+     * {@code confluence://cf.intern/confluence/spaces/KEY/pages/1} the source {@code confluence://cf.intern/confluence}
+     * rather than {@code confluence://cf.intern}. Compare scheme and locator without case. Empty without a match.
+     */
+    public Optional<SourceAddress> sourceOf(String value) {
+        String normalized = normalize(value);
+        SourceAddress best = null;
+        for (SourceAddress candidate : currentCatalog().ids()) {
+            String prefix = candidate.value();
+            if (prefix.length() > normalized.length()
+                    || !normalized.regionMatches(true, 0, prefix, 0, prefix.length())
+                    || !isBoundary(normalized, prefix.length())) {
+                continue;
+            }
+            if (best == null || prefix.length() > best.value().length()) {
+                best = candidate;
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
+    private static boolean isBoundary(String value, int at) {
+        if (at >= value.length()) {
+            return true;
+        }
+        char next = value.charAt(at);
+        return next == '/' || next == '?' || next == '#' || value.charAt(at - 1) == '/';
+    }
+
     private KnowledgeSourceRegistration registration(SourceAddress sourceId) {
         return sourceId == null ? null : currentCatalog().find(sourceId);
     }
