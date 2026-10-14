@@ -106,6 +106,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String RESOURCES_PAGES = "Seiten";
     static final String RESOURCES_SOURCES = "Verwendete Quellen";
     static final String RESOURCES_EMPTY = "Noch keine Ressourcen in diesem Chat";
+    static final String COPY_URL = "URL kopieren";
 
     static final String PHASE_PREFIX = "Phase: ";
     static final String PHASE_TOOLTIP = "Agentenphase: bestimmt, welche Werkzeuge der Agent benutzen darf. Nur du "
@@ -136,6 +137,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     /** Die Ressourcen des Chats (rechts neben „Denken“): Übersicht, Klick = Verweis-Chip. */
     private final ComposerButton resourcesButton;
     private ChatResourceReader resourceReader;
+    /** Where "URL kopieren" puts the address; the system clipboard unless a test replaces it. */
+    private java.util.function.Consumer<String> clipboard = text -> java.awt.Toolkit.getDefaultToolkit()
+            .getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(text), null);
     private JPopupMenu lastResourceContextMenu;
     /** Zuletzt gezählte Ressourcen (gezählt wird nur bei fertigen Zeilen, nicht je Tastendruck). */
     private int resourceCount;
@@ -1037,7 +1041,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     }
 
     private JPopupMenu resourcesMenu() {
-        JPopupMenu menu = new JPopupMenu();
+        JPopupMenu menu = new ResourcesPopupMenu();
         List<ChatResource> resources = resources();
         List<ChatResource> chosen = attachmentStrip.getReferences();
         if (resources.isEmpty()) {
@@ -1091,8 +1095,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     }
 
     /**
-     * Das Kontextmenü eines Eintrags: „Im Lesebereich öffnen“, ohne Leseweg deaktiviert. Hängt nichts an; die
-     * Übersicht schließt, das Kontextmenü erscheint an derselben Stelle.
+     * Das Aktionsmenü eines Eintrags: „Im Lesebereich öffnen“ (ohne Leseweg deaktiviert) und „URL kopieren“ (nur mit
+     * echter Browser-Adresse). Hängt nichts an. Es öffnet als Untermenü direkt rechts neben dem Eintrag; die
+     * Übersicht bleibt dabei offen (Issue #119).
      */
     JPopupMenu resourceContextMenu(final ChatResource resource) {
         JPopupMenu context = new JPopupMenu();
@@ -1100,19 +1105,85 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         open.setEnabled(canRead(resource));
         open.addActionListener(event -> resourceReader.read(resource));
         context.add(open);
+        final String url = browserUrlOf(resource);
+        JMenuItem copy = new JMenuItem(COPY_URL);
+        copy.setEnabled(url != null);
+        copy.addActionListener(event -> clipboard.accept(url));
+        context.add(copy);
         return context;
+    }
+
+    /**
+     * The address a user can paste into a browser, or {@code null}: only a used source carries its stored location,
+     * and only an absolute http(s) address counts. A page bookmark, a resource id or a file name never pose as a URL.
+     */
+    static String browserUrlOf(ChatResource resource) {
+        if (resource.kind() != ChatResource.Kind.SOURCE) {
+            return null;
+        }
+        String detail = resource.detail();
+        try {
+            java.net.URI uri = new java.net.URI(detail);
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(java.util.Locale.ROOT);
+            boolean web = scheme.equals("http") || scheme.equals("https");
+            return web && uri.getHost() != null ? detail : null;
+        } catch (java.net.URISyntaxException notAnAddress) {
+            return null;
+        }
+    }
+
+    /** Replace the clipboard target of "URL kopieren" (tests). */
+    void setClipboard(java.util.function.Consumer<String> target) {
+        this.clipboard = target;
     }
 
     private void showResourceContextMenu(ChatResource resource, java.awt.event.MouseEvent event) {
         JPopupMenu context = resourceContextMenu(resource);
         lastResourceContextMenu = context;
         java.awt.Component source = event.getComponent();
-        if (source == null || !source.isShowing() || !resourcesButton.isShowing()) {
+        if (!(source instanceof ResourceMenuItem) || !source.isShowing()
+                || !(source.getParent() instanceof ResourcesPopupMenu)) {
             return;
         }
-        java.awt.Point at = SwingUtilities.convertPoint(source, event.getPoint(), resourcesButton);
-        javax.swing.MenuSelectionManager.defaultManager().clearSelectedPath();
-        context.show(resourcesButton, at.x, at.y);
+        final ResourceMenuItem item = (ResourceMenuItem) source;
+        ResourcesPopupMenu overview = (ResourcesPopupMenu) source.getParent();
+        java.awt.Point at = actionMenuLocation(item);
+        // Keep the overview open while the action menu becomes visible, then select the whole hierarchy so that
+        // mouse, keyboard and Escape treat the action menu as a submenu of the item.
+        overview.keepOpenWhile(() -> context.show(item, at.x, at.y));
+        javax.swing.MenuSelectionManager.defaultManager().setSelectedPath(
+                new javax.swing.MenuElement[]{overview, item, context});
+    }
+
+    /** Where the action menu of an item opens, relative to the item: right next to it, at its top edge. */
+    static java.awt.Point actionMenuLocation(java.awt.Component item) {
+        return new java.awt.Point(item.getWidth(), 0);
+    }
+
+    /**
+     * The overview popup: it stays open while it hosts the action menu of one of its items. Showing a popup makes
+     * it the only selected menu for a moment, which would otherwise close the overview.
+     */
+    static final class ResourcesPopupMenu extends JPopupMenu {
+
+        private boolean keepOpen;
+
+        void keepOpenWhile(Runnable action) {
+            keepOpen = true;
+            try {
+                action.run();
+            } finally {
+                keepOpen = false;
+            }
+        }
+
+        @Override
+        public void menuSelectionChanged(boolean isIncluded) {
+            if (!isIncluded && keepOpen) {
+                return;
+            }
+            super.menuSelectionChanged(isIncluded);
+        }
     }
 
     /** Das zuletzt per Rechtsklick angeforderte Kontextmenü (für Tests ohne Bildschirm). */
