@@ -2,7 +2,9 @@ package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongSupplier;
 
@@ -312,6 +314,75 @@ public final class ChatShellModel {
         }
         entry.setSources(sources);
         fireEntryUpdated(entry);
+    }
+
+    /**
+     * Add sources to an answer that may already have some (issue #118): resources the model read through a tool
+     * after the RAG sources were attached. A passage (with chunk id) is new unless the same passage is present; a
+     * whole resource (without chunk id) is new unless any passage of it or the resource itself is present (same
+     * knowledge source and resource id, or same location without ids). A new source keeps its number unless that
+     * number is taken, then it gets the next free one. Unlike {@link #attachSources} this may be called repeatedly, also after the answer completed.
+     *
+     * @return whether the answer changed
+     */
+    public boolean mergeSources(TranscriptEntry entry, List<SourceReference> sources) {
+        if (entry == null || sources == null) {
+            throw new IllegalArgumentException("entry and sources must not be null");
+        }
+        if (!entries.contains(entry) || entry.getAuthor() != TranscriptEntry.Author.ASSISTANT) {
+            throw new IllegalArgumentException("entry is not an assistant message of this model");
+        }
+        List<SourceReference> merged = new ArrayList<SourceReference>(entry.getSources());
+        Set<String> keys = new HashSet<String>();
+        Set<Integer> numbers = new HashSet<Integer>();
+        int highest = 0;
+        for (SourceReference source : merged) {
+            keys.add(identity(source));
+            keys.add(passage(source));
+            numbers.add(source.getNumber());
+            highest = Math.max(highest, source.getNumber());
+        }
+        boolean changed = false;
+        for (SourceReference source : sources) {
+            if (source == null) {
+                continue;
+            }
+            String key = source.getChunkId().isEmpty() ? identity(source) : passage(source);
+            if (keys.contains(key)) {
+                continue;
+            }
+            keys.add(identity(source));
+            keys.add(passage(source));
+            SourceReference added = source;
+            if (!numbers.add(source.getNumber())) {
+                added = renumbered(source, highest + 1);
+                numbers.add(added.getNumber());
+            }
+            highest = Math.max(highest, added.getNumber());
+            merged.add(added);
+            changed = true;
+        }
+        if (changed) {
+            entry.setSources(merged);
+            fireEntryUpdated(entry);
+        }
+        return changed;
+    }
+
+    private static String identity(SourceReference source) {
+        return source.getResourceId().isEmpty()
+                ? "location\u0000" + source.getLocation()
+                : "resource\u0000" + source.getSourceId() + '\u0000' + source.getResourceId();
+    }
+
+    private static String passage(SourceReference source) {
+        return identity(source) + "\u0000chunk\u0000" + source.getChunkId();
+    }
+
+    private static SourceReference renumbered(SourceReference source, int number) {
+        return new SourceReference(number, source.getTitle(), source.getHeading(), source.getLocation(),
+                source.getRevision(), source.getScore(), source.getKeywordRank(), source.getSemanticRank(),
+                source.getSourceId(), source.getResourceId(), source.getChunkId());
     }
 
     /**

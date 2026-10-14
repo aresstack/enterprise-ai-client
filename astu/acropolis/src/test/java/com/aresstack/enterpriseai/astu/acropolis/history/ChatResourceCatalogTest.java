@@ -64,6 +64,20 @@ public class ChatResourceCatalogTest {
         assertTrue(!new ResourceReferenceRecord(ResourceReferenceRecord.KIND_PAGE, " ", "y").isValid());
     }
 
+    /** Issue #118: the same resource id in two knowledge sources names two resources; both stay. */
+    @Test
+    public void sameResourceIdInTwoSourcesStaysTwice() {
+        ChatRecord record = new ChatRecord("c3", 1L);
+        record.getMessages().add(user("Frage", null));
+        record.getMessages().add(answer(source(1, "Seite A", "page:7"),
+                new SourceRecord(2, "Seite B", "", "page:7", "", 0, 0, 0, "other", "page:7", ""),
+                source(3, "Seite A wieder", "page:7")));
+        ChatResourceCatalog catalog = ChatResourceCatalog.of(record);
+        assertEquals(2, catalog.sources().size());
+        assertEquals("wiki", catalog.sources().get(0).getSourceId());
+        assertEquals("other", catalog.sources().get(1).getSourceId());
+    }
+
     private static ChatMessageRecord user(String text, java.util.List<AttachmentRecord> attachments) {
         return new ChatMessageRecord(ChatMessageRecord.ROLE_USER, text, 1L, attachments);
     }

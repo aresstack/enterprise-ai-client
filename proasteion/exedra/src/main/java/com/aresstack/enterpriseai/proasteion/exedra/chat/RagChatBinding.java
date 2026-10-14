@@ -44,6 +44,7 @@ import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.astu.acropolis.tool.FixedAnswerPort;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolContextResource;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolArguments;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolRegistry;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
@@ -698,6 +699,21 @@ public final class RagChatBinding implements ChatShellActions {
             }
 
             @Override
+            public void onToolContext(String toolName, List<ToolContextResource> resources) {
+                if (!KnowledgeAcquisition.deliversContext(toolName)) {
+                    return;
+                }
+                final List<SourceReference> read = describeToolContext(resources);
+                // Record the read pages as sources of the answer, also when the answer completed meanwhile; the
+                // UI executor keeps them ahead of the completion queued after this call (issue #118).
+                uiExecutor.execute(() -> {
+                    if (model.getEntries().contains(request.answer)) {
+                        model.mergeSources(request.answer, read);
+                    }
+                });
+            }
+
+            @Override
             public void onToolExecuted(final String toolName, final String arguments, final String output,
                                        final boolean succeeded) {
                 // Für die Diagnose (Chat-Export): der Aufruf kommt mit der Antwort in den gespeicherten Chat.
@@ -949,9 +965,8 @@ public final class RagChatBinding implements ChatShellActions {
             // Der Wissenskontext steht vor der Antwort fest und bleibt, auch wenn die Antwort scheitert.
             history.knowledgeContextChanged(conversation);
         }
-        if (!request.answer.hasSources()) {
-            model.attachSources(request.answer, describe(ragTurn.sources()));
-        }
+        // Merge, never replace: sources a tool already recorded for this answer stay (issue #118).
+        model.mergeSources(request.answer, describe(ragTurn.sources()));
         request.ragTurn = ragTurn;
         if (request.card != null && !request.cancelRequested) {
             // Nach einem Stop bleibt die Karte bei „Wird abgebrochen …“; der Abbruch des Turns räumt sie weg.
@@ -1027,6 +1042,22 @@ public final class RagChatBinding implements ChatShellActions {
         List<SourceReference> references = new ArrayList<SourceReference>(sources.size());
         for (RagSource source : sources) {
             references.add(describe(source));
+        }
+        return references;
+    }
+
+    /**
+     * Turn the resources a tool delivered as context into display values: numbered from 1 in call order (merging
+     * moves them behind the answer's existing sources), without chunk, score or ranks, located by their browser
+     * address or else their resource id.
+     */
+    List<SourceReference> describeToolContext(List<ToolContextResource> resources) {
+        List<SourceReference> references = new ArrayList<SourceReference>(resources.size());
+        int number = 1;
+        for (ToolContextResource resource : resources) {
+            String location = resource.location().isEmpty() ? resource.resourceId() : resource.location();
+            references.add(new SourceReference(number++, resource.title(), "", location,
+                    revision(resource.revision()), 0d, 0, 0, resource.sourceId(), resource.resourceId(), ""));
         }
         return references;
     }

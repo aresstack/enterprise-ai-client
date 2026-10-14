@@ -2,7 +2,11 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolArguments;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolContextResource;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolOutput;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpContextResource;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolParameter;
@@ -54,6 +58,25 @@ final class McpChatTool implements AiTool {
 
     @Override
     public String execute(String arguments) {
+        return executeWithContext(arguments).text();
+    }
+
+    /** Like {@link #execute(String)}, carrying the resources a successful result delivered as context. */
+    @Override
+    public ToolOutput executeWithContext(String arguments) {
+        McpToolResult result = invoke(arguments);
+        if (result.isError()) {
+            return ToolOutput.text("Fehler: " + result.getText());
+        }
+        List<ToolContextResource> context = new ArrayList<ToolContextResource>();
+        for (McpContextResource resource : result.contextResources()) {
+            context.add(new ToolContextResource(resource.sourceId(), resource.resourceId(), resource.title(),
+                    resource.location(), KnowledgeRevision.of(resource.modifiedAt(), resource.version())));
+        }
+        return new ToolOutput(result.getText(), context);
+    }
+
+    private McpToolResult invoke(String arguments) {
         ToolArguments args = ToolArguments.parse(arguments);
         Map<String, Object> values = new LinkedHashMap<String, Object>();
         for (McpToolParameter parameter : tool.getParameters()) {
@@ -62,8 +85,7 @@ final class McpChatTool implements AiTool {
                 values.put(parameter.getName(), value);
             }
         }
-        McpToolResult result = tool.getHandler().invoke(new McpToolCall(tool.getName(), values));
-        return result.isError() ? "Fehler: " + result.getText() : result.getText();
+        return tool.getHandler().invoke(new McpToolCall(tool.getName(), values));
     }
 
     private static String schema(McpToolContribution tool) {

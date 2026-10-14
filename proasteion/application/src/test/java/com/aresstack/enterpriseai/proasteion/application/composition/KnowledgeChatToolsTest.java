@@ -116,6 +116,42 @@ public class KnowledgeChatToolsTest {
         assertTrue(chat.readResult, chat.readResult.contains("prüft den Code bei jedem Build"));
     }
 
+    /**
+     * Issue #118: a successful knowledge_read names the read resource as context (source and resource id), a search
+     * and a failed read name none.
+     */
+    @Test
+    public void readReportsTheReadResourceAsContextButSearchAndFailedReadDoNot() {
+        final List<String> context = new ArrayList<String>();
+        com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener activity =
+                new com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener() {
+                    @Override
+                    public void onToolCall(String toolName) {
+                    }
+
+                    @Override
+                    public void onToolContext(String toolName,
+                                              List<com.aresstack.enterpriseai.astu.acropolis.tool.ToolContextResource>
+                                                      resources) {
+                        for (com.aresstack.enterpriseai.astu.acropolis.tool.ToolContextResource resource : resources) {
+                            context.add(toolName + "|" + resource.sourceId() + "|" + resource.resourceId());
+                        }
+                    }
+                };
+        ToolRegistry tools = new ToolRegistry(chatTools);
+        tools.execute(KnowledgeMcpTools.KNOWLEDGE_SEARCH, "{\"query\":\"SonarQube\"}", activity);
+        assertTrue(context.toString(), context.isEmpty());
+
+        String id = wiki.idOf("Sonar").value();
+        tools.execute(KnowledgeMcpTools.KNOWLEDGE_READ, "{\"id\":\"" + id + "\"}", activity);
+        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_READ + "|" + wiki.sourceId().value()
+                + "|" + id), context);
+
+        context.clear();
+        tools.execute(KnowledgeMcpTools.KNOWLEDGE_READ, "{\"id\":\"" + id + "-missing\"}", activity);
+        assertTrue(context.toString(), context.isEmpty());
+    }
+
     /** Akzeptanztest 4: eine abgewählte Quelle wird nicht durchsucht. */
     @Test
     public void deselectedSourceIsNotSearched() {

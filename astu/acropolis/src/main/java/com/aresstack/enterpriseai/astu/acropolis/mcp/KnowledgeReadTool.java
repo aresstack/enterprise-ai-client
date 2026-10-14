@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgePassageId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceRef;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpContextResource;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
@@ -21,6 +22,7 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolParameter;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -161,7 +163,7 @@ final class KnowledgeReadTool implements McpToolHandler {
             return second.result;
         }
         return McpToolResult.ok("note: '" + ToolText.oneLine(input, FIELD_CHARS) + "' is no canonical id; resolved "
-                + "to " + resolved.value() + "\n" + second.result.getText());
+                + "to " + resolved.value() + "\n" + second.result.getText(), second.result.contextResources());
     }
 
     private static String ambiguous(String input, List<ResolvedKnowledgeLink> candidates) {
@@ -198,7 +200,15 @@ final class KnowledgeReadTool implements McpToolHandler {
             return new Attempt(McpToolResult.error("Reading '" + id.value() + "' failed. Try again or read another "
                     + "hit — example: " + EXAMPLE), false);
         }
-        return new Attempt(McpToolResult.ok(render(resolved, passage)), false);
+        return new Attempt(McpToolResult.ok(render(resolved, passage), provenance(resolved)), false);
+    }
+
+    /** Name the read resource as context the answer rests on (issue #118), from its reference, not from the text. */
+    private static List<McpContextResource> provenance(ResolvedResource resolved) {
+        KnowledgeResourceRef ref = resolved.ref();
+        return Collections.singletonList(new McpContextResource(ref.sourceId().value(), ref.resourceId().value(),
+                resolved.title(), ref.canonicalUrl() == null ? null : ref.canonicalUrl().toString(),
+                ref.revision().version(), ref.revision().modifiedAt().orElse(null)));
     }
 
     private static final class Attempt {
