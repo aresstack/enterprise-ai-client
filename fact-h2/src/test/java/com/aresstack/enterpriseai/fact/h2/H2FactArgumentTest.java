@@ -90,7 +90,9 @@ public class H2FactArgumentTest {
         assertTrue("the document never says the receipt triggers the payment", store.factsWithArguments(EVENT,
                 Arrays.asList(ArgumentCondition.value("PREDICATE", "auslösen"),
                         ArgumentCondition.value("ACTOR", "beleg"))).isEmpty());
-        assertEquals(Arrays.asList(example.check, example.trigger), ids(store.factsReferencing(example.clerk)));
+        // Both facts may share one creation millisecond; then their order is not defined.
+        assertEquals(new java.util.HashSet<Object>(Arrays.asList(example.check, example.trigger)),
+                new java.util.HashSet<Object>(ids(store.factsReferencing(example.clerk))));
         assertEquals(Collections.singletonList(example.check), ids(store.factsWithArguments(null,
                 Collections.singletonList(ArgumentCondition.reference("AFFECTED_OBJECT", example.receipt)))));
         assertEquals("mentions are searchable by their term", Collections.singletonList(example.receipt),
