@@ -17,6 +17,9 @@ import java.util.Map;
  */
 public final class MarkdownTable {
 
+    /** Largest {@code colspan} HTML allows; larger values count as this. */
+    public static final int MAX_COLSPAN = 1000;
+
     private final List<List<Cell>> rows = new ArrayList<List<Cell>>();
 
     /** Start a new row; following {@link #cell} calls fill it. */
@@ -34,14 +37,16 @@ public final class MarkdownTable {
      * Add a cell to the current row.
      *
      * @param text    visible text of the cell, may be empty
-     * @param colspan columns the cell covers (values below 1 count as 1)
-     * @param rowspan rows the cell covers (values below 1 count as 1)
+     * @param colspan columns the cell covers (below 1 counts as 1, above {@link #MAX_COLSPAN} as that)
+     * @param rowspan rows the cell covers; {@code 0} means all remaining rows as in HTML, below 0 counts as 1, and
+     *                a span never reaches past the last row of the table
      */
     public MarkdownTable cell(String text, int colspan, int rowspan) {
         if (rows.isEmpty()) {
             row();
         }
-        rows.get(rows.size() - 1).add(new Cell(text, Math.max(1, colspan), Math.max(1, rowspan)));
+        rows.get(rows.size() - 1).add(new Cell(text, Math.min(MAX_COLSPAN, Math.max(1, colspan)),
+                rowspan < 0 ? 1 : rowspan));
         return this;
     }
 
@@ -55,7 +60,8 @@ public final class MarkdownTable {
                 while (taken.containsKey(key(row, column))) {
                     column++;
                 }
-                for (int r = row; r < row + cell.rowspan; r++) {
+                int lastRow = cell.rowspan == 0 ? rows.size() : Math.min(rows.size(), row + cell.rowspan);
+                for (int r = row; r < lastRow; r++) {
                     for (int c = column; c < column + cell.colspan; c++) {
                         taken.put(key(r, c), cell.text);
                     }
