@@ -4,3 +4,7 @@ dependencies {
     api project(':source-api')
     api project(':proasteion:emporion:deigma')
 }
+
+dependencies {
+    testImplementation testFixtures(project(':source-api'))
+}

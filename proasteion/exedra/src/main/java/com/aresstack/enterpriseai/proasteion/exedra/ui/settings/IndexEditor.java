@@ -162,6 +162,7 @@ final class IndexEditor {
     private final JCheckBox statementsVerify;
     private final JTextField statementsMaxParagraphs;
     private final JTextField statementsMaxParagraphChars;
+    private final FileAccessEditor fileAccess;
     private final JPanel panel;
 
     IndexEditor(ComicPalette palette) {
@@ -216,8 +217,10 @@ final class IndexEditor {
         statements.note(STATEMENTS_VERIFY_HELP);
         statementsMaxParagraphs = field(statements, STATEMENTS_PARAGRAPHS_LABEL, STATEMENTS_PARAGRAPHS_HELP);
         statementsMaxParagraphChars = field(statements, STATEMENTS_CHARS_LABEL, STATEMENTS_CHARS_HELP);
+        fileAccess = new FileAccessEditor(palette);
         panel = FormRows.column(palette,
                 FormRows.plate("Index", palette.getNavigationBlue(), rows.panel(), palette),
+                fileAccess.panel(),
                 FormRows.plate("Wissenssuche im Chat", palette.getAccentYellow(), search.panel(), palette),
                 FormRows.plate("Laden und Aufbereitung", palette.getNavigationBlue(), preparation.panel(), palette),
                 FormRows.plate("Akronyme im Lesebereich", palette.getAccentYellow(), acronyms.panel(), palette),
@@ -278,6 +281,7 @@ final class IndexEditor {
         statementsVerify.setSelected(form.statementsVerify());
         statementsMaxParagraphs.setText(form.statementsMaxParagraphs());
         statementsMaxParagraphChars.setText(form.statementsMaxParagraphChars());
+        fileAccess.load(form);
     }
 
     void store(SettingsForm.Builder b) {
@@ -309,9 +313,14 @@ final class IndexEditor {
                 .statementsVerify(statementsVerify.isSelected())
                 .statementsMaxParagraphs(statementsMaxParagraphs.getText())
                 .statementsMaxParagraphChars(statementsMaxParagraphChars.getText());
+        fileAccess.store(b);
     }
 
     // Für Tests.
+
+    FileAccessEditor fileAccess() {
+        return fileAccess;
+    }
 
     JTextField indexDirectory() {
         return indexDirectory;

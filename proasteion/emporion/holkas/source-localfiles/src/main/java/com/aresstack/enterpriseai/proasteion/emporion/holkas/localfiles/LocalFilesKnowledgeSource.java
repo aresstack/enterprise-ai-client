@@ -21,6 +21,7 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourceScope;
+import com.aresstack.enterpriseai.source.api.files.LocalFileAccessPolicy;
 
 import java.io.IOException;
 import java.nio.file.FileVisitOption;
@@ -38,6 +39,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Ein lokales Verzeichnis als {@link KnowledgeSourcePort}.
@@ -47,6 +49,9 @@ import java.util.Set;
  *       einzelne Dateien; Verzeichnisse werden bis {@code maxDepth} Ebenen tief gelesen ({@code 0} = nur die Dateien
  *       direkt darin). Versteckte Dateien, Office-Sperrdateien ({@code ~$…}) und Dateien über der Größengrenze
  *       werden übersprungen, ebenso Dateien, deren Endung keinen Dokumenttyp ergibt.</li>
+ *   <li>Zugriff (#120): jede Datei muss nach Auflösen von Links in der Wurzel oder einem anderen freigegebenen Ordner
+ *       der {@link LocalFileAccessPolicy} liegen; ein Link aus der Wurzel hinaus erweitert die Freigabe nicht.
+ *       Include-/Exclude-Muster begrenzen, was gelesen wird.</li>
  *   <li>Resource-IDs: {@code file:<Quell-ID>/<relativer Pfad mit />}; Revision: Änderungszeit und Größe.</li>
  *   <li>Inhalt: Erkennung per {@link ContentDetector}, Extraktion über das erste passende
  *       {@link ResourceExtractor} der {@link ExtractionRegistry}; Überschriften und Code werden als Markdown
@@ -70,9 +75,24 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
     private final ContentDetector detector;
     private final ExtractionRegistry extractors;
     private final long maxFileBytes;
+    private final Supplier<LocalFileAccessPolicy> access;
+    private final FilePatterns patterns;
 
     public LocalFilesKnowledgeSource(SourceAddress sourceId, Path root, ContentDetector detector,
                                      ExtractionRegistry extractors, long maxFileBytes) {
+        this(sourceId, root, detector, extractors, maxFileBytes, LocalFileAccessPolicy::none,
+                Collections.<String>emptyList(), Collections.<String>emptyList());
+    }
+
+    /**
+     * @param access   the user's grants, read on every access; the source folder itself is always granted
+     * @param includes glob patterns of files to read (empty: all indexable files)
+     * @param excludes glob patterns of files and folders to skip
+     */
+    public LocalFilesKnowledgeSource(SourceAddress sourceId, Path root, ContentDetector detector,
+                                     ExtractionRegistry extractors, long maxFileBytes,
+                                     Supplier<LocalFileAccessPolicy> access, List<String> includes,
+                                     List<String> excludes) {
         if (sourceId == null || root == null || detector == null || extractors == null) {
             throw new IllegalArgumentException("sourceId, root, detector and extractors are required");
         }
@@ -85,6 +105,9 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
         this.detector = detector;
         this.extractors = extractors;
         this.maxFileBytes = maxFileBytes;
+        this.access = access == null ? LocalFileAccessPolicy::none : access;
+        this.patterns = new FilePatterns(includes == null ? Collections.<String>emptyList() : includes,
+                excludes == null ? Collections.<String>emptyList() : excludes);
     }
 
     /** Kanonischer Locator eines Verzeichnisses: absolut, normalisiert, mit {@code /} getrennt. */
@@ -102,6 +125,7 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
         if (!Files.isDirectory(root)) {
             throw new KnowledgeSourceException(Kind.UNAVAILABLE, "Verzeichnis nicht gefunden: " + root);
         }
+        final LocalFileAccessPolicy policy = policy();
         Set<Path> files = new LinkedHashSet<Path>();
         for (String startPoint : scope.startPoints()) {
             final Path start = inside(startPoint.trim().isEmpty() ? "." : startPoint.trim());
@@ -116,6 +140,12 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
             try {
                 Files.walkFileTree(start, EnumSet.noneOf(FileVisitOption.class), scope.maxDepth() + 1,
                         new SimpleFileVisitor<Path>() {
+                            @Override
+                            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                                return dir.equals(start) || patterns.entersFolder(relative(dir))
+                                        ? FileVisitResult.CONTINUE : FileVisitResult.SKIP_SUBTREE;
+                            }
+
                             @Override
                             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                                 if (attrs.isRegularFile()) {
@@ -145,7 +175,7 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
             if (resources.size() >= scope.maxResources()) {
                 break;
             }
-            if (!candidate(file)) {
+            if (!candidate(file) || !patterns.acceptsFile(relative(file)) || !policy.isAllowed(file)) {
                 continue;
             }
             try {
@@ -254,7 +284,17 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
         if (!Files.isRegularFile(file)) {
             throw new KnowledgeSourceException(Kind.NOT_FOUND, resourceId + " nicht gefunden");
         }
+        if (!policy().isAllowed(file)) {
+            throw new KnowledgeSourceException(Kind.ACCESS_DENIED,
+                    resourceId + " führt aus den freigegebenen Ordnern hinaus");
+        }
         return file;
+    }
+
+    /** The user's grants plus this source's own folder. */
+    private LocalFileAccessPolicy policy() {
+        LocalFileAccessPolicy granted = access.get();
+        return (granted == null ? LocalFileAccessPolicy.none() : granted).including(root);
     }
 
     /** Pfad unterhalb der Wurzel oder {@code null}, wenn er hinausführt. */

@@ -48,6 +48,7 @@ import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassPairingKeyStore;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcSecretProvider;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
+import com.aresstack.enterpriseai.source.api.files.LocalFileAccessPolicy;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.ConfluenceSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp.FtpSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp.JesSourceProvider;
@@ -63,6 +64,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -212,8 +214,19 @@ public final class AdapterAssembly {
      * Wie {@link #createWith(AppConfig, LiveNetwork, SecretProvider)}; Quellen mit Bereichen (Confluence-Spaces)
      * lassen bei jedem Lauf die in {@code partitions} abgehakten aus ({@code null}: keine Auswahl).
      */
-    public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets,
+    public static ApplicationPorts createWith(final AppConfig config, LiveNetwork network, SecretProvider secrets,
                                               SourcePartitionSelection partitions) {
+        return createWith(config, network, secrets, partitions,
+                () -> config == null ? LocalFileAccessPolicy.none() : config.fileAccess().policy());
+    }
+
+    /**
+     * Wie {@link #createWith(AppConfig, LiveNetwork, SecretProvider, SourcePartitionSelection)}; die Dateiquellen
+     * prüfen jeden Zugriff gegen die aktuellen Ordnerfreigaben aus {@code fileAccess} (#120).
+     */
+    public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets,
+                                              SourcePartitionSelection partitions,
+                                              Supplier<LocalFileAccessPolicy> fileAccess) {
         if (config == null || network == null || secrets == null) {
             throw new IllegalArgumentException("config, network and secrets must not be null");
         }
@@ -228,7 +241,7 @@ public final class AdapterAssembly {
         ports.closing("local-models", models);
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
-        for (KnowledgeSourceProvider provider : sourceProviders(secrets, network)) {
+        for (KnowledgeSourceProvider provider : sourceProviders(secrets, network, fileAccess)) {
             KnowledgeSourceProvider wrapped = new LoggingSourceProvider(new VaultSourceProvider(provider, secrets));
             ports.sourceProvider(partitions == null ? wrapped
                     : new PartitionSelectingSourceProvider(wrapped, partitions));
@@ -376,7 +389,8 @@ public final class AdapterAssembly {
      * Die Quelltypen der Anwendung in der Reihenfolge des Dialogs „+ Quelle“. Ein neuer Adapter (SharePoint, Mail,
      * FTP ...) kommt hier als weiterer Provider hinzu; Kern, Use Cases und Oberfläche bleiben unverändert.
      */
-    static List<KnowledgeSourceProvider> sourceProviders(final SecretProvider secrets, final LiveNetwork network) {
+    static List<KnowledgeSourceProvider> sourceProviders(final SecretProvider secrets, final LiveNetwork network,
+                                                         Supplier<LocalFileAccessPolicy> fileAccess) {
         List<KnowledgeSourceProvider> providers = new ArrayList<KnowledgeSourceProvider>();
         // Route und TLS als Funktionen des aktuellen Stands: Proxy-Änderungen gelten ab der nächsten Verbindung.
         providers.add(new MediaWikiSourceProvider(ref -> new SecretBackedMediaWikiCredentialsProvider(secrets, ref),
@@ -388,7 +402,8 @@ public final class AdapterAssembly {
                 // HTML-Antworten statt Dateien landen zur Untersuchung neben dem Protokoll.
                 AppPaths.defaultLogDirectory()));
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
-        providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry()));
+        providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry(),
+                fileAccess));
         providers.add(new FtpSourceProvider(secrets));
         providers.add(new NdvSourceProvider(secrets));
         providers.add(new JesSourceProvider(secrets));
