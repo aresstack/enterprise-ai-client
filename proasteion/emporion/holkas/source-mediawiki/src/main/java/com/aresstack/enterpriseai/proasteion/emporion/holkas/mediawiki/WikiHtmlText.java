@@ -287,17 +287,18 @@ final class WikiHtmlText {
         for (Element row : table.select("> tr, > thead > tr, > tbody > tr, > tfoot > tr")) {
             markdown.row();
             for (Element cell : row.select("> th, > td")) {
-                markdown.cell(cell.text(), span(cell, "colspan"), span(cell, "rowspan"));
+                markdown.cell(cell.text(), span(cell, "colspan", 1), span(cell, "rowspan", 1));
             }
         }
         return markdown;
     }
 
-    private static int span(Element cell, String attribute) {
+    /** A span attribute; missing or unparseable is {@code def}, the table bounds the value. */
+    private static int span(Element cell, String attribute, int def) {
         try {
             return Integer.parseInt(cell.attr(attribute).trim());
         } catch (NumberFormatException missing) {
-            return 1;
+            return def;
         }
     }
 }

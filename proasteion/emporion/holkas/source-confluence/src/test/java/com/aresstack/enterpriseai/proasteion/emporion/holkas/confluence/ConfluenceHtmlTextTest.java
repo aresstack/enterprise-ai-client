@@ -7,6 +7,7 @@ import org.junit.Test;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class ConfluenceHtmlTextTest {
 
@@ -38,6 +39,20 @@ public class ConfluenceHtmlTextTest {
 
         assertEquals("| Name | Wert | Hinweis |\n| --- | --- | --- |\n| A | | x\\|y |\n| B | B | lang |\n| C | 3 | lang |",
                 ConfluenceHtmlText.toText(html));
+    }
+
+    @Test
+    public void rowspanZeroCoversTheRemainingRowsAndHugeSpansStayInsideTheTable() {
+        String html = "<table><tr><th>A</th><th>B</th></tr>"
+                + "<tr><td rowspan=\"0\">x</td><td>1</td></tr><tr><td>2</td></tr>"
+                + "<tr><td rowspan=\"1000000000\" colspan=\"1000000000\">y</td></tr></table>";
+
+        String text = ConfluenceHtmlText.toText(html);
+
+        assertTrue(text, text.startsWith("| A | B |"));
+        assertTrue(text, text.contains("\n| x | 1 |"));
+        assertTrue(text, text.contains("\n| x | 2 |"));
+        assertEquals(text, 5, text.split("\n").length);
     }
 
     @Test
