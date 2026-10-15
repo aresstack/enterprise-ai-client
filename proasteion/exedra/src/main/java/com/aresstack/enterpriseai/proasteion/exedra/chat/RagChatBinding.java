@@ -499,6 +499,8 @@ public final class RagChatBinding implements ChatShellActions {
                                     available.add(tool);
                                 }
                             }
+                            // Tools bound to this conversation (#141: the chat's own browser).
+                            available.addAll(support.conversationTools(conversation));
                             List<String> offered = new ArrayList<String>(available.size());
                             for (AiTool tool : available) {
                                 offered.add(tool.name());

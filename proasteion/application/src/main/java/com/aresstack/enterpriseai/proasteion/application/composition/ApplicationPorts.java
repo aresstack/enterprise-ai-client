@@ -44,6 +44,7 @@ public final class ApplicationPorts implements Closeable {
     private final KnowledgeIndexPort index;
     private final RawKnowledgeIndexPort rawIndex;
     private final FactStorePort facts;
+    private final com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers;
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
@@ -72,6 +73,7 @@ public final class ApplicationPorts implements Closeable {
         this.index = builder.index;
         this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
         this.facts = builder.facts == null ? new UnavailableFactStore() : builder.facts;
+        this.browsers = builder.browsers;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
@@ -137,6 +139,11 @@ public final class ApplicationPorts implements Closeable {
      */
     public FactStorePort facts() {
         return facts;
+    }
+
+    /** The browsers of the chats (#141), or {@code null} when no browser engine is available. */
+    public com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers() {
+        return browsers;
     }
 
     /**
@@ -251,6 +258,7 @@ public final class ApplicationPorts implements Closeable {
         private KnowledgeIndexPort index;
         private RawKnowledgeIndexPort rawIndex;
         private FactStorePort facts;
+        private com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers;
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
@@ -313,6 +321,12 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder facts(FactStorePort value) {
             this.facts = value;
+            return this;
+        }
+
+        /** The chat-bound browsers (#141); {@code null}: no browser tools. */
+        public Builder browsers(com.aresstack.enterpriseai.browser.api.ChatBrowserPort value) {
+            this.browsers = value;
             return this;
         }
 

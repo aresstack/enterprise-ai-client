@@ -1,0 +1,6 @@
+description = 'Port for a persistent, chat-bound browser (#141): chat-facing ChatBrowserPort with tabs, navigation and ' +
+        'page reading, plus the engine SPI a browser adapter (Firefox WebDriver BiDi) implements. No protocol types.'
+
+dependencies {
+    api project(':astu')
+}

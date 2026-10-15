@@ -146,7 +146,9 @@ public final class ShellAssembly {
                     // Werkzeugrunden je Antwort: je Anfrage frisch aus den Einstellungen (ohne Neustart).
                     .withMaxRounds(() -> root.config().chat().maxToolRounds())
                     // Diagnose: Werkzeugaufrufe protokollieren, wenn chat.diagnostics.turnAnalysis an ist.
-                    .withDiagnostics(root.turnDiagnostics()));
+                    .withDiagnostics(root.turnDiagnostics())
+                    // Tools bound to the conversation of the turn (#141: the chat's own browser).
+                    .withConversationTools(root::conversationChatTools));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,

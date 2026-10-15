@@ -5,12 +5,14 @@ import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtrac
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
+import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -35,6 +37,7 @@ public final class ToolSupport {
     private final Executor loopExecutor;
     private final IntSupplier maxRounds;
     private final ToolActivityListener diagnostics;
+    private final Function<ChatConversationId, List<AiTool>> conversationTools;
 
     /**
      * @param knowledgeTools der Wissens-Werkzeugsatz des Chats (Suche in den angehakten Quellen, Lesen von Treffern
@@ -67,9 +70,15 @@ public final class ToolSupport {
         };
         this.maxRounds = () -> ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS;
         this.diagnostics = null;
+        this.conversationTools = null;
     }
 
     private ToolSupport(ToolSupport base, IntSupplier maxRounds, ToolActivityListener diagnostics) {
+        this(base, maxRounds, diagnostics, base.conversationTools);
+    }
+
+    private ToolSupport(ToolSupport base, IntSupplier maxRounds, ToolActivityListener diagnostics,
+                        Function<ChatConversationId, List<AiTool>> conversationTools) {
         this.chat = base.chat;
         this.store = base.store;
         this.extractor = base.extractor;
@@ -79,6 +88,25 @@ public final class ToolSupport {
         this.loopExecutor = base.loopExecutor;
         this.maxRounds = maxRounds;
         this.diagnostics = diagnostics;
+        this.conversationTools = conversationTools;
+    }
+
+    /**
+     * Copy that also offers tools bound to the conversation of the turn (#141: the chat's own browser). The
+     * conversation comes from the chat, never from the model, so a tool cannot reach another chat's state.
+     */
+    public ToolSupport withConversationTools(Function<ChatConversationId, List<AiTool>> conversationTools) {
+        if (conversationTools == null) {
+            throw new IllegalArgumentException("conversationTools must not be null");
+        }
+        return new ToolSupport(this, maxRounds, diagnostics, conversationTools);
+    }
+
+    /** The active tools bound to {@code conversation}, empty without any. */
+    public List<AiTool> conversationTools(ChatConversationId conversation) {
+        List<AiTool> tools = conversationTools == null || conversation == null ? null
+                : conversationTools.apply(conversation);
+        return tools == null ? Collections.<AiTool>emptyList() : tools;
     }
 
     /**

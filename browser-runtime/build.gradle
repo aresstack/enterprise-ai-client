@@ -1,0 +1,6 @@
+description = 'Runtime of the chat-bound browser (#141): persistent profile per chat, lazy start, one start or ' +
+        'reconnect per chat, recovery after a lost connection or a closed browser, chat-local tab ids.'
+
+dependencies {
+    api project(':browser-api')
+}
