@@ -2,7 +2,7 @@ package com.aresstack.enterpriseai.acp.research;
 
 import com.aresstack.enterpriseai.research.runtime.acquire.SearchScopeControlPort;
 import com.aresstack.enterpriseai.research.runtime.acquire.ServiceSearchScopeControlPort;
-import com.aresstack.enterpriseai.research.runtime.json.MiniJson;
+import com.aresstack.enterpriseai.research.runtime.knowledge.ResearchQueries;
 import com.aresstack.enterpriseai.research.runtime.loop.ResearchRunBudget;
 import com.aresstack.enterpriseai.research.runtime.loop.ToolInvoker;
 import com.aresstack.enterpriseai.research.runtime.team.ChatMessage;
@@ -10,12 +10,9 @@ import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChatResult;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.IntSupplier;
@@ -36,14 +33,6 @@ final class DirectAnswers {
     private static final int PROJECT_PASSAGES = 8;
     private static final int PAGE_EXCERPT_CHARS = 3000;
     private static final int OUTPUT_TOKENS = 3000;
-
-    private static final Set<String> STOP_WORDS = new HashSet<String>(Arrays.asList(
-            "aber", "alle", "als", "auch", "auf", "aus", "bei", "bitte", "das", "dass", "dem", "den", "der", "des",
-            "die", "dir", "doch", "du", "ein", "eine", "einen", "einer", "etwas", "finde", "finden", "für", "gibt",
-            "hat", "ich", "ist", "kannst", "mal", "mehr", "mir", "mit", "nach", "noch", "oder", "sich", "sind",
-            "über", "und", "uns", "von", "was", "welche", "welcher", "wer", "wie", "wir", "wo", "zu", "zum", "zur",
-            "confluence", "wiki", "infos", "informationen", "information", "suche", "such", "genau", "the", "and",
-            "what", "about", "find"));
 
     private final ToolInvoker host;
     private final MainModelChat model;
@@ -102,9 +91,8 @@ final class DirectAnswers {
                 + "Nachricht des Nutzers Informationen aus diesen Quellen braucht. Antworte NUR mit JSON: "
                 + "{\"search\": true oder false, \"queries\": [\"...\"]}. search ist false NUR, wenn die Nachricht "
                 + "ausschließlich das Konzept bearbeitet (Karten anlegen, verschieben, umbenennen, ausschließen) oder "
-                + "reiner Smalltalk ist. queries: 1 bis " + MAX_QUERIES + " kurze Suchanfragen mit 1 bis 3 Wörtern "
-                + "(Fachbegriffe, Abkürzungen, Eigennamen; keine Füllwörter, keine Fragen), denn die Volltextsuche "
-                + "verknüpft alle Wörter mit UND. Die erste Anfrage ist der Kernbegriff allein.";
+                + "reiner Smalltalk ist. queries: 1 bis " + MAX_QUERIES + " Suchanfragen. " + ResearchQueries.RULES
+                + " Die erste Anfrage ist der Kernbegriff allein.";
         StringBuilder user = new StringBuilder("NACHRICHT: ").append(message.trim()).append('\n');
         if (concept != null && !concept.trim().isEmpty()) {
             user.append("\nKONZEPT (Themen des Auftrags):\n").append(concept.trim()).append('\n');
@@ -125,75 +113,19 @@ final class DirectAnswers {
         return keywordQueries(message);
     }
 
-    private static final java.util.regex.Pattern SEARCH_REQUEST = java.util.regex.Pattern.compile(
-            "\\b(such\\w*|recherch\\w*|finde\\w*|find|search\\w*|nachschlagen|schau\\w* nach|look up)\\b",
-            java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE);
-
-    /**
-     * Ein ausdrücklicher Suchauftrag („Suche in Confluence nach …“, „recherchiere …“, „finde Informationen zu …“):
-     * dann wird immer gesucht, auch wenn das Modell es anders sieht.
-     */
+    /** Ein ausdrücklicher Suchauftrag: dann wird immer gesucht ({@link ResearchQueries#asksForSearch}). */
     static boolean asksForSearch(String message) {
-        return message != null && SEARCH_REQUEST.matcher(message).find();
+        return ResearchQueries.asksForSearch(message);
     }
 
     /** {@code null}, wenn die Antwort kein Plan ist; leer bei {@code search=false}. */
     static List<String> parsePlan(String text) {
-        String json = ResearchWriting.clean(text);
-        int start = json.indexOf('{');
-        int end = json.lastIndexOf('}');
-        if (start < 0 || end <= start) {
-            return null;
-        }
-        Object parsed;
-        try {
-            parsed = MiniJson.parse(json.substring(start, end + 1));
-        } catch (RuntimeException invalid) {
-            return null;
-        }
-        if (!(parsed instanceof Map)) {
-            return null;
-        }
-        Map<?, ?> plan = (Map<?, ?>) parsed;
-        Object search = plan.get("search");
-        if (Boolean.FALSE.equals(search) || "false".equals(String.valueOf(search))) {
-            return new ArrayList<String>();
-        }
-        Set<String> queries = new LinkedHashSet<String>();
-        if (plan.get("queries") instanceof List) {
-            for (Object query : (List<?>) plan.get("queries")) {
-                String value = query == null ? "" : query.toString().trim();
-                if (!value.isEmpty() && queries.size() < MAX_QUERIES) {
-                    queries.add(value);
-                }
-            }
-        }
-        return queries.isEmpty() ? null : new ArrayList<String>(queries);
+        return ResearchQueries.parsePlan(text, MAX_QUERIES);
     }
 
     /** Ersatzplan ohne Modell: die ersten Schlüsselwörter der Nachricht, einzeln und zusammen. */
     static List<String> keywordQueries(String message) {
-        List<String> words = new ArrayList<String>();
-        for (String word : message.split("[^\\p{L}\\p{N}_-]+")) {
-            String lower = word.toLowerCase(Locale.ROOT);
-            if (word.length() >= 2 && !STOP_WORDS.contains(lower) && !words.contains(word)) {
-                words.add(word);
-            }
-        }
-        List<String> queries = new ArrayList<String>();
-        for (String word : words) {
-            if (queries.size() >= MAX_QUERIES - 1) {
-                break;
-            }
-            queries.add(word);
-        }
-        if (words.size() > 1 && queries.size() < MAX_QUERIES) {
-            queries.add(words.get(0) + " " + words.get(1));
-        }
-        if (queries.isEmpty() && !message.trim().isEmpty()) {
-            queries.add(ToolNarration.shorten(message.trim()));
-        }
-        return queries;
+        return ResearchQueries.keywordQueries(message, MAX_QUERIES);
     }
 
     /** Sucht, liest, notiert und beantwortet die Frage aus den gelesenen Quellen; die Recherche-Karte zeigt den Lauf. */
@@ -407,60 +339,9 @@ final class DirectAnswers {
         }
     }
 
-    /**
-     * Der für die Frage beste Teil einer Seite: Absätze nach Anzahl der Suchbegriffe geordnet, in Seitenreihenfolge
-     * bis {@value #PAGE_EXCERPT_CHARS} Zeichen; ohne Treffer der Anfang der Seite.
-     */
+    /** Der für die Frage beste Teil einer Seite ({@link ResearchQueries#excerpt}). */
     static String excerpt(String page, String terms) {
-        String[] paragraphs = page.split("\\r?\\n\\s*\\r?\\n|\\r?\\n");
-        Set<String> words = new HashSet<String>();
-        for (String word : terms.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
-            if (word.length() >= 3 && !STOP_WORDS.contains(word)) {
-                words.add(word);
-            }
-        }
-        int[] scores = new int[paragraphs.length];
-        List<Integer> order = new ArrayList<Integer>();
-        for (int i = 0; i < paragraphs.length; i++) {
-            String lower = paragraphs[i].toLowerCase(Locale.ROOT);
-            for (String word : words) {
-                if (lower.contains(word)) {
-                    scores[i]++;
-                }
-            }
-            order.add(Integer.valueOf(i));
-        }
-        final int[] ranking = scores;
-        java.util.Collections.sort(order, new java.util.Comparator<Integer>() {
-            @Override
-            public int compare(Integer a, Integer b) {
-                return ranking[b.intValue()] != ranking[a.intValue()] ? ranking[b.intValue()] - ranking[a.intValue()]
-                        : a.intValue() - b.intValue();
-            }
-        });
-        boolean[] chosen = new boolean[paragraphs.length];
-        int length = 0;
-        for (Integer index : order) {
-            String paragraph = paragraphs[index.intValue()].trim();
-            if (paragraph.isEmpty()) {
-                continue;
-            }
-            if (length > 0 && length + paragraph.length() > PAGE_EXCERPT_CHARS) {
-                continue;
-            }
-            chosen[index.intValue()] = true;
-            length += paragraph.length() + 1;
-            if (length >= PAGE_EXCERPT_CHARS) {
-                break;
-            }
-        }
-        StringBuilder text = new StringBuilder();
-        for (int i = 0; i < paragraphs.length; i++) {
-            if (chosen[i]) {
-                text.append(text.length() == 0 ? "" : "\n").append(paragraphs[i].trim());
-            }
-        }
-        return text.length() > PAGE_EXCERPT_CHARS ? text.substring(0, PAGE_EXCERPT_CHARS) + "…" : text.toString();
+        return ResearchQueries.excerpt(page, terms);
     }
 
     private static String render(List<ResearchWriting.Passage> passages) {

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
+import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegationTool;
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
 import com.aresstack.enterpriseai.proasteion.application.chat.ToolUsePolicy;
 import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpTools;
@@ -152,6 +153,7 @@ public final class RagChatBinding implements ChatShellActions {
     static final String SEARCHING_ACTIVITY = "Durchsucht Anhang";
     static final String READING_PAGE_ACTIVITY = "Liest Seite";
     static final String SEARCHING_KNOWLEDGE_ACTIVITY = "Internes Wissen durchsuchen";
+    static final String RESEARCHING_KNOWLEDGE_ACTIVITY = "Internes Wissen recherchieren";
     static final String SEARCHING_HELP_ACTIVITY = "Anwendungshilfe prüfen";
     /** The first activity of every planned turn: the model plans the answer. */
     static final String PLANNING_ACTIVITY = "Planen der Antwort …";
@@ -756,6 +758,7 @@ public final class RagChatBinding implements ChatShellActions {
                 : SearchAttachmentTool.NAME.equals(toolName) ? SEARCHING_ACTIVITY
                 : ChatBookmark.READ_TOOL.equals(toolName) ? READING_PAGE_ACTIVITY
                 : KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) ? SEARCHING_KNOWLEDGE_ACTIVITY
+                : ResearchDelegationTool.NAME.equals(toolName) ? RESEARCHING_KNOWLEDGE_ACTIVITY
                 : AppHelpMcpTools.APP_HELP_SEARCH.equals(toolName) ? SEARCHING_HELP_ACTIVITY
                 : AppHelpMcpTools.APP_HELP_READ.equals(toolName) ? READING_HELP_ACTIVITY
                 : "Werkzeug " + toolName;
@@ -765,6 +768,7 @@ public final class RagChatBinding implements ChatShellActions {
         return ReadAttachmentTool.NAME.equals(toolName) || ChatBookmark.READ_TOOL.equals(toolName)
                 || AppHelpMcpTools.APP_HELP_READ.equals(toolName) ? "read"
                 : SearchAttachmentTool.NAME.equals(toolName) || KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName)
+                || ResearchDelegationTool.NAME.equals(toolName)
                 || AppHelpMcpTools.APP_HELP_SEARCH.equals(toolName) ? "search" : "other";
     }
 
@@ -784,6 +788,9 @@ public final class RagChatBinding implements ChatShellActions {
         if (KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) || SearchAttachmentTool.NAME.equals(toolName)
                 || AppHelpMcpTools.APP_HELP_SEARCH.equals(toolName)) {
             return quoted(args.text("query"));
+        }
+        if (ResearchDelegationTool.NAME.equals(toolName)) {
+            return quoted(args.text("task"));
         }
         if (ChatBookmark.READ_TOOL.equals(toolName)) {
             String id = args.text("id");
