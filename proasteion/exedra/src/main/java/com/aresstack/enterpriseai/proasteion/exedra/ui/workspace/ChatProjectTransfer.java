@@ -22,9 +22,14 @@ final class ChatProjectTransfer extends TransferHandler {
     static final class Target {
 
         /** Onto the "Chats ohne Projekt" headers: a chat leaves its project. */
-        static final Target NO_PROJECT = new Target(null, false);
+        static Target noProject() {
+            return new Target(null, false);
+        }
+
         /** Onto the "PROJEKTE" header: a project moves to the top level. */
-        static final Target TOP_LEVEL = new Target(null, true);
+        static Target topLevel() {
+            return new Target(null, true);
+        }
 
         final String projectId;
         final boolean topLevel;

@@ -1,8 +1,8 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
-import com.aresstack.enterpriseai.astu.acropolis.chatproject.EffectiveProjectContext;
-import com.aresstack.enterpriseai.astu.acropolis.chatproject.ProjectContextResolver;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
@@ -104,8 +104,8 @@ public final class RagChatUseCase {
             new ConcurrentHashMap<ChatConversationId, ScopedContext>();
     /** The project scope resolved at the start of the running turn of each conversation. */
     private final Map<ChatConversationId, String> turnScopes = new ConcurrentHashMap<ChatConversationId, String>();
-    /** Resolves the project context of every new turn (#143); {@link ProjectContextResolver#NONE} without projects. */
-    private volatile ProjectContextResolver projects = ProjectContextResolver.NONE;
+    /** Resolves the project context of every new turn (#143); {@link ProjectContextResolver#none()} without projects. */
+    private volatile ProjectContextResolver projects = ProjectContextResolver.none();
 
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler) {
         this(chat, retrieval, assembler, RetrievalPreparation.none());
@@ -210,10 +210,10 @@ public final class RagChatUseCase {
      * Resolve the chat project context for every new turn (#143): its instructions and memories go into this turn's
      * system part, and knowledge context is only reused under the scope it was created in.
      *
-     * @param resolver {@code null} = {@link ProjectContextResolver#NONE}
+     * @param resolver {@code null} = {@link ProjectContextResolver#none()}
      */
     public RagChatUseCase withProjectContext(ProjectContextResolver resolver) {
-        this.projects = resolver == null ? ProjectContextResolver.NONE : resolver;
+        this.projects = resolver == null ? ProjectContextResolver.none() : resolver;
         return this;
     }
 

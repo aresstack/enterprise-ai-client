@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.astu.acropolis.chatproject;
+package com.aresstack.enterpriseai.astu.acropolis.chat.project;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,11 +16,6 @@ public final class EffectiveProjectContext {
 
     /** Scope of a chat that was never assigned to a project (also every chat saved before projects existed). */
     public static final String NONE_SCOPE = "none";
-
-    private static final EffectiveProjectContext NONE = new EffectiveProjectContext(NONE_SCOPE, null, "", "",
-            Collections.<String>emptyList(), true);
-    private static final EffectiveProjectContext UNRESOLVED = new EffectiveProjectContext("", null, "", "",
-            Collections.<String>emptyList(), false);
 
     private final String scope;
     private final String projectId;
@@ -47,17 +42,17 @@ public final class EffectiveProjectContext {
 
     /** A chat without project that was never moved. */
     public static EffectiveProjectContext none() {
-        return NONE;
+        return new EffectiveProjectContext(NONE_SCOPE, null, "", "", Collections.<String>emptyList(), true);
     }
 
     /** The assignment could not be determined: no project information, and a scope that matches no other. */
     public static EffectiveProjectContext unresolved() {
-        return UNRESOLVED;
+        return new EffectiveProjectContext("", null, "", "", Collections.<String>emptyList(), false);
     }
 
     /** A chat without project after {@code generation} moves (generation 0 is {@link #none()}). */
     static EffectiveProjectContext withoutProject(long generation) {
-        return generation == 0L ? NONE : new EffectiveProjectContext(NONE_SCOPE + "@" + generation, null, "", "",
+        return generation == 0L ? none() : new EffectiveProjectContext(NONE_SCOPE + "@" + generation, null, "", "",
                 Collections.<String>emptyList(), true);
     }
 

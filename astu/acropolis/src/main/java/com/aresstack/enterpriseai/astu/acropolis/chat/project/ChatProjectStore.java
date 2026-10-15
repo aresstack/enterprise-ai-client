@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.astu.acropolis.chatproject;
+package com.aresstack.enterpriseai.astu.acropolis.chat.project;
 
 /**
  * Port: persists the chat project tree and the chat assignments, separately from the chat messages

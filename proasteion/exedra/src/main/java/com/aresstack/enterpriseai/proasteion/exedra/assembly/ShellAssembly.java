@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
-import com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectRecord;
-import com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectRecord;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects;
 import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.proasteion.application.composition.ConfluenceEntryCheck;

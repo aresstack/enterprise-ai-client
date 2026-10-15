@@ -531,7 +531,7 @@ public class RagChatUseCaseTest {
                 null), new PromptContextAssembler(ContextSettings.defaults()), null,
                 FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS));
         reopened.restoreKnowledgeContext(id, Collections.singletonList(QUESTION), ids,
-                com.aresstack.enterpriseai.astu.acropolis.chatproject.EffectiveProjectContext.NONE_SCOPE);
+                com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext.NONE_SCOPE);
         assertEquals(ids.size(), reopened.knowledgeContext(id).hits().size());
         int searches = index.keywordSearches + index.semanticSearches;
         chatPort.enqueueAnswer("{\"sufficient\": true, \"related\": true}");
@@ -547,7 +547,7 @@ public class RagChatUseCaseTest {
     /** #143: project instructions and memories go into this turn's system part, resolved anew for every turn. */
     @Test
     public void projectContextIsResolvedForEveryTurnAndNeverEntersTheHistory() throws Exception {
-        com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects projects = projects();
+        com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects projects = projects();
         rag.withProjectContext(projects);
         ChatConversationId id = chat.openConversation("Du bist hilfsbereit.");
         String a = projects.create("Projekt A", null);
@@ -579,7 +579,7 @@ public class RagChatUseCaseTest {
     @Test
     public void movingAChatDropsItsCachedKnowledgeContextForGood() throws Exception {
         RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
-        com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects projects = projects();
+        com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects projects = projects();
         research.withProjectContext(projects);
         ChatConversationId id = chat.openConversation();
         String a = projects.create("A", null);
@@ -602,7 +602,7 @@ public class RagChatUseCaseTest {
     @Test
     public void restoreIsRefusedUnderAnotherScope() throws Exception {
         RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
-        final com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects projects = projects();
+        final com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects projects = projects();
         research.withProjectContext(projects);
         final ChatConversationId id = chat.openConversation();
         chatPort.enqueueAnswer("{\"sufficient\": true}");
@@ -627,9 +627,9 @@ public class RagChatUseCaseTest {
         final String afterMove = reopened.knowledgeScope(id);
         final int[] calls = {0};
         RagChatUseCase racing = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS).withProjectContext(
-                new com.aresstack.enterpriseai.astu.acropolis.chatproject.ProjectContextResolver() {
+                new com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver() {
                     @Override
-                    public com.aresstack.enterpriseai.astu.acropolis.chatproject.EffectiveProjectContext resolve(
+                    public com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext resolve(
                             ChatConversationId conversation) {
                         if (calls[0]++ == 1) {
                             projects.assign(id.value(), a);
@@ -651,9 +651,9 @@ public class RagChatUseCaseTest {
         chatPort.enqueueAnswer("Mit apt [1].");
         awaitDone(research.send(id, QUESTION, RagOptions.enabled(), listener()));
         assertFalse(research.knowledgeContext(id).isEmpty());
-        research.withProjectContext(new com.aresstack.enterpriseai.astu.acropolis.chatproject.ProjectContextResolver() {
+        research.withProjectContext(new com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver() {
             @Override
-            public com.aresstack.enterpriseai.astu.acropolis.chatproject.EffectiveProjectContext resolve(
+            public com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext resolve(
                     ChatConversationId conversation) {
                 throw new IllegalStateException("store unreadable");
             }
@@ -662,19 +662,19 @@ public class RagChatUseCaseTest {
         assertFalse(research.projectContext(id).isResolved());
     }
 
-    private static com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects projects() {
-        return new com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects(
-                new com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectStore() {
-                    private com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord stored =
-                            new com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord();
+    private static com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects projects() {
+        return new com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects(
+                new com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectStore() {
+                    private com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectsRecord stored =
+                            new com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectsRecord();
 
                     @Override
-                    public com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord load() {
+                    public com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectsRecord load() {
                         return stored;
                     }
 
                     @Override
-                    public void save(com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord r) {
+                    public void save(com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectsRecord r) {
                         stored = r;
                     }
                 });

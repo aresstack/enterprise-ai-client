@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
-import com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;

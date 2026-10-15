@@ -13,7 +13,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
-import com.aresstack.enterpriseai.astu.acropolis.chatproject.EffectiveProjectContext;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.Attachment;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentException;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTools;

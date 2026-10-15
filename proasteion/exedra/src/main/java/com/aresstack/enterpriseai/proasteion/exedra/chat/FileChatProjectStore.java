@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
-import com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectStore;
-import com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectStore;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectsRecord;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 

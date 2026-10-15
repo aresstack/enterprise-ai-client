@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.astu.acropolis.chatproject;
+package com.aresstack.enterpriseai.astu.acropolis.chat.project;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 

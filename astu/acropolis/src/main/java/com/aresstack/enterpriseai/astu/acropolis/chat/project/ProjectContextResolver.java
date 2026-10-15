@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.astu.acropolis.chatproject;
+package com.aresstack.enterpriseai.astu.acropolis.chat.project;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 
@@ -6,12 +6,9 @@ import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 public interface ProjectContextResolver {
 
     /** No projects at all: every conversation is without project and keeps the scope {@link EffectiveProjectContext#NONE_SCOPE}. */
-    ProjectContextResolver NONE = new ProjectContextResolver() {
-        @Override
-        public EffectiveProjectContext resolve(ChatConversationId conversation) {
-            return EffectiveProjectContext.none();
-        }
-    };
+    static ProjectContextResolver none() {
+        return conversation -> EffectiveProjectContext.none();
+    }
 
     /** Never {@code null}; may throw, callers then fail closed ({@link EffectiveProjectContext#unresolved()}). */
     EffectiveProjectContext resolve(ChatConversationId conversation);

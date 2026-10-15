@@ -893,7 +893,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         JLabel header = groupHeader(title);
         if (!projectIds().isEmpty()) {
             // Dropping a chat onto a date group takes it out of its project (#143).
-            header.setTransferHandler(new ChatProjectTransfer(null, ChatProjectTransfer.Target.NO_PROJECT,
+            header.setTransferHandler(new ChatProjectTransfer(null, ChatProjectTransfer.Target.noProject(),
                     projectDrops));
             header.setToolTipText(NO_PROJECT_DROP_TOOLTIP);
         }
@@ -1227,7 +1227,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         header.setOpaque(false);
         header.setAlignmentX(LEFT_ALIGNMENT);
         JLabel label = groupHeader(PROJECTS_HEADER);
-        label.setTransferHandler(new ChatProjectTransfer(null, ChatProjectTransfer.Target.TOP_LEVEL, projectDrops));
+        label.setTransferHandler(new ChatProjectTransfer(null, ChatProjectTransfer.Target.topLevel(), projectDrops));
         header.add(label, BorderLayout.CENTER);
         javax.swing.JButton add = new javax.swing.JButton("+");
         add.setToolTipText(NEW_PROJECT_LABEL);
