@@ -47,14 +47,51 @@ public class ResearchDelegationHierarchyTest {
 
     @Test
     public void bundleReadPagesAreStructuredSourcesOfTheResearch() {
-        offer("knowledge_search", call -> McpToolResult.ok("Query: Vault\n\n[1] Vault Überblick\nid: p1\n"
-                + "source: wiki\nVault wird zentral betrieben.\n"));
-        offer("knowledge_read", call -> McpToolResult.ok(page(call.getString("id")),
-                Collections.singletonList(resource(call.getString("id")))));
         offer("knowledge_tree", call -> McpToolResult.ok("source: wiki\nspace: OPS — Betrieb\n\nparents: none\n\n"
                 + "current:\n  type: page\n  title: Vault Überblick\n  id: p1\n  children: yes\n\nchildren:\n"
                 + "- title: Vault Backup\n  id: c1\n  children: no\n- title: Vault Rufbereitschaft\n  id: c2\n"
                 + "  children: no\n"));
+
+        McpToolResult result = research();
+
+        assertFalse(result.getText(), result.isError());
+        assertEquals(Arrays.asList("knowledge_search", "knowledge_read", "knowledge_tree", "knowledge_read_many"),
+                calls);
+        assertEquals(Arrays.asList("p1", "c1", "c2"), used(result));
+        assertEquals("https://wiki.example/c1", result.contextResources().get(1).location());
+    }
+
+    @Test
+    public void aTopLevelSiblingOfAPageBelowTheSpaceIsReadAndCited() {
+        offer("knowledge_tree", call -> McpToolResult.ok(call.getString("space") != null
+                ? "source: wiki\nspace: OPS — Betrieb\n\ncurrent:\n  type: space\n  space: OPS\n  title: Betrieb\n\n"
+                + "children:\n- title: Vault Überblick\n  id: p1\n  children: no\n- title: Vault Betriebshandbuch\n"
+                + "  id: r2\n  children: no\n"
+                : "source: wiki\nspace: OPS — Betrieb\n\nparents:\n- type: space\n  space: OPS\n  title: Betrieb\n\n"
+                + "current:\n  type: page\n  title: Vault Überblick\n  id: p1\n  children: no\n\nchildren:\nnone\n"));
+
+        McpToolResult result = research();
+
+        assertFalse(result.getText(), result.isError());
+        assertEquals(Arrays.asList("knowledge_search", "knowledge_read", "knowledge_tree", "knowledge_tree",
+                "knowledge_read_many"), calls);
+        assertEquals(Arrays.asList("p1", "r2"), used(result));
+    }
+
+    private static List<String> used(McpToolResult result) {
+        List<String> used = new ArrayList<String>();
+        for (McpContextResource resource : result.contextResources()) {
+            used.add(resource.resourceId());
+        }
+        return used;
+    }
+
+    /** Offers search, read and read_many (the tree is offered by the test) and runs one research task. */
+    private McpToolResult research() {
+        offer("knowledge_search", call -> McpToolResult.ok("Query: Vault\n\n[1] Vault Überblick\nid: p1\n"
+                + "source: wiki\nVault wird zentral betrieben.\n"));
+        offer("knowledge_read", call -> McpToolResult.ok(page(call.getString("id")),
+                Collections.singletonList(resource(call.getString("id")))));
         offer("knowledge_read_many", call -> {
             List<String> ids = call.getStrings("ids");
             StringBuilder out = new StringBuilder();
@@ -85,16 +122,6 @@ public class ResearchDelegationHierarchyTest {
         Map<String, Object> args = new HashMap<String, Object>();
         args.put("task", "Wie ist der Betrieb von Vault organisiert?");
 
-        McpToolResult result = research.invoke(new McpToolCall(ResearchDelegationTool.NAME, args));
-
-        assertFalse(result.getText(), result.isError());
-        assertEquals(Arrays.asList("knowledge_search", "knowledge_read", "knowledge_tree", "knowledge_read_many"),
-                calls);
-        List<String> used = new ArrayList<String>();
-        for (McpContextResource resource : result.contextResources()) {
-            used.add(resource.resourceId());
-        }
-        assertEquals(Arrays.asList("p1", "c1", "c2"), used);
-        assertEquals("https://wiki.example/c1", result.contextResources().get(1).location());
+        return research.invoke(new McpToolCall(ResearchDelegationTool.NAME, args));
     }
 }

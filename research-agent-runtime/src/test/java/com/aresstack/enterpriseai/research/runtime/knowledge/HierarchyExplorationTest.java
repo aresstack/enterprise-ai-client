@@ -145,6 +145,42 @@ public class HierarchyExplorationTest {
     }
 
     @Test
+    public void aPageDirectlyBelowTheSpaceGetsTheOtherTopLevelPagesAsSiblings() throws Exception {
+        final List<String> calls = new ArrayList<String>();
+        ToolInvoker tools = new ToolInvoker() {
+            @Override
+            public String call(String toolName, Map<String, Object> args) throws ToolFailure {
+                calls.add(toolName + ":" + args);
+                if (KnowledgeResearch.SEARCH_TOOL.equals(toolName)) {
+                    return "Query: Vault\n\n[1] Vault Überblick\nid: p1\nsource: wiki\nVault wird zentral betrieben.\n";
+                }
+                if (HierarchyExploration.TREE_TOOL.equals(toolName)) {
+                    return args.containsKey("space") ? "source: wiki\nspace: OPS — Betrieb\n\ncurrent:\n"
+                            + "  type: space\n  space: OPS\n  title: Betrieb\n\nchildren:\n- title: Vault Überblick\n"
+                            + "  id: p1\n  children: no\n- title: Vault Betriebshandbuch\n  id: r2\n  children: no\n"
+                            : "source: wiki\nspace: OPS — Betrieb\n\nparents:\n- type: space\n  space: OPS\n"
+                            + "  title: Betrieb\n\ncurrent:\n  type: page\n  title: Vault Überblick\n  id: p1\n"
+                            + "  children: no\n\nchildren:\nnone\n";
+                }
+                if (HierarchyExploration.READ_MANY_TOOL.equals(toolName)) {
+                    return "[1/1] OK\n" + Tools.page(String.valueOf(((List<?>) args.get("ids")).get(0)));
+                }
+                return Tools.page(String.valueOf(args.get("id")));
+            }
+        };
+        Model model = new Model("{\"queries\": [\"Vault\"]}", "Antwort [1] [2].");
+
+        KnowledgeResearchResult result = new KnowledgeResearch(tools, model,
+                Collections.<DiscoveryStrategy>singletonList(new LexicalDiscoveryStrategy()), new Judge(Boolean.FALSE),
+                new HierarchyExploration()).research(TASK);
+
+        assertTrue(calls.toString(), calls.contains("knowledge_tree:{source=wiki, space=OPS, direction=children, "
+                + "limit=25}"));
+        assertEquals("knowledge_read_many:{ids=[r2]}", calls.get(calls.size() - 1));
+        assertEquals("r2", result.sources().get(1).id);
+    }
+
+    @Test
     public void sufficientEvidenceNeverOpensTheTree() throws Exception {
         Tools tools = new Tools();
         Model model = new Model("{\"queries\": [\"Vault\", \"Vault Betrieb\"]}", "Antwort [1].");
@@ -186,6 +222,7 @@ public class HierarchyExplorationTest {
         KnowledgeToolOutput.TreeNeighbourhood around = KnowledgeToolOutput.parseTree(TREE_P1);
 
         assertEquals("wiki", around.source);
+        assertEquals("OPS", around.space);
         assertEquals("the space entry has no page id", 1, around.parents.size());
         assertEquals("p0", around.parents.get(0).id);
         assertEquals("p1", around.current.id);

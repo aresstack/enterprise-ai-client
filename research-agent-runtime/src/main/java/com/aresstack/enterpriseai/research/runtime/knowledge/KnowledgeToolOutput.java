@@ -133,18 +133,22 @@ public final class KnowledgeToolOutput {
     }
 
     /**
-     * The neighbourhood of a {@code knowledge_tree} answer: the source, the parent pages up to the space (top first,
+     * The neighbourhood of a {@code knowledge_tree} answer: the source and space key, the parent pages up to the space (top first,
      * space entries without a page id left out), the current page ({@code null} at a space root) and the direct
      * children. Only pages with an id are kept, because only those can be read.
      */
     public static final class TreeNeighbourhood {
         public final String source;
+        /** The exact space key of the hierarchy (empty when the answer names none). */
+        public final String space;
         public final List<TreeNode> parents;
         public final TreeNode current;
         public final List<TreeNode> children;
 
-        TreeNeighbourhood(String source, List<TreeNode> parents, TreeNode current, List<TreeNode> children) {
+        TreeNeighbourhood(String source, String space, List<TreeNode> parents, TreeNode current,
+                          List<TreeNode> children) {
             this.source = source;
+            this.space = space;
             this.parents = Collections.unmodifiableList(parents);
             this.current = current;
             this.children = Collections.unmodifiableList(children);
@@ -158,6 +162,8 @@ public final class KnowledgeToolOutput {
      */
     public static TreeNeighbourhood parseTree(String text) {
         String source = "";
+        String space = "";
+        String spaceEntry = ""; // the exact key of the parents' space entry, preferred over the header line
         List<TreeNode> parents = new ArrayList<TreeNode>();
         List<TreeNode> children = new ArrayList<TreeNode>();
         TreeNode current = null;
@@ -180,6 +186,10 @@ public final class KnowledgeToolOutput {
                     section = "children";
                 } else if (section.isEmpty() && trimmed.startsWith("source: ")) {
                     source = trimmed.substring("source: ".length()).trim();
+                } else if (section.isEmpty() && trimmed.startsWith("space: ")) {
+                    String header = trimmed.substring("space: ".length());
+                    int title = header.indexOf(" \u2014 ");
+                    space = (title < 0 ? header : header.substring(0, title)).trim();
                 } else if (!trimmed.isEmpty()) {
                     section = ""; // cursor lines and hints end the sections
                 }
@@ -202,10 +212,12 @@ public final class KnowledgeToolOutput {
                 entry[1] = field.substring("id: ".length()).trim();
             } else if (field.startsWith("bookmark: ")) {
                 entry[2] = field.substring("bookmark: ".length()).trim();
+            } else if (field.startsWith("space: ") && "parents".equals(section)) {
+                spaceEntry = field.substring("space: ".length()).trim();
             }
         }
         current = finish(entry, section, "parents".equals(section) ? parents : children, current);
-        return new TreeNeighbourhood(source, parents, current, children);
+        return new TreeNeighbourhood(source, spaceEntry.isEmpty() ? space : spaceEntry, parents, current, children);
     }
 
     /** Stores a finished entry in its section; returns the (possibly new) current page. */

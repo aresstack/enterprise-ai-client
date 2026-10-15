@@ -82,11 +82,16 @@ public final class HierarchyExploration {
         }
         Map<String, KnowledgeToolOutput.TreeNode> candidates = new LinkedHashMap<String, KnowledgeToolOutput.TreeNode>();
         add(candidates, around.children, excluded);
+        Map<String, Object> siblings = null;
         if (!around.parents.isEmpty()) {
-            KnowledgeToolOutput.TreeNode parent = around.parents.get(around.parents.size() - 1);
+            siblings = treeArgs(around.parents.get(around.parents.size() - 1).id, "children");
+        } else if (around.current != null && !around.space.isEmpty()) {
+            // a page directly below the space root: its siblings are the top-level pages of the space
+            siblings = spaceArgs(around.source, around.space);
+        }
+        if (siblings != null) {
             try {
-                add(candidates, KnowledgeToolOutput.parseTree(tools.call(TREE_TOOL, treeArgs(parent.id,
-                        "children"))).children, excluded);
+                add(candidates, KnowledgeToolOutput.parseTree(tools.call(TREE_TOOL, siblings)).children, excluded);
             } catch (ToolInvoker.ToolFailure siblingsUnavailable) {
                 // the children alone still make the anchor
             }
@@ -229,6 +234,17 @@ public final class HierarchyExploration {
                 candidates.put(node.id, node);
             }
         }
+    }
+
+    private static Map<String, Object> spaceArgs(String source, String space) {
+        Map<String, Object> args = new LinkedHashMap<String, Object>();
+        if (!source.isEmpty()) {
+            args.put("source", source);
+        }
+        args.put("space", space);
+        args.put("direction", "children");
+        args.put("limit", Integer.valueOf(CHILD_LIMIT));
+        return args;
     }
 
     private static Map<String, Object> treeArgs(String id, String direction) {
