@@ -1,0 +1,183 @@
+# Update-Paket von einer beliebigen ausgelieferten Version zur aktuellen main-Version bauen und als Release ablegen.
+#
+# Start von Hand: Actions › patch-release › Run workflow, Eingabe base_version (z. B. 0.71.0, siehe
+# docs/release-candidates.md: ab 0.71.0-rc1 wird nur noch über Patches ausgeliefert).
+#
+#   Basis  -> Jar aus dem Release v<base_version>. Fehlt das Release oder sein Jar, bricht der Lauf sofort ab.
+#   Ziel   -> projectVersion aus gradle.properties auf main und das Jar aus dem Release v<projectVersion>, das
+#             release.yml beim Merge angelegt hat. Patch-Ziel und ausgelieferte Vollversion sind so inhaltsgleich,
+#             und spätere Patches können an diesem Ziel ansetzen.
+#   Patch  -> :proasteion:exedra:fatJarPatch (gradle/fat-jar.gradle) wie im Schritt "Update-Paket zur Vorversion
+#             erzeugen" in release.yml; der Erzeuger spielt den Patch probeweise ein und prüft das Ziel.
+#   Ablage -> Pre-Release patch-<basis>-to-<ziel> (nie "latest"): release.yml sucht seine Vorversion nur unter den
+#             regulären Releases, ein Patch-Release darf dort nicht auftauchen. Titel und Notizen nennen beide
+#             Versionen und Commits.
+name: patch-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_version:
+        description: 'Basisversion, von der aus gepatcht wird (MAJOR.MINOR.PATCH, z. B. 0.71.0)'
+        required: true
+        type: string
+
+jobs:
+  patch:
+    name: Patch von ${{ inputs.base_version }} zur main-Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    concurrency:
+      group: patch-release-${{ inputs.base_version }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BASE: ${{ inputs.base_version }}
+    steps:
+      - name: Basisversion prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$BASE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::base_version muss MAJOR.MINOR.PATCH sein, ist aber '$BASE'"
+            exit 1
+          fi
+          if ! gh release view "v$BASE" --json assets --jq '.assets[].name' > assets.txt 2>/dev/null; then
+            echo "::error title=Basisversion unbekannt::Es gibt kein Release v$BASE."
+            exit 1
+          fi
+          if ! grep -qx "enterprise-ai-client-$BASE.jar" assets.txt; then
+            echo "::error title=Basis-Jar fehlt::Release v$BASE hat kein enterprise-ai-client-$BASE.jar."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: gradle
+
+      - name: Zielversion auf main bestimmen
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$(sed -n 's/^projectVersion=//p' gradle.properties | tr -d '[:space:]')"
+          main_commit="$(git rev-parse HEAD)"
+          if ! printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error file=gradle.properties::projectVersion muss MAJOR.MINOR.PATCH sein, ist aber '$target'"
+            exit 1
+          fi
+          if [ "$(printf '%s\n%s\n' "$BASE" "$target" | sort -V | tail -n 1)" != "$target" ] || [ "$BASE" = "$target" ]; then
+            echo "::error::Basisversion $BASE ist nicht älter als die main-Version $target."
+            exit 1
+          fi
+          if ! git rev-parse -q --verify "refs/tags/v$target^{commit}" >/dev/null; then
+            echo "::error title=Ziel nicht veröffentlicht::Für die main-Version $target gibt es noch kein Release v$target (läuft release.yml noch?)."
+            exit 1
+          fi
+          base_commit="$(git rev-parse "refs/tags/v$BASE^{commit}")"
+          target_commit="$(git rev-parse "refs/tags/v$target^{commit}")"
+          if [ "$target_commit" != "$main_commit" ]; then
+            echo "::warning title=main ist weiter als v$target::main ($main_commit) hat Commits nach v$target ($target_commit) ohne neue projectVersion; der Patch zielt auf das veröffentlichte v$target."
+          fi
+          {
+            echo "version=$target"
+            echo "base_commit=$base_commit"
+            echo "target_commit=$target_commit"
+            echo "main_commit=$main_commit"
+            echo "tag=patch-$BASE-to-$target"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Basis- und Ziel-Jar laden
+        env:
+          TARGET: ${{ steps.target.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p jars/base jars/target
+          gh release download "v$BASE" --pattern "enterprise-ai-client-$BASE.jar" --dir jars/base
+          gh release download "v$TARGET" --pattern "enterprise-ai-client-$TARGET.jar" --dir jars/target
+          ls -l jars/base jars/target
+
+      - name: Patch bauen
+        id: patch
+        env:
+          TARGET: ${{ steps.target.outputs.version }}
+          BASE_COMMIT: ${{ steps.target.outputs.base_commit }}
+          TARGET_COMMIT: ${{ steps.target.outputs.target_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          changes="$RUNNER_TEMP/changes.txt"
+          git log --format=%s "$BASE_COMMIT..$TARGET_COMMIT" | grep -v '^Version [0-9]' | sed 's/^/- /' > "$changes" || true
+          ./gradlew :proasteion:exedra:fatJarPatch --no-daemon -Prelease=true \
+            -PpatchBase="$PWD/jars/base/enterprise-ai-client-$BASE.jar" \
+            -PpatchTarget="$PWD/jars/target/enterprise-ai-client-$TARGET.jar" \
+            -PpatchChanges="$changes"
+          patch="proasteion/exedra/build/distributions/enterprise-ai-client-patch-$BASE-to-$TARGET.zip"
+          [ -f "$patch" ] || { echo "::error::Update-Paket $patch fehlt nach fatJarPatch."; exit 1; }
+          ls -l "$patch"
+          unzip -p "$patch" patch.properties
+          echo "file=$patch" >> "$GITHUB_OUTPUT"
+
+      - name: Patch als Workflow-Artefakt ablegen
+        uses: actions/upload-artifact@v4
+        with:
+          name: enterprise-ai-client-patch-${{ inputs.base_version }}-to-${{ steps.target.outputs.version }}
+          path: ${{ steps.patch.outputs.file }}
+          if-no-files-found: error
+
+      - name: Patch-Release anlegen
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+          TARGET: ${{ steps.target.outputs.version }}
+          BASE_COMMIT: ${{ steps.target.outputs.base_commit }}
+          TARGET_COMMIT: ${{ steps.target.outputs.target_commit }}
+          MAIN_COMMIT: ${{ steps.target.outputs.main_commit }}
+          PATCH: ${{ steps.patch.outputs.file }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error title=Release existiert::$TAG gibt es schon. Zum Neubau das Release samt Tag löschen und erneut starten."
+            exit 1
+          fi
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            echo "Update-Paket von **$BASE** auf **$TARGET**. Einspielen in Merlins Kristallhöhle über „Update einspielen …“."
+            echo
+            echo "| | Version | Commit |"
+            echo "|---|---|---|"
+            echo "| Basis | $BASE (v$BASE) | $BASE_COMMIT |"
+            echo "| Ziel | $TARGET (v$TARGET) | $TARGET_COMMIT |"
+            echo
+            echo "main beim Bau: $MAIN_COMMIT · Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo '```'
+            unzip -p "$PATCH" patch.properties
+            echo '```'
+            echo
+            echo "### Änderungen"
+            echo
+            unzip -p "$PATCH" changes.txt || true
+          } > "$notes"
+          gh release create "$TAG" "$PATCH" \
+            --target "$TARGET_COMMIT" \
+            --title "Patch $BASE → $TARGET" \
+            --notes-file "$notes" \
+            --prerelease \
+            --latest=false
+          {
+            echo "## Patch-Release $TAG angelegt"
+            echo
+            echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          } >> "$GITHUB_STEP_SUMMARY"
