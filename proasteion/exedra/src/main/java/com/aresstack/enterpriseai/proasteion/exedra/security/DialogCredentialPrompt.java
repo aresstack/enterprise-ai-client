@@ -18,19 +18,25 @@ public final class DialogCredentialPrompt implements AskedSecretProvider.Credent
     @Override
     public AskedSecretProvider.Answer ask(SecretRef ref, final String label)
             throws AskedSecretProvider.Unavailable {
+        return ask(ref, label, "");
+    }
+
+    @Override
+    public AskedSecretProvider.Answer ask(SecretRef ref, final String label, final String suggestedUser)
+            throws AskedSecretProvider.Unavailable {
         if (GraphicsEnvironment.isHeadless()) {
             throw new AskedSecretProvider.Unavailable(
                     "Manuelle Zugangsdaten brauchen ein Fenster zur Eingabe");
         }
         if (SwingUtilities.isEventDispatchThread()) {
-            return show(label);
+            return show(label, suggestedUser);
         }
         final AtomicReference<AskedSecretProvider.Answer> result = new AtomicReference<AskedSecretProvider.Answer>();
         try {
             SwingUtilities.invokeAndWait(new Runnable() {
                 @Override
                 public void run() {
-                    result.set(show(label));
+                    result.set(show(label, suggestedUser));
                 }
             });
         } catch (InterruptedException e) {
@@ -42,8 +48,8 @@ public final class DialogCredentialPrompt implements AskedSecretProvider.Credent
         return result.get();
     }
 
-    private static AskedSecretProvider.Answer show(String label) {
-        CredentialDialog.Result result = CredentialDialog.show(label);
+    private static AskedSecretProvider.Answer show(String label, String suggestedUser) {
+        CredentialDialog.Result result = CredentialDialog.show(label, suggestedUser);
         return result == null ? null : new AskedSecretProvider.Answer(result.user(), result.password());
     }
 

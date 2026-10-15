@@ -32,14 +32,32 @@ public final class KeePassAccess {
 
     private final SecretProvider secrets;
     private final String address;
+    /** Nur ohne KeePass: löst die manuellen Referenzen auf; sonst {@code null}. */
+    private final SecretProvider manual;
 
     /**
      * @param secrets der Security-Port; {@code null} = KeePass aus (jeder Zugriff scheitert mit NOT_AVAILABLE)
      * @param address KeePass-Adresse {@code host:port} für Meldungen; {@code null} = keine
      */
     public KeePassAccess(SecretProvider secrets, String address) {
+        this(secrets, address, null);
+    }
+
+    private KeePassAccess(SecretProvider secrets, String address, SecretProvider manual) {
         this.secrets = secrets;
         this.address = address;
+        this.manual = manual;
+    }
+
+    /**
+     * KeePass aus, Zugang „Manuell“ trotzdem möglich: {@code ask:}-Referenzen löst {@code manual} auf (Sitzung bzw.
+     * Abfrage-Dialog), jeder KeePass-Zugriff scheitert wie bei {@link #unavailable()}.
+     */
+    public static KeePassAccess manualOnly(SecretProvider manual) {
+        if (manual == null) {
+            throw new IllegalArgumentException("manual must not be null");
+        }
+        return new KeePassAccess(null, null, manual);
     }
 
     /** Ohne KeePass: jeder Zugriff scheitert mit „nicht erreichbar“. */
@@ -251,6 +269,9 @@ public final class KeePassAccess {
     }
 
     private SecretProvider provider(SecretRef ref) throws SecretUnavailableException {
+        if (secrets == null && manual != null && AskedSecretProvider.isAsked(ref)) {
+            return manual;
+        }
         if (secrets == null) {
             throw new SecretUnavailableException(SecretUnavailableException.Reason.NOT_AVAILABLE, ref,
                     "KeePassRPC ist ausgeschaltet");

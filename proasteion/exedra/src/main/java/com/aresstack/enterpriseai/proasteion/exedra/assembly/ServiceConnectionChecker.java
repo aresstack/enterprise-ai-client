@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
+import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
 
 import com.aresstack.enterpriseai.astu.acropolis.speech.TextAnalysisService;
@@ -88,7 +89,7 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
         }
         SecretRef ref = config.embedding().apiKeyRef() == null ? config.chat().apiKeyRef() : config.embedding().apiKeyRef();
         String token = null;
-        if (config.keePass().enabled() && ref != null) {
+        if (ref != null && (config.keePass().enabled() || AskedSecretProvider.isAsked(ref))) {
             try {
                 token = AdapterAssembly.keePassAccess(config.keePass(), pairing.forAddress(config.keePass().address()),
                         new DialogCredentialPrompt()).token(ref);
@@ -183,7 +184,7 @@ public final class ServiceConnectionChecker implements ConnectionChecker {
     static String chatToken(AppConfig config, KeePassSecretChecker.PairingCallbackFactory pairing)
             throws IOException {
         SecretRef ref = config.chat().apiKeyRef();
-        if (!config.keePass().enabled() || ref == null) {
+        if (ref == null || (!config.keePass().enabled() && !AskedSecretProvider.isAsked(ref))) {
             return null;
         }
         try {

@@ -69,4 +69,56 @@ public interface SetupActions {
     default void merlinVoice(SettingsForm form, Consumer<SetupVoices> done) {
         done.accept(SetupVoices.silent(null));
     }
+
+    // ------------------------------------------------------------------ Zugang „Manuell“
+
+    /**
+     * Prüft Confluence mit den im Assistenten eingegebenen Zugangsdaten (Zugang „Manuell“, ohne KeePass): Spaces
+     * abrufen wie beim KeePass-Weg. Das Passwort wird kopiert; der Aufrufer löscht seines gleich nach dem Aufruf.
+     * Ergebnis (Meldung, {@code null}) oder ({@code null}, Fehler).
+     */
+    default void testConfluence(SettingsForm form, String url, String user, char[] password, String certificateAlias,
+                                BiConsumer<String, String> done) {
+        done.accept(null, "Der Confluence-Test ist hier nicht verfügbar.");
+    }
+
+    /**
+     * Merkt Benutzer und Geheimnis einer manuellen Referenz ({@code ask:…}) für diese Sitzung, damit Test,
+     * Modellabfrage, Abschlussprüfung und Anwendung nicht erneut fragen; {@code secret} löscht der Aufrufer.
+     */
+    default void rememberManual(String ref, String user, char[] secret) {
+    }
+
+    /** Vergisst die Sitzungseingabe einer manuellen Referenz (gescheiterter Test, Wechsel des Zugangs). */
+    default void forgetManual(String ref) {
+    }
+
+    /** Ob für die manuelle Referenz in dieser Sitzung ein Geheimnis vorliegt. */
+    default boolean knowsManual(String ref) {
+        return false;
+    }
+
+    /** Ob „API-Key speichern“ hier geschützt möglich ist. */
+    default boolean canStoreManualKey() {
+        return false;
+    }
+
+    /** Ein Satz zur dauerhaften Ablage (wie bzw. warum nicht gespeichert wird). */
+    default String manualKeyStorage() {
+        return "Dauerhaftes Speichern ist hier nicht verfügbar; der API-Key gilt nur für diese Sitzung.";
+    }
+
+    /** Ob für die Referenz schon ein API-Key dauerhaft gespeichert ist. */
+    default boolean manualKeyStored(String ref) {
+        return false;
+    }
+
+    /**
+     * „API-Key speichern“ nach bestandener Abschlussprüfung: {@code keep} speichert das Geheimnis der Sitzung
+     * geschützt, sonst wird ein früher gespeichertes gezielt entfernt. {@code done} bekommt {@code null} oder den
+     * Fehler (ohne Material), auf dem EDT.
+     */
+    default void storeManualKey(String ref, boolean keep, Consumer<String> done) {
+        done.accept(keep ? manualKeyStorage() : null);
+    }
 }

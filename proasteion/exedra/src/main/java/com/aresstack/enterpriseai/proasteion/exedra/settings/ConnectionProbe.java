@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
+import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
 import com.aresstack.enterpriseai.proasteion.application.net.ConnectionDiagnosis;
@@ -282,7 +283,7 @@ public final class ConnectionProbe {
 
     private String lookupToken(Reporter out) {
         SecretRef ref = config.chat().apiKeyRef();
-        if (!config.keePass().enabled()) {
+        if (!config.keePass().enabled() && !AskedSecretProvider.isAsked(ref)) {
             out.report(ConnectionCheckStep.info(STEP_KEY, "KeePassRPC ist ausgeschaltet "
                     + "(security.keepass.enabled=false); der Aufruf geht ohne API-Key, also nur bis zur HTTP-Antwort."));
             return null;

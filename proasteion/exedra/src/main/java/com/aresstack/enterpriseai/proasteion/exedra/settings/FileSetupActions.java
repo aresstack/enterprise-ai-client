@@ -10,6 +10,8 @@ import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.VaultLocations;
 import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
+import com.aresstack.enterpriseai.proasteion.application.security.ProtectedSecretStore;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationCheck;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.proasteion.application.settings.FileSourceActions;
@@ -69,6 +71,8 @@ public final class FileSetupActions implements SetupActions {
     static final String MODEL_PLACEHOLDER = "-";
     /** Name der Quelle unter Wissensquellen. */
     static final String SOURCE_TITLE = "Confluence";
+    /** KeePass point when every chosen access is manual. */
+    static final String KEEPASS_NOT_NEEDED = "nicht benötigt (alle Zugänge manuell)";
 
     private final FileSettingsActions settings;
     private final FileSourceActions sources;
@@ -78,9 +82,22 @@ public final class FileSetupActions implements SetupActions {
     private final Executor worker;
     private final Executor ui;
     private final ComicPalette palette;
+    /** Zugang „Manuell“: die Sitzung und die geschützte Ablage („API-Key speichern“). */
+    private final ManualCredentials manual;
 
     public FileSetupActions(FileSettingsActions settings, SecretChecker secrets, ConnectionChecker connection,
                             ConfigurationCheck check, Executor worker, Executor ui, ComicPalette palette) {
+        this(settings, secrets, connection, check, worker, ui, palette, ManualCredentials.session());
+    }
+
+    /** Wie oben mit eigener Sitzung der manuellen Zugangsdaten (Tests). */
+    public FileSetupActions(FileSettingsActions settings, SecretChecker secrets, ConnectionChecker connection,
+                            ConfigurationCheck check, Executor worker, Executor ui, ComicPalette palette,
+                            ManualCredentials manual) {
+        if (manual == null) {
+            throw new IllegalArgumentException("manual must not be null");
+        }
+        this.manual = manual;
         if (settings == null || secrets == null || connection == null || check == null || worker == null
                 || ui == null) {
             throw new IllegalArgumentException("settings, secrets, connection, check, worker and ui must not be null");
@@ -292,7 +309,8 @@ public final class FileSetupActions implements SetupActions {
             saveProblem = "Konfigurationsdatei nicht schreibbar (" + e.getClass().getSimpleName() + ").";
         }
         SourceDefinition source = confluence == null ? null : ConfluenceEntryCheck.definition(SOURCE_TITLE,
-                confluence.baseUrl(), confluence.entryTitle(), confluence.certificateAlias());
+                confluence.baseUrl(), confluence.credentialRef(), confluence.certificateAlias(),
+                confluence.rememberedUser());
         String sourceProblem = null;
         if (saveProblem != null) {
             sourceProblem = incomplete ? SOURCE_PENDING : saveProblem;
@@ -327,13 +345,19 @@ public final class FileSetupActions implements SetupActions {
         }
 
         List<SetupCheck> checks = new ArrayList<SetupCheck>();
-        // 1. KeePass gekoppelt (Einträge lesbar)
+        // 1. KeePass gekoppelt (Einträge lesbar), nur wenn ein gewählter Zugang KeePass braucht
+        boolean manualService = ManualCredentials.isManual(form.chatApiKeyRef());
+        boolean needsKeePass = !manualService || (confluence != null && !confluence.isManual());
         KeePassAccess vault = keePass == null ? KeePassAccess.unavailable() : secrets.vault(keePass);
-        try {
-            int count = vault.titles().size();
-            checks.add(SetupCheck.ok(CHECK_KEEPASS, count + " Einträge lesbar"));
-        } catch (KeePassAccess.Failure | RuntimeException e) {
-            checks.add(SetupCheck.failed(CHECK_KEEPASS, message(e)));
+        if (!needsKeePass) {
+            checks.add(SetupCheck.ok(CHECK_KEEPASS, KEEPASS_NOT_NEEDED));
+        } else {
+            try {
+                int count = vault.titles().size();
+                checks.add(SetupCheck.ok(CHECK_KEEPASS, count + " Einträge lesbar"));
+            } catch (KeePassAccess.Failure | RuntimeException e) {
+                checks.add(SetupCheck.failed(CHECK_KEEPASS, message(e)));
+            }
         }
         // 2. KI-Dienst erreichbar: the same probe as step 2, with placeholders for models not chosen yet
         checks.add(serviceCheck(form));
@@ -396,11 +420,17 @@ public final class FileSetupActions implements SetupActions {
                 : join(failures));
     }
 
-    /** Reads the API key through the KeePass section and the reference of the draft. */
+    /**
+     * Reads the API key through the KeePass section and the reference of the draft. A manual reference resolves
+     * through the same path as the application (session, protected store, then the dialog).
+     */
     private SetupCheck apiKeyCheck(SettingsForm form, KeePassConfig keePass) {
         String ref = form.chatApiKeyRef() == null ? "" : form.chatApiKeyRef().trim();
         if (ref.isEmpty()) {
             return SetupCheck.failed(CHECK_API_KEY, "kein KeePass-Eintrag für den KI-Dienst gewählt");
+        }
+        if (ManualCredentials.isManual(ref) && !manual.knows(ref) && !manual.persistent().contains(ref)) {
+            return SetupCheck.failed(CHECK_API_KEY, "manueller API-Key in dieser Sitzung nicht eingegeben");
         }
         if (keePass == null) {
             return SetupCheck.failed(CHECK_API_KEY, "KeePass-Einstellungen ungültig");
@@ -410,6 +440,11 @@ public final class FileSetupActions implements SetupActions {
             result = secrets.check(keePass, SecretRef.of(ref));
         } catch (RuntimeException e) {
             result = SecretCheckResult.failed(message(e));
+        }
+        if (ManualCredentials.isManual(ref)) {
+            return result.isSuccess() ? SetupCheck.ok(CHECK_API_KEY, manual.knows(ref)
+                    ? "manuell eingegeben" : "manuell, geschützt gespeichert")
+                    : SetupCheck.failed(CHECK_API_KEY, result.message());
         }
         return result.isSuccess() ? SetupCheck.ok(CHECK_API_KEY, "")
                 : SetupCheck.failed(CHECK_API_KEY, result.message());
@@ -443,6 +478,9 @@ public final class FileSetupActions implements SetupActions {
         if (network == null) {
             return SetupCheck.failed(CHECK_CONFLUENCE, "Netzwerkeinstellungen ungültig");
         }
+        if (confluence.isManual()) {
+            return manualConfluenceCheck(network, confluence);
+        }
         char[] password = null;
         try {
             KeePassAccess.Entry entry = vault.read(confluence.entryTitle());
@@ -462,6 +500,23 @@ public final class FileSetupActions implements SetupActions {
         }
     }
 
+    /** Confluence „Manuell“: mit dem in dieser Sitzung eingegebenen Passwort bzw. Token, ohne KeePass. */
+    private SetupCheck manualConfluenceCheck(NetworkConfig network, ConfluenceSetup confluence) {
+        String ref = confluence.credentialRef();
+        char[] password = manual.secret(ref);
+        if (password == null || password.length == 0) {
+            return SetupCheck.failed(CHECK_CONFLUENCE, "Passwort bzw. Token in dieser Sitzung nicht eingegeben");
+        }
+        try {
+            return SetupCheck.ok(CHECK_CONFLUENCE, secrets.testConfluence(network, confluence.baseUrl(),
+                    manual.user(ref), password, confluence.certificateAlias()));
+        } catch (Exception e) {
+            return SetupCheck.failed(CHECK_CONFLUENCE, message(e));
+        } finally {
+            Arrays.fill(password, '\0');
+        }
+    }
+
     private SetupCheck sourceCheck(SourceDefinition expected, String problem) {
         if (problem != null) {
             return SetupCheck.failed(CHECK_SOURCE, problem);
@@ -477,6 +532,110 @@ public final class FileSetupActions implements SetupActions {
         } catch (IOException | RuntimeException e) {
             return SetupCheck.failed(CHECK_SOURCE, message(e));
         }
+    }
+
+    // ------------------------------------------------------------------ Zugang „Manuell“
+
+    @Override
+    public void testConfluence(SettingsForm form, final String url, final String user, char[] password,
+                               final String certificateAlias, final BiConsumer<String, String> done) {
+        if (form == null || done == null) {
+            throw new IllegalArgumentException("form and done must not be null");
+        }
+        final NetworkConfig network;
+        try {
+            network = AppConfigLoader.networkSection(SettingsMapper.merge(current(), form));
+        } catch (IOException | RuntimeException e) {
+            done.accept(null, "Netzwerkeinstellungen ungültig (" + e.getClass().getSimpleName() + ").");
+            return;
+        }
+        final char[] copy = password == null ? new char[0] : Arrays.copyOf(password, password.length);
+        submit(() -> {
+            String message = null;
+            String error = null;
+            try {
+                message = secrets.testConfluence(network, url, user, copy, certificateAlias);
+            } catch (Exception e) {
+                LOG.log(Level.INFO, "Confluence-Test (manuell) fehlgeschlagen: " + e.getClass().getSimpleName());
+                error = message(e);
+            } finally {
+                Arrays.fill(copy, '\0');
+            }
+            final String delivered = message;
+            final String failure = error;
+            ui.execute(() -> done.accept(delivered, failure));
+        }, () -> {
+            Arrays.fill(copy, '\0');
+            done.accept(null, "Der Confluence-Test konnte nicht gestartet werden.");
+        });
+    }
+
+    @Override
+    public void rememberManual(String ref, String user, char[] secret) {
+        manual.remember(ref, user, secret);
+    }
+
+    @Override
+    public void forgetManual(String ref) {
+        if (ManualCredentials.isManual(ref)) {
+            manual.forget(ref);
+        }
+    }
+
+    @Override
+    public boolean knowsManual(String ref) {
+        return manual.knows(ref);
+    }
+
+    @Override
+    public boolean canStoreManualKey() {
+        return manual.persistent().available();
+    }
+
+    @Override
+    public String manualKeyStorage() {
+        return manual.persistent().describe();
+    }
+
+    @Override
+    public boolean manualKeyStored(String ref) {
+        return ManualCredentials.isManual(ref) && manual.persistent().contains(ref);
+    }
+
+    @Override
+    public void storeManualKey(final String ref, final boolean keep, final Consumer<String> done) {
+        if (done == null) {
+            throw new IllegalArgumentException("done must not be null");
+        }
+        if (!ManualCredentials.isManual(ref)) {
+            done.accept("keine manuelle Referenz");
+            return;
+        }
+        final ProtectedSecretStore store = manual.persistent();
+        submit(() -> {
+            String error = null;
+            char[] secret = keep ? manual.secret(ref) : null;
+            try {
+                if (!keep) {
+                    store.remove(ref);
+                } else if (!store.available()) {
+                    error = store.describe();
+                } else if (secret == null) {
+                    error = "Kein API-Key in dieser Sitzung eingegeben.";
+                } else {
+                    store.store(ref, secret);
+                }
+            } catch (Exception e) {
+                LOG.log(Level.INFO, "API-Key nicht gespeichert: " + e.getClass().getSimpleName());
+                error = "Der API-Key ließ sich nicht geschützt speichern (" + e.getClass().getSimpleName() + ").";
+            } finally {
+                if (secret != null) {
+                    Arrays.fill(secret, '\0');
+                }
+            }
+            final String failure = error;
+            ui.execute(() -> done.accept(failure));
+        }, () -> done.accept("Das Speichern konnte nicht gestartet werden."));
     }
 
     // ------------------------------------------------------------------ Dialoge

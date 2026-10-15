@@ -138,8 +138,13 @@ public final class AdapterAssembly {
      */
     public static KeePassAccess keePassAccess(final KeePassConfig keePass, PairingPrompt pairing,
                                               AskedSecretProvider.CredentialPrompt prompt) {
-        if (keePass == null || !keePass.enabled()) {
+        if (keePass == null) {
             return KeePassAccess.unavailable();
+        }
+        if (!keePass.enabled()) {
+            // Zugang „Manuell“ braucht kein KeePass: ask:-Referenzen gehen an die Sitzung, alles andere scheitert.
+            return KeePassAccess.manualOnly(new AskedSecretProvider(new UnavailableSecretProvider(
+                    "KeePassRPC ist deaktiviert (security.keepass.enabled=false)"), prompt));
         }
         return new KeePassAccess(new RetryingSecretProvider(secrets(keePass, pairing, prompt), keePass::retry),
                 keePass.address());

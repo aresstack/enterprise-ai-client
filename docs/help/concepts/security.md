@@ -21,7 +21,12 @@ Einrichtung und Bedienung: [KeePass einrichten](help:getting-started.keepass) un
 
 ### Zugang „Manuell“
 
-Statt KeePass kannst du im Reiter „KI-Dienst“ und bei Wissensquellen den Zugang „Manuell“ wählen. Dann fragt die Anwendung API-Key bzw. Benutzer und Passwort beim ersten Gebrauch je Sitzung ab und hält die Antwort **nur im Arbeitsspeicher**. Gespeichert wird nichts davon; nach einem Neustart fragt sie erneut.
+Statt KeePass kannst du im Einrichtungsassistenten (Schritte „KI-Dienst“ und „Confluence“), im Reiter „KI-Dienst“ und bei Wissensquellen den Zugang „Manuell“ wählen. Dann fragt die Anwendung API-Key bzw. Benutzer und Passwort beim ersten Gebrauch je Sitzung ab und hält die Antwort **nur im Arbeitsspeicher**; was du im Assistenten eingibst, gilt für die ganze Sitzung ohne zweite Abfrage. Ein vollständig manueller Zugang braucht kein KeePass.
+
+Zwei Ausnahmen, beide nur auf ausdrücklichen Wunsch:
+
+- **„API-Key speichern“** (KI-Dienst, im Assistenten, anfangs aus): Der API-Key wird unter Windows mit DPAPI für dein Benutzerkonto verschlüsselt im Anwendungsverzeichnis abgelegt und gilt dann auch nach einem Neustart. Gespeichert wird erst nach der bestandenen Abschlussprüfung; ohne Häkchen entfernt der Abschluss einen früher gespeicherten Key. Wo DPAPI fehlt, ist das Häkchen gesperrt; unverschlüsselt wird nie gespeichert.
+- **„Benutzername merken“** (Confluence): Nur der Benutzername steht bei der Quelle und ist beim nächsten Start im Abfrage-Dialog vorbelegt. Passwort bzw. Token wird nie gespeichert.
 
 ## Keine Passwörter in der Konfigurationsdatei
 

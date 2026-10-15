@@ -58,6 +58,7 @@ public final class CredentialDialog extends JDialog {
     private final JTextField userField = new JTextField(24);
     private final JPasswordField passwordField = new JPasswordField(24);
     private Result result;
+    private boolean focusPassword;
 
     private CredentialDialog(Frame owner, String label, ComicPalette palette) {
         super(owner, "Zugangsdaten", true);
@@ -129,7 +130,7 @@ public final class CredentialDialog extends JDialog {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent e) {
-                userField.requestFocusInWindow();
+                (focusPassword ? passwordField : userField).requestFocusInWindow();
             }
         });
         setContentPane(content);
@@ -140,8 +141,19 @@ public final class CredentialDialog extends JDialog {
 
     /** Zeigt den Dialog modal und liefert die Eingabe oder {@code null} beim Abbrechen. Nur auf dem EDT. */
     public static Result show(String label) {
+        return show(label, "");
+    }
+
+    /**
+     * Wie {@link #show(String)}, der Benutzer mit einem vorgemerkten Namen vorbelegt (änderbar, leer erlaubt); der
+     * Fokus steht dann gleich im Passwortfeld.
+     */
+    public static Result show(String label, String suggestedUser) {
         CredentialDialog dialog = new CredentialDialog(activeFrame(), label == null ? "" : label,
                 ComicPalette.defaultPalette());
+        String user = suggestedUser == null ? "" : suggestedUser.trim();
+        dialog.userField.setText(user);
+        dialog.focusPassword = !user.isEmpty();
         try {
             dialog.setVisible(true);
             return dialog.result;

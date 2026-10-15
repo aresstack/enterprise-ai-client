@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 
 import com.aresstack.enterpriseai.proasteion.application.config.VaultLocations;
 import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
@@ -101,10 +102,30 @@ final class VaultSourceProvider implements KnowledgeSourceProvider, AddressableK
 
     @Override
     public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
+        suggestManualUser(settings);
         if (fieldsFromVault(settings).isEmpty()) {
             return delegate.open(sourceId, settings);
         }
         return new Deferred(sourceId, settings);
+    }
+
+    /**
+     * Zugang „Manuell“ mit vorgemerktem Benutzernamen ({@link ManualCredentials#SOURCE_USER_SETTING}): der
+     * Abfrage-Dialog dieser Quelle zeigt ihn vorbelegt; Passwort bzw. Token fragt er weiterhin je Sitzung ab.
+     */
+    private void suggestManualUser(SourceSettings settings) {
+        String user = settings.get(ManualCredentials.SOURCE_USER_SETTING);
+        if (user == null || user.trim().isEmpty()) {
+            return;
+        }
+        for (SourceSettingField field : delegate.type().fields()) {
+            if (field.kind() == SourceSettingField.Kind.SECRET_REF) {
+                String value = settings.get(field.key());
+                if (ManualCredentials.isManual(value)) {
+                    ManualCredentials.session().suggestUser(value, user);
+                }
+            }
+        }
     }
 
     /** Die leeren Felder, die ihren Wert aus dem gewählten KeePass-Eintrag bekommen. */

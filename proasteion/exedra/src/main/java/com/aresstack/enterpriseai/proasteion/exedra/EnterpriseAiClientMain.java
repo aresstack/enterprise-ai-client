@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra;
 
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationStart;
+import com.aresstack.enterpriseai.proasteion.application.security.DpapiSecretStore;
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
 import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
 import com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts;
 import com.aresstack.enterpriseai.proasteion.application.composition.ModelCatalogs;
@@ -87,6 +89,9 @@ public final class EnterpriseAiClientMain {
         LOG.info("Enterprise AI Client startet: Java " + System.getProperty("java.version") + " ("
                 + System.getProperty("java.vendor") + "), " + System.getProperty("os.name") + " "
                 + System.getProperty("os.version"));
+        // „API-Key speichern“ (Zugang „Manuell“): geschützte Ablage für alle Wege, schon für den Einrichtungsassistenten.
+        ManualCredentials.session().persistent(DpapiSecretStore.forDirectory(
+                AppPaths.appDirectory().resolve(DpapiSecretStore.DIRECTORY_NAME)));
         final ConfigurationFile file = new ConfigurationFile(AppPaths.configFile());
         final boolean headless = GraphicsEnvironment.isHeadless();
         final ModelCatalogs modelCatalogs = SettingsAssembly.modelCatalogs(

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
+import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.proasteion.application.composition.ConfluenceEntryCheck;
 
@@ -54,7 +55,7 @@ public final class KeePassSecretChecker implements SecretChecker {
         if (keePass == null || ref == null) {
             throw new IllegalArgumentException("keePass and ref must not be null");
         }
-        if (!keePass.enabled()) {
+        if (!keePass.enabled() && !AskedSecretProvider.isAsked(ref)) {
             return SecretCheckResult.failed("KeePassRPC ist ausgeschaltet; ohne KeePass gibt es keinen API-Key.");
         }
         KeePassAccess.Check result = access(keePass).check(ref);
