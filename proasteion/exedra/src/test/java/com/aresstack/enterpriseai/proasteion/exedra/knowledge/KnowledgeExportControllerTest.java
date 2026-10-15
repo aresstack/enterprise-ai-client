@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.proasteion.exedra.knowledge;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeExportUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.PageNavigationUseCase;
 import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportGraphics;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportSaveDialog;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.NavigationNode;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryNavigationSource;
@@ -39,6 +41,7 @@ public class KnowledgeExportControllerTest {
     private final List<Boolean> workOnEdt = Collections.synchronizedList(new ArrayList<Boolean>());
     private final CountDownLatch done = new CountDownLatch(1);
     private File target;
+    private ExportFormat chosen;
 
     private final Executor work = runnable -> new Thread(() -> {
         workOnEdt.add(SwingUtilities.isEventDispatchThread());
@@ -47,9 +50,9 @@ public class KnowledgeExportControllerTest {
 
     private final KnowledgeExportController.Dialogs dialogs = new KnowledgeExportController.Dialogs() {
         @Override
-        public File chooseTarget(Component parent, String suggestedName, ExportFormat format) {
-            events.add("choose " + suggestedName + "." + format.extension());
-            return target;
+        public ExportSaveDialog.Choice<ExportFormat> chooseTarget(Component parent, String suggestedName) {
+            events.add("choose " + suggestedName);
+            return target == null ? null : new ExportSaveDialog.Choice<ExportFormat>(target, chosen);
         }
 
         @Override
@@ -77,7 +80,7 @@ public class KnowledgeExportControllerTest {
 
     private KnowledgeExportController controller() {
         return new KnowledgeExportController(new KnowledgeExportUseCase(new PageNavigationUseCase()),
-                SwingUtilities::invokeLater, work, dialogs);
+                SwingUtilities::invokeLater, work, dialogs, () -> new ExportGraphics(null));
     }
 
     private NavigationNode node(String key) throws Exception {
@@ -87,12 +90,13 @@ public class KnowledgeExportControllerTest {
     @Test
     public void theSubtreeIsWrittenOffTheEdtAfterTheTargetWasChosen() throws Exception {
         target = new File(temp.getRoot(), "Grobkonzept.md");
+        chosen = ExportFormat.MARKDOWN;
         final NavigationNode node = node("a");
-        SwingUtilities.invokeAndWait(() -> controller().exportSubtree(null, source, node, ExportFormat.MARKDOWN));
+        SwingUtilities.invokeAndWait(() -> controller().exportSubtree(null, source, node));
         assertTrue(done.await(10, TimeUnit.SECONDS));
         SwingUtilities.invokeAndWait(() -> {
         });
-        assertEquals("choose Grobkonzept.md", events.get(0));
+        assertEquals("the suggested name has no extension", "choose Grobkonzept", events.get(0));
         assertEquals(Collections.singletonList(Boolean.FALSE), workOnEdt);
         String markdown = new String(Files.readAllBytes(target.toPath()), StandardCharsets.UTF_8);
         assertTrue(markdown, markdown.startsWith("# Grobkonzept\n"));
@@ -103,9 +107,10 @@ public class KnowledgeExportControllerTest {
     @Test
     public void aMissingPageFailsTheExportWithItsNameAndWritesNothing() throws Exception {
         target = new File(temp.getRoot(), "Grobkonzept.pdf");
+        chosen = ExportFormat.PDF;
         source.failWith("c", Kind.UNAVAILABLE);
         final NavigationNode node = node("a");
-        SwingUtilities.invokeAndWait(() -> controller().exportSubtree(null, source, node, ExportFormat.PDF));
+        SwingUtilities.invokeAndWait(() -> controller().exportSubtree(null, source, node));
         assertTrue(done.await(10, TimeUnit.SECONDS));
         SwingUtilities.invokeAndWait(() -> {
         });
@@ -120,16 +125,16 @@ public class KnowledgeExportControllerTest {
     public void withoutATargetNothingIsLoaded() throws Exception {
         target = null;
         final NavigationNode node = node("a");
-        SwingUtilities.invokeAndWait(() -> controller().exportSubtree(null, source, node, ExportFormat.DOCX));
-        assertEquals(Collections.singletonList("choose Grobkonzept.docx"), events);
+        SwingUtilities.invokeAndWait(() -> controller().exportSubtree(null, source, node));
+        assertEquals(Collections.singletonList("choose Grobkonzept"), events);
         assertTrue(workOnEdt.isEmpty());
     }
 
     @Test
     public void aSinglePageExportsOnlyThatPage() throws Exception {
         target = new File(temp.getRoot(), "Seite.md");
-        SwingUtilities.invokeAndWait(() -> controller().exportPage(null, source, source.idOf("a"), "Grobkonzept",
-                ExportFormat.MARKDOWN));
+        chosen = ExportFormat.MARKDOWN;
+        SwingUtilities.invokeAndWait(() -> controller().exportPage(null, source, source.idOf("a"), "Grobkonzept"));
         assertTrue(done.await(10, TimeUnit.SECONDS));
         String markdown = new String(Files.readAllBytes(target.toPath()), StandardCharsets.UTF_8);
         assertFalse(markdown, markdown.contains("Teil B"));
@@ -144,6 +149,25 @@ public class KnowledgeExportControllerTest {
         assertEquals("GK-LF 6. Bausteine Teil 1 2", ExportFileName.of("GK-LF 6. Bausteine: Teil 1/2"));
         assertEquals("Export", ExportFileName.of(" ... "));
         assertEquals("a.pdf", ExportFileName.withExtension(new File("a"), ExportFormat.PDF).getName());
-        assertEquals("a.PDF", ExportFileName.withExtension(new File("a.PDF"), ExportFormat.PDF).getName());
+        assertEquals("a.pdf", ExportFileName.withExtension(new File("a.PDF"), ExportFormat.PDF).getName());
+        assertEquals("a.docx", ExportFileName.withExtension(new File("a.pdf"), ExportFormat.DOCX).getName());
+    }
+
+    @Test
+    public void theChosenFileTypeDecidesTheWriter() throws Exception {
+        target = new File(temp.getRoot(), "Grobkonzept.pdf");
+        chosen = ExportFormat.PDF;
+        SwingUtilities.invokeAndWait(() -> controller().exportPage(null, source, source.idOf("a"), "Grobkonzept"));
+        assertTrue(done.await(10, TimeUnit.SECONDS));
+        byte[] bytes = Files.readAllBytes(target.toPath());
+        assertEquals("%PDF", new String(bytes, 0, 4, StandardCharsets.US_ASCII));
+    }
+
+    @Test
+    public void missingFiguresAreListedAfterSaving() {
+        String message = KnowledgeExportController.listed(KnowledgeExportController.FIGURES_MISSING,
+                java.util.Arrays.asList("Abbildung „a.png“: kein Zugriff"));
+        assertTrue(message, message.startsWith(KnowledgeExportController.FIGURES_MISSING));
+        assertTrue(message, message.contains("– Abbildung „a.png“: kein Zugriff"));
     }
 }

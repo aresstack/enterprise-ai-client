@@ -2,7 +2,6 @@ package com.aresstack.enterpriseai.proasteion.exedra.knowledge;
 
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.KnowledgeReaderPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 
@@ -36,12 +35,11 @@ public final class ReaderPageExport implements KnowledgeReaderPanel.PageExporter
     }
 
     @Override
-    public void export(ReaderLink link, ExportFormat format) {
+    public void export(ReaderLink link) {
         if (!canExport(link)) {
             return;
         }
         KnowledgeSourceRegistration registration = lookup.apply(link.sourceId());
-        exporter.exportPage(parent, registration.port(), KnowledgeResourceId.of(link.resourceId()), link.title(),
-                format);
+        exporter.exportPage(parent, registration.port(), KnowledgeResourceId.of(link.resourceId()), link.title());
     }
 }

@@ -1,11 +1,11 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
-import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Test;
 
 import javax.swing.JMenu;
+import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
 import java.awt.Rectangle;
@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -46,8 +47,8 @@ public class PageNavigationExportMenuTest {
             }
 
             @Override
-            public void exportRequested(String key, ExportFormat format) {
-                events.add("export " + key.replace('\n', '|') + " " + format);
+            public void exportRequested(String key) {
+                events.add("export " + key.replace('\n', '|'));
             }
         });
         panel.showRoot(PageNavigationPanel.Item.root(ROOT, "Development", ReaderLink.source("wiki", "Development")));
@@ -58,22 +59,18 @@ public class PageNavigationExportMenuTest {
     }
 
     @Test
-    public void aPageOffersExportAsPdfWordAndMarkdown() throws Exception {
+    public void aPageOffersOneExportEntryThatAsksForTheFileType() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             PageNavigationPanel panel = panel();
             JPopupMenu menu = panel.treeMenu(PageNavigationPanel.Item.page(PAGE, "Grobkonzept",
                     new ReaderLink("wiki", "nav:wiki/a", "Grobkonzept", "", "nav:wiki/a"), true));
             assertNotNull(menu);
-            JMenu export = (JMenu) menu.getComponent(0);
-            assertEquals(PageNavigationPanel.MENU_EXPORT, export.getText());
-            List<String> labels = new ArrayList<String>();
-            for (int i = 0; i < export.getItemCount(); i++) {
-                labels.add(export.getItem(i).getText());
-            }
-            assertEquals(Arrays.asList("Als PDF …", "Als Word …", "Als Markdown …"), labels);
-            export.getItem(0).doClick();
-            export.getItem(2).doClick();
-            assertEquals(Arrays.asList("export wiki|nav:wiki/a PDF", "export wiki|nav:wiki/a MARKDOWN"), events);
+            assertEquals(1, menu.getComponentCount());
+            JMenuItem export = (JMenuItem) menu.getComponent(0);
+            assertFalse("no submenu of formats", export instanceof JMenu);
+            assertEquals("Exportieren …", export.getText());
+            export.doClick();
+            assertEquals(Arrays.asList("export wiki|nav:wiki/a"), events);
             assertNull("the space root is no page", panel.treeMenu(PageNavigationPanel.Item.root(ROOT, "Development",
                     ReaderLink.source("wiki", "Development"))));
         });

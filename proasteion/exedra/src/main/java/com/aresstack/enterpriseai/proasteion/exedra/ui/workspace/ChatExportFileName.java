@@ -31,16 +31,13 @@ final class ChatExportFileName {
     }
 
     /**
-     * Die Zieldatei mit der Endung des gewählten Formats: eine andere Export-Endung ({@code .json}, {@code .md},
-     * {@code .docx}) wird ersetzt, sonst wird die Endung angehängt ({@code Bericht v1.2} → {@code Bericht v1.2.docx},
+     * Die Zieldatei mit der Endung des gewählten Formats: eine andere Export-Endung ({@code .pdf}, {@code .json},
+     * {@code .md}, {@code .docx}, gleich in welcher Schreibweise) wird ersetzt, sonst wird die Endung angehängt ({@code Bericht v1.2} → {@code Bericht v1.2.docx},
      * {@code notiz.txt} → {@code notiz.txt.docx}), damit nie ein Word-Dokument mit fremder Endung entsteht.
      */
     static File withExtension(File chosen, ChatExportFormat format) {
-        String name = chosen.getName().trim();
-        ChatExportFormat typed = ChatExportFormat.ofFileName(name);
-        if (typed != null) {
-            name = name.substring(0, name.length() - typed.extension().length() - 1);
-        }
-        return new File(chosen.getParentFile(), name + "." + format.extension());
+        com.aresstack.enterpriseai.proasteion.exedra.document.ExportFileTypes<ChatExportFormat> types =
+                ChatExportFormat.fileTypes();
+        return types.target(chosen, types.of(format));
     }
 }

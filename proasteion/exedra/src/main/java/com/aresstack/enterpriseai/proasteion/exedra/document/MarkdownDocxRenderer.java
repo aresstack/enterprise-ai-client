@@ -60,6 +60,8 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTStyle;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STNumberFormat;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STStyleType;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -71,6 +73,10 @@ import java.util.Locale;
  * lists as Word lists, tables as Word tables, links as hyperlinks, code as shaded monospace blocks. It defines the
  * styles and list numbering of the document once; the chat export ({@code ChatDocxWriter}) and the page export
  * ({@code DocxExportFormat}) write their own frame around it. Unknown Markdown nodes keep their readable text.
+ *
+ * <p>Figures (#132): with {@link ExportGraphics} an image that resolves is embedded as a picture where it stands
+ * (scaled to the text width), its caption below; a Mermaid fence becomes the drawn diagram. A figure that does not
+ * resolve leaves a visible notice and is reported by the graphics. Without graphics images stay text.</p>
  */
 public final class MarkdownDocxRenderer {
 
@@ -94,12 +100,19 @@ public final class MarkdownDocxRenderer {
     private static final List<String> BULLETS = java.util.Collections.unmodifiableList(
             Arrays.asList("•", "◦", "▪"));
     private static final int[] HEADING_HALF_POINTS = {32, 28, 26, 24, 22, 22};
+    /** The text width of Word's default page (Letter or A4 with its default margins), a little less. */
+    private static final double MAX_PICTURE_POINTS = 450d;
+    private static final double MAX_PICTURE_HEIGHT_POINTS = 620d;
+    private static final double PIXELS_TO_POINTS = 0.75d;
+    private static final String MISSING = "Abbildung nicht verfügbar";
 
     private final XWPFDocument document;
     private final Parser parser;
     private final BigInteger bulletNumId;
     private final BigInteger decimalAbstractId;
     private final XWPFNumbering numbering;
+    private final ExportGraphics graphics;
+    private int pictures;
 
     /** Wohin Blöcke gerade geschrieben werden: der Dokumentkörper oder eine Tabellenzelle. */
     private XWPFTableCell cell;
@@ -107,7 +120,13 @@ public final class MarkdownDocxRenderer {
 
     /** Define the styles and list numbering of {@code document} and write into it. */
     public MarkdownDocxRenderer(XWPFDocument document) {
+        this(document, null);
+    }
+
+    /** As {@link #MarkdownDocxRenderer(XWPFDocument)}, embedding the figures {@code graphics} resolves. */
+    public MarkdownDocxRenderer(XWPFDocument document, ExportGraphics graphics) {
         this.document = document;
+        this.graphics = graphics;
         MutableDataSet options = new MutableDataSet();
         options.set(Parser.EXTENSIONS, Arrays.asList(TablesExtension.create(), StrikethroughExtension.create(),
                 AutolinkExtension.create()));
@@ -177,6 +196,15 @@ public final class MarkdownDocxRenderer {
         }
         if (node instanceof FencedCodeBlock) {
             FencedCodeBlock fenced = (FencedCodeBlock) node;
+            if (graphics != null && PdfExportWriter.isMermaid(fenced.getInfo().toString())) {
+                ExportGraphics.Graphic diagram = graphics.mermaid(fenced.getContentChars().toString());
+                if (diagram != null) {
+                    XWPFParagraph paragraph = paragraph();
+                    context.decorate(paragraph);
+                    picture(paragraph, diagram, "Mermaid-Diagramm");
+                    return;
+                }
+            }
             codeBlock(fenced.getInfo().toString().trim(), fenced.getContentChars().toString(), context);
             return;
         }
@@ -408,6 +436,9 @@ public final class MarkdownDocxRenderer {
         } else if (node instanceof SoftLineBreak || node instanceof HardLineBreak) {
             // wie in der Oberfläche: die Zeilenstruktur der Antwort bleibt
             paragraph.createRun().addBreak();
+        } else if (node instanceof Link && graphics != null && node.getFirstChild() instanceof Image
+                && node.getFirstChild() == node.getLastChild()) {
+            inline(paragraph, node.getFirstChild(), format, context); // [![Bild](…)](…): the picture
         } else if (node instanceof Link) {
             Link link = (Link) node;
             link(paragraph, plain(link), link.getUrl().unescape(), format, context);
@@ -420,7 +451,32 @@ public final class MarkdownDocxRenderer {
         } else if (node instanceof Image) {
             Image image = (Image) node;
             String alt = plain(image);
-            text(paragraph, "[Bild" + (alt.isEmpty() ? "" : ": " + alt) + "]", format, context);
+            if (graphics == null) {
+                text(paragraph, "[Bild" + (alt.isEmpty() ? "" : ": " + alt) + "]", format, context);
+                return;
+            }
+            ExportGraphics.Graphic graphic = graphics.image(image.getUrl().unescape(), alt);
+            if (graphic == null) {
+                Format missing = format.copy();
+                missing.italic = true;
+                text(paragraph, "[" + MISSING + (alt.isEmpty() ? "" : ": " + alt) + "]", missing, context);
+                return;
+            }
+            if (!paragraph.getRuns().isEmpty()) {
+                paragraph.createRun().addBreak();
+            }
+            picture(paragraph, graphic, alt.isEmpty() ? "Abbildung" : alt);
+            if (!alt.isEmpty()) {
+                paragraph.createRun().addBreak();
+                XWPFRun caption = paragraph.createRun();
+                caption.setFontSize(SMALL_POINTS);
+                caption.setItalic(true);
+                caption.setColor(MUTED_COLOR);
+                caption.setText(clean(alt));
+            }
+            if (node.getNext() != null) {
+                paragraph.createRun().addBreak();
+            }
         } else if (node instanceof RefNode) {
             reference(paragraph, (RefNode) node, format, context);
         } else if (node instanceof HtmlInlineComment) {
@@ -498,6 +554,21 @@ public final class MarkdownDocxRenderer {
         }
         if (color && (context.muted || context.quoteDepth > 0)) {
             run.setColor(MUTED_COLOR);
+        }
+    }
+
+    /** Embed {@code graphic} as an inline picture, no wider than the text and no higher than a page. */
+    private void picture(XWPFParagraph paragraph, ExportGraphics.Graphic graphic, String name) {
+        double width = graphic.width() * PIXELS_TO_POINTS;
+        double height = graphic.height() * PIXELS_TO_POINTS;
+        double scale = Math.min(1d, Math.min(MAX_PICTURE_POINTS / width, MAX_PICTURE_HEIGHT_POINTS / height));
+        XWPFRun run = paragraph.createRun();
+        try {
+            run.addPicture(new ByteArrayInputStream(graphic.png()), org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_PNG,
+                    "abbildung-" + (++pictures) + ".png", org.apache.poi.util.Units.toEMU(width * scale),
+                    org.apache.poi.util.Units.toEMU(height * scale));
+        } catch (IOException | org.apache.poi.openxml4j.exceptions.InvalidFormatException e) {
+            run.setText(clean("[" + MISSING + ": " + name + "]"));
         }
     }
 
