@@ -149,7 +149,7 @@ public final class CompositionRoot {
     private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeMcpTools knowledgeTools;
     /** Browser tools of the chats (#141), {@code null} without a browser engine. */
-    private final com.aresstack.enterpriseai.proasteion.application.browser.BrowserMcpTools browserTools;
+    private final com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools browserTools;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private final Object attachmentImagesLock = new Object();
     private com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase attachmentImages;
@@ -365,13 +365,13 @@ public final class CompositionRoot {
         // Browser per chat (#141): listed and switchable in the catalog; executed only bound to a conversation
         // (conversationChatTools), so the chat identity comes from the host, never from the model.
         this.browserTools = ports.browsers() == null ? null
-                : new com.aresstack.enterpriseai.proasteion.application.browser.BrowserMcpTools(ports.browsers());
+                : new com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools(ports.browsers());
         if (browserTools != null) {
             toolCatalog.registerDefinitions(ORIGIN_BROWSER, EnumSet.of(ToolChannel.CHAT), () -> {
                 List<com.aresstack.enterpriseai.chat.api.ToolDefinition> definitions =
                         new ArrayList<com.aresstack.enterpriseai.chat.api.ToolDefinition>();
                 for (com.aresstack.enterpriseai.astu.acropolis.tool.AiTool tool : McpChatTool.all(
-                        com.aresstack.enterpriseai.proasteion.application.browser.BrowserMcpTools.unbound())) {
+                        com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools.unbound())) {
                     definitions.add(tool.definition());
                 }
                 return definitions;

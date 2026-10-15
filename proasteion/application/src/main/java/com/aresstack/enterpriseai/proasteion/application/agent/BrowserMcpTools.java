@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.application.browser;
+package com.aresstack.enterpriseai.proasteion.application.agent;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
@@ -77,8 +77,7 @@ public final class BrowserMcpTools {
     private static McpToolContribution navigate(McpToolHandler handler) {
         return McpToolContribution.of(NAVIGATE,
                 "Open an http(s) address in this chat's browser (current tab unless tab is given) and return the "
-                        + "page title and the beginning of its text. Opens no new tab. Example: "
-                        + "url=\"https://example.org/\".",
+                        + "page title and the beginning of its text. Opens no new tab.",
                 handler,
                 McpToolParameter.string(PARAM_URL, true, "The http(s) address."),
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));

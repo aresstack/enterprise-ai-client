@@ -20,8 +20,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * One browser per chat over a {@link BrowserEngine}.
@@ -37,8 +35,6 @@ import java.util.logging.Logger;
  * </ul>
  */
 public final class ChatBrowserRuntime implements ChatBrowserPort {
-
-    private static final Logger LOG = Logger.getLogger(ChatBrowserRuntime.class.getName());
 
     private final BrowserEngine engine;
     private final BrowserProfileStore profiles;
@@ -215,7 +211,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                     if (!e.isRecoverable()) {
                         throw e;
                     }
-                    LOG.log(Level.INFO, "Browser reconnect failed, restarting: " + e.getMessage());
+                    // Reconnect failed although the process seemed alive: fall through to a restart.
                 }
             }
             stopInstance();

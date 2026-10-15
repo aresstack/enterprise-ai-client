@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.application.browser;
+package com.aresstack.enterpriseai.proasteion.application.agent;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
