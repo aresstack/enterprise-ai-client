@@ -336,7 +336,7 @@ public final class CompositionRoot {
                             : Collections.<McpToolContribution>emptyList());
         }
         toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.AGENT), offered::contributions);
-        // Erste, billige Stufe des Recherche-Agenten: Akronyme aus dem Metadatenkatalog (nur Agent, nicht im Chat).
+        // First, cheap stage of the Research Agent: acronyms from the metadata catalog (agent only, not in the chat).
         final KnowledgeTermLookupTool termLookup = new KnowledgeTermLookupTool(ports.facts());
         toolCatalog.register(ORIGIN_TERM_LOOKUP, EnumSet.of(ToolChannel.AGENT),
                 () -> Collections.singletonList(termLookup.contribution()));

@@ -241,4 +241,26 @@ public class KnowledgeResearchStagesTest {
         assertEquals(Arrays.asList("BS-PIMA"), TermLookupStrategy.terms("Was macht BS-PIMA?"));
         assertTrue(TermLookupStrategy.terms("Wie beantrage ich Urlaub?").isEmpty());
     }
+
+    @Test
+    public void anEmptyTermLookupDoesNotHideAFailedSourceSearch() throws Exception {
+        ToolInvoker tools = new ToolInvoker() {
+            @Override
+            public String call(String toolName, Map<String, Object> args) throws ToolFailure {
+                if (TermLookupStrategy.TOOL.equals(toolName)) {
+                    return "Term: IRR\nNo resource states a long form of this term.";
+                }
+                throw new ToolFailure("source timeout");
+            }
+        };
+        Model model = new Model("{\"queries\": [\"IRR\"]}");
+
+        KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(IRR_TASK);
+
+        assertEquals(KnowledgeResearchResult.Outcome.NO_EVIDENCE, result.outcome());
+        assertEquals(Arrays.asList("IRR failed: source timeout"), result.notes());
+        String rendered = result.render();
+        assertTrue(rendered, rendered.contains("not every knowledge source could be searched"));
+        assertTrue(rendered, !rendered.contains("No hits in the enabled knowledge sources"));
+    }
 }

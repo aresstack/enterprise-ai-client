@@ -108,6 +108,7 @@ public final class KnowledgeResearch {
         ToolInvoker.EndpointUnavailable unavailable = null;
         boolean reached = false;
         boolean answered = false; // at least one lookup returned an answer (possibly without hits)
+        List<String> failures = new ArrayList<String>();
         stages:
         for (int stage = 0; stage < stages.size(); stage++) {
             DiscoveryStrategy strategy = stages.get(stage);
@@ -126,6 +127,7 @@ public final class KnowledgeResearch {
                     reached = true;
                     searched.add(strategy.label(query));
                     failure = failed.getMessage();
+                    failures.add(strategy.label(query) + " failed: " + failed.getMessage());
                     continue;
                 } catch (ToolInvoker.EndpointUnavailable notOffered) {
                     unavailable = notOffered; // this stage cannot run here; the next one may
@@ -161,6 +163,10 @@ public final class KnowledgeResearch {
         }
         if (!reached && unavailable != null) {
             throw unavailable;
+        }
+        if (answered) {
+            // a failed lookup next to answered ones leaves the research incomplete, never "nothing found"
+            notes.addAll(failures);
         }
         Set<String> readIds = new HashSet<String>();
         for (KnowledgeHit hit : read) {
