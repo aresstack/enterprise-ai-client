@@ -11,9 +11,9 @@ import com.aresstack.enterpriseai.proasteion.emporion.holkas.git.GitCredentialsP
 import java.util.Arrays;
 
 /**
- * {@link GitCredentialsProvider} über den Security-Port (#137): Benutzer und Lese-Token (PAT) des KeePass-Eintrags
- * werden erst beim Fetch geholt; die {@link GitCredentials} löscht der Adapter nach dem Fetch selbst. Ein Eintrag
- * ohne Benutzernamen ist erlaubt (Azure Repos und GitHub werten bei Tokens nur das Token aus).
+ * {@link GitCredentialsProvider} on top of the security port (#137): user and read token (PAT) of the KeePass entry
+ * are fetched only when a fetch runs; the adapter clears the {@link GitCredentials} itself afterwards. An entry
+ * without user name is allowed (Azure Repos and GitHub only evaluate the token).
  */
 public final class SecretBackedGitCredentialsProvider implements GitCredentialsProvider {
 

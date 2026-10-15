@@ -70,7 +70,7 @@ public final class AppPaths {
         return appDirectory().resolve(LOG_DIRECTORY_NAME);
     }
 
-    /** Bare-Kopien der Git-Quellen (#137): {@code <appDirectory>/git-cache/<hash>}; gehört der Anwendung. */
+    /** Bare copies of the Git sources (#137): {@code <appDirectory>/git-cache/<hash>}; owned by the application. */
     public static Path defaultGitCacheDirectory() {
         return appDirectory().resolve(GIT_CACHE_DIRECTORY_NAME);
     }

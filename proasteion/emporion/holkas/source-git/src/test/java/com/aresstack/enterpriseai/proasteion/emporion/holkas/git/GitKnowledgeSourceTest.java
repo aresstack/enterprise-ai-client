@@ -177,6 +177,23 @@ public class GitKnowledgeSourceTest {
         assertTrue(paths(open("ref", "v1").discover(SourceScope.of("."))).contains("FEATURE.md"));
         assertFalse(paths(open().discover(SourceScope.of("."))).contains("FEATURE.md"));
 
+        // A commit that only lives on a feature branch, not on the default branch.
+        GitKnowledgeSource pinned = open("ref", commit);
+        assertTrue(paths(pinned.discover(SourceScope.of("."))).contains("FEATURE.md"));
+        assertTrue(pinned.load(pinned.idOf("FEATURE.md")).text().contains("# Feature"));
+
+        // Annotated tags point at a tag object; the source reads the commit behind it.
+        remote.annotatedTag("v2", commit);
+        assertTrue(paths(open("ref", "v2").discover(SourceScope.of("."))).contains("FEATURE.md"));
+
+        GitKnowledgeSource unknownCommit = open("ref", "0123456789abcdef0123456789abcdef01234567");
+        try {
+            unknownCommit.discover(SourceScope.of("."));
+            fail("unknown commit");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(Kind.NOT_FOUND, e.kind());
+        }
+
         GitKnowledgeSource missing = open("ref", "nope");
         try {
             missing.discover(SourceScope.of("."));

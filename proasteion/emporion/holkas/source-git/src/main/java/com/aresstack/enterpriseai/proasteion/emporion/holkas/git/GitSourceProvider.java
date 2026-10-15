@@ -21,18 +21,17 @@ import java.util.Locale;
 import java.util.function.Function;
 
 /**
- * Quelltyp „Git-Repository“ ({@code source.<n>.type=git}, Ressourcenschema {@code git}, #137): der aktuelle Stand
- * genau eines Refs, nur lesend. Schlüssel: {@code url} (Pflicht; https, http oder lokales Repository), {@code title},
- * {@code ref} (Branch, Tag oder Commit-ID; leer = Standard-Branch des Remotes), {@code credentialRef} (KeePass-Eintrag
- * mit Benutzer und Lese-Token/PAT; leer = anonym, nur über HTTPS), {@code startPoints} (Pfadpräfixe,
- * Standard {@code .}), {@code maxDepth} (Standard 30), {@code maxResources} (Standard 5000),
- * {@code maxFileMegabytes} (Standard 2), {@code include}, {@code exclude} (Glob-Muster; Vorgabe
- * {@link GitFiles#DEFAULT_EXCLUDES}), {@code timeoutSeconds} (Standard 120), {@code refreshMinutes} (Standard 5).
+ * Source type "Git-Repository" ({@code source.<n>.type=git}, resource scheme {@code git}, #137): the current state
+ * of exactly one ref, read only. Keys: {@code url} (required; https, http or a local repository), {@code title},
+ * {@code ref} (branch, tag or commit id; empty = default branch of the remote), {@code credentialRef} (KeePass entry
+ * with user and read token/PAT; empty = anonymous, HTTPS only), {@code startPoints} (path prefixes, default
+ * {@code .}), {@code maxDepth} (default 30), {@code maxResources} (default 5000), {@code maxFileMegabytes} (default
+ * 2), {@code include}, {@code exclude} (glob patterns; default {@link GitFiles#DEFAULT_EXCLUDES}),
+ * {@code timeoutSeconds} (default 120), {@code refreshMinutes} (default 5).
  *
- * <p>JGit liegt nur hinter diesem Adapter; der Cache der Repositorys gehört der Anwendung ({@code cacheDirectory}).
- * HTTP(S) geht über die Proxy-Route und das TLS-Vertrauen der Anwendung; das Token holt die Composition Root je
- * Fetch aus KeePass ({@link GitCredentialsProvider}) und es landet nie in URL, Einstellungen, Metadaten oder
- * Meldungen.
+ * <p>JGit stays behind this adapter; the repository cache belongs to the application ({@code cacheDirectory}).
+ * HTTP(S) uses the application's proxy route and TLS trust; the composition root fetches the token from KeePass per
+ * fetch ({@link GitCredentialsProvider}), and it never ends up in URLs, settings, metadata or messages.
  */
 public final class GitSourceProvider implements KnowledgeSourceProvider {
 
@@ -106,7 +105,7 @@ public final class GitSourceProvider implements KnowledgeSourceProvider {
         this.extraction = extraction;
     }
 
-    /** Der Typ ohne Laufzeitumgebung (Beschreibung, Felder). */
+    /** The type without runtime environment (description, fields). */
     public static KnowledgeSourceType sourceType() {
         return TYPE;
     }
@@ -152,9 +151,9 @@ public final class GitSourceProvider implements KnowledgeSourceProvider {
     }
 
     /**
-     * Repository ohne Schema und {@code .git}, mit {@code @<ref>}, wenn ein Ref gewählt ist
-     * ({@code git:dev.azure.com/org/p/_git/repo@release/1.0/src/A.java}); zwei Quellen auf verschiedene Branches
-     * desselben Repositorys bekommen so verschiedene IDs.
+     * Repository without scheme and {@code .git}, plus {@code @<ref>} when a ref is chosen
+     * ({@code git:dev.azure.com/org/p/_git/repo@release/1.0/src/A.java}); two sources on different branches of the
+     * same repository thus get different ids.
      */
     @Override
     public String locator(SourceSettings settings) {

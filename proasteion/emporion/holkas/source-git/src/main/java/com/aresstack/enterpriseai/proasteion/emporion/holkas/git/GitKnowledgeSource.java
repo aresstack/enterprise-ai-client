@@ -58,20 +58,19 @@ import java.util.regex.Pattern;
 import javax.net.ssl.SSLSocketFactory;
 
 /**
- * Ein Ref eines Git-Repositorys als {@link KnowledgeSourcePort} mit Verzeichnisbaum ({@link PageNavigationSource}).
+ * One ref of a Git repository as {@link KnowledgeSourcePort} with a folder tree ({@link PageNavigationSource}).
  *
  * <ul>
- *   <li>Stand: {@link #discover} holt den Ref (höchstens alle {@code refreshMillis}) in den Bare-Cache und pinnt den
- *       Commit; {@link #load} und die Navigation lesen den zuletzt geholten Commit, ohne Netz, sobald einer da ist.
- *       Gelesen wird immer der Objektbaum des Commits, nie ein Arbeitsverzeichnis.</li>
- *   <li>Ressourcen-IDs: {@code git:<Repository>[@<Ref>]/<Pfad>}, unabhängig vom Commit; Revision ist die Blob-ID.
- *       Der Index überspringt so unveränderte Dateien und entfernt gelöschte oder umbenannte nach dem Lauf.
- *       Verzeichnisse haben IDs mit {@code /} am Ende; sie erscheinen nur in der Navigation, nicht in der
- *       Discovery.</li>
- *   <li>Startpunkte sind Pfade relativ zur Wurzel ({@code .} = alles); ein Verzeichnis wird bis {@code maxDepth}
- *       Ebenen gelesen, bei einer Datei folgt die Discovery relativen Markdown-Links bis {@code maxDepth}.</li>
- *   <li>Nicht gelistet: Submodule (Gitlinks), symbolische Links, Git-LFS-Verweise, leere und zu große Dateien,
- *       ausgeschlossene Pfade und unbekannte Dateitypen ({@link GitFiles}).</li>
+ *   <li>State: {@link #discover} fetches the ref into the bare cache (at most every {@code refreshMillis}) and pins
+ *       the commit; {@link #load} and navigation read the commit fetched last, without network once there is one.
+ *       Files always come from the tree of that commit, never from a working tree.</li>
+ *   <li>Resource ids: {@code git:<repository>[@<ref>]/<path>}, independent of the commit; the revision is the blob
+ *       id, so the index skips unchanged files and prunes deleted or renamed ones after a run. Folders have ids
+ *       ending in {@code /}; they appear in navigation only, never in discovery.</li>
+ *   <li>Start points are paths relative to the root ({@code .} = everything); a folder is read down to
+ *       {@code maxDepth} levels, from a file discovery follows relative Markdown links up to {@code maxDepth}.</li>
+ *   <li>Not listed: submodules (gitlinks), symbolic links, Git LFS pointers, empty and oversized files, excluded
+ *       paths and unknown file types ({@link GitFiles}).</li>
  * </ul>
  */
 public final class GitKnowledgeSource implements KnowledgeSourcePort, PageNavigationSource {

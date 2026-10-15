@@ -12,6 +12,7 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.TagBuilder;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 import java.io.IOException;
@@ -86,6 +87,22 @@ final class TestRepository implements AutoCloseable {
         RefUpdate update = repository.updateRef(Constants.R_TAGS + name);
         update.setNewObjectId(ObjectId.fromString(commit));
         update.update();
+    }
+
+    /** An annotated tag: the ref points at a tag object, not at the commit. */
+    void annotatedTag(String name, String commit) throws IOException {
+        try (ObjectInserter inserter = repository.newObjectInserter()) {
+            TagBuilder tag = new TagBuilder();
+            tag.setObjectId(ObjectId.fromString(commit), Constants.OBJ_COMMIT);
+            tag.setTag(name);
+            tag.setTagger(new PersonIdent("Test", "test@example.invalid"));
+            tag.setMessage("release " + name);
+            ObjectId id = inserter.insert(tag);
+            inserter.flush();
+            RefUpdate update = repository.updateRef(Constants.R_TAGS + name);
+            update.setNewObjectId(id);
+            update.update();
+        }
     }
 
     /** Point HEAD of the remote at {@code branch} (the default branch). */

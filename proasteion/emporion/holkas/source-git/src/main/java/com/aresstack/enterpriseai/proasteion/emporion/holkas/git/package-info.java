@@ -1,6 +1,6 @@
 /**
- * Adapter „Git-Repository“ (#137): genau ein Ref eines Git-Remotes (Azure Repos, GitHub, GitLab, lokal) als
- * Knowledge Source. JGit bleibt adapterintern, liest aus einem anwendungseigenen Bare-Cache und führt nie
- * Repository-Code, Hooks, Push oder Checkout aus.
+ * Adapter "Git-Repository" (#137): exactly one ref of a Git remote (Azure Repos, GitHub, GitLab, local) as a
+ * knowledge source. JGit stays internal to the adapter, reads from a bare cache owned by the application and never
+ * runs repository code, hooks, push or checkout.
  */
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.git;

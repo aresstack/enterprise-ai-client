@@ -2,7 +2,7 @@ description = 'Adapter: Git-Repository (ein Ref, aktueller Stand) als Knowledge 
 
 dependencies {
     api project(':source-api')
-    // Proxy-Route je Ziel (Port); die Umsetzung liefert die Composition Root.
+    // Proxy route per target (port); the composition root supplies the implementation.
     api project(':proasteion:platform:network')
     api project(':proasteion:emporion:deigma')
 

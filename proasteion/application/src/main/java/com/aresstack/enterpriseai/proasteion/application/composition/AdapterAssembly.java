@@ -422,8 +422,8 @@ public final class AdapterAssembly {
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry(),
                 fileAccess));
-        // Git-Repositorys (#137): Bare-Cache im Anwendungsverzeichnis, Token je Fetch aus KeePass, Route und TLS wie
-        // alle HTTP-Quellen, PDF/Office im Repository über deigma.
+        // Git repositories (#137): bare cache in the application folder, token from KeePass per fetch, route and TLS
+        // like every HTTP source, PDF/Office inside repositories through deigma.
         providers.add(new GitSourceProvider(AppPaths.defaultGitCacheDirectory(),
                 ref -> new SecretBackedGitCredentialsProvider(secrets, ref), network.routes(), network.tls(),
                 DocumentExtraction.detector(), DocumentExtraction.registry()));

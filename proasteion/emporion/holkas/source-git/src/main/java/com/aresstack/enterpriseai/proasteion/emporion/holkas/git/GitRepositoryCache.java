@@ -16,6 +16,8 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.lib.SubmoduleConfig.FetchRecurseSubmodulesMode;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevObject;
+import org.eclipse.jgit.revwalk.RevTag;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.transport.RefSpec;
@@ -99,36 +101,23 @@ final class GitRepositoryCache {
             }
             try (Repository repository = open(directory); Git git = new Git(repository)) {
                 String commit = COMMIT_ID.matcher(ref).matches() ? ref.toLowerCase(Locale.ROOT) : null;
-                String remoteRef = remoteRef(remote, commit == null ? ref : "", transport, timeoutSeconds);
-                git.fetch()
-                        .setRemote(remote.uri())
-                        .setRefSpecs(new RefSpec("+" + remoteRef + ":" + SNAPSHOT_REF))
-                        .setTagOpt(TagOpt.NO_TAGS)
-                        .setRecurseSubmodules(FetchRecurseSubmodulesMode.NO)
-                        .setRemoveDeletedRefs(false)
-                        .setTimeout(timeoutSeconds)
-                        .setTransportConfigCallback(transport)
-                        .call();
+                if (commit != null) {
+                    return fetchCommit(repository, git, remote, commit, ref, transport, timeoutSeconds);
+                }
+                String remoteRef = remoteRef(remote, ref, transport, timeoutSeconds);
+                fetch(git, remote, transport, timeoutSeconds, new RefSpec("+" + remoteRef + ":" + SNAPSHOT_REF));
                 Ref fetched = repository.exactRef(SNAPSHOT_REF);
                 if (fetched == null) {
                     throw new KnowledgeSourceException(Kind.NOT_FOUND, "Ref " + remoteRef + " nicht gefunden in "
                             + remote);
                 }
-                ObjectId target = fetched.getObjectId();
-                if (commit != null) {
-                    target = ObjectId.fromString(commit);
-                    if (!repository.getObjectDatabase().has(target)) {
-                        throw new KnowledgeSourceException(Kind.NOT_FOUND, "Commit " + commit
-                                + " ist im Standard-Branch von " + remote + " nicht enthalten");
-                    }
-                }
+                // An annotated tag points at a tag object: pin the commit it names.
+                ObjectId target = peel(repository, fetched.getObjectId());
+                pin(repository, target);
                 StoredConfig config = repository.getConfig();
-                config.setString("eai", null, "remoteRef", commit != null ? commit : remoteRef);
+                config.setString("eai", null, "remoteRef", remoteRef);
                 config.save();
-                if (commit != null) {
-                    pin(repository, target);
-                }
-                return snapshot(repository, target, commit != null ? commit : remoteRef, ref);
+                return snapshot(repository, target, remoteRef, ref);
             } catch (KnowledgeSourceException e) {
                 throw e;
             } catch (InvalidRemoteException e) {
@@ -139,6 +128,58 @@ final class GitRepositoryCache {
                 throw new KnowledgeSourceException(Kind.UNAVAILABLE, "Git-Fetch von " + remote + " gescheitert ("
                         + e.getClass().getSimpleName() + ")");
             }
+        }
+    }
+
+    /**
+     * A fixed commit: fetched once with all branches and tags of the remote (a commit may live on any of them, not
+     * only on the default branch); later calls find it in the cache and do not touch the network again.
+     */
+    private static GitSnapshot fetchCommit(Repository repository, Git git, GitRemote remote, String commit, String ref,
+                                           TransportConfigCallback transport, int timeoutSeconds)
+            throws GitAPIException, IOException, KnowledgeSourceException {
+        ObjectId target = ObjectId.fromString(commit);
+        if (!repository.getObjectDatabase().has(target)) {
+            fetch(git, remote, transport, timeoutSeconds,
+                    new RefSpec("+" + Constants.R_HEADS + "*:refs/eai/heads/*"),
+                    new RefSpec("+" + Constants.R_TAGS + "*:refs/eai/tags/*"));
+        }
+        if (!repository.getObjectDatabase().has(target)) {
+            throw new KnowledgeSourceException(Kind.NOT_FOUND, "Commit " + commit + " ist in keinem Branch oder Tag "
+                    + "von " + remote + " enthalten");
+        }
+        target = peel(repository, target);
+        pin(repository, target);
+        StoredConfig config = repository.getConfig();
+        config.setString("eai", null, "remoteRef", commit);
+        config.save();
+        return snapshot(repository, target, commit, ref);
+    }
+
+    private static void fetch(Git git, GitRemote remote, TransportConfigCallback transport, int timeoutSeconds,
+                              RefSpec... specs) throws GitAPIException {
+        git.fetch()
+                .setRemote(remote.uri())
+                .setRefSpecs(specs)
+                .setTagOpt(TagOpt.NO_TAGS)
+                .setRecurseSubmodules(FetchRecurseSubmodulesMode.NO)
+                .setRemoveDeletedRefs(false)
+                .setTimeout(timeoutSeconds)
+                .setTransportConfigCallback(transport)
+                .call();
+    }
+
+    /** The commit an object names: itself, or the target of a (possibly nested) annotated tag. */
+    private static ObjectId peel(Repository repository, ObjectId id) throws IOException, KnowledgeSourceException {
+        try (RevWalk walk = new RevWalk(repository)) {
+            RevObject object = walk.parseAny(id);
+            while (object instanceof RevTag) {
+                object = walk.parseAny(((RevTag) object).getObject());
+            }
+            if (!(object instanceof RevCommit)) {
+                throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Ref zeigt nicht auf einen Commit: " + id.name());
+            }
+            return object.getId();
         }
     }
 
@@ -163,7 +204,7 @@ final class GitRepositoryCache {
         return repository;
     }
 
-    private void pin(Repository repository, ObjectId commit) throws IOException {
+    private static void pin(Repository repository, ObjectId commit) throws IOException {
         RefUpdate update = repository.updateRef(SNAPSHOT_REF);
         update.setNewObjectId(commit);
         update.setForceUpdate(true);
