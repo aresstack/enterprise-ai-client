@@ -524,11 +524,25 @@ public final class SetupWizardPanel extends JPanel {
         Rows rows = new Rows("Confluence");
         rows.note("Confluence wird als Wissensquelle eingerichtet; alle Spaces stehen danach unter Wissensquellen "
                 + "zur Auswahl. Mit Benutzername meldet sich der Client mit Passwort an, ohne Benutzername mit "
-                + "einem persönlichen Zugriffstoken. Manuell: Passwort bzw. Token gilt nur für diese Sitzung und wird "
-                + "nie gespeichert; der Benutzername darf vorgemerkt werden.");
-        rows.field("Zugang", confluenceAccess);
+                + "einem persönlichen Zugriffstoken.");
+        confluenceAccess.setToolTipText("Manuell: Passwort bzw. Token gilt nur für diese Sitzung und wird nie "
+                + "gespeichert; der Benutzername darf vorgemerkt werden.");
+        // Zugang und KeePass-Eintrag in einer Zeile, damit der Schritt nicht höher wird als ohne Wahl.
         confluenceEntry.setEditable(true);
-        confluenceKeePassParts.addAll(rows.field("KeePass-Eintrag", confluenceEntry));
+        JPanel access = transparent(new GridBagLayout());
+        GridBagConstraints c = new GridBagConstraints();
+        c.anchor = GridBagConstraints.WEST;
+        access.add(confluenceAccess, c);
+        JLabel entryCaption = fieldLabel("Eintrag");
+        c.insets = new Insets(0, 10, 0, 6);
+        access.add(entryCaption, c);
+        c.insets = new Insets(0, 0, 0, 0);
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1;
+        access.add(confluenceEntry, c);
+        confluenceKeePassParts.add(entryCaption);
+        confluenceKeePassParts.add(confluenceEntry);
+        rows.field("Zugang", access);
         confluenceKeePassParts.addAll(rows.field("", confluenceEntryStatus));
         int line = 0;
         for (JLabel state : new JLabel[] {confluenceHasUrl, confluenceHasUser, confluenceHasSecret}) {
