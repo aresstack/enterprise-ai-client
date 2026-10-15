@@ -319,20 +319,22 @@ public final class CompositionRoot {
         // knowledge_research fehlt oder abgeschaltet ist; Lesen, Seitenbaum und Anhänge bleiben im Chat.
         final boolean delegated = ports.chat() != null;
         final ToolCatalog chatCatalog = toolCatalog;
-        // Ohne knowledge_search oder knowledge_read (abgeschaltet) kann der Recherche-Agent nicht recherchieren; dann
-        // bietet der Chat knowledge_research nicht an und bekommt, soweit aktiv, die Low-Level-Werkzeuge zurück.
+        // The Research Agent needs knowledge_read plus at least one general discovery tool (the local index or the
+        // live search); without them the chat does not offer knowledge_research and gets the low-level tools back.
+        final java.util.function.BooleanSupplier researchTools = () ->
+                chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ)
+                        && (chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
+                        || chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH));
         final java.util.function.BooleanSupplier researchUsable = () -> delegated
                 && chatCatalog.isEnabled(ResearchDelegationTool.NAME)
-                && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
-                && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ);
+                && researchTools.getAsBoolean();
         if (delegated) {
             final ToolCatalog catalog = toolCatalog;
             final ResearchDelegationTool research = new ResearchDelegationTool(
                     name -> catalog.find(name, ToolChannel.AGENT),
                     new ChatPortMainModelChat(ports.chat(), config.chat().defaultOptions()));
             toolCatalog.register(ORIGIN_RESEARCH_DELEGATION, EnumSet.of(ToolChannel.CHAT),
-                    () -> chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
-                            && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ)
+                    () -> researchTools.getAsBoolean()
                             ? Collections.singletonList(research.contribution())
                             : Collections.<McpToolContribution>emptyList());
         }

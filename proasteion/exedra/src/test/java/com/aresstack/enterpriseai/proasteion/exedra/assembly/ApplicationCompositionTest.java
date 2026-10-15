@@ -287,7 +287,8 @@ public class ApplicationCompositionTest {
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ, KnowledgeMcpTools.KNOWLEDGE_READ_MANY,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL,
                 KnowledgeTermLookupTool.NAME, KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names(root.agentTools()));
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ, KnowledgeMcpTools.KNOWLEDGE_READ_MANY,
+        // without the live search the local index still serves the Research Agent: knowledge_research stays
+        assertEquals(Arrays.asList(ResearchDelegationTool.NAME, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ, KnowledgeMcpTools.KNOWLEDGE_READ_MANY,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), chatNames(root.knowledgeChatTools()));
         assertFalse(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
         assertTrue(root.toolCatalog().isEnabled(SearchAttachmentTool.NAME));
@@ -299,6 +300,12 @@ public class ApplicationCompositionTest {
         assertFalse(shown.get(ReadAttachmentTool.NAME).enabled());
         assertTrue(shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).enabled());
         assertTrue(shown.get("research_status").enabled()); // nicht genannt = aktiv
+
+        // without both discovery tools (index and live search) there is no research boundary in the chat
+        file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_SEARCH + ","
+                + KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH);
+        settings.reload();
+        assertFalse(chatNames(root.knowledgeChatTools()).contains(ResearchDelegationTool.NAME));
 
         // knowledge_read zusätzlich aus, knowledge_search wieder an: gilt nach dem Neuladen, ohne neue Komposition.
         file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_READ);
