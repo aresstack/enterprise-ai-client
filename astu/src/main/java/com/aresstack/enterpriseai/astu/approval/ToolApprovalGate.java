@@ -19,8 +19,9 @@ public final class ToolApprovalGate {
     public static final long DEFAULT_TIMEOUT_MILLIS = 5L * 60L * 1000L;
 
     /** Everything allowed, nobody asked: the behaviour without configured rules. */
-    public static final ToolApprovalGate ALLOW_ALL =
-            new ToolApprovalGate(() -> ApprovalRules.NONE, ApprovalPromptPort.UNAVAILABLE, DEFAULT_TIMEOUT_MILLIS);
+    public static ToolApprovalGate allowAll() {
+        return new ToolApprovalGate(ApprovalRules::none, ApprovalPromptPort.unavailable(), DEFAULT_TIMEOUT_MILLIS);
+    }
 
     private final Supplier<ApprovalRules> rules;
     private final ApprovalPromptPort prompt;
@@ -96,7 +97,7 @@ public final class ToolApprovalGate {
         }
         ApprovalPolicy policy = currentRules().policy(toolName, target);
         if (policy == ApprovalPolicy.ALLOW) {
-            return Verdict.PERMITTED;
+            return Verdict.allowed();
         }
         if (policy == ApprovalPolicy.DENY) {
             return Verdict.refused("in den Einstellungen verboten");
@@ -109,20 +110,20 @@ public final class ToolApprovalGate {
             decision = ApprovalDecision.of(request, ApprovalDecision.Outcome.UNAVAILABLE);
         }
         if (decision != null && decision.approves(request)) {
-            return Verdict.PERMITTED;
+            return Verdict.allowed();
         }
         return Verdict.refused(reason(decision, request));
     }
 
     private ApprovalRules currentRules() {
         ApprovalRules current = rules.get();
-        return current == null ? ApprovalRules.NONE : current;
+        return current == null ? ApprovalRules.none() : current;
     }
 
     private ApprovalTarget resolve(String toolName, Map<String, Object> arguments) {
         ApprovalTargetResolver resolver = resolvers.get(toolName);
         Map<String, Object> args = arguments == null ? Collections.<String, Object>emptyMap() : arguments;
-        ApprovalTarget target = (resolver == null ? ApprovalTargetResolver.INVOKE : resolver).resolve(toolName, args);
+        ApprovalTarget target = (resolver == null ? ApprovalTargetResolver.invoke() : resolver).resolve(toolName, args);
         if (target == null) {
             throw new IllegalStateException("resolver returned no target");
         }
@@ -150,7 +151,9 @@ public final class ToolApprovalGate {
     /** Result of {@link #check}: run or not, and why not. */
     public static final class Verdict {
 
-        static final Verdict PERMITTED = new Verdict(true, "");
+        static Verdict allowed() {
+            return new Verdict(true, "");
+        }
 
         private final boolean permitted;
         private final String reason;

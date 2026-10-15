@@ -69,7 +69,9 @@ final class ToolsTab {
     static final String SUB_RULE_PREFIX = "Genehmigung für ";
     static final String INHERIT = "wie Werkzeug";
     /** Policy names as stored in {@code tools.approval}, with their German labels, in dropdown order. */
-    static final String[][] POLICIES = {{"ALLOW", "Erlauben"}, {"ASK", "Nachfragen"}, {"DENY", "Verbieten"}};
+    private static String[][] policies() {
+        return new String[][]{{"ALLOW", "Erlauben"}, {"ASK", "Nachfragen"}, {"DENY", "Verbieten"}};
+    }
     static final String REQUIRED_TOOLTIP = "Pflichtwerkzeug: ohne es startet bzw. arbeitet der Agent nicht; "
             + "es lässt sich nicht abschalten";
 
@@ -231,7 +233,7 @@ final class ToolsTab {
         if (inherit) {
             box.addItem(INHERIT);
         }
-        for (String[] policy : POLICIES) {
+        for (String[] policy : policies()) {
             box.addItem(policy[1]);
         }
         box.setToolTipText(APPROVAL_TOOLTIP);
@@ -251,11 +253,11 @@ final class ToolsTab {
 
     private void select(JComboBox<String> box, String key, boolean inherit) {
         String label = label(approvals.get(key));
-        box.setSelectedItem(label != null ? label : inherit ? INHERIT : POLICIES[0][1]);
+        box.setSelectedItem(label != null ? label : inherit ? INHERIT : policies()[0][1]);
     }
 
     private static String policyName(String label) {
-        for (String[] policy : POLICIES) {
+        for (String[] policy : policies()) {
             if (policy[1].equals(label)) {
                 return policy[0];
             }
@@ -264,7 +266,7 @@ final class ToolsTab {
     }
 
     private static String label(String policyName) {
-        for (String[] policy : POLICIES) {
+        for (String[] policy : policies()) {
             if (policy[0].equalsIgnoreCase(policyName == null ? "" : policyName.trim())) {
                 return policy[1];
             }

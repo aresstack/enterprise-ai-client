@@ -107,7 +107,7 @@ public class ToolApprovalGateTest {
                 ApprovalDecision.Outcome.CANCELLED, ApprovalDecision.Outcome.UNAVAILABLE)) {
             assertTrue(run("web_fetch=ASK", answering(outcome), call("web_fetch", null, null)).isError());
         }
-        assertTrue(run("web_fetch=ASK", ApprovalPromptPort.UNAVAILABLE, call("web_fetch", null, null)).isError());
+        assertTrue(run("web_fetch=ASK", ApprovalPromptPort.unavailable(), call("web_fetch", null, null)).isError());
         assertTrue(run("web_fetch=ASK", (request, timeout) -> {
             throw new IllegalStateException("no ui");
         }, call("web_fetch", null, null)).isError());

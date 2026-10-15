@@ -186,7 +186,7 @@ public final class CompositionRoot {
         this.toolCatalog = new ToolCatalog(name -> settings.current().isToolEnabled(name),
                 new ToolApprovalGate(() -> settings.current().toolApprovals(), (request, timeoutMillis) -> {
                     ApprovalPromptPort prompt = approvalPrompt;
-                    return (prompt == null ? ApprovalPromptPort.UNAVAILABLE : prompt).ask(request, timeoutMillis);
+                    return (prompt == null ? ApprovalPromptPort.unavailable() : prompt).ask(request, timeoutMillis);
                 }, ToolApprovalGate.DEFAULT_TIMEOUT_MILLIS));
         AppConfig config = settings.current();
         this.ports = ports;

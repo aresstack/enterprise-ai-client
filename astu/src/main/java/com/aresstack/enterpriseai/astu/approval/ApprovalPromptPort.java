@@ -8,8 +8,9 @@ package com.aresstack.enterpriseai.astu.approval;
 public interface ApprovalPromptPort {
 
     /** No confirmation channel: every question ends {@link ApprovalDecision.Outcome#UNAVAILABLE}. */
-    ApprovalPromptPort UNAVAILABLE = (request, timeoutMillis) ->
-            ApprovalDecision.of(request, ApprovalDecision.Outcome.UNAVAILABLE);
+    static ApprovalPromptPort unavailable() {
+        return (request, timeoutMillis) -> ApprovalDecision.of(request, ApprovalDecision.Outcome.UNAVAILABLE);
+    }
 
     ApprovalDecision ask(ApprovalRequest request, long timeoutMillis);
 }

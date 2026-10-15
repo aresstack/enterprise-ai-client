@@ -12,7 +12,10 @@ import java.util.Map;
  */
 public final class ApprovalRules {
 
-    public static final ApprovalRules NONE = new ApprovalRules(Collections.<String, ApprovalPolicy>emptyMap());
+    /** No rules: every tool is allowed. */
+    public static ApprovalRules none() {
+        return new ApprovalRules(Collections.<String, ApprovalPolicy>emptyMap());
+    }
 
     private final Map<String, ApprovalPolicy> rules;
 

@@ -49,7 +49,7 @@ public final class ToolCatalog {
 
     /** @param enabled sagt je Aufruf, ob das Werkzeug mit diesem Namen aktiv ist */
     public ToolCatalog(Predicate<String> enabled) {
-        this(enabled, ToolApprovalGate.ALLOW_ALL);
+        this(enabled, ToolApprovalGate.allowAll());
     }
 
     /**

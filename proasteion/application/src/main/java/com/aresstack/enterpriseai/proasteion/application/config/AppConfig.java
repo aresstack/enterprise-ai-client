@@ -61,7 +61,7 @@ public final class AppConfig {
               ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
               TextMiningConfig textMining, FileAccessConfig fileAccess, List<String> warnings) {
         this(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models, disabledTools,
-                bubbleColors, facts, textMining, fileAccess, ApprovalRules.NONE, warnings);
+                bubbleColors, facts, textMining, fileAccess, ApprovalRules.none(), warnings);
     }
 
     AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
@@ -69,7 +69,7 @@ public final class AppConfig {
               ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
               TextMiningConfig textMining, FileAccessConfig fileAccess, ApprovalRules toolApprovals,
               List<String> warnings) {
-        this.toolApprovals = toolApprovals == null ? ApprovalRules.NONE : toolApprovals;
+        this.toolApprovals = toolApprovals == null ? ApprovalRules.none() : toolApprovals;
         this.windowTitle = windowTitle;
         this.chat = chat;
         this.embedding = embedding;

@@ -10,7 +10,9 @@ import java.util.Map;
 public interface ApprovalTargetResolver {
 
     /** Every call is the plain {@link ApprovalTarget#INVOKE} of the tool. */
-    ApprovalTargetResolver INVOKE = (toolName, arguments) -> ApprovalTarget.invoke();
+    static ApprovalTargetResolver invoke() {
+        return (toolName, arguments) -> ApprovalTarget.invoke();
+    }
 
     /** @param arguments the call's arguments as sent by the model; never {@code null} */
     ApprovalTarget resolve(String toolName, Map<String, Object> arguments);
