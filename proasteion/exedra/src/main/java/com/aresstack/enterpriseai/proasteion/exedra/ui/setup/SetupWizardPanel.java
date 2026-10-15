@@ -530,16 +530,16 @@ public final class SetupWizardPanel extends JPanel {
         // Zugang und KeePass-Eintrag in einer Zeile, damit der Schritt nicht höher wird als ohne Wahl.
         confluenceEntry.setEditable(true);
         JPanel access = transparent(new GridBagLayout());
-        GridBagConstraints c = new GridBagConstraints();
-        c.anchor = GridBagConstraints.WEST;
-        access.add(confluenceAccess, c);
+        GridBagConstraints at = new GridBagConstraints();
+        at.anchor = GridBagConstraints.WEST;
+        access.add(confluenceAccess, at);
         JLabel entryCaption = fieldLabel("Eintrag");
-        c.insets = new Insets(0, 10, 0, 6);
-        access.add(entryCaption, c);
-        c.insets = new Insets(0, 0, 0, 0);
-        c.fill = GridBagConstraints.HORIZONTAL;
-        c.weightx = 1;
-        access.add(confluenceEntry, c);
+        at.insets = new Insets(0, 10, 0, 6);
+        access.add(entryCaption, at);
+        at.insets = new Insets(0, 0, 0, 0);
+        at.fill = GridBagConstraints.HORIZONTAL;
+        at.weightx = 1;
+        access.add(confluenceEntry, at);
         confluenceKeePassParts.add(entryCaption);
         confluenceKeePassParts.add(confluenceEntry);
         rows.field("Zugang", access);
