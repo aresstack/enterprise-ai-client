@@ -77,7 +77,7 @@ public class KnowledgeChatToolsTest {
     /** Akzeptanztest 1/5: knowledge_search wird angeboten; Beschreibung und Schema wie beim Agenten. */
     @Test
     public void chatGetsTheSameKnowledgeToolsAsTheAgent() {
-        assertEquals(5, chatTools.size());
+        assertEquals(6, chatTools.size());
         for (int i = 0; i < chatTools.size(); i++) {
             McpToolContribution agentTool = knowledge.contributions().get(i);
             AiTool chatTool = chatTools.get(i);

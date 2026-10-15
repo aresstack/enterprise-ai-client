@@ -113,8 +113,8 @@ public class KnowledgeTreeToolTest {
     }
 
     @Test
-    public void isTheSecondOfFiveKnowledgeTools() {
-        assertEquals(5, tools.contributions().size());
+    public void isTheSecondOfSixKnowledgeTools() {
+        assertEquals(6, tools.contributions().size());
         assertEquals(KnowledgeMcpTools.KNOWLEDGE_TREE, tools.contributions().get(1).getName());
         String description = tools.knowledgeTree().getDescription();
         assertTrue(description, description.contains("0 means no logical item limit"));
