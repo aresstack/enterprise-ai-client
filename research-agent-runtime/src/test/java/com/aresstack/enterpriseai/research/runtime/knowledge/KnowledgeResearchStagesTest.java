@@ -189,6 +189,9 @@ public class KnowledgeResearchStagesTest {
                 return defined ? "Term: IRR\n\n[1] wiki:42\nid: wiki:42\nInterne Revisionsrichtlinie (IRR).\n"
                         : "Term: IRR\nNo resource states a long form of this term.";
             }
+            if (HierarchyExploration.TREE_TOOL.equals(toolName)) {
+                throw new EndpointUnavailable(toolName + " is not offered");
+            }
             if (LocalIndexStrategy.TOOL.equals(toolName) && !indexOffered) {
                 throw new EndpointUnavailable(toolName + " is not offered");
             }
