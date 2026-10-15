@@ -204,6 +204,21 @@ public class ExportFiguresTest {
     }
 
     @Test
+    public void wordEmbedsAnImageInsideALink() throws Exception {
+        String data = "data:image/png;base64," + Base64.getEncoder().encodeToString(
+                encoded(picture(10, 10, Color.RED), "png"));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new DocxExportWriter(graphics()).write(chapter("Seite", "[![Vorschau](" + data + ")](https://example.test)",
+                Collections.<ExportImage>emptyList()), out);
+        XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(out.toByteArray()));
+        try {
+            assertEquals(1, document.getAllPictures().size());
+        } finally {
+            document.close();
+        }
+    }
+
+    @Test
     public void withoutRendererAMermaidFenceStaysCodeAndIsReported() throws Exception {
         ExportGraphics graphics = new ExportGraphics(null);
         ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -436,6 +436,9 @@ public final class MarkdownDocxRenderer {
         } else if (node instanceof SoftLineBreak || node instanceof HardLineBreak) {
             // wie in der Oberfläche: die Zeilenstruktur der Antwort bleibt
             paragraph.createRun().addBreak();
+        } else if (node instanceof Link && graphics != null && node.getFirstChild() instanceof Image
+                && node.getFirstChild() == node.getLastChild()) {
+            inline(paragraph, node.getFirstChild(), format, context); // [![Bild](…)](…): the picture
         } else if (node instanceof Link) {
             Link link = (Link) node;
             link(paragraph, plain(link), link.getUrl().unescape(), format, context);

@@ -35,19 +35,12 @@ final class ExportImagePlacement {
             return text;
         }
         String view = html == null ? "" : html;
-        List<Integer> tags = imgTags(view);
         List<Word> words = words(text);
         StringBuilder out = new StringBuilder();
         int copied = 0; // characters of text already in out
         int searchFrom = 0; // word index after the last anchor
-        int htmlFrom = 0;
-        for (int i = 0; i < images.size(); i++) {
-            ExportImage image = images.get(i);
-            int at = position(view, image.src(), tags, i, htmlFrom);
-            List<String> anchor = at < 0 ? null : lastWords(view.substring(0, at));
-            if (at >= 0) {
-                htmlFrom = at + 1;
-            }
+        for (Occurrence occurrence : occurrences(view, images)) {
+            List<String> anchor = occurrence.at < 0 ? null : lastWords(view.substring(0, occurrence.at));
             int insert;
             if (anchor != null && anchor.isEmpty()) {
                 insert = copied; // nothing precedes it on the page
@@ -62,7 +55,7 @@ final class ExportImagePlacement {
             }
             out.append(text, copied, insert);
             copied = insert;
-            out.append(separator(out)).append(image(image)).append("\n\n");
+            out.append(separator(out)).append(image(occurrence.image)).append("\n\n");
         }
         out.append(text.substring(copied));
         return out.toString().replaceAll("\\n{3,}", "\n\n").trim() + "\n";
@@ -82,28 +75,50 @@ final class ExportImagePlacement {
         return out.toString().endsWith("\n\n") ? "" : out.toString().endsWith("\n") ? "\n" : "\n\n";
     }
 
-    private static List<Integer> imgTags(String html) {
-        List<Integer> tags = new ArrayList<Integer>();
-        Matcher matcher = IMG.matcher(html);
-        while (matcher.find()) {
-            tags.add(matcher.start());
+    /** One place a figure is shown: the start of its {@code <img>} in the HTML, -1 if not found there. */
+    private static final class Occurrence {
+        final ExportImage image;
+        final int at;
+
+        Occurrence(ExportImage image, int at) {
+            this.image = image;
+            this.at = at;
         }
-        return tags;
     }
 
-    /** Where the figure stands in the HTML: by its address, its file name or else as the i-th image; -1 unknown. */
-    private static int position(String html, String src, List<Integer> tags, int index, int from) {
-        for (String candidate : candidates(src)) {
-            int found = html.indexOf(candidate, from);
-            if (found < 0) {
-                found = html.indexOf(candidate);
-            }
-            if (found >= 0) {
-                int tag = html.lastIndexOf('<', found);
-                return tag < 0 ? found : tag;
+    /**
+     * Every {@code <img>} of the HTML that shows one of the figures, in page order; a figure shown twice is placed
+     * twice (the source lists it once). Figures the HTML does not show come last, in list order.
+     */
+    private static List<Occurrence> occurrences(String html, List<ExportImage> images) {
+        List<Occurrence> occurrences = new ArrayList<Occurrence>();
+        boolean[] shown = new boolean[images.size()];
+        Matcher matcher = IMG.matcher(html);
+        while (matcher.find()) {
+            String tag = matcher.group();
+            for (int i = 0; i < images.size(); i++) {
+                if (matches(tag, images.get(i).src())) {
+                    occurrences.add(new Occurrence(images.get(i), matcher.start()));
+                    shown[i] = true;
+                    break;
+                }
             }
         }
-        return index < tags.size() ? tags.get(index) : -1;
+        for (int i = 0; i < images.size(); i++) {
+            if (!shown[i]) {
+                occurrences.add(new Occurrence(images.get(i), -1));
+            }
+        }
+        return occurrences;
+    }
+
+    private static boolean matches(String tag, String src) {
+        for (String candidate : candidates(src)) {
+            if (tag.contains(candidate)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<String> candidates(String src) {

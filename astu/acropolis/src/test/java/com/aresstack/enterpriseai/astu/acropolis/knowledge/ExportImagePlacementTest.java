@@ -45,6 +45,14 @@ public class ExportImagePlacementTest {
     }
 
     @Test
+    public void aFigureShownTwiceIsPlacedTwice() {
+        String placed = ExportImagePlacement.place("Erst hier.\n\nDann dort.",
+                "<p>Erst hier.</p><img src=\"x/a.png\"><p>Dann dort.</p><img src=\"x/a.png\">",
+                Collections.singletonList(image("x/a.png", "A")));
+        assertEquals("Erst hier.\n\n![A](<x/a.png>)\n\nDann dort.\n\n![A](<x/a.png>)\n", placed);
+    }
+
+    @Test
     public void withoutFiguresTheTextStays() {
         assertEquals("Text", ExportImagePlacement.place("Text", "<p>Text</p>", Collections.<ExportImage>emptyList()));
     }
