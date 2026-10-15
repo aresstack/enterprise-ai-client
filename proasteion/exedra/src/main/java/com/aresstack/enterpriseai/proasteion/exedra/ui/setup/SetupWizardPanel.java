@@ -453,6 +453,8 @@ public final class SetupWizardPanel extends JPanel {
         rows.field("Zugang", serviceAccess);
         serviceEntry.setEditable(true);
         serviceKeePassParts.addAll(rows.field("KeePass-Eintrag", entryRow(serviceEntry, serviceEntryRefresh)));
+        serviceKeePassParts.add(serviceEntry);
+        serviceKeePassParts.add(serviceEntryRefresh);
         serviceKeePassParts.addAll(rows.field("", serviceEntryStatus));
         GridBagConstraints c = new GridBagConstraints();
         c.anchor = GridBagConstraints.WEST;
