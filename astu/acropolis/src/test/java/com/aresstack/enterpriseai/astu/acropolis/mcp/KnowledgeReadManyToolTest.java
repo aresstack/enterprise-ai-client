@@ -293,6 +293,26 @@ public class KnowledgeReadManyToolTest {
         assertEquals(2, count(text, "[gekürzt:"));
     }
 
+    @Test
+    public void theSmallestBudgetKeepsAStatusForEveryPosition() {
+        StringBuilder longText = new StringBuilder();
+        for (int i = 0; i < 200; i++) {
+            longText.append("Langer Absatz ").append(i).append(". ");
+        }
+        for (int i = 1; i <= 8; i++) {
+            wiki.page(String.valueOf(i), "Seite " + i, i == 3 ? "kurz" : longText.toString());
+        }
+        tools(KnowledgeToolSettings.defaults().withMaxResponseChars(KnowledgeToolSettings.MIN_RESPONSE_CHARS));
+        McpToolResult result = readMany(ids(1, 2, 3, 4, 5, 6, 7, 8));
+        String text = result.getText();
+        assertTrue("global limit holds: " + text.length(), text.length() <= KnowledgeToolSettings.MIN_RESPONSE_CHARS);
+        for (int i = 1; i <= 8; i++) {
+            assertTrue(i + ": " + text, text.contains("[" + i + "/8] OK"));
+        }
+        assertTrue("an omitted page is no source: " + text, result.contextResources().size() < 8
+                || !text.contains("text omitted"));
+    }
+
     private static int count(String text, String part) {
         int count = 0;
         for (int at = text.indexOf(part); at >= 0; at = text.indexOf(part, at + 1)) {

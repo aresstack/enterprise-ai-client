@@ -30,8 +30,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * at a time on a pool this tool owns. Results keep the order of the input ids; equal ids (also a bookmark and the
  * resource id it maps to) are read once, and inputs that resolve to the same canonical resource are shown once.
  * A failed read never discards the others; the call is an error only when every read failed. The text budget
- * ({@link KnowledgeToolSettings#maxResponseChars()}) is shared fairly: short documents keep their full text, the rest
- * is split evenly among the long ones, each cut marked on its own.
+ * ({@link KnowledgeToolSettings#maxResponseChars()}) first holds every position's status line (fields shrink with a
+ * small budget), then the text is shared fairly: short documents keep their full text, the rest is split evenly among
+ * the long ones, each cut marked on its own; with too little room a document is only named.
  */
 final class KnowledgeReadManyTool implements McpToolHandler {
 
@@ -40,9 +41,15 @@ final class KnowledgeReadManyTool implements McpToolHandler {
 
     private static final String EXAMPLE = "ids=[\"confluence:47110815\", \"confluence:47110816\"]";
     private static final String SEPARATOR = "\n\n---\n\n";
-    /** Room each document's status line and the separators take; reserved before the text is shared. */
-    private static final int FRAME_CHARS = 160;
     private static final int ID_CHARS = 200;
+    private static final int MIN_FIELD_CHARS = 24;
+    /** Fixed characters of a frame besides its two fields (position, longest status, labels, separator). */
+    private static final int FRAME_OVERHEAD = 90;
+    /** Below this a cut document text says nothing useful; the document is named and left to knowledge_read. */
+    private static final int MIN_BODY_CHARS = 2 * ToolText.MARKER_RESERVE;
+    private static final String TRUNCATED_STATUS = "OK (truncated — read it alone with knowledge_read for more)";
+    private static final String OMITTED_STATUS = "OK (text omitted for space — read it alone with knowledge_read)";
+    private static final String LONGEST_OK_STATUS = OMITTED_STATUS;
 
     private final KnowledgeResourceReader reader;
     private final KnowledgeToolSettings settings;
@@ -143,31 +150,56 @@ final class KnowledgeReadManyTool implements McpToolHandler {
             }
             firstOf.put(canonical, i);
             shown.add(i);
-            for (McpContextResource resource : result.contextResources()) {
+        }
+        // frames first: every position keeps its status, fields shrink with the budget per position
+        int fieldChars = Math.max(MIN_FIELD_CHARS, Math.min(ID_CHARS,
+                (settings.maxResponseChars() / total - FRAME_OVERHEAD) / 2));
+        String[] frames = new String[total];
+        int frameChars = 0;
+        for (int i = 0; i < total; i++) {
+            String position = "[" + (i + 1) + "/" + total + "] ";
+            String requested = "requestedId: " + ToolText.oneLine(ids.get(i), fieldChars);
+            McpToolResult result = results.get(i);
+            if (result.isError()) {
+                frames[i] = position + "ERROR\n" + requested + "\nerror: "
+                        + ToolText.oneLine(result.getText(), fieldChars);
+            } else if (sameAs[i] != null) {
+                frames[i] = position + "OK (same document as [" + (sameAs[i] + 1) + "/" + total + "], shown there)\n"
+                        + requested;
+            } else {
+                frames[i] = position;
+            }
+            frameChars += frames[i].length() + (i > 0 ? SEPARATOR.length() : 0)
+                    + (frames[i] == position ? LONGEST_OK_STATUS.length() + requested.length() + 1 : 0);
+        }
+        int[] budgets = share(results, shown, settings.maxResponseChars() - frameChars);
+        for (int i : shown) {
+            if (budgets[i] == 0 && !results.get(i).getText().isEmpty()) {
+                continue; // named only, its text never reached the model: no source of the answer
+            }
+            for (McpContextResource resource : results.get(i).contextResources()) {
                 if (provenanceKeys.add(resource.sourceId() + "\u0000" + resource.resourceId())) {
                     provenance.add(resource);
                 }
             }
         }
-        int[] budgets = share(results, shown, total);
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < total; i++) {
             if (i > 0) {
                 out.append(SEPARATOR);
             }
-            String position = "[" + (i + 1) + "/" + total + "] ";
+            out.append(frames[i]);
             McpToolResult result = results.get(i);
-            if (result.isError()) {
-                out.append(position).append("ERROR\nrequestedId: ").append(ToolText.oneLine(ids.get(i), ID_CHARS))
-                        .append("\nerror: ").append(ToolText.oneLine(result.getText(), 400));
-            } else if (sameAs[i] != null) {
-                out.append(position).append("OK (same document as [").append(sameAs[i] + 1).append('/').append(total)
-                        .append("], shown there)\nrequestedId: ").append(ToolText.oneLine(ids.get(i), ID_CHARS));
+            if (result.isError() || sameAs[i] != null) {
+                continue;
+            }
+            String text = result.getText();
+            if (budgets[i] == 0) {
+                out.append(OMITTED_STATUS).append("\nrequestedId: ").append(ToolText.oneLine(ids.get(i), fieldChars));
+            } else if (text.length() > budgets[i]) {
+                out.append(TRUNCATED_STATUS).append('\n').append(ToolText.truncate(text, budgets[i]));
             } else {
-                String text = result.getText();
-                boolean cut = text.length() > budgets[i];
-                out.append(position).append(cut ? "OK (truncated — read it alone with knowledge_read for more)" : "OK")
-                        .append('\n').append(ToolText.truncate(text, budgets[i]));
+                out.append("OK\n").append(text);
             }
         }
         String text = ToolText.truncate(out.toString(), settings.maxResponseChars());
@@ -196,20 +228,20 @@ final class KnowledgeReadManyTool implements McpToolHandler {
      * Text budget per shown document: reserve the frames of all positions, then fill the documents from the shortest
      * up — a document needing less than an even share keeps its full text and leaves the rest to the longer ones.
      */
-    private int[] share(List<McpToolResult> results, List<Integer> shown, int total) {
-        int[] budgets = new int[total];
-        if (shown.isEmpty()) {
-            return budgets;
-        }
-        int available = settings.maxResponseChars() - total * FRAME_CHARS;
+    private static int[] share(List<McpToolResult> results, List<Integer> shown, int available) {
+        int[] budgets = new int[results.size()];
         List<Integer> open = new ArrayList<Integer>(shown);
         open.sort((a, b) -> Integer.compare(results.get(a).getText().length(), results.get(b).getText().length()));
         int remaining = open.size();
         for (int index : open) {
-            int even = Math.max(ToolText.MARKER_RESERVE * 2, available / remaining);
+            int even = Math.max(0, available) / remaining;
             int need = results.get(index).getText().length();
-            budgets[index] = Math.min(need, even);
-            available -= budgets[index];
+            int budget = Math.min(need, even);
+            if (budget < need && budget < MIN_BODY_CHARS) {
+                budget = 0; // too little room for a useful cut: name it and leave the text to knowledge_read
+            }
+            budgets[index] = budget;
+            available -= budget;
             remaining--;
         }
         return budgets;
