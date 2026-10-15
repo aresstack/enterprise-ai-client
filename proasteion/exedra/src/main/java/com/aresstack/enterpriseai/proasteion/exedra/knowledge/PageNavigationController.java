@@ -3,7 +3,6 @@ package com.aresstack.enterpriseai.proasteion.exedra.knowledge;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.PageNavigationUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
-import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatWorkspacePanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.PageNavigationPanel;
@@ -120,13 +119,13 @@ public final class PageNavigationController implements PageNavigationPanel.Actio
 
     /** Export the page of the tree with its whole subtree from the source, not what the tree shows (#115). */
     @Override
-    public void exportRequested(String key, ExportFormat format) {
+    public void exportRequested(String key) {
         NavigationNode node = nodes.get(key);
         KnowledgeSourceRegistration registration = rootSource;
         if (exporter == null || node == null || registration == null) {
             return;
         }
-        exporter.exportSubtree(workspace.navigation(), registration.port(), node, format);
+        exporter.exportSubtree(workspace.navigation(), registration.port(), node);
     }
 
     /** Show where {@link #current} sits and what it links to. */

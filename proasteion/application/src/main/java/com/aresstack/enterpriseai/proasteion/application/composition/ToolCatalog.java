@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 
@@ -51,9 +52,20 @@ public final class ToolCatalog {
         this.enabled = enabled;
     }
 
-    /** Ist das Werkzeug aktiv (nicht abgeschaltet)? Unbekannte Namen und Pflichtwerkzeuge gelten als aktiv. */
+    /**
+     * Ist das Werkzeug aktiv (nicht abgeschaltet)? Unbekannte Namen und Pflichtwerkzeuge gelten als aktiv. Ein
+     * Werkzeug, das nur die Mehrfachform eines anderen ist ({@code knowledge_read_many} zu {@code knowledge_read}),
+     * ist mit diesem abgeschaltet: es liest dieselben Dokumente.
+     */
     public boolean isEnabled(String name) {
-        return isRequired(name) || enabled.test(name);
+        if (isRequired(name)) {
+            return true;
+        }
+        if (!enabled.test(name)) {
+            return false;
+        }
+        String single = KnowledgeMcpTools.KNOWLEDGE_READ_MANY.equals(name) ? KnowledgeMcpTools.KNOWLEDGE_READ : null;
+        return single == null || isEnabled(single);
     }
 
     /** Ist das Werkzeug ein Pflichtwerkzeug einer Registrierung (nicht abschaltbar)? */

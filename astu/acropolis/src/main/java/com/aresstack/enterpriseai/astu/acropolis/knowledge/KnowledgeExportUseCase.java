@@ -6,6 +6,9 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.NavigationChildren;
 import com.aresstack.enterpriseai.source.api.NavigationNode;
+import com.aresstack.enterpriseai.source.api.OneTimeCodeRequiredException;
+import com.aresstack.enterpriseai.source.api.PageView;
+import com.aresstack.enterpriseai.source.api.PageViewSource;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -22,6 +25,12 @@ import java.util.function.BooleanSupplier;
  * {@link KnowledgeSourcePort#load}. A node key seen before is skipped, so a faulty source cannot loop or export a page
  * twice. Loading goes on past a failure to name all of them; then {@link ExportIncompleteException} replaces the tree.
  * Blocks for the duration of the export.
+ *
+ * <p>Figures (#132): a source that offers a reading view ({@link PageViewSource}) also delivers the figures of each
+ * page; their bytes come through the source's own sign-in ({@link PageViewSource#loadViewImage}), never through an
+ * unauthenticated download. They are placed into the export Markdown of the chapter
+ * ({@link ExportDocumentNode#text()}); a figure that cannot be loaded stays in the tree with its reason, so the writers
+ * mark it and the export reports it instead of silently dropping it. The indexable document is left as it is.</p>
  */
 public final class KnowledgeExportUseCase {
 
@@ -52,9 +61,9 @@ public final class KnowledgeExportUseCase {
         }
         Walk walk = new Walk(source, progress, cancelled);
         walk.found = 1;
-        KnowledgeDocument document = walk.load(page, title);
+        Chapter chapter = walk.load(page, title);
         walk.finish();
-        return new ExportDocumentNode(title, document, null);
+        return chapter.node(title, null);
     }
 
     /** Load {@code node} and every page below it, in source order, whatever a view has expanded. */
@@ -89,7 +98,7 @@ public final class KnowledgeExportUseCase {
 
         ExportDocumentNode node(NavigationNode node) {
             checkCancelled();
-            KnowledgeDocument document = node.isRoot() ? null : load(node.resource(), node.title());
+            Chapter chapter = node.isRoot() ? new Chapter(null, null, null) : load(node.resource(), node.title());
             List<NavigationNode> children = node.children() == NavigationNode.Children.NO
                     ? Collections.<NavigationNode>emptyList() : children(node);
             List<NavigationNode> fresh = new ArrayList<NavigationNode>();
@@ -103,7 +112,7 @@ public final class KnowledgeExportUseCase {
             for (NavigationNode child : fresh) {
                 chapters.add(node(child));
             }
-            return new ExportDocumentNode(node.title(), document, chapters);
+            return chapter.node(node.title(), chapters);
         }
 
         /** All children of {@code parent}, batch after batch; a failed batch is a failure, not an empty branch. */
@@ -124,19 +133,60 @@ public final class KnowledgeExportUseCase {
             return all;
         }
 
-        KnowledgeDocument load(KnowledgeResourceId page, String title) {
+        Chapter load(KnowledgeResourceId page, String title) {
             checkCancelled();
             try {
                 KnowledgeDocument document = source.load(page);
+                Chapter chapter = figures(page, document);
                 loaded++;
                 if (progress != null) {
                     progress.pageLoaded(loaded, found, title);
                 }
-                return document;
+                return chapter;
             } catch (KnowledgeSourceException e) {
                 failures.add((title == null || title.trim().isEmpty() ? page.value() : title.trim()) + ": "
                         + reason(e));
-                return null;
+                return new Chapter(null, null, null);
+            }
+        }
+
+        /** The document with the figures of its reading view placed; without a view just the document. */
+        private Chapter figures(KnowledgeResourceId page, KnowledgeDocument document) {
+            if (!(source instanceof PageViewSource)) {
+                return new Chapter(document, null, null);
+            }
+            PageViewSource views = (PageViewSource) source;
+            PageView view;
+            try {
+                view = views.pageView(page);
+            } catch (KnowledgeSourceException e) {
+                return new Chapter(document, null, null); // no reading view: the text is all there is
+            }
+            if (view == null || view.images().isEmpty()) {
+                return new Chapter(document, null, null);
+            }
+            List<ExportImage> images = new ArrayList<ExportImage>();
+            for (PageView.Image image : view.images()) {
+                checkCancelled();
+                images.add(image(views, image));
+            }
+            return new Chapter(document, ExportImagePlacement.place(document.text(), view.html(), images), images);
+        }
+
+        private ExportImage image(PageViewSource views, PageView.Image image) {
+            String title = image.title().isEmpty() && image.resource() != null ? image.resource().title()
+                    : image.title();
+            try {
+                byte[] bytes = views.loadViewImage(image.src());
+                return bytes == null || bytes.length == 0 ? ExportImage.failed(image.src(), title, "leer")
+                        : ExportImage.loaded(image.src(), title, bytes);
+            } catch (OneTimeCodeRequiredException e) {
+                return ExportImage.failed(image.src(), title, "die Quelle verlangt einen Einmalcode für Dateien; "
+                        + "erst im Lesebereich ein Bild öffnen und den Code bestätigen");
+            } catch (KnowledgeSourceException e) {
+                return ExportImage.failed(image.src(), title, reason(e));
+            } catch (RuntimeException e) {
+                return ExportImage.failed(image.src(), title, "nicht ladbar");
             }
         }
 
@@ -150,6 +200,23 @@ public final class KnowledgeExportUseCase {
             if (cancelled != null && cancelled.getAsBoolean()) {
                 throw new CancellationException("export cancelled");
             }
+        }
+    }
+
+    /** One loaded page: the document and, with figures, its export Markdown and the figures. */
+    private static final class Chapter {
+        final KnowledgeDocument document;
+        final String markdown;
+        final List<ExportImage> images;
+
+        Chapter(KnowledgeDocument document, String markdown, List<ExportImage> images) {
+            this.document = document;
+            this.markdown = markdown;
+            this.images = images;
+        }
+
+        ExportDocumentNode node(String title, List<ExportDocumentNode> children) {
+            return new ExportDocumentNode(title, document, markdown, images, children);
         }
     }
 

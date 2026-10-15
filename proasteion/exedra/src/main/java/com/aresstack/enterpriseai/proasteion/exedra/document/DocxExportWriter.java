@@ -23,11 +23,26 @@ public final class DocxExportWriter implements ExportWriter {
     static final String TOC_TITLE = "Inhalt";
     static final String TOC_PLACEHOLDER = "Das Inhaltsverzeichnis erscheint, sobald Word die Felder aktualisiert (F9).";
 
+    private final ExportGraphics graphics;
+
+    public DocxExportWriter() {
+        this(ExportGraphics.standard());
+    }
+
+    /** @param graphics the figures of this export (#132); it also collects the ones that are missing */
+    public DocxExportWriter(ExportGraphics graphics) {
+        if (graphics == null) {
+            throw new IllegalArgumentException("graphics must not be null");
+        }
+        this.graphics = graphics;
+    }
+
     @Override
     public void write(ExportDocumentNode root, OutputStream out) throws IOException {
+        graphics.with(root);
         XWPFDocument document = new XWPFDocument();
         try {
-            MarkdownDocxRenderer renderer = new MarkdownDocxRenderer(document);
+            MarkdownDocxRenderer renderer = new MarkdownDocxRenderer(document, graphics);
             document.getProperties().getCoreProperties().setTitle(root.title());
             document.getProperties().getCoreProperties().setCreator("Enterprise AI Client");
             if (root.size() > 1) {

@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportGraphics;
 import com.aresstack.enterpriseai.proasteion.exedra.document.MarkdownDocxRenderer;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -31,8 +32,9 @@ import java.util.Map;
  * „Ressourcen des Chats“ Dateien, Seiten und Quellen chatweit dedupliziert zusammen.
  *
  * <p>Nur Darstellung: Sammeln und Schwärzen bleiben bei {@link ChatExport}; dieser Schreiber sieht nie den
- * ungeschwärzten Chat. Unbekannte Markdown-Knoten behalten ihren lesbaren Text, Mermaid und SVG erscheinen als
- * Codeblock.
+ * ungeschwärzten Chat. Unbekannte Markdown-Knoten behalten ihren lesbaren Text. Bilder des Nachrichteninhalts
+ * ({@code data:}-Bilder) und Mermaid-Diagramme werden über {@link ExportGraphics} als Grafik eingebettet (#132);
+ * fremde Bildadressen werden nie abgerufen, sondern als fehlende Abbildung vermerkt.
  */
 public final class ChatDocxWriter {
 
@@ -50,10 +52,17 @@ public final class ChatDocxWriter {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMAN);
 
     private final ZoneId zone;
+    private final ExportGraphics graphics;
 
     /** @param zone Zeitzone für Uhrzeiten und Datum im Dokument */
     public ChatDocxWriter(ZoneId zone) {
+        this(zone, ExportGraphics.standard());
+    }
+
+    /** @param graphics bettet Bilder und Diagramme ein und sammelt die fehlenden */
+    public ChatDocxWriter(ZoneId zone, ExportGraphics graphics) {
         this.zone = zone == null ? ZoneId.systemDefault() : zone;
+        this.graphics = graphics == null ? ExportGraphics.standard() : graphics;
     }
 
     /** Das Word-Dokument zum Exportbaum. */
@@ -80,7 +89,7 @@ public final class ChatDocxWriter {
 
         Builder(XWPFDocument document) {
             this.document = document;
-            this.renderer = new MarkdownDocxRenderer(document);
+            this.renderer = new MarkdownDocxRenderer(document, graphics);
         }
 
         void build(JsonObject export) {

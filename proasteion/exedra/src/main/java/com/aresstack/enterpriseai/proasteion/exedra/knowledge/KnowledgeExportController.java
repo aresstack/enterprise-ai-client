@@ -4,20 +4,21 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.ExportDocumentNode;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ExportIncompleteException;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeExportUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFileTypes;
 import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportGraphics;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportSaveDialog;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.NavigationNode;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JDialog;
-import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.SwingUtilities;
-import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.FlowLayout;
@@ -30,6 +31,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.CancellationException;
+import java.util.function.Supplier;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
@@ -41,6 +43,11 @@ import java.util.logging.Logger;
  * writer of the chosen {@link ExportFormat}, both on the work executor, while a progress window counts the pages and
  * offers to cancel. The file is written next to the target and moved into place at the end, so a failed or cancelled
  * export leaves nothing half written; a page that could not be loaded fails the whole export with its name.
+ *
+ * <p>Since #132 there is one action "Exportieren …": the shared save dialog ({@link ExportSaveDialog}) offers PDF
+ * (preselected), Word and Markdown as file types, and the chosen type decides writer and extension. Figures are
+ * embedded through one {@link ExportGraphics} per export; if some could not be, the file is still written with a
+ * notice in their place, and the user is told which ones are missing.</p>
  */
 public final class KnowledgeExportController {
 
@@ -49,13 +56,18 @@ public final class KnowledgeExportController {
     static final String INCOMPLETE = "Der Export wurde nicht gespeichert, weil nicht alle Seiten geladen werden "
             + "konnten:";
     static final String WRITE_FAILED = "Der Export konnte nicht gespeichert werden: ";
+    static final String FIGURES_MISSING = "Der Export wurde gespeichert, aber nicht alle Abbildungen konnten "
+            + "übernommen werden (an ihrer Stelle steht ein Hinweis):";
     /** How many missing pages the message lists before it only counts the rest. */
     private static final int LISTED_FAILURES = 10;
 
     /** What the controller shows; a Swing implementation by default, fakes in tests. Calls on the EDT. */
     public interface Dialogs {
-        /** Return the confirmed target file, or {@code null} if the user cancelled. */
-        File chooseTarget(Component parent, String suggestedName, ExportFormat format);
+        /**
+         * Return the confirmed target file and its format, chosen as file type in the save dialog, or {@code null} if
+         * the user cancelled.
+         */
+        ExportSaveDialog.Choice<ExportFormat> chooseTarget(Component parent, String suggestedName);
 
         /** Show that the export of {@code title} runs; the handle is updated and closed on the EDT. */
         ProgressView showProgress(Component parent, String title, Runnable cancel);
@@ -80,41 +92,44 @@ public final class KnowledgeExportController {
     private final Executor uiExecutor;
     private final Executor workExecutor;
     private final Dialogs dialogs;
+    private final Supplier<ExportGraphics> graphics;
 
     public KnowledgeExportController(KnowledgeExportUseCase exports, Executor uiExecutor, Executor workExecutor) {
-        this(exports, uiExecutor, workExecutor, new SwingDialogs());
+        this(exports, uiExecutor, workExecutor, new SwingDialogs(), ExportGraphics::standard);
     }
 
     KnowledgeExportController(KnowledgeExportUseCase exports, Executor uiExecutor, Executor workExecutor,
-                              Dialogs dialogs) {
-        if (exports == null || uiExecutor == null || workExecutor == null || dialogs == null) {
+                              Dialogs dialogs, Supplier<ExportGraphics> graphics) {
+        if (exports == null || uiExecutor == null || workExecutor == null || dialogs == null || graphics == null) {
             throw new IllegalArgumentException("all arguments are required");
         }
         this.exports = exports;
         this.uiExecutor = uiExecutor;
         this.workExecutor = workExecutor;
         this.dialogs = dialogs;
+        this.graphics = graphics;
     }
 
     /** Export {@code node} with all pages below it; on the EDT. */
-    public void exportSubtree(Component parent, final KnowledgeSourcePort source, final NavigationNode node,
-                              ExportFormat format) {
-        run(parent, node.title(), format, (progress, cancelled) -> exports.subtree(source, node, progress,
+    public void exportSubtree(Component parent, final KnowledgeSourcePort source, final NavigationNode node) {
+        run(parent, node.title(), (progress, cancelled) -> exports.subtree(source, node, progress,
                 cancelled::get));
     }
 
     /** Export the single page {@code page}, never its children; on the EDT. */
     public void exportPage(Component parent, final KnowledgeSourcePort source, final KnowledgeResourceId page,
-                           final String title, ExportFormat format) {
-        run(parent, title, format, (progress, cancelled) -> exports.page(source, page, title, progress,
+                           final String title) {
+        run(parent, title, (progress, cancelled) -> exports.page(source, page, title, progress,
                 cancelled::get));
     }
 
-    void run(final Component parent, String title, final ExportFormat format, final TreeLoader loader) {
-        final File target = dialogs.chooseTarget(parent, ExportFileName.of(title), format);
-        if (target == null) {
+    void run(final Component parent, String title, final TreeLoader loader) {
+        ExportSaveDialog.Choice<ExportFormat> choice = dialogs.chooseTarget(parent, ExportFileName.of(title));
+        if (choice == null || choice.file() == null || choice.format() == null) {
             return;
         }
+        final File target = choice.file();
+        final ExportFormat format = choice.format();
         final AtomicBoolean cancelled = new AtomicBoolean();
         final ProgressView view = dialogs.showProgress(parent, title, () -> cancelled.set(true));
         try {
@@ -130,12 +145,16 @@ public final class KnowledgeExportController {
                       AtomicBoolean cancelled, final ProgressView view) {
         String problem = null;
         try {
+            ExportGraphics figures = graphics.get();
             ExportDocumentNode tree = loader.load((loaded, found, page) -> uiExecutor.execute(
                     () -> view.update(loaded, found, page)), cancelled);
             if (cancelled.get()) {
                 throw new CancellationException("export cancelled");
             }
-            save(tree, target, format);
+            save(tree, target, format, figures);
+            if (!figures.problems().isEmpty()) {
+                problem = listed(FIGURES_MISSING, figures.problems());
+            }
         } catch (CancellationException e) {
             LOG.fine("Export abgebrochen"); // the user asked for it: nothing to report
         } catch (ExportIncompleteException e) {
@@ -154,14 +173,15 @@ public final class KnowledgeExportController {
     }
 
     /** Write next to the target, then move it into place: nothing half written stays behind. */
-    static void save(ExportDocumentNode tree, File target, ExportFormat format) throws IOException {
+    static void save(ExportDocumentNode tree, File target, ExportFormat format, ExportGraphics graphics)
+            throws IOException {
         Path destination = target.toPath().toAbsolutePath();
         Path directory = destination.getParent();
         Path temporary = Files.createTempFile(directory, ".export-", ".part");
         try {
             OutputStream out = Files.newOutputStream(temporary);
             try {
-                format.writer().write(tree, out);
+                format.writer(graphics).write(tree, out);
             } finally {
                 out.close();
             }
@@ -172,7 +192,11 @@ public final class KnowledgeExportController {
     }
 
     static String incompleteMessage(List<String> failures) {
-        StringBuilder text = new StringBuilder(INCOMPLETE);
+        return listed(INCOMPLETE, failures);
+    }
+
+    static String listed(String heading, List<String> failures) {
+        StringBuilder text = new StringBuilder(heading);
         for (int i = 0; i < failures.size() && i < LISTED_FAILURES; i++) {
             text.append("\n– ").append(failures.get(i));
         }
@@ -187,22 +211,8 @@ public final class KnowledgeExportController {
     /** Save dialog, progress window and messages as in the chat export. */
     static final class SwingDialogs implements Dialogs {
         @Override
-        public File chooseTarget(Component parent, String suggestedName, ExportFormat format) {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setDialogTitle(DIALOG_TITLE);
-            chooser.setAcceptAllFileFilterUsed(false);
-            chooser.setFileFilter(new FileNameExtensionFilter(format.fileLabel(), format.extension()));
-            chooser.setSelectedFile(new File(suggestedName + "." + format.extension()));
-            if (chooser.showSaveDialog(parent) != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
-                return null;
-            }
-            File target = ExportFileName.withExtension(chooser.getSelectedFile(), format);
-            if (target.exists() && JOptionPane.showConfirmDialog(parent, target.getName()
-                            + " gibt es schon. Ersetzen?", DIALOG_TITLE, JOptionPane.YES_NO_OPTION,
-                    JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
-                return null;
-            }
-            return target;
+        public ExportSaveDialog.Choice<ExportFormat> chooseTarget(Component parent, String suggestedName) {
+            return ExportSaveDialog.show(parent, DIALOG_TITLE, suggestedName, ExportFileTypes.pages());
         }
 
         @Override

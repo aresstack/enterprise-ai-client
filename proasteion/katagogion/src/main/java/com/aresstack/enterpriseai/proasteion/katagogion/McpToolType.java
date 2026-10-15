@@ -10,5 +10,7 @@ public enum McpToolType {
     STRING,
     INTEGER,
     BOOLEAN,
-    ENUM
+    ENUM,
+    /** Eine Liste von Texten, JSON Schema {@code array} mit {@code items: string}. */
+    STRING_ARRAY
 }

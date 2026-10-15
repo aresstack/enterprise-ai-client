@@ -1,11 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.reader;
 
-import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import org.junit.Test;
 
-import javax.swing.JMenuItem;
-import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,11 +10,13 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
-/** #115: the reader exports the page of the active tab from a button left of the paper clip. */
+/**
+ * #115: the reader exports the page of the active tab from a button left of the paper clip; since #132 the button
+ * opens the save dialog directly (the format is a file type there), no format menu.
+ */
 public class ReaderPageExportButtonTest {
 
     private final List<String> exported = new ArrayList<String>();
@@ -34,8 +33,8 @@ public class ReaderPageExportButtonTest {
         }
 
         @Override
-        public void export(ReaderLink link, ExportFormat format) {
-            exported.add(link.title() + " " + format);
+        public void export(ReaderLink link) {
+            exported.add(link.title());
         }
     };
 
@@ -56,28 +55,21 @@ public class ReaderPageExportButtonTest {
 
             reader.open(ReaderLink.source("wiki", "Übersicht"), true);
             assertFalse("a source overview is no page", reader.exportButton().isVisible());
-            assertNull(reader.exportMenu());
+            reader.exportActivePage();
+            assertTrue("nothing exported for a source overview", exported.isEmpty());
         });
     }
 
     @Test
-    public void theMenuExportsOnlyTheActivePageInTheChosenFormat() throws Exception {
+    public void theButtonExportsOnlyTheActivePageWithoutAFormatMenu() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             KnowledgeReaderPanel reader = reader();
             reader.setPageExporter(exporter);
             reader.open(new ReaderLink("wiki", "wiki:page/1", "Roadmap", "", "wiki:page/1"), true);
             reader.open(new ReaderLink("wiki", "wiki:page/2", "Betrieb", "", "wiki:page/2"), true);
-            final List<JPopupMenu> shown = new ArrayList<JPopupMenu>();
-            reader.setExportMenuShower(shown::add);
+            assertEquals("Exportieren …", reader.exportButton().getToolTipText());
             reader.exportButton().doClick();
-            assertEquals(1, shown.size());
-            List<String> labels = new ArrayList<String>();
-            for (java.awt.Component item : shown.get(0).getComponents()) {
-                labels.add(((JMenuItem) item).getText());
-            }
-            assertEquals(Arrays.asList("Als PDF …", "Als Word …", "Als Markdown …"), labels);
-            ((JMenuItem) shown.get(0).getComponent(1)).doClick();
-            assertEquals(Arrays.asList("Betrieb DOCX"), exported);
+            assertEquals(Arrays.asList("Betrieb"), exported);
         });
     }
 }

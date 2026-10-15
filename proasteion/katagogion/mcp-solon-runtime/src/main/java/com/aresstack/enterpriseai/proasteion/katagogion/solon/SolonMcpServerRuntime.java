@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolParameter;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolType;
 
 import io.modelcontextprotocol.spec.McpSchema;
 
@@ -320,6 +321,9 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
         for (McpToolParameter parameter : tool.getParameters()) {
             json.append(first ? "" : ",").append(quote(parameter.getName())).append(":{\"type\":")
                     .append(quote(jsonType(parameter)));
+            if (parameter.getType() == McpToolType.STRING_ARRAY) {
+                json.append(",\"items\":{\"type\":\"string\"}");
+            }
             if (!parameter.getDescription().isEmpty()) {
                 json.append(",\"description\":").append(quote(parameter.getDescription()));
             }
@@ -349,6 +353,8 @@ public final class SolonMcpServerRuntime implements McpServerRegistry {
                 return "integer";
             case BOOLEAN:
                 return "boolean";
+            case STRING_ARRAY:
+                return "array";
             case STRING:
             case ENUM:
             default:

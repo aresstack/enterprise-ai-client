@@ -123,7 +123,7 @@ public class SliceFMcpTest {
 
         Map<String, String> listed = client.listTools();
         assertEquals(listed.toString(), new java.util.HashSet<String>(java.util.Arrays.asList(
-                KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
+                KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ, KnowledgeMcpTools.KNOWLEDGE_READ_MANY,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL)), listed.keySet());
 
         String search = client.callTool(KnowledgeMcpTools.KNOWLEDGE_SEARCH, args("query", QUESTION, "limit", 1));

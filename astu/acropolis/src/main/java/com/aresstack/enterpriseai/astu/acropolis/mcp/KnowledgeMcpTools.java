@@ -27,6 +27,8 @@ import java.util.function.Predicate;
  *   <li>{@value #KNOWLEDGE_READ}: ein Dokument aus einem Treffer lesen (Cache, sonst sofort, auch nicht indexierte
  *       Treffer); es wird bei Bedarf indexiert
  *       (Parameter {@code id}); auch Dateianhänge (PDF, Office, Bilder), notfalls nach Einmalcode,</li>
+ *   <li>{@value #KNOWLEDGE_READ_MANY}: mehrere bekannte Dokumente in einem Aufruf begrenzt parallel lesen, dieselbe
+ *       Lese-Logik wie {@value #KNOWLEDGE_READ} (Parameter {@code ids}, ein Array),</li>
  *   <li>{@value #KNOWLEDGE_ATTACHMENTS}: die Dateianhänge einer Seite auflisten, ohne sie zu laden (Parameter
  *       {@code id}),</li>
  *   <li>{@value #KNOWLEDGE_RESOLVE_URL}: eine genannte Adresse als Ressource der Quellen auflösen, alle Kandidaten
@@ -40,6 +42,7 @@ public final class KnowledgeMcpTools {
     public static final String KNOWLEDGE_SEARCH = KnowledgeSearchTool.NAME;
     public static final String KNOWLEDGE_TREE = KnowledgeTreeTool.NAME;
     public static final String KNOWLEDGE_READ = KnowledgeReadTool.NAME;
+    public static final String KNOWLEDGE_READ_MANY = KnowledgeReadManyTool.NAME;
     public static final String KNOWLEDGE_ATTACHMENTS = KnowledgeAttachmentsTool.NAME;
     public static final String KNOWLEDGE_RESOLVE_URL = KnowledgeResolveUrlTool.NAME;
     /**
@@ -53,6 +56,7 @@ public final class KnowledgeMcpTools {
     private final KnowledgeSearchTool search;
     private final KnowledgeTreeTool tree;
     private final KnowledgeReadTool read;
+    private final KnowledgeReadManyTool readMany;
     private final KnowledgeAttachmentsTool attachments;
     private final KnowledgeResolveUrlTool resolveUrl;
     private volatile boolean shutdown;
@@ -91,7 +95,9 @@ public final class KnowledgeMcpTools {
         this.settings = settings == null ? KnowledgeToolSettings.defaults() : settings;
         this.search = new KnowledgeSearchTool(retrieval, live, documents::catalog, enabled, this.settings);
         ResolveKnowledgeAddressUseCase addresses = new ResolveKnowledgeAddressUseCase(documents::catalog);
-        this.read = new KnowledgeReadTool(documents, live, addresses, this.settings);
+        KnowledgeResourceReader reader = new KnowledgeResourceReader(documents, live, addresses);
+        this.read = new KnowledgeReadTool(reader, this.settings);
+        this.readMany = new KnowledgeReadManyTool(reader, this.settings);
         this.attachments = new KnowledgeAttachmentsTool(new ListKnowledgeAttachmentsUseCase(documents::catalog),
                 this.settings);
         this.resolveUrl = new KnowledgeResolveUrlTool(addresses);
@@ -105,10 +111,14 @@ public final class KnowledgeMcpTools {
         return settings;
     }
 
-    /** Alle Werkzeuge in fester Reihenfolge: Suche, Seitenbaum, Lesen, Anhänge, Adresse auflösen. */
+    /** Alle Werkzeuge in fester Reihenfolge: Suche, Seitenbaum, Lesen, mehrere Lesen, Anhänge, Adresse auflösen. */
     public List<McpToolContribution> contributions() {
         return Collections.unmodifiableList(Arrays.asList(knowledgeSearch(), knowledgeTree(), knowledgeRead(),
-                knowledgeAttachments(), knowledgeResolveUrl()));
+                knowledgeReadMany(), knowledgeAttachments(), knowledgeResolveUrl()));
+    }
+
+    public McpToolContribution knowledgeReadMany() {
+        return readMany.contribution();
     }
 
     public McpToolContribution knowledgeTree() {
@@ -131,9 +141,10 @@ public final class KnowledgeMcpTools {
         return read.contribution();
     }
 
-    /** Merkt das Abmelden des Endpoints; die Werkzeuge sind zustandslos. Idempotent. */
+    /** Merkt das Abmelden des Endpoints und beendet den Lese-Pool von knowledge_read_many. Idempotent. */
     public void shutdown() {
         shutdown = true;
+        readMany.shutdown();
     }
 
     public boolean isShutdown() {
