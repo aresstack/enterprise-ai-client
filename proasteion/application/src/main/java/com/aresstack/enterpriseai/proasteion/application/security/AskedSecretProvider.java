@@ -8,9 +8,7 @@ import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException.Reason;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Zugang „Manuell“ statt KeePass: Referenzen {@code ask:<Name>} fragt die Anwendung beim ersten Gebrauch je Sitzung
@@ -29,6 +27,22 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
      */
     public interface CredentialPrompt {
         Answer ask(SecretRef ref, String label) throws Unavailable;
+
+        /**
+         * Wie {@link #ask(SecretRef, String)}, mit einem vorgemerkten, nicht geheimen Benutzernamen als Vorbelegung
+         * ({@code ""}: keiner); der Benutzer kann ihn ändern oder leeren.
+         */
+        default Answer ask(SecretRef ref, String label, String suggestedUser) throws Unavailable {
+            return ask(ref, label);
+        }
+
+        /**
+         * Die Sitzung der manuellen Eingaben, die alle Zugriffe mit dieser Eingabe teilen; ohne eigene Sitzung eine
+         * leere, die nur für diesen Zugriff gilt.
+         */
+        default ManualCredentials session() {
+            return new ManualCredentials();
+        }
     }
 
     /** Die Eingabe ist hier nicht möglich (kein Fenster); die Meldung nennt den Grund, nie Material. */
@@ -62,15 +76,20 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
 
     private final SecretProvider vault;
     private final CredentialPrompt prompt;
-    private final Map<String, String> users = new HashMap<String, String>();
-    private final Map<String, char[]> secrets = new HashMap<String, char[]>();
+    private final ManualCredentials credentials;
 
+    /** Mit der Sitzung der Eingabe ({@link CredentialPrompt#session()}): eine Eingabe gilt überall. */
     public AskedSecretProvider(SecretProvider vault, CredentialPrompt prompt) {
-        if (vault == null || prompt == null) {
-            throw new IllegalArgumentException("vault and prompt must not be null");
+        this(vault, prompt, prompt == null ? null : prompt.session());
+    }
+
+    public AskedSecretProvider(SecretProvider vault, CredentialPrompt prompt, ManualCredentials credentials) {
+        if (vault == null || prompt == null || credentials == null) {
+            throw new IllegalArgumentException("vault, prompt and credentials must not be null");
         }
         this.vault = vault;
         this.prompt = prompt;
+        this.credentials = credentials;
     }
 
     /** {@code true}, wenn die Referenz manuell abgefragt wird. */
@@ -89,15 +108,26 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
             return vault.resolve(ref);
         }
         String key = ref.id();
-        synchronized (this) {
-            char[] known = secrets.get(key);
-            if (known != null) {
-                return new SecretMaterial(ref, users.get(key), known);
+        char[] known = credentials.secret(key);
+        if (known != null) {
+            try {
+                return new SecretMaterial(ref, credentials.user(key), known);
+            } finally {
+                Arrays.fill(known, '\0');
+            }
+        }
+        char[] stored = storedSecret(key);
+        if (stored != null) {
+            try {
+                credentials.remember(key, credentials.suggestedUser(key), stored);
+                return new SecretMaterial(ref, credentials.suggestedUser(key), stored);
+            } finally {
+                Arrays.fill(stored, '\0');
             }
         }
         Answer answer;
         try {
-            answer = prompt.ask(ref, ref.id().substring(SCHEME.length()).trim());
+            answer = prompt.ask(ref, ref.id().substring(SCHEME.length()).trim(), credentials.suggestedUser(key));
         } catch (Unavailable e) {
             throw new SecretUnavailableException(Reason.NOT_AVAILABLE, ref, e.getMessage());
         }
@@ -105,13 +135,28 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
             throw new SecretUnavailableException(Reason.CANCELLED, ref, "Eingabe der Zugangsdaten abgebrochen");
         }
         try {
-            synchronized (this) {
-                users.put(key, answer.user());
-                secrets.put(key, Arrays.copyOf(answer.secret(), answer.secret().length));
+            if (answer.secret().length > 0) {
+                credentials.remember(key, answer.user(), answer.secret());
             }
             return new SecretMaterial(ref, answer.user(), answer.secret());
         } finally {
             Arrays.fill(answer.secret(), '\0');
+        }
+    }
+
+    /** Ein ausdrücklich gespeicherter API-Key („API-Key speichern“) oder {@code null}; Fehler gelten als „keiner“. */
+    private char[] storedSecret(String key) {
+        ProtectedSecretStore store = credentials.persistent();
+        if (!store.available() || !store.contains(key)) {
+            return null;
+        }
+        try {
+            char[] secret = store.load(key);
+            return secret == null || secret.length == 0 ? null : secret;
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(AskedSecretProvider.class.getName())
+                    .info("Gespeicherter API-Key nicht lesbar (" + e.getClass().getSimpleName() + "); frage neu");
+            return null;
         }
     }
 

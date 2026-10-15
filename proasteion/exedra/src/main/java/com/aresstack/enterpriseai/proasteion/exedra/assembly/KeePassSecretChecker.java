@@ -1,11 +1,13 @@
 package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
+import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
 import com.aresstack.enterpriseai.proasteion.application.composition.AdapterAssembly;
 import com.aresstack.enterpriseai.proasteion.application.composition.ConfluenceEntryCheck;
 
 import com.aresstack.enterpriseai.proasteion.application.config.KeePassConfig;
 import com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt;
 import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
 import com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.SecretChecker;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.settings.SecretCheckResult;
@@ -26,6 +28,7 @@ import java.util.List;
 public final class KeePassSecretChecker implements SecretChecker {
 
     private final PairingCallbackFactory pairing;
+    private final DialogCredentialPrompt credentials;
 
     /** Baut den Pairing-Dialog je Probe aus der Adresse des Entwurfs. */
     public interface PairingCallbackFactory {
@@ -34,19 +37,34 @@ public final class KeePassSecretChecker implements SecretChecker {
 
     /** Produktiv: der Swing-Pairing-Dialog. */
     public KeePassSecretChecker() {
-        this(new PairingCallbackFactory() {
+        this(swingPairing());
+    }
+
+    /** Der Swing-Pairing-Dialog je Adresse. */
+    static PairingCallbackFactory swingPairing() {
+        return new PairingCallbackFactory() {
             @Override
             public PairingPrompt forAddress(String keePassAddress) {
                 return new SwingPairingCallback(keePassAddress);
             }
-        });
+        };
+    }
+
+    /** Produktiv mit der Sitzung der manuellen Zugangsdaten der Anwendung. */
+    public KeePassSecretChecker(ManualCredentials manual) {
+        this(swingPairing(), manual);
     }
 
     public KeePassSecretChecker(PairingCallbackFactory pairing) {
-        if (pairing == null) {
-            throw new IllegalArgumentException("pairing must not be null");
+        this(pairing, new ManualCredentials());
+    }
+
+    public KeePassSecretChecker(PairingCallbackFactory pairing, ManualCredentials manual) {
+        if (pairing == null || manual == null) {
+            throw new IllegalArgumentException("pairing and manual must not be null");
         }
         this.pairing = pairing;
+        this.credentials = new DialogCredentialPrompt(manual);
     }
 
     @Override
@@ -54,7 +72,7 @@ public final class KeePassSecretChecker implements SecretChecker {
         if (keePass == null || ref == null) {
             throw new IllegalArgumentException("keePass and ref must not be null");
         }
-        if (!keePass.enabled()) {
+        if (!keePass.enabled() && !AskedSecretProvider.isAsked(ref)) {
             return SecretCheckResult.failed("KeePassRPC ist ausgeschaltet; ohne KeePass gibt es keinen API-Key.");
         }
         KeePassAccess.Check result = access(keePass).check(ref);
@@ -90,7 +108,6 @@ public final class KeePassSecretChecker implements SecretChecker {
         if (keePass == null) {
             return KeePassAccess.unavailable();
         }
-        return AdapterAssembly.keePassAccess(keePass, pairing.forAddress(keePass.address()),
-                new DialogCredentialPrompt());
+        return AdapterAssembly.keePassAccess(keePass, pairing.forAddress(keePass.address()), credentials);
     }
 }

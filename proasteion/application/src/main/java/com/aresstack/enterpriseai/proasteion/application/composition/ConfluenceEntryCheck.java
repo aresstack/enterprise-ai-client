@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
 import com.aresstack.enterpriseai.proasteion.application.config.ClientCertificateConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.NetworkConfig;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
@@ -41,6 +42,16 @@ public final class ConfluenceEntryCheck {
      * Ohne Startpunkte: alle Spaces sind Partitionen, ausgewählt wird später unter Wissensquellen.
      */
     public static SourceDefinition definition(String title, String baseUrl, String credentialRef, String certAlias) {
+        return definition(title, baseUrl, credentialRef, certAlias, null);
+    }
+
+    /**
+     * Wie {@link #definition(String, String, String, String)}; bei Zugang „Manuell“ ({@code ask:…}) mit dem
+     * vorgemerkten Benutzernamen ({@link ManualCredentials#SOURCE_USER_SETTING}, nie ein Secret), {@code null} oder
+     * leer: keiner.
+     */
+    public static SourceDefinition definition(String title, String baseUrl, String credentialRef, String certAlias,
+                                              String manualUser) {
         String url = baseUrl == null ? "" : baseUrl.trim();
         SourceSettings settings = SourceSettings.empty().with("title", title == null || title.trim().isEmpty()
                 ? ConfluenceSourceProvider.sourceType().displayName() : title.trim()).with("baseUrl", url);
@@ -51,6 +62,9 @@ public final class ConfluenceEntryCheck {
             settings = settings.with("clientCertificate.alias", certAlias.trim());
         } else {
             settings = settings.with("clientCertificate.use", "false");
+        }
+        if (ManualCredentials.isManual(credentialRef) && manualUser != null && !manualUser.trim().isEmpty()) {
+            settings = settings.with(ManualCredentials.SOURCE_USER_SETTING, manualUser.trim());
         }
         return new SourceDefinition(address(url), ConfluenceSourceProvider.TYPE_ID, true, settings);
     }
