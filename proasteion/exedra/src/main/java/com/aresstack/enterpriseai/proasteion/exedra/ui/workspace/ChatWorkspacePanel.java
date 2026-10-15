@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
 import com.aresstack.enterpriseai.proasteion.application.state.ApplicationStateService;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportSaveDialog;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellMode;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellModeModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
@@ -33,7 +34,6 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
-import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
@@ -46,8 +46,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.filechooser.FileFilter;
-import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -64,7 +62,6 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.File;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -1024,39 +1021,21 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     }
 
     /**
-     * „Chat exportieren …“: normaler Speichern-Dialog mit JSON (maßgeblich), Markdown und Word; der Export kommt aus
-     * dem gespeicherten Chat, auch wenn er gerade nicht offen ist, und verändert ihn nicht.
+     * „Chat exportieren …“: der gemeinsame Speichern-Dialog aller Exporte (#132) mit PDF (voreingestellt), Word,
+     * Markdown und JSON (maßgeblich); der Export kommt aus dem gespeicherten Chat, auch wenn er gerade nicht offen
+     * ist, und verändert ihn nicht.
      */
     private void exportChat(String chatId, String title) {
         if (actions == null) {
             return;
         }
-        Map<FileFilter, ChatExportFormat> filters = new LinkedHashMap<FileFilter, ChatExportFormat>();
-        JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Chat exportieren");
-        chooser.setAcceptAllFileFilterUsed(false);
-        for (ChatExportFormat format : ChatExportFormat.values()) {
-            FileNameExtensionFilter filter = new FileNameExtensionFilter(format.label(), format.extension());
-            filters.put(filter, format);
-            chooser.addChoosableFileFilter(filter);
-        }
-        chooser.setFileFilter(filters.keySet().iterator().next());
-        // Ohne Endung: der gewählte Dateityp bestimmt sie erst beim Speichern.
-        chooser.setSelectedFile(new File(ChatExportFileName.of(title, System.currentTimeMillis(),
-                ZoneId.systemDefault())));
-        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
+        ExportSaveDialog.Choice<ChatExportFormat> choice = ExportSaveDialog.show(this, "Chat exportieren",
+                ChatExportFileName.of(title, System.currentTimeMillis(), ZoneId.systemDefault()),
+                ChatExportFormat.fileTypes());
+        if (choice == null) {
             return;
         }
-        ChatExportFormat format = filters.get(chooser.getFileFilter());
-        if (format == null) {
-            format = ChatExportFormat.JSON;
-        }
-        File target = ChatExportFileName.withExtension(chooser.getSelectedFile(), format);
-        if (target.exists() && JOptionPane.showConfirmDialog(this, target.getName() + " gibt es schon. Ersetzen?",
-                "Chat exportieren", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
-            return;
-        }
-        String problem = actions.exportChatRequested(chatId, target, format);
+        String problem = actions.exportChatRequested(chatId, choice.file(), choice.format());
         if (problem != null) {
             JOptionPane.showMessageDialog(this, problem, "Export fehlgeschlagen", JOptionPane.WARNING_MESSAGE);
         }

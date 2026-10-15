@@ -44,4 +44,14 @@ public class SolonToolSchemaTest {
         assertEquals("{\"type\":\"object\",\"properties\":{},\"required\":[]}",
                 SolonMcpServerRuntime.inputSchema(McpToolContribution.of("ping", "d", NOOP)));
     }
+
+    @Test
+    public void stringArrayIsARealArrayOfStrings() {
+        McpToolContribution tool = McpToolContribution.of("read_many", "d", NOOP,
+                McpToolParameter.stringArray("ids", true, "Ids"));
+        assertEquals("{\"type\":\"object\",\"properties\":{"
+                        + "\"ids\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Ids\"}"
+                        + "},\"required\":[\"ids\"]}",
+                SolonMcpServerRuntime.inputSchema(tool));
+    }
 }

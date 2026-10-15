@@ -179,4 +179,21 @@ public class McpValueTypesTest {
             // erwartet
         }
     }
+
+    @Test
+    public void stringArrayParameterAndListGetter() {
+        McpToolParameter ids = McpToolParameter.stringArray("ids", true, "Ids");
+        assertEquals(McpToolType.STRING_ARRAY, ids.getType());
+        assertTrue(ids.isRequired());
+
+        Map<String, Object> arguments = new HashMap<String, Object>();
+        arguments.put("list", Arrays.asList("a,b", null, "c\"d"));
+        arguments.put("array", new String[]{"x", "y"});
+        arguments.put("single", "only");
+        McpToolCall call = new McpToolCall("t", arguments);
+        assertEquals(Arrays.asList("a,b", "c\"d"), call.getStrings("list"));
+        assertEquals(Arrays.asList("x", "y"), call.getStrings("array"));
+        assertEquals(Collections.singletonList("only"), call.getStrings("single"));
+        assertTrue(call.getStrings("missing").isEmpty());
+    }
 }

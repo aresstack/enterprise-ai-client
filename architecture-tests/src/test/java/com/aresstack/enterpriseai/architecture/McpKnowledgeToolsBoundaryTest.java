@@ -125,8 +125,8 @@ public class McpKnowledgeToolsBoundaryTest {
         assertTrue(productionClasses.contain(ROOT + ".astu.acropolis.mcp.KnowledgeMcpTools"));
         assertTrue(productionClasses.contain(ROOT + ".astu.acropolis.knowledge.LoadKnowledgeDocumentUseCase"));
         assertTrue(productionClasses.contain(ROOT + ".astu.acropolis.knowledge.RefreshKnowledgeSourceUseCase"));
-        // Die Werkzeuge nutzen die erlaubte Fehlerart tatsächlich; die Ausnahme in der Regel ist also nicht leer.
-        assertTrue(productionClasses.get(ROOT + ".astu.acropolis.mcp.KnowledgeReadTool")
+        // Die Lese-Logik der Werkzeuge nutzt die erlaubte Fehlerart tatsächlich; die Ausnahme in der Regel ist also nicht leer.
+        assertTrue(productionClasses.get(ROOT + ".astu.acropolis.mcp.KnowledgeResourceReader")
                 .getDirectDependenciesFromSelf().toString().contains(SOURCE_EXCEPTION));
     }
 
