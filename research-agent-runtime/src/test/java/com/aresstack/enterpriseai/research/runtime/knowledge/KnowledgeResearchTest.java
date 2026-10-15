@@ -96,12 +96,43 @@ public class KnowledgeResearchTest {
     private final LexicalKnowledgeTools tools = new LexicalKnowledgeTools()
             .page("123", "PoC Hashicorp Vault (HaVdB)", "Der PoC binds PIMA Hashicorp Vault an das HaVdB-Backend an.\n"
                     + "Ergebnis: Secrets werden über Vault Agent verteilt.")
-            .page("456", "Kantine", "Die Kantine öffnet um 11 Uhr.");
+            .page("456", "Kantine", "Die Kantine öffnet um 11 Uhr.")
+            .page("789", "Vault Glossar", "Ein Vault ist ein Tresor für Geheimnisse.");
+
+    @Test
+    public void aReadableButInsufficientFirstHitTriggersTheSecondQuery() throws Exception {
+        ScriptedModel model = new ScriptedModel("{\"queries\": [\"Vault Glossar\", \"PIMA Hashicorp Vault\"]}",
+                "NEIN", "Der PoC bindet PIMA Hashicorp Vault an das HaVdB-Backend an [2].");
+
+        KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(LONG_REQUEST);
+
+        assertEquals(Arrays.asList("Vault Glossar", "PIMA Hashicorp Vault"), tools.searches);
+        assertEquals(Arrays.asList("789", "123"), tools.reads);
+        assertEquals(KnowledgeResearchResult.Outcome.ANSWERED, result.outcome());
+        assertEquals(2, result.sources().size());
+        assertEquals("plan, evidence check, answer: no check after the last allowed search", 3, model.prompts.size());
+    }
+
+    @Test
+    public void theEvidenceDecisionIsASeam() throws Exception {
+        ScriptedModel model = new ScriptedModel("{\"queries\": [\"Vault Glossar\", \"PIMA Hashicorp Vault\"]}",
+                "Antwort [1].");
+        EvidenceJudge alwaysEnough = new EvidenceJudge() {
+            @Override
+            public boolean sufficient(String task, List<KnowledgeHit> read, List<String> excerpts) {
+                return true;
+            }
+        };
+
+        new KnowledgeResearch(tools, model, new LexicalDiscoveryStrategy(), alwaysEnough).research(LONG_REQUEST);
+
+        assertEquals(Arrays.asList("Vault Glossar"), tools.searches);
+    }
 
     @Test
     public void longNaturalLanguageRequestReachesTheLexicalSourceAsShortQuery() throws Exception {
         ScriptedModel model = new ScriptedModel("{\"queries\": [\"PIMA Hashicorp Vault\", \"Hashicorp Vault PoC\"]}",
-                "Der PoC bindet PIMA Hashicorp Vault an das HaVdB-Backend an [1].");
+                "JA", "Der PoC bindet PIMA Hashicorp Vault an das HaVdB-Backend an [1].");
 
         KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(LONG_REQUEST);
 
@@ -115,7 +146,7 @@ public class KnowledgeResearchTest {
         assertTrue(rendered, rendered.contains("[1] PoC Hashicorp Vault (HaVdB)"));
         assertTrue(rendered, rendered.contains("url: https://wiki.example/123"));
         assertTrue(rendered, rendered.contains("Searched with: \"PIMA Hashicorp Vault\""));
-        assertTrue("the answer prompt carries the read excerpt", model.prompts.get(1).contains("Vault Agent"));
+        assertTrue("the answer prompt carries the read excerpt", model.prompts.get(2).contains("Vault Agent"));
     }
 
     @Test

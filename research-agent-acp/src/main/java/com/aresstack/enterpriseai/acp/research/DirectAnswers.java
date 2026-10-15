@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.acp.research;
 
 import com.aresstack.enterpriseai.research.runtime.acquire.SearchScopeControlPort;
 import com.aresstack.enterpriseai.research.runtime.acquire.ServiceSearchScopeControlPort;
+import com.aresstack.enterpriseai.research.runtime.knowledge.LexicalDiscoveryStrategy;
 import com.aresstack.enterpriseai.research.runtime.knowledge.ResearchQueries;
 import com.aresstack.enterpriseai.research.runtime.loop.ResearchRunBudget;
 import com.aresstack.enterpriseai.research.runtime.loop.ToolInvoker;
@@ -91,7 +92,8 @@ final class DirectAnswers {
                 + "Nachricht des Nutzers Informationen aus diesen Quellen braucht. Antworte NUR mit JSON: "
                 + "{\"search\": true oder false, \"queries\": [\"...\"]}. search ist false NUR, wenn die Nachricht "
                 + "ausschließlich das Konzept bearbeitet (Karten anlegen, verschieben, umbenennen, ausschließen) oder "
-                + "reiner Smalltalk ist. queries: 1 bis " + MAX_QUERIES + " Suchanfragen. " + ResearchQueries.RULES
+                + "reiner Smalltalk ist. queries: 1 bis " + MAX_QUERIES + " Suchanfragen. "
+                + new LexicalDiscoveryStrategy().planningRules()
                 + " Die erste Anfrage ist der Kernbegriff allein.";
         StringBuilder user = new StringBuilder("NACHRICHT: ").append(message.trim()).append('\n');
         if (concept != null && !concept.trim().isEmpty()) {

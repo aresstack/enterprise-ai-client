@@ -15,9 +15,10 @@ import java.util.Set;
 /**
  * The Research Agent's mediation between a research task in natural language and the technical knowledge
  * operations. The caller (the normal chat, or the agent process) speaks natural language; this class speaks the
- * search language of the knowledge tools: it lets the model formulate one concise query (literal identifiers kept,
- * {@link ResearchQueries#RULES}), searches with {@code knowledge_search}, reads the best hits with {@code
- * knowledge_read}, searches once more with a materially different query only when nothing readable came back, and
+ * search language of the knowledge tools: its {@link DiscoveryStrategy} (today {@link LexicalDiscoveryStrategy}: one
+ * concise query, literal identifiers kept) guides the model's query planning, it searches with {@code
+ * knowledge_search}, reads the best hits with {@code knowledge_read}, lets the {@link EvidenceJudge} decide whether
+ * the read evidence answers the task, searches once more with a materially different query when it does not, and
  * writes the answer exclusively from the read excerpts, each statement tied to its source.
  *
  * <p>Fundamental rule: every task is searched. Model knowledge helps to understand the task, choose terms and write
@@ -34,22 +35,37 @@ public final class KnowledgeResearch {
 
     /** Hits per search. */
     static final int HITS_PER_QUERY = 6;
-    /** Resources read per task. */
+    /** Resources read per search. */
     static final int MAX_READS = 3;
     /** The initial query and at most one refinement. */
     static final int MAX_SEARCHES = 2;
     private static final int PLAN_TOKENS = 200;
     private static final int ANSWER_TOKENS = 2000;
 
+    private static final int JUDGE_TOKENS = 10;
+
     private final ToolInvoker tools;
     private final MainModelChat model;
+    private final DiscoveryStrategy strategy;
+    private final EvidenceJudge judge;
 
+    /** With the current lexical strategy and the model as evidence judge. */
     public KnowledgeResearch(ToolInvoker tools, MainModelChat model) {
-        if (tools == null || model == null) {
-            throw new IllegalArgumentException("tools and model must not be null");
+        this(tools, model, new LexicalDiscoveryStrategy(), null);
+    }
+
+    /**
+     * @param strategy how queries are formulated
+     * @param judge    whether read evidence suffices; {@code null} for {@link #modelJudge}
+     */
+    public KnowledgeResearch(ToolInvoker tools, MainModelChat model, DiscoveryStrategy strategy, EvidenceJudge judge) {
+        if (tools == null || model == null || strategy == null) {
+            throw new IllegalArgumentException("tools, model and strategy must not be null");
         }
         this.tools = tools;
         this.model = model;
+        this.strategy = strategy;
+        this.judge = judge == null ? modelJudge() : judge;
     }
 
     /**
@@ -69,10 +85,8 @@ public final class KnowledgeResearch {
         List<String> excerpts = new ArrayList<String>();
         Set<String> tried = new HashSet<String>();
         String failure = null;
-        for (String query : planned) {
-            if (searched.size() >= MAX_SEARCHES || !read.isEmpty()) {
-                break; // a refinement only when the evidence so far is insufficient
-            }
+        for (int index = 0; index < planned.size() && searched.size() < MAX_SEARCHES; index++) {
+            String query = planned.get(index);
             searched.add(query);
             List<KnowledgeHit> hits;
             try {
@@ -86,8 +100,9 @@ public final class KnowledgeResearch {
                     found.put(hit.id, hit);
                 }
             }
+            int readNow = 0;
             for (KnowledgeHit hit : hits) {
-                if (read.size() >= MAX_READS) {
+                if (readNow >= MAX_READS) {
                     break;
                 }
                 if (!tried.add(hit.id)) {
@@ -98,7 +113,12 @@ public final class KnowledgeResearch {
                     continue;
                 }
                 read.add(hit);
+                readNow++;
                 excerpts.add(ResearchQueries.excerpt(page, request + " " + query));
+            }
+            boolean refinementLeft = index + 1 < planned.size() && searched.size() < MAX_SEARCHES;
+            if (!read.isEmpty() && (!refinementLeft || judge.sufficient(request, read, excerpts))) {
+                break; // a refinement only when the evidence so far does not answer the task
             }
         }
         List<KnowledgeHit> unread = new ArrayList<KnowledgeHit>();
@@ -131,7 +151,7 @@ public final class KnowledgeResearch {
         String system = "Du bist der Recherche-Agent eines Unternehmens-Clients. Du formulierst Suchanfragen für die "
                 + "Wissensquellen des Unternehmens (z. B. Confluence, Dateien), beantwortest aber nichts selbst. "
                 + "Erkenne im Auftrag die starken wörtlichen Begriffe: Bezeichner, Abkürzungen, System-, Projekt- und "
-                + "Produktnamen. " + ResearchQueries.RULES + " Antworte NUR mit JSON: {\"queries\": [\"...\", \"...\"]}. "
+                + "Produktnamen. " + strategy.planningRules() + " Antworte NUR mit JSON: {\"queries\": [\"...\", \"...\"]}. "
                 + "Die erste Anfrage ist die eine prägnante Erstsuche mit den stärksten Begriffen; die zweite eine "
                 + "wesentlich andere Anfrage, falls die erste nichts Brauchbares findet.";
         String answer = complete(system, "AUFTRAG: " + task, 0.0d, PLAN_TOKENS);
@@ -139,15 +159,42 @@ public final class KnowledgeResearch {
         List<String> queries = new ArrayList<String>();
         if (parsed != null) {
             for (String query : parsed) {
-                if (ResearchQueries.isConcise(query) && !containsIgnoreCase(queries, query)) {
+                if (strategy.accepts(query) && !containsIgnoreCase(queries, query)) {
                     queries.add(query);
                 }
             }
         }
         if (queries.isEmpty()) {
-            queries.add(ResearchQueries.literalQuery(task));
+            queries.add(strategy.fallbackQuery(task));
         }
         return queries.size() > MAX_SEARCHES ? new ArrayList<String>(queries.subList(0, MAX_SEARCHES)) : queries;
+    }
+
+    /**
+     * The default judge: the model answers whether the numbered excerpts answer the task (JA/NEIN). Without a usable
+     * verdict the read evidence counts as sufficient, so a failing model never causes extra searches.
+     */
+    EvidenceJudge modelJudge() {
+        return new EvidenceJudge() {
+            @Override
+            public boolean sufficient(String task, List<KnowledgeHit> read, List<String> excerpts) {
+                String system = "Du prüfst Rechercheergebnisse. Antworte NUR mit JA oder NEIN: Beantworten die "
+                        + "Auszüge den Auftrag inhaltlich? NEIN, wenn sie das Thema nur streifen oder Wesentliches "
+                        + "fehlt.";
+                String verdict = complete(system, "AUFTRAG: " + task + "\n\nAUSZÜGE:\n" + numbered(read, excerpts),
+                        0.0d, JUDGE_TOKENS).trim().toUpperCase(java.util.Locale.ROOT);
+                return !verdict.startsWith("NEIN") && !verdict.startsWith("NO");
+            }
+        };
+    }
+
+    private static String numbered(List<KnowledgeHit> read, List<String> excerpts) {
+        StringBuilder sources = new StringBuilder();
+        for (int i = 0; i < read.size(); i++) {
+            sources.append('[').append(i + 1).append("] ").append(read.get(i).label()).append(":\n")
+                    .append(excerpts.get(i)).append("\n\n");
+        }
+        return sources.toString();
     }
 
     private List<KnowledgeHit> search(String query) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
@@ -169,11 +216,7 @@ public final class KnowledgeResearch {
     }
 
     private String answer(String task, List<KnowledgeHit> read, List<String> excerpts) {
-        StringBuilder sources = new StringBuilder();
-        for (int i = 0; i < read.size(); i++) {
-            sources.append('[').append(i + 1).append("] ").append(read.get(i).label()).append(":\n")
-                    .append(excerpts.get(i)).append("\n\n");
-        }
+        String sources = numbered(read, excerpts);
         String system = "Du bist der Recherche-Agent. Gib wieder, was die nummerierten Auszüge aus den Wissensquellen "
                 + "zum Auftrag sagen, ausschließlich aus diesen Auszügen, in der Sprache des Auftrags. Belege jede "
                 + "Aussage am Satzende mit [n]. Nenne Namen, Bezeichner und Termine genau wie in den Auszügen. Erfinde "
@@ -185,7 +228,7 @@ public final class KnowledgeResearch {
             return text;
         }
         // Without a model answer the evidence itself is the result: the excerpts, each with its number.
-        return "The model did not summarize the sources; the relevant excerpts:\n\n" + sources.toString().trim();
+        return "The model did not summarize the sources; the relevant excerpts:\n\n" + sources.trim();
     }
 
     private String complete(String system, String user, double temperature, int maxTokens) {

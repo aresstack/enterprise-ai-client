@@ -1,14 +1,20 @@
 package com.aresstack.enterpriseai.proasteion.application.agent;
 
+import com.aresstack.enterpriseai.proasteion.katagogion.McpContextResource;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolParameter;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
+import com.aresstack.enterpriseai.research.runtime.knowledge.KnowledgeHit;
 import com.aresstack.enterpriseai.research.runtime.knowledge.KnowledgeResearch;
+import com.aresstack.enterpriseai.research.runtime.knowledge.KnowledgeResearchResult;
 import com.aresstack.enterpriseai.research.runtime.loop.ToolInvoker;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -63,16 +69,42 @@ public final class ResearchDelegationTool implements McpToolHandler {
         if (task == null || task.trim().isEmpty()) {
             return McpToolResult.error("Missing argument: task — example: task=\"Was bedeutet RSL in IAR?\"");
         }
+        KnowledgeToolInvoker invoker = new KnowledgeToolInvoker();
         try {
-            return McpToolResult.ok(new KnowledgeResearch(new KnowledgeToolInvoker(), model).research(task)
-                    .render());
+            KnowledgeResearchResult result = new KnowledgeResearch(invoker, model).research(task);
+            return McpToolResult.ok(result.render(), invoker.contextOf(result.sources()));
         } catch (ToolInvoker.EndpointUnavailable unavailable) {
             return McpToolResult.error("The knowledge sources are not available: " + unavailable.getMessage());
         }
     }
 
-    /** The knowledge tools of the host, called in-process through their handlers. */
+    /**
+     * The knowledge tools of the host, called in-process through their handlers. Keeps the structured context
+     * resources of each successful {@code knowledge_read}, so the outer result names the resources actually used.
+     */
     private final class KnowledgeToolInvoker implements ToolInvoker {
+
+        private final Map<String, List<McpContextResource>> readContext =
+                new LinkedHashMap<String, List<McpContextResource>>();
+
+        /** The context resources of the given read resources, deduplicated by source and resource id. */
+        List<McpContextResource> contextOf(List<KnowledgeHit> sources) {
+            Map<String, McpContextResource> unique = new LinkedHashMap<String, McpContextResource>();
+            for (KnowledgeHit source : sources) {
+                List<McpContextResource> resources = readContext.get(source.id);
+                if (resources == null) {
+                    continue;
+                }
+                for (McpContextResource resource : resources) {
+                    String key = resource.sourceId() + "\u0000" + resource.resourceId();
+                    if (!unique.containsKey(key)) {
+                        unique.put(key, resource);
+                    }
+                }
+            }
+            return new ArrayList<McpContextResource>(unique.values());
+        }
+
         @Override
         public String call(String toolName, Map<String, Object> args) throws ToolFailure, EndpointUnavailable {
             McpToolContribution tool = knowledgeTools.apply(toolName);
@@ -90,6 +122,9 @@ public final class ResearchDelegationTool implements McpToolHandler {
             }
             if (result.isError()) {
                 throw new ToolFailure(result.getText());
+            }
+            if (KnowledgeResearch.READ_TOOL.equals(toolName) && args != null && args.get("id") != null) {
+                readContext.put(String.valueOf(args.get("id")), result.contextResources());
             }
             return result.getText();
         }

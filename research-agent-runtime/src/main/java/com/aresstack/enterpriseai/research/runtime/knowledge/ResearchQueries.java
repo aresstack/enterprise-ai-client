@@ -15,11 +15,8 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Query formulation of the Research Agent: how a natural-language research request becomes short search expressions
- * for the knowledge sources. The model does the reasoning ({@link #RULES} go into its prompt); this class holds the
- * shared rules, reads the model's plan and supplies the deterministic fallbacks when the model gives nothing usable.
- * Lexical sources (e.g. a full-text search that joins all words with AND) never see the whole sentence.
- * Pure and stateless.
+ * Query helpers of the Research Agent: reading the model's plan, the deterministic keyword fallbacks of the lexical
+ * discovery strategy ({@link LexicalDiscoveryStrategy}) and excerpts of read pages. Pure and stateless.
  */
 public final class ResearchQueries {
 
@@ -27,16 +24,6 @@ public final class ResearchQueries {
     public static final int MAX_QUERY_WORDS = 6;
     /** Strong literal terms of the {@link #literalQuery} fallback. */
     static final int LITERAL_TERMS = 3;
-
-    /**
-     * The query rules for the model, shared by every planning prompt of the Research Agent: short keyword queries,
-     * internal identifiers kept literally, no paraphrasing and no synonym chains.
-     */
-    public static final String RULES = "Suchanfragen sind kurze Schlüsselwortfolgen mit 1 bis 3 Wörtern (höchstens "
-            + MAX_QUERY_WORDS + "), keine Fragen und keine ganzen Sätze, ohne Füllwörter, denn die Volltextsuche der "
-            + "Quellen verknüpft alle Wörter mit UND. Übernimm interne Bezeichner, Abkürzungen, System-, Produkt- und "
-            + "Projektnamen wörtlich und in ihrer Schreibweise (z. B. HaVdB, BS-PIMA, Hashicorp Vault); "
-            + "übersetze, erkläre oder umschreibe sie nie. Keine Synonymketten und keine Varianten derselben Begriffe.";
 
     private static final Set<String> STOP_WORDS = new HashSet<String>(Arrays.asList(
             "aber", "alle", "als", "auch", "auf", "aus", "bei", "bitte", "das", "dass", "dem", "den", "der", "des",

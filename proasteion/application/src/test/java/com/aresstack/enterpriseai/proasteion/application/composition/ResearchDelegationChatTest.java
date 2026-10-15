@@ -8,6 +8,8 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.LoadKnowledgeDocument
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolContextResource;
+import com.aresstack.enterpriseai.astu.acropolis.tool.ToolOutput;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
@@ -41,7 +43,7 @@ public class ResearchDelegationChatTest {
     /** Plans with the model's query, then summarizes; records what the model was shown. */
     private static final class ScriptedModel implements MainModelChat {
         final List<String> answers = new ArrayList<String>(Arrays.asList(
-                "{\"queries\": [\"PIMA Hashicorp Vault\", \"Hashicorp Vault PoC\"]}",
+                "{\"queries\": [\"PIMA Hashicorp Vault\", \"Hashicorp Vault PoC\"]}", "JA",
                 "Im PoC wird PIMA Hashicorp Vault an das HaVdB-Backend angebunden [1]."));
         final List<String> prompts = new ArrayList<String>();
 
@@ -85,7 +87,8 @@ public class ResearchDelegationChatTest {
                 model);
         McpChatTool chatTool = new McpChatTool(research.contribution());
 
-        String result = chatTool.execute("{\"task\": \"" + LONG_REQUEST + "\"}");
+        ToolOutput output = chatTool.executeWithContext("{\"task\": \"" + LONG_REQUEST + "\"}");
+        String result = output.text();
 
         List<String> searches = new ArrayList<String>();
         for (String call : wiki.calls()) {
@@ -100,7 +103,13 @@ public class ResearchDelegationChatTest {
         assertTrue(result, result.contains("[1] PoC Hashicorp Vault (HaVdB)"));
         assertTrue(result, result.contains("id: " + id));
         assertTrue(result, result.contains("source: wiki"));
-        assertTrue("the answer is written from the read page", model.prompts.get(1).contains("Vault Agent"));
+        assertTrue("the answer is written from the read page", model.prompts.get(2).contains("Vault Agent"));
+        // structured provenance (#118): the resource actually read, not just text
+        assertEquals(1, output.context().size());
+        ToolContextResource used = output.context().get(0);
+        assertEquals("wiki", used.sourceId());
+        assertEquals(id, used.resourceId());
+        assertEquals("PoC Hashicorp Vault (HaVdB)", used.title());
     }
 
     @Test
