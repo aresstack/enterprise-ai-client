@@ -114,6 +114,170 @@ public final class KnowledgeToolOutput {
         return "";
     }
 
+    /** One page of a {@code knowledge_tree} answer: title, resource id and bookmark (both may be empty). */
+    public static final class TreeNode {
+        public final String title;
+        public final String id;
+        public final String bookmark;
+
+        TreeNode(String title, String id, String bookmark) {
+            this.title = title == null ? "" : title;
+            this.id = id == null ? "" : id;
+            this.bookmark = bookmark == null ? "" : bookmark;
+        }
+
+        @Override
+        public String toString() {
+            return title + " (" + id + ")";
+        }
+    }
+
+    /**
+     * The neighbourhood of a {@code knowledge_tree} answer: the source and space key, the parent pages up to the space (top first,
+     * space entries without a page id left out), the current page ({@code null} at a space root) and the direct
+     * children. Only pages with an id are kept, because only those can be read.
+     */
+    public static final class TreeNeighbourhood {
+        public final String source;
+        /** The exact space key of the hierarchy (empty when the answer names none). */
+        public final String space;
+        public final List<TreeNode> parents;
+        public final TreeNode current;
+        public final List<TreeNode> children;
+
+        TreeNeighbourhood(String source, String space, List<TreeNode> parents, TreeNode current,
+                          List<TreeNode> children) {
+            this.source = source;
+            this.space = space;
+            this.parents = Collections.unmodifiableList(parents);
+            this.current = current;
+            this.children = Collections.unmodifiableList(children);
+        }
+    }
+
+    /**
+     * Parses a {@code knowledge_tree} answer: the sections {@code parents:}, {@code current:} and {@code children:},
+     * each entry with {@code title:}, {@code id:} and {@code bookmark:} lines. Lines outside the sections (cursor,
+     * hints) are ignored.
+     */
+    public static TreeNeighbourhood parseTree(String text) {
+        String source = "";
+        String space = "";
+        String spaceEntry = ""; // the exact key of the parents' space entry, preferred over the header line
+        List<TreeNode> parents = new ArrayList<TreeNode>();
+        List<TreeNode> children = new ArrayList<TreeNode>();
+        TreeNode current = null;
+        String section = "";
+        String[] entry = null; // title, id, bookmark of the entry being read
+        for (String line : (text == null ? "" : text).split("\\r?\\n")) {
+            boolean indented = line.startsWith("  ");
+            boolean item = line.startsWith("- ");
+            if (!indented && !item) {
+                List<TreeNode> target = "parents".equals(section) ? parents : children;
+                current = finish(entry, section, target, current);
+                entry = null;
+                String trimmed = line.trim();
+                if (trimmed.startsWith("parents:")) {
+                    section = "parents";
+                } else if (trimmed.equals("current:")) {
+                    section = "current";
+                    entry = new String[]{"", "", ""};
+                } else if (trimmed.equals("children:")) {
+                    section = "children";
+                } else if (section.isEmpty() && trimmed.startsWith("source: ")) {
+                    source = trimmed.substring("source: ".length()).trim();
+                } else if (section.isEmpty() && trimmed.startsWith("space: ")) {
+                    String header = trimmed.substring("space: ".length());
+                    int title = header.indexOf(" \u2014 ");
+                    space = (title < 0 ? header : header.substring(0, title)).trim();
+                } else if (!trimmed.isEmpty()) {
+                    section = ""; // cursor lines and hints end the sections
+                }
+                continue;
+            }
+            if (section.isEmpty()) {
+                continue;
+            }
+            if (item) {
+                current = finish(entry, section, "parents".equals(section) ? parents : children, current);
+                entry = new String[]{"", "", ""};
+            }
+            if (entry == null) {
+                continue;
+            }
+            String field = line.substring(2).trim();
+            if (field.startsWith("title: ")) {
+                entry[0] = field.substring("title: ".length()).trim();
+            } else if (field.startsWith("id: ")) {
+                entry[1] = field.substring("id: ".length()).trim();
+            } else if (field.startsWith("bookmark: ")) {
+                entry[2] = field.substring("bookmark: ".length()).trim();
+            } else if (field.startsWith("space: ") && "parents".equals(section)) {
+                spaceEntry = field.substring("space: ".length()).trim();
+            }
+        }
+        current = finish(entry, section, "parents".equals(section) ? parents : children, current);
+        return new TreeNeighbourhood(source, spaceEntry.isEmpty() ? space : spaceEntry, parents, current, children);
+    }
+
+    /** Stores a finished entry in its section; returns the (possibly new) current page. */
+    private static TreeNode finish(String[] entry, String section, List<TreeNode> target, TreeNode current) {
+        if (entry == null || entry[1].isEmpty()) {
+            return current;
+        }
+        TreeNode node = new TreeNode(entry[0], entry[1], entry[2]);
+        if ("current".equals(section)) {
+            return node;
+        }
+        target.add(node);
+        return current;
+    }
+
+    private static final Pattern READ_MANY_FRAME = Pattern.compile("^\\[(\\d+)/(\\d+)\\] (.*)$");
+    private static final String READ_MANY_SEPARATOR = "\n\n---\n\n";
+
+    /**
+     * The read texts of a {@code knowledge_read_many} answer by position of the requested id (0-based): each frame
+     * {@code [i/n] OK} (or {@code OK (truncated ...)}) is followed by the {@code knowledge_read} answer of that id.
+     * Failed, omitted and duplicate positions are absent. A separator inside a page text stays part of that text.
+     */
+    public static Map<Integer, String> readManyTexts(String text) {
+        Map<Integer, String> texts = new java.util.LinkedHashMap<Integer, String>();
+        if (text == null) {
+            return texts;
+        }
+        List<String> frames = new ArrayList<String>();
+        for (String chunk : text.split(Pattern.quote(READ_MANY_SEPARATOR), -1)) {
+            if (frames.isEmpty() || READ_MANY_FRAME.matcher(firstLine(chunk)).matches()) {
+                frames.add(chunk);
+            } else {
+                int last = frames.size() - 1;
+                frames.set(last, frames.get(last) + READ_MANY_SEPARATOR + chunk);
+            }
+        }
+        for (String frame : frames) {
+            Matcher header = READ_MANY_FRAME.matcher(firstLine(frame));
+            if (!header.matches()) {
+                continue;
+            }
+            String status = header.group(3).trim();
+            if (!status.equals("OK") && !status.startsWith("OK (truncated")) {
+                continue;
+            }
+            int newline = frame.indexOf('\n');
+            String body = newline < 0 ? "" : frame.substring(newline + 1).trim();
+            if (!body.isEmpty()) {
+                texts.put(Integer.valueOf(Integer.parseInt(header.group(1)) - 1), body);
+            }
+        }
+        return texts;
+    }
+
+    private static String firstLine(String text) {
+        int newline = text.indexOf('\n');
+        return (newline < 0 ? text : text.substring(0, newline)).trim();
+    }
+
     /** The lines of one hit: first the metadata header, from the first other line on the snippet. */
     private static final class HitLines {
         final String title;

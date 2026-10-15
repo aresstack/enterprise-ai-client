@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolParameter;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
+import com.aresstack.enterpriseai.research.runtime.knowledge.HierarchyExploration;
 import com.aresstack.enterpriseai.research.runtime.knowledge.KnowledgeHit;
 import com.aresstack.enterpriseai.research.runtime.knowledge.KnowledgeResearch;
 import com.aresstack.enterpriseai.research.runtime.knowledge.KnowledgeResearchResult;
@@ -26,7 +27,8 @@ import java.util.function.Function;
  * source searches lexically, by hierarchy or semantically.
  *
  * <p>Same agent core as the agent process, run in-process: its {@link ToolInvoker} calls the handlers of the
- * existing knowledge tools ({@code knowledge_search}, {@code knowledge_read}) directly, its {@link MainModelChat} is
+ * existing knowledge tools ({@code knowledge_search}, {@code knowledge_read}, {@code knowledge_tree},
+ * {@code knowledge_read_many}) directly, its {@link MainModelChat} is
  * the client's chat port ({@link ChatPortMainModelChat}). No second protocol, no source-specific code.
  */
 public final class ResearchDelegationTool implements McpToolHandler {
@@ -87,6 +89,8 @@ public final class ResearchDelegationTool implements McpToolHandler {
 
         private final Map<String, List<McpContextResource>> readContext =
                 new LinkedHashMap<String, List<McpContextResource>>();
+        /** Context resources of bundled reads ({@code knowledge_read_many}), by resource id. */
+        private final Map<String, McpContextResource> bundleContext = new LinkedHashMap<String, McpContextResource>();
 
         /** The context resources of the given read resources, deduplicated by source and resource id. */
         List<McpContextResource> contextOf(List<KnowledgeHit> sources) {
@@ -94,7 +98,11 @@ public final class ResearchDelegationTool implements McpToolHandler {
             for (KnowledgeHit source : sources) {
                 List<McpContextResource> resources = readContext.get(source.id);
                 if (resources == null) {
-                    continue;
+                    McpContextResource bundled = bundleContext.get(source.id);
+                    if (bundled == null) {
+                        continue;
+                    }
+                    resources = java.util.Collections.singletonList(bundled);
                 }
                 for (McpContextResource resource : resources) {
                     String key = resource.sourceId() + "\u0000" + resource.resourceId();
@@ -126,6 +134,14 @@ public final class ResearchDelegationTool implements McpToolHandler {
             }
             if (KnowledgeResearch.READ_TOOL.equals(toolName) && args != null && args.get("id") != null) {
                 readContext.put(String.valueOf(args.get("id")), result.contextResources());
+            }
+            if (HierarchyExploration.READ_MANY_TOOL.equals(toolName)) {
+                // the bundle names its resources, not the requested ids: keep them by resource id
+                for (McpContextResource resource : result.contextResources()) {
+                    if (!bundleContext.containsKey(resource.resourceId())) {
+                        bundleContext.put(resource.resourceId(), resource);
+                    }
+                }
             }
             return result.getText();
         }

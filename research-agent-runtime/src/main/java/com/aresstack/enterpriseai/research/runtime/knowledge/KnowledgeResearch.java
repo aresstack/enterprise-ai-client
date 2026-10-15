@@ -29,6 +29,10 @@ import java.util.Set;
  * <p>Talks only through the two existing seams of the research runtime, {@link ToolInvoker} (the knowledge tools of
  * the host, source-independent) and {@link MainModelChat}; it knows no source, no CQL and no project. Later research
  * steps (acronym or fact lookup, semantic retrieval, relations) belong here, behind the same {@link #research} call.
+ *
+ * <p>When the judge rejects the evidence and a freshly read hit sits in a page hierarchy with unread pages around it,
+ * the {@link HierarchyExploration} opens that area once ({@code knowledge_tree}), reads the relevant related pages in
+ * one bundle ({@code knowledge_read_many}) and the judge decides again before any further lookup.
  */
 public final class KnowledgeResearch {
 
@@ -45,15 +49,20 @@ public final class KnowledgeResearch {
     private static final int ANSWER_TOKENS = 2000;
 
     private static final int JUDGE_TOKENS = 10;
+    private static final int SELECT_TOKENS = 60;
 
     private final ToolInvoker tools;
     private final MainModelChat model;
     private final List<DiscoveryStrategy> stages;
     private final EvidenceJudge judge;
+    private final HierarchyExploration exploration;
+
+    /** Read hits probed as hierarchy anchors per research (each costs up to two tree calls). */
+    static final int MAX_ANCHORS = 2;
 
     /** With the default stages ({@link #defaultStages()}) and the model as evidence judge. */
     public KnowledgeResearch(ToolInvoker tools, MainModelChat model) {
-        this(tools, model, defaultStages(), null);
+        this(tools, model, defaultStages(), null, new HierarchyExploration());
     }
 
     /**
@@ -70,6 +79,16 @@ public final class KnowledgeResearch {
      */
     public KnowledgeResearch(ToolInvoker tools, MainModelChat model, List<DiscoveryStrategy> stages,
                              EvidenceJudge judge) {
+        this(tools, model, stages, judge, null);
+    }
+
+    /**
+     * @param stages      the discovery stages in the order they run, cheap ones first
+     * @param judge       whether read evidence suffices; {@code null} for {@link #modelJudge}
+     * @param exploration how a good but insufficient hit is explored through its hierarchy; {@code null} for none
+     */
+    public KnowledgeResearch(ToolInvoker tools, MainModelChat model, List<DiscoveryStrategy> stages,
+                             EvidenceJudge judge, HierarchyExploration exploration) {
         if (tools == null || model == null || stages == null || stages.isEmpty() || stages.contains(null)) {
             throw new IllegalArgumentException("tools, model and stages must not be null or empty");
         }
@@ -77,6 +96,7 @@ public final class KnowledgeResearch {
         this.model = model;
         this.stages = Collections.unmodifiableList(new ArrayList<DiscoveryStrategy>(stages));
         this.judge = judge == null ? modelJudge() : judge;
+        this.exploration = exploration;
     }
 
     /**
@@ -110,6 +130,8 @@ public final class KnowledgeResearch {
         boolean reached = false;
         boolean answered = false; // at least one lookup returned an answer (possibly without hits)
         List<String> failures = new ArrayList<String>();
+        boolean exploring = exploration != null; // at most one hierarchy exploration per research
+        int anchorsLeft = MAX_ANCHORS;
         stages:
         for (int stage = 0; stage < stages.size(); stage++) {
             DiscoveryStrategy strategy = stages.get(stage);
@@ -140,6 +162,7 @@ public final class KnowledgeResearch {
                     }
                 }
                 int readNow = 0;
+                List<KnowledgeHit> readHere = new ArrayList<KnowledgeHit>();
                 for (KnowledgeHit hit : hits) {
                     if (readNow >= MAX_READS) {
                         break;
@@ -152,13 +175,57 @@ public final class KnowledgeResearch {
                     if (page.isEmpty()) {
                         continue;
                     }
-                    read.add(described(hit, output));
+                    KnowledgeHit described = described(hit, output);
+                    read.add(described);
+                    readHere.add(described);
                     readNow++;
                     excerpts.add(ResearchQueries.excerpt(page, request + " " + query));
                 }
                 boolean lookupLeft = index + 1 < lookups.size() || stage + 1 < stages.size();
-                if (!read.isEmpty() && (!lookupLeft || judge.sufficient(request, read, excerpts))) {
-                    break stages; // a further lookup only when the evidence so far does not answer the task
+                if (read.isEmpty()) {
+                    continue;
+                }
+                boolean judged = false;
+                if (lookupLeft) {
+                    if (judge.sufficient(request, read, excerpts)) {
+                        break stages; // a further lookup only when the evidence so far does not answer the task
+                    }
+                    judged = true;
+                }
+                if (exploring) {
+                    // a fresh hit with unread pages around it is explored before the next full-text lookup
+                    HierarchyExploration.Anchor anchor = null;
+                    try {
+                        for (int h = 0; h < readHere.size() && anchor == null && anchorsLeft > 0; h++) {
+                            anchorsLeft--;
+                            anchor = exploration.anchor(tools, readHere.get(h), tried);
+                        }
+                    } catch (ToolInvoker.EndpointUnavailable noTree) {
+                        exploring = false;
+                    }
+                    if (anchor != null) {
+                        if (!judged && judge.sufficient(request, read, excerpts)) {
+                            break stages;
+                        }
+                        exploring = false;
+                        searched.add("tree: " + anchor.hit.label());
+                        int before = read.size();
+                        for (HierarchyExploration.Explored page : exploration.explore(tools, this::complete,
+                                request, anchor)) {
+                            if (!tried.add(page.hit.id)) {
+                                continue;
+                            }
+                            read.add(described(page.hit, page.readOutput));
+                            excerpts.add(ResearchQueries.excerpt(KnowledgeToolOutput.pageText(page.readOutput),
+                                    request + " " + query));
+                        }
+                        if (read.size() > before && lookupLeft && judge.sufficient(request, read, excerpts)) {
+                            break stages;
+                        }
+                    }
+                }
+                if (!lookupLeft) {
+                    break stages;
                 }
             }
         }
@@ -316,6 +383,11 @@ public final class KnowledgeResearch {
         }
         // Without a model answer the evidence itself is the result: the excerpts, each with its number.
         return "The model did not summarize the sources; the relevant excerpts:\n\n" + sources.trim();
+    }
+
+    /** The page selection of the hierarchy exploration: deterministic and short. */
+    private String complete(String system, String user) {
+        return complete(system, user, 0.0d, SELECT_TOKENS);
     }
 
     private String complete(String system, String user, double temperature, int maxTokens) {
