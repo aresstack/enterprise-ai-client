@@ -46,6 +46,15 @@ final class McpChatTool implements AiTool {
         return Collections.unmodifiableList(chatTools);
     }
 
+    /** The chat tool definitions of {@code tools}, in the same order. */
+    static List<ToolDefinition> definitions(List<McpToolContribution> tools) {
+        List<ToolDefinition> definitions = new ArrayList<ToolDefinition>(tools.size());
+        for (McpToolContribution tool : tools) {
+            definitions.add(new McpChatTool(tool).definition());
+        }
+        return Collections.unmodifiableList(definitions);
+    }
+
     @Override
     public String name() {
         return tool.getName();

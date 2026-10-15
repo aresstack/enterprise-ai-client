@@ -299,6 +299,13 @@ public final class AdapterAssembly {
         final H2FactStore facts = new H2FactStore(config.facts().directory(), config.facts().lockTimeoutMillis());
         ports.facts(facts);
         ports.closing("fact-store", facts);
+        // Persistent memories (#144): own H2 database next to the facts, opened on first use.
+        final com.aresstack.enterpriseai.memory.h2.H2MemoryStore memories =
+                new com.aresstack.enterpriseai.memory.h2.H2MemoryStore(
+                        com.aresstack.enterpriseai.proasteion.application.config.AppPaths.defaultMemoryDirectory(),
+                        config.facts().lockTimeoutMillis());
+        ports.memories(memories);
+        ports.closing("memory-store", memories);
         return ports.build();
     }
 

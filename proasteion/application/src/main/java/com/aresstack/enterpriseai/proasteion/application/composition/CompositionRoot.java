@@ -121,6 +121,7 @@ public final class CompositionRoot {
     static final String ORIGIN_RESEARCH = "Recherche-Agent, je Phase (ResearchControlTools)";
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
     static final String ORIGIN_HELP = "Produkthilfe (AppHelpMcpTools)";
+    static final String ORIGIN_MEMORY = "Erinnerungen je Chat, Projekt und global (MemoryTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
     static final String NAVIGATION_DIRECTORY = "navigation";
@@ -147,6 +148,8 @@ public final class CompositionRoot {
     private final LoadKnowledgeDocumentUseCase documents;
     private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeMcpTools knowledgeTools;
+    /** Persistent memories (#144), {@code null} without a memory store. */
+    private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryService memories;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private final Object attachmentImagesLock = new Object();
     private com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase attachmentImages;
@@ -358,6 +361,19 @@ public final class CompositionRoot {
         });
         toolCatalog.registerDefinitions(ORIGIN_ATTACHMENTS, EnumSet.of(ToolChannel.CHAT),
                 AttachmentTools::definitions);
+        // Memories (#144): chat only, built per turn with the trusted chat id (memoryChatTools). The agent endpoint
+        // has no verifiable chat or user, so it gets no memory tools. Project scope waits for #143, the approval
+        // of project/global deletions for the host approval of #145.
+        this.memories = ports.memories() == null ? null
+                : new com.aresstack.enterpriseai.proasteion.application.memory.MemoryService(ports.memories(),
+                System.getProperty("user.name", "local"),
+                com.aresstack.enterpriseai.proasteion.application.memory.ChatProjectResolver.NONE, null,
+                com.aresstack.enterpriseai.proasteion.application.memory.MemoryDeletionApproval.UNAVAILABLE);
+        if (memories != null) {
+            toolCatalog.registerDefinitions(ORIGIN_MEMORY, EnumSet.of(ToolChannel.CHAT),
+                    () -> McpChatTool.definitions(
+                            com.aresstack.enterpriseai.proasteion.application.memory.MemoryTools.forChat(null, "")));
+        }
         registerHelpTools(toolCatalog, config.agent().toolSettings());
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
         // Dokumentnavigation im Lesebereich: Passagen der Index-Pipeline (askai arch PassageSegmentation) + TopicClusterer,
@@ -645,6 +661,31 @@ public final class CompositionRoot {
 
     public KnowledgeMcpTools knowledgeTools() {
         return knowledgeTools;
+    }
+
+    /**
+     * The active memory tools ({@code memory_save}, {@code memory_search}, {@code memory_delete}) bound to the chat
+     * {@code chatId}; empty without a memory store or when all are switched off in the "Tools" tab.
+     */
+    public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> memoryChatTools(String chatId) {
+        if (memories == null || chatId == null) {
+            return Collections.emptyList();
+        }
+        List<McpToolContribution> active = new ArrayList<McpToolContribution>();
+        for (McpToolContribution tool
+                : com.aresstack.enterpriseai.proasteion.application.memory.MemoryTools.forChat(memories, chatId)) {
+            if (toolCatalog.isEnabled(tool.getName())) {
+                active.add(tool);
+            }
+        }
+        return McpChatTool.all(active);
+    }
+
+    /** Removes the memories of a finally deleted chat (project and global memories stay). */
+    public void deleteChatMemories(String chatId) {
+        if (memories != null) {
+            memories.deleteChat(chatId);
+        }
     }
 
     /**

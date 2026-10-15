@@ -21,6 +21,7 @@ public final class AppPaths {
     public static final String CONFIG_FILE_NAME = "enterprise-ai-client.properties";
     public static final String INDEX_DIRECTORY_NAME = "index";
     public static final String FACT_DIRECTORY_NAME = "facts";
+    public static final String MEMORY_DIRECTORY_NAME = "memories";
     public static final String PAIRING_KEY_FILE_NAME = "keepassrpc-pairing.key";
     public static final String LOG_DIRECTORY_NAME = "logs";
     /** Zwischenspeicher der letzten Modellabfrage (Reiter „Modelle“). */
@@ -58,6 +59,11 @@ public final class AppPaths {
     /** The global metadata catalog (#106): {@code <appDirectory>/facts/facts.mv.db}. */
     public static Path defaultFactDirectory() {
         return appDirectory().resolve(FACT_DIRECTORY_NAME);
+    }
+
+    /** Persistent memories (#144): {@code <app directory>/memories}. */
+    public static Path defaultMemoryDirectory() {
+        return appDirectory().resolve(MEMORY_DIRECTORY_NAME);
     }
 
     public static Path defaultPairingKeyFile() {
