@@ -86,19 +86,24 @@ public class ResearchPipelineChatTest {
     private final KnowledgeSourceCatalog live = KnowledgeSourceCatalog.of(
             new KnowledgeSourceRegistration(wiki, SourceScope.of("Richtlinien", "Pruefplan")));
     private final ToolCatalog catalog = new ToolCatalog();
+    private KnowledgeMcpTools knowledge;
     private H2FactStore facts;
+    private IndexKnowledgeUseCase indexing;
 
     @Before
     public void setUp() throws Exception {
         facts = new H2FactStore(folder.newFolder("facts").toPath(), 2000);
         DeterministicEmbeddingPort embeddings = DeterministicEmbeddingPort.withDimension(16);
         InMemoryKnowledgeIndex index = new InMemoryKnowledgeIndex();
-        IndexKnowledgeUseCase indexing = new IndexKnowledgeUseCase(index, embeddings, embeddings.modelIdentity(),
+        indexing = new IndexKnowledgeUseCase(index, embeddings, embeddings.modelIdentity(),
                 new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
-        final KnowledgeMcpTools knowledge = new KnowledgeMcpTools(new RetrieveKnowledgeUseCase(index, embeddings,
+        knowledge = new KnowledgeMcpTools(new RetrieveKnowledgeUseCase(index, embeddings,
                 embeddings.modelIdentity(), null), new LoadKnowledgeDocumentUseCase(live).withCatalog(() -> live),
                 new SearchDrivenIndexingUseCase(indexing), null);
         catalog.register("knowledge", EnumSet.of(ToolChannel.AGENT), knowledge::contributions);
+        final KnowledgeMcpTools offered = knowledge;
+        catalog.register("index", EnumSet.of(ToolChannel.AGENT),
+                () -> Collections.singletonList(offered.knowledgeIndexSearch()));
         final KnowledgeTermLookupTool terms = new KnowledgeTermLookupTool(facts);
         catalog.register("terms", EnumSet.of(ToolChannel.AGENT),
                 () -> Collections.singletonList(terms.contribution()));
@@ -161,10 +166,55 @@ public class ResearchPipelineChatTest {
         String result = output.text();
 
         assertEquals(Arrays.asList("IRR"), searches());
-        assertTrue(result, result.contains("Searched with: \"term: IRR\", \"IRR\""));
+        assertTrue(result, result.contains("Searched with: \"term: IRR\", \"index: " + TASK + "\", \"index: IRR\", "
+                + "\"IRR\""));
         assertFalse(output.context().isEmpty());
         for (ToolContextResource used : output.context()) {
             assertEquals("wiki", used.sourceId());
         }
+    }
+
+    @Test
+    public void aTaskAnsweredFromTheLocalIndexNeedsNoLiveSearch() throws Exception {
+        indexing.indexDocumentIfChanged(wiki.load(wiki.idOf("Pruefplan")));
+        ScriptedModel model = new ScriptedModel("JA", "Der Prüfplan nennt die IRR als Grundlage [1].");
+
+        ToolOutput output = research(model);
+        String result = output.text();
+
+        assertTrue("no live source search", searches().isEmpty());
+        assertTrue(result, result.contains("Searched with: \"term: IRR\", \"index: " + TASK + "\""));
+        assertTrue(result, result.contains("Prüfplan 2026"));
+        assertEquals(1, output.context().size());
+        ToolContextResource used = output.context().get(0);
+        assertEquals("wiki", used.sourceId());
+        assertEquals(wiki.idOf("Pruefplan").value(), used.resourceId());
+        assertEquals("Prüfplan 2026", used.title());
+    }
+
+    @Test
+    public void theLocalStageAsksTheIndexToolOfTheHost() {
+        assertEquals(com.aresstack.enterpriseai.research.runtime.knowledge.LocalIndexStrategy.TOOL,
+                KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH);
+    }
+
+    @Test
+    public void withoutTheLiveSearchAnIndexedPageIsStillResearched() throws Exception {
+        indexing.indexDocumentIfChanged(wiki.load(wiki.idOf("Pruefplan")));
+        ScriptedModel model = new ScriptedModel("JA", "Der Prüfplan nennt die IRR als Grundlage [1].");
+        final ToolCatalog withoutSearch = new ToolCatalog();
+        final KnowledgeMcpTools offered = knowledge;
+        withoutSearch.register("index", EnumSet.of(ToolChannel.AGENT),
+                () -> Arrays.asList(offered.knowledgeIndexSearch(), offered.knowledgeRead()));
+        ResearchDelegationTool research = new ResearchDelegationTool(
+                name -> withoutSearch.find(name, ToolChannel.AGENT), model);
+
+        ToolOutput output = new McpChatTool(research.contribution())
+                .executeWithContext("{\"task\": \"" + TASK + "\"}");
+
+        assertTrue("no live source search", searches().isEmpty());
+        assertTrue(output.text(), output.text().contains("Prüfplan 2026"));
+        assertEquals(1, output.context().size());
+        assertEquals(wiki.idOf("Pruefplan").value(), output.context().get(0).resourceId());
     }
 }

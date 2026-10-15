@@ -81,11 +81,12 @@ public final class KnowledgeResearch {
 
     /**
      * The stages of the Research Agent today: first the cheap lookup of acronym-like terms in the structured findings
-     * ({@link TermLookupStrategy}), then the lexical search ({@link LexicalDiscoveryStrategy}).
+     * ({@link TermLookupStrategy}), then the local index ({@link LocalIndexStrategy}), then the lexical search of the
+     * live sources ({@link LexicalDiscoveryStrategy}).
      */
     public static List<DiscoveryStrategy> defaultStages() {
         return Collections.unmodifiableList(java.util.Arrays.<DiscoveryStrategy>asList(new TermLookupStrategy(),
-                new LexicalDiscoveryStrategy()));
+                new LocalIndexStrategy(), new LexicalDiscoveryStrategy()));
     }
 
     /**

@@ -49,10 +49,19 @@ final class KnowledgeSearchTool implements McpToolHandler {
     private final Supplier<KnowledgeSourceCatalog> catalogs;
     private final Predicate<SourceAddress> enabled;
     private final KnowledgeToolSettings settings;
+    /** Only the local index, no live source search (the handler of {@code knowledge_index_search}). */
+    private final boolean indexOnly;
 
     KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
                         Supplier<KnowledgeSourceCatalog> catalogs, Predicate<SourceAddress> enabled,
                         KnowledgeToolSettings settings) {
+        this(retrieval, live, catalogs, enabled, settings, false);
+    }
+
+    KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
+                        Supplier<KnowledgeSourceCatalog> catalogs, Predicate<SourceAddress> enabled,
+                        KnowledgeToolSettings settings, boolean indexOnly) {
+        this.indexOnly = indexOnly;
         this.retrieval = retrieval;
         this.live = live;
         this.catalogs = catalogs;
@@ -107,11 +116,13 @@ final class KnowledgeSearchTool implements McpToolHandler {
                     + "\nNo knowledge source is enabled. Ask the user to check a source in the drawer.");
         }
 
-        SearchDrivenIndexingUseCase.Result found;
-        try {
-            found = live.search(PREFETCH_CHANNEL, catalog, sources, text, Math.max(limit, LIVE_HITS));
-        } catch (RuntimeException e) {
-            found = null; // Live-Suche ist eine Ergänzung; der Index antwortet trotzdem.
+        SearchDrivenIndexingUseCase.Result found = null;
+        if (!indexOnly) {
+            try {
+                found = live.search(PREFETCH_CHANNEL, catalog, sources, text, Math.max(limit, LIVE_HITS));
+            } catch (RuntimeException e) {
+                found = null; // Live-Suche ist eine Ergänzung; der Index antwortet trotzdem.
+            }
         }
         List<RetrievedChunk> hits;
         boolean indexFailed = false;
@@ -121,6 +132,10 @@ final class KnowledgeSearchTool implements McpToolHandler {
         } catch (RuntimeException e) { // auch KnowledgeRetrievalException: alle Suchpfade ausgefallen
             hits = Collections.emptyList();
             indexFailed = true;
+        }
+        if (indexOnly && indexFailed) {
+            // without the index this tool has nothing to answer: a failure, never "no hits"
+            return McpToolResult.error("The local knowledge index could not be searched.");
         }
         return McpToolResult.ok(render(text, limit, hits, found, indexFailed));
     }

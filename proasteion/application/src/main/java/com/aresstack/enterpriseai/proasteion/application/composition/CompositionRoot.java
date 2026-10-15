@@ -115,6 +115,7 @@ public final class CompositionRoot {
 
     /** Herkunft der Werkzeuge im {@link ToolCatalog} (Anzeige im Einstellungen-Reiter „Tools“). */
     static final String ORIGIN_KNOWLEDGE = "Wissenswerkzeuge (KnowledgeMcpTools)";
+    static final String ORIGIN_INDEX_SEARCH = "Lokaler Wissensindex für den Recherche-Agenten (KnowledgeMcpTools)";
     static final String ORIGIN_TERM_LOOKUP = "Begriffe im Metadatenkatalog (KnowledgeTermLookupTool)";
     static final String ORIGIN_RESEARCH_DELEGATION = "Recherche-Agent für den Chat (ResearchDelegationTool)";
     static final String ORIGIN_RESEARCH = "Recherche-Agent, je Phase (ResearchControlTools)";
@@ -318,20 +319,22 @@ public final class CompositionRoot {
         // knowledge_research fehlt oder abgeschaltet ist; Lesen, Seitenbaum und Anhänge bleiben im Chat.
         final boolean delegated = ports.chat() != null;
         final ToolCatalog chatCatalog = toolCatalog;
-        // Ohne knowledge_search oder knowledge_read (abgeschaltet) kann der Recherche-Agent nicht recherchieren; dann
-        // bietet der Chat knowledge_research nicht an und bekommt, soweit aktiv, die Low-Level-Werkzeuge zurück.
+        // The Research Agent needs knowledge_read plus at least one general discovery tool (the local index or the
+        // live search); without them the chat does not offer knowledge_research and gets the low-level tools back.
+        final java.util.function.BooleanSupplier researchTools = () ->
+                chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ)
+                        && (chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
+                        || chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH));
         final java.util.function.BooleanSupplier researchUsable = () -> delegated
                 && chatCatalog.isEnabled(ResearchDelegationTool.NAME)
-                && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
-                && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ);
+                && researchTools.getAsBoolean();
         if (delegated) {
             final ToolCatalog catalog = toolCatalog;
             final ResearchDelegationTool research = new ResearchDelegationTool(
                     name -> catalog.find(name, ToolChannel.AGENT),
                     new ChatPortMainModelChat(ports.chat(), config.chat().defaultOptions()));
             toolCatalog.register(ORIGIN_RESEARCH_DELEGATION, EnumSet.of(ToolChannel.CHAT),
-                    () -> chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
-                            && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ)
+                    () -> researchTools.getAsBoolean()
                             ? Collections.singletonList(research.contribution())
                             : Collections.<McpToolContribution>emptyList());
         }
@@ -340,6 +343,9 @@ public final class CompositionRoot {
         final KnowledgeTermLookupTool termLookup = new KnowledgeTermLookupTool(ports.facts());
         toolCatalog.register(ORIGIN_TERM_LOOKUP, EnumSet.of(ToolChannel.AGENT),
                 () -> Collections.singletonList(termLookup.contribution()));
+        // Second stage of the Research Agent: the local index alone, before any live source (agent only).
+        toolCatalog.register(ORIGIN_INDEX_SEARCH, EnumSet.of(ToolChannel.AGENT),
+                () -> Collections.singletonList(offered.knowledgeIndexSearch()));
         toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.CHAT), () -> {
             boolean viaResearch = researchUsable.getAsBoolean();
             List<McpToolContribution> tools = new ArrayList<McpToolContribution>();
